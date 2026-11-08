@@ -555,6 +555,7 @@ void addTitleArtPropertyDefinitions(std::vector<shadercompiler::define_t>& defs,
     if (prop & shaderPropertyBit(7))  defs.push_back({"TA_SEEDS_FIXED", "1"});           // 'Sfx'
     if (prop & shaderPropertyBit(8))  defs.push_back({"TA_DISTANCE_FIXED", "1"});        // 'Dfx'
     if (prop & shaderPropertyBit(10)) defs.push_back({"TFX_LIVE", "1"});                 // 'Liv'
+    if (prop & shaderPropertyBit(11)) defs.push_back({"TA_GEN", "1"});                   // 'Gen' (S83's generators)
 }
 
 void addSkyPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -770,6 +771,12 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     }else if (shaderType == ShaderType::TITLE_ART && (properties & 0x7Fu) >= 18){
         // the Title Art renderer's programs (render/TitlePrograms.h); 1-17 are titleart.frag's
         args.frag_file = "titleart_render.frag";
+    }
+    if (shaderType == ShaderType::TITLE_ART && (properties & shaderPropertyBit(11))){
+        // S83's generator programs (generators/TitleGen.h): a number space of their own, some
+        // pulling instanced quads from a data texture in the vertex stage
+        args.vert_file = "titleart_gen.vert";
+        args.frag_file = "titleart_gen.frag";
     }
 
     return true;

@@ -1,0 +1,142 @@
+{
+  "presets": [
+    {
+      "id": "ink",
+      "name": "Ink Swirl (筆渦)",
+      "aliases": [
+        "ink swirl",
+        "筆渦",
+        "墨"
+      ],
+      "source": "brushSwirl/ink",
+      "params": {},
+      "layer": {
+        "blend": "normal",
+        "effects": []
+      }
+    },
+    {
+      "id": "gold",
+      "name": "Gold Brush",
+      "aliases": [
+        "gold brush",
+        "金の筆"
+      ],
+      "source": "brushSwirl/gold",
+      "params": {
+        "path": "spiral",
+        "radius": 420,
+        "sweep": 420,
+        "angle": -120,
+        "strokes": 3,
+        "spacing": 34,
+        "width": 64,
+        "taper_in": 20,
+        "taper_out": 90,
+        "dry": 55,
+        "splatter": 25,
+        "color": "#d9a030"
+      },
+      "layer": {
+        "blend": "normal",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 14,
+              "intensity": 0.6,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "red",
+      "name": "Red Brush",
+      "aliases": [
+        "red brush",
+        "朱の筆",
+        "円相"
+      ],
+      "source": "brushSwirl/red",
+      "params": {
+        "path": "ring",
+        "radius": 360,
+        "angle": 130,
+        "strokes": 2,
+        "spacing": 18,
+        "width": 84,
+        "taper_in": 10,
+        "taper_out": 70,
+        "dry": 40,
+        "splatter": 35,
+        "color": "#d0121a"
+      },
+      "layer": {
+        "blend": "normal",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 10,
+              "intensity": 0.6,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "slash",
+      "name": "Slash",
+      "aliases": [
+        "slash",
+        "一閃",
+        "sword slash"
+      ],
+      "source": "brushSwirl/slash",
+      "params": {
+        "path": "slash",
+        "radius": 560,
+        "angle": -18,
+        "strokes": 3,
+        "spacing": 12,
+        "width": 50,
+        "taper_in": 90,
+        "taper_out": 95,
+        "dry": 50,
+        "splatter": 20,
+        "color": "#fff8ec"
+      },
+      "layer": {
+        "blend": "normal",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 16,
+              "intensity": 0.6,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

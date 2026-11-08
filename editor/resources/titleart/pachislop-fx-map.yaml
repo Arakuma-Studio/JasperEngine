@@ -52,3 +52,30 @@ effects:
 # Pachislop's blend modes (halftone `mode`) and option values keep their names, camelCase to snake_case
 values:
   softLight: soft_light
+
+# The generators (the generators stream; editor/titleart/fx/PachislopGeneratorMap.cpp reads them):
+# - camelCase keys become snake_case unless `renames` names the key
+# - `vec2` pairs (x/y, cx/cy, rx/ry) become one Vec2 [x, y]; a pair given half keeps our default's other component
+# - `negated` lists our keys of generator angles: Pachislop's are counter-clockwise (y-up), ours clockwise (D16)
+# - `values` maps a Pachislop enum value to ours, by our key
+# - `follow` names the Pachislop param holding the followed layer: it becomes the layer's `follow` member
+# - `rows` turns numbered params (row1Type ...) into the rows of a RowArray param, as many as the `count` param says
+# - gradients get every stop's alpha (1) and mid (0.5) and the interp (rgb) Pachislop leaves out
+# - a layer's companionOf becomes a visible Group "<layer> FX" (D3), reported as a note
+# - `presets` maps every Pachislop preset id to ours (snake_case, or the §6.8 id)
+generators:
+  - {"pachislop": "particles", "type": "particles", "presets": {"goldDust": "gold_dust", "embers": "embers", "lightMotes": "light_motes", "confetti": "confetti", "sakura": "sakura", "starShower": "star_shower", "bokeh": "bokeh", "rain": "rain", "fireworks": "fireworks"}, "follow": "follow", "vec2": {"x/y": "point", "rx/ry": "radius"}, "renames": {"rotation": "rotation_random"}, "negated": ["angle", "heading"]}
+  - {"pachislop": "inkSplatter", "type": "ink_splatter", "presets": {"black": "ink_behind", "red": "red_ink", "over": "ink_over", "swept": "swept"}, "follow": "follow", "renames": {}, "negated": ["angle"]}
+  - {"pachislop": "speedLines", "type": "speed_lines", "presets": {"focus": "focus", "focusRed": "focus_red", "flowH": "flow_h", "flowDiag": "flow_diag", "flash": "flash", "beta": "beta", "spiky": "spiky", "rainbow": "rainbow"}, "follow": "layer", "vec2": {"x/y": "center", "rx/ry": "radius"}, "renames": {}, "negated": ["angle"]}
+  - {"pachislop": "lightStreaks", "type": "light_streaks", "presets": {"anamorphic": "anamorphic", "bundle": "bundle", "spears": "spears", "cyan": "cyan"}, "vec2": {"x/y": "origin"}, "renames": {}, "negated": ["angle"]}
+  - {"pachislop": "sunburst", "type": "sunburst", "presets": {"redGold": "red_gold", "blue": "blue", "rainbowHalo": "rainbow_halo", "purple": "purple", "blackGold": "black_gold", "focusLines": "focus_lines", "twoColourWedges": "two_colour_wedges"}, "follow": "follow", "vec2": {"x/y": "center"}, "renames": {"centre": "center_mode"}, "negated": ["rotation", "twist"]}
+  - {"pachislop": "shockwave", "type": "shockwave", "presets": {"white": "white", "red": "red", "neon": "neon", "halo": "halo", "ground": "ground"}, "vec2": {"cx/cy": "center"}, "renames": {}, "negated": ["tilt"]}
+  - {"pachislop": "magicCircle", "type": "magic_circle", "presets": {"gold": "gold", "blue": "blue", "hud": "hud", "hologram": "hologram", "radar": "radar", "bagua": "bagua"}, "vec2": {"cx/cy": "center"}, "renames": {"text": "glyphs"}, "rows": {"params": "row{n}", "count": "rows", "into": "rows"}, "negated": ["rotation", "rows[].angle"], "values": {"glyphs": {"eto": "zodiac", "bagua": "trigrams"}}}
+  - {"pachislop": "brushSwirl", "type": "brush_swirl", "presets": {"ink": "ink", "gold": "gold", "red": "red", "slash": "slash"}, "vec2": {"cx/cy": "center"}, "renames": {}, "negated": ["angle"]}
+  - {"pachislop": "glints", "type": "glints", "presets": {"highlights": "highlights", "hero": "hero", "stars": "stars", "rainbow": "rainbow", "scatter": "scatter"}, "follow": "follow", "vec2": {"x/y": "position"}, "renames": {}, "negated": ["rotation", "hero_angle"], "values": {"rays": {"4": "four", "8": "eight"}}}
+  - {"pachislop": "lensFlare", "type": "lens_flare", "presets": {"blue": "blue", "gold": "gold", "streak": "streak"}, "follow": "follow", "vec2": {"x/y": "position"}, "renames": {}, "negated": ["rotation"]}
+  - {"pachislop": "backlight", "type": "backlight", "presets": {"godRays": "god_rays", "jackpot": "jackpot", "blue": "blue"}, "follow": "follow", "vec2": {"x/y": "center"}, "renames": {"centreMode": "center_mode"}, "negated": ["rotation"]}
+  - {"pachislop": "fire", "type": "fire", "presets": {"behind": "behind", "overEdges": "over_edges", "red": "hot", "blaze": "blaze"}, "follow": "follow", "renames": {}, "negated": ["angle"]}
+  - {"pachislop": "smoke", "type": "smoke", "presets": {"grey": "grey", "steam": "steam", "black": "black"}, "follow": "follow", "renames": {}, "negated": ["angle"]}
+  - {"pachislop": "corona", "type": "aura", "presets": {"tendrils": "tendrils", "purple": "purple", "auraStrong": "strong", "auraWeakUp": "rising_weak"}, "follow": "follow", "renames": {"aura": "strength"}, "negated": [], "values": {"mode": {"aura": "rising"}}}
+  - {"pachislop": "lightning", "type": "lightning", "presets": {"bolts": "bolts", "electricBlue": "electric_blue", "electrify": "electrify"}, "follow": "follow", "renames": {}, "negated": []}

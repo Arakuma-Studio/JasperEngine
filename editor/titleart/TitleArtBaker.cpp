@@ -3,6 +3,9 @@
 
 #include "TitleArtBaker.h"
 
+#include "titleart/analysis/HighlightFinder.h"
+#include "titleart/analysis/ReadGrid.h"
+
 #include "EditorVersion.h"
 #include "Out.h"
 #include "Project.h"
@@ -408,6 +411,7 @@ bool TitleArtBakeJob::write() {
     TitleRectI alphaUnion;
     TitleBakeInfo info;
     std::string sidecarText;
+    bool anchorsMeasured = false;
     {
         std::string oldText;
         TitleBakeInfo old;
@@ -427,6 +431,16 @@ bool TitleArtBakeJob::write() {
         }
         const TitleRenderedImage& source = w->needsFrameRender ? w->framed : w->full;
         texsynth::Image pixels = cutFrame(source, outcome.frame, w->finalScale, w->width, w->height);
+        // S83 R14, S81 R36: the highlight anchors of the whole look, from the first 8-bit output
+        // that shows all of it (no GPU pass or readback of their own)
+        if (w->content == titleart::OutputContent::All && pixels.bitDepth == 8 && !anchorsMeasured) {
+            const titleart::analysis::Grid grid = titleart::analysis::gridFromImage(pixels.data, pixels.width, pixels.height, outcome.frame, w->finalScale,
+                                                                                     doc->canvasWidth(), doc->canvasHeight(), 4.0);
+            const auto anchors = titleart::analysis::sidecarAnchors(titleart::analysis::highlightAnchors(grid), outcome.frame, doc->canvasWidth(),
+                                                                    doc->canvasHeight());
+            info.extra["anchors"] = titleart::analysis::sidecarAnchorsJson(anchors);
+            anchorsMeasured = true;
+        }
         const TitleRectI bounds = TitleArtRenderHost::alphaBoundsOf(pixels);
         if (!bounds.empty()) {
             const TitleRectI canvasRect{outcome.frame.x + static_cast<int>(std::floor(bounds.x / w->finalScale)),

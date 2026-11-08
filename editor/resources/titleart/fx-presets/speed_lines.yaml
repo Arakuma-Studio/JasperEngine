@@ -1,0 +1,382 @@
+{
+  "presets": [
+    {
+      "id": "focus",
+      "name": "Focus Lines (集中線)",
+      "aliases": [
+        "focus lines",
+        "集中線"
+      ],
+      "source": "speedLines/focus",
+      "params": {},
+      "layer": {
+        "blend": "normal"
+      }
+    },
+    {
+      "id": "focus_red",
+      "name": "Focus Lines Red, Additive",
+      "aliases": [
+        "focus lines (red, additive)",
+        "red focus lines",
+        "赤い集中線"
+      ],
+      "source": "speedLines/focusRed",
+      "params": {
+        "count": 220,
+        "width": 14,
+        "jitter": 90,
+        "color_mode": "length",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#fff0a0",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.3,
+              "color": "#ff7a1a",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#d00c00",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "opacity": 100
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 14,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "flow_h",
+      "name": "Flow Lines Horizontal (流線)",
+      "aliases": [
+        "flow lines, horizontal",
+        "流線"
+      ],
+      "source": "speedLines/flowH",
+      "params": {
+        "type": "flow",
+        "radius": [
+          380,
+          150
+        ],
+        "count": 170,
+        "width": 5,
+        "width_random": 70,
+        "length_random": 35,
+        "jitter": 160
+      },
+      "layer": {
+        "blend": "normal"
+      }
+    },
+    {
+      "id": "flow_diag",
+      "name": "Flow Lines Diagonal",
+      "aliases": [
+        "flow lines, diagonal",
+        "斜めの流線"
+      ],
+      "source": "speedLines/flowDiag",
+      "params": {
+        "type": "flow",
+        "angle": -30,
+        "radius": [
+          340,
+          170
+        ],
+        "count": 150,
+        "width": 7,
+        "width_random": 70,
+        "length_random": 40,
+        "jitter": 140,
+        "clump": 3,
+        "gap": 1.5,
+        "color": "#6ff0ff",
+        "opacity": 100
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 10,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "flash",
+      "name": "Flash (フラッシュ)",
+      "aliases": [
+        "flash",
+        "フラッシュ"
+      ],
+      "source": "speedLines/flash",
+      "params": {
+        "type": "flash",
+        "radius": [
+          260,
+          260
+        ],
+        "count": 300,
+        "width": 3,
+        "width_random": 50,
+        "length": 70,
+        "length_random": 60,
+        "jitter": 0,
+        "taper_in": 15,
+        "taper_out": 100,
+        "opacity": 100
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 10,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "beta",
+      "name": "Beta Flash (ベタフラ)",
+      "aliases": [
+        "beta flash",
+        "ベタフラ",
+        "ベタフラッシュ"
+      ],
+      "source": "speedLines/beta",
+      "params": {
+        "type": "beta",
+        "radius": [
+          240,
+          240
+        ],
+        "count": 140,
+        "width": 12,
+        "width_random": 60,
+        "length": 120,
+        "length_random": 70,
+        "jitter": 0,
+        "taper_in": 0,
+        "taper_out": 100,
+        "color": "#0c0c14",
+        "opacity": 100
+      },
+      "layer": {
+        "blend": "normal",
+        "effects": [
+          {
+            "type": "halftone",
+            "params": {
+              "source": "alpha",
+              "size": 7,
+              "angle": 45,
+              "fade": 28,
+              "dot": "round"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "spiky",
+      "name": "Spiky Burst",
+      "aliases": [
+        "spiky burst",
+        "ウニフラ"
+      ],
+      "source": "speedLines/spiky",
+      "params": {
+        "type": "flash",
+        "radius": [
+          180,
+          180
+        ],
+        "count": 90,
+        "width": 30,
+        "width_random": 60,
+        "length": 170,
+        "length_random": 70,
+        "jitter": 0,
+        "taper_in": 0,
+        "taper_out": 100,
+        "color_mode": "length",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#fffbe0",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.35,
+              "color": "#ffc21a",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#ff5a00",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "opacity": 100
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 30,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "rainbow",
+      "name": "Rainbow Tunnel",
+      "aliases": [
+        "rainbow tunnel",
+        "虹の集中線"
+      ],
+      "source": "speedLines/rainbow",
+      "params": {
+        "shape": "rect",
+        "radius": [
+          300,
+          200
+        ],
+        "count": 420,
+        "width": 16,
+        "width_random": 50,
+        "jitter": 50,
+        "color_mode": "around",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ff2a2a",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.17,
+              "color": "#ffb000",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.33,
+              "color": "#f4ff3a",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.5,
+              "color": "#2aff6a",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.67,
+              "color": "#2ad4ff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.83,
+              "color": "#8a4bff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#ff2a2a",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "opacity": 100
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 10,
+              "intensity": 1,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

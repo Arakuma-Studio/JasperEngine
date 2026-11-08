@@ -115,6 +115,10 @@ namespace jasperengine::titleart {
         TitleParams params;
         TextureRender* tex[TITLE_TEXTURE_SLOTS] = {};
         TextureRender* raw[TITLE_RAW_SLOTS] = {};
+        // S83's vertex-pulling generator programs: vertices drawn (3 = the fullscreen triangle)
+        // and the data texture the vertex stage reads (u_taVertexData)
+        int vertices = 3;
+        TextureRender* vertexData = nullptr;
     };
 
     struct TitleGpuStats {

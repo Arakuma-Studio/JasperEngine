@@ -40,6 +40,7 @@ namespace jasperengine::titleart {
         const TitleLut* lut(const TitleLutData& data) override;
         bool run(const TitlePass& pass) override;
         bool clear(TargetRef& target) override;
+        bool skippedPasses() const override { return !pending.empty(); }
         const std::string& error() const override;
         void clearError() override;
         const TargetRef* recall(uint64_t key) override;

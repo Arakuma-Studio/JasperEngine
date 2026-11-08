@@ -1,0 +1,4 @@
+# Two S83 streams (effects, generators) each append their own section to these files: a union
+# merge keeps both (docs/specs/S83-title-effects-generators.md Deviations)
+editor/resources/titleart/pachislop-fx-map.yaml merge=union
+editor/titleart/fx/FxCost.cpp merge=union

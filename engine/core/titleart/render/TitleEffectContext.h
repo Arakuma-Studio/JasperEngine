@@ -22,6 +22,8 @@
 //   cached pixels by its position instead of moving them with the layer (R14).
 // - Followed layers (generators, §6.4 "Layer sources"): a generator with FollowMode Optional or
 //   Required gets the layer its `follow` member names, rendered alone, in `follow`.
+//   S83: with FxInputs::content it also gets that layer before its own effects, and both come
+//   with keys its CPU analysis caches readbacks by.
 // - Thread-safety: main thread, for the duration of one apply or render call.
 
 #pragma once
@@ -33,8 +35,11 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace jasperengine::titleart {
+
+    class AssetResolver;
 
     // a 2D affine map of points: (x', y') = (a x + b y + tx, c x + d y + ty)
     struct TitleAffine {
@@ -122,9 +127,27 @@ namespace jasperengine::titleart {
         // nothing, the layer is missing, or following it would be a cycle (`follow_cycle`: the
         // generator then draws as it does following nothing)
         const TargetRef* follow = nullptr;
+        // the followed layer's pixels before its own effects (its parts' effects kept), for a
+        // definition whose FxInputs ask for `content` (S83 R6, R27: flame sources, emitter
+        // masks); null as `follow`
+        const TargetRef* followContent = nullptr;
+        // change whenever `follow` / `followContent` pixels could (the followed layer's node
+        // hash, px_scale and the target's place): S83's analysis caches readbacks by them; 0
+        // when there is nothing to follow
+        uint64_t followKey = 0, followContentKey = 0;
+        // the render's fonts, images and SVGs (RenderRequest::assets); null when the request has
+        // none. S83's Magic Circle draws its glyph rings with a font from it
+        const AssetResolver* assets = nullptr;
+        // the device tier it draws for (S83 D12, §6.7's Mobile reductions): Mobile runs each
+        // definition's reduced path, the one its estimate for FxTier::Mobile describes. The
+        // renderer takes it from RenderRequest::fxTier (S81 sets it per device); tests set it
+        FxTier tier = FxTier::Desktop;
         // set by render: what it drew depends on the layer's place on the canvas (above). A
         // generator that fills the canvas from canvas coordinates sets it
         bool usesCanvasPosition = false;
+        // set by render: the problems of what it drew (Magic Circle's glyph_missing), which the
+        // renderer reports with the render
+        std::vector<TitleProblem> problems;
 
         GeneratorContext(TitlePassRunner& passes) : runner(passes) {}
     };

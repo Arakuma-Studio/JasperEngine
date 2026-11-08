@@ -1,0 +1,553 @@
+{
+  "presets": [
+    {
+      "id": "gold_dust",
+      "name": "Gold Dust",
+      "aliases": [
+        "gold dust",
+        "金粉"
+      ],
+      "source": "particles/goldDust",
+      "params": {
+        "emitter": "ellipse",
+        "radius": [
+          450,
+          300
+        ],
+        "distribution": "burst",
+        "falloff": 65,
+        "travel": 260,
+        "cone": 20,
+        "shape": "dot",
+        "glint_mix": 4,
+        "count": 2600,
+        "size": 6,
+        "size_random": 70,
+        "depth": 55,
+        "rotation_random": 12,
+        "color_mode": "radial",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#fff2c2",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.35,
+              "color": "#ffc845",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#c77a12",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "opacity": 100,
+        "opacity_random": 55
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 24,
+              "intensity": 0.8,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "embers",
+      "name": "Embers",
+      "aliases": [
+        "embers",
+        "火の粉"
+      ],
+      "source": "particles/embers",
+      "params": {
+        "emitter": "rect",
+        "radius": [
+          960,
+          360
+        ],
+        "distribution": "stream",
+        "falloff": 45,
+        "travel": 520,
+        "angle": -80,
+        "cone": 36,
+        "shape": "ember",
+        "count": 600,
+        "size": 5,
+        "size_random": 55,
+        "streak": 50,
+        "depth": 65,
+        "color_mode": "radial",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffc45a",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.35,
+              "color": "#ff8a24",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.7,
+              "color": "#f04a10",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#a81c06",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "opacity_random": 45
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 16,
+              "intensity": 0.8,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "light_motes",
+      "name": "Light Motes",
+      "aliases": [
+        "light motes",
+        "光の粒"
+      ],
+      "source": "particles/lightMotes",
+      "params": {
+        "emitter": "ellipse",
+        "radius": [
+          760,
+          440
+        ],
+        "distribution": "scatter",
+        "falloff": 40,
+        "shape": "dot",
+        "glint_mix": 0,
+        "count": 420,
+        "size": 9,
+        "size_random": 70,
+        "depth": 85,
+        "color_mode": "palette",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.5,
+              "color": "#bfefff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#ffe9a8",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "opacity_random": 55
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 14,
+              "intensity": 0.8,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "confetti",
+      "name": "Confetti",
+      "aliases": [
+        "confetti",
+        "紙吹雪"
+      ],
+      "source": "particles/confetti",
+      "params": {
+        "emitter": "full",
+        "distribution": "scatter",
+        "falloff": 0,
+        "angle": 80,
+        "cone": 30,
+        "shape": "confetti",
+        "count": 320,
+        "size": 16,
+        "size_random": 45,
+        "depth": 70,
+        "rotation_random": 180,
+        "tumble": 85,
+        "sheen": 60,
+        "color_mode": "palette",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffd34d",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.34,
+              "color": "#fff8e8",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.67,
+              "color": "#e8b04a",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#ff3b4e",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "opacity": 100,
+        "opacity_random": 0
+      },
+      "layer": {
+        "blend": "normal"
+      }
+    },
+    {
+      "id": "sakura",
+      "name": "Sakura",
+      "aliases": [
+        "sakura",
+        "桜吹雪",
+        "cherry blossoms"
+      ],
+      "source": "particles/sakura",
+      "params": {
+        "emitter": "full",
+        "distribution": "scatter",
+        "falloff": 0,
+        "angle": 60,
+        "shape": "petal",
+        "count": 380,
+        "size": 26,
+        "size_random": 50,
+        "depth": 80,
+        "rotation_random": 180,
+        "tumble": 70,
+        "color_mode": "palette",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffd1e0",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.5,
+              "color": "#ffb3cb",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#fff0f5",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "opacity": 100,
+        "opacity_random": 10
+      },
+      "layer": {
+        "blend": "normal"
+      }
+    },
+    {
+      "id": "star_shower",
+      "name": "Star Shower",
+      "aliases": [
+        "star shower",
+        "星"
+      ],
+      "source": "particles/starShower",
+      "params": {
+        "emitter": "ellipse",
+        "radius": [
+          400,
+          260
+        ],
+        "distribution": "burst",
+        "falloff": 50,
+        "travel": 360,
+        "shape": "star",
+        "count": 260,
+        "size": 20,
+        "size_random": 65,
+        "depth": 50,
+        "rotation_random": 180,
+        "tumble": 30,
+        "color_mode": "palette",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#fff4b8",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.5,
+              "color": "#ffd23f",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#ffffff",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "opacity_random": 30
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 14,
+              "intensity": 0.8,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "bokeh",
+      "name": "Bokeh",
+      "aliases": [
+        "bokeh",
+        "ボケ"
+      ],
+      "source": "particles/bokeh",
+      "params": {
+        "emitter": "full",
+        "distribution": "scatter",
+        "falloff": 30,
+        "shape": "bokeh",
+        "count": 45,
+        "size": 150,
+        "size_random": 70,
+        "depth": 30,
+        "ring": 40,
+        "color_mode": "palette",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffcf5a",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.34,
+              "color": "#ffa63d",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.67,
+              "color": "#ff7a2e",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#ffe08a",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "opacity": 40,
+        "opacity_random": 60
+      },
+      "layer": {
+        "blend": "add"
+      }
+    },
+    {
+      "id": "rain",
+      "name": "Rain",
+      "aliases": [
+        "rain",
+        "雨"
+      ],
+      "source": "particles/rain",
+      "params": {
+        "emitter": "full",
+        "distribution": "scatter",
+        "falloff": 0,
+        "angle": 100,
+        "cone": 4,
+        "shape": "rain",
+        "count": 900,
+        "size": 1.5,
+        "size_random": 40,
+        "streak": 120,
+        "depth": 60,
+        "color_mode": "solid",
+        "color": "#cfe6ff",
+        "opacity": 45,
+        "opacity_random": 60
+      },
+      "layer": {
+        "blend": "add"
+      }
+    },
+    {
+      "id": "fireworks",
+      "name": "Fireworks",
+      "aliases": [
+        "fireworks",
+        "花火"
+      ],
+      "source": "particles/fireworks",
+      "params": {
+        "emitter": "point",
+        "distribution": "burst",
+        "falloff": 0,
+        "travel": 380,
+        "cone": 6,
+        "shape": "ember",
+        "count": 600,
+        "size": 3,
+        "size_random": 40,
+        "streak": 40,
+        "depth": 30,
+        "color_mode": "palette",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.34,
+              "color": "#ffe27a",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.67,
+              "color": "#ff6ab0",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#7ad8ff",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "opacity_random": 30
+      },
+      "layer": {
+        "blend": "add",
+        "effects": [
+          {
+            "type": "outer_glow",
+            "params": {
+              "fill": "layer",
+              "technique": "softer",
+              "size": 14,
+              "intensity": 0.8,
+              "spread": 0,
+              "opacity": 1,
+              "mode": "add",
+              "on_face": 1
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

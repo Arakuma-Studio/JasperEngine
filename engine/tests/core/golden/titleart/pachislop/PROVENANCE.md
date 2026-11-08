@@ -13,11 +13,15 @@ author's permission (`NOTICE.md`), commit `1c32502dc9feaff1086f615b07f2ca978722d
   `nested-hidden-groups`, `mask-shape-feather`, `mask-group-radial`, `flip-2d`. Not copied:
   `mask-from-layer-luminance` (its matte is the `sunburst` generator, S83's), the 3D scenes,
   `split-image` and `mask-adjustment` (outside AC11's list).
+- the other `generator/*.png` from `tests/golden/refs/generator/` (S83: every preset of the other
+  fifteen generators, a following one with the standard title, at 0.25 and trimmed).
 
 They were drawn by Chromium's WebGL on unknown hardware, so they are cross-implementation
 references compared with S80 AC12's loose structural metric (4 x 4 block means, block threshold
 24, at most 3 % of blocks over, colour histogram distance at most 6 %), never regenerated: our own
 strict goldens are `../effects/`. Used by `engine/tests/core/titleart/effects/TitleArtEffectsGpuTest.cpp`
 (`TitleArtParityGpu`), `engine/tests/core/titleart/render/TitleArtScenesParityGpuTest.cpp`
-(`TitleArtScenesParityGpu`) and, for S83's seventeen ported effects (`deepGlow` .. `shatter`),
-`TitleFxCatalogueGpuTest.cpp` (`TitleFxParityGpu`). Never shipped (`engine/tests/` stays out of installs and exports).
+(`TitleArtScenesParityGpu`), for S83's seventeen ported effects (`deepGlow` .. `shatter`)
+`TitleFxCatalogueGpuTest.cpp` (`TitleFxParityGpu`) and, for the generators,
+`engine/tests/core/titleart/generators/TitleGenGpuTest.cpp` (`TitleGenParityGpu`). Never shipped
+(`engine/tests/` stays out of installs and exports).

@@ -719,7 +719,8 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
     // what the content's alpha is a function of: a leaf title's stack without its colours, placed
     // the same way (its effects keep what they compute from that alpha alone, R42)
     uint64_t contentAlpha = 0;
-    const bool cacheable = !wantInk && !contentInk && !req.glyphCell;
+    const bool contentOnly = !effectsOffLayer.empty() && node.layerId == effectsOffLayer;
+    const bool cacheable = !wantInk && !contentInk && !req.glyphCell && !contentOnly;
     if (cacheable) {
         key = hashCombine(fnv1a64("node"), layerHash(node.layerId, &LayerHashes::content));
         if (leaf2D && !clip && !anyPartEffects(layer)) contentAlpha = hashCombine(fnv1a64("content alpha"), layerHash(node.layerId, &LayerHashes::alpha));
@@ -731,6 +732,8 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
         both(fnv1a64(std::string_view(reinterpret_cast<const char*>(&s), sizeof(s))));
         both(fnv1a64(svc.caps.pathName()));
         both(inkOnly ? 1 : 2);
+        // generators draw their mobile reductions on the mobile tier (S83 D12)
+        if (req.fxTier != FxTier::Desktop) both(fnv1a64("fx tier mobile"));
         // the ancestors' rotation, scale and flips shape the pixels
         const geometry::Affine& m = place.toDocument;
         const double linear[4] = {m.a, m.b, m.c, m.d};
@@ -766,7 +769,8 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
     Content content = unitContent(node, clip, contentInk);
     if (!content.px.valid()) return {};
     const bool maskIsPx = content.mask.slot == content.px.slot;
-    Effects post = applyEffects(node.layerId, effectsOf(layer), content.px, clip && maskIsPx, content.ink, wantInk, &layer, contentAlpha);
+    Effects post = contentOnly ? Effects{content.px, content.ink}
+                               : applyEffects(node.layerId, effectsOf(layer), content.px, clip && maskIsPx, content.ink, wantInk, &layer, contentAlpha);
     Unit out;
     bool positionFree = leaf2D && !clip;
     if (!clip) {

@@ -8,6 +8,8 @@
 #include "titleart/TitleArtSchema.h"
 #include "titleart/TitleEffectRegistry.h"
 
+#include "fx/FxPresets.h"
+
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -473,11 +475,36 @@ namespace {
             return ids;
         }
 
+        // S83 D3: the visible Group "<layer> FX" that keeps an Add-blended companion's light on its
+        // layer, made when `group` is "always", or "auto" with a non-Normal blend over siblings below
+        bool wrapCompanion(const std::string& followedId, const std::string& addedId, const std::string& mode) {
+            if (mode != "auto" && mode != "always") return true;
+            const Json* added = titleart::findLayer(doc().root, addedId);
+            Slot followedSlot, addedSlot;
+            if (!added || !slotOf(doc(), followedId, followedSlot) || !slotOf(doc(), addedId, addedSlot) || followedSlot.list != addedSlot.list) return true;
+            const bool belowOthers = std::min(followedSlot.index, addedSlot.index) > 0;
+            if (mode == "auto" && (str(*added, "blend") == "normal" || !belowOthers)) return true;
+            const Json* followed = titleart::findLayer(doc().root, followedId);
+            return group(Json{{"layers", Json::array({"id:" + followedId, "id:" + addedId})}, {"name", layerName(*followed) + " FX"}});
+        }
+
         bool addLayer(const Json& op) {
-            for (const char* s83 : {"preset", "place", "group"}) {
-                if (op.contains(s83)) return ctx.fail("not_available", std::string("add_layer `") + s83 + "` arrives with S83", s83);
-            }
             if (op.contains("look")) return ctx.fail("not_available", "add_layer `look` arrives with S84", "look");
+            // S83 R45, D3: a generator's preset, the layer it follows, its place beside that layer
+            // and the FX group
+            const bool generatorOp = str(op, "type") == "generator" || (op.contains("from") && op["from"].is_object() && str(op["from"], "type") == "generator");
+            for (const char* s83 : {"preset", "follow", "place", "group"}) {
+                if (op.contains(s83) && !generatorOp) return ctx.fail("bad_op", std::string("`") + s83 + "` applies to a generator layer", s83);
+            }
+            if (op.contains("place") && str(op, "place") != "above" && str(op, "place") != "below") {
+                return ctx.fail("bad_value", "`place` is \"above\" or \"below\" (the followed layer)", "place", {"above", "below"});
+            }
+            const std::string groupMode = op.contains("group") ? str(op, "group") : std::string("none");
+            if (groupMode != "auto" && groupMode != "none" && groupMode != "always") {
+                return ctx.fail("bad_value", "`group` is \"auto\", \"none\" or \"always\"", "group", {"auto", "none", "always"});
+            }
+            const TitleFxPreset* preset = nullptr;
+            std::string followId;
             Json layer;
             if (op.contains("from")) {
                 if (!op["from"].is_object()) return ctx.fail("bad_value", "`from` takes a layer object", "from");
@@ -507,6 +534,47 @@ namespace {
                         return ctx.fail("bad_value", "'" + gen + "' is not a generator type", "generator", valid, titleart::nearestName(gen, valid));
                     }
                     layer["generator"] = Json{{"type", gen}};
+                    // R7: a preset's params over the defaults and its layer look; no preset = the first
+                    const std::vector<TitleFxPreset>& presets = TitleFxPresets::forType(gen);
+                    if (op.contains("preset")) {
+                        std::string id;
+                        if (!ctx.requireString(op, "preset", id)) return false;
+                        preset = TitleFxPresets::find(gen, id);
+                        if (!preset) {
+                            std::vector<std::string> valid;
+                            for (const TitleFxPreset& p : presets) valid.push_back(p.id);
+                            return ctx.fail("bad_value", "'" + id + "' is not a preset of " + gen, "preset", valid, titleart::nearestName(id, valid));
+                        }
+                    } else if (!presets.empty()) {
+                        preset = &presets.front();
+                    }
+                    if (preset) {
+                        // the preset's layer look: generator presets only (an object, else null)
+                        const Json look = preset->layer.is_object() ? preset->layer : Json::object();
+                        layer["generator"]["params"] = preset->params;
+                        if (look.contains("blend")) layer["blend"] = look["blend"];
+                        if (look.contains("opacity")) layer["opacity"] = look["opacity"];
+                        Json effects = Json::array();
+                        for (const Json& e : look.value("effects", Json::array())) {
+                            Json fx = e;
+                            fx["id"] = ctx.newId();
+                            fx["enabled"] = true;
+                            effects.push_back(std::move(fx));
+                        }
+                        if (!effects.empty()) layer["effects"] = effects;
+                        layer["name"] = preset->name;
+                    }
+                    if (op.contains("follow")) {
+                        if (titleart::findGenerator(gen)->follow == titleart::FollowMode::None) {
+                            return ctx.fail("bad_value", "the " + gen + " generator follows no layer", "follow");
+                        }
+                        std::string ref;
+                        if (!ctx.requireString(op, "follow", ref)) return false;
+                        Json* followed = ctx.resolveLayer(ref, "follow");
+                        if (!followed) return false;
+                        followId = str(*followed, "id");
+                        layer["follow"] = followId;
+                    }
                 }
                 if (type == "adjustment") {
                     const std::string adj = op.contains("adjustment") ? str(op, "adjustment") : std::string("hue_saturation");
@@ -528,7 +596,19 @@ namespace {
             Json* list = nullptr;
             Json* parent = nullptr;
             size_t index = 0;
-            if (!placement(op, list, index, parent, {})) return false;
+            const bool explicitPlace = op.contains("parent") || op.contains("before") || op.contains("after");
+            if (!followId.empty() && !explicitPlace) {
+                // beside the followed layer: above it unless the op or the preset says below
+                const std::string place = op.contains("place") ? str(op, "place")
+                                      : preset && preset->layer.is_object() ? preset->layer.value("place", std::string("above")) : std::string("above");
+                Slot slot;
+                slotOf(doc(), followId, slot);
+                list = slot.list;
+                parent = slot.parent;
+                index = place == "below" ? slot.index : slot.index + 1;
+            } else if (!placement(op, list, index, parent, {})) {
+                return false;
+            }
             if (!checkLimits(layer, parent)) return false;
             normalizeLayer(layer, "layer");
             const std::string id = str(layer, "id");
@@ -545,6 +625,7 @@ namespace {
                     if (!ctx.set(titleart::findLayer(doc().root, id), it.key(), it.value())) return false;
                 }
             }
+            if (!followId.empty() && !wrapCompanion(followId, id, groupMode)) return false;
             undoName = "Add " + std::string(titleart::layerTypeLabel(titleart::layerTypeOf(*titleart::findLayer(doc().root, id)))) + " Layer";
             return true;
         }

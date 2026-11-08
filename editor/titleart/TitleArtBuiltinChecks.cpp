@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArtBuiltinChecks.h"
+#include "fx/FxGeneratorChecks.h"
 
 #include "TitleArtBake.h"
 #include "TitleArtRenderHost.h"
@@ -1062,6 +1063,8 @@ void editor::registerBuiltinTitleChecks() {
         def.run = [run](TitleCheckContext& context, std::vector<TitleCheckResult>& out) { run(context, out); };
         TitleArtChecks::registerCheck(std::move(def));
     }
+    // S83's generator checks
+    registerTitleGeneratorChecks();
 }
 
 std::vector<titleart::TitleProblem> editor::titleArtMissingAssets(const titleart::TitleArtDoc& doc, const titleart::AssetResolver& assets) {

@@ -72,19 +72,24 @@ bool TitleJobRunner::keep(uint64_t key, TargetRef* target) {
 
 const TitleLut* TitleJobRunner::lut(const TitleLutData& data) {
     uint64_t key = hashCombine(fnv1a64("effect lut"), (uint64_t)data.format);
+    // a data texture's shape and filter are part of what is uploaded (S83's instance records)
+    if (data.width != TITLE_LUT_SIZE || data.height != 1 || data.filter != TextureFilter::LINEAR) {
+        key = hashCombine(key, ((uint64_t)(uint32_t)data.width << 32) | (uint64_t)(uint32_t)data.height);
+        key = hashCombine(key, (uint64_t)data.filter + 1);
+    }
     key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(data.bytes.data()), data.bytes.size())));
     std::shared_ptr<TitleCacheEntry> entry = services.cache.find(key);
     if (!entry) {
         const size_t texel = colorFormatBytes(data.format);
-        if (texel == 0 || data.bytes.size() != (size_t)TITLE_LUT_SIZE * texel) {
+        if (texel == 0 || data.width <= 0 || data.height <= 0 || data.bytes.size() != (size_t)data.width * (size_t)data.height * texel) {
             if (failure.empty()) failure = "a lookup of the wrong size";
             return nullptr;
         }
         entry = std::make_shared<TitleCacheEntry>();
         entry->key = key;
         entry->upload = std::make_unique<TitleUpload>();
-        if (!entry->upload->create("title art effect LUT", TITLE_LUT_SIZE, 1, data.format, data.bytes.data(), data.bytes.size(),
-                                   TextureFilter::LINEAR)) {
+        if (!entry->upload->create("title art effect LUT", data.width, data.height, data.format, data.bytes.data(), data.bytes.size(),
+                                   data.filter)) {
             if (failure.empty()) failure = "the lookup could not be uploaded";
             return nullptr;
         }
@@ -139,6 +144,8 @@ bool TitleJobRunner::run(const TitlePass& pass) {
     for (int i = 0; i < TITLE_PASS_RAW_TEXTURES; i++) {
         if (!pass.raw[i].empty()) g.raw[i] = textureOf(pass.raw[i]);
     }
+    g.vertices = pass.vertices;
+    if (!pass.vertexData.empty()) g.vertexData = textureOf(pass.vertexData);
     if (!services.gpu.run(g, why)) {
         if (failure.empty()) failure = why;
         return false;

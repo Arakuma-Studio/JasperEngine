@@ -1,0 +1,66 @@
+{
+  "presets": [
+    {
+      "id": "grey",
+      "name": "Grey Smoke",
+      "aliases": [
+        "grey smoke",
+        "gray smoke",
+        "煙"
+      ],
+      "source": "smoke/grey",
+      "params": {},
+      "layer": {
+        "blend": "normal",
+        "opacity": 0.75,
+        "place": "below",
+        "effects": []
+      }
+    },
+    {
+      "id": "steam",
+      "name": "White Steam",
+      "aliases": [
+        "white steam",
+        "steam",
+        "湯気"
+      ],
+      "source": "smoke/steam",
+      "params": {
+        "height": 260,
+        "width": 50,
+        "softness": 80,
+        "color": "#ffffff",
+        "shadow_color": "#a8b0c0"
+      },
+      "layer": {
+        "blend": "normal",
+        "opacity": 0.6,
+        "place": "below",
+        "effects": []
+      }
+    },
+    {
+      "id": "black",
+      "name": "Black Smoke",
+      "aliases": [
+        "black smoke",
+        "黒煙"
+      ],
+      "source": "smoke/black",
+      "params": {
+        "height": 240,
+        "width": 36,
+        "softness": 45,
+        "color": "#4a4448",
+        "shadow_color": "#0c0a0c"
+      },
+      "layer": {
+        "blend": "normal",
+        "opacity": 0.8,
+        "place": "below",
+        "effects": []
+      }
+    }
+  ]
+}

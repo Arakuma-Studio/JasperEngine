@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "FxCost.h"
+#include "FxGeneratorCost.h"
 
 #include "titleart/TitleArtIO.h"
 #include "titleart/effects/TfxCommon.h"
@@ -39,6 +40,8 @@ TitleFxCost editor::estimateTitleFxCost(const titleart::TitleArtDoc& doc, titlea
     const double lightAngle = light.value("angle", 120.0), lightAltitude = light.value("altitude", 30.0);
     titleart::forEachLayer(doc.root, [&](const Json& layer, const Json*, int) {
         const std::string id = layer.value("id", std::string());
+        // S83's generator layers: one row each (FxGeneratorCost.h)
+        appendTitleGeneratorCostRow(layer, desktop, mobile, tier, out);
         bool sdf = false;
         float sdfReach = 0.0f;
         auto effects = layer.find("effects");
