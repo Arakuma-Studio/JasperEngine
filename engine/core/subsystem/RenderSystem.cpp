@@ -6938,8 +6938,19 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                     standIn = true;
                 }
             }
-            if (!mesh.submeshes[i].shader->isCreated())
+            if (!mesh.submeshes[i].shader->isCreated()){
                 shadersReady = false;
+                // what the low-level build errors mean, once per mesh: the variant cannot exist
+                if (shaderInputs.instanced && shaderInputs.morphTarget &&
+                        ShaderPool::isShaderBuildFailed(ShaderType::MESH, mesh.submeshes[i].shaderProperties, 0)){
+                    static std::set<std::string> reported;
+                    const std::string name = scene->getEntityName(entity);
+                    if (reported.insert(name + "|" + std::to_string(mesh.submeshes[i].shaderProperties)).second){
+                        Log::error("'%s' does not draw: instancing with blend shapes needs more vertex inputs than the 16 a GPU has. "
+                                   "Remove its Instanced Mesh, or bake its blend shapes into the model.", name.c_str());
+                    }
+                }
+            }
         }
         // the extra pass's shader too (loadSubmeshExtraPass takes it below)
         if (hasExtraPass(mesh.submeshes[i], terrain != nullptr)){
