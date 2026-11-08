@@ -396,8 +396,10 @@ void editor::App::registerCommands(){
     terrainOverlay("terrain.overlay.contours", "contours");
     terrainOverlay("terrain.overlay.layerWeights", "layer_weights");
     terrainOverlay("terrain.overlay.off", "");
-    // Esc in a stroke is the history's cancel (App::handleInteractiveEdits), and the brush stays armed
-    bind("terrain.disarm", [this](const CommandArgs&) { terrainEditWindow->disarmBrush(); }, nullptr, []() { return !CommandHistory::anyInteractiveOpen(); });
+    // Esc in a stroke is the history's cancel (App::handleInteractiveEdits), and the brush stays armed: while the
+    // button is held too, so the release after a cancel does not land as a selection click
+    bind("terrain.disarm", [this](const CommandArgs&) { terrainEditWindow->disarmBrush(); }, nullptr,
+         []() { return !CommandHistory::anyInteractiveOpen() && !ImGui::IsMouseDown(ImGuiMouseButton_Left); });
 
     // ---- A Voxel Volume's brush (T6 R60); its context says when: armed, pointer over the Scene view
     auto voxelTool = [&bind](const char* id, VoxelTool tool) {
