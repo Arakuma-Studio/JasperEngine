@@ -268,7 +268,7 @@ double percentile(std::vector<float>& values, double share) {
 
 bool sampleTerrainAsksExtras(const Json& args) {
     using terrain_tools::hasKey;
-    return hasKey(args, "stats") || hasKey(args, "issues") || hasKey(args, "hash") || hasKey(args, "region");
+    return hasKey(args, "stats") || hasKey(args, "issues") || hasKey(args, "hash") || hasKey(args, "region") || hasKey(args, "world");
 }
 
 bool sampleTerrainExtras(const CallPtr& call, Project* project, SceneProject* sceneProject, Entity entity, bool world, Json& data) {
@@ -465,6 +465,17 @@ void editTerrainTool(const CallPtr& call) {
     if (const std::string escape = McpRefs::writeEscape(target.project, target.project->getTerrainMapsDir()); !escape.empty()) {
         call->fail(escape);
         return;
+    }
+
+    // T4 R32: a World's heightmap makes tiles; one map's import would cover its whole addressable lattice
+    if (scene->getComponent<TerrainComponent>(target.entity).world && hasKey(args, "ops") && args["ops"].is_array()) {
+        for (size_t i = 0; i < args["ops"].size(); i++) {
+            const Json& item = args["ops"][i];
+            if (!item.is_object() || !hasKey(item, "op") || item["op"] != "import_heightmap") continue;
+            call->fail("ops[" + std::to_string(i) + "]: on a Terrain World import_heightmap is edit_terrain_world's op, which makes the tiles the "
+                       "file covers: edit_terrain_world {ops: [{op: \"import_heightmap\", path, origin}]}. Nothing was changed.");
+            return;
+        }
     }
 
     const TerrainWorldPlacement transform = terrainWorldPlacement(scene, target.entity);
@@ -717,6 +728,11 @@ void visualizeTerrainTool(const CallPtr& call) {
         const std::string name = args["overlay"].is_string() ? args["overlay"].get<std::string>() : "";
         if (name == "none") {
             settings.source.clear();
+        } else if (name == "tiles" || name == "tile_state" || name == "lod" || name == "collision") {
+            // T4 R46: the Terrain World overlays are not wired into the Scene view's overlay bake yet
+            call->fail("overlay: \"" + name + "\" is a Terrain World overlay visualize_terrain cannot draw yet; sample_terrain {world} reports the "
+                       "tiles' states, nodes and collision as numbers.");
+            return;
         } else if (!TerrainOverlay::hasSource(name)) {
             std::string names;
             for (const std::string& source : TerrainOverlay::sourceNames()) names += ", " + source;
@@ -931,6 +947,8 @@ void registerTerrainTools(McpRegistry& registry) {
     });
     visualize.handler = terrain_tools::visualizeTerrainTool;
     registry.addTool(std::move(visualize));
+
+    registerTerrainWorldTools(registry);
 }
 
 }

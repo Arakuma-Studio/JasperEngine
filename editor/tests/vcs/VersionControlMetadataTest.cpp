@@ -75,6 +75,24 @@ TEST(VersionControlMetadata, ListsTreeFiles) {
     EXPECT_EQ(attributeOf(box, dir, "terrain/island.jetrees", "filter"), "lfs");
 }
 
+// T4 R50, AC32: a Terrain World's tiles are binaries, tracked and lockable; its manifest stays text
+TEST(VersionControlMetadata, ListsTerrainWorldTiles) {
+    VcsSandbox box;
+    const fs::path dir = box.path("Worlds");
+    {
+        Project project;
+        project.setSkipProjectLock(true);
+        std::string error;
+        ASSERT_TRUE(project.createProjectAt(dir, "Worlds", &error)) << error;
+        ASSERT_TRUE(project.saveProject());
+        release(project);
+    }
+    EXPECT_NE(readFile(dir / ".gitattributes").find("*.jtile"), std::string::npos);
+    box.gitOk(dir, {"init", "-q"});
+    EXPECT_EQ(attributeOf(box, dir, "Island.terrainworld/tiles/0_0.jtile", "filter"), "lfs");
+    EXPECT_NE(attributeOf(box, dir, "Island.terrainworld/manifest.yaml", "filter"), "lfs");
+}
+
 TEST(VersionControlMetadata, ExistingProjectKeepsBinariesOutOfLfs) {
     VcsSandbox box;
     const fs::path dir = box.path("prefab-runtime");

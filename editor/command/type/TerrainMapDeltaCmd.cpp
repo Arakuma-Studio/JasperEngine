@@ -10,6 +10,7 @@
 #include "pool/TextureDataPool.h"
 #include "terrain/EditorTerrainStore.h"
 #include "terrain/TerrainBytes.h"
+#include "terrainworld/TerrainWorldEditor.h"
 
 #include <algorithm>
 #include <cstring>
@@ -79,6 +80,8 @@ void editor::TerrainMapDeltaCmd::addLargeEdit(std::shared_ptr<TerrainLargeEdit> 
 std::string editor::TerrainMapDeltaCmd::refusal() const {
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     TerrainComponent* terrain = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<TerrainComponent>(entity) : nullptr;
+    // T4 R30: a World's maps are its tiles, which only this history writes in the editor
+    if (terrain && terrain->world) return std::string();
     for (const MapDelta& delta : maps) {
         Texture* texture = terrain ? terrainMapTexture(*terrain, delta.map) : nullptr;
         const std::string name = delta.path.empty() ? delta.id : delta.path;
@@ -111,10 +114,14 @@ void editor::TerrainMapDeltaCmd::applyXor() {
     if (!terrain) return;
 
     EditorTerrainStore store(project, sceneId, sceneProject->scene, entity, *terrain);
+    // T4 R30: replaying a World's bytes never makes a tile; the store's hook puts back the ones it made
+    TerrainWorldAutoAddPause pause(*terrain);
     std::vector<uint8_t> xored;
     std::vector<uint8_t> current;
     for (const MapDelta& delta : maps) {
-        const int stride = delta.channels * TextureData::getBytesPerChannel(delta.colorFormat);
+        // (a World's maps have no texture: their stored texels say it)
+        const int stride = terrain->world ? bytesPerTexel(store.format(delta.map))
+                                          : delta.channels * TextureData::getBytesPerChannel(delta.colorFormat);
         for (const Tile& tile : delta.tiles) {
             const TexelRect rect = deltaTileRect(tile.x, tile.y, delta.bounds);
             const size_t bytes = static_cast<size_t>(rect.area()) * stride;

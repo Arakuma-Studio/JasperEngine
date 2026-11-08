@@ -24,6 +24,7 @@
 #include "util/EditorScripts.h"
 #include "util/ExportFeatureScan.h"
 #include "yaml-cpp/yaml.h"
+#include "cook/TerrainWorldCooker.h"
 #include "util/Util.h"
 #include <regex>
 #include "util/NativeExportAndroid.h"
@@ -1452,8 +1453,9 @@ fs::path editor::Exporter::getBuildCacheDir() const {
 }
 
 std::vector<std::string> editor::Exporter::compiledModules() const {
-    // what Project Settings allow (the HTML UI, its video and the sound layer have no switch of their own)
-    std::vector<std::string> modules = {"htmlui", "video", "soundlayer"};
+    // what Project Settings allow (the HTML UI, its video, the sound layer and Terrain Worlds have no
+    // switch of their own)
+    std::vector<std::string> modules = {"htmlui", "video", "soundlayer", "terrainworld"};
     if (project->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
@@ -3283,6 +3285,18 @@ bool editor::Exporter::copyAssets() {
             return TreeStep::Skip;
         }
 
+        // T4 R53: a Terrain World ships cooked (world.bin, overview.jtile, its tiles at level 19)
+        if (isDirectory && AssetTypes::isFolderAsset(entry.path().filename().string())) {
+            TerrainWorldCookReport report;
+            std::string why;
+            if (!TerrainWorldCooker::cook(entry.path(), assetsDst / relPath, config.mode == ExportMode::Web, report, why)) {
+                setError("Cannot export " + relPath.generic_string() + ": " + why);
+                return stop();
+            }
+            for (const std::string& warning : report.warnings) Out::warning("%s: %s", relPath.generic_string().c_str(), warning.c_str());
+            return TreeStep::Skip;
+        }
+
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
         if (isDirectory) return TreeStep::Enter;
         std::error_code typeError;
@@ -3972,6 +3986,7 @@ bool editor::Exporter::copyEngine() {
         moduleSwitch("JASPERENGINE_HTMLUI", "htmlui");
         moduleSwitch("JASPERENGINE_VIDEO", "video");
         moduleSwitch("JASPERENGINE_SOUND_LAYER", "soundlayer");
+        moduleSwitch("JASPERENGINE_TERRAIN_WORLD", "terrainworld");
         // Development Build: the profiler in a Release game (a source export builds it as one)
         if (config.developmentBuild) {
             projectSettings += indent + "set(JASPERENGINE_DEVELOPMENT_BUILD ON)";
@@ -4892,6 +4907,22 @@ bool editor::Exporter::writeAppleProjectSettings() {
             "DetourNavMeshQuery.cpp", "DetourNode.cpp", "DetourCrowd.cpp", "DetourLocalBoundary.cpp", "DetourObstacleAvoidance.cpp",
             "DetourPathCorridor.cpp", "DetourPathQueue.cpp", "DetourProximityGrid.cpp", "DetourTileCache.cpp", "DetourTileCacheBuilder.cpp"
         });
+    }
+
+    // Terrain Worlds not reached (T4 R55): the module's sources stay out. The template does not
+    // define the macro and the engine's code tests its value, so it is set either way.
+    {
+        const std::vector<std::string> modules = compiledModules();
+        const bool terrainWorldNeeded = std::find(modules.begin(), modules.end(), "terrainworld") != modules.end();
+        replaceAll(xcodeProject, "\t\t\t\t\tRMLUI_STATIC_LIB,\n",
+                   std::string("\t\t\t\t\t\"JASPERENGINE_TERRAIN_WORLD=") + (terrainWorldNeeded ? "1" : "0") + "\",\n\t\t\t\t\tRMLUI_STATIC_LIB,\n");
+        if (!terrainWorldNeeded) {
+            excludedPhysicsSources.insert(excludedPhysicsSources.end(), {
+                "TerrainTileFormat.cpp", "TerrainWorldData.cpp", "TerrainWorldSelect.cpp", "TiledMapStore.cpp", "TileStreamer.cpp",
+                "WorldChunkSamples.cpp", "WorldImport.cpp", "TerrainWorldRuntime.cpp", "TerrainWorldSystem.cpp", "TerrainWorldCollision.cpp",
+                "TerrainWorld.cpp", "TerrainWorldClassesLua.cpp"
+            });
+        }
     }
 
     std::string excludedSources;

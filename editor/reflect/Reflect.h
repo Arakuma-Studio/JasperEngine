@@ -50,7 +50,8 @@ namespace jasperengine::editor::reflect {
         None, Texture, Cubemap, Font, Material, Model, Audio, Script, Prefab, Shader, UIDocument, Scene, Any,
         PoseAnimation, AnimationClip, AnimatorController, VertexAnimation, AvatarMask, SoundEvent, NavMesh, NavGrid, ParticleEffect,
         ModelOrPrefab,  // by the path's extension (a spline pool's entry)
-        TreeData        // a .jetrees file of a Terrain's trees (T5 R22)
+        TreeData,       // a .jetrees file of a Terrain's trees (T5 R22)
+        TerrainWorld    // a Name.terrainworld folder (T4 R48)
     };
 
     // How a field holds an asset reference (editor/asset/AssetRefSchema generates its table from the

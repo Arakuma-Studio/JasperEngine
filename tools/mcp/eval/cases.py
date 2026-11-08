@@ -2258,6 +2258,108 @@ CASES = [
         "checks": {"calls": ["set_project_settings"], "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 8,
     },
+    # -- T4: Terrain Worlds (docs/mcp/guide/terrain.md, Terrain Worlds) ------------------------------------------
+    {
+        "id": "terrain_world_create",
+        "kind": "bad",
+        "what_happened": "Asked for land kilometres wide, an agent made a grid of Terrain GameObjects (or one huge Terrain) instead of one streamed world.",
+        "text_at_issue": "edit_terrain_world's description (create; never many Terrain GameObjects) and jasper://docs/terrain: Terrain Worlds.",
+        "source": "T4 R43, R59, AC45",
+        "prompt": "Make an 8 by 8 km landscape in this scene that streams on phones.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_world", "args": {"create": "*", "dry_run": True}, "result": ok(
+                "Dry run: a Terrain World of 64 tile(s) at Landscape.terrainworld.",
+                {"dry_run": True, "asset_path": "Landscape.terrainworld", "tile_count": 64, "predicted_bytes": 42467328, "tile_size": 1024.0,
+                 "ops_checked": 0, "warnings": [], "next": "Nothing changed. Call again without dry_run to create it."})},
+            {"tool": "edit_terrain_world", "args": {"create": "*"}, "result": ok(
+                "Created Terrain World \"Landscape\": 64 tile(s), 0 added, 0 removed, 0 repaired.",
+                {"entity": {"id": 7, "name": "Landscape", "path": "Landscape"}, "guid": "5f0c2a9e-41d7-4c8e-9a51-2f1e8d7c6b10",
+                 "asset_path": "Landscape.terrainworld", "tile_count": 64, "predicted_bytes": 42467328, "tile_size": 1024.0,
+                 "changed_tiles": {"added": [], "removed": [], "repaired": []}, "frozen": False, "warnings": [], "dry_run": False,
+                 "undo_name": "Create Terrain World (Landscape)", "ready": True,
+                 "next": "Sculpt and paint across tiles with edit_terrain or sculpt_terrain on this entity; sample_terrain {world} reports streaming."})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_world", "args": {"create": "*"}}],
+                   "must_not_call": [{"tool": "create_entity", "args": {"type": "terrain"}}],
+                   "max_calls": {"edit_terrain_world": 3}},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_world_wait_ready",
+        "kind": "guard",
+        "what_happened": "Asked for a screenshot of a far corner of a streamed world, an agent has to wait for its tiles and hold them, not shoot the low-detail overview.",
+        "text_at_issue": "sample_terrain's world key (wait_for, its next naming set_streaming freeze) and jasper://docs/terrain: Terrain Worlds.",
+        "source": "T4 R45, R59, AC45",
+        "prompt": "Terrain World [7] is 8 km wide. Screenshot its far corner around world (3800, 3800) at full detail.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "sample_terrain", "args": {"world": {"wait_for": "*"}}, "result": ok(
+                "The area of Terrain World \"Landscape\" is ready.",
+                {"terrain": {"id": 7, "name": "Landscape"},
+                 "world": {"tile_counts": {"total": 64, "absent": 0, "cold": 52, "queued": 0, "loading": 0, "cpu_ready": 0, "uploading": 0,
+                                           "resident": 12, "error": 0},
+                           "tiles": [{"tile": [3, 3], "state": "resident"}], "ready": True, "frozen": False, "queue": 0, "in_flight": 0,
+                           "pool_exhausted": 0, "seam_errors": 0, "errors": []},
+                 "wait_for": {"ready": True, "seconds": 2.4},
+                 "next": "For screenshots: edit_terrain_world {ops: [{op: \"set_streaming\", freeze: true}]} stops loads, evictions and uploads "
+                         "so frames repeat; freeze false resumes streaming."})},
+            {"tool": "edit_terrain_world", "args": {"ops": [{"op": "set_streaming"}]}, "result": ok(
+                "Edited Terrain World \"Landscape\": 64 tile(s), 0 added, 0 removed, 0 repaired.",
+                {"entity": {"id": 7, "name": "Landscape"}, "tile_count": 64, "changed_tiles": {"added": [], "removed": [], "repaired": []},
+                 "frozen": True, "warnings": [], "dry_run": False, "ready": True})},
+            {"tool": "screenshot", "result": ok("Scene view, 1280x720.", {"view": "scene"})},
+        ],
+        "checks": {"calls": [{"tool": "sample_terrain", "args": {"world": {"wait_for": "*"}}},
+                             {"tool": "edit_terrain_world", "args": {"ops": [{"op": "set_streaming", "freeze": True}]}}, "screenshot"],
+                   "order": [[{"tool": "sample_terrain", "args": {"world": {"wait_for": "*"}}}, "screenshot"],
+                             [{"tool": "edit_terrain_world", "args": {"ops": [{"op": "set_streaming", "freeze": True}]}}, "screenshot"]]},
+        "max_turns": 12,
+    },
+    {
+        "id": "terrain_world_sculpt_across",
+        "kind": "guard",
+        "what_happened": "Asked to shape land across tile borders, an agent has to edit the World with edit_terrain, not look for tile ops in edit_terrain_world.",
+        "text_at_issue": "edit_terrain_world's description (heights and paint: edit_terrain with entity) and jasper://docs/terrain: Terrain Worlds.",
+        "source": "T4 R46, R59, AC45",
+        "prompt": "Raise a 40 m ridge on Terrain World [7] from world (900, 0) to (1150, 0); it crosses the border of two tiles.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"entity": "*"}, "result": ok(
+                "Edited the terrain: 51200 texel(s) changed in 1 map(s).",
+                {"terrain": {"id": 7, "name": "Landscape"}, "dry_run": False, "undo_name": "Edit Terrain (Landscape)",
+                 "changed": [{"map": "height", "texels": 51200, "rect": [131972, 131040, 256, 200]}], "warnings": [],
+                 "next": "Check the result with sample_terrain (stats, hash) or look with visualize_terrain."})},
+            {"tool": "sample_terrain", "result": ok(
+                "Sampled terrain \"Landscape\".",
+                {"terrain": {"id": 7, "name": "Landscape"}, "samples": [{"world": [1020, 40, 0], "height": 40, "state": "full"},
+                                                                       {"world": [1030, 40, 0], "height": 40, "state": "full"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"entity": "*"}}],
+                   "must_not_call": ["edit_terrain_world", "create_entity"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_world_import_heightmap",
+        "kind": "guard",
+        "what_happened": "Asked to put a heightmap file on a Terrain World, an agent has to use edit_terrain_world's import_heightmap, which makes the tiles, not edit_terrain's.",
+        "text_at_issue": "edit_terrain_world's description (ops: import_heightmap) and jasper://docs/terrain: Terrain Worlds (a heightmap file on a World).",
+        "source": "T4 R32, R44, R59",
+        "prompt": "Put the heightmap assets/dem.r16 (2049 x 2049) on Terrain World [7], its first sample at tile (0, 0).",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_world", "args": {"ops": "*"}, "result": ok(
+                "Edited Terrain World \"Landscape\": 1 op(s).",
+                {"entity": {"id": 7, "name": "Landscape"}, "tile_count": 64, "undo_name": "Edit Terrain World (Landscape)",
+                 "changed_tiles": {"added": [], "removed": [], "imported": [[0, 0], [1, 0]], "repaired": []}, "warnings": []})},
+            {"tool": "edit_terrain", "result": err(
+                "ops[0]: on a Terrain World import_heightmap is edit_terrain_world's op, which makes the tiles the file covers: "
+                "edit_terrain_world {ops: [{op: \"import_heightmap\", path, origin}]}. Nothing was changed.")},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_world", "args": {"ops": "*"}}],
+                   "must_not_call": ["edit_terrain"]},
+        "max_turns": 10,
+    },
     {
         "id": "terrain_point_material_cap",
         "kind": "guard",

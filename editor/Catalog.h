@@ -228,12 +228,14 @@ namespace jasperengine::editor{
         // soft capsule shadows of a character from its bones (S57 R2)
         CapsuleShadowCasterComponent,
         // a Mixer Snapshot action of the legacy action timeline (S40 R18)
-        AudioSnapshotComponent
+        AudioSnapshotComponent,
+        // T4: a Terrain's tiles past one map, streamed round its focuses
+        TerrainWorldComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::AudioSnapshotComponent;
+    constexpr ComponentType LastComponentType = ComponentType::TerrainWorldComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

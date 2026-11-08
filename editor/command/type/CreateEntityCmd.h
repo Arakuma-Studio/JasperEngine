@@ -118,7 +118,9 @@ namespace jasperengine::editor{
         // a clip or a Sound Event, and a Mixer Snapshot action
         AUDIO_ACTION,
         SOUND_EVENT_ACTION,
-        MIXER_SNAPSHOT_ACTION
+        MIXER_SNAPSHOT_ACTION,
+        // a Terrain World: the Hierarchy's row opens Create Terrain World (T4 R40), which makes it with its folder
+        TERRAIN_WORLD
     };
 
     class CreateEntityCmd: public Command{

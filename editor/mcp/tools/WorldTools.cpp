@@ -1249,6 +1249,7 @@ void sampleTerrainTool(const CallPtr& call) {
             }
             Json sample = terrainSample(scene, target.entity, local);
             addTerrainPointMaterial(scene, target.entity, local.x, local.z, fullMaterial, sample);
+            addTerrainWorldPointState(scene, target.entity, local.x, local.z, sample);
             samples.push_back(std::move(sample));
         }
         data["samples"] = samples;
@@ -1291,6 +1292,10 @@ void sampleTerrainTool(const CallPtr& call) {
                                      box["max"][0].get<float>() - offsetX, box["max"][1].get<float>() - offsetZ};
         }
         data["foliage"] = foliageStatsJson(target.project, target.scene, target.entity, region);
+    }
+    if (has(args, "world")) {
+        sampleTerrainWorld(call, target.project, target.scene, target.entity, std::move(data));
+        return;
     }
     call->ok("Sampled terrain \"" + scene->getEntityName(target.entity) + "\".", data);
 }
@@ -6153,7 +6158,9 @@ void registerWorldTools(McpRegistry& registry) {
             {"slope_bins", withDefault(integer("Over 0-90 degrees.", 1, 90), 9)},
             {"issues", withDefault(boolean("Problems and fixes."), false)},
             {"hash", withDefault(boolean("Content hash of each map."), false)},
-            {"foliage", withDefault(boolean("Details and trees in region."), false)}
+            {"foliage", withDefault(boolean("Details and trees in region."), false)},
+            {"world", anyObject("Terrain World streaming status: {tiles?, wait_for?: {x, z, radius, level}}.")},
+            {"timeout_seconds", number("wait_for's.", 0, 3600)}
         }),
         sampleTerrainTool, true, true);
     group.clear();

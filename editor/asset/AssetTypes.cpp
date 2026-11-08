@@ -54,6 +54,8 @@ namespace {
             {{AssetType::AnimationMontage, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".montage"}},
             // Sound Events (S37): the file holds no GUID, its .meta does
             {{AssetType::SoundEvent, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".soundevent"}},
+            // T4 R48: a folder, one asset; its GUID is in its manifest.yaml and the scan does not enter it
+            {{AssetType::TerrainWorld, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".terrainworld"}},
         };
         return table;
     }
@@ -118,6 +120,15 @@ fs::path editor::AssetTypes::assetPathForMeta(const fs::path& metaPath) {
     fs::path asset = metaPath;
     asset.replace_extension();
     return asset;
+}
+
+bool editor::AssetTypes::isFolderAsset(const std::string& name) {
+    static const std::string extension = ".terrainworld";
+    return name.size() > extension.size() && name.compare(name.size() - extension.size(), extension.size(), extension) == 0;
+}
+
+fs::path editor::AssetTypes::identityFileOf(const fs::path& assetPath) {
+    return isFolderAsset(assetPath.filename().string()) ? assetPath / "manifest.yaml" : assetPath;
 }
 
 bool editor::AssetTypes::isSkippedDirectory(const std::string& name) {

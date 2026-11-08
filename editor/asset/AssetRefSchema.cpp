@@ -115,6 +115,7 @@ namespace {
             case K::NavGrid: return AssetType::NavGrid;
             case K::ParticleEffect: return AssetType::ParticleEffect;
             case K::TreeData: return AssetType::TreeData;
+            case K::TerrainWorld: return AssetType::TerrainWorld;
             case K::None: case K::Any: case K::ModelOrPrefab: break;
         }
         return AssetType::Unknown;

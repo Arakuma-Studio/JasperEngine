@@ -64,8 +64,9 @@ namespace {
     // bits 0-31, bit 32, the lattice deformer ('Ltc'), bit 33, S10's high shadow filters ('Shq'),
     // bits 34-35, the Vertex Animation ('Vat', 'Vab'), bits 36-39, S57's lighting ('Til',
     // 'Cap', 'Cts', 'Oit'), bit 40, S54's LOD cross-fade ('Lfd'), bit 41, S55's automatic GPU
-    // instancing ('Aui'), bits 42-44, T5's foliage ('Cin', 'Wnd', 'Dth'), and bit 45, T3's terrain holes ('Thl')
-    const uint64_t meshValidMask = 0x3FFFFFFFFFFFULL;
+    // instancing ('Aui'), bits 42-44, T5's foliage ('Cin', 'Wnd', 'Dth'), bit 45, T3's terrain holes ('Thl'),
+    // and bit 46, T4's Terrain World ('Twd')
+    const uint64_t meshValidMask = 0x7FFFFFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
 
@@ -195,11 +196,11 @@ TEST(ShaderKey, SpecsTakeSixtyFourBitMasks) {
 // ---- (b) normalization
 
 TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
-    // MESH: every bit past 45 (T3's 'Thl') goes; bit 5 (Stochastic Tiling) stays: a stale
+    // MESH: every bit past 46 (T4's 'Twd') goes; bit 5 (Stochastic Tiling) stays: a stale
     // 'Pcf' of an old file is cleared where files are read (Stream), not here
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, ~0ULL)),
               ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));
-    EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | shaderPropertyBit(47) | 0x41)),
+    EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | shaderPropertyBit(48) | 0x41)),
               ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | 0x41));
     // the high shadow filters ('Shq', S10) only with shadows ('Shw', bit 4)
     const uint64_t shq = ShaderPool::getShadowsHQProperty();
@@ -434,7 +435,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::DEPTH, shaderPropertyBit(18), "depth_Aui"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiCinWndDthThl"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiCinWndDthThlTwd"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
         {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},
@@ -519,4 +520,24 @@ TEST(ShaderKey, TerrainTierBitsArePinned) {
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 23, true), "Tqm");
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 24, true), "Tql");
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 25, true), "Txl");
+}
+
+// T4 R58: 'Twd' came after T3's 'Thl' on each type, pinned here; a stream landing before it moves these
+// and bumps the shader cache
+TEST(ShaderKey, TerrainWorldBitIsPinned) {
+    EXPECT_EQ(ShaderPool::getTerrainWorldProperty(ShaderType::MESH), shaderPropertyBit(46));
+    EXPECT_EQ(ShaderPool::getTerrainWorldProperty(ShaderType::DEPTH), shaderPropertyBit(23));
+    EXPECT_EQ(ShaderPool::getTerrainWorldProperty(ShaderType::GBUFFER), shaderPropertyBit(26));
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 46, true), "Twd");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::DEPTH, 23, true), "Twd");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 26, true), "Twd");
+    EXPECT_EQ(ShaderPool::getTerrainWorldProperty(ShaderType::UI), 0u);
+    // it widens u_vs_terrainParams: no fallback may drop it
+    const uint64_t withFeatures = shaderPropertyBit(46) | ShaderPool::getShadowsHQProperty() | shaderPropertyBit(4);
+    for (uint64_t candidate : ShaderPool::getFallbackProperties(ShaderType::MESH, withFeatures)) {
+        EXPECT_NE(candidate & shaderPropertyBit(46), 0u);
+    }
+    for (uint64_t candidate : ShaderPool::getFallbackProperties(ShaderType::DEPTH, shaderPropertyBit(23) | shaderPropertyBit(0))) {
+        EXPECT_NE(candidate & shaderPropertyBit(23), 0u);
+    }
 }

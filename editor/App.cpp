@@ -4,6 +4,10 @@
 #include "App.h"
 #include "util/ImpostorBaker.h"
 #include "terrain/TerrainMapPersistence.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "terrainworld/TerrainWorldEditor.h"
+#include "terrainworld/TerrainWorldPanel.h"
+#endif
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
 #include "component/CameraShakerComponent.h"
@@ -2931,6 +2935,11 @@ void editor::App::show(){
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
     PoseViewport::frame(&project);
     terrainEditWindow->show();
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R40, R41: drawn here, so they show whichever tab opened them
+    CreateTerrainWorldDialog::instance().show();
+    TerrainWorldPanel::instance().show();
+#endif
     textureSynthesisWindow->show();
     audioMixerWindow->show();
     soundBrowserWindow->show();
@@ -3935,6 +3944,17 @@ void editor::App::engineRender(){
         || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());
     // an edited terrain map reaches its file a second after the last edit (T1 R29)
     TerrainMapPersistence::get().update();
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4: the worlds' pump (an idle editor runs no engine frame) and their tiles' debounce (R31)
+    {
+        static bool hostInstalled = false;
+        if (!hostInstalled) {
+            installTerrainWorldHost(&project);
+            hostInstalled = true;
+        }
+        updateTerrainWorlds(TerrainMapPersistence::clockSeconds());
+    }
+#endif
     // the title says when the scene shown did not load completely (its tab does too)
     {
         const SceneProject* shown = project.getSelectedScene();
@@ -5673,7 +5693,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and GBUFFER at 19-21, in mesh.vert and its siblings), library:impostor.
     // v53: terrain holes and tiers (T3): TERRAIN_HOLES ('Thl': MESH 45, DEPTH 22, GBUFFER 22), the terrain's
     //      Lit defines (TERRAIN_QUALITY_*, TERRAIN_MACRO*, TERRAIN_RESAMPLE, ...), GBUFFER 'Tqm' 'Tql' 'Txl' at 23-25.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v53";
+    // v54: T4 Terrain Worlds (HAS_TERRAIN_WORLD in includes/terrain_vs.glsl, terrain_world_vs.glsl).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v54";
 }
 
 void editor::App::pushTabNotificationStyle(){

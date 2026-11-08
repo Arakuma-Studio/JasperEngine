@@ -100,6 +100,8 @@ namespace jasperengine::editor::mcp {
     void registerGameplayTools(McpRegistry& registry);
     void registerSplineTools(McpRegistry& registry);
     void registerTerrainTools(McpRegistry& registry);
+    // T4: edit_terrain_world, registered by registerTerrainTools (its module and group)
+    void registerTerrainWorldTools(McpRegistry& registry);
     void registerParticleTools(McpRegistry& registry);
     void registerAnimatorTools(McpRegistry& registry);
     // S27: the editor tools (group editor_tools) and the Project Hub's core tools

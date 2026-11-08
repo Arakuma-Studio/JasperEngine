@@ -65,6 +65,7 @@
 #include "StreamPreserved.h"
 #include "util/PhysicsMaterialAssets.h"
 #include "window/dialog/CreateTerrainDialog.h"
+#include "terrainworld/TerrainWorldPanel.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "pose/PoseEditSession.h"
 
@@ -555,6 +556,7 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"3D Object", "Torus", ICON_FA_RING, T::TORUS, "Torus", CREATE_IN_3D},
         {"3D Object", "Model", ICON_FA_PERSON_RUNNING, T::MODEL, "Model", CREATE_IN_3D, true},
         {"3D Object", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
+        {"3D Object", "Terrain World", ICON_FA_MAP, T::TERRAIN_WORLD, "Terrain World", CREATE_IN_3D},
         {"3D Object", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
         {"3D Object", "Water", ICON_FA_WATER, T::WATER, "Water", CREATE_IN_3D},
         // Unity's Ragdoll Wizard on the selected character (or the row's GameObject)
@@ -672,6 +674,11 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
             return;
         }
         RagdollWizardDialog::instance().open(project, sceneProject->id, character);
+        return;
+    }
+    if (entry.type == EntityCreationType::TERRAIN_WORLD) {
+        // T4 R40: its folder asset, the GameObject and its Rigidbody, one undo step
+        CreateTerrainWorldDialog::instance().open(project, sceneProject->id, entry.rootOnly ? NULL_ENTITY : parent);
         return;
     }
     if (entry.type == EntityCreationType::TERRAIN) {

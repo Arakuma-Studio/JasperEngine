@@ -8,8 +8,9 @@
 // switches of a Compile build). A module is needed when anything that ships can create or call
 // its objects:
 //
-// - a component of a scene or prefab whose system is the module's (a UI Document, a Rigidbody), or
-//   a component field that makes the engine create one (a Spline Extrude's collision);
+// - a component of a scene or prefab whose system is the module's (a UI Document, a Rigidbody, a
+//   Terrain World), or a component field that makes the engine create one (a Spline Extrude's
+//   collision);
 // - a Lua script naming one of the module's entry points: its classes, enums and globals, its
 //   members of classes outside it, and every member whose type is one of its classes, read from
 //   the Lua API description (the `modules` of tools/lua_api, the bindings' own #if conditions);

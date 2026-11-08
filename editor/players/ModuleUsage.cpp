@@ -27,6 +27,7 @@
 #include "component/RigidbodyComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/SplineExtrudeComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
 
@@ -46,7 +47,7 @@ namespace {
 
     // the modules a dynamic access or C++ code can reach: every one the detection decides
     const std::vector<std::string>& detectedModules() {
-        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d"};
+        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "terrainworld"};
         return modules;
     }
 
@@ -355,6 +356,8 @@ namespace {
                         }
                     }
                 }
+                // T4 R55: the tiles stream, draw and page their colliders in the module alone
+                if (has(registry->findComponent<TerrainWorldComponent>(entity))) add("terrainworld", content.label, "Terrain World on " + object);
                 if (has(registry->findComponent<Rigidbody2DComponent>(entity))) add("physics2d", content.label, "Rigidbody 2D on " + object);
                 if (has(registry->findComponent<Joint2DComponent>(entity))) add("physics2d", content.label, "Joint 2D on " + object);
                 if (has(registry->findComponent<CharacterController2DComponent>(entity))) add("physics2d", content.label, "Character Controller 2D on " + object);
