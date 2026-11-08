@@ -1273,7 +1273,8 @@ TerrainStrokeBrush editor::TerrainEditWindow::makeStrokeBrush(TerrainBrushMode m
         brush.slope = terrain::FilterRange{paintMinSlope, paintMaxSlope};
         brush.height = terrain::FilterRange{paintMinHeight * terrain.maxHeight, paintMaxHeight * terrain.maxHeight};
         brush.filterAllMaps = filterAllTools;
-        brush.invertFilter = filterInvert;
+        brush.invertSlope = filterInvert;
+        brush.invertHeight = heightFilterInvert;
     }
     brush.accumulateRamp = scripted;
     return brush;
@@ -2699,8 +2700,10 @@ void editor::TerrainEditWindow::show(){
             terrainPropertyRow("Slope Filter", "Paint only where the slope and height are in range.");
             ImGui::Checkbox("##paint_mask", &paintUseMask);
             ImGui::BeginDisabled(!paintUseMask);
-            terrainPropertyRow("Invert", "Paint where the slope or height is out of range instead.");
+            terrainPropertyRow("Invert Slope", "Paint where the slope is outside its range instead (Y).");
             ImGui::Checkbox("##filter_invert", &filterInvert);
+            terrainPropertyRow("Invert Height", "Paint where the height is outside its range instead.");
+            ImGui::Checkbox("##filter_invert_height", &heightFilterInvert);
             terrainPropertyRow("All Tools", "The filter also limits sculpting and details.");
             ImGui::Checkbox("##filter_all_tools", &filterAllTools);
             terrainPropertyRow("Slope range", "Allowed ground slope in degrees, from flat (0) to vertical (90).");
@@ -2766,6 +2769,7 @@ void editor::TerrainEditWindow::show(){
         ts.paintUseMask = paintUseMask;
         ts.filterAllTools = filterAllTools;
         ts.slopeFilterInvert = filterInvert;
+        ts.heightFilterInvert = heightFilterInvert;
         ts.paintMinSlope = paintMinSlope;
         ts.paintMaxSlope = paintMaxSlope;
         ts.paintMinHeight = paintMinHeight;
@@ -2841,6 +2845,7 @@ void editor::TerrainEditWindow::loadSettings(){
     paintUseMask = ts.paintUseMask;
     filterAllTools = ts.filterAllTools;
     filterInvert = ts.slopeFilterInvert;
+    heightFilterInvert = ts.heightFilterInvert;
     paintMinSlope = std::clamp(ts.paintMinSlope, 0.0f, 90.0f);
     paintMaxSlope = std::clamp(ts.paintMaxSlope, paintMinSlope, 90.0f);
     paintMinHeight = std::clamp(ts.paintMinHeight, 0.0f, 1.0f);

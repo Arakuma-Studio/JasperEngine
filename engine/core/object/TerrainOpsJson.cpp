@@ -305,10 +305,14 @@ bool OpJsonParser::parseFilter(const Json& value, Filter& filter) {
             filter.layer = range;
         } else if (key == "invert") {
             filter.invert = it.value().is_boolean() && it.value().get<bool>();
+        } else if (key == "invert_slope") {
+            filter.invertSlope = it.value().is_boolean() && it.value().get<bool>();
+        } else if (key == "invert_height") {
+            filter.invertHeight = it.value().is_boolean() && it.value().get<bool>();
         } else if (key == "softness") {
             filter.softness = it.value().is_number() ? it.value().get<float>() : -1.0f;
         } else {
-            return failWith("filter." + key, "is not a filter field: slope, height, layer, invert, softness.");
+            return failWith("filter." + key, "is not a filter field: slope, height, layer, invert, invert_slope, invert_height, softness.");
         }
     }
     return true;

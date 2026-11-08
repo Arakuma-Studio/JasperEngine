@@ -104,7 +104,8 @@ void editor::TerrainStrokeSession::buildOp(){
     if (map.kind == MapKind::Blend || brush.filterAllMaps){
         op.filter.slope = brush.slope;
         op.filter.height = brush.height;
-        op.filter.invert = brush.invertFilter && (brush.slope || brush.height);
+        op.filter.invertSlope = brush.invertSlope;
+        op.filter.invertHeight = brush.invertHeight;
     }
 
     Shape& shape = op.shape;

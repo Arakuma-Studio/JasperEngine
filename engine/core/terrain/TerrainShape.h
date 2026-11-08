@@ -77,6 +77,8 @@ namespace jasperengine::terrain {
         std::optional<FilterRange> height;  // terrain-local
         std::optional<LayerRange> layer;    // weight
         bool invert = false;                // flips the whole filter
+        bool invertSlope = false;           // T1 R66: the slope range keeps what is outside it
+        bool invertHeight = false;          // and the height range
         float softness = 0.0f;              // 0-1: a smooth band, as a share of each range
 
         bool active() const { return slope || height || layer; }

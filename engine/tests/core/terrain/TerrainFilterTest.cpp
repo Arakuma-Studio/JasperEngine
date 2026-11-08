@@ -124,6 +124,31 @@ TEST(TerrainFilter, SlopeHeightLayerAndInvert) {
     }
 }
 
+// T1 R66: one range inverts on its own, the other still holds
+TEST(TerrainFilter, EachRangeInvertsOnItsOwn) {
+    // the 45-degree climb is columns 15 to 30; heights 4.5 to 8.5 are columns 16 to 19
+    auto store = rampStore();
+    const std::vector<float> before = readHeights(*store);
+    Op op = raiseAll();
+    op.filter.slope = FilterRange{40.0f, 50.0f};
+    op.filter.height = FilterRange{4.5f, 8.5f};
+    op.filter.invertHeight = true;
+    ASSERT_TRUE(apply(*store, op).ok);
+    std::vector<int> expected = {15};
+    for (int c : range(20, 30)) expected.push_back(c);
+    EXPECT_EQ(changedColumns(*store, before), expected) << "steep, and outside the height range";
+
+    auto other = rampStore();
+    const std::vector<float> otherBefore = readHeights(*other);
+    Op flatOnly = raiseAll();
+    flatOnly.filter.slope = FilterRange{40.0f, 50.0f};
+    flatOnly.filter.invertSlope = true;
+    ASSERT_TRUE(apply(*other, flatOnly).ok);
+    std::vector<int> flat = range(0, 14);
+    flat.push_back(31);
+    EXPECT_EQ(changedColumns(*other, otherBefore), flat) << "what the climb leaves out";
+}
+
 TEST(TerrainFilter, OutOfFilterBytesAreUnchanged) {
     auto store = rampStore();
     const std::vector<uint8_t> before = readAllBytes(*store, HEIGHT);

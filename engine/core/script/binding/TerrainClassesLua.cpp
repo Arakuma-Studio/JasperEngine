@@ -111,6 +111,12 @@ namespace {
             lua_pushstring(L, message.c_str());
             return false;
         }
+        const std::string refusal = terrainRuntimeEditRefusal(terrain);
+        if (!refusal.empty()) {
+            const std::string message = std::string("Terrain:") + function + ": \"" + name + "\" cannot be edited at runtime on this device: " + refusal + ".";
+            lua_pushstring(L, message.c_str());
+            return false;
+        }
         if (!detachTerrainMapsForRuntime(terrain, self->getEntity())) {
             const std::string message = std::string("Terrain:") + function + ": the maps of \"" + name + "\" could not be copied for runtime edits (out of memory).";
             lua_pushstring(L, message.c_str());

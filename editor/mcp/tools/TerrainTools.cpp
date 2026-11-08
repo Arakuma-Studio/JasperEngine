@@ -14,11 +14,14 @@
 #include "mcp/McpContext.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
+#include "jobs/JobSystem.h"
+#include "mcp/McpJobs.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
 #include "mcp/TerrainMaterialInfo.h"
 
 #include "Catalog.h"
+#include "EditorHost.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -229,6 +232,126 @@ terrain::OpJsonHooks editorHooks(Project* project, HeightImport& lastImport) {
         return true;
     };
     return hooks;
+}
+
+// R69: past this many expected texels a call is a job (DC14)
+constexpr int64_t JOB_TEXELS = 4 * 1024 * 1024;
+
+// (scene, terrain) of the jobs running now: a second call on one of them fails
+std::set<std::pair<uint32_t, Entity>>& runningTerrainJobs() {
+    static std::set<std::pair<uint32_t, Entity>> running;
+    return running;
+}
+
+// The height map texels each op's shape box covers, summed: what the ops' kernels will visit
+int64_t expectedTexels(TerrainComponent& terrain, const std::vector<Op>& ops) {
+    if (!terrain.heightMap.hasData() || terrain.terrainSize <= 0.0f) return 0;
+    const double texels = static_cast<double>(terrain.heightMap.getData().getWidth()) * terrain.heightMap.getData().getHeight();
+    const float half = terrain.terrainSize * 0.5f;
+    double total = 0.0;
+    for (const Op& op : ops) {
+        const terrain::Shape& shape = op.shape;
+        float minX = -half, minZ = -half, maxX = half, maxZ = half;
+        switch (shape.type) {
+            case terrain::ShapeType::Circle:
+                minX = shape.center.x - shape.radius; maxX = shape.center.x + shape.radius;
+                minZ = shape.center.y - shape.radius; maxZ = shape.center.y + shape.radius;
+                break;
+            case terrain::ShapeType::Rect:
+                minX = shape.min.x; maxX = shape.max.x; minZ = shape.min.y; maxZ = shape.max.y;
+                break;
+            case terrain::ShapeType::Mask:
+                minX = shape.center.x - shape.size.x * 0.5f; maxX = shape.center.x + shape.size.x * 0.5f;
+                minZ = shape.center.y - shape.size.y * 0.5f; maxZ = shape.center.y + shape.size.y * 0.5f;
+                break;
+            case terrain::ShapeType::Polyline:
+            case terrain::ShapeType::Stroke:
+                if (!shape.points.empty()) {
+                    minX = maxX = shape.points[0].x;
+                    minZ = maxZ = shape.points[0].y;
+                    for (const Vector2& p : shape.points) {
+                        minX = std::min(minX, p.x); maxX = std::max(maxX, p.x);
+                        minZ = std::min(minZ, p.y); maxZ = std::max(maxZ, p.y);
+                    }
+                    minX -= shape.radius; maxX += shape.radius; minZ -= shape.radius; maxZ += shape.radius;
+                }
+                break;
+            case terrain::ShapeType::All:
+                break;
+        }
+        const double w = std::max(0.0f, std::min(maxX, half) - std::max(minX, -half));
+        const double d = std::max(0.0f, std::min(maxZ, half) - std::max(minZ, -half));
+        // iterative kernels visit the box once per pass
+        const int passes = std::max(1, std::max(op.iterations, 1));
+        total += texels * (w * d) / (static_cast<double>(terrain.terrainSize) * terrain.terrainSize) * passes;
+    }
+    return static_cast<int64_t>(total);
+}
+
+void addImportDetection(Json& out, const std::vector<Op>& ops, const HeightImport& imported);
+std::string nextFor(const terrain::TerrainOpResult& result);
+
+// R69: the ops run on a copy of the maps off the main thread; the main thread commits them as
+// one undo step if the terrain did not change meanwhile
+void startTerrainJob(const CallPtr& call, const TerrainCallTarget& target, const std::vector<Op>& ops, const terrain::OpOptions& options,
+                     const terrain::OpSpace& space, const HeightImport& imported) {
+    const Json& args = call->args();
+    Project* project = target.project;
+    const uint32_t sceneId = target.scene->id;
+    const Entity entity = target.entity;
+    const std::string name = target.scene->scene->getEntityName(entity);
+    std::shared_ptr<TerrainOpsSnapshot> snapshot = snapshotTerrainMaps(project, target.scene, entity);
+    JobPtr job = call->ctx().jobs().create("edit_terrain", "Edit Terrain (" + name + ")");
+    runningTerrainJobs().insert({sceneId, entity});
+    job->setProgress(-1.0, "editing a copy of the maps");
+    auto opList = std::make_shared<std::vector<Op>>(ops);
+    auto importedCopy = std::make_shared<HeightImport>(imported);
+    jobs::submit([snapshot, opList, options, job, project, sceneId, entity, space, importedCopy, name]() {
+        // not in place: the ops' own overlay reports what changed (an in-place run leaves changed
+        // empty), then commits into the snapshot's overlay, which the hand-back turns into undo
+        auto result = std::make_shared<terrain::TerrainOpResult>(terrain::applyOps(*snapshot->overlay, *opList, options));
+        // the editor's own queue: it runs every frame and wakes an idle editor (jobs::postToMain drains
+        // only in frames that draw a scene)
+        editor::getEditorHost().enqueueMainThreadTask([snapshot, opList, result, job, project, sceneId, entity, space, importedCopy, name]() {
+            runningTerrainJobs().erase({sceneId, entity});
+            if (job->cancelRequested()) {
+                job->markCancelled("Cancelled: nothing was applied.");
+                return;
+            }
+            if (!result->ok) {
+                job->fail(result->error);
+                return;
+            }
+            SceneProject* scene = project->getScene(sceneId);
+            CommandHistory* history = scene ? CommandHandle::get(sceneId) : nullptr;
+            const size_t start = history ? history->mark() : 0;
+            std::string error;
+            if (!history || !commitTerrainOpsWithUndo(project, scene, entity, *snapshot, *result, "Edit Terrain", error)) {
+                while (history && history->position() > start && history->canUndo() && history->undo()) {}
+                job->fail(error.empty() ? "The scene closed while the job ran: nothing was applied." : error);
+                return;
+            }
+            history->groupSince(start);
+            Json out = terrain::opResultJson(*result, space, *opList);
+            addImportDetection(out, *opList, *importedCopy);
+            out["terrain"] = McpRefs::entityJson(scene, entity);
+            out["dry_run"] = false;
+            out["undo_name"] = "Edit Terrain (" + name + ")";
+            out["next"] = nextFor(*result);
+            int64_t texels = 0;
+            for (const terrain::MapChangeReport& change : result->changed) texels += change.texels;
+            job->succeed("Edited the terrain: " + std::to_string(texels) + " texel(s) changed in " + std::to_string(result->changed.size()) + " map(s).", out);
+        });
+    }, {jobs::Lane::Background, jobs::GateClass::Default, "edit-terrain"});
+    call->detach();
+    replyWhenJobDone(call, job, !hasKey(args, "wait") || args["wait"].get<bool>(), hasKey(args, "timeout_seconds") ? args["timeout_seconds"].get<double>() : 120.0,
+                     [](const McpJob& finished) {
+        Json result = finished.result();
+        result["job_id"] = finished.id();
+        result["status"] = jobStatusName(finished.status());
+        if (finished.status() != JobStatus::Succeeded) return ToolResult::error(finished.message(), result);
+        return ToolResult::success(finished.message(), result);
+    });
 }
 
 // R68: what import_heightmap guessed, on its op's entry, so a wrong guess is seen before it is kept
@@ -572,6 +695,18 @@ void editTerrainTool(const CallPtr& call) {
     terrain::OpOptions options;
     if (hasKey(args, "map_resolution") && args["map_resolution"].is_number_integer()) options.newMapResolution = args["map_resolution"].get<int>();
 
+    const std::pair<uint32_t, Entity> key{target.scene->id, target.entity};
+    if (runningTerrainJobs().count(key)) {
+        rollback();
+        call->fail("A job is editing this terrain: wait for it with get_job, then call edit_terrain again.");
+        return;
+    }
+    // R69, DC14: past this many texels the work runs as a job on a copy of the maps
+    if (!dryRun && !hasKey(args, "create") && expectedTexels(scene->getComponent<TerrainComponent>(target.entity), ops) > JOB_TEXELS) {
+        startTerrainJob(call, target, ops, options, space, imported);
+        return;
+    }
+
     // Everything runs once as a dry run: the call's answer when dry, else what the real run must
     // prepare (maps to make first, a hole map to remove after)
     const terrain::TerrainOpResult preview = previewTerrainOps(target.project, target.scene, target.entity, ops, options);
@@ -877,8 +1012,8 @@ void registerTerrainTools(McpRegistry& registry) {
         {"ops", Json{{"type", "array"}, {"maxItems", 256}, {"items", anyObject("{op, shape, filter, ...}: raise, lower, set_height, smooth, paint_layer, paint_by_rules, cut_holes, scatter_by_rules...")}}},
         {"dry_run", withDefault(boolean(""), false)},
         {"hash", withDefault(boolean("Hash each changed map."), false)},
-        {"wait", withDefault(boolean("Foliage ops are a job: wait for its end."), true)},
-        {"timeout_seconds", number("", 0, 3600)}
+        {"wait", withDefault(boolean("Large edits and foliage ops run as a job: false returns its job_id."), true)},
+        {"timeout_seconds", withDefault(number("", 0, 3600), 120)}
     });
     edit.handler = terrain_tools::editTerrainTool;
     registry.addTool(std::move(edit));
