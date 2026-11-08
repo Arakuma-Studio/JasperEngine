@@ -2215,19 +2215,22 @@ rest of S82 lands in 6B.
       after an overrun made the estimate-trusting scheduler read 0 ms.
     - `TitleArtRenderHost::render` (view_asset, check_title) no longer spins forever on a program
       still being created off the render thread: it publishes GPU creation, within 60 s.
-    Measured on llvmpipe (20 unbaked documents' thumbnails, isolated editor,
-    `JASPER_MCP_PERF_SLACK=1`): 103 working frames, none over 4 ms during the test, p95 3.08 ms; the
-    window's worst frames are the session's first "preview build" (5.5 ms, cold caches) and one
-    178 ms frame whose pieces were all under 1 ms (a fence flush or GPU creation waiting for
-    llvmpipe's scene queue, outside any step). The red control (TitleRenderJob trusting its
-    estimates, no gate) reads p95 198 ms, 20 of 24 frames over. After the other title tests in
-    the same editor the p95 was 4.2 ms (not enforced there): the Inspector's preview requests
-    load documents on the main thread (4-9 ms each, charged to their frames) and one readback took
-    13.7 ms. The floor on llvmpipe: a single piece cannot be sliced, so any step, kernel (an
-    effect's passes run in one step) or readback longer than 4 ms is a frame over budget there;
-    the test checks what the scheduler controls in every run (`late_starts` 0, predictions
-    converging) and the 4 ms p95 in the benchmark run. AC30's `get_frame_times` is read for
-    context only: the editor's frame time is not the previews'.
+    Measured on llvmpipe (20 unbaked documents' thumbnails, an isolated editor, enforced with
+    `JASPER_MCP_PERF_SLACK=1`), two runs of the same build: p95 3.08 ms (103 working frames, none
+    over 4 ms during the test) and p95 4.25 ms (110 working frames, 4 over: 4.1-4.4 ms frames of
+    two or three pieces that each fit, and the session's first "preview build", 4.6 ms with cold
+    caches); after the other title tests in one editor (not enforced) 4.2 ms and 3.96 ms. The
+    window's worst frame in each run (178 ms, 189 ms) ran only pieces under 1 ms: the main thread
+    waited outside every step (a fence flush or GPU creation behind llvmpipe's scene queue). The
+    red control (TitleRenderJob trusting its estimates, no gate) reads p95 190-198 ms, 20 of 24
+    frames over, `late_starts` 219. So R45 holds on llvmpipe at the edge, not with margin: its floor
+    there is that a single piece cannot be sliced, so a step, a kernel (an effect's passes run in one
+    step), a readback or a preview build longer than 4 ms is a frame over budget, and llvmpipe's
+    own waits outside the steps are not the scheduler's to avoid. The test therefore checks what
+    the scheduler controls in every run (`late_starts` 0, the prediction error falling from the
+    first 100 observations to the last 100) and the 4 ms p95 only in the benchmark run, where a
+    hardware GPU's lane is the one that must hold it. AC30's `get_frame_times` is read for context
+    only: the editor's frame time is not the previews'.
 55. **Tests: AC32's `titleart-off` selection runs in the Linux build image.** It configures the
     engine with `-DJASPERENGINE_TITLE_ART=OFF` when `--titleart-off-build` holds no library (the
     other selections run in the no-compiler runtime image), so it is not in `--only`'s default
