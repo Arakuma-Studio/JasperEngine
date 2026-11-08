@@ -1477,3 +1477,18 @@ rest of S82 lands in 6B.
     need (95). `focus_window` paid for them inside the tool: its description is shorter, and
     `page` no longer lists the Preferences pages (a wrong page still fails listing them). Core
     grows by 21 characters, to 98,983 (`tool_budget.py`; R81 allows 120).
+16. **Implementation: a starter Library until S84 registers its provider.** The integrator asked for
+    the Library strip in view by default (D18) before S84 lands, so with no provider registered the
+    window uses `TitleStarterLibrary` (`editor/titleart/designer/TitleStarterLibrary.h`): ten Looks
+    and five Color Schemes written as S80 ops (a Look replaces the face fill, bevel, rims and
+    effects of the target; a Color Scheme recolours the face and rims), with no templates,
+    favorites, recents or saving. Its tiles are the window's: the target layer with the item's ops
+    applied, rendered through `TitlePreviewQueue` at priority Tiles (`TitleLayerThumbnails` keyed by
+    slot). S84's `setLibraryProvider` replaces it. Below 960 px the Library's header arrow opens the
+    strip in place under the canvas for the session, instead of as an overlay over the canvas
+    bottom (R3).
+17. **Addition: the no-CJK-font notice.** When the editor's system font search (S-unicode-text's
+    `SystemFonts`) found no Chinese, Japanese or Korean font and the open title has CJK characters in
+    a text or a layer name, the window shows one line under the toolbar naming
+    `cjk_font_language` and linking `docs/editor/text-and-languages.md`; dismissed, it is not shown
+    again that session. `state().notices` lists `cjk_font_missing` while it shows.

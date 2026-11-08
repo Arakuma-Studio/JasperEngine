@@ -48,6 +48,14 @@ namespace jasperengine::editor::titledesigner {
         // document space, `content` its content hash, `pixels` the side to render
         ImTextureID thumbnail(const std::shared_ptr<const jasperengine::titleart::TitleArtDoc>& doc, const std::string& layerId,
                               const jasperengine::titleart::TitleRect& bounds, uint64_t content, int pixels, bool visible);
+        // the same for a picture kept under its own `slot` (a Library tile: one layer of a
+        // document with that tile's item applied), asked for at `priority`
+        ImTextureID thumbnail(const std::string& slot, const std::shared_ptr<const jasperengine::titleart::TitleArtDoc>& doc,
+                              const std::string& layerId, const jasperengine::titleart::TitleRect& bounds, uint64_t content, int pixels,
+                              bool visible, TitlePreviewPriority priority);
+        // the size of the shown picture of a slot (0 x 0 while it has none)
+        ImVec2 pictureSize(const std::string& slot) const;
+        bool pending(const std::string& slot) const;
         // main thread, every frame: uploads finished pictures
         void process();
         void cancelAll();
@@ -65,20 +73,21 @@ namespace jasperengine::editor::titledesigner {
             double wantedSince = 0.0;
             uint64_t request = 0;           // the queue request in flight
             std::string requestKey;
+            int width = 0, height = 0;      // the shown picture's size
             std::shared_ptr<const jasperengine::titleart::TitleArtDoc> doc;
             jasperengine::titleart::TitleRect bounds;
             int side = 48;
         };
         Project* project = nullptr;
         TitlePreviewOwner owner = 0;
-        std::map<std::string, Entry> entries;     // by layer id
+        std::map<std::string, Entry> entries;     // by slot (a layer id for the Layers panel)
         std::list<std::string> recency;          // most recent first
         size_t requests = 0;
         uint64_t uploads = 0;
         std::function<double()> clockFn;
 
         double now() const;
-        void touch(const std::string& layerId);
+        void touch(const std::string& slot);
     };
 
 }

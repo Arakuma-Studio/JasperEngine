@@ -9,8 +9,9 @@
 //   tiers, S85's Exact), lint check sources (S85's animation checks) and the Library provider
 //   (S84's Looks, Color Schemes and Templates, its tile previews, favorites and recents).
 // - A spec compiled out registers nothing: its UI does not exist and costs nothing. Without a
-//   Library provider the window shows no Library region and its empty state offers New Text
-//   instead of template cards (S82 Deviation 2).
+//   Library provider the window's Library shows S82's starter Looks and Color Schemes
+//   (TitleStarterLibrary), and its empty state offers New Text instead of template cards
+//   (S82 Deviations 2 and 16).
 // - Registration happens at startup (the spec's editor registration function) or from tests;
 //   reads are from the main thread.
 
@@ -156,6 +157,8 @@ namespace jasperengine::editor::titledesigner {
             (void)after;
             return {};
         }
+        // whether the menu offers Save As Look / Color Scheme / Template (S84's provider does)
+        virtual bool savesItems() const { return true; }
         // the menu's Save As dialogs (S84 R42): draws the dialog's fields, true when it closed
         virtual bool drawSaveAs(LibraryTab tab, TitleDesignerState& state) { (void)tab; (void)state; return true; }
         // user items: rename and delete (S84 R16-R17)

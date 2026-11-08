@@ -22,11 +22,18 @@ drag puts everything back and adds nothing.
   device, the gizmo and the effect handles (light angle, gradient line, glow centre...).
 - **Properties** on the right: the selection's page, and **Find a setting** at the top. Its results are
   the controls themselves; English and Japanese both work (`フチ`, `ぼかし`, `blur`, `glow`).
-- **Library** at the bottom (when the Looks, Color Schemes and Templates are installed): point at a
-  tile to preview it on your own text, click to apply.
+- **Library** at the bottom: Looks and Color Schemes drawn on your own text. Point at a tile to
+  preview it on the canvas, click to apply (one undo step). Until the full Library is installed it
+  holds a starter set (Casino Gold, Chrome, Neon, Fire, Ice and more); Templates come with it.
 
-Below 960 px the side panels become tabs of one column; below 480 px only the canvas shows, with a
-**Panels** button.
+Below 960 px the side panels become tabs of one column and the Library folds to its header (the
+arrow opens it); below 480 px only the canvas shows, with a **Panels** button.
+
+A title in Chinese, Japanese or Korean needs a CJK font on your system for the editor's fields
+(Text, layer names, search) to show it: without one the window says so once. Install one (for
+example Noto Sans CJK) and restart; **Preferences > General > CJK Font Language**
+(`cjk_font_language`) picks the glyph forms. The title itself always renders with its own font.
+See [Text and languages](text-and-languages.md#fonts-in-the-editor).
 
 ## Editing
 

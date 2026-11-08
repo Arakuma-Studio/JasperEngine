@@ -13,12 +13,17 @@
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"
 #include "titleart/TitleArtHash.h"
+#include "titleart/TitleArtOps.h"
+#include "titleart/TitlePreviewQueue.h"
+#include "titleart/designer/TitleLayerThumbnails.h"
 #include "titleart/designer/TitleSearchFold.h"
+#include "titleart/designer/TitleStarterLibrary.h"
 #include "window/EditorModal.h"
 
 #include "imgui.h"
 
 #include <algorithm>
+#include <cmath>
 #include <random>
 
 using namespace jasperengine;
@@ -78,13 +83,14 @@ std::string TitleDesignerWindow::libraryTargetKey() const {
     // the target layer's content key: moving it or editing another layer invalidates no tile (R46)
     const LibraryApplyOptions options = libraryOptions(LibraryTab::Looks);
     if (options.layers.empty()) return "sample";
-    const ta::TitleArtHashes hashes = ta::hashTitleArt(doc.shown());
+    // (the committed document: a hover preview is not a new target)
+    const ta::TitleArtHashes hashes = ta::hashTitleArt(doc.committed());
     auto it = hashes.layers.find(options.layers.back());
     return it == hashes.layers.end() ? std::string("sample") : std::to_string(it->second.content);
 }
 
 bool TitleDesignerWindow::applyLibraryItem(LibraryTab tab, const LibraryItem& item, bool preview) {
-    TitleLibraryProvider* library = libraryProvider();
+    TitleLibraryProvider* library = this->library();
     if (!library || !doc.editable()) return false;
     if (!item.disabledReason.empty()) {
         reportError(item.disabledReason);
@@ -149,8 +155,70 @@ bool TitleDesignerWindow::applyLibraryItem(LibraryTab tab, const LibraryItem& it
     return true;
 }
 
+TitleLibraryProvider* TitleDesignerWindow::library() const {
+    if (TitleLibraryProvider* provider = libraryProvider()) return provider;
+    return starterLibrary.get();
+}
+
+LibraryTile TitleDesignerWindow::starterTile(LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
+    LibraryTile out;
+    if (!libraryTiles || !starterLibrary || !geometry || !doc.isOpen()) return out;
+    const LibraryApplyOptions options = libraryOptions(tab);
+    std::string targets = options.wholeTitle ? std::string("*") : std::string();
+    for (const std::string& id : options.layers) targets += id + ",";
+    const std::string slot = std::string(libraryTabName(tab)) + ":" + item.id;
+    const std::string key = std::to_string(doc.changeCount()) + "|" + targets;
+    StarterTileSource& source = starterTileSources[slot];
+    if (source.key != key) {
+        // the user's own layer with the item applied: the ops a click commits (R41, R44)
+        source = StarterTileSource();
+        source.key = key;
+        const ta::Json ops = starterLibrary->applyOps(tab, item, options);
+        TitleOpsResult applied = ops.empty() ? TitleOpsResult() : TitleArtOps::apply(doc.committed(), ops);
+        if (!applied.ok) {
+            source.failed = ops.empty() ? std::string("Nothing it applies to") : applied.error();
+        } else {
+            std::string layer = options.layers.empty() ? std::string() : options.layers.back();
+            if (layer.empty()) {
+                // a Color Scheme on the whole title, or the text a Look adds: the topmost text
+                ta::forEachLayer(applied.doc.root, [&](const ta::Json& l, const ta::Json*, int) {
+                    if (ta::layerTypeOf(l) == ta::LayerType::Text) layer = str(l, "id");
+                    return true;
+                });
+            }
+            const ta::Json* target = layer.empty() ? nullptr : layerById(applied.doc, layer);
+            if (target) {
+                TitleRect bounds = geometry->contentBounds(*target, applied.doc);
+                // the Look's reach: rims, glow and shadow around the letters
+                const double pad = std::max(40.0, bounds.height * 0.35);
+                bounds = {bounds.x - pad, bounds.y - pad, bounds.width + 2.0 * pad, bounds.height + 2.0 * pad};
+                const ta::TitleArtHashes hashes = ta::hashTitleArt(applied.doc);
+                auto hash = hashes.layers.find(layer);
+                source.content = hash != hashes.layers.end() ? hash->second.content : 0;
+                source.layer = layer;
+                source.bounds = bounds;
+                source.doc = std::make_shared<const ta::TitleArtDoc>(std::move(applied.doc));
+            } else {
+                source.failed = "Nothing it applies to";
+            }
+        }
+    }
+    if (!source.failed.empty() || !source.doc) {
+        out.failed = source.failed;
+        return out;
+    }
+    const int pixels = (int)std::round(std::max(width, height) * std::min(2.0f, displayScale));
+    out.texture = libraryTiles->thumbnail(slot, source.doc, source.layer, source.bounds, source.content, pixels, visible, TitlePreviewPriority::Tiles);
+    const ImVec2 size = libraryTiles->pictureSize(slot);
+    out.width = size.x;
+    out.height = size.y;
+    out.live = true;
+    out.pending = libraryTiles->pending(slot);
+    return out;
+}
+
 void TitleDesignerWindow::drawLibrary(float width, float height) {
-    TitleLibraryProvider* library = libraryProvider();
+    TitleLibraryProvider* library = this->library();
     if (!library || !doc.isOpen() || newerVersion()) return;
     DocumentView& v = view();
     LibraryTab tab = LibraryTab::Looks;
@@ -170,11 +238,20 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
     } else {
         applies = "Applies to " + std::to_string(options.layers.size()) + " layers";
     }
-    const bool collapsed = settings.libraryCollapsed || width < 960.0f * std::max(1.0f, ImGui::GetFontSize() / 16.0f);
+    // R3: below 960 px the Library is its header bar; a click opens it for this session
+    const bool narrow = width < 960.0f * std::max(1.0f, ImGui::GetFontSize() / 16.0f);
+    const bool collapsed = settings.libraryCollapsed || (narrow && !libraryNarrowOpen);
     if (ImGui::ArrowButton("##libcollapse", collapsed ? ImGuiDir_Up : ImGuiDir_Down)) {
-        settings.libraryCollapsed = !settings.libraryCollapsed;
-        settings.save();
+        if (narrow && !settings.libraryCollapsed) {
+            libraryNarrowOpen = !libraryNarrowOpen;
+        } else {
+            settings.libraryCollapsed = !settings.libraryCollapsed;
+            if (!settings.libraryCollapsed && narrow) libraryNarrowOpen = true;
+            settings.save();
+        }
     }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip(collapsed ? "Show the Library" : "Hide the Library");
+    libraryShown = !collapsed;
     ImGui::SameLine();
     for (LibraryTab t : {LibraryTab::Looks, LibraryTab::ColorSchemes, LibraryTab::Templates}) {
         const char* label = t == LibraryTab::Looks ? "Looks" : t == LibraryTab::ColorSchemes ? "Color Schemes" : "Templates";
@@ -234,7 +311,7 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
         applyLibraryItem(tab, pick, false);
     }
     ImGui::SameLine();
-    if (ImGui::Button(ICON_FA_ELLIPSIS "###libmenu")) ImGui::OpenPopup("##libmenu");
+    if (library->savesItems() && ImGui::Button(ICON_FA_ELLIPSIS "###libmenu")) ImGui::OpenPopup("##libmenu");
     if (ImGui::BeginPopup("##libmenu")) {
         if (ImGui::MenuItem("Save As Look...")) {
             saveAsTab = LibraryTab::Looks;
@@ -288,7 +365,9 @@ void TitleDesignerWindow::drawLibrary(float width, float height) {
     const ImVec2 tile = v.tileSize == "s" ? ImVec2(120, 68) : v.tileSize == "l" ? ImVec2(240, 135) : ImVec2(160, 90);
     const ImVec2 tileSize(tile.x * scale, tile.y * scale);
     ImGui::BeginChild("##tiles", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
-    if (filtered.empty()) {
+    if (items.empty()) {
+        ImGui::TextDisabled(tab == LibraryTab::Templates ? "No Templates in this project yet" : "Nothing here yet");
+    } else if (filtered.empty()) {
         const char* noun = tab == LibraryTab::Looks ? "Looks" : tab == LibraryTab::ColorSchemes ? "Color Schemes" : "Templates";
         ImGui::TextDisabled("No %s match \"%s\"", noun, v.libraryQuery.c_str());
         ImGui::SameLine();

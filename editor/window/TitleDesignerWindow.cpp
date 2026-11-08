@@ -24,12 +24,14 @@
 #include "titleart/designer/TitleHandles.h"
 #include "titleart/designer/TitleLayerThumbnails.h"
 #include "titleart/designer/TitlePages.h"
+#include "titleart/designer/TitleStarterLibrary.h"
 #include "titleart/designer/TitleTextEdit.h"
 #include "titleart/fonts/FontCatalog.h"
 #include "titleart/fonts/FontPreviewRaster.h"
 #include "util/FileUtils.h"
 #include "util/ImePreedit.h"
 #include "util/SafeWrite.h"
+#include "util/SystemFonts.h"
 #include "util/UIProbe.h"
 #include "window/DeviceProfiles.h"
 #include "window/InspectorWindowTitleArt.h"
@@ -85,6 +87,10 @@ void TitleDesignerWindow::createLive() {
     if (canvas) return;
     canvas = std::make_unique<TitleCanvasView>(project);
     thumbnails = std::make_unique<TitleLayerThumbnails>(project, OWNER);
+    libraryTiles = std::make_unique<TitleLayerThumbnails>(project, OWNER);
+    starterLibrary = std::make_unique<TitleStarterLibrary>(&doc, [this](LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
+        return starterTile(tab, item, width, height, visible);
+    });
     textEdit = std::make_unique<TitleTextEdit>();
     gizmo2d = std::make_unique<TitleGizmo2D>();
     gizmo3d = std::make_unique<TitleGizmo3D>();
@@ -110,7 +116,7 @@ void TitleDesignerWindow::destroyLive() {
     if (doc.gestureActive()) doc.cancelGesture();
     doc.clearPreview();
     TitlePreviewQueue::editor().cancelAll(OWNER);
-    if (TitleLibraryProvider* library = libraryProvider()) library->cancelAll();
+    if (TitleLibraryProvider* provider = library()) provider->cancelAll();
     if (gpuTimingHeld) {
         SystemRender::releaseGpuTiming();
         gpuTimingHeld = false;
@@ -120,6 +126,8 @@ void TitleDesignerWindow::destroyLive() {
     }
     canvas.reset();
     thumbnails.reset();
+    libraryTiles.reset();
+    starterLibrary.reset();
     textEdit.reset();
     gizmo2d.reset();
     gizmo3d.reset();
@@ -235,6 +243,7 @@ bool TitleDesignerWindow::open(const fs::path& file, std::string* error) {
     restoreSelection();
     if (canvas) canvas->clear();
     if (thumbnails) thumbnails->cancelAll();
+    if (libraryTiles) libraryTiles->cancelAll();
     indexChange = ~0ull;
     lintChange = ~0ull;
     searchText.clear();
@@ -300,6 +309,7 @@ bool TitleDesignerWindow::needsFrames() const {
     if (!windowOpen || !canvas) return false;
     const CanvasRenderInfo& info = canvas->info();
     return info.busy || info.rebuilding || now() - lastViewChange < 0.5 || doc.gestureActive() || (thumbnails && thumbnails->pendingCount() > 0) ||
+           (libraryTiles && libraryTiles->pendingCount() > 0) ||
            textEditing() || drag != Drag::None;
 }
 
@@ -384,7 +394,9 @@ bool TitleDesignerWindow::setPanel(const std::string& panel, std::string* error)
     } else if (panel == "properties") {
         settings.propertiesCollapsed = false;
     } else if (panel == "library") {
+        // shown, also on a narrow window where it folds to its header (R3)
         settings.libraryCollapsed = false;
+        libraryNarrowOpen = true;
     } else {
         if (error) *error = "panel '" + panel + "' is not one of layers, properties, library, history";
         return false;
@@ -502,6 +514,10 @@ ta::Json TitleDesignerWindow::state() const {
     if (!doc.editable()) out["read_only"] = doc.readOnlyReason();
     out["search"] = searchText;
     out["text_editing"] = textEditing();
+    out["library"] = {{"provider", libraryProvider() ? "registered" : "starter"}, {"shown", libraryShown}};
+    ta::Json notices = ta::Json::array();
+    if (cjkNoticeShown) notices.push_back("cjk_font_missing");
+    out["notices"] = notices;
     if (rectValid) out["rect"] = ta::Json::array({rectMin.x, rectMin.y, rectMax.x - rectMin.x, rectMax.y - rectMin.y});
     return out;
 }
@@ -972,6 +988,7 @@ void TitleDesignerWindow::handleExternalChange() {
 void TitleDesignerWindow::tick() {
     handleExternalChange();
     if (thumbnails) thumbnails->process();
+    if (libraryTiles) libraryTiles->process();
     // the stats acquire GPU timing only while shown (R72)
     if (settings.stats && !gpuTimingHeld) {
         SystemRender::acquireGpuTiming();
@@ -1030,18 +1047,21 @@ void TitleDesignerWindow::show() {
     ImePreedit::setInlineWanted(textEditing() && focused);
     tick();
 
+    libraryShown = false;
     drawToolbar();
     drawReadOnlyBanner();
+    drawCjkFontNotice();
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float width = avail.x;
     const float statusHeight = ImGui::GetFrameHeight() + 2.0f;
-    const bool hasLibrary = libraryProvider() != nullptr;
+    const bool hasLibrary = library() != nullptr && doc.isOpen() && !newerVersion();
     const float scale = ImGui::GetFontSize() / 16.0f;
     // R3: narrow windows
     const bool narrow = width < 960.0f * std::max(1.0f, scale);
     const bool tiny = width < 480.0f * std::max(1.0f, scale);
-    const float libraryHeight = !hasLibrary ? 0.0f : (settings.libraryCollapsed || narrow) ? ImGui::GetFrameHeightWithSpacing() * 1.2f
-                                                                                           : settings.libraryHeight * scale;
+    // R3: narrow, the Library is its header bar until a click opens it
+    const bool libraryFolded = settings.libraryCollapsed || (narrow && !libraryNarrowOpen);
+    const float libraryHeight = !hasLibrary ? 0.0f : libraryFolded ? ImGui::GetFrameHeightWithSpacing() * 1.2f : settings.libraryHeight * scale;
     const float mainHeight = std::max(120.0f, avail.y - libraryHeight - statusHeight);
 
     if (tiny) {
@@ -1120,7 +1140,7 @@ void TitleDesignerWindow::show() {
     }
 
     if (hasLibrary) {
-        if (!narrow && !settings.libraryCollapsed) {
+        if (!libraryFolded) {
             ImGui::InvisibleButton("##splitlib", ImVec2(width, ImGui::GetStyle().ItemSpacing.y));
             if (ImGui::IsItemHovered() || ImGui::IsItemActive()) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
             if (ImGui::IsItemActive()) settings.libraryHeight = std::clamp(settings.libraryHeight - ImGui::GetIO().MouseDelta.y / scale, 80.0f, 900.0f);
@@ -1173,6 +1193,82 @@ void TitleDesignerWindow::drawReadOnlyBanner() {
     ImGui::Text(ICON_FA_LOCK " Read-only: %s", doc.readOnlyReason().c_str());
     ImGui::EndChild();
     ImGui::PopStyleColor();
+}
+
+namespace {
+
+    // Han, kana, Hangul, CJK punctuation and full-width forms: what the editor's own fonts lack
+    bool isCjkCodepoint(unsigned int c) {
+        return (c >= 0x1100 && c <= 0x11FF) || (c >= 0x2E80 && c <= 0x2FDF) || (c >= 0x3000 && c <= 0x30FF) || (c >= 0x3130 && c <= 0x9FFF) ||
+               (c >= 0xAC00 && c <= 0xD7AF) || (c >= 0xF900 && c <= 0xFAFF) || (c >= 0xFF00 && c <= 0xFFEF) || (c >= 0x20000 && c <= 0x3134F);
+    }
+
+    bool hasCjk(const std::string& text) {
+        const char* p = text.c_str();
+        const char* end = p + text.size();
+        while (p < end) {
+            unsigned int c = 0;
+            const int n = ImTextCharFromUtf8(&c, p, end);
+            if (n <= 0) break;
+            if (isCjkCodepoint(c)) return true;
+            p += n;
+        }
+        return false;
+    }
+
+    // dismissed: not said again this session
+    bool cjkFontNoticeDismissed = false;
+
+    const char* const CJK_FONT_DOCS = "https://github.com/JasperRaccoon/JasperEngine/blob/main/docs/editor/text-and-languages.md#fonts-in-the-editor";
+
+}
+
+// A title in Chinese, Japanese or Korean on a system the editor found no CJK font on: the
+// editor's fields (Text, layer names, search) would show boxes. Said once, until dismissed.
+void TitleDesignerWindow::drawCjkFontNotice() {
+    cjkNoticeShown = false;
+    if (cjkFontNoticeDismissed || !doc.isOpen()) return;
+    if (cjkScanDocument != doc.document().get() || cjkScanChange != doc.changeCount()) {
+        cjkScanDocument = doc.document().get();
+        cjkScanChange = doc.changeCount();
+        cjkInDocument = false;
+        ta::forEachLayer(doc.committed().root, [&](const ta::Json& l, const ta::Json*, int) {
+            if (hasCjk(str(l, "name")) || (ta::layerTypeOf(l) == ta::LayerType::Text && hasCjk(str(l, "text")))) cjkInDocument = true;
+            return !cjkInDocument;
+        });
+    }
+    if (!cjkInDocument) return;
+    int found = -1;
+    if (systemCjkOverride) {
+        found = systemCjkOverride();
+    } else if (SystemFonts::state() == SystemFonts::State::None) {
+        found = 0;
+    } else if (SystemFonts::state() == SystemFonts::State::Ready) {
+        found = 0;
+        for (const SystemFonts::Font& font : SystemFonts::fonts()) {
+            if (font.covers != "emoji") found = 1;
+        }
+    }
+    if (found != 0) return;
+    cjkNoticeShown = true;
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.75f, 0.35f, 1.0f));
+    ImGui::TextUnformatted(ICON_FA_LANGUAGE);
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + std::max(200.0f, ImGui::GetContentRegionAvail().x - 120.0f * ImGui::GetFontSize() / 16.0f));
+    ImGui::TextDisabled("No system CJK font found: this title's Chinese, Japanese or Korean characters show as boxes in the editor's "
+                        "fields (the title renders with its own font). Install one, e.g. Noto Sans CJK, and restart; "
+                        "Preferences > CJK Font Language (cjk_font_language) picks its glyph forms.");
+    ImGui::PopTextWrapPos();
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Docs###cjkdocs")) {
+        auto openInShell = ImGui::GetPlatformIO().Platform_OpenInShellFn;
+        if (!openInShell || !openInShell(ImGui::GetCurrentContext(), CJK_FONT_DOCS)) reportError(std::string("Could not open your browser: ") + CJK_FONT_DOCS);
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", CJK_FONT_DOCS);
+    ImGui::SameLine();
+    if (ImGui::SmallButton(ICON_FA_XMARK "###cjkdismiss")) cjkFontNoticeDismissed = true;
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Do not say this again this session");
 }
 
 void TitleDesignerWindow::drawNotices() {

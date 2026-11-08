@@ -49,6 +49,7 @@ namespace jasperengine::editor {
     namespace titledesigner {
         class TitleCanvasView;
         class TitleLayerThumbnails;
+        class TitleStarterLibrary;
         class TitleTextEdit;
         class TitleGizmo2D;
         class TitleGizmo3D;
@@ -175,6 +176,8 @@ namespace jasperengine::editor {
         // live only while open (R65)
         std::unique_ptr<titledesigner::TitleCanvasView> canvas;
         std::unique_ptr<titledesigner::TitleLayerThumbnails> thumbnails;
+        std::unique_ptr<titledesigner::TitleLayerThumbnails> libraryTiles;     // the starter Library's tiles
+        std::unique_ptr<titledesigner::TitleStarterLibrary> starterLibrary;    // while no provider is registered
         std::unique_ptr<titledesigner::TitleTextEdit> textEdit;
         std::unique_ptr<titledesigner::TitleGizmo2D> gizmo2d;
         std::unique_ptr<titledesigner::TitleGizmo3D> gizmo3d;
@@ -332,8 +335,30 @@ namespace jasperengine::editor {
         // ---- stats (R72) ----
         bool gpuTimingHeld = false;
 
+        // ---- the Library strip (R3, R40) ----
+        bool libraryNarrowOpen = false;     // narrow: opened from its header bar
+        bool libraryShown = false;          // its tiles were drawn this frame
+        // a starter tile's document (the committed one with the item applied), made again when the
+        // document or the target changes
+        struct StarterTileSource {
+            std::string key;
+            std::shared_ptr<const jasperengine::titleart::TitleArtDoc> doc;
+            std::string layer;
+            jasperengine::titleart::TitleRect bounds;
+            uint64_t content = 0;
+            std::string failed;
+        };
+        std::map<std::string, StarterTileSource> starterTileSources;
+
+        // ---- no system CJK font (the editor's fields would show boxes) ----
+        const void* cjkScanDocument = nullptr;
+        uint64_t cjkScanChange = ~0ull;
+        bool cjkInDocument = false;
+        bool cjkNoticeShown = false;        // this frame
+
         // test hooks
         std::function<double()> clockOverride;
+        std::function<int()> systemCjkOverride;     // -1 unknown, 0 none, 1 found
         bool commitPerFrameForTesting = false;
 
         double now() const;
@@ -409,6 +434,11 @@ namespace jasperengine::editor {
         void jumpToHit(size_t i);
         void commitNamed(const titledesigner::Json& ops, const std::string& name);
         std::string libraryTargetKey() const;
+        // S84's provider when registered, else the starter Library (TitleStarterLibrary)
+        titledesigner::TitleLibraryProvider* library() const;
+        titledesigner::LibraryTile starterTile(titledesigner::LibraryTab tab, const titledesigner::LibraryItem& item, float width, float height,
+                                               bool visible);
+        void drawCjkFontNotice();
         std::vector<std::string> fontTextOfSelection() const;
     };
 

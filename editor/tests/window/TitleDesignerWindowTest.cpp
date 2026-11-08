@@ -89,6 +89,8 @@ namespace jasperengine::editor {
         static void setClock(W& w, std::function<double()> clock) { w.clockOverride = std::move(clock); }
         static TitleDesignerSettings& settings(W& w) { return w.settings; }
         static void exposeField(W& w, const FieldRef& target, const std::string& label) { w.exposeField(target, label); }
+        static TitleLibraryProvider* library(W& w) { return w.library(); }
+        static void setSystemCjk(W& w, std::function<int()> found) { w.systemCjkOverride = std::move(found); }
     };
 
 }
@@ -384,6 +386,76 @@ TEST(TitleDesignerWindowDeathTest, ExposeDialogIsAnEditorModal) {
         ASSERT_EQ(exposed.size(), exposedBefore + 1);
         EXPECT_EQ(exposed.back().value("name", std::string()), "headline");
         EXPECT_EQ(w.p->getProjectCommandHistory()->top()->name(), "Expose Parameter headline");
+    });
+}
+
+// R40, R41, D18: with no Library provider registered the strip is in view with the starter Looks,
+// and a Look's hover preview is the document its click commits. Red control: the window without
+// its starter Library (library() returning only a registered provider) shows no strip and has
+// nothing to apply.
+TEST(TitleDesignerWindowDeathTest, StarterLibraryInViewByDefault) {
+    IN_EDITOR("starter", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        const fs::path file = newTitle(w, "starter");
+        ASSERT_TRUE(window->open(file, nullptr));
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        EXPECT_EQ(window->state()["library"].value("provider", std::string()), "starter");
+        EXPECT_TRUE(window->state()["library"].value("shown", false)) << "the strip is in view by default";
+        TitleLibraryProvider* library = Access::library(*window);
+        ASSERT_NE(library, nullptr);
+        const std::vector<LibraryItem> looks = library->items(LibraryTab::Looks);
+        ASSERT_FALSE(looks.empty());
+        EXPECT_FALSE(library->items(LibraryTab::ColorSchemes).empty());
+        auto gold = std::find_if(looks.begin(), looks.end(), [](const LibraryItem& i) { return i.id == "starter_gold"; });
+        ASSERT_NE(gold, looks.end());
+        ASSERT_TRUE(window->select({"Title"}));
+        CommandHistory* history = w.p->getProjectCommandHistory();
+        const size_t position = history->position();
+        ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, *gold, true));
+        EXPECT_EQ(history->position(), position) << "a preview is no step";
+        const std::string previewed = ta::writeTitleArt(window->designer().shown());
+        ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, *gold, false));
+        EXPECT_EQ(history->top()->name(), "Apply Look Casino Gold");
+        EXPECT_EQ(readAll(file), previewed) << "the committed document is the previewed one";
+        const ta::Json* layer = layerById(window->designer().committed(), titleLayer(*window));
+        ASSERT_NE(layer, nullptr);
+        EXPECT_EQ((*layer)["style"]["rims"].size(), 3u);
+        const ta::Json effects = layer->value("effects", ta::Json::array());
+        EXPECT_TRUE(std::any_of(effects.begin(), effects.end(), [](const ta::Json& e) { return e.value("type", std::string()) == "outer_glow"; }));
+        // applying it again replaces, never stacks
+        ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, *gold, false));
+        layer = layerById(window->designer().committed(), titleLayer(*window));
+        EXPECT_EQ((*layer)["style"]["rims"].size(), 3u);
+        EXPECT_EQ((*layer)["effects"].size(), 2u);
+    });
+}
+
+// No system CJK font and a title in Japanese: the window says so once, naming the setting, and
+// says nothing with a CJK font found or with no CJK text. Red control: the notice never drawn
+// (state().notices empty) fails the first check.
+TEST(TitleDesignerWindowDeathTest, CjkFontNotice) {
+    IN_EDITOR("cjk", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        const fs::path file = newTitle(w, "cjk");
+        ASSERT_TRUE(window->open(file, nullptr));
+        const std::string layer = titleLayer(*window);
+        ASSERT_FALSE(layer.empty());
+        std::string error;
+        ASSERT_TRUE(window->runOps(ta::Json::array({{{"op", "set_text"}, {"layer", "id:" + layer}, {"text", "\xE6\xBF\x80\xE7\x86\xB1 JACKPOT"}}}), "Set Text", &error)) << error;
+        auto notices = [&]() { return window->state().value("notices", ta::Json::array()); };
+        Access::setSystemCjk(*window, []() { return 0; });
+        Access::drawFrame(*window);
+        EXPECT_EQ(notices(), ta::Json::array({"cjk_font_missing"})) << "no CJK font and Japanese text";
+        Access::setSystemCjk(*window, []() { return -1; });
+        Access::drawFrame(*window);
+        EXPECT_TRUE(notices().empty()) << "not while the search runs";
+        Access::setSystemCjk(*window, []() { return 1; });
+        Access::drawFrame(*window);
+        EXPECT_TRUE(notices().empty()) << "a CJK font was found";
+        Access::setSystemCjk(*window, []() { return 0; });
+        ASSERT_TRUE(window->runOps(ta::Json::array({{{"op", "set_text"}, {"layer", "id:" + layer}, {"text", "JACKPOT"}}}), "Set Text", &error)) << error;
+        Access::drawFrame(*window);
+        EXPECT_TRUE(notices().empty()) << "no CJK text";
     });
 }
 

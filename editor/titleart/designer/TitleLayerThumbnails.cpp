@@ -27,9 +27,9 @@ double TitleLayerThumbnails::now() const {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-void TitleLayerThumbnails::touch(const std::string& layerId) {
-    recency.remove(layerId);
-    recency.push_front(layerId);
+void TitleLayerThumbnails::touch(const std::string& slot) {
+    recency.remove(slot);
+    recency.push_front(slot);
     while (recency.size() > MAX_TEXTURES) {
         const std::string oldest = recency.back();
         recency.pop_back();
@@ -44,10 +44,26 @@ void TitleLayerThumbnails::touch(const std::string& layerId) {
 
 ImTextureID TitleLayerThumbnails::thumbnail(const std::shared_ptr<const ta::TitleArtDoc>& doc, const std::string& layerId, const ta::TitleRect& bounds,
                                             uint64_t content, int pixels, bool visible) {
-    if (!doc || layerId.empty()) return 0;
-    Entry& entry = entries[layerId];
-    touch(layerId);
-    const std::string key = doc->guid() + ":" + layerId + ":" + std::to_string(content) + ":" + std::to_string(doc->canvasWidth()) + "x" +
+    return thumbnail(layerId, doc, layerId, bounds, content, pixels, visible, TitlePreviewPriority::Layers);
+}
+
+ImVec2 TitleLayerThumbnails::pictureSize(const std::string& slot) const {
+    auto it = entries.find(slot);
+    if (it == entries.end() || it->second.key.empty()) return ImVec2(0, 0);
+    return ImVec2((float)it->second.width, (float)it->second.height);
+}
+
+bool TitleLayerThumbnails::pending(const std::string& slot) const {
+    auto it = entries.find(slot);
+    return it != entries.end() && (it->second.request != 0 || it->second.key != it->second.wantedKey);
+}
+
+ImTextureID TitleLayerThumbnails::thumbnail(const std::string& slot, const std::shared_ptr<const ta::TitleArtDoc>& doc, const std::string& layerId,
+                                            const ta::TitleRect& bounds, uint64_t content, int pixels, bool visible, TitlePreviewPriority priority) {
+    if (!doc || layerId.empty() || slot.empty()) return 0;
+    Entry& entry = entries[slot];
+    touch(slot);
+    const std::string key = doc->guid() + ":" + slot + ":" + layerId + ":" + std::to_string(content) + ":" + std::to_string(doc->canvasWidth()) + "x" +
                             std::to_string(doc->canvasHeight()) + ":" + std::to_string(pixels);
     const double t = now();
     if (key != entry.wantedKey) {
@@ -72,7 +88,7 @@ ImTextureID TitleLayerThumbnails::thumbnail(const std::shared_ptr<const ta::Titl
         request.region = {(int)std::floor(left), (int)std::floor(top), (int)std::ceil(bounds.width) + 1, (int)std::ceil(bounds.height) + 1};
         Project* p = project;
         entry.request = TitlePreviewQueue::editor().request(
-            TitlePreviewPriority::Layers, "layerthumb:" + key, [p, request]() { return std::make_unique<TitleArtPreviewJob>(p, request); }, owner, visible);
+            priority, "layerthumb:" + key, [p, request]() { return std::make_unique<TitleArtPreviewJob>(p, request); }, owner, visible);
         entry.requestKey = entry.wantedKey;
         requests++;
     }
@@ -81,7 +97,7 @@ ImTextureID TitleLayerThumbnails::thumbnail(const std::shared_ptr<const ta::Titl
 }
 
 void TitleLayerThumbnails::process() {
-    for (auto& [layerId, entry] : entries) {
+    for (auto& [slot, entry] : entries) {
         if (!entry.request) continue;
         const TitlePreviewState state = TitlePreviewQueue::editor().state(entry.request);
         if (state == TitlePreviewState::Failed) {
@@ -98,6 +114,8 @@ void TitleLayerThumbnails::process() {
             entry.texture.setData("editor:titledesigner-layer:" + std::to_string(++uploads),
                                   TextureData(image.width, image.height, (unsigned int)entry.pixels.size(), ColorFormat::RGBA, 4, entry.pixels.data()));
             entry.texture.load();
+            entry.width = image.width;
+            entry.height = image.height;
             entry.key = entry.requestKey;
         }
         TitlePreviewQueue::editor().cancel(entry.request);
