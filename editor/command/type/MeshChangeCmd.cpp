@@ -5,6 +5,7 @@
 #include "component/MeshComponent.h"
 
 #include "Stream.h"
+#include "util/ProjectUtils.h"
 
 using namespace jasperengine;
 
@@ -22,7 +23,9 @@ bool editor::MeshChangeCmd::execute(){
 
     oldMesh = Stream::encodeMeshComponent(sceneProject->scene->getComponent<MeshComponent>(entity));
     prefabUndo.capture(project, sceneId, entity);
-    sceneProject->scene->getComponent<MeshComponent>(entity) = Stream::decodeMeshComponent(newMesh);
+    MeshComponent& mesh = sceneProject->scene->getComponent<MeshComponent>(entity);
+    ProjectUtils::releaseMeshResources(sceneProject->scene, entity, mesh);
+    mesh = Stream::decodeMeshComponent(newMesh);
 
     sceneProject->isModified = true;
 
@@ -35,7 +38,9 @@ bool editor::MeshChangeCmd::execute(){
 void editor::MeshChangeCmd::undo(){
     SceneProject* sceneProject = project->getScene(sceneId);
 
-    sceneProject->scene->getComponent<MeshComponent>(entity) = Stream::decodeMeshComponent(oldMesh);
+    MeshComponent& mesh = sceneProject->scene->getComponent<MeshComponent>(entity);
+    ProjectUtils::releaseMeshResources(sceneProject->scene, entity, mesh);
+    mesh = Stream::decodeMeshComponent(oldMesh);
 
     sceneProject->isModified = wasModified;
 

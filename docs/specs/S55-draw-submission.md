@@ -205,8 +205,9 @@ From `jasper-render.md`, with file and line citations there:
   shader batch without change. A fork keeps its own block: `linkBatchVariant` sees the block still in
   the variant's reflection and the submesh draws alone. The variant's uniform slots are mapped to
   the source's by name, so slot numbering may differ.
-- **Batch variants are pipeline variants on their own `ObjectRender`s** (`Submesh::batchRender`,
-  `batchDepthRender`), made through the S32 async path. A load does not wait for their shaders: the
+- **Batch variants are pipeline variants on their own `ObjectRender`s** (`SubmeshBatchVariants::render`,
+  `depthRender`, held by `Submesh::batch` only while GPU Instancing is on and the submesh can batch),
+  made through the S32 async path. A load does not wait for their shaders: the
   submesh draws alone and the mesh reloads when they are built (`needVariantReload`). Exports
   precompile them (`ShaderVariantCollector`).
 - **One instance stream buffer a frame** (sokol `sg_append_buffer`, 256 KB growing by doubling up to
