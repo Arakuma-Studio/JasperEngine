@@ -417,13 +417,24 @@ TitlePx TitlePlanner::title3D(const DrawNode& node, const std::vector<std::strin
     step.costWeight = 40.0f * (float)(plan->k * plan->k) * (float)step.passes;
     step.splittable = false;
     TitleRenderServices* services = &svc;
-    step.ready = [services, plan, testFlags]() { return title3DRenderer(*services).ready(*plan, testFlags); };
+    // a render that stopped at a program's first draw (TitleFirstDraws) runs again on a later frame
+    auto deferred = std::make_shared<bool>(false);
+    step.ready = [services, plan, testFlags, deferred]() {
+        if (*deferred) {
+            if (!TitleFirstDraws::available()) return false;
+            *deferred = false;
+        }
+        return title3DRenderer(*services).ready(*plan, testFlags);
+    };
     std::shared_ptr<TitleJobState> state = st;
-    step.run = [state, plan, rect, pxScale, testFlags, slot, coloured](const TitleRectI&, std::string& error) {
+    step.run = [state, plan, rect, pxScale, testFlags, slot, coloured, deferred](const TitleRectI&, std::string& error) {
         if (!state->alive(error)) return false;
         TitleTarget* target = state->target(slot, error);
         if (!target) return false;
-        return title3DRenderer(state->services).render(*plan, rect, pxScale, coloured, state->services, target, testFlags, error);
+        Title3DRenderer& renderer = title3DRenderer(state->services);
+        const bool ok = renderer.render(*plan, rect, pxScale, coloured, state->services, target, testFlags, error);
+        *deferred = ok && renderer.lastRenderDeferred();
+        return ok;
     };
     steps.add(std::move(step));
     return out;

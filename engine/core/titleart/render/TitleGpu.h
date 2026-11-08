@@ -23,6 +23,7 @@
 #include "Export.h"
 #include "render/CameraRender.h"
 #include "render/ObjectRender.h"
+#include "render/PipelineState.h"
 #include "render/TextureRender.h"
 #include "shader/ShaderBuildTypes.h"
 #include "texture/Framebuffer.h"
@@ -134,11 +135,12 @@ namespace jasperengine::titleart {
     };
 
     // The first draw of a program in a pipeline state makes the driver compile that variant on the
-    // render thread (llvmpipe's LLVM JIT: 4-5 s for a title art program; a GL worker context, S32,
-    // takes it off the render thread on hardware, not on a software rasteriser). Title Art lets one
-    // new (program, state) draw per frame: the others wait for a later frame (their steps run
-    // again), so a render that meets many new programs spreads their compiles over frames instead
-    // of holding one frame for all of them. Main thread.
+    // render thread (llvmpipe's LLVM JIT: up to 1-2 s for a title art program; a GL worker context,
+    // S32, takes it off the render thread on hardware, not on a software rasteriser). Title Art lets
+    // one new (program, state) draw per frame: the others wait for a later frame (their steps run
+    // again; a 3D layer's render stops at the draw and runs again), so a render that meets many new
+    // programs spreads their compiles over frames instead of holding one frame for all of them.
+    // Main thread.
     struct TitleFirstDrawStats {
         uint64_t granted = 0;       // new (program, state) keys let through
         uint64_t deferred = 0;      // draws sent to a later frame
@@ -146,12 +148,11 @@ namespace jasperengine::titleart {
     };
     class JASPERENGINE_API TitleFirstDraws {
     public:
-        // true when `key` drew before, or no new key went this frame (then this one goes now)
+        // true when `key` (titleDrawKey) drew before, or no new key went this frame (then this one
+        // goes now: the caller draws it at once)
         static bool allow(uint64_t key);
         // `key` drew before
         static bool drew(uint64_t key);
-        // the keys of one step that draws them all at once (a 3D layer's render): as one new key
-        static bool allowGroup(const std::vector<uint64_t>& keys);
         // no new key went this frame
         static bool available();
         static const TitleFirstDrawStats& stats();
@@ -212,5 +213,8 @@ namespace jasperengine::titleart {
 
     // the program's ShaderPool key (TitleRenderJob::shaderKeys)
     JASPERENGINE_API ShaderKey titleRenderProgramKey(uint32_t program);
+
+    // a draw's TitleFirstDraws key: its program (shader type and properties) in a pipeline state
+    JASPERENGINE_API uint64_t titleDrawKey(ShaderType type, uint64_t properties, const PipelineState& state);
 
 }

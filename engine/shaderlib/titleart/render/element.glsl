@@ -122,6 +122,45 @@
 #define uPatColor (ta.p[33].rgb)
 #define uPatColor2 (ta.p[34].rgb)
 
+// The element's variant (render/TitleElementVariant.h): the planner names the pattern kind, the
+// texture kind and whether relief, glass, reflection, satin and spans shade, from the same values
+// it writes into the block, so each is a constant here and the code of every other kind folds
+// away (llvmpipe compiled the program with all of them for 5 s). A member made a constant holds
+// the value the block would: the pixels are the same. TA_EL_WHOLE is the program with every
+// feature read from the block (tests).
+#ifndef TA_EL_WHOLE
+  #ifndef TA_EL_PATTERN
+    #define TA_EL_PATTERN 0
+  #endif
+  #ifndef TA_EL_TEXTURE
+    #define TA_EL_TEXTURE 0
+  #endif
+  #undef uPatKind
+  #define uPatKind TA_EL_PATTERN
+  #undef uTex
+  #define uTex TA_EL_TEXTURE
+  #ifndef TA_EL_RELIEF
+    #undef uPatRelief
+    #define uPatRelief 0.0
+  #endif
+  #ifndef TA_EL_GLASS
+    #undef uGlass
+    #define uGlass false
+  #endif
+  #ifndef TA_EL_REFLECTION
+    #undef uRefl
+    #define uRefl false
+  #endif
+  #ifndef TA_EL_SATIN
+    #undef uSatin
+    #define uSatin false
+  #endif
+  #ifndef TA_EL_SPAN
+    #undef uSpan
+    #define uSpan 0
+  #endif
+#endif
+
 vec2 patternCoord(vec2 pos) { return vec2(dot(uPatXform.xy, pos), dot(uPatXform.zw, pos)) + uPatOffset; }
 
 // ---- fills (Pachislop's FILL_GLSL): every fill kind over a span box (bmin..bmax, the units of

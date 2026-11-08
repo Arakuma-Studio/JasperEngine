@@ -126,6 +126,8 @@ namespace jasperengine::titleart {
         uint64_t aoPasses = 0;
         uint64_t behindCopies = 0;
         uint64_t glintPasses = 0;
+        // renders that stopped at a program's first draw (TitleFirstDraws) and ran again later
+        uint64_t deferredRenders = 0;
     };
 
     // the share of an environment build one ready() call starts with (texel x samples); the
@@ -150,9 +152,12 @@ namespace jasperengine::titleart {
         // call runs a share of the build)
         bool ready(const Title3DPlan& plan, uint32_t testFlags);
         // the layer region `region` (output px of the canvas at `pxScale`) into `out` (an S80
-        // node target of the region's size); false with `error`
+        // node target of the region's size); false with `error`. A render that meets a program's
+        // first draw after another program's this frame stops there (TitleFirstDraws): true with
+        // lastRenderDeferred(), `out` unfinished, and the caller renders again on a later frame
         bool render(const Title3DPlan& plan, const TitleRectI& region, double pxScale, const std::vector<std::string>& parts,
                     TitleRenderServices& services, TitleTarget* out, uint32_t testFlags, std::string& error);
+        bool lastRenderDeferred() const;
 
         // the passes a render of the plan runs (steps' estimates, §6.7's pass budgets)
         static uint32_t passCount(const Title3DPlan& plan);
@@ -164,6 +169,9 @@ namespace jasperengine::titleart {
         struct Impl;
         std::unique_ptr<Impl> impl;
         Title3DStats counters;
+
+        bool renderPasses(const Title3DPlan& plan, const TitleRectI& region, double pxScale, const std::vector<std::string>& parts,
+                          TitleRenderServices& services, TitleTarget* out, uint32_t testFlags, std::string& error);
     };
 
     // the renderer of a services object (made on first use)

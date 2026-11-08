@@ -254,15 +254,20 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
         }
         auto* t = static_cast<SokolTitleTarget*>(dst);
         set4(block.p3, 1.0 / t->key().width, 1.0 / t->key().height);
-        im.camera.setColorActions(additive ? LoadAction::LOAD : LoadAction::DONTCARE, StoreAction::STORE);
-        im.camera.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
-        im.camera.setLabel("title 3d glint");
-        im.camera.startRenderPass(&t->framebuffer());
         PipelineState state;
         state.target.color = t->key().format;
         state.target.depth = DepthStencilFormat::NONE;
         state.target.sampleCount = 1;
         state.blend = additive ? BlendMode::ADDITIVE_PREMULTIPLIED : BlendMode::NONE;
+        // a program's first draw after another's this frame: the chain stops (TitleFirstDraws)
+        if (!TitleFirstDraws::allow(titleDrawKey(Impl::typeOf(program), program, state))) {
+            out.deferred = true;
+            return false;
+        }
+        im.camera.setColorActions(additive ? LoadAction::LOAD : LoadAction::DONTCARE, StoreAction::STORE);
+        im.camera.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
+        im.camera.setLabel("title 3d glint");
+        im.camera.startRenderPass(&t->framebuffer());
         bool drawn = false;
         if (p->object.beginDraw(state)) {
             if (p->src.first >= 0) p->object.addTexture(p->src, ShaderStageType::FRAGMENT, src ? src : &im.placeholder);
@@ -360,15 +365,19 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
         set4(fs.shape, rays, angle, lengthOut, std::max(0.75, detail * grid / outPxX * 0.25));
         set4(fs.bloom, std::max(0.75, POINT_BLOOM_SIGMA * detail * grid / outPxX), POINT_BLOOM * 0.25, STREAK_PEAK / std::max(1.0, sigma));
         auto* t = out.light.as<SokolTitleTarget>();
-        im.camera.setColorActions(LoadAction::LOAD, StoreAction::STORE);
-        im.camera.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
-        im.camera.setLabel("title 3d glint sprites");
-        im.camera.startRenderPass(&t->framebuffer());
         PipelineState state;
         state.target.color = ColorFormat::RGBA16F;
         state.target.depth = DepthStencilFormat::NONE;
         state.target.sampleCount = 1;
         state.blend = BlendMode::ADDITIVE_PREMULTIPLIED;
+        if (!TitleFirstDraws::allow(titleDrawKey(ShaderType::TITLE_GLINT_SPRITE, 0, state))) {
+            out.deferred = true;
+            return false;
+        }
+        im.camera.setColorActions(LoadAction::LOAD, StoreAction::STORE);
+        im.camera.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
+        im.camera.setLabel("title 3d glint sprites");
+        im.camera.startRenderPass(&t->framebuffer());
         if (sp->object.beginDraw(state)) {
             if (sp->peaks.first >= 0) sp->object.addTexture(sp->peaks, ShaderStageType::VERTEX, textureOf(peaks));
             sp->object.applyUniformBlock(sp->vsBlock, sizeof(SpriteVs), &vs);

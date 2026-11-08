@@ -204,7 +204,7 @@ void TitlePlanner::problem(TitleProblem p) {
 }
 
 void TitlePlanner::pass(const std::string& label, const std::string& layerId, int slot, const TitleRectI& scissor, TitleRenderProgram program,
-                        PassFill fill, BlendMode blend, bool clear, float costWeight, bool splittable) {
+                        PassFill fill, BlendMode blend, bool clear, float costWeight, bool splittable, uint32_t variant) {
     TitleRenderStep step;
     step.kind = StepKind::Gpu;
     step.label = label;
@@ -212,14 +212,15 @@ void TitlePlanner::pass(const std::string& label, const std::string& layerId, in
     step.scissor = scissor;
     step.costWeight = costWeight;
     step.splittable = splittable && !clear;
-    step.shader = titleRenderProgramKey((uint32_t)program);
+    const uint32_t number = (uint32_t)program | variant;
+    step.shader = titleRenderProgramKey(number);
     TitleRenderServices* services = &svc;
     // a pass whose first draw went to a later frame (TitleFirstDraws) runs again then
     auto deferred = std::make_shared<bool>(false);
-    step.ready = [services, program, deferred]() {
+    step.ready = [services, number, deferred]() {
         std::string error;
         // a program that failed to build is "ready": its run reports the error
-        if (!services->gpu.ensureProgram(program, &error) && error.empty()) return false;
+        if (!services->gpu.ensureProgram(number, &error) && error.empty()) return false;
         if (*deferred) {
             if (!TitleFirstDraws::available()) return false;
             *deferred = false;
@@ -227,10 +228,11 @@ void TitlePlanner::pass(const std::string& label, const std::string& layerId, in
         return true;
     };
     std::shared_ptr<TitleJobState> state = st;
-    step.run = [state, slot, program, fill, blend, clear, deferred](const TitleRectI& rows, std::string& error) {
+    step.run = [state, slot, program, variant, fill, blend, clear, deferred](const TitleRectI& rows, std::string& error) {
         if (!state->alive(error)) return false;
         TitleGpuPass p;
         p.program = program;
+        p.variant = variant;
         p.target = state->target(slot, error);
         if (!p.target) return false;
         p.scissor = rows;

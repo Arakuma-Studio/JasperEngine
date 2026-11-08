@@ -10,12 +10,14 @@
 
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
+#include "titleart/render/TitleElementVariant.h"
 #include "titleart/render/TitleGpu.h"
 #include "titleart/render/TitlePrograms.h"
 
 #include <gtest/gtest.h>
 
 #include <string>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::titleart;
@@ -79,5 +81,46 @@ TEST(TitleArtShadersTest, UnknownProgramFails) {
         ShaderData data;
         std::string error;
         EXPECT_FALSE(ShaderVariantCompiler::compile(titleRenderProgramKey(program), ShaderBackend::Vulkan, nullptr, data, &error)) << program;
+    }
+}
+
+// S80 Deviation 58: the ELEMENT program's variants (TitleElementVariant.h) compile on every target
+// with the slots and the block of the whole program: every pattern kind with its relief, every
+// texture kind and each switch, together (the largest variants), the plain one and the whole one;
+// their names read back as their bits (S32's shader lists name variants so)
+TEST(TitleArtShadersTest, ElementVariantsCompileAllTargets) {
+    ASSERT_TRUE(ShaderVariantCompiler::isAvailable());
+    const ShaderBackend backends[] = {ShaderBackend::GLCore, ShaderBackend::GLES3, ShaderBackend::D3D11,
+                                      ShaderBackend::MetalMacOS, ShaderBackend::MetalIOS, ShaderBackend::Vulkan};
+    const uint32_t element = (uint32_t)TitleRenderProgram::Element;
+    const uint32_t switches = TITLE_ELEMENT_GLASS | TITLE_ELEMENT_REFLECTION | TITLE_ELEMENT_SATIN | TITLE_ELEMENT_SPAN;
+    std::vector<uint32_t> variants = {element, element | TITLE_ELEMENT_WHOLE};
+    for (uint32_t k = 1; k < TITLE_ELEMENT_PATTERN_KINDS; k++) {
+        const uint32_t texture = (k - 1) % (TITLE_ELEMENT_TEXTURE_KINDS - 1) + 1;
+        variants.push_back(element | (k << TITLE_ELEMENT_PATTERN_SHIFT) | TITLE_ELEMENT_RELIEF | (texture << TITLE_ELEMENT_TEXTURE_SHIFT) | switches);
+    }
+    for (uint32_t v : variants) {
+        const ShaderKey key = titleRenderProgramKey(v);
+        EXPECT_EQ(ShaderPool::getPropertiesFromKey(ShaderPool::normalizeKey(key)), v) << "a variant bit is not a named property";
+        const std::string name = ShaderPool::getShaderStr(ShaderType::TITLE_ART, v);
+        ShaderKey parsed;
+        EXPECT_TRUE(ShaderPool::parseShaderStr(name, parsed)) << name;
+        EXPECT_EQ(ShaderPool::getPropertiesFromKey(parsed), v) << name;
+        for (ShaderBackend backend : backends) {
+            SCOPED_TRACE(name + " on " + backendName(backend));
+            ShaderData data;
+            std::string error, log;
+            if (!ShaderVariantCompiler::compile(key, backend, nullptr, data, &error, &log)) {
+                ADD_FAILURE() << error << "\n" << log;
+                continue;
+            }
+            EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), "");
+            for (const ShaderStage& stage : data.stages) {
+                if (stage.type != ShaderStageType::FRAGMENT) continue;
+                EXPECT_LE(stage.samplers.size(), 12u);
+                ASSERT_EQ(stage.uniformblocks.size(), 1u);
+                EXPECT_EQ(stage.uniformblocks[0].sizeBytes, (unsigned)(TITLE_PARAMS * 16));
+            }
+        }
     }
 }

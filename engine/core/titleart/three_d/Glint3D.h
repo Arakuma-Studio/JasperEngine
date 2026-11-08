@@ -57,6 +57,9 @@ namespace jasperengine::titleart {
         TargetRef light;                    // RGBA16F added light on the level-B lattice
         float uv[4] = {1, 1, 0, 0};         // region uv -> light uv: x scale, y scale, x offset, y offset
         uint32_t passes = 0;
+        // a pass met its program's first draw after another program's this frame
+        // (TitleFirstDraws): render() returned false without an error, nothing usable
+        bool deferred = false;
     };
 
     class JASPERENGINE_API Glint3D {
