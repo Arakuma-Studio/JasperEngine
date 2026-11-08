@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+#include <map>
+
 #include "titleart/TitleEffectRegistry.h"
 #include "titleart/fx/FxPresets.h"
 #include "titleart/fx/PachislopGeneratorMap.h"
@@ -133,6 +135,19 @@ TEST(PachislopGeneratorMapTest, EveryGeneratorTypeHasARow) {
     EXPECT_EQ(titlePachislopGeneratorType("patternFill"), "");
 }
 
+// the `source` of each of a type's presets ("<pachislopType>/<presetId>", "" for a new one), read
+// from its file (the shared preset loader keeps the fields every preset has)
+static std::map<std::string, std::string> presetSources(const std::string& type) {
+    std::map<std::string, std::string> out;
+    std::ifstream in(std::string(JASPER_EDITOR_TEST_FIXTURES) + "/../../resources/titleart/fx-presets/" + type + ".yaml");
+    std::stringstream text;
+    text << in.rdbuf();
+    const Json file = Json::parse(text.str(), nullptr, false);
+    if (!file.is_object() || !file.contains("presets")) return out;
+    for (const Json& p : file["presets"]) out[p.value("id", std::string())] = p.value("source", std::string());
+    return out;
+}
+
 TEST(PachislopGeneratorMapTest, EveryPresetIdMapsToOurs) {
     std::set<std::string> theirs;
     for (const auto& [source, params] : pachislopPresets()) {
@@ -144,14 +159,14 @@ TEST(PachislopGeneratorMapTest, EveryPresetIdMapsToOurs) {
         ASSERT_FALSE(id.empty()) << source << " has no preset id of ours";
         const TitleFxPreset* preset = TitleFxPresets::find(type, id);
         ASSERT_TRUE(preset) << source << " -> " << type << "/" << id << " is not in its preset file";
-        EXPECT_EQ(preset->source, source) << type << "/" << id;
+        EXPECT_EQ(presetSources(type)[id], source) << type << "/" << id;
     }
     // the map names no preset Pachislop lacks, and every ported preset of ours is in the map
     for (const TitlePachislopRow& row : titlePachislopGeneratorRows()) {
         for (const auto& [id, ourId] : row.presets) EXPECT_TRUE(theirs.count(row.pachislop + "/" + id)) << row.pachislop << "/" << id;
-        for (const TitleFxPreset& preset : TitleFxPresets::forType(row.type)) {
-            if (preset.source.empty()) continue;
-            EXPECT_TRUE(theirs.count(preset.source)) << row.type << "/" << preset.id << ": source " << preset.source;
+        for (const auto& [id, source] : presetSources(row.type)) {
+            if (source.empty()) continue;
+            EXPECT_TRUE(theirs.count(source)) << row.type << "/" << id << ": source " << source;
         }
     }
 }
