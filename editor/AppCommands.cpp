@@ -7,6 +7,8 @@
 // menu items as commands (S23 R42).
 
 #include "App.h"
+#include "titleart/localisation/TitleLanguageEditing.h"
+#include "window/TitleArtInterchangeWindows.h"
 #include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
 #include "window/HierarchyWindow.h"
@@ -439,6 +441,16 @@ void editor::App::registerCommands(){
                  if (!whileTyping && titleDesignerWindow->typing()) return false;
                  return !nudge || titleDesignerWindow->canvasHasKeys();
              });
+    }
+
+    // S87 R57: Assets > Import Title Art...
+    bind("assets.importTitleArt", [](const CommandArgs&) { openTitleArtImportDialog(); }, [this]() { return !project.getProjectPath().empty(); });
+
+    // S87 R51: the Title Designer's language switcher, one step either way
+    for (const auto& [id, step] : {std::pair<const char*, int>{"titleDesigner.nextLanguage", 1}, {"titleDesigner.previousLanguage", -1}}) {
+        const int by = step;
+        bind(id, [this, by](const CommandArgs&) { titleDesignerCycleLanguage(titleDesignerWindow->designer(), by); },
+             [this]() { return titleDesignerWindow->isOpen(); }, [this]() { return !titleDesignerWindow->typing(); });
     }
 
     // ---- Window > Audio > Captures, while it has focus

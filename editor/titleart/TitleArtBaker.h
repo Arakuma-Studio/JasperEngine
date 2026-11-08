@@ -40,6 +40,10 @@ namespace jasperengine::editor {
         bool force = false;                 // also fresh outputs
         bool dryRun = false;
         int bleedPx = TITLE_ART_BLEED_PX;
+        // S87 R16: the languages to bake (codes; the source's included); empty = the source and
+        // every language with `bake` true. A language that does not differ from the source writes
+        // no set (its sidecar entry is null)
+        std::vector<std::string> languages;
     };
 
     struct TitleBakeFile {
@@ -64,6 +68,7 @@ namespace jasperengine::editor {
         std::vector<std::string> warnings;
         titleart::TitleRectI frame;
         std::vector<std::filesystem::path> written;     // absolute
+        titleart::Json languageFrames = titleart::Json::object();   // S87: code -> frame of each language set baked
 
         titleart::Json toJson() const;
     };
@@ -100,6 +105,13 @@ namespace jasperengine::editor {
         bool cancelled = false;
         std::unique_ptr<titleart::TitleRenderJob> rendering;
         TitleBakeStatus status;
+        // S87: the set being baked ("" = the source) and the sets after it
+        std::string language;
+        std::vector<std::string> pendingLanguages;
+        bool languagesPlanned = false;
+        void planLanguages();
+        bool nextLanguage();
+        void finishLanguages();
 
         bool setUp();
         bool advanceRender(double budgetMs, bool framePhase);
@@ -117,7 +129,12 @@ namespace jasperengine::editor {
     bool loadTitleArtForBake(Project* project, const std::filesystem::path& document, titleart::TitleArtDoc& out, std::string& code,
                              std::string& error);
     // the bake status of a document on disk with the project's assets
-    TitleBakeStatus titleArtStatusOf(Project* project, const std::filesystem::path& document, const titleart::TitleArtDoc& doc);
+    TitleBakeStatus titleArtStatusOf(Project* project, const std::filesystem::path& document, const titleart::TitleArtDoc& doc,
+                                     const std::string& language = {});
+    // S87 R16, §6.6: the source sidecar's `languages` table for `doc` ({source, default, sets: code
+    // -> the language sidecar's file name, or null when it reuses the source set}); null for a
+    // monolingual document
+    titleart::Json titleArtLanguagesTable(Project* project, const std::filesystem::path& document, const titleart::TitleArtDoc& doc);
 
     // Auto Bake (R34)
     class TitleArtAutoBake {

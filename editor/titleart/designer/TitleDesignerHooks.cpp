@@ -13,6 +13,7 @@ namespace {
     struct Hooks {
         std::vector<PanelDef> panels;
         std::vector<ToolbarItemDef> toolbar;
+        std::vector<CanvasOverlayDef> overlays;
         std::vector<PreviewModeDef> previewModes;
         std::vector<std::pair<std::string, CheckSource>> checks;
         EditRouter router;
@@ -57,6 +58,19 @@ void jasperengine::editor::titledesigner::removeToolbarItem(const std::string& i
 
 const std::vector<ToolbarItemDef>& jasperengine::editor::titledesigner::toolbarItems() {
     return hooks().toolbar;
+}
+
+void jasperengine::editor::titledesigner::addCanvasOverlay(CanvasOverlayDef overlay) {
+    eraseId(hooks().overlays, overlay.id);
+    hooks().overlays.push_back(std::move(overlay));
+}
+
+void jasperengine::editor::titledesigner::removeCanvasOverlay(const std::string& id) {
+    eraseId(hooks().overlays, id);
+}
+
+const std::vector<CanvasOverlayDef>& jasperengine::editor::titledesigner::canvasOverlays() {
+    return hooks().overlays;
 }
 
 void jasperengine::editor::titledesigner::setEditRouter(EditRouter router) {

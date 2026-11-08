@@ -170,6 +170,10 @@ uint64_t TitleArtLanguage::generation(){
     return state().generation;
 }
 
+void TitleArtLanguage::localesChanged(){
+    state().generation++;
+}
+
 int TitleArtLanguage::addListener(Listener listener){
     GlobalState& s = state();
     const int id = s.nextListener++;

@@ -76,4 +76,7 @@ namespace jasperengine::editor {
     TitleSvgResult writeTitleSvg(const titleart::TitleArtDoc& doc, const titleart::TitleRectI& frame, const TitleSvgOptions& options,
                                  const titleart::AssetResolver* assets, const TitleSvgRasterFn& raster = {});
 
+    // export_title's `svg` format (TitleSvgExport.cpp), from registerTitleExportFormats
+    void registerTitleSvgExport();
+
 }

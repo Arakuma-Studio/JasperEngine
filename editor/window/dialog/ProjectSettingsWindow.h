@@ -81,6 +81,8 @@ namespace jasperengine::editor {
         int m_deviceTierGroup = 1;
         NavigationProjectSettings m_navigation;
         TitleArtProjectSettings m_titleArt;
+        LocalizationSettings m_localization;
+        char m_localizationInput[64] = {0};
         AudioSettings m_audioSettings;
         char m_audioMixerBuffer[512] = {0};
         char m_audioDefaultGroupBuffer[128] = {0};
@@ -272,6 +274,7 @@ namespace jasperengine::editor {
         void drawNavigationSettings();
         void drawMeshSettings();
         void drawTitleArtSettings();
+        void drawLocalizationSettings();
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);

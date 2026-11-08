@@ -412,7 +412,11 @@ namespace {
                 if (str(layer, "language").empty() && !sourceCode.empty()) layer["language"] = sourceCode;
                 return;
             }
-            if (!layer.value("translate", true)) return;
+            // a brand word keeps its text and fonts; it shapes as the rest of the language does
+            if (!layer.value("translate", true)) {
+                if (str(layer, "language").empty()) layer["language"] = code;
+                return;
+            }
             const Json* t = findTranslation(layer, code);
             if (translationHasText(t)) layer["text"] = (*t)["text"];
             // the Language entry's fonts (R4 step 2), then the Translation's overrides (step 1)

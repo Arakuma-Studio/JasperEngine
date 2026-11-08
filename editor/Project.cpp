@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "util/TitleArtLanguage.h"
 #include "util/ScriptPropertyCache.h"
 #include "util/ProjectChecks.h"
 #include "memory/HeapTrim.h"
@@ -3271,6 +3272,7 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     settings.keepScreenOn = presentationSettings.keepScreenOn;
     settings.targetFrameRate = presentationSettings.targetFrameRate;
     settings.dynamicBatching = dynamicBatching;
+    settings.defaultLanguage = localizationSettings.effectiveDefault();
     auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
         ApplicationInfo info;
         info.name = getApplicationName(name);
@@ -3294,6 +3296,9 @@ void editor::Project::applyPresentationSettings(){
     Engine::setVSyncCount(vsyncEnabled ? 1 : 0);
     Engine::setDynamicBatchingDefault(dynamicBatching);
     Engine::setTargetFrameRate(presentationSettings.targetFrameRate);
+    // S87: a Play starts in the device's language with the project's default
+    TitleArtLanguage::setGlobal("");
+    TitleArtLanguage::setProjectDefault(localizationSettings.effectiveDefault());
     Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
                        presentationSettings.keepScreenOn);
     // a simulated phone or tablet keeps the screen on as the device would (Keep Screen On

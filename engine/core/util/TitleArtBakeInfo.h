@@ -15,6 +15,7 @@
 // - Thread-safety: plain values.
 
 #include "Export.h"
+#include "util/TitleArtLanguage.h"
 
 #include <cstdint>
 #include <string>
@@ -60,6 +61,7 @@ namespace jasperengine{
         std::string sourceHash;
         uint32_t bakeVersion = 0;
         std::string language;                   // S87: the language a language set's sidecar was baked in
+        TitleArtLanguageTable languages;        // S87: the source sidecar's table of language sets (R24)
 
         // false with `error` (one sentence) for text that is not a sidecar or a newer version
         static bool parse(const std::string& text, TitleArtBakeInfo& out, std::string& error);

@@ -71,6 +71,9 @@ namespace jasperengine{
             uint32_t testFlags = 0;         // the instance's test state (setDisabledFeaturesForTesting)
             bool glowOutput = false;        // Glow Pulse is on: render the glow output too (R35)
             std::string characters;         // R55: the characters the title may show ("" = no limit)
+            // S87 R17: the language to show (one of the document's; "" = its source): the document
+            // is resolved for it, so a change re-renders through the same path
+            std::string language;
         };
 
         // what a title's live state reports (R18, R19, R69)
@@ -127,6 +130,9 @@ namespace jasperengine{
             // a prebaked initial-state image shipped with the build (R11, R32), by state hash
             static void setPrebaked(TitleArtLive& live, const std::string& texturePath, uint64_t stateHash);
 
+            // S87: the document's languages, the source first ("" first entry when it is monolingual);
+            // false with `error`
+            static bool readLanguages(const std::string& titlePath, std::vector<std::string>& out, std::string* error);
             // the document's Exposed parameters with their values (R5); false with `error`
             static bool readExposed(const std::string& titlePath, std::vector<TitleArtExposedParam>& out, std::string* error);
             // the hash of the state (document content + effective values + resolution + path)

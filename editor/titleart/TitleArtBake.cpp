@@ -3,6 +3,8 @@
 
 #include "TitleArtBake.h"
 
+#include "titleart/TitleTranslations.h"
+
 #include "asset/AssetFileWrite.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "titleart/TitleArtIO.h"
@@ -11,6 +13,7 @@
 #include "util/Sha256.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <limits>
 #include <map>
@@ -89,20 +92,34 @@ namespace {
 
 // ==================================================================== names
 
-std::string editor::titleArtOutputFileName(const std::string& documentFileName, const TJson& output) {
+std::string editor::titleArtOutputFileName(const std::string& documentFileName, const TJson& output, const std::string& language) {
+    std::string infix;
+    for (char c : language) infix += (char)std::tolower((unsigned char)c);
+    if (!infix.empty()) infix = "." + infix;
     const std::string file = output.is_object() ? str(output, "file") : std::string();
-    if (!file.empty()) return file;
+    if (!file.empty()) {
+        if (infix.empty()) return file;
+        const size_t dot = file.rfind('.');
+        const size_t slash = file.find_last_of('/');
+        return dot == std::string::npos || (slash != std::string::npos && dot < slash) ? file + infix : file.substr(0, dot) + infix + file.substr(dot);
+    }
     const std::string id = output.is_object() ? str(output, "id") : std::string("main");
-    if (id.empty() || id == "main") return documentFileName + ".png";
-    return documentFileName + "." + id + ".png";
+    if (id.empty() || id == "main") return documentFileName + infix + ".png";
+    return documentFileName + infix + "." + id + ".png";
 }
 
-fs::path editor::titleArtOutputPath(const fs::path& document, const TJson& output) {
-    return (document.parent_path() / fs::path(titleArtOutputFileName(document.filename().string(), output))).lexically_normal();
+fs::path editor::titleArtOutputPath(const fs::path& document, const TJson& output, const std::string& language) {
+    return (document.parent_path() / fs::path(titleArtOutputFileName(document.filename().string(), output, language))).lexically_normal();
 }
 
-fs::path editor::titleArtSidecarPath(const fs::path& document) {
-    return document.parent_path() / (document.filename().string() + TITLE_ART_SIDECAR_SUFFIX);
+fs::path editor::titleArtSidecarPath(const fs::path& document, const std::string& language) {
+    std::string infix;
+    for (char c : language) infix += (char)std::tolower((unsigned char)c);
+    return document.parent_path() / (document.filename().string() + (infix.empty() ? "" : "." + infix) + TITLE_ART_SIDECAR_SUFFIX);
+}
+
+std::string editor::titleArtResolvedHash(const titleart::TitleArtDoc& doc, const std::string& language) {
+    return sha256Hex(titleart::writeTitleArt(titleart::resolveTitleLanguage(doc, language)));
 }
 
 std::vector<fs::path> editor::titleArtDerivedFiles(const fs::path& document, const titleart::TitleArtDoc* doc) {
@@ -122,10 +139,18 @@ std::vector<fs::path> editor::titleArtDerivedFiles(const fs::path& document, con
     };
     const TJson& outputs = doc->root.contains("outputs") ? doc->root["outputs"] : TJson::array();
     if (outputs.is_array() && !outputs.empty()) {
-        for (const TJson& output : outputs) {
-            const fs::path png = titleArtOutputPath(document, output);
-            add(png);
-            add(fs::path(png.string() + ".meta"));
+        // the source set, then each language's (S87 R16)
+        std::vector<std::string> languages = {""};
+        for (const std::string& code : titleart::titleLanguageCodes(doc->root)) {
+            if (!titleart::isSourceLanguage(doc->root, code)) languages.push_back(code);
+        }
+        for (const std::string& language : languages) {
+            for (const TJson& output : outputs) {
+                const fs::path png = titleArtOutputPath(document, output, language);
+                add(png);
+                add(fs::path(png.string() + ".meta"));
+            }
+            if (!language.empty()) add(titleArtSidecarPath(document, language));
         }
     } else if (!doc->root.contains("outputs")) {
         // an unreadable document: its default output still moves with it
@@ -562,13 +587,19 @@ std::vector<std::string> TitleBakeStatus::notFresh() const {
     return out;
 }
 
-TitleBakeStatus editor::titleArtBakeStatus(const fs::path& document, const titleart::TitleArtDoc& doc, const titleart::AssetResolver& assets) {
+TitleBakeStatus editor::titleArtBakeStatus(const fs::path& document, const titleart::TitleArtDoc& doc, const titleart::AssetResolver& assets,
+                                           const std::string& language) {
     TitleBakeStatus status;
     status.sourceHash = titleArtSourceHash(doc);
+    // S87: a multilingual document's sets are fresh by the hash of the document resolved for their language
+    const bool multilingual = titleart::titleIsMultilingual(doc.root);
+    const std::string setLanguage = multilingual && !titleart::isSourceLanguage(doc.root, language) ? language : std::string();
+    const titleart::TitleArtDoc resolved = multilingual ? titleart::resolveTitleLanguage(doc, setLanguage) : titleart::TitleArtDoc();
+    const std::string resolvedHash = multilingual ? sha256Hex(titleart::writeTitleArt(resolved)) : std::string();
     status.bakeVersion = titleart::titleArtBakeVersion(doc);
-    status.assets = titleArtBakeAssets(doc, assets);
+    status.assets = titleArtBakeAssets(multilingual ? resolved : doc, assets);
     std::error_code ec;
-    status.sidecarPresent = fs::is_regular_file(titleArtSidecarPath(document), ec);
+    status.sidecarPresent = fs::is_regular_file(titleArtSidecarPath(document, setLanguage), ec);
     std::map<std::string, std::string> current;
     for (const TitleBakeAsset& a : status.assets) current[assetKey(a)] = a.sha256;
 
@@ -577,8 +608,8 @@ TitleBakeStatus editor::titleArtBakeStatus(const fs::path& document, const title
         TitleOutputState state;
         state.id = str(output, "id");
         state.content = str(output, "content");
-        state.fileName = titleArtOutputFileName(document.filename().string(), output);
-        state.file = titleArtOutputPath(document, output);
+        state.fileName = titleArtOutputFileName(document.filename().string(), output, setLanguage);
+        state.file = titleArtOutputPath(document, output, setLanguage);
         if (!fs::is_regular_file(state.file, ec)) {
             state.status = TitleOutputStatus::Missing;
             state.reason = "not baked";
@@ -602,7 +633,11 @@ TitleBakeStatus editor::titleArtBakeStatus(const fs::path& document, const title
             status.outputs.push_back(std::move(state));
             continue;
         }
-        if (recipe.sourceHash != status.sourceHash) state.changed.push_back("document");
+        if (multilingual && recipe.extra.contains("resolved_hash")) {
+            if (recipe.extra.value("resolved_hash", std::string()) != resolvedHash) state.changed.push_back("document");
+        } else if (recipe.sourceHash != status.sourceHash) {
+            state.changed.push_back("document");
+        }
         if (recipe.bakeVersion != status.bakeVersion) state.changed.push_back("bake_version");
         std::map<std::string, std::string> baked;
         for (const TitleBakeAsset& a : recipe.assets) baked[assetKey(a)] = a.sha256;

@@ -25,6 +25,9 @@
 #include "titleart/TitleArtDocument.h"
 #include "titleart/fx/FxPresets.h"
 #include "titleart/fx/FxRecipes.h"
+#include "titleart/interchange/TitleExport.h"
+#include "titleart/localisation/TitleLanguageReport.h"
+#include "titleart/TitleTranslations.h"
 #include "titleart/interchange/TitleImport.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
@@ -580,7 +583,20 @@ void getTitleTool(const CallPtr& call) {
         call->ok(relative + ": " + document->versionError() + " (read-only here)", out);
         return;
     }
-    const titleart::TitleArtDoc& doc = document->doc();
+    // S87 R19: `language` shows the document resolved for it (its fit applied)
+    const titleart::TitleArtDoc& stored = document->doc();
+    titleart::TitleArtDoc resolvedView;
+    std::string language;
+    if (args.contains("language") && args["language"].is_string() && !args["language"].get<std::string>().empty()) {
+        std::vector<std::string> codes;
+        if (!titleExportLanguages(stored, toOrdered(args["language"]), codes, error) || codes.empty()) {
+            call->fail("language: " + error);
+            return;
+        }
+        language = codes.front();
+        resolvedView = titleart::resolveTitleLanguage(stored, language);
+    }
+    const titleart::TitleArtDoc& doc = language.empty() ? stored : resolvedView;
     out["canvas"] = fromOrdered(doc.root["canvas"]);
     const std::string detail = args.value("detail", std::string("outline"));
     std::vector<std::string> fields;
@@ -605,6 +621,18 @@ void getTitleTool(const CallPtr& call) {
     titleart::forEachLayer(doc.root, [&](const titleart::Json& layer, const titleart::Json*, int) {
         if (!only.empty() && str(layer, "id") != only) return true;
         Json summary = layerSummary(doc, layer, names, detail, fields);
+        // S87: the strings metadata (from the stored layer) and, in a language, the fit result
+        if (titleart::titleIsMultilingual(stored.root)) {
+            if (const titleart::Json* own = titleart::findLayer(stored.root, str(layer, "id"))) {
+                const Json strings = fromOrdered(titleLayerStringsJson(*own));
+                for (auto it = strings.begin(); it != strings.end(); ++it) summary[it.key()] = it.value();
+            }
+        }
+        if (titleart::layerTypeOf(layer) == titleart::LayerType::Text && layer.contains("fit") &&
+            layer["fit"].value("mode", std::string("none")) != "none") {
+            const titleart::TitleFitResult fit = titleart::computeTitleFit(layer, doc, TitleArtRenderHost::editor().resolver(project));
+            if (fit.active) summary["fit"] = fromOrdered(titleFitJson(fit));
+        }
         // S86: a 3D layer's effective style and lighting, each lighting value with its source
         if (titleart::layerTypeHasStyle(titleart::layerTypeOf(layer)) && str(layer, "dimension") == "3d") {
             summary["three_d"] = fromOrdered(title3DLayerInfo(layer, doc));
@@ -613,6 +641,11 @@ void getTitleTool(const CallPtr& call) {
         return true;
     });
     out["layers"] = layers;
+    if (titleart::titleIsMultilingual(stored.root)) {
+        out["languages"] = fromOrdered(titleLanguagesJson(
+            titleLanguageStates(stored, TitleArtRenderHost::editor().resolver(project), project, file), stored));
+        if (!language.empty()) out["language"] = language;
+    }
     const titleart::Json stats3d = title3DStats(doc, TitleArtRenderHost::editor().resolver(project), titleart::TitleTier::Bake);
     if (!stats3d.empty()) out["stats_3d"] = fromOrdered(stats3d);
     out["exposed"] = fromOrdered(doc.root["exposed"]);
@@ -831,19 +864,25 @@ void exportTitleTool(const CallPtr& call) {
     const Json& args = call->args();
     fs::path file;
     std::string relative, error;
-    if (!resolveTitlePath(project, args.value("path", std::string()), true, file, relative, error)) {
+    // several documents (S87's strings formats): the first is the call's document
+    const Json& pathArg = args.contains("path") && args["path"].is_array() && !args["path"].empty() ? args["path"][0] : args["path"];
+    if (!resolveTitlePath(project, pathArg.is_string() ? pathArg.get<std::string>() : std::string(), true, file, relative, error)) {
         call->fail(error);
         return;
     }
     const std::string format = args.value("format", std::string("bake"));
+    if (args.contains("path") && args["path"].is_array() && args["path"].size() > 1 && format != "csv" && format != "xliff") {
+        call->fail("bad_value: several paths are for the strings formats (csv, xliff); export images one document per call. Nothing was written.",
+                   Json{{"code", "bad_value"}});
+        return;
+    }
     if (format == "glb") {
         exportTitleGlb(call, project, file, relative);
         return;
     }
     for (const FormatOwner& f : FORMATS) {
-        if (format == f.format && std::strcmp(f.owner, "S80") != 0 && std::strcmp(f.owner, "S86") != 0) {
-            call->fail("not_available: format '" + format + "' arrives with " + f.owner + "; this build exports format bake.",
-                       Json{{"code", "not_available"}, {"owner", f.owner}, {"formats", Json::array({"bake"})}});
+        if (format == f.format && std::strcmp(f.owner, "S87") == 0) {
+            exportTitleInterchange(call, project, file, relative, format);
             return;
         }
     }
@@ -867,6 +906,11 @@ void exportTitleTool(const CallPtr& call) {
     std::string code;
     if (!loadTitleArtForBake(project, file, doc, code, error)) {
         call->fail(code + ": " + error + ". Nothing was written.", Json{{"code", code}});
+        return;
+    }
+    // S87 R16: the language sets to bake (default: the source and every language with bake true)
+    if (args.contains("languages") && !titleExportLanguages(doc, toOrdered(args["languages"]), options.languages, error)) {
+        call->fail("bad_value: " + error + ". Nothing was written.", Json{{"code", "bad_value"}});
         return;
     }
     auto job = std::make_shared<TitleArtBakeJob>(project, file, std::move(doc), options);
@@ -1130,6 +1174,7 @@ void registerTitleArtTools(McpRegistry& registry) {
             {"layer", string("")},
             {"detail", withDefault(stringEnum("", {"outline", "overrides", "full"}), "outline")},
             {"fields", array(string(""), "")},
+            {"language", string("")},
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1224,6 +1269,7 @@ void registerTitleArtTools(McpRegistry& registry) {
             {"baseline", string("PNG or rev:<n>.")},
             {"save_baseline", string("PNG path.")},
             {"fail_on", withDefault(stringEnum("", {"fail", "warn"}), "fail")},
+            {"languages", Json{{"type", Json::array({"string", "array"})}, {"items", Json{{"type", "string"}}}}},
             {"screenshot", withDefault(stringEnum("", {"on_failure", "always", "never"}), "on_failure")},
             {"wait", withDefault(boolean(""), true)},
             {"timeout_seconds", withDefault(number(""), 120)},
@@ -1243,14 +1289,19 @@ void registerTitleArtTools(McpRegistry& registry) {
         tool.description =
             "Bakes a .titleart's outputs (all, or `outputs` ids) to PNGs with recipes and the bake sidecar as a job; fresh ones "
             "are skipped unless force. dry_run reports files, sizes, bytes and VRAM without writing. Outputs are configured "
-            "with edit_title (set outputs[i].scale). format: bake here; others arrive with later specs.";
+            "with edit_title (set outputs[i].scale). format png/psd/svg/sheet/atlas/sequence/ktx2/csv/xliff: delivery files in out "
+            "per languages; options per jasper://docs/title-art.";
         std::vector<std::string> formats;
         for (const FormatOwner& f : FORMATS) formats.push_back(f.format);
+        // S87 §6.3: `path` may list several documents (strings formats), `languages` "all", a code or codes
+        const Json stringOrList = Json{{"type", Json::array({"string", "array"})}, {"items", Json{{"type", "string"}}}};
         tool.inputSchema = object({
-            {"path", string("")},
+            {"path", stringOrList},
             {"outputs", array(string(""), "")},
             {"format", withDefault(stringEnum("", formats), "bake")},
             {"options", anyObject("")},
+            {"languages", stringOrList},
+            {"out", string("")},
             {"dry_run", boolean("")},
             {"force", boolean("")},
             {"wait", withDefault(boolean(""), true)},

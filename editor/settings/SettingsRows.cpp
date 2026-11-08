@@ -15,6 +15,7 @@
 #include "SceneBackup.h"
 #include "diag/CrashHandler.h"
 #include "Project.h"
+#include "util/TitleArtLanguage.h"
 #include "util/PlatformRules.h"
 #include "command/CommandHistory.h"
 #include "command/type/ShaderCreationSettingsCmd.h"
@@ -2193,6 +2194,56 @@ std::vector<Setting> mcpSettingsTable() {
         }
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
+        // Project Settings > Localization (S87 R56, R64): the languages a game ships and its default
+        {
+            Setting s;
+            s.key = "localization.languages";
+            s.type = "list";
+            s.description = "BCP 47 language tags the game ships, in order (de, pt-BR, zh-Hant). Title Art bakes, fonts and translations "
+                            "of other languages are left out of builds (W-TITLE-LANGUAGE-DROPPED); [] ships every language.";
+            s.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (const std::string& code : ctx.project()->getLocalizationSettings().languages) list.push_back(code);
+                return list;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of language tags";
+                    return false;
+                }
+                std::vector<std::string> codes;
+                for (const Json& item : value) {
+                    if (!item.is_string() || !TitleArtLanguage::isValid(item.get<std::string>(), &error)) {
+                        if (error.empty()) error = "must be a list of language tags";
+                        return false;
+                    }
+                    const std::string code = TitleArtLanguage::canonicalize(item.get<std::string>());
+                    if (std::find(codes.begin(), codes.end(), code) == codes.end()) codes.push_back(code);
+                }
+                if (apply) ctx.project()->getLocalizationSettings().languages = codes;
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "localization.default_language";
+            s.type = "string";
+            s.description = "The language a game shows when none of the device's languages matches (\"\": the first of localization.languages, "
+                            "else en); before a title's source language (TitleArt.setLanguage and the device come first).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getLocalizationSettings().defaultLanguage); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string()) {
+                    error = "must be a language tag or \"\"";
+                    return false;
+                }
+                const std::string code = value.get<std::string>();
+                if (!code.empty() && !TitleArtLanguage::isValid(code, &error)) return false;
+                if (apply) ctx.project()->getLocalizationSettings().defaultLanguage = TitleArtLanguage::canonicalize(code);
+                return true;
+            };
+            add(s);
+        }
         // Project Settings > Title Art (S80 R52): one undoable step each
         add(titleArtSetting("title_art.auto_bake", "bool", "Rebake a Title Art document's existing outputs 500 ms after its last edit.", {},
                             [](const TitleArtProjectSettings& t) { return Json(t.autoBake); },
@@ -3608,6 +3659,8 @@ const Placement placements[] = {
     {"graphics.runtime_shaders", "Graphics", "", "Runtime Shader Compilation", "variants"},
     {"graphics.gpu_instancing", "Graphics", "", "GPU Instancing", "batching instanced draw calls auto instancing"},
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
+    {"localization.languages", "Localization", "", "Languages", "language locale translation"},
+    {"localization.default_language", "Localization", "", "Default Language", "language locale translation"},
     {"title_art.auto_bake", "Title Art", "", "Auto Bake", "titleart bake automatic outputs png"},
     {"title_art.stale_bakes_on_export", "Title Art", "", "Stale Bakes On Export", "titleart export rebake warn fail outputs"},
     {"title_art.frame_budget_ms", "Title Art", "Runtime", "Frame Budget", "titleart realtime glyph atlas render time slice ms"},
@@ -3921,6 +3974,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Navigation", SettingsScope::Project, 13, "navigation navmesh agents areas crowd grid pathfinding ai"},
         {"Mesh", SettingsScope::Project, 14, "mesh model import cook optimize compression lod meshopt read write cache audit"},
         {"Title Art", SettingsScope::Project, 15, "title art titleart logo bake baked outputs png export stale"},
+        {"Localization", SettingsScope::Project, 16, "localization localisation language languages locale translation"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},
