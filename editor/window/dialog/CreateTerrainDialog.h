@@ -40,8 +40,7 @@ namespace jasperengine::editor {
             float baseHeight = 0.0f;    // metres, Flat
             // ImportRaw: the decoded height file (TerrainRawIO), square and heightmap texels a side
             HeightImport imported;
-            // An image of the assets for the material's base color, the Base row of the Terrain window's
-            // layers: it covers the whole terrain with no blend map; empty keeps the material's own
+            // An image of the assets: Terrain Layer 0, with the first blend map at its full weight; empty: no layer
             std::string baseLayer;
             bool collider = true;
             // T2 R61: a Noise Graph preset run on the new terrain after Create (its own undo step); empty: none

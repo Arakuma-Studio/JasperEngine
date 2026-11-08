@@ -6,7 +6,6 @@
 // shared undo helper is one step too.
 
 #include "TerrainProjectFixture.h"
-#include "component/MeshComponent.h"
 #include "component/RigidbodyComponent.h"
 
 #include "command/CommandHistory.h"
@@ -196,8 +195,9 @@ TEST_F(TerrainCreateDialogTest, ImportRawRefusesWhatItCannotMake) {
     EXPECT_NE(error.find("Terrain window"), std::string::npos) << "names the route that takes any size: " << error;
 }
 
-TEST_F(TerrainCreateDialogTest, BaseLayerIsTheMaterialBaseColorInTheSameStep) {
+TEST_F(TerrainCreateDialogTest, BaseLayerCoversTheTerrainInTheSameStep) {
     CreateTerrainDialog::Settings settings = smallSettings("Grass", 17);
+    settings.control = 32;
     settings.baseLayer = "textures/grass.png";
     std::string error;
     CommandHistory* history = CommandHandle::get(scene->id);
@@ -205,10 +205,31 @@ TEST_F(TerrainCreateDialogTest, BaseLayerIsTheMaterialBaseColorInTheSameStep) {
     const Entity made = CreateTerrainDialog::create(project.get(), scene->id, NULL_ENTITY, settings, error);
     ASSERT_NE(made, NULL_ENTITY) << error;
     EXPECT_EQ(history->position(), before + 1) << "one undo step";
-    const MeshComponent& mesh = scene->scene->getComponent<MeshComponent>(made);
-    EXPECT_EQ(mesh.submeshes[0].material.baseColorTexture.getPath(0), "textures/grass.png");
+
+    // what sample_terrain's layer coverage reads: layer 0 in the first blend map's red channel, everywhere
+    auto coverage = [&]() {
+        TerrainComponent& terrain = scene->scene->getComponent<TerrainComponent>(made);
+        EXPECT_EQ(terrain.surfaceLayers.size(), 1u);
+        if (terrain.surfaceLayers.empty()) return -1.0;
+        EXPECT_EQ(terrain.surfaceLayers[0].colorTexture.getPath(0), "textures/grass.png");
+        TerrainComponentStore store(scene->scene, made, terrain);
+        const terrain::MapFormat format = store.format(BLEND_MAP);
+        EXPECT_TRUE(format.exists);
+        if (!format.exists) return -1.0;
+        EXPECT_EQ(format.bounds.w, 32);
+        std::vector<float> texels(static_cast<size_t>(format.bounds.area()) * format.channels);
+        EXPECT_TRUE(store.read(BLEND_MAP, format.bounds, texels));
+        size_t covered = 0;
+        for (size_t i = 0; i < texels.size(); i += 4) {
+            if (texels[i] > 0.5f && texels[i + 1] < 0.5f && texels[i + 2] < 0.5f) covered++;
+        }
+        return static_cast<double>(covered) / static_cast<double>(format.bounds.area());
+    };
+    EXPECT_EQ(coverage(), 1.0) << "Terrain Layer 0 covers the whole terrain";
+
     ASSERT_TRUE(history->undo());
+    EXPECT_FALSE(scene->scene->isEntityCreated(made)) << "one undo takes the terrain, its layer and its blend map away";
     ASSERT_TRUE(history->redo());
-    EXPECT_EQ(scene->scene->getComponent<MeshComponent>(made).submeshes[0].material.baseColorTexture.getPath(0), "textures/grass.png")
-        << "redo brings the Base Layer back with the terrain";
+    ASSERT_TRUE(scene->scene->isEntityCreated(made));
+    EXPECT_EQ(coverage(), 1.0) << "redo brings them back";
 }

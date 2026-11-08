@@ -1660,9 +1660,6 @@ the sketch's names, which all still exist unless a line below says otherwise.
   R57's `TerrainBrush` shortcut context with Table 5's keys and the Cut Holes brush they name, R63's Pick beyond Set Height's
   eyedropper, R55's fade and hide during camera moves, R59's Resize..., R61's hillshade preview, R67's Preview, R37's pen
   readers, and R47-R54's benches. They are open, not given up: none of them is impossible on this host.
-- **D-34 Create Terrain's Base Layer is the material's base color.** It is the Base row of the window's layers, the one surface that
-  shows with no blend map; a first Terrain Layer would show nowhere until a blend map weighted it (R59 makes those on first paint).
-  Import Raw... makes square maps; another size goes through the Settings tool's Import Raw..., which the error names.
 - **D-35 `visualize_terrain` without T3's and T5's keys and with one sheet.** `quality` and `foliage_quality` are theirs to add. The sheet is
   one mesh of at most 255 x 255 cells; DC8's second copy at 25 % in the tools layer is not done.
 - **D-36 The Lua terrain functions that take tables are raw functions** with their stubs in `tools/lua_api/parser.py`'s `OVERRIDES`;

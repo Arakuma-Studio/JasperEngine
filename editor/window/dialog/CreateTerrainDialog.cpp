@@ -20,6 +20,7 @@
 #include "noise/TerrainPresets.h"
 #include "physics/JoltShapeBuilder.h"
 #include "terrain/RawMapStore.h"
+#include "terrain/TerrainOpsUndo.h"
 #include "terrain/TerrainSizePresets.h"
 #include "util/FileDialogs.h"
 #include "util/TerrainMapUtils.h"
@@ -257,10 +258,29 @@ Entity editor::CreateTerrainDialog::create(Project* project, uint32_t sceneId, E
     if (!history->addCommandNoMerge(new TerrainTextureEditCmd(project, sceneId, entity, ref, std::move(before), std::move(after), "Create Terrain"))){
         return fail("The height map could not be made.");
     }
-    if (!s.baseLayer.empty() &&
-        !history->addCommandNoMerge(new PropertyCmd<Texture>(project, sceneId, entity, ComponentType::MeshComponent,
-                                                             "submeshes[0].material.baseColorTexture", Texture(s.baseLayer)))){
-        return fail("The Base Layer could not be set.");
+    // R58: Base Layer is Terrain Layer 0 over the whole terrain, as a Unity splat map starts filled with
+    // its first layer: the layer, and the first blend map at full weight in its red channel
+    if (!s.baseLayer.empty()){
+        TerrainSurfaceLayer layer;
+        layer.colorTexture = Texture(s.baseLayer);
+        if (!history->addCommandNoMerge(new PropertyCmd<std::vector<TerrainSurfaceLayer>>(project, sceneId, entity, ComponentType::TerrainComponent,
+                                                                                         "surfaceLayers", std::vector<TerrainSurfaceLayer>{layer}))){
+            return fail("The Base Layer could not be added.");
+        }
+        terrain::MapFormat blendFormat;
+        blendFormat.bounds = terrain::TexelRect{0, 0, s.control, s.control};
+        blendFormat.channels = 4;
+        blendFormat.bitsPerChannel = 8;
+        blendFormat.exists = true;
+        TerrainMadeMap made;
+        if (!makeTerrainBlankMap(project, sceneProject, entity, terrain::MapId{terrain::MapKind::Blend, 0}, blendFormat, made)){
+            return fail("The Base Layer's blend map could not be made.");
+        }
+        TerrainMapSnapshot filled = made.blank;
+        for (size_t i = 0; i < filled.pixels.size(); i += 4) filled.pixels[i] = 255;
+        if (!history->addCommandNoMerge(new TerrainTextureEditCmd(project, sceneId, entity, made.ref, made.before, std::move(filled), "Create Terrain"))){
+            return fail("The Base Layer's blend map could not be made.");
+        }
     }
 
     if (s.collider){
@@ -350,10 +370,10 @@ void editor::CreateTerrainDialog::show(){
             settings.height = importOptions.sourceMax - importOptions.sourceMin;
         }
     }
-    // R58: the material's base color, which shows everywhere until a layer is painted over it
+    // R58: Terrain Layer 0, covering the whole terrain until another layer is painted over it
     ImGui::TextUnformatted("Base Layer");
     ImGui::SameLine();
-    ImGui::TextDisabled("%s", settings.baseLayer.empty() ? "Material base color" : settings.baseLayer.c_str());
+    ImGui::TextDisabled("%s", settings.baseLayer.empty() ? "None" : settings.baseLayer.c_str());
     ImGui::SameLine();
     if (EditorModal::button("Browse...", "base_layer")){
         const std::string chosen = FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_IMAGE);
