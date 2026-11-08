@@ -138,5 +138,33 @@
     "main_draw_call_ratio": {"min": 7.0, "spec": "S55 R9, measured (target 10x, not met): GPU Instancing off to on"},
     "shadow_triangle_drop": {"min": 0.11, "spec": "S54 R7, measured: Shadow LOD Bias 2.0 to 1.0"},
     "uniform_byte_drop": {"min": 0.97, "spec": "S55 R3, measured: GPU Instancing off to on"}
+  },
+  "je-bench-noise": {
+    "kernel_native_value2d_mpts": {"min": 40, "spec": "T2 R46 value 2D, x86-64 SSE2"},
+    "kernel_native_perlin2d_mpts": {"min": 30, "spec": "T2 R46 perlin 2D, x86-64 SSE2"},
+    "kernel_native_simplex2d_mpts": {"min": 20, "spec": "T2 R46 simplex 2D, x86-64 SSE2"},
+    "kernel_native_cellular2d_mpts": {"min": 6, "spec": "T2 R46 cellular 2D f1, x86-64 SSE2"},
+    "kernel_native_value3d_mpts": {"min": 20, "spec": "T2 R46 value 3D, x86-64 SSE2"},
+    "kernel_native_perlin3d_mpts": {"min": 14, "spec": "T2 R46 perlin 3D, x86-64 SSE2"},
+    "kernel_native_simplex3d_mpts": {"min": 10, "spec": "T2 R46 simplex 3D, x86-64 SSE2"},
+    "kernel_native_cellular3d_mpts": {"min": 1.5, "spec": "T2 R46 cellular 3D f1, x86-64 SSE2"},
+    "kernel_scalar_value2d_mpts": {"min": 13, "spec": "T2 R46 value 2D, Scalar"},
+    "kernel_scalar_perlin2d_mpts": {"min": 10, "spec": "T2 R46 perlin 2D, Scalar"},
+    "kernel_scalar_simplex2d_mpts": {"min": 7, "spec": "T2 R46 simplex 2D, Scalar"},
+    "kernel_scalar_cellular2d_mpts": {"min": 2, "spec": "T2 R46 cellular 2D f1, Scalar"},
+    "kernel_scalar_value3d_mpts": {"min": 7, "spec": "T2 R46 value 3D, Scalar"},
+    "kernel_scalar_perlin3d_mpts": {"min": 5, "spec": "T2 R46 perlin 3D, Scalar"},
+    "kernel_scalar_simplex3d_mpts": {"min": 3.5, "spec": "T2 R46 simplex 3D, Scalar"},
+    "kernel_scalar_cellular3d_mpts": {"min": 0.5, "spec": "T2 R46 cellular 3D f1, Scalar"},
+    "single_point_perlin2_ns": {"max": 60, "spec": "T2 R46 a single-point call"},
+    "mountains_1024_one_thread_s": {"max": 1.2, "spec": "T2 R47"},
+    "mountains_1024_workers_s": {"max": 0.4, "spec": "T2 R47"},
+    "mountains_4096_workers_s": {"max": 4.0, "spec": "T2 R47"},
+    "alpine_1024_workers_s": {"max": 2.0, "spec": "T2 R48"},
+    "hydraulic_mega_steps_per_s": {"min": 8, "spec": "T2 R48 per thread"},
+    "thermal_mega_texel_iterations_per_s": {"min": 40, "spec": "T2 R48 per thread"},
+    "compile_64_nodes_ms": {"max": 1.0, "spec": "T2 R49"},
+    "compile_1000_nodes_ms": {"max": 20.0, "spec": "T2 R49"},
+    "preview_32_nodes_64px_ms": {"max": 16.0, "spec": "T2 R49 on one worker"}
   }
 }

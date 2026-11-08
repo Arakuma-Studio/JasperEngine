@@ -14,7 +14,6 @@
 #include "component/LayoutGroupComponent.h"
 #include "component/TextEffectComponent.h"
 #include "EditorModal.h"
-#include "window/dialog/CreateTerrainDialog.h"
 #include "window/TerrainEditWindow.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
@@ -13906,7 +13905,6 @@ void editor::InspectorWindow::show(){
     scriptCreateDialog.show();
     shaderForkDialog.show();
     RagdollWizardDialog::instance().show();
-    CreateTerrainDialog::instance().show();
     textureSlicerToolDialog.show();
 
     ImGui::End();

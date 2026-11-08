@@ -1460,6 +1460,7 @@ std::vector<std::string> editor::Exporter::compiledModules() const {
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
     if (project->getNavigationSettings().includeInBuilds) modules.push_back("navigation");
+    modules.push_back("noise");
     // of them, those the project reaches (a source export: all of them)
     if (moduleUsageKnown)
         modules.erase(std::remove_if(modules.begin(), modules.end(), [this](const std::string& m) { return !moduleUsage.needs(m); }), modules.end());
@@ -3302,6 +3303,9 @@ bool editor::Exporter::copyAssets() {
         std::error_code typeError;
         if (!entry.is_regular_file(typeError) || isCppSourceFile(entry.path())) return TreeStep::Skip;
 
+        // A project that only bakes its Noise Graphs pays nothing for them (T2 R45)
+        if (!shipsForNoise(relPath, moduleUsageKnown ? &moduleUsage : nullptr)) return TreeStep::Skip;
+
         // An FBX ships as its import, which the engine loads in its place. Those the scenes
         // use were imported before the scenes were saved, others are imported here.
         if (FbxImporter::isFbxFile(entry.path())) {
@@ -3754,6 +3758,13 @@ bool editor::Exporter::copyNativePluginFolders(const fs::path& destination, cons
     return true;
 }
 
+bool editor::Exporter::shipsForNoise(const fs::path& relPath, const ModuleUsage* usage) {
+    if (!usage || usage->needs("noise")) return true;
+    std::string ext = relPath.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext != ".noisegraph";
+}
+
 bool editor::Exporter::ensureExecutable(const std::vector<fs::path>& files, std::string& error) {
     error.clear();
 #ifdef _WIN32
@@ -3982,6 +3993,7 @@ bool editor::Exporter::copyEngine() {
         moduleSwitch("JASPERENGINE_PHYSICS_2D", "physics2d");
         moduleSwitch("JASPERENGINE_PHYSICS_3D", "physics3d");
         moduleSwitch("JASPERENGINE_NAVIGATION", "navigation");
+        moduleSwitch("JASPERENGINE_NOISE", "noise");
         moduleSwitch("JASPERENGINE_RUNTIME_SHADERS", "runtimeshaders");
         moduleSwitch("JASPERENGINE_HTMLUI", "htmlui");
         moduleSwitch("JASPERENGINE_VIDEO", "video");
@@ -4894,6 +4906,11 @@ bool editor::Exporter::writeAppleProjectSettings() {
         removeProjectLinesContaining("JASPERENGINE_RUNTIME_SHADERS,");
         if (!unlinkBackend("shadercompiler")) return false;
     }
+
+    // The noise module's files compile to nothing without it (T2 R42); its bindings test the macro's value
+    const bool noiseNeeded = !moduleUsageKnown || moduleUsage.needs("noise");
+    replaceAll(xcodeProject, "\t\t\t\t\tRMLUI_STATIC_LIB,\n",
+               std::string("\t\t\t\t\t\"JASPERENGINE_NOISE=") + (noiseNeeded ? "1" : "0") + "\",\n\t\t\t\t\tRMLUI_STATIC_LIB,\n");
 
     // Navigation off (Project Settings > Navigation > Include in Builds): Recast/Detour and the
     // engine's Detour glue stay out, and the engine compiles its navmesh stubs (S19 R42)

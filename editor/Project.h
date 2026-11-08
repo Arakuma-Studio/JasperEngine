@@ -589,6 +589,9 @@ namespace jasperengine::editor{
         float paintMaxSlope = 90.0f;
         float paintMinHeight = 0.0f;     // normalized against the terrain maxHeight
         float paintMaxHeight = 1.0f;
+
+        std::string generateGraph;       // the Generate section's graph: "preset:<id>", an assets-relative path, or nothing yet (T2 R60)
+        uint32_t generateSeed = 1;
     };
 
     // Manual picks on top of the shaders every export mode collects from the scenes

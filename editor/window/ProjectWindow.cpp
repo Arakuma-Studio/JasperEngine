@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "animation/AnimatorAssetDocument.h"
+#include "window/NoiseGraphWindow.h"
 #include "window/PoseAnimationWindow.h"
 #include "EditorModal.h"
 #include "animation/AnimatorEditorHooks.h"
@@ -47,6 +48,8 @@
 #include "window/dialog/ScriptCreateDialog.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateMaterialFileCmd.h"
+#include "command/type/GraphEditCmd.h"
+#include "noise/TerrainPresets.h"
 #include "camera/ShakePreset.h"
 #include "camera/ShakePresets.h"
 #include "animation/AnimationClipIO.h"
@@ -1120,6 +1123,10 @@ void editor::ProjectWindow::renderCreateItems(const fs::path& directory) {
         // a Lua script lives in the Lua directory (create_script refuses one elsewhere)
         const std::string refused = item.kind == AssetCreateKind::LuaScript ? luaScriptRefusal(directory) : std::string();
         const std::string label = std::string(item.icon) + " " + item.label;
+        if (item.kind == AssetCreateKind::NoiseGraph) {
+            renderNoiseGraphCreateMenu(label, directory);
+            continue;
+        }
         const bool chosen = ImGui::MenuItem(label.c_str(), nullptr, false, refused.empty());
         uiBuilding.contextMenu.push_back({item.label, lastItemRect()});
         if (!refused.empty()) {
@@ -1161,6 +1168,7 @@ void editor::ProjectWindow::renderHeader() {
     if (projectToolbarButton(ICON_FA_PLUS " " ICON_FA_CARET_DOWN, "Create")) {
         ImGui::OpenPopup("##ProjectCreateMenu");
     }
+    UIProbe::item("project.create");
     if (ImGui::BeginPopup("##ProjectCreateMenu")) {
         renderCreateItems(listingFolder());
         ImGui::EndPopup();
@@ -2886,6 +2894,8 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
             fileEntry.icon = animationClipIcon.getRender();
         }else if (fileEntry.extension == ".humanoid"){
             fileEntry.type = FileType::HUMANOID;
+        }else if (fileEntry.extension == ".noisegraph"){
+            fileEntry.type = FileType::NOISE_GRAPH;
         }else if (Util::isAnimatorAssetFile(fileEntry.extension)){
             fileEntry.type = FileType::ANIMATOR_ASSET;
             fileEntry.icon = Util::isAnimatorControllerFile(fileEntry.extension) ? animatorControllerIcon.getRender()
@@ -4688,6 +4698,51 @@ void editor::ProjectWindow::assetsCreateAudioMixer(const fs::path& directory) {
     selectCreated(directory, relative.filename().string(), true);
 }
 
+void editor::ProjectWindow::renderNoiseGraphCreateMenu(const std::string& label, const fs::path& directory) {
+    const bool open = ImGui::BeginMenu(label.c_str());
+    UIProbe::item("project.create.noisegraph");
+    if (!open) return;
+    if (ImGui::MenuItem("Blank")) {
+        assetsCreateNoiseGraph(std::string(), directory);
+        ImGui::CloseCurrentPopup();
+    }
+    UIProbe::item("project.create.noisegraph.blank");
+    ImGui::Separator();
+    // embedded data, that never changes while the editor runs
+    static const std::vector<TerrainPreset> presets = TerrainPresets::list(true);
+    for (const TerrainPreset& preset : presets) {
+        if (ImGui::MenuItem(preset.name.c_str())) {
+            assetsCreateNoiseGraph(preset.id, directory);
+            ImGui::CloseCurrentPopup();
+        }
+        UIProbe::item("project.create.noisegraph." + preset.id);
+        if (!preset.description.empty() && ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", preset.description.c_str());
+        }
+    }
+    ImGui::EndMenu();
+}
+
+void editor::ProjectWindow::assetsCreateNoiseGraph(const std::string& presetId, const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    focusProjectPanel(this);
+    TerrainPreset preset;
+    const bool fromPreset = !presetId.empty() && TerrainPresets::find(presetId, preset);
+    const std::string text = fromPreset ? TerrainPresets::json(presetId) : TerrainPresets::blankJson();
+    const fs::path relative = uniqueRelativePath(directory, fromPreset ? preset.name : std::string("New Noise Graph"), ".noisegraph");
+    const fs::path absolute = project->getProjectPath() / relative;
+    if (!project->getProjectCommandHistory()->addCommandNoMerge(new GraphEditCmd(absolute, std::string(), text, "Create Noise Graph", true))) {
+        Backend::getApp().registerAlert("Create Noise Graph", "Could not write " + relative.generic_string() + ".");
+        return;
+    }
+    // the asset database gives it its GUID (a sidecar, T2 R13)
+    ProjectFileWrites::refresh(project, {absolute});
+    selectCreated(directory, relative.filename().string(), true);
+}
+
 void editor::ProjectWindow::assetsCreateSoundEvent(const fs::path& directory) {
     if (!fs::is_directory(directory)) {
         Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
@@ -4883,6 +4938,8 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         project->openScene(filePath);
     } else if (file.type == FileType::POSE_ANIMATION) {
         Backend::getApp().getPoseAnimationWindow()->openFromAsset(filePath.string());
+    } else if (file.type == FileType::NOISE_GRAPH) {
+        Backend::getApp().getNoiseGraphWindow()->openGraph(filePath);
     } else if (file.type == FileType::VERTEX_ANIMATION) {
         // the baker with its recipe once it is there; the Inspector's asset view always
         selectedFiles.clear();
@@ -5040,6 +5097,7 @@ void editor::ProjectWindow::createAsset(AssetCreateKind kind, const fs::path& di
         case AssetCreateKind::PhysicsMaterial: assetsCreatePhysicsMaterial(false, directory); break;
         case AssetCreateKind::PhysicsMaterial2D: assetsCreatePhysicsMaterial(true, directory); break;
         case AssetCreateKind::ShakePreset: assetsCreateShakePreset(directory); break;
+        case AssetCreateKind::NoiseGraph: assetsCreateNoiseGraph(std::string(), directory); break;
         default: break;
     }
 }

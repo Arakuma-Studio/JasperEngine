@@ -750,7 +750,6 @@
 		5452524EDCF7A6E881F05F33 /* TerrainOps.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524EE4604303FAEBF498 /* TerrainOps.h */; };
 		5452524ED322E98AA8DF61F8 /* TerrainOps.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EC425BA5AEFAFDAEB /* TerrainOps.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		5452524E0A4668CA4112E8A3 /* TerrainOps.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EC425BA5AEFAFDAEB /* TerrainOps.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
-		5452524E99BCD5FB1B0A81D1 /* TerrainNoise.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E04D1361E8F0D9B9F /* TerrainNoise.h */; };
 		5452524E53B8E6834E13BD04 /* TerrainMapStore.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E08E5A1B26036AE56 /* TerrainMapStore.h */; };
 		5452524EC33984C90DDB934A /* TerrainLayers.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E89465B22069F7FA7 /* TerrainLayers.h */; };
 		5452524EE7BDEFD32086E359 /* TerrainHoles.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E76DA1B10D1FB29A5 /* TerrainHoles.h */; };
@@ -1519,6 +1518,32 @@
 		54574C440A2404CAE109FADB /* TerrainTileFormat.h in Headers */ = {isa = PBXBuildFile; fileRef = 54574C44C6697E210672D798 /* TerrainTileFormat.h */; };
 		54574C443A5FE19F7C54128F /* TerrainTileFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44D9B5C025579DFD1A /* TerrainTileFormat.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		54574C44BA54EF26B8EE8859 /* TerrainTileFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 54574C44D9B5C025579DFD1A /* TerrainTileFormat.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5052544331A069D7C5AD13CD /* HeightfieldErosion.h in Headers */ = {isa = PBXBuildFile; fileRef = 50525443C97865F506126415 /* HeightfieldErosion.h */; };
+		50525443D0C0E5214899A2D7 /* HeightfieldErosion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505254434ED11862DC7279EB /* HeightfieldErosion.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5052544357B7E064BC6631C1 /* HeightfieldErosion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505254434ED11862DC7279EB /* HeightfieldErosion.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		50525443E005991A2486A3D3 /* NoiseTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 5052544353B86FDD13D1BCE9 /* NoiseTypes.h */; };
+		505254434135E82BA86F0DE2 /* NoiseSwitch.h in Headers */ = {isa = PBXBuildFile; fileRef = 50525443DC8D3FCB2AECBF54 /* NoiseSwitch.h */; };
+		505254436C88A4453ACE4B86 /* NoiseRanges.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5052544348BD8F23FAD160BF /* NoiseRanges.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		505254436933DE845A04E28C /* NoiseRanges.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5052544348BD8F23FAD160BF /* NoiseRanges.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		505254439B7C070BEC8659CB /* NoisePlan.h in Headers */ = {isa = PBXBuildFile; fileRef = 50525443470F69FB802741F7 /* NoisePlan.h */; };
+		505254439709AAC5472DF77E /* NoiseParallel.h in Headers */ = {isa = PBXBuildFile; fileRef = 5052544327E069F45F015563 /* NoiseParallel.h */; };
+		505254433731EC3FA49ACF43 /* NoiseNodes.h in Headers */ = {isa = PBXBuildFile; fileRef = 50525443AEB0CED688246B4D /* NoiseNodes.h */; };
+		5052544308B5CAA5CF8AF156 /* NoiseNodes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50525443D8390091C7404F18 /* NoiseNodes.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		50525443F3733753C1BDB2BC /* NoiseNodes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50525443D8390091C7404F18 /* NoiseNodes.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		505254437840FDCD040FF836 /* NoiseKernels.h in Headers */ = {isa = PBXBuildFile; fileRef = 50525443852027814D75C7AA /* NoiseKernels.h */; };
+		50525443D9E94A67E0811EEA /* NoiseKernels.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505254435B682AAA8EAA4B67 /* NoiseKernels.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5052544309B3F4C83F31FF75 /* NoiseKernels.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505254435B682AAA8EAA4B67 /* NoiseKernels.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		50525443A7DA5EB3A4F1419E /* NoiseKernelImpl.h in Headers */ = {isa = PBXBuildFile; fileRef = 50525443417384EF7414EEC0 /* NoiseKernelImpl.h */; };
+		50525443BF21B62B6E1EB26C /* NoiseGraphRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 50525443843AFC726596473B /* NoiseGraphRuntime.h */; };
+		50525443D04E0A75B536646C /* NoiseEval.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50525443BCE0EB6AA2C8E4F3 /* NoiseEval.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		505254434909CC9FC2E29218 /* NoiseEval.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50525443BCE0EB6AA2C8E4F3 /* NoiseEval.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		50525443684609DF0E2F213D /* NoiseDetMath.h in Headers */ = {isa = PBXBuildFile; fileRef = 50525443E01A8704D494B635 /* NoiseDetMath.h */; };
+		50525443FF684DA9D0C99316 /* NoiseCompiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505254435BF864565D2094CF /* NoiseCompiler.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		50525443FEE4F4AE912B1E27 /* NoiseCompiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 505254435BF864565D2094CF /* NoiseCompiler.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5052544358BE01E2CF7F4E64 /* NoiseCompat.h in Headers */ = {isa = PBXBuildFile; fileRef = 505254431CC68372D3E0D5E2 /* NoiseCompat.h */; };
+		505254437E4AC817464F0CB8 /* NoiseCompat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50525443BB7CA870B7C4F2D0 /* NoiseCompat.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		505254438B25CC05ECE442D7 /* NoiseCompat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50525443BB7CA870B7C4F2D0 /* NoiseCompat.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		50525443D4BF8FB8593A6551 /* NoiseBackend.h in Headers */ = {isa = PBXBuildFile; fileRef = 50525443C3D102C76A82EFF6 /* NoiseBackend.h */; };
 		53504C4EB24308C2D78335F2 /* SplineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E5262B21B0E1C90F9 /* SplineClassesLua.cpp */; };
 		53504C4E56FFBE8361FFBEBC /* SplineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E5262B21B0E1C90F9 /* SplineClassesLua.cpp */; };
 		53504C4E297A11A3049D85C4 /* SplineAnimate.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4EFA373C8F004A166E /* SplineAnimate.h */; };
@@ -5798,7 +5823,6 @@
 		5452524ED2A1EF93AD226CAF /* TerrainPlacement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainPlacement.cpp; sourceTree = "<group>"; };
 		5452524EE4604303FAEBF498 /* TerrainOps.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainOps.h; sourceTree = "<group>"; };
 		5452524EC425BA5AEFAFDAEB /* TerrainOps.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainOps.cpp; sourceTree = "<group>"; };
-		5452524E04D1361E8F0D9B9F /* TerrainNoise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainNoise.h; sourceTree = "<group>"; };
 		5452524E08E5A1B26036AE56 /* TerrainMapStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainMapStore.h; sourceTree = "<group>"; };
 		5452524E89465B22069F7FA7 /* TerrainLayers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainLayers.h; sourceTree = "<group>"; };
 		5452524E76DA1B10D1FB29A5 /* TerrainHoles.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainHoles.h; sourceTree = "<group>"; };
@@ -6819,6 +6843,25 @@
 		54574C4423385CA31D3B99E8 /* TerrainWorldData.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainWorldData.cpp; sourceTree = "<group>"; };
 		54574C44C6697E210672D798 /* TerrainTileFormat.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainTileFormat.h; sourceTree = "<group>"; };
 		54574C44D9B5C025579DFD1A /* TerrainTileFormat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainTileFormat.cpp; sourceTree = "<group>"; };
+		50525443C97865F506126415 /* HeightfieldErosion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HeightfieldErosion.h; sourceTree = "<group>"; };
+		505254434ED11862DC7279EB /* HeightfieldErosion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HeightfieldErosion.cpp; sourceTree = "<group>"; };
+		5052544353B86FDD13D1BCE9 /* NoiseTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NoiseTypes.h; sourceTree = "<group>"; };
+		50525443DC8D3FCB2AECBF54 /* NoiseSwitch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NoiseSwitch.h; sourceTree = "<group>"; };
+		5052544348BD8F23FAD160BF /* NoiseRanges.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NoiseRanges.cpp; sourceTree = "<group>"; };
+		50525443470F69FB802741F7 /* NoisePlan.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NoisePlan.h; sourceTree = "<group>"; };
+		5052544327E069F45F015563 /* NoiseParallel.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NoiseParallel.h; sourceTree = "<group>"; };
+		50525443AEB0CED688246B4D /* NoiseNodes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NoiseNodes.h; sourceTree = "<group>"; };
+		50525443D8390091C7404F18 /* NoiseNodes.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NoiseNodes.cpp; sourceTree = "<group>"; };
+		50525443852027814D75C7AA /* NoiseKernels.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NoiseKernels.h; sourceTree = "<group>"; };
+		505254435B682AAA8EAA4B67 /* NoiseKernels.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NoiseKernels.cpp; sourceTree = "<group>"; };
+		50525443417384EF7414EEC0 /* NoiseKernelImpl.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NoiseKernelImpl.h; sourceTree = "<group>"; };
+		50525443843AFC726596473B /* NoiseGraphRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NoiseGraphRuntime.h; sourceTree = "<group>"; };
+		50525443BCE0EB6AA2C8E4F3 /* NoiseEval.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NoiseEval.cpp; sourceTree = "<group>"; };
+		50525443E01A8704D494B635 /* NoiseDetMath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NoiseDetMath.h; sourceTree = "<group>"; };
+		505254435BF864565D2094CF /* NoiseCompiler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NoiseCompiler.cpp; sourceTree = "<group>"; };
+		505254431CC68372D3E0D5E2 /* NoiseCompat.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NoiseCompat.h; sourceTree = "<group>"; };
+		50525443BB7CA870B7C4F2D0 /* NoiseCompat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NoiseCompat.cpp; sourceTree = "<group>"; };
+		50525443C3D102C76A82EFF6 /* NoiseBackend.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NoiseBackend.h; sourceTree = "<group>"; };
 		53504C4E5262B21B0E1C90F9 /* SplineClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineClassesLua.cpp; sourceTree = "<group>"; };
 		53504C4EFA373C8F004A166E /* SplineAnimate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineAnimate.h; sourceTree = "<group>"; };
 		53504C4ECB827EC45A167CF8 /* SplineAnimate.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineAnimate.cpp; sourceTree = "<group>"; };
@@ -10816,7 +10859,6 @@
 				5452524E76DA1B10D1FB29A5 /* TerrainHoles.h */,
 				5452524E89465B22069F7FA7 /* TerrainLayers.h */,
 				5452524E08E5A1B26036AE56 /* TerrainMapStore.h */,
-				5452524E04D1361E8F0D9B9F /* TerrainNoise.h */,
 				5452524EC425BA5AEFAFDAEB /* TerrainOps.cpp */,
 				5452524EE4604303FAEBF498 /* TerrainOps.h */,
 				5452524ED2A1EF93AD226CAF /* TerrainPlacement.cpp */,
@@ -10827,6 +10869,8 @@
 				5452524E41E8ACF56291B1E7 /* TerrainStroke.h */,
 				5452524E76AB4CB8E6BC0502 /* TerrainSurface.cpp */,
 				5452524E8C0EE5FFF25F3004 /* TerrainSurface.h */,
+				505254434ED11862DC7279EB /* HeightfieldErosion.cpp */,
+				50525443C97865F506126415 /* HeightfieldErosion.h */,
 				5452524E196C6559F1F7A19A /* FoliageCull.cpp */,
 				5452524E248C337AC7E14F89 /* FoliageCull.h */,
 				5452524EED9C5E893EDF2284 /* FoliageOps.cpp */,
@@ -10863,6 +10907,30 @@
 				54574C44A52D8E4E5B3D5FC7 /* WorldLattice.h */,
 			);
 			path = world;
+			sourceTree = "<group>";
+		};
+		5052544389C2D57FF7DC8B71 /* noise */ = {
+			isa = PBXGroup;
+			children = (
+				50525443C3D102C76A82EFF6 /* NoiseBackend.h */,
+				50525443BB7CA870B7C4F2D0 /* NoiseCompat.cpp */,
+				505254431CC68372D3E0D5E2 /* NoiseCompat.h */,
+				505254435BF864565D2094CF /* NoiseCompiler.cpp */,
+				50525443E01A8704D494B635 /* NoiseDetMath.h */,
+				50525443BCE0EB6AA2C8E4F3 /* NoiseEval.cpp */,
+				50525443843AFC726596473B /* NoiseGraphRuntime.h */,
+				50525443417384EF7414EEC0 /* NoiseKernelImpl.h */,
+				505254435B682AAA8EAA4B67 /* NoiseKernels.cpp */,
+				50525443852027814D75C7AA /* NoiseKernels.h */,
+				50525443D8390091C7404F18 /* NoiseNodes.cpp */,
+				50525443AEB0CED688246B4D /* NoiseNodes.h */,
+				5052544327E069F45F015563 /* NoiseParallel.h */,
+				50525443470F69FB802741F7 /* NoisePlan.h */,
+				5052544348BD8F23FAD160BF /* NoiseRanges.cpp */,
+				50525443DC8D3FCB2AECBF54 /* NoiseSwitch.h */,
+				5052544353B86FDD13D1BCE9 /* NoiseTypes.h */,
+			);
+			path = noise;
 			sourceTree = "<group>";
 		};
 		7162FC2A25962A0E0075B97D /* core */ = {
@@ -10946,6 +11014,7 @@
 				4A534E474D0727C81240C154 /* model */,
 				4A534E47FD9CD85331CEC557 /* memory */,
 				5452524E196FDEBB284DD19F /* terrain */,
+				5052544389C2D57FF7DC8B71 /* noise */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -15228,6 +15297,18 @@
 				54574C44A074768F982FFED1 /* TerrainWorldSelect.h in Headers */,
 				54574C4445F7A4B26B7F2D70 /* TerrainWorldData.h in Headers */,
 				54574C440A2404CAE109FADB /* TerrainTileFormat.h in Headers */,
+				5052544331A069D7C5AD13CD /* HeightfieldErosion.h in Headers */,
+				50525443E005991A2486A3D3 /* NoiseTypes.h in Headers */,
+				505254434135E82BA86F0DE2 /* NoiseSwitch.h in Headers */,
+				505254439B7C070BEC8659CB /* NoisePlan.h in Headers */,
+				505254439709AAC5472DF77E /* NoiseParallel.h in Headers */,
+				505254433731EC3FA49ACF43 /* NoiseNodes.h in Headers */,
+				505254437840FDCD040FF836 /* NoiseKernels.h in Headers */,
+				50525443A7DA5EB3A4F1419E /* NoiseKernelImpl.h in Headers */,
+				50525443BF21B62B6E1EB26C /* NoiseGraphRuntime.h in Headers */,
+				50525443684609DF0E2F213D /* NoiseDetMath.h in Headers */,
+				5052544358BE01E2CF7F4E64 /* NoiseCompat.h in Headers */,
+				50525443D4BF8FB8593A6551 /* NoiseBackend.h in Headers */,
 				53504C4E297A11A3049D85C4 /* SplineAnimate.h in Headers */,
 				53504C4EBC6278D3C50D1C80 /* SplineInstantiate.h in Headers */,
 				53504C4E311041BDE2CBB621 /* SplineExtrude.h in Headers */,
@@ -15364,7 +15445,6 @@
 				5452524E61BA6CE2864C5CCC /* TerrainShape.h in Headers */,
 				5452524E20F3B123C9746224 /* TerrainPlacement.h in Headers */,
 				5452524EDCF7A6E881F05F33 /* TerrainOps.h in Headers */,
-				5452524E99BCD5FB1B0A81D1 /* TerrainNoise.h in Headers */,
 				5452524E53B8E6834E13BD04 /* TerrainMapStore.h in Headers */,
 				5452524EC33984C90DDB934A /* TerrainLayers.h in Headers */,
 				5452524EE7BDEFD32086E359 /* TerrainHoles.h in Headers */,
@@ -17947,6 +18027,13 @@
 				54574C44320CB6340012406F /* TerrainWorldSelect.cpp in Sources */,
 				54574C44B8E069427266643B /* TerrainWorldData.cpp in Sources */,
 				54574C443A5FE19F7C54128F /* TerrainTileFormat.cpp in Sources */,
+				50525443D0C0E5214899A2D7 /* HeightfieldErosion.cpp in Sources */,
+				505254436C88A4453ACE4B86 /* NoiseRanges.cpp in Sources */,
+				5052544308B5CAA5CF8AF156 /* NoiseNodes.cpp in Sources */,
+				50525443D9E94A67E0811EEA /* NoiseKernels.cpp in Sources */,
+				50525443D04E0A75B536646C /* NoiseEval.cpp in Sources */,
+				50525443FF684DA9D0C99316 /* NoiseCompiler.cpp in Sources */,
+				505254437E4AC817464F0CB8 /* NoiseCompat.cpp in Sources */,
 				53504C4EB24308C2D78335F2 /* SplineClassesLua.cpp in Sources */,
 				53504C4E283B6FF5F26263BD /* SplineAnimate.cpp in Sources */,
 				53504C4E4A7CF4D85FD00022 /* SplineInstantiate.cpp in Sources */,
@@ -18823,6 +18910,13 @@
 				54574C44A664BF4F919C5ADB /* TerrainWorldSelect.cpp in Sources */,
 				54574C447ABA4FDB975FA33F /* TerrainWorldData.cpp in Sources */,
 				54574C44BA54EF26B8EE8859 /* TerrainTileFormat.cpp in Sources */,
+				5052544357B7E064BC6631C1 /* HeightfieldErosion.cpp in Sources */,
+				505254436933DE845A04E28C /* NoiseRanges.cpp in Sources */,
+				50525443F3733753C1BDB2BC /* NoiseNodes.cpp in Sources */,
+				5052544309B3F4C83F31FF75 /* NoiseKernels.cpp in Sources */,
+				505254434909CC9FC2E29218 /* NoiseEval.cpp in Sources */,
+				50525443FEE4F4AE912B1E27 /* NoiseCompiler.cpp in Sources */,
+				505254438B25CC05ECE442D7 /* NoiseCompat.cpp in Sources */,
 				53504C4E56FFBE8361FFBEBC /* SplineClassesLua.cpp in Sources */,
 				53504C4EC783A95717F91079 /* SplineAnimate.cpp in Sources */,
 				53504C4E5B3A511C890C7ABB /* SplineInstantiate.cpp in Sources */,

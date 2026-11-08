@@ -1024,3 +1024,46 @@ hooks stay out of `MeshSystem.cpp` and `RenderSystem.cpp`.
   plus the AC35 expectation.
 - **`random_noise` (R37).** T1 R19 makes it a seeded hash and records the changed output; it is not `TerrainNoise.h`, so
   `noise::compat` does not change for it.
+
+## Deviations
+
+Recorded by the implementer. Each names what changed and why; the spec text above is unchanged.
+
+- **Output port ids of the erosion nodes (R9).** A node's ports share one namespace (`graph::portsOf`, `findPort`), so an input `height` and an output `height` cannot both exist. The input stays `height`; the output is `out`, named Height. `flow` and `sediment` are as written.
+- **`terrain_height` is grid-only as well as bake-only (R9).** It reads a snapshot by texel, so it has no meaning at an arbitrary point. `isGridOnlyType` says so; `evaluatePoints` on it would otherwise have returned zeros silently.
+- **The Value node extends `compat::value` on `[0, 65535)`, not `[0, 65536)` (N13).** The node's lattice wraps at the last cell, where the old code had no wrap. Wrapping keeps the field continuous across the period; the old value at that cell differs, and the tests cover the range that matches.
+- **`EvalContext` and `CompileOptions` grew (N15).** Additive fields: the snapshot's extent and origin (a padded region must clamp to it), `uvPerUnit` (a region's UVs are the whole terrain's), `clock` (the seam of AC13), `backend`, `report`, and `previewNodes`, `maxHeight`, `forbidGridOnly`, `forbidBakeOnly` on the options. `evaluateGridOutputs` is new: outputs of one run share a stage, so an erosion runs once.
+- **`metadata.noise.usage` and `metadata.noise.resolution` (R15, R26).** `validate_graph` has no call context, so a file states where it runs (`bake`, `runtime`, `points`) for `bake-only-node` and `grid-only-node`, and the resolution for `erosion-budget`, default 1024. `compile`'s options override both.
+- **Layout of `evaluateGrid3D` (N15).** x fastest, then y, then z. The spec names no order; T6 R2 says only "x fastest".
+- **Maps a run makes (T1 R24, R28).** A real run is T1's form of one undo step: the maps it needs and the terrain lacks (a replaced height map, blend maps, density maps) are made blank and kept by structural steps holding their final pixels, then one `TerrainMapDeltaCmd` skips them, grouped as "Generate Terrain (...)". T1's `editor/terrain/TerrainOpsUndo` makes those steps for `edit_terrain`; its two helpers are public now, and the blank map is sized by bytes per channel, as a 16-bit height map needs.
+- **Create Terrain with a preset (R61).** One click is one undo step, "Create Terrain (Rolling Hills)": `CreateTerrainDialog::createGenerated` runs the preset through `TerrainGeneration::prepare`, `evaluate` and `apply` over a `RawMapStore` of the new height map on a job, then T1's `create()` makes the terrain with those heights (two optional arguments: the bytes and the step name). Generating after Create and grouping the two steps could not redo: T1's delta refuses while its terrain does not exist yet. `CreateTerrainDialog::show` moved from the Inspector's draw to the App's, since the Terrain window's own button opened a dialog nothing drew while the Inspector tab was behind it.
+- **`sampleGrid`'s position (R68).** Samples are texel centres, `(round(x / step) + i + 0.5) * step`, so a script's grid has the bits a generation gives at those texels. `x` and `z` snap to the lattice.
+- **The default `radius` is 2, not R24's 1 (coordinator's decision, overriding R24), and deposits go through the brush.** Measured with a scratch probe at 257 texels on 1000 m, `droplets_per_texel` 0.25, seeds and grounds varied, as a multiple of the fractal's own curvature (`terrain-evidence/T2/erosion-radius-probe-after.txt`):
+
+  | `radius` | One-texel curvature, 5 / 8 octaves | Four-texel curvature, 5 / 8 octaves | M steps/s, one thread (busy host, with the in-bounds path; 5-octave ground) |
+  |---|---|---|---|
+  | 1 | 1.51-1.52 / 1.06-1.08 | 1.03 / 1.00 | 11.1 |
+  | 2 | 1.04 / 0.95 | 0.97 / 0.93-0.94 | 9.0 |
+  | 3 | 0.95-0.96 / 0.97 | 0.92-0.93 / 0.91 | 7.0 |
+  | 4 | 0.99 / 0.98 | 0.91 / 0.91 | 4.7 |
+
+  2 is the smallest radius that stops the roughening; 3 and 4 add little for much more cost. With deposits on the four cells under a droplet, as Beyer has them, `radius` 2 stood at 1.35 and 1 at 1.67 (1.95 at `droplets_per_texel` 1), which is why they share the brush. `radius` 1 stays selectable: it is the fastest and preserves fine detail, and it can roughen the ground (`docs/mcp/guide/noise-graphs.md`). `CarvesChannels` pins both scales at the defaults. Whether it looks right still needs AC17's reviewed screenshots, and R48's 8 M steps/s, met here at 9.0 on a busy host by a scratch probe, must still be gated by `je-bench-noise` on an idle one.
+- **Hand-picked Simplex radius (R1).** 3D Simplex uses radius 0.5 rather than the paper's 0.6, which keeps the field continuous; the result is clamped to -1..1.
+- **`NoisePresetData.h` (R41).** The test project's build has no hook to embed files, so the presets are a generated, committed header (`tools/noise/gen_test_project_presets.py`, `--check`).
+- **The Android image gains cross compilers too (section 6, D22).** Besides `qemu-user-static`, `gcc-aarch64-linux-gnu` and `gcc-arm-linux-gnueabihf` are in the image, for section 9's fallback when a static bionic binary will not start under qemu-user.
+- **`AssetType::NoiseGraph` is 32, not 28 (R13, AC50; coordinator's decision, ledger D22 updated).** Upstream's Sound Event took 28 before
+  T2 landed, and the value is stored in `assetmap.bin`, so ours moved. 29-31 stay T5's, T4's and T6's. `AssetTypes.NoiseGraphValueIs32` pins it.
+- **"Connect FBm → Remap", not `graph::describe`'s text (R57).** `describe` names a connection's source by its port, and nearly every
+  noise port is called Out ("Connect Out → Remap"). The window names it by the two nodes' display names instead.
+- **Previews run on `Lane::Normal`, not R28's Background + Heavy (coordinator's decision).** The reason is the gate's arithmetic,
+  read from the code, not measured here: a desktop editor has cores - 1 workers (ThreadUtil.cpp), and BackgroundGate admits
+  max(1, workers - 2) Background bodies and Heavy at most max(1, that - 2). On a 4-core machine that is one slot, which the editor's
+  start-up shader compiles (Heavy, ShaderBuilder.cpp) hold for their whole run, so a Preview a person clicked would queue behind every
+  one of them; S06 has no lane for user-initiated work. This host's containers report 8 cores (7 workers, 5 Background slots, 3 Heavy),
+  so the stall was not reproduced here, and the Generate section's hung first Preview seen during testing had another cause. The
+  Generate section's Preview (capped at 513 per side, `kInteractiveResolution`), `preview_noise_graph` (at most 512) and the window's
+  thumbnails run on Normal, as the search palette's interactive job runs on High. A newer preview cancels the older for the same
+  document, graph or terrain: `NoiseGraphDocument.ABurstOfPreviewsRunsOnlyTheNewest`, `test_noise_graph.py::test_preview`; the
+  section runs one at a time, its controls disabled while it runs. `generate_terrain`'s full-resolution dry runs, Apply and real runs
+  stay Background + Heavy. None of this is runtime code: the Lua `sampleGridAsync` stays on Background, inside a web player's pump.
+

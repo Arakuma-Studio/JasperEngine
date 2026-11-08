@@ -38,6 +38,7 @@ namespace {
             {{AssetType::Data, AssetIdentity::Sidecar, AssetPathBase::Assets, false, true}, {".json", ".txt", ".csv", ".xml", ".bytes", ".inputactions"}},
             {{AssetType::ColorLut, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".cube"}},
             {{AssetType::ParticleEffect, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".particles"}},
+            {{AssetType::NoiseGraph, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".noisegraph"}},
             // animation clips keep their GUID in their own JSON ("guid", AnimationClipIO), as the
             // engine's YAML assets do; pose animations have a meta like other data files
             {{AssetType::AnimationClip, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".anim"}},

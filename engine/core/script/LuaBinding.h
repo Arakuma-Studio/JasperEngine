@@ -96,6 +96,7 @@ namespace jasperengine {
         static void registerGameplayClasses(lua_State *L);
         static void registerNavigationClasses(lua_State *L);
         static void registerSplineClasses(lua_State *L);
+        static void registerNoiseClasses(lua_State *L);
         static void registerTerrainClasses(lua_State *L);
 #if JASPERENGINE_TERRAIN_WORLD
         static void registerTerrainWorldClasses(lua_State *L);
