@@ -15,7 +15,9 @@
 #include "math/Vector3.h"
 #include "terrain/TerrainHoles.h"
 
+#include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <cstdint>
 
 namespace jasperengine::terrain {
@@ -37,9 +39,15 @@ namespace jasperengine::terrain {
         bool exact = true;      // false: answered from an overview, not the map (T4 R24)
     };
 
-    // Normalized height of the red channel of one texel, 8 or 16-bit (little-endian)
+    // Normalized height of the red channel of one texel, 8 or 16-bit (little-endian) or a 32-bit float
     inline float heightTexelAt(const unsigned char* pixels, size_t texelIndex, int channels, int bytesPerChannel) {
         const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
+        // a float map's CPU view (an .exr or .hdr source: TextureData's RGBA32F), as the shader reads it
+        if (bytesPerChannel >= 4) {
+            float value;
+            std::memcpy(&value, pixels + index, sizeof(value));
+            return std::isfinite(value) ? value : 0.0f;
+        }
         if (bytesPerChannel >= 2) {
             const unsigned int value = static_cast<unsigned int>(pixels[index]) | (static_cast<unsigned int>(pixels[index + 1]) << 8);
             return static_cast<float>(value) / 65535.0f;

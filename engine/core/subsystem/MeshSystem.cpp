@@ -4015,6 +4015,7 @@ std::vector<Entity> MeshSystem::getFoliageEntities(Entity terrainEntity) const{ 
 Entity MeshSystem::getFoliageOwner(Entity foliageEntity) const{ return scene->getSystem<FoliageSystem>()->getOwner(foliageEntity); }
 void MeshSystem::reloadFoliageMesh(const std::string& filename){ scene->getSystem<FoliageSystem>()->reloadMesh(filename); }
 size_t MeshSystem::getFoliageInstanceCount(Entity terrainEntity, size_t layer) const{ return static_cast<size_t>(scene->getSystem<FoliageSystem>()->getInstanceCount(terrainEntity, static_cast<int>(layer))); }
+std::string MeshSystem::getFoliageError(Entity terrainEntity, size_t layer) const{ return scene->getSystem<FoliageSystem>()->getLayerError(terrainEntity, static_cast<int>(layer)); }
 
 void MeshSystem::retryFailedModelLoads(const std::string& filename){
     const std::string key = getModelFilenameKey(filename);

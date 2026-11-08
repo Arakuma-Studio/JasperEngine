@@ -14,7 +14,9 @@
 #include "math/Vector2.h"
 #include "terrain/TerrainDeterministic.h"
 
+#include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -165,8 +167,14 @@ namespace jasperengine::terrain {
         return map.kind == MapKind::Blend ? format.channels : 1;
     }
 
+    // bytes per stored channel: 8-bit and 16-bit unsigned, or a 32-bit float map (an .exr or .hdr
+    // source's CPU view), which stores only read
+    inline int bytesPerChannelOf(int bitsPerChannel) {
+        return bitsPerChannel >= 32 ? 4 : (bitsPerChannel >= 16 ? 2 : 1);
+    }
+
     inline int bytesPerTexel(const MapFormat& format) {
-        return format.channels * (format.bitsPerChannel >= 16 ? 2 : 1);
+        return format.channels * bytesPerChannelOf(format.bitsPerChannel);
     }
 
     // R11: the one quantization rule of every map
@@ -176,6 +184,11 @@ namespace jasperengine::terrain {
     }
 
     inline float decodeChannel(const uint8_t* stored, int bitsPerChannel) {
+        if (bitsPerChannel >= 32) {
+            float value;
+            std::memcpy(&value, stored, sizeof(value));
+            return std::isfinite(value) ? value : 0.0f;
+        }
         if (bitsPerChannel >= 16) {
             return static_cast<float>(static_cast<uint32_t>(stored[0]) | (static_cast<uint32_t>(stored[1]) << 8)) / 65535.0f;
         }
@@ -189,7 +202,7 @@ namespace jasperengine::terrain {
 
     // The floats of one stored texel
     inline void decodeTexel(MapId map, const MapFormat& format, const uint8_t* stored, float* values) {
-        const int step = format.bitsPerChannel >= 16 ? 2 : 1;
+        const int step = bytesPerChannelOf(format.bitsPerChannel);
         const int count = floatChannels(map, format);
         for (int c = 0; c < count; c++) {
             values[c] = decodeChannel(stored + c * step, format.bitsPerChannel);

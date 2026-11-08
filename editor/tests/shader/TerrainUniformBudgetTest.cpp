@@ -164,3 +164,85 @@ TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
     std::printf("[terrain] %zu painted terrain variants; the most fragment uniform vectors: %zu of 224, %s\n",
                 variants.size(), worst, worstName.c_str());
 }
+
+// T3's painted terrain variants (12 layers, holes, the macro maps, distance resampling, cliffs,
+// height blend, stochastic tiling, every tier at High Lit Quality) in the heaviest scene above stay
+// within GLES3's limits as upstream's lit-uniforms work requires of every built-in terrain variant:
+// 8 blocks, 16 textures and samplers (checkResourceBudget), 224 fragment and 256 vertex vectors
+TEST(TerrainUniformBudgetSlow, TerrainProgrammeVariantsFitGles3){
+    ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
+    SubmeshShaderInputs terrain;
+    terrain.terrain = true;
+    terrain.terrainBlendMaps = true;
+    terrain.terrainSurface = true;
+    terrain.normal = true;
+    terrain.baseColorTexture = true;
+    terrain.terrainVariant.layerCount = 12;
+
+    size_t compiled = 0;
+    size_t worst = 0;
+    std::string worstName;
+    for (jasperengine::terrain::TerrainQuality tier : {jasperengine::terrain::TerrainQuality::HIGH, jasperengine::terrain::TerrainQuality::MEDIUM,
+                                                      jasperengine::terrain::TerrainQuality::LOW}){
+        for (bool holes : {false, true}){
+            for (bool features : {false, true}){
+                for (bool heavy : {false, true}){
+                    SubmeshShaderInputs inputs = terrain;
+                    inputs.terrainHoles = holes;
+                    inputs.terrainVariant.limitLayers = features;
+                    inputs.terrainVariant.macro = features;
+                    inputs.terrainVariant.macroNormal = features;
+                    inputs.terrainVariant.resample = features;
+                    inputs.terrainVariant.cliff = features;
+                    inputs.terrainVariant.heightBlend = features;
+                    inputs.terrainHex = features;
+                    inputs.terrainHexStochastic = features;
+                    MeshShaderEnvironment environment;
+                    environment.lights = true;
+                    environment.shadows = true;
+                    environment.shadowsHQ = true;
+                    environment.ibl = true;
+                    environment.reflectionProbes = true;
+                    environment.ssao = true;
+                    environment.postColor = true;
+                    environment.fog = true;
+                    environment.litQualityHigh = true;
+                    environment.lightCapacity = 16;
+                    environment.terrainTier = tier;
+                    environment.capsuleShadows = heavy;
+                    environment.contactShadows = heavy;
+                    environment.lights2D = heavy;
+                    environment.shadows2D = heavy;
+                    const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
+                    const bool custom = !variant.litDefines.empty();
+                    const std::string reference = custom ? ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, variant.litDefines) : std::string();
+                    const uint16_t customId = custom ? ShaderPool::registerCustomShader(reference) : 0;
+                    CustomShaderSources sources;
+                    if (custom)
+                        sources = ShaderVariantCompiler::resolveCustomShaderSources(reference, nullptr, ShaderType::MESH);
+                    const std::string name = std::string(jasperengine::terrain::terrainQualityName(tier)) + (holes ? ", holes" : "") +
+                                             (features ? ", every feature" : "") + (heavy ? ", capsule shadows, 2d lights and shadows" : "") +
+                                             " (" + ShaderPool::getShaderStr(ShaderType::MESH, variant.properties, customId) + ")";
+                    ShaderData data;
+                    std::string error, log;
+                    ASSERT_TRUE(ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::MESH, variant.properties, customId), ShaderBackend::GLES3,
+                                                               custom ? &sources : nullptr, data, &error, &log)) << name << ": " << error << "\n" << log;
+                    compiled++;
+                    std::string fragmentBlocks, vertexBlocks;
+                    const size_t fragment = terrainStageVectors(data, ShaderStageType::FRAGMENT, fragmentBlocks);
+                    const size_t vertex = terrainStageVectors(data, ShaderStageType::VERTEX, vertexBlocks);
+                    EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), "") << name;
+                    EXPECT_LE(fragment, 224u) << name << "; fragment blocks: " << fragmentBlocks;
+                    EXPECT_LE(vertex, 256u) << name << "; vertex blocks: " << vertexBlocks;
+                    if (fragment > worst){
+                        worst = fragment;
+                        worstName = name;
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_EQ(compiled, 24u);
+    std::printf("[terrain] %zu terrain programme variants; the most fragment uniform vectors: %zu of 224, %s\n",
+                compiled, worst, worstName.c_str());
+}
