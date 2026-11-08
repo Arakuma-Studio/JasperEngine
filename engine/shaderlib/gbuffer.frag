@@ -2,12 +2,13 @@
 
 // G-buffer geometry pass (fragment), MRT output:
 //   color[0] = packed view depth (identical to depth.frag, so SSAO/SSR depth is unchanged)
-//   color[1] = view-space normal (octahedral .rg) + roughness (.b) + metallic (.a)
+//   color[1] = view-space normal (octahedral .rg, rounded to 8 bits) + roughness (.b) + metallic (.a)
 //   color[2] = linear base color (.rgb) + the reflection source code / 255 (.a): what the
 //              colour pass adds as environment specular, which the SSR composite swaps
 //              (includes/ssr_source.glsl)
-//   color[3] = the occlusion the colour pass weighs that specular by (.r, R8): the
-//              material's occlusion map times a painted terrain's occlusion
+//   color[3] = the occlusion the colour pass weighs that specular by (.r): the material's
+//              occlusion map times a painted terrain's occlusion; the normal's next 8 bits
+//              (.gb, includes/octahedral.glsl octEncode16), so SSR reads it in 16 bits
 //
 // HAS_TERRAIN_PBR evaluates the painted layers here too, so what this writes matches
 // what the color pass shades. The maps are read on the UV set the material names, through
@@ -189,9 +190,12 @@ void main() {
         occlusion *= terrainSurface.occlusion;
     #endif
 
-    frag_gbuffer = vec4(octEncode(n), clamp(roughness, 0.0, 1.0), clamp(metallic, 0.0, 1.0));
+    vec2 normalCoarse;
+    vec2 normalFine;
+    octEncode16(n, normalCoarse, normalFine);
+    frag_gbuffer = vec4(normalCoarse, clamp(roughness, 0.0, 1.0), clamp(metallic, 0.0, 1.0));
 
     frag_albedo = vec4(baseColor.rgb, gbufferMaterial.params.z);
 
-    frag_occlusion = vec4(clamp(occlusion, 0.0, 1.0), 0.0, 0.0, 1.0);
+    frag_occlusion = vec4(clamp(occlusion, 0.0, 1.0), normalFine, 1.0);
 }

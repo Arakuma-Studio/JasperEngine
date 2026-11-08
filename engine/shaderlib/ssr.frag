@@ -33,6 +33,8 @@ uniform texture2D u_sceneColorTexture;
 uniform sampler u_sceneColor_smp;
 uniform texture2D u_albedoTexture;    // G-buffer color[2]: .a the reflection source
 uniform sampler u_albedo_smp;
+uniform texture2D u_occlusionGBufferTexture; // G-buffer color[3]: .gb the normal's fine bits
+uniform sampler u_occlusionGBuffer_smp;
 
 uniform u_fs_ssrParams {
     mat4 projection;
@@ -83,14 +85,8 @@ void main(){
 
     vec3 P = reconstructViewPos(d, depth01);
 
-    // View-space surface normal from the G-buffer (octahedral .rg). This is the real
-    // geometric/shading normal of the surface rather than one reconstructed from the
-    // depth gradient, so reflections follow curvature and detail correctly.
-    vec4 g = texture(sampler2D(u_gbufferTexture, u_gbuffer_smp), d);
-    vec3 n = octDecode(g.rg);
-    if (dot(n, P) > 0.0) n = -n; // orient toward the camera
-
     // G-buffer .b: the surface's perceptual roughness
+    vec4 g = texture(sampler2D(u_gbufferTexture, u_gbuffer_smp), d);
     float roughness = g.b;
     if (roughness >= SSR_MAX_ROUGHNESS){ // too rough: no march, the IBL alone
         frag_color = vec4(0.0);
@@ -102,6 +98,12 @@ void main(){
         frag_color = vec4(0.0);
         return;
     }
+
+    // View-space surface normal from the G-buffer (octahedral, 16 bits: .rg of color[1] and .gb
+    // of color[3]). This is the real geometric/shading normal of the surface rather than one
+    // reconstructed from the depth gradient, so reflections follow curvature and detail correctly.
+    vec3 n = octDecode16(g.rg, textureLod(sampler2D(u_occlusionGBufferTexture, u_occlusionGBuffer_smp), d, 0.0).gb);
+    if (dot(n, P) > 0.0) n = -n; // orient toward the camera
 
     // view-space reflection ray (camera at origin looking down -Z)
     vec3 V = normalize(P);

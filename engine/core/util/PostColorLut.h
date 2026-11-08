@@ -75,6 +75,14 @@ namespace jasperengine{
         // display-stage one into ALL and GRADE
         static void bake(const PostProcessingSettings& settings, const CubeLut* lut, Stage stage, int n, std::vector<uint8_t>& rgba,
                          float shaper = 1.0f);
+        // what a texel of that bake (ALL or CURVE) holds at shaper code s (0..1 per channel), unrounded
+        static Vector3 evaluate(const PostProcessingSettings& settings, const CubeLut* lut, Stage stage, const Vector3& code,
+                                float shaper = 1.0f);
+        // the shaper code whose evaluate is nearest `display` (0..1 per channel), per channel by
+        // bisection over a few sweeps (exact where the curve and grade are monotone per channel);
+        // the SSR composite's linear store of the clear colour
+        static Vector3 invert(const PostProcessingSettings& settings, const CubeLut* lut, Stage stage, const Vector3& display,
+                              float shaper = 1.0f);
 
         // loads a LUT strip image (height N, width N * N); false with a logged error otherwise,
         // also returned in error
