@@ -2206,9 +2206,10 @@ void registerViewTools(McpRegistry& registry) {
         // pose: {entity (bind), path (.poseanim), index (pose it), play (preview), tab (Pose, Feel,
         // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
         // state. Budget-neutral with the pose_animation window added. title_designer (S82 R78): its keys
-        // are in jasper://docs/title-art and an unknown key fails listing them, which pays for its schema.
+        // are in jasper://docs/title-art and an unknown key fails listing them, which pays for its schema;
+        // its words were cut again when the wave-2 merges took core 16 characters over its limit.
         tool.description =
-            "Fronts an editor panel, e.g. for a watching human (not needed before screenshot). console: returns "
+            "Fronts an editor panel for a watching human (screenshot needs none). console: "
             "its rows, categories, selection; preferences: opens a page; systems: each row's Enabled checkbox rect; "
             "pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({

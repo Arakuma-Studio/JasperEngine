@@ -1476,7 +1476,10 @@ rest of S82 lands in 6B.
     left under its 99,000 limit, less than the window enum values and the `title_designer` object
     need (95). `focus_window` paid for them inside the tool: its description is shorter, and
     `page` no longer lists the Preferences pages (a wrong page still fails listing them). Core
-    grows by 21 characters, to 98,983 (`tool_budget.py`; R81 allows 120).
+    grows by 21 characters, to 98,983 (`tool_budget.py`; R81 allows 120). Merged into
+    `feature/title-art` after upstream's own core growth the listing measured 99,016; the
+    `focus_window` description lost 21 more characters ("e.g.", "returns", a shorter screenshot
+    note), so core stands at 98,995.
 16. **Implementation: a starter Library until S84 registers its provider.** The integrator asked for
     the Library strip in view by default (D18) before S84 lands, so with no provider registered the
     window uses `TitleStarterLibrary` (`editor/titleart/designer/TitleStarterLibrary.h`): ten Looks
