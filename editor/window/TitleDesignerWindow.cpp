@@ -510,6 +510,16 @@ ta::Json TitleDesignerWindow::state() const {
     out["staged"] = doc.gestureActive() && doc.hasStaged();
     out["preview_active"] = doc.previewActive();
     out["last_render_ms"] = canvas ? canvas->info().lastRenderMs : 0.0;
+    if (canvas) {
+        // what the canvas shows: an agent tells an empty render from a missing one
+        const CanvasRenderInfo& info = canvas->info();
+        ta::Json problems = ta::Json::array();
+        for (const ta::TitleProblem& p : info.problems) problems.push_back(p.code);
+        out["canvas"] = {{"has_image", info.hasImage}, {"title_drawn", info.titleDrawn}, {"draft", info.draft}, {"px_scale", info.shownPxScale},
+                         {"image", ta::Json::array({info.imageWidth, info.imageHeight})},
+                         {"frame", ta::Json::array({info.shownFrame.x, info.shownFrame.y, info.shownFrame.width, info.shownFrame.height})},
+                         {"error", info.error}, {"problems", problems}};
+    }
     out["editable"] = doc.editable();
     if (!doc.editable()) out["read_only"] = doc.readOnlyReason();
     out["search"] = searchText;

@@ -347,8 +347,10 @@ void TitleCanvasView::updateScene() {
         titleSprite->setScale(Vector3((float)setup.stageScale, (float)setup.stageScale, 1.0f));
         titleSprite->setColor(Vector4(1.0f, 1.0f, 1.0f, setup.dim));
         titleSprite->setVisible(true);
+        status.titleDrawn = true;
     } else {
         titleSprite->setVisible(false);
+        status.titleDrawn = false;
     }
 }
 

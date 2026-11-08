@@ -121,6 +121,7 @@ namespace jasperengine::editor::titledesigner {
         std::vector<ta::TitleProblem> problems; // the shown image's
         std::vector<ta::NodeCost> nodeCosts;    // the shown image's (Stats)
         size_t cachedLayers = 0, totalLayers = 0;
+        bool titleDrawn = false;                // the last drawn view showed the image
     };
 
     class TitleCanvasView {
