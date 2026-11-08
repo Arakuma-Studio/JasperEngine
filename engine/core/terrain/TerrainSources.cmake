@@ -19,4 +19,10 @@ set(JASPERENGINE_TERRAIN_SRCS
     core/terrain/TerrainStroke.cpp
     core/terrain/TerrainSurface.cpp
     core/terrain/TreeStore.cpp
+    core/terrain/world/TerrainTileFormat.cpp
+    core/terrain/world/TerrainWorldData.cpp
+    core/terrain/world/TerrainWorldSelect.cpp
+    core/terrain/world/TiledMapStore.cpp
+    core/terrain/world/TileStreamer.cpp
+    core/terrain/world/WorldChunkSamples.cpp
 )
