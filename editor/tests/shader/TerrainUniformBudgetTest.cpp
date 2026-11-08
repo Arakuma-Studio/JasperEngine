@@ -197,6 +197,8 @@ TEST(TerrainUniformBudgetSlow, TerrainProgrammeVariantsFitGles3){
                     inputs.terrainVariant.heightBlend = features;
                     inputs.terrainHex = features;
                     inputs.terrainHexStochastic = features;
+                    inputs.terrainVariant.hex = features;
+                    inputs.terrainVariant.hexStochastic = features;
                     MeshShaderEnvironment environment;
                     environment.lights = true;
                     environment.shadows = true;
@@ -245,4 +247,50 @@ TEST(TerrainUniformBudgetSlow, TerrainProgrammeVariantsFitGles3){
     EXPECT_EQ(compiled, 24u);
     std::printf("[terrain] %zu terrain programme variants; the most fragment uniform vectors: %zu of 224, %s\n",
                 compiled, worst, worstName.c_str());
+}
+
+// the packed layer block (includes/terrain_fs.glsl: 12-bit pairs, the layer codes read by a mask)
+// through the bundled SPIRV-Cross for every backend, at each tier with every feature; Metal and
+// D3D11 are translated here, not compiled by a driver
+TEST(TerrainUniformBudgetSlow, PackedLayersCrossCompileForEveryBackend){
+    ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
+    SubmeshShaderInputs inputs;
+    inputs.terrain = true;
+    inputs.terrainBlendMaps = true;
+    inputs.terrainSurface = true;
+    inputs.normal = true;
+    inputs.baseColorTexture = true;
+    inputs.terrainHoles = true;
+    inputs.terrainHex = true;
+    inputs.terrainHexStochastic = true;
+    inputs.terrainVariant.hex = true;
+    inputs.terrainVariant.hexStochastic = true;
+    inputs.terrainVariant.layerCount = 12;
+    inputs.terrainVariant.limitLayers = true;
+    inputs.terrainVariant.macro = true;
+    inputs.terrainVariant.macroNormal = true;
+    inputs.terrainVariant.resample = true;
+    inputs.terrainVariant.cliff = true;
+    inputs.terrainVariant.heightBlend = true;
+    const ShaderBackend backends[] = {ShaderBackend::GLCore, ShaderBackend::GLES3, ShaderBackend::D3D11, ShaderBackend::MetalMacOS,
+                                      ShaderBackend::MetalIOS, ShaderBackend::Vulkan};
+    for (jasperengine::terrain::TerrainQuality tier : {jasperengine::terrain::TerrainQuality::HIGH, jasperengine::terrain::TerrainQuality::MEDIUM,
+                                                      jasperengine::terrain::TerrainQuality::LOW}){
+        MeshShaderEnvironment environment;
+        environment.lights = true;
+        environment.litQualityHigh = true;
+        environment.terrainTier = tier;
+        const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
+        ASSERT_FALSE(variant.litDefines.empty()) << "the terrain's features are Lit defines";
+        const std::string reference = ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, variant.litDefines);
+        const uint16_t customId = ShaderPool::registerCustomShader(reference);
+        const CustomShaderSources sources = ShaderVariantCompiler::resolveCustomShaderSources(reference, nullptr, ShaderType::MESH);
+        const std::string name = ShaderPool::getShaderStr(ShaderType::MESH, variant.properties, customId);
+        for (const ShaderBackend backend : backends){
+            ShaderData data;
+            std::string error, log;
+            EXPECT_TRUE(ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::MESH, variant.properties, customId), backend, &sources, data, &error, &log))
+                << name << " on backend " << static_cast<int>(backend) << ": " << error << "\n" << log;
+        }
+    }
 }

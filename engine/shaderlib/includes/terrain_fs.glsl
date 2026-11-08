@@ -88,15 +88,21 @@ const float TERRAIN_ONE_PLANE_BAND = 0.02;
 #ifdef HAS_TERRAIN_PBR
     // One entry per layer. Every map a layer owns is a slice of the same detail array,
     // so a layer with no map of a kind stores -1 there and falls back to its factors.
+    // Packed so 12 layers with every feature fit GLES3 / WebGL2's 224 fragment uniform vectors
+    // beside the heaviest lighting (TerrainUniformBudgetSlow): three vectors and a component a layer,
+    // filled by RenderSystem::applyTerrainLayersUniform.
     uniform u_fs_terrainLayers {
-        vec4 colorFactor[MAX_TERRAIN_LAYERS]; //rgb tint (linear), a = 1.0 on a PBR layer
+        vec4 colorFactor[MAX_TERRAIN_LAYERS]; //rgb tint (linear), w normal strength
         vec4 uvTransform[MAX_TERRAIN_LAYERS]; //xy scale of the detail tiling, zw offset
-        vec4 surface[MAX_TERRAIN_LAYERS];     //roughness, metallic, normal strength, occlusion strength
-        vec4 slices[MAX_TERRAIN_LAYERS];      //color, normal and surface slice; w hex rotation (< 0 off, TERRAIN_HEX_TILING)
-        // Stochastic Tiling (includes/stochastic.glsl) as the user set it: cell size (0 when
-        // off), blend sharpness, contrast, rotation. A uniform per draw, so the branch on it
-        // is coherent and no variant is needed.
-        vec4 stochastic[MAX_TERRAIN_LAYERS];
+        // x: > 0 the Stochastic Tiling cell size (includes/stochastic.glsl); <= -1 a hex layer's
+        // -1 - rotation (TERRAIN_HEX_TILING); else 0. A layer with both takes Stochastic Tiling.
+        // yzw: two factors of 0-1 each, in 12 bits (terrainUnpack12): roughness and metallic,
+        // occlusion strength and the blend sharpness, the contrast and the rotation.
+        // A uniform per draw, so the branches on them are coherent and no variant is needed.
+        vec4 surface[MAX_TERRAIN_LAYERS];
+        // a component a layer, an exact integer: PBR + 2 Flat Only (R11) + 4 (normal slice + 1)
+        // + 256 (surface slice + 1); the colour slice is the layer's index
+        vec4 codes[(MAX_TERRAIN_LAYERS + 3) / 4];
         // T3 R33: the features' parameters end the block, so a variant without them has the block it
         // had, and the upload takes the reflected size (RenderSystem::applyTerrainLayersUniform)
         #ifdef TERRAIN_MACRO
@@ -106,9 +112,6 @@ const float TERRAIN_ONE_PLANE_BAND = 0.02;
         #endif
         #ifdef TERRAIN_RESAMPLE
             vec4 resampleParams; // near and far in detail tiles, x and y; z = the far tiling's rate
-        #endif
-        #ifdef TERRAIN_CLIFF
-            vec4 flatOnly[3]; // per layer: 1 = Flat Only, never a side plane (R11)
         #endif
         #ifdef TERRAIN_HEIGHT_BLEND
             vec4 heightBlendParams; // x = sharpness
@@ -126,6 +129,47 @@ const float TERRAIN_ONE_PLANE_BAND = 0.02;
     #endif
 
     #include "includes/stochastic.glsl"
+
+    // the two 0-1 factors a float of the block holds, 12 bits each: exact integers under 2^24,
+    // which highp floats keep, split by powers of two
+    vec2 terrainUnpack12(float packed){
+        float high = floor(packed * (1.0 / 4096.0));
+        return vec2(high, packed - high * 4096.0) * (1.0 / 4095.0);
+    }
+
+    struct TerrainLayerCode{
+        bool pbr;
+        bool flatOnly;
+        float normalSlice;  // -1 = none
+        float surfaceSlice; // -1 = none
+    };
+
+    TerrainLayerCode terrainLayerCode(int index){
+        // the component by a mask: a vector of a block indexed by a variable does not cross-compile to GL
+        float code = dot(terrainLayers.codes[index / 4], vec4(equal(ivec4(index % 4), ivec4(0, 1, 2, 3))));
+        float surfaceSlice = floor(code * (1.0 / 256.0));
+        float rest = code - surfaceSlice * 256.0;
+        float normalSlice = floor(rest * 0.25);
+        float flags = rest - normalSlice * 4.0;
+        TerrainLayerCode layer;
+        layer.pbr = flags == 1.0 || flags == 3.0;
+        layer.flatOnly = flags >= 2.0;
+        layer.normalSlice = normalSlice - 1.0;
+        layer.surfaceSlice = surfaceSlice - 1.0;
+        return layer;
+    }
+
+    // a hex layer's rotation, < 0 for the others
+    float terrainLayerHexRotation(int index){
+        float tiling = terrainLayers.surface[index].x;
+        return tiling <= -1.0 ? -1.0 - tiling : -1.0;
+    }
+
+    // Stochastic Tiling as the user set it: cell size (0 when off), blend sharpness, contrast, rotation
+    vec4 terrainLayerStochastic(int index){
+        vec4 surface = terrainLayers.surface[index];
+        return vec4(max(surface.x, 0.0), terrainUnpack12(surface.z).y, terrainUnpack12(surface.w));
+    }
 
     #ifdef HAS_NORMALS
         in vec3 v_terrainAxisX;
@@ -698,11 +742,8 @@ vec4 getTerrainSliceStochastic(float slice, inout TerrainStochastic ts, bool lum
         terrainHexSharedRotation = -1.0;
         int first = -1;
         for (int i = 0; i < TERRAIN_BLENDMAPS * 3; i++){
-            bool hex = terrainLayers.slices[i].w >= 0.0;
-            #ifdef TERRAIN_HEX_STOCHASTIC
-                // a layer with both takes Stochastic Tiling (getTerrainSurface)
-                hex = hex && !(terrainLayers.stochastic[i].x > 0.0);
-            #endif
+            // (a layer with both takes Stochastic Tiling, and its block entry says so)
+            bool hex = terrainLayerHexRotation(i) >= 0.0;
             if (first < 0 && hex){
                 first = i;
             }
@@ -712,7 +753,7 @@ vec4 getTerrainSliceStochastic(float slice, inout TerrainStochastic ts, bool lum
             vec2 scale = terrainLayers.uvTransform[first].xy;
             vec2 offset = terrainLayers.uvTransform[first].zw;
             terrainHexSharedTiling = vec4(scale, offset);
-            terrainHexSharedRotation = terrainLayers.slices[first].w;
+            terrainHexSharedRotation = terrainLayerHexRotation(first);
             terrainHexShared = hexSetup(v_terrainTextureDetailTiled * scale + offset, terrainFlatDX * scale, terrainFlatDY * scale,
                                         terrainHexSharedRotation);
             terrainHexSharedPowers = hexWeightPowers(terrainHexShared.barycentrics);
@@ -883,19 +924,21 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
 
             vec2 scale = terrainLayers.uvTransform[index].xy;
             vec2 offset = terrainLayers.uvTransform[index].zw;
+            TerrainLayerCode layerCode = terrainLayerCode(index);
+            vec2 roughnessMetallic = terrainUnpack12(terrainLayers.surface[index].y);
+            float occlusionStrength = terrainUnpack12(terrainLayers.surface[index].z).x;
+            float normalStrength = terrainLayers.colorFactor[index].w;
 
             #ifdef TERRAIN_CLIFF
                 // T3 R11: this layer's Flat Only never reads a side plane
                 #ifdef HAS_NORMALS
-                    // the component by a mask: a vector of a block indexed by a variable does not cross-compile to GL
-                    vec4 flatOnlyMask = vec4(equal(ivec4(index % 4), ivec4(0, 1, 2, 3)));
-                    terrainSideAmount = dot(terrainLayers.flatOnly[index / 4], flatOnlyMask) > 0.5 ? 0.0 : terrainSideAmountAll;
+                    terrainSideAmount = layerCode.flatOnly ? 0.0 : terrainSideAmountAll;
                 #endif
             #endif
 
             #ifdef TERRAIN_TIER_READS
                 // Medium and Low: drawn plain, read by the tier's rule, and the same blend as below
-                vec4 rawColor = getTerrainSliceTier(terrainLayers.slices[index].x, scale, offset, true);
+                vec4 rawColor = getTerrainSliceTier(float(index), scale, offset, true);
                 vec4 color = rawColor;
                 float height = color.a;
                 float roughness = baseRoughness;
@@ -903,19 +946,19 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
                 float occlusion = 1.0;
                 vec3 normal = baseNormal;
 
-                if (terrainLayers.colorFactor[index].a > 0.5){
+                if (layerCode.pbr){
                     color = vec4(sRGBToLinear(rawColor.rgb) * terrainLayers.colorFactor[index].rgb, baseColor.a);
-                    roughness = terrainLayers.surface[index].x;
-                    metallic = terrainLayers.surface[index].y;
+                    roughness = roughnessMetallic.x;
+                    metallic = roughnessMetallic.y;
                     #ifdef TERRAIN_QUALITY_LOW
                         // T3 R6: a PBR layer's colour slice carries its height in alpha: no surface read
                         height = rawColor.a;
                     #else
                         height = 1.0;
-                        float surfaceSlice = terrainLayers.slices[index].z;
+                        float surfaceSlice = layerCode.surfaceSlice;
                         if (surfaceSlice >= 0.0){
                             vec4 orm = getTerrainSliceTier(surfaceSlice, scale, offset, false);
-                            occlusion = mix(1.0, orm.r, terrainLayers.surface[index].w);
+                            occlusion = mix(1.0, orm.r, occlusionStrength);
                             roughness *= orm.g;
                             metallic *= orm.b;
                             height = orm.a;
@@ -923,17 +966,17 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
                     #endif
 
                     #ifdef HAS_NORMALS
-                        float normalSlice = terrainLayers.slices[index].y;
+                        float normalSlice = layerCode.normalSlice;
                         #ifdef TERRAIN_QUALITY_LOW
                             // T3 R5: the strongest layer's normal, fading to none where the top two swap
                             if (pick == 0 && normalSlice >= 0.0){
                                 float strongest = terrainPickWeight[0];
-                                float strength = terrainLayers.surface[index].z * (strongest > 0.0 ? (strongest - terrainPickWeight[1]) / strongest : 0.0);
+                                float strength = normalStrength * (strongest > 0.0 ? (strongest - terrainPickWeight[1]) / strongest : 0.0);
                                 normal = terrainShadingNormal(getTerrainLayerNormalTier(normalSlice, scale, offset, strength));
                             }
                         #else
                             if (normalSlice >= 0.0){
-                                normal = terrainShadingNormal(getTerrainLayerNormalTier(normalSlice, scale, offset, terrainLayers.surface[index].z));
+                                normal = terrainShadingNormal(getTerrainLayerNormalTier(normalSlice, scale, offset, normalStrength));
                             }
                         #endif
                     #endif
@@ -947,7 +990,7 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
                 // plain terrain's 128 (NVIDIA, GPU campaign perf3)
                 const bool stochastic = false;
             #else
-                bool stochastic = terrainLayers.stochastic[index].x > 0.0;
+                bool stochastic = terrainLayers.surface[index].x > 0.0;
             #endif
             TerrainStochastic ts;
             vec4 color;
@@ -956,23 +999,24 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
                 // a hex layer's taps and weights, shared by its maps; its colour is the hex
                 // taps', so the flat projection it would overwrite is not sampled (GPU campaign
                 // perf2: -2 %)
-                bool hexLayer = !stochastic && terrainLayers.slices[index].w >= 0.0;
+                float hexRotation = terrainLayerHexRotation(index);
+                bool hexLayer = hexRotation >= 0.0;
                 vec3 hexWeights = vec3(1.0, 0.0, 0.0);
                 // (each map takes the shared taps or sets up its own on its own path: a value
                 // chosen between them would be a copy of the taps held through the layer)
-                bool hexShared = hexLayer && terrainHexIsShared(scale, offset, terrainLayers.slices[index].w);
+                bool hexShared = hexLayer && terrainHexIsShared(scale, offset, hexRotation);
                 if (hexShared){
-                    color = getTerrainColorHex(terrainLayers.slices[index].x, scale, offset, terrainHexShared, terrainHexSharedPowers, hexWeights);
+                    color = getTerrainColorHex(float(index), scale, offset, terrainHexShared, terrainHexSharedPowers, hexWeights);
                 }else if (hexLayer){
-                    HexTaps hexTaps = terrainHexTaps(scale, offset, terrainLayers.slices[index].w);
-                    color = getTerrainColorHex(terrainLayers.slices[index].x, scale, offset, hexTaps, hexWeightPowers(hexTaps.barycentrics), hexWeights);
+                    HexTaps hexTaps = terrainHexTaps(scale, offset, hexRotation);
+                    color = getTerrainColorHex(float(index), scale, offset, hexTaps, hexWeightPowers(hexTaps.barycentrics), hexWeights);
                 }else
             #endif
             if (stochastic){
-                ts = setupTerrainStochastic(scale, offset, terrainLayers.stochastic[index], uint(index));
-                color = getTerrainSliceStochastic(terrainLayers.slices[index].x, ts, true);
+                ts = setupTerrainStochastic(scale, offset, terrainLayerStochastic(index), uint(index));
+                color = getTerrainSliceStochastic(float(index), ts, true);
             }else{
-                color = getTerrainSlice(terrainLayers.slices[index].x, scale, offset);
+                color = getTerrainSlice(float(index), scale, offset);
             }
             float height = color.a;
             float roughness = baseRoughness;
@@ -980,15 +1024,15 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
             float occlusion = 1.0;
             vec3 normal = baseNormal;
 
-            if (terrainLayers.colorFactor[index].a > 0.5){
+            if (layerCode.pbr){
                 // sRGB and tinted, with its alpha out of the blend. A color layer beside it
                 // stays raw, as on the cheap path, so old layers keep their look.
                 color = vec4(sRGBToLinear(color.rgb) * terrainLayers.colorFactor[index].rgb, baseColor.a);
                 height = 1.0;
-                roughness = terrainLayers.surface[index].x;
-                metallic = terrainLayers.surface[index].y;
+                roughness = roughnessMetallic.x;
+                metallic = roughnessMetallic.y;
 
-                float surfaceSlice = terrainLayers.slices[index].z;
+                float surfaceSlice = layerCode.surfaceSlice;
                 if (surfaceSlice >= 0.0){
                     #ifdef TERRAIN_HEX_TILING
                         // a hex layer's surface is its hex taps', so the flat one is not sampled
@@ -996,7 +1040,7 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
                         if (hexShared){
                             orm = getTerrainSliceHex(surfaceSlice, scale, offset, terrainHexShared, hexWeights);
                         }else if (hexLayer){
-                            orm = getTerrainSliceHex(surfaceSlice, scale, offset, terrainHexTaps(scale, offset, terrainLayers.slices[index].w), hexWeights);
+                            orm = getTerrainSliceHex(surfaceSlice, scale, offset, terrainHexTaps(scale, offset, hexRotation), hexWeights);
                         }else{
                             orm = stochastic ? getTerrainSliceStochastic(surfaceSlice, ts, false)
                                              : getTerrainSlice(surfaceSlice, scale, offset);
@@ -1005,23 +1049,23 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
                     vec4 orm = stochastic ? getTerrainSliceStochastic(surfaceSlice, ts, false)
                                           : getTerrainSlice(surfaceSlice, scale, offset);
                     #endif
-                    occlusion = mix(1.0, orm.r, terrainLayers.surface[index].w);
+                    occlusion = mix(1.0, orm.r, occlusionStrength);
                     roughness *= orm.g;
                     metallic *= orm.b;
                     height = orm.a;
                 }
 
                 #ifdef HAS_NORMALS
-                    float normalSlice = terrainLayers.slices[index].y;
+                    float normalSlice = layerCode.normalSlice;
                     if (normalSlice >= 0.0){
-                        float strength = terrainLayers.surface[index].z;
+                        float strength = normalStrength;
                         #ifdef TERRAIN_HEX_TILING
                             // and its normal (the flat projection's is not sampled either)
                             if (hexShared){
                                 normal = terrainShadingNormal(getTerrainLayerNormalHex(normalSlice, scale, offset, strength, terrainHexShared, hexWeights));
                             }else if (hexLayer){
                                 normal = terrainShadingNormal(getTerrainLayerNormalHex(normalSlice, scale, offset, strength,
-                                                                                        terrainHexTaps(scale, offset, terrainLayers.slices[index].w), hexWeights));
+                                                                                        terrainHexTaps(scale, offset, hexRotation), hexWeights));
                             }else{
                                 normal = terrainShadingNormal(stochastic ? getTerrainLayerNormalStochastic(normalSlice, ts, strength)
                                                                          : getTerrainLayerNormal(normalSlice, scale, offset, strength));

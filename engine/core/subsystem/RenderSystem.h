@@ -189,11 +189,10 @@ namespace jasperengine{
 	// u_fs_terrainLayers: the arrays hold 9 entries, or 12 with TERRAIN_EXTENDED_LAYERS, and the features'
 	// parameters end the block (T3 R33): packed by RenderSystem::applyTerrainLayersUniform
 	typedef struct fs_terrain_layers_t {
-		Vector4 colorFactor[MAX_TERRAIN_LAYERS]; // rgb = linear tint, w = 1 on a PBR layer
+		Vector4 colorFactor[MAX_TERRAIN_LAYERS]; // rgb = linear tint, w = normal strength
 		Vector4 uvTransform[MAX_TERRAIN_LAYERS]; // xy = detail tiling scale, zw = offset
-		Vector4 surface[MAX_TERRAIN_LAYERS];     // roughness, metallic, normal strength, occlusion strength
-		Vector4 slices[MAX_TERRAIN_LAYERS];      // color, normal and packed surface slice (-1 = none)
-		Vector4 stochastic[MAX_TERRAIN_LAYERS];  // Stochastic Tiling: cell size (0 = off), blend sharpness, contrast, rotation
+		Vector4 surface[MAX_TERRAIN_LAYERS];     // x = Stochastic Tiling cell size or -1 - hex rotation; yzw = 12-bit factor pairs
+		Vector4 codes[(MAX_TERRAIN_LAYERS + 3) / 4]; // a component a layer: PBR, Flat Only, normal and surface slice
 	} fs_terrain_layers_t;
 
 	// u_fs_planarReflection (includes/planar_reflection.glsl)
