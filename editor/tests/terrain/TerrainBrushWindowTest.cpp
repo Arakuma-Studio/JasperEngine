@@ -1,11 +1,12 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// T1 R55, R59, R63: the Terrain window's brush decal and its eyedroppers, the parts that need no window open.
+// T1 R55, R59, R61, R63: the Terrain window's brush decal and its eyedroppers, the parts that need no window open.
 
 #include "TerrainProjectFixture.h"
 
 #include "command/CommandHistory.h"
+#include "window/HeightImportFields.h"
 #include "window/TerrainEditWindow.h"
 
 using namespace terrainprojecttest;
@@ -64,4 +65,22 @@ TEST_F(TerrainBrushWindowTest, ResizeKeepsTheSurfaceAsOneStep) {
     EXPECT_NEAR(querySurface(terrain(), half, 0.0f).height, right, 0.01f);
     ASSERT_TRUE(history->undo());
     EXPECT_EQ(TerrainComponentStore(scene->scene, terrainEntity, terrain()).format(HEIGHT_MAP).bounds.w, N) << "undo brings the old size back";
+}
+
+// R61: the import preview's hillshade is even on flat ground and lights the slopes that face the top left
+TEST(TerrainBrushWindow, HillshadeLightsSlopesFacingTheLight) {
+    constexpr int N = 32;
+    const std::vector<uint8_t> flat = heightHillshade(std::vector<float>(N * N, 0.5f), N, N, 16);
+    ASSERT_EQ(flat.size(), 16u * 16u * 4u);
+    EXPECT_EQ(flat[0], flat[(8 * 16 + 8) * 4]) << "flat ground is one shade";
+    std::vector<float> east(N * N), west(N * N);
+    for (int y = 0; y < N; y++) {
+        for (int x = 0; x < N; x++) {
+            east[static_cast<size_t>(y) * N + x] = static_cast<float>(x) / N;
+            west[static_cast<size_t>(y) * N + x] = 1.0f - static_cast<float>(x) / N;
+        }
+    }
+    const size_t middle = (8 * 16 + 8) * 4;
+    EXPECT_GT(heightHillshade(east, N, N, 16)[middle], flat[middle]) << "ground rising away from the light faces it";
+    EXPECT_LT(heightHillshade(west, N, N, 16)[middle], flat[middle]) << "ground rising towards the light is in its shade";
 }

@@ -19,4 +19,8 @@ namespace jasperengine::editor{
     bool drawHeightImportFields(const std::string& path, const std::vector<uint8_t>& bytes, HeightImportOptions& options,
                                 HeightImport& preview, float maxHeight, bool* setHeightFromRange);
 
+    // R61's preview: the heights (0-1, width x height) as a size x size hillshade lit from the top left,
+    // RGBA bytes
+    std::vector<uint8_t> heightHillshade(const std::vector<float>& normalized, int width, int height, int size);
+
 }
