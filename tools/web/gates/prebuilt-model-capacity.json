@@ -3,7 +3,7 @@
   "isolated": true,
   "expect": [
     "crossOriginIsolated=true threads=true",
-    "[MC] nodes=40 root=0",
+    "[MC] nodes=40 submeshes=40",
     "[MC] obj=24",
     "JasperEngine exit code 0"
   ],

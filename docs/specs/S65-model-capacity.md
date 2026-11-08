@@ -43,8 +43,12 @@ too many materials is cut off with an error. Users expect the model they importe
   pool). `MAX_BONES` is not one: the shader reads a palette of any size, and mesh-memory removes it. The editor shows them in the
   Console when the asset database first sees or re-reads a model or an FBX is converted. No modal dialog and no new MCP text: agents
   read them with `read_console`.
-- D4. AC1 on the players: Lua has no thread, so a script reaches this path with `Engine.startAsyncThread` on the main thread. A real
-  second thread is tested in `jasperengine-core-tests`, a build without the editor (`ModelLoadingThreadGpuTest`). In the
-  single-thread web player `startAsyncThread` is a warning and the load is an ordinary one.
-- D5. Fixed on the way (AC1 ran into it): `Engine.endAsyncThread` in a script's init hung the player, the commit waiting for a queue
-  that the view's load starts on that same thread.
+- D4. AC1 on the players: Lua has no thread, so a script calls `Engine.startAsyncThread` on the main thread, where the scope does
+  nothing since `fix/async-model-hang`: the players' loading-thread case loads as the main thread does. A real second thread is
+  tested in `jasperengine-core-tests`, a build without the editor (`ModelLoadingThreadGpuTest`). In the single-thread web player
+  `startAsyncThread` is a warning and the load is an ordinary one.
+- D5. AC1 ran into `Engine.endAsyncThread` in a script's init hanging the player (the commit waited for a queue that the view's
+  load starts on that same thread). This spec's fix gave way to `fix/async-model-hang`'s on the merge.
+- D6. The players' check logs a Model's `getNumSubmeshes`, which counts its parts' since the scripting runtime's "Model API on its
+  parts" (`c4c5f0161`): 40 nodes as entities and 40 submeshes is the model whole (the old bake had no node entities and 16
+  submeshes). It used to expect 0 on the root, the empty container that API now looks through.

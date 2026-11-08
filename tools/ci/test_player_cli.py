@@ -446,14 +446,16 @@ function UnifiedLighting:onUpdate(dt)
         for i = 0, @PLATES@ - 1 do
             if self.scene:findEntity("Plate " .. i) ~= NULL_ENTITY then nodes = nodes + 1 end
         end
-        print(string.format("[MC] nodes=%d root=%d", nodes, self.nodes:getNumSubmeshes()))
+        print(string.format("[MC] nodes=%d submeshes=%d", nodes, self.nodes:getNumSubmeshes()))
         print(string.format("[MC] obj=%d", self.obj:getNumSubmeshes()))
     end
 end
 
 return UnifiedLighting
 """
-MODEL_CAPACITY_WHOLE = (f"[MC] nodes={MODEL_PLATES} root=0", f"[MC] obj={OBJ_PLATES}")
+# a Model's getNumSubmeshes counts its parts' (one child per glTF mesh node): every node an entity and
+# every primitive drawn is the model whole, where the old bake had no nodes and kept 16
+MODEL_CAPACITY_WHOLE = (f"[MC] nodes={MODEL_PLATES} submeshes={MODEL_PLATES}", f"[MC] obj={OBJ_PLATES}")
 
 
 def write_plates_gltf(path: Path, count: int) -> None:
