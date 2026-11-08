@@ -71,7 +71,7 @@ async def test_try_leaves_the_file(ed: Editor):
     path = "assets/titles/try3d.titleart"
     await create3D(ed, path)
     text = (ed.project / path).read_text()
-    sheet = await ed.call_raw("render_title", {"path": path, "image": "none", "try": [
+    sheet = await ed.call_raw("render_title", {"path": path, "try": [
         {"label": "coarse", "ops": [{"op": "set", "layer": "Title", "values": {"3d.curve_segments": 3}}]},
         {"label": "chrome", "ops": [{"op": "apply_material", "layer": "Title", "part": "face", "preset": "chrome"}]}]})
     ed.check(not sheet.is_error, sheet.text[:300])

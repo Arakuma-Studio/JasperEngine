@@ -5343,7 +5343,7 @@ Reads a .titleart: rev, canvas, layers (path, id, type, text, font, parts, effec
 
 Group: `title_art` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-The Title Art catalogue. No args: counts per kind. kind effects, generators, blend_modes, fonts lists rows (looks, color_schemes, templates, environments, materials_3d, bevel_profiles, animation_presets: later). id: one effect's or generator's params and the op to paste. query filters names, aliases, categories.
+The Title Art catalogue. No args: counts per kind. kind effects, generators, blend_modes, fonts, environments, materials_3d, bevel_profiles lists rows (looks, color_schemes, templates, animation_presets: later). id: one effect's or generator's params and the op to paste. query filters names, aliases, categories.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
