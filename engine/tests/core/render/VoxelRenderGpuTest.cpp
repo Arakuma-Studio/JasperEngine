@@ -156,6 +156,7 @@ namespace {
             component.focus = camera.getEntity();
             VoxelMaterialSlot slot;
             slot.name = "ground";
+            slot.layer.pbr = true;      // a slot's tint applies on a PBR slot alone, as on a Terrain Layer
             slot.layer.colorFactor = Vector3(0.45f, 0.4f, 0.3f);
             component.materialSlots.push_back(slot);
             scene.addComponent<VoxelVolumeComponent>(entity, component);

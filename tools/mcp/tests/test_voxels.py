@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -149,6 +150,8 @@ async def test_create(ed: Editor):
                                                 "base": "solid_ground", "materials": [{"name": "Rock"}, {"name": "Dirt", "color": [0.4, 0.3, 0.2]}]})
     entity = made["entity"]["id"]
     ed.check_eq(made["dimensions"], [64, 32, 48], "dimensions")
+    slots = json.dumps(await ed.call("get_entity", entity=entity, components=["voxelvolume"], properties=["materialSlots"]))
+    ed.check(re.search(r'pbr\W+true', slots) is not None, f"a colour is a PBR slot's tint, or it would draw untinted: {slots}")
     ed.check(made["asset"].endswith("First.voxelvolume"), f"{made}")
     ed.check((ed.project / made["asset"]).exists() or any(p.name == "First.voxelvolume" for p in ed.project.rglob("*.voxelvolume")), "the file exists")
     ed.check_eq(await history_size(ed, scene), before + 1, "one undo step")

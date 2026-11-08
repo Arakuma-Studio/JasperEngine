@@ -960,7 +960,8 @@ bool parseMaterials(const Json& materials, std::vector<VoxelMaterialSlot>& out, 
                 slot.layer.colorFactor = Vector4(rgb.x, rgb.y, rgb.z, 1.0f);
             }
         }
-        if (has(item, "roughness") || has(item, "metallic")) slot.layer.pbr = true;
+        // only a PBR slot is tinted or reads its factors, as on a Terrain Layer
+        if (has(item, "color") || has(item, "roughness") || has(item, "metallic")) slot.layer.pbr = true;
         if (has(item, "roughness") && item["roughness"].is_number()) slot.layer.roughnessFactor = item["roughness"].get<float>();
         if (has(item, "metallic") && item["metallic"].is_number()) slot.layer.metallicFactor = item["metallic"].get<float>();
         if (has(item, "linked_terrain_layer") && item["linked_terrain_layer"].is_number_integer()) slot.linkedTerrainLayer = item["linked_terrain_layer"].get<int>();
