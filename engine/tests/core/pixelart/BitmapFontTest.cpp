@@ -251,7 +251,7 @@ TEST(BitmapFont, BuiltIn){
         EXPECT_LE(g->offsetX + g->w, 5) << c;
         EXPECT_GE(g->offsetY, 0) << c;
         EXPECT_LE(g->offsetY + g->h, 9) << c;
-        if (c != ' ') EXPECT_GT(g->w, 0) << c;
+        if (c != ' ') { EXPECT_GT(g->w, 0) << c; }
     }
     // composed letters: the base letter's body under a mark
     const std::vector<std::string> e = builtinPixelGlyphRows('e');

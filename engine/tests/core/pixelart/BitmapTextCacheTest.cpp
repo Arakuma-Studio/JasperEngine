@@ -106,7 +106,7 @@ TEST(BitmapTextCache, Recycle){
     ASSERT_TRUE(font);
     BitmapTextCache& cache = BitmapTextCache::get();
     cache.setBudgetBytes(256 * 1024);
-    LogCapture log;
+    test::LogCapture capture;
 
     std::vector<uint32_t> ascii;
     for (uint32_t c = 33; c < 127; c++) ascii.push_back(c);
@@ -155,7 +155,7 @@ TEST(BitmapTextCache, Recycle){
     EXPECT_GT(cache.getStats().recycles, 0u);
     EXPECT_EQ(cache.getStats().overBudget, 0u);
     EXPECT_LE(cache.getUsedBytes(), (size_t)256 * 1024);
-    EXPECT_EQ(log.count(D_LOG_WARN, "Bitmap text cache budget too small"), 1u);
+    EXPECT_EQ(capture.count(D_LOG_WARN, "Bitmap text cache budget too small"), 1u);
     EXPECT_EQ(cache.getStats().diagnostics, 1u);
 }
 
@@ -186,8 +186,11 @@ TEST(BitmapTextCache, StyledTextDrawsBackLayersFirst){
         EXPECT_EQ(info[g].back, g < 4) << g;
         EXPECT_EQ(info[g].cluster, info[g % 4].cluster);
         const Vector4 c = buffer.getVector4(colors, (unsigned int)(g * 4));
-        if (g < 4) EXPECT_EQ(c, Vector4(1, 1, 1, 1));
-        else EXPECT_EQ(c, Vector4(0.25f, 0.5f, 0.75f, 1.0f));
+        if (g < 4) {
+            EXPECT_EQ(c, Vector4(1, 1, 1, 1));
+        } else {
+            EXPECT_EQ(c, Vector4(0.25f, 0.5f, 0.75f, 1.0f));
+        }
     }
     EXPECT_TRUE(text.isColoredTexture());
 }
