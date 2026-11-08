@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "duration": 4,
+  "looping": true,
+  "prewarm": true,
+  "simulationMode": "analytic",
+  "maxParticles": 64,
+  "modules": [
+    {"type": "main", "startLifetime": {"mode": "twoConstants", "constant": 0.8, "constantMax": 1.4},
+     "startSpeed": {"mode": "twoConstants", "constant": 4, "constantMax": 10},
+     "startSize": {"mode": "twoConstants", "constant": 6, "constantMax": 10}, "startColor": [1, 1, 1, 1]},
+    {"type": "emission", "rateOverTime": 6},
+    {"type": "shape", "shape": "cone", "angle": 0, "radius": 2, "emitFrom": "base"},
+    {"type": "limitVelocity", "dampen": 0, "drag": 1.4, "multiplyBySize": false},
+    {"type": "forceOverLifetime", "y": 16, "space": "world"},
+    {"type": "colorOverLifetime", "color": {"mode": "ramp", "ramp": "builtin:pixelfx-effects#ramp:smoke_thin", "driverMax": 0.952381}},
+    {"type": "sizeOverLifetime", "size": {"mode": "curve", "curve": [[0, 0.65, 1.525, 1.525], [0.4, 1.26, 1.525, 0.4], [1, 1.5, 0.4, 0.4]]}},
+    {"type": "pixelArt", "fade": "dither", "ditherSize": 4, "secondaryOffset": -1,
+     "fadeOverLifetime": {"mode": "curve", "curve": [[0, 0, 6.96, 6.96], [0.083333, 0.58, 6.96, 0], [0.583333, 0.58, 0, -1.392], [1, 0, -1.392, -1.392]]},
+     "wobbleAmplitude": [3, 0], "wobbleFrequency": [0.25, 0.25]},
+    {"type": "renderer", "renderMode": "pixel", "pixelShape": "puff"}
+  ]
+}

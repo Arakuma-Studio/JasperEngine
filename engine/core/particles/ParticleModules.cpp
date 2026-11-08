@@ -3,6 +3,8 @@
 
 #include "ParticleModules.h"
 
+#include "pixelart/PaletteRampTexture.h"
+
 #include <cstdlib>
 #include <cstring>
 
@@ -130,7 +132,7 @@ namespace {
                                        {"stretchedBillboard", "Stretched Billboard", 2}, {"horizontalBillboard", "Horizontal Billboard", 3},
                                        {"verticalBillboard", "Vertical Billboard", 4}, {"worldOriented", "World Oriented", 5},
                                        {"localOriented", "Local Oriented", 6}, {"mesh", "Mesh", 7}, {"none", "None", 8},
-                                       {"velocityAligned", "Velocity Aligned", 9}};
+                                       {"velocityAligned", "Velocity Aligned", 9}, {"pixel", "Pixel", 10}};
     const EnumOption kVerticalLocks[] = {{"world", "World Y", 0}, {"emitter", "Emitter Y", 1}};
     const EnumOption kMeshSelections[] = {{"random", "Random", 0}, {"index", "By Spawn Index", 1}};
     const EnumOption kUntexturedShapes[] = {{"disc", "Soft Disc", 0}, {"square", "Square", 1}};
@@ -146,6 +148,13 @@ namespace {
                                          {"scale", "Scale", 7}, {"frame", "Frame", 8}};
     const EnumOption kSubEmitterTriggers[] = {{"birth", "Birth", 0}, {"death", "Death", 1}, {"collision", "Collision", 2}, {"trigger", "Trigger", 3}};
     const EnumOption kExposedTypes[] = {{"float", "Float", 0}, {"vector3", "Vector3", 1}, {"color", "Color", 2}};
+    // pixel art (S49)
+    const EnumOption kPixelShapes[] = {{"dot", "Dot", 0}, {"cross", "Cross", 1}, {"disc", "Disc", 2}, {"ring", "Ring", 3}, {"streak", "Streak", 4},
+                                       {"puff", "Puff", 5}, {"shard", "Shard", 6}, {"chunk", "Chunk", 7}, {"glow", "Glow", 8}};
+    const EnumOption kPixelFades[] = {{"dither", "Dither", 0}, {"cutout", "Cutout", 1}, {"alpha", "Alpha", 2}};
+    const EnumOption kDitherSpaces[] = {{"screen", "Screen", 0}, {"particle", "Particle", 1}};
+    const EnumOption kSecondaryModes[] = {{"rampOffset", "Ramp Offset", 0}, {"color", "Color", 1}};
+    const EnumOption kSimulationModes[] = {{"simulated", "Simulated", 0}, {"analytic", "Analytic", 1}};
 
     // ---------------------------------------------------------------- nested structs
 
@@ -562,6 +571,8 @@ namespace {
         f.push_back(field("sendEvents", "Send Collision Messages", FieldType::Bool, JE_ACC(CollisionModule, sendEvents)));
         f.push_back(shownIf(ranged(field("maxCollisionEvents", "Max Collision Events", FieldType::Int, JE_ACC(CollisionModule, maxCollisionEvents)), 1, 4096),
                             JE_IF(CollisionModule, m.sendEvents)));
+        f.push_back(ranged(field("settleSpeed", "Settle Speed", FieldType::Float, JE_ACC(CollisionModule, settleSpeed), FieldFlag_None,
+                                 "a hit slower than this (after the bounce) makes the particle rest until it dies; 0: off"), 0.0f, 1.0e6f));
         return d;
     }
 
@@ -625,14 +636,15 @@ namespace {
         f.push_back(stringArrayField("shaderFeatures", "Shader Features", JE_ACC(RendererModule, shaderFeatures), 64));
         f.push_back(arrayField<std::vector<ShaderProperty>>("shaderProperties", "Shader Properties", JE_ACC(RendererModule, shaderProperties), &shaderPropertyDesc(), 64));
         f.push_back(arrayField<std::vector<ShaderTexture>>("shaderTextures", "Shader Textures", JE_ACC(RendererModule, shaderTextures), &shaderTextureDesc(), 16));
-        f.push_back(field("texture", "Texture", FieldType::String, JE_ACC(RendererModule, texture), FieldFlag_AssetPath));
+        auto notPixel = JE_IF(RendererModule, m.renderMode != RenderMode::Pixel);
+        f.push_back(shownIf(field("texture", "Texture", FieldType::String, JE_ACC(RendererModule, texture), FieldFlag_AssetPath), notPixel));
         f.push_back(field("textureGuid", "Texture GUID", FieldType::String, JE_ACC(RendererModule, textureGuid), FieldFlag_Guid | FieldFlag_Hidden));
         f.push_back(shownIf(field("textureTiling", "Tiling and Offset", FieldType::Vector4, JE_ACC(RendererModule, textureTiling), FieldFlag_None,
                                   "the texture's UVs scaled by X and Y, then offset by Z and W (a material's tiling and offset)"),
-                            JE_IF(RendererModule, !m.texture.empty())));
+                            JE_IF(RendererModule, !m.texture.empty() && m.renderMode != RenderMode::Pixel)));
         f.push_back(shownIf(enumField("untexturedShape", "Without Texture", JE_ACC(RendererModule, untexturedShape), kUntexturedShapes, FieldFlag_Advanced,
                                       "what a billboard draws without a texture: a soft disc (Unity's default particle) or a square (the old points)"),
-                            JE_IF(RendererModule, m.texture.empty())));
+                            JE_IF(RendererModule, m.texture.empty() && m.renderMode != RenderMode::Pixel)));
         f.push_back(field("trailTexture", "Trail Texture", FieldType::String, JE_ACC(RendererModule, trailTexture), FieldFlag_AssetPath));
         f.push_back(field("trailTextureGuid", "Trail Texture GUID", FieldType::String, JE_ACC(RendererModule, trailTextureGuid), FieldFlag_Guid | FieldFlag_Hidden));
         f.push_back(enumField("blend", "Blend", JE_ACC(RendererModule, blend), kBlends));
@@ -641,8 +653,8 @@ namespace {
                               "sorts the particles of one emitter (Alpha and Premultiplied blends only)"));
         f.push_back(field("sortingFudge", "Sorting Fudge", FieldType::Float, JE_ACC(RendererModule, sortingFudge)));
         f.push_back(field("sortPriority", "Sort Priority", FieldType::Int, JE_ACC(RendererModule, sortPriority)));
-        f.push_back(ranged(field("minScreenSize", "Min Particle Size", FieldType::Float, JE_ACC(RendererModule, minScreenSize)), 0.0f, 1.0f));
-        f.push_back(ranged(field("maxScreenSize", "Max Particle Size", FieldType::Float, JE_ACC(RendererModule, maxScreenSize)), 0.0f, 10.0f));
+        f.push_back(shownIf(ranged(field("minScreenSize", "Min Particle Size", FieldType::Float, JE_ACC(RendererModule, minScreenSize)), 0.0f, 1.0f), notPixel));
+        f.push_back(shownIf(ranged(field("maxScreenSize", "Max Particle Size", FieldType::Float, JE_ACC(RendererModule, maxScreenSize)), 0.0f, 10.0f), notPixel));
         f.push_back(field("renderLayers", "Rendering Layer Mask", FieldType::Mask, JE_ACC(RendererModule, renderLayers)));
         f.push_back(field("receiveShadows", "Receive Shadows", FieldType::Bool, JE_ACC(RendererModule, receiveShadows)));
         f.push_back(enumField("lighting", "Lighting", JE_ACC(RendererModule, lighting), kLightingModes));
@@ -657,6 +669,29 @@ namespace {
         f.push_back(field("emissionMapGuid", "Emission Map GUID", FieldType::String, JE_ACC(RendererModule, emissionMapGuid), FieldFlag_Guid | FieldFlag_Hidden));
         f.push_back(shownIf(field("emissionColor", "Emission Color", FieldType::Color, JE_ACC(RendererModule, emissionColor)), sixWay));
         f.push_back(shownIf(ranged(field("emissionIntensity", "Emission Intensity", FieldType::Float, JE_ACC(RendererModule, emissionIntensity)), 0.0f, 1.0e4f), sixWay));
+        // the Pixel render mode's shape (S49 R9, R31): each shape's own fields under it
+        auto pixel = JE_IF(RendererModule, m.renderMode == RenderMode::Pixel);
+        f.push_back(shownIf(enumField("pixelShape", "Pixel Shape", JE_ACC(RendererModule, pixelShape), kPixelShapes, FieldFlag_None,
+                                      "drawn per whole base pixel, no texture"), pixel));
+        auto streak = JE_IF(RendererModule, m.renderMode == RenderMode::Pixel && m.pixelShape == PixelShape::Streak);
+        f.push_back(shownIf(ranged(field("streakLengthScale", "Length Scale", FieldType::Float, JE_ACC(RendererModule, streakLengthScale), FieldFlag_None,
+                                         "pixels of length per pixel per second of speed"), 0.0f, 10.0f), streak));
+        f.push_back(shownIf(ranged(field("streakMaxLength", "Max Length", FieldType::Float, JE_ACC(RendererModule, streakMaxLength)), 1.0f, 64.0f), streak));
+        f.push_back(shownIf(ranged(field("streakHeadFraction", "Head Fraction", FieldType::Float, JE_ACC(RendererModule, streakHeadFraction), FieldFlag_None,
+                                         "the share of the length from the head drawn in the primary colour; the rest is secondary"), 0.0f, 1.0f), streak));
+        f.push_back(shownIf(ranged(field("streakWidth", "Width", FieldType::Int, JE_ACC(RendererModule, streakWidth)), 1, 3), streak));
+        f.push_back(shownIf(field("discRim", "Rim", FieldType::Bool, JE_ACC(RendererModule, discRim), FieldFlag_None, "the outer pixel ring in the secondary colour"),
+                            JE_IF(RendererModule, m.renderMode == RenderMode::Pixel && m.pixelShape == PixelShape::Disc)));
+        f.push_back(shownIf(ranged(field("ringWidth", "Ring Width", FieldType::Int, JE_ACC(RendererModule, ringWidth)), 1, 8),
+                            JE_IF(RendererModule, m.renderMode == RenderMode::Pixel && m.pixelShape == PixelShape::Ring)));
+        f.push_back(shownIf(field("dotShadeBottom", "Shade Bottom", FieldType::Bool, JE_ACC(RendererModule, dotShadeBottom), FieldFlag_None,
+                                  "the bottom row in the secondary colour (2 px and larger)"),
+                            JE_IF(RendererModule, m.renderMode == RenderMode::Pixel && m.pixelShape == PixelShape::Dot)));
+        f.push_back(shownIf(ranged(field("glowBands", "Bands", FieldType::Int, JE_ACC(RendererModule, glowBands)), 1, 4),
+                            JE_IF(RendererModule, m.renderMode == RenderMode::Pixel && m.pixelShape == PixelShape::Glow)));
+        f.push_back(shownIf(ranged(field("rotationSteps", "Rotation Steps", FieldType::Int, JE_ACC(RendererModule, rotationSteps), FieldFlag_None,
+                                         "angles per turn the shape is drawn at"), 1, 360),
+                            JE_IF(RendererModule, m.renderMode == RenderMode::Pixel && (m.pixelShape == PixelShape::Shard || m.pixelShape == PixelShape::Chunk))));
         return d;
     }
 
@@ -664,6 +699,42 @@ namespace {
         ModuleDesc d = module<SetOverAgeModule>(ModuleId::SetOverAge, "setOverAge", "Set over Age", JE_DOC(setOverAge),
                                                 "Sets a property to a curve over the particle's age inside a window of ages (the old from-to modifiers)");
         d.fields.fields.push_back(arrayField<std::vector<SetOverAgeEntry>>("entries", "Entries", JE_ACC(SetOverAgeModule, entries), &setEntryDesc(), (uint32_t)kMaxSetOverAgeEntries));
+        return d;
+    }
+
+    ModuleDesc makePixelArt(){
+        ModuleDesc d = module<PixelArtModule>(ModuleId::PixelArt, "pixelArt", "Pixel Art", JE_DOC(pixelArt),
+                                              "Particles on the pixel grid at whole-pixel sizes, faded with a dither, held to a drawn frame rate");
+        auto& f = d.fields.fields;
+        f.push_back(field("snap", "Snap to Pixel Grid", FieldType::Bool, JE_ACC(PixelArtModule, snap)));
+        f.push_back(field("pixelSizes", "Sizes in Pixels", FieldType::Bool, JE_ACC(PixelArtModule, pixelSizes), FieldFlag_None,
+                          "Start Size, Size over Lifetime and Size by Speed are base pixels"));
+        f.push_back(field("integerSize", "Integer Size", FieldType::Bool, JE_ACC(PixelArtModule, integerSize), FieldFlag_None, "boxes of whole pixels"));
+        f.push_back(enumField("fade", "Fade", JE_ACC(PixelArtModule, fade), kPixelFades, FieldFlag_None,
+                              "Dither: a Bayer pattern of whole pixels; Cutout: drawn above half; Alpha: blended"));
+        auto dither = JE_IF(PixelArtModule, m.fade == PixelFade::Dither);
+        f.push_back(shownIf(ranged(field("ditherSize", "Dither Size", FieldType::Int, JE_ACC(PixelArtModule, ditherSize), FieldFlag_None, "2, 4 or 8"), 2, 8), dither));
+        f.push_back(shownIf(enumField("ditherSpace", "Dither Space", JE_ACC(PixelArtModule, ditherSpace), kDitherSpaces, FieldFlag_None,
+                                      "Screen: the pattern holds still as particles move; Particle: it travels with each one"), dither));
+        f.push_back(ranged(field("fadeOverLifetime", "Fade over Lifetime", FieldType::MinMaxCurve, JE_ACC(PixelArtModule, fadeOverLifetime)), 0.0f, 1.0f));
+        f.push_back(ranged(field("holdFrameRate", "Hold Frames", FieldType::Float, JE_ACC(PixelArtModule, holdFrameRate), FieldFlag_None,
+                                 "Hz: the drawn state changes only at these steps; 0 = every frame"), 0.0f, 240.0f));
+        f.push_back(enumField("secondary", "Secondary Color", JE_ACC(PixelArtModule, secondary), kSecondaryModes, FieldFlag_None,
+                              "what a shape's second colour is (tails, rims, caps, tips)"));
+        f.push_back(shownIf(ranged(field("secondaryOffset", "Ramp Offset", FieldType::Int, JE_ACC(PixelArtModule, secondaryOffset), FieldFlag_None,
+                                         "ramp steps from the particle's own; positive toward the ramp's end"), -8, 8),
+                            JE_IF(PixelArtModule, m.secondary == SecondaryColorMode::RampOffset)));
+        f.push_back(field("secondaryColor", "Secondary", FieldType::Color, JE_ACC(PixelArtModule, secondaryColor), FieldFlag_None,
+                          "the second colour (Ramp Offset falls back to it without a ramp)"));
+        f.push_back(field("wobbleAmplitude", "Wobble", FieldType::Vector2, JE_ACC(PixelArtModule, wobbleAmplitude), FieldFlag_None,
+                          "a drawn sway in base pixels (x, y); it never moves the simulation"));
+        f.push_back(field("wobbleFrequency", "Wobble Frequency", FieldType::Vector2, JE_ACC(PixelArtModule, wobbleFrequency), FieldFlag_None,
+                          "Hz on x and y; a loop's frequencies are whole multiples of 1 / duration"));
+        f.push_back(field("wobbleRandomPhase", "Wobble Random Phase", FieldType::Bool, JE_ACC(PixelArtModule, wobbleRandomPhase)));
+        f.push_back(ranged(field("flickerBelow", "Flicker Below", FieldType::Float, JE_ACC(PixelArtModule, flickerBelow), FieldFlag_None,
+                                 "blinks when less than this share of its life is left; 0: off"), 0.0f, 1.0f));
+        f.push_back(shownIf(ranged(field("flickerRate", "Flicker Rate", FieldType::Float, JE_ACC(PixelArtModule, flickerRate)), 0.1f, 240.0f),
+                            JE_IF(PixelArtModule, m.flickerBelow > 0.0f)));
         return d;
     }
 
@@ -679,6 +750,9 @@ namespace {
         f.push_back(ranged(field("startDelay", "Start Delay", FieldType::MinMaxCurve, JE_ACC(ParticleEffectDocument, startDelay), FieldFlag_None,
                                  "seconds before it emits; a random range picks one each play"), 0.0f, 1.0e5f));
         f.push_back(enumField("simulationSpace", "Simulation Space", JE_ACC(ParticleEffectDocument, simulationSpace), kSimulationSpaces));
+        f.push_back(enumField("simulationMode", "Simulation Mode", JE_ACC(ParticleEffectDocument, simulationMode), kSimulationModes, FieldFlag_None,
+                              "Simulated: every module, ticked; Analytic: each particle computed on the GPU from its slot and the time "
+                              "(exact loops and scrubbing, no CPU cost per particle, a subset of the modules)"));
         f.push_back(ranged(field("tickRate", "Tick Rate", FieldType::Int, JE_ACC(ParticleEffectDocument, tickRate), FieldFlag_None,
                                  "simulation ticks per second; 0 follows the frames in bounded steps"), 0, 240));
         f.push_back(field("interpolate", "Interpolate", FieldType::Bool, JE_ACC(ParticleEffectDocument, interpolate)));
@@ -706,6 +780,8 @@ namespace {
         f.push_back(shownIf(ranged(field("lodEmissionScale", "LOD Emission", FieldType::MinMaxCurve, JE_ACC(ParticleEffectDocument, lod.emissionScale), FieldFlag_Advanced), 0.0f, 1.0f), lod));
         f.push_back(shownIf(ranged(field("lodRenderThinning", "LOD Drawn Share", FieldType::MinMaxCurve, JE_ACC(ParticleEffectDocument, lod.renderThinning), FieldFlag_Advanced), 0.0f, 1.0f), lod));
         f.push_back(shownIf(ranged(field("lodMaxDistance", "LOD Max Distance", FieldType::Float, JE_ACC(ParticleEffectDocument, lod.maxDistance), FieldFlag_Advanced), 0.0f, 1.0e7f), lod));
+        f.push_back(ranged(field("designPixelsPerUnit", "Design Pixels Per Unit", FieldType::Float, JE_ACC(ParticleEffectDocument, designPixelsPerUnit),
+                                 FieldFlag_Hidden, "the project Pixels Per Unit a pixel preset was made for"), 0.0f, 100000.0f));
         return s;
     }
 
@@ -808,7 +884,7 @@ const std::vector<ModuleDesc>& ParticleModules::all(){
         makeMain(), makeEmission(), makeShape(), makeStartVelocity(), makeVelocityOverLifetime(), makeLimitVelocity(),
         makeForceOverLifetime(), makeColorOverLifetime(), makeColorBySpeed(), makeSizeOverLifetime(), makeSizeBySpeed(),
         makeRotationOverLifetime(), makeRotationBySpeed(), makeExternalForces(), makeNoise(), makeOrbit(), makeCollision(),
-        makeSubEmittersModule(), makeTextureSheet(), makeTrails(), makeCustomData(), makeSetOverAge(), makeRenderer()
+        makeSubEmittersModule(), makeTextureSheet(), makeTrails(), makeCustomData(), makeSetOverAge(), makePixelArt(), makeRenderer()
     };
     return modules;
 }
@@ -918,7 +994,7 @@ const std::vector<EnumOption>& ParticleModules::curveModes(){
 const std::vector<EnumOption>& ParticleModules::gradientModes(){
     static const std::vector<EnumOption> v = {{"color", "Color", 0}, {"gradient", "Gradient", 1},
                                               {"twoColors", "Random Between Two Colors", 2}, {"twoGradients", "Random Between Two Gradients", 3},
-                                              {"randomColor", "Random Color", 4}};
+                                              {"randomColor", "Random Color", 4}, {"ramp", "Palette Ramp", 5}};
     return v;
 }
 
@@ -1063,6 +1139,17 @@ namespace {
                 const ParticleModules::AssetKind kind = key == "model" ? ParticleModules::AssetKind::Model
                                                       : (key == "effect" ? ParticleModules::AssetKind::Effect : ParticleModules::AssetKind::Texture);
                 visit(value, guid ? *guid : none, kind, path);
+            }else if (field.type == FieldType::MinMaxGradient){
+                // a Ramp's palette (S49 R43): the path before "#ramp:", put back with its ramp name
+                MinMaxGradient& gradient = *static_cast<MinMaxGradient*>(field.field(owner));
+                std::string palette, ramp;
+                if (gradient.mode == GradientValueMode::Ramp && pixelart::parsePaletteRampPath(gradient.ramp, &palette, &ramp)){
+                    std::string guid;
+                    const std::string before = palette;
+                    visit(palette, guid, ParticleModules::AssetKind::Palette, path + ".ramp");
+                    if (palette != before)
+                        gradient.ramp = palette.empty() ? std::string() : palette + "#ramp:" + ramp;
+                }
             }else if (field.type == FieldType::Struct && field.element){
                 visitStruct(*field.element, field.field(owner), path, visit);
             }else if (field.type == FieldType::Array && field.element){

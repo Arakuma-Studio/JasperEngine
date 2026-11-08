@@ -97,6 +97,15 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pixelart/PaletteAssets.cpp
 )
 
+# S49 (Pixel Particles): the presets, the offscreen capture (contact sheets, Bake to Sprite
+# Sheet) and its pixel-art checks
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/particles/PixelParticlePresets.cpp
+    ${EDITOR_DIR}/pixelart/particles/PixelPresetCreate.cpp
+    ${EDITOR_DIR}/pixelart/particles/ParticleCapture.cpp
+    ${EDITOR_DIR}/pixelart/particles/ParticleCaptureChecks.cpp
+)
+
 # the colour decisions give the same bits on every platform, as engine/core/pixelart's
 if(MSVC)
     set(JASPERENGINE_EDITOR_PIXELART_FLAGS /fp:precise)

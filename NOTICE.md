@@ -368,3 +368,11 @@ Ported, each file keeping the original notice next to ours:
 
 The CIEDE2000 test pairs (`engine/tests/core/pixelart/PixelColorTest.cpp`) are Sharma, Wu and Dalal's
 published data (2005).
+
+## Pixel particles (S49)
+
+Ported or copied, each file keeping the original notices next to ours:
+
+| Code or data | Taken from | Licence |
+|---|---|---|
+| The pixel shapes (Cross, Streak, Puff, Shard, Chunk, Glow: `engine/core/particles/ParticlePixel.cpp`, `engine/shaderlib/includes/particles_pixel.glsl`), the dithered fade, the presets' constants (`editor/pixelart/particles/*.particles`), and the closed-form flight and seamless cycle of Analytic particles (`engine/core/particles/AnalyticParticles.cpp`, `engine/shaderlib/includes/particles_analytic_vs.glsl`) | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `src/core/sim.js`, `painter.js`, `particles.js`; `sim.js` adapts Sprite Fusion's [pixel art VFX](https://www.spritefusion.com/pixel-art-vfx) | MIT, Copyright (c) 2026 Patch and Copyright (c) 2026 Hugo Duprez |

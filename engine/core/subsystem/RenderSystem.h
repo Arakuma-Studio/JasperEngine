@@ -3361,6 +3361,12 @@ namespace jasperengine{
 		ParticleStream particleRotationStream;
 		ParticleStream particleCustomStream;
 		ParticleStream particleTrailStream;
+		ParticleStream particlePixelStream;      // the Pixel render mode's 4-byte stream (S49)
+		// Analytic's slot indices (0, 1, 2, ...), shared by every Analytic system and grown in
+		// powers of two up to 65,536 (S49 R22)
+		BufferRender particleSlotBuffer;
+		uint32_t particleSlotCapacity = 0;
+		bool ensureParticleSlots(uint32_t count);
 		// the quad's corners and triangles, and what each stream is bound to at load (a draw
 		// swaps it for this frame's page at its offset)
 		BufferRender particleCornerBuffer;
@@ -3369,6 +3375,7 @@ namespace jasperengine{
 		BufferRender particleRotationPlaceholder;
 		BufferRender particleCustomPlaceholder;
 		BufferRender particleTrailPlaceholder;
+		BufferRender particlePixelPlaceholder;
 		bool particleStaticBuffers = false;
 		bool ensureParticleBuffers();
 		void destroyParticleBuffers();

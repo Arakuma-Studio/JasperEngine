@@ -6,6 +6,10 @@
 #include "EditorModal.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "ProjectWindow.h"
+#include "particles/ParticleEffectCodec.h"
+#include "pixelart/particles/PixelParticlePresets.h"
+#include "pixelart/particles/PixelPresetCreate.h"
+#include "util/ProjectFileWrites.h"
 #include "sprite/SpriteAtlasBuilder.h"
 #include "sprite/SpriteSheetSources.h"
 #include "sprite/SpriteSheetPool.h"
@@ -1220,6 +1224,28 @@ static float drawToolbarStrip(float height) {
     return height;
 }
 
+// A pixel particle preset as a .particles asset in `directory` (S49 R20): its palette copy and
+// child effects with it, one undo step of the project
+void editor::ProjectWindow::createPixelParticleEffect(const std::string& preset, const fs::path& directory) {
+    std::error_code ec;
+    const std::string folder = fs::relative(directory, project->getAssetsPath(), ec).generic_string();
+    const std::string base = (folder.empty() || folder == "." ? std::string() : folder + "/");
+    pixelart::ProjectPixelPreset made;
+    std::string error;
+    if (!pixelart::prepareProjectPixelPreset(*project, preset, base.empty() ? std::string() : folder, made, error)) {
+        Out::error("Could not make the pixel preset %s: %s", preset.c_str(), error.c_str());
+        return;
+    }
+    std::string name = base + preset + ".particles";
+    for (int i = 1; fs::exists(project->getAssetsPath() / FileUtils::pathFromUtf8(name), ec); i++)
+        name = base + preset + " " + std::to_string(i) + ".particles";
+    made.writes.push_back({project->getAssetsPath() / FileUtils::pathFromUtf8(name), particles::ParticleEffectCodec::write(made.document)});
+    if (!ProjectFileWrites::writeUndoable(project, made.writes, error, nullptr, nullptr, {}, true,
+                                          "Create Particle Effect " + pixelart::pixelParticlePresetLabel(preset))) {
+        Out::error("Could not write %s: %s", name.c_str(), error.c_str());
+    }
+}
+
 // The Create items for `directory` (the one list, AssetCreateMenu), then the imports
 void editor::ProjectWindow::renderCreateItems(const fs::path& directory) {
     for (const AssetCreateItem& item : assetCreateItems()) {
@@ -1239,6 +1265,20 @@ void editor::ProjectWindow::renderCreateItems(const fs::path& directory) {
             createAsset(item.kind, directory);
             ImGui::CloseCurrentPopup();
         }
+    }
+    // Particle Effect > Pixel > <preset> (S49 R20): a .particles asset of a pixel preset here
+    ImGui::Separator();
+    if (ImGui::BeginMenu(ICON_FA_FIRE " Particle Effect")) {
+        if (ImGui::BeginMenu("Pixel")) {
+            for (const std::string& preset : pixelart::pixelParticlePresetNames()) {
+                if (ImGui::MenuItem(pixelart::pixelParticlePresetLabel(preset).c_str())) {
+                    createPixelParticleEffect(preset, directory);
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::EndMenu();
     }
     ImGui::Separator();
 

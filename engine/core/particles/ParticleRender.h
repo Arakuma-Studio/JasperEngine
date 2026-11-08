@@ -20,6 +20,7 @@
 #include "particles/EmitterRuntime.h"
 
 #include <cstdint>
+#include <vector>
 
 namespace jasperengine { namespace jobs { class JobSystem; } }
 
@@ -49,6 +50,16 @@ namespace jasperengine { namespace particles {
         uint16_t data[4];
     };
 
+    // The Pixel render mode's stream (S49 R10): UBYTE4
+    struct ParticlePixelInstance {
+        uint8_t rampStep;   // the primary colour's ramp step (255: not from a ramp)
+        uint8_t age;        // normalized age x 255 (Puff's cap)
+        uint8_t phase;      // the particle's random phase (Wobble, Flicker)
+        uint8_t flags;      // kPixelFlag*
+    };
+    static_assert(sizeof(ParticlePixelInstance) == 4, "the pixel stream is 4 bytes a particle");
+    inline constexpr uint8_t kPixelFlagRest = 1;    // at rest (Settle Speed)
+
     // the tiles a Tile-mode trail's u covers (its 16-bit u holds u / kTrailTileRange)
     inline constexpr float kTrailTileRange = 64.0f;
 
@@ -72,6 +83,10 @@ namespace jasperengine { namespace particles {
         // World or Local alignment puts in front of each particle's own (the camera's, the
         // world's or the emitter's axes, seen from the simulation space)
         float alignQuat[4] = {0, 0, 0, 1};
+        // one base pixel of the drawing grid along the screen's right and up, in simulation
+        // space (the Pixel Art module's Wobble, S49 R7)
+        float pixelRight[3] = {1, 0, 0};
+        float pixelUp[3] = {0, 1, 0};
     };
 
     struct PackResult {
@@ -79,6 +94,7 @@ namespace jasperengine { namespace particles {
         ParticleInstance* instances = nullptr;
         ParticleMeshInstance* mesh = nullptr;
         ParticleCustomInstance* custom = nullptr;
+        ParticlePixelInstance* pixel = nullptr;   // Render Mode Pixel
         // Mesh mode: the records of each mesh, one after the other (one draw each)
         uint32_t meshFirst[kMaxRendererMeshes] = {};
         uint32_t meshCount[kMaxRendererMeshes] = {};
@@ -91,6 +107,17 @@ namespace jasperengine { namespace particles {
         bool worldSpace = false;         // the vertices are in world space (else simulation space)
     };
 
+    // Hold Frames (S49 R5): the records of the last step boundary, drawn again until the emitter's
+    // time crosses the next step of 1 / rate (the pack runs only then: the CPU saving)
+    struct JASPERENGINE_API HeldPack {
+        double step = -1.0;
+        std::vector<ParticleInstance> instances;
+        std::vector<ParticlePixelInstance> pixels;
+        // the records to draw now (pointing into this struct)
+        PackResult get(const EmitterRuntime& emitter, const RenderView& view, memory::Arena& arena, jobs::JobSystem* jobs, float rate);
+        void clear(){ step = -1.0; instances.clear(); pixels.clear(); }
+    };
+
     class JASPERENGINE_API ParticleRenderPrep {
     public:
         // packs the live particles of `emitter` for one view into memory from `arena`; in
@@ -98,6 +125,8 @@ namespace jasperengine { namespace particles {
         static PackResult pack(const EmitterRuntime& emitter, const RenderView& view, memory::Arena& arena, jobs::JobSystem* jobs = nullptr);
         // the same with the scalar or the native kernels (tests compare them)
         static PackResult packWith(bool scalar, const EmitterRuntime& emitter, const RenderView& view, memory::Arena& arena, jobs::JobSystem* jobs);
+        // how many packs ran since the process started (Hold Frames' measure, S49 AC4)
+        static uint64_t packCount();
         // per-particle trails and ribbons
         static TrailPack packTrails(const EmitterRuntime& emitter, memory::Arena& arena);
         // the points of each ribbon's strip when there are several (one strip holds every live

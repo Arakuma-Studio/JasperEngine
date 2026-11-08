@@ -238,6 +238,7 @@ namespace {
             .addVariable("TwoColors", particles::GradientValueMode::TwoColors)
             .addVariable("TwoGradients", particles::GradientValueMode::TwoGradients)
             .addVariable("RandomColor", particles::GradientValueMode::RandomColor)
+            .addVariable("Ramp", particles::GradientValueMode::Ramp)
             .endNamespace();
 
         luabridge::getGlobalNamespace(L)
@@ -429,6 +430,16 @@ namespace {
                     return new (ptr) particles::MinMaxGradient(value); })
             .addFunction("evaluate", [](const particles::MinMaxGradient& value, float time, std::optional<float> random) -> Vector4 {
                 return value.evaluate(time, random.value_or(0.0f)); })
+            // a Palette Ramp (S49 R12): "<palette>#ramp:<name>", fitted to steps (0: as it is)
+            .addFunction("setRamp", [](particles::MinMaxGradient& value, const std::string& palette, const std::string& ramp, std::optional<int> steps) {
+                value.mode = particles::GradientValueMode::Ramp;
+                value.ramp = palette + "#ramp:" + ramp;
+                value.rampColors.clear();
+                value.rampSteps = steps.value_or(0); })
+            .addProperty("ramp", &particles::MinMaxGradient::ramp, &particles::MinMaxGradient::ramp)
+            .addProperty("rampSteps", &particles::MinMaxGradient::rampSteps, &particles::MinMaxGradient::rampSteps)
+            .addProperty("rampReverse", &particles::MinMaxGradient::rampReverse, &particles::MinMaxGradient::rampReverse)
+            .addProperty("rampBias", &particles::MinMaxGradient::rampBias, &particles::MinMaxGradient::rampBias)
             .addProperty("mode", &particles::MinMaxGradient::mode, &particles::MinMaxGradient::mode)
             .addProperty("color", &particles::MinMaxGradient::color, &particles::MinMaxGradient::color)
             .addProperty("colorMin", &particles::MinMaxGradient::color, &particles::MinMaxGradient::color)

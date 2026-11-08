@@ -12,6 +12,7 @@
 #include "particles/EmitterRuntime.h"
 #include "particles/ParticleCompiler.h"
 #include "particles/ParticlePreview.h"
+#include "particles/ParticleRender.h"
 #include "particles/ParticleWorld.h"
 #include "render/BufferRender.h"
 #include "render/ObjectRender.h"
@@ -93,6 +94,9 @@ namespace jasperengine{
             RenderState state;
             uint32_t sceneInputs = 0;
             int sortPriority = 0;
+
+            // Hold Frames (S49 R5): the step last packed and its records
+            HeldPack held;
         };
 
         struct ParticleSystemState {

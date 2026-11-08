@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "duration": 2,
+  "looping": false,
+  "maxParticles": 32,
+  "modules": [
+    {"type": "main", "startLifetime": {"mode": "twoConstants", "constant": 1, "constantMax": 1.6},
+     "startSpeed": {"mode": "twoConstants", "constant": 60, "constantMax": 200},
+     "startSize": {"mode": "twoConstants", "constant": 1, "constantMax": 2},
+     "startColor": {"mode": "ramp", "ramp": "builtin:pixelfx-effects#ramp:dust"}},
+    {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 16}]},
+    {"type": "shape", "shape": "hemisphere", "radius": 0.5},
+    {"type": "limitVelocity", "dampen": 0, "drag": 0.8, "multiplyBySize": false},
+    {"type": "forceOverLifetime", "y": -950, "space": "world"},
+    {"type": "collision", "collisionType": "planes", "planes": [{"point": [0, -8, 0], "normal": [0, 1, 0]}],
+     "bounce": 0.25, "dampen": 0.5, "lifetimeLoss": 0.5, "radiusScale": 0, "settleSpeed": 130},
+    {"type": "pixelArt", "fade": "cutout", "secondaryOffset": -1},
+    {"type": "renderer", "renderMode": "pixel", "pixelShape": "dot", "dotShadeBottom": true}
+  ]
+}

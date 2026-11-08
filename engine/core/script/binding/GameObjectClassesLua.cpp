@@ -2588,6 +2588,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("onParticleDeath", +[](ParticleSystem* self, lua_State* L) {
             luaL_checktype(L, 2, LUA_TFUNCTION);
             lua_settop(L, 2);
+            // an Analytic effect raises no deaths (S49 R19): said when the listener is added
+            if (self->getEffectDocument().simulationMode == particles::SimulationMode::Analytic)
+                Log::warn("analytic_no_events: %s is Analytic: its particles raise no onParticleDeath, onCollision or sub-emitter events",
+                          self->getName().c_str());
             return self->getComponent<ParticleSystemComponent>().onParticleDeath.add("lua", L);
         })
         .addFunction("onSubEmit", +[](ParticleSystem* self, lua_State* L) {

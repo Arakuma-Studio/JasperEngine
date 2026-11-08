@@ -12,6 +12,7 @@
 #include "component/Transform.h"
 #include "jobs/JobSystem.h"
 #include "math/Ray.h"
+#include "particles/AnalyticParticles.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleEffectLibrary.h"
 #include "particles/ParticleMeshes.h"
@@ -356,7 +357,9 @@ bool ParticleSubsystem::isEmitting(Entity entity){
 
 uint32_t ParticleSubsystem::getParticleCount(Entity entity){
     ParticleSystemState* state = getState(entity);
-    return state ? state->runtime.count() : 0u;
+    if (!state)
+        return 0u;
+    return state->runtime.isAnalytic() ? state->runtime.analyticAlive() : state->runtime.count();
 }
 
 double ParticleSubsystem::getTime(Entity entity){
@@ -376,7 +379,13 @@ void ParticleSubsystem::previewSeek(Entity entity, double time){
     EmitterInput input;
     refreshTransform(scene, entity);
     prepareInput(entity, particles, scene->getComponent<Transform>(entity), input);
-    state->preview->seek(state->runtime, input, std::max(0.0, time));
+    if (state->runtime.isAnalytic()){
+        // exact and immediate, no checkpoints (S49 R28, R34)
+        state->runtime.seek(input, std::max(0.0, time));
+        state->preview->invalidate();
+    }else{
+        state->preview->seek(state->runtime, input, std::max(0.0, time));
+    }
     state->started = true;
 }
 
@@ -421,7 +430,11 @@ ParticleSystemStats ParticleSubsystem::getStats(Entity entity){
         return stats;
     const EmitterRuntime& r = state->runtime;
     stats.valid = true;
-    stats.live = r.count();
+    // an Analytic system's live particles are counted on demand (O(slots), S49 R19)
+    stats.live = r.isAnalytic() ? r.analyticAlive() : r.count();
+    stats.analytic = r.isAnalytic();
+    stats.pixel = r.program() && r.program()->render.pixel.active;
+    stats.analyticSlots = r.analytic() ? r.analytic()->slotCount : 0u;
     stats.capacity = r.capacity();
     stats.budget = state->budget;
     stats.emissionScale = state->emissionScale;
@@ -892,7 +905,7 @@ void ParticleSubsystem::update(double dt){
         // a camera saw it last frame (a new system counts as seen until it has bounds; so does
         // an empty one: nothing of it is drawn to be seen, and its old bounds would hold it
         // paused for good once stopped and cleared)
-        const bool visible = inRange && (!state.hasBounds || state.runtime.count() == 0 || frame <= state.visibleFrame + 1);
+        const bool visible = inRange && (!state.hasBounds || (state.runtime.count() == 0 && !state.runtime.isAnalytic()) || frame <= state.visibleFrame + 1);
         uint32_t maxTicks = kMaxTicksPerFrame;
         // Unscaled Time (the effect's or the component's): Time.timeScale does not slow it (UI,
         // pause menus)

@@ -51,6 +51,7 @@ namespace jasperengine { namespace particles {
         // the last tick's animated velocity (Velocity over Lifetime, Noise): stretched and
         // velocity-aligned particles follow the total velocity, as Unity's (origin/main's) did
         ChAnimVelX, ChAnimVelY, ChAnimVelZ,
+        ChSettled,                    // 1 once a collision made the particle rest (Settle Speed, S49 R14)
         ChCount
     };
     static_assert(ChCount <= 64, "the channel mask is 64 bits");
@@ -86,9 +87,10 @@ namespace jasperengine { namespace particles {
         bool usesRandom() const { return kind == Range || kind == LutRange; }
     };
 
-    // A MinMaxGradient after compilation (linear RGBA)
+    // A MinMaxGradient after compilation (linear RGBA). Ramp (S49 R12): the exact steps, lut0
+    // their linear RGBA, lut1 their RGBA8 (uint32), lutSize the step count; never blended
     struct GradientParam {
-        enum Kind : uint8_t { Const, Range, Lut, LutRange };
+        enum Kind : uint8_t { Const, Range, Lut, LutRange, Ramp };
         Kind kind = Const;
         CurveDriver driver = CurveDriver::NormalizedAge;
         CurveWrap wrap = CurveWrap::Clamp;
@@ -99,6 +101,8 @@ namespace jasperengine { namespace particles {
         uint32_t lut0 = 0, lut1 = 0;   // RGBA interleaved
         uint32_t lutSize = 0;
         uint32_t stream = 0;
+        float rampBias = 1.0f;         // Ramp: t^bias
+        uint32_t rampReverse = 0;
         bool isWhite() const { return kind == Const && c0[0] == 1.0f && c0[1] == 1.0f && c0[2] == 1.0f && c0[3] == 1.0f; }
         bool usesRandom() const { return kind == Range || kind == LutRange; }
     };
@@ -334,6 +338,7 @@ namespace jasperengine { namespace particles {
         uint32_t planeCacheTicks = 8;
         uint32_t maxEvents = 64;
         uint32_t sizeFromStart = 1;    // the radius is half the start size (or the stored size)
+        float settleSpeed = 0.0f;      // a hit slower than this rests the particle (ChSettled)
     };
 
     struct ProgramExternalForces {
@@ -372,6 +377,40 @@ namespace jasperengine { namespace particles {
     // ---------------------------------------------------------------- render extraction
 
     enum class SheetKind : uint8_t { None, Grid, Sprites };
+
+    // The Pixel Art module and the Pixel render mode after compilation (S49): what packing does
+    // on the CPU (fade over lifetime, wobble, flicker, the pixel stream) and what the Pixel
+    // variant's uniforms hold (the grid rule, the shape, the dither, the ramp)
+    struct PixelParams {
+        uint8_t active = 0;            // the Pixel variant draws it (the module on a camera-facing mode, or Pixel)
+        uint8_t module = 0;            // the Pixel Art module is on
+        uint8_t shapes = 0;            // Render Mode Pixel: the shapes, and the pixel stream
+        uint8_t snap = 1, pixelSizes = 1, integerSize = 1;
+        PixelFade fade = PixelFade::Alpha;
+        uint8_t ditherSize = 4;
+        DitherSpace ditherSpace = DitherSpace::Screen;
+        SecondaryColorMode secondary = SecondaryColorMode::RampOffset;
+        int8_t secondaryOffset = 1;
+        PixelShape shape = PixelShape::Dot;
+        uint8_t fadeCurve = 0;         // Fade over Lifetime is not the constant 1
+        uint8_t wobble = 0, wobbleRandomPhase = 1;
+        uint8_t discRim = 0, dotShadeBottom = 0;
+        // the ramp the shapes and Ramp Offset read: 0 none, 1 Start Color's, 2 Color over Lifetime's
+        uint8_t rampSource = 0;
+        // the drawn rgb is the ramp step's own bytes (S49 R13): the other colour modules are white
+        uint8_t exactColor = 0;
+        uint8_t pad = 0;
+        CurveParam fadeOverLifetime;
+        GradientParam ramp;            // the source module's ramp (its step per particle)
+        float holdFrameRate = 0.0f;
+        float secondaryColor[4] = {1, 1, 1, 1};   // sRGB
+        float wobbleAmplitude[2] = {0, 0};        // base px
+        float wobbleFrequency[2] = {1, 1};        // Hz
+        float flickerBelow = 0.0f, flickerRate = 40.0f;
+        float streakLengthScale = 0.022f, streakMaxLength = 9.0f, streakHeadFraction = 0.45f;
+        uint32_t streakWidth = 1, ringWidth = 1, glowBands = 3, rotationSteps = 16;
+        bool needsStream() const { return shapes != 0; }
+    };
 
     struct RenderParams {
         RenderMode mode = RenderMode::Billboard;
@@ -425,6 +464,7 @@ namespace jasperengine { namespace particles {
         float sortingFudge = 0.0f;
         float emissive = 0.0f;
         float flipU = 0.0f, flipV = 0.0f;  // the texture sheet's shares mirrored
+        PixelParams pixel;                 // S49
     };
 
     // ---------------------------------------------------------------- trails
@@ -507,6 +547,9 @@ namespace jasperengine { namespace particles {
         bool subEmitters = false;      // the Sub Emitters module is on (the list is in the document)
         // which channels a sub-emitter's parent writes at the child's spawn (inherit)
         bool inheritsRotation = false;
+        // Analytic (S49 R15): no channels; each system compiles an AnalyticProgram for its seed
+        bool analytic = false;
+        float maxLifetime = 0.0f;      // the longest start lifetime (Analytic's end of life)
 
         // the parameter blocks and LUTs (16-byte aligned blocks of 32-bit words)
         std::vector<uint32_t> pool;

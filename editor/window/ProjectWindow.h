@@ -471,6 +471,7 @@ namespace jasperengine::editor {
         // search the folder it started from (else the project root)
         fs::path listingFolder() const;
         // the Create items for a folder (Project window spec 6.6), as menu items
+        void createPixelParticleEffect(const std::string& preset, const std::filesystem::path& directory);
         void renderCreateItems(const fs::path& directory);
         void renderTreeContextMenu(const fs::path& folder);
         void startNewItem(AssetCreateKind kind, const fs::path& directory);

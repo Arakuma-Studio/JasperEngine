@@ -27,7 +27,18 @@
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleEffectLibrary.h"
 #include "particles/ParticleModules.h"
+#include "pixelart/lint/LintTypes.h"
+#include "pixelart/particles/ParticleCapture.h"
+#include "pixelart/particles/ParticleCaptureChecks.h"
+#include "pixelart/particles/PixelParticlePresets.h"
+#include "pixelart/particles/PixelPresetCreate.h"
+#include "pixelart/PixelColor.h"
 #include "subsystem/ParticleSubsystem.h"
+#include "subsystem/ParticleSystemState.h"
+#include "subsystem/RenderSystem.h"
+#include "util/Base64.h"
+#include "util/FileUtils.h"
+#include "util/ProjectFileWrites.h"
 #include "util/AssetDatabase.h"
 #include "util/ParticleEffectEdit.h"
 #include "util/ParticleMigrationReport.h"
@@ -60,7 +71,11 @@ Ordered toOrdered(const Json& value) {
 Json diagnosticsJson(const std::vector<Diagnostic>& diagnostics) {
     Json out = Json::array();
     for (const Diagnostic& d : diagnostics) {
-        out.push_back({{"severity", d.severity == Diagnostic::Severity::Error ? "error" : "warning"}, {"path", d.path}, {"message", d.message}});
+        Json item = {{"severity", d.severity == Diagnostic::Severity::Error ? "error" : "warning"}, {"path", d.path}, {"message", d.message}};
+        // a typed finding (S49: analytic_unsupported, analytic_capacity, pixel_art_mesh, ramp_missing)
+        if (!d.code.empty()) item["code"] = d.code;
+        if (!d.fix.empty()) item["fix"] = d.fix;
+        out.push_back(item);
     }
     return out;
 }
@@ -237,6 +252,7 @@ void createEffectTool(const CallPtr& call) {
 
     ParticleEffectDocument document;
     std::vector<Diagnostic> diagnostics;
+    std::vector<std::string> children;
     if (args.contains("effect") && !args["effect"].is_null()) {
         auto effect = toOrdered(args["effect"]);
         // an agent's effect may leave the schema version out: this editor's
@@ -247,7 +263,22 @@ void createEffectTool(const CallPtr& call) {
         }
     } else if (args.contains("preset")) {
         const std::string preset = args.value("preset", std::string());
-        if (!particlePresetEffect(Json::object(), preset, false, document, error)) {
+        const std::vector<std::string>& pixel = pixelart::pixelParticlePresetNames();
+        if (std::find(pixel.begin(), pixel.end(), preset) != pixel.end()) {
+            // S49: on the project's copy of builtin:pixelfx-effects, its children beside it, scaled by the PPU
+            pixelart::ProjectPixelPreset made;
+            const std::string directory = fs::path(path).parent_path().generic_string();
+            if (!pixelart::prepareProjectPixelPreset(*project, preset, directory, made, error)) {
+                call->fail(error);
+                return;
+            }
+            if (!made.writes.empty() && !ProjectFileWrites::writeUndoable(project, made.writes, error)) {
+                call->fail(error);
+                return;
+            }
+            document = made.document;
+            children = made.children;
+        } else if (!particlePresetEffect(Json::object(), preset, false, document, error)) {
             call->fail(error);
             return;
         }
@@ -270,8 +301,10 @@ void createEffectTool(const CallPtr& call) {
     diagnostics.clear();
     ParticleEffectCodec::validate(document, diagnostics);
     const Guid guid = project->getAssetDatabase().getAssetGuid(absolute);
-    call->ok("Created the particle effect " + path + " (one undo step of the project).",
-             Json{{"path", path}, {"guid", guid.str()}, {"modules", moduleKeys(document)}, {"diagnostics", diagnosticsJson(diagnostics)}});
+    Json data = Json{{"path", path}, {"guid", guid.str()}, {"modules", moduleKeys(document)}, {"diagnostics", diagnosticsJson(diagnostics)}};
+    if (!children.empty()) data["children"] = children;
+    data["next"] = "set_particle_effect plays it on a Particle System";
+    call->ok("Created the particle effect " + path + " (one undo step of the project).", data);
 }
 
 void getEffectTool(const CallPtr& call) {
@@ -386,7 +419,8 @@ Json statsJson(ParticleSubsystem& particles, Entity entity) {
             {"ticks", s.ticks}, {"tick_count", s.tickCount}, {"time", s.time}, {"dropped_time", s.droppedTime},
             {"simulate_us", s.simulateMicros}, {"render_us", s.renderMicros}, {"culled", s.culled}, {"playing", s.playing},
             {"paused", s.paused}, {"emitting", s.emitting}, {"sorted_views", s.sortedViews}, {"drawn_views", s.drawnViews},
-            {"rays_last_tick", s.raysLastTick}, {"bytes_per_particle", s.bytesPerParticle}};
+            {"rays_last_tick", s.raysLastTick}, {"bytes_per_particle", s.bytesPerParticle},
+            {"simulation_mode", s.analytic ? "analytic" : "simulated"}, {"pixel", s.pixel}, {"analytic_slots", s.analyticSlots}};
 }
 
 void replyControl(const CallPtr& call, const EffectTarget& target, ParticleSubsystem& particles, const std::string& action, bool editMode) {
@@ -519,14 +553,142 @@ void statsTool(const CallPtr& call) {
     call->ok(std::to_string(systems.size()) + " particle system(s), " + std::to_string(world.live) + " live particles in the world.", data);
 }
 
+// S49 R38: the effect alone at N times, a contact sheet at an integer scale, and its checks
+void captureSheetTool(const CallPtr& call, const EffectTarget& target) {
+    const Json& args = call->args();
+    ParticleEffectDocument document;
+    std::vector<Diagnostic> diagnostics;
+    if (!readTarget(target, document, diagnostics)) {
+        call->fail("The effect cannot be read (" + firstError(diagnostics) + ").", Json{{"diagnostics", diagnosticsJson(diagnostics)}});
+        return;
+    }
+    const int frames = args.value("frames", 1);
+    if (frames < 1 || frames > 64) {
+        call->fail("frames is 1 to 64.");
+        return;
+    }
+    int scale = 1;
+    if (args.contains("scale")) {
+        scale = args.value("scale", 1);
+    } else if (target.scene && target.scene->scene) {
+        // a pixel effect at the game's pixel scale (S41's)
+        RenderSystem* render = target.scene->scene->getSystem<RenderSystem>().get();
+        if (render && render->getPixelPerfectLayout() && (document.pixelArt.present || document.renderer.renderMode == particles::RenderMode::Pixel))
+            scale = std::max(1, render->getPixelPerfectLayout()->scale);
+    }
+    if (scale < 1 || scale > 8) {
+        call->fail("scale is a whole number from 1 to 8.");
+        return;
+    }
+    jasperengine::pixelart::Rgba8 background{255, 0, 255, 255};
+    if (args.contains("background") && !jasperengine::pixelart::parseHex(args.value("background", std::string()), background)) {
+        call->fail("background is a colour \"#rrggbb\" (the default #ff00ff is a key colour the checks read).");
+        return;
+    }
+    background.a = 255;
+    const double start = args.value("time", 0.0);
+    float lifeLo = 0.0f, lifeHi = 0.0f;
+    document.main.startLifetime.range(lifeLo, lifeHi);
+    // one loop, or the one-shot until its last particle is gone
+    const double end = args.contains("time_end") ? args.value("time_end", 0.0)
+                                                  : (document.looping ? start + document.duration : (double)document.duration + (double)lifeHi);
+    if (start < 0.0 || end < start) {
+        call->fail("time and time_end are seconds, time_end after time.");
+        return;
+    }
+    pixelart::ParticleCaptureSettings settings;
+    settings.document = document;
+    uint32_t seed = document.seed;
+    if (seed == 0 && target.entity != NULL_ENTITY) seed = target.scene->scene->getComponent<ParticleSystemComponent>(target.entity).seed;
+    settings.seed = seed == 0 ? 1u : seed;
+    settings.pixelsPerUnit = std::max(target.project->getPixelsPerUnit(), 1);
+    settings.background = background;
+    for (int i = 0; i < frames; i++) {
+        // a loop's frames stop short of its end (the end is the start again); a one-shot's reach it
+        const double span = document.looping ? (end - start) / frames : (frames > 1 ? (end - start) / (frames - 1) : 0.0);
+        settings.times.push_back(start + span * i);
+    }
+    auto capture = std::make_shared<pixelart::ParticleCapture>();
+    std::string error;
+    if (!capture->begin(settings, error)) {
+        call->fail("The effect cannot be captured: " + error + ".");
+        return;
+    }
+    const bool checks = args.value("checks", false);
+    const uint32_t budget = target.scene && target.scene->scene ? target.scene->scene->getSystem<ParticleSubsystem>()->getWorldStats().budget : 0u;
+    // save_path: Bake to Sprite Sheet (R21): the frames as a strip PNG and its Aseprite json-hash beside it
+    fs::path savePath;
+    if (args.contains("save_path") && !args.value("save_path", std::string()).empty()) {
+        savePath = FileUtils::pathFromUtf8(args.value("save_path", std::string()));
+        if (savePath.is_relative()) savePath = target.project->getProjectPath() / savePath;
+        if (savePath.extension() != ".png") {
+            call->fail("save_path is a .png (its .json goes beside it).");
+            return;
+        }
+    }
+    Project* project = target.project;
+    call->waitUntil([capture]() { return capture->step(); }, 120000, [call, capture, scale, background, checks, budget, savePath, project](bool timedOut) {
+        if (timedOut || capture->failed()) {
+            call->fail(timedOut ? "The capture did not finish within 120 s." : capture->error());
+            return;
+        }
+        const pixelart::PixelImage sheet = pixelart::particleContactSheet(capture->frames(), capture->width(), capture->height(), scale, 0,
+                                                                          background, true);
+        Json frameList = Json::array();
+        for (size_t i = 0; i < capture->frames().size(); i++) {
+            const pixelart::CapturedFrame& f = capture->frames()[i];
+            frameList.push_back({{"index", i + 1}, {"t", f.time}, {"particle_count", f.count}});
+        }
+        Json data = {{"frames", frameList}, {"scale", scale}, {"cell", {capture->width(), capture->height()}},
+                     {"width", sheet.width()}, {"height", sheet.height()}, {"background", jasperengine::pixelart::toHex(background, false)}};
+        std::string text = std::to_string(capture->frames().size()) + " frame(s) of " + std::to_string(capture->width()) + "x" +
+                           std::to_string(capture->height()) + " base pixels at " + std::to_string(scale) + "x";
+        if (checks) {
+            const pixelart::lint::LintReport report = pixelart::particleCaptureChecks(*capture, budget ? budget : particles::defaultWorldBudget());
+            data["checks"] = pixelart::lint::toJson(report);
+            text += "; checks: " + std::to_string(report.pass) + " pass, " + std::to_string(report.warn) + " warn, " +
+                    std::to_string(report.fail) + " fail, " + std::to_string(report.skip) + " skip";
+        }
+        if (!savePath.empty()) {
+            const pixelart::PixelImage strip = pixelart::particleSpriteStrip(capture->frames(), capture->width(), capture->height(), scale, 0, background);
+            fs::path jsonPath = savePath;
+            jsonPath.replace_extension(".json");
+            std::vector<WriteFilesCmd::Item> items;
+            items.push_back({savePath, strip.encodePng()});
+            items.push_back({jsonPath, pixelart::particleSpriteStripJson(FileUtils::pathToUtf8(savePath.filename()), capture->frames(), capture->width(),
+                                                                          capture->height(), scale, 0)});
+            std::string error;
+            if (!ProjectFileWrites::writeUndoable(project, items, error, nullptr, nullptr, {}, true, "Bake to Sprite Sheet")) {
+                call->fail("The sprite sheet could not be written: " + error);
+                return;
+            }
+            data["saved"] = {FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(savePath)),
+                             FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(jsonPath))};
+            text += "; baked " + FileUtils::pathToUtf8(savePath.filename()) + " and its .json (one undo step)";
+        }
+        ToolResult reply = ToolResult::success(text + ".", data);
+        const std::string png = sheet.encodePng();
+        ToolImage image;
+        image.data = Base64::encode(reinterpret_cast<const unsigned char*>(png.data()), png.size());
+        reply.images.push_back(std::move(image));
+        call->reply(std::move(reply));
+    });
+}
+
 void captureTool(const CallPtr& call) {
     const Json& args = call->args();
     EffectTarget target;
-    if (!args.contains("entity")) {
-        call->fail("entity is required.");
+    const bool sheet = args.contains("frames") || args.contains("time_end") || args.contains("scale") || args.contains("background") ||
+                       args.contains("checks");
+    if (!args.contains("entity") && !(sheet && args.contains("path"))) {
+        call->fail("entity is required (a contact sheet takes path too).");
         return;
     }
     if (!resolveEffectTarget(call, target, false)) return;
+    if (sheet) {
+        captureSheetTool(call, target);
+        return;
+    }
     const double time = args.value("time", 0.0);
     if (time < 0.0) {
         call->fail("time is seconds >= 0.");
@@ -606,11 +768,13 @@ void registerParticleTools(McpRegistry& registry) {
         registry.addTool(std::move(tool));
     };
 
+    std::vector<std::string> presetNames = particlePresetNames();
+    for (const std::string& name : pixelart::pixelParticlePresetNames()) presetNames.push_back(name);
     add("create_particle_effect", "Create Particle Effect",
         "A new .particles asset from a create_particles preset or an effect JSON (the keyed form get_particle_effect returns), "
         "one undo step of the project. set_particle_effect plays it on a Particle System.",
         object({{"path", assetPath("The new file (.particles).")},
-                {"preset", stringEnum("", particlePresetNames())},
+                {"preset", stringEnum("", presetNames)},
                 {"effect", anyObject("The whole effect (modules keyed by type).")},
                 {"overwrite", withDefault(boolean(""), false)}}, {"path"}),
         createEffectTool, false);
@@ -627,7 +791,7 @@ void registerParticleTools(McpRegistry& registry) {
     add("add_particle_module", "Add Particle Module",
         "Add (or re-enable) a module of an effect, with optional fields: emission, shape, startVelocity, velocityOverLifetime, "
         "limitVelocity, forceOverLifetime, colorOverLifetime, colorBySpeed, sizeOverLifetime, sizeBySpeed, rotationOverLifetime, "
-        "rotationBySpeed, externalForces, noise, orbit, collision, subEmitters, textureSheetAnimation, trails, customData, setOverAge.",
+        "rotationBySpeed, externalForces, noise, orbit, collision, subEmitters, textureSheetAnimation, trails, customData, setOverAge, pixelArt.",
         object(withTarget({{"module", string("")}, {"fields", anyObject("The module's fields.")}}), std::vector<std::string>{"module"}),
         addModuleTool, false);
     add("remove_particle_module", "Remove Particle Module",
@@ -653,11 +817,14 @@ void registerParticleTools(McpRegistry& registry) {
         object({{"entity", entityRef()}, {"scene", sceneRef()}}), statsTool, true);
     add("capture_particles", "Capture Particle Effect",
         "Seek a Particle System to time (seconds) and capture the view (camera: scene or game) as an image; the system stays "
-        "paused there.",
-        object({{"entity", entityRef()}, {"scene", sceneRef()}, {"time", number("Seconds.")},
+        "paused there. frames, scale, background or checks draw the effect alone instead: a labelled contact sheet of frames "
+        "times to time_end (default one loop) at an integer scale, with pixel-art lint results.",
+        object({{"entity", entityRef()}, {"path", assetPath("")}, {"scene", sceneRef()}, {"time", number("Seconds.")},
                 {"camera", withDefault(stringEnum("", {"scene", "game"}), "scene")},
-                {"max_width", withDefault(integer("", 0, 4096), 768)}, {"save_path", string("Also write the PNG here.")}},
-               {"entity", "time"}),
+                {"max_width", withDefault(integer("", 0, 4096), 768)}, {"save_path", string("Also write the PNG here (frames: a sprite strip and its Aseprite .json).")},
+                {"frames", integer("", 1, 64)}, {"time_end", number("")}, {"scale", integer("", 1, 8)},
+                {"background", string("#rrggbb")}, {"checks", boolean("")}},
+               {"time"}),
         captureTool, false);
     add("get_particle_migration_report", "Particle Migration Report",
         "The old particle systems the documents read since the project opened were converted from (S20): per document, one "

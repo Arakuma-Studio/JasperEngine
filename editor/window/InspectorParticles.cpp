@@ -25,17 +25,34 @@
 #include "command/CommandHistory.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "component/CameraComponent.h"
 #include "component/ForceFieldComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
+#include "Out.h"
+#include "particles/AnalyticParticles.h"
+#include "pixelart/PaletteUse.h"
+#include "pixelart/PixelPerfectLayout.h"
+#include "subsystem/RenderSystem.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleModules.h"
+#include "particles/ParticlePixel.h"
+#include "pixelart/PaletteAssets.h"
+#include "pixelart/PaletteSwapChecks.h"
+#include "pixelart/particles/PixelParticlePresets.h"
+#include "pixelart/particles/PixelPresetCreate.h"
+#include "command/type/SetAssetMetaCmd.h"
+#include "command/UndoTimeline.h"
+#include "texture/TextureImportSettings.h"
+#include "util/FileUtils.h"
+#include "util/ProjectFileWrites.h"
 #include "reflect/Enums.h"
 #include "util/EntityPayload.h"
 #include "util/ParticleEffectEdit.h"
 #include "util/Util.h"
+#include "window/ParticleEffectOverlay.h"
 #include "window/ProjectWindow.h"
 
 #include "imgui.h"
@@ -66,6 +83,15 @@ namespace {
         std::set<std::string>* expanded = nullptr;
         bool changed = false;
         bool commit = false;
+        // S49: the document drawn (the Renderer's rows that depend on the Pixel Art module), the
+        // grid a pixel particle uses here, the modules Analytic does not compute, a project step
+        // written with this edit (the palette copy of a preset: linked to the edit's step)
+        const ParticleEffectDocument* document = nullptr;
+        std::string gridStatus;
+        std::set<std::string> analyticBlocked;
+        bool wroteProjectStep = false;
+        uint32_t sceneId = 0;                 // the inspected system (Bake to Sprite Sheet)
+        Entity entity = NULL_ENTITY;
 
         // a field window's phase (S27 FieldEdit.h): its session in this history, its values
         // merged into the step, a one-go change its own step
@@ -148,6 +174,208 @@ namespace {
             ImGui::EndCombo();
         }
         return picked;
+    }
+
+    // ---------------------------------------------------------------- pixel shapes (S49 R31)
+
+    // a 16x16 icon of a shape, drawn by the CPU reference of its rule (ParticlePixel: the same
+    // code as the tests' golden), so the icon is the truth
+    void pixelShapeIcon(ImDrawList* drawList, ImVec2 at, float side, const RendererModule& renderer, PixelShape shape) {
+        PixelShapeSpec spec = PixelShapeSpec::fromRenderer(renderer);
+        spec.shape = (int)shape;
+        const float n = shape == PixelShape::Puff ? 8.0f : (shape == PixelShape::Chunk ? 10.0f : (shape == PixelShape::Streak ? 1.0f : 11.0f));
+        const PixelLayout layout = ParticlePixel::layout(spec, Vector2(8.0f, 8.0f), Vector2(n, n), Vector2(300.0f, 300.0f), 0.6f, true);
+        std::vector<PixelCell> cells;
+        ParticlePixel::rasterize(spec, layout, 0.2f, 0, cells);
+        const float px = side / 16.0f;
+        drawList->AddRectFilled(at, ImVec2(at.x + side, at.y + side), IM_COL32(24, 24, 28, 255));
+        for (const PixelCell& c : cells) {
+            if (c.x < 0 || c.y < 0 || c.x >= 16 || c.y >= 16) continue;
+            const ImU32 colour = c.tone == 1 ? IM_COL32(255, 138, 42, 255) : IM_COL32(255, 243, 166, (int)(255.0f * std::clamp(c.cover, 0.25f, 1.0f)));
+            const ImVec2 min(at.x + (float)c.x * px, at.y + (float)(15 - c.y) * px);
+            drawList->AddRectFilled(min, ImVec2(min.x + px, min.y + px), colour);
+        }
+    }
+
+    bool pixelShapeCombo(const char* id, const RendererModule& renderer, uint8_t& value) {
+        const EnumOption* options = nullptr;
+        uint8_t count = 0;
+        if (const FieldDesc* field = ParticleModules::get(ModuleId::Renderer).fields.find("pixelShape")) {
+            options = field->options;
+            count = field->optionCount;
+        }
+        const char* preview = "";
+        for (uint8_t i = 0; i < count; i++) {
+            if (options[i].value == value) preview = options[i].label;
+        }
+        bool picked = false;
+        const float side = editor::Theme::dpi(16.0f);
+        if (ImGui::BeginCombo(id, preview, ImGuiComboFlags_HeightLarge)) {
+            for (uint8_t i = 0; i < count; i++) {
+                ImGui::PushID(i);
+                const ImVec2 at = ImGui::GetCursorScreenPos();
+                if (ImGui::Selectable("##shape", options[i].value == value, 0, ImVec2(0.0f, side))) {
+                    picked = options[i].value != value;
+                    value = options[i].value;
+                }
+                pixelShapeIcon(ImGui::GetWindowDrawList(), at, side, renderer, (PixelShape)options[i].value);
+                ImGui::GetWindowDrawList()->AddText(ImVec2(at.x + side + editor::Theme::dpi(6.0f), at.y), ImGui::GetColorU32(ImGuiCol_Text), options[i].label);
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+        return picked;
+    }
+
+    // ---------------------------------------------------------------- pixel particles (S49)
+
+    void noteRow(const std::string& text, bool warning) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(1);
+        ImGui::PushTextWrapPos(0.0f);
+        if (warning) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.75f, 0.30f, 1.0f));
+        if (warning) ImGui::TextUnformatted((std::string(ICON_FA_TRIANGLE_EXCLAMATION " ") + text).c_str());
+        else ImGui::TextDisabled("%s", text.c_str());
+        if (warning) ImGui::PopStyleColor();
+        ImGui::PopTextWrapPos();
+    }
+
+    bool pixelActive(const ParticleEffectDocument& d) {
+        return d.renderer.renderMode == RenderMode::Pixel || (d.pixelArt.present && d.pixelArt.enabled);
+    }
+
+    // R30: the grid in use, the Ramp Offset fallback, Rescale to Pixels Per Unit (R20)
+    void drawPixelArtNotes(FieldUi& ui, ParticleEffectDocument& edited) {
+        if (!ui.gridStatus.empty()) noteRow("Grid: " + ui.gridStatus, false);
+        const bool ramp = edited.main.startColor.mode == GradientValueMode::Ramp ||
+                          (edited.colorOverLifetime.present && edited.colorOverLifetime.enabled && edited.colorOverLifetime.color.mode == GradientValueMode::Ramp);
+        if (edited.pixelArt.secondary == SecondaryColorMode::RampOffset && !ramp)
+            noteRow("Ramp Offset: neither Start Color nor Color over Lifetime is a Palette Ramp, so the Secondary colour is drawn", false);
+        const int ppu = ui.project ? std::max(ui.project->getPixelsPerUnit(), 1) : 1;
+        if (edited.designPixelsPerUnit > 0.0f && (int)edited.designPixelsPerUnit != ppu) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            if (ImGui::Button(("Rescale to Pixels Per Unit " + std::to_string(ppu)).c_str())) {
+                editor::pixelart::scaleParticleMotion(edited, edited.designPixelsPerUnit / (float)ppu);
+                edited.designPixelsPerUnit = (float)ppu;
+                ui.track(true, true);
+            }
+            ImGui::SetItemTooltip("The preset was made for %d pixels per unit; its speeds, forces and shape take the project's %d (one undo step)",
+                                  (int)edited.designPixelsPerUnit, ppu);
+        }
+    }
+
+    // R9, R13: what pixel art ignores, and a texture that cannot keep its colours exact
+    void drawRendererPixelNotes(FieldUi& ui, ParticleEffectDocument& edited) {
+        if (ui.entity != NULL_ENTITY) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            if (ImGui::Button("Bake to Sprite Sheet...")) editor::ParticleEffectOverlay::requestBake(ui.sceneId, ui.entity);
+            ImGui::SetItemTooltip("The effect at N times as a PNG strip and an Aseprite JSON, which a texture's Sprite Mode slices (S45)");
+        }
+        if (!pixelActive(edited)) return;
+        for (const std::string& feature : edited.renderer.shaderFeatures) {
+            if (feature == "EROSION" || feature == "SOFT")
+                noteRow(feature + " does nothing for pixel art: its pixels are whole and fade by dither", false);
+        }
+        if (edited.renderer.renderMode == RenderMode::Pixel || edited.renderer.texture.empty() || !ui.project) return;
+        editor::pixelart::PaletteSwapTextureCheck check = editor::pixelart::checkLosslessTexture(*ui.project, edited.renderer.texture);
+        check.subject = "Pixel particles";
+        if (!check.lossy()) return;
+        noteRow(check.message(), true);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(1);
+        if (ImGui::Button("Fix##particle_texture_lossless")) {
+            Material material;
+            material.baseColorTexture = Texture(edited.renderer.texture);
+            material.baseColorTexture.setMinFilter(TextureFilter::NEAREST);
+            material.baseColorTexture.setMagFilter(TextureFilter::NEAREST);
+            editor::pixelart::PaletteSwapTextureFix fix;
+            if (editor::pixelart::planPaletteSwapTextureFix(*ui.project, material, check, fix) && fix.importChanged) {
+                editor::Command* meta = new editor::SetAssetMetaCmd(ui.project, ui.project->normalizeToProjectRelative(
+                    ui.project->getAssetsPath() / editor::FileUtils::pathFromUtf8(fix.texture)), editor::TextureImportSettings::metaKey, fix.importSettings);
+                meta->setNoMerge();
+                ui.project->getProjectCommandHistory()->addCommand(meta);
+            }
+        }
+        ImGui::SetItemTooltip("Lossless, no mipmaps, a Max Size that keeps the image (one undo step); the particles sample it Nearest");
+    }
+
+    // R33: Analytic's unsupported modules and the loop's rate
+    void drawAnalyticBanner(FieldUi& ui, ParticleEffectDocument& edited) {
+        ui.analyticBlocked.clear();
+        if (edited.simulationMode != SimulationMode::Analytic) return;
+        std::vector<Diagnostic> diagnostics;
+        AnalyticParticles::validate(edited, diagnostics);
+        std::vector<std::string> others;
+        for (const Diagnostic& d : diagnostics) {
+            if (d.path.rfind("modules.", 0) == 0) {
+                const std::string rest = d.path.substr(8);
+                ui.analyticBlocked.insert(rest.substr(0, rest.find_first_of(".[")));
+            }
+            others.push_back(d.message);
+        }
+        if (!diagnostics.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.75f, 0.30f, 1.0f));
+            ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " Analytic computes %zu setting(s) of this effect: disable them or use Simulated.", diagnostics.size());
+            ImGui::PopStyleColor();
+            for (const std::string& line : others) ImGui::BulletText("%s", line.c_str());
+            bool any = false;
+            for (const std::string& key : ui.analyticBlocked) {
+                const ModuleDesc* m = ParticleModules::find(key);
+                any = any || (m && m->hasEnable && m->isEnabled(edited) && key != "renderer");
+            }
+            ImGui::BeginDisabled(!any);
+            if (ImGui::Button("Disable unsupported modules")) {
+                for (const std::string& key : ui.analyticBlocked) {
+                    const ModuleDesc* m = ParticleModules::find(key);
+                    if (m && m->hasEnable && key != "renderer") m->setEnabled(edited, false);
+                }
+                ui.track(true, true);
+            }
+            ImGui::EndDisabled();
+            ImGui::SetItemTooltip("Unchecks every module Analytic cannot compute (one undo step); switching back to Simulated keeps them as they are");
+        }
+        if (edited.looping && edited.emission.present && edited.emission.enabled && edited.emission.rateOverTime.isConstant()) {
+            const float rate = edited.emission.rateOverTime.constant;
+            const float exact = AnalyticParticles::loopRate(rate, edited.duration);
+            if (rate > 0.0f) ImGui::TextDisabled("Rate %g -> %.1f/s for a seamless loop of %g s", (double)rate, (double)exact, (double)edited.duration);
+        }
+    }
+
+    // R20: Replace with Preset and Match Project Palette
+    void drawPresetRow(FieldUi& ui, ParticleEffectDocument& edited) {
+        if (!ui.project) return;
+        ImGui::SetNextItemWidth(editor::Theme::dpi(170.0f));
+        if (ImGui::BeginCombo("##replace_preset", "Replace with Preset")) {
+            for (const std::string& name : editor::pixelart::pixelParticlePresetNames()) {
+                if (!ImGui::Selectable(("Pixel " + editor::pixelart::pixelParticlePresetLabel(name)).c_str())) continue;
+                editor::pixelart::ProjectPixelPreset made;
+                std::string error;
+                if (!editor::pixelart::prepareProjectPixelPreset(*ui.project, name, "Particles/Pixel", made, error)) {
+                    editor::Out::error("Replace with Preset: %s", error.c_str());
+                    continue;
+                }
+                if (!made.writes.empty()) {
+                    if (!editor::ProjectFileWrites::writeUndoable(ui.project, made.writes, error, nullptr, nullptr, {}, true)) {
+                        editor::Out::error("Replace with Preset: %s", error.c_str());
+                        continue;
+                    }
+                    ui.wroteProjectStep = true;
+                }
+                edited = made.document;
+                ui.track(true, true);
+            }
+            ImGui::EndCombo();
+        }
+        const std::string palettePath = editor::pixelart::defaultPalettePath(*ui.project);
+        if (palettePath.empty()) return;
+        ImGui::SameLine();
+        if (ImGui::Button("Match Project Palette")) {
+            const editor::pixelart::ResolvedPalette palette = editor::pixelart::resolvePaletteName(*ui.project, palettePath);
+            if (palette.ok && editor::pixelart::matchPaletteRamps(edited, palette.palette)) ui.track(true, true);
+        }
+        ImGui::SetItemTooltip("Every ramp step to the nearest colour of the closest ramp of %s (one undo step)", palettePath.c_str());
     }
 
     // ---------------------------------------------------------------- list rows
@@ -342,6 +570,10 @@ namespace {
             case FieldType::Enum: {
                 labelCell(f.label, f.tooltip, indent);
                 uint8_t& v = *static_cast<uint8_t*>(p);
+                if (std::strcmp(f.key, "pixelShape") == 0 && ui.document) {
+                    if (pixelShapeCombo("##v", ui.document->renderer, v)) ui.track(true, true);
+                    break;
+                }
                 if (enumCombo("##v", f.options, f.optionCount, v)) ui.track(true, true);
                 break;
             }
@@ -513,9 +745,12 @@ namespace {
     }
 
     void drawStruct(FieldUi& ui, const StructDesc& desc, void* owner, const std::string& path, int indent, Pass pass) {
+        // Sizes in Pixels ignores Min and Max Particle Size (S49 R3)
+        const bool pixelSized = ui.document && ui.document->pixelArt.present && ui.document->pixelArt.enabled && ui.document->pixelArt.pixelSizes;
         for (size_t i = 0; i < desc.fields.size(); i++) {
             const FieldDesc& f = desc.fields[i];
             if (!shown(f, owner, pass)) continue;
+            if (pixelSized && (std::strcmp(f.key, "minScreenSize") == 0 || std::strcmp(f.key, "maxScreenSize") == 0)) continue;
             std::string* guid = nullptr;
             if ((f.flags & FieldFlag_AssetPath) && i + 1 < desc.fields.size() && (desc.fields[i + 1].flags & FieldFlag_Guid)) {
                 guid = static_cast<std::string*>(desc.fields[i + 1].field(owner));
@@ -605,6 +840,8 @@ namespace {
     void drawEffectDocument(FieldUi& ui, ParticleEffectDocument& edited, const std::string& prefix) {
         const float labelSize = ImGui::CalcTextSize("Simulation Speed X").x + ImGui::GetStyle().ItemSpacing.x * 2.0f;
         const ModuleDesc& mainModule = ParticleModules::get(ModuleId::Main);
+        ui.document = &edited;
+        drawPresetRow(ui, edited);
 
         // Main: the effect's own settings and the Main module, always open
         ImGui::SeparatorText(mainModule.label);
@@ -626,10 +863,12 @@ namespace {
             }
         }
         endRows();
+        drawAnalyticBanner(ui, edited);
 
         for (const ModuleDesc& module : ParticleModules::all()) {
             if (module.id == ModuleId::Main || !module.isPresent(edited)) continue;
             ImGui::PushID(module.key);
+            const bool blocked = ui.analyticBlocked.count(module.key) > 0;
 
             ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_AllowOverlap | ImGuiTreeNodeFlags_SpanAvailWidth |
                                        ImGuiTreeNodeFlags_NoTreePushOnOpen;
@@ -655,7 +894,12 @@ namespace {
                 ImGui::PopStyleVar();
                 ImGui::SameLine();
             }
-            ImGui::TextUnformatted(module.label);
+            if (blocked) {
+                ImGui::TextDisabled("%s " ICON_FA_TRIANGLE_EXCLAMATION, module.label);
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("Not computed in Analytic mode: disable it or use Simulated");
+            } else {
+                ImGui::TextUnformatted(module.label);
+            }
             if (!module.alwaysPresent) {
                 ImGui::SameLine(std::max(0.0f, rightEdge - trashWidth()));
                 bool clicked = false;
@@ -671,9 +915,11 @@ namespace {
             }
 
             if (open) {
-                ImGui::BeginDisabled(module.hasEnable && !module.isEnabled(edited));
+                ImGui::BeginDisabled((module.hasEnable && !module.isEnabled(edited)) || (blocked && module.id != ModuleId::Renderer));
                 beginRows(prefix + "_module_" + module.key, labelSize);
                 drawFieldsWithAdvanced(ui, module.fields, module.module(edited), module.key);
+                if (module.id == ModuleId::PixelArt) drawPixelArtNotes(ui, edited);
+                if (module.id == ModuleId::Renderer) drawRendererPixelNotes(ui, edited);
                 if (module.id == ModuleId::SubEmitters) {
                     drawStructList(ui, "Sub Emitters", ParticleModules::subEmitterFields(), edited.subEmitters, (size_t)kMaxSubEmitters, "subEmitters");
                 }
@@ -710,6 +956,19 @@ namespace {
         }
     }
 
+}
+
+// R30: the grid a pixel particle of this scene draws on
+static std::string particleGridStatus(editor::Project* project, Scene* scene) {
+    const int ppu = project ? std::max(project->getPixelsPerUnit(), 1) : 1;
+    if (RenderSystem* render = scene ? scene->getSystem<RenderSystem>().get() : nullptr) {
+        if (const jasperengine::pixelart::PixelPerfectLayout* layout = render->getPixelPerfectLayout())
+            return "Pixel Perfect Camera, " + std::to_string(layout->targetWidth) + "x" + std::to_string(layout->targetHeight) + ", PPU " + std::to_string(ppu);
+    }
+    const CameraComponent* camera = scene ? scene->findComponent<CameraComponent>(scene->getCamera()) : nullptr;
+    if (camera && camera->type == CameraType::CAMERA_PERSPECTIVE)
+        return "Perspective: screen pixels";
+    return "Orthographic, PPU " + std::to_string(ppu);
 }
 
 // The history step of the last edit, kept merging until the edit ends (a drag released)
@@ -805,6 +1064,11 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
     ui.project = project;
     ui.history = CommandHandle::get(sceneProject->id);
     ui.expanded = &particleExpanded;
+    ui.gridStatus = particleGridStatus(project, scene);
+    if (entities.size() == 1) {
+        ui.sceneId = sceneProject->id;
+        ui.entity = entities[0];
+    }
     drawEffectDocument(ui, edited, "particle");
 
     if (ui.changed) {
@@ -820,6 +1084,8 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
             return ParticleEffectCodec::applyMergePatch(target, patch, patchDiagnostics);
         });
         pushParticleCommand(CommandHandle::get(sceneProject->id), command, ui.commit);
+        // a preset's palette copy (project) and the edit using it (scene): one undo step
+        if (ui.wroteProjectStep) pixelart::linkPaletteCopy(*project, sceneProject->id);
     } else if (ui.commit) {
         pushParticleCommand(CommandHandle::get(sceneProject->id), nullptr, true);
     }

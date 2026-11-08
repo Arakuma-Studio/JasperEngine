@@ -344,6 +344,9 @@ namespace jasperengine { namespace particles {
         int planeCacheTicks = 8;
         bool sendEvents = false;
         int maxCollisionEvents = 64;
+        // a hit whose speed after the response is below it makes the particle rest until its
+        // life ends (S49 R14; 0: off)
+        float settleSpeed = 0.0f;
     };
 
     enum class TrailMode : uint8_t { PerParticle, Ribbon };
@@ -391,7 +394,8 @@ namespace jasperengine { namespace particles {
         LocalOriented,
         Mesh,
         None,                    // trails only
-        VelocityAligned          // faces along the velocity (Unity's Velocity alignment)
+        VelocityAligned,         // faces along the velocity (Unity's Velocity alignment)
+        Pixel                    // a pixel shape drawn per base pixel on the grid (S49 R9)
     };
     // How Mesh particles turn (Unity's Render Alignment): in the simulation space (the
     // effect's own default), facing the camera plane or position, in world or emitter axes, or
@@ -406,6 +410,39 @@ namespace jasperengine { namespace particles {
     enum class SixWayLayout : uint8_t { RGBA, TopLeftRightBottomBackFront, PositiveNegative };
     // a billboard without a texture: Unity's default particle (a soft disc), or the old points' square
     enum class UntexturedShape : uint8_t { Disc, Square };
+
+    // ---------------------------------------------------------------- pixel art (S49)
+
+    // the shapes of the Pixel render mode, drawn per whole base pixel (S49 R9)
+    enum class PixelShape : uint8_t { Dot, Cross, Disc, Ring, Streak, Puff, Shard, Chunk, Glow };
+    // how a particle fades: a Bayer dither, a cutout at half, or S20's alpha blending
+    enum class PixelFade : uint8_t { Dither, Cutout, Alpha };
+    // the dither cell: the target's base pixels (the pattern holds still), or the particle's
+    enum class DitherSpace : uint8_t { Screen, Particle };
+    enum class SecondaryColorMode : uint8_t { RampOffset, Color };
+    // Analytic: every particle a closed-form function of its slot and the time (S49 R15)
+    enum class SimulationMode : uint8_t { Simulated, Analytic };
+
+    struct PixelArtModule {
+        bool present = false;
+        bool enabled = true;
+        bool snap = true;               // the lower-left corner of the pixel box on the grid
+        bool pixelSizes = true;         // sizes in base pixels
+        bool integerSize = true;        // whole-pixel boxes
+        PixelFade fade = PixelFade::Dither;
+        int ditherSize = 4;             // 2, 4 or 8
+        DitherSpace ditherSpace = DitherSpace::Screen;
+        MinMaxCurve fadeOverLifetime = MinMaxCurve(1.0f);   // times the colour's alpha
+        float holdFrameRate = 0.0f;     // Hz; 0: every frame
+        SecondaryColorMode secondary = SecondaryColorMode::RampOffset;
+        int secondaryOffset = 1;        // ramp steps from the primary
+        Vector4 secondaryColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);   // sRGB
+        Vector2 wobbleAmplitude = Vector2(0.0f, 0.0f);          // base px
+        Vector2 wobbleFrequency = Vector2(1.0f, 1.0f);          // Hz, per axis
+        bool wobbleRandomPhase = true;
+        float flickerBelow = 0.0f;      // the remaining life under which it blinks (0: off)
+        float flickerRate = 40.0f;      // Hz
+    };
 
     struct ShaderProperty {
         std::string name;
@@ -470,6 +507,17 @@ namespace jasperengine { namespace particles {
         std::string emissionMapGuid;
         Vector4 emissionColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);   // sRGB
         float emissionIntensity = 0.0f;
+        // the Pixel render mode's shape and its settings (S49 R9)
+        PixelShape pixelShape = PixelShape::Dot;
+        float streakLengthScale = 0.022f;   // px of length per px/s
+        float streakMaxLength = 9.0f;
+        float streakHeadFraction = 0.45f;
+        int streakWidth = 1;
+        bool discRim = false;
+        int ringWidth = 1;
+        bool dotShadeBottom = false;
+        int glowBands = 3;
+        int rotationSteps = 16;             // Shard and Chunk: angles per turn
     };
 
     // Old modifiers (ActionSystem's "from-to" per property, before S20): inside the window of
@@ -556,6 +604,9 @@ namespace jasperengine { namespace particles {
         Vector3 boundsSize = Vector3(10.0f, 10.0f, 10.0f);
         int priority = 0;            // the world budget serves higher priorities first
         DistanceLod lod;
+        SimulationMode simulationMode = SimulationMode::Simulated;
+        // the project Pixels Per Unit a pixel preset was made for (0: none; S49 R20)
+        float designPixelsPerUnit = 0.0f;
 
         MainModule main;
         EmissionModule emission;
@@ -580,6 +631,7 @@ namespace jasperengine { namespace particles {
         CustomDataModule customData;
         RendererModule renderer;
         SetOverAgeModule setOverAge;
+        PixelArtModule pixelArt;
 
         std::vector<SubEmitterEntry> subEmitters;
         std::vector<ExposedParameter> exposed;
@@ -591,6 +643,9 @@ namespace jasperengine { namespace particles {
         Severity severity = Severity::Error;
         std::string path;      // "modules[2].bursts[0].probability", "$" for the document
         std::string message;
+        // a typed finding ("analytic_unsupported") and how to fix it; empty for the others
+        std::string code;
+        std::string fix;
     };
 
     // A .particles JSON text into a document, for code that cannot include the JSON library

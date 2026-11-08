@@ -531,6 +531,8 @@ void addParticlesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & (1 << 9))  defs.push_back({"HAS_FOG", "1"});                  // 'Fog'
     if (prop & (1 << 10)) defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
     if (prop & (1 << 11)) defs.push_back({"PIXEL_SNAP", "1"});               // 'Pxs' (S41)
+    if (prop & (1 << 12)) defs.push_back({"PARTICLE_PIXEL", "1"});           // 'Pxl' (S49)
+    if (prop & (1 << 13)) defs.push_back({"PARTICLE_ANALYTIC", "1"});        // 'Ana' (S49)
 }
 
 // the uber pass's features (RenderSystem::UberFeature)

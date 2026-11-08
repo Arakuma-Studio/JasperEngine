@@ -470,16 +470,35 @@ std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* 
             }
             continue;
         }
-        const std::string submenu = entry.submenu;
+        // "Effects/Pixel": a submenu inside "Effects" (S49)
+        const std::string full = entry.submenu;
+        const std::string submenu = full.substr(0, full.find('/'));
         if (std::find(shownSubmenus.begin(), shownSubmenus.end(), submenu) != shownSubmenus.end()) continue;
         shownSubmenus.push_back(submenu);
         if (lastKind == 0) items.push_back(menuSeparator());
         lastKind = 1;
 
         std::vector<editor::PlatformMenuItem> children;
+        std::vector<std::string> nested;
         for (size_t j = i; j < entries.size(); j++) {
             const CreateMenuEntry& child = entries[j];
-            if (!child.submenu || submenu != child.submenu || !offered(child)) continue;
+            if (!child.submenu || !offered(child)) continue;
+            const std::string childMenu = child.submenu;
+            if (childMenu.rfind(submenu + "/", 0) == 0) {
+                const std::string inner = childMenu.substr(submenu.size() + 1);
+                if (std::find(nested.begin(), nested.end(), inner) != nested.end()) continue;
+                nested.push_back(inner);
+                std::vector<editor::PlatformMenuItem> innerItems;
+                for (size_t k = j; k < entries.size(); k++) {
+                    const CreateMenuEntry& item = entries[k];
+                    if (!item.submenu || childMenu != item.submenu || !offered(item)) continue;
+                    if (item.separatorBefore && !innerItems.empty()) innerItems.push_back(menuSeparator());
+                    innerItems.push_back(entryItem(k));
+                }
+                children.push_back(menuSubmenu(inner, std::move(innerItems), canCreate));
+                continue;
+            }
+            if (submenu != childMenu) continue;
             if (child.separatorBefore && !children.empty()) children.push_back(menuSeparator());
             children.push_back(entryItem(j));
         }

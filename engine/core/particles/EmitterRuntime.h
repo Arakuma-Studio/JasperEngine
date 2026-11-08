@@ -32,6 +32,8 @@ namespace jasperengine { namespace jobs { class JobSystem; } }
 
 namespace jasperengine { namespace particles {
 
+    struct AnalyticProgram;
+
     inline constexpr uint32_t kMaxTicksPerFrame = 4;
     inline constexpr double kMaxVariableStep = 1.0 / 20.0;
     inline constexpr uint32_t kMaxSpawnRequests = 4096;
@@ -197,7 +199,15 @@ namespace jasperengine { namespace particles {
         // after the frame's ticks: the interpolation factor
         void endFrame();
 
+        // ---- Analytic simulation (S49 R15-R19): no channels and no ticks; the time and the
+        // program the GPU evaluates (its seed's, its time set every frame and on seek)
+        bool isAnalytic() const;
+        const AnalyticProgram* analytic() const { return analyticProgram.get(); }
+        // the live particles now: O(slots), on demand only (stats, scripts)
+        uint32_t analyticAlive() const;
+
         // ---- results
+        // the live particles of a Simulated emitter (an Analytic one keeps none: analyticAlive)
         uint32_t count() const { return channels.count; }
         uint32_t capacity() const { return channels.capacity(); }
         float interpolation() const { return alpha; }
@@ -338,6 +348,15 @@ namespace jasperengine { namespace particles {
         // distance (no burst of thousands; origin/main's rule), said once
         static constexpr float kTeleportDistance = 100.0f;
         bool teleportWarned = false;
+
+        // Analytic: the program of this seed, the emitter time emission stopped at (1e30: on)
+        std::unique_ptr<AnalyticProgram> analyticProgram;
+        double analyticEnd = 1.0e30;
+        bool analyticMovedWarned = false;
+        bool analyticHasTransform = false;
+        float analyticLastTransform[16] = {};
+        float analyticGravity[3] = {0.0f, -9.81f, 0.0f};
+        void analyticUpdate(const EmitterInput& input);
 
         // per tick, sized at bind: chunk outputs and their arrays
         std::vector<ChunkOutput> chunkOut;
