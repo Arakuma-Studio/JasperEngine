@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 7d46f75a88f8e780
+digest 74a7f038c58beb8e
 --- 0
 font: []
 text: "multi\nline"
@@ -25,7 +25,6 @@ fixedWidth: true
 fixedHeight: true
 pivotBaseline: false
 pivotCentered: false
-shadowColor: [91.28571, -84, 95, 1e-45]
 visibleCharacters: 0
 --- 2
 font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf]
@@ -39,6 +38,7 @@ pivotBaseline: true
 pivotCentered: true
 outlineWidth: 16
 outlineColor: [0.16723287, 76, 1.7142857, 0]
+outlineNeighbors: 6
 shadowEnabled: true
 shadowColor: [1e-45, 0, 3062.2715, 6644.9365]
 shadowOffset: [3818.4624, 1827.0333]
@@ -54,6 +54,7 @@ fixedWidth: false
 fixedHeight: true
 pivotBaseline: false
 pivotCentered: true
+visibleCharacters: 3
 --- 4
 font: []
 text: "  padded  "
@@ -66,6 +67,7 @@ pivotBaseline: false
 pivotCentered: false
 outlineWidth: 3e+38
 outlineColor: [0, 0, 82, 136.42857]
+outlineNeighbors: 4
 shadowEnabled: true
 shadowColor: [-0, -0.24143454, -56, 80]
 shadowOffset: [-55, -15.285714]
@@ -81,6 +83,7 @@ fixedHeight: true
 pivotBaseline: false
 pivotCentered: false
 outlineColor: [3e+38, -0, 5256.1304, -22.714285]
+shadowEnabled: true
 shadowColor: [-94.57143, -102.28571, 0, 23]
 shadowOffset: [-47, 2822.8708]
 --- 6
@@ -94,6 +97,7 @@ fixedHeight: false
 pivotBaseline: true
 pivotCentered: false
 outlineColor: [-55, 3957.2656, -16, 10.142858]
+outlineNeighbors: 4
 shadowColor: [-0.3379538, -0.805099, -0.9656368, 3e+38]
 shadowOffset: [-0.16696316, 0.9542685]
 shadowSoftness: 0.23796543
@@ -109,6 +113,7 @@ fixedHeight: true
 pivotBaseline: false
 pivotCentered: false
 outlineWidth: 0.44957882
+outlineNeighbors: 5
 shadowEnabled: true
 shadowColor: [3e+38, 0, 0, 4453.748]
-shadowOffset: [0.6752126, -88.57143]
+visibleCharacters: 14
