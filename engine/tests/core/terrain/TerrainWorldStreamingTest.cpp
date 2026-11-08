@@ -224,11 +224,12 @@ TEST(TerrainWorldStreaming, BrushHoverPinsTiles) {
     WorldScene world(-2, 1);
     TerrainWorldRuntime* runtime = world.runtime();
     ASSERT_TRUE(runtime);
-    runtime->setHoverTiles({TileCoord(0, 0), TileCoord(1, 0), TileCoord(9, 9)});
+    runtime->setHoverTiles({TileCoord(0, 0), TileCoord(-2, -2), TileCoord(9, 9)});
     EXPECT_TRUE(runtime->tiles().pinned(TileCoord(0, 0)));
-    EXPECT_TRUE(runtime->tiles().pinned(TileCoord(1, 0)));
+    EXPECT_TRUE(runtime->tiles().pinned(TileCoord(-2, -2)));
     EXPECT_TRUE(runtime->hovered(TileCoord(0, 0)));
     EXPECT_FALSE(runtime->hovered(TileCoord(9, 9))) << "an absent tile is not pinned";
+    // (0, 0) edited: its edit pins it (and the edge tiles beside it, whose gutters it settles)
     TerrainComponent& terrain = world.scene.getComponent<TerrainComponent>(world.entity);
     jasperengine::TerrainComponentStore store(&world.scene, world.entity, terrain);
     const int m = runtime->lattice().heightOrigin();
@@ -236,7 +237,7 @@ TEST(TerrainWorldStreaming, BrushHoverPinsTiles) {
     ASSERT_TRUE(store.write(MapId{MapKind::Height, 0}, TexelRect{m + 10, m + 10, 2, 2}, values).ok);
     runtime->setHoverTiles({TileCoord(-1, -1)});
     EXPECT_TRUE(runtime->tiles().pinned(TileCoord(0, 0))) << "edited";
-    EXPECT_FALSE(runtime->tiles().pinned(TileCoord(1, 0)));
+    EXPECT_FALSE(runtime->tiles().pinned(TileCoord(-2, -2))) << "no longer hovered";
     EXPECT_TRUE(runtime->tiles().pinned(TileCoord(-1, -1)));
     // the brush gone (no call for HOVER_SECONDS), its pin goes at a pump
     EXPECT_TRUE(world.pumpUntil([&] { return !runtime->tiles().pinned(TileCoord(-1, -1)); }, 5.0));

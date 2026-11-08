@@ -510,14 +510,19 @@ void TerrainWorldHeightReader::read(int x0, int z0, int countX, int countZ, std:
     const int n = worldLattice.tileQuads;
     for (int cz = 0; cz < countZ; cz++) {
         const int sz = z0 + cz;
-        const int tz = floorDiv(sz, n);
+        const int zs[2] = {floorDiv(sz, n), floorDiv(sz, n) - (sz % n == 0 ? 1 : 0)};
         for (int cx = 0; cx < countX; cx++) {
             const int sx = x0 + cx;
-            const int tx = floorDiv(sx, n);
-            const std::shared_ptr<const WorldTile> data = tile(TileCoord(tx, tz));
-            if (!data) continue;
-            out[static_cast<size_t>(cz) * static_cast<size_t>(countX) + static_cast<size_t>(cx)] =
-                heightOfSample(data->sample(sx - tx * n + 1, sz - tz * n + 1), maxHeight);
+            const int xs[2] = {floorDiv(sx, n), floorDiv(sx, n) - (sx % n == 0 ? 1 : 0)};
+            // a sample on a border is in the tiles either side: the world's edge has only the one below
+            for (int a = 0; a < 4; a++) {
+                const int tx = xs[a % 2], tz = zs[a / 2];
+                const std::shared_ptr<const WorldTile> data = tile(TileCoord(tx, tz));
+                if (!data) continue;
+                out[static_cast<size_t>(cz) * static_cast<size_t>(countX) + static_cast<size_t>(cx)] =
+                    heightOfSample(data->sample(sx - tx * n + 1, sz - tz * n + 1), maxHeight);
+                break;
+            }
         }
     }
 }

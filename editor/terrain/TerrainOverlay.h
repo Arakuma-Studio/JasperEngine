@@ -121,6 +121,8 @@ namespace jasperengine::editor {
         TerrainOverlaySettings drawn;
         std::vector<TerrainOverlayLegendStop> legend;
         double lastBake = -1.0;
+        // T4 R42: a World's LOD Level that render has not recorded a cut for yet: the next frame bakes again
+        bool worldPending = false;
         Subscription edits;
 
         void refresh(Entity entity, Sheet& sheet, const TerrainOverlaySettings& settings);

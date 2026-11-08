@@ -386,7 +386,8 @@ void TerrainOverlay::update(SceneProject& sceneProject, const TerrainOverlaySett
         return;
     }
     const bool changed = settings != drawn;
-    if (!changed && nowSeconds - lastBake < MIN_SECONDS) return;
+    if (!changed && !worldPending && nowSeconds - lastBake < MIN_SECONDS) return;
+    worldPending = false;
 
     std::set<Entity> present;
     auto terrains = scene->getComponentArray<TerrainComponent>();
@@ -553,6 +554,8 @@ void TerrainOverlay::refreshWorld(Entity entity, Sheet& sheet, const TerrainOver
     runtime->recordDrawnNodes(mode == TerrainWorldOverlayMode::LodLevel);
     const TerrainWorldOverlayState state = captureTerrainWorldOverlay(*runtime, mode);
     if (!state.valid) return;
+    // recording starts with this bake: the cut render keeps from the next frame on
+    if (mode == TerrainWorldOverlayMode::LodLevel && state.rects.empty()) worldPending = true;
     // the grid follows the box, the overview and which tiles are exact; the image what it shows
     int exact = 0;
     for (uint8_t tileState : state.states) exact += tileState >= static_cast<uint8_t>(jasperengine::terrain::TileState::CpuReady) && tileState <= static_cast<uint8_t>(jasperengine::terrain::TileState::Resident);

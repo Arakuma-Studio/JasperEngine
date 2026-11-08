@@ -110,9 +110,12 @@ TEST(TerrainWorldImport, SlicesExactly) {
         const int tx = tile.coord.x - plan.origin.x, tz = tile.coord.z - plan.origin.z;
         for (int j = 0; j <= 258; j++) {
             for (int i = 0; i <= 258; i++) {
-                // a gutter past the image repeats the tile's border (no neighbour there)
-                const int x = std::min(std::max(tx * 256 + i - 1, 0), side - 1);
-                const int z = std::min(std::max(tz * 256 + j - 1, 0), side - 1);
+                // a gutter sample past the image repeats the tile's own border (no neighbour there), as
+                // TiledMapStore::syncGutters leaves it
+                const int gx = tx * 256 + i - 1, gz = tz * 256 + j - 1;
+                const bool inside = gx >= 0 && gx < side && gz >= 0 && gz < side;
+                const int x = inside ? gx : tx * 256 + std::min(std::max(i, 1), 257) - 1;
+                const int z = inside ? gz : tz * 256 + std::min(std::max(j, 1), 257) - 1;
                 if (tile.sample(i, j) != fixtureSample(x, z)) {
                     ADD_FAILURE() << "tile " << tile.coord.x << "," << tile.coord.z << " texel " << i << "," << j;
                     return false;
