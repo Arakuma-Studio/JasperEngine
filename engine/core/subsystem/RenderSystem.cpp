@@ -8802,6 +8802,8 @@ void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const
     const size_t count = queue.size();
     visibleCandidates.resize(count);
     visibleResults.resize(count);
+    visibleSubmeshFirst.assign(count, SIZE_MAX);
+    size_t submeshBoundsCount = 0;
     for (size_t i = 0; i < count; i++){
         const OpaqueRenderData& entry = queue[i];
         const MeshComponent& mesh = *entry.mesh;
@@ -8822,10 +8824,24 @@ void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const
         for (unsigned int s = 0; s < mesh.numSubmeshes && rest; s++)
             rest = !mesh.submeshes[s].hasMorphTarget;
         if (rest){
-            candidate.submeshBounds = &mesh.submeshes[0].localBounds;
-            candidate.submeshStride = sizeof(Submesh);
+            // VisibleList reads at most 32 submeshes; their bounds are gathered below
+            visibleSubmeshFirst[i] = submeshBoundsCount;
+            submeshBoundsCount += std::min(mesh.numSubmeshes, 32u);
             candidate.model = &entry.transform->modelMatrix;
         }
+    }
+    // gathered once every candidate is counted, so the vector no longer moves under the pointers
+    visibleSubmeshBounds.resize(submeshBoundsCount);
+    for (size_t i = 0; i < count; i++){
+        if (visibleSubmeshFirst[i] == SIZE_MAX)
+            continue;
+        const MeshComponent& mesh = *queue[i].mesh;
+        AABB* bounds = visibleSubmeshBounds.data() + visibleSubmeshFirst[i];
+        const unsigned int gathered = std::min(mesh.numSubmeshes, 32u);
+        for (unsigned int s = 0; s < gathered; s++)
+            bounds[s] = mesh.submeshes[s].localBounds;
+        visibleCandidates[i].submeshBounds = bounds;
+        visibleCandidates[i].submeshStride = sizeof(AABB);
     }
 
     VisibleList::cull(frustum, visibleCandidates.data(), count, visibleResults.data(), true);
