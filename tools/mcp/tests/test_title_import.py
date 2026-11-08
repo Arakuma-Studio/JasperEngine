@@ -75,8 +75,10 @@ async def test_assets_fonts_and_reimport(ed: Editor):
     ed.check_eq(files_under(folder), {"Oswald.ttf", "badge.svg", "grad.png", "flag.png"}, "and no _2 copies appear")
 
     pack = await import_file(ed, "assets/pack/pack.titleart", FIXTURES / "v4_text_rims.pslot.json")
-    ed.check((ed.project / "assets/TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf").exists(), "the builtin font comes from the pack")
-    ed.check((ed.project / "assets/TitleArt/Fonts/dela-gothic-one/OFL.txt").exists(), "with its OFL text")
+    # TitleArt/Fonts/<pack id>/ sits in the project's assets directory (wherever the project keeps it)
+    fonts = [p for p in ed.project.rglob("DelaGothicOne-Regular.ttf") if p.parent.name == "dela-gothic-one" and p.parent.parent.name == "Fonts"]
+    ed.check_eq(len(fonts), 1, f"the builtin font comes from the pack, once: {fonts}")
+    ed.check(fonts and (fonts[0].parent / "OFL.txt").exists(), "with its OFL text")
     doc = json.loads((ed.project / "assets/pack/pack.titleart").read_text())
     ed.check_eq((doc["layers"][0].get("font") or {}).get("path"), "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
                 "the layer names the pack font")
