@@ -18,6 +18,8 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/widget/CurvePresets.cpp
     ${EDITOR_DIR}/widget/CurveField.cpp
     ${EDITOR_DIR}/widget/GradientField.cpp
+    # document rows (docs/specs/S82-title-designer.md R20-R23)
+    ${EDITOR_DIR}/widget/DocRow.cpp
 )
 
 # the eyedropper's screen reads (editor/platform/ScreenColor.h)

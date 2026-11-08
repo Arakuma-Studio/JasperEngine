@@ -482,6 +482,11 @@ public:
     static std::filesystem::path getHubLastLocation();
     static void setHubLastLocation(const std::filesystem::path& location);
 
+    // The Title Designer's per-user settings (settings.yaml `title_designer`: region sizes,
+    // section states, preview budget; docs/specs/S82-title-designer.md R84), kept as one node
+    static YAML::Node getTitleDesignerSettings();
+    static void setTitleDesignerSettings(const YAML::Node& node);
+
     // Editor UI Scale (Preferences): multiplies the display scale the system reports
     static float getUiScale();
     static void setUiScale(float scale);

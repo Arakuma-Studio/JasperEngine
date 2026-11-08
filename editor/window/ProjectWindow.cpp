@@ -70,6 +70,7 @@
 #include "pose/PoseImage.h"
 #include "titleart/TitleArtDocument.h"
 #include "titleart/TitleArtBaker.h"
+#include "window/TitleDesignerWindow.h"
 
 #include "Backend.h"
 #include "window/HierarchyWindow.h"
@@ -4963,14 +4964,13 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
     } else if (file.type == FileType::POSE_ANIMATION) {
         Backend::getApp().getPoseAnimationWindow()->openFromAsset(filePath.string());
     } else if (file.type == FileType::TITLE_ART) {
-        // the Inspector's summary (Open in Title Designer is there once S82's window exists)
+        // the Title Designer (S82 R1, R62); the Inspector keeps its summary of the selection
         selectedFiles.clear();
         selectedFiles.insert(file.name);
         lastSelectedFile = file.name;
         project->setInspectedAsset(filePath.lexically_normal());
-        if (InspectorWindow* inspector = Backend::getApp().getInspectorWindow()) {
-            inspector->setOpen(true);
-        }
+        std::string error;
+        if (!Backend::getApp().getTitleDesignerWindow()->open(filePath, &error)) Backend::getApp().registerAlert("Title Designer", error);
     } else if (file.type == FileType::VERTEX_ANIMATION) {
         // the baker with its recipe once it is there; the Inspector's asset view always
         selectedFiles.clear();

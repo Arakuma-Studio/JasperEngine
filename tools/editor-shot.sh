@@ -20,6 +20,9 @@
 #   w:N, sleep:N   wait N seconds
 #   shot:TAG       save <name>-TAG.png  s   save <name>-1.png, <name>-2.png, ...
 # EXPORT_DIR=build/x (under the repo) sets the default Build Settings output.
+# EXTRA_SETTINGS (YAML) is appended to the run's settings.yaml (e.g. a window to open at start).
+# SHOT_FONTS=<dir> copies that directory's font files into the run's ~/.local/share/fonts, where
+# fontconfig (and so the editor's system font search) finds them: e.g. a CJK font the image lacks.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -48,6 +51,13 @@ window:
 EOF
 if [[ -n "${EXPORT_DIR:-}" ]]; then
     printf 'export:\n  default_dir: /src/%s\n' "$EXPORT_DIR" >> "$ROOT/$WORK/settings.yaml"
+fi
+if [[ -n "${EXTRA_SETTINGS:-}" ]]; then
+    printf '%s\n' "$EXTRA_SETTINGS" >> "$ROOT/$WORK/settings.yaml"
+fi
+if [[ -n "${SHOT_FONTS:-}" ]]; then
+    mkdir -p "$ROOT/$WORK/home/.local/share/fonts"
+    cp "$SHOT_FONTS"/*.[ot]t[fc] "$ROOT/$WORK/home/.local/share/fonts/"
 fi
 
 # Runs inside the container, from $WORK.

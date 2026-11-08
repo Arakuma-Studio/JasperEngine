@@ -1300,7 +1300,7 @@ All window tests run headless in a child process with the editor's App (the
 | AC28 (R61, R62) | `test_title_designer_window.py::test_document_chip_drag`: `send_input` drags the window's document chip into the Hierarchy: S81's drop creates one GameObject with a Title Art Renderer referencing the shown file, one step "Create Title Art (logo)" (S81 owns the Project-window drops and their tests); double-click on the `.titleart` in the Project window opens the window (`focus_window` state names it); the Inspector buttons of S80 and S81 open it |
 | AC29 (R75, §6.4) | `TitleDesignerUndoTest.OneStepPerGesture` (parameterized over every gesture of §6.3: gizmo drag, row scrub, wheel burst, nudge burst, handle drag, ramp stop drag, text session, Library apply, Add palette, drop): exactly one project-history step with the expected name; Esc mid-gesture: zero steps and the document hash unchanged. Red control: committing per frame (a test flag) produces N steps and fails |
 | AC30 (R74) | `test_title_designer_window.py::test_agent_edit_while_open`: an `edit_title` while a person's drag is staged cancels the drag, reloads, keeps the selection by id, shows the chip; the chip's Undo removes the agent's step only (`get_undo_history`) |
-| AC31 (R68, R69, R70) | `tools/perf/title_designer_bench` on server A, reference documents `bench_2d_rims`, `bench_40_layers`: Draft ≤ 1/4 of Full render time; ImGui work ≤ 1.5 ms per frame; search index ≤ 3 ms, query ≤ 1 ms; 256-layer tree costs within 10 % of the 40-layer one. Results appended to Deviations when a budget is missed. `TitleDesignerWindowTest.SoftwareRendererNotice`: a device name "llvmpipe" sets Draft and 8 ms and shows the notice once |
+| AC31 (R68, R69, R70) | `tools/perf/title_designer_bench` on server A, reference documents `bench_2d_rims`, `bench_40_layers`: Draft ≤ 1/4 of Full render time; ImGui work ≤ 1.5 ms per frame; search index ≤ 3 ms, query ≤ 1 ms; 256-layer tree costs within 10 % of the 40-layer one. Results appended to Deviations when a budget is missed. `TitleDesignerWindowTest.SoftwareRendererNotice`: a device name "llvmpipe" sets Draft and 8 ms and shows the notice once. Load-insensitive halves: `TitleDesignerWindowDeathTest.IdleFramesMakeNoDocumentPasses` (no whole-document pass on idle frames at 40 and 256 layers), `TitleDesignerWindowDeathTest.IndexBuildSpansFrames` (the index builds a counted page per frame and equals one pass), `TitleDesignerStateTest.IncrementalIndexMatchesAFullBuild`. Host numbers: Deviation 20 |
 | AC32 (R64, R71) | `TitleCanvasViewTest.RebuildsAfterInvalidation`: a new context id (the test hook S80 R19's tests use) and S81's `TITLE_ART_TEST_FAIL_TARGETS` mid-render → the overlay shows, resources are recreated, the next settled image equals the one before (S80's float/RGBA8 tolerance); no frame in between presents an all-black or partial image (frame readbacks checked); visible Library tiles are requested again. Red control: skipping the rebuild leaves a blank image and fails |
 | AC33 (visible changes) | `tools/editor-shot.sh` on a scratch copy of `build/fixture-unity` with S80's fixtures, an isolated editor: `title-designer-empty`, `-layers-parts-effects`, `-search-glow`, `-library-hover`, `-gizmo-rect`, `-gizmo-3d` (S86 fixture, or skipped and listed as skipped until S86), `-device-iphone`, `-font-picker`, `-lint-popover`, `-narrow`. Kept outside the repository, linked in the evidence |
 | AC34 (R77, §6.3) | `test_title_designer_window.py::test_parity`: for each row of §6.3, the window action through the scripted API and `edit_title` with the listed ops on a fresh copy produce identical `.titleart` bytes and step names |
@@ -1421,3 +1421,113 @@ rest of S82 lands in 6B.
    window commands; S85 keeps `titleAnimation.` for its own context.
 5. **Reconciled: "too small to read" is `legibility_contrast` at `CheckOptions::displayHeightPx`**
    (S80 §6.12); no separate size check exists.
+6. **Implementation: view state in its own per-user file.** The per-document view state and the
+   recent documents live in `.jasperengine/user/title-designer.yaml` (`TitleDesignerWorkspace`,
+   `editor/titleart/designer/TitleDesignerPrefs.h`), beside the editor's `workspace.yaml` in the
+   same uncommitted user folder, instead of a struct in `editor/Workspace.h`: the editor's workspace
+   is a merge hotspot every window touches, and the designer's block is read and written only by
+   the window. The per-user settings are one `title_designer` node of `settings.yaml`
+   (`AppSettings::getTitleDesignerSettings` / `setTitleDesignerSettings`), which also remembers
+   whether the window was open (R64).
+7. **Implementation: Preview As modes, the Library and the 3D gizmo target are hooks.** Preview As
+   lists Realtime and Baked; S81's Glyph Atlas and S86's tiers register through `addPreviewMode`
+   (§6.8). The Library panel draws S84's data through `TitleLibraryProvider`
+   (`editor/titleart/designer/TitleDesignerHooks.h`: items, families, the apply ops a hover previews
+   and a click commits, tiles, favorites, recents, Save As dialogs); without a provider the window
+   shows no Library region (Deviation 2). S86 supplies `Gizmo3DTarget`s through
+   `setGizmo3DProvider`. The window's tests stand in for S84 with a fake provider.
+8. **Implementation: font tables are read directly.** HarfBuzz's symbols are hidden in the editor's
+   shared engine, so `hb_face_count` and `hb_ot_var_*` are not callable from the editor:
+   `editor/titleart/fonts/FontTables.{h,cpp}` reads collections, names, OS/2, `fvar` and `cmap`
+   itself. Shaping and outlines of the preview strips still go through S80's `TitleTextLayout`
+   (HarfBuzz, hb-draw) and the rasterizing through S80's ThorVG `rasterizeElement`. The WOFF2 decoder
+   and Brotli are a static `woff2_decoder` library linked into the editor (not compiled as editor
+   sources), so the editor's precompiled header and unity batches stay off vendored code.
+9. **Implementation: search.** `TitlePropertyIndex` has one tier R26 does not list, before the enum
+   tier: every query word (or a synonym of it) starting a word of the location, which is what lets
+   `フチ` find the rows labelled Width under Rim 1. `search::normalize` also treats Unicode
+   punctuation (・「」、) as word separators, and its typo tolerance applies to ASCII words only
+   (one byte apart is a different kana).
+10. **Implementation: IME.** The macOS patch of `imgui_impl_osx.mm` is marked `[JasperEngine patch]`
+    (the convention `libs/imgui/JASPER_PATCHES.md` already uses) rather than `// JasperEngine:`. The
+    preedit is drawn by the canvas text editor only: the patch keeps the input method's keys away from
+    every ImGui field while composing (so Enter and Esc stay the input method's) but other fields do
+    not draw the composition.
+11. **Implementation: two small additions to S80's and the editor's files.**
+    `SokolTitleTarget::framebufferObject()` (`render/TitleGpu.h`) lets the canvas's private scene
+    show a finished `TitleImage` on its quad without a copy; `WriteFilesCmd::contentOf(path)` gives
+    the History panel the text each step wrote (S80's `TitleArtDocument` has no `stepText`), which
+    is how rows are filtered to this document, previewed on hover and restored.
+12. **Implementation: the canvas quad shows straight-alpha sRGB through the engine's sprite path**
+    (blending as the engine blends a baked PNG in a game), with the checker as a repeating 2 x 2
+    texture whose squares stay 8 screen pixels at every zoom.
+13. **Implementation: tests without a GPU.** The editor's unit-test binary has no GPU context, so
+    the canvas's pixel criteria (AC12's draws, AC17's readback, AC19's render equality, AC21's frame
+    budget, AC32's rebuild) are covered by the MCP test `test_title_designer_window.py` (screenshots
+    of the window: an idle canvas is stable, an edit changes it) and, for R44, by the stronger
+    document check of the unit tests: the committed document equals the previewed one byte for byte
+    (ids included), and S80's renderer is deterministic (R17), so their renders are equal. The
+    Auto Bake toggle is the Project Settings command (`TitleArtSettingsCmd`, an undo step as there).
+14. **Implementation: namespaces `jasperengine::editor::titledesigner` and `::titlefonts`** instead of
+    §6.2's `jasperengine::editor::titleart::designer` / `::fonts`: a namespace
+    `jasperengine::editor::titleart` would shadow `titleart::` (the engine's `jasperengine::titleart`)
+    in every editor file that names it unqualified.
+15. **Implementation: the core listing room for R78/R79.** The default listing had 38 characters
+    left under its 99,000 limit, less than the window enum values and the `title_designer` object
+    need (95). `focus_window` paid for them inside the tool: its description is shorter, and
+    `page` no longer lists the Preferences pages (a wrong page still fails listing them). Core
+    grows by 21 characters, to 98,983 (`tool_budget.py`; R81 allows 120).
+16. **Implementation: a starter Library until S84 registers its provider.** The integrator asked for
+    the Library strip in view by default (D18) before S84 lands, so with no provider registered the
+    window uses `TitleStarterLibrary` (`editor/titleart/designer/TitleStarterLibrary.h`): ten Looks
+    and five Color Schemes written as S80 ops (a Look replaces the face fill, bevel, rims and
+    effects of the target; a Color Scheme recolours the face and rims), with no templates,
+    favorites, recents or saving. Its tiles are the window's: the target layer with the item's ops
+    applied, rendered through `TitlePreviewQueue` at priority Tiles (`TitleLayerThumbnails` keyed by
+    slot). S84's `setLibraryProvider` replaces it. Below 960 px the Library's header arrow opens the
+    strip in place under the canvas for the session, instead of as an overlay over the canvas
+    bottom (R3).
+17. **Addition: the no-CJK-font notice.** When the editor's system font search (S-unicode-text's
+    `SystemFonts`) found no Chinese, Japanese or Korean font and the open title has CJK characters in
+    a text or a layer name, the window shows one line under the toolbar naming
+    `cjk_font_language` and linking `docs/editor/text-and-languages.md`; dismissed, it is not shown
+    again that session. `state().notices` lists `cjk_font_missing` while it shows.
+18. **Implementation: the Letters gizmo's steps** (R38, AC18). Its drags are named "Move Letters",
+    "Rotate Letters" and "Scale Letters" (one `set` of `chars.<i>.offset|rotation|scale` for every
+    selected character). A step taken while the text is being edited carries the text typed so far
+    (`set_text` first: the indexes are of that text), and the edit goes on from it, so Esc no
+    longer reverts what that step kept.
+19. **Implementation: Tab is the window's key** (R76). While no field takes text, the window owns
+    `ImGuiKey_Tab`, so ImGui's own tabbing between widgets does not run inside it; the region Tab
+    reaches is outlined and `state().keyboard_focus` names it. On a narrow window Layers and
+    Properties are the side column's tabs, selected by Tab and by `focus_window`'s `panel`.
+20. **AC31 measured on this host, not on server A.** `tools/perf/title_designer_bench.py` builds
+    the reference documents with `edit_title` ops (S80 has no `bench_2d_rims` / `bench_40_layers`
+    fixtures) and reads the window's `state().timings` (frame, index per frame and per page), its
+    canvas render times and, with `--profile`, the profiler's `TD ...` scopes. Host: software GL
+    (llvmpipe), the CPU shared with other streams' builds (load average 5.4-10.7 during the runs),
+    window 956 x 538; medians of four runs at the final commit (`uij1-3.json`, `bench10.json`):
+    - Draft / Full render: 0.008 (bench_2d_rims: 67 ms / 7868 ms) and 0.072 (bench_40_layers:
+      65 ms / 905 ms): met.
+    - The window's ImGui work per frame with bench_40_layers: 0.72 ms (Layers shown), 0.88 ms
+      (Properties shown): met. The first runs measured 8.4-16.8 ms; the profiler put 8.6 of 9.7 ms
+      in the toolbar's bake status (a document hash and every output's recipe read, every frame).
+    - The 256-layer tree against the 40-layer one: 1.05 x: met (was 4.6 x). Bounds, hashes, the
+      flattened tree, the empty-state check and the empty-text boxes are made once per change;
+      `IdleFramesMakeNoDocumentPasses` counts the whole-document passes of idle frames at 40 and 256
+      layers (none).
+    - Search query: 0.30 ms: met.
+    - The search index (R69's 3 ms): it builds a page at a time across frames, within 2 ms a frame
+      (a unit per top-level section of the layer page, per part, effect and mask page, the Document
+      page and the offers; another page only when the costliest so far still fits), the previous
+      index answering a search meanwhile, merged with the rows already collected. After an edit it
+      is also incremental (the rows of objects that did not change are replayed): 3.5 ms in all over
+      2 frames, the costliest frame 2.2 ms: met. `IndexBuildSpansFrames` (one page a frame, counted,
+      and the result equals one full pass) and `IncrementalIndexMatchesAFullBuild` hold it.
+      **Missed:** the first build of a newly selected layer has one frame at 4.8 ms (median; 7.5 ms
+      the worst, the session's first build): a single page, a rim's, collected cold, which cannot
+      be cut further without collecting a section in parts. Its other frames stay within 2.3 ms.
+      Server A's numbers are still to take.
+21. **Open: the Windows and macOS IME manual checks** (M5, R37). They need a person on those
+    systems (Microsoft IME, Kotoeri); this host builds Linux only. The `imgui_impl_osx` patch
+    compiles by reading only. AC28's chip drag and In Context wait for S81, at integration.

@@ -10,6 +10,7 @@
 #include "window/InspectorWindow.h"
 #include "window/ProjectWindow.h"
 #include "window/SpriteNormalsWindow.h"
+#include "window/TitleDesignerWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
@@ -756,13 +757,28 @@ void captureEditor(const CaptureJobPtr& job) {
             job->fail("The editor window did not render a frame to read within the call's timeout_seconds (minimized?).");
             return;
         }
-        const int width = readback->width;
-        const int height = readback->height;
+        int width = readback->width;
+        int height = readback->height;
         // GL rows are bottom first
         std::vector<uint8_t> flipped(readback->pixels.size());
         const size_t row = static_cast<size_t>(width) * 4;
         for (int y = 0; y < height; y++) {
             std::copy_n(readback->pixels.data() + (height - 1 - y) * row, row, flipped.data() + y * row);
+        }
+        // a window's rect (title_designer): the framebuffer cropped to it, so an agent sees what a person sees
+        if (job->req.cropWidth > 0.0f && job->req.cropHeight > 0.0f) {
+            const float scale = ImGui::GetIO().DisplayFramebufferScale.x > 0.0f ? ImGui::GetIO().DisplayFramebufferScale.x : 1.0f;
+            const int x0 = std::clamp((int)std::lround(job->req.cropX * scale), 0, width - 1);
+            const int y0 = std::clamp((int)std::lround(job->req.cropY * scale), 0, height - 1);
+            const int cw = std::clamp((int)std::lround(job->req.cropWidth * scale), 1, width - x0);
+            const int ch = std::clamp((int)std::lround(job->req.cropHeight * scale), 1, height - y0);
+            std::vector<uint8_t> cropped(static_cast<size_t>(cw) * ch * 4);
+            for (int y = 0; y < ch; y++) {
+                std::copy_n(flipped.data() + (static_cast<size_t>(y0 + y) * width + x0) * 4, static_cast<size_t>(cw) * 4, cropped.data() + static_cast<size_t>(y) * cw * 4);
+            }
+            flipped = std::move(cropped);
+            width = cw;
+            height = ch;
         }
         std::vector<uint8_t> png;
         int outWidth = 0, outHeight = 0;
@@ -793,8 +809,28 @@ void captureView(const CallPtr& call, const CaptureRequest& request, std::functi
         job->fail("No project is open.");
         return;
     }
-    if (request.view != "game" && request.view != "scene" && request.view != "editor") {
-        job->fail("view must be game, scene or editor.");
+    if (request.view != "game" && request.view != "scene" && request.view != "editor" && request.view != "title_designer") {
+        job->fail("view must be game, scene, editor or title_designer.");
+        return;
+    }
+    if (request.view == "title_designer") {
+        // the editor framebuffer cropped to the Title Designer's rect, its tab fronted first (S82 R79)
+        TitleDesignerWindow* designer = call->ctx().app().getTitleDesignerWindow();
+        designer->setOpen(true);
+        designer->requestFocus();
+        call->afterFrames(3, [job, designer]() {
+            ImVec2 min, max;
+            if (!designer->windowRect(min, max)) {
+                job->fail("The Title Designer is not shown (minimized editor?).");
+                return;
+            }
+            const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+            job->req.cropX = min.x - origin.x;
+            job->req.cropY = min.y - origin.y;
+            job->req.cropWidth = max.x - min.x;
+            job->req.cropHeight = max.y - min.y;
+            captureEditor(job);
+        });
         return;
     }
     // nothing is drawn: the capture would wait for a frame that never comes
@@ -865,9 +901,9 @@ void screenshotTool(const CallPtr& call) {
     request.focus = args.value("focus", true);
     request.timeoutMs = static_cast<int>(std::clamp(args.value("timeout_seconds", 30.0), 1.0, 600.0) * 1000.0);
     request.deviceOverlay = args.value("device_overlay", true);
-    if (request.view != "game" && request.view != "scene" && request.view != "editor") {
+    if (request.view != "game" && request.view != "scene" && request.view != "editor" && request.view != "title_designer") {
         call->fail("view must be \"game\" (the Game view: the running game, or the scene through its game camera), "
-                   "\"scene\" (a Scene view with gizmos) or \"editor\" (the whole editor window).");
+                   "\"scene\" (a Scene view with gizmos), \"editor\" (the whole editor window) or \"title_designer\" (that window).");
         return;
     }
     w3::captureView(call, request, [call](w3::CaptureResult result) {
@@ -1491,6 +1527,88 @@ Json poseWindowState(const CallPtr& call) {
     return data;
 }
 
+// focus_window title_designer's object (S82 R78): its keys applied in this order, each through the
+// window's scripted API; an unknown key fails listing the valid ones
+bool focusTitleDesigner(const CallPtr& call, TitleDesignerWindow* designer) {
+    static const std::vector<std::string> keys = {"path", "select", "panel", "search", "library", "preview_as", "background", "device", "zoom"};
+    const Json& args = call->args();
+    const Json options = args.value("title_designer", Json::object());
+    if (!options.is_object()) {
+        call->fail("title_designer must be an object with any of: path, select, panel, search, library, preview_as, background, device, zoom.");
+        return false;
+    }
+    for (auto it = options.begin(); it != options.end(); ++it) {
+        if (std::find(keys.begin(), keys.end(), it.key()) == keys.end()) {
+            call->fail("title_designer." + it.key() + " is not a key: valid are path, select, panel, search, library, preview_as, background, device, zoom.");
+            return false;
+        }
+    }
+    designer->setOpen(true);
+    designer->requestFocus();
+    std::string error;
+    auto fail = [&](const std::string& message) {
+        call->fail("title_designer: " + message, {{"state", designer->state()}});
+        return false;
+    };
+    if (options.contains("path")) {
+        if (!options["path"].is_string() || !designer->open(FileUtils::pathFromUtf8(options["path"].get<std::string>()), &error)) {
+            return fail(error.empty() ? "path must be a .titleart path" : error);
+        }
+    }
+    if (options.contains("select")) {
+        std::vector<std::string> paths;
+        if (options["select"].is_string()) {
+            if (!options["select"].get<std::string>().empty()) paths.push_back(options["select"].get<std::string>());
+        } else if (options["select"].is_array()) {
+            for (const Json& p : options["select"]) {
+                if (p.is_string()) paths.push_back(p.get<std::string>());
+            }
+        }
+        if (!designer->select(paths, &error)) return fail(error);
+    }
+    if (options.contains("panel") && (!options["panel"].is_string() || !designer->setPanel(options["panel"].get<std::string>(), &error))) return fail(error);
+    if (options.contains("search")) designer->setSearch(options.value("search", std::string()));
+    if (options.contains("library")) {
+        const Json& lib = options["library"];
+        if (!lib.is_object()) return fail("library must be {tab, family, query}");
+        if (!designer->setLibrary(lib.value("tab", std::string()), lib.value("family", std::string()), lib.value("query", std::string()), &error)) return fail(error);
+    }
+    if (options.contains("preview_as") && !designer->setPreviewAs(options.value("preview_as", std::string()), &error)) return fail(error);
+    if (options.contains("background")) {
+        titledesigner::BackdropChoice backdrop;
+        const Json& bg = options["background"];
+        if (bg.is_string()) {
+            backdrop.kind = bg.get<std::string>();
+        } else if (bg.is_object()) {
+            backdrop.kind = bg.value("kind", std::string("checker"));
+            backdrop.color = bg.value("color", backdrop.color);
+            backdrop.image = bg.value("image", std::string());
+            backdrop.scene = bg.value("scene", std::string());
+        }
+        if (!designer->setBackground(backdrop, &error)) return fail(error);
+    }
+    if (options.contains("device")) {
+        const Json& d = options["device"];
+        titledesigner::DeviceChoice device;
+        if (d.is_string()) device.profile = d.get<std::string>();
+        else if (d.is_object()) {
+            device.profile = d.value("profile", std::string());
+            device.orientation = d.value("orientation", device.orientation);
+            device.displayHeight = d.value("display_height", device.displayHeight);
+        } else if (!d.is_null()) {
+            return fail("device must be a profile id or {profile, orientation, display_height}");
+        }
+        if (!designer->setDevice(device, &error)) return fail(error);
+    }
+    if (options.contains("zoom")) {
+        const Json& z = options["zoom"];
+        if (z.is_string() && z.get<std::string>() == "fit") designer->fit();
+        else if (z.is_number()) designer->setZoom(z.get<float>());
+        else return fail("zoom must be a number (1 = 100 %) or \"fit\"");
+    }
+    return true;
+}
+
 void focusWindowTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -1607,14 +1725,21 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "sprite_normals") {
         app.getSpriteNormalsWindow()->open();
         imguiName = SpriteNormalsWindow::WINDOW_NAME;
+    } else if (window == "title_designer") {
+        imguiName = TitleDesignerWindow::WINDOW_NAME;
+        if (!focusTitleDesigner(call, app.getTitleDesignerWindow())) return;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
-                   "vertex_animation_baker, sprite_normals.");
+                   "vertex_animation_baker, sprite_normals, title_designer.");
         return;
     }
     if (args.contains("pose") && window != "pose_animation") {
         call->fail("pose: only for window \"pose_animation\".");
+        return;
+    }
+    if (args.contains("title_designer") && window != "title_designer") {
+        call->fail("title_designer: only for window \"title_designer\".");
         return;
     }
     // A window opened just now exists after its next draw.
@@ -1649,6 +1774,7 @@ void focusWindowTool(const CallPtr& call) {
                 }
                 data["rows"] = rows;
             }
+            if (window == "title_designer") data["state"] = call->ctx().app().getTitleDesignerWindow()->state();
             if (window == "pose_animation") {
                 data["state"] = poseWindowState(call);
                 if (w) data["pos"] = {w->Pos.x - ImGui::GetMainViewport()->Pos.x, w->Pos.y - ImGui::GetMainViewport()->Pos.y};
@@ -2008,7 +2134,7 @@ void registerViewTools(McpRegistry& registry) {
             "whole window. canvas_rect_in_image maps image -> send_input coords; a simulated device: its "
             "overlay, safe_area_in_image. Warns on a flat image.";
         tool.inputSchema = object({
-            {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
+            {"view", withDefault(stringEnum("", {"game", "scene", "editor", "title_designer"}), "game")},
             {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},
             {"max_width", w3::maxWidthArgSchema(8192, 1024)},
             {"save_path", string("Also write the PNG to this project-relative path.")},
@@ -2079,25 +2205,28 @@ void registerViewTools(McpRegistry& registry) {
         tool.title = "Focus Window";
         // pose: {entity (bind), path (.poseanim), index (pose it), play (preview), tab (Pose, Feel,
         // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
-        // state. Budget-neutral with the pose_animation window added.
+        // state. Budget-neutral with the pose_animation window added. title_designer (S82 R78): its keys
+        // are in jasper://docs/title-art and an unknown key fails listing them, which pays for its schema.
         tool.description =
-            "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
-            "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page; "
-            "systems: returns each row's Enabled checkbox rect; pose_animation: pose {entity, path, index, play, tab}.";
+            "Fronts an editor panel, e.g. for a watching human (not needed before screenshot). console: returns "
+            "its rows, categories, selection; preferences: opens a page; systems: each row's Enabled checkbox rect; "
+            "pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
-                                       "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals"})},
+                                       "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals",
+                                       "title_designer"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},
                 {"collapse", boolean("")},
                 {"select", integer("Select the row of this message id (as a click).")}
             })},
-            {"page", string("preferences: General, Code Editor, Undo, External Tools, Logging, Shader Cache.")},
+            {"page", string("preferences: page name (a wrong one lists them).")},
             {"close", boolean("preferences: close it.")},
             {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})},
-            {"pose", anyObject("")}
+            {"pose", anyObject("")},
+            {"title_designer", anyObject("")}
         }, {"window"});
         tool.annotations.idempotent = true;
         tool.handler = focusWindowTool;

@@ -90,6 +90,8 @@ SITES = {
     ("window/dialog/TextureSlicerToolDialog.cpp", "popupTitle"): "test_texture_slicer",
     ("window/dialog/ProjectSettingsWindow.cpp", "Project Settings##ProjectSettingsModal"): "test_project_settings_merges_edits",
     ("window/dialog/ProjectSettingsWindow.cpp", "Privacy Manifest Preview"): "not driven: a read-only preview from Player > iOS/macOS > Privacy Manifest > Preview; native_plugins privacy_manifest gives agents the same manifest",
+    ("window/TitleDesignerProperties.cpp", "Expose as Parameter###exposedialog"): "not driven: a Title Designer row's context menu; edit_title's expose op does the same for agents (TitleDesignerWindowDeathTest.ExposeDialogIsAnEditorModal answers it)",
+    ("window/TitleDesignerLibrary.cpp", "Replace the whole title?###replacetitle"): "not driven: a Library template applied to a document with content needs S84's provider; edit_title replaces a title for agents",
 }
 # InspectorWindow's error boxes share one shape: they open when a file picker's answer is refused
 INSPECTOR_BOXES = 11
@@ -173,8 +175,9 @@ async def test_sites_table_is_complete(ed: Editor):
     ed.check_eq(dict(sorted(found.items())), dict(sorted(listed.items())), "every modal site is in the table, with its count")
     # the spec's 71 sites, S36's Placeholder Sound and the Model Import prompt (73); the project
     # window's folder prompt and its three nested boxes became one name dialog (errors inline), and
-    # Change Asset Directories came: 71; mobile-shipping's Privacy Manifest Preview: 72
-    ed.check_eq(sum(found.values()), 72, "the 72 sites")
+    # Change Asset Directories came: 71; mobile-shipping's Privacy Manifest Preview: 72; S82's
+    # Expose as Parameter and Replace the whole title: 74
+    ed.check_eq(sum(found.values()), 74, "the 74 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):

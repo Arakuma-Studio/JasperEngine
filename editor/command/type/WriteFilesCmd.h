@@ -44,6 +44,14 @@ namespace jasperengine::editor{
 
         void setMergeKey(const std::string& key) { mergeKey = key; }
         const std::string& getMergeKey() const { return mergeKey; }
+        // the content it writes to `path` (absolute), null when it does not write it (the Title
+        // Designer's History rows and Restore This Version)
+        const std::string* contentOf(const std::filesystem::path& path) const {
+            for (const Item& item : items) {
+                if (item.path.lexically_normal() == path.lexically_normal()) return &item.content;
+            }
+            return nullptr;
+        }
         // Where execute() writes its failure ("can't write <path>: <reason>; ..."): the
         // command is deleted by the history when it fails, the sink outlives it
         void reportFailureTo(std::shared_ptr<std::string> sink) { failureSink = std::move(sink); }

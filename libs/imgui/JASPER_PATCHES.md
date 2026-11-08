@@ -17,3 +17,18 @@ So every `Drag*`, `Slider*` (Ctrl+click) and `Input*` scalar field accepts math 
   `InputScalar()`: 256 bytes (was 64), so a long expression is not cut.
 - `imgui_widgets.cpp`, `InputTextFilterCharacter()`: with the hook installed, `,` is no longer
   turned into the decimal point in numeric fields (it separates arguments: `clamp(x, 0, 1)`).
+
+## Inline IME composition on macOS (S82 R37)
+
+So the text an input method is composing (げきあつ before it becomes 激熱) can be drawn inline
+(`editor/util/ImePreedit.h`; the Title Designer's canvas text editor draws it), `backends/imgui_impl_osx.mm`:
+
+- includes `util/ImePreedit.h` (the editor's include root);
+- `KeyEventResponder`: `hasMarkedText`, `markedRange`, `selectedRange`, `setMarkedText` and
+  `unmarkText` are backed by `ImePreedit` (two `NSRange` ivars keep the UTF-16 ranges);
+  `insertText` clears it before the committed text goes to `io.AddInputCharactersUTF8` as before;
+- `Platform_SetImeDataFn`: clears it when no field wants text (after `discardMarkedText`);
+- `ImGui_ImplOSX_HandleEvent()`: a key press while composing returns as used without reaching
+  ImGui (the input method owns Enter, Esc, arrows and Backspace then); releases still pass.
+
+Drop this patch if upstream ImGui gains marked-text support.

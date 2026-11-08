@@ -253,6 +253,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
     b.menu("window.spriteNormals", "Sprite Normal Map", AppMenuCommand::ToggleSpriteNormals).description =
         "Generate and edit normal maps for 2D sprites";
+    b.menu("window.titleDesigner", "Title Designer", AppMenuCommand::ToggleTitleDesigner).description =
+        "Design Title Art: stylized titles and logos";
     b.menu("window.physicsPlacement", "Physics Placement", AppMenuCommand::TogglePhysicsPlacement);
     b.menu("window.missingAssets", "Missing Assets", AppMenuCommand::ToggleMissingAssets);
     b.menu("window.assetReferences", "References", AppMenuCommand::ToggleAssetReferences);
@@ -428,6 +430,48 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("project.rename", "Rename Asset", C::Project, "F2");
     b.gesture("project.resizeItems", "Resize Items", C::Project, "Ctrl+Mouse Wheel", "Change the icon size in 16 px steps");
 
+    // the Title Designer, focused (docs/specs/S82-title-designer.md §6.5): Unity's keys
+    b.group = "Title Designer";
+    b.add("titleDesigner.toolHand", "Hand Tool", C::TitleDesigner, "Q");
+    b.add("titleDesigner.toolMove", "Move Tool", C::TitleDesigner, "W");
+    b.add("titleDesigner.toolRotate", "Rotate Tool", C::TitleDesigner, "E");
+    b.add("titleDesigner.toolScale", "Scale Tool", C::TitleDesigner, "R");
+    b.add("titleDesigner.toolRect", "Rect Tool", C::TitleDesigner, "T");
+    b.add("titleDesigner.togglePivot", "Toggle Pivot/Center", C::TitleDesigner, "Z");
+    b.add("titleDesigner.frameSelected", "Frame Selected", C::TitleDesigner, "F");
+    b.add("titleDesigner.fitCanvas", "Fit Canvas", C::TitleDesigner, "Home", "Alt+F");
+    b.add("titleDesigner.zoomActual", "Actual Size", C::TitleDesigner, "Shift+0");
+    b.add("titleDesigner.zoomIn", "Zoom In", C::TitleDesigner, "Ctrl+=");
+    b.add("titleDesigner.zoomOut", "Zoom Out", C::TitleDesigner, "Ctrl+-");
+    b.add("titleDesigner.editText", "Edit Text", C::TitleDesigner, "Enter");
+    b.add("titleDesigner.find", "Find Setting", C::TitleDesigner, "Ctrl+F");
+    b.add("titleDesigner.add", "Add...", C::TitleDesigner, "Ctrl+Shift+N");
+    b.add("titleDesigner.duplicate", "Duplicate", C::TitleDesigner, "Ctrl+D");
+    b.add("titleDesigner.delete", "Delete", C::TitleDesigner, "Delete", "Backspace");
+    b.add("titleDesigner.rename", "Rename", C::TitleDesigner, "F2");
+    b.add("titleDesigner.selectAll", "Select All Layers", C::TitleDesigner, "Ctrl+A");
+    b.add("titleDesigner.copy", "Copy Layers", C::TitleDesigner, "Ctrl+C");
+    b.add("titleDesigner.cut", "Cut Layers", C::TitleDesigner, "Ctrl+X");
+    b.add("titleDesigner.paste", "Paste Layers", C::TitleDesigner, "Ctrl+V");
+    b.add("titleDesigner.group", "Group", C::TitleDesigner, "Ctrl+G");
+    b.add("titleDesigner.ungroup", "Ungroup", C::TitleDesigner, "Ctrl+Shift+G");
+    b.add("titleDesigner.clip", "Clipping Mask", C::TitleDesigner, "Ctrl+Alt+G");
+    b.add("titleDesigner.forward", "Bring Forward", C::TitleDesigner, "Ctrl+]");
+    b.add("titleDesigner.backward", "Send Backward", C::TitleDesigner, "Ctrl+[");
+    b.add("titleDesigner.toFront", "Bring to Front", C::TitleDesigner, "Ctrl+Shift+]");
+    b.add("titleDesigner.toBack", "Send to Back", C::TitleDesigner, "Ctrl+Shift+[");
+    b.add("titleDesigner.toggleVisible", "Hide Layers", C::TitleDesigner, "H");
+    b.add("titleDesigner.toggleLock", "Lock Layers", C::TitleDesigner, "L");
+    b.add("titleDesigner.nudgeLeft", "Nudge Left", C::TitleDesigner, "Left").repeat = true;
+    b.add("titleDesigner.nudgeRight", "Nudge Right", C::TitleDesigner, "Right").repeat = true;
+    b.add("titleDesigner.nudgeUp", "Nudge Up", C::TitleDesigner, "Up").repeat = true;
+    b.add("titleDesigner.nudgeDown", "Nudge Down", C::TitleDesigner, "Down").repeat = true;
+    b.add("titleDesigner.nudgeLeftBig", "Nudge Left x10", C::TitleDesigner, "Shift+Left").repeat = true;
+    b.add("titleDesigner.nudgeRightBig", "Nudge Right x10", C::TitleDesigner, "Shift+Right").repeat = true;
+    b.add("titleDesigner.nudgeUpBig", "Nudge Up x10", C::TitleDesigner, "Shift+Up").repeat = true;
+    b.add("titleDesigner.nudgeDownBig", "Nudge Down x10", C::TitleDesigner, "Shift+Down").repeat = true;
+    b.add("titleDesigner.up", "Select Parent", C::TitleDesigner, "Escape");
+    b.add("titleDesigner.bake", "Bake Now", C::TitleDesigner, "Ctrl+B");
     b.group = "Sound Browser";
     b.add("audioCaptures.playMoment", "Play Moment", C::AudioCaptures, "Enter");
     b.add("audioCaptures.stop", "Stop", C::AudioCaptures, "Escape");
