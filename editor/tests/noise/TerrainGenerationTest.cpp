@@ -9,10 +9,12 @@
 #include "noise/TerrainGeneration.h"
 #include "noise/TerrainPresets.h"
 #include "terrain/RawMapStore.h"
+#include "terrain/TerrainLayers.h"
 #include "terrain/TerrainOps.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <span>
 #include <string>
@@ -117,8 +119,8 @@ TEST(AssetTypes, NoiseGraphIsSidecar) {
     EXPECT_EQ(info->base, AssetPathBase::Assets);
 }
 
-TEST(AssetTypes, NoiseGraphValueIs28) {
-    EXPECT_EQ(static_cast<int>(AssetType::NoiseGraph), 28) << "stored in assetmap.bin: it never moves";
+TEST(AssetTypes, NoiseGraphValueIs32) {
+    EXPECT_EQ(static_cast<int>(AssetType::NoiseGraph), 32) << "stored in assetmap.bin: it never moves";
     EXPECT_EQ(assetTypeFromName("noise_graph"), AssetType::NoiseGraph);
     EXPECT_STREQ(assetTypeName(AssetType::NoiseGraph), "noise_graph");
 }
@@ -222,4 +224,49 @@ TEST(TerrainGeneration, PeakBytesWithinBudget) {
     const size_t grids = 4;     // two outputs and the two the slope mask reads and writes
     EXPECT_GT(result.peakBytes, 0u);
     EXPECT_LE(result.peakBytes, grids * texels * 4u + 64u * 1024u * 1024u);
+}
+
+// T3 R15: layers 10-12 live in the blend maps' alphas, as 1 - weight (terrain::terrainLayerChannel). A feathered
+// region blends from a layer's old weight: for layer 10 that is 1 - its stored alpha, not the alpha itself.
+TEST(TerrainGeneration, FeatherBlendsFromAnAlphaLayersWeight) {
+    RecordingStore store;
+    store.setFrame(1000.0f, 400.0f);
+    addHeight(store, 17, 0.25f);
+    const terrain::LayerChannel where = terrain::terrainLayerChannel(10);
+    ASSERT_TRUE(where.inverted);
+    const MapId alphaMap{MapKind::Blend, where.map};
+    const auto layer10 = [&](std::vector<float>& weights) {
+        std::vector<float> stored(static_cast<size_t>(17) * 17 * 4);
+        ASSERT_TRUE(store.read(alphaMap, TexelRect{0, 0, 17, 17}, stored));
+        weights.resize(static_cast<size_t>(17) * 17);
+        for (size_t i = 0; i < weights.size(); i++) weights[i] = 1.0f - stored[i * 4 + static_cast<size_t>(where.channel)];
+    };
+
+    GenerationRequest first = requestFor(layeredGraph(0.0, 0.2, false, 10));
+    first.layerCount = 12;
+    GenerationResult firstResult;
+    ASSERT_TRUE(runAll(store, first, firstResult)) << firstResult.error;
+    for (const GenerationIssue& warning : firstResult.warnings) {
+        EXPECT_NE(warning.code, "param-range") << "layer 10 is in output_layer's range: " << warning.message;
+    }
+    std::vector<float> before;
+    layer10(before);
+    EXPECT_NEAR(before[8 * 17 + 8], 0.2f, 2.0f / 255.0f) << "layer 10's weight, in blend map 1's alpha";
+
+    GenerationRequest feathered = requestFor(layeredGraph(0.0, 1.0, false, 10));
+    feathered.layerCount = 12;
+    feathered.region = GenerationRegion{-250.0f, -250.0f, 250.0f, 250.0f};   // texels 4..12 of 17
+    feathered.feather = 200.0f;
+    GenerationResult featheredResult;
+    ASSERT_TRUE(runAll(store, feathered, featheredResult)) << featheredResult.error;
+    std::vector<float> after;
+    layer10(after);
+    float lowest = 1.0f;
+    for (int y = 4; y <= 12; y++) {
+        for (int x = 4; x <= 12; x++) lowest = std::min(lowest, after[static_cast<size_t>(y) * 17 + static_cast<size_t>(x)]);
+    }
+    EXPECT_NEAR(after[8 * 17 + 8], 1.0f, 2.0f / 255.0f) << "the region's middle takes the new weight";
+    // the region's rim keeps most of the old 0.2; read as the raw alpha it would start from 0.8
+    EXPECT_LT(lowest, 0.5f) << "the feather starts from layer 10's weight";
+    EXPECT_GE(lowest, 0.2f - 2.0f / 255.0f);
 }

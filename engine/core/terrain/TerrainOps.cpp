@@ -1161,7 +1161,15 @@ namespace {
                 const float wanted = c == painted ? goal : (normalize ? 0.0f : cur[c]);
                 next[c] = cur[c] + (wanted - cur[c]) * w;
             }
-            if (block.channels >= 4 && painted != 3) next[3] = 1.0f;
+            // T3 R15: a layer in the alpha takes its inverted weight there; a layer in the RGB leaves
+            // what the alpha holds, and brings an unwritten map's alpha to opaque with its normalize
+            if (block.channels >= 4) {
+                if (painted == 3) {
+                    next[3] = cur[3] + (goal - cur[3]) * w;
+                } else if (normalize) {
+                    next[3] = cur[3] + (1.0f - cur[3]) * w;
+                }
+            }
         });
     }
 
@@ -1996,7 +2004,8 @@ bool Batch::setLayerWeights(TexelRect rect, std::span<const int> layers, std::sp
                 if (quantizeChannel(stored[channel.channel], format.bitsPerChannel) != quantizeChannel(value, format.bitsPerChannel)) changed = true;
                 stored[channel.channel] = value;
             }
-            if (channels >= 4) stored[3] = 1.0f;
+            // up to 9 layers the alpha is unused, and saved opaque; past them it holds a layer's weight
+            if (channels >= 4 && slots <= static_cast<size_t>(TERRAIN_LAYERS_IN_RGB)) stored[3] = 1.0f;
             if (changed) entry.changedTexels++;
         }
         const WriteResult wrote = transaction.write(map, rect, values);

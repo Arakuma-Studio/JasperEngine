@@ -664,7 +664,7 @@ uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
 }
 
 uint64_t ShaderPool::getGBufferVoxelProperty(){
-    return shaderPropertyBit(23);
+    return shaderPropertyBit(26);
 }
 
 uint64_t ShaderPool::getTerrainHolesProperty(ShaderType shaderType){
@@ -674,6 +674,18 @@ uint64_t ShaderPool::getTerrainHolesProperty(ShaderType shaderType){
         case ShaderType::GBUFFER: return shaderPropertyBit(22);
         default:                  return 0;
     }
+}
+
+uint64_t ShaderPool::getTerrainTierProperty(terrain::TerrainQuality quality){
+    switch (quality) {
+        case terrain::TerrainQuality::MEDIUM: return shaderPropertyBit(23);
+        case terrain::TerrainQuality::LOW:    return shaderPropertyBit(24);
+        default:                              return 0;
+    }
+}
+
+uint64_t ShaderPool::getTerrainExtendedProperty(){
+    return shaderPropertyBit(25);
 }
 
 uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
@@ -693,7 +705,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return 46;
         case ShaderType::DEPTH:  return 23;
-        case ShaderType::GBUFFER: return 24;
+        case ShaderType::GBUFFER: return 27;
         case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
         // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
@@ -862,8 +874,11 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 20: return shortName ? "Wnd" : "Foliage Wind";
             case 21: return shortName ? "Dth" : "Foliage Dither";
             case 22: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
+            case 23: return shortName ? "Tqm" : "Terrain Quality Medium"; // T3 D2
+            case 24: return shortName ? "Tql" : "Terrain Quality Low";
+            case 25: return shortName ? "Txl" : "Terrain Extended Layers"; // T3 R15
             // a Voxel Volume's chunk (T6 R49; the colour pass takes it through Lit defines)
-            case 23: return shortName ? "Vox" : "Voxel Volume";
+            case 26: return shortName ? "Vox" : "Voxel Volume";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {

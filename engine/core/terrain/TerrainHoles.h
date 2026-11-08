@@ -46,14 +46,22 @@ namespace jasperengine::terrain {
     // T3 R22: sample (x, y) has no collision when all its existing adjacent squares (4, 2 at an edge,
     // 1 at a corner) are open. out holds samples^2 flags, row by row, and the return is how many are set.
     JASPERENGINE_API int noCollisionSamples(const std::vector<uint8_t>& open, int samples, std::vector<uint8_t>& out);
-    // The same rule for one sample, read from the map: what a collider refresh of part of the lattice
-    // writes (T1 R79's JoltShapeBuilder::sampleHeightField), equal to noCollisionSamples over openSquares
+    // The same rule for one sample (x, y) of a samples x samples lattice, read from the map: what a
+    // collider block that a refresh samples asks, with no whole-lattice pass
     JASPERENGINE_API bool noCollisionSample(const HoleMapView& map, int samples, float mirrorX, float mirrorZ, int x, int y);
     // T3 R23: lattice cell (i, j) overlaps any hole texel. cells holds (samples - 1)^2 flags, row by
     // row; the return is how many are set.
     JASPERENGINE_API int navHoleCells(const HoleMapView& map, int samples, std::vector<uint8_t>& cells);
     // T3 R43: how many hole texels of the map lie in texels [x0, x1) x [y0, y1), clipped to the map
     JASPERENGINE_API int64_t countHoleTexels(const HoleMapView& map, int x0, int y0, int x1, int y1);
+
+    // T3 R30: what the Holes overlay draws, per texel of the map: HOLE_OVERLAY_DEEP where the collider is
+    // open, HOLE_OVERLAY_RIM where it stays under the drawn hole, HOLE_OVERLAY_NAV on ground the navmesh
+    // leaves out, SOLID_VALUE elsewhere. Read as a hole map (under one half is a hole).
+    inline constexpr uint8_t HOLE_OVERLAY_DEEP = 0;
+    inline constexpr uint8_t HOLE_OVERLAY_RIM = 64;
+    inline constexpr uint8_t HOLE_OVERLAY_NAV = 200;
+    JASPERENGINE_API void holeOverlayClasses(const HoleMapView& map, int collisionSamples, int navSamples, std::vector<uint8_t>& out);
 
     struct HoleRegionResult {
         int changed = 0;             // texels that took the value

@@ -41,6 +41,7 @@ namespace jasperengine {
     // T3 R52: makes the hole map what its readers need (kept CPU texels, NEAREST, clamped, no mips) and
     // asks for its pixels. No map is Finished, for one test of a string; main thread.
     JASPERENGINE_API ResourceLoadState prepareTerrainHoleMap(TerrainComponent& terrain);
+
     // Where a terrain is in the world, for code that reads nothing else of its Transform (so that
     // code need not include it: tools/check_fanout.py). valid is false without a Transform.
     struct TerrainWorldPlacement {

@@ -11,6 +11,11 @@ histogram without writing anything. **Apply** writes it as one undo step, such a
 (Mountains, seed 7)*. **Apply To** chooses Height, Layers and Foliage Density; **Region** limits the run to
 a rectangle, with **Feather** blending it into the terrain around it.
 
+A new terrain can start from a preset too: in **Create Terrain** (GameObject > 3D Object > Terrain, or the
+Terrain window with nothing selected), pick it under **Noise Graph**. Its recommended Terrain Size and
+Terrain Height fill the fields, and after **Create** it runs as its own undo step, the same terrain the
+Generate section makes with that graph and seed.
+
 The presets: Rolling Hills, Mountains, Alpine (eroded, with snow, rock and scree layers), Canyons, Islands,
 Dunes, Plateaus and Plains; and two that work on the terrain you have, Erode Existing and Paint By Slope.
 

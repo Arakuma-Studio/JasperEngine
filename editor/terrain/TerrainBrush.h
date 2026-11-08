@@ -27,7 +27,10 @@ namespace jasperengine::editor{
         PaintDensity,
         EraseDensity,
         PlaceObject,
-        EraseObject
+        EraseObject,
+        // T3 R41: no falloff, no strength: a texel is in the brush or it is not
+        CutHole,
+        FillHole
     };
 
     enum class TerrainBrushShape{

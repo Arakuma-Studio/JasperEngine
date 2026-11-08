@@ -105,6 +105,14 @@ namespace {
         {"USE_LIT_QUALITY", "Lq"},
         {"TERRAIN_HEX_STOCHASTIC", "Ts"},
         {"PBR_HAIR", "Hr"}, {"PBR_HAIR_MAP", "Hf"},
+        // T3 D2, appended so existing basenames do not change
+        {"TERRAIN_QUALITY_MEDIUM", "Qm"}, {"TERRAIN_QUALITY_LOW", "Ql"},
+        {"TERRAIN_LAYER_LIMIT", "Ll"},
+        {"TERRAIN_BLENDMAPS_1", "B1"}, {"TERRAIN_BLENDMAPS_2", "B2"},
+        {"TERRAIN_EXTENDED_LAYERS", "Ex"},
+        {"TERRAIN_MACRO", "Mv"}, {"TERRAIN_MACRO_NORMAL", "Mn"},
+        {"TERRAIN_RESAMPLE", "Rs"}, {"TERRAIN_CLIFF", "Cl"}, {"TERRAIN_HEIGHT_BLEND", "Hb"},
+        {"TERRAIN_DEBUG_VIEW", "Dv"},
         {"HAS_VOXEL", "Vx"}, {"VOXEL_TIER_HIGH", "Vh"}, {"VOXEL_TIER_MEDIUM", "Vm"}, {"VOXEL_TIER_LOW", "Vl"},
     };
     // T3 R54: a bit per entry of a 64-bit mask, so the table may grow past 32 and no further
@@ -119,6 +127,20 @@ const char* const MaterialPbr::VOXEL_TIER_MEDIUM_DEFINE = "VOXEL_TIER_MEDIUM";
 const char* const MaterialPbr::VOXEL_TIER_LOW_DEFINE = "VOXEL_TIER_LOW";
 const char* const MaterialPbr::TERRAIN_HEX_DEFINE = "TERRAIN_HEX_TILING";
 const char* const MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE = "TERRAIN_HEX_STOCHASTIC";
+
+uint64_t MaterialPbr::getTerrainDefineBits(){
+    static const uint64_t bits = []{
+        uint64_t all = 0;
+        for (const char* define : {"TERRAIN_HEX_TILING", "TERRAIN_HEX_STOCHASTIC", "TERRAIN_QUALITY_MEDIUM", "TERRAIN_QUALITY_LOW",
+                                   "TERRAIN_LAYER_LIMIT", "TERRAIN_BLENDMAPS_1", "TERRAIN_BLENDMAPS_2", "TERRAIN_EXTENDED_LAYERS",
+                                   "TERRAIN_MACRO", "TERRAIN_MACRO_NORMAL", "TERRAIN_RESAMPLE", "TERRAIN_CLIFF",
+                                   "TERRAIN_HEIGHT_BLEND", "TERRAIN_DEBUG_VIEW"}){
+            all |= getDefineBit(define);
+        }
+        return all;
+    }();
+    return bits;
+}
 const char* const MaterialPbr::TRANSMISSION_DEFINE = "PBR_TRANSMISSION";
 
 const std::vector<PbrLobeInfo>& MaterialPbr::getLobes(){

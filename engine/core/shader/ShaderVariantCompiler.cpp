@@ -445,11 +445,11 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
     if (vat && (prop & shaderPropertyBit(17))) defs.push_back({"HAS_VAT_BONES", "1"});      // 'Vab'
     if (prop & ShaderPool::getAutoInstancingProperty(ShaderType::DEPTH)) defs.push_back({"HAS_AUTO_INSTANCING", "1"}); // 'Aui'
+    if (prop & ShaderPool::getTerrainHolesProperty(ShaderType::DEPTH)) defs.push_back({"TERRAIN_HOLES", "1"});      // 'Thl'
     // T5's foliage (ShaderPool::getFoliageProperties): 'Cin', 'Wnd', 'Dth'
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
-    if (prop & ShaderPool::getTerrainHolesProperty(ShaderType::DEPTH)) defs.push_back({"TERRAIN_HOLES", "1"});      // 'Thl'
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -474,11 +474,15 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if (prop & shaderPropertyBit(16)) defs.push_back({"HAS_OCCLUSION_TEXTURE", "1"});         // 'Occ'
     if ((prop & shaderPropertyBit(17)) && !(prop & shaderPropertyBit(6))) defs.push_back({"HAS_UV_SET2", "1"}); // 'Uv2' (never on a terrain)
     if (prop & shaderPropertyBit(18)) defs.push_back({"USE_INSTANCE_FADE", "1"});             // 'Ifd'
+    if (prop & ShaderPool::getTerrainHolesProperty(ShaderType::GBUFFER)) defs.push_back({"TERRAIN_HOLES", "1"});    // 'Thl'
+    // T3 D2: Lit defines do not reach a G-buffer, so its tier and its twelve layers are bits
+    if (prop & ShaderPool::getTerrainTierProperty(terrain::TerrainQuality::MEDIUM)) defs.push_back({"TERRAIN_QUALITY_MEDIUM", "1"}); // 'Tqm'
+    if (prop & ShaderPool::getTerrainTierProperty(terrain::TerrainQuality::LOW)) defs.push_back({"TERRAIN_QUALITY_LOW", "1"});       // 'Tql'
+    if (prop & ShaderPool::getTerrainExtendedProperty()) defs.push_back({"TERRAIN_EXTENDED_LAYERS", "1"});                            // 'Txl'
     // T5's foliage (ShaderPool::getFoliageProperties): 'Cin', 'Wnd', 'Dth'
     if (prop & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});
     if (prop & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
     if (prop & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
-    if (prop & ShaderPool::getTerrainHolesProperty(ShaderType::GBUFFER)) defs.push_back({"TERRAIN_HOLES", "1"});    // 'Thl'
     if (prop & ShaderPool::getGBufferVoxelProperty()) defs.push_back({"HAS_VOXEL", "1"});                       // 'Vox'
 }
 
@@ -714,7 +718,7 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     }
 
     if (shaderType == ShaderType::MESH || shaderType == ShaderType::GBUFFER){
-        args.defines.push_back({"MAX_TERRAIN_LAYERS", std::to_string(MAX_TERRAIN_LAYERS)});
+        args.defines.push_back({"MAX_TERRAIN_LAYERS", std::to_string(TERRAIN_SHADER_BASE_LAYERS)});
     }
     if (shaderType == ShaderType::MESH || shaderType == ShaderType::DEPTH || shaderType == ShaderType::GBUFFER){
         // the record layout of includes/lattice.glsl (lattice/LatticeTypes.h)
@@ -827,7 +831,7 @@ uint64_t ShaderVariantCompiler::getLibraryHash(){
         appendSignaturePart(input, "pipeline", compilerPipelineVersion);
         // engine limits the variants are compiled with (see setupShaderArgs)
         appendSignaturePart(input, "limits",
-            std::to_string(MAX_TERRAIN_LAYERS) + "," + std::to_string(MAX_LIGHTS_2D) + "," +
+            std::to_string(TERRAIN_SHADER_BASE_LAYERS) + "," + std::to_string(MAX_LIGHTS_2D) + "," +
             std::to_string(MAX_SHADOW_ATLAS_SLOTS) + "," + std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS) + "," +
             std::to_string(MAX_SHADOWCASCADES) + "," + std::to_string(MAX_LIGHTS) + "," +
             std::to_string(SPOT_MASK_ATLAS_TILES) + "," + std::to_string(LATTICE_MAX_PER_MESH) + "," +

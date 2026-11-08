@@ -583,6 +583,11 @@ include_directories (${JASPERENGINE_ROOT}/renders)
 set(JASPERENGINE_PARALLEL_BUILD_JOBS "" CACHE STRING "Parallel compile job limit of Visual Studio builds (/MP); empty or 0: every CPU")
 jasperengine_msvc_parallel_compile()
 
+# The editor bakes and previews Noise Graphs and compares the back ends (T2 R42, R51)
+if(DEFINED JASPERENGINE_NOISE AND NOT JASPERENGINE_NOISE)
+    message(FATAL_ERROR "The editor needs JASPERENGINE_NOISE: only players can leave it out")
+endif()
+set(JASPERENGINE_NOISE_ALL_BACKENDS ON CACHE BOOL "" FORCE)
 add_subdirectory(${JASPERENGINE_ROOT})
 
 # Signed alongside the exes, so it needs the same metadata. MinGW prefixes the name.
@@ -888,6 +893,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptingTools.cpp
     ${EDITOR_DIR}/mcp/tools/GraphTools.cpp
+    ${EDITOR_DIR}/noise/NoiseGraphDocument.cpp
+    ${EDITOR_DIR}/noise/NoisePreviewService.cpp
     ${EDITOR_DIR}/mcp/tools/TerrainGenerationTools.cpp
     ${EDITOR_DIR}/noise/TerrainGeneration.cpp
     ${EDITOR_DIR}/noise/TerrainPresets.cpp
@@ -900,6 +907,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/PublishTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
+    ${EDITOR_DIR}/mcp/TerrainMaterialInfo.cpp
     ${EDITOR_DIR}/mcp/tools/AnimationClipTools.cpp
     ${EDITOR_DIR}/mcp/tools/AnimatorTools.cpp
     ${EDITOR_DIR}/mcp/tools/LatticeTools.cpp
@@ -1235,6 +1243,10 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/AnimatorWindow.cpp
     ${EDITOR_DIR}/window/PoseAnimationWindowTemplates.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
+    ${EDITOR_DIR}/window/TerrainGenerateSection.cpp
+    ${EDITOR_DIR}/window/NoiseGraphWindow.cpp
+    ${EDITOR_DIR}/window/TerrainQualityPanel.cpp
+    ${EDITOR_DIR}/texture/TerrainSliceCook.cpp
     ${EDITOR_DIR}/window/TerrainFoliagePanel.cpp
     ${EDITOR_DIR}/foliage/TreeDataFile.cpp
     ${EDITOR_DIR}/foliage/FoliageOpRunner.cpp

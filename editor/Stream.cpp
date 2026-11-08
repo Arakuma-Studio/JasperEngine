@@ -1901,6 +1901,9 @@ YAML::Node editor::Stream::encodeTerrainEditorSettings(const TerrainEditorSettin
     encodePositiveFinite(terrainNode, "placeMaxScale", ts.placeMaxScale);
     encodeFinite(terrainNode, "placeRotationJitter", ts.placeRotationJitter);
     encodeFinite(terrainNode, "placeAlignToNormal", ts.placeAlignToNormal);
+    // only away from their defaults: a project that never generated keeps its file as it was (T2 R70)
+    if (!ts.generateGraph.empty()) terrainNode["generateGraph"] = ts.generateGraph;
+    if (ts.generateSeed != TerrainEditorSettings{}.generateSeed) terrainNode["generateSeed"] = ts.generateSeed;
     return terrainNode;
 }
 
@@ -1964,6 +1967,8 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
     if (tn["placeMaxScale"].IsDefined())      ts.placeMaxScale      = decodePositiveFinite(tn["placeMaxScale"], ts.placeMaxScale);
     if (tn["placeRotationJitter"].IsDefined()) ts.placeRotationJitter = decodeFinite(tn["placeRotationJitter"], ts.placeRotationJitter);
     if (tn["placeAlignToNormal"].IsDefined()) ts.placeAlignToNormal = decodeFinite(tn["placeAlignToNormal"], ts.placeAlignToNormal);
+    if (tn["generateGraph"].IsDefined())      ts.generateGraph      = tn["generateGraph"].as<std::string>();
+    if (tn["generateSeed"].IsDefined())       ts.generateSeed       = YamlNumbers::as<uint32_t>(tn["generateSeed"]);
     return ts;
 }
 
@@ -2709,6 +2714,16 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             graphics["gpuInstancing"] = drawSubmission.gpuInstancing;
         if (project->getLightMode() != Project::defaultLightMode)
             graphics["lightMode"] = LightingTiers::getModeName(project->getLightMode());
+        // T3 R51: only a project that says; an old one writes no key and stays High everywhere
+        if (project->isTerrainQualityWritten()){
+            YAML::Node terrainTiers;
+            for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++){
+                terrainTiers[Project::getShadowTierPlatformName(platform)] = terrain::terrainQualityName(project->getTerrainQualityTier(platform));
+            }
+            graphics["terrainQuality"] = terrainTiers;
+        }
+        if (project->isShipAllTerrainTiers()) graphics["shipAllTerrainTiers"] = true;
+        if (project->isCompressTerrainLayers()) graphics["compressTerrainLayers"] = true;
         if (graphics.size() > 0)
             root["graphics"] = graphics;
     }
@@ -3435,6 +3450,23 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setLightMode(lightMode);
+    }
+    // T3 R51: graphics.terrainQuality.<platform>: absent means High on every platform
+    {
+        const YAML::Node graphics = node["graphics"];
+        const bool written = graphics && graphics.IsMap() && graphics["terrainQuality"] && graphics["terrainQuality"].IsMap();
+        project->setTerrainQualityWritten(written);
+        for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++){
+            terrain::TerrainQuality tier = terrain::TerrainQuality::HIGH;
+            if (written){
+                const YAML::Node value = graphics["terrainQuality"][Project::getShadowTierPlatformName(platform)];
+                if (value && value.IsScalar())
+                    terrain::terrainQualityFromName(value.Scalar().c_str(), tier);
+            }
+            project->setTerrainQualityTier(platform, tier);
+        }
+        project->setShipAllTerrainTiers(graphics && graphics.IsMap() && graphics["shipAllTerrainTiers"] && YamlNumbers::as<bool>(graphics["shipAllTerrainTiers"]));
+        project->setCompressTerrainLayers(graphics && graphics.IsMap() && graphics["compressTerrainLayers"] && YamlNumbers::as<bool>(graphics["compressTerrainLayers"]));
     }
 
     if (node["windowMode"]) {

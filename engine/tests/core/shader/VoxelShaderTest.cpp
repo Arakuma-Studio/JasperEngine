@@ -116,9 +116,9 @@ TEST(VoxelShader, GBufferVariantCompiles) {
 
 TEST(ShaderKey, VoxelBitIsPinned) {
     // Appended at landing, and pinned once there (T3 D2, R83)
-    EXPECT_EQ(ShaderPool::getGBufferVoxelProperty(), static_cast<uint64_t>(1) << 23);
-    EXPECT_EQ(MaterialPbr::getDefineBit(MaterialPbr::VOXEL_DEFINE), static_cast<uint64_t>(1) << 20);
-    EXPECT_EQ(MaterialPbr::getDefineBit(MaterialPbr::VOXEL_TIER_HIGH_DEFINE), static_cast<uint64_t>(1) << 21);
-    EXPECT_EQ(MaterialPbr::getDefineBit(MaterialPbr::VOXEL_TIER_MEDIUM_DEFINE), static_cast<uint64_t>(1) << 22);
-    EXPECT_EQ(MaterialPbr::getDefineBit(MaterialPbr::VOXEL_TIER_LOW_DEFINE), static_cast<uint64_t>(1) << 23);
+    EXPECT_EQ(ShaderPool::getGBufferVoxelProperty(), static_cast<uint64_t>(1) << 26);
+    EXPECT_EQ(MaterialPbr::getDefineBit(MaterialPbr::VOXEL_DEFINE), static_cast<uint64_t>(1) << 32);
+    EXPECT_EQ(MaterialPbr::getDefineBit(MaterialPbr::VOXEL_TIER_HIGH_DEFINE), static_cast<uint64_t>(1) << 33);
+    EXPECT_EQ(MaterialPbr::getDefineBit(MaterialPbr::VOXEL_TIER_MEDIUM_DEFINE), static_cast<uint64_t>(1) << 34);
+    EXPECT_EQ(MaterialPbr::getDefineBit(MaterialPbr::VOXEL_TIER_LOW_DEFINE), static_cast<uint64_t>(1) << 35);
 }

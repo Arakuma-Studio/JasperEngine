@@ -79,9 +79,12 @@ async def test_kind_with_existing_tools(ed: Editor):
     got = await ed.call("get_graph", path=path)
     ed.check_eq(got["graph"]["future"], {"a": 1}, "the file's unknown key")
     ed.check_eq(got["graph"]["nodes"][0]["note"], "kept", "the node's unknown key")
-    await ed.call("undo")
-    ed.check_eq((ed.project / path).read_text().strip() == before.strip() or json.loads((ed.project / path).read_text()) == json.loads(before), True,
-                "one undo restores the file")
+    # Graph files are project history: undo's default scene scope says where the step is, and the timeline,
+    # what Ctrl+Z runs, takes it
+    scene_only = await ed.call_raw("undo", {})
+    ed.check(scene_only.is_error and "scope timeline" in scene_only.text, f"the empty scene history names the fix: {scene_only.text}")
+    await ed.call("undo", scope="timeline")
+    ed.check_eq((ed.project / path).read_text(), before, "one undo restores the file byte for byte")
 
 
 async def test_preview(ed: Editor):
@@ -127,6 +130,18 @@ async def test_preview(ed: Editor):
     dry = await ed.call("generate_terrain", scene=sid, entity=terrain, preset="mountains", seed=7, resolution=64, dry_run=True)
     preview = await ed.call("preview_noise_graph", preset="mountains", size=64, seed=7, images="none")
     ed.check_eq(preview["outputs"]["height"], dry["hash"]["height"], "the same bits through both tools")
+
+    # A newer preview of the same graph supersedes the older one still running: an erosion preset at 512 takes far
+    # longer than the next call needs to arrive, so the first is cancelled, and Normal holds no backlog (Deviations)
+    first = await ed.call("preview_noise_graph", preset="alpine", size=512, images="none", wait=False)
+    second = await ed.call("preview_noise_graph", preset="alpine", size=512, seed=2, images="none", wait=False)
+    states = {}
+    for _ in range(600):
+        states = {name: (await ed.call("get_job", job_id=job["job_id"]))["status"] for name, job in (("first", first), ("second", second))}
+        if all(state != "running" for state in states.values()):
+            break
+        await ed.call("wait", seconds=0.1)
+    ed.check_eq(states, {"first": "cancelled", "second": "succeeded"}, "the newer preview supersedes the older")
 
     # Works in Play
     await ed.call("play", action="start", scene=sid)

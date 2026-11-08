@@ -9,6 +9,7 @@
 
 #include "Engine.h"
 #include "Scene.h"
+#include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
 #include "object/Camera.h"
 #include "object/Light.h"
@@ -50,6 +51,10 @@ namespace jasperengine { namespace test {
         static constexpr int BLEND_RESOLUTION = 128;
         static constexpr int LAYER_RESOLUTION = 64;
         static constexpr float TERRAIN_SIZE = 128.0f;
+
+        // the frame render() draws and readFrame() reads; a sweep of many variants sets a small one
+        int frameWidth = FRAME_WIDTH;
+        int frameHeight = FRAME_HEIGHT;
 
         Scene scene;
         Camera camera{&scene};
@@ -193,17 +198,30 @@ namespace jasperengine { namespace test {
         }
 
         bool render(){
-            GpuEnvironment::setView(FRAME_WIDTH, FRAME_HEIGHT, FRAME_WIDTH, FRAME_HEIGHT, Scaling::STRETCH);
+            GpuEnvironment::setView(frameWidth, frameHeight, frameWidth, frameHeight, Scaling::STRETCH);
             Scene* current = &scene;
-            const bool ready = GpuEnvironment::runFrames([current](){
-                return current->getSystem<RenderSystem>()->isAllLoaded();
-            }, 600);
+            // a tier or a feature swaps the variant while the old one draws (needVariantReload): the frame
+            // is the new one's only once that is done
+            const auto settled = [current](){
+                if (!current->getSystem<RenderSystem>()->isAllLoaded()){
+                    return false;
+                }
+                auto meshes = current->getComponentArray<MeshComponent>();
+                for (size_t i = 0; i < meshes->size(); i++){
+                    const MeshComponent& mesh = meshes->getComponentFromIndex(i);
+                    if (mesh.needReload || mesh.needVariantReload){
+                        return false;
+                    }
+                }
+                return true;
+            };
+            const bool ready = GpuEnvironment::runFrames(settled, 600);
             GpuEnvironment::drawFrames(3);
-            return ready && scene.getSystem<RenderSystem>()->isAllLoaded();
+            return ready && settled();
         }
 
         bool readFrame(std::vector<uint8_t>& rgba){
-            return readTexture(GpuEnvironment::target().getRender().getColorTexture(), FRAME_WIDTH, FRAME_HEIGHT, rgba);
+            return readTexture(GpuEnvironment::target().getRender().getColorTexture(), frameWidth, frameHeight, rgba);
         }
 
         std::string poolId(const std::string& name){

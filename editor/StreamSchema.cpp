@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "StreamSchema.h"
+#include "component/TerrainComponent.h"
 #include "render/LodFade.h"
 
 #include "reflect/Enums.h"
@@ -733,6 +734,8 @@ const EnumTable<TerrainBrushMode>& StreamSchema::terrainBrushMode() {
         {TerrainBrushMode::EraseDensity, "EraseDensity"},
         {TerrainBrushMode::PlaceObject, "PlaceObject"},
         {TerrainBrushMode::EraseObject, "EraseObject"},
+        {TerrainBrushMode::CutHole, "CutHole"},
+        {TerrainBrushMode::FillHole, "FillHole"},
     }, TerrainBrushMode::Raise, {
         {TerrainBrushMode::PaintLayer, "PaintRed"},
         {TerrainBrushMode::PaintLayer, "PaintGreen"},

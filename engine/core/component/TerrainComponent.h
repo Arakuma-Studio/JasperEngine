@@ -18,10 +18,12 @@
 #define MAX_TERRAIN_LEVELS 20
 #define MAX_TERRAIN_NODES 2000000u
 
-// A blend map weights three layers in its RGB. Alpha is not a fourth weight: saved
-// maps are opaque, so it would read as full strength.
+// A blend map weights three layers in its RGB, and on a terrain of more than nine layers one more by
+// its alpha, inverted (T3 R15): saved maps are opaque, which reads as weight 0. A shader's block keeps
+// 9 entries up to 9 layers (TERRAIN_EXTENDED_LAYERS: 12).
 #define MAX_TERRAIN_BLENDMAPS 3
-#define MAX_TERRAIN_LAYERS (MAX_TERRAIN_BLENDMAPS * 3)
+#define MAX_TERRAIN_LAYERS 12
+#define TERRAIN_SHADER_BASE_LAYERS 9
 
 // One array texture holds every layer map, so a bigger source is downscaled into it
 // instead of resizing every other slice up with it.
@@ -235,6 +237,7 @@ namespace jasperengine{
         bool holeMapWarned = false;
         // bumped by each change of the map's texels, for who placed something by them (T3 R26). Not saved
         uint32_t holeMapRevision = 0;
+
         // Whether a running game may write this terrain's maps (T1 R77, R81)
         bool allowRuntimeEdits = false;
 
@@ -255,7 +258,22 @@ namespace jasperengine{
     inline bool hasTerrainSurfaceLayers(const TerrainComponent& terrain){
         for (const TerrainSurfaceLayer& layer : terrain.surfaceLayers){
             if (layer.pbr || layer.uvScale != Vector2(1, 1) || layer.uvOffset != Vector2(0, 0) || layer.stochasticTiling ||
-                    layer.hexTiling){
+                    layer.hexTiling || layer.cliffProjection != TerrainCliffProjection::AUTO){
+                return true;
+            }
+        }
+        // a terrain with no layer draws its base material alone, on the narrow path (T3, spec Deviations)
+        if (terrain.surfaceLayers.empty()){
+            return false;
+        }
+        // T3 R9-R14: a material feature works on the wide path
+        return terrain.macroMode != TerrainMacroMode::OFF || terrain.resampleEnabled ||
+               terrain.heightBlendSharpness > 0.0f || terrain.macroNormal;
+    }
+
+    inline bool hasTerrainCliffLayers(const TerrainComponent& terrain){
+        for (const TerrainSurfaceLayer& layer : terrain.surfaceLayers){
+            if (layer.cliffProjection != TerrainCliffProjection::AUTO){
                 return true;
             }
         }

@@ -6,6 +6,7 @@
 #include "terrain/FoliageScatter.h"
 #include "terrain/TerrainDeterministic.h"
 #include "terrain/TerrainHoles.h"
+#include "terrain/TerrainLayers.h"
 #include "terrain/TerrainSurface.h"
 #include "util/Fnv.h"
 
@@ -106,7 +107,7 @@ bool FoliageRuleSurface::hole(float localX, float localZ) const {
 bool FoliageRuleSurface::prepareLayers(const FoliageRuleSet& rules) {
     blends.clear();
     for (const FoliageRuleLayer& rule : rules.layers) {
-        const int map = rule.index / 3;
+        const int map = terrainLayerChannel(rule.index).map;
         bool found = false;
         for (const BlendWindow& window : blends) found = found || window.map == map;
         if (found) continue;
@@ -127,15 +128,18 @@ bool FoliageRuleSurface::prepareLayers(const FoliageRuleSet& rules) {
 }
 
 float FoliageRuleSurface::layerWeight(int layer, float localX, float localZ) const {
-    const int map = layer / 3;
-    const int channel = layer % 3;
+    // T3 R15: layers 9-11 weigh by a blend map's alpha, inverted; the one mapping says which
+    const LayerChannel route = terrainLayerChannel(layer);
+    const int map = route.map;
+    const int channel = route.channel;
     const float half = terrainSize * 0.5f;
     for (const BlendWindow& window : blends) {
         if (window.map != map) continue;
         if (window.values.empty() || channel >= window.channels || !(terrainSize > 0.0f)) return 0.0f;
         const int x = std::clamp(static_cast<int>(std::floor((localX + half) / terrainSize * static_cast<float>(window.width))), 0, window.width - 1);
         const int y = std::clamp(static_cast<int>(std::floor((localZ + half) / terrainSize * static_cast<float>(window.height))), 0, window.height - 1);
-        return window.values[(static_cast<size_t>(y) * window.width + x) * window.channels + channel];
+        const float stored = window.values[(static_cast<size_t>(y) * window.width + x) * window.channels + channel];
+        return route.inverted ? 1.0f - stored : stored;
     }
     return 0.0f;
 }

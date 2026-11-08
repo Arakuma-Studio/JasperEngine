@@ -177,7 +177,10 @@ void jasperengine::snapshotTerrainSurface(TerrainComponent& terrain, TerrainSurf
 }
 
 void jasperengine::applyNewTerrainDefaults(TerrainComponent& terrain) {
-    // T5 F12: an old scene's 0 means no Terrain-wide limit; T3 R53 adds its own here
+    // T3 R53: a new terrain keeps the strongest layers of a pixel; the struct default stays off, so an
+    // old terrain draws what it drew
+    terrain.limitLayersPerPixel = true;
+    // T5 F12: an old scene's 0 means no Terrain-wide limit
     terrain.detailDistance = 80.0f;
 }
 

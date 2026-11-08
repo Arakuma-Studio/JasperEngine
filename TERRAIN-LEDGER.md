@@ -120,9 +120,9 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | Spec revision for the upstream changes | done | `terrain` 10 tools, `voxels` 4, no format bump, no new budget exceptions |
 | T1 foundation | done, verification continuing | On integration; writer migration has since moved to `terrain/s53-authoring` |
 | T1 implementation | checkpoint landed, rest in progress | Checkpoint 32b44659f merged into integration (e695a1bf3): core 162/162 and editor 129/129 with WERROR, MCP 41/41, collider red control. Remaining: UI items D-28 to D-37, the eval run |
-| T2 implementation | done, waiting to land | `terrain/t2-noise` at 63454eb9e, T1 merged. Core 133/133, editor 64/64 and 11/11, all T2 and T1 MCP files pass; red controls for the idle hand-back, throwing job, seeding race, grouped undo, cross-check. Noise identical on x86/x86_64 (native), arm64 (qemu emulation), armv7 (Ubuntu cross compiler only; NDK armv7 unverified). Left: the preview supersede red control. Lands after T5 and T3 |
-| T3 implementation | done, waiting on T1 | `terrain/t3-materials-holes` at ea92366f0. Core 171/171, GPU and purity 33/33, editor 120/120, materials MCP 3/3, each with a red run. Hole rule in `sampleHeightField`, hole brush on T1's strokes and the holes MCP file wait for T1's checkpoint (resolution saved in terrain-evidence/T3/t1-merge-withdrawn.txt) |
-| T4 implementation | not started | After T1 and T3 |
+| T2 implementation | landed | Merged into integration (6af5f3b9d) at 2b280b147: core 133/133, editor 70/70 and 9/9, T2 and T1 MCP files pass, fan-out worst 129, lints. Not run: the test_noise_export player run, je-bench-noise, eval, web, Android, size checks, NDK armv7. Build tree deleted |
+| T3 implementation | landed | Merged into integration (9f3ffd6ba) at 8376cd9c4: core 560/560 (all 207 variants), editor 182/182, terrain MCP 35/35, fan-out worst 127. Driver workarounds recorded (llvmpipe GL path). Not run: web, Android, full Vulkan suite, perf checks |
+| T4 implementation | in progress | `.worktrees/t4` (reuses T3's worktree and build tree), branch terrain/t4-worlds from integration 9f3ffd6ba |
 | T5 implementation | landed | Merged into integration (caf5a42a0) at 34b6bf7a3: core 221/221, GPU 22/22 cold cache, editor 137/137, foliage/terrain/navigation MCP files, lints. Not run here: test_foliage_export (player), the eval case for `wait`, web, Android, other platforms. Build tree deleted for disk |
 | T6 implementation | in progress, nearly complete | `terrain/t6-voxels` at b9fd20144, integration merged. Core 163/164, editor 198/200 (2 are T2's), test_voxels.py 12/12, soak and fuzz pass. Open: AC35 cave-mouth step (decision: no step over 2 cm at the rim), AC23 tunnelling (496/1000 lost, root cause unknown), fan-out (TerrainSurfaceLayer moves to its own header on T1's branch) |
 | Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
@@ -184,6 +184,11 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- T2 landed (6af5f3b9d), merged code identical to T2's tested tree. Generation's layer output now reaches all 12 layers.
+  Remaining: T6 (merges integration for T2's noise), T1's open requirements, T4.
+- T3 landed (9f3ffd6ba), merged code identical to T3's tested tree. It also fixed T5's duplicate `minDrawDistance` reflection
+  field, T5's foliage reading layers 9-11 from the wrong channel, and T5's includes after the fan-out cut. T4 started in T3's old
+  worktree, reusing its build tree. T2 lands next, then T6.
 - T1's fan-out cut landed (a6a3c6538): worst header 123 of 150 (Transform.h was 153, TerrainComponent.h 143, now 113), with
   TerrainSurfaceLayer in its own header. The coordinator's one-file syntax check of T5's sources after the merge was
   unreliable: it borrowed a compile command from a stale build tree, and passed RenderSystemFoliage.cpp, which T3's real build

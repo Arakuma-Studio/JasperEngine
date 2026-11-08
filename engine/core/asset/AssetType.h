@@ -39,10 +39,11 @@ namespace jasperengine {
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
         // 24 to 27 are the pixel art program's (docs/specs/S41-S52)
         SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
-        // 30 is Terrain World's (programme D19, D22)
+        // 30 Terrain World (programme D19, D22); NoiseGraph took 32 when upstream took 28. Stored in
+        // assetmap.bin: these never move.
         TreeData = 29,              // a .jetrees file of a Terrain's trees (T5 R22)
         VoxelVolume = 31,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
-        NoiseGraph = 32             // a .noisegraph Noise Graph (T2; D22 moved it from 28)
+        NoiseGraph = 32             // a .noisegraph Noise Graph (T2)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)

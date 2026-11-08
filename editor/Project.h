@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "terrain/TerrainQuality.h"
 #include "window/GameResolutions.h"
 #include "Scene.h"
 #include "render/SceneDisplaySettings.h"
@@ -595,6 +596,9 @@ namespace jasperengine::editor{
         float paintMaxSlope = 90.0f;
         float paintMinHeight = 0.0f;     // normalized against the terrain maxHeight
         float paintMaxHeight = 1.0f;
+
+        std::string generateGraph;       // the Generate section's graph: "preset:<id>", an assets-relative path, or nothing yet (T2 R60)
+        uint32_t generateSeed = 1;
     };
 
     // Manual picks on top of the shaders every export mode collects from the scenes
@@ -940,6 +944,16 @@ namespace jasperengine::editor{
         ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];
         // graphics.light_mode: how lit meshes find their pixel lights (S57 R1)
         LightMode lightMode = defaultLightMode;
+        // graphics.terrainQuality.<platform> (T3 R51): absent means High on every platform, so an old
+        // project keeps its look; new projects write the recommended tiers
+        terrain::TerrainQuality terrainQualityTiers[terrain::TerrainQualitySettings::PLATFORM_COUNT] = {
+            terrain::TerrainQuality::HIGH, terrain::TerrainQuality::HIGH, terrain::TerrainQuality::HIGH,
+            terrain::TerrainQuality::HIGH, terrain::TerrainQuality::HIGH, terrain::TerrainQuality::HIGH};
+        bool terrainQualityWritten = false;     // the project says: an old one has no key
+        bool shipAllTerrainTiers = false;
+        bool compressTerrainLayers = false;
+        // the platforms an export collects terrain tiers for (empty: all of them)
+        std::vector<int> terrainExportPlatforms;
         WindowMode windowMode;
         unsigned int windowWidth;
         unsigned int windowHeight;
@@ -1779,6 +1793,22 @@ namespace jasperengine::editor{
         // editor's scenes at once and written into exports (docs/rendering/shadows.md)
         void setShadowTier(int platform, ShadowTier tier);
         ShadowTier getShadowTier(int platform) const;
+        // T3 R51: graphics.terrainQuality.<platform> and the export's terrain switches
+        void setTerrainQualityTier(int platform, terrain::TerrainQuality tier);
+        terrain::TerrainQuality getTerrainQualityTier(int platform) const;
+        bool isTerrainQualityWritten() const { return terrainQualityWritten; }
+        void setTerrainQualityWritten(bool written) { terrainQualityWritten = written; }
+        void setShipAllTerrainTiers(bool ship) { shipAllTerrainTiers = ship; }
+        bool isShipAllTerrainTiers() const { return shipAllTerrainTiers; }
+        void setCompressTerrainLayers(bool compress) { compressTerrainLayers = compress; }
+        bool isCompressTerrainLayers() const { return compressTerrainLayers; }
+        // the recommended tiers a new project starts with: Windows, Linux, macOS High, Web Medium,
+        // Android and iOS Low, and Compress Terrain Layers on
+        void applyNewProjectTerrainDefaults();
+        // T3 R34: the tiers an export ships: the project's of its target platforms, any component's own,
+        // all three when a script names them or Ship All Terrain Tiers is on
+        void setTerrainExportPlatforms(const std::vector<int>& platforms) { terrainExportPlatforms = platforms; }
+        uint32_t getShippedTerrainTiers() const;
         // lower-case platform names of the setting: macos, ios, web, android, linux, windows
         static const char* getShadowTierPlatformName(int platform);
         static int findShadowTierPlatform(const std::string& name);

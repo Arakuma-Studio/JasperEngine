@@ -54,7 +54,7 @@ async def test_create(ed: Editor):
     ed.check_eq(made["applied"], 1, "ops apply to the new file")
     ed.check((ed.project / path).exists(), "the file exists")
     await ed.check_error("edit_graph", {"path": path, "create": {"kind": "noise"}, "ops": []}, contains="already exists")
-    await ed.call("undo")
+    await ed.call("undo", scope="project")   # graph files are project history (GraphEditCmd)
     ed.check(not (ed.project / path).exists(), "undo removes the file")
 
     copied = "graphs/Alpine.noisegraph"
@@ -67,6 +67,7 @@ async def test_dry_run_writes_nothing(ed: Editor):
     """AC19."""
     sid, terrain = await scene_with_terrain(ed, "Dry")
     await seed_height(ed, sid, terrain)
+    await ed.call("save_scene", scene=sid)   # what an earlier test left pending reaches its file first
     before = map_files(ed)
     first = await ed.call_raw("generate_terrain", {"scene": sid, "entity": terrain, "preset": "rolling_hills", "dry_run": True, "seed": 5})
     ed.check(not first.is_error, first.text)
@@ -88,8 +89,8 @@ async def test_apply_is_one_undo_step(ed: Editor):
     """AC20."""
     sid, terrain = await scene_with_terrain(ed, "Apply")
     await seed_height(ed, sid, terrain)
-    before = map_files(ed)
     sampled_before = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=4)
+    texels_before = (await ed.call("sample_terrain", scene=sid, entity=terrain, grid=65))["grid"]
     applied = await ed.call("generate_terrain", scene=sid, entity=terrain, preset="rolling_hills", seed=7)
     ed.check_eq(applied["undo_name"], "Generate Terrain (Rolling Hills, seed 7)", "the step's name")
     ed.check(any(c["map"] == "height" for c in applied["changed"]), f"changed: {applied['changed']}")
@@ -101,9 +102,9 @@ async def test_apply_is_one_undo_step(ed: Editor):
     restored = await ed.call("sample_terrain", scene=sid, entity=terrain, grid=4)
     ed.check_eq(restored["grid"]["min"], sampled_before["grid"]["min"], "undo restores the heights")
     ed.check_eq(restored["grid"]["max"], sampled_before["grid"]["max"], "undo restores the heights")
-    after_undo = map_files(ed)
-    for path, digest in before.items():
-        ed.check_eq(after_undo.get(path), digest, f"undo restores {path} byte for byte")
+    # every texel of the 65 x 65 map (T1's map files follow memory a second later, re-encoded: not the bytes)
+    texels_after = (await ed.call("sample_terrain", scene=sid, entity=terrain, grid=65))["grid"]
+    ed.check_eq(texels_after, texels_before, "undo restores every texel")
     await ed.call("redo", scene=sid)
     redone = await ed.call("generate_terrain", scene=sid, entity=terrain, preset="rolling_hills", seed=7, dry_run=True)
     ed.check_eq(redone["hash"], applied["hash"], "redo's terrain is the same run's")
@@ -126,6 +127,7 @@ async def test_all_or_nothing(ed: Editor):
     """AC21: refused before evaluation, with issues and node ids, nothing written."""
     sid, terrain = await scene_with_terrain(ed, "Refused")
     await seed_height(ed, sid, terrain)
+    await ed.call("save_scene", scene=sid)   # what an earlier test left pending reaches its file first
     before = map_files(ed)
     (ed.project / "graphs").mkdir(exist_ok=True)
     path = "graphs/Bad.noisegraph"
@@ -153,18 +155,18 @@ async def test_region_and_feather(ed: Editor):
     await seed_height(ed, sid, terrain)
     whole = await ed.call("generate_terrain", scene=sid, entity=terrain, preset="plains", seed=4, dry_run=True)
     ed.check_eq(whole["rect"], [0, 0, 65, 65], "whole terrain")
-    outside_before = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[-90, -90]]))["points"][0]["height"]
+    outside_before = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[-90, -90]]))["samples"][0]["height"]
     part = await ed.call("generate_terrain", scene=sid, entity=terrain, preset="plains", seed=4, region={"min": [-20, -20], "max": [20, 20]})
     rect = part["rect"]
     ed.check(rect[2] < 65 and rect[3] < 65, f"snapped: {rect}")
     changed = next(c for c in part["changed"] if c["map"] == "height")["rect"]
     ed.check(changed[0] >= rect[0] and changed[1] >= rect[1], f"inside the rectangle: {changed} in {rect}")
-    outside_after = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[-90, -90]]))["points"][0]["height"]
+    outside_after = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[-90, -90]]))["samples"][0]["height"]
     ed.check_eq(outside_after, outside_before, "outside stays")
     await ed.call("undo", scene=sid)
     feathered = await ed.call("generate_terrain", scene=sid, entity=terrain, preset="plains", seed=4, region={"min": [-20, -20], "max": [20, 20]}, feather=10)
-    border = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[rect_centre(rect, 65), -19.5]]))["points"][0]["height"]
-    centre = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[0, 0]]))["points"][0]["height"]
+    border = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[rect_centre(rect, 65), -19.5]]))["samples"][0]["height"]
+    centre = (await ed.call("sample_terrain", scene=sid, entity=terrain, points=[[0, 0]]))["samples"][0]["height"]
     ed.check(abs(border - 25.0) < abs(centre - 25.0) or abs(centre - 25.0) < 1e-3, f"feather keeps the border near the old height: {border} {centre} ({feathered['rect']})")
     refused = await ed.call_raw("generate_terrain", {"scene": sid, "entity": terrain, "preset": "plains", "resolution": 33, "region": {"min": [-20, -20], "max": [20, 20]}})
     ed.check(refused.is_error and "resolution" in refused.text, refused.text)
@@ -187,6 +189,9 @@ async def test_job(ed: Editor):
         await ed.call("wait", seconds=0.1)
     ed.check_eq(state["status"], "succeeded", str(state))
 
+    # T1's map files follow an edit a second later: a scene save writes what is pending first, so the files
+    # compared are the run's alone
+    await ed.call("save_scene", scene=sid)
     before = map_files(ed)
     big = await ed.call("generate_terrain", scene=sid, entity=terrain, preset="alpine", seed=2, wait=False, resolution=1024)
     await ed.call("cancel_job", job_id=big["job_id"])
@@ -196,6 +201,7 @@ async def test_job(ed: Editor):
             break
         await ed.call("wait", seconds=0.1)
     ed.check_eq(state["status"], "cancelled", str(state))
+    await ed.call("save_scene", scene=sid)
     ed.check_eq(map_files(ed), before, "cancel writes nothing")
 
     # erode_existing reads the heights: a sculpt during the run makes it fail
@@ -222,6 +228,8 @@ async def test_every_preset_dry_runs(ed: Editor):
     """AC26."""
     sid, terrain = await scene_with_terrain(ed, "Presets")
     await seed_height(ed, sid, terrain)
+    # paint_by_slope paints layer 1, which it does not mark optional: the terrain needs it (R30)
+    await ed.call("set_properties", scene=sid, entity=terrain, values={"terrain": {"surfaceLayers": [{}, {}]}})
     for preset in ("rolling_hills", "mountains", "alpine", "canyons", "islands", "dunes", "plateaus", "plains", "erode_existing", "paint_by_slope"):
         result = await ed.call_raw("generate_terrain", {"scene": sid, "entity": terrain, "preset": preset, "dry_run": True, "seed": 1, "max_width": 64})
         ed.check(not result.is_error, f"{preset}: {result.text}")

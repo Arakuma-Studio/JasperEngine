@@ -4,6 +4,7 @@
 // T5 AC2, AC3, AC5, AC21, AC24, AC30, AC43: FoliageSystem without a GPU
 
 #include "FoliageTestSupport.h"
+#include "component/Transform.h"
 
 #include "jobs/JobSystem.h"
 #include "memory/MemoryStats.h"

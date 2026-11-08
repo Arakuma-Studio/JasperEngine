@@ -35,6 +35,8 @@ using namespace jasperengine;
 
 namespace {
 
+    struct NoiseStatics {};
+
     constexpr int64_t kMaxGridPoints = 4000000;
     // A job of an async grid: small enough for 1 ms on the slowest target and the web's 4 ms pump (R68)
     constexpr size_t kAsyncBatchPoints = 512;
@@ -151,7 +153,16 @@ namespace {
         jobs::SubmitOptions options;
         options.lane = jobs::Lane::Background;
         options.name = "noise-grid";
-        jobs::submit([state]() { runTaskBatch(state); }, options);
+        jobs::submit([state]() {
+            // done always comes: a batch that threw would otherwise leave the script waiting forever
+            try {
+                runTaskBatch(state);
+            } catch (const std::exception& e) {
+                Log::error("[NoiseGraph] sampleGridAsync failed: %s", e.what());
+                state->cancelled.store(true, std::memory_order_relaxed);
+                state->done.store(true, std::memory_order_release);
+            }
+        }, options);
     }
 
     void runTaskBatch(const std::shared_ptr<TaskState>& state) {
@@ -201,6 +212,20 @@ namespace {
 
         bool isGridOnly() const { return compiled->isGridOnly(); }
     };
+
+    // Methods that return several values or none are lua_CFunctions: a (self, lua_State*) -> int form
+    // would have LuaBridge push the int as the result. self is argument 1 (called with ':').
+    NoiseGraphHandle& graphSelf(lua_State* L) {
+        auto self = luabridge::get<NoiseGraphHandle*>(L, 1);
+        if (!self || !*self) luaL_argerror(L, 1, "a NoiseGraph (call it with ':')");
+        return **self;
+    }
+
+    NoiseGridTask& taskSelf(lua_State* L) {
+        auto self = luabridge::get<NoiseGridTask*>(L, 1);
+        if (!self || !*self) luaL_argerror(L, 1, "a NoiseGridTask (call it with ':')");
+        return **self;
+    }
 
     int outputArg(lua_State* L, const NoiseGraphHandle& handle, int index) {
         const std::vector<noise::OutputInfo>& outputs = handle.compiled->outputs();
@@ -329,31 +354,33 @@ namespace {
 }
 
 void LuaBinding::registerNoiseClasses(lua_State *L){
+    // A class of statics, not a namespace: the Lua API data lists classes, and that list is how
+    // ModuleUsage finds that a script needs this module (R43)
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("Noise")
-        .addFunction("perlin", &point2<noise::perlin2>)
-        .addFunction("perlin3", &point3<noise::perlin3>)
-        .addFunction("simplex", &point2<noise::simplex2>)
-        .addFunction("simplex3", &point3<noise::simplex3>)
-        .addFunction("value", &point2<noise::value2>)
-        .addFunction("value3", &point3<noise::value3>)
-        .addFunction("cellular", +[](lua_State* state) -> int {
+        .beginClass<NoiseStatics>("Noise")
+        .addStaticFunction("perlin", &point2<noise::perlin2>)
+        .addStaticFunction("perlin3", &point3<noise::perlin3>)
+        .addStaticFunction("simplex", &point2<noise::simplex2>)
+        .addStaticFunction("simplex3", &point3<noise::simplex3>)
+        .addStaticFunction("value", &point2<noise::value2>)
+        .addStaticFunction("value3", &point3<noise::value3>)
+        .addStaticFunction("cellular", +[](lua_State* state) -> int {
             lua_pushnumber(state, noise::cellular2(floatArg(state, 1), floatArg(state, 2), seedArg(state, 3), cellularReturnArg(state, 4)));
             return 1;
         })
-        .addFunction("cellular3", +[](lua_State* state) -> int {
+        .addStaticFunction("cellular3", +[](lua_State* state) -> int {
             lua_pushnumber(state, noise::cellular3(floatArg(state, 1), floatArg(state, 2), floatArg(state, 3), seedArg(state, 4), cellularReturnArg(state, 5)));
             return 1;
         })
-        .addFunction("fbm", +[](lua_State* state) -> int {
+        .addStaticFunction("fbm", +[](lua_State* state) -> int {
             lua_pushnumber(state, noise::fbmPoint(fractalArgs(state), floatArg(state, 1), 0.0f, floatArg(state, 2)));
             return 1;
         })
-        .addFunction("ridged", +[](lua_State* state) -> int {
+        .addStaticFunction("ridged", +[](lua_State* state) -> int {
             lua_pushnumber(state, noise::ridgedPoint(fractalArgs(state), floatArg(state, 1), 0.0f, floatArg(state, 2)));
             return 1;
         })
-        .endNamespace();
+        .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginClass<NoiseGrid>("NoiseGrid")
@@ -370,7 +397,8 @@ void LuaBinding::registerNoiseClasses(lua_State *L){
         .addProperty("done", &NoiseGridTask::isDone)
         .addProperty("progress", &NoiseGridTask::getProgress)
         .addFunction("cancel", &NoiseGridTask::cancel)
-        .addFunction("result", +[](NoiseGridTask* self, lua_State* state) -> int {
+        .addFunction("result", +[](lua_State* state) -> int {
+            NoiseGridTask* self = &taskSelf(state);
             if (!self->isDone() || self->state->cancelled.load()) {
                 lua_pushnil(state);
                 return 1;
@@ -401,24 +429,28 @@ void LuaBinding::registerNoiseClasses(lua_State *L){
             }
             self->variables->emplace_back(name, value);
         })
-        .addFunction("rangeOf", +[](const NoiseGraphHandle* self, lua_State* state) -> int {
+        .addFunction("rangeOf", +[](lua_State* state) -> int {
+            const NoiseGraphHandle* self = &graphSelf(state);
             const int output = outputArg(state, *self, 2);
             const noise::Interval range = self->compiled->rangeOf(output);
             lua_pushnumber(state, range.min);
             lua_pushnumber(state, range.max);
             return 2;
         })
-        .addFunction("sample", +[](const NoiseGraphHandle* self, lua_State* state) -> int {
+        .addFunction("sample", +[](lua_State* state) -> int {
+            const NoiseGraphHandle* self = &graphSelf(state);
             const uint32_t seed = lua_isnoneornil(state, 4) ? 1u : seedArg(state, 4);
             lua_pushnumber(state, samplePoint(state, *self, floatArg(state, 2), 0.0f, floatArg(state, 3), seed, outputArg(state, *self, 5)));
             return 1;
         })
-        .addFunction("sample3", +[](const NoiseGraphHandle* self, lua_State* state) -> int {
+        .addFunction("sample3", +[](lua_State* state) -> int {
+            const NoiseGraphHandle* self = &graphSelf(state);
             const uint32_t seed = lua_isnoneornil(state, 5) ? 1u : seedArg(state, 5);
             lua_pushnumber(state, samplePoint(state, *self, floatArg(state, 2), floatArg(state, 3), floatArg(state, 4), seed, outputArg(state, *self, 6)));
             return 1;
         })
-        .addFunction("sampleGrid", +[](const NoiseGraphHandle* self, lua_State* state) -> int {
+        .addFunction("sampleGrid", +[](lua_State* state) -> int {
+            const NoiseGraphHandle* self = &graphSelf(state);
             const GridRequest request = gridArgs(state, *self, 2);
             noise::EvalContext context;
             context.seed = request.seed;
@@ -431,7 +463,8 @@ void LuaBinding::registerNoiseClasses(lua_State *L){
             if (!luabridge::push(state, grid)) lua_pushnil(state);
             return 1;
         })
-        .addFunction("sampleGridAsync", +[](const NoiseGraphHandle* self, lua_State* state) -> int {
+        .addFunction("sampleGridAsync", +[](lua_State* state) -> int {
+            const NoiseGraphHandle* self = &graphSelf(state);
             refuseGridOnly(state, *self);
             auto task = std::make_shared<TaskState>();
             task->graph = self->compiled;

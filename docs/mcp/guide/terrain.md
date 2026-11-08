@@ -19,6 +19,7 @@ Served as `jasper://docs/terrain`. The terrain tools are in the `terrain` group:
 | Foliage counts, draws and memory | `sample_terrain` `foliage: true` |
 | Place trees or rocks as GameObjects | `sculpt_terrain` `place_object` |
 | A game changing the terrain | Lua `Terrain:applyOps` (below) |
+| Material cost, tiers, holes, Macro Variation | `jasper://docs/terrain-materials` |
 
 ## The Terrain component
 
@@ -26,7 +27,7 @@ Served as `jasper://docs/terrain`. The terrain tools are in the `terrain` group:
 |---|---|---|
 | Terrain size, height | `terrainSize`, `maxHeight` | `set_properties` |
 | Heightmap | `heightMap` (16-bit image, 0-1 of `maxHeight`) | `edit_terrain`, `set_terrain_maps heightmap` |
-| Terrain Layers (Paint Texture) | `surfaceLayers` (up to 9) | `set_terrain_maps layers` |
+| Terrain Layers (Paint Texture) | `surfaceLayers` (up to 12) | `set_terrain_maps layers` |
 | Splat / control maps | `blendMaps` (up to 3) | `set_terrain_maps blendmap`, `sculpt_terrain paint_layer` |
 | Details (Paint Details: grass, rocks, flowers) | `foliageLayers` | `edit_terrain_details`, `sculpt_terrain paint_density`, `edit_terrain scatter_by_rules` |
 | Trees (Paint Trees) | `treePrototypes`, the `.jetrees` file in `treeData` | `set_properties`, `edit_terrain` |

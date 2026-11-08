@@ -80,7 +80,7 @@ namespace {
     const PanelEntry panels[] = {
         {"Scene", "window.scene"}, {"Game", "window.game"}, {"Inspector", "window.inspector"}, {"Hierarchy", "window.hierarchy"},
         {"Project", "window.project"}, {"Console", "window.console"}, {"Animation", "window.animation"},
-        {"Terrain", "window.terrain"}, {"Input Actions", "window.inputActions"}, {"MCP Server", "window.mcpActivity"}, {"Bookmarks", "window.bookmarks"},
+        {"Terrain", "window.terrain"}, {"Noise Graph", "window.noiseGraph"}, {"Input Actions", "window.inputActions"}, {"MCP Server", "window.mcpActivity"}, {"Bookmarks", "window.bookmarks"},
         {"Undo History", "window.undoHistory"}, {"Play Mode Changes", "window.playModeChanges"},
         {"Missing Assets", "window.missingAssets"}, {"References", "window.assetReferences"}, {"Profiler", "window.profiler"},
         {"Frame Debugger", "window.frameDebugger"}, {"Systems", "window.systems"}, {"Jobs & Memory", "window.jobsMemory"},

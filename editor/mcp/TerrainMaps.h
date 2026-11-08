@@ -67,9 +67,6 @@ public:
                                                 Entity entity,
                                                 const TerrainBlendmapRequest& request);
 
-    // An empty 8-bit density map for a foliage layer, as a file: T2's generation writes into it
-    static bool createDensitymap(Project* project, uint32_t sceneId, Entity entity, int foliageLayer, int resolution,
-                                 std::string& relativePath, std::string& error);
     // A detail layer's density map, the same grey everywhere: encoded, not written (edit_terrain_details
     // writes it in its undoable step); named after the layer so maps of one call never share a path
     static TerrainBlendmapResult encodeDensityMap(Project* project,

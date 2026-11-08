@@ -51,6 +51,8 @@ namespace jasperengine::editor{
         Vector4 color = Vector4(1.0f, 0.78f, 0.22f, 1.0f);
         // T5 R46: pairs of points, the selected prototype's collision capsule at the cursor
         std::vector<Vector3> capsuleLines;
+        // T3 R41: when close, the texels a hole brush will change, one loop each
+        std::vector<std::vector<Vector3>> texelLoops;
     };
 
     // A brush stroke run without the mouse (MCP tools): the settings the stroke uses. The
@@ -256,6 +258,9 @@ namespace jasperengine::editor{
         int mapResolutionFor(TerrainMapTarget target) const;
         TerrainMapRef getBrushMapRef() const;
         bool isHeightBrush() const;
+        // the point under the brush's cursor, for the hole brush's info (T3 R41)
+        mutable bool hoverValid = false;
+        mutable Vector3 hoverLocal;
         bool isBlendBrush() const;
         bool isDensityBrush() const;
         bool isPlacementBrush() const;
@@ -269,6 +274,11 @@ namespace jasperengine::editor{
         bool strokeTerrainIsThere(SceneProject* sceneProject);
         bool paintMapStroke(SceneProject* sceneProject, const Vector3& localPoint);
         bool placeAlongStroke(SceneProject* sceneProject, Entity entity, const Vector3& localPoint);
+        bool isHoleBrush() const;
+        // T3 R29: a stroke that filled the last hole takes the map away, as one step with the fill
+        bool removeFilledHoleMap(SceneProject* sceneProject);
+        // T3 R41: hole or solid under the cursor, the texel and collision cell, and the small hole's warning
+        void drawHoleBrushInfo(TerrainComponent& terrain);
         std::vector<Vector2> collectPlacedPoints(SceneProject* sceneProject, Entity terrainEntity) const;
         // Instanced placement keeps one host entity per asset under the terrain
         static Entity findInstanceHost(SceneProject* sceneProject, Entity terrainEntity, const std::string& assetPath);

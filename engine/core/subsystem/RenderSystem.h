@@ -28,6 +28,10 @@
 #include "component/ParticleSystemComponent.h"
 #include "component/LineRendererComponent.h"
 #include "component/TrailRendererComponent.h"
+#include "terrain/TerrainMacroNormal.h"
+#include "jobs/JobSystem.h"
+#include <atomic>
+#include "terrain/TerrainQuality.h"
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/SpriteComponent.h"
@@ -165,6 +169,8 @@ namespace jasperengine{
 		lit_frame_t lit;
 	} lit_frame_block_t;
 
+	// u_fs_terrainLayers: the arrays hold 9 entries, or 12 with TERRAIN_EXTENDED_LAYERS, and the features'
+	// parameters end the block (T3 R33): packed by RenderSystem::applyTerrainLayersUniform
 	typedef struct fs_terrain_layers_t {
 		Vector4 colorFactor[MAX_TERRAIN_LAYERS]; // rgb = linear tint, w = 1 on a PBR layer
 		Vector4 uvTransform[MAX_TERRAIN_LAYERS]; // xy = detail tiling scale, zw = offset
@@ -442,6 +448,13 @@ namespace jasperengine{
 		// the atmosphere's depth pre-pass needs every opaque mesh's depth program (volumetric
 		// fog, volumetric clouds)
 		bool atmosphereDepth = false;
+		// T3 R2, R34: the project's tier of the platform, the forced one (editor preview, Engine.
+		// setTerrainQuality), what the build shipped, and the Scene view's debug view
+		terrain::TerrainQuality terrainTier = terrain::TerrainQuality::HIGH;
+		bool terrainForced = false;
+		terrain::TerrainQuality terrainForcedTier = terrain::TerrainQuality::HIGH;
+		uint32_t terrainShippedMask = terrain::TERRAIN_ALL_TIERS;
+		int terrainDebugView = 0;
 		// S57 (RenderSystemLighting.cpp): the pixel lights come from screen tiles ('Til'), the
 		// shadowed lit variants take capsule ('Cap') and contact ('Cts') shadows (contact shadows
 		// need every opaque mesh's depth program), alpha-blended submeshes an OIT render ('Oit')
@@ -600,6 +613,8 @@ namespace jasperengine{
 		bool terrainHexStochastic = false;
 		// the terrain has a hole map (T3 R20): every pass of its variant reads it ('Thl')
 		bool terrainHoles = false;
+		// what the Terrain says of its variant (T3 D2); the tier is the environment's with it
+		terrain::TerrainVariantInputs terrainVariant;
 	};
 
 	// The shaders one submesh draws with
@@ -2405,12 +2420,58 @@ namespace jasperengine{
 			TextureWrap wrapU = TextureWrap::REPEAT;
 			TextureWrap wrapV = TextureWrap::REPEAT;
 			bool failed = false;
+			// the tier's largest size it was built at, and what it came to (T3 R16, R43)
+			int maxSize = MAX_TERRAIN_DETAIL_SIZE;
+			GpuTextureFormat format = GpuTextureFormat::RGBA8;
+			uint64_t bytes = 0;
 		};
 		std::unordered_map<Entity, TerrainDetailArray> terrainDetailArrays;
 
+		// T3 R14 (RenderSystemTerrain.cpp): the bake of a macro normal map, in progress
+		struct TerrainMacroNormalWork{
+			std::vector<uint8_t> pixels;
+			terrain::MacroNormalSource source;
+			std::vector<terrain::MacroNormalLevel> levels;
+			std::atomic<bool> done{false};
+			bool threaded = false;
+			int nextRow = 0;
+			uint64_t revision = 0;
+			jobs::Task<void> task;
+		};
+		struct TerrainMacroNormalMap{
+			TextureRender render;
+			std::shared_ptr<TerrainMacroNormalWork> work;
+			uint64_t bakedRevision = 0;
+			double lastUpload = -1000.0;
+		};
+		std::unordered_map<Entity, TerrainMacroNormalMap> terrainMacroNormals;
+		// T3 R17 (RenderSystemTerrain.cpp): Off-screen Shadows at the terrain's tier, which shadowTerrainCut reads
+		bool terrainDrawsOffscreenShadows(const TerrainComponent& terrain) const;
+	public:
+		// T3 R43: what a terrain's detail array came to; false when it has none
+		bool getTerrainDetailInfo(Entity entity, GpuTextureFormat& format, int& slices, uint64_t& bytes) const;
+		bool isTerrainMacroNormalReady(Entity entity);
+	private:
+		// the Holes view's classes (T3 R30), one per hole map (its pixels' address), made when the view is on
+		// and again when the map changes: every render of the terrain binds the same one
+		struct TerrainHoleOverlay{
+			TextureRender render;
+			uint32_t revision = 0;
+		};
+		std::unordered_map<const void*, TerrainHoleOverlay> terrainHoleOverlays;
+		void destroyTerrainHoleOverlays();
+		void updateTerrainMacroNormal(Entity entity, TerrainComponent& terrain, const MeshComponent& mesh);
+		void destroyTerrainMacroNormal(Entity entity);
+
 		TerrainDetailArray* getTerrainDetailArray(Entity entity, TerrainComponent& terrain);
 		void destroyTerrainDetailArray(Entity entity);
-		void applyTerrainLayersUniform(ObjectRender& render, int slot, Entity entity, TerrainComponent& terrain);
+		void applyTerrainLayersUniform(ObjectRender& render, int slot, Entity entity, TerrainComponent& terrain, uint64_t litDefineBits, bool extendedBlock);
+		// T3 D1 (RenderSystemTerrain.cpp)
+		void applyTerrainMacroVertexUniform(ObjectRender& render, int slot, const TerrainComponent& terrain);
+	public:
+		static uint64_t getTerrainDefineBits(const MeshShaderEnvironment& environment, const terrain::TerrainVariantInputs& inputs, bool surfacePath, bool unlit, bool hasNormals);
+		static terrain::TerrainQualityResolved resolveTerrainTier(const MeshShaderEnvironment& environment, const terrain::TerrainVariantInputs& inputs);
+	private:
 		bool loadTerrainTextures(Entity entity, TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData);
 		bool loadTerrainHeightTexture(TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData);
 		// T3 R20, R21 (RenderSystemTerrain.cpp): a variant with holes reads this map in every pass

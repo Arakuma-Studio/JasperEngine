@@ -32,6 +32,8 @@
 #include "window/SpriteNormalsWindow.h"
 #include "window/StatusBar.h"
 #include "window/SystemsWindow.h"
+#include "window/NoiseGraphWindow.h"
+#include "window/dialog/CreateTerrainDialog.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
@@ -243,6 +245,7 @@ editor::App::App(){
     animatorWindow = new AnimatorWindow(&project, poseAnimationWindow);
     avatarWindow = new AvatarWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
+    noiseGraphWindow = new NoiseGraphWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     audioMixerWindow = new AudioMixerWindow(&project);
     soundBrowserWindow = new SoundBrowserWindow(&project);
@@ -744,9 +747,12 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.audioCaptures", windowMenuLabel(AudioCapturesWindow::WINDOW_NAME)),
             catalogItem("window.soundBrowser", windowMenuLabel(SoundBrowserWindow::WINDOW_NAME))
         }),
-        catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
-        catalogItem("window.voxelVolume", windowMenuLabel(VoxelEditWindow::WINDOW_NAME)),
-        catalogItem("window.voxelSlice", windowMenuLabel(VoxelSliceView::WINDOW_NAME)),
+        menuSubmenu("Terrain", {
+            catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+            catalogItem("window.noiseGraph", windowMenuLabel(NoiseGraphWindow::WINDOW_NAME)),
+            catalogItem("window.voxelVolume", windowMenuLabel(VoxelEditWindow::WINDOW_NAME)),
+            catalogItem("window.voxelSlice", windowMenuLabel(VoxelSliceView::WINDOW_NAME))
+        }),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
         menuSubmenu("AI", {
             catalogItem("window.navigation", windowMenuLabel(NavigationWindow::WINDOW_NAME))
@@ -1000,6 +1006,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
+            break;
+        case AppMenuCommand::ToggleNoiseGraph:
+            showEditorWindow(noiseGraphWindow);
+            break;
+        case AppMenuCommand::AssetsCreateNoiseGraph:
+            projectWindow->createAsset(AssetCreateKind::NoiseGraph, projectWindow->createTargetDirectory());
             break;
         case AppMenuCommand::ToggleVoxelVolume:
             showEditorWindow(voxelEditWindow);
@@ -2180,6 +2192,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(NoiseGraphWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PoseAnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
 
@@ -2838,7 +2851,7 @@ void editor::App::show(){
         // runs (the timeline's undo cancels it first: CommandHistory::beforeChange)
         const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
         // the Animator window edits project assets (its selection in the Inspector too)
-        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() ||
+        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() || noiseGraphWindow->isFocused() ||
                 (focusedWindowName() == InspectorWindow::WINDOW_NAME && animatorWindow->inspectorShowsSelection())) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (animatorWindow->isFocused()) {
@@ -2920,6 +2933,9 @@ void editor::App::show(){
     aboutWindow.show();
     projectSettingsWindow.show();
     nativePluginDialog.show();
+    // Create Terrain opens from the Hierarchy and from the Terrain window's empty state: drawn here, where it
+    // shows whichever of the two asked and whether the Inspector is drawn or behind another tab
+    CreateTerrainDialog::instance().show();
     // a native plugin was made (either dialog): its Lua mock opens in the code editor
     for (const fs::path& created : {nativePluginDialog.consumeCreatedFile(), projectSettingsWindow.consumeCreatedFile()}) {
         if (created.empty()) continue;
@@ -2946,6 +2962,7 @@ void editor::App::show(){
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
     PoseViewport::frame(&project);
     terrainEditWindow->show();
+    noiseGraphWindow->show();
     voxelEditWindow->show();
     voxelSliceView->show();
     VoxelCreateDialog::instance().draw();
@@ -5168,6 +5185,7 @@ void editor::App::prepareForProjectSwitch() {
     poseAnimationWindow->prepareForProjectSwitch();
     // the Animator window's preview goes back, its controller document is dropped
     animatorWindow->prepareForProjectSwitch();
+    noiseGraphWindow->prepareForProjectSwitch();
     avatarWindow->stopPreview();
     avatarWindow->projectClosed();
     // and the clip previews (documents and the shared clip controller are released)
@@ -5690,13 +5708,13 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      normal and shadowed caustics; @role in water.frag and underwater.frag.
     // v52: foliage's compact instance, wind and dither (T5: MESH 'Cin' 'Wnd' 'Dth' at 42-44, DEPTH
     //      and GBUFFER at 19-21, in mesh.vert and its siblings), library:impostor.
-    // v53: terrain holes (T3 R20): TERRAIN_HOLES ('Thl': MESH 45, DEPTH 22, GBUFFER 22), in mesh.frag, depth.frag,
-    //      gbuffer.frag, output.glsl and surface_depth_fs.glsl; a terrain with holes drops u_occlusionTexture.
-    // v54: Voxel Volumes (T6 R83): HAS_VOXEL and its tiers in mesh.vert, mesh.frag and the G-buffer
-    //      (GBUFFER bit 'Vox' at 23), includes/voxel_vs.glsl and voxel_fs.glsl.
-    // v55: a voxel colour layer (not PBR) stays raw, as the terrain's do (voxel_fs.glsl's voxelLayerColor).
-    // v56: u_fs_voxelLayers carries the eye; v_voxelPositionEye became v_voxelPosition.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v56";
+    // v53: terrain holes and tiers (T3): TERRAIN_HOLES ('Thl': MESH 45, DEPTH 22, GBUFFER 22), the terrain's
+    //      Lit defines (TERRAIN_QUALITY_*, TERRAIN_MACRO*, TERRAIN_RESAMPLE, ...), GBUFFER 'Tqm' 'Tql' 'Txl' at 23-25.
+    // v57: Voxel Volumes (T6 R83): HAS_VOXEL and its tiers (Lit defines after T3's, 32-35) in mesh.vert,
+    //      mesh.frag and the G-buffer (GBUFFER bit 'Vox' at 26), includes/voxel_vs.glsl and voxel_fs.glsl: a
+    //      colour layer (not PBR) stays raw, as the terrain's do, and u_fs_voxelLayers carries the eye. v54-v56
+    //      held the stream's earlier bit numbers, so caches built from them are never read.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v57";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -5900,7 +5918,7 @@ namespace {
                       editor::PlayModeChangesWindow* playChanges, editor::GameWindow* game, editor::BookmarksWindow* bookmarks,
                       editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
                       editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator,
-                      editor::VoxelEditWindow* voxelVolume, editor::VoxelSliceView* voxelSlice) {
+                      editor::NoiseGraphWindow* noiseGraph, editor::VoxelEditWindow* voxelVolume, editor::VoxelSliceView* voxelSlice) {
         visit(editor::GameWindow::WINDOW_NAME, game);
         visit(editor::InspectorWindow::WINDOW_NAME, inspector);
         visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
@@ -5923,6 +5941,7 @@ namespace {
         visit(editor::PoseAnimationWindow::WINDOW_NAME, poseAnimation);
         visit(editor::AnimatorWindow::WINDOW_NAME, animator);
         visit(editor::VertexAnimationBakerWindow::WINDOW_NAME, vertexAnimationBaker);
+        visit(editor::NoiseGraphWindow::WINDOW_NAME, noiseGraph);
         visit(editor::VoxelEditWindow::WINDOW_NAME, voxelVolume);
         visit(editor::VoxelSliceView::WINDOW_NAME, voxelSlice);
     }
@@ -5942,7 +5961,7 @@ std::map<std::string, bool> editor::App::panelStates() const{
                  hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
                  mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow, voxelEditWindow, voxelSliceView);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow, noiseGraphWindow, voxelEditWindow, voxelSliceView);
     return panels;
 }
 
@@ -5954,7 +5973,7 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
     }, hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
        mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow, voxelEditWindow, voxelSliceView);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow, noiseGraphWindow, voxelEditWindow, voxelSliceView);
 }
 
 void editor::App::applyDefaultLayout(){

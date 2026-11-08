@@ -4627,6 +4627,10 @@
 		4A534E478E2F95E4FDE1A893 /* FoliagePhysics.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4721B5BD951F8A4523 /* FoliagePhysics.h */; };
 		4A534E4798A525A1727A195C /* FoliageSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479C6E796903EF07CE /* FoliageSystem.h */; };
 		4A534E479E36F56582F28B4C /* TerrainSurfaceLayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475A8787B5C4B08188 /* TerrainSurfaceLayer.h */; };
+		4A534E47BCCF20B641CC97A4 /* TerrainDetailBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DF74FC5C3A6356C3 /* TerrainDetailBuilder.cpp */; };
+		4A534E473020FE9FB18A2558 /* TerrainDetailBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DF74FC5C3A6356C3 /* TerrainDetailBuilder.cpp */; };
+		4A534E476EFCB2DB5A29BE71 /* TerrainRenderInfo.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */; };
+		4A534E47A6A86FDF02FBA017 /* TerrainDetailBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476A75DCD5F17650F3 /* TerrainDetailBuilder.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9001,6 +9005,9 @@
 		4A534E4721B5BD951F8A4523 /* FoliagePhysics.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FoliagePhysics.h; sourceTree = "<group>"; };
 		4A534E479C6E796903EF07CE /* FoliageSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FoliageSystem.h; sourceTree = "<group>"; };
 		4A534E475A8787B5C4B08188 /* TerrainSurfaceLayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainSurfaceLayer.h; sourceTree = "<group>"; };
+		4A534E47DF74FC5C3A6356C3 /* TerrainDetailBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainDetailBuilder.cpp; sourceTree = "<group>"; };
+		4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainRenderInfo.h; sourceTree = "<group>"; };
+		4A534E476A75DCD5F17650F3 /* TerrainDetailBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainDetailBuilder.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10866,6 +10873,8 @@
 				5452524E41E8ACF56291B1E7 /* TerrainStroke.h */,
 				5452524E76AB4CB8E6BC0502 /* TerrainSurface.cpp */,
 				5452524E8C0EE5FFF25F3004 /* TerrainSurface.h */,
+				505254434ED11862DC7279EB /* HeightfieldErosion.cpp */,
+				50525443C97865F506126415 /* HeightfieldErosion.h */,
 				5452524E196C6559F1F7A19A /* FoliageCull.cpp */,
 				5452524E248C337AC7E14F89 /* FoliageCull.h */,
 				5452524EED9C5E893EDF2284 /* FoliageOps.cpp */,
@@ -11458,6 +11467,8 @@
 				545854526064F947321E683C /* BasisTranscode.cpp */,
 				4A534E474AA9758938A89CD5 /* Ktx2Write.cpp */,
 				4A534E47979EFB31D7BE0582 /* Ktx2Detail.h */,
+				4A534E47DF74FC5C3A6356C3 /* TerrainDetailBuilder.cpp */,
+				4A534E476A75DCD5F17650F3 /* TerrainDetailBuilder.h */,
 			);
 			path = texture;
 			sourceTree = "<group>";
@@ -11602,6 +11613,7 @@
 				4A534E4774170120B80738B8 /* FoliagePhysics.cpp */,
 				4A534E4721B5BD951F8A4523 /* FoliagePhysics.h */,
 				4A534E479C6E796903EF07CE /* FoliageSystem.h */,
+				4A534E4761992D07FF55E32E /* TerrainRenderInfo.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -15980,6 +15992,8 @@
 				4A534E478E2F95E4FDE1A893 /* FoliagePhysics.h in Headers */,
 				4A534E4798A525A1727A195C /* FoliageSystem.h in Headers */,
 				4A534E479E36F56582F28B4C /* TerrainSurfaceLayer.h in Headers */,
+				4A534E476EFCB2DB5A29BE71 /* TerrainRenderInfo.h in Headers */,
+				4A534E47A6A86FDF02FBA017 /* TerrainDetailBuilder.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18559,6 +18573,7 @@
 				4A534E475354715988994280 /* RenderSystemFoliage.cpp in Sources */,
 				4A534E474C1938A0916547C2 /* FoliageSystem.cpp in Sources */,
 				4A534E4731E966DE3238B3F4 /* FoliagePhysics.cpp in Sources */,
+				4A534E47BCCF20B641CC97A4 /* TerrainDetailBuilder.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19429,6 +19444,7 @@
 				4A534E477CA3CE864977F43E /* RenderSystemFoliage.cpp in Sources */,
 				4A534E47479595579F7D940A /* FoliageSystem.cpp in Sources */,
 				4A534E473B21901082D0758F /* FoliagePhysics.cpp in Sources */,
+				4A534E473020FE9FB18A2558 /* TerrainDetailBuilder.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

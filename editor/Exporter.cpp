@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "texture/TerrainSliceCook.h"
 #include "terrain/TerrainMapPersistence.h"
 #include "util/SafeWrite.h"
 #include "component/Joint2DComponent.h"
@@ -1338,6 +1339,21 @@ void editor::Exporter::runExport() {
 void editor::Exporter::resolveShaderKeys() {
     if (!project) {
         return;
+    }
+
+    // T3 R34: the tiers of the platforms this export targets, which the keys and the game take
+    {
+        std::vector<int> platforms;
+        if (config.mode == ExportMode::Desktop) platforms = {static_cast<int>(Platform::Linux)};
+        else if (config.mode == ExportMode::Web) platforms = {static_cast<int>(Platform::Web)};
+        else if (config.mode == ExportMode::Player) {
+            const std::string name = buildPlatformName(config.platform);
+            for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+                if (name == Project::getShadowTierPlatformName(platform)) platforms.push_back(platform);
+            }
+        }
+        project->setTerrainExportPlatforms(platforms);
+        Generator::exportTerrainTiers = project->getShippedTerrainTiers();
     }
 
     std::set<ShaderKey> keys;
@@ -2920,9 +2936,11 @@ bool editor::Exporter::cookTextures() {
     std::string gatherError;
     std::promise<bool> gathered;
     auto gatheredFuture = gathered.get_future();
-    editor::getEditorHost().enqueueMainThreadTask([this, &inputs, &gatherError, &gathered]() {
+    std::set<std::string> droppedTerrainSources;
+    editor::getEditorHost().enqueueMainThreadTask([this, &inputs, &gatherError, &gathered, &droppedTerrainSources]() {
         project->getAssetIndex().waitUntilReady();
-        gathered.set_value(TextureExport::gather(*project, inputs, gatherError));
+        gathered.set_value(TextureExport::gather(*project, inputs, gatherError) &&
+                           gatherTerrainSliceInputs(*project, inputs, droppedTerrainSources, gatherError));
     });
     if (!gatheredFuture.get()) {
         setError("Texture import settings: " + gatherError);
@@ -2949,6 +2967,8 @@ bool editor::Exporter::cookTextures() {
     }
     Out::info("Textures: %d cooked, %d from the cache", result.cooked, result.cacheHits);
     cookedTextureSources = result.cookedSources;
+    // T3 R16: the layer sources the array slices replace
+    cookedTextureSources.insert(droppedTerrainSources.begin(), droppedTerrainSources.end());
     return true;
 }
 
@@ -3276,9 +3296,8 @@ bool editor::Exporter::copyAssets() {
         std::error_code typeError;
         if (!entry.is_regular_file(typeError) || isCppSourceFile(entry.path())) return TreeStep::Skip;
 
-        // Noise Graphs are recipes: a project that bakes them pays nothing (T2 R45). When the module
-        // is needed every one ships, because a Lua string can name any of them.
-        if (moduleUsageKnown && !moduleUsage.needs("noise") && entry.path().extension() == ".noisegraph") return TreeStep::Skip;
+        // A project that only bakes its Noise Graphs pays nothing for them (T2 R45)
+        if (!shipsForNoise(relPath, moduleUsageKnown ? &moduleUsage : nullptr)) return TreeStep::Skip;
 
         // An FBX ships as its import, which the engine loads in its place. Those the scenes
         // use were imported before the scenes were saved, others are imported here.
@@ -3746,6 +3765,13 @@ bool editor::Exporter::copyNativePluginFolders(const fs::path& destination, cons
         }
     }
     return true;
+}
+
+bool editor::Exporter::shipsForNoise(const fs::path& relPath, const ModuleUsage* usage) {
+    if (!usage || usage->needs("noise")) return true;
+    std::string ext = relPath.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext != ".noisegraph";
 }
 
 bool editor::Exporter::ensureExecutable(const std::vector<fs::path>& files, std::string& error) {

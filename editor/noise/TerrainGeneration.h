@@ -48,6 +48,9 @@ namespace jasperengine::editor {
         int resolution = 0;                 // 0: the terrain's
         GenerationApplyTo applyTo;
         bool dryRun = false;
+        // A preview a person or an agent waits on (the Generate section's Preview): a dry run on Lane::Normal,
+        // ahead of Background's Heavy compiles and cooks, at most kInteractiveResolution per side (Deviations)
+        bool interactive = false;
         // The terrain as the store cannot tell it; start() fills these from the component
         float terrainSize = 1000.0f;        // metres
         int layerCount = -1;                // surface layers; -1: no check
@@ -99,6 +102,9 @@ namespace jasperengine::editor {
         terrain::TexelRect rect;
     };
 
+    // The largest side an interactive preview evaluates, whatever the terrain's resolution
+    inline constexpr int kInteractiveResolution = 513;
+
     // Pure generation over any store (AC20 uses a fake one): no project, no scene, no job. The editor's
     // start() below is this plus a job and a command.
     class TerrainGeneration {
@@ -136,9 +142,13 @@ namespace jasperengine::editor {
         };
         using Done = std::function<void(const GenerationResult&)>;
 
-        // R28: on Lane::Background, GateClass::Heavy; done runs on the main thread, always, once.
+        // R28: on Lane::Background, GateClass::Heavy (an interactive Preview on Lane::Normal); done runs on the
+        // main thread, from the EditorHost queue, always, once.
         // Null with done called at once when the request is refused. Refused in Play (R33).
         static std::shared_ptr<Run> start(Project* project, uint32_t sceneId, Entity entity, GenerationRequest request, Done done);
+        // Tests only: runs first in each start() job, so a test can make one throw (nothing in evaluate throws but
+        // an allocation) and see done report it. Empty in the editor.
+        static void setJobFaultForTests(std::function<void()> fault);
     };
 
 }

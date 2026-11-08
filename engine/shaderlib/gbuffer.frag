@@ -117,11 +117,11 @@ uniform u_fs_gbufferMaterial {
 #include "includes/foliage_dither.glsl"
 
 void main() {
-    #ifdef TERRAIN_HOLES
-        terrainDiscardHole();
-    #endif
     #ifdef USE_FOLIAGE_DITHER
         foliageDitherDiscard();
+    #endif
+    #ifdef TERRAIN_HOLES
+        terrainDiscardHole();
     #endif
     #ifdef GBUFFER_STOCHASTIC
         {
