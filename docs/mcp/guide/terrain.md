@@ -17,7 +17,7 @@ Served as `jasper://docs/terrain`. The terrain tools are in the `terrain` group:
 | Grass, rocks, flowers scattered by density | `edit_terrain_details`, then `edit_terrain` `paint_density` |
 | Trees, or details by slope, height and layer rules | `edit_terrain` `scatter_by_rules` |
 | Foliage counts, draws and memory | `sample_terrain` `foliage: true` |
-| Place trees or rocks as GameObjects | `sculpt_terrain` `place_object` |
+| Scatter rocks or props over a region | `edit_terrain` `place_objects` (`asset`, `shape`, `count`, `spacing`); `instanced` plants a tree prototype; `erase_objects` |
 | A game changing the terrain | Lua `Terrain:applyOps` (below) |
 | Material cost, tiers, holes, Macro Variation | `jasper://docs/terrain-materials` |
 

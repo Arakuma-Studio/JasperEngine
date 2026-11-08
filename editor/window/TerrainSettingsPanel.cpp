@@ -29,6 +29,7 @@
 #include "util/TerrainMapFileWriter.h"
 #include "util/UIUtils.h"
 #include "window/EditorModal.h"
+#include "window/HeightImportFields.h"
 #include "window/SceneWindow.h"
 
 #include <algorithm>
@@ -324,79 +325,8 @@ void editor::TerrainEditWindow::drawImportRawDialog(SceneProject* sceneProject, 
     EditorModal::message("Import " + FileUtils::pathToUtf8(std::filesystem::u8path(importRaw.path).filename()) +
                          " as the height map: depth, resolution and byte order are detected, the marked ones guessed.");
     EditorModal::error(importRaw.preview.ok ? importRaw.message : importRaw.preview.error);
-    bool changed = false;
+    drawHeightImportFields(importRaw.path, importRaw.bytes, importRaw.options, importRaw.preview, terrain.maxHeight, &importRaw.setHeightFromRange);
     const HeightImport& p = importRaw.preview;
-    // a guessed value is marked; editing it makes it given
-    auto guessed = [](bool value){
-        if (!value) return;
-        ImGui::SameLine();
-        ImGui::TextColored(ImVec4(0.95f, 0.8f, 0.2f, 1.0f), ICON_FA_CIRCLE_QUESTION);
-        ImGui::SetItemTooltip("Detected from the file");
-    };
-    ImGui::TextUnformatted(FileUtils::pathToUtf8(std::filesystem::u8path(importRaw.path).filename()).c_str());
-
-    int depth = static_cast<int>(importRaw.options.format);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-    if (EditorModal::combo("Depth", "depth", &depth, {"Detect", "Bit 8", "Bit 16", "Float 32", "PNG", "EXR"})){
-        importRaw.options.format = static_cast<HeightFileFormat>(depth);
-        changed = true;
-    }
-    guessed(p.ok && p.formatGuessed);
-    int width = importRaw.options.width > 0 ? importRaw.options.width : p.width;
-    int height = importRaw.options.height > 0 ? importRaw.options.height : p.height;
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-    if (EditorModal::inputInt("Width", "width", &width, 0, 0)){
-        importRaw.options.width = std::max(0, width);
-        changed = true;
-    }
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-    if (EditorModal::inputInt("Height", "height", &height, 0, 0)){
-        importRaw.options.height = std::max(0, height);
-        changed = true;
-    }
-    guessed(p.ok && p.sizeGuessed);
-    int order = static_cast<int>(importRaw.options.byteOrder);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-    if (EditorModal::combo("Byte Order", "byte_order", &order, {"Detect", "Windows", "Mac"})){
-        importRaw.options.byteOrder = static_cast<HeightByteOrder>(order);
-        changed = true;
-    }
-    guessed(p.ok && p.byteOrderGuessed);
-    changed = EditorModal::checkbox("Flip Vertically", "flip_vertically", &importRaw.options.flipVertically) || changed;
-    int range = static_cast<int>(importRaw.options.range);
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-    if (EditorModal::combo("Value Range", "range", &range, {"Detected", "Full", "Source Min/Max"})){
-        importRaw.options.range = static_cast<HeightRange>(range);
-        changed = true;
-    }
-    if (importRaw.options.range == HeightRange::Source){
-        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-        changed = EditorModal::inputFloat("Source Min", "source_min", &importRaw.options.sourceMin) || changed;
-        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
-        changed = EditorModal::inputFloat("Source Max", "source_max", &importRaw.options.sourceMax) || changed;
-        EditorModal::checkbox("Set Terrain Height From Range", "set_height_from_range", &importRaw.setHeightFromRange);
-    }
-    if (changed){
-        importRaw.preview = TerrainRawIO::decode(importRaw.path, importRaw.bytes, importRaw.options);
-    }
-
-    if (p.ok){
-        double sum = 0.0;
-        for (float v : p.normalized) sum += v;
-        const double mean = p.normalized.empty() ? 0.0 : sum / static_cast<double>(p.normalized.size());
-        const double clipped = p.normalized.empty() ? 0.0 : static_cast<double>(p.clippedLow + p.clippedHigh) / static_cast<double>(p.normalized.size());
-        ImGui::Text("%s %d x %d. Data %.4g to %.4g; mapped %.4g to %.4g.", TerrainRawIO::formatName(p.format), p.width, p.height,
-                    p.dataMin, p.dataMax, p.rangeLow, p.rangeHigh);
-        ImGui::Text("Mean %.1f%% of Terrain Height (%.2f m); %.2f%% clipped.", mean * 100.0, mean * terrain.maxHeight, clipped * 100.0);
-        // a 64-bin histogram of the mapped heights
-        float bins[64] = {};
-        for (float v : p.normalized) bins[std::min(63, static_cast<int>(v * 64.0f))] += 1.0f;
-        ImGui::PlotHistogram("##import_histogram", bins, 64, 0, nullptr, 0.0f, FLT_MAX, ImVec2(ImGui::GetFontSize() * 20.0f, ImGui::GetFontSize() * 4.0f));
-    }else{
-        ImGui::PushStyleColor(ImGuiCol_Text, severityColor(TerrainIssueSeverity::Error));
-        ImGui::TextWrapped("%s", p.error.c_str());
-        ImGui::PopStyleColor();
-    }
     if (!importRaw.message.empty()){
         ImGui::TextWrapped("%s", importRaw.message.c_str());
     }

@@ -1032,23 +1032,41 @@ std::vector<Vector2> editor::TerrainEditWindow::collectPlacedPoints(SceneProject
 }
 
 editor::Command* editor::TerrainEditWindow::makePlacementCommand(SceneProject* sceneProject, Entity terrainEntity, const Vector3& localPosition, const Quaternion& rotation, const Vector3& scale){
+    return placementCommand(project, sceneProject->id, placeAssetPath, terrainEntity, localPosition, rotation, scale);
+}
+
+editor::Command* editor::TerrainEditWindow::placementCommand(Project* project, uint32_t sceneId, const std::string& asset, Entity terrainEntity,
+                                                             const Vector3& localPosition, const Quaternion& rotation, const Vector3& scale){
     // Prefab paths are stored relative to the project, asset paths relative to the assets directory
-    if (Util::isPrefabFile(placeAssetPath)){
-        ImportPrefabCmd* command = new ImportPrefabCmd(project, sceneProject->id, fs::path(placeAssetPath), terrainEntity, true);
+    if (Util::isPrefabFile(asset)){
+        ImportPrefabCmd* command = new ImportPrefabCmd(project, sceneId, fs::path(asset), terrainEntity, true);
         command->setQuiet(true);
         command->setPlacement(localPosition, rotation, scale);
         return command;
     }
 
-    if (!Util::isModelFile(placeAssetPath)){
+    if (!Util::isModelFile(asset)){
         return nullptr;
     }
 
-    std::string name = fs::path(placeAssetPath).stem().string();
+    std::string name = fs::path(asset).stem().string();
     if (name.empty()){
         name = "GameObject";
     }
-    return new ModelLoadCmd(project, sceneProject->id, name, terrainEntity, localPosition, rotation, scale, placeAssetPath);
+    return new ModelLoadCmd(project, sceneId, name, terrainEntity, localPosition, rotation, scale, asset);
+}
+
+std::vector<std::pair<Entity, Vector2>> editor::TerrainEditWindow::placedGameObjects(SceneProject* sceneProject, Entity terrainEntity){
+    std::vector<std::pair<Entity, Vector2>> placed;
+    Scene* scene = sceneProject->scene;
+    for (Entity entity : sceneProject->entities){
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!transform || transform->parent != terrainEntity || !isPlacedObject(scene, entity) || scene->findComponent<InstancedMeshComponent>(entity)){
+            continue;
+        }
+        placed.emplace_back(entity, Vector2(transform->position.x, transform->position.z));
+    }
+    return placed;
 }
 
 void editor::TerrainEditWindow::addStrokeObjectCommand(SceneProject* sceneProject, Command* command){

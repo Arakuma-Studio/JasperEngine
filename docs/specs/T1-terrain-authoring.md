@@ -1653,14 +1653,13 @@ the sketch's names, which all still exist unless a line below says otherwise.
 
 - **D-27 The collider refresh tests are in the core suite.** AC34 names `editor/tests/engine/physics/`; `TerrainCollisionRefresh*`
   needs a `PhysicsSystem` and no editor, so it is `engine/tests/core/physics/TerrainCollisionRefreshTest.cpp`.
-- **D-30 `edit_terrain` refuses `place_objects`, `erase_objects`, and `import_heightmap`'s `set_max_height` and `resolution`.** The first
-  two place GameObjects, which `sculpt_terrain` does; the error names it. An import of another size is the Terrain window's path
-  (Import Raw... makes the new map first).
+- **D-30 `edit_terrain` refuses `import_heightmap`'s `set_max_height` and `resolution`.** An import of another size is the Terrain
+  window's path (Import Raw... makes the new map first). `place_objects` and `erase_objects` run in a call of their own (they are
+  commands, not map writes); `instanced` plants a tree prototype through T5's `place_trees` and `remove_trees`.
 - **D-32 Window work not done yet:** R39's stroke log, R56's alternates (the `C` key and Alt Alternates While Painting),
   R57's `TerrainBrush` shortcut context with Table 5's keys and the Cut Holes brush they name, R63's Pick beyond Set Height's
   eyedropper, R55's fade and hide during camera moves, R59's Resize..., R61's hillshade preview, R67's Preview, R37's pen
   readers, and R47-R54's benches. They are open, not given up: none of them is impossible on this host.
-- **D-34 Create Terrain starts Flat or Flat at Middle.** The generated shapes, Seed and Import Raw... wait for T2; Base Layer is not done.
 - **D-35 `visualize_terrain` without T3's and T5's keys and with one sheet.** `quality` and `foliage_quality` are theirs to add. The sheet is
   one mesh of at most 255 x 255 cells; DC8's second copy at 25 % in the tools layer is not done.
 - **D-36 The Lua terrain functions that take tables are raw functions** with their stubs in `tools/lua_api/parser.py`'s `OVERRIDES`;

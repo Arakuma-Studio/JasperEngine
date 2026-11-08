@@ -201,6 +201,31 @@ bool OpJsonParser::parse(const Json& item, size_t index, Op& op) {
     if (opJsonHas(item, "noise_size")) op.noiseSize = space.length(item["noise_size"].is_number() ? item["noise_size"].get<float>() : 0.0f);
     if (opJsonHas(item, "amplitude")) op.amplitude = space.delta(item["amplitude"].is_number() ? item["amplitude"].get<float>() : 0.0f);
     if (opJsonHas(item, "octaves")) op.octaves = item["octaves"].is_number_integer() ? item["octaves"].get<int>() : 0;
+    // R21: place_objects' plan; its asset, instanced and align_to_normal are the editor's (the commands it makes)
+    if (opJsonHas(item, "spacing")) {
+        if (!item["spacing"].is_number() || item["spacing"].get<float>() < 0.0f) return failWith("spacing", "must be metres from 0.");
+        op.spacing = space.length(item["spacing"].get<float>());
+    }
+    if (opJsonHas(item, "count")) {
+        if (!item["count"].is_number_integer()) return failWith("count", "must be a whole number from 1.");
+        op.count = item["count"].get<int>();
+    }
+    if (opJsonHas(item, "scale")) {
+        const Json& scale = item["scale"];
+        if (scale.is_number()) {
+            op.minScale = op.maxScale = scale.get<float>();
+        } else if (scale.is_array() && scale.size() == 2 && scale[0].is_number() && scale[1].is_number()) {
+            op.minScale = scale[0].get<float>();
+            op.maxScale = scale[1].get<float>();
+        } else {
+            return failWith("scale", "must be a number or [min, max].");
+        }
+        if (op.minScale <= 0.0f || op.maxScale < op.minScale) return failWith("scale", "must be above 0, with min at most max.");
+    }
+    if (opJsonHas(item, "rotation_jitter")) {
+        if (!item["rotation_jitter"].is_number()) return failWith("rotation_jitter", "must be a share of a turn, 0 to 1.");
+        op.rotationJitter = std::clamp(item["rotation_jitter"].get<float>(), 0.0f, 1.0f);
+    }
     if (opJsonHas(item, "rules")) {
         if (!item["rules"].is_array()) return failWith("rules", "must be a list of {layer, slope, height, invert, opacity, noise}.");
         for (size_t r = 0; r < item["rules"].size(); r++) {
