@@ -113,3 +113,16 @@ TEST(GeneratorCMake, ClangdFlagsCarryThePhysicsMacros) {
     EXPECT_NE(database.find("-DJPH_SHARED_LIBRARY"), std::string::npos) << database;
     EXPECT_NE(database.find("-DJPH_OBJECT_LAYER_BITS="), std::string::npos) << database;
 }
+
+// red before platform-build: Visual Studio builds ran MSBuild's /m:<jobs> over projects whose cl
+// each took /MP<jobs>, up to jobs x jobs compilers (build-toolchain spec, deviation 9)
+TEST(GeneratorCMake, VisualStudioBuildsOneProjectAtATime) {
+    TestTempDir dir("generator-cmake-jobs");
+    EXPECT_EQ(Generator::buildStepParallelJobs(dir.path(), 12), 12u) << "not configured yet: CMake's own choice";
+    TestTempDir::write(dir / "CMakeCache.txt", "CMAKE_BUILD_TYPE:STRING=Release\nCMAKE_GENERATOR:INTERNAL=Visual Studio 17 2022\n");
+    EXPECT_EQ(Generator::buildStepParallelJobs(dir.path(), 12), 1u);
+    for (const char* generator : {"Ninja", "Ninja Multi-Config", "Unix Makefiles", "MinGW Makefiles", "Xcode"}) {
+        TestTempDir::write(dir / "CMakeCache.txt", std::string("CMAKE_GENERATOR:INTERNAL=") + generator + "\n");
+        EXPECT_EQ(Generator::buildStepParallelJobs(dir.path(), 12), 12u) << generator;
+    }
+}

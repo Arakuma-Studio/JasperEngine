@@ -1974,6 +1974,7 @@ entities:
         minRegionArea: 3.4
         plane: xy
         runtimeCarving: true
+        maxCarvingObstacles: 128
         navMeshData: ""
   - type: Entity
     entity: 1069
@@ -2008,6 +2009,10 @@ entities:
         updateRotation: false
         driver: none
         surface: 0
+        stuckDetection: false
+        stuckSpeedRatio: 0.1
+        stuckTimeout: 2
+        repathWhenStuck: true
   - type: Entity
     entity: 1070
     name: NavMeshObstacleComponent
@@ -2055,6 +2060,7 @@ entities:
         bidirectional: false
         autoUpdatePosition: true
         area: 4
+        activated: true
   - type: Entity
     entity: 1072
     name: NavMeshModifierComponent
@@ -2077,6 +2083,7 @@ entities:
         useVolume: true
         volumeCenter: [4.3, 6.1, 6.9]
         volumeSize: [0.6, 4.8, 8.9]
+        applyAtRuntime: false
   - type: Entity
     entity: 1073
     name: NavGridComponent

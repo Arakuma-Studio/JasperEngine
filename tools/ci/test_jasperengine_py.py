@@ -69,10 +69,10 @@ class WebBuildTest(unittest.TestCase):
         self.envs.append(kwargs.get("env") or {})
         return subprocess.CompletedProcess(command, 0)
 
-    def configure(self, programs_on_path=("cmake",), extra_args=(), windows=True, extra_env=None):
-        """Runs the script's build() as `--platform web --no-build`; returns (exit code, stdout+stderr)."""
-        argv = ["jasperengine.py", "--platform", "web", "--project", str(self.project), "--output", str(self.build),
-                "--no-build", *extra_args]
+    def configure(self, programs_on_path=("cmake",), extra_args=(), windows=True, extra_env=None, platform="web", build=False):
+        """Runs the script's build() (`--platform web --no-build` by default); returns (exit code, stdout+stderr)."""
+        argv = ["jasperengine.py", "--platform", platform, "--project", str(self.project), "--output", str(self.build),
+                "--build" if build else "--no-build", *extra_args]
         env = {"EMSDK": str(self.emsdk), "ProgramFiles(x86)": str(self.program_files), "PATH": ""}
         env.update(extra_env or {})
 
@@ -181,6 +181,22 @@ class WebBuildTest(unittest.TestCase):
         code, out = self.configure()
         self.assertEqual(code, 0, out)
         self.assertIn("-DCMAKE_CROSSCOMPILING_EMULATOR=" + str(configured).replace("\\", "/"), self.commands[0])
+
+    def test_visual_studio_builds_one_project_at_a_time(self):
+        # red before platform-build: --parallel <jobs> is MSBuild's /m (projects at once) beside
+        # cl's /MP<jobs> in each, up to jobs x jobs compilers; the configure passed no job cap
+        touch(self.build / "CMakeCache.txt", "CMAKE_GENERATOR:INTERNAL=Visual Studio 17 2022\n")
+        code, out = self.configure(platform="windows", build=True, extra_args=("--jobs", "12"))
+        self.assertEqual(code, 0, out)
+        configure, build = self.commands
+        self.assertIn("-DJASPERENGINE_PARALLEL_BUILD_JOBS=12", configure)
+        self.assertEqual(build[build.index("--parallel") + 1], "1", build)
+        # Ninja schedules files itself: the cap is its -j
+        self.commands.clear()
+        touch(self.build / "CMakeCache.txt", "CMAKE_GENERATOR:INTERNAL=Ninja\n")
+        code, out = self.configure(platform="windows", build=True, extra_args=("--jobs", "12"))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.commands[1][self.commands[1].index("--parallel") + 1], "12", self.commands[1])
 
     def test_no_emscripten(self):
         for name in ("emcc.exe",):
