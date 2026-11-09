@@ -2183,6 +2183,8 @@ namespace jasperengine::editor{
         // pixel-art validator's view of the build list, S42 D3); release it with
         // releaseSceneProbe. Null when the scene is open, unknown or unreadable.
         SceneProject* loadSceneProbe(uint32_t sceneId);
+        // the same for a scene file the project does not list (the Pixel Art Check's Project scope)
+        SceneProject* loadSceneFileProbe(const std::filesystem::path& file);
         void releaseSceneProbe(SceneProject* probe);
         void loadSceneProjectData(SceneProject* sceneProject, const YAML::Node& sceneNode);
         bool saveProject(bool userCalled = false, std::function<void()> callback = nullptr);

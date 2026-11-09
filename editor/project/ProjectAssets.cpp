@@ -5,6 +5,7 @@
 // references of loaded documents by GUID, the identity keys written into scenes, prefabs and
 // materials, and the in-memory edges of documents with unsaved edits.
 
+#include "pixelart/PixelArtInput.h"
 #include "pixelart/PixelArtMode.h"
 #include "texture/TextureCookQueue.h"
 #include "Project.h"
@@ -425,6 +426,12 @@ void editor::Project::onAssetFilesChanged(const std::vector<AssetDatabase::Chang
             const fs::path absolute = getProjectPath() / change.path;
             if (isInsideAssetsPath(absolute)) writeImportSettingsNow(*this, normalizeToAssetsRelative(absolute).generic_string());
         }
+    }
+    // what the pixel-art check kept of closed scenes follows the files' stamps; files added, moved
+    // or removed (references resolve by GUID) and prefabs (instances in those scenes) it cannot see
+    if (std::any_of(changes.begin(), changes.end(), [](const AssetDatabase::Change& change) {
+            return change.type != AssetDatabase::Change::Type::Modified || change.path.extension() == ".prefab"; })) {
+        pixelart::forgetInputCache();
     }
     // the Pixel Art Check window checks again after imports (S42 R19)
     pixelart::PixelArtMode::get().notifyAssets();

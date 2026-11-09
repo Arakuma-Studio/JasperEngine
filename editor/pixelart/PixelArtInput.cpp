@@ -11,6 +11,7 @@
 #include "shader/ShaderVariantCollector.h"
 #include "sprite/SpriteAtlasDocument.h"
 #include "texture/TextureCookQueue.h"
+#include "util/AssetDatabase.h"
 #include "util/EntityPath.h"
 #include "util/FileUtils.h"
 
@@ -32,6 +33,9 @@
 
 #include <algorithm>
 #include <fstream>
+#include <map>
+#include <optional>
+#include <set>
 #include <sstream>
 
 using namespace jasperengine;
@@ -81,8 +85,8 @@ namespace {
         return path.empty() || path[0] != '/' ? "/" + path : path;
     }
 
-    Vector2 pivotPixels(const SpriteComponent& sprite, float width, float height){
-        switch (sprite.pivotPreset){
+    Vector2 pivotPixels(PivotPreset preset, float width, float height){
+        switch (preset){
             case PivotPreset::BOTTOM_RIGHT: return Vector2(width, 0);
             case PivotPreset::TOP_RIGHT: return Vector2(width, height);
             case PivotPreset::TOP_LEFT: return Vector2(0, height);
@@ -129,16 +133,78 @@ namespace {
         return e == ".ttf" || e == ".otf" || e == ".bitmapfont" || e == ".fnt";
     }
 
-    // a texture's import settings, header and sheet facts, read once per path
-    PixelArtTexture& textureEntry(Project& project, PixelArtCheckInput& input, const std::string& path){
-        auto it = input.textures.find(path);
-        if (it != input.textures.end())
-            return it->second;
-        PixelArtTexture& t = input.textures[path];
-        t.path = path;
-        const fs::path absolute = project.getAssetsPath() / fs::path(path);
+    // ---- what is kept between calls (main thread)
+
+    struct FileStamp {
+        fs::file_time_type time{};
+        std::uintmax_t size = 0;
+        bool exists = false;
+        bool operator==(const FileStamp&) const = default;
+    };
+
+    FileStamp stampOf(const fs::path& path){
+        FileStamp stamp;
         std::error_code ec;
-        t.exists = fs::is_regular_file(absolute, ec);
+        stamp.time = fs::last_write_time(path, ec);
+        if (ec)
+            return stamp;
+        stamp.size = fs::file_size(path, ec);
+        stamp.exists = !ec;
+        return stamp;
+    }
+
+    // what a scene holds, before it is known to be a pixel-art scene (that needs its layers' and
+    // parents' cameras and its textures' import settings, which change apart from the file)
+    struct SceneFacts {
+        PixelArtScene scene;                   // every candidate drawable; pixelArt not decided
+        std::vector<uint32_t> layers;          // its layer (child) scenes
+        bool pixelCamera = false;              // its main camera has an enabled orthographic Pixel Perfect Camera
+        std::vector<int> pivotPresets;         // per drawable: a Sprite's PivotPreset, -1 otherwise (the pivot needs the texture size)
+        // library:sprite material identity -> one GameObject drawing it; an open scene's variants
+        // are collected once it is a pixel-art scene, a closed one's while its probe exists
+        std::map<std::string, Entity> spriteMaterials;
+        bool variantsDone = false;
+        const SceneProject* live = nullptr;    // an open scene (not kept)
+    };
+
+    struct CachedTexture {
+        FileStamp image, meta;
+        bool modeEnabled = false;
+        bool read = false;
+        PixelArtTexture texture;
+    };
+
+    struct CachedScene {
+        FileStamp file;
+        SceneFacts facts;
+    };
+
+    struct InputCache {
+        fs::path project;
+        std::map<std::string, CachedTexture> textures;
+        std::map<std::string, CachedScene> scenes;
+    };
+
+    InputCache& inputCache(){
+        static InputCache cache;
+        return cache;
+    }
+
+    InputReads& reads(){
+        static InputReads value;
+        return value;
+    }
+
+    std::map<std::string, DrawableCollector>& collectors(){
+        static std::map<std::string, DrawableCollector> registered;
+        return registered;
+    }
+
+    // a texture's import settings, header and sheet facts, from its files
+    PixelArtTexture readTexture(Project& project, const std::string& path, const fs::path& absolute, bool exists){
+        PixelArtTexture t;
+        t.path = path;
+        t.exists = exists;
         const std::string extension = lowerExtension(path);
         if (extension == ".aseprite" || extension == ".ase"){
             t.aseprite = true;
@@ -163,14 +229,10 @@ namespace {
                 t.atlasCompression = "auto_platform";
             return t;
         }
+        // no import settings yet: judged as S14's inference will write them (only an image added
+        // while Pixel Art Mode is on is imported as pixel art, and that one has its settings)
         std::string error;
         t.hasSettings = TextureImportSettings::load(absolute.string(), t.settings, &error);
-        // no import settings yet: Pixel Art Mode's first import writes pixelArt (R1), so the
-        // texture is judged as it will import
-        if (!t.hasSettings && project.getPixelArtSettings().enabled){
-            t.settings.pixelArt = true;
-            t.settings.type = TextureImportType::Sprite;
-        }
         int width = 0, height = 0, channels = 0;
         if (t.exists && stbi_info(absolute.string().c_str(), &width, &height, &channels)){
             t.width = width;
@@ -178,6 +240,27 @@ namespace {
             t.hasAlpha = channels == 2 || channels == 4;
         }
         return t;
+    }
+
+    // a texture's entry in the input, from the cache while its image and meta are unchanged
+    PixelArtTexture& textureEntry(Project& project, PixelArtCheckInput& input, const std::string& path){
+        auto it = input.textures.find(path);
+        if (it != input.textures.end())
+            return it->second;
+        const fs::path absolute = project.getAssetsPath() / fs::path(path);
+        const FileStamp image = stampOf(absolute);
+        const FileStamp meta = stampOf(SetAssetMetaCmd::metaPathOf(absolute));
+        const bool mode = project.getPixelArtSettings().enabled;
+        CachedTexture& cached = inputCache().textures[path];
+        if (!cached.read || !(cached.image == image) || !(cached.meta == meta) || cached.modeEnabled != mode){
+            cached.image = image;
+            cached.meta = meta;
+            cached.modeEnabled = mode;
+            cached.read = true;
+            cached.texture = readTexture(project, path, absolute, image.exists);
+            reads().texturesRead++;
+        }
+        return input.textures.emplace(path, cached.texture).first->second;
     }
 
     void addDrawableTexture(Project& project, PixelArtCheckInput& input, PixelArtDrawable& d, bool pixelArtDrawable){
@@ -228,10 +311,27 @@ namespace {
         return label;
     }
 
-    void extractScene(Project& project, const SceneProject& sp, const PixelArtProjectInfo& info, const Scope& scope,
-                      PixelArtCheckInput& input){
+    // the shader variants library:sprite needs for each material identity of a scene
+    void collectVariants(Project& project, const SceneProject& sp, SceneFacts& facts){
+        for (const auto& [label, entity] : facts.spriteMaterials){
+            ShaderVariantContent content;
+            content.registry = sp.scene;
+            content.entities = {entity};
+            std::set<ShaderKey> keys;
+            ShaderVariantCollector::collectScene(sp.scene, content, {}, keys, project.getProjectPath());
+            std::set<std::string>& variants = facts.scene.spriteVariants[label];
+            for (const ShaderKey& key : keys)
+                if (key.type == (uint16_t)ShaderType::MESH)
+                    variants.insert(ShaderPool::getShaderStr((ShaderType)key.type, key.properties, 0) + "|" +
+                                    ShaderPool::getCustomShaderName(key.customId));
+        }
+        facts.variantsDone = true;
+    }
+
+    SceneFacts extractFacts(Project& project, const SceneProject& sp, const Scope& scope){
         Scene* scene = sp.scene;
-        PixelArtScene out;
+        SceneFacts facts;
+        PixelArtScene& out = facts.scene;
         out.path = scenePathOf(project, sp);
         out.name = sp.name;
         out.is2D = sp.sceneType == SceneType::SCENE_2D;
@@ -242,6 +342,8 @@ namespace {
         out.fxaa = post.fxaaEnabled;
         out.msaaSamples = post.msaaSamples;
         out.blur = post.blurEnabled && post.blurIntensity > 0.0f;
+        for (const ChildSceneRef& child : sp.childScenes)
+            facts.layers.push_back(child.id);
 
         std::map<Entity, WorldValues> world;
         EntityPath::Cache paths;
@@ -279,6 +381,7 @@ namespace {
                 }
             }
         }
+        facts.pixelCamera = out.camera.exists && out.camera.hasComponent && out.camera.component.enabled && !out.camera.perspective;
 
         // the selection scope keeps only the selected GameObjects
         auto selected = [&](Entity entity){
@@ -287,38 +390,40 @@ namespace {
             return std::find(scope.selection.begin(), scope.selection.end(), std::make_pair(sp.id, (uint32_t)entity)) != scope.selection.end();
         };
 
-        std::vector<PixelArtDrawable> drawables;
-        std::map<std::string, Entity> spriteMaterials;
+        std::vector<PixelArtDrawable>& drawables = out.drawables;
+        auto base = [&](Entity entity, DrawableKind kind){
+            PixelArtDrawable d;
+            d.kind = kind;
+            d.scene = out.path;
+            d.entity = entityPathOf(sp, entity, paths);
+            d.entityId = entity;
+            if (const Transform* transform = scene->findComponent<Transform>(entity)){
+                d.hasTransform = true;
+                d.position = transform->position;
+                d.rotation = transform->rotation;
+                d.scale = transform->scale;
+                const WorldValues& w = worldOf(scene, entity, world);
+                d.worldPosition = w.position;
+                d.worldRotation = w.rotation;
+                d.worldScale = w.scale;
+                if (transform->parent != NULL_ENTITY && scene->findComponent<Transform>(transform->parent)){
+                    const WorldValues& p = worldOf(scene, transform->parent, world);
+                    d.parentWorldScale = p.scale;
+                    d.parentWorldRotation = p.rotation;
+                }
+            }
+            return d;
+        };
+        auto push = [&](PixelArtDrawable d, int pivotPreset){
+            drawables.push_back(std::move(d));
+            facts.pivotPresets.push_back(pivotPreset);
+        };
         for (Entity entity : sp.entities){
             if (!scene->isEntityCreated(entity) || !selected(entity))
                 continue;
-            const Transform* transform = scene->findComponent<Transform>(entity);
-            auto base = [&](DrawableKind kind){
-                PixelArtDrawable d;
-                d.kind = kind;
-                d.scene = out.path;
-                d.entity = entityPathOf(sp, entity, paths);
-                d.entityId = entity;
-                if (transform){
-                    d.hasTransform = true;
-                    d.position = transform->position;
-                    d.rotation = transform->rotation;
-                    d.scale = transform->scale;
-                    const WorldValues& w = worldOf(scene, entity, world);
-                    d.worldPosition = w.position;
-                    d.worldRotation = w.rotation;
-                    d.worldScale = w.scale;
-                    if (transform->parent != NULL_ENTITY && scene->findComponent<Transform>(transform->parent)){
-                        const WorldValues& p = worldOf(scene, transform->parent, world);
-                        d.parentWorldScale = p.scale;
-                        d.parentWorldRotation = p.rotation;
-                    }
-                }
-                return d;
-            };
             const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
             if (const SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity); sprite && mesh && mesh->numSubmeshes > 0){
-                PixelArtDrawable d = base(DrawableKind::Sprite);
+                PixelArtDrawable d = base(entity, DrawableKind::Sprite);
                 const Material& material = mesh->submeshes[0].material;
                 d.textureField = "mesh.submeshes[0].material.baseColorTexture";
                 d.texture = material.baseColorTexture.getPath();
@@ -331,23 +436,16 @@ namespace {
                 }
                 d.pixelsPerUnit = sprite->pixelsPerUnit;
                 d.pixelRotation = sprite->pixelRotation;
-                float width = (float)sprite->width, height = (float)sprite->height;
-                if ((width <= 0 || height <= 0) && !d.texture.empty()){
-                    const PixelArtTexture& t = textureEntry(project, input, d.texture);
-                    width = (float)t.width;
-                    height = (float)t.height;
-                }
-                d.width = width;
-                d.height = height;
-                d.pivot = pivotPixels(*sprite, width, height);
+                d.width = (float)sprite->width;
+                d.height = (float)sprite->height;
                 readPaletteSwap(material, d);
                 if (material.shader.path == "library:sprite"){
                     d.spriteMaterial = spriteMaterialLabel(material);
-                    spriteMaterials.emplace(d.spriteMaterial, entity);
+                    facts.spriteMaterials.emplace(d.spriteMaterial, entity);
                 }
-                drawables.push_back(std::move(d));
+                push(std::move(d), (int)sprite->pivotPreset);
             }else if (const TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity); tilemap && mesh && mesh->numSubmeshes > 0){
-                PixelArtDrawable d = base(DrawableKind::Tilemap);
+                PixelArtDrawable d = base(entity, DrawableKind::Tilemap);
                 const Material& material = mesh->submeshes[0].material;
                 d.textureField = "mesh.submeshes[0].material.baseColorTexture";
                 d.texture = material.baseColorTexture.getPath();
@@ -355,13 +453,12 @@ namespace {
                 d.magFilter = material.baseColorTexture.getMagFilter();
                 d.pixelsPerUnit = tilemap->pixelsPerUnit;
                 readPaletteSwap(material, d);
-                drawables.push_back(std::move(d));
+                push(std::move(d), -1);
             }
-            if (scene->findComponent<ImageComponent>(entity)){
+            if (const ImageComponent* image = scene->findComponent<ImageComponent>(entity)){
                 const UIComponent* ui = scene->findComponent<UIComponent>(entity);
-                const ImageComponent* image = scene->findComponent<ImageComponent>(entity);
                 if (ui && !ui->texture.empty() && !ui->texture.isFramebuffer()){
-                    PixelArtDrawable d = base(DrawableKind::Image);
+                    PixelArtDrawable d = base(entity, DrawableKind::Image);
                     d.textureField = "ui.texture";
                     d.texture = ui->texture.getPath();
                     d.minFilter = ui->texture.getMinFilter();
@@ -371,17 +468,17 @@ namespace {
                         d.rectHeight = (float)rect->height;
                     }
                     d.sliced = image->patchMarginLeft || image->patchMarginRight || image->patchMarginTop || image->patchMarginBottom;
-                    drawables.push_back(std::move(d));
+                    push(std::move(d), -1);
                 }
             }
             if (const TextComponent* text = scene->findComponent<TextComponent>(entity)){
-                PixelArtDrawable d = base(DrawableKind::Text);
+                PixelArtDrawable d = base(entity, DrawableKind::Text);
                 d.font = text->font[0].path;
                 d.fontSize = text->fontSize;
-                drawables.push_back(std::move(d));
+                push(std::move(d), -1);
             }
             if (const ParticleSystemComponent* particles = scene->findComponent<ParticleSystemComponent>(entity)){
-                PixelArtDrawable d = base(DrawableKind::Particles);
+                PixelArtDrawable d = base(entity, DrawableKind::Particles);
                 particles::ParticleEffectDocument document = particles->inlineEffect;
                 if (!particles->effect.path.empty()){
                     d.particleEffectAsset = true;
@@ -400,45 +497,59 @@ namespace {
                     d.particleSizes.push_back(size.constant);
                     d.particleSizes.push_back(size.constantMax);
                 }
-                drawables.push_back(std::move(d));
+                push(std::move(d), -1);
             }
         }
+        // a later spec's drawables (S52's Sprite Batch): kept with the scene's own
+        const DrawableBase drawableBase = [&](uint32_t entity, DrawableKind kind){ return base((Entity)entity, kind); };
+        for (const auto& [id, collect] : collectors()){
+            std::vector<PixelArtDrawable> collected;
+            collect(sp, drawableBase, collected);
+            for (PixelArtDrawable& d : collected)
+                if (selected((Entity)d.entityId))
+                    push(std::move(d), -1);
+        }
+        return facts;
+    }
 
-        // R9: a scene drawn through a Pixel Perfect Camera, a 2D scene of a Pixel Art Mode
-        // project, or one that draws pixel-art textures
-        out.pixelArt = (out.camera.exists && out.camera.hasComponent && out.camera.component.enabled && !out.camera.perspective) ||
-                       ((info.modeEnabled || info.assumeMode) && out.is2D);
-        bool anyPixelTexture = false;
-        for (const PixelArtDrawable& d : drawables)
-            anyPixelTexture = anyPixelTexture || texturePixelArt(project, input, d);
-        out.pixelArt = out.pixelArt || anyPixelTexture;
-        for (PixelArtDrawable& d : drawables){
-            const bool pixel = out.pixelArt || texturePixelArt(project, input, d);
-            if (!pixel)
+    // R9: a pixel-art scene and its pixel-art drawables, from the facts
+    void classify(Project& project, SceneFacts& facts, bool layerOfPixelCamera, const PixelArtProjectInfo& info, PixelArtCheckInput& input){
+        PixelArtScene out = facts.scene;
+        // a Sprite without its own size takes its texture's, and its pivot follows
+        for (size_t i = 0; i < out.drawables.size(); i++){
+            PixelArtDrawable& d = out.drawables[i];
+            if (i >= facts.pivotPresets.size() || facts.pivotPresets[i] < 0)
                 continue;
-            if (d.kind != DrawableKind::Particles && d.kind != DrawableKind::Text)
+            float width = d.width, height = d.height;
+            if ((width <= 0 || height <= 0) && !d.texture.empty()){
+                const PixelArtTexture& t = textureEntry(project, input, d.texture);
+                width = (float)t.width;
+                height = (float)t.height;
+            }
+            d.width = width;
+            d.height = height;
+            d.pivot = pivotPixels((PivotPreset)facts.pivotPresets[i], width, height);
+        }
+        // drawn through a Pixel Perfect Camera (its own, or the one of the scene it is a layer of
+        // when it has no camera of its own), a 2D scene of a Pixel Art Mode project, or one that
+        // draws pixel-art textures
+        out.pixelArt = facts.pixelCamera || layerOfPixelCamera || ((info.modeEnabled || info.assumeMode) && out.is2D);
+        for (const PixelArtDrawable& d : out.drawables)
+            out.pixelArt = out.pixelArt || texturePixelArt(project, input, d);
+        std::vector<PixelArtDrawable> all = std::move(out.drawables);
+        out.drawables.clear();
+        for (PixelArtDrawable& d : all){
+            // a 2D scene of sprites or tilemaps is pixel-art content for pixel_art_mode even before the mode is on
+            out.drawsSprites = out.drawsSprites || (out.is2D && (d.kind == DrawableKind::Sprite || d.kind == DrawableKind::Tilemap));
+            if (!out.pixelArt && !texturePixelArt(project, input, d))
+                continue;
+            // the particle renderer's texture is pixel art too (R2: the preset converts it); a Text draws a font
+            if (d.kind != DrawableKind::Text)
                 addDrawableTexture(project, input, d, true);
             out.drawables.push_back(std::move(d));
         }
-        // a 2D scene of sprites or tilemaps is pixel-art content for pixel_art_mode even before the mode is on
-        for (const PixelArtDrawable& d : drawables)
-            out.drawsSprites = out.drawsSprites || (out.is2D && (d.kind == DrawableKind::Sprite || d.kind == DrawableKind::Tilemap));
-
-        // sprite_variants: library:sprite materials, one representative GameObject each
-        if (out.pixelArt){
-            for (const auto& [label, entity] : spriteMaterials){
-                ShaderVariantContent content;
-                content.registry = scene;
-                content.entities = {entity};
-                std::set<ShaderKey> keys;
-                ShaderVariantCollector::collectScene(scene, content, {}, keys, project.getProjectPath());
-                std::set<std::string>& variants = out.spriteVariants[label];
-                for (const ShaderKey& key : keys)
-                    if (key.type == (uint16_t)ShaderType::MESH)
-                        variants.insert(ShaderPool::getShaderStr((ShaderType)key.type, key.properties, 0) + "|" +
-                                        ShaderPool::getCustomShaderName(key.customId));
-            }
-        }
+        if (!out.pixelArt)
+            out.spriteVariants.clear();
         input.scenes.push_back(std::move(out));
     }
 
@@ -450,8 +561,29 @@ std::string jasperengine::editor::pixelart::scenePathOf(const Project& project, 
     return project.normalizeToProjectRelative(scene.filepath).generic_string();
 }
 
+void jasperengine::editor::pixelart::registerDrawableCollector(std::string id, DrawableCollector collector){
+    collectors()[std::move(id)] = std::move(collector);
+    forgetInputCache();
+}
+
+void jasperengine::editor::pixelart::unregisterDrawableCollector(const std::string& id){
+    collectors().erase(id);
+    forgetInputCache();
+}
+
+void jasperengine::editor::pixelart::forgetInputCache(){
+    inputCache().textures.clear();
+    inputCache().scenes.clear();
+}
+
+InputReads jasperengine::editor::pixelart::lastInputReads(){
+    return reads();
+}
+
 std::vector<uint32_t> jasperengine::editor::pixelart::scopeScenes(Project& project, const Scope& scope, std::vector<PixelProblem>& errors){
     std::vector<uint32_t> order;
+    if (scope.noScenes)
+        return order;
     const uint32_t start = project.getStartSceneId();
     std::vector<SceneProject>& scenes = project.getScenes();
     if (scope.scenes.empty()){
@@ -486,6 +618,12 @@ std::vector<uint32_t> jasperengine::editor::pixelart::scopeScenes(Project& proje
 
 PixelArtCheckInput jasperengine::editor::pixelart::inputFromProject(Project& project, const Scope& scope, std::vector<PixelProblem>& errors){
     PixelArtCheckInput input;
+    reads() = InputReads();
+    InputCache& cache = inputCache();
+    if (cache.project != project.getProjectPath()){
+        forgetInputCache();
+        cache.project = project.getProjectPath();
+    }
     input.assetsRoot = project.getAssetsPath();
     PixelArtProjectInfo& info = input.project;
     const PixelArtSettings& settings = project.getPixelArtSettings();
@@ -500,6 +638,7 @@ PixelArtCheckInput jasperengine::editor::pixelart::inputFromProject(Project& pro
     info.windowHeight = (int)project.getWindowHeight();
     info.screens = settings.screens();
     info.upscaleMode = settings.upscaleMode;
+    info.textureSettings = textureProjectSettingsOf(project);
 
     // the palettes: the Default Palette now, Palette Swap sources as drawables name them
     const std::string defaultPalette = defaultPalettePath(project);
@@ -511,22 +650,110 @@ PixelArtCheckInput jasperengine::editor::pixelart::inputFromProject(Project& pro
         }
     }
 
-    for (uint32_t id : scopeScenes(project, scope, errors)){
+    // a scene's facts: an open scene's live (with its unsaved edits), a closed one's from its file
+    // through a probe, kept while the file is unchanged
+    std::map<uint32_t, SceneFacts> known;
+    auto closedFacts = [&](const fs::path& file, const std::function<SceneProject*()>& probeOf, const std::string& name) -> std::optional<SceneFacts> {
+        const std::string key = file.lexically_normal().generic_string();
+        const FileStamp stamp = stampOf(file);
+        auto hit = cache.scenes.find(key);
+        if (hit != cache.scenes.end() && hit->second.file == stamp){
+            SceneFacts facts = hit->second.facts;
+            facts.scene.name = name;
+            return facts;
+        }
+        SceneProject* probe = probeOf();
+        if (!probe)
+            return std::nullopt;
+        probe->name = name;
+        SceneFacts facts = extractFacts(project, *probe, Scope());
+        // the variants need the probe's scene: collected now, whether or not it turns out pixel art
+        collectVariants(project, *probe, facts);
+        project.releaseSceneProbe(probe);
+        reads().scenesDecoded++;
+        cache.scenes[key] = {stamp, facts};
+        return facts;
+    };
+    auto factsOf = [&](uint32_t id, bool report) -> SceneFacts* {
+        auto it = known.find(id);
+        if (it != known.end())
+            return &it->second;
         SceneProject* sp = project.getScene(id);
         if (!sp)
-            continue;
+            return nullptr;
         if (sp->scene){
-            extractScene(project, *sp, info, scope, input);
-            continue;
+            SceneFacts facts = extractFacts(project, *sp, scope);
+            facts.live = sp;
+            return &known.emplace(id, std::move(facts)).first->second;
         }
-        SceneProject* probe = project.loadSceneProbe(id);
-        if (!probe){
-            errors.push_back({"unreadable", "scenes", "Scene \"" + sp->name + "\" could not be read from its file.", "open it to see its load errors"});
-            continue;
+        if (sp->filepath.empty())
+            return nullptr;
+        const fs::path file = sp->filepath.is_relative() ? project.getProjectPath() / sp->filepath : sp->filepath;
+        std::optional<SceneFacts> facts = closedFacts(file, [&](){ return project.loadSceneProbe(id); }, sp->name);
+        if (!facts){
+            if (report)
+                errors.push_back({"unreadable", "scenes", "Scene \"" + sp->name + "\" could not be read from its file.", "open it to see its load errors"});
+            return nullptr;
         }
-        probe->name = sp->name;
-        extractScene(project, *probe, info, scope, input);
-        project.releaseSceneProbe(probe);
+        return &known.emplace(id, std::move(*facts)).first->second;
+    };
+    // a layer scene without a camera of its own is drawn under the main camera of the scene it is
+    // a layer of (R9's "a layer scene's camera")
+    auto underPixelCamera = [&](uint32_t id, const SceneFacts& facts){
+        if (facts.scene.camera.exists)
+            return false;
+        for (const SceneProject& other : project.getScenes()){
+            if (other.id == id)
+                continue;
+            const bool parentLive = other.scene != nullptr;
+            const std::vector<ChildSceneRef>* children = parentLive ? &other.childScenes : nullptr;
+            if (children && std::none_of(children->begin(), children->end(), [&](const ChildSceneRef& c){ return c.id == id; }))
+                continue;
+            SceneFacts* parent = factsOf(other.id, false);
+            if (parent && parent->pixelCamera && std::find(parent->layers.begin(), parent->layers.end(), id) != parent->layers.end())
+                return true;
+        }
+        return false;
+    };
+
+    for (uint32_t id : scopeScenes(project, scope, errors)){
+        const SceneFacts* found = factsOf(id, true);
+        if (!found)
+            continue;
+        SceneFacts facts = *found;
+        const bool layer = underPixelCamera(id, facts);
+        const size_t at = input.scenes.size();
+        classify(project, facts, layer, info, input);
+        // an open scene's variants, once it is a pixel-art scene
+        if (input.scenes[at].pixelArt && facts.live && !facts.variantsDone){
+            collectVariants(project, *facts.live, facts);
+            input.scenes[at].spriteVariants = facts.scene.spriteVariants;
+        }
+    }
+    // the Project scope: scene files the project does not list too
+    if (scope.allScenes){
+        std::set<std::string> listed;
+        for (const SceneProject& scene : project.getScenes())
+            if (!scene.filepath.empty())
+                listed.insert(project.sceneFileKey(scene.filepath));
+        std::vector<std::string> files;
+        project.getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& asset){
+            if (asset.type == AssetType::Scene && !listed.count(project.sceneFileKey(asset.path)))
+                files.push_back(asset.path);
+        });
+        std::sort(files.begin(), files.end());
+        for (const std::string& relative : files){
+            const fs::path file = project.getProjectPath() / fs::path(relative);
+            std::optional<SceneFacts> facts = closedFacts(file, [&](){ return project.loadSceneFileProbe(file); }, fs::path(relative).stem().string());
+            if (!facts){
+                errors.push_back({"unreadable", "scenes", "Scene file \"" + relative + "\" could not be read.", "open it to see its load errors"});
+                continue;
+            }
+            facts->scene.path = relative;
+            for (PixelArtDrawable& d : facts->scene.drawables)
+                d.scene = relative;
+            classify(project, *facts, false, info, input);
+        }
     }
 
     // textures and fonts the scope names; else every texture whose import settings say pixel art
@@ -542,25 +769,39 @@ PixelArtCheckInput jasperengine::editor::pixelart::inputFromProject(Project& pro
                 continue;
             }
             if (isFontPath(path)){
+                if (scope.pixelArtPathsOnly)
+                    continue;
                 if (std::find(input.fontPaths.begin(), input.fontPaths.end(), path) == input.fontPaths.end())
                     input.fontPaths.push_back(path);
                 continue;
             }
-            textureEntry(project, input, path).pixelArt = true;
+            PixelArtTexture& t = textureEntry(project, input, path);
+            if (scope.pixelArtPathsOnly && !(t.aseprite || (t.hasSettings && t.settings.resolvedPixelArt()))){
+                input.textures.erase(path);
+                continue;
+            }
+            t.pixelArt = true;
         }
-    }else if (!scope.selectionOnly){
+    }else if (!scope.selectionOnly && !scope.noScenes){
         for (const std::string& path : projectTextureSources(project, false)){
             const std::string extension = lowerExtension(path);
-            if (extension == ".aseprite" || extension == ".ase")
-                continue;   // a sheet counts where a pixel-art drawable uses it
-            TextureImportSettings settings;
+            // a sheet counts where a pixel-art drawable uses it, and in the Project scope
+            if (extension == ".aseprite" || extension == ".ase"){
+                if (scope.allScenes)
+                    textureEntry(project, input, path).pixelArt = true;
+                continue;
+            }
             const fs::path absolute = project.getAssetsPath() / fs::path(path);
             if (!fs::exists(SetAssetMetaCmd::metaPathOf(absolute)))
                 continue;
-            const bool stored = TextureImportSettings::load(absolute.string(), settings);
-            const bool layoutType = stored && (settings.resolvedType() == TextureImportType::Sprite || settings.resolvedType() == TextureImportType::UI);
-            if ((stored && settings.resolvedPixelArt()) || (scope.assumeModeOn && layoutType))
-                textureEntry(project, input, path).pixelArt = true;
+            const bool inInput = input.textures.count(path) > 0;
+            PixelArtTexture& t = textureEntry(project, input, path);
+            const bool layoutType = t.hasSettings && (t.settings.resolvedType() == TextureImportType::Sprite ||
+                                                      t.settings.resolvedType() == TextureImportType::UI);
+            if ((t.hasSettings && t.settings.resolvedPixelArt()) || (scope.assumeModeOn && layoutType))
+                t.pixelArt = true;
+            else if (!inInput)
+                input.textures.erase(path);
         }
     }
     std::sort(input.fontPaths.begin(), input.fontPaths.end());

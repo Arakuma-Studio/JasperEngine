@@ -1,9 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// check_pixel_art (docs/specs/S42-pixel-art-mode.md R11-R14, R22, §6.3): the pixel-art validator
-// on the live project. The input is read on the main thread; the rules run on a worker and the
-// call becomes a job when they take longer than a second. A fix previews its changes; the same
+// check_pixel_art (docs/specs/S42-pixel-art-mode.md R11-R14, R16, R22, §6.3): the pixel-art validator
+// on the live project. The input is read on the main thread (closed scenes and metas from the
+// input cache when unchanged); the rules run inline when the last check of this project was quick,
+// else on an S06 Background worker as a job the call waits a second for. A fix previews its changes; the same
 // call with output: true applies them as one undo step and checks again. image: true returns the
 // first pixel-art scene's base-resolution frame (the Game view at Pixel Scale 1x), upscaled by
 // whole numbers, with each finding on screen boxed and labelled F<n>.
@@ -25,6 +26,7 @@
 #include "pixelart/RgbaImage.h"
 #include "util/Base64.h"
 #include "window/GameWindow.h"
+#include "jobs/JobSystem.h"
 
 #include "component/CameraComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
@@ -32,8 +34,9 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <chrono>
+#include <map>
 #include <optional>
-#include <thread>
 
 namespace jasperengine::editor::mcp {
 
@@ -45,9 +48,25 @@ namespace {
 
 using Problem = epx::PixelProblem;
 
-// past this much input (drawables, textures) the rules may take a second: they run as a job
+// before a project's first measured check: past this much input (drawables, textures) the rules may
+// take a second, so they run as a job
 constexpr size_t kJobInput = 2000;
+// a project whose last check's rules took longer than this runs them as a job
+constexpr double kInlineSeconds = 0.25;
 constexpr double kJobWaitSeconds = 1.0;
+
+// the rules' time of each project's last check (main thread)
+std::map<std::filesystem::path, double>& measuredSeconds() {
+    static std::map<std::filesystem::path, double> seconds;
+    return seconds;
+}
+
+epx::CheckResult timedRun(const epx::PixelArtCheckInput& input, const std::vector<std::string>& rules, double& seconds) {
+    const auto start = std::chrono::steady_clock::now();
+    epx::CheckResult result = epx::run(input, rules);
+    seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    return result;
+}
 
 struct CheckArgs {
     epx::Scope scope;
@@ -304,8 +323,12 @@ bool finishCheck(McpContext& ctx, CheckState& state) {
             epx::FixApplyReport report;
             std::string error;
             const std::string stepName = epx::fixStepName(plan);
-            if (!epx::applyFixPlan(*project, plan, stepName, report, error)) {
-                state.problems.push_back({"apply_failed", "fix", "the fix could not be applied (nothing changed): " + error, "check the findings again"});
+            if (!epx::applyFixPlan(*project, plan, stepName, report, error, &state.args.scope)) {
+                if (error.rfind("stale: ", 0) == 0)
+                    state.problems.push_back({"stale", "fix", "nothing changed: " + error.substr(7),
+                                              "call check_pixel_art again and fix from its result"});
+                else
+                    state.problems.push_back({"apply_failed", "fix", "the fix could not be applied (nothing changed): " + error, "check the findings again"});
                 return false;
             }
             std::vector<Problem> errors;
@@ -426,8 +449,14 @@ void checkPixelArtTool(const CallPtr& call) {
     size_t size = state->input->textures.size();
     for (const epx::PixelArtScene& scene : state->input->scenes) size += scene.drawables.size();
 
-    if (size <= kJobInput || state->args.image) {
-        state->result = epx::run(*state->input, state->args.rules);
+    // by the measured time of the last check, the input size before the first
+    const std::filesystem::path root = project->getProjectPath();
+    auto measured = measuredSeconds().find(root);
+    const bool quick = measured != measuredSeconds().end() ? measured->second <= kInlineSeconds : size <= kJobInput;
+    if (quick || state->args.image) {
+        double seconds = 0.0;
+        state->result = timedRun(*state->input, state->args.rules, seconds);
+        measuredSeconds()[root] = seconds;
         if (!finishCheck(ctx, *state)) {
             failCall(call, "check_pixel_art:", state->problems);
             return;
@@ -440,19 +469,21 @@ void checkPixelArtTool(const CallPtr& call) {
         return;
     }
 
-    // a large project: the rules on a worker, the rest back on the main thread
-    state->root = project->getProjectPath();
+    // a large project: the rules on a Background worker, the rest back on the main thread
+    state->root = root;
     state->job = ctx.jobs().create("check_pixel_art", std::string("Pixel art check") + (state->args.output ? " and fix" : ""));
     state->job->setProgress(-1.0, "checking " + std::to_string(size) + " drawables and textures");
     McpContext* context = &ctx;
     const std::optional<UndoOrigin> origin = call->attributed() ? std::optional<UndoOrigin>(call->getUndoOrigin()) : std::nullopt;
-    std::thread([state, context, origin]() {
+    jobs::submit([state, context, origin]() {
+        double seconds = 0.0;
         try {
-            state->result = epx::run(*state->input, state->args.rules);
+            state->result = timedRun(*state->input, state->args.rules, seconds);
         } catch (const std::exception& e) {
             state->failure = e.what();
         }
-        getEditorHost().enqueueMainThreadTask([state, context, origin]() {
+        getEditorHost().enqueueMainThreadTask([state, context, origin, seconds]() {
+            measuredSeconds()[state->root] = seconds;
             McpWriteScope writeScope;
             std::optional<UndoOriginScope> attribution;
             if (origin) attribution.emplace(*origin);
@@ -473,7 +504,7 @@ void checkPixelArtTool(const CallPtr& call) {
             }
             state->job->fail(text, Json{{"errors", list}});
         });
-    }).detach();
+    }, {jobs::Lane::Background, jobs::GateClass::Default, "check-pixel-art"});
     call->detach();
     replyWhenJobDone(call, state->job, true, kJobWaitSeconds, [state](const McpJob& finished) {
         Json result = finished.result();

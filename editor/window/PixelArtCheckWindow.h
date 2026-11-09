@@ -69,6 +69,8 @@ namespace jasperengine::editor {
         bool rerun = false;
         bool hasResult = false;
         pixelart::CheckResult current;
+        // the scope of the running check and of `current`: a fix is checked against it (stale)
+        pixelart::Scope runningScope, lastScope;
         std::string selectedKey;
         std::string pendingFocus;
         std::string notice;

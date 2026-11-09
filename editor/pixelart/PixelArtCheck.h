@@ -203,6 +203,8 @@ namespace jasperengine::editor::pixelart {
         std::vector<PixelArtScreen> screens;
         PixelUpscaleMode upscaleMode = PixelUpscaleMode::INTEGER;
         std::string defaultPalette;            // assets-relative .palette, "" none
+        // Project Settings > Textures (max sizes, qualities, power-of-two strategy) the import resolves against
+        TextureProjectSettings textureSettings;
     };
 
     // A font a Text draws or `paths` names (S51's analyzeFontForPixelArt plugs in through
@@ -239,6 +241,14 @@ namespace jasperengine::editor::pixelart {
         std::vector<std::string> scenes;       // project-relative scene paths or names; empty: build list + open scenes
         std::vector<std::string> paths;        // textures and fonts; empty: every pixel-art texture
         bool selectionOnly = false;            // the window's Selection scope
+        // the window's Project scope: every scene file of the project (listed in the build or not)
+        // and every Aseprite sheet, besides every pixel-art texture
+        bool allScenes = false;
+        // no scene at all, only `paths` (check --hook after images alone changed)
+        bool noScenes = false;
+        // `paths` that do not resolve to pixel art are left out (check --hook: a changed normal
+        // map or photo is not the pixel-art rules' business)
+        bool pixelArtPathsOnly = false;
         // the project as Pixel Art Mode would see it (the preset's plan before the mode is on):
         // every 2D scene and every sprite or UI texture is pixel art
         bool assumeModeOn = false;

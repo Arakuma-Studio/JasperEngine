@@ -18,6 +18,7 @@ import json
 import shutil
 import struct
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -245,18 +246,28 @@ async def test_cost(ed: Editor):
                 batch = await big.call("batch", calls=calls[at:at + 200], timeout=600)
                 big.check_eq(batch.get("failed", 0), 0, f"scene {s}: the sprites were made")
             await big.call("save_scene", scene=sid)
-        start = time.perf_counter()
-        cold = await big.call_raw("check_pixel_art", {}, timeout=600)
-        cold_s = time.perf_counter() - start
-        start = time.perf_counter()
-        warm = await big.call_raw("check_pixel_art", {}, timeout=600)
-        warm_s = time.perf_counter() - start
-        for r, label in ((cold, "cold"), (warm, "warm")):
-            data = r.structured or {}
-            seconds = cold_s if label == "cold" else warm_s
-            big.check(not r.is_error, f"{label}: {r.text[:300]}")
-            if seconds > 1.0:
-                big.check("job_id" in data, f"{label} took {seconds:.2f} s: it answered with a job ({list(data)[:8]})")
-        over = harness.over_budget("check_pixel_art on 12 scenes, 600 textures, 6000 sprites", {"warm": warm_s}, 1.0)
-        over.update(harness.over_budget("check_pixel_art cold", {"cold": cold_s}, 3.0))
-        big.check(not over, f"within budget: {over}")
+        saved = Path(tempfile.mkdtemp(prefix="je-s42-large-")) / "project"
+        shutil.copytree(big.project, saved, ignore=shutil.ignore_patterns(".jasperengine"))
+    # cold: a fresh editor on the saved project, its scenes closed and nothing of them kept (metas
+    # parsed, scene files decoded); warm: the same call again
+    try:
+        async with Editor(project=saved, name="Pixel Art Large") as big:
+            await big.call("get_project_summary")
+            start = time.perf_counter()
+            cold = await big.call_raw("check_pixel_art", {}, timeout=600)
+            cold_s = time.perf_counter() - start
+            start = time.perf_counter()
+            warm = await big.call_raw("check_pixel_art", {}, timeout=600)
+            warm_s = time.perf_counter() - start
+            for r, label in ((cold, "cold"), (warm, "warm")):
+                data = r.structured or {}
+                seconds = cold_s if label == "cold" else warm_s
+                big.check(not r.is_error, f"{label}: {r.text[:300]}")
+                if seconds > 1.0:
+                    big.check("job_id" in data, f"{label} took {seconds:.2f} s: it answered with a job ({list(data)[:8]})")
+            print(f"[S42] check_pixel_art on 12 scenes, 600 textures, 6000 sprites: cold {cold_s:.3f} s, warm {warm_s:.3f} s")
+            over = harness.over_budget("check_pixel_art on 12 scenes, 600 textures, 6000 sprites", {"warm": warm_s}, 1.0)
+            over.update(harness.over_budget("check_pixel_art cold", {"cold": cold_s}, 3.0))
+            big.check(not over, f"within budget: {over}")
+    finally:
+        shutil.rmtree(saved.parent, ignore_errors=True)

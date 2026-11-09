@@ -132,7 +132,9 @@ void PixelArtCheckWindow::run(){
                 input.scenes.push_back("__none__");
             break;
         case Scope::BuildScenes:
+            break;
         case Scope::Project:
+            input.allScenes = true;
             break;
     }
     std::vector<px::PixelProblem> errors;
@@ -143,6 +145,7 @@ void PixelArtCheckWindow::run(){
         return;
     }
     auto data = std::make_shared<px::PixelArtCheckInput>(px::inputFromProject(*project, input, errors));
+    runningScope = input;
     notice = errors.empty() ? std::string() : errors.front().message;
     const std::vector<std::string> rules(ruleFilter.begin(), ruleFilter.end());
     jobs::SubmitOptions options;
@@ -163,6 +166,7 @@ void PixelArtCheckWindow::collectResult(){
     running = jobs::Task<std::shared_ptr<px::CheckResult>>();
     if (result){
         current = *result;
+        lastScope = runningScope;
         hasResult = true;
         if (!pendingFocus.empty()){
             selectedKey = pendingFocus;
@@ -193,8 +197,13 @@ bool PixelArtCheckWindow::applyOptions(const std::vector<std::pair<std::string, 
     plan.fixes = fixes;
     px::FixApplyReport report;
     std::string error;
-    if (!px::applyFixPlan(*project, plan, stepName, report, error)){
-        notice = "Nothing was fixed: " + error;
+    if (!px::applyFixPlan(*project, plan, stepName, report, error, &lastScope)){
+        // a stale result: checked again, so the next Fix works on what the project is now
+        const bool stale = error.rfind("stale: ", 0) == 0;
+        if (stale)
+            run();
+        notice = stale ? "Nothing was fixed: the project changed since this check (" + error.substr(7) + "); checking again."
+                       : "Nothing was fixed: " + error;
         return false;
     }
     notice.clear();
@@ -300,7 +309,8 @@ void PixelArtCheckWindow::drawToolbar(){
         scope = (Scope)index;
         run();
     }
-    ImGui::SetItemTooltip("Scope: the open scenes, the build list, the selected GameObjects, or the build list and every pixel-art texture");
+    ImGui::SetItemTooltip("Scope: the open scenes, the build list, the selected GameObjects, or every scene file, pixel-art texture and "
+                          "Aseprite sheet of the project");
     ImGui::SameLine();
     const std::string rulesLabel = ruleFilter.empty() ? std::string("All Rules") : std::to_string(ruleFilter.size()) + " Rules";
     if (ImGui::Button((rulesLabel + "##PixelArtRules").c_str()))
