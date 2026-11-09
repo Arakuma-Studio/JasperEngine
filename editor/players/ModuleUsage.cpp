@@ -6,6 +6,7 @@
 #include "component/TitleArtRendererComponent.h"
 #include "io/Data.h"
 #include "titleart/TitleArtIO.h"
+#include "titleart/three_d/TitleCooked3D.h"
 
 #include "ShaderNeutralApi.h"
 #include "Project.h"
@@ -325,25 +326,32 @@ namespace {
         }
 
         // S81 R51: what a shipped Realtime title needs of titleart's sub-options (Glyph Atlas
-        // refuses 3D text, R30: its titles fall back to Realtime and count the same)
-        void scanTitleArt3D(const std::string& path, TitleArtRenderMode) {
+        // refuses 3D text, R30: its titles fall back to Realtime and count the same): the 3D
+        // renderer for a Dimension 3D layer, the mesher for one whose geometry a runtime value can
+        // change (S86 R38: the others ship cooked meshes); the evidence names the title
+        void scanTitleArt3D(const std::string& where, const std::string& object, const std::string& path, TitleArtRenderMode mode) {
             Data data;
             if (path.empty() || data.open(path.c_str()) != FILEDATA_OK) return;
             const titleart::TitleArtParseResult parsed =
                 titleart::parseTitleArt(std::string(reinterpret_cast<const char*>(data.getMemPtr()), data.length()));
             if (!parsed.ok) return;
-            std::set<std::string> dynamicText;
-            for (const titleart::Json& exposed : parsed.doc.root.value("exposed", titleart::Json::array())) {
-                for (const titleart::Json& target : exposed.value("targets", titleart::Json::array())) {
-                    if (target.value("field", std::string()) == "text") dynamicText.insert(target.value("layer", std::string()));
-                }
-            }
+            const std::string title = std::string("Title Art Renderer (") + (mode == TitleArtRenderMode::REALTIME ? "Realtime" : "Glyph Atlas") +
+                                      ") on " + object;
+            bool has3D = false;
             titleart::forEachLayer(parsed.doc.root, [&](const titleart::Json& layer, const titleart::Json*, int) {
                 if (layer.value("dimension", std::string()) != "3d") return true;
-                usage.titleArt3D = true;
-                if (dynamicText.count(layer.value("id", std::string()))) usage.titleArtMesher = true;
+                has3D = true;
+                std::string why;
+                if (!usage.titleArtMesher && !titleart::titleArt3DFixedGeometry(parsed.doc.root, layer, &why)) {
+                    usage.titleArtMesher = true;
+                    add("titleart", where, title + ": 3D layer '" + layer.value("name", std::string()) + "' meshes at runtime (" + why + ")");
+                }
                 return true;
             });
+            if (has3D && !usage.titleArt3D) {
+                usage.titleArt3D = true;
+                add("titleart", where, title + ": a 3D title (" + path + ")");
+            }
         }
 
         void addVideo(const std::string& where, const std::string& what) {
@@ -375,7 +383,7 @@ namespace {
                     if (title->enabled && title->renderMode != TitleArtRenderMode::BAKED) {
                         add("titleart", content.label, std::string("Title Art Renderer (") +
                             (title->renderMode == TitleArtRenderMode::REALTIME ? "Realtime" : "Glyph Atlas") + ") on " + object);
-                        scanTitleArt3D(title->title.path, title->renderMode);
+                        scanTitleArt3D(content.label, object, title->title.path, title->renderMode);
                     }
                 }
                 if (has(registry->findComponent<VideoPlayerComponent>(entity))) addVideoPlayer(content.label, "Video Player on " + object);

@@ -67,14 +67,26 @@ namespace jasperengine{
             int atlasPageSize = 1024;
             int atlasMaxPages = 4;
             std::string qualityTier = "auto";
+            // the S86 tier a Realtime 3D title renders at (TitleArtRuntime::tierFor: 0 bake quality,
+            // 1 high, 2 medium, 3 low); 0 for a document without 3D layers
+            int tier = 0;
             std::string label;              // "TitleArt/<GameObject>" (VRAM owner, pass labels)
             uint32_t testFlags = 0;         // the instance's test state (setDisabledFeaturesForTesting)
             bool glowOutput = false;        // Glow Pulse is on: render the glow output too (R35)
             std::string characters;         // R55: the characters the title may show ("" = no limit)
-            // the device's tiers the render uses, resolved by the module from S56's platform group
-            // and tier (TitleArtRuntime::setState): S83's FxTier and S86's TitleTier
+            // S83's FxTier on this device, resolved by the module from S56's platform group and tier
+            // (TitleArtRuntime::setState)
             int fxTier = 0;
-            int renderTier = 0;
+        };
+
+        // S86 R63: the mesh of a 3D layer the last render drew (Lua getMeshStats)
+        struct JASPERENGINE_API TitleArtMeshStats{
+            std::string layerId;
+            uint32_t triangles = 0, vertices = 0, solids = 0;
+            float buildMs = 0.0f;           // 0 for a cooked mesh (no build ran)
+            std::string tier;               // "bake" "high" "medium" "low": the tier it was made for
+            bool overBudget = false;        // over its tier's limits (S86 §6.7)
+            bool cooked = false;            // the export's .titlemesh (no mesher ran)
         };
 
         // what a title's live state reports (R18, R19, R69)
@@ -112,6 +124,8 @@ namespace jasperengine{
             uint64_t liveComposes = 0;
             std::string liveFallback;
             size_t liveBytes = 0;           // the inputs kept for the live compose
+            // S86 R63: the meshes of the displayed image's Dimension 3D layers
+            std::vector<TitleArtMeshStats> meshes;
         };
 
         class JASPERENGINE_API TitleArtRuntime{
@@ -134,6 +148,20 @@ namespace jasperengine{
             static Framebuffer* glowFramebuffer(TitleArtLive& live);
             // re-render now (Lua refresh(), render_title {rerender})
             static void invalidate(TitleArtLive& live);
+            // R11: how many output pixels per canvas pixel a UI title renders at for the project's
+            // Reference Height (height / canvas height; 1 without one or without the module)
+            static float referenceScale();
+            // S86 R37: the tier a title renders at for its component's Quality Tier ("auto", "high",
+            // "medium", "low"): a named tier, else the device's S56 tier where one applies, else the
+            // project's Realtime 3D Quality for this platform; High draws as Medium on GLES3/WebGL2.
+            // 0 for a document without 3D layers and in builds without 3D titles
+            static int tierFor(const TitleArtLive& live, const std::string& qualityTier);
+            // S86 R63: the mesh stats of the 3D layer at `layerPath` (names joined by '/', "#N" for
+            // the Nth same-named sibling after the first, or the layer's id) from the last render;
+            // false with `error` when the path names no 3D layer, true with `found` false while no
+            // render has drawn it yet
+            static bool meshStats(const TitleArtLive& live, const std::string& layerPath, TitleArtMeshStats& out, bool& found,
+                                  std::string* error);
             // a prebaked initial-state image shipped with the build (R11, R32), by state hash
             static void setPrebaked(TitleArtLive& live, const std::string& texturePath, uint64_t stateHash);
 

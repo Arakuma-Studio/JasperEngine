@@ -18,6 +18,7 @@
 #include "component/TitleArtRendererComponent.h"
 #include "subsystem/TitleArtRuntime.h"
 #include "titleart/TitleArtDoc.h"
+#include "titleart/TitleArtSettings.h"
 #include "util/TitleArtBakeInfo.h"
 
 #include <cstdint>
@@ -43,6 +44,8 @@ namespace jasperengine::editor {
         int atlasMaxPages = 4;
         float resolution = 1.0f;            // as TitleArtSystem::displayResolution gives it
         TitleArtRectI region;               // the bake frame
+        std::string qualityTier = "auto";   // S86 R37 (Realtime 3D)
+        std::vector<std::string> runtimeEnvironments;   // S86 R26: environments the export cooks besides the resolved ones
     };
 
     struct TitleArtExportPlan {
@@ -53,6 +56,13 @@ namespace jasperengine::editor {
 
     // the shipped titles of a project (its scenes and prefabs)
     TitleArtExportPlan planTitleArtExport(Project* project);
+
+    // the project's settings a build needs (TITLE_ART_RUNTIME_SETTINGS_PATH's text): Frame Budget,
+    // Release Delay, Cache Budget and Reference Height. The editor-only ones stay out (Edit mode's
+    // budget, Simulate Export Characters, Auto Bake, Stale Bakes On Export)
+    std::string titleArtRuntimeSettingsText(const TitleArtProjectSettings& settings);
+    // writes it into the build's assets when a Realtime or Glyph Atlas title ships; false with `error`
+    bool writeTitleArtRuntimeSettings(Project* project, const TitleArtExportPlan& plan, const std::filesystem::path& assetsDst, std::string& error);
 
     struct TitleArtPrebakeResult {
         bool ok = true;
@@ -65,8 +75,10 @@ namespace jasperengine::editor {
     // renders and writes the prebaked initial states of the plan's Realtime and Glyph Atlas
     // instances into `assetsDst` (the build's assets root, mirroring the project's paths below
     // `assetsPrefix`), and the Glyph Atlas instances' atlases (R32). The keys come from the build's
-    // copies of the documents (the player hashes those: run it after the fonts' relink)
-    TitleArtPrebakeResult writeTitleArtPrebakes(Project* project, const TitleArtExportPlan& plan, const std::filesystem::path& assetsDst);
+    // copies of the documents (the player hashes those: run it after the fonts' relink). A 3D
+    // title prebakes once per S86 tier it renders at on `platforms` (its state hash holds the tier)
+    TitleArtPrebakeResult writeTitleArtPrebakes(Project* project, const TitleArtExportPlan& plan, const std::filesystem::path& assetsDst,
+                                                const std::vector<std::string>& platforms);
     // R32 for one Glyph Atlas instance: its initial text and each digit at every digit place in it
     // render in the editor (at most 1,024 cells); the atlas's pages, plates and manifest ship as
     // <title>.glyphs-<style>.json beside the title

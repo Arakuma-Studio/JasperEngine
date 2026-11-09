@@ -118,7 +118,8 @@ namespace jasperengine::editor{
         Asset,      // an asset file reference (AssetRef): path, drop target, missing state
         LayerMask,  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
         Curve,      // an animation curve: the Curve field (S27, widget/CurveField.h)
-        Gradient    // a colour gradient: the Gradient field (S27, widget/GradientField.h)
+        Gradient,   // a colour gradient: the Gradient field (S27, widget/GradientField.h)
+        StringSet   // a list of strings picked from RowSettings::stringChoices (checkboxes in a dropdown)
     };
 
     struct EnumEntry {
@@ -173,6 +174,8 @@ namespace jasperengine::editor{
         // String rows: a dropdown of these values beside the field (free text still allowed),
         // e.g. the project's Input actions
         const std::vector<std::string>* stringSuggestions = nullptr;
+        // String: a dropdown of these (value, label) instead of free text; StringSet: its items
+        const std::vector<std::pair<std::string, std::string>>* stringChoices = nullptr;
         const char* suggestionsEmpty = nullptr;   // shown in the dropdown when there are none
         // What a number typed into the row's fields is in (25cm on a Meters field), S23 R25
         NumericUnit unit = NumericUnit::None;

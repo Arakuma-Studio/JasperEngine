@@ -33,6 +33,23 @@ namespace jasperengine::editor {
         bool operator!=(const TitleArtGroupValues& o) const { return !(*this == o); }
     };
 
+    // S86 R37: Realtime 3D Quality, the tier ("high", "medium", "low") a Realtime 3D title renders
+    // at per export platform, when its component says "auto" and no S56 device tier applies
+    struct TitleArtPlatformTiers {
+        // (not named after the platforms: `linux` is a predefined macro of GNU C++)
+        std::string windowsTier = "high", linuxTier = "high", macosTier = "high", iosTier = "medium", androidTier = "low", webTier = "low";
+        bool operator==(const TitleArtPlatformTiers& o) const {
+            return windowsTier == o.windowsTier && linuxTier == o.linuxTier && macosTier == o.macosTier && iosTier == o.iosTier &&
+                   androidTier == o.androidTier && webTier == o.webTier;
+        }
+        bool operator!=(const TitleArtPlatformTiers& o) const { return !(*this == o); }
+        // the platform's tier ("windows" .. "web", buildPlatformName's names); "" for another name
+        const std::string& of(const std::string& platform) const;
+        std::string* find(const std::string& platform);
+    };
+    // "high", "medium" or "low"
+    bool isTitleArtRealtimeTier(const std::string& tier);
+
     struct TitleArtProjectSettings {
         bool autoBake = true;
         TitleStaleBakesPolicy staleBakesOnExport = TitleStaleBakesPolicy::Rebake;
@@ -44,14 +61,15 @@ namespace jasperengine::editor {
         double editorFrameBudgetMs = 8.0;
         TitleArtGroupValues releaseDelaySeconds{10.0, 3.0, 3.0};
         TitleArtGroupValues cacheBudgetMiB{64.0, 16.0, 16.0};
-        int referenceHeight = 1080;
+        int referenceHeight = 0;    // 0: the canvas height (one output pixel per canvas pixel)
         bool simulateExportCharacters = true;
+        TitleArtPlatformTiers realtime3DQuality;
 
         bool operator==(const TitleArtProjectSettings& other) const {
             return autoBake == other.autoBake && staleBakesOnExport == other.staleBakesOnExport && frameBudgetMs == other.frameBudgetMs &&
                    editorFrameBudgetMs == other.editorFrameBudgetMs && releaseDelaySeconds == other.releaseDelaySeconds &&
                    cacheBudgetMiB == other.cacheBudgetMiB && referenceHeight == other.referenceHeight &&
-                   simulateExportCharacters == other.simulateExportCharacters;
+                   simulateExportCharacters == other.simulateExportCharacters && realtime3DQuality == other.realtime3DQuality;
         }
         bool operator!=(const TitleArtProjectSettings& other) const { return !(*this == other); }
 

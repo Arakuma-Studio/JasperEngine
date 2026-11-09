@@ -359,7 +359,8 @@ namespace jasperengine::titleart::test {
             SystemRender::commit();
             if (done) return ::testing::AssertionSuccess();
             if (job.failed()) return ::testing::AssertionFailure() << "the job failed: " << job.error();
-            // a fast GPU spins through the frames while a worker context links a program
+            // a step waiting on a program a GPU driver compiles on its worker (S32): the clock bounds the wait,
+            // not the frame count (a hardware GPU spins through a million empty frames in a second)
             if (job.waiting()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         return ::testing::AssertionFailure() << "the job did not finish (" << job.passesDone() << " of " << job.passesTotal() << " passes)";

@@ -14,6 +14,7 @@
 
 #include "titleart/three_d/Title3DRenderer.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -82,5 +83,54 @@ TEST(Title3DBakeBench, GoldBigBonusAndAColdEnvironment) {
         std::ofstream f(out);
         f << "{\n  \"bench\": \"je-bench-titlebake\",\n  \"results\": {\n    \"gold_big_bonus_bake_ms\": " << bakeMs
           << ",\n    \"cold_environment_1024_ms\": " << envMs << "\n  }\n}\n";
+    }
+}
+
+TEST(Title3DBakeBench, RealtimeTiers) {
+    // S86 R48, §6.7: one whole re-render of a Realtime title covering about 30 % of a 1080p frame
+    // per tier (Gold 3D "BIG BONUS" at 280 px, a colour change: the mesh and the environment
+    // cached, every pass run), the median of 5 with its readback, and the passes it took. Printed
+    // ("[title3d-bench] realtime_<tier>_ms"); the test checks the pass counts against §6.7
+    JASPER_REQUIRE_GPU();
+    static TestAssetResolver assets;
+    TitleArtRenderer renderer;
+    renderer.setContentProvider(makeGeometryTitleContentProvider());
+    auto docOf = [](const char* color) {
+        Json layer = goldBigBonus();
+        layer["size"] = 280;
+        layer["style_3d"]["face"]["color"] = color;
+        return makeDoc({{"canvas", canvas(1920, 1080)}, {"layers", Json::array({layer})}});
+    };
+    struct Tier {
+        int tier;
+        const char* name;
+        uint32_t maxPasses;
+    };
+    for (const Tier& t : {Tier{1, "high", 80}, Tier{2, "medium", 48}, Tier{3, "low", 7}}) {
+        RenderRequest r;
+        r.pxScale = 1.0f;
+        r.assets = &assets;
+        r.tier = t.tier;
+        r.doc = docOf("#ffffff");
+        const Pixels first = render(renderer, r);
+        ASSERT_GT(first.width, 0) << t.name;
+        const Title3DStats& st = static_cast<const Title3DRenderer*>(renderer.title3DRendererForTesting().get())->stats();
+        std::vector<double> ms;
+        uint64_t passes = 0;
+        for (int i = 0; i < 5; i++) {
+            char color[8];
+            std::snprintf(color, sizeof(color), "#ff%02x60", 0x80 + i * 16);
+            r.doc = docOf(color);
+            const uint64_t before = st.mainPasses + st.postPasses + st.glintPasses + st.aoPasses;
+            const auto start = std::chrono::steady_clock::now();
+            const Pixels p = render(renderer, r);
+            ms.push_back(msSince(start));
+            passes = st.mainPasses + st.postPasses + st.glintPasses + st.aoPasses - before;
+            ASSERT_GT(p.width, 0);
+        }
+        std::sort(ms.begin(), ms.end());
+        std::printf("[title3d-bench] realtime_%s_ms %.2f (median of 5, passes %llu, region 30 %% of 1080p)\n", t.name, ms[2],
+                    (unsigned long long)passes);
+        EXPECT_LE(passes, (uint64_t)t.maxPasses) << t.name << ": §6.7's pass budget";
     }
 }

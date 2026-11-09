@@ -186,7 +186,7 @@ TEST(Title3DEditorTest, CookedMeshesReadBackAtTheirTier) {
     const TitleArtDoc doc = applyOps(sample(), Json{{"op", "set_dimension"}, {"layer", "Plate"}, {"dimension", "3d"}}).doc;
     std::map<std::string, std::vector<uint8_t>> cooked;
     std::string error;
-    ASSERT_TRUE(cookTitleMeshes(doc, nullptr, titleart::TitleTier::Low, cooked, error)) << error;
+    ASSERT_TRUE(cookTitleMeshes(doc, nullptr, titleart::TitleTier::Low, 1.0, nullptr, cooked, error)) << error;
     ASSERT_EQ(cooked.size(), 1u);
     const std::shared_ptr<titleart::TitleMesh> mesh = titleart::readTitleMesh(cooked.begin()->second, &error);
     ASSERT_TRUE(mesh) << error;

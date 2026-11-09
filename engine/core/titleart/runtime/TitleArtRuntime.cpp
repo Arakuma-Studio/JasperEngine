@@ -20,13 +20,16 @@
 #include "titleart/runtime/TitleArtScheduler.h"
 #include "titleart/runtime/TitleLiveCompose.h"
 #include "util/Color.h"
+#include "Log.h"
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+#include "titleart/three_d/TitleCooked3D.h"
 #include "titleart/three_d/TitleTierFeatures.h"
 #endif
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 
 using namespace jasperengine;
 using namespace jasperengine::titleart;
@@ -137,41 +140,54 @@ bool TitleArtRuntime::isBuilt(){
     return true;
 }
 
+namespace {
+
+    // a build's copy of the project's settings, once, before anything reads them; the editor has
+    // no such file (syncTitleArtRuntime configures the scheduler from the project)
+    void applyExportedSettings(){
+        static bool applied = false;
+        if (applied) return;
+        applied = true;
+        std::string text;
+        if (!readText(TITLE_ART_RUNTIME_SETTINGS_PATH, text)) return;
+        TitleArtRuntimeSettings settings = TitleArtScheduler::get().settings();
+        if (parseTitleArtRuntimeSettings(text, settings)) TitleArtScheduler::get().configure(settings);
+        else Log::error("Title Art: %s is not a version 1 settings file: the default budgets apply", TITLE_ART_RUNTIME_SETTINGS_PATH);
+    }
+
+}
+
 std::shared_ptr<TitleArtLive> TitleArtRuntime::create(const std::string& titlePath, TitleArtRenderMode mode, std::string* error){
+    applyExportedSettings();
     std::shared_ptr<const TitleArtDoc> doc = loadDocument(titlePath, error);
     if (!doc) return nullptr;
     const uint64_t hash = hashTitleArt(*doc).document;
     auto live = std::make_shared<TitleArtLive>(titlePath, mode, doc, hash);
     if (mode == TitleArtRenderMode::GLYPH_ATLAS) live->setGlyphPlan(planTitleGlyphAtlas(*doc));
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+    if (live->has3D()){
+        // S86 R26, R38: what the export cooked for this title (a build's; none in the editor)
+        std::shared_ptr<TitleCooked3DSource> cooked = titleCooked3DFor(titlePath);
+#if !(defined(JASPERENGINE_TITLE_ART_MESHER) && JASPERENGINE_TITLE_ART_MESHER)
+        if (cooked) Log::print("Title Art '%s': its 3D layers draw the meshes the export cooked (this build has no 3D mesher)", titlePath.c_str());
+        else Log::warn("Title Art '%s': this build has no 3D mesher and its export cooked no mesh for it: its 3D layers draw nothing. Export "
+                       "the game again (Realtime 3D titles whose geometry cannot change ship their meshes)", titlePath.c_str());
+#endif
+        live->setCooked3D(std::move(cooked));
+    }
+#endif
     TitleArtScheduler::get().add(live.get());
     return live;
 }
 
 namespace {
 
-    // S83's and S86's tiers on this device: S56's platform group and tier (the editor's Game view
-    // simulation sets both), S86's component Quality Tier, and GLES3 / WebGL2's clamp
+    // S83's tier on this device: S56's platform group and tier (the editor's Game view simulation
+    // sets both). S86's tier is tierFor's, set by the caller (TitleArtSystem) with the component's
+    // Quality Tier
     TitleArtLiveState withTiers(const TitleArtLiveState& state){
         TitleArtLiveState out = state;
-        const DevicePlatformGroup group = QualityResolver::getPlatformGroup();
-        const std::optional<DeviceTier> deviceTier = QualityResolver::getTier();
-        out.fxTier = (int)titleFxTierFor(group, deviceTier);
-#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
-        // R37's project tier: the running platform's, or the simulated group's (desktop High,
-        // mobile and web Low, as Android and HTML5)
-        const int platform = (int)Engine::getPlatform();
-        const TitleTier project = group == QualityResolver::platformGroupOf(platform) ? defaultTitleTier(platform)
-                                  : group == DevicePlatformGroup::Desktop                ? TitleTier::High
-                                                                                           : TitleTier::Low;
-#if defined(SOKOL_GLES3)
-        const bool gles = true;
-#else
-        const bool gles = false;
-#endif
-        out.renderTier = (int)resolveTitleTier(state.qualityTier, project, deviceTier.has_value(), deviceTier.value_or(DeviceTier::High), gles);
-#else
-        out.renderTier = 0;
-#endif
+        out.fxTier = (int)titleFxTierFor(QualityResolver::getPlatformGroup(), QualityResolver::getTier());
         return out;
     }
 
@@ -183,6 +199,8 @@ namespace {
         hash = hashCombine(hash, (uint64_t)std::llround(state.resolution * 8.0f));
         hash = hashCombine(hash, ((uint64_t)(uint32_t)state.region.x << 32) ^ (uint32_t)state.region.y);
         hash = hashCombine(hash, ((uint64_t)(uint32_t)state.region.width << 32) ^ (uint32_t)state.region.height);
+        // S86 R37: a 3D title's tier (0 for every other title, so their keys stay as they were)
+        if (state.tier != 0) hash = hashCombine(hash, 0x3d00u + (uint64_t)state.tier);
         return hashCombine(hash, state.glowOutput ? 3u : 4u);
     }
 
@@ -194,8 +212,9 @@ uint64_t TitleArtRuntime::prebakeKeyOf(TitleArtLive& live, const TitleArtLiveSta
 }
 
 uint64_t TitleArtRuntime::stateHashOf(TitleArtLive& live, const TitleArtLiveState& given){
-    // R9: the document's content, the effective values, the resolution, the pixel path and the
-    // device's tiers (the prebake key leaves the last two out: its image serves either)
+    // R9: the document's content, the effective values, the resolution, the pixel path, S86's
+    // tier and S83's device tier (the prebake key leaves the pixel path and the device tier out: its
+    // image serves either)
     const TitleArtLiveState state = withTiers(given);
     uint64_t hash = hashCombine(live.documentHash(), (uint64_t)live.mode());
     for (const FieldOverride& o : fieldOverrides(*live.document(), state.overrides))
@@ -204,8 +223,9 @@ uint64_t TitleArtRuntime::stateHashOf(TitleArtLive& live, const TitleArtLiveStat
     hash = hashCombine(hash, ((uint64_t)(uint32_t)state.region.x << 32) ^ (uint32_t)state.region.y);
     hash = hashCombine(hash, ((uint64_t)(uint32_t)state.region.width << 32) ^ (uint32_t)state.region.height);
     hash = hashCombine(hash, titleArtForceRgba8() || (state.testFlags & TITLE_ART_TEST_NO_FLOAT_TARGETS) ? 1u : 2u);
+    if (state.tier != 0) hash = hashCombine(hash, 0x3d00u + (uint64_t)state.tier);
     hash = hashCombine(hash, state.glowOutput ? 3u : 4u);
-    hash = hashCombine(hash, ((uint64_t)(uint32_t)state.fxTier << 8) ^ (uint32_t)state.renderTier);
+    hash = hashCombine(hash, (uint64_t)(uint32_t)state.fxTier << 8);
     return hash == 0 ? 1 : hash;
 }
 
@@ -294,6 +314,99 @@ Framebuffer* TitleArtRuntime::glowFramebuffer(TitleArtLive& live){
 
 void TitleArtRuntime::invalidate(TitleArtLive& live){
     live.invalidate();
+}
+
+float TitleArtRuntime::referenceScale(){
+    const int height = TitleArtScheduler::get().settings().referenceHeight;
+    const unsigned int canvas = Engine::getCanvasHeight();
+    return height > 0 && canvas > 0 ? (float)height / (float)canvas : 1.0f;
+}
+
+int TitleArtRuntime::tierFor(const TitleArtLive& live, const std::string& qualityTier){
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+    if (!live.has3D()) return 0;
+    const int platform = std::clamp((int)Engine::getPlatform(), 0, 5);
+    // the project's Realtime 3D Quality: the build's export wrote it; the editor's settings else
+    TitleTier project = (TitleTier)std::clamp(TitleArtScheduler::get().settings().realtime3DTier[platform], 1, 3);
+    titleCookedProjectTier(platform, project);
+    // the editor's Game view simulating another platform group (S56) takes that group's default
+    // (desktop High, mobile and web Low, as Android and HTML5)
+    const DevicePlatformGroup group = QualityResolver::getPlatformGroup();
+    if (group != QualityResolver::platformGroupOf(platform)) project = group == DevicePlatformGroup::Desktop ? TitleTier::High : TitleTier::Low;
+    const std::optional<DeviceTier> device = QualityResolver::getTier();
+    const bool gles = Engine::getGraphicBackend() == GraphicBackend::GLES3;
+    return (int)resolveTitleTier(qualityTier, project, device.has_value(), device.value_or(DeviceTier::High), gles);
+#else
+    (void)live;
+    (void)qualityTier;
+    return 0;
+#endif
+}
+
+namespace {
+
+    // a layer by path (names joined by '/', "#N" for the Nth same-named sibling after the first,
+    // the EntityPath grammar the ops use) or by id
+    const Json* layerAtPath(const Json& root, const std::string& path){
+        if (const Json* byId = findLayer(root, path)) return byId;
+        static const Json none = Json::array();
+        auto top = root.find("layers");
+        const Json* siblings = top != root.end() ? &*top : &none;
+        const Json* found = nullptr;
+        size_t start = 0;
+        while (start <= path.size()){
+            const size_t slash = path.find('/', start);
+            std::string name = path.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
+            int nth = 0;
+            const size_t hash = name.rfind('#');
+            if (hash != std::string::npos && hash + 1 < name.size() &&
+                name.find_first_not_of("0123456789", hash + 1) == std::string::npos){
+                nth = std::atoi(name.c_str() + hash + 1);
+                name = name.substr(0, hash);
+            }
+            found = nullptr;
+            if (!siblings->is_array()) return nullptr;
+            int seen = 0;
+            for (const Json& layer : *siblings){
+                if (!layer.is_object() || layer.value("name", std::string()) != name) continue;
+                if (seen++ == nth){
+                    found = &layer;
+                    break;
+                }
+            }
+            if (!found) return nullptr;
+            if (slash == std::string::npos) break;
+            siblings = &layerChildren(*found);
+            start = slash + 1;
+        }
+        return found;
+    }
+
+}
+
+bool TitleArtRuntime::meshStats(const TitleArtLive& live, const std::string& layerPath, TitleArtMeshStats& out, bool& found, std::string* error){
+    found = false;
+    const Json* layer = live.document() ? layerAtPath(live.document()->root, layerPath) : nullptr;
+    if (!layer || layer->value("dimension", std::string()) != "3d"){
+        if (error && live.document()){
+            std::string names;
+            forEachLayer(live.document()->root, [&names](const Json& l, const Json*, int){
+                if (l.value("dimension", std::string()) == "3d") names += (names.empty() ? "" : ", ") + l.value("name", std::string());
+                return true;
+            });
+            *error = (layer ? "the layer '" + layerPath + "' is not Dimension 3D" : "no layer '" + layerPath + "'") +
+                     (names.empty() ? std::string(": the title has no 3D layer") : ": its 3D layers are " + names);
+        }
+        return false;
+    }
+    const std::string id = layer->value("id", std::string());
+    for (const TitleArtMeshStats& m : live.front().meshes){
+        if (m.layerId != id) continue;
+        out = m;
+        found = true;
+        break;
+    }
+    return true;
 }
 
 void TitleArtRuntime::setPrebaked(TitleArtLive& live, const std::string& texturePath, uint64_t stateHash){

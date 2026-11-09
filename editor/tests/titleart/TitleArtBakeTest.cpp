@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+#include "titleart/runtime/TitleArtRuntimeExport.h"
+#include "titleart/runtime/TitleArtScheduler.h"
 #include "texsynth/SynthImage.h"
 #include "titleart/TitleArtBake.h"
 #include "titleart/TitleArtIO.h"
@@ -353,4 +355,47 @@ TEST(TitleArtSettingsTest, DefaultsAreNotWrittenAndOldProjectsLoad) {
     const TitleArtProjectSettings bad = TitleArtProjectSettings::decode(YAML::Load("{autoBake: maybe, staleBakesOnExport: sometimes}"), &warnings);
     EXPECT_TRUE(bad == defaults) << "values that do not read keep their defaults";
     EXPECT_EQ(warnings.size(), 2u);
+}
+
+TEST(TitleArtSettingsTest, ABuildGetsTheSettingsTheGameReads) {
+    // S81 R58: what the export writes is what the player's parser reads; a default project has no
+    // Reference Height (0: the canvas height), so its titles render as before
+    TitleArtProjectSettings settings;
+    EXPECT_EQ(settings.referenceHeight, 0);
+    settings.frameBudgetMs = {3.5, 1.5, 2.5};
+    settings.releaseDelaySeconds = {20.0, 5.0, 6.0};
+    settings.cacheBudgetMiB = {32.0, 8.0, 12.0};
+    settings.referenceHeight = 1440;
+    titleart::TitleArtRuntimeSettings read;
+    ASSERT_TRUE(titleart::parseTitleArtRuntimeSettings(titleArtRuntimeSettingsText(settings), read));
+    EXPECT_EQ(read.frameBudgetMs[(size_t)DevicePlatformGroup::Desktop], 3.5);
+    EXPECT_EQ(read.frameBudgetMs[(size_t)DevicePlatformGroup::Mobile], 1.5);
+    EXPECT_EQ(read.frameBudgetMs[(size_t)DevicePlatformGroup::Web], 2.5);
+    EXPECT_EQ(read.releaseDelaySeconds[(size_t)DevicePlatformGroup::Desktop], 20.0);
+    EXPECT_EQ(read.cacheBudgetMiB[(size_t)DevicePlatformGroup::Web], 12.0);
+    EXPECT_EQ(read.referenceHeight, 1440);
+    titleart::TitleArtRuntimeSettings kept;
+    EXPECT_FALSE(titleart::parseTitleArtRuntimeSettings("{\"version\": 2}", kept)) << "a newer file is refused";
+    EXPECT_EQ(kept.frameBudgetMs[0], 4.0) << "and changes nothing";
+}
+
+TEST(TitleArtSettingsTest, Realtime3DQualityPerPlatform) {
+    // S86 R37: high on desktop, medium on iOS, low on Android and HTML5; only a changed platform is written
+    const TitleArtProjectSettings defaults;
+    EXPECT_EQ(defaults.realtime3DQuality.of("windows"), "high");
+    EXPECT_EQ(defaults.realtime3DQuality.of("ios"), "medium");
+    EXPECT_EQ(defaults.realtime3DQuality.of("android"), "low");
+    EXPECT_EQ(defaults.realtime3DQuality.of("web"), "low");
+    EXPECT_EQ(defaults.realtime3DQuality.of("playstation"), "");
+    TitleArtProjectSettings changed;
+    *changed.realtime3DQuality.find("android") = "medium";
+    const YAML::Node node = changed.encode();
+    ASSERT_TRUE(node["realtime3DQuality"]);
+    EXPECT_EQ(node["realtime3DQuality"].size(), 1u);
+    EXPECT_EQ(node["realtime3DQuality"]["android"].as<std::string>(), "medium");
+    EXPECT_TRUE(TitleArtProjectSettings::decode(YAML::Load(YAML::Dump(node))) == changed);
+    std::vector<std::string> warnings;
+    const TitleArtProjectSettings bad = TitleArtProjectSettings::decode(YAML::Load("{realtime3DQuality: {web: ultra}}"), &warnings);
+    EXPECT_EQ(bad.realtime3DQuality.of("web"), "low");
+    EXPECT_EQ(warnings.size(), 1u);
 }

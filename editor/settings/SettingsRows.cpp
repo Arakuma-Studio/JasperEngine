@@ -2254,12 +2254,45 @@ std::vector<Setting> mcpSettingsTable() {
                                     return readGroup(value, t.cacheBudgetMiB, 1.0, 4096.0, error);
                                 }));
             add(titleArtSetting("title_art.reference_height", "int",
-                                "The display height (px) the export prebakes Realtime titles' initial states for (default 1080).", {},
+                                "The display height (px) Realtime UI titles and their prebaked first images render for; 0 (default) is the canvas height.", {},
                                 [](const TitleArtProjectSettings& t) { return Json(t.referenceHeight); },
                                 [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
                                     long long height = 0;
-                                    if (!readInt(value, 120, 8192, height, error)) return false;
+                                    if (!readInt(value, 0, 8192, height, error)) return false;
+                                    if (height > 0 && height < 120) {
+                                        error = "must be 0 (the canvas height) or 120..8192";
+                                        return false;
+                                    }
                                     t.referenceHeight = (int)height;
+                                    return true;
+                                }));
+            // S86 R37: the tier of Realtime 3D titles per export platform
+            add(titleArtSetting("title_art.realtime_3d_quality", "object",
+                                "Realtime 3D titles whose Quality Tier is auto: high, medium or low per platform {windows, linux, macos, ios, "
+                                "android, web} (default high on desktop, medium on iOS, low on Android and HTML5). A device tier (S56) wins "
+                                "where one applies; GLES3/WebGL2 draw high as medium.", {},
+                                [](const TitleArtProjectSettings& t) {
+                                    Json j = Json::object();
+                                    for (const char* platform : {"windows", "linux", "macos", "ios", "android", "web"}) j[platform] = t.realtime3DQuality.of(platform);
+                                    return j;
+                                },
+                                [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    if (!value.is_object()) {
+                                        error = "must be an object {windows, linux, macos, ios, android, web}";
+                                        return false;
+                                    }
+                                    for (auto it = value.begin(); it != value.end(); ++it) {
+                                        std::string* tier = t.realtime3DQuality.find(it.key());
+                                        if (!tier) {
+                                            error = "'" + it.key() + "' is not windows, linux, macos, ios, android or web";
+                                            return false;
+                                        }
+                                        if (!it.value().is_string() || !isTitleArtRealtimeTier(it.value().get<std::string>())) {
+                                            error = it.key() + " must be high, medium or low";
+                                            return false;
+                                        }
+                                        *tier = it.value().get<std::string>();
+                                    }
                                     return true;
                                 }));
             add(titleArtSetting("title_art.simulate_export_characters", "bool",
@@ -3615,6 +3648,7 @@ const Placement placements[] = {
     {"title_art.cache_budget_mib", "Title Art", "Runtime", "Cache Budget", "titleart realtime memory images vram"},
     {"title_art.reference_height", "Title Art", "Runtime", "Reference Height", "titleart prebake initial state export display"},
     {"title_art.simulate_export_characters", "Title Art", "Runtime", "Simulate Export Characters in Play", "titleart characters subset glyphs missing"},
+    {"title_art.realtime_3d_quality", "Title Art", "Runtime", "Realtime 3D Quality", "titleart 3d tier high medium low mobile web"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},

@@ -1571,7 +1571,11 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
         }
         case PropertyType::Custom:
             // upstream's collider lists: their authored data, no live shape (copyCollider2D / 3D)
-            if (compType == ComponentType::RigidbodyComponent && property == "colliders") {
+            if (compType == ComponentType::TitleArtRendererComponent && property == "runtimeEnvironments") {
+                auto* source = Catalog::getPropertyRef<std::vector<std::string>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<std::string>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::RigidbodyComponent && property == "colliders") {
                 auto* source = Catalog::getPropertyRef<std::vector<Collider3D>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<Collider3D>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) copyColliders3D(*source, *target);

@@ -219,6 +219,8 @@ namespace jasperengine::titleart {
         std::vector<std::string> title3DParts(const Json& layer);
         // an image asset of a 3D material or environment (base texture, matcap), uploaded at planning
         std::shared_ptr<TitleCacheEntry> title3DAsset(const Json& ref, const std::string& layerId, const std::string& path);
+        // the meshes the planned 3D layers draw (the job's meshReports)
+        std::vector<TitleMeshReport> title3DMeshReports() const;
 #endif
 
         // ---- generators ----

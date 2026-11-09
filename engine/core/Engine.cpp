@@ -39,6 +39,7 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/TitleArtSystem.h"
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIClock.h"
 #if JASPERENGINE_HTMLUI
@@ -2058,6 +2059,11 @@ bool Engine::areScenesLoaded(bool textures){
             const auto documents = scenes[i]->getSystem<UIDocumentSystem>();
             ready = !documents || documents->isAllLoaded();
         }
+        // and its Realtime titles showing their images (S81, S86)
+        if (ready){
+            const auto titles = scenes[i]->getSystem<TitleArtSystem>();
+            ready = !titles || titles->areTitlesReady();
+        }
     }
     return ready;
 }
@@ -2084,6 +2090,9 @@ std::string Engine::describeNotLoaded(){
         }
         const auto documents = scene->getSystem<UIDocumentSystem>();
         if (documents && !documents->isAllLoaded()) add("HTML UI documents loading or not drawn yet");
+        const auto titles = scene->getSystem<TitleArtSystem>();
+        std::string title;
+        if (titles && !titles->areTitlesReady(&title)) add(title);
     }
     return out.empty() ? std::string("nothing (the ready line is 10 loaded frames away)") : out;
 }

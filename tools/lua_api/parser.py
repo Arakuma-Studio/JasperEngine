@@ -2696,6 +2696,12 @@ OVERRIDES.update({
         'doc': ['Sizes the Image (or the Sprite) to the title\'s pixels, as the Inspector\'s Set Native Size. Raises',
                 'when the title has no image yet.'],
         'overloads': [([], '')]},
+    ('TitleArt', 'getMeshStats'): {
+        'doc': ['The mesh the 3D layer at `layerPath` (names joined by "/", or its id) drew in the last render: triangles,',
+                'vertices, solids, buildMs, tier, overBudget and cooked (an export\'s mesh); nil before its first render. Raises',
+                'on a Baked title or a path that names no 3D layer (listing them).'],
+        'overloads': [([('layerPath', 'string')],
+                       '{triangles: integer, vertices: integer, solids: integer, buildMs: number, tier: string, overBudget: boolean, cooked: boolean}?')]},
     ('TitleArt', 'play'): {
         'doc': ['Plays the title\'s animation `name`. False (warned once) while titles have no animations (S85).'],
         'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean}')], 'boolean')]},

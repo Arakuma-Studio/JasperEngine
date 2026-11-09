@@ -1,0 +1,4 @@
+# tools/smoke-test.sh: lines the exported game logs (tools/fixtures/make_title3d_fixed_fixture.py)
+its 3D layers draw the meshes the export cooked (this build has no 3D mesher)
+[gate] title3d ready: tier=low cooked=true
+[gate] title3d budget=3.5

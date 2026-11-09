@@ -214,6 +214,19 @@ bool TitleGpu::ensureProgram(uint32_t number, std::string* error) {
     if (!slot) slot = std::make_unique<Program>();
     Program& p = *slot;
     if (p.loaded) return true;
+    // what building it takes this call (a software GL links on this thread)
+    struct BuildTimer {
+        TitleGpuStats& stats;
+        uint32_t program;
+        std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+        ~BuildTimer() {
+            const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            if (ms > stats.slowestBuildMs) {
+                stats.slowestBuildMs = ms;
+                stats.slowestBuildProgram = program;
+            }
+        }
+    } buildTimer{counters, number};
     if (p.failed || ShaderPool::isShaderBuildFailed(ShaderType::TITLE_ART, number)) {
         p.failed = true;
         if (error) *error = "the title art shader " + ShaderPool::getShaderStr(ShaderType::TITLE_ART, number) + " could not be built";
@@ -296,7 +309,20 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     state.target.sampleCount = std::max(1, key.samples);
     state.blend = desc.blend;
     // the first draw in this state compiles the driver's variant: one a frame
-    const uint64_t drawKey = titleDrawKey(ShaderType::TITLE_ART, number, state);
+    uint64_t drawKey = titleDrawKey(ShaderType::TITLE_ART, number, state);
+    // ... and with the textures it samples: llvmpipe compiles a fragment variant per sampled format,
+    // sampler state and power-of-two shape, so the same program with other textures is a new
+    // compile of seconds (two of them in one frame before the key held this)
+    const auto sampled = [&drawKey, this](const TextureRender* texture) {
+        drawKey = (drawKey ^ (texture ? texture->getSamplingKey() : placeholder.getSamplingKey())) * 0x100000001b3ull;
+    };
+    for (int i = 0; i < TITLE_TEXTURE_SLOTS; i++) {
+        if (p.tex[i].first >= 0) sampled(desc.tex[i]);
+    }
+    for (int i = 0; i < TITLE_RAW_SLOTS; i++) {
+        if (p.raw[i].first >= 0) sampled(desc.raw[i]);
+    }
+    if (p.vertexData.first >= 0) sampled(desc.vertexData);
     const bool firstDraw = !TitleFirstDraws::drew(drawKey);
     if (!TitleFirstDraws::allow(drawKey)) {
         deferredRun = true;

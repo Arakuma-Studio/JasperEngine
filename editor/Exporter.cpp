@@ -8,6 +8,7 @@
 #include "component/RigidbodyComponent.h"
 #include "Exporter.h"
 #include "titleart/TitleArtExport.h"
+#include "titleart/three_d/Title3DExport.h"
 #include "titleart/runtime/TitleArtRuntimeExport.h"
 #include "titleart/runtime/TitleArtRuntimeFonts.h"
 #include "io/watch/LinkedFolders.h"
@@ -2914,22 +2915,41 @@ bool editor::Exporter::prepareTitleArt() {
     return true;
 }
 
+std::vector<std::string> editor::Exporter::exportPlatformNames() const {
+    if (config.mode == ExportMode::Desktop) return {"linux"};
+    if (config.mode == ExportMode::Web) return {"web"};
+    if (config.mode == ExportMode::Player) return {buildPlatformName(config.platform)};
+    return {"windows", "linux", "macos", "ios", "android", "web"};
+}
+
 bool editor::Exporter::writeTitleArtRuntime() {
     // S81 R11, R32, R54-R57: the prebaked initial states of the shipped Realtime titles, rendered
     // in the editor into the build's assets (the fonts' subsets and credits come with them)
     TitleArtPrebakeResult prebaked;
     TitleArtFontShipResult fonts;
+    Title3DCookResult cooked3D;
+    Title3DCookPending cook3D;
+    std::string settingsError;
+    bool settingsFailed = false;
     std::promise<void> done;
     auto doneFuture = done.get_future();
     const fs::path assetsDst = getExportProjectRoot() / "assets";
-    editor::getEditorHost().enqueueMainThreadTask([this, &prebaked, &fonts, &done, assetsDst]() {
+    const std::vector<std::string> platforms = exportPlatformNames();
+    const std::vector<TextureFamily> families = TextureCookQueue::familiesForExport(platforms, project->getTextureSettings().androidEtc2Fallback);
+    editor::getEditorHost().enqueueMainThreadTask([this, &prebaked, &fonts, &cooked3D, &cook3D, &settingsError, &settingsFailed, &done, assetsDst, &platforms, &families]() {
         const TitleArtExportPlan plan = planTitleArtExport(project);
         // the fonts first: the prebakes are keyed by the documents the player reads (relinked to the subsets)
         fonts = shipTitleArtFonts(project, plan, assetsDst);
-        if (fonts.ok) prebaked = writeTitleArtPrebakes(project, plan, assetsDst);
+        if (fonts.ok) prebaked = writeTitleArtPrebakes(project, plan, assetsDst, platforms);
+        // S86 R26, R38: the Realtime 3D titles' cooked meshes and environment cubes
+        if (fonts.ok && prebaked.ok) cook3D = beginTitleArt3DCook(project, plan, assetsDst, platforms, families, cooked3D);
+        // after the cook, which clears je-titleart/: the project's settings for the game (S81 R58)
+        if (fonts.ok && prebaked.ok && !writeTitleArtRuntimeSettings(project, plan, assetsDst, settingsError)) settingsFailed = true;
         done.set_value();
     });
     doneFuture.get();
+    // the cubes on this worker: seconds of CPU a face size of 1024 takes
+    finishTitleArt3DCook(cook3D, cooked3D);
     for (const std::string& line : fonts.shipped) Out::info("Title Art font %s", line.c_str());
     for (const std::string& line : fonts.warnings) Out::warning("%s", line.c_str());
     if (!fonts.ok) {
@@ -2940,6 +2960,18 @@ bool editor::Exporter::writeTitleArtRuntime() {
     for (const std::string& line : prebaked.warnings) Out::warning("%s", line.c_str());
     if (!prebaked.ok) {
         setError(prebaked.error);
+        return false;
+    }
+    if (settingsFailed) {
+        setError("The Title Art settings of the build: " + settingsError);
+        return false;
+    }
+    if (cooked3D.meshes || cooked3D.environments) {
+        Out::info("Title Art 3D: %zu cooked meshes, %zu environment cubes (%zu KiB)", cooked3D.meshes, cooked3D.environments, cooked3D.bytes / 1024);
+    }
+    for (const std::string& line : cooked3D.warnings) Out::warning("%s", line.c_str());
+    if (!cooked3D.ok) {
+        setError(cooked3D.error);
         return false;
     }
     // R54: the shipped fonts' credits (copyLicenses carries the file to the build)
@@ -2964,11 +2996,7 @@ bool editor::Exporter::cookTextures() {
 
     // Windows/Linux/macOS -> desktop, iOS and Android -> mobile (+ android_etc2), Web -> web;
     // a source export builds for every platform, so it carries every family (R9)
-    std::vector<std::string> platforms;
-    if (config.mode == ExportMode::Desktop) platforms = {"linux"};
-    else if (config.mode == ExportMode::Web) platforms = {"web"};
-    else if (config.mode == ExportMode::Player) platforms = {buildPlatformName(config.platform)};
-    else platforms = {"windows", "linux", "macos", "ios", "android", "web"};
+    const std::vector<std::string> platforms = exportPlatformNames();
     const std::vector<TextureFamily> families =
         TextureCookQueue::familiesForExport(platforms, project->getTextureSettings().androidEtc2Fallback);
 

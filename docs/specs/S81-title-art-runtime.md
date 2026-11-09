@@ -1520,10 +1520,12 @@ rest of S82 lands in 6B.
     resolves both tiers into the state: S83's `FxTier::Mobile` on S56's Mobile and Web platform
     groups and on a device of S56's Low tier, else Desktop; S86's tier through `resolveTitleTier`
     (the component's Quality Tier, else S56's device tier, else the project tier, GLES3/WebGL2
-    clamping High to Medium). The tree has no `title_art.realtime_3d_quality` setting, so the project
-    tier is S86's per-platform default (the simulated group's: desktop High, mobile and web Low).
-    Both are in the state hash (a new tier renders again), not in the prebake key (either tier shows
-    the export's image). Glyph Atlas cells are keyed by style without the tier.
+    clamping High to Medium). The project tier is the Realtime 3D Quality setting (S81 deviation 38;
+    a simulated platform group takes that group's default: desktop High, mobile and web Low). W3's
+    `TitleArtRuntime::tierFor` is the one S86-tier resolution, 0 for a document without 3D layers, so
+    every 2D title's keys stay as they were: it is in the state hash (a new tier renders again) and
+    the prebake key (an export bakes a 3D title per tier); S83's FxTier is in the state hash only
+    (either shows the export's image). Glyph Atlas cells are keyed by style without the tier.
 32. **Tests: AC17's pass count.** `TitleFxLiveGpu.EveryLiveParamComposesLikeARerender` checks each live
     frame against a re-render at the value (F0 / F1), no re-render, no readback, composed in its
     frame, and that it runs fewer passes than the re-render (the content and the effects before the
@@ -1553,3 +1555,20 @@ rest of S82 lands in 6B.
     throughout). Not diagnosed further: the program being built is presumably the big ELEMENT
     variant (S80's, 4.8-5.3 s on llvmpipe), whose compile may not finish under the emulator's
     ANGLE/SwiftShader translator. No golden was written; AC18's figures are not measured.
+38. **Implementation (S86 wiring, `ta/w3-3d-runtime`): Realtime 3D through the runtime.** The component's `qualityTier`
+    resolves through `TitleArtRuntime::tierFor` into `TitleArtLiveState::tier` (job, state hash and prebake key; 0 and no
+    hash change for 2D documents); Lua `qualityTier` (read/write, refused values raise) and `getMeshStats(layerPath)`;
+    the project setting `title_art.realtime_3d_quality` (S86 deviation 31); the `_3D` / `_MESHER` sub-options follow
+    ModuleUsage's fixed-geometry rule with evidence naming the title and the parameter; the export ships the cooked 3D
+    data (`assets/je-titleart/`) and the player loads it. `Engine::areScenesLoaded` (the "Engine ready" line, the Recorder)
+    now also waits for enabled Realtime and Glyph Atlas titles that render to show their state's image or fail
+    (`TitleArtSystem::areTitlesReady`; `describeNotLoaded` names the title and its `pending`).
+39. **Implementation: the project's settings reach builds.** `TitleArtScheduler::configure` only ran in the editor, so games
+    used the defaults. A build with a Realtime or Glyph Atlas title now ships `assets/je-titleart/settings.json` (Frame Budget,
+    Release Delay, Cache Budget, Reference Height; `parseTitleArtRuntimeSettings`), read at its first such title. Realtime 3D
+    Quality travels in the 3D index (S86 deviation 31). Editor-only by nature: Edit mode's Frame Budget, Simulate Export
+    Characters in Play, Auto Bake, Stale Bakes On Export.
+40. **Implementation: Reference Height works, and its default is the canvas height.** Nothing read it (deviation 13 had moved
+    the display scale to canvas units). It now multiplies a UI title's resolution by height / canvas height in the game and
+    in the export's prebake, so their keys agree; 0, the new default, is the canvas height (R11 said 1080, which would have
+    silently re-rendered every project whose canvas is not 1080 at another size); world titles stay at their canvas pixels.

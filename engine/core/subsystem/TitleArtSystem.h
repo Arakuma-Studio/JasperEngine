@@ -126,9 +126,19 @@ namespace jasperengine{
         // R9: the resolution a Realtime title renders at (display scale x resolutionScale, rounded
         // to 1/8): the bake's output scale, times how large a UI companion shows the frame in
         // reference units (a world title renders at its canvas pixels). The export's prebake uses it.
-        static float resolutionFor(const TitleArtBakeInfo& bake, bool ui, unsigned int rectWidth, float uiScale, float resolutionScale);
+        // `referenceScale`: a UI title's output pixels per canvas pixel for the Reference Height (R11)
+        static float resolutionFor(const TitleArtBakeInfo& bake, bool ui, unsigned int rectWidth, float uiScale, float resolutionScale,
+                                   float referenceScale = 1.0f);
         // re-render (Realtime, Glyph Atlas); nothing on Baked
         static void refresh(EntityRegistry* scene, Entity entity);
+        // Engine::areScenesLoaded: every enabled Realtime or Glyph Atlas title that renders now
+        // shows its state's image (or failed): the "Engine ready" line, the Recorder and smoke
+        // screenshots wait for them; `waiting` names the first that does not ("Logo rendering 3/7")
+        bool areTitlesReady(std::string* waiting = nullptr) const;
+        // S86 R63: the mesh a Realtime title's 3D layer `layerPath` drew last; false with `error`
+        // (a Baked title, a path that names no 3D layer), true with `found` false before a render
+        static bool meshStats(EntityRegistry* scene, Entity entity, const std::string& layerPath, titleart::TitleArtMeshStats& out, bool& found,
+                              std::string& error);
         static std::string displayName(EntityRegistry* scene, Entity entity);
 
         // the frame budget scripts set (TitleArt.setFrameBudget), 0.25..16 ms

@@ -93,6 +93,7 @@ namespace jasperengine::titleart{
         // ---- the module's state (Realtime, Glyph Atlas) ----
         std::shared_ptr<TitleArtLive> live;
         TitleArtLiveStatus liveStatus;
+        bool liveRuns = false;          // its state renders now (visible, or Render When Hidden)
         uint32_t testFlags = 0;         // TITLE_ART_TEST_* copied into every request (R21)
 
         // ---- warnings said once (R7, R19, R41, R51) ----

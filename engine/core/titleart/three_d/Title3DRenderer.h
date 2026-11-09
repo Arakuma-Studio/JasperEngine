@@ -30,6 +30,7 @@
 #pragma once
 
 #include "Export.h"
+#include "shader/ShaderBuildTypes.h"
 #include "titleart/render/TitleTargetPool.h"
 #include "titleart/three_d/Title3DMath.h"
 #include "titleart/three_d/Title3DStyle.h"
@@ -87,6 +88,7 @@ namespace jasperengine::titleart {
         bool valid = false;
         std::string layerId;
         std::shared_ptr<const TitleMesh> mesh;
+        bool cookedMesh = false;                        // RenderRequest::cookedMeshes3D's (R38)
         Title3D style;
         Lighting3D lighting;
         std::vector<TitleMaterial3D> materials;         // <= 16
@@ -159,6 +161,9 @@ namespace jasperengine::titleart {
                     TitleRenderServices& services, TitleTarget* out, uint32_t testFlags, std::string& error);
         bool lastRenderDeferred() const;
 
+        // every program a render of the plan can bind on any device of its tier (float or
+        // compressed light), as ShaderPool keys: what an export precompiles (§6.4, AC22)
+        static std::vector<ShaderKey> programKeys(const Title3DPlan& plan);
         // the passes a render of the plan runs (steps' estimates, §6.7's pass budgets)
         static uint32_t passCount(const Title3DPlan& plan);
         // whether the main pass of this device and request holds compressed light

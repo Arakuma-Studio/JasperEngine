@@ -16,6 +16,7 @@
 
 #include "GameObject.h"
 #include "component/TitleArtRendererComponent.h"
+#include "subsystem/TitleArtRuntime.h"
 #include "math/Vector4.h"
 #include "util/FunctionSubscribe.h"
 
@@ -63,6 +64,14 @@ namespace jasperengine{
 
         int getPriority() const;
         void setPriority(int priority);
+
+        // S86 R37, R63: the Realtime 3D tier ("auto", "high", "medium", "low"); false with
+        // `error` for another value
+        std::string getQualityTier() const;
+        bool setQualityTier(const std::string& tier, std::string* error = nullptr);
+        // the mesh the 3D layer at `layerPath` drew last (false with `error` for a Baked title or
+        // a path that names no 3D layer; true with `found` false before its first render)
+        bool getMeshStats(const std::string& layerPath, titleart::TitleArtMeshStats& out, bool& found, std::string* error = nullptr) const;
 
         // re-render now (Realtime, Glyph Atlas); nothing on Baked
         void refresh();

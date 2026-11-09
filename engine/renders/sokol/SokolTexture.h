@@ -122,6 +122,9 @@ namespace jasperengine{
 
         uint32_t getViewId() const;
         int getWidth() const;
+        // what a driver may key a fragment shader variant on: the pixel format, the image type,
+        // the sampler's filters and wraps, whether the sides are powers of two, mipmapped or not
+        uint32_t getSamplingKey() const;
         int getHeight() const;
         static bool isViewValid(uint32_t viewId);
 

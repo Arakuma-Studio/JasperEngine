@@ -5,6 +5,7 @@
 options with stats_3d, try on 3D fields, the 3D ops through edit_title, get_title's three_d and
 stats_3d, check_title's 3d group and export_title format glb."""
 
+import json
 import time
 
 from harness import Editor
@@ -131,3 +132,90 @@ async def test_export_glb(ed: Editor):
     data = (ed.project / out["path"]).read_bytes()
     ed.check_eq(data[:4], b"glTF", "a binary glTF")
     ed.check(out["triangles"] > 0, "with triangles")
+
+
+async def test_realtime_3d_quality_setting(ed: Editor):
+    """S86 R37: title_art.realtime_3d_quality, a tier per platform, undoable; a wrong tier or platform
+    is refused naming the valid ones."""
+    await setup(ed)
+    got = (await ed.call("get_project_settings", keys=["title_art.realtime_3d_quality"]))
+    text = json.dumps(got)
+    for platform, tier in (("windows", "high"), ("ios", "medium"), ("android", "low"), ("web", "low")):
+        ed.check_in(f'"{platform}": "{tier}"', text, f"the default of {platform}: {got}")
+    await ed.call("set_project_settings", values={"title_art.realtime_3d_quality": {"android": "medium"}})
+    ed.check_in('"android": "medium"', json.dumps(await ed.call("get_project_settings", keys=["title_art.realtime_3d_quality"])))
+    await ed.call("undo", scope="project")
+    ed.check_in('"android": "low"', json.dumps(await ed.call("get_project_settings", keys=["title_art.realtime_3d_quality"])), "undo")
+    bad = await ed.check_error("set_project_settings", values={"title_art.realtime_3d_quality": {"android": "ultra"}})
+    ed.check_in("high, medium or low", bad)
+    bad = await ed.check_error("set_project_settings", values={"title_art.realtime_3d_quality": {"psp": "low"}})
+    ed.check_in("windows, linux, macos, ios, android or web", bad)
+
+
+async def test_export_cooks_realtime_3d(ed: Editor):
+    """S86 R26, R38 (AC26's export side): a source export of a Realtime 3D title whose geometry is fixed
+    ships its meshes at every Realtime tier and its environment cube per texture family
+    (assets/je-titleart/index.json); an Exposed text on a second Realtime 3D title ships no mesh for
+    that layer. (A source export keeps every module: the mesher switch is the Compile smoke's,
+    tools/fixtures/title3d-fixed, and TitleArtModuleUsage.ThreeDSubOptions'.)"""
+    await setup(ed)
+    fixed, dynamic = "assets/titles/fixed3d.titleart", "assets/titles/dynamic3d.titleart"
+    for path in (fixed, dynamic):
+        await create3D(ed, path)
+        await ed.call("edit_title", path=path, ops=[{"op": "set", "values": {"scene_3d.environment.preset": "softbox"}}])
+        await ed.call("export_title", path=path)
+    # a new title exposes its text: the fixed one drops that, the dynamic one keeps it
+    await ed.call("edit_title", path=fixed, ops=[{"op": "unexpose", "name": "text"}])
+    await ed.call("export_title", path=fixed)
+    await ed.call("set_project_settings", values={"title_art.realtime_3d_quality": {p: "low" for p in
+                                                  ("windows", "linux", "macos", "ios", "android", "web")}})
+    made = await ed.call("create_scene", name="Cooked3D", type="UI", path="scenes/Cooked3D")
+    scene = made["scene"]["id"]
+    await ed.call("create_ui", scene=scene, root={"type": "image", "name": "Fixed", "layout": {"anchor": "center", "size": [300, 150]}})
+    await ed.call("add_component", scene=scene, entity="Fixed", component="titleart")
+    await ed.call("set_properties", scene=scene, entity="Fixed", values={"titleart": {"title": fixed, "renderMode": "realtime",
+                                                                                       "prebakeInitialState": False}})
+    await ed.call("save_scene", scene=scene)
+    await ed.call("set_project_settings", values={"title_art.stale_bakes_on_export": "warn"})
+
+    async def export(name: str):
+        out = ed.scratch.root / name
+        r = await ed.call_raw("build_project", {"mode": "source", "output_dir": str(out), "platform": "linux", "backends": ["opengl"],
+                                                "allow_missing_assets": True, "overwrite": True, "timeout_seconds": 900})
+        ed.check(not r.is_error and (r.structured or {}).get("status") == "succeeded", f"the export: {r.text[:400]}")
+        return out
+
+    await ed.call("set_project_settings", values={"title_art.frame_budget_ms": {"desktop": 3.5}, "title_art.reference_height": 1440})
+    out = await export("export-cooked3d")
+    # S81 R58: the project's settings reach the build
+    written = json.loads(next(out.rglob("je-titleart/settings.json")).read_text())
+    ed.check_eq(written["frame_budget_ms"]["desktop"], 3.5)
+    ed.check_eq(written["reference_height"], 1440)
+    await ed.call("set_project_settings", values={"title_art.reference_height": 0})
+    indexes = list(out.rglob("je-titleart/index.json"))
+    ed.check_eq(len(indexes), 1, f"one index: {indexes}")
+    index = json.loads(indexes[0].read_text())
+    root = indexes[0].parent
+    ed.check_eq(index["version"], 1)
+    ed.check_eq(index["realtime_3d_quality"]["linux"], "low")
+    entry = index["titles"].get(fixed)
+    ed.check(entry is not None, f"the fixed title is listed: {sorted(index['titles'])}")
+    ed.check_eq(sorted(entry["environments"]), ["softbox"])
+    ed.check_eq(len(entry["meshes"]), 1, f"its 3D layer's meshes: {entry['meshes']}")
+    tiers = next(iter(entry["meshes"].values()))
+    ed.check_eq(sorted(tiers), ["high", "low", "medium"], "a mesh per Realtime tier")
+    for file in tiers.values():
+        data = (root / file).read_bytes()
+        ed.check(data[:4] == b"JTM1", f"{file} is a .titlemesh")
+    families = index["environments"]
+    ed.check_eq(sorted(families), ["desktop", "mobile", "web"], "a source export carries every family (android_etc2 only with its fallback setting)")
+    for family, presets in families.items():
+        ed.check((root / presets["softbox"]).read_bytes()[:12] == b"\xabKTX 20\xbb\r\n\x1a\n", f"{family}'s softbox cube is a KTX2")
+
+    await ed.call("create_ui", scene=scene, root={"type": "image", "name": "Dynamic", "layout": {"anchor": "top_center", "size": [300, 150]}})
+    await ed.call("add_component", scene=scene, entity="Dynamic", component="titleart")
+    await ed.call("set_properties", scene=scene, entity="Dynamic", values={"titleart": {"title": dynamic, "renderMode": "realtime"}})
+    await ed.call("save_scene", scene=scene)
+    out = await export("export-dynamic3d")
+    index = json.loads(next(out.rglob("je-titleart/index.json")).read_text())
+    ed.check_eq(index["titles"][dynamic]["meshes"], {}, "an Exposed text: the layer meshes at runtime")

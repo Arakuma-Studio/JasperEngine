@@ -637,7 +637,8 @@ bool TitleArtSystem::isVisible(Entity entity, const TitleArtRendererComponent& t
     return render->isInsideCamera(*camera, mesh->worldAABB);
 }
 
-float TitleArtSystem::resolutionFor(const TitleArtBakeInfo& bake, bool ui, unsigned int rectWidth, float uiScale, float resolutionScale){
+float TitleArtSystem::resolutionFor(const TitleArtBakeInfo& bake, bool ui, unsigned int rectWidth, float uiScale, float resolutionScale,
+                                     float referenceScale){
     // the display scale is in canvas (reference) units, so a build's prebaked state matches
     // whatever the device's resolution; the main output's own scale first (a 2x bake renders 2
     // output pixels per canvas pixel)
@@ -649,6 +650,7 @@ float TitleArtSystem::resolutionFor(const TitleArtBakeInfo& bake, bool ui, unsig
         if (main && main->width > 0) displayScale = (double)main->width / (double)frameWidth;
     }
     if (ui && frameWidth > 0 && rectWidth > 0) displayScale *= (double)rectWidth / ((double)frameWidth * std::max(0.01f, uiScale));
+    if (ui) displayScale *= referenceScale;
     const double scale = std::min(2.0, std::max(0.25, (double)resolutionScale));
     const double resolution = std::round(displayScale * scale * 8.0) / 8.0;
     return (float)std::min(4.0, std::max(0.125, resolution));
@@ -657,7 +659,8 @@ float TitleArtSystem::resolutionFor(const TitleArtBakeInfo& bake, bool ui, unsig
 float TitleArtSystem::displayResolution(Entity entity, const TitleArtRendererComponent& title, const TitleArtInstance& instance) const{
     // R9: display scale x resolutionScale, rounded to 1/8
     const RectTransformComponent* rect = instance.space == TitleArtSpace::UI ? scene->findComponent<RectTransformComponent>(entity) : nullptr;
-    return resolutionFor(instance.bake, instance.space == TitleArtSpace::UI, rect ? rect->width : 0u, title.uiScale, title.resolutionScale);
+    return resolutionFor(instance.bake, instance.space == TitleArtSpace::UI, rect ? rect->width : 0u, title.uiScale, title.resolutionScale,
+                         TitleArtRuntime::referenceScale());
 }
 
 void TitleArtSystem::updateLive(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance){
@@ -678,12 +681,14 @@ void TitleArtSystem::updateLive(Entity entity, TitleArtRendererComponent& title,
     liveState.priority = std::max(-100, std::min(100, title.priority));
     liveState.visible = isVisible(entity, title, instance);
     liveState.renderWhenHidden = title.renderWhenHidden;
+    instance.liveRuns = liveState.visible || liveState.renderWhenHidden;
     liveState.prebake = title.prebakeInitialState;
     liveState.transition = title.transition;
     liveState.transitionDuration = std::max(0.0f, std::min(2.0f, title.transitionDuration));
     liveState.atlasPageSize = title.atlasPageSize == 512 || title.atlasPageSize == 2048 ? title.atlasPageSize : 1024;
     liveState.atlasMaxPages = std::max(1, std::min(8, title.atlasMaxPages));
     liveState.qualityTier = title.qualityTier;
+    liveState.tier = TitleArtRuntime::tierFor(*instance.live, title.qualityTier);
     liveState.label = "TitleArt/" + scene->getEntityName(entity);
     liveState.testFlags = instance.testFlags;
     liveState.glowOutput = title.glowEnabled;
@@ -999,6 +1004,49 @@ void TitleArtSystem::setDisabledFeaturesForTesting(EntityRegistry* scene, Entity
 void TitleArtSystem::refresh(EntityRegistry* scene, Entity entity){
     TitleArtRendererComponent* title = titleOf(scene, entity);
     if (title && title->runtime && title->runtime->live) TitleArtRuntime::invalidate(*title->runtime->live);
+}
+
+bool TitleArtSystem::areTitlesReady(std::string* waiting) const{
+    if (!scene->isComponentRegistered<TitleArtRendererComponent>()) return true;
+    auto titles = scene->getComponentArray<TitleArtRendererComponent>();
+    for (size_t i = 0; i < titles->size(); i++){
+        const TitleArtRendererComponent& title = titles->getComponentFromIndex(i);
+        if (!title.enabled || title.renderMode == TitleArtRenderMode::BAKED || !title.runtime) continue;
+        const TitleArtInstance& instance = *title.runtime;
+        if (!instance.live || !instance.liveRuns || instance.ready || instance.failed) continue;
+        if (waiting) *waiting = "Title Art '" + scene->getEntityName(titles->getEntity(i)) + "' " + (instance.pending.empty() ? "queued" : instance.pending);
+        return false;
+    }
+    return true;
+}
+
+bool TitleArtSystem::meshStats(EntityRegistry* scene, Entity entity, const std::string& layerPath, TitleArtMeshStats& out, bool& found,
+                               std::string& error){
+    found = false;
+    TitleArtRendererComponent* title = titleOf(scene, entity);
+    const std::string name = displayName(scene, entity);
+    if (!title){
+        error = "TitleArt: GameObject '" + name + "' has no Title Art Renderer.";
+        return false;
+    }
+    if (title->renderMode == TitleArtRenderMode::BAKED){
+        error = "TitleArt '" + name + "' is Baked: it draws its bake and has no mesh. Set its Render Mode to Realtime for live 3D.";
+        return false;
+    }
+    if (!title->runtime || !title->runtime->live){
+        // not resolved yet (the first frame), or a build without the module (R51)
+        if (title->runtime && title->runtime->moduleMissing){
+            error = "TitleArt '" + name + "': this build has no Title Art module (titleart), so it renders no mesh.";
+            return false;
+        }
+        return true;
+    }
+    std::string why;
+    if (!TitleArtRuntime::meshStats(*title->runtime->live, layerPath, out, found, &why)){
+        error = "TitleArt '" + name + "': getMeshStats: " + why + ".";
+        return false;
+    }
+    return true;
 }
 
 std::vector<std::string> TitleArtSystem::parameterNames(EntityRegistry* scene, Entity entity){

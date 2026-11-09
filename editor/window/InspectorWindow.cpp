@@ -3977,7 +3977,26 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }else{
             if (suggestions)
                 ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemInnerSpacing.x));
-            inputChanged = ImGui::InputText(("##input_string_"+id).c_str(), buffer.data(), buffer.size());
+            if (settings.stringChoices){
+                // a fixed set of values: the row's value is one of them (another shows as it is)
+                std::string shown = dif ? std::string("-") : newValue;
+                for (const auto& [choice, name] : *settings.stringChoices)
+                    if (!dif && choice == newValue) shown = name;
+                if (ImGui::BeginCombo(("##input_string_"+id).c_str(), shown.c_str())){
+                    for (const auto& [choice, name] : *settings.stringChoices){
+                        if (ImGui::Selectable(name.c_str(), !dif && choice == newValue) && (dif || choice != newValue)){
+                            for (Entity& entity : entities){
+                                cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, choice, settings.onValueChanged);
+                                submitRowCommand(sceneProject, cpType, id);
+                            }
+                            finishProperty = true;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+            }else{
+                inputChanged = ImGui::InputText(("##input_string_"+id).c_str(), buffer.data(), buffer.size());
+            }
         }
 
         if (inputChanged){
@@ -4008,6 +4027,47 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 }
                 ImGui::EndPopup();
             }
+        }
+
+    }else if (type == RowPropertyType::StringSet && settings.stringChoices){
+        std::vector<std::string> first;
+        bool dif = false, any = false;
+        const std::vector<std::string>* defaults = nullptr;
+        for (Entity& entity : entities){
+            PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
+            defaults = static_cast<const std::vector<std::string>*>(prop.def);
+            const std::vector<std::string>& current = *static_cast<std::vector<std::string>*>(prop.ref);
+            if (any && current != first) dif = true;
+            if (!any) first = current;
+            any = true;
+        }
+        const bool defChanged = defaults && first != *defaults;
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
+            for (Entity& entity : entities){
+                cmd = new PropertyCmd<std::vector<std::string>>(project, sceneProject->id, entity, cpType, id, *defaults, settings.onValueChanged);
+                submitRowCommand(sceneProject, cpType, id);
+                finishProperty = true;
+            }
+        }
+        std::string shown;
+        for (const std::string& value : first) shown += (shown.empty() ? "" : ", ") + value;
+        if (dif) shown = "-";
+        else if (shown.empty()) shown = "None";
+        if (ImGui::BeginCombo(("##input_set_"+id).c_str(), shown.c_str())){
+            for (const auto& [choice, name] : *settings.stringChoices){
+                bool on = std::find(first.begin(), first.end(), choice) != first.end();
+                if (ImGui::Selectable(name.c_str(), on, ImGuiSelectableFlags_DontClosePopups)){
+                    std::vector<std::string> next = first;
+                    if (on) next.erase(std::remove(next.begin(), next.end(), choice), next.end());
+                    else next.push_back(choice);
+                    for (Entity& entity : entities){
+                        cmd = new PropertyCmd<std::vector<std::string>>(project, sceneProject->id, entity, cpType, id, next, settings.onValueChanged);
+                        submitRowCommand(sceneProject, cpType, id);
+                    }
+                    finishProperty = true;
+                }
+            }
+            ImGui::EndCombo();
         }
 
     }else if (type == RowPropertyType::Bool){
@@ -11205,6 +11265,7 @@ const char* editor::InspectorWindow::rowPropertyTypeName(RowPropertyType type){
         case RowPropertyType::IntSlider: return "IntSlider";
         case RowPropertyType::Direction: return "Direction";
         case RowPropertyType::Enum: return "Enum";
+        case RowPropertyType::StringSet: return "StringSet";
         case RowPropertyType::Ease: return "Ease";
         case RowPropertyType::Custom: return "Custom";
         case RowPropertyType::LocalEntity: return "LocalEntity";

@@ -120,6 +120,8 @@ namespace {
             request.output = TitleOutputFormat::Srgb8;
             request.tier = spec.tier;
             request.fxTier = spec.fxTier;
+            request.cookedMeshes3D = spec.cookedMeshes3D;
+            request.cookedEnvironments3D = spec.cookedEnvironments3D;
             request.assets = assets;
             // R9: a full render keeps the live inputs; a live compose starts from them
             request.keepLive = spec.keepLive;
@@ -210,6 +212,19 @@ namespace {
             out.frame = image.frame;
             out.bytes = targetBytes(image.target.key());
             out.target = std::move(image.target);
+            for (const TitleMeshReport& r : main->meshReports()){
+                static const char* const tiers[4] = {"bake", "high", "medium", "low"};
+                TitleArtMeshStats m;
+                m.layerId = r.layerId;
+                m.triangles = r.triangles;
+                m.vertices = r.vertices;
+                m.solids = r.solids;
+                m.buildMs = r.buildMs;
+                m.tier = tiers[std::clamp(r.tier, 0, 3)];
+                m.overBudget = r.overBudget;
+                m.cooked = r.cooked;
+                out.meshes.push_back(std::move(m));
+            }
             if (glow && glow->done()){
                 TitleImage& g = glow->resultImage();
                 out.glowWidth = g.width;
@@ -269,6 +284,12 @@ TitleArtLive::TitleArtLive(std::string titlePath, TitleArtRenderMode mode, std::
     : path(std::move(titlePath)), renderMode(mode), doc(std::move(document)), docHash(documentHash){
     // R9: only Realtime composes live (Glyph Atlas lays its glyphs out instead)
     if (renderMode == TitleArtRenderMode::REALTIME && doc) keepLive = titleLiveKeeps(*doc);
+    if (doc){
+        forEachLayer(doc->root, [this](const Json& layer, const Json*, int){
+            hasLayers3D = hasLayers3D || layer.value("dimension", std::string()) == "3d";
+            return !hasLayers3D;
+        });
+    }
 }
 
 TitleArtLive::~TitleArtLive(){
@@ -297,7 +318,7 @@ uint64_t TitleArtLive::renderKeyOf(const TitleArtLiveState& state) const{
     uint64_t key = hashCombine((uint64_t)std::llround(state.resolution * 8.0f), ((uint64_t)(uint32_t)state.region.x << 32) ^ (uint32_t)state.region.y);
     key = hashCombine(key, ((uint64_t)(uint32_t)state.region.width << 32) ^ (uint32_t)state.region.height);
     key = hashCombine(key, ((uint64_t)state.testFlags << 8) ^ (state.glowOutput ? 1u : 2u) ^ (titleArtForceRgba8() ? 4u : 8u));
-    return hashCombine(key, ((uint64_t)(uint32_t)state.fxTier << 16) ^ (uint32_t)state.renderTier);
+    return hashCombine(key, ((uint64_t)(uint32_t)state.fxTier << 16) ^ (uint32_t)state.tier);
 }
 
 bool TitleArtLive::liveChange(){
@@ -416,7 +437,8 @@ TitleJobSpec TitleArtLive::specOf() const{
     spec.glow = wanted.glowOutput;
     spec.label = wanted.label;
     spec.fxTier = (FxTier)wanted.fxTier;
-    spec.tier = wanted.renderTier;
+    spec.tier = wanted.tier;
+    if (cooked3D && hasLayers3D) cooked3D->fill(wanted.tier, spec);
     return spec;
 }
 
@@ -613,6 +635,8 @@ void TitleArtLive::finishJob(TitleLiveLimits& limits, size_t& cacheBytesInUse){
         // every input the render kept stays, with what the composes since changed
         image.liveInputs = frontImage.liveInputs;
         image.liveTouched = liveChanged;
+        // (a compose's 3D layers come from the node cache: the meshes are the render's)
+        image.meshes = frontImage.meshes;
         frontImage = std::move(image);
         if (hasWanted && frontImage.hash != wantedHash && !queued && !liveQueued && !cacheSwapPending) queueWanted();
         return;
@@ -740,6 +764,7 @@ TitleArtLiveStatus TitleArtLive::status() const{
         s.frame.alphaBounds = s.frame.frame;
     }
     s.missingCharacters = missingCharacters;
+    s.meshes = frontImage.meshes;
     if (renderMode == TitleArtRenderMode::GLYPH_ATLAS){
         s.glyphUnsafe = glyphPlan.unsafeLabels();
         s.glyphApproximate = glyphPlan.approximateLabels();

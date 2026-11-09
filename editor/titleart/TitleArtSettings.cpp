@@ -42,6 +42,32 @@ bool editor::titleStaleBakesPolicyFromName(const std::string& name, TitleStaleBa
     return false;
 }
 
+namespace {
+
+    const char* const kTitleArtPlatforms[] = {"windows", "linux", "macos", "ios", "android", "web"};
+
+}
+
+const std::string& TitleArtPlatformTiers::of(const std::string& platform) const {
+    static const std::string none;
+    const std::string* tier = const_cast<TitleArtPlatformTiers*>(this)->find(platform);
+    return tier ? *tier : none;
+}
+
+std::string* TitleArtPlatformTiers::find(const std::string& platform) {
+    if (platform == "windows") return &windowsTier;
+    if (platform == "linux") return &linuxTier;
+    if (platform == "macos") return &macosTier;
+    if (platform == "ios") return &iosTier;
+    if (platform == "android") return &androidTier;
+    if (platform == "web") return &webTier;
+    return nullptr;
+}
+
+bool editor::isTitleArtRealtimeTier(const std::string& tier) {
+    return tier == "high" || tier == "medium" || tier == "low";
+}
+
 YAML::Node TitleArtProjectSettings::encode() const {
     const TitleArtProjectSettings defaults;
     YAML::Node node(YAML::NodeType::Map);
@@ -61,6 +87,12 @@ YAML::Node TitleArtProjectSettings::encode() const {
     groups("cacheBudgetMiB", cacheBudgetMiB, defaults.cacheBudgetMiB, nullptr, 0.0);
     if (referenceHeight != defaults.referenceHeight) node["referenceHeight"] = referenceHeight;
     if (simulateExportCharacters != defaults.simulateExportCharacters) node["simulateExportCharacters"] = simulateExportCharacters;
+    // S86 R37: only the platforms whose tier is not the default
+    YAML::Node tiers(YAML::NodeType::Map);
+    for (const char* platform : kTitleArtPlatforms) {
+        if (realtime3DQuality.of(platform) != defaults.realtime3DQuality.of(platform)) tiers[platform] = realtime3DQuality.of(platform);
+    }
+    if (tiers.size() > 0) node["realtime3DQuality"] = tiers;
     return node;
 }
 
@@ -100,13 +132,22 @@ TitleArtProjectSettings TitleArtProjectSettings::decode(const YAML::Node& node, 
     groups("cacheBudgetMiB", out.cacheBudgetMiB, 1.0, 4096.0, nullptr);
     if (node["referenceHeight"]) {
         double height = out.referenceHeight;
-        number(node["referenceHeight"], height, 120.0, 8192.0, "referenceHeight");
-        out.referenceHeight = (int)height;
+        number(node["referenceHeight"], height, 0.0, 8192.0, "referenceHeight");
+        out.referenceHeight = height > 0.0 && height < 120.0 ? 120 : (int)height;
     }
     try {
         if (node["simulateExportCharacters"]) out.simulateExportCharacters = node["simulateExportCharacters"].as<bool>();
     } catch (const std::exception&) {
         if (warnings) warnings->push_back("titleArt.simulateExportCharacters is not true or false");
+    }
+    if (const YAML::Node tiers = node["realtime3DQuality"]; tiers && tiers.IsMap()) {
+        for (const char* platform : kTitleArtPlatforms) {
+            const YAML::Node value = tiers[platform];
+            if (!value) continue;
+            const std::string tier = value.IsScalar() ? value.Scalar() : std::string();
+            if (isTitleArtRealtimeTier(tier)) *out.realtime3DQuality.find(platform) = tier;
+            else if (warnings) warnings->push_back("titleArt.realtime3DQuality." + std::string(platform) + " \"" + tier + "\" is not high, medium or low");
+        }
     }
     return out;
 }
