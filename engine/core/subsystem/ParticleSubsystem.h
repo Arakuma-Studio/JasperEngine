@@ -49,6 +49,10 @@ namespace jasperengine{
         uint32_t raysLastTick = 0;
         uint32_t bytesPerParticle = 0;
         uint32_t seed = 0;       // the seed in use: the component's, the effect's or the one this play drew
+        // S49: the simulation mode, the Pixel variant, the Analytic slots it draws
+        bool analytic = false;
+        bool pixel = false;
+        uint32_t analyticSlots = 0;
     };
 
     class JASPERENGINE_API ParticleSubsystem : public SubSystem {

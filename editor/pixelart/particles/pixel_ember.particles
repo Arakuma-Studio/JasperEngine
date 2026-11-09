@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "duration": 5,
+  "looping": true,
+  "maxParticles": 32,
+  "modules": [
+    {"type": "main", "startLifetime": {"mode": "twoConstants", "constant": 0.6, "constantMax": 1.4},
+     "startSpeed": {"mode": "twoConstants", "constant": 15, "constantMax": 45}, "startSize": 1, "startColor": [1, 1, 1, 1]},
+    {"type": "emission", "rateOverTime": 6},
+    {"type": "shape", "shape": "edge", "radius": 4},
+    {"type": "limitVelocity", "dampen": 0, "drag": 1.6, "multiplyBySize": false},
+    {"type": "forceOverLifetime", "y": 30, "space": "world"},
+    {"type": "colorOverLifetime", "color": {"mode": "ramp", "ramp": "builtin:pixelfx-effects#ramp:hot"}},
+    {"type": "pixelArt", "fade": "cutout", "flickerBelow": 0.25, "flickerRate": 40, "wobbleAmplitude": [4, 3], "wobbleFrequency": [0.37, 0.48]},
+    {"type": "renderer", "renderMode": "pixel", "pixelShape": "dot"}
+  ]
+}

@@ -243,6 +243,20 @@ class Emitters(unittest.TestCase):
         self.assertIn('frameCount', {p['name'] for p in sheet['properties']})
         self.assertTrue(any(m['name'] == 'load' and m['static'] for m in sheet['methods']), 'SpriteSheet.load is static')
 
+    def test_pixel_particles(self):
+        """S49 R40 (AC12): ps.pixelArt, ps.simulationMode, ps:getAnalyticParticle, and setRamp on a
+        module's colour (ParticleSystemGradient, live) and on a MinMaxGradient value"""
+        classes = {c['name']: c for c in api()['classes']}
+        ps = classes['ParticleSystem']
+        props = {p['name']: p for p in ps['properties']}
+        self.assertEqual(props['pixelArt']['type'], 'ParticleSystemPixelArtModule')
+        self.assertIn('simulationMode', props)
+        self.assertIn('getAnalyticParticle', {m['name'] for m in ps['methods']})
+        self.assertIn('setRamp', {m['name'] for m in classes['ParticleSystemGradient']['methods']})
+        gradient = classes['MinMaxGradient']
+        self.assertIn('setRamp', {m['name'] for m in gradient['methods']})
+        self.assertTrue({'ramp', 'rampSteps', 'rampReverse', 'rampBias'} <= {p['name'] for p in gradient['properties']})
+
     def test_lua_only_marked(self):
         """C++ completion offers Engine::deltatime only if C++ has it (Doriax 755972f92): a static
         property backed by an accessor or a lambda, and a method bound to a helper, are Lua only"""

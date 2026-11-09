@@ -249,9 +249,50 @@ namespace {
 
 }
 
+namespace {
+
+    // S49's: base pixels the pixel view drew between grid lines (a pixel effect's run on its grid)
+    Json offGrid(const ParticleMeasurements& m){
+        Json row = qa::row("off_grid", "content");
+        row["method"] = "the pixel view draws every base pixel as a block of screen pixels; a block that is not one colour was drawn between grid lines";
+        row["threshold"] = 0;
+        row["threshold_source"] = "default";
+        if (!m.pixelEffect){
+            row["limited_by"] = "Not a pixel effect: no emitter has the Pixel Art module or Render Mode Pixel.";
+            return row;
+        }
+        if (!m.pixelGrid){
+            row["limited_by"] = "Measured on the pixel view's cells: run with view \"pixel\" and frames above 0.";
+            return row;
+        }
+        row["measured"] = {{"off_grid", m.offGrid}, {"drawn", m.pixelsDrawn}};
+        if (m.offGrid == 0){
+            row["status"] = "PASS";
+            return row;
+        }
+        row["status"] = "FAIL";
+        for (const auto& [t, at] : m.offGridAt) qa::addAt(row, t);
+        row["limited_by"] = std::to_string(m.offGrid) + " of " + std::to_string(m.pixelsDrawn) + " drawn base pixels sit between grid lines.";
+        row["fix_hint"] = "Turn on the Pixel Art module's Snap to Pixel Grid.";
+        return row;
+    }
+
+    // S48's lints of an effect (S49 R38): one implementation, theirs; SKIP until S48 lands
+    Json s48(const char* id, const ParticleMeasurements& m){
+        Json row = qa::row(id, "content");
+        row["limited_by"] = m.pixelEffect ? std::string("needs S48 (Pixel FX): its EffectLints compute ") + id
+                                          : std::string("Not a pixel effect (S48's pixel-art lint).");
+        return row;
+    }
+
+    const char* const kS48Lints[] = {"off_palette", "partial_alpha", "spill", "one_shot_end", "loop_seam", "determinism"};
+
+}
+
 const std::vector<std::string>& ParticleEffectChecks::checkIds(){
     static const std::vector<std::string> ids = {"capacity_hit", "overdraw_budget", "invisible", "blown_out", "pop", "never_ends", "platform_budget",
-                                                 "distortion"};
+                                                 "distortion", "off_grid", "off_palette", "partial_alpha", "spill", "one_shot_end", "loop_seam",
+                                                 "determinism"};
     return ids;
 }
 
@@ -278,6 +319,9 @@ qa::Json ParticleEffectChecks::rows(const ParticleMeasurements& m, const Particl
     out.push_back(neverEnds(m));
     out.push_back(platformBudget(m, request, estimate));
     out.push_back(distortion(m, request));
+    // pixel art (S49)
+    out.push_back(offGrid(m));
+    for (const char* id : kS48Lints) out.push_back(s48(id, m));
     return out;
 }
 
