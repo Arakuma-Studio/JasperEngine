@@ -417,6 +417,11 @@ bool psd::readPsd(const uint8_t* data, size_t size, PsdFile& out, std::string& e
             return false;
         }
     }
+    // a length of the top-level sections that passed the end stops the reader here
+    if (!r.ok()) {
+        error = r.failure();
+        return false;
+    }
     if (options.mergedImage && r.remaining() >= 2 && out.rgbOrGray() && (out.depth == 8 || out.depth == 16)) {
         out.mergedCompression = r.u16();
         const int planes = std::min<int>(out.channels, out.mode == 3 ? 4 : 2);

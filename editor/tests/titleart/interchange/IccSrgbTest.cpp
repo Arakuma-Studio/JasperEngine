@@ -84,16 +84,17 @@ TEST(IccSrgb, ProfileIsValid) {
         const double stored = (icc[curve + 12 + 2 * i] << 8 | icc[curve + 13 + 2 * i]) / 65535.0;
         EXPECT_NEAR(stored, expected, 1.0 / 65535 + 1e-12) << i;
     }
-    // the sRGB primaries as known (Bradford-adapted to D50)
+    // the sRGB primaries Bradford-adapted to the ICC's D50 (0.9642, 1, 0.8249): the often published
+    // 0.7141733 is for a D50 Z of 0.82521, so its columns would miss the PCS white
     double m[3][3];
     srgbIccMatrix(m);
     EXPECT_NEAR(m[0][0], 0.4361, 2e-4);
     EXPECT_NEAR(m[1][1], 0.7169, 2e-4);
-    EXPECT_NEAR(m[2][2], 0.7142, 2e-4);
+    EXPECT_NEAR(m[2][2], 0.7141733 * 0.8249 / 0.82521, 2e-4);
 }
 
 TEST(IccSrgb, BytesArePinned) {
     // the same bytes on every platform (integer rounding of the computed values)
     EXPECT_EQ(sha256Hex(std::string_view(reinterpret_cast<const char*>(srgbIccProfile().data()), srgbIccProfile().size())),
-              "PIN") << "the generated profile changed: if on purpose, pin the new hash";
+              "a71db53f79e003e66d463712907a1ddfd9e154c514aa1730f1caaee1bd09afda") << "the generated profile changed: if on purpose, pin the new hash";
 }

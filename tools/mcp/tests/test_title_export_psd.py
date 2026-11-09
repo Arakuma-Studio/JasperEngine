@@ -8,6 +8,8 @@ frame, the embedded ICC profile laid out as §6.10, per-language files and byte 
 control: one flipped length byte makes psdread fail naming the offset.
 """
 
+import json
+
 import psdread
 import pngdiff
 from harness import Editor
@@ -94,6 +96,30 @@ async def test_psd_layers_and_merged(ed: Editor):
             worst = max(worst, abs(merged[c * plane + i] - rgba[i * 4 + c]))
         worst = max(worst, abs(a - rgba[i * 4 + 3]))
     ed.check(worst <= 2, f"the merged image equals the PNG export (worst {worst})")
+    # the channels decode to the layer's own render: the PNG part of the same frame, PackBits
+    # here and ZIP with prediction in the 16-bit file
+    r3 = await ed.call("export_title", path=S["path"], format="png", options={"parts": True, "overwrite": True})
+    manifest = json.loads((ed.project / "Recordings/Title Art/layered/layered.parts.json").read_text())
+    part = next(p for p in manifest["parts"] if p["name"] == "Title")
+    pw, ph, part_rgba = pngdiff.decode((ed.project / "Recordings/Title Art/layered" / part["file"]).read_bytes())
+    ed.check(r3.get("ok") and (pw, ph) == (width, height), "the parts share the PSD's frame")
+    r4 = await ed.call("export_title", path=S["path"], format="psd", options={"bit_depth": 16, "overwrite": True})
+    deep = psdread.read((ed.project / r4["files"][0]).read_bytes())
+    deep_title = layer_named(deep, "Title")
+    ed.check("Lr16" not in deep_title["keys"] and deep_title["planes"], "16-bit channels decoded")
+    for layer, step, name in ((title, 1, "PackBits"), (deep_title, 2, "ZIP with prediction")):
+        lw = layer["right"] - layer["left"]
+        worst, seen = 0, 0
+        for y in range(layer["top"], layer["bottom"], 3):
+            for x in range(layer["left"], layer["right"], 3):
+                i = (y - layer["top"]) * lw + (x - layer["left"])
+                a = layer["planes"][-1][i * step]
+                if a == 0:
+                    continue
+                seen += 1
+                p = (y * width + x) * 4
+                worst = max(worst, abs(a - part_rgba[p + 3]), *(abs(layer["planes"][c][i * step] - part_rgba[p + c]) for c in range(3)))
+        ed.check(seen > 0 and worst <= 2, f"{name} channels equal the layer's render (worst {worst} over {seen} samples)")
 
 
 async def test_psd_16bit_languages_determinism(ed: Editor):
