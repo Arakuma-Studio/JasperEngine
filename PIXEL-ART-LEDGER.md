@@ -177,7 +177,7 @@ never build or run them.
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
-| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | in review |
+| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | accepted; merging main (batch 3) |
 | S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | in review |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
@@ -244,6 +244,17 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S51's review fixes are done at `46ce6ba20`.
+  - Built-in font redrawn, with an originality gtest; `preview_font` tool added; red controls
+    for the font, nearest sampling, `.fnt` reload and render scale.
+  - R20 budgets met (0.016 and 0.036 ms).
+  - **Export blur root-caused:** S56's Low/Medium device tiers cap the render scale (0.5/0.85),
+    then stretch the frame with LINEAR filtering. S51 fixed the UI-camera case (`8f11b53b5`).
+    S42 must keep the render scale at 1 for pixel-art projects, with a validator rule (routed to
+    S42).
+  - S51 deleted `/dev/null` by accident and restored it at once; verified it's a character device
+    1,3 and writable.
+  - The trial merge with `main` conflicts in 13 files, so S51 is merging `main` for batch 3.
 - 2026-11-09: S52's lighter gate passed on box A at `9a4f86a54` (editor 153, core 157, 106 MCP
   tests; red controls for AC1–10). An independent review is running.
 - 2026-11-09: **Batch 2: S49 Pixel Particles merged into `main` and pushed** (branch `9da5e1936`).
