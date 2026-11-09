@@ -88,6 +88,9 @@ namespace jasperengine::editor::titledesigner {
         // the project's files with one of these extensions (".hdr"), project-relative (S86's
         // environment picker lists the project's HDRIs)
         virtual std::vector<std::string> projectFiles(const std::vector<std::string>& /*extensions*/) { return {}; }
+        // S86 R55's Import HDRI...: asks for a file and copies it into the project; its
+        // project-relative path, empty when cancelled or refused (*error says why)
+        virtual std::string importHdriFile(std::string* /*error*/) { return std::string(); }
         // Preview As (S86's Realtime Preview row drives it)
         virtual std::string previewMode() const { return "realtime"; }
         virtual void choosePreviewMode(const std::string& /*mode*/) {}

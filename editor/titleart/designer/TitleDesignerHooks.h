@@ -74,6 +74,12 @@ namespace jasperengine::editor::titledesigner {
     using Gizmo3DProvider = std::function<bool(const TitleDesignerState& state, const std::string& layerId, const Gizmo3DLetters* letters,
                                                Gizmo3DTarget& out)>;
     void setGizmo3DProvider(Gizmo3DProvider provider);
+
+    // drawn over the canvas every frame, for a highlight the document does not store (S86 R52's
+    // band outline)
+    using CanvasOverlay = std::function<void(const TitleDesignerState&, ImDrawList*, const CanvasXform&)>;
+    void addCanvasOverlay(const std::string& id, CanvasOverlay overlay);
+    void runCanvasOverlays(const TitleDesignerState& state, ImDrawList* drawList, const CanvasXform& xform);
     const Gizmo3DProvider& gizmo3DProvider();
 
     // ---- Preview As (R4, R28) ----

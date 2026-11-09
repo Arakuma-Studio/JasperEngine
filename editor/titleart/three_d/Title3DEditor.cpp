@@ -24,6 +24,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <fstream>
+#include <iterator>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -581,3 +583,35 @@ void editor::registerTitle3DEditor() {
         TitleArtChecks::registerCheck(std::move(def));
     }
 }
+
+std::string editor::copyTitleHdriIntoAssets(const std::filesystem::path& source, const std::filesystem::path& assets, std::string* error) {
+    namespace fs = std::filesystem;
+    const auto refuse = [error](const std::string& message) {
+        if (error) *error = message;
+        return std::string();
+    };
+    std::string extension = source.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    if (extension != ".hdr" && extension != ".exr") return refuse("'" + source.filename().string() + "' is not an .hdr or .exr file");
+    std::error_code ec;
+    if (!fs::is_regular_file(source, ec)) return refuse("'" + source.string() + "' does not exist");
+    const fs::path inside = fs::weakly_canonical(source, ec).lexically_relative(fs::weakly_canonical(assets, ec));
+    if (!inside.empty() && *inside.begin() != "..") return source.string();
+    const fs::path folder = assets / "TitleArt" / "HDRI";
+    fs::create_directories(folder, ec);
+    if (ec) return refuse("could not create '" + folder.string() + "': " + ec.message());
+    const auto sameFile = [&source](const fs::path& other) {
+        std::error_code sizeError;
+        if (fs::file_size(source, sizeError) != fs::file_size(other, sizeError) || sizeError) return false;
+        std::ifstream a(source, std::ios::binary), b(other, std::ios::binary);
+        return std::equal(std::istreambuf_iterator<char>(a), std::istreambuf_iterator<char>(), std::istreambuf_iterator<char>(b));
+    };
+    fs::path destination = folder / source.filename();
+    for (int n = 2; fs::exists(destination, ec); n++) {
+        if (sameFile(destination)) return destination.string();
+        destination = folder / (source.stem().string() + " " + std::to_string(n) + source.extension().string());
+    }
+    if (!FileUtils::copyFileAtomic(source, destination, ec)) return refuse("could not copy '" + source.filename().string() + "': " + ec.message());
+    return destination.string();
+}
+

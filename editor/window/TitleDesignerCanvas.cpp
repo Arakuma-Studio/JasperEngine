@@ -841,6 +841,7 @@ void TitleDesignerWindow::drawEmptyState(ImDrawList* dl) {
 }
 
 void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
+    runCanvasOverlays(doc, dl, titleXform);
     const DocumentView& v = view();
     const ta::TitleArtDoc& shown = doc.shown();
     const TitleRect stage = stageRect();

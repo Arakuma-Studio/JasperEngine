@@ -8,6 +8,7 @@
 #include "Title3DDesigner.h"
 
 #include "Backend.h"
+#include "Log.h"
 #include "external/IconsFontAwesome6.h"
 #include "texture/Texture.h"
 #include "texture/TexturePrepare.h"
@@ -15,20 +16,29 @@
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
 #include "titleart/TitleArtSchema.h"
+#include "titleart/render/TitleContent.h"
 #include "titleart/designer/TitlePages.h"
 #include "titleart/designer/TitleRows.h"
 #include "titleart/three_d/BevelProfile.h"
+#include "titleart/three_d/Title3DMath.h"
+#include "titleart/three_d/Title3DSource.h"
 #include "titleart/three_d/Title3DEditor.h"
 #include "titleart/three_d/Title3DSchema.h"
 #include "titleart/three_d/Title3DStyle.h"
 #include "titleart/three_d/TitleEnvironment.h"
 #include "titleart/three_d/TitleMesh.h"
+#include "titleart/three_d/mesher/TitleMesher.h"
 
 #include "imgui.h"
 
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <cmath>
+#include <filesystem>
+#include <cstdint>
 #include <map>
+#include <unordered_map>
 #include <memory>
 
 using namespace jasperengine;
@@ -263,7 +273,7 @@ namespace {
         const std::string pickerId = "mat:" + layerId + ":" + part;
         if (ctx.readOnly) ImGui::BeginDisabled();
         if (ImGui::Button((std::string(ICON_FA_CUBE " Material: ") + titleCase(current.empty() ? "custom" : current) + " " ICON_FA_CARET_DOWN "##matpick").c_str(),
-                          ImVec2(-ImGui::GetFrameHeight() * 4.5f, 0.0f))) {
+                          ImVec2(-ImGui::GetFrameHeight() * 6.0f, 0.0f))) {
             ImGui::OpenPopup("##materialpicker");
             openPicker() = pickerId;
             pickerQuery().clear();
@@ -276,6 +286,30 @@ namespace {
             commit(ctx, editsToOps({{layerId, base, materialClipboard()}}), "Paste Material");
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip(materialClipboard().is_object() ? "Paste Material" : "Paste Material (copy one first)");
+        // Link (R54): members of a group stay equal
+        const std::string linked = material && material->is_object() ? str(*material, "link") : std::string();
+        ImGui::SameLine();
+        if (ImGui::SmallButton((std::string(linked.empty() ? ICON_FA_LINK_SLASH : ICON_FA_LINK) + "##matlink").c_str())) ImGui::OpenPopup("##matlinkmenu");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip(linked.empty() ? "Link Material" : "Linked Material");
+        if (ImGui::BeginPopup("##matlinkmenu")) {
+            const ta::Json linkOp{{"op", "link_material"}, {"layer", "id:" + layerId}, {"material", base}};
+            const auto links = doc.root.find("material_links");
+            if (links != doc.root.end() && links->is_object()) {
+                for (auto it = links->begin(); it != links->end(); ++it) {
+                    if (ImGui::MenuItem(it.value().value("name", it.key()).c_str(), nullptr, it.key() == linked) && it.key() != linked) {
+                        ta::Json op = linkOp;
+                        op["link"] = it.key();
+                        commit(ctx, ta::Json::array({op}), "Link Material");
+                    }
+                }
+                ImGui::Separator();
+            }
+            if (ImGui::MenuItem("New Link")) commit(ctx, ta::Json::array({linkOp}), "Link Material");
+            if (!linked.empty() && ImGui::MenuItem("Unlink")) {
+                commit(ctx, ta::Json::array({ta::Json{{"op", "unlink_material"}, {"layer", "id:" + layerId}, {"material", base}}}), "Unlink Material");
+            }
+            ImGui::EndPopup();
+        }
         if (ctx.readOnly) ImGui::EndDisabled();
         if (!ImGui::BeginPopup("##materialpicker")) {
             if (openPicker() == pickerId) {
@@ -581,6 +615,16 @@ namespace {
         section("Photo", true);
         ImGui::SeparatorText("Project HDRIs");
         const std::vector<std::string> hdris = ctx.host ? ctx.host->projectFiles({".hdr", ".exr"}) : std::vector<std::string>();
+        if (ctx.host && !ctx.readOnly && ImGui::Button(ICON_FA_FILE_IMPORT " Import HDRI...")) {
+            std::string error;
+            const std::string imported = ctx.host->importHdriFile(&error);
+            if (!imported.empty()) {
+                commit(ctx, setOps(ta::Json{{base + ".preset", "custom"}, {base + ".hdri", ta::Json{{"path", imported}, {"guid", ""}}}}), "Change Environment");
+                ImGui::CloseCurrentPopup();
+            } else if (!error.empty()) {
+                Log::error("%s", error.c_str());
+            }
+        }
         if (hdris.empty()) ImGui::TextDisabled("Import an .hdr or .exr into the project, or drop one here");
         for (const std::string& file : hdris) {
             const ta::Json ops = setOps(ta::Json{{base + ".preset", "custom"}, {base + ".hdri", ta::Json{{"path", file}, {"guid", ""}}}});
@@ -600,8 +644,13 @@ namespace {
                 const std::string text((const char*)payload->Data, (size_t)payload->DataSize);
                 std::string first = text.substr(0, text.find('\n'));
                 while (!first.empty() && first.back() == '\0') first.pop_back();
-                commit(ctx, setOps(ta::Json{{base + ".preset", "custom"}, {base + ".hdri", ta::Json{{"path", first}, {"guid", ""}}}}), "Change Environment");
-                ImGui::CloseCurrentPopup();
+                // a project file is imported already; only an HDRI is an environment
+                std::string extension = std::filesystem::path(first).extension().string();
+                std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+                if (extension == ".hdr" || extension == ".exr") {
+                    commit(ctx, setOps(ta::Json{{base + ".preset", "custom"}, {base + ".hdri", ta::Json{{"path", first}, {"guid", ""}}}}), "Change Environment");
+                    ImGui::CloseCurrentPopup();
+                }
             }
             ImGui::EndDragDropTarget();
         }
@@ -692,6 +741,43 @@ namespace {
         }
     }
 
+    // S86 R52: the band a row is hovering over (canvas overlay); its outline stays until the
+    // document, the band or the layer changes
+    struct BandHover {
+        std::string layer;
+        int band = -1;
+        int frame = -1;
+        const ta::AssetResolver* assets = nullptr;
+        std::string cachedKey;
+        std::vector<ta::TitleVec2> lines;
+    };
+    BandHover& bandHoverState() {
+        static BandHover hover;
+        return hover;
+    }
+
+    void hoverBand(const std::string& layerId, int band, const ta::AssetResolver* assets) {
+        BandHover& hover = bandHoverState();
+        hover.layer = layerId;
+        hover.band = band;
+        hover.frame = ImGui::GetFrameCount();
+        hover.assets = assets;
+    }
+
+    void drawBandOutline(const TitleDesignerState& state, ImDrawList* drawList, const CanvasXform& xform) {
+        BandHover& hover = bandHoverState();
+        // the row sets it in this frame or, drawn after the canvas, the previous one
+        if (hover.band < 0 || ImGui::GetFrameCount() - hover.frame > 1 || !state.isOpen()) return;
+        const std::string key = hover.layer + "#" + std::to_string(hover.band) + "@" + std::to_string(state.document()->revision());
+        if (key != hover.cachedKey) {
+            hover.cachedKey = key;
+            hover.lines = title3DBandOutline(state.shown(), hover.layer, hover.band, hover.assets);
+        }
+        for (size_t i = 0; i + 1 < hover.lines.size(); i += 2) {
+            drawList->AddLine(xform.toScreen(hover.lines[i]), xform.toScreen(hover.lines[i + 1]), IM_COL32(90, 200, 255, 230), 1.5f);
+        }
+    }
+
     void bandsList(RowContext& ctx, const std::string& layerId) {
         const ta::TitleArtDoc& doc = ctx.state->shown();
         const ta::Json* layer = layerById(doc, layerId);
@@ -721,6 +807,7 @@ namespace {
             const std::string name = "Band " + std::to_string(i + 1) + (str(band, "name").empty() ? std::string() : "  " + str(band, "name"));
             const std::string summary = titleCase(str(objectAt(band, "material"), "preset")) + " \xC2\xB7 grow " + formatValue(band.value("grow", ta::Json(3)), ta::ParamUnit::Percent);
             if (ImGui::Selectable((name + "   " + summary + "##band").c_str(), ctx.state->isSelected(node)) && ctx.host) ctx.host->selectNode(node);
+            if (ImGui::IsItemHovered()) hoverBand(layerId, (int)i, ctx.host ? ctx.host->assets() : nullptr);
             // drag to reorder: one move_band step
             if (!ctx.readOnly && ImGui::BeginDragDropSource()) {
                 const int index = (int)i;
@@ -1065,6 +1152,100 @@ std::vector<uint8_t> jasperengine::editor::title3DEnvironmentTile(const std::str
     return out;
 }
 
+std::vector<ta::TitleVec2> jasperengine::editor::title3DBandOutline(const ta::TitleArtDoc& doc, const std::string& layerId, int band,
+                                                                     const ta::AssetResolver* assets) {
+    std::vector<ta::TitleVec2> out;
+    const ta::Json* layer = layerById(doc, layerId);
+    if (!is3D(layer) || band < 0) return out;
+    auto content = ta::makeGeometryTitleContentProvider();
+    ta::three_d::TitleMeshRequest request;
+    request.source = ta::three_d::collectTitleSource(*layer, doc, *content, assets, nullptr);
+    request.style = ta::decodeStyle3D(*layer);
+    if ((size_t)band >= request.style.bands.size()) return out;
+    request.blocks = ta::three_d::collectCharBlocks(*layer, request.style.bands.size());
+    request.tier = ta::TitleTier::Low;
+    ta::three_d::TitleMesher mesher;
+    const auto mesh = mesher.build(request);
+
+    // the placement and the camera the render uses
+    Affine2 parent;
+    std::vector<std::string> chain;
+    for (std::string p = parentLayerOf(doc, layerId); !p.empty(); p = parentLayerOf(doc, p)) chain.push_back(p);
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+        if (const ta::Json* group = layerById(doc, *it)) parent = parent * layerTransformAffine(ta::decodeTransform(group->value("transform", ta::Json::object())));
+    }
+    ta::geometry::Affine parentAffine;
+    parentAffine.a = parent.a, parentAffine.b = parent.b, parentAffine.c = parent.c, parentAffine.d = parent.d, parentAffine.e = parent.e, parentAffine.f = parent.f;
+    const ta::Mat4 model = ta::title3DLayerMatrix(objectAt(*layer, "transform"), parentAffine);
+    const int width = doc.canvasWidth(), height = doc.canvasHeight();
+    const ta::Camera3D camera = request.style.camera ? *request.style.camera : ta::decodeScene3D(doc.root).camera;
+    const ta::TitleCamera3D view = ta::title3DCamera(camera, width, height, 1.0, ta::TitleRectI{0, 0, width, height}, false);
+
+    // the band's triangles, welded by position, with each letter's rig
+    std::vector<ta::Mat4> rigs(mesh->parts.size());
+    const ta::Json& chars = objectAt(*layer, "chars");
+    const double size = ta::layerSourceSize(*layer);
+    for (size_t p = 0; p < mesh->parts.size(); p++) {
+        const uint16_t r = mesh->parts[p].rig;
+        if (r == 0 || r > mesh->rigs.size()) continue;
+        const ta::TitleMeshRig& rig = mesh->rigs[r - 1];
+        rigs[p] = ta::title3DRigMatrix(ta::decodeCharRig(rig.charIndex, objectAt(chars, std::to_string(rig.charIndex).c_str())), {rig.pivot[0], rig.pivot[1], rig.pivot[2]}, size);
+    }
+    std::map<std::array<int32_t, 3>, uint32_t> welded;
+    std::vector<ta::TitleVec2> points;
+    struct Sides {
+        uint32_t a, b;
+        int front = 0, back = 0;
+    };
+    std::unordered_map<uint64_t, Sides> edges;
+    for (const ta::TitleMeshSlot& slot : mesh->slots) {
+        if (slot.band != band || (slot.role != ta::TitleSlotRole::BandFront && slot.role != ta::TitleSlotRole::BandSide)) continue;
+        for (uint32_t i = 0; i + 2 < slot.indexCount; i += 3) {
+            uint32_t ids[3];
+            ta::TitleVec2 corners[3];
+            bool visible = true;
+            for (int c = 0; c < 3 && visible; c++) {
+                const ta::TitleMeshVertex& v = mesh->vertices[mesh->index(slot.firstIndex + i + (uint32_t)c)];
+                const uint16_t part = v.ids[2];
+                const ta::Mat4 placed = part < rigs.size() ? model * rigs[part] : model;
+                const std::array<float, 4> w = placed.apply({v.position[0], v.position[1], v.position[2], 1.0f});
+                std::array<double, 2> pixel{};
+                if (!ta::title3DProject(view, {w[0], w[1], w[2]}, width, height, 1.0, pixel)) {
+                    visible = false;
+                    break;
+                }
+                const std::array<int32_t, 3> key{(int32_t)std::lround(w[0] * 32.0f), (int32_t)std::lround(w[1] * 32.0f), (int32_t)std::lround(w[2] * 32.0f)};
+                auto found = welded.find(key);
+                if (found == welded.end()) {
+                    found = welded.emplace(key, (uint32_t)points.size()).first;
+                    points.push_back({pixel[0] - width * 0.5, height * 0.5 - pixel[1]});
+                }
+                ids[c] = found->second;
+                corners[c] = points[found->second];
+            }
+            if (!visible) continue;
+            const double area = (corners[1].x - corners[0].x) * (corners[2].y - corners[0].y) - (corners[2].x - corners[0].x) * (corners[1].y - corners[0].y);
+            if (std::abs(area) < 1e-6) continue;
+            for (int c = 0; c < 3; c++) {
+                const uint32_t a = std::min(ids[c], ids[(c + 1) % 3]), b = std::max(ids[c], ids[(c + 1) % 3]);
+                if (a == b) continue;
+                Sides& sides = edges.try_emplace(((uint64_t)a << 32) | b, Sides{a, b}).first->second;
+                (area > 0.0 ? sides.front : sides.back)++;
+            }
+        }
+    }
+    // an edge between a triangle facing the camera and one facing away, or an open edge
+    constexpr size_t MAX_SEGMENTS = 40000;
+    for (const auto& entry : edges) {
+        const Sides& s = entry.second;
+        if (!((s.front > 0 && s.back > 0) || s.front + s.back == 1)) continue;
+        out.push_back(points[s.a]);
+        out.push_back(points[s.b]);
+        if (out.size() >= MAX_SEGMENTS * 2) break;
+    }
+    return out;
+}
+
 bool jasperengine::editor::title3DGizmoTarget(const ta::TitleArtDoc& doc, const std::string& layerId, const Gizmo3DLetters* letters, Gizmo3DTarget& out) {
     const ta::Json* layer = layerById(doc, layerId);
     if (!is3D(layer) || layer->value("locked", false)) return false;
@@ -1233,6 +1414,7 @@ void jasperengine::editor::registerTitle3DDesigner() {
         addPreviewMode(std::move(mode));
     }
 
+    addCanvasOverlay("title3d.band_outline", drawBandOutline);
     setGizmo3DProvider([](const TitleDesignerState& state, const std::string& layerId, const Gizmo3DLetters* letters, Gizmo3DTarget& out) {
         return title3DGizmoTarget(state.shown(), layerId, letters, out);
     });

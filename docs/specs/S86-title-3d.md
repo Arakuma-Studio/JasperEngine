@@ -1492,10 +1492,7 @@ rest of S82 lands in 6B.
     section's subsections, a 3D Appearance (Face, Bevel, Side, Band N) in place of the 2D one, the
     part pages' material and band rows, the Document page's 3D Scene, the three pickers, the tiers in
     Preview As, the gizmo target of a layer and of selected letters, Alt+drag Environment Rotation.
-    Not done, each for a reason: hovering a band row does not outline the band (the outline needs
-    the mesher's band rings on the main thread); the material picker has Copy and Paste but no Link (S80's
-    `link_material` accepts S80's `material` kind only, TitleArtOps `linkMaterial`, so a `material_3d` has no op to link through); the environment picker takes a project HDRI or
-    one dropped from the Project window, with no Import HDRI... file dialog. Material tiles render a
+    Hovering a band row outlines the band on the canvas (a new `addCanvasOverlay` hook of S82's: `title3DBandOutline`, the band's silhouette from the title's camera with the letters' rigs, meshed at the Low tier on the main thread once per hover and document change; the shear of `style_3d` skew is not applied to it). The material picker has Copy, Paste and Link (New Link, the existing links, Unlink, through `link_material`/`unlink_material`, which now accept `material_3d` too, so a 3D group stays equal like a 2D one). The environment picker has Import HDRI..., which copies the file into `Assets/TitleArt/HDRI` (a project Texture: its `.hdr`/`.exr` extension gives it S14's HDR import type by inference), and it takes an HDRI dropped from the Project window; a file dropped from outside the editor is not handled there. Material tiles render a
     bevelled "Aa" through the preview queue at priority Thumbnails without a disk cache (the queue's
     LRU keeps them for the session); environment tiles are computed on the CPU from the environment
     itself (a mirror ball, a rough gold disc, its panorama), one per frame while the picker is open,

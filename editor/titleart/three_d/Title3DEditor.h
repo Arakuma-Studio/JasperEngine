@@ -51,6 +51,11 @@ namespace jasperengine::editor {
     // get_title's 3D view of a layer: its effective style_3d and the lighting it renders with,
     // each value with its source (document, layer, part)
     titleart::Json title3DLayerInfo(const titleart::Json& layer, const titleart::TitleArtDoc& doc);
+
+    // S86 R55: an .hdr / .exr copied into the project's Assets/TitleArt/HDRI (the same file again
+    // is the same copy, another of the name gets a number); a file already under `assets` stays
+    // where it is. Its absolute path, empty with `*error` when refused
+    std::string copyTitleHdriIntoAssets(const std::filesystem::path& source, const std::filesystem::path& assets, std::string* error);
     // R38: the cooked meshes (.titlemesh bytes) of `doc`'s 3D layers at a Realtime tier, by layer
     // id: what the exporter writes for a Realtime 3D title whose text cannot change, so the player
     // draws them without the mesher (RenderRequest::cookedMeshes3D); false with `error`

@@ -180,6 +180,7 @@ namespace jasperengine::editor {
                                 const jasperengine::titleart::TitleRect& bounds, uint64_t content, int pixels) override;
         std::string previewMode() const override;
         std::vector<std::string> projectFiles(const std::vector<std::string>& extensions) override;
+        std::string importHdriFile(std::string* error) override;
         void choosePreviewMode(const std::string& mode) override;
 
     private:

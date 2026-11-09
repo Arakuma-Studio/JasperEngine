@@ -10,10 +10,12 @@
 #include "TitleDesignerWindow.h"
 
 #include "Project.h"
+#include "util/FileDialogs.h"
 #include "util/ProjectChecks.h"
 #include "component/TitleArtRendererComponent.h"
 #include "titleart/designer/TitleLayerThumbnails.h"
 #include "titleart/fx/FxCost.h"
+#include "titleart/three_d/Title3DEditor.h"
 
 #include <algorithm>
 #include <cmath>
@@ -247,6 +249,14 @@ std::string TitleDesignerWindow::previewMode() const {
 void TitleDesignerWindow::choosePreviewMode(const std::string& mode) {
     std::string error;
     if (!setPreviewAs(mode, &error)) reportError(error);
+}
+
+std::string TitleDesignerWindow::importHdriFile(std::string* error) {
+    if (!project) return std::string();
+    const std::string file = FileDialogs::openFileDialogFiltered("", "HDR Images", "hdr,exr");
+    if (file.empty()) return std::string();
+    const std::string copied = copyTitleHdriIntoAssets(file, project->getAssetsPath(), error);
+    return copied.empty() ? std::string() : project->normalizeToProjectRelative(copied).generic_string();
 }
 
 std::vector<std::string> TitleDesignerWindow::projectFiles(const std::vector<std::string>& extensions) {

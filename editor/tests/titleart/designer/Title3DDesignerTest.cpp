@@ -12,10 +12,17 @@
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
 #include "titleart/three_d/Title3DDesigner.h"
+#include "titleart/designer/TitleDesignerHooks.h"
 #include "titleart/designer/TitleRows.h"
 #include "titleart/three_d/Title3DEditor.h"
 
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <map>
+#include <vector>
+
+#include <unistd.h>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -154,6 +161,90 @@ TEST(Title3DDesignerTest, NoTargetFor2DOrLocked) {
 }
 
 // R55: a chrome ball and a gold disc over the panorama strip, lit by the environment
+// R54's Link: S80's link_material accepted only S80's material kind
+TEST(Title3DDesignerTest, LinkMaterial3D) {
+    std::string id;
+    ta::TitleArtDoc doc = threeD(id);
+    const auto apply = [&doc](const ta::Json& op) {
+        TitleOpsResult result = TitleArtOps::apply(doc, ta::Json::array({op}));
+        EXPECT_TRUE(result.ok) << result.error();
+        if (result.ok) doc = result.doc;
+        return result.ok;
+    };
+    const auto member = [&doc, &id](const char* path) {
+        ta::Json out;
+        ta::forEachLayer(doc.root, [&](const ta::Json& layer, const ta::Json*, int) {
+            if (layer.value("id", std::string()) == id) {
+                const ta::Json& style = layer.at("style_3d");
+                out = std::string(path) == "face" ? style.at("face") : style.at("bands").at(0).at("material");
+            }
+            return true;
+        });
+        return out;
+    };
+    ASSERT_TRUE(apply({{"op", "link_material"}, {"layer", "Title"}, {"material", "style_3d.face"}, {"name", "Gold"}}));
+    const std::string key = member("face").value("link", std::string());
+    EXPECT_FALSE(key.empty()) << "linked";
+    ASSERT_TRUE(apply({{"op", "add_band"}, {"layer", "Title"}, {"preset", "bright_ring"}}));
+    ASSERT_TRUE(apply({{"op", "link_material"}, {"layer", "Title"}, {"material", "style_3d.bands[0].material"}, {"link", key}}));
+    EXPECT_EQ(member("band"), member("face")) << "the new member takes the group's material";
+    ASSERT_TRUE(apply({{"op", "set"}, {"layer", "Title"}, {"values", {{"style_3d.face.roughness", 0.8}}}}));
+    EXPECT_DOUBLE_EQ(member("band").value("roughness", 0.0), 0.8) << "editing one keeps the group equal";
+    ASSERT_TRUE(apply({{"op", "unlink_material"}, {"layer", "Title"}, {"material", "style_3d.bands[0].material"}}));
+    EXPECT_EQ(member("band").value("link", std::string("x")), "");
+}
+
+// R52: the outline is of the hovered band, and follows its reach
+TEST(Title3DDesignerTest, BandOutlineFollowsTheBand) {
+    std::string id;
+    ta::TitleArtDoc doc = threeD(id);
+    TitleOpsResult result = TitleArtOps::apply(doc, ta::Json::array({ta::Json{{"op", "add_band"}, {"layer", "Title"}, {"values", {{"grow", 2.0}}}},
+                                                                     ta::Json{{"op", "add_band"}, {"layer", "Title"}, {"values", {{"grow", 24.0}}}}}));
+    ASSERT_TRUE(result.ok) << result.error();
+    doc = result.doc;
+    const auto extent = [](const std::vector<ta::TitleVec2>& lines) {
+        double minX = 1e9, maxX = -1e9;
+        for (const ta::TitleVec2& p : lines) {
+            minX = std::min(minX, p.x);
+            maxX = std::max(maxX, p.x);
+        }
+        return maxX - minX;
+    };
+    const auto thin = title3DBandOutline(doc, id, 0, nullptr), wide = title3DBandOutline(doc, id, 1, nullptr);
+    ASSERT_GE(thin.size(), 8u);
+    ASSERT_GE(wide.size(), 8u);
+    EXPECT_EQ(thin.size() % 2, 0u) << "line pairs";
+    EXPECT_GT(extent(wide), extent(thin) + 20.0) << "the larger grow reaches further";
+    EXPECT_TRUE(title3DBandOutline(doc, id, 5, nullptr).empty()) << "no such band";
+    EXPECT_TRUE(title3DBandOutline(doc, "nope", 0, nullptr).empty());
+}
+
+// R55's Import HDRI...: a copy under Assets/TitleArt/HDRI, once per file
+TEST(Title3DDesignerTest, ImportHdriCopiesOnce) {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / ("je-hdri-" + std::to_string(::getpid()));
+    fs::remove_all(root);
+    const fs::path assets = root / "project" / "assets", outside = root / "outside";
+    fs::create_directories(assets);
+    fs::create_directories(outside);
+    const auto write = [](const fs::path& path, const std::string& bytes) { std::ofstream(path, std::ios::binary) << bytes; };
+    write(outside / "studio.hdr", "first");
+    std::string error;
+    const std::string first = copyTitleHdriIntoAssets(outside / "studio.hdr", assets, &error);
+    EXPECT_EQ(fs::path(first), assets / "TitleArt" / "HDRI" / "studio.hdr") << error;
+    EXPECT_TRUE(fs::exists(first));
+    EXPECT_EQ(copyTitleHdriIntoAssets(outside / "studio.hdr", assets, &error), first) << "the same file is the same copy";
+    fs::create_directories(outside / "b");
+    write(outside / "b" / "studio.hdr", "second");
+    const std::string second = copyTitleHdriIntoAssets(outside / "b" / "studio.hdr", assets, &error);
+    EXPECT_EQ(fs::path(second).filename(), "studio 2.hdr") << "another file of the name gets a number";
+    EXPECT_EQ(copyTitleHdriIntoAssets(first, assets, &error), first) << "a file of the project stays where it is";
+    error.clear();
+    EXPECT_TRUE(copyTitleHdriIntoAssets(outside / "readme.txt", assets, &error).empty());
+    EXPECT_NE(error.find(".hdr or .exr"), std::string::npos);
+    fs::remove_all(root);
+}
+
 // a preview's render asks for engine frames from a window; the editor draws only on activity, so
 // the wish has to outlive the drain or the render stops until the mouse moves
 TEST(Title3DDesignerTest, EngineFrameRequestsKeepTheEditorDrawingUntilTheyStop) {

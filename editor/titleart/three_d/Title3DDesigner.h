@@ -35,6 +35,12 @@ namespace jasperengine::editor {
     bool title3DGizmoTarget(const titleart::TitleArtDoc& doc, const std::string& layerId, const titledesigner::Gizmo3DLetters* letters,
                             titledesigner::Gizmo3DTarget& out);
 
+    // S86 R52: the outline of band `band` of 3D layer `layerId` as line pairs in document space
+    // (y up, the canvas centre at the origin): the band's silhouette from the title's own camera,
+    // meshed at the Low tier; empty for a band with no solid (disabled, or no such band)
+    std::vector<titleart::TitleVec2> title3DBandOutline(const titleart::TitleArtDoc& doc, const std::string& layerId, int band,
+                                                        const titleart::AssetResolver* assets);
+
     // the environment picker's tile of a preset (RGBA8, rows top first, `width` x `height`): a
     // chrome ball and a gold disc lit by it over its panorama strip
     std::vector<uint8_t> title3DEnvironmentTile(const std::string& preset, int width, int height);
