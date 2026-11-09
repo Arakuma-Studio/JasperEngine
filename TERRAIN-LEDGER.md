@@ -274,3 +274,10 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - origin/main moved 257 commits (pixel art S41-S52, S90 Procedural Materials), with 41 conflicting files. Upstream took asset type 29
   (ProceduralMaterial), so ours move up by one: TreeData 30, TerrainWorld 31, VoxelVolume 32, NoiseGraph 33 (never shipped, so no
   migration). The merge is being done on terrain/upstream-merge in parallel with T1's budget work.
+- T1 budgets landed (158537c9b, from terrain/t1-perf 529964734). Runtime edits are now the `terrainedit` player module, which a project
+  gets only when a terrain has Allow Runtime Edits or a script calls applyOps, setHeights, getHeights or setRuntimeUploadBudget.
+  T1's player share is 40.1 KiB without the module (budget 96 KiB) and 320.9 KiB with it. Benches, before -> after medians on one box:
+  set_height 4096^2 829 -> 222 ms (budget 400), paint_by_rules 1292 -> 225 ms (600), whole-map delta commit about 70 -> about 12 ms (60),
+  64-tile overlay commit 3.27 -> 0.39 ms (1), runtime setHeights/applyOps 0.55/0.62 -> 0.14/0.19 ms (0.2).
+  Still being worked on: height query ratio 1.057x (budget 1.05x); r512 stamp 8.16 ms (budget 8) and 64-tile delta undo (one run of three
+  at 1.09 ms, budget 1), both possibly box noise.
