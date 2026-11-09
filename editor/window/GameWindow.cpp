@@ -1415,11 +1415,10 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
             UIProbe::rect("game.capturingAudio", at.x, at.y, at.x + size.x, at.y + size.y);
         }
 
-        // the Transition menu's edit-mode preview: redrawn every frame while it runs
-        if (!running && sceneProject && sceneProject->playState == ScenePlayState::STOPPED && jasperengine::pixelart::ScreenTransition::isActive()) {
+        // the Transition menu's edit-mode preview: the scene redraws every frame while it runs
+        // (not the edit pass's dirty flag: a screenshot waits for that to settle)
+        if (!running && sceneProject && sceneProject->playState == ScenePlayState::STOPPED && jasperengine::pixelart::ScreenTransition::isActive())
             sceneProject->needUpdateRender = true;
-            editPassDirty = true;
-        }
 
         // the Camera Shaker Inspector's edit-mode preview: redrawn every frame while it shakes
         if (!running && sceneProject && sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
