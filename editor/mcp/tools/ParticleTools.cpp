@@ -1317,8 +1317,7 @@ void registerParticleTools(McpRegistry& registry) {
         tool.inputSchema = object(withRun({
             {"times", array(number(""), "Seconds, instead of frames.")},
             {"frames", withDefault(integer("", 0, 24), 6)},
-            {"view", withDefault(stringEnum("pixel: the base-pixel grid, for pixel art.", {"three_quarter", "front", "side", "top", "pixel"}), "three_quarter")},
-            {"scale", integer("pixel view: screen pixels a base pixel.", 1, 8)},
+            {"view", withDefault(stringEnum("", {"three_quarter", "front", "side", "top", "pixel"}), "three_quarter")},
             {"background", withDefault(stringEnum("", {"dark", "light", "checker"}), "dark")},
             {"overdraw_map", withDefault(boolean("Adds a GPU heat row."), false)},
             {"platform", withDefault(stringEnum("", {"mobile", "web", "desktop"}), "mobile")},

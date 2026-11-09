@@ -1381,8 +1381,8 @@ CASES = [
         "what_happened": "New text (S49): a pixel-art effect is a pixel_* preset of create_particle_effect, and checking it "
                          "is preview_particle_effect with view pixel (the run on the base-pixel grid, off_grid among its "
                          "checks); without them an agent writes a soft-alpha effect JSON by hand and judges a perspective view.",
-        "text_at_issue": "create_particle_effect's preset enum (pixel_spark ...); preview_particle_effect's view 'pixel: the "
-                         "base-pixel grid, for pixel art' and scale",
+        "text_at_issue": "create_particle_effect's preset enum (pixel_spark ...); preview_particle_effect's view enum 'pixel'; "
+                         "the guide's Pixel particles: 'preview_particle_effect {path or entity, view: \"pixel\", scale}'",
         "source": "S49 R20, R38 on S91's preview (new tool text); no failure on record",
         "prompt": "Our game is pixel art. Make a hit-spark particle effect at assets/fx/hit_spark.particles that fits the "
                   "pixel look, put it on the Particle System 'Sparks' (entity 12) and check it for pixel-art problems over "
