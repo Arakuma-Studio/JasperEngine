@@ -57,6 +57,11 @@ local saved = terrain:getRuntimeFoliageState()         -- a string
 local ok = terrain:setRuntimeFoliageState(saved)       -- false if it is not valid
 ```
 
+On a Terrain World the same calls cover every tile. A tile out of memory keeps what the game removed and
+added there, and has it again when it comes back; `getRuntimeFoliageState` includes those tiles, in a
+form of its own (it starts `JEFW1`, a lone Terrain's `JEFS1`), and `setRuntimeFoliageState` takes only
+the form of the Terrain it is given to.
+
 ## Events and hits
 
 A tree is a capsule of its cell's body while the scene simulates, when its prototype's Collision is
@@ -67,6 +72,7 @@ local terrain = Terrain(scene, entity)
 
 terrain.onTreeHit = function(hit) print(hit.id, hit.prototype, hit.point, hit.normal, hit.body, hit.speed) end
 terrain.onTreeRemoved = function(id, pose) print(id, pose.position) end
+-- on a Terrain World one handler serves every tile, tiles that come into memory later too
 
 -- trees answer MeshRaycast by default, details only when asked
 local ray = Ray(Vector3(0, 10, 0), Vector3(0, -20, 0))
