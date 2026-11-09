@@ -171,6 +171,16 @@ TEST(PixelArtInput, ALayerSceneUnderAPixelPerfectCameraIsPixelArt) {
     EXPECT_FALSE(alone.scenes.front().pixelArt);
 
     ASSERT_TRUE(project()->addChildScene(parent, layer, true));
+    // the scene it is a layer of draws through its Pixel Perfect Camera
+    ASSERT_TRUE(project()->getScene(parent)->scene) << "the parent stays open";
+    px::Scope parentScope;
+    parentScope.scenes = {"Parent"};
+    const px::PixelArtCheckInput parentInput = px::inputFromProject(*project(), parentScope, errors);
+    ASSERT_EQ(parentInput.scenes.size(), 1u);
+    ASSERT_TRUE(parentInput.scenes.front().camera.exists) << "a saved main camera";
+    ASSERT_TRUE(parentInput.scenes.front().camera.hasComponent);
+    ASSERT_FALSE(parentInput.scenes.front().camera.perspective);
+    ASSERT_TRUE(parentInput.scenes.front().pixelArt);
     const px::PixelArtCheckInput layered = px::inputFromProject(*project(), scope, errors);
     ASSERT_EQ(layered.scenes.size(), 1u);
     EXPECT_TRUE(layered.scenes.front().pixelArt);
@@ -238,7 +248,8 @@ TEST(PixelArtFix, AFixPlannedBeforeAnEditIsRefused) {
     ASSERT_TRUE(headless().ready);
     const uint32_t id = newScene("Stale");
     px::PixelArtMode::setupNewScene(*project(), id);
-    const Entity hero = sprite(id, "Hero", Vector3(4.5f, 4.0f, 0.0f));
+    // off whole pixels whatever the project's Pixels Per Unit
+    const Entity hero = sprite(id, "Hero", Vector3(4.0037f, 4.0f, 0.0f));
     px::Scope scope;
     scope.scenes = {"Stale"};
     std::vector<px::PixelProblem> errors;
@@ -252,18 +263,18 @@ TEST(PixelArtFix, AFixPlannedBeforeAnEditIsRefused) {
 
     // the sprite moves after the check: the planned move would put it back where the check saw it
     Scene* scene = project()->getScene(id)->scene;
-    scene->getComponent<Transform>(hero).position = Vector3(10.25f, 4.0f, 0.0f);
+    scene->getComponent<Transform>(hero).position = Vector3(10.2537f, 4.0f, 0.0f);
     px::FixApplyReport report;
     std::string error;
     EXPECT_FALSE(px::applyFixPlan(*project(), plan, px::fixStepName(plan), report, error, &scope));
     EXPECT_EQ(error.rfind("stale: ", 0), 0u) << error;
-    EXPECT_FLOAT_EQ(scene->getComponent<Transform>(hero).position.x, 10.25f) << "the newer edit stays";
+    EXPECT_FLOAT_EQ(scene->getComponent<Transform>(hero).position.x, 10.2537f) << "the newer edit stays";
 
     // a plan from the current state applies
     const px::FixPlan fresh = px::plan(px::run(px::inputFromProject(*project(), scope, errors), {"off_grid"}), {"off_grid"});
     ASSERT_EQ(fresh.fixes.size(), 1u);
     EXPECT_TRUE(px::applyFixPlan(*project(), fresh, px::fixStepName(fresh), report, error, &scope)) << error;
     const float x = scene->getComponent<Transform>(hero).position.x;
-    EXPECT_NE(x, 10.25f);
-    EXPECT_NEAR(x, 10.25f, 0.5f) << "moved onto whole pixels from where it is now";
+    EXPECT_NE(x, 10.2537f);
+    EXPECT_NEAR(x, 10.2537f, 0.5f) << "moved onto whole pixels from where it is now";
 }
