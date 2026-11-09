@@ -1539,7 +1539,7 @@ rest of S82 lands in 6B.
     `SectionDef::parent` (S86's subsections inside S82's Dimension section), `SectionDef::replaces`
     (a 3D layer's Appearance and part pages are S86's), `SectionDef::defaultOpen`;
     `PreviewModeDef::renderTier` (a mode without `draw` renders the working document at an S86 tier);
-    the gizmo provider takes the selected letters (`Gizmo3DLetters`) and `Gizmo3DTarget` names its
+    `requestEngineFrame` (one-shot render-phase work: S81's Glyph Atlas title runs its scheduler there); the gizmo provider takes the selected letters (`Gizmo3DLetters`) and `Gizmo3DTarget` names its
     steps (`moveStep`, `rotateStep`: "Rotate 3D Layer", "Tilt Letters"); `InheritanceRule::sparse` and
     `valueAt` (S86's lighting levels: an absent member is inherited, the row menu says Inherit);
     `PropertyHost` gives cost badges, Preview Live, picker tiles (the window's preview queue, priority

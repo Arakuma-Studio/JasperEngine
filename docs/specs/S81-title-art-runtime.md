@@ -1484,4 +1484,6 @@ rest of S82 lands in 6B.
     glyphs) and the Glyph Layer. Preview As Glyph Atlas creates a real Glyph Atlas title
     (`TitleArtRuntime::create`) on the committed file, run by S81's scheduler like any instance, and
     makes it again when the file's revision changes; leaving the mode or closing the window drops
-    it. The Title Art Renderer's Open in Title Designer opens one instance In Context (S82 R30).
+    it. `TitleArtSystem::runRuntimeFrame` is the frame-once entry `renderTitles` used privately, made
+    public so the preview runs the scheduler in the render phase (through S82's `requestEngineFrame`)
+    while no scene draws a title. The Title Art Renderer's Open in Title Designer opens one instance In Context (S82 R30).
