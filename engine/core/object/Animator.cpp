@@ -471,6 +471,14 @@ float Animator::getSpeed() const{
     return getComponent<AnimatorComponent>().speed;
 }
 
+void Animator::setPoseFrameRate(float fps){
+    getComponent<AnimatorComponent>().poseFrameRate = std::isfinite(fps) ? std::max(0.0f, fps) : 0.0f;
+}
+
+float Animator::getPoseFrameRate() const{
+    return getComponent<AnimatorComponent>().poseFrameRate;
+}
+
 void Animator::setApplyRootMotion(bool apply){
     getComponent<AnimatorComponent>().applyRootMotion = apply;
 }

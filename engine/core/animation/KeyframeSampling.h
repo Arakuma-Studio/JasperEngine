@@ -112,9 +112,19 @@ namespace jasperengine::anim{
         std::vector<Vector3> offsets;       // lattice, parallel to the track's points
     };
 
-    // `cursor` (optional) is the track's search hint
+    // Held poses (S48 R23, pixelfx act.js poseAt): the time quantised to whole steps of
+    // 1 / stepFps counted from the last key at or before it,
+    // t_q = k_i + floor((t - k_i) * stepFps + 1e-6) / stepFps, so every key's pose shows at its
+    // time and the pose changes only on steps. `time` itself when stepFps <= 0, before the
+    // first key, or for a NaN time. `times` sorted.
+    JASPERENGINE_API float holdPoseTime(const float* times, size_t keyCount, float time, float stepFps);
+    // The same on a time that starts at `start` (a blend's elapsed time): whole steps from it
+    JASPERENGINE_API float holdStepTime(float elapsed, float stepFps);
+
+    // `cursor` (optional) is the track's search hint; `stepFps` > 0 holds the pose on whole
+    // steps from the track's previous key (holdPoseTime)
     JASPERENGINE_API bool sampleTrack(const AnimationClip::Track& track, float clipTime, TrackSample& out,
-                                      KeyCursor* cursor = nullptr);
+                                      KeyCursor* cursor = nullptr, float stepFps = 0.0f);
     // A property track's row stepped (the key at or before the time; at a key time, that key, with
     // the STEP rule's slack): what a discrete binding of a track whose keys interpolate reads (a
     // script's Int field keyed with numbers)

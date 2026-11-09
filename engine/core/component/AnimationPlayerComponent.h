@@ -102,6 +102,10 @@ namespace jasperengine{
         // used by play(name, fade) / crossFade(name) without a fade and Model:playAnimation
         // (0.25 s: between the engine's entity-animation 0.15 and Unity's 0.3)
         float defaultFadeTime = 0.25f;
+        // S48 Pose Frame Rate (fps, 0 = smooth): every track holds its value on whole steps of
+        // 1 / fps from its previous key, and the fades' weights step on the same ticks; events
+        // fire at their true times
+        float poseFrameRate = 0.0f;
         // empty = one "Base Layer" (anim::playerLayers)
         std::vector<AnimationPlayerLayer> layers;
 

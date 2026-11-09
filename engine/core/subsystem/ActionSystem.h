@@ -279,7 +279,7 @@ namespace jasperengine{
 		void accumulateClip(const AnimationClip& clip, anim::ClipBindings& bindings, float clipTime, float weight,
 		                    std::unordered_map<Entity, anim::ChannelRest>& rest,
 		                    std::vector<std::pair<Entity, ClipChannel>>* written,
-		                    std::vector<std::pair<Entity, uint32_t>>* writtenProperties = nullptr);
+		                    std::vector<std::pair<Entity, uint32_t>>* writtenProperties = nullptr, float stepFps = 0.0f);
 
 		// The layered evaluator (anim layers spec 7.3; ActionSystemLayers.cpp). A player that is
 		// not anim::isDefaultLayering samples through it: preparePlayerLayers (end of

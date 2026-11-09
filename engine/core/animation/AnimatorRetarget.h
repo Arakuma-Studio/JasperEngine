@@ -230,7 +230,10 @@ namespace jasperengine::anim{
         bool bind(const AnimationClip& clip, const std::shared_ptr<const RetargetSource>& sourceRig);
         // the clip at `clipTime` (per clip track `cursors`, may be null); a generic clip's foot
         // goals take forward kinematics of the source: only with `feet`
-        void sample(const AnimationClip& clip, float clipTime, KeyCursor* cursors, bool withFeet, HumanoidSample& out) const;
+        // `stepFps` > 0: S48 Pose Frame Rate, every track held on steps from its previous key
+        // except the hips' position (the root's translation stays smooth)
+        void sample(const AnimationClip& clip, float clipTime, KeyCursor* cursors, bool withFeet, HumanoidSample& out,
+                    float stepFps = 0.0f) const;
     };
 
     // ---- the Animator's target ----

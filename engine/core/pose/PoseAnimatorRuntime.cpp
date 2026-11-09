@@ -7,6 +7,7 @@
 #include "pose/PoseRig.h"
 #include "pose/PoseSampler.h"
 #include "pose/PoseTween.h"
+#include "animation/KeyframeSampling.h"
 
 #include <algorithm>
 #include <cmath>
@@ -241,6 +242,7 @@ const std::vector<HumanPose>& PoseAnimatorRuntime::frames() const{
 }
 
 bool PoseAnimatorRuntime::build(std::shared_ptr<const PoseRig> rigToUse, std::string* error, PoseBuildCache* cache){
+    keyBoundaries.clear();
     if (!rigToUse || !rigToUse->valid()){
         if (error) *error = "the rig is not valid";
         return false;
@@ -264,7 +266,22 @@ int PoseAnimatorRuntime::findPose(const std::string& name) const{
     return -1;
 }
 
-void PoseAnimatorRuntime::samplePlayback(float time, HumanPose& out) const{
+void PoseAnimatorRuntime::samplePlayback(float time, HumanPose& out, float poseFrameRate) const{
+    if (poseFrameRate > 0.0f && std::isfinite(poseFrameRate) && length > 0.0f){
+        if (keyBoundaries.empty()){
+            const PoseTimeline timeline = buildTimeline(data);
+            keyBoundaries.push_back(0.0f);
+            for (size_t s = 0; s < timeline.segmentCount(); s++){
+                keyBoundaries.push_back((float)timeline.start[s]);
+                keyBoundaries.push_back((float)(timeline.start[s] + std::max(0.0, (double)timeline.transitions[s].duration)));
+            }
+            std::sort(keyBoundaries.begin(), keyBoundaries.end());
+        }
+        const float t = playbackTime(time, length, data.settings.loop);
+        sampleFrames(frames(), length, data.settings.loop, stepped(),
+                     anim::holdPoseTime(keyBoundaries.data(), keyBoundaries.size(), t, poseFrameRate), out);
+        return;
+    }
     sampleFrames(frames(), length, data.settings.loop, stepped(), time, out);
 }
 
@@ -357,6 +374,9 @@ void PoseAnimatorRuntime::transitionPose(float time, HumanPose& out) const{
     float t = std::max(time, 0.0f);
     if (data.settings.stepRate > 0.0f){
         t = std::floor(t * data.settings.stepRate + 1e-4f) / data.settings.stepRate;
+    }else if (poseFrameRate > 0.0f && std::isfinite(poseFrameRate)){
+        // S48 Pose Frame Rate: the blend steps on the same ticks as the poses
+        t = anim::holdStepTime(t, poseFrameRate);
     }
     float hipsEase = 1.0f;
     for (int b = 0; b < HUMAN_BONE_COUNT; b++){

@@ -33,6 +33,9 @@ namespace jasperengine::playerdetail{
     bool refreshHumanoidSlots(Scene* scene, Entity root, std::shared_ptr<anim::HumanoidSlots>& current);
     // the time a state is sampled at this update, in its clip
     float sampleTimeOf(const AnimationPlayerComponent& player, const anim::PlayerStateRuntime& state);
+    // the weight a state blends with this update: its weight, or with a Pose Frame Rate the one
+    // taken on the last step of the player's clock (S48 R23)
+    float blendWeightOf(const AnimationPlayerComponent& player, anim::PlayerStateRuntime& state);
 
     // one set of bindings and the per-track slot indices to fill for it
     struct PoseSlotSource{
