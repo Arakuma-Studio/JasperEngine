@@ -23,6 +23,7 @@ Libraries of the engine, the editor and the tools:
 | [tinygltf](https://github.com/syoyo/tinygltf) | 2.x, with the buffer changes of docs/specs/S53-model-import-cook.md R1 (marked "JasperEngine patch") | `engine/libs/tinygltf/` (`LICENSE`, from `tiny_gltf.h`: MIT, plus the bundled base64 (zlib-style) and dlib URI decoding (Boost) code) | MIT | glTF model loading |
 | [TinyXML-2](https://github.com/leethomason/tinyxml2) | 10.0.0 | `engine/libs/tinyxml2/` (`LICENSE.txt`) | zlib | XML (tilemaps, sprite sheets) |
 | [Box2D](https://github.com/erincatto/box2d) | 3.1.0 | `engine/libs/box2d/` (`LICENSE`) | MIT | 2D physics |
+| [Clipper2](https://github.com/AngusJohnson/Clipper2) | 2.0.1 | `engine/libs/clipper2/` (`LICENSE`) | BSL-1.0 | polygon union of the tilemap colliders |
 | [Jolt Physics](https://github.com/jrouwe/JoltPhysics) | 5.2.0 | `engine/libs/joltphysics/` (`LICENSE`) | MIT | 3D physics |
 | [HarfBuzz](https://github.com/harfbuzz/harfbuzz) | 14.3.0 | `engine/libs/harfbuzz/` (`COPYING`) | Old MIT | text shaping |
 | [SheenBidi](https://github.com/Tehreer/SheenBidi) | 3.0 | `engine/libs/sheenbidi/` (`LICENSE`) | Apache-2.0 | the Unicode bidirectional algorithm |
@@ -384,6 +385,17 @@ Ported or copied, each file keeping the original notices next to ours:
 | Code or data | Taken from | Licence |
 |---|---|---|
 | The pixel shapes (Cross, Streak, Puff, Shard, Chunk, Glow: `engine/core/particles/ParticlePixel.cpp`, `engine/shaderlib/includes/particles_pixel.glsl`), the dithered fade, the presets' constants (`editor/pixelart/particles/*.particles`), and the closed-form flight and seamless cycle of Analytic particles (`engine/core/particles/AnalyticParticles.cpp`, `engine/shaderlib/includes/particles_analytic_vs.glsl`) | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `src/core/sim.js`, `painter.js`, `particles.js`; `sim.js` adapts Sprite Fusion's [pixel art VFX](https://www.spritefusion.com/pixel-art-vfx) | MIT, Copyright (c) 2026 Patch and Copyright (c) 2026 Hugo Duprez |
+
+## Grid tilemaps (S50)
+
+Ported or copied, each file keeping the original notice next to ours:
+
+| Code or data | Taken from | Licence |
+|---|---|---|
+| The best-match scoring and the blob corner filter (`engine/core/tilemap/TerrainSolver.cpp`) | [Pixelorama](https://github.com/Orama-Interactive/Pixelorama) `src/Classes/Cels/CelTileMap.gd` (`autotile_find_best_tile`, `autotile_score_tile`, `autotile_filter_corners`) | MIT, Copyright (c) 2019-present Orama Interactive and contributors |
+| The `dual_grid_4x4` template: `frameByMask`, the mask bit order, frame 12 as the second surface (`engine/core/tilemap/TerrainTemplates.cpp`) | [SpriteCook skills](https://github.com/spritecook/skills) `skills/spritecook-use-dual-grid-tilesets/SKILL.md` | MIT, Copyright (c) 2025 SpriteCook |
+
+The `blob_47` sheet layout follows cr31's "Blob" Wang tileset page (minimum 7x7 packing, found by Caeles at OpenGameArt.org), and `blob_47_godot` follows the layout of Godot's "3x3 minimal" autotile template; both are layouts of index numbers, no code or image from them ships here. `tileset::cellHash` uses the block step and finaliser of MurmurHash3 (Austin Appleby, public domain).
 
 ## Ideas re-implemented, no code copied
 

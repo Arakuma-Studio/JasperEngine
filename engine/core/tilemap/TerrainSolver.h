@@ -103,6 +103,9 @@ namespace jasperengine{
         // the mask a display cell sees (MAX_PEERING_SLOTS values: set-local terrain or PEERING_NONE)
         JASPERENGINE_API void mask(const TileCells& store, const TerrainContext& context, int set, CellCoord displayCell,
                                    std::array<int16_t, MAX_PEERING_SLOTS>& out);
+        // the peering values of a square tile as drawn with these transform bits (R20: slots 0-7;
+        // the transpose applies first, then the flips)
+        JASPERENGINE_API std::array<int16_t, MAX_PEERING_SLOTS> transformPeering(const std::array<int16_t, MAX_PEERING_SLOTS>& peering, uint32_t flags);
     }
 
 }

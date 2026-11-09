@@ -1272,6 +1272,15 @@ namespace {
                 return true;
             }
         }
+        if (body.generated){
+            for (const auto& [coord, chunk] : body.generated->chunks){
+                for (const Collider2D& collider : chunk.colliders){
+                    if (!collider.material.empty() || collider.appliedUserMaterial > 0){
+                        return true;
+                    }
+                }
+            }
+        }
         return false;
     }
 
@@ -1446,18 +1455,16 @@ void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& 
         std::vector<Vector2> savedPoints = std::move(shapeData.points);
         shapeData.type = Collider2DType::POLYGON;
         shapeData.points = shapeData.slicePoints;
-        createCollider2DShapesOf(entity, body, i, entityScale, layer);
+        createCollider2DShapesOf(entity, body, shapeData, i, entityScale, layer);
         Collider2D& built = body.colliders[i];
         built.type = savedType;
         built.points = std::move(savedPoints);
         return;
     }
-    createCollider2DShapesOf(entity, body, i, entityScale, layer);
+    createCollider2DShapesOf(entity, body, shapeData, i, entityScale, layer);
 }
 
-void PhysicsSystem::createCollider2DShapesOf(Entity entity, Rigidbody2DComponent& body, size_t i, const Vector2& entityScale, int layer){
-    Collider2D& shapeData = body.colliders[i];
-
+void PhysicsSystem::createCollider2DShapesOf(Entity entity, Rigidbody2DComponent& body, Collider2D& shapeData, size_t i, const Vector2& entityScale, int layer){
     const float radiusScale = maxScaleXY(absScale2D(entityScale));
 
     auto scaledPoint = [&](const Vector2& point){
@@ -1739,6 +1746,10 @@ bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent
         rebuilt = true;
     }
 
+    if (body.generated && syncGeneratedColliders2D(entity, body, all, entityScale, layer)){
+        rebuilt = true;
+    }
+
     if (rebuilt || all){
         applyRigidbody2DMass(entity, body);
     }
@@ -1835,13 +1846,13 @@ void PhysicsSystem::refreshRigidbody2DMaterials(Entity entity, Rigidbody2DCompon
     }
 
     bool changed = false;
-    for (Collider2D& collider : body.colliders){
+    auto reapplySurface = [&](Collider2D& collider){
         float friction = 0.0f;
         float restitution = 0.0f;
         int userMaterial = 0;
         resolveCollider2DSurface(body, collider, friction, restitution, userMaterial);
         if (friction == collider.appliedFriction && restitution == collider.appliedRestitution && userMaterial == collider.appliedUserMaterial){
-            continue;
+            return;
         }
         collider.appliedFriction = friction;
         collider.appliedRestitution = restitution;
@@ -1858,6 +1869,16 @@ void PhysicsSystem::refreshRigidbody2DMaterials(Entity entity, Rigidbody2DCompon
             b2Chain_SetUserMaterial(collider.chain, userMaterial);
         }
         changed = true;
+    };
+    for (Collider2D& collider : body.colliders){
+        reapplySurface(collider);
+    }
+    if (body.generated){
+        for (auto& [coord, chunk] : body.generated->chunks){
+            for (Collider2D& collider : chunk.colliders){
+                reapplySurface(collider);
+            }
+        }
     }
 
     // the contacts mix the shapes' values again at their next update (Box2D patch): resting
@@ -2951,6 +2972,9 @@ bool PhysicsSystem::loadRigidbody2D(Entity entity){
             collider.shapes.clear();
             collider.chain = b2_nullChainId;
         }
+        if (body.generated){
+            forgetGeneratedShapes2D(*body.generated);
+        }
 
         b2BodyDef bodyDef = b2DefaultBodyDef();
 
@@ -3053,6 +3077,9 @@ void PhysicsSystem::destroyRigidbody2D(Rigidbody2DComponent& body){
         collider.shapes.clear();
         collider.chain = b2_nullChainId;
         collider.dirty = true;
+    }
+    if (body.generated){
+        forgetGeneratedShapes2D(*body.generated);
     }
 }
 #endif
@@ -3267,7 +3294,10 @@ void PhysicsSystem::destroyCollider2D(Rigidbody2DComponent& body, size_t index){
     if (index >= body.colliders.size()){
         return;
     }
-    Collider2D& collider = body.colliders[index];
+    destroyCollider2DHandles(body.colliders[index]);
+}
+
+void PhysicsSystem::destroyCollider2DHandles(Collider2D& collider){
     for (const b2ShapeId& shape : collider.shapes){
         if (b2Shape_IsValid(shape)){
             b2DestroyShape(shape, false);
@@ -3278,6 +3308,44 @@ void PhysicsSystem::destroyCollider2D(Rigidbody2DComponent& body, size_t index){
         b2DestroyChain(collider.chain);
     }
     collider.chain = b2_nullChainId;
+}
+
+bool PhysicsSystem::syncGeneratedColliders2D(Entity entity, Rigidbody2DComponent& body, bool all, const Vector2& entityScale, int layer){
+    GeneratedColliders2D& generated = *body.generated;
+    bool changed = !generated.staleShapes.empty() || !generated.staleChains.empty();
+    for (const b2ShapeId& shape : generated.staleShapes){
+        if (b2Shape_IsValid(shape)){
+            b2DestroyShape(shape, false);
+        }
+    }
+    generated.staleShapes.clear();
+    for (const b2ChainId& chain : generated.staleChains){
+        if (b2Chain_IsValid(chain)){
+            b2DestroyChain(chain);
+        }
+    }
+    generated.staleChains.clear();
+
+    std::vector<int> retired;
+    retired.swap(generated.retiredKeys);
+    for (int key : retired){
+        contactGeneratedRemoved2D(entity, key);
+    }
+
+    // in the map's (cy, cx) order: the same edits make the same world
+    for (auto& [coord, chunk] : generated.chunks){
+        if (!all && !chunk.dirty){
+            continue;
+        }
+        for (Collider2D& collider : chunk.colliders){
+            destroyCollider2DHandles(collider);
+            createCollider2DShapesOf(entity, body, collider, (size_t)collider.generatedKey, entityScale, layer);
+            collider.dirty = false;
+            changed = true;
+        }
+        chunk.dirty = false;
+    }
+    return changed;
 }
 #endif
 

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" orientation="staggered" width="3" height="4" tilewidth="32" tileheight="16" staggeraxis="y" staggerindex="odd">
+ <tileset firstgid="1" name="cells" tilewidth="32" tileheight="16" tilecount="12" columns="3">
+  <image source="images/cells.png" width="96" height="64"/>
+ </tileset>
+ <layer id="1" name="Cells" width="3" height="4">
+  <data encoding="csv">
+1,2,3,
+4,5,6,
+7,8,9,
+10,11,12
+</data>
+ </layer>
+</map>

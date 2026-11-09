@@ -291,7 +291,11 @@ namespace jasperengine{
 		void updateSliceColliders2D(Entity entity, Rigidbody2DComponent& body);
 		void createCollider2DShapes(Entity entity, Rigidbody2DComponent& body, size_t index, const Vector2& entityScale, int layer);
 		// the shapes of a collider's own type and points (a slice collider's box goes through it too)
-		void createCollider2DShapesOf(Entity entity, Rigidbody2DComponent& body, size_t index, const Vector2& entityScale, int layer);
+		// `shapeUserData`: what the shapes report (a plain index, or a generated collider's key)
+		void createCollider2DShapesOf(Entity entity, Rigidbody2DComponent& body, Collider2D& shapeData, size_t shapeUserData, const Vector2& entityScale, int layer);
+		// the generated colliders of a Tilemap Collider 2D: the shapes of replaced chunks go, those
+		// of dirty chunks (every chunk with `all`) are made; true when anything changed
+		bool syncGeneratedColliders2D(Entity entity, Rigidbody2DComponent& body, bool all, const Vector2& entityScale, int layer);
 		// true when the pieces were made again (not from the cache); logs the problems when `log`
 		bool computeCollider2DPieces(Collider2D& collider, const Vector2& entityScale, bool log, size_t index, const std::string& entityName);
 		void resolveCollider2DSurface(const Rigidbody2DComponent& body, const Collider2D& collider, float& friction, float& restitution, int& userMaterial) const;
@@ -540,6 +544,8 @@ namespace jasperengine{
 		// A collider of the entity was removed: its pairs end at the next step, the indices of
 		// the later ones shift down (removeCollider2D)
 		void contactColliderRemoved2D(Entity entity, size_t index);
+		// a generated collider went: its pairs end, nothing is renumbered
+		void contactGeneratedRemoved2D(Entity entity, int key);
 		// what the body touches now (the Inspector's Contacts foldout, get_runtime_entity)
 		std::vector<ContactSummary> getContactSummary2D(Entity entity);
 #endif
@@ -805,6 +811,7 @@ namespace jasperengine{
 #ifdef JASPERENGINE_PHYSICS_2D
 		// destroys the shapes of one collider (the body's mass is not updated)
 		void destroyCollider2D(Rigidbody2DComponent& body, size_t index);
+		void destroyCollider2DHandles(Collider2D& collider);
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D

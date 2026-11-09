@@ -26,10 +26,7 @@ namespace {
 
     const Collider2D* colliderOf(const ColliderRef2D& ref) {
         const Rigidbody2DComponent* body = bodyOf(ref);
-        if (!body || ref.index < 0 || (size_t)ref.index >= body->colliders.size()) {
-            return nullptr;
-        }
-        return &body->colliders[(size_t)ref.index];
+        return body ? findCollider2D(*body, ref.index) : nullptr;
     }
 #endif
 

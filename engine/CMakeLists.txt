@@ -978,7 +978,8 @@ include_directories(SYSTEM libs/tinyxml2)
 # Built after the standalone block, so it sees the physics switches the Exporter injects there
 set(JASPERENGINE_PHYSICS_LIBS "")
 if(JASPERENGINE_PHYSICS_2D)
-    list(APPEND JASPERENGINE_PHYSICS_LIBS box2d)
+    # clipper2: the union of the tilemap collider builder, which only 2D physics needs
+    list(APPEND JASPERENGINE_PHYSICS_LIBS box2d clipper2)
     include_directories(SYSTEM libs/box2d/include)
 endif()
 if(JASPERENGINE_PHYSICS_3D)
@@ -2025,6 +2026,7 @@ if(JASPERENGINE_PHYSICS_2D)
         core/object/physics/Manifold2D.cpp
         core/object/physics/CharacterController2D.cpp
         core/subsystem/CharacterController2DSystem.cpp
+        core/tilemap/TileColliderBuilder.cpp
     )
 endif()
 

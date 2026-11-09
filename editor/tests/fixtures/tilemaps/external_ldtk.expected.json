@@ -1,0 +1,14 @@
+{
+  "grids": [{
+    "layout": "rectangle", "cell": [16, 16], "origin": [100, -66],
+    "layers": [{"name": "Tiles", "tileset": 0, "visible": true, "opacity": 1, "offset": [0, 0], "chunks": 0, "cells": [[1, 0, 1, ""]]}]
+  }],
+  "tilesets": [{
+    "name": "Terrain", "tile_size": [16, 16], "shape": "square", "external": "",
+    "images": [{"source": 0, "path": "art/terrain.png", "size": [32, 16]}],
+    "sources": [{"id": 0, "kind": "texture", "path": "art/terrain.png", "tile_size": [16, 16], "margin": 0, "spacing": 0, "skip_empty": false}],
+    "tile_total": 2, "next_id": 2, "schema": [], "terrain_sets": [], "tiles": []
+  }],
+  "warnings": [], "skipped": [],
+  "counts": {"grids": 1, "layers": 1, "tilesets": 1, "images": 1, "tiles": 1, "terrain_cells": 0, "skipped": 0, "warnings": 0}
+}

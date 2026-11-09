@@ -29,7 +29,8 @@
 //   corners TR BR BL TL). Hexagon tiles use slots 0-5 for the six sides (counter-clockwise from
 //   east) and 6-11 for the six corners (counter-clockwise, the first after side 0): keys
 //   hex_pointy "e ne nw w sw se" + "c_ne c_n c_nw c_sw c_s c_se", hex_flat "ne n nw sw s se" +
-//   "c_e c_ne c_nw c_w c_sw c_se". Sides mode uses only the 6 sides on hexagons.
+//   "c_e c_ne c_nw c_w c_sw c_se" (so on hex_flat slot 6, c_e, sits between sides 5 and 0, each
+//   corner slot before its side). Sides mode uses only the 6 sides on hexagons.
 
 #include "Export.h"
 #include "asset/AssetRef.h"

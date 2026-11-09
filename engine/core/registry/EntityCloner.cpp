@@ -1034,6 +1034,8 @@ void prepare<Rigidbody2DComponent>(Rigidbody2DComponent& body, Entity, CloneCont
         body.hasPendingVelocity = true;
     }
     body.body = b2_nullBodyId;
+    // made again for the copy by its own Tilemap Collider 2D
+    body.generated.reset();
     for (Collider2D& collider : body.colliders) {
         collider.shapes.clear();
         collider.chain = b2_nullChainId;
