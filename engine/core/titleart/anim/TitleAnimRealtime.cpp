@@ -213,6 +213,10 @@ bool GlyphPose::identity() const{
            tint[0] == 1.0 && tint[1] == 1.0 && tint[2] == 1.0 && flashAmount == 0.0;
 }
 
+uint64_t jasperengine::titleart::glyphPoseHash(const GlyphPose& pose){
+    return fnv1a64(std::string_view((const char*)&pose.offset[0], sizeof(double) * 13));
+}
+
 void jasperengine::titleart::addGlyphPoses(const ta::CompiledTitleAnimation& animation, const ta::TitleAnimPose& pose, const std::string& layerId,
                                            bool overlay, std::map<uint32_t, GlyphPose>& poses){
     if (pose.values.size() < animation.poseSize) return;

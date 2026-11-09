@@ -23,6 +23,7 @@
 #include "Export.h"
 #include "subsystem/TitleArtRuntime.h"
 #include "titleart/TitleArtDoc.h"
+#include "titleart/anim/TitleAnimRealtime.h"
 #include "titleart/render/TitleRenderJob.h"
 #include "titleart/render/TitleTargetPool.h"
 #include "titleart/runtime/TitleGlyphAtlasPlan.h"
@@ -30,6 +31,7 @@
 #include <cstdint>
 #include <functional>
 #include <list>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -88,6 +90,8 @@ namespace jasperengine::titleart {
         TitleGlyphAtlasPlan glyphPlan;
         uint64_t docHash = 0;           // the document's content hash (the atlas style's)
         std::string titlePath;          // the title's path (its prebaked atlas sits beside it)
+        // S85 R15: the per-glyph values of the text layer's cells (null when none animates)
+        std::shared_ptr<const std::map<uint32_t, GlyphPose>> glyphPoses;
     };
 
     // The scheduler's view of one render (S80's TitleRenderJob in a game; a fake in tests)
@@ -193,6 +197,12 @@ namespace jasperengine::titleart {
         const std::vector<FieldOverride>& animationOverrides() const { return animOverrides; }
         uint64_t animationOverridesHash() const { return animOverridesHash; }
         void setAnimating(bool on, double share){ animatingFlag = on; budgetShare = share; }
+        // R15: the glyphs' sampled values (null: none); `compose` asks for the atlas compose even
+        // in Realtime, which shows the merged render at rest and the cells while they animate
+        void setGlyphPoses(std::shared_ptr<const std::map<uint32_t, GlyphPose>> poses, bool compose){
+            glyphPoses = std::move(poses);
+            glyphCellCompose = compose;
+        }
         bool animating() const { return animatingFlag; }
         double animationShare() const { return budgetShare; }
         // the animation library the overrides were planned for (TitleArtRuntime::setAnimation)
@@ -231,6 +241,8 @@ namespace jasperengine::titleart {
         std::string missingCharacters;
         std::vector<FieldOverride> animOverrides;
         uint64_t animOverridesHash = 0;
+        std::shared_ptr<const std::map<uint32_t, GlyphPose>> glyphPoses;
+        bool glyphCellCompose = false;
         bool animatingFlag = false;
         double budgetShare = 1.0;
         std::shared_ptr<const TitleArtDoc> doc;

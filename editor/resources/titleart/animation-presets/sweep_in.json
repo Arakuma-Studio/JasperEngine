@@ -34,7 +34,7 @@
       "kind": "mask",
       "type": "gradient",
       "values": {
-        "shape": "linear",
+        "shape": "'linear'",
         "angle": "angle",
         "length": "max(1, W*feather/100)"
       }

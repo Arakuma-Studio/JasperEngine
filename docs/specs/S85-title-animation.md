@@ -1321,3 +1321,56 @@ rest of S82 lands in 6B.
    refusal), and the marker sounds' editor preview voice is S40's `TimelineAudioPreview`. D15's
    frame-quantized interim and the risk "Frame-quantized marker sounds before S40" no longer
    apply.
+
+7. **Drives bounce unless `wrap`.** A drive's cycle runs from→to→from and is seamless by
+   construction; `wrap: true` is the ramp (rate or cycles) that wraps. The preset `win_pulse` rays
+   use cycles 1 and range -180..180 so the wrap is invisible.
+8. **Scale is a uniform number; `stretch` a Vec2.** `transform.scale` is the document's scalar;
+   non-uniform title motion goes through `transform.stretch` (new, written only off its default).
+   Layer `flash` is `flash.color` and `flash.amount`.
+9. **Vertex motion, not a UV affine (R13).** Titles move on their quad's vertices
+   (`title_fx.vert`, `title_fx_sprite.vert` with `animVertex0/1`, `animSpace`), so a moved title
+   is not clipped at its rectangle. The fragment affine stays identity and carries opacity and
+   blend; flash is additive (was a mix).
+10. **Grid packing instead of `stb_rect_pack` (R16).** Flipbook cells are equal-sized, so a
+    4-px-aligned grid with 4-px gutters packs them exactly; `stb_rect_pack` would add nothing and its
+    symbols are hidden in this build.
+11. **Markers carry `from_preset`** (a member the player ignores) so re-applying a preset can
+    replace its own markers without touching the user's.
+12. **`anim_loop_seamless` passes when values differ but pixels match**: the check measures what
+    the player shows; a re-render value crossing a seam by less than one 8-bit step is seamless.
+13. **`render_title` refuses `compare` with `options.animation`**: a filmstrip already compares
+    its own frames.
+14. **Preset sheet awaits S84**: `list_title_library {kind: "animation_presets"}` lists ids, group,
+    role, params and description; the contact sheet (`sheet`) is S84's library surface and is not
+    wired in this stream. Generators `shake`, `flicker`, `beats`, `ticks`, and the members `repeat`
+    and `vars`, were added to the preset format (§6.4 asked for expressions only).
+15. **R14 layer live is re-rendered, not composed live.** S81's layer-split compose is not in the
+    runtime, so Realtime layer-live tracks play through the rate-limited re-render (R18), with
+    code `no_layer_compose` and a plan reason `layer-live tracks re-render: the runtime has no
+    layer split compose`; `build_title_plan`-style reports say so. The split-blocker reasons are
+    still reported.
+16. **R15 cells at runtime need the Glyph Atlas plan.** Glyph tracks compose through the Glyph
+    Atlas path (new program `GLYPH_COMPOSE_ANIM`, 43: moved cell quads with opacity, tint and
+    flash, 7 quads per pass); Realtime titles switch to it while the animation plays and back at
+    rest, using the plan S81 computes for the document. A document whose plan has a `fallback`, or
+    a second text layer with glyph tracks, keeps its merged render for those tracks.
+17. **R39's time slicing does not apply to the canvas pose.** The Animation panel renders poses
+    synchronously at a capped side (640 px while playing, 960 px scrubbing), and caches 48 of them
+    per document change, instead of S82's slice-budgeted job. A pose is a full title render at
+    that scale; slower documents will drop preview frames, not freeze the window for long.
+18. **Prerender (R18's policy) renders on demand.** `rerender: prerender` keeps the plan and cost
+    figures and stores nothing: `prepareAnimation` only loads flipbook pages. The `prerender` how
+    still plays as rate-limited re-render.
+19. **The Designer preferences of §6.9 are session-only.** `onion_skin`, `preview_as` and
+    `preview_sounds` live in the panel for the session; the project-level
+    `title_art.animation.{flipbook_budget_mib, default_fps}` are the S25 settings.
+20. **R49's edit-mode Preview button and the marker-sound Audio Source warning are not in the
+    Inspector.** The rows are Play Automatically, Default Animation, Animation Speed, Unscaled Time
+    (the spec's Animation Update) and Drive Animation.
+21. **R43 tangent edits replace the keys (not `ClipTangents`).** The Curves tab edits Hermite keys
+    through `CurveEditor` and writes the whole track on release as Free tangents.
+22. **S80 additions this spec needed:** `SchemaMember::omitDefault`, `TitleArtSchema::setFinish`,
+    `estimatedTotalUs`, `TitleArtRenderHost::runToEnd`/`readImage`, the checks' `renderAnimation`,
+    `renderMode` and `assetExists` context members, and `CanvasPoseSource` in S82's hooks (the
+    canvas shows the panel's pose while it scrubs or plays).

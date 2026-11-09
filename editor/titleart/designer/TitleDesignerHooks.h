@@ -63,6 +63,15 @@ namespace jasperengine::editor::titledesigner {
     void setTimeSource(TimeSource source);
     const TimeSource& timeSource();
 
+    // ---- the canvas pose (S85's Animation panel): while `active`, the panel draws the sampled
+    // pose over the backdrop instead of the document's render (the canvas requests no render) ----
+    struct CanvasPoseSource {
+        std::function<bool(const TitleDesignerState& state)> active;
+        std::function<void(TitleDesignerState& state, ImDrawList* drawList, ImVec2 min, ImVec2 max, const CanvasXform& xform)> draw;
+    };
+    void setCanvasPoseSource(CanvasPoseSource source);
+    const CanvasPoseSource& canvasPoseSource();
+
     // ---- the 3D gizmo (R35): S86 supplies the target of a Dimension 3D layer or letter ----
     using Gizmo3DProvider = std::function<bool(const TitleDesignerState& state, const std::string& layerId, Gizmo3DTarget& out)>;
     void setGizmo3DProvider(Gizmo3DProvider provider);

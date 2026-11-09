@@ -65,6 +65,8 @@ namespace jasperengine::titleart {
         titleanim::TrackPivot pivot = titleanim::TrackPivot::Center;
         bool identity() const;
     };
+    // what the job's cached compose depends on (equal poses: equal hashes)
+    JASPERENGINE_API uint64_t glyphPoseHash(const GlyphPose& pose);
     // the glyph poses of text layer `layerId` from a sampled animation, combined into `poses`
     // (one per cluster with ink, created on first use); `overlay` as PoseValues::add
     JASPERENGINE_API void addGlyphPoses(const titleanim::CompiledTitleAnimation& animation, const titleanim::TitleAnimPose& pose,

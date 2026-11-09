@@ -432,6 +432,26 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
 
     // the Title Designer, focused (docs/specs/S82-title-designer.md §6.5): Unity's keys
     b.group = "Title Designer";
+    // S85 §6.10: the Animation panel's keys
+    b.add("titleAnimation.playPause", "Play / Pause Preview", C::TitleAnimation, "Space");
+    b.add("titleAnimation.stop", "Stop Preview", C::TitleAnimation, "Shift+Space");
+    b.add("titleAnimation.addKey", "Add Key", C::TitleAnimation, "K");
+    b.add("titleAnimation.addKeyModified", "Key Modified Fields", C::TitleAnimation, "Shift+K");
+    b.add("titleAnimation.previousFrame", "Previous Frame", C::TitleAnimation, ",");
+    b.add("titleAnimation.nextFrame", "Next Frame", C::TitleAnimation, ".");
+    b.add("titleAnimation.previousKey", "Previous Key", C::TitleAnimation, "Alt+,");
+    b.add("titleAnimation.nextKey", "Next Key", C::TitleAnimation, "Alt+.");
+    b.add("titleAnimation.delete", "Delete Keys", C::TitleAnimation, "Delete");
+    b.add("titleAnimation.copy", "Copy Keys", C::TitleAnimation, "Ctrl+C");
+    b.add("titleAnimation.paste", "Paste Keys", C::TitleAnimation, "Ctrl+V");
+    b.add("titleAnimation.duplicate", "Duplicate Keys", C::TitleAnimation, "Ctrl+D");
+    b.add("titleAnimation.frameSelected", "Frame Selected", C::TitleAnimation, "F");
+    b.add("titleAnimation.frameAll", "Frame All", C::TitleAnimation, "A");
+    b.add("titleAnimation.record", "Record", C::TitleAnimation, "R");
+    b.add("titleAnimation.toggleCurves", "Dopesheet / Curves", C::TitleAnimation, "Tab");
+    b.add("titleAnimation.addPreset", "Add Animation Preset...", C::TitleAnimation, "");
+    b.add("titleAnimation.saveAsPreset", "Save Animation as Preset...", C::TitleAnimation, "");
+
     b.add("titleDesigner.toolHand", "Hand Tool", C::TitleDesigner, "Q");
     b.add("titleDesigner.toolMove", "Move Tool", C::TitleDesigner, "W");
     b.add("titleDesigner.toolRotate", "Rotate Tool", C::TitleDesigner, "E");

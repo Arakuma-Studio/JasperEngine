@@ -204,6 +204,30 @@ of shipped `titleArtSetText` events). Fonts are subset; a font that forbids embe
 fsType) stops the export unless its import acknowledges a licence. In Play, characters outside
 the set draw as nothing and `onMissingCharacters` fires, as in the build.
 
+### Animation
+
+Title animations are named in the document's `animation` member and edited with `edit_title` ops
+(`add_animation`, `set_animation`, `set_track`, `set_key`, `retime`, `apply_animation_preset`, ...);
+they share S80's all-or-nothing batches, `dry_run` and `expect_rev`.
+
+- A track targets `layer` (omitted = the title) and a `field` in long form (`get_title` lists a
+  layer's animatable fields; the error names them on `not_animatable`). Keys are `[time, value,
+  ease?]` or objects with `in`, `out` and `tangent_mode`. `drive` and `reseed` replace keys.
+- Fields have classes: title-live and glyph tracks are cheap, re-render tracks cost a render per
+  sample (`check_title` with `checks: ["anim"]` measures them, `render_title` with
+  `options.animation: {name, time | times | frames, as}` shows them; `as` is `exact`, `baked`,
+  `realtime` or `glyph_atlas`).
+- Baked titles play flipbooks: `export_title` bakes pages `<file>.<animation id>.flip<N>.png` and
+  `<file>.anim.json`; the report compares them to the flipbook budgets.
+- Lua: `titleArt:play(name, {speed, loop, unscaled, fade, time})`, `playOverlay`, `stop`, `reset`,
+  `onAnimationEvent`; markers with a sound play on the title's Audio Source, else 2D on Master.
+- Presets: `list_title_library {kind: "animation_presets"}`; `apply_animation_preset` at `at`
+  seconds, `mode: merge` keeps your tracks.
+- The loop: apply a preset, then a filmstrip (`render_title` with `options.animation.frames` and
+  `image: "none"`), then `check_title {checks: ["anim"]}`, then `export_title {dry_run: true}`,
+  then export. In the Glyph Atlas mode, glyph tracks compose per cell; merged and per-layer tracks
+  re-render at `rerender_fps`.
+
 ### Common mistakes
 
 - Pixel sizes in `%` members (a rim `width` of 40 is 40 % of the text size, very thick).

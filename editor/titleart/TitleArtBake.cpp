@@ -328,7 +328,8 @@ void editor::titleArtHashCacheSave(const fs::path& file) {
 std::vector<TitleBakeAsset> editor::titleArtBakeAssets(const titleart::TitleArtDoc& doc, const titleart::AssetResolver& assets) {
     std::map<std::string, TitleBakeAsset> unique;
     titleart::visitTitleArtRefs(doc.root, [&](const titleart::TitleAssetRef& ref, const std::string&, titleart::TitleAssetKind kind) {
-        if (ref.empty()) return true;
+        // a marker's sound is no input of the pixels: changing it leaves the bake fresh
+        if (ref.empty() || kind == titleart::TitleAssetKind::Sound) return true;
         const titleart::ResolvedTitleAsset resolved = assets.resolve(ref, kind);
         TitleBakeAsset asset;
         asset.guid = resolved.found ? resolved.guid : ref.guid;

@@ -227,6 +227,22 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 
 | Command | Shortcut | Context |
 |---|---|---|
+| Play / Pause Preview | Space | Title Animation |
+| Stop Preview | Shift+Space | Title Animation |
+| Add Key | K | Title Animation |
+| Key Modified Fields | Shift+K | Title Animation |
+| Previous Frame | , | Title Animation |
+| Next Frame | . | Title Animation |
+| Previous Key | Alt+, | Title Animation |
+| Next Key | Alt+. | Title Animation |
+| Delete Keys | Delete | Title Animation |
+| Copy Keys | Ctrl+C | Title Animation |
+| Paste Keys | Ctrl+V | Title Animation |
+| Duplicate Keys | Ctrl+D | Title Animation |
+| Frame Selected | F | Title Animation |
+| Frame All | A | Title Animation |
+| Record | R | Title Animation |
+| Dopesheet / Curves | Tab | Title Animation |
 | Hand Tool | Q | Title Designer |
 | Move Tool | W | Title Designer |
 | Rotate Tool | E | Title Designer |

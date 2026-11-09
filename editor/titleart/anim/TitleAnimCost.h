@@ -62,7 +62,6 @@ namespace jasperengine::editor {
         TitleFlipbookBytes bytes;
         int frameWidth = 0, frameHeight = 0;
         // Realtime
-        std::vector<std::string> layerSplits;
         bool rerender = false, prerender = false;
         double rerenderFps = 0.0;                   // asked
         double rerenderMs[3] = {0.0, 0.0, 0.0};     // per sample, desktop / mobile / web

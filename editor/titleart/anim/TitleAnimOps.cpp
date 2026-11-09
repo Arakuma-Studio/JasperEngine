@@ -349,11 +349,13 @@ namespace {
         if (set.find(name)) return ctx.fail("name_taken", "an animation is named '" + name + "' already", "name", namesOf(set));
         copy.name = name;
         copy.id = ctx.newId();
+        // before push_back: it moves the animation `a` points at
+        const std::string source = a->name;
         set.animations.push_back(copy);
         commit(ctx, set);
         ctx.recordNewId("animation", copy.id);
         changed(ctx, name, "", "", nullptr, ta::encodeAnimation(copy));
-        ctx.undoName = "Duplicate Animation " + a->name;
+        ctx.undoName = "Duplicate Animation " + source;
         return true;
     }
 

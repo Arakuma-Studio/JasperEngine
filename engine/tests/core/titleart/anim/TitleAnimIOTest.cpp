@@ -11,6 +11,7 @@
 #include "titleanim/TitleAnimDataIO.h"
 #include "titleanim/TitleAnimSampling.h"
 #include "titleart/TitleArtIO.h"
+#include "titleart/TitleArtRefs.h"
 #include "titleart/TitleArtSchema.h"
 #include "titleart/anim/TitleAnimIO.h"
 #include "titleart/anim/TitleAnimPlan.h"
@@ -466,4 +467,21 @@ TEST(TitleAnimPlanTest, LayerSplitRules){
     EXPECT_EQ(code, "mask_names_it");
     TitleArtDoc alone = documentWith({moving});
     EXPECT_EQ(layerSplitBlocker(alone, "00000701"), "");
+}
+
+// R62: a marker's sound is one of the document's references, so S04's relink and index see it
+TEST(TitleAnimIOTest, RefWalkerVisitsMarkerSounds) {
+    Json root = {{"animation", {{"animations", Json::array({
+        {{"name", "A"}, {"markers", Json::array({{{"name", "hit"}, {"time", 0.1}, {"sound", {{"path", "sfx/hit.wav"}, {"guid", "aa"}}}},
+                                                     {{"name", "quiet"}, {"time", 0.2}}})}}})}}}};
+    std::vector<std::string> fields;
+    visitTitleArtRefs(root, [&](Json& ref, const std::string& field, TitleAssetKind kind) {
+        EXPECT_EQ(kind, TitleAssetKind::Sound);
+        fields.push_back(field);
+        ref = encodeAssetRef({"sfx/moved.wav", "aa"});
+        return true;
+    });
+    ASSERT_EQ(fields.size(), 1u);
+    EXPECT_EQ(fields[0], "animation.animations[0].markers[0].sound");
+    EXPECT_EQ(root["animation"]["animations"][0]["markers"][0]["sound"]["path"], "sfx/moved.wav");
 }

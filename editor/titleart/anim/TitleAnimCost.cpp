@@ -57,7 +57,6 @@ tt::Json TitleAnimCost::toJson() const{
                                               {"bytes", bytesJson}, {"baked", flipbookBaked}}
                                    : tt::Json(nullptr);
     }else if (mode == TitleArtRenderMode::REALTIME){
-        out["layer_splits"] = layerSplits;
         if (rerender || prerender){
             tt::Json tiers = tt::Json::object();
             for (int i = 0; i < 3; i++) tiers[TITLE_ANIM_TIERS[i]] = {{"ms_per_sample", std::round(rerenderMs[i] * 100.0) / 100.0},
@@ -79,7 +78,7 @@ std::string TitleAnimCost::summary() const{
                mib(bytes.mobile) + " on Mobile";
     }
     if (mode == TitleArtRenderMode::REALTIME){
-        if (!rerender && !prerender) return layerSplits.empty() ? "Realtime: live (no re-render)" : "Realtime: " + std::to_string(layerSplits.size()) + " layer split(s)";
+        if (!rerender && !prerender) return "Realtime: live (no re-render)";
         char buf[160];
         std::snprintf(buf, sizeof(buf), "Realtime: %.0f re-renders per second asked, %.1f reached on Mobile (%.1f ms each)", rerenderFps, reachedFps[1],
                       rerenderMs[1]);
@@ -137,7 +136,6 @@ TitleAnimCost editor::estimateAnimCost(const tt::TitleArtDoc& doc, const ta::Com
         return cost;
     }
     if (plan.mode == TitleArtRenderMode::REALTIME){
-        cost.layerSplits = plan.layerSplits;
         cost.rerender = plan.rerender;
         cost.prerender = plan.prerender;
         cost.rerenderFps = animation.rerenderFps;

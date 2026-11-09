@@ -521,10 +521,17 @@ std::shared_ptr<TitleFlipbookBakeJob> mcp::titletools::titleFlipbookJob(Project*
     return std::make_shared<TitleFlipbookBakeJob>(project, file, doc, options);
 }
 
-Json mcp::titletools::flipbookReportJson(const TitleFlipbookResult& result){
+Json mcp::titletools::flipbookReportJson(const TitleFlipbookResult& result, Project* project){
     Json out = fromOrdered(result.toJson());
-    // R38: against the budgets
+    // R38: against the budgets (Project Settings > Title Art > Animation)
     TitleFlipbookBudget budget;
+    if (project){
+        const TitleArtProjectSettings& settings = project->getTitleArtSettings();
+        budget.desktop = settings.flipbookBudgetMiB.desktop;
+        budget.mobile = settings.flipbookBudgetMiB.mobile;
+        budget.androidEtc2 = settings.flipbookBudgetAndroidEtc2MiB;
+        budget.web = settings.flipbookBudgetMiB.web;
+    }
     TitleFlipbookBytes total;
     for (const TitleFlipbookReport& r : result.animations){
         total.desktop += r.bytes.desktop;

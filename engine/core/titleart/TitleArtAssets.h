@@ -26,7 +26,7 @@ namespace jasperengine {
 
 namespace jasperengine::titleart {
 
-    enum class TitleAssetKind : uint8_t { Font, Image, Vector, Environment };
+    enum class TitleAssetKind : uint8_t { Font, Image, Vector, Environment, Sound };
 
     struct ResolvedTitleAsset {
         bool found = false;

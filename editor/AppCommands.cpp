@@ -19,6 +19,7 @@
 #include "window/GameWindow.h"
 #include "window/SpriteNormalsWindow.h"
 #include "window/TitleDesignerWindow.h"
+#include "titleart/anim/TitleAnimationPanel.h"
 #include "window/TerrainEditWindow.h"
 
 #include "AppMenuCommand.h"
@@ -441,6 +442,17 @@ void editor::App::registerCommands(){
              });
     }
 
+    // ---- the Title Designer's Animation panel, while it has focus (S85 §6.10)
+    for (const char* id : {"titleAnimation.playPause", "titleAnimation.stop", "titleAnimation.addKey", "titleAnimation.addKeyModified",
+                           "titleAnimation.previousFrame", "titleAnimation.nextFrame", "titleAnimation.previousKey", "titleAnimation.nextKey",
+                           "titleAnimation.delete", "titleAnimation.copy", "titleAnimation.paste", "titleAnimation.duplicate",
+                           "titleAnimation.frameSelected", "titleAnimation.frameAll", "titleAnimation.record", "titleAnimation.toggleCurves",
+                           "titleAnimation.addPreset", "titleAnimation.saveAsPreset"}) {
+        const std::string command = id;
+        bind(id, [command](const CommandArgs&) { titledesigner::runTitleAnimationCommand(command); },
+             []() { return titledesigner::titleAnimationPanelFocused(); }, [this]() { return !titleDesignerWindow->typing(); });
+    }
+
     // ---- Window > Audio > Captures, while it has focus
     auto captures = [&bind, this](const char* id, std::function<void()> run) {
         bind(id, [run](const CommandArgs&) { run(); }, [this]() { return audioCapturesWindow->isOpen(); }, []() { return !ImGui::GetIO().WantTextInput; });
@@ -591,6 +603,7 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
     if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
     if (titleDesignerWindow->isFocused()) state.panels.push_back(ShortcutContext::TitleDesigner);
+    if (titledesigner::titleAnimationPanelFocused()) state.panels.push_back(ShortcutContext::TitleAnimation);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
     return state;
 }

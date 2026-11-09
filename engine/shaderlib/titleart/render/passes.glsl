@@ -175,3 +175,32 @@ void main() {
     frag_color = acc;
 }
 #endif
+
+#if TA_PROGRAM == TA_PROGRAM_GLYPH_COMPOSE_ANIM
+// S85 R15: up to 7 cell quads of the atlas page TA_TEX0 with a per-glyph pose, each over the ones
+// before it (premultiplied). p[2].x the count; quad i: p[3 + 6i] the moved quad's bounds in this
+// target's pixels; p[4 + 6i] its cell in the page (u0, v0, u1, v1); p[5 + 6i].xyz and p[6 + 6i].xyz
+// the affine from those pixels to the cell's unit square, p[5 + 6i].w the opacity; p[7 + 6i].rgb
+// the tint and p[8 + 6i].rgb the flash (colour x amount), linear. The tint multiplies and the
+// flash adds, so a glyph at (1, 1, 1) tint and 0 flash is the compose's own colour.
+void main() {
+    vec2 f = gl_FragCoord.xy;
+    int count = int(ta.p[2].x + 0.5);
+    vec4 acc = vec4(0.0);
+    for (int i = 0; i < 7; i++) {
+        if (i >= count) break;
+        vec4 r = ta.p[3 + 6 * i];
+        if (f.x < r.x || f.y < r.y || f.x >= r.z || f.y >= r.w) continue;
+        vec4 row0 = ta.p[5 + 6 * i];
+        vec4 row1 = ta.p[6 + 6 * i];
+        vec2 t = vec2(dot(row0.xyz, vec3(f, 1.0)), dot(row1.xyz, vec3(f, 1.0)));
+        if (t.x < 0.0 || t.y < 0.0 || t.x >= 1.0 || t.y >= 1.0) continue;
+        vec4 u = ta.p[4 + 6 * i];
+        vec4 s = texture(TA_TEX0, mix(u.xy, u.zw, t));
+        s.rgb = s.rgb * ta.p[7 + 6 * i].rgb + ta.p[8 + 6 * i].rgb * s.a;
+        s *= row0.w;
+        acc = s + acc * (1.0 - s.a);
+    }
+    frag_color = acc;
+}
+#endif

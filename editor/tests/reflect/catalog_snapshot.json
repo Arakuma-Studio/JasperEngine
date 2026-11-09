@@ -21239,8 +21239,12 @@
    "key": "titleart",
    "known_keys": [
     "additionalCharacters",
+    "animationSpeed",
+    "animationUnscaledTime",
     "atlasMaxPages",
     "atlasPageSize",
+    "defaultAnimation",
+    "driveAnimation",
     "enabled",
     "glintAmount",
     "glintColor",
@@ -21256,6 +21260,7 @@
     "overrides",
     "pivotFromTitle",
     "pixelsPerUnit",
+    "playAutomatically",
     "prebakeInitialState",
     "priority",
     "qualityTier",
@@ -21287,6 +21292,21 @@
      0,
      true
     ],
+    "animationSpeed": [
+     2,
+     0,
+     true
+    ],
+    "animationTime": [
+     2,
+     0,
+     true
+    ],
+    "animationUnscaledTime": [
+     0,
+     0,
+     true
+    ],
     "atlasMaxPages": [
      8,
      0,
@@ -21294,6 +21314,16 @@
     ],
     "atlasPageSize": [
      8,
+     0,
+     true
+    ],
+    "defaultAnimation": [
+     1,
+     0,
+     true
+    ],
+    "driveAnimation": [
+     1,
      0,
      true
     ],
@@ -21364,6 +21394,11 @@
     ],
     "pixelsPerUnit": [
      2,
+     0,
+     true
+    ],
+    "playAutomatically": [
+     0,
      0,
      true
     ],
@@ -21484,6 +21519,21 @@
      0,
      true
     ],
+    "animationSpeed": [
+     2,
+     0,
+     true
+    ],
+    "animationTime": [
+     2,
+     0,
+     true
+    ],
+    "animationUnscaledTime": [
+     0,
+     0,
+     true
+    ],
     "atlasMaxPages": [
      8,
      0,
@@ -21491,6 +21541,16 @@
     ],
     "atlasPageSize": [
      8,
+     0,
+     true
+    ],
+    "defaultAnimation": [
+     1,
+     0,
+     true
+    ],
+    "driveAnimation": [
+     1,
      0,
      true
     ],
@@ -21561,6 +21621,11 @@
     ],
     "pixelsPerUnit": [
      2,
+     0,
+     true
+    ],
+    "playAutomatically": [
+     0,
      0,
      true
     ],

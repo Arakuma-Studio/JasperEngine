@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleDesignerWindow.h"
+#include "titleart/anim/TitleAnimationPanel.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -70,6 +71,7 @@ namespace {
 
 TitleDesignerWindow::TitleDesignerWindow(Project* project) : project(project), doc(project) {
     settings = TitleDesignerSettings::load();
+    titledesigner::registerTitleAnimationPanel();
     // reopened as it was: its live parts are made by the first show() (R64, R65)
     windowOpen = settings.windowOpen;
 }
@@ -1122,7 +1124,16 @@ void TitleDesignerWindow::showContents() {
     const float libraryHeight = !hasLibrary ? 0.0f : libraryFolded ? ImGui::GetFrameHeightWithSpacing() * 1.2f : settings.libraryHeight * scale;
     // an open Library adds its splitter and one more item gap above it
     const float librarySplitter = hasLibrary && !libraryFolded ? 2.0f * ImGui::GetStyle().ItemSpacing.y : 0.0f;
-    const float mainHeight = std::max(120.0f, avail.y - libraryHeight - statusHeight - librarySplitter);
+    // registered bottom panels (S85's Animation strip): an open one reserves its height, a closed
+    // one its header
+    const float panelHeader = ImGui::GetFrameHeightWithSpacing();
+    float panelsHeight = 0.0f;
+    for (const PanelDef& panel : panels()) {
+        if (panel.region != PanelDef::Region::Bottom) continue;
+        panelsHeight += panelOpen(panel) ? std::max(180.0f * scale, avail.y * 0.38f) : panelHeader;
+    }
+    if (panelsHeight > 0.0f) panelsHeight = std::min(panelsHeight, avail.y * 0.55f) + ImGui::GetStyle().ItemSpacing.y;
+    const float mainHeight = std::max(120.0f, avail.y - libraryHeight - statusHeight - librarySplitter - panelsHeight);
     regionAvailable[RegionLayers] = !tiny && (narrow || !settings.layersCollapsed);
     regionAvailable[RegionProperties] = !tiny && (narrow || !settings.propertiesCollapsed);
     regionAvailable[RegionCanvas] = true;
@@ -1218,20 +1229,35 @@ void TitleDesignerWindow::showContents() {
     focusedRegion = focusedRegionNow >= 0 ? focusedRegionNow : (focused ? (int)RegionToolbar : -1);
     focusedRegionNow = -1;
     if (keyboardRegion >= 0 && focusedRegion != keyboardRegion) keyboardRegion = -1;
+    drawPanels(panelsHeight);
     drawStatusBar();
     drawAddPalette();
     drawFontPicker();
     drawExposeDialog();
     drawNotices();
-    // registered panels (S85's Animation strip)
-    for (const PanelDef& panel : panels()) {
-        const bool shown = panel.visibleByDefault ? panel.visibleByDefault(doc) : true;
-        if (!shown || !panel.draw) continue;
-        if (ImGui::CollapsingHeader((panel.title + "###panel_" + panel.id).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) panel.draw(doc);
-    }
     ImGui::End();
     if (!stillOpen) setOpen(false);
     firstShow = false;
+}
+
+bool TitleDesignerWindow::panelOpen(const PanelDef& panel) const {
+    const auto found = panelOpenStates.find(panel.id);
+    if (found != panelOpenStates.end()) return found->second;
+    return panel.visibleByDefault ? panel.visibleByDefault(doc) : true;
+}
+
+void TitleDesignerWindow::drawPanels(float height) {
+    JE_PROFILE_SCOPE("TD drawPanels");
+    if (height <= 0.0f) return;
+    ImGui::BeginChild("##titledesignerpanels", ImVec2(0.0f, height), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    for (const PanelDef& panel : panels()) {
+        if (panel.region != PanelDef::Region::Bottom || !panel.draw) continue;
+        ImGui::SetNextItemOpen(panelOpen(panel), ImGuiCond_Always);
+        const bool open = ImGui::CollapsingHeader((panel.title + "###panel_" + panel.id).c_str());
+        panelOpenStates[panel.id] = open;
+        if (open) panel.draw(doc);
+    }
+    ImGui::EndChild();
 }
 
 void TitleDesignerWindow::drawSideColumn(float width, float height) {

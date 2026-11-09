@@ -155,6 +155,12 @@ namespace {
                     out = v;
                     return true;
                 }
+                // an enum's value is quoted: 'linear' (a bare word stays an expression, so a
+                // misspelled parameter is an error and not a string)
+                if (text.size() >= 2 && text.front() == '\'' && text.back() == '\''){
+                    out = text.substr(1, text.size() - 2);
+                    return true;
+                }
                 if (!text.empty() && text[0] == '$' && text.find_first_of("+-*/() ") == std::string::npos){
                     auto it = raw.find(text.substr(1));
                     if (it == raw.end()){
@@ -458,7 +464,8 @@ bool editor::applyTitleAnimationPresetOp(TitleOpContext& ctx, const TitleJson& o
     else if (duration == -2.0 && !e.number(preset->data["duration"], duration)) return ctx.fail("bad_preset", preset->id + ": duration: " + e.error, "preset");
     const bool automatic = duration < 0.0;
     e.set("D", automatic ? 1.0 : std::max(ta::TITLE_ANIM_MIN_DURATION, duration));
-    for (auto it = preset->data.value("vars", TitleJson::object()).begin(); it != preset->data.value("vars", TitleJson::object()).end(); ++it){
+    const TitleJson presetVars = preset->data.value("vars", TitleJson::object());
+    for (auto it = presetVars.begin(); it != presetVars.end(); ++it){
         double v = 0.0;
         if (!e.number(it.value(), v)) return ctx.fail("bad_preset", preset->id + ": vars." + it.key() + ": " + e.error, "preset");
         e.set(it.key(), v);

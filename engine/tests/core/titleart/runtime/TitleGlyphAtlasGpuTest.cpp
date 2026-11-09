@@ -34,6 +34,7 @@
 #include "titleart/runtime/TitleArtLive.h"
 #include "titleart/runtime/TitleArtScheduler.h"
 #include "titleart/runtime/TitleGlyphAtlas.h"
+#include "titleart/anim/TitleAnimRealtime.h"
 #include "titleart/runtime/TitleGlyphAtlasPlan.h"
 #include "util/TitleArtBakeInfo.h"
 
@@ -362,6 +363,66 @@ TEST_F(TitleGlyphAtlasGpu, TheTextLayersOpacityAndBlend) {
     runFrames(*blend, factory());
     ASSERT_TRUE(blend->front().valid()) << blend->status().error;
     expectWithin(frontPixels(*blend), realtimeAt(blended, "1,234", *blend->glyphAtlas(), 110), "1,234 multiply 70 %");
+}
+
+// S85 R15: the per-glyph values of an animation compose as moved, tinted, flashed cells
+TEST_F(TitleGlyphAtlasGpu, GlyphPosesMoveTintAndFlashCells) {
+    auto doc = counterDoc(110, 0, {{"style", {{"face", solidFace("#ffffff")}, {"rims", Json::array()}}}}, false);
+    auto runWith = [&](std::map<uint32_t, GlyphPose> poses, const std::string& key) {
+        auto live = glyphLive(doc);
+        live->setGlyphPoses(std::make_shared<const std::map<uint32_t, GlyphPose>>(std::move(poses)), true);
+        live->setState(state(), stateHash(key), textOverride("88"));
+        runFrames(*live, factory());
+        EXPECT_TRUE(live->front().valid()) << live->status().error;
+        return frontPixels(*live);
+    };
+    const Pixels rest = runWith({}, "rest");
+    ASSERT_GT(rest.width, 0);
+    auto centroidX = [](const Pixels& p) {
+        double sum = 0.0, weight = 0.0;
+        for (int y = 0; y < p.height; y++) {
+            for (int x = 0; x < p.width; x++) {
+                const double a = p.bytes[(size_t)(y * p.width + x) * 4 + 3] / 255.0;
+                sum += x * a;
+                weight += a;
+            }
+        }
+        return weight > 0.0 ? sum / weight : 0.0;
+    };
+
+    // an identity pose is the rest's compose
+    GlyphPose identity;
+    identity.cluster = 0;
+    expectWithin(runWith({{0u, identity}}, "identity"), rest, "identity pose against no pose");
+
+    // the first glyph moves right by 50% of the size (55 px); the centroid moves (red: the
+    // program's move dropped would leave it at the rest's place)
+    GlyphPose moved = identity;
+    moved.offset[0] = 50.0;
+    const Pixels shifted = runWith({{0u, moved}}, "moved");
+    EXPECT_GT(centroidX(shifted), centroidX(rest) + 5.0) << "the first glyph's offset moves the title's mass right";
+
+    // opacity 0: only the second glyph is left, so about half the ink
+    GlyphPose hidden = identity;
+    hidden.opacity = 0.0;
+    const Pixels gone = runWith({{0u, hidden}}, "hidden");
+    auto inkOf = [](const Pixels& p) {
+        double sum = 0.0;
+        for (size_t i = 3; i < p.bytes.size(); i += 4) sum += p.bytes[i] / 255.0;
+        return sum;
+    };
+    EXPECT_NEAR(inkOf(gone), inkOf(rest) * 0.5, inkOf(rest) * 0.05);
+
+    // a red tint keeps red and removes green; a flash adds on the white face
+    GlyphPose tinted = identity;
+    tinted.tint[1] = 0.0;
+    tinted.tint[2] = 0.0;
+    const Pixels red = runWith({{0u, tinted}}, "tint");
+    bool sawRed = false;
+    for (size_t i = 0; i + 3 < red.bytes.size(); i += 4) {
+        if (red.bytes[i + 3] > 200 && red.bytes[i] > 200 && red.bytes[i + 1] < 40) sawRed = true;
+    }
+    EXPECT_TRUE(sawRed) << "a pure red tint leaves red ink with no green";
 }
 
 TEST(TitleGlyphAtlasPrebake, StringsCoverEveryDigitPlace) {

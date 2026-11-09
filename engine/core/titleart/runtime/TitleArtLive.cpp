@@ -343,7 +343,7 @@ void TitleArtLive::startJob(const TitleJobFactory& factory, uint32_t budgetUs, d
     spec.testFlags = wanted.testFlags;
     spec.glow = wanted.glowOutput;
     spec.label = wanted.label;
-    if (renderMode == TitleArtRenderMode::GLYPH_ATLAS && glyphPlan.fallback.empty() && !glyphPlan.textLayer.empty()){
+    if ((renderMode == TitleArtRenderMode::GLYPH_ATLAS || glyphCellCompose) && glyphPlan.fallback.empty() && !glyphPlan.textLayer.empty()){
         // R25-R29: per glyph; a title whose plan falls back renders as Realtime
         if (!atlas) atlas = std::make_shared<TitleGlyphAtlas>();
         atlas->setLimits(wanted.atlasPageSize, wanted.atlasMaxPages);
@@ -351,6 +351,7 @@ void TitleArtLive::startJob(const TitleJobFactory& factory, uint32_t budgetUs, d
         spec.glyphPlan = glyphPlan;
         spec.docHash = docHash;
         spec.titlePath = path;
+        spec.glyphPoses = glyphPoses;
     }
     running.job = factory(spec);
     queued = false;

@@ -33,4 +33,5 @@
 #define TA_PROGRAM_SEED_ALPHA 40    // jump-flood seeds at the alpha edge of a layer target
 #define TA_PROGRAM_RESOLVE_ALPHA 41 // seeds to the signed distance of a layer target's alpha
 #define TA_PROGRAM_GLYPH_COMPOSE 42 // S81's Glyph Atlas: cell quads of an atlas page, in order
+#define TA_PROGRAM_GLYPH_COMPOSE_ANIM 43 // S85 R15: cell quads with a per-glyph affine, opacity, tint and flash
 #define TA_PROGRAM_RENDERER_LAST 63

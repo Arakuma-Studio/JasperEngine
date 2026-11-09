@@ -904,7 +904,7 @@ void exportTitleTool(const CallPtr& call) {
         Json out = fromOrdered(result.toJson());
         out["path"] = relative;
         if (flipbooks) {
-            out["flipbooks"] = flipbookReportJson(flipbooks->result());
+            out["flipbooks"] = flipbookReportJson(flipbooks->result(), project);
             if (!flipbooks->result().ok) {
                 mcpJob.fail("The outputs were baked; the flipbooks failed: " + flipbooks->result().error, out);
                 return true;

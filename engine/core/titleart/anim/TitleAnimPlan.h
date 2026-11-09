@@ -59,7 +59,7 @@ namespace jasperengine::titleart {
         std::string layer, field;
         titleanim::TrackClass cls = titleanim::TrackClass::Rerender;    // R11's class
         TrackPlay play = TrackPlay::Plays;
-        // how: "companion", "flipbook", "layer_split", "glyph_cells", "cells_swap", "rerender",
+        // how: "companion", "flipbook", "glyph_cells", "cells_swap", "rerender",
         // "prerender", "plate_rerender", "none"
         std::string how;
         std::string reason;                 // why it falls back or is not played ("" plays)
@@ -73,7 +73,6 @@ namespace jasperengine::titleart {
         bool flipbook = false;              // Baked: frames needed (a track that is not title live)
         bool rerender = false;              // Realtime / Glyph Atlas: re-render requests at rerender_fps
         bool prerender = false;
-        std::vector<std::string> layerSplits;   // Realtime: the layers composed live
         std::vector<std::string> glyphLayers;   // the text layers animated by cells
         std::vector<std::string> notes;     // overlay_needs_title_live, glow_pulse_over_frames ...
     };

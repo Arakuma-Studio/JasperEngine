@@ -34,7 +34,7 @@ namespace jasperengine::editor {
     // Animation window editing a clip; PoseAnimation: the Pose Animation window, or a Scene view
     // posing its character; Curve, ColorPicker, SoundBrowser, AudioCaptures and TitleDesigner: those windows, focused). A new context goes at
     // the end: parseShortcutContext walks up to the last one.
-    enum class ShortcutContext : uint8_t { Global, Editor, SceneView, Hierarchy, Project, Console, Animation, PoseAnimation, Curve, ColorPicker, SoundBrowser, AudioCaptures, TitleDesigner };
+    enum class ShortcutContext : uint8_t { Global, Editor, SceneView, Hierarchy, Project, Console, Animation, PoseAnimation, Curve, ColorPicker, SoundBrowser, AudioCaptures, TitleDesigner, TitleAnimation };
 
     const char* shortcutContextName(ShortcutContext context);       // "Global", "Scene View", ...
     const char* shortcutContextKey(ShortcutContext context);        // "global", "scene_view", ...

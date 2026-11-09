@@ -37,7 +37,7 @@ namespace jasperengine::editor::mcp::titletools {
     // with `error` for a bad `animations`)
     std::shared_ptr<TitleFlipbookBakeJob> titleFlipbookJob(Project* project, const std::filesystem::path& file, const titleart::TitleArtDoc& doc,
                                                            const Json& args, std::string& error);
-    Json flipbookReportJson(const TitleFlipbookResult& result);
+    Json flipbookReportJson(const TitleFlipbookResult& result, Project* project);
     // list_title_library {kind: "animation_presets"}
     void listAnimationPresets(const CallPtr& call);
 

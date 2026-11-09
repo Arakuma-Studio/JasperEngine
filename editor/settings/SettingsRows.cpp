@@ -2253,6 +2253,37 @@ std::vector<Setting> mcpSettingsTable() {
                                 [readGroup](TitleArtProjectSettings& t, const Json& value, std::string& error) {
                                     return readGroup(value, t.cacheBudgetMiB, 1.0, 4096.0, error);
                                 }));
+            add(titleArtSetting("title_art.animation.flipbook_budget_mib", "object",
+                                "Baked flipbook pages against these budgets in MiB, per family {desktop, mobile, android_etc2, web} (S85, 1..4096; "
+                                "default 32, 8, 8, 8). A flipbook over a budget fails its check.",
+                                {}, [](const TitleArtProjectSettings& t) {
+                                    return Json{{"desktop", t.flipbookBudgetMiB.desktop}, {"mobile", t.flipbookBudgetMiB.mobile},
+                                                {"android_etc2", t.flipbookBudgetAndroidEtc2MiB}, {"web", t.flipbookBudgetMiB.web}};
+                                },
+                                [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    if (!value.is_object()) {
+                                        error = "must be an object {desktop, mobile, android_etc2, web}";
+                                        return false;
+                                    }
+                                    for (auto it = value.begin(); it != value.end(); ++it) {
+                                        double* field = it.key() == "desktop" ? &t.flipbookBudgetMiB.desktop : it.key() == "mobile" ? &t.flipbookBudgetMiB.mobile
+                                                        : it.key() == "web" ? &t.flipbookBudgetMiB.web : it.key() == "android_etc2" ? &t.flipbookBudgetAndroidEtc2MiB : nullptr;
+                                        if (!field) {
+                                            error = "'" + it.key() + "' is not desktop, mobile, android_etc2 or web";
+                                            return false;
+                                        }
+                                        if (!readNumber(it.value(), 1.0, 4096.0, *field, error)) return false;
+                                    }
+                                    return true;
+                                }));
+            add(titleArtSetting("title_art.animation.default_fps", "int", "New documents' animation fps (S85, 1..120; default 30).",
+                                {}, [](const TitleArtProjectSettings& t) { return Json(t.animationDefaultFps); },
+                                [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    double v = t.animationDefaultFps;
+                                    if (!readNumber(value, 1.0, 120.0, v, error)) return false;
+                                    t.animationDefaultFps = (int)v;
+                                    return true;
+                                }));
             add(titleArtSetting("title_art.reference_height", "int",
                                 "The display height (px) the export prebakes Realtime titles' initial states for (default 1080).", {},
                                 [](const TitleArtProjectSettings& t) { return Json(t.referenceHeight); },
@@ -3613,6 +3644,8 @@ const Placement placements[] = {
     {"title_art.frame_budget_ms", "Title Art", "Runtime", "Frame Budget", "titleart realtime glyph atlas render time slice ms"},
     {"title_art.release_delay_s", "Title Art", "Runtime", "Release Delay", "titleart realtime render targets memory idle"},
     {"title_art.cache_budget_mib", "Title Art", "Runtime", "Cache Budget", "titleart realtime memory images vram"},
+    {"title_art.animation.flipbook_budget_mib", "Title Art", "Animation", "Flipbook Budget", "titleart animation flipbook baked memory mobile desktop web"},
+    {"title_art.animation.default_fps", "Title Art", "Animation", "Default Fps", "titleart animation frames per second new document"},
     {"title_art.reference_height", "Title Art", "Runtime", "Reference Height", "titleart prebake initial state export display"},
     {"title_art.simulate_export_characters", "Title Art", "Runtime", "Simulate Export Characters in Play", "titleart characters subset glyphs missing"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},

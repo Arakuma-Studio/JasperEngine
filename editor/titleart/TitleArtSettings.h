@@ -46,12 +46,17 @@ namespace jasperengine::editor {
         TitleArtGroupValues cacheBudgetMiB{64.0, 16.0, 16.0};
         int referenceHeight = 1080;
         bool simulateExportCharacters = true;
+        // S85 §6.9: the flipbook budgets (MiB) and the new documents' animation fps
+        TitleArtGroupValues flipbookBudgetMiB{32.0, 8.0, 8.0};
+        double flipbookBudgetAndroidEtc2MiB = 8.0;
+        int animationDefaultFps = 30;
 
         bool operator==(const TitleArtProjectSettings& other) const {
             return autoBake == other.autoBake && staleBakesOnExport == other.staleBakesOnExport && frameBudgetMs == other.frameBudgetMs &&
                    editorFrameBudgetMs == other.editorFrameBudgetMs && releaseDelaySeconds == other.releaseDelaySeconds &&
                    cacheBudgetMiB == other.cacheBudgetMiB && referenceHeight == other.referenceHeight &&
-                   simulateExportCharacters == other.simulateExportCharacters;
+                   simulateExportCharacters == other.simulateExportCharacters && flipbookBudgetMiB == other.flipbookBudgetMiB &&
+                   flipbookBudgetAndroidEtc2MiB == other.flipbookBudgetAndroidEtc2MiB && animationDefaultFps == other.animationDefaultFps;
         }
         bool operator!=(const TitleArtProjectSettings& other) const { return !(*this == other); }
 

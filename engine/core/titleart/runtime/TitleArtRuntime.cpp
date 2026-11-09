@@ -258,7 +258,10 @@ std::shared_ptr<titleanim::TitleAnimLibrary> TitleArtRuntime::compileAnimations(
 void TitleArtRuntime::setAnimation(TitleArtLive& live, const titleanim::TitleAnimPlayer& player, int animatingTitles){
     const std::shared_ptr<const titleanim::TitleAnimLibrary>& library = player.library();
     if (!library || !player.active()){
-        if (!live.animationOverrides().empty() || live.animating()) live.setAnimationOverrides({}, 0);
+        if (!live.animationOverrides().empty() || live.animating()){
+            live.setAnimationOverrides({}, 0);
+            live.setGlyphPoses(nullptr, false);
+        }
         live.setAnimating(false, 1.0);
         return;
     }
@@ -281,7 +284,18 @@ void TitleArtRuntime::setAnimation(TitleArtLive& live, const titleanim::TitleAni
     }
     PlayerPose pose;
     playerPose(*live.document(), player, true, [&](const titleanim::CompiledTitleTrack& t){ return rerendered.count(&t) > 0; }, pose);
-    live.setAnimationOverrides(pose.values.overrides(), pose.values.hash());
+    // R15: the glyphs of the text layer the Glyph Atlas plan names compose as cells (a Realtime
+    // title only while they animate); a document the plan cannot split keeps its merged render
+    if (live.mode() == TitleArtRenderMode::REALTIME && !pose.glyphs.empty() && live.glyphAtlasPlan().textLayer.empty() && live.glyphAtlasPlan().fallback.empty())
+        live.setGlyphPlan(planTitleGlyphAtlas(*live.document()));
+    std::shared_ptr<const std::map<uint32_t, GlyphPose>> glyphs;
+    uint64_t glyphHash = 0;
+    if (auto found = pose.glyphs.find(live.glyphAtlasPlan().textLayer); found != pose.glyphs.end() && live.glyphAtlasPlan().fallback.empty()){
+        for (const auto& entry : found->second) glyphHash = hashCombine(glyphHash, hashCombine(entry.first, glyphPoseHash(entry.second)));
+        glyphs = std::make_shared<const std::map<uint32_t, GlyphPose>>(std::move(found->second));
+    }
+    live.setGlyphPoses(glyphs, glyphs != nullptr && player.isPlaying());
+    live.setAnimationOverrides(pose.values.overrides(), hashCombine(pose.values.hash(), glyphHash));
     const int n = std::max(1, animatingTitles);
     live.setAnimating(player.isPlaying(), 1.0 / (double)n);
 }

@@ -97,6 +97,22 @@ void editor::InspectorWindow::drawTitleArtRendererComponent(ComponentType cpType
     mode.help = "Baked shows the bake (no engine code); Realtime renders the title again when its text or a parameter changes; "
                 "Glyph Atlas renders each glyph once and lays out changing text every frame (counters, scores, timers)";
     propertyRow(RowPropertyType::Enum, cpType, "renderMode", "Render Mode", sceneProject, entities, mode);
+    // S85 R49: the animation rows (the names are the document's; an unknown name warns once at Play)
+    static std::vector<std::string> animationChoices;
+    animationChoices = single ? TitleArtSystem::animationNames(scene, entity) : std::vector<std::string>();
+    RowSettings animationName;
+    animationName.help = "An animation of the title by name (the Title Designer's Animation panel lists them); empty for none";
+    animationName.stringSuggestions = &animationChoices;
+    propertyRow(RowPropertyType::Bool, cpType, "playAutomatically", "Play Automatically", sceneProject, entities);
+    propertyRow(RowPropertyType::String, cpType, "defaultAnimation", "Default Animation", sceneProject, entities, animationName);
+    propertyRow(RowPropertyType::Float, cpType, "animationSpeed", "Animation Speed", sceneProject, entities);
+    RowSettings unscaled;
+    unscaled.help = "Off: the animation follows the scene's time scale; On: unscaled time";
+    propertyRow(RowPropertyType::Bool, cpType, "animationUnscaledTime", "Unscaled Time", sceneProject, entities, unscaled);
+    RowSettings drive;
+    drive.help = "Name of an animation that follows Animation Time instead of the clock (empty: None)";
+    drive.stringSuggestions = &animationChoices;
+    propertyRow(RowPropertyType::String, cpType, "driveAnimation", "Drive Animation", sceneProject, entities, drive);
     endTable();
 
     if (!title->title.path.empty() && InspectorWindowTitleArt::canOpenInDesigner()){

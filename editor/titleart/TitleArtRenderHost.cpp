@@ -27,6 +27,7 @@ namespace fs = std::filesystem;
 namespace {
 
     AssetType expectedType(titleart::TitleAssetKind kind) {
+        if (kind == titleart::TitleAssetKind::Sound) return AssetType::Unknown;    // a clip or a Sound Event
         return kind == titleart::TitleAssetKind::Font ? AssetType::Font : AssetType::Texture;
     }
 

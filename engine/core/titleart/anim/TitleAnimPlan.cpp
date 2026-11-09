@@ -572,14 +572,12 @@ TitleAnimPlan jasperengine::titleart::buildAnimPlan(const TitleArtDoc& doc, cons
                 };
                 switch (t.cls){
                     case ta::TrackClass::LayerLive:{
+                        // S85 Deviation: no live compose of layer splits; these re-render at the
+                        // animation's capped rate (R18), and the reason says why it costs
                         std::string code;
                         const std::string why = splitBlocker(t.layer, code);
-                        if (why.empty()){
-                            set(TrackPlay::Plays, "layer_split");
-                            if (std::find(ap.layerSplits.begin(), ap.layerSplits.end(), t.layer) == ap.layerSplits.end()) ap.layerSplits.push_back(t.layer);
-                        }else{
-                            rerender("not a layer split: " + why, code.c_str());
-                        }
+                        rerender(why.empty() ? std::string("layer-live tracks re-render: the runtime has no layer split compose") : "not a layer split: " + why,
+                                 why.empty() ? "no_layer_compose" : code.c_str());
                         break;
                     }
                     case ta::TrackClass::Glyph:

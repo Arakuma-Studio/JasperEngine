@@ -40,6 +40,8 @@ namespace {
     constexpr int CELL_GUTTER = 1;
     // quads per compose pass (the program's parameter block: 2 vec4s each after p[2])
     constexpr int QUADS_PER_PASS = 20;
+    // the same with per-glyph poses (S85 R15: 6 vec4s each after p[2])
+    constexpr int ANIM_QUADS_PER_PASS = 7;
     // the compose and output steps' estimate
     constexpr uint32_t COMPOSE_US = 150;
 
@@ -170,6 +172,10 @@ namespace {
         int page = 0;
         TitleRectI cell;            // atlas pixels
         double x0 = 0, y0 = 0;      // the compose target's pixels
+        // S85 R15: where the glyph's pose moved it (null pose: at rest), the cell's own pixels
+        // to the target's as p' = (m[0] x + m[1] y + m[2], m[3] x + m[4] y + m[5])
+        const GlyphPose* pose = nullptr;
+        double move[6] = {1, 0, 0, 0, 1, 0};
     };
 
 }
@@ -848,7 +854,7 @@ namespace {
 
         std::vector<ShaderKey> shaderKeys() const override{
             std::vector<ShaderKey> keys = subKeys;
-            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::Output, TitleRenderProgram::Blend}){
+            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::GlyphComposeAnim, TitleRenderProgram::Output, TitleRenderProgram::Blend}){
                 const ShaderKey k = titleRenderProgramKey((uint32_t)p);
                 if (std::find(keys.begin(), keys.end(), k) == keys.end()) keys.push_back(k);
             }
@@ -906,6 +912,9 @@ namespace {
         struct Placed {
             std::string key;
             double x = 0, y = 0;        // the string glyph's position, output pixels
+            // S85 R15: the glyph's pose (null: at rest) and its move in output pixels
+            const GlyphPose* pose = nullptr;
+            double move[6] = {1, 0, 0, 0, 1, 0};
         };
         std::vector<Placed> placed;     // the string's glyphs in order
 
@@ -926,6 +935,32 @@ namespace {
 
         TitleVec2 toOutput(const TitleVec2& layerPoint) const{
             return canvasFrame.toFrame(toDocument.apply(layerPoint));
+        }
+
+        // R15: the glyph's sampled values as a move in output pixels: about its pivot (the
+        // ink box's centre, baseline, bottom or top), to the pivot shifted by the offset (% of
+        // the layer's size, layer axes), as the editor's exact pose does
+        void poseGlyph(Placed& glyph, const LaidOutCluster& cluster, const Json& textLayer) const{
+            if (!spec.glyphPoses) return;
+            auto found = spec.glyphPoses->find(cluster.index);
+            if (found == spec.glyphPoses->end() || found->second.identity()) return;
+            const GlyphPose& g = found->second;
+            double lx = cluster.inkBox.x + cluster.inkBox.width * 0.5, ly = cluster.inkBox.y + cluster.inkBox.height * 0.5;
+            if (g.pivot == titleanim::TrackPivot::Bottom) ly = cluster.inkBox.y;
+            else if (g.pivot == titleanim::TrackPivot::Top) ly = cluster.inkBox.y + cluster.inkBox.height;
+            else if (g.pivot == titleanim::TrackPivot::Baseline) ly = cluster.pen.y;
+            const double size = textLayer.value("size", 200.0);
+            const TitleVec2 pivot = toOutput({lx, ly});
+            const TitleVec2 moved = toOutput({lx + g.offset[0] * size / 100.0, ly + g.offset[1] * size / 100.0});
+            const double radians = g.rotation * 3.14159265358979323846 / 180.0;
+            const double cs = std::cos(radians), sn = std::sin(radians);
+            glyph.pose = &g;
+            glyph.move[0] = cs * g.scale[0];
+            glyph.move[1] = -sn * g.scale[1];
+            glyph.move[3] = sn * g.scale[0];
+            glyph.move[4] = cs * g.scale[1];
+            glyph.move[2] = moved.x - (glyph.move[0] * pivot.x + glyph.move[1] * pivot.y);
+            glyph.move[5] = moved.y - (glyph.move[3] * pivot.x + glyph.move[4] * pivot.y);
         }
 
         // the style: overrides, its hash (R32's file key), the cell document
@@ -1086,7 +1121,9 @@ namespace {
                 // pixels and is never resampled
                 const int qx = phaseOf(at.x - ax), qy = phaseOf(at.y - ay);
                 const std::string key = base + "|" + std::to_string(qx) + "," + std::to_string(qy);
-                placed.push_back({key, at.x, at.y});
+                Placed glyph{key, at.x, at.y};
+                poseGlyph(glyph, cluster, *layer);
+                placed.push_back(glyph);
                 stringKeys.insert(key);
                 if (atlas->find(key) || queued.count(key)) continue;
                 needed.push_back({key, text, adjusted, offset, ax + qx / (double)PHASES, ay + qy / (double)PHASES, qx / (double)PHASES,
@@ -1238,12 +1275,24 @@ namespace {
                 if (!cell || cell->blank) continue;
                 shown.insert(p.key);
                 const double dx = std::round(p.x - cell->anchorX), dy = std::round(p.y - cell->anchorY);
+                // the pose moves output pixels; these quads sit in the compose target's
+                auto posed = [&](Quad quad){
+                    if (p.pose){
+                        quad.pose = p.pose;
+                        std::copy(p.move, p.move + 6, quad.move);
+                        quad.move[2] -= composeRect.x - (quad.move[0] * composeRect.x + quad.move[1] * composeRect.y);
+                        quad.move[5] -= composeRect.y - (quad.move[3] * composeRect.x + quad.move[4] * composeRect.y);
+                    }
+                    return quad;
+                };
                 if (!cell->back.empty())
-                    quads.push_back({cell->page, cell->back, cell->backPixels.x + dx - composeRect.x, cell->backPixels.y + dy - composeRect.y});
-                Quad front{cell->page, cell->front, cell->frontPixels.x + dx - composeRect.x, cell->frontPixels.y + dy - composeRect.y};
+                    quads.push_back(posed({cell->page, cell->back, cell->backPixels.x + dx - composeRect.x, cell->backPixels.y + dy - composeRect.y}));
+                Quad front = posed({cell->page, cell->front, cell->frontPixels.x + dx - composeRect.x, cell->frontPixels.y + dy - composeRect.y});
                 if (!cell->front.empty()) (stringOrder ? quads : fronts).push_back(front);
             }
             quads.insert(quads.end(), fronts.begin(), fronts.end());
+            const bool anyPose = std::any_of(quads.begin(), quads.end(), [](const Quad& q){ return q.pose != nullptr; });
+            if (anyPose) return drawPosedCells(into, quads, passes, error);
             const float side = (float)atlas->pageSize();
             for (size_t i = 0; i < quads.size();){
                 // a run of quads of one page, at most QUADS_PER_PASS
@@ -1275,11 +1324,71 @@ namespace {
             return true;
         }
 
+        // S85 R15: the quads with their poses; each pass moves ANIM_QUADS_PER_PASS of them
+        bool drawPosedCells(TitleTarget* into, const std::vector<Quad>& quads, uint32_t& passes, std::string& error){
+            const float side = (float)atlas->pageSize();
+            for (size_t i = 0; i < quads.size();){
+                const int page = quads[i].page;
+                size_t end = i;
+                while (end < quads.size() && quads[end].page == page && end - i < (size_t)ANIM_QUADS_PER_PASS) end++;
+                TitleGpuPass pass;
+                pass.program = TitleRenderProgram::GlyphComposeAnim;
+                pass.target = into;
+                pass.scissor = {0, 0, composeRect.width, composeRect.height};
+                pass.blend = BlendMode::PREMULTIPLIED;
+                pass.tex[0] = atlas->pageTarget(page) ? atlas->pageTarget(page)->colorTexture() : nullptr;
+                pass.params.set(2, (float)(end - i));
+                for (size_t q = i; q < end; q++){
+                    const Quad& quad = quads[q];
+                    const int slot = 3 + 6 * (int)(q - i);
+                    const double m[6] = {quad.move[0], quad.move[1], quad.move[2], quad.move[3], quad.move[4], quad.move[5]};
+                    // the moved corners' bounds, and the inverse move to the cell's unit square
+                    double x0 = 1e30, y0 = 1e30, x1 = -1e30, y1 = -1e30;
+                    for (int corner = 0; corner < 4; corner++){
+                        const double cx = quad.x0 + ((corner & 1) ? quad.cell.width : 0), cy = quad.y0 + ((corner & 2) ? quad.cell.height : 0);
+                        const double px = m[0] * cx + m[1] * cy + m[2], py = m[3] * cx + m[4] * cy + m[5];
+                        x0 = std::min(x0, px); x1 = std::max(x1, px);
+                        y0 = std::min(y0, py); y1 = std::max(y1, py);
+                    }
+                    const double det = m[0] * m[4] - m[1] * m[3];
+                    if (std::abs(det) < 1e-9 || (quad.pose && quad.pose->opacity <= 0.0)){
+                        pass.params.set(slot, 0.0f, 0.0f, 0.0f, 0.0f);     // a flat glyph draws nothing
+                        continue;
+                    }
+                    pass.params.set(slot, (float)std::floor(x0), (float)std::floor(y0), (float)std::ceil(x1) + 1.0f, (float)std::ceil(y1) + 1.0f);
+                    pass.params.set(slot + 1, quad.cell.x / side, quad.cell.y / side, (quad.cell.x + quad.cell.width) / side,
+                                    (quad.cell.y + quad.cell.height) / side);
+                    const double w = 1.0 / std::max(1, quad.cell.width), h = 1.0 / std::max(1, quad.cell.height);
+                    const double ia = m[4] / det, ib = -m[1] / det, ic = -m[3] / det, id = m[0] / det;
+                    const double ix = -(ia * m[2] + ib * m[5]) - quad.x0, iy = -(ic * m[2] + id * m[5]) - quad.y0;
+                    pass.params.set(slot + 2, (float)(ia * w), (float)(ib * w), (float)(ix * w), quad.pose ? (float)quad.pose->opacity : 1.0f);
+                    pass.params.set(slot + 3, (float)(ic * h), (float)(id * h), (float)(iy * h), 0.0f);
+                    float tint[3] = {1.0f, 1.0f, 1.0f}, flash[3] = {0.0f, 0.0f, 0.0f};
+                    if (quad.pose){
+                        for (int k = 0; k < 3; k++){
+                            tint[k] = (float)srgbToLinear((float)quad.pose->tint[k]);
+                            flash[k] = (float)srgbToLinear((float)quad.pose->flash[k]) * (float)quad.pose->flashAmount;
+                        }
+                    }
+                    pass.params.set(slot + 4, tint[0], tint[1], tint[2], 0.0f);
+                    pass.params.set(slot + 5, flash[0], flash[1], flash[2], 0.0f);
+                }
+                passes++;
+                if (!pass.tex[0]){
+                    error = "a glyph atlas page is gone";
+                    return false;
+                }
+                if (!atlas->gpu().run(pass, error)) return false;
+                i = end;
+            }
+            return true;
+        }
+
         // R28: back plate, back cells, front cells, front plate, then the output pass; a text layer
         // with an opacity or a blend composes its glyphs apart, then over the back plate
         bool compose(StepReport& report){
             const bool apart = blendMode != (int)TitleBlend::Normal || opacity < 1.0;
-            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::Output})
+            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::GlyphComposeAnim, TitleRenderProgram::Output})
                 if (!ensure(p)) return false;
             if (blendMode != (int)TitleBlend::Normal && !ensure(TitleRenderProgram::Blend)) return false;
             blocked = false;

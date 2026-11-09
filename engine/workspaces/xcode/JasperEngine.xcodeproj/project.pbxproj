@@ -4509,6 +4509,20 @@
 		4A534E473B1354A6B1A57AC5 /* TitleArtClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E671A662DF01E756 /* TitleArtClassesLua.cpp */; };
 		4A534E47A79EC9908B19997E /* TitleArtSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479384F9518E35EC82 /* TitleArtSystem.cpp */; };
 		4A534E4779C78A4200A1B073 /* TitleArtSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479384F9518E35EC82 /* TitleArtSystem.cpp */; };
+		4A534E47BA7561F0AEA780FB /* TitleAnimTypes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4735BE0AAFC0E3C988 /* TitleAnimTypes.cpp */; };
+		4A534E4780737AACE6CDDE47 /* TitleAnimTypes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4735BE0AAFC0E3C988 /* TitleAnimTypes.cpp */; };
+		4A534E4768C2ED73190788C3 /* TitleAnimTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477002452F40763718 /* TitleAnimTypes.h */; };
+		4A534E47376A904410ACB75A /* TitleAnimSampling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47590180F4F4597973 /* TitleAnimSampling.cpp */; };
+		4A534E471DF973A7E6CAC553 /* TitleAnimSampling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47590180F4F4597973 /* TitleAnimSampling.cpp */; };
+		4A534E47E40DB27A21BEC410 /* TitleAnimSampling.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470501313713B6042F /* TitleAnimSampling.h */; };
+		4A534E47B3A0383CE2F6ECB4 /* TitleAnimDataIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E8AF0A496FF97F58 /* TitleAnimDataIO.cpp */; };
+		4A534E47CD6CADDCA8D0C5AA /* TitleAnimDataIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E8AF0A496FF97F58 /* TitleAnimDataIO.cpp */; };
+		4A534E47E68267657E488ADB /* TitleAnimDataIO.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474B533E5DAD7487F6 /* TitleAnimDataIO.h */; };
+		4A534E472BFAA3FEC8F01CF6 /* TitleAnimPlayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47874C9100DF33D8EC /* TitleAnimPlayer.cpp */; };
+		4A534E47A09412913ADA2C47 /* TitleAnimPlayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47874C9100DF33D8EC /* TitleAnimPlayer.cpp */; };
+		4A534E47E8373B549DBC60C5 /* TitleAnimPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470C5931072A736FC1 /* TitleAnimPlayer.h */; };
+		4A534E474E7509C543829F73 /* TitleArtSystemAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EB3F2BAE2DE40C9D /* TitleArtSystemAnimation.cpp */; };
+		4A534E4710641535EADE2C0A /* TitleArtSystemAnimation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EB3F2BAE2DE40C9D /* TitleArtSystemAnimation.cpp */; };
 		4A534E470F1904CE2CE790F0 /* TitleArtBakeInfo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470E9D427BEEC4BFB9 /* TitleArtBakeInfo.cpp */; };
 		4A534E472B8D239A62736C46 /* TitleArtBakeInfo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470E9D427BEEC4BFB9 /* TitleArtBakeInfo.cpp */; };
 		4A534E47807A6AEE3DE6966D /* TitleArtRuntimeNone.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EBAD24C5942461DD /* TitleArtRuntimeNone.cpp */; };
@@ -8814,6 +8828,15 @@
 		4A534E4702995AEE8D59ED7E /* TitleArt.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TitleArt.cpp; sourceTree = "<group>"; };
 		4A534E47E671A662DF01E756 /* TitleArtClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TitleArtClassesLua.cpp; sourceTree = "<group>"; };
 		4A534E479384F9518E35EC82 /* TitleArtSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TitleArtSystem.cpp; sourceTree = "<group>"; };
+		4A534E4735BE0AAFC0E3C988 /* TitleAnimTypes.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../titleanim/TitleAnimTypes.cpp; sourceTree = "<group>"; };
+		4A534E477002452F40763718 /* TitleAnimTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../titleanim/TitleAnimTypes.h; sourceTree = "<group>"; };
+		4A534E47590180F4F4597973 /* TitleAnimSampling.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../titleanim/TitleAnimSampling.cpp; sourceTree = "<group>"; };
+		4A534E470501313713B6042F /* TitleAnimSampling.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../titleanim/TitleAnimSampling.h; sourceTree = "<group>"; };
+		4A534E47E8AF0A496FF97F58 /* TitleAnimDataIO.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../titleanim/TitleAnimDataIO.cpp; sourceTree = "<group>"; };
+		4A534E474B533E5DAD7487F6 /* TitleAnimDataIO.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../titleanim/TitleAnimDataIO.h; sourceTree = "<group>"; };
+		4A534E47874C9100DF33D8EC /* TitleAnimPlayer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../titleanim/TitleAnimPlayer.cpp; sourceTree = "<group>"; };
+		4A534E470C5931072A736FC1 /* TitleAnimPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../titleanim/TitleAnimPlayer.h; sourceTree = "<group>"; };
+		4A534E47EB3F2BAE2DE40C9D /* TitleArtSystemAnimation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../subsystem/TitleArtSystemAnimation.cpp; sourceTree = "<group>"; };
 		4A534E470E9D427BEEC4BFB9 /* TitleArtBakeInfo.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TitleArtBakeInfo.cpp; sourceTree = "<group>"; };
 		4A534E47EBAD24C5942461DD /* TitleArtRuntimeNone.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TitleArtRuntimeNone.cpp; sourceTree = "<group>"; };
 		4A534E4785C9FA5C7514E006 /* TitleArtRendererComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TitleArtRendererComponent.h; sourceTree = "<group>"; };
@@ -10831,6 +10854,15 @@
 				4A534E47924BA624B2ED75D2 /* WaterWakeMap.cpp */,
 				4A534E4770610EDBE3BF2F84 /* WaterExclusion.h */,
 				4A534E4774FB09A9615E4FA5 /* WaterWakeMap.h */,
+				4A534E4735BE0AAFC0E3C988 /* TitleAnimTypes.cpp */,
+				4A534E477002452F40763718 /* TitleAnimTypes.h */,
+				4A534E47590180F4F4597973 /* TitleAnimSampling.cpp */,
+				4A534E470501313713B6042F /* TitleAnimSampling.h */,
+				4A534E47E8AF0A496FF97F58 /* TitleAnimDataIO.cpp */,
+				4A534E474B533E5DAD7487F6 /* TitleAnimDataIO.h */,
+				4A534E47874C9100DF33D8EC /* TitleAnimPlayer.cpp */,
+				4A534E470C5931072A736FC1 /* TitleAnimPlayer.h */,
+				4A534E47EB3F2BAE2DE40C9D /* TitleArtSystemAnimation.cpp */,
 				4A534E470E9D427BEEC4BFB9 /* TitleArtBakeInfo.cpp */,
 				4A534E47DFD5F80ED7A199FE /* TitleArtBakeInfo.h */,
 			);
@@ -15673,6 +15705,10 @@
 				4A534E477D13A50F5BFED65F /* TitleArtInstance.h in Headers */,
 				4A534E47380043FD4553AB21 /* TitleArtRuntime.h in Headers */,
 				4A534E477032F5AB02551CFD /* TitleArtSystem.h in Headers */,
+				4A534E4768C2ED73190788C3 /* TitleAnimTypes.h in Headers */,
+				4A534E47E40DB27A21BEC410 /* TitleAnimSampling.h in Headers */,
+				4A534E47E68267657E488ADB /* TitleAnimDataIO.h in Headers */,
+				4A534E47E8373B549DBC60C5 /* TitleAnimPlayer.h in Headers */,
 				4A534E47A10EAAB8AC1E7F56 /* TitleArtBakeInfo.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -18214,6 +18250,11 @@
 				4A534E470122FDA3AFCCE749 /* TitleArt.cpp in Sources */,
 				4A534E47392551724CBF35C1 /* TitleArtClassesLua.cpp in Sources */,
 				4A534E47A79EC9908B19997E /* TitleArtSystem.cpp in Sources */,
+				4A534E47BA7561F0AEA780FB /* TitleAnimTypes.cpp in Sources */,
+				4A534E47376A904410ACB75A /* TitleAnimSampling.cpp in Sources */,
+				4A534E47B3A0383CE2F6ECB4 /* TitleAnimDataIO.cpp in Sources */,
+				4A534E472BFAA3FEC8F01CF6 /* TitleAnimPlayer.cpp in Sources */,
+				4A534E474E7509C543829F73 /* TitleArtSystemAnimation.cpp in Sources */,
 				4A534E470F1904CE2CE790F0 /* TitleArtBakeInfo.cpp in Sources */,
 				4A534E47807A6AEE3DE6966D /* TitleArtRuntimeNone.cpp in Sources */,
 			);
@@ -19047,6 +19088,11 @@
 				4A534E47534801F407B3AFAF /* TitleArt.cpp in Sources */,
 				4A534E473B1354A6B1A57AC5 /* TitleArtClassesLua.cpp in Sources */,
 				4A534E4779C78A4200A1B073 /* TitleArtSystem.cpp in Sources */,
+				4A534E4780737AACE6CDDE47 /* TitleAnimTypes.cpp in Sources */,
+				4A534E471DF973A7E6CAC553 /* TitleAnimSampling.cpp in Sources */,
+				4A534E47CD6CADDCA8D0C5AA /* TitleAnimDataIO.cpp in Sources */,
+				4A534E47A09412913ADA2C47 /* TitleAnimPlayer.cpp in Sources */,
+				4A534E4710641535EADE2C0A /* TitleArtSystemAnimation.cpp in Sources */,
 				4A534E472B8D239A62736C46 /* TitleArtBakeInfo.cpp in Sources */,
 				4A534E47AEC4ECD5932F82A7 /* TitleArtRuntimeNone.cpp in Sources */,
 			);
