@@ -44,6 +44,12 @@ namespace jasperengine::editor{
             return ext == ".bitmapfont" || ext == ".fnt";
         }
 
+        // TrueType/OpenType files (the Title Art font Inspector's names and licence, S82)
+        inline static bool isVectorFontFile(const std::string& path) {
+            const std::string ext = fileExtension(path);
+            return ext == ".ttf" || ext == ".otf" || ext == ".ttc";
+        }
+
         // vector fonts and the bitmap fonts of the same Font type (S51 D1)
         inline static bool isFontFile(const std::string& path) {
              static const std::unordered_set<std::string> fontExtensions = {

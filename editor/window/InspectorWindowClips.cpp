@@ -1569,8 +1569,7 @@ bool editor::InspectorWindow::drawInspectedAsset(){
     if (Util::isFontFile(file)){
         std::error_code ec;
         if (!fs::is_regular_file(asset, ec)) return false;
-        const std::string fontExtension = Util::fileExtension(file);
-        const bool vectorFont = fontExtension == ".ttf" || fontExtension == ".otf" || fontExtension == ".ttc";
+        const bool vectorFont = Util::isVectorFontFile(file);
         if (vectorFont) drawFontAsset(asset);
         if (!bitmapFontInspector) bitmapFontInspector = std::make_shared<BitmapFontInspector>(project);
         bitmapFontInspector->draw(asset, !vectorFont);
