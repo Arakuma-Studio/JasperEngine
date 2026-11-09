@@ -13,6 +13,7 @@
 
 #include "json.hpp"
 
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>

@@ -173,6 +173,7 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
 list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pixelart/draw/SpriteDoc.cpp
     ${EDITOR_DIR}/pixelart/draw/SpriteDocCache.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpritePatch.cpp
     ${EDITOR_DIR}/pixelart/draw/GridCodec.cpp
     ${EDITOR_DIR}/pixelart/draw/DrawPrimitives.cpp
     ${EDITOR_DIR}/pixelart/draw/ShadeColor.cpp
@@ -193,6 +194,7 @@ jasperengine_skip_unity_build(
     SOURCES
         ${EDITOR_DIR}/pixelart/draw/SpriteDoc.cpp
         ${EDITOR_DIR}/pixelart/draw/SpriteDocCache.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpritePatch.cpp
         ${EDITOR_DIR}/pixelart/draw/GridCodec.cpp
         ${EDITOR_DIR}/pixelart/draw/DrawPrimitives.cpp
         ${EDITOR_DIR}/pixelart/draw/ShadeColor.cpp
@@ -215,3 +217,18 @@ set_source_files_properties(
     ${EDITOR_DIR}/pixelart/draw/SpriteEditPaint.cpp
     ${EDITOR_DIR}/pixelart/draw/SpriteEditTransform.cpp
     PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_EDITOR_PIXELART_FLAGS}")
+
+# S46's lint library and S48's rule lints, copied verbatim from feature/s46-pixel-art-cleanup so
+# edit_sprite {lint} runs them; the batch landing keeps one copy of these lines and files
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/lint/EffectLints.cpp
+    ${EDITOR_DIR}/pixelart/lint/CraftLints.cpp
+    ${EDITOR_DIR}/pixelart/lint/PixelLint.cpp
+)
+jasperengine_skip_unity_build(
+    REASON "the pixel-art lints' file-local helpers"
+    SOURCES
+        ${EDITOR_DIR}/pixelart/lint/EffectLints.cpp
+        ${EDITOR_DIR}/pixelart/lint/CraftLints.cpp
+        ${EDITOR_DIR}/pixelart/lint/PixelLint.cpp
+)

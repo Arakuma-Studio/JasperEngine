@@ -4,10 +4,14 @@
 #include "SpriteEdit.h"
 #include "SpriteEditInternal.h"
 
+#include "DrawPrimitives.h"
+
 #include "pixelart/PixelColor.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <map>
 
 namespace jasperengine::editor::pixelart::draw {
