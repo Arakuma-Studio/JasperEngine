@@ -1,0 +1,9 @@
+metaVersion: 1
+guid: da61f196ccf6cc9887d777196ea3b9e4
+import:
+  textureImporter:
+    version: 1
+    type: default
+    mipmaps: true
+    quality: high
+    pixelArt: false

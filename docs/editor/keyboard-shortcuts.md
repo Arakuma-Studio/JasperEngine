@@ -265,6 +265,12 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Zoom In | = / NumpadAdd | Sprite Preview |
 | Zoom Out | - / NumpadSubtract | Sprite Preview |
 
+## Pixel Art Check
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Run Pixel Art Check | F5 | Pixel Art Check |
+
 ## Palette
 
 | Command | Shortcut | Context |

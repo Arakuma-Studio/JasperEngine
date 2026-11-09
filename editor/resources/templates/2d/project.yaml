@@ -13,6 +13,15 @@ htmlUiMsaaSamples: 4
 htmlUiGlyphAtlasMiB: 0
 htmlUiSdfPrimitives: true
 htmlUiTransformAwareText: true
+graphics:
+  terrainQuality:
+    macos: high
+    ios: low
+    web: medium
+    android: low
+    linux: high
+    windows: high
+  compressTerrainLayers: true
 windowMode: windowed
 windowWidth: 1280
 windowHeight: 720
@@ -20,11 +29,13 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
-startSceneId: 303506686
+startSceneId: 2813437644
+mesh:
+  animationEntities: auto
 audio:
   mixer: audio/Main.mixer
   outputStage: linear
   iosSessionCategory: ambient
 scenes:
   - filepath: Main.scene
-    filepathGuid: 9fbee12b880e2aa32c26af752b882eb2
+    filepathGuid: 98fcc787aa96cf696a44381431b4de3c

@@ -1,6 +1,6 @@
-formatVersion: 7
-guid: 6806ad6114e7cf2e2b5309da4378af2a
-id: 926908432
+formatVersion: 8
+guid: a989229f10804aca86e70545ed9b9cfe
+id: 1127948758
 name: Main
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -40,9 +40,25 @@ shaderKeys:
   - type: mesh
     properties: 8589935704
   - type: mesh
+    properties: 68719477848
+  - type: mesh
+    properties: 77309412440
+  - type: mesh
     properties: 1099511628888
   - type: mesh
     properties: 1108101563480
+  - type: mesh
+    properties: 1168231105624
+  - type: mesh
+    properties: 1176821040216
+  - type: mesh
+    properties: 17592186045528
+  - type: mesh
+    properties: 17600775980120
+  - type: mesh
+    properties: 18691697673304
+  - type: mesh
+    properties: 18700287607896
   - type: sky
   - type: depth
   - type: blit
@@ -56,10 +72,34 @@ shaderKeys:
     properties: 8589935704
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
+    properties: 68719477848
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412440
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
     properties: 1099511628888
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 1108101563480
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 1168231105624
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 1176821040216
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 17592186045528
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 17600775980120
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 18691697673304
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 18700287607896
     customShader: builtin:lit#USE_LIT_QUALITY
 entities:
   - type: Entity
@@ -204,13 +244,13 @@ entities:
               emissiveTexCoord: 0
               normalTexCoord: 0
               name: materials/Ground.material
-              nameGuid: 3d58c11c8c5d0aba655e7c4727324cc1
+              nameGuid: 8910e583aeba12da31fbd4e0b2227c41
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
             vertexCount: 6
             faceCulling: true
             textureShadow: false
-            overrideFields: 17179840511
+            overrideFields: 34359709695
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false

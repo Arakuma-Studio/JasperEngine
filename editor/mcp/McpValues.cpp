@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "pixelart/PixelArtAssign.h"
+#include "registry/SortingLayers.h"
 #include "pixelart/BitmapFont.h"
 #include "component/ButtonComponent.h"
 #include "component/Transform.h"
@@ -32,6 +34,8 @@
 #include "command/type/SetMainCameraCmd.h"
 #include "command/type/UnlinkMaterialCmd.h"
 #include "component/MeshComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
 #include "component/ModelComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/ScriptComponent.h"
@@ -1816,7 +1820,7 @@ Json McpValues::textureToJson(Project* project, SceneProject* scene, const Textu
     }
     if (texture.empty() || texture.isFramebuffer()) return nullptr;
 
-    static const Texture defaults;
+    static const Texture defaults = Stream::savedTexture();
     const bool defaultSampler = texture.getMinFilter() == defaults.getMinFilter() &&
                                 texture.getMagFilter() == defaults.getMagFilter() &&
                                 texture.getWrapU() == defaults.getWrapU() &&
@@ -1877,7 +1881,7 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
     };
 
     if (value.is_null() || (value.is_string() && value.get<std::string>().empty())) {
-        out = Texture();
+        out = Stream::savedTexture();
         return true;
     }
     // a link id as a scene file keeps it: "camera|<entity id>", "fluid|<entity id>", "video|<entity id>"
@@ -1897,7 +1901,7 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
     if (value.is_string()) {
         std::string stored;
         if (!storedPath(value, stored)) return false;
-        out = Texture(stored);
+        out = Stream::savedTexture(stored);
         return true;
     }
     if (!value.is_object()) {
@@ -1962,10 +1966,10 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
     if (value.contains("path")) {
         std::string stored;
         if (!storedPath(value["path"], stored)) return false;
-        out = Texture(stored);
+        out = Stream::savedTexture(stored);
     } else if (value.contains("cube")) {
         const Json& cube = value["cube"];
-        out = Texture();
+        out = Stream::savedTexture();
         if (cube.is_string()) {
             std::string stored;
             if (!storedPath(cube, stored)) return false;
@@ -1984,7 +1988,7 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
         error = "an embedded texture (\"id\") can't be assigned; give an image path instead.";
         return false;
     } else {
-        out = Texture();
+        out = Stream::savedTexture();
     }
     auto applyEnum = [&](const char* key, const EnumOptions& options, auto setter) {
         if (!value.contains(key)) return true;
@@ -2651,6 +2655,11 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         case PropertyType::Int:
             // a colour write mask by its channels ("rgba", "none", "auto")
             if (name == "colorWrite" || endsWith(name, ".colorWrite")) return colorWriteToJson(*static_cast<int*>(ref));
+            // a Sorting Layer by its id and name (S52 R34)
+            if (name == "sortingLayer") {
+                const int id = *static_cast<int*>(ref);
+                return Json{{"id", id}, {"name", SortingLayers::idToName(id)}};
+            }
             return *static_cast<int*>(ref);
         case PropertyType::Enum: {
             const int value = *static_cast<int*>(ref);
@@ -3193,6 +3202,27 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 }
                 return new PropertyCmd<int>(project, sceneId, entity, component, propertyName, mask, onChanged);
             }
+            if (propertyName == "sortingLayer") {
+                // a layer name or id (or {id} / {name}, as it reads back)
+                Json given = value;
+                if (given.is_object()) given = given.contains("name") ? given["name"] : (given.contains("id") ? given["id"] : Json());
+                int32_t id = -1;
+                if (given.is_string()) {
+                    id = SortingLayers::nameToId(given.get<std::string>());
+                    if (id < 0) {
+                        error = "Property sortingLayer: no Sorting Layer is named \"" + given.get<std::string>() +
+                                "\"; add it with set_project_settings tags_and_layers.sorting_layers";
+                        return nullptr;
+                    }
+                } else if (isIntegral(given) && SortingLayers::isValid(static_cast<int32_t>(integralValue(given)))) {
+                    id = static_cast<int32_t>(integralValue(given));
+                } else {
+                    error = "Property sortingLayer: expected a Sorting Layer name or id of tags_and_layers.sorting_layers; "
+                            "add a new one with set_project_settings tags_and_layers.sorting_layers";
+                    return nullptr;
+                }
+                return new PropertyCmd<int>(project, sceneId, entity, component, propertyName, id, onChanged);
+            }
             if (!isIntegral(value)) return expect("an integer");
             const bool stencilByte = endsWith(propertyName, "stencil.ref") || endsWith(propertyName, "stencil.readMask") ||
                                      endsWith(propertyName, "stencil.writeMask");
@@ -3314,6 +3344,25 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 return nullptr;
             }
             if (camera == NULL_ENTITY) {
+                // S42 R7: a newly assigned image starts with its import's Filter Mode (unless the
+                // value names filters), and a Sprite's or Tilemap's Pixels Per Unit with the import's
+                const Texture* current = property.ref ? static_cast<Texture*>(property.ref) : nullptr;
+                const bool assigned = !texture.getPath().empty() && (!current || current->getPath() != texture.getPath());
+                const bool explicitFilters = value.is_object() && (value.contains("min_filter") || value.contains("mag_filter"));
+                if (assigned && !explicitFilters) {
+                    pixelart::applyAssignmentFilters(*project, texture);
+                    const pixelart::AssignmentDefaults defaults = pixelart::assignmentDefaults(*project, texture.getPath());
+                    const bool spriteTexture = component == ComponentType::MeshComponent && propertyName == "submeshes[0].material.baseColorTexture";
+                    SpriteComponent* sprite = spriteTexture ? scene->scene->findComponent<SpriteComponent>(entity) : nullptr;
+                    TilemapComponent* tilemap = spriteTexture ? scene->scene->findComponent<TilemapComponent>(entity) : nullptr;
+                    if (defaults.pixelsPerUnit && (sprite || tilemap)) {
+                        auto* multi = new MultiPropertyCmd();
+                        multi->addPropertyCmd<Texture>(project, sceneId, entity, component, propertyName, texture, onChanged);
+                        if (sprite) multi->addPropertyCmd<float>(project, sceneId, entity, ComponentType::SpriteComponent, "pixelsPerUnit", (float)*defaults.pixelsPerUnit);
+                        else multi->addPropertyCmd<float>(project, sceneId, entity, ComponentType::TilemapComponent, "pixelsPerUnit", (float)*defaults.pixelsPerUnit);
+                        return multi;
+                    }
+                }
                 return new PropertyCmd<Texture>(project, sceneId, entity, component, propertyName, texture, onChanged);
             }
             // render to texture, as the Inspector's camera picker does it

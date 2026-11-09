@@ -269,6 +269,9 @@ ComponentType editor::Catalog::getConflictingComponent(ComponentType type){
         case ComponentType::Rigidbody2DComponent: return ComponentType::CharacterController2DComponent;
         case ComponentType::CharacterControllerComponent: return ComponentType::RigidbodyComponent;
         case ComponentType::RigidbodyComponent: return ComponentType::CharacterControllerComponent;
+        // both draw the Mesh instanced from buffers of their own (S52 R10)
+        case ComponentType::SpriteBatchComponent: return ComponentType::InstancedMeshComponent;
+        case ComponentType::InstancedMeshComponent: return ComponentType::SpriteBatchComponent;
         default: return ComponentType::Transform;
     }
 }
@@ -278,6 +281,10 @@ std::string editor::Catalog::getComponentConflict(EntityRegistry* registry, Enti
     if (type == ComponentType::PixelPerfectCameraComponent && registry && registry->isEntityCreated(entity) &&
             !registry->findComponent<CameraComponent>(entity))
         return "A Pixel Perfect Camera goes on a GameObject with a Camera (add a Camera first).";
+    // a Sprite Batch draws its GameObject's Sprite (S52 R10)
+    if (type == ComponentType::SpriteBatchComponent && registry && registry->isEntityCreated(entity) &&
+            !registry->findComponent<SpriteComponent>(entity))
+        return "A Sprite Batch goes on a GameObject with a Sprite (add a Sprite first).";
     const ComponentType other = getConflictingComponent(type);
     if (other == ComponentType::Transform || !registry || !registry->isEntityCreated(entity))
         return "";

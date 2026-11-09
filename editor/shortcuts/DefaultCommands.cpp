@@ -266,6 +266,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Start the Audio Mixer's integrated loudness and true-peak hold over";
     b.menu("window.palette", "Palette", AppMenuCommand::TogglePalette).description =
         "Pixel-art palettes: swatches, ramps, variants and how a texture uses them";
+    b.menu("window.pixelArtCheck", "Pixel Art Check", AppMenuCommand::TogglePixelArtCheck).description =
+        "The pixel-art rules on the project: findings, measured values and one-click fixes";
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
     b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
@@ -493,6 +495,14 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("spritePreview.zoomIn", "Zoom In", C::SpritePreview, "=", "NumpadAdd").repeat = true;
     b.add("spritePreview.zoomOut", "Zoom Out", C::SpritePreview, "-", "NumpadSubtract").repeat = true;
 
+    // The Pixel Art Check window (S42 R19): while it has focus
+    b.group = "Pixel Art Check";
+    b.add("pixelArtCheck.run", "Run Pixel Art Check", C::PixelArtCheck, "F5").description =
+        "Check the pixel-art rules again on the window's scope";
+    b.add("pixelArtCheck.fixSelected", "Fix Selected Finding", C::PixelArtCheck).description =
+        "Apply the selected finding's fix (one undo step)";
+    b.add("pixelArtCheck.fixAll", "Fix All Pixel Art Findings", C::PixelArtCheck).description =
+        "Preview every fix of the check, then apply them as one undo step";
     // The Palette window (S43): while it, or its Apply Palette dialog, has focus
     b.group = "Palette";
     b.add("palette.delete", "Delete Colours", C::Palette, "Delete", "Backspace");

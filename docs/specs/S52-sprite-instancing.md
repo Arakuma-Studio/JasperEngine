@@ -1,585 +1,840 @@
-# S52 — Sprite Instancing: one instance format, batched sprites, Sorting Layers and Sorting Groups, Sprite Batch, batch statistics
+# S52 — 2D sorting, Sprite Batch, and pixel-art parameters inside Dynamic Batching
 
-Pixel-art family (ledger `PIXEL-ART-LEDGER.md`), wave 5A (with S41, S43 and S44). Depends on S41 (the
-pixel-snap rule, PPU, shared-edge snapping; same wave, D10) and S44 (sheets and their pages through
-`SpriteSheetPool`; same wave: until it lands a page is a texture and frames are rects). S45's atlas
-pages (wave 5B) reach it through the same pool without a change here. Uses S07
-(`Changed<Transform>`), S15 (render stats), S20 (instance streams), S24 (undo), S32 (async
-pipelines); defines the FX slots that S43 (PALETTE_SWAP, same wave) and S48 (DITHER_FADE, DISSOLVE,
-wave 5B) fill. Blocks S50 (tilemap chunks draw through it).
-Read `README.md` and the ledger first.
+Pixel-art family (ledger `PIXEL-ART-LEDGER.md`), wave 5A, re-scoped on 2026-11-07 onto the Doriax
+catch-up program's `sprite-batching` (landed on `main` as `48cf20e75`, recorded in `885cddc46`; its
+spec is `docs/superpowers/specs/2026-11-04-sprite-batching-design.md`, called "the batching spec"
+below). The split is in `docs/doriax-catchup/LEDGER.md` ("Lead decisions across specs, Pixel-art
+program"). Depends on S41 (`pixelSnapDraw`, `pixelSnapApply`, the `Pxs` bits; branch
+`feature/s41-pixel-perfect-camera`) and works with S43 (Palette Swap row) and S48 (effect amounts, not
+landed). Blocks S50 (tilemap chunks draw through §6.5's instance batches).
+Read `README.md`, the ledger and the batching spec's Deviations first.
+
+Evidence labels: **read** (I read the file at `main` `81ffe9f3d` or the named branch),
+**inferred** (from reading code), **assumed**. Nothing here was built or run.
 
 ## 1. Goal
 
-Today every sprite is its own mesh, its own GPU buffers and its own draw call, and 2D draw order is
-nothing but hierarchy order. A pixel-art game with a few thousand sprites (bullets, coins, enemies,
-foliage) spends its frame in per-draw overhead, and runs out of buffers before it runs out of GPU. S52
-draws sprites the way Unity's 2D renderer and spryte do: one compact instance format whose transform is
-built in the vertex shader, consecutive compatible sprites merged into one instanced draw, the S41
-snap rule applied identically to the old path, and every frame's batches and batch breaks visible to
-people and agents. It adds the sort control 2D games expect from Unity, which batching needs to be
-predictable: Sorting Layers, Order in Layer, Sorting Groups and a sort axis for top-down games.
+`main` now merges consecutive sprites, small meshes and UI quads into one draw (Dynamic Batching),
+but a 2D game still has no draw order except the hierarchy, cannot draw thousands of bullets without
+thousands of GameObjects, and loses batching as soon as it uses pixel-art features: a pixel-snapped
+sprite, a `library:sprite` effect (hit flash, Palette Swap, S48's fades) or a palette row each draws
+alone. S52 adds Unity's 2D sort controls (Sorting Layers, Order in Layer, Sorting Group, Transparency
+Sort Axis) and feeds them into the batcher's sort buckets. It adds a Sprite Batch component that draws
+many sprites from one GameObject with GPU instancing, through a bulk API. It also makes the pixel-art
+per-sprite parameters batch-compatible through the batcher's hooks, with batched == unbatched pixel
+for pixel.
 
 ## 2. Scope
 
 In scope:
-- Sorting: project Sorting Layers, per-renderer Sorting Layer and Order in Layer, the Sorting Group
-  component, the sort axis (None / Y / custom), in 2D (no depth test) and 3D (transparent queue)
-  passes.
-- One sprite instance format and its vertex shader include; optional per-instance streams (rotation,
-  colour, FX) chosen by shader variant; batching of consecutive compatible sprites sharing a texture
-  page (S45); a bounded, pixel-safe lookahead reorder; frame coherence (no repack when nothing moved).
-- The material instancing policy: which shader features read per-instance values (S43 palette row,
-  S48 flash/fade/dissolve, the existing `library:sprite` FLASH), and the per-mesh fallback otherwise.
-- The bulk API: the Sprite Batch component (retained or cleared each frame), its Lua and C++ API.
-- Integration points: tilemap chunks (S50) as static instance batches; Particle Systems (S20 and
-  S49's pixel particles, which keep their own instanced path) in the sort.
-- Render statistics (batches, instances, draws saved, breaks by reason) through the existing
-  `get_render_stats`, Lua `Profiler`, the stats overlay and a Scene view draw mode.
-- Pixel-parity golden tests (batched path == per-mesh path) and budgets on mobile and web.
+- **Sorting:** project Sorting Layers, per-renderer Sorting Layer and Order in Layer, the Sorting
+  Group component, Transparency Sort Mode / Axis and the Sprite Sort Point, in 2D passes (no distance
+  sort) and in the transparent queue of 3D passes. The sort feeds `BatchItem::sortKey`. Editor UI,
+  undo, Lua, MCP through existing tools, exports, old-scene compatibility.
+- **Sprite Batch:** a component on a Sprite GameObject that draws N instances of that Sprite's
+  frames with one instanced draw per texture page, plus a bulk Lua/C++ API. It is also the retained
+  instance batch S50's tilemap chunks use (§6.5).
+- **Pixel-art parameters in batches:**
+  - S41's pixel snap (`pixelSnapDraw` as a key section; later, a per-vertex pivot);
+  - `library:sprite` admitted to the batcher (`@batchable`), with its per-sprite amounts (the
+    S43 row, FLASH and the S48 slots) carried per vertex by an additive channel;
+  - the frame rect OUTLINE and OVERLAY read, per vertex;
+  - the same values per instance in Sprite Batch;
+  - pixel-parity tests.
 
-Out of scope:
-- Several textures per batch (spryte's 8 units). One page per batch; atlases (S45) are how pages are
-  shared. A sampler-array path would need constant-index sampling on GLES3 and would multiply every
-  `library:sprite` feature. See §9.
-- GPU-driven culling, indirect draws, storage buffers (README do-not-copy and platform rules).
-- Batching 3D meshes (an SRP-Batcher equivalent), HTML UI (S16 has its own batching), the
-  `UIComponent`/RectTransform UI, Points and Lines.
-- Sprites whose world transform leaves the XY plane (rotated about X or Y, billboards) and sheared
-  sprites: they keep the per-mesh path (a counted break, R18).
-- Runtime atlas packing (S45 owns atlases). Text (S51 decides whether its glyph quads become Sprite
-  Batch instances).
+Out of scope. The landed batcher owns these, and S52 does not duplicate them:
+- Dynamic batching itself: eligibility, keys, runs, baking, settled objects, lazy MVP, culling cache,
+  content-shared immutable buffers, stream chunks, the deferred flush and lazy scissor, 2D reordering
+  (REORDER mode) and depth-pass grouping (`engine/core/render/DrawBatcher.{h,cpp}`,
+  `engine/core/subsystem/RenderSystemBatch.cpp`).
+- Batch statistics and explanation: `get_render_stats` `batching` / `batch_breaks`, Game view Stats,
+  Frame Debugger reasons, Profiler monitors, Project Settings > Graphics > Dynamic Batching,
+  `Engine.dynamicBatching`. S52 only adds reasons to the existing enum (§6.4).
+- Automatic GPU instancing of repeated meshes (S55).
 
-## 3. Current state (read, not built or run)
+Also out of scope (dropped from the old S52; see §6.8):
+- the 40-byte instance format and its own vertex include;
+- the lookahead reorder and frame coherence;
+- a separate `batches` stats object;
+- a Scene view "Sprite Batches" draw mode.
 
-- **A sprite is a mesh.** `Sprite` derives `Mesh` (`engine/core/object/Sprite.h:17`).
-  `MeshSystem::prepareSpriteMesh` (`engine/core/subsystem/MeshSystem.cpp:566-580`) gives it a DYNAMIC
-  vertex buffer of POSITION, TEXCOORD1, NORMAL, TANGENT and COLOR (16 floats per vertex), and
-  `createSprite` (`:621`) writes 4 vertices plus a 6-index buffer (`:767-776`). Frames are rects in
-  `SpriteComponent::framesRect` (at most `MAX_SPRITE_FRAMES` 128, `engine/core/Engine.h:106`).
-- **One draw per sprite.** `RenderSystem::drawMesh` (`engine/core/subsystem/RenderSystem.cpp:8604`)
-  culls the mesh, uploads dirty buffers, writes its custom uniforms, builds its model/normal/MVP
-  block, then for each submesh binds textures, `beginDraw`s its pipeline and draws
-  (`drawSubmeshGeometry`, `:8415-8447`). Nothing merges consecutive meshes. Inferred cost of N
-  visible sprites: N draw calls, N binding applies, at least 2N uniform blocks, and 2N GPU buffers.
-  - 2N buffers: 10,000 sprites need 20,000 buffers, over the default pool of 16,384
-    (`GpuResourceLimits::buffers`, `Engine.h:284`).
-  - Uniforms: Vulkan and Metal round each block up to 256 bytes against a per-frame budget of 16 MB
-    on Android, iOS and the web (`Engine.h:245-300`); 10,000 sprites take about 5 MB of it.
-- **Instancing exists, for other things.** `InstancedMeshComponent` draws many copies of one mesh in
-  one draw with a 96-byte instance (`InstanceRenderData`: matrix, colour, texture rect,
-  `engine/core/component/InstancedMeshComponent.h:87`; attributes `i_matrix_col1..4`, `i_color`,
-  `i_textureRect`, `engine/shaderlib/mesh.vert:117-125`). Particle Systems append their instances to
-  per-frame paged streams with `sg_append_buffer` and draw one instanced draw per system
-  (`RenderSystemParticles.cpp:1-8`, `ParticleStream`, `RenderSystem.h:2372-2385`). Instances bind at
-  an offset because GLES3/WebGL2 has no base instance (`bindInstances` in `drawSubmeshGeometry`).
-- **Draw order.** A camera with `depthTest = false` (the default 2D camera, `engine/core/Scene.cpp:258-271`;
-  `CameraComponent.h:93-98`) draws in Transform order, which is the hierarchy order
-  (`renderCameraPass`'s loop, `RenderSystem.cpp:16204-16316`). `sortsByDistance` is
-  `depthTest && transparentSort` (`:665-667`). Only a distance-sorted pass has queues: opaque nearest
-  first, transparent by `sortPriority`, then far to near, then submission order
-  (`TransparentRenderComparison`/`OpaqueRenderComparison`, `RenderSystem.h:626-646`; built at
-  `RenderSystem.cpp:16040-16083`). `MeshComponent::transparentSortPriority` and `opaqueSortPriority`
-  come from the shader at load (`MeshComponent.h:503-504`). Particle Systems add `sortPriority` and
-  `sortingFudge` (`engine/core/particles/ParticleEffect.h:456-457`). There are no Sorting Layers, no
-  Order in Layer, no Sorting Group and no sort axis.
-- **2D lights are one scene block.** `u_fs_lighting2d` holds the pass's up to `MAX_LIGHTS_2D` lights
-  for every sprite (`engine/shaderlib/includes/lighting2d.glsl:70-76`), so lights never differ between
-  two sprites of a pass.
-- **`library:sprite`** (`engine/shaderlib/library/sprite.frag:1-45`, `sprite.vert`) has OUTLINE,
-  HUE_SHIFT, FLASH, GRAYSCALE, COLOR_REPLACE, OVERLAY and GLOW, all as material uniforms
-  (`flashAmount` among them), and already handles instancing for the frame rect (`sprite.vert:28-37`).
-- **sokol-gfx.** 16 vertex attributes and 16 vertex buffer slots (`engine/libs/sokol/sokol_gfx.h:2043-2045`);
-  `stride = 0` means "computed", not "constant" (`:3795-3810`); `step_rate` (instance divisor) is
-  honoured on GL (`:11386-11399`), D3D11 (`:13943-13952`) and Metal (`:16066`) but not on Vulkan,
-  which sets only the input rate (`:20417`, `:21575`); integer and half-float vertex formats exist
-  (`:2494-2523`, integer attributes through `glVertexAttribIPointer`, `:9267`). The engine sets
-  per-instance steps in `SokolObject.cpp:517`.
-- **Statistics.** `get_render_stats` (`editor/mcp/tools/ProfilerTools.cpp:1028-1039`, group
-  `profiling`) returns `draw_calls`, `instances`, `triangles`, passes, pipeline and binding applies
-  (`renderStatsJson`, `:166-197`; `RenderStats`, `engine/core/render/RenderStats.h:155-186`); Lua
-  `Profiler` exposes `drawCalls` (`engine/core/script/binding/ProfilerClassesLua.cpp:100`). Nothing
-  reports batches or why a batch broke. The HTML UI's `HtmlUIRenderStats::runsMerged`
-  (`engine/core/htmlui/HtmlUIRenderStats.h:28-31`) is the naming precedent.
+Also out of scope:
+- Several textures per draw (texture arrays or sampler arrays): one page per draw. Atlases (S45)
+  are how pages are shared.
+- Compute, SSBOs, indirect draws (README do-not-copy and platform rules).
+- Saving Sprite Batch instances in scenes: they are runtime data that scripts fill. Placed static
+  art is S50's tilemap.
+- Batching other library shaders: each can opt in later with `@batchable` and its own tests.
+
+## 3. Current state
+
+On `main` `81ffe9f3d`, read unless marked otherwise.
+
+- **2D draw order is the hierarchy.**
+  - A camera with `depthTest = false` (the default camera: `engine/core/Scene.cpp:172-173`) does
+    not sort by distance (`sortsByDistance`, `RenderSystem.cpp:738-740`). It draws in Transform
+    order: the loop at `RenderSystem.cpp:18262`, meshes through `submitMesh` (`:18372`), UI through
+    `submitUI` (`:18380`), particles at `:18429`.
+  - A distance-sorted pass has two queues: opaque (`OpaqueRenderComparison`,
+    `RenderSystem.h:708-718`; drawn at `RenderSystem.cpp:18192-18200`) and transparent
+    (`TransparentRenderComparison`, `RenderSystem.h:694-702`: `sortPriority`, then far to near,
+    then submission order; sorted at `RenderSystem.cpp:18452`).
+  - `sortPriority` exists on Line Renderer (`LineRendererComponent.h:115`), Trail Renderer
+    (`TrailRendererComponent.h:77`), Points (`PointsComponent.h:95`) and the particle renderer
+    (`ParticleEffect.h:456-457`, with `sortingFudge`).
+  - There are no Sorting Layers, no Order in Layer, no Sorting Group and no sort axis (grep of
+    `engine` and `editor`).
+  - The Unity particle importer maps `m_SortingOrder` onto `sortPriority`
+    (`editor/unity/UnityParticleImport.cpp:1478`).
+- **The batcher's sort hook is unused.**
+  - `BatchItem::sortKey` (`engine/core/render/DrawBatcher.h:144-151`; contract `:17-19`) is the
+    draw's bucket. In REORDER mode a draw jumps back only over runs of its own bucket, and a run
+    spanning buckets is never jumped over (`DrawBatcher.cpp:180-205`, equality only).
+  - `submitMesh` / `submitUI` never set it (`RenderSystemBatch.cpp:707-790`, `:896-960`), so
+    every draw is bucket 0. `BatchBreak::SORT_BUCKET` exists (`DrawBatcher.h:61`) but nothing
+    produces it (**inferred**).
+  - The colour pass uses REORDER for orthographic cameras along Z, else STRICT
+    (`RenderSystem.cpp:18181-18188`).
+- **What draws alone today.** `meshBatchForm` (`RenderSystemBatch.cpp:232-320`) refuses:
+  - any manifest shader, `library:sprite` included (`submesh.manifest` →
+    `INELIGIBLE_CUSTOM_SHADER`, `:254-256`);
+  - any variant bit outside `BATCH_MESH_PROPERTIES` (`:41-63`; S41's `Pxs` is not in it).
+  `uiBatchForm` allows UI bits 0-4 only (`:322-347`). The batching spec's Deviations, point 5,
+  record that a pixel-snapped draw is drawn alone until S41 is wired in.
+- **The per-vertex channel exists.**
+  - The bake copies every vertex attribute it does not know as it is (`bakeMeshRecord`,
+    `RenderSystemBatch.cpp:362-433`).
+  - `setBatchAttributeRole(type, POINT | DIRECTION)` (`:145-153`) makes an attribute be placed
+    like a position or a normal (`placeBatchRecord`, `:560-566`).
+  - The key holds the pipeline id, origin cell, scissor and byte sections (`fillMeshKey`,
+    `:599-660`): textures, colour factor, material params, alpha cutoff, UV sets, object lights.
+  - The run draws through its head's `drawMesh` with `passBatchGeometry` (`RenderSystem.cpp:9955`).
+    That path writes the head's custom uniforms (`writeCustomUniforms`, `RenderSystem.cpp:498`).
+  - Documented for S52 in `docs/rendering/batching.md:86-97`.
+- **`library:sprite`** (`engine/shaderlib/library/sprite.frag`, `sprite.vert`):
+  - Every amount is a material uniform in `u_fs_customParams` (`sprite.frag:55-`; `flashAmount`
+    `:21`, used `:217`).
+  - With OUTLINE or OVERLAY the vertex stage passes the frame rect from the per-object
+    `spriteParams.textureRect`, composed with `i_textureRect` under `HAS_INSTANCING`
+    (`sprite.vert:26-37`).
+  - On `feature/s43-palettes`, `paletteRow` is a plain property (`sprite.frag:37`, read as
+    `customParams.paletteRow` at `:197`): no `instance=` yet.
+- **S41 (branch, read).**
+  - The vertex stages end with `gl_Position = pixelSnapApply(gl_Position, pbrParams.pixelSnapDraw.x,
+    snapPivot)`. `snapPivot` is `mvpMatrix[3]` (the model origin), or `mvpMatrix * i_matrix_col4`
+    under `HAS_INSTANCING` (`engine/shaderlib/mesh.vert:346-352`, the same in `surface_vs.glsl`,
+    the depth stages and `ui.vert`).
+  - The mode is per draw (`RenderSystem::pixelSnapDrawMode`, `RenderSystemPixelArt.cpp:369-373`):
+    0 none, 1 every vertex (`pixelart::isGridAligned`), 2 the pivot. It is written into the
+    object block by `applyObjectBlock` (`:375-386`).
+  - Bits: `Pxs` = MESH 42, DEPTH 19, UI 5 on that branch, renumbered at landing (ledger rule).
+- **Instancing.**
+  - `InstancedMeshComponent` keeps an AoS `InstanceData` of about 140 bytes per instance
+    (`InstancedMeshComponent.h:70-86`). It uploads `InstanceRenderData` (matrix, colour, texture
+    rect: 96 bytes, `:88-92`) read as `i_matrix_col1..4`, `i_color`, `i_textureRect`
+    (`surface_vs.glsl:175-186`; matrix rebuilt at `:380`, col1.w being S54's fade lane).
+  - `library:sprite` supports it (`sprite.vert:33-37`). Lua adds instances one call at a time
+    (`Mesh::addInstance`, `engine/core/object/Mesh.h:206-211`).
+  - The batcher refuses entities with InstancedMeshComponent (`RenderSystemBatch.cpp:241`). S55
+    does not auto-instance the sprites the batcher takes (S55 §10, read).
+- **Settings and undo.**
+  - Tags and Layers is a Project Settings category (`ProjectSettingsWindow.cpp:3218`; Layers
+    foldout `:3289`) with rows `tags_and_layers.tags` / `.layers` (`SettingsRows.cpp:2803`,
+    `:2844`). It has no undo command.
+  - Other settings groups have one (`editor/command/type/DrawSubmissionSettingsCmd.h:15`).
+- **Sprite geometry.** `MeshSystem::prepareSpriteMesh` (`MeshSystem.cpp:683-703`): POSITION,
+  TEXCOORD1, NORMAL, TANGENT, COLOR, 64 bytes per vertex. The buffer is IMMUTABLE and shared by
+  content.
 
 ## 4. Reference
 
 | Source | What | Take | Improve |
 |---|---|---|---|
-| spryte (MIT, `/tmp/pixelart-research/spryte`) | `src/webgl2.ts:15-65` `VERT` | one instance format for quads and sprites; the transform algebra in the vertex shader under a batch transform (`u_linear`, `u_mt`) | our format is typed per stream (D2), not one overloaded vec4 set |
-| | `src/webgl2.ts:67-81` `COPY_VERT`, `src/copies.ts:1-60` | position-only copies sharing everything else; interleaved records | becomes the core stream of Sprite Batch with the other streams absent (R26) |
-| | `src/webgl2.ts:97-144` `EACH_VERT`, `:822-855` | optional per-copy scale, rotation, packed colour; an absent stream is a constant attribute (`vertexAttrib*`) | sokol has no constant attributes: shader variants instead (D3) |
-| | `src/draw.ts:303-309`, `COPY_VERT` `floor(e + 0.5)` | one snap rule on CPU and GPU (`Math.round` and `floor(x + 0.5)` agree, both round half up) | the rule itself is S41's; we call S41's functions on both sides |
-| | `src/panels.ts:119-132` `snapEdges` | shared-edge snapping of neighbouring quads | S41 snaps every vertex of a grid-aligned draw, so neighbours whose producers write bit-identical shared edges (S41 R13; S50's tile edges) stay joined without a flag (R11) |
-| | `browser-test/checks.ts:1`, `:157-195` | the parity method: draw the same scene two ways, compare every pixel; exact when unrotated, a stated tolerance (8 px) for rotated copies because GPU `sin`/`cos` differ in the last bits | our rotation is `cos`/`sin` computed on the CPU (D2), so the tolerance applies only where the old path also differs; goldens on every backend we run |
-| Unity 2D Renderer (behaviour only) | Sorting Layers, Order in Layer, Sorting Group, Transparency Sort Axis, SpriteRenderer Sort Point | names and semantics | — |
-| Godot 3 2D batching (behaviour only) | item reordering with lookahead when rects do not overlap | the idea | ours is bounded, deterministic, and proved pixel-safe (D7) |
+| Unity 2D (behaviour only) | Sorting Layers (Tags and Layers), Renderer `sortingLayerID`/`sortingLayerName`/`sortingOrder`, Sorting Group, Graphics > Transparency Sort Mode / Axis, Sprite Renderer Sprite Sort Point | names, semantics, the sort precedence (layer, order, then distance or axis) | layers keep stable ids, so renaming or reordering never rewrites a scene |
+| spryte (MIT, `/tmp/pixelart-research/spryte`) | `src/copies.ts:1-60`, `src/webgl2.ts:97-144`: bulk copies with optional per-copy streams | the bulk-array API shape (whole streams per call), optional streams that cost nothing when absent | streams are optional instance attributes on our existing instanced variant, not a new format |
+| spryte | `browser-test/checks.ts:157-195` | the parity method: one scene drawn two ways, every pixel compared | 0 differing pixels, not a tolerance (§7) |
+| The batching spec | Deviations "Hooks for pixel-art S52" 1-5 | the bucket, the per-vertex channel, the `pixelSnapDraw` key section | an additive per-vertex channel, so the vertex buffer never changes when a value animates (D5) |
 
 ## 5. Requirements
 
-### Functional — sorting
+### Functional: sorting
 
-- **R1 Sorting Layers.** Project Settings > Tags and Layers > Sorting Layers: an ordered list of
-  named layers with stable integer ids; "Default" (id 0) always exists and cannot be deleted. Drawing
-  order follows the list order, not the id. Renaming or reordering never touches scenes.
-- **R2 Per-renderer fields.** Every sprite-like renderer gets `sortingLayer` (layer id, default 0)
-  and `sortingOrder` (Order in Layer, int16, default 0): `MeshComponent` (sprites, polygon meshes,
-  legacy tilemaps, plain meshes), the Particle System renderer settings
-  (`ParticleEffect.h:456-457`'s struct), the Sprite Batch (R26) and the Tilemap Layer (S50).
-- **R3 2D order.** In a pass without depth test, the hierarchy is cut into runs at every UI subtree
-  (a RectTransform root and everything under it). Inside a run, world renderers draw ordered by
-  (Sorting Layer rank, Order in Layer, sort-axis distance when an axis is set, hierarchy index). UI
-  subtrees keep their place and their own hierarchy order (their scissors and Canvas Groups depend on
-  it). With every field at its default and no axis, the order is today's exactly (AC1).
-- **R4 Sort axis.** Project setting `rendering.sprite_sort_axis`: `none` (default), `y` (higher
-  world y draws first, the top-down convention) or `custom` with a vector; a Camera can override it
-  (`sortAxisOverride`, default "Project"). The distance is measured at the renderer's pivot (Unity's
-  Sort Point "Pivot"), for tilemap layers in Individual mode at each tile's anchor (S50).
-- **R5 Sorting Group.** A Sorting Group component makes its subtree sort as one item, at the group's
-  own Sorting Layer, Order in Layer and pivot; inside, the members sort by the same key among
-  themselves. Groups nest. A disabled group is transparent to sorting.
-- **R6 3D passes.** In a distance-sorted pass the transparent queue orders by (Sorting Layer rank,
-  Order in Layer, `sortPriority`, distance, submission order); the opaque queue is unchanged. Defaults
-  give today's order.
-- **R7 Deterministic.** The order is a total order (the hierarchy index breaks every tie), so two runs
-  of the same scene draw the same sequence on every backend.
+- **R1 Sorting Layers.**
+  - A project-wide ordered list of named layers with stable integer ids. "Default" (id 0) always
+    exists and cannot be removed or renamed.
+  - Drawing order follows list position (the layer's *value*), not the id. Renaming or reordering
+    rewrites no scene or prefab.
+- **R2 Renderer fields.**
+  - `sortingLayer` (layer id, default 0) and `sortingOrder` (Order in Layer, int16, default 0) on
+    every world renderer: MeshComponent (Sprite, MeshPolygon, Mesh, legacy Tilemap), Particle
+    System renderer, Points, Line Renderer, Trail Renderer and Sprite Batch (it uses its Sprite's).
+    S50's Tilemap Layer adds its own.
+  - Sprite gets `spriteSortPoint` (`Center`, default as Unity, or `Pivot`).
+- **R3 2D order.**
+  - In a pass without distance sort, the hierarchy is cut into runs at UI subtrees (a
+    RectTransform and everything under it). UI subtrees keep their place and their hierarchy
+    order, because scissors, Canvas Groups and FLATTEN layers depend on it.
+  - Inside a run, world renderers draw ordered by (layer value, Order in Layer, axis distance when
+    the mode is Custom Axis, hierarchy index). With every field at its default and the mode
+    Default, the order is today's exactly (AC1).
+  - The scene-colour copy, video near planes and screen fluids still go before the first draw that
+    needs them, in the new order.
+- **R4 Transparency Sort Mode.** Project Settings > Graphics:
+  - "Transparency Sort Mode": `Default` (no axis term) or `Custom Axis`;
+  - "Transparency Sort Axis": a vec3, default (0, 1, 0), so a higher world y draws first (the
+    top-down convention).
+  The distance is `dot(axis, point)`, larger first. The point is the renderer's pivot, or its world
+  bounds' centre when Sprite Sort Point is Center (for other renderers: the pivot). It applies to
+  2D passes. Distance-sorted passes keep camera distance.
+- **R5 Sorting Group.**
+  - The component makes its subtree sort as one item at the group's Sorting Layer, Order in Layer
+    and pivot. Inside, members sort among themselves by R3's key.
+  - Groups nest. A disabled Sorting Group is transparent to sorting. A UI subtree inside a group
+    stays a run boundary within the group.
+- **R6 3D passes.**
+  - The transparent queue orders by (layer value, Order in Layer, `sortPriority`, distance far
+    first, submission order). A Sorting Group's members take the group's key and distance, then
+    their own.
+  - The opaque queue is unchanged (Unity's behaviour). Defaults give today's order.
+- **R7 Batcher buckets.**
+  - Each draw submitted to the batcher carries `BatchItem::sortKey` = its bucket (D2). Batching
+    and REORDER work inside a bucket, as the landed contract says.
+  - A bucket change that stops a join is counted as `sort_bucket` (the existing reason).
+- **R8 Determinism.** The order is total (the hierarchy index breaks every tie). The same scene
+  draws the same sequence on every run and backend.
+- **R9 Disabled costs nothing.** A scene whose renderers all have default fields, with no enabled
+  Sorting Group and mode Default, runs today's 2D loop unchanged. Its only extra cost is one flag
+  computed in `RenderSystem::update` (D1).
 
-### Functional — instance format and batching
+### Functional: Sprite Batch
 
-- **R8 One instance format.** A batchable renderer becomes one instance of the format of D2: a core
-  stream (always present) and up to three optional streams (rotation, colour, FX). The vertex shader
-  builds the quad from it; the fragment shader is the renderer's own, unchanged.
-- **R9 Absent streams cost nothing.** A batch carries only the streams one of its instances needs; a
-  member without one writes the default (rotation 0, colour white, FX zero) for the batch. A scene with
-  no tinted, rotated or flashing sprite never uploads a colour, rotation or FX byte.
-- **R10 Batches.** Consecutive instances in draw order merge into one instanced draw when their batch
-  keys are equal (D6): pipeline (shader variant, blend, depth and stencil state, cull), texture page
-  and sampler, the material's non-instanced uniform values and textures, scissor, and render target.
-  A batch holds at most 16,384 instances.
-- **R11 Snapping.** The batched vertex stage honours S41's rule (S41 §6.2) under S41's `Pxs` variant
-  bit, exactly as the per-mesh stages do: a grid-aligned instance (rotation stream absent, or its
-  cos/sin a signed permutation) snaps every vertex with `pixelSnapClip` after the batch transform and
-  the view-projection; an instance under S41's Rotate On Grid snaps its pivot with
-  `pixelSnapCenterDelta`; under Steps90 the packer rounds the instance's rotation to 90° on the CPU
-  with S41's `roundRotation90` before writing the rotation stream (S41 R10), and a static batch's
-  model matrix (R15: a tilemap chunk, a retained Sprite Batch) follows the per-mesh rule of S41 R10
-  (rounded under Steps90, its pivot snapped under Rotate On Grid). Rotated instances do snap: per
-  vertex after rounding (Steps90) or at the pivot (Rotate On Grid). Shared edges stay joined
-  because producers write bit-identical edge values (S41 R13: S50's tiles, sliced pieces). With no
-  active Pixel Perfect Camera, nothing snaps on either path and the `Pxs` variants are never built.
-- **R12 Frame clamp.** Flag `CLAMP_FRAME` clamps the UV to the frame inset by half a texel in the
-  fragment stage (the `library:sprite` frame rect, `sprite.vert:28-37`), so a frame never samples its
-  atlas neighbour at a fractional zoom. Tiles set it (S50).
-- **R13 Lookahead.** In a pass without depth test, an instance may move earlier, past at most
-  `rendering.sprite_batch_lookahead` items (default 32, 0 = off), to join an open batch when its
-  conservative screen rectangle overlaps none of the items it jumps over and it does not cross a UI
-  subtree or a Sorting Group boundary (D7). The pixels are identical to the unreordered order (AC4).
-- **R14 Frame coherence.** When no instance of a run changed (S07 `Changed<Transform>`, renderer
-  edits, material edits, camera when it matters) and the pass's cut is the same, the previous frame's
-  batch list and stream contents are reused: no sort, no pack, no upload.
-- **R15 Static batches.** A producer can hand the batcher a retained instance buffer with its own
-  model matrix (a tilemap chunk, a retained Sprite Batch): drawn as one batch, uploaded only when its
-  content changes, never repacked per frame.
-- **R16 Culling.** A batched instance is frustum-culled by its quad bounds before packing; a static
-  batch is culled by its bounds as a whole (S50 culls chunks).
-- **R17 GPU objects.** A sprite drawn by the batcher creates no GPU buffers of its own. Its CPU quad
-  stays (picking, S26; bounds). If it falls back to the per-mesh path (R18), its buffers are created
-  in that frame, before its draw.
-- **R18 Fallback and breaks.** A renderer that cannot be an instance draws on the per-mesh path as
-  today, between the batches, in its sorted place. Every fallback and every batch break is counted by
-  reason (D6): `texture`, `material`, `blend`, `stencil`, `scissor`, `capacity`, `ui_run`,
-  `sorting_group`, `per_mesh` (with the cause: `material_not_instanceable`, `extra_pass`,
-  `transform_3d`, `shear`, `deformed`, `custom_vertex`).
-- **R19 Editor views too.** The Scene view and the Game view draw through the same batcher (the
-  editor's selection outline and gizmos are unaffected: they read the CPU quad).
-- **R20 Off switch.** Project setting `rendering.sprite_batching` (default on); off draws every sprite
-  on the per-mesh path (the pixel-parity reference and a support switch).
+- **R10 Component.**
+  - "Sprite Batch" (Add Component > Rendering, and GameObject > 2D Object > Sprite Batch) on a
+    GameObject with a Sprite. It draws instances of that Sprite's frames: its texture or S44
+    sheet, S45 atlas, frame names, pivot and material (any `library:sprite` features). The
+    Sprite itself is then drawn only through its instances.
+  - Fields:
+    - `mode`: `Retained` (instances persist) or `Clear Each Frame` (what scripts add in a frame
+      is drawn once);
+    - `space`: `Local` (instances move with the GameObject) or `World`;
+    - `capacity` (default 1024; the bulk calls grow it);
+    - `sortInstances` (by the Transparency Sort Axis, else index order).
+  - It cannot be added beside an InstancedMeshComponent: the error names the one to remove.
+- **R11 Instances.**
+  - An instance is a position (xyz), rotation (radians about z), scale (xy), frame index, colour
+    (linear RGBA) and, optionally, the four FX slots (R19).
+  - The frame gives size and pivot: the instance matches a Sprite showing that frame with that
+    transform.
+- **R12 Bulk API.**
+  - Lua and C++ write whole streams from flat arrays: positions, rotations, scales, frames,
+    colours, FX by slot name. Per-instance `add` / `set` / `remove` / `clear` cover small edits.
+  - A call validates once (array length, frame range), not per element. An unknown frame name
+    is a typed error at the call.
+- **R13 Drawing.**
+  - One instanced draw per run of consecutive instances on the same page, in index order (or
+    sorted, R10).
+  - It draws through the Sprite's own `HAS_INSTANCING` variant and its existing per-instance
+    attributes. The only new attribute is the FX stream, present only once `setFx` was called.
+  - It is one sort item (R3) at its Sprite's key and pivot. Its instances never interleave with
+    other renderers.
+- **R14 Uploads.**
+  - Retained: the instance buffer is uploaded only when its content changed (a revision counter).
+  - Clear Each Frame: instances are appended to the frame's stream (as particles do).
+  - Nothing is packed or uploaded when the batch is culled, hidden or empty.
+- **R15 Culling, bounds, picking.**
+  - The batch is culled whole by its instances' bounds, refreshed when the instances change.
+  - The Scene view picks it as one GameObject. `get_entity` reports `count`.
+- **R16 Pixel snap per instance.**
+  - Under an active Pixel Perfect Camera, each instance snaps by S41's rule. A grid-aligned
+    instance (rotation a multiple of 90°, and the GameObject grid-aligned) snaps every vertex.
+    Any other snaps its pivot.
+  - Under Steps90 the packer rounds the rotation to 90° (S41 R10) and writes exact 0/±1.
+  - The per-instance decision is in the instance matrix's exact zeros (D7). It costs no extra
+    bytes.
+- **R17 Static instance batches for S50.** The C++ type behind Sprite Batch (`SpriteInstanceBatch`,
+  §6.5) can be owned by another producer: a retained buffer with its own model matrix, bounds and
+  revision, drawn as one sort item. S50's chunks use it.
 
-### Functional — materials
+### Functional: pixel-art parameters in batches
 
-- **R21 Instanceable materials.** The engine's default sprite material and `library:sprite` with any
-  feature set are instanceable. A shader opts in with the manifest line `// @instanceable`; a
-  shader without it, or one with a custom vertex stage that does not include the sprite instance
-  vertex include, draws per mesh (`material_not_instanceable`).
-- **R22 Per-instance properties.** A manifest property may name an FX slot,
-  `// @property flashAmount range(0, 1) 0.75 "Flash amount" feature=FLASH instance=fx.y`. In a batch
-  that property is read from the instance's FX stream, so sprites that differ only in it stay in one
-  batch; every other property is part of the batch key.
-- **R23 Slot assignment (family contract).** FX is four halfs, every neutral value 0: `fx.x` the S43
-  PALETTE_SWAP palette row (an integer index stored exactly; 0 = the original colours), `fx.y` the
-  flash amount (the existing `library:sprite` FLASH, which S52 M3 declares `instance=fx.y`), `fx.z`
-  the S48 DITHER_FADE amount, `fx.w` the S48 DISSOLVE progress. S43 and S48 declare theirs with
-  `instance=`. The four slots are then all taken; a feature needing more per-instance values is not
-  instanceable and falls back (R18) until a later spec adds a stream.
-- **R24 Material identity.** Two sprites with separate material copies but equal values batch: the
-  key hashes values, not material object identity.
-- **R24a Grown quads (S48 R7).** When a material's OUTLINE, DROP_SHADOW or GLOW grows the sprite's
-  quad by its reach in texels, the instance vertex stage grows the quad and its UVs by the same reach
-  (a material uniform, so part of the batch key) with the same arithmetic as the per-mesh builder;
-  bounds, culling and D7's rectangles use the grown quad.
-- **R25 2D lights.** Lights never break a batch (one block per pass, §3); Shadow Caster 2D shadows
-  likewise.
+- **R18 Pixel snap batches.**
+  - S41's `Pxs` bits join the batcher's MESH and UI allowlists. Each draw's `pixelSnapDraw` mode
+    is a key section (reason `pixel_snap`), so a run holds one mode. The run's draw uses its head's
+    mode, and `pixelSnapApply` snaps each baked vertex.
+  - Mode 1 (every vertex) batches from M2.
+  - Mode 2 (pivot) batches once the sprite has a per-vertex pivot (R22). Until then, and always
+    for UI, a mode-2 draw is drawn alone (`ineligible_pixel_snap_pivot`).
+  - Steps90's rounded model matrix reaches the bake through `objectMatrices`, so both paths use it
+    (AC6 checks).
+- **R19 FX slots (family contract, kept).** Four floats, every neutral value 0:
+  - `fx.x`: S43's Palette Swap row (an integer stored exactly; 0 = original colours);
+  - `fx.y`: FLASH amount (`library:sprite`'s existing `flashAmount`);
+  - `fx.z`: S48's DITHER_FADE amount;
+  - `fx.w`: S48's DISSOLVE progress.
+  A manifest property claims one with `instance=fx.<slot>`. S52 adds it to `flashAmount` and to
+  S43's `paletteRow`. S48 adds `fx.z` and `fx.w` when it lands. Until then those two slots are
+  carried and stay 0. A test shader proves the channel (AC8).
+- **R20 Batchable manifest shaders.** A manifest shader with the line `// @batchable` passes
+  `meshBatchForm` when its per-object inputs are covered:
+  - textures: its `@texture` and `@palette` bindings join the `texture` key section;
+  - uniform values: the custom parameter block, with the `instance=` fields zeroed, is a new key
+    section (`custom_params`);
+  - per-sprite amounts: the `instance=` fields travel per vertex (R21);
+  - the frame rect: per vertex (R22).
+  `library:sprite` declares it. A batchable variant that grows its quad in the vertex stage is not
+  admitted: S48's grown quads must be built in the geometry (D6).
+- **R21 Additive per-vertex FX channel.**
+  - A sprite whose material enables a feature with an `instance=` property gets a FLOAT4
+    attribute, `a_spriteFx`, written as zeros in its vertex buffer. The variant's `Sfx` bit reads
+    it.
+  - The shader reads each claimed amount as `uniform field + fx slot`:
+    - drawn alone: the uniform carries the value and the attribute is 0;
+    - batched: the bake writes the material's values into its copy of the attribute, and the
+      run's draw writes those uniform fields as 0;
+    - Sprite Batch with an FX stream: `i_spriteFx` carries them and the uniform fields are 0.
+  - Changing an amount re-bakes the record on the CPU (it is compared every frame, like the
+    colour factor). The GPU vertex buffer never changes for it. Neutral 0 makes the sum exact in
+    float.
+- **R22 Per-vertex frame rect and pivot.**
+  - OUTLINE and OVERLAY sprites get a FLOAT4 attribute of the identity rect (0, 0, 1, 1)
+    (`TEXTURERECT`, bit `Sfr`). The vertex stage composes `spriteParams.textureRect` with it, as it
+    already composes `i_textureRect`. The bake writes the record's rect into it (a new role,
+    `TEXTURE_RECT`), and the run draws with the whole rect: the composed rect is the same floats on
+    both paths.
+  - Pixel-snapped sprites under an active Pixel Perfect Camera get a FLOAT3 attribute `(0, 0, 0)`
+    (`SNAPPIVOT`, POINT role, bit `Spv`). The snap pivot is `mvp * vec4(a_snapPivot, 1)`: the model
+    origin drawn alone, the baked origin batched.
+  - Without these attributes, the draws stay alone (`ineligible_frame_rect`,
+    `ineligible_pixel_snap_pivot`).
+- **R23 Parity.** For every case in AC5-AC9, an image drawn with Dynamic Batching on equals the
+  image drawn with it off: 0 differing pixels on the reference renderers (glcore, Vulkan
+  lavapipe), with geometry kept off pixel-centre edges where no Pixel Perfect Camera snaps it.
 
-### Functional — the bulk API
+### Platform and backends
 
-- **R26 Sprite Batch component.** A renderer that draws many sprites from one GameObject: a sheet
-  from S44's `SpriteSheetPool` (an `.aseprite`; S45's `.spriteatlas` and sliced textures once S45
-  lands) or a plain texture as its frame source; a material; Sorting Layer and Order; capacity;
-  mode `Retained` (instances persist until changed) or `Clear Each Frame` (immediate mode: what the
-  scripts add this frame is drawn once); space `Local` (instances move with the GameObject, through the
-  batch transform) or `World`. Its instances use the format of D2 directly.
-- **R27 Bulk writes.** Lua and C++ write whole streams at once from flat arrays (positions, frames,
-  rotations, scales, colours, FX), plus per-instance `set`/`add`/`remove` for small edits; a write
-  validates once per call, not per element (R43).
-- **R28 Sorting inside a batch.** A Sprite Batch draws its instances in index order, or sorted by the
-  sort axis (`sortInstances`), as one item in the pass sort. Its instances never interleave with other
-  renderers (use separate batches or Individual tilemap mode for that).
-- **R29 Frames by name.** A frame is an index into the batch's frame list, which the API fills from
-  sheet frame names (S44's record), Sprite frames or pixel rects; an unknown name is a typed error at the call.
-- **R30 Picking and bounds.** A Sprite Batch's bounds are its instances' (cached, refreshed when they
-  change); the Scene view picks the batch as one GameObject.
+- **R24** All paths use vertex and fragment stages only, per-instance attributes with divisor 1,
+  bindings at offsets (no base instance on GLES3/WebGL2), FLOAT attributes only, and flat varyings.
+  No compute, SSBO, texture array or integer attribute. GL 3.3, GLES3/WebGL2, Metal, D3D11, Vulkan.
+- **R25** The new variant bits (`Sfx`, `Sfr`, `Spv`) exist only for variants that need them. A
+  project with no Pixel Perfect Camera and no `instance=` feature compiles no new variant. Exports
+  carry the Sorting Layers table and the Transparency Sort settings, in both Compile and prebuilt.
 
-### Functional — integration
+### Performance
 
-- **R31 Tilemap chunks (S50).** S50's chunks are static batches (R15) of tile instances in layer
-  space, with `CLAMP_FRAME`, per-cell flip/transpose bits (D2 flags) and edges S41 R13 makes
-  bit-identical. Chunk-mode layers
-  sort as one item per chunk at the layer's key; Individual-mode layers contribute one item per tile to
-  the run's sort (S50).
-- **R32 Particle Systems.** Particle Systems keep their own instanced path (S20; already one draw per
-  system) and take part in the sort with their Sorting Layer and Order. S49's pixel particles do the
-  same (S49 §2 keeps them off the Sprite Batch).
-- **R33 Legacy tilemaps.** The legacy free tilemap keeps its mesh path and sorts as one item.
-- **R34 Polygon meshes and plain meshes** sort (R2) but stay on the per-mesh path.
+Measured on the bench machine and asserted through `perfSlack()` / `harness.over_budget` (counts
+always). Mobile is a Pixel 6a / iPhone 12 class device and web is wasm in Chrome; mobile and web are
+measured once by hand and recorded in `docs/specs/evidence/s52/`.
 
-### Platform & backends
-
-- **R35** The batched path runs on GL 3.3, GLES3/WebGL2, Metal, D3D11 and Vulkan with vertex and
-  fragment shaders only: per-instance vertex attributes (step function per instance, divisor 1),
-  bindings at offsets (no base instance on GLES3/WebGL2), no storage buffers, no compute, no indirect
-  draws, no `step_rate` other than 1 (Vulkan has none, §3).
-- **R36** At most 8 vertex attributes (1 per-vertex corner + 4 core + 3 optional) and 5 vertex
-  buffer slots per batch: within WebGL2's guaranteed 16 attributes and sokol's 16 slots.
-- **R37** Integer attributes only where GLES3 has them (`uint` flags through `glVertexAttribIPointer`);
-  half-float attributes (core in GLES3/WebGL2) for colour and FX.
-- **R38** Shader variants per stream mask are created through S32 (async where available) and recorded
-  in the warm-up list; a batch whose pipeline is still being created draws on the per-mesh path that
-  frame instead of drawing nothing (S32's stand-in rule).
-- **R39** Exported players (Compile and prebuilt, S30) carry the Sorting Layers table and the batching
-  settings; disabled batching (R20) compiles nothing extra.
-
-### Performance (release builds; "mobile" = Pixel 6a / iPhone 12 class, "web" = wasm in Chrome, one thread, on the same phone's browser for mobile web; "desktop" = the build server reference machine; `je-bench-sprites`)
-
-- **R40 10k moving sprites, one atlas page.** 10,000 sprites 16×16 to 32×32 px, all moving every
-  frame, at 1080p: draws ≤ 4 (one per page per 16,384 instances plus the camera's other draws); CPU
-  (gather, sort, pack, upload) ≤ 2.0 ms mobile, ≤ 3.0 ms web, ≤ 0.5 ms desktop; GPU ≤ 4 ms mobile;
-  60 fps sustained for 60 s on mobile and web. The "before" column (per-mesh path) is recorded in
-  this spec.
-- **R41 10k static sprites.** Nothing moved: ≤ 0.3 ms CPU mobile (R14), zero upload bytes.
-- **R42 Mixed scene.** 2,000 sprites over 4 atlas pages with 10 Sorting Layers and a Y axis: draws ≤
-  number of layer × page transitions in sorted order (reported by AC6), CPU ≤ 1.0 ms mobile.
-- **R43 Lua bulk.** `SpriteBatch:setPositions` of 10,000 positions ≤ 1.0 ms mobile, ≤ 1.5 ms web;
-  per-instance `set` ≤ 0.5 µs desktop per call.
-- **R44 Memory.** Core instance 40 bytes, rotation +16, colour +8, FX +8. Per-frame stream bytes are
-  within `streamStagingBytes` (16 MB mobile/web): 10,000 instances with every stream ≤ 720 KB.
-- **R45 Disabled costs nothing.** A scene without sprites runs no batcher code past one empty check;
-  with batching off (R20) nothing of S52 allocates. Sorting with all-default fields adds ≤ 2 % to
-  today's 2D pass CPU (AC1 bench).
-- **R46 No regression of the per-mesh path:** a fallback sprite costs what it costs today ± 5 %.
+- **R26 Sorting.** 2,000 sprites in 10 layers with Custom Axis: the gather and sort add ≤ 0.2 ms
+  desktop and ≤ 1.0 ms mobile. Defaults: no gather runs (R9, asserted by a counter).
+- **R27 Sprite Batch.** 10,000 instances of one page, all moving every frame:
+  - 1 draw;
+  - pack and upload ≤ 0.5 ms desktop, ≤ 2 ms mobile;
+  - 96 bytes per instance, + 16 with FX;
+  - a static Retained batch uploads 0 bytes per frame.
+  Lua `setPositions` of 10,000: ≤ 1.0 ms desktop, ≤ 3 ms mobile web.
+- **R28 Pixel-art batching.** 1,000 snapped `library:sprite` sprites with FLASH animating on 100 of
+  them (one sheet, mode 1): ≤ 2 colour-pass draws for them, and 0 GPU vertex-buffer writes caused by
+  the flash (asserted by `Buffer::getWriteCount`).
+- **R29** A draw that is batchable today costs what it costs now ± 5 % (the key gains at most one
+  small section).
 
 ### Editor UX (human)
 
-- **R47 Sorting Layers editor:** in Project Settings > Tags and Layers, a list with add, rename,
-  delete (renderers on a deleted layer fall back to Default, with a warning naming how many) and drag
-  to reorder; undoable like the other project settings rows.
-- **R48 Renderer rows:** "Sorting Layer" (dropdown with "Add Sorting Layer...") and "Order in Layer"
-  on Sprite, Mesh Polygon, Mesh (under Additional Settings), Particle System (Renderer), Sprite Batch
-  and Tilemap Layer; multi-edit and undo as every other row.
-- **R49 Sorting Group** in Add Component > Rendering, with "Sorting Layer", "Order in Layer".
-- **R50 Batch view:** Scene view draw mode "Sprite Batches" tints each batch with a stable hashed
-  colour and draws per-mesh sprites hatched; hovering a sprite shows "batch 12 of 40 · 316 instances ·
-  broke: texture (atlas_b page 1 after atlas_a page 0)". The stats overlay (`DebugOverlay`) shows
-  "Batches", "Instances batched", "Saved by batching".
-- **R51 Sprite Batch Inspector:** source, material, mode, space, capacity, count (read-only), a
-  frame list preview, Sorting rows.
+- **R30 Sorting Layers list.**
+  - Project Settings > Tags and Layers > "Sorting Layers": add (+), rename inline, remove (−),
+    drag to reorder. Default is locked.
+  - Removing a layer still used in open scenes warns with the count; those renderers draw on
+    Default.
+  - Every edit is one undo step (`SortingLayersCmd`).
+- **R31 Renderer rows.**
+  - "Sorting Layer" (dropdown ending in "Add Sorting Layer...", which opens Tags and Layers) and
+    "Order in Layer" on Sprite, Mesh Polygon, Mesh (Additional Settings), Particle System
+    (Renderer), Points, Line Renderer and Trail Renderer (Additional Settings).
+  - "Sprite Sort Point" on Sprite.
+  - Multi-edit and undo work as for every property row.
+- **R32 Sorting Group** in Add Component > Rendering: "Sorting Layer", "Order in Layer". Adding,
+  removing and editing it are undoable.
+- **R33 Sprite Batch Inspector.**
+  - Rows: Mode, Space, Capacity, Sort Instances, "Instances" (read-only count).
+  - When empty: "Filled by scripts: SpriteBatch:setPositions (docs/rendering/sprite-batch.md)".
+  - The Sprite's Sorting rows apply to it.
 
 ### Agent UX (MCP, Lua, CLI)
 
-- **R52 `get_render_stats`** gains `batches`: `{count, instances, draws_saved, per_mesh, breaks:
-  {reason: count}, top_breaks: [{reason, cause, before, after}]}` (up to 8, entity references), and
-  the parameter `explain_batches` (default false) that adds `list: [{index, instances, page, material,
-  sorting_layer, first, last}]` up to `max_batches` (default 64). Also in `jasper://stats`.
-- **R53 Sorting through existing tools:** Sorting Layers are `tags_and_layers.sorting_layers`
-  (`get_project_settings`/`set_project_settings`; a list of names, ids kept by name); renderer fields
-  are ordinary component properties for the existing component tools; the Sorting Group is an ordinary
-  component. No new tool.
-- **R54 Lua:**
-  - `SortingLayer.getId(name)`, `SortingLayer.getName(id)`, `SortingLayer.getRank(id)`,
-    `SortingLayer.list` (property).
-  - Renderer properties `sortingLayer`, `sortingOrder` on `Sprite`, `Mesh`, `ParticleSystem`,
-    `SpriteBatch`, `TilemapLayer` (S50).
-  - `SpriteBatch` (§6.3); `Profiler.getRenderStats()` gains `batches`, `instancesBatched`,
-    `drawsSaved`, `batchBreaks` (a table by reason).
-- **R55 Agent guide:** `docs/mcp/guide/rendering-2d.md` (`jasper://docs/rendering-2d`): sorting rules,
-  the break reasons and how to fix each, the Sprite Batch recipes; one line in the `## Pixel art` digest section of the
-  guide.
-- **R56 Determinism:** for the same scene and camera, `batches` and its `list` are identical on every
-  run (R7, D7).
+- **R34 No new tool.**
+  - Sorting Layers are the setting `tags_and_layers.sorting_layers` (an ordered list of names; ids
+    kept by name) through `get_project_settings` / `set_project_settings`. The Graphics rows are
+    `graphics.transparency_sort_mode` and `graphics.transparency_sort_axis`.
+  - Renderer fields, Sorting Group and Sprite Batch are ordinary component properties for
+    `add_component`, `set_properties` and `get_entity`. `sortingLayer` accepts a layer name or id,
+    and reads back as `{id, name}`. An unknown name fails with the fix: "add it with
+    set_project_settings tags_and_layers.sorting_layers".
+- **R35 Stats.** `get_render_stats` keeps its schema. Its `batching.breaks` and `batch_breaks`
+  gain the reasons of §6.4. `docs/mcp/guide/profiling.md` (Dynamic Batching section) names each
+  with its fix.
+- **R36 Guide.**
+  - `docs/mcp/guide/rendering-2d.md` (`jasper://docs/rendering-2d`): the sort precedence, Sorting
+    Groups, the axis, Sprite Batch recipes, and which pixel-art features batch.
+  - One "Other areas" index entry in the agent guide: `rendering-2d`: `set_properties`,
+    `jasper://docs/rendering-2d`.
+  - Every new MCP text has an eval case (AC14).
+- **R37 Lua (Unity names).**
+  - `SortingLayer.layers`, `SortingLayer.nameToId(name)`, `SortingLayer.idToName(id)`,
+    `SortingLayer.getLayerValue(id)`.
+  - Renderer properties `sortingLayerId`, `sortingLayerName`, `sortingOrder` on `Sprite`, `Mesh`,
+    `ParticleSystem`, `Points`, `LineRenderer`, `TrailRenderer`, and `SortingGroup`.
+  - `SpriteBatch` (§6.6). C++ scripts get the same API.
 
-### Data & compatibility
+### Data and compatibility
 
-- **R57** New fields (`sortingLayer`, `sortingOrder`, `sortAxisOverride`) and new components (Sorting
-  Group, Sprite Batch) are optional: no scene format bump (`editor/StreamMigrations.h:17-20`). Old
-  scenes load and draw in today's order (AC1).
-- **R58** `project.yaml` gains `sortingLayers: [{id, name}]` (absent = only Default) and the
-  `rendering.sprite_*` settings with their defaults; no project format bump.
-- **R59** A renderer referencing an unknown layer id draws on Default and the load report says so
-  (one line per scene, with the count).
-- **R60** The cooked scene format (S30) carries the new fields through the generated field tables; the
-  Compile build's factories set them (`RuntimeFields.gen.inc` regenerated).
-- **R61** Sprite Batch instances saved with the scene (Retained mode, `saveInstances` on) are one
-  base64 blob per stream (little-endian D2 records), so a 10,000-instance batch does not become 10,000
-  YAML nodes; Clear Each Frame batches save no instances.
+- **R38 No version bump.** Every scene key is new and optional (AGENTS.md): `sortingLayer`,
+  `sortingOrder`, `spriteSortPoint`, the Sorting Group and the Sprite Batch components.
+  - A pre-S52 scene fixture loads with defaults, draws in today's order and re-saves byte for
+    byte when untouched (AC12).
+  - A change that re-types or renames a stored key during implementation bumps the version with a
+    migration in `editor/StreamMigrations.cpp`, a fixture in `editor/tests/fixtures/migrations/`
+    and a test.
+- **R39 project.yaml.**
+  - New keys: `sortingLayers: [{id, name}]` (absent = Default only), `transparencySortMode`,
+    `transparencySortAxis`.
+  - A renderer referencing an unknown id draws on Default, and `get_load_report` shows one line per
+    scene with the count.
+- **R40 Exports.** Cooked scenes carry the new fields (`RuntimeFields.gen.inc` regenerated). The
+  Compile factories set them. `PlayerConfig` carries the layer table and sort settings.
+- **R41 Unity particle import.** New imports map `m_SortingOrder` to `sortingOrder` and
+  `m_SortingLayerID` by name. Effects imported earlier keep `sortPriority`, which still sorts after
+  the order (R6): nothing is rewritten.
 
-## 6. Design constraints & decisions
+## 6. Design constraints and decisions
 
-- **D1 Layout.** Batching is general 2D rendering, not pixel-art-only, so it lives with the renderer
-  (a deviation from the ledger's `engine/core/pixelart/`, which keeps the snap rule, S41):
-  - `engine/core/render/sprite/SpriteInstance.h` (the format, flags, pack helpers),
-    `SpriteBatcher.{h,cpp}` (gather, key, sort, merge, lookahead, pack, stats),
-    `InstanceStream.{h,cpp}` (the paged `sg_append_buffer` stream, extracted from `ParticleStream`,
-    `RenderSystem.h:2372-2385`, shared with particles);
-  - `engine/core/registry/SortingLayers.{h,cpp}` (ids, names, ranks; beside `TagManager`);
-  - `engine/core/component/SortingGroupComponent.h`, `SpriteBatchComponent.h`;
-    `engine/core/object/SpriteBatch.h` (the Lua-facing wrapper);
-  - `engine/shaderlib/includes/sprite_instance_vs.glsl` (the vertex path), included by `mesh.vert`
-    and `includes/surface_vs.glsl` under `HAS_SPRITE_INSTANCING`.
-- **D2 The instance format.** One record layout for every producer (sprites, Sprite Batch, tile
-  chunks); little-endian, tightly packed.
+- **D1 Where sorting plugs in.**
+  - `RenderSystem::update` already visits every renderer. It ORs one per-scene flag,
+    `sortingActive`, from each renderer's two fields, the enabled Sorting Group count and the
+    project mode.
+  - Off: the 2D loop at `RenderSystem.cpp:18262` runs as today.
+  - On, the loop works in two steps per run (cut at UI subtrees):
+    - Gather: it collects world renderers as items with a key. A Sorting Group is one item
+      holding its members' sorted items.
+    - Draw: it stable-sorts by the key, skipping the sort when `std::is_sorted` holds, then draws
+      the items through the same per-type calls (`submitMesh`, `drawParticles`, ...).
+  - The colour-copy and near-plane checks run on items in draw order.
+  - The 3D transparent queue's `TransparentRenderData` gains `sortKey`, and
+    `TransparentRenderComparison` compares it first.
+- **D2 Keys and buckets.**
+  - Item key, 64 bits: layer value (16) | Order in Layer + 32768 (16) | axis distance as an
+    order-preserving float (32, 0 in mode Default), then the hierarchy index as the final tie-break.
+  - Bucket (`BatchItem::sortKey`): layer value (16) | order + 32768 (16) | outermost enabled
+    Sorting Group's sequence number in this pass + 1 (32; 0 outside groups).
+  - Disjoint draws are order-independent, so a bucket of 0 for everything would also be
+    pixel-safe. The landed contract is kept anyway: layers are where users expect batch breaks
+    (Unity breaks there too), and a bucket boundary stops REORDER's overlap scan early. §9 records
+    the measured alternative.
+- **D3 Sorting Layers storage.**
+  - `engine/core/registry/SortingLayers.{h,cpp}` (beside `TagManager`): ids, names, values, and
+    a lookup from id to value in a flat array, read once per item.
+  - The editor keeps the table in `Project` and pushes it to the engine on load and on each
+    `SortingLayersCmd`.
+- **D4 The batcher's changes are additive.** Each change is small and in its existing place:
+  - `BATCH_MESH_PROPERTIES` and the UI allowlist gain `Pxs`, `Sfx`, `Sfr`, `Spv`.
+  - `meshBatchForm` admits `@batchable` manifests and checks §5 R20's conditions.
+  - `fillMeshKey` adds the `pixel_snap` and `custom_params` sections and the library textures.
+  - The bake gains the `TEXTURE_RECT` and `FX` roles.
+  - `drawBatchRun`'s head draw zeroes the `instance=` uniform fields (through `writeCustomUniforms`
+    when `passBatchGeometry` is set) and writes the head's `pixelSnapDraw`.
+  - Nothing else in `DrawBatcher` changes.
+- **D5 Why additive, not "write the vertex buffer".** The batching spec suggested MeshSystem
+  rewriting the sprite's vertex buffer when a value changes. An animated flash would then turn the
+  sprite's shared immutable buffer private and dynamic, and upload it every frame. Additive
+  `uniform + attribute` with neutral 0 keeps the buffer constant (zeros). The value lives where it
+  already lives (the material), and the bake writes it into the CPU copy the run uploads anyway.
+- **D6 Grown quads (S48 R7).** The batch bakes geometry; it cannot replay a vertex-stage
+  growth. So a feature that draws outside the frame (S48's DROP_SHADOW, a grown OUTLINE or GLOW)
+  grows the quad and its UVs in `MeshSystem`'s sprite geometry, and is batchable. A variant that
+  grows in its vertex stage stays `ineligible_custom_shader`. S48 implements it this way (§8).
+- **D7 Sprite Batch on GPU instancing: the choice.**
+  - Against the landed dynamic batcher:
+    - A bullet would have to be a GameObject (Transform, MeshComponent, its slot in `update()`).
+    - It would pay about 650 bytes of batch record and 256 bytes of baked vertices per sprite,
+      re-placed and uploaded every frame it moves.
+    - An instance uploads 96 bytes and needs no entity.
+  - Against S55:
+    - S55 instances separate MeshComponent entities that share a mesh.
+    - The ≤ 64-vertex built-in-shader sprites go to the batcher and never reach it.
+    - It also needs one entity per sprite.
+  - Against a new compact format (the old S52 D2, 40 bytes):
+    - It would need a second vertex path and up to 8-16 variants per material variant to compile,
+      warm (S32) and list in exports (S64).
+    - Every `library:sprite` vertex hook would need a second implementation.
+  - The existing `HAS_INSTANCING` path already has frames (`i_textureRect`), tints (`i_color`),
+    `library:sprite`, 2D lights and S41's instanced pivot. So Sprite Batch packs straight into
+    `InstanceRenderData` and adds one optional attribute (`i_spriteFx`).
+  - 10,000 moving instances are 960 KB a frame, within the 16 MB mobile stream budget.
+  - The compact format remains a later optimisation if R27's measurements ask for it.
+- **D8 Per-instance snap without bytes.**
+  - The packer decides alignment on the CPU (`pixelart::isGridAligned` of the GameObject's matrix
+    times the instance's 2D linear part). For an aligned instance it writes the near-zero terms of
+    its linear part as exact 0.
+  - The instanced `Pxs` stage computes `mode = drawMode == 1 && the instance's linear part has
+    that zero pattern ? 1 : (drawMode > 0 ? 2 : 0)`. Exact zeros compare exactly on every backend.
+  - This also corrects InstancedMeshComponent: rotated instances under Rotate On Grid snap their
+    pivot instead of every vertex. It is a deliberate behaviour change; its tests are updated in the
+    same commit (§8).
+- **D9 Code homes** (ledger "Code homes"):
+  - `engine/core/render/sprite/SpriteInstanceBatch.{h,cpp}` (the retained or per-frame instance
+    buffer, packing, bounds, revision);
+  - `engine/core/component/SortingGroupComponent.h` and `SpriteBatchComponent.h`;
+  - `engine/core/object/SpriteBatch.h` (the scripting wrapper);
+  - `engine/core/registry/SortingLayers.{h,cpp}`;
+  - shader changes in `library/sprite.{vert,frag}`, `includes/surface_vs.glsl`, `mesh.vert`, the
+    depth stages and `ui.vert`;
+  - `engine/core/subsystem/RenderSystemBatch.cpp` for D4.
+- **D10 S41 landing order.** S52 starts after S41 is on `main` (its interface is final on its
+  branch). If S41 slips, M1 and M4 land first, and R18/R22's snap parts wait. No rounding of S52's
+  own anywhere.
 
-  | Stream | Attribute | Format | Bytes | Meaning |
-  |---|---|---|---|---|
-  | core | `i_pos` | FLOAT3 | 12 | quad origin (min corner, pivot applied) in batch space; with the rotation stream: the pivot |
-  | core | `i_size` | FLOAT2 | 8 | quad size in batch units (scale folded in; negative = mirrored) |
-  | core | `i_uv` | FLOAT4 | 16 | frame UV min and max in the page (flips folded in), computed on the CPU by the per-mesh path's own function, so both paths sample the same floats |
-  | core | `i_flags` | UINT | 4 | bit 0 transpose (tiles), 1 `CLAMP_FRAME`, 2–3 tangent mirror signs (2D normal maps), 4–31 reserved (0) |
-  | rotation | `i_rot` | FLOAT4 | 16 | cos θ, sin θ (computed on the CPU, as the per-mesh path's matrix), pivot x, y as fractions of the size |
-  | colour | `i_color` | HALF4 | 8 | linear RGBA tint, HDR allowed (vertex colour × material colour of the per-mesh path) |
-  | FX | `i_fx` | HALF4 | 8 | §R23 slots |
+### 6.1 MCP and the budget
 
-  Plus one static per-vertex stream, `a_corner` (the unit quad's 4 corners), and the shared 6-index
-  quad buffer. Per draw: the batch model matrix, the pass view-projection, S41's snap uniforms (in the
-  frame block), and the grown-quad reach (R24a) when the material has one.
-- **D3 Absent streams are shader variants.** sokol has no constant vertex attributes; a stride-0 buffer
-  is not one (sokol computes the stride, §3); a one-element buffer with a huge `step_rate` is not
-  portable (Vulkan ignores it, §3); a full-length defaults buffer wastes bandwidth on mobile. So
-  `INST_ROT`, `INST_COLOR` and `INST_FX` defines select the attributes and the defaults are constants
-  in the shader: at most 8 vertex variants per material variant (16 with S41's `Pxs` bit), created
-  lazily (R38). All of them compile the same fragment source. The engine property bits for them
-  (`HAS_SPRITE_INSTANCING` and the stream mask) are appended to MESH's bits at landing, after or
-  before S41's `Pxs` (same wave), with fixed names and no hard-coded numbers.
-- **D4 Same fragment stage, same varyings.** `sprite_instance_vs.glsl` writes exactly the varyings the
-  per-mesh vertex path writes (UV, colour, world position for 2D lights, the frame rect, normal
-  (0, 0, 1) and the tangent with its mirror sign as `MeshSystem::createTilemap`/`createSprite`
-  compute it, `MeshSystem.cpp:1074-1080`), so the fragment program, and with it every effect, is the
-  per-mesh one. Parity (AC2) then only depends on positions and UVs, which D2 makes identical inputs.
-- **D5 Ordering.** Per pass: `SpriteBatcher::gather` walks the Transform array once (the loop that
-  draws today), producing items (a renderer, a static batch, a Sorting Group, a fallback, a UI subtree
-  boundary) with a 64-bit key: rank (8 bits) | order + 32768 (16) | axis distance as an
-  order-preserving float (32) | and the hierarchy index as the final tie-break, then a stable radix sort
-  per run (R3). Groups sort recursively. 3D transparent queues extend `TransparentRenderComparison`
-  with rank and order ahead of `sortPriority` (R6).
-- **D6 Batch key and break reasons.** The key hashes: shader variant (with stream mask union),
-  render state, page image and sampler, non-instanced material values and textures, stencil reference,
-  scissor rect. When two consecutive items differ the first differing field is the break reason
-  (`texture`, `material`, `blend`, `stencil`, `scissor`); `capacity`, `ui_run` and `sorting_group` are
-  structural; `per_mesh` names the fallback cause:
+| Tool | Change | Listing |
+|---|---|---|
+| `get_project_settings` / `set_project_settings` | rows `tags_and_layers.sorting_layers`, `graphics.transparency_sort_mode`, `graphics.transparency_sort_axis` (descriptions in `SettingsRows.cpp`, not the tool listing) | 0 |
+| `add_component`, `set_properties`, `get_entity` | new components and properties are reflected; `sortingLayer` takes a name or id | 0 (schemas are generic) |
+| `get_render_stats` | new reason values only | 0 |
 
-  | Cause | When |
-  |---|---|
-  | `material_not_instanceable` | the shader lacks `@instanceable`, or an instanced property has no slot |
-  | `extra_pass` | the material has a Before/After extra pass (`Material::extraPass`) |
-  | `transform_3d` | the world transform rotates off the XY plane |
-  | `shear` | non-uniform scale under a rotation |
-  | `deformed` | lattice, VAT, skinning, morphs, a sprite grid > 1 |
-  | `custom_vertex` | a material with its own vertex stage |
-- **D7 Lookahead (R13).** An item may move before the k ≤ `lookahead` items preceding it in the run
-  when its screen rectangle (after snapping, of the grown quad when R24a applies, expanded by one
-  pixel for rasterization rules) overlaps none of them and
-  its key equals the open batch's. Items never move across a UI subtree, a Sorting Group boundary or
-  a fallback. Non-overlapping draws touch disjoint pixels, so order between them cannot change a pixel.
-  The scan is O(n × lookahead) with the rectangles in a small ring, deterministic (no hashing order).
-- **D8 Coherence (R14).** A run caches its sorted item list, batch list and stream offsets with a
-  revision made of the members' change counters (S07), the camera's snapped position when the axis or
-  culling depends on it, and the settings. Equal revision: draw the cached batches from the retained
-  stream pages (kept two frames, as `ParticleStream`).
-- **D9 Where it plugs in.** `renderCameraPass`'s 2D loop (`RenderSystem.cpp:16204-16316`) calls the
-  batcher at each run boundary instead of `drawMesh` per sprite; UI drawing, scissors and Canvas
-  Groups stay where they are. Distance-sorted passes batch consecutive transparent items in the queue
-  order (no lookahead there). Shadow and G-buffer passes are unaffected (sprites cast no shadows,
-  `sprite.frag:42-44`).
-- **D10 Snap code is S41's.** The batched vertex shader calls S41's shader snap function and the
-  per-mesh path calls S41's CPU function; S52 adds no rounding of its own. If S41 lands after S52
-  M2, S52 ships with snapping off on both paths and S41 wires both.
+`tool_budget.py --check tools/mcp/budget.json` must pass unchanged. If a description is trimmed,
+the budget is lowered. Each new setting description, property description, error text, guide page
+and index line gets a case in `tools/mcp/eval/cases.py` that fails without it (AC14).
 
-### 6.1 MCP tools and the budget (S31)
+### 6.2 Settings
 
-| Tool | Group | Change | Estimated listing chars |
+| Key (rows in `editor/settings/SettingsRows.cpp`) | Type | Default | Meaning |
 |---|---|---|---|
-| `get_render_stats` | `profiling` | `explain_batches`, `max_batches`; the result gains `batches` | +220 (description +120, schema +100) |
-| `get_project_settings` / `set_project_settings` | core | none (the new keys are rows) | 0 |
+| `tags_and_layers.sorting_layers` | list of names | `["Default"]` | R1, ids kept by name across edits |
+| `graphics.transparency_sort_mode` | `default` \| `custom_axis` | `default` | R4 |
+| `graphics.transparency_sort_axis` | vec3 | (0, 1, 0) | R4 |
 
-- The `profiling` group's own limit is 7,000 characters (`tools/mcp/budget.json`, S15). If the
-  measured group is over after the change, S52's PR raises that entry to the measured size, with the
-  reason "S52: batch statistics on get_render_stats (extending it instead of a new tool)". No new
-  tool, no core growth.
-- The `profiling` entry (7,000) is S15's own cap, below `group_default` (15,000); a raise to the
-  measured size stays below the default and is recorded in that entry's `spec` text, as conventions
-  ("a spec's own budget is its group's `groups` entry") allow. No exception is added.
-- Guide: one line in the family's `## Pixel art` digest section (S41 creates it; `## 2D and 3D` has no
-  room): "2D draw order: Sorting Layers, Order in Layer, Sorting Group; batching and its breaks:
-  get_render_stats batches, jasper://docs/rendering-2d" (≤ 140 bytes, the ledger's share).
+### 6.3 Shader contract
 
-### 6.2 Settings (Project scope; rows in `editor/settings/SettingsRows.cpp`, beside `tags_and_layers.layers`, `:2310`)
+- **`Sfx`** (MESH): `in vec4 a_spriteFx` (or `i_spriteFx` under `HAS_INSTANCING`), passed to the
+  fragment stage as `flat out vec4 v_spriteFx`. A manifest property `instance=fx.<s>` is read as
+  `customParams.<name> + v_spriteFx.<s>`. Without `Sfx`, the shader reads `customParams.<name>`
+  alone.
+- **`Sfr`** (MESH): `in vec4 a_frameRect`. `v_frameRect = compose(spriteParams.textureRect,
+  a_frameRect)`, the same arithmetic as the existing `i_textureRect` composition (`sprite.vert:33-37`).
+- **`Spv`** (MESH, DEPTH): `in vec3 a_snapPivot`. `snapPivot = mvpMatrix * vec4(a_snapPivot, 1.0)`
+  replaces `mvpMatrix[3]`.
+- **Bits.** Appended after whatever is on `main` at landing, in landing order, with these names
+  and a test pinning them (ledger rule). The shader cache version is bumped by one.
 
-| Key | Type | Default | Meaning |
-|---|---|---|---|
-| `tags_and_layers.sorting_layers` | list of names | `["Default"]` | R1; ids are kept by name across edits |
-| `rendering.sprite_batching` | bool | true | R20 |
-| `rendering.sprite_batch_lookahead` | int 0..128 | 32 | R13 |
-| `rendering.sprite_sort_axis` | none \| y \| custom | none | R4 |
-| `rendering.sprite_sort_axis_vector` | vec3 | (0, 1, 0) | the custom axis |
+### 6.4 New batch break reasons
 
-### 6.3 API sketches
+These are appended to `BatchBreak`, with stable names in `getBatchBreakName`:
+
+| Reason | When |
+|---|---|
+| `pixel_snap` | the draw's `pixelSnapDraw` mode differs from the run's |
+| `custom_params` | a batchable manifest's custom parameter bytes (without `instance=` fields) differ |
+| `ineligible_pixel_snap_pivot` | a mode-2 draw without `a_snapPivot`, or a mode-2 UI element |
+| `ineligible_frame_rect` | OUTLINE or OVERLAY without `a_frameRect` (a mesh that is not a sprite) |
+
+### 6.5 `SpriteInstanceBatch` (Sprite Batch and S50)
 
 ```cpp
 namespace jasperengine {
-    struct SpriteInstance {            // core stream, 40 bytes
-        Vector3 pos; Vector2 size; Vector4 uv; uint32_t flags;
+    // One page's instances drawn with a Sprite's HAS_INSTANCING variant (InstanceRenderData layout,
+    // optional FX stream). Retained: uploaded when `revision` changes. Per-frame: appended to the
+    // frame stream.
+    class JASPERENGINE_API SpriteInstanceBatch {
+    public:
+        enum class Storage : uint8_t { Retained, PerFrame };
+        void reserve(uint32_t capacity);
+        void setCount(uint32_t count);
+        std::span<InstanceRenderData> instances();       // written by the producer
+        std::span<Vector4> fx();                         // empty until enableFx()
+        void enableFx();
+        void markChanged();                              // bumps the revision, refreshes bounds
+        const AABB& localBounds() const;
+        // page runs: [first, count) of instances sharing one texture page, in order
+        void setPageRuns(std::span<const std::pair<uint32_t, uint32_t>> runs);
     };
-    enum SpriteInstanceFlags : uint32_t { SPRITE_TRANSPOSE = 1, SPRITE_CLAMP_FRAME = 2, SPRITE_MIRROR_U = 4, SPRITE_MIRROR_V = 8 };
-    enum class SpriteStream : uint8_t { Rotation = 1, Color = 2, Fx = 4 };
+}
+```
 
-    // a producer's retained batch (S50 chunks, a retained Sprite Batch)
-    struct StaticSpriteBatch {
-        Matrix4 model; AABB worldBounds; const Texture* page; const Material* material;
-        uint8_t streams; uint32_t count; uint64_t revision;   // a new revision re-uploads
-        std::span<const SpriteInstance> core; std::span<const uint8_t> rotation, color, fx;
-    };
+### 6.6 API sketches
 
-    enum class BatchBreak : uint8_t { Texture, Material, Blend, Stencil, Scissor, Capacity, UiRun, SortingGroup, PerMesh };
-    struct SpriteBatchStats {
-        uint32_t batches = 0, instances = 0, drawsSaved = 0, perMesh = 0;
-        uint32_t breaks[9] = {};
-    };
-
+```cpp
+namespace jasperengine {
     struct SortingGroupComponent { bool enabled = true; int32_t sortingLayer = 0; int16_t sortingOrder = 0; };
 
     enum class SpriteBatchMode : uint8_t { Retained, ClearEachFrame };
     enum class SpriteBatchSpace : uint8_t { Local, World };
     struct SpriteBatchComponent {
-        bool enabled = true;
         SpriteBatchMode mode = SpriteBatchMode::Retained;
         SpriteBatchSpace space = SpriteBatchSpace::Local;
-        AssetRef sheet; AssetRef texture;          // an S45 sheet, or a plain texture
-        Material material;
-        int32_t sortingLayer = 0; int16_t sortingOrder = 0;
-        bool sortInstances = false; bool saveInstances = false;
         uint32_t capacity = 1024;
-        // runtime: frames, streams, revision
+        bool sortInstances = false;
+        // runtime, not serialized: SoA streams, count, revision, the SpriteInstanceBatch
     };
 }
 ```
 
 ```lua
--- bullets, coins, stars: one GameObject, one draw
-local batch = SpriteBatch(scene, entity)
-batch.sheet = "sprites/fx.spriteatlas"       -- any S45 sheet; or batch.texture = "bullets.png"
-local frame = batch:addFrame("bullet_a")      -- S45 frame name; addFrameRect(x, y, w, h) for a texture
-batch.capacity = 4096
-batch:setPositions(xy)                        -- flat {x1, y1, x2, y2, ...}; count = #xy / 2
-batch:setFrames(frames)                       -- optional, else frame 0
-batch:setRotations(r) ; batch:setScales(s)    -- radians; uniform or {sx, sy} pairs
-batch:setColors(rgba)                         -- flat {r, g, b, a, ...} (linear) or Color values
-batch:setFx("flash", amounts)                 -- "palette" | "flash" | "fade" | "dissolve"
-local i = batch:add(x, y, frame)              -- small edits
-batch:set(i, x, y) ; batch:remove(i) ; batch:clear()
+-- bullets: one GameObject, one draw per page
+local batch = SpriteBatch(scene, entity)          -- entity has a Sprite (sheet "fx.aseprite")
+local bullet = batch:frameId("bullet_a")          -- the Sprite's frame by name (typed error if unknown)
+batch:setPositions(xy)                            -- flat {x1, y1, x2, y2, ...} or {x, y, z} triples with stride=3
+batch:setFrames(frames)                           -- optional, else frame 0
+batch:setRotations(r) ; batch:setScales(s)        -- radians; uniform or {sx, sy} pairs
+batch:setColors(rgba)                             -- flat linear {r, g, b, a, ...}
+batch:setFx("flash", amounts)                     -- "palette" | "flash" | "fade" | "dissolve"
+local i = batch:add(x, y, bullet) ; batch:set(i, x, y) ; batch:remove(i) ; batch:clear()
 print(batch.count)
 
-sprite.sortingLayer = SortingLayer.getId("Foreground")
+sprite.sortingLayerName = "Foreground"
 sprite.sortingOrder = 5
-local stats = Profiler.getRenderStats()
-print(stats.batches, stats.drawsSaved, stats.batchBreaks.texture)
+print(SortingLayer.getLayerValue(sprite.sortingLayerId))
 ```
+
+### 6.7 Particles, trails, points and UI in the sort
+
+Particle Systems, Points, Line Renderer and Trail Renderer keep their own draw paths and are sort
+items with their own fields. UI elements are not sort items (R3). HTML UI documents draw after the
+pass as today.
+
+### 6.8 What the old S52 had, decided
+
+| Old item | Decision |
+|---|---|
+| One 40-byte instance format, rotation/colour/FX streams | replaced by `InstanceRenderData` + the optional `i_spriteFx` stream (D7) |
+| Batching consecutive sprites, keys, fallbacks | the landed batcher's |
+| Lookahead reorder (R13) | the landed REORDER mode, within D2's buckets |
+| Frame coherence (R14) | the landed settled records |
+| Batch stats, `explain_batches`, `jasper://stats` batches | the landed `batching` / `batch_breaks`; S52 adds reasons only |
+| `@instanceable`, `instance=`, FX slots | kept as `@batchable` and `instance=` with the same slots (R19-R21) |
+| Grown quads (R24a) | D6 |
+| Static batches for S50 (R15, R31) | kept: `SpriteInstanceBatch` (R17) |
+| Sprite Batch (R26-R30) | kept, on instancing; frames come from its Sprite; instances not saved |
+| Sorting Layers, Order, Groups, sort axis (R1-R7) | kept, Unity's Graphics names for the axis |
+| "Sprite Batches" Scene view draw mode (R50) | dropped: the landed Frame Debugger shows runs and reasons |
+| `CLAMP_FRAME` | S50's own concern (a tile material define); not needed by S52 |
 
 ## 7. Acceptance criteria
 
+GPU suites end in `Gpu` and run on glcore and Vulkan (lavapipe). "Red" is the run without the change
+(named in the commit). Parity means 0 differing pixels (R23).
+
 | AC | Verification |
 |---|---|
-| AC1 (R3, R6, R45, R57) | `engine/tests/core/render/SpriteSortTest.cpp`: the item order for fixture scenes with every field at its default equals today's draw order (recorded from the base commit's `renderCameraPass` through a draw trace); Sorting Layers, Order, groups (nested), axis `y` and `custom` give the expected orders; UI subtrees stay in place. `SpriteBatchGpuTest.LegacySceneUnchanged`: the fixture `tools/fixtures` 2D scenes render pixel-identical before and after S52 (golden from the base commit). Bench `je-bench-sprites --sort-only`: ≤ 2 % over the base. |
-| AC2 (R8–R12, D2, D4, R20) | `engine/tests/core/render/SpriteBatchGpuTest.cpp` `ParityAllStreams`: a 512×288 scene of 600 sprites (two atlas pages, mirrored, pivots, tints 0/0.25/0.5/1, `library:sprite` FLASH/OUTLINE/HUE_SHIFT, 2D lights with normal maps, S41 pixel-perfect on and off) drawn with batching on and off: unrotated 0 differing pixels; rotated ≤ 8 per 10,000 drawn pixels, and 0 on the glcore reference renderer. Goldens on glcore and Vulkan (`GRAPHIC_BACKEND=vulkan`), and the web gate (`GATE=sprite-parity tools/build.sh web-gate`, WebGL2). Red control: a build that rounds the origin with `std::round` instead of S41's function fails the pixel-perfect half. |
-| AC3 (R11) | `SpriteBatchGpuTest.SharedEdges`: 64 adjacent pieces with bit-identical shared edges (S41 R13) at fractional camera offsets (0.25 px steps) under a Pixel Perfect Camera: no gap and no double-covered column (a coverage count image), batched and per-mesh; Rotate On Grid and Steps90 instances match the per-mesh pixels. |
-| AC4 (R13, D7) | `SpriteBatchGpuTest.LookaheadIsPixelSafe`: 2,000 interleaved sprites of two pages, lookahead 0 vs 32: identical pixels, fewer draws with 32 (asserted counts); a crafted overlap is never reordered (unit test on `SpriteBatcher` with a trace). |
-| AC5 (R14, R41) | `SpriteBatcherTest.Coherence`: a static scene packs and uploads once over 100 frames (counters); a moved sprite repacks its run only. |
-| AC6 (R18, R52, R56) | `tools/mcp/tests/test_sprite_batching.py`: a scene with one case per break reason and per-mesh cause; `get_render_stats` names each in `breaks` and `top_breaks` with the right entities; `explain_batches` lists equal on two runs; `batches` absent-reason counts are 0 on a clean scene. Includes the profiling group hidden/listed assertion for the new parameter's tool. |
-| AC7 (R21–R24) | `SpriteBatchGpuTest.InstancedProperties`: 100 sprites differing only in `flashAmount` draw in one batch and match the per-mesh pixels; differing in `outlineColor` break with `material`; a shader without `@instanceable` falls back with `material_not_instanceable`. S43/S48 add their slot cases to this test when they land. |
-| AC8 (R26–R30, R43, R61) | `tools/mcp/tests/test_sprite_batch.py` (Lua through Play, `read_console`): positions, frames by sheet frame name, rotations, colours, FX; Clear Each Frame draws only this frame's; an unknown frame name errors at the call; the batch picks as one GameObject (`pick_at`); a saved Retained batch reloads with identical instances (blob). `engine/tests/core/script` Lua test for `SortingLayer`. Bench `je-bench-sprites --lua-bulk` within R43. |
-| AC9 (R35–R38) | the GPU suites above pass on glcore and Vulkan; `tools/build.sh web`, `web-gate`, `tools/build.sh android` (emulator gate) pass; Metal and D3D11 by CI. `SpriteBatchGpuTest.PipelinePending`: with S32's async mode, a batch whose variant is not created yet draws per mesh, never blank. |
-| AC10 (R40–R44) | `je-bench-sprites` (`engine/tests/core/bench/SpritesBench.cpp`, scene `tools/test-projects/sprite-bench`): desktop numbers by CI; mobile and web numbers measured once on a Pixel 6a and an iPhone 12 (Chrome and Safari) through the bench scene's on-screen report, recorded with the device and build in `docs/specs/evidence/s52/`; the before/after table is appended to this spec. |
-| AC11 (R47–R51) | `tools/mcp/tests/test_sorting_layers_editor.py` (xvfb, isolated editor): add/rename/reorder/delete a Sorting Layer through the settings rows and undo; renderer rows and multi-edit; Sprite Batches draw mode screenshot (evidence); `screenshot` of the Scene view shows the batch tints. |
-| AC12 (R58–R60) | `editor/tests/stream/StreamComponentTest.cpp`: the new fields and components round-trip, old fixtures re-save byte-identically when untouched; `CookedScene.RoundTripEveryComponent` covers Sorting Group and Sprite Batch; a smoke export (`tools/smoke-test.sh`) of a sorted scene matches its editor screenshot. |
-| AC13 (§6.1, R55) | `test_tool_budget.py`, `test_tool_conventions.py`, `test_tool_coverage.py`, `gen_tool_docs.py --check`, `test_protocol.py` (guide size); `tools/lua_api/tests` find `SpriteBatch`, `SortingLayer`; the doc test runs the Lua block of `docs/rendering-2d.md`. |
+| AC1 (R3, R6, R8, R9, R38) | `engine/tests/core/render/SpriteSortTest.cpp`: with defaults, the draw sequence of fixture 2D scenes equals `main`'s (a draw trace recorded from the base commit) and no gather runs (counter); layers, orders, nested groups, a disabled group, Custom Axis with Center and Pivot, UI subtrees in place, the 3D transparent precedence. Red: the gather forced on with a non-stable sort fails the tie cases. |
+| AC2 (R7, D2) | `SpriteSortGpuTest.BucketsBound`: two layers of interleaved non-overlapping sprites of two textures: runs never span layers (`sort_bucket` breaks counted), images equal batching off. |
+| AC3 (R10-R15) | `engine/tests/core/render/SpriteBatchGpuTest.cpp`: `DrawsOnePerPage` (10,000 instances, one page: 1 draw; two pages interleaved: draws = page runs); `MatchesSprites` (64 instances == 64 Sprite GameObjects with the same frames and transforms at pixel-aligned placements: parity); `ClearEachFrame` (drawn once); `RetainedUploadsOnce` (static batch: 0 upload bytes over 100 frames); `CulledWhole`. Red: none for new behaviour; `MatchesSprites` with the pivot taken from the frame's centre instead of its pivot fails. |
+| AC4 (R16, D8) | `SpriteBatchGpuTest.SnapPerInstance`: under a Pixel Perfect Camera, unrotated, 90° and 30° instances at 0.25 px offsets (Rotate On Grid and Steps90) equal the same Sprites drawn alone. `InstancedMeshPixelSnapGpu` (updated, said in the commit): rotated instances now pivot-snap. Red: the zero-pattern test removed fails the 30° case. |
+| AC5 (R18, mode 1) | `PixelArtBatchGpuTest.SnappedSpritesBatch`: 500 sprites under a Pixel Perfect Camera at fractional positions, one sheet: ≤ 2 runs, parity with batching off. Red: on `main` all 500 draw alone (`ineligible_shader_property`); with the `pixel_snap` key section removed, a mixed-mode scene (camera roll toggled per view) fails parity. |
+| AC6 (R18 Steps90, R22 pivot) | `PixelArtBatchGpuTest.Steps90AndOnGrid`: Steps90-rounded sprites batch and match; Rotate On Grid rotated sprites with `a_snapPivot` batch (mode-2 runs) and match. Red: the pivot attribute's POINT role removed fails parity. |
+| AC7 (R19-R21) | `PixelArtBatchGpuTest.FlashAmountsBatch`: 100 `library:sprite` FLASH sprites with amounts 0-1 in one run, parity; outline colour differing breaks with `custom_params`; `Buffer::getWriteCount` unchanged while the amounts animate (R28). Red: the run's draw not zeroing the uniform field fails parity (double flash). |
+| AC8 (R19, S43, S48 optional) | `PaletteSwapGpuTest.Batched` (S43's AC11): 64 sprites with rows 0-3, one run, parity. `PixelArtBatchGpuTest.FxSlotsZW`: a test manifest shader claiming `fx.z`/`fx.w` and writing them to colour batches with parity. S48 adds its DITHER_FADE/DISSOLVE cases to this test when it lands. Same cases for Sprite Batch through `setFx`. |
+| AC9 (R22 frame rect) | `PixelArtBatchGpuTest.OutlineOverlayBatch`: OUTLINE and OVERLAY sprites from an atlas, frames changing per sprite, batch and match; a MeshPolygon with OUTLINE is `ineligible_frame_rect`. Red: the `TEXTURE_RECT` role removed bleeds the neighbour frame and fails. |
+| AC10 (R24, R25) | The GPU suites pass on glcore and Vulkan; `tools/build.sh web` and `WEB_GATE`'s sprite parity case (WebGL2); `tools/build.sh android` compiles. `ShaderVariantTest.S52BitsOnlyWhenUsed`: a project without a Pixel Perfect Camera or `instance=` feature has no `Sfx`/`Sfr`/`Spv` key in its export shader list. Metal and D3D11 are read only (no CI). |
+| AC11 (R30-R33) | `tools/mcp/tests/test_sorting_layers_editor.py` (isolated editor, xvfb): add, rename, reorder and remove a Sorting Layer through UI probes, then undo each; renderer rows with multi-edit and undo; Add Component Sorting Group, then undo; screenshots of the Tags and Layers panel and a sorted scene kept outside the repo. |
+| AC12 (R38-R41) | `editor/tests/stream/StreamSortingTest.cpp`: round trip of every new field and both components; the pre-S52 fixture `editor/tests/fixtures/sorting/pre-s52.scene` loads with defaults and re-saves byte for byte; unknown layer id → Default plus one load-report line. `CookedScene.RoundTripEveryComponent` and `RuntimeFields.*` cover the new fields; `UnityParticleImport` test maps `m_SortingOrder` to `sortingOrder`. |
+| AC13 (R34, R37) | `tools/mcp/tests/test_sorting_2d.py` (`CI = True`): `set_project_settings` layers by name; `set_properties sortingLayer: "Foreground"`; an unknown name errors with the fix; `screenshot` order changes as expected; a Sprite Batch filled by `eval_lua` in Play reports `count` and draws (`get_render_stats` instances). Lua: `engine/tests/core/script/LuaSortingTest.cpp` and `LuaSpriteBatchTest.cpp` (bulk calls, typed errors). |
+| AC14 (§6.1, R35, R36) | `tool_budget.py --check`, `gen_tool_docs.py --check`, `test_protocol.py` (guide size), `test_tool_conventions.py`; `tools/mcp/eval/cases.py` cases for each new text, each failing with its text removed (run per `tools/mcp/eval/README.md` on Orquester accounts); the doc test runs the Lua block of `docs/mcp/guide/rendering-2d.md`. |
+| AC15 (R26-R29) | `SpriteSortBench`, `SpriteBatchBench`, `PixelArtBatchBench` (`[bench]` lines, `perfSlack`); counts asserted always. Mobile and web numbers measured once and recorded in `docs/specs/evidence/s52/`. |
 
-## 8. Dependencies & conflicts
+## 8. Dependencies and conflicts
 
-- **Depends on.** S41 (same wave: the snap functions, CPU and shader, and the pixel-perfect camera
-  uniforms; D10 says what happens if it is late). S44 (same wave: `SpriteSheetPool`, sheet pages and
-  frame names; until it lands, a page is a texture and frames are rects). S45 (wave 5B) needs nothing
-  here: its atlas pages come through S44's pool. S07 (change tracking for D8). S20 (the stream code D1
-  extracts). S32 (async pipeline creation and the warm-up list).
-- **Interfaces given.** S50: `StaticSpriteBatch`, the D2 flags, per-tile sort items for Individual
-  mode. S43 (same wave) and S48 (wave 5B): the FX slots (R23) and the `instance=` manifest attribute.
-  S42: Sprite Batch drawables for `check_pixel_art` (S42 R9). S51: Sprite Batch if it wants glyph
-  quads batched.
-- **Merge hotspots.** `RenderSystem.cpp` `renderCameraPass` (`:15855-16330`, also S13, S16, S20,
-  S41), `RenderSystem.h` comparators, `MeshComponent.h` (S43, S48 may add material state),
-  `engine/shaderlib/mesh.vert`, `includes/surface_vs.glsl`, `library/sprite.vert|frag` (S43, S48),
-  `RenderSystemParticles.cpp` (S20, S49: the stream extraction), `SettingsRows.cpp`,
-  `ProfilerTools.cpp`, `budget.json`, `RuntimeFields.gen.inc`.
+- **Depends on:**
+  - the landed `sprite-batching` (`48cf20e75`), its hooks and their documentation
+    (`docs/rendering/batching.md:86-97`);
+  - S41 on `main` (`pixel_snap.glsl`, `pixelSnapDraw`, `pixelSnapApply`, `Pxs`; D10);
+  - S43 on `main` for `paletteRow instance=fx.x` (AC8's first half);
+  - S44 / S45 for sheet and atlas frames (Sprite Batch reads them through its Sprite; without
+    them, frames are texture rects).
+- **Interfaces given:**
+  - S48: `instance=fx.z|w`, the `Sfx` channel, D6 (grown quads in geometry, recorded in S48's
+    Deviations when it is implemented).
+  - S50: `SpriteInstanceBatch` replaces the old `StaticSpriteBatch` / `SpriteInstance`. S50's
+    re-scope records it; S50's R31 and D7 move to it, and `CLAMP_FRAME` stays S50's.
+  - S42: Sprite Batch drawables for `check_pixel_art`.
+  - S49: particles are sort items (§6.7).
+- **Wording to align when this lands:** S43 and S48 say `@instanceable` and "S52's `i_fx` stream".
+  The names here are `@batchable` and `a_spriteFx` / `i_spriteFx`, with the same slots. Each
+  records it in its Deviations.
+- **Behaviour changes, said in the commits:** D8 (instanced pivot snap under Rotate On Grid). Tests
+  that pin per-sprite draw counts of pixel-snapped or `library:sprite` scenes change (they now
+  batch).
+- **Merge hotspots:**
+  - `RenderSystem.cpp` (`renderCameraPass` 2D loop and transparent queue, `writeCustomUniforms`);
+  - `RenderSystem.h` comparators;
+  - `RenderSystemBatch.cpp`, `DrawBatcher.{h,cpp}` (reasons);
+  - `MeshSystem.cpp` (`prepareSpriteMesh`);
+  - `library/sprite.{vert,frag}` (S43, S48);
+  - `surface_vs.glsl`, `mesh.vert`, the depth stages, `ui.vert` (S41, S54, S55);
+  - `ShaderPool.cpp` bits;
+  - `SettingsRows.cpp`, `ProjectSettingsWindow.cpp`, `Project.{h,cpp}`, `Generator.cpp`,
+    `PlayerConfig`, `RuntimeFields.gen.inc`, `tools/mcp/eval/cases.py`.
 
-## 9. Risks & defaults
+## 9. Risks and defaults
 
-- **One page per batch.** Projects without atlases batch poorly. Default: the break reason says
-  `texture` with both pages, and the guide points to S45. A multi-page path is a later spec if
-  measurements ask for it.
-- **Variant count.** Up to 8 vertex variants per material variant. Default: lazy creation and the
-  warm-up list; the bench reports pipelines created.
-- **Half-float colour.** HDR tints need more than 8 bits; half precision changes an 8-bit sRGB tint by
-  at most one level in rare cases. Default: the parity test uses exactly representable tints; a full
-  float colour stream would cost 8 more bytes per instance and is not worth it.
-- **Sorting inside UI.** World sprites under a RectTransform keep hierarchy order (R3). Default kept:
-  UI layout is order-driven.
-- **Lookahead and drawing outside the quad.** An effect that draws outside its quad without growing
-  it would let lookahead reorder overlapping pixels. Default: S48 grows the quad for every such
-  feature (S48 R7, our R24a); a shader that draws outside its quad any other way is not
-  `@instanceable`.
-- **Ledger location.** S52's code is under `engine/core/render/sprite/`, not `engine/core/pixelart/`
-  (D1): batching serves all 2D content.
+- **Bucket per layer costs batches.** A foreground of atlas A over characters of atlas B gives
+  three runs even where foreground pieces touch nothing in between. Default: keep D2. AC2's bench
+  logs the draw count with and without buckets; a measured gain above 10 % on the bench scene is a
+  follow-up proposal to the batcher's owner, not a change here.
+- **Vertex growth.** `a_spriteFx` adds 16 bytes per vertex, `a_frameRect` 16 and `a_snapPivot` 12,
+  only on sprites that use the feature. Default accepted. Their buffers stay shared by content, so
+  sprites with equal geometry still share one.
+- **Sorting gather cost** when one renderer leaves the defaults: every 2D run is gathered. Default:
+  the `is_sorted` short cut and R26's budget. Per-run dirty tracking is a later optimisation if the
+  bench asks.
+- **`Center` sort point** reads world bounds, which `update()` refreshes on change only. Default: a
+  stale centre for one frame after a frame size change is accepted, as Unity shows it too
+  (**assumed**).
+- **Exact-zero instance test (D8).** A user-written instance matrix (InstancedMeshComponent from
+  Lua) with a 1e-9 term snaps by pivot. Default: documented. The engine's own packers write exact
+  zeros.
+- **S41 or S43 interface drift before landing.** Default: S52 lands after both. A changed name is
+  recorded in Deviations.
 
 ## Milestones
 
-- **M1** Sorting Layers, renderer fields, Sorting Group, axis, the ordering in 2D and 3D passes, the
-  editor rows, Lua `SortingLayer` (R1–R7, R47–R49, R53, R54 part, R57–R60); AC1, AC11 part, AC12.
-- **M2** Instance format, the vertex include, batching of the default sprite material, fallbacks and
-  break counting, stats in `get_render_stats` and Lua (R8–R12, R15–R20, R35–R39, R52); AC2, AC3, AC6,
-  AC9. Needs S41's snap functions or ships with D10's rule.
-- **M3** `library:sprite` and the instancing manifest, FX slots, FLASH's `instance=fx.y` (R21–R25);
-  AC7. S43 (same wave) and S48 (wave 5B) then add their slot cases.
-- **M4** Sprite Batch component, Lua and C++ bulk API (R26–R30); AC8.
-- **M5** Lookahead, coherence, the Batch view (R13, R14, R50); AC4, AC5.
-- **M6** Static batches for S50, particles in the sort, budgets, docs, guide (R31–R34, R40–R46, R55,
-  R56); AC10, AC13.
+- **M1 Sorting.** R1-R9, R30-R32, R34 (sorting part), R37 (sorting), R38-R41. AC1, AC2, AC11, AC12,
+  AC13 (sorting).
+- **M2 Pixel snap in batches, mode 1.** R18 mode 1, `pixel_snap`. AC5. Needs S41 on `main`.
+- **M3 `library:sprite` batchable, FX channel.** R19-R21, `custom_params`, `@batchable`,
+  `instance=` on `flashAmount` and `paletteRow`. AC7, AC8.
+- **M4 Sprite Batch.** R10-R17, R33, R37 (SpriteBatch). AC3, AC4, AC8 (Sprite Batch half), AC13.
+- **M5 Per-vertex frame rect and pivot.** R22, R18 mode 2. AC6, AC9.
+- **M6 Docs, guide, budgets, benches.** R35, R36, R26-R29. AC10, AC14, AC15.
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+Recorded by the implementer (2026-11-08).
+
+### Names and storage
+
+- **S43's names reconciled.** S43 (and the old S52) said `@instanceable` and "S52's `i_fx` stream".
+  The code has `// @batchable` and `instance=fx.<x|y|z|w>`, read in a fragment stage as
+  `customParams.<member> + spriteFx(<slot>)` (`includes/sprite_fx.glsl`), carried by the vertex
+  channel `a_spriteFx` (batched sprites) or the per-instance `i_spriteFx` (Sprite Batch). The slots
+  are the ledger's. S43's Deviations say the same.
+- **`@batchable framerect=A,B`.** Which features read the frame rect is declared in the manifest
+  (`library:sprite`: `framerect=OUTLINE,OVERLAY`) instead of a rule about OUTLINE and OVERLAY in the
+  engine, so another batchable shader can say it too.
+- **Order in Layer is stored as `int32_t`**, clamped to -32768..32767 when read and written: every
+  integer row of the reflection, the Inspector and MCP is an `int`. The key keeps its 16 bits (D2).
+- **Sorting Layer ids** are 0..2^20 (the id-to-value lookup is a flat table). An id once given is
+  never given again: `SortingLayers::getNextId` only grows and project.yaml keeps it
+  (`sortingLayerNextId`, written once a layer was removed), so a removed layer's renderers draw on
+  Default instead of landing on a later layer. A list of names keeps the ids of the names already
+  in the table; `tags_and_layers.sorting_layers` reads `[{id, name}]` and takes names or
+  `{id, name}` entries, so a rename keeps the id (R1). Unity's
+  `GetLayerValueFromID` is relative to Default; `SortingLayer.getLayerValue` is the layer's place in
+  the list (Default may move), the "value" of R1.
+- **The suite of AC3/AC4 is `SpriteBatchComponentGpu`** (`SpriteBatchComponentGpuTest.cpp`):
+  `SpriteBatchGpu` is the landed Dynamic Batching's suite. AC4's "updated `InstancedMeshPixelSnapGpu`"
+  did not exist; `SpriteBatchComponentGpu.InstancedMeshRotatedInstancesSnapTheirPivot` checks the
+  D8 behaviour change instead.
+- **Typed errors in Lua** are the message's first word (`frame_range:`, `unknown_frame:`, `length:`,
+  `fx_slot:`, `unknown_sorting_layer:`): a Lua error is a string.
+
+### Sorting
+
+- **The batcher (D4, "nothing else changes").** A run holds one bucket: an object of an equal key
+  but another bucket opens a run and counts `sort_bucket` (R7, AC2 "runs never span layers"). Before,
+  a consecutive object joined across buckets and only REORDER's jump-back respected them. A scene
+  that does not sort is bucket 0 throughout, so nothing changes for it. `isIneligibleBreak` covers
+  the two ineligible reasons appended after `DISABLED`.
+- **Particle Systems in a sorted 2D pass draw in place** as sort items (R2, §6.7); a 2D pass of a
+  scene that does not sort still draws them after the hierarchy, as before. A Trail Renderer on a
+  GameObject with another renderer draws right after it, at that renderer's key; alone it sorts by
+  its own fields.
+- **3D transparent queue:** a member of a Sorting Group takes its outermost enabled group's layer,
+  order and distance, then its own layer and order; a nested group is not an item of its own there
+  (it is in 2D passes). With a group in the queue, an item alone and a whole group are units of one
+  total order, (priority, distance far first, sequence); a group's priority is 0 (its members'
+  priorities order them inside it). Without a group the queue sorts as before.
+- **Unity layer ids** compare as their 32 bits: TagManager writes `uniqueID` unsigned, a renderer's
+  `m_SortingLayerID` signed.
+- **Unknown layer ids** (R39) are one load-report line per scene, kind `fallback`, fate `info`
+  (nothing is dropped: the ids stay).
+- **AC1's "draw trace recorded from the base commit"** is replaced by what makes it hold: with
+  defaults nothing is gathered (the counter, `SpriteSortTest.DefaultsGatherNothing`,
+  `SpriteSortGpu.DefaultsDrawTheHierarchyAndGatherNothing`) and the 2D loop is the one of the base
+  commit; the batcher sees bucket 0 for every draw. No trace file was recorded.
+- **Unity import (R41):** `m_SortingLayerID` is found by name through the Unity project's
+  `ProjectSettings/TagManager.asset`; a layer the engine project lacks keeps Default with the note
+  `sorting-layer-missing`.
+
+### Sprite Batch
+
+- **The FX stream** exists whenever the Sprite's material reads an `instance=` amount (not "once
+  `setFx` was called"): the variant ('Sfx') is then known at load and a first `setFx` never reloads
+  the mesh. A material that reads none has no stream (R27's 96 bytes; 112 with it).
+- **Clear Each Frame** uploads into the batch's own stream buffer once per frame it draws (not the
+  frame's shared stream): the same cost, one buffer per batch.
+- **Capacity**: writing past it grows the GPU buffer by half again (a mesh reload), so a batch
+  filled one instance a frame reloads now and then; the saved `capacity` is not rewritten.
+- **Snapped instances carry their pivot**: in a snapping scene a Sprite Batch adds an 8-byte
+  per-instance stream (`i_snapPivot`, the instance's position; 'Spv' on the instanced variant),
+  because the matrix's origin also carries the frame's offset (`R·S·ft`) and a trimmed or offset
+  frame turned off the grid would snap at the wrong point. R27's 96 bytes are 104 there.
+- **R17's producer entry** is `RenderSystem::attachInstanceBatch(entity, batch)`: the batch draws as
+  the instances of that GameObject's MeshComponent, whose Transform is its model matrix and whose
+  place in the Hierarchy and renderer fields are its sort item (no model matrix stored twice).
+- **`SpritePageRun` carries its page** (`{first, count, page}`; §6.5 had pairs), and
+  `SpriteInstanceBatch::setPages` gives the pages' textures.
+- **World space** packs the instance matrices through the inverse of the GameObject's matrix (the
+  draw keeps the GameObject's MVP); a World batch is packed again when its GameObject moves.
+- **Frames draw Simple**: an instance maps the Sprite's quad onto its frame's quad. A Sliced or
+  lattice-gridded Sprite's instances are its mesh stretched onto the frame.
+- **No `create_entity` type** for it (R34, no tool change): agents use `add_component spritebatch`;
+  GameObject > 2D Object > Sprite Batch makes a Sprite with one.
+- **Depth passes** draw a Sprite Batch instanced as the colour pass does; its pages bind as the depth
+  program's texture.
+
+### Pixel-art inputs
+
+- **'Sfx', 'Sfr', 'Spv' follow the mesh**: MeshSystem gives a Sprite the attributes its material and
+  scene read (`MeshComponent::batchAttributes`: an enabled `instance=` feature, a `framerect=`
+  feature, a snapping scene), the variant takes the bit only when the mesh carries the attribute.
+  MESH bits 46-48, DEPTH 20; shader cache v61 (main took v60 before the landing). The export's shader list
+  (`ShaderVariantCollector`) computes the same inputs from the Sprite's material and Sprite Batch
+  (`MeshSystem::spriteBatchAttributes`), so a scene saves the same list drawn or not.
+- **`custom_params` is a 64-bit FNV-1a hash** of the custom blocks (the engine-written members,
+  and with 'Sfx' the `instance=` members, zeroed): a block of a dozen vectors does not fit the key's
+  256 bytes. The library textures and palettes join the `texture` section.
+- **Steps90** rounds the bake's model through `pixelArtModel` (S41 rounds only the MVP, not
+  `objectMatrices`), so a batched Steps90 sprite is placed as its draw alone.
+- **The run's snap mode** is set from its head through `passSnapModeOverride` (colour, depth and UI
+  draws): the run's MVP is the origin cell's, always on the grid.
+- **InstancedMesh (D8), a deliberate behaviour change** (commit 4d5f2544f; its message did not say
+  so, and history is not rewritten): in a snapping scene an Instanced Mesh's matrices get exact
+  zeros (`pixelart::exactGridZeros`, relative 1e-6), and its instances turned off the grid now snap
+  their pivot (mode 2) where before every vertex snapped. Pinned by
+  `SpriteBatchComponentGpu.InstancedMeshRotatedInstancesSnapTheirPivot`. Elsewhere its matrices are
+  as before. An Instanced Mesh sprite takes no 'Sfx' (its instances have no FX amounts).
+- **'Spv' on every snapped sprite**, batching on or off: Engine.dynamicBatching can change while a
+  game runs, and the attribute (12 bytes a vertex, a snapping scene only) spares every sprite a
+  reload and a variant swap then; an export ships the twin for the same reason.
+- **GPU Instancing's "never both"** leaves out a small single-submesh mesh of a `@batchable` library
+  shader as it does one of the built-in shader: Dynamic Batching takes it.
+- **The custom-values key section** is hashed again only when the mesh's custom blocks were written
+  (`MeshComponent::customUniformWrites`), not every frame.
+
+### MCP, docs and evidence
+
+- **No guide index entry** (R36): the agent guide had 1,503 bytes of the 1,500 of headroom
+  `tool_budget.py` keeps, so even `, rendering-2d` would cut into it. The route is where the agent
+  meets it instead: the `tags_and_layers.sorting_layers` setting, the `sortingLayer` schema (a name,
+  an id or `{id, name}`), the unknown-name error naming `set_project_settings`, and
+  `jasper://docs/rendering-2d` in the docs listing.
+- **Sprite Batch colours are sRGB**, as every wrapper's colour (Sprite's `setColor`): the instance
+  colour is converted to linear when written, so 64 instances match 64 Sprites (AC3).
+- **AC14's eval cases** are in `tools/mcp/eval/cases.py` (`guard_sorting_layer_route`,
+  `bad_unknown_sorting_layer`, `bad_bullets_as_gameobjects`, `guard_sort_bucket_break`); the eval
+  itself runs on owner-approved Orquester accounts and was not run by the implementer.
+- **AC15's mobile and web numbers** need a device and were not measured; the desktop benches print
+  their `[bench]` lines and enforce their budgets through `perfSlack()`. R27's pack and upload of
+  10,000 moving instances (measured alone: `SpriteBatchStats::packMs + uploadMs`) took 1.26 ms on
+  the shared build box (software rendering, other jobs running) against the 0.5 ms budget: the
+  budget needs a run on the bench machine (JASPER_TEST_PERF_SLACK set).

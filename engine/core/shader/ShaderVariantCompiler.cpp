@@ -430,6 +430,10 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & ShaderPool::getPixelSnapProperty(ShaderType::MESH)) defs.push_back({"PIXEL_SNAP", "1"}); // 'Pxs' (S41)
     if (prop & ShaderPool::getTerrainHolesProperty(ShaderType::MESH)) defs.push_back({"TERRAIN_HOLES", "1"});       // 'Thl'
     if (prop & ShaderPool::getTerrainWorldProperty(ShaderType::MESH)) defs.push_back({"HAS_TERRAIN_WORLD", "1"});   // 'Twd'
+    // S52: a batchable sprite's FX slots, frame rect and snap pivot
+    if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX)) defs.push_back({"HAS_SPRITE_FX", "1"});         // 'Sfx'
+    if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT)) defs.push_back({"HAS_FRAME_RECT", "1"}); // 'Sfr'
+    if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::SNAP_PIVOT)) defs.push_back({"HAS_SNAP_PIVOT", "1"}); // 'Spv'
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -461,6 +465,7 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
+    if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::DEPTH, ShaderPool::SpriteBatchInput::SNAP_PIVOT)) defs.push_back({"HAS_SNAP_PIVOT", "1"}); // 'Spv' (S52)
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {

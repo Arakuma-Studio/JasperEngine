@@ -46,6 +46,9 @@ namespace {
         JE_FIELD(TrailRendererComponent, emitting),
         JE_FIELD(TrailRendererComponent, autodestruct),
         JE_FIELD(TrailRendererComponent, sortPriority, .updateFlags = kTrail),
+        // S52: the 2D draw order and the transparent queue's first keys (a layer id: SortingLayers)
+        JE_FIELD(TrailRendererComponent, sortingLayer, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
+        JE_FIELD(TrailRendererComponent, sortingOrder, .flags = OmitIfDefault | CodegenIfChanged, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
         JE_FIELD(TrailRendererComponent, customShader, .updateFlags = kTrailShader),
         JE_FIELD(TrailRendererComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(TrailRendererComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kTrailShader),
@@ -63,9 +66,10 @@ namespace {
     constexpr const char* kTrailRendererAliases[] = {"trail"};
 
     constexpr const char* kTrailRendererKnownKeys[] = {"alignment", "autodestruct", "blendMode", "colorGradient", "colorWrite", "customShader",
-        "customShaderGuid", "depthWrite", "emitting", "enabled", "minVertexDistance", "numCapVertices", "numCornerVertices", "shaderFeatures", "shaderGlobalBindings",
-        "shaderTextures", "shaderUniforms", "sortPriority", "stencil", "textureMode", "textureScale", "time", "widthCurve", "widthMultiplier",
-        "widthUnit"};
+                                                       "customShaderGuid", "depthWrite", "emitting", "enabled", "minVertexDistance",
+                                                       "numCapVertices", "numCornerVertices", "shaderFeatures", "shaderGlobalBindings",
+                                                       "shaderTextures", "shaderUniforms", "sortPriority", "sortingLayer", "sortingOrder", "stencil",
+                                                       "textureMode", "textureScale", "time", "widthCurve", "widthMultiplier", "widthUnit"};
 
     // ---------------------------------------------------------------- Canvas Group
 

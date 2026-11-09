@@ -1,0 +1,8 @@
+metaVersion: 1
+guid: 32907c5b97ae9cd6d3ba481350901221
+import:
+  textureImporter:
+    version: 1
+    type: sprite
+    inferredFrom: no references (Pixel Art Mode)
+    pixelArt: true

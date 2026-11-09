@@ -62,6 +62,17 @@ vec2 pixelSnapRotationStep(vec2 axisX){
     return useX ? vec2(sign(axisX.x), 0.0) : vec2(0.0, sign(axisX.y));
 }
 
+// an instance's mode (S52 D8): every vertex only when its draw's mode is 1 and the instance's 2D
+// linear part (the first two columns of its matrix) is a signed permutation written with exact
+// zeros, as the engine's packers write a grid-aligned instance; any other instance of a snapped
+// draw snaps its pivot. Exact zeros compare exactly on every backend
+float pixelSnapInstanceMode(float drawMode, vec4 col1, vec4 col2){
+    bool aligned = (col1.y == 0.0 && col2.x == 0.0) || (col1.x == 0.0 && col2.y == 0.0);
+    if (drawMode > 0.5 && drawMode < 1.5)
+        return aligned ? 1.0 : 2.0;
+    return drawMode;
+}
+
 // a draw's snap by its mode (the engine's per-draw pixelSnapDraw.x): 0 none (a pass without a
 // Pixel Perfect Camera, a shadow map), 1 every vertex, 2 the pivot (clipPivot: the model origin)
 vec4 pixelSnapApply(vec4 clip, float mode, vec4 clipPivot){

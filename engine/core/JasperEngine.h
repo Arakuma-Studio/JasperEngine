@@ -147,6 +147,8 @@
 #include "component/CapsuleShadowCasterComponent.h"
 #include "component/AudioSnapshotComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
+#include "component/SortingGroupComponent.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
 
@@ -185,6 +187,8 @@
 #include "object/Camera.h"
 #include "object/CameraFollow.h"
 #include "object/PixelPerfectCamera.h"
+#include "object/SortingGroup.h"
+#include "object/SpriteBatch.h"
 #include "object/CameraShaker.h"
 #include "object/EntityHandle.h"
 #include "object/environment/Fog.h"
@@ -267,6 +271,7 @@
 #include "registry/EntityRegistry.h"
 #include "registry/TagManager.h"
 #include "registry/PhysicsLayers.h"
+#include "registry/SortingLayers.h"
 
 #include "render/BufferRender.h"
 #include "render/CameraRender.h"

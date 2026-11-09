@@ -39,6 +39,7 @@
 #include "render/LightingTiers.h"
 #include "device/QualityResolver.h"
 #include "component/SkyboxComponent.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/VoxelVolumeComponent.h"
@@ -632,8 +633,25 @@ namespace {
                         lentBaseColor = fluid && fluid->output == FluidOutput::MATERIAL;
                         pixelSnapKeys = scenePixelSnap && (registry->findComponent<SpriteComponent>(entity) ||
                                                            registry->findComponent<TilemapComponent>(entity));
+                        // S52: a Sprite's batching inputs and its Sprite Batch as MeshSystem::update gives
+                        // them (not the mesh's fields: a scene not drawn yet has none), and a snapped one
+                        // carries its snap pivot ('Spv': per vertex, or per instance in a Sprite Batch;
+                        // not with an Instanced Mesh)
+                        if (registry->findComponent<SpriteComponent>(entity)){
+                            const SpriteBatchComponent* spriteBatch = registry->isComponentRegistered<SpriteBatchComponent>()
+                                                                      ? registry->findComponent<SpriteBatchComponent>(entity) : nullptr;
+                            const bool instancedMesh = registry->findComponent<InstancedMeshComponent>(entity) != nullptr;
+                            spriteInstancedKeys = spriteBatch && spriteBatch->enabled && !instancedMesh;
+                            spriteAttributes = MeshSystem::spriteBatchAttributes(*mesh, false, scene->getDefaultCustomShader(ShaderType::MESH));
+                            if (instancedMesh)
+                                spriteAttributes &= (uint8_t)~MeshBatchAttribute_SpriteFx;
+                            snapPivotKeys = pixelSnapKeys && !instancedMesh;
+                        }
                         collectMesh(registry, entity, *mesh);
                         pixelSnapKeys = false;
+                        snapPivotKeys = false;
+                        spriteInstancedKeys = false;
+                        spriteAttributes = 0;
                         lentBaseColor = false;
                     }
                 }
@@ -690,6 +708,11 @@ namespace {
         bool meshHasLevels = false;
         // the drawable being collected also draws pixel-snapped ('Pxs', S41)
         bool pixelSnapKeys = false;
+        // and, a Sprite, with its snap pivot then ('Spv', S52)
+        bool snapPivotKeys = false;
+        // a Sprite's S52 inputs: its Sprite Batch draws it instanced; what its shader reads per vertex
+        bool spriteInstancedKeys = false;
+        uint8_t spriteAttributes = 0;
 
         static bool scenePixelSnaps(EntityRegistry* registry){
             if (!registry->isComponentRegistered<PixelPerfectCameraComponent>())
@@ -722,6 +745,9 @@ namespace {
             const uint64_t pixelSnapBit = pixelSnapKeys ? ShaderPool::getPixelSnapProperty(type) : 0;
             if (pixelSnapBit && !(properties & pixelSnapBit)){
                 insertKeys(type, properties | pixelSnapBit, customId);
+                const uint64_t pivotBit = snapPivotKeys ? ShaderPool::getSpriteBatchProperty(type, ShaderPool::SpriteBatchInput::SNAP_PIVOT) : 0;
+                if (pivotBit)
+                    insertKeys(type, properties | pixelSnapBit | pivotBit, customId);
             }
             // a mesh's post colour bit comes with its environment; the others take it here
             const uint64_t postColorBit = type == ShaderType::MESH ? 0 : ShaderPool::getPostColorProperty(type);
@@ -764,6 +790,8 @@ namespace {
                         && scene->findComponent<TerrainComponent>(volume.terrain) == terrain;
                 }
             }
+            inputs.instanced = instmesh || spriteInstancedKeys;
+            inputs.batchAttributes = spriteAttributes;
 
             const std::string depthShaderSrc = RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader);
             const uint16_t depthShaderId = ShaderPool::registerCustomShader(depthShaderSrc);

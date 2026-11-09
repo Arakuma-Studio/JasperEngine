@@ -592,6 +592,7 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"3D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_3D, true},
 
         {"2D Object", "Sprite", ICON_FA_IMAGE, T::SPRITE, "Sprite", CREATE_IN_WORLD},
+        {"2D Object", "Sprite Batch", ICON_FA_TABLE_CELLS_LARGE, T::SPRITE_BATCH, "Sprite Batch", CREATE_IN_WORLD},
         {"2D Object", "Tilemap", ICON_FA_BORDER_ALL, T::TILEMAP, "Tilemap", CREATE_IN_WORLD},
         {"2D Object", "Mesh Polygon", ICON_FA_VECTOR_SQUARE, T::MESH_POLYGON, "Mesh Polygon", CREATE_IN_WORLD},
         {"2D Object", "Shadow Caster 2D", ICON_FA_CIRCLE_HALF_STROKE, T::SHADOW_CASTER_2D, "Shadow Caster 2D", CREATE_IN_2D, true},

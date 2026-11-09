@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
+#include <map>
 #include <set>
 #include <vector>
 #include <string>
@@ -130,6 +132,9 @@ namespace jasperengine::editor {
 
         ConsoleWindow();
         void clear();
+        // A line a feature owns, by the text it starts with (the Pixel Art Check's summaries,
+        // S42 R25): clicking one runs its action with the message. A null action removes it.
+        static void setMessageAction(const std::string& prefix, std::function<void(const std::string& message)> action);
         // Takes what was logged since the last frame from the log (Out), then draws
         void show();
         void setOpen(bool open);

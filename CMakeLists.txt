@@ -871,6 +871,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/UpstreamReflect.cpp
     ${EDITOR_DIR}/reflect/components/UpstreamMediaReflect.cpp
     ${EDITOR_DIR}/reflect/components/PixelArtReflect.cpp
+    ${EDITOR_DIR}/reflect/components/SortingReflect.cpp
     # pixel art (S41: the editor's side of the Pixel Perfect Camera)
     ${EDITOR_DIR}/pixelart/PixelPerfectEditor.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
@@ -1274,6 +1275,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorAudioClip.cpp
     ${EDITOR_DIR}/window/ProjectWindowSound.cpp
     ${EDITOR_DIR}/window/InspectorPixelArt.cpp
+    ${EDITOR_DIR}/window/InspectorSorting.cpp
     ${EDITOR_DIR}/window/InspectorVideo.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/InspectorVcs.cpp
@@ -1524,6 +1526,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ShaderCreationSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DrawSubmissionSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/SortingLayersCmd.cpp
     ${EDITOR_DIR}/command/type/DeviceSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteFileCmd.cpp
     ${EDITOR_DIR}/command/type/SetMainCameraCmd.cpp
@@ -1698,6 +1701,7 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/tests/sceneview/SceneViewStateTest.cpp
         ${EDITOR_DIR}/tests/stream/StochasticTilingTest.cpp
         ${EDITOR_DIR}/tests/stream/StreamValueTest.cpp
+        ${EDITOR_DIR}/tests/stream/StreamSortingTest.cpp
         ${EDITOR_DIR}/tests/texsynth/TexSynthTest.cpp
         ${EDITOR_DIR}/tests/util/FbxImportTest.cpp
         ${EDITOR_DIR}/tests/util/NormalMapTiltTest.cpp

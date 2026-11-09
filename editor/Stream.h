@@ -17,6 +17,7 @@
 #include "math/Curve.h"
 
 #include <filesystem>
+#include <optional>
 #include <stdexcept>
 #include <set>
 #include <vector>
@@ -203,7 +204,8 @@ namespace jasperengine::editor {
         static YAML::Node encodeExternalBuffer(const ExternalBuffer& buffer);
         static void decodeExternalBuffer(ExternalBuffer& buffer, const YAML::Node& node);
 
-        static YAML::Node encodeSubmesh(const Submesh& submesh, bool embedTextureData = true, bool encodeVertexCount = true);
+        // vertexCount: written when set (MeshSystem::loadedVertexCount, not what the last load left)
+        static YAML::Node encodeSubmesh(const Submesh& submesh, bool embedTextureData, std::optional<unsigned int> vertexCount);
         static Submesh decodeSubmesh(const YAML::Node& node, const Submesh* oldSubmesh = nullptr);
 
         static YAML::Node encodeSpriteFrameData(const SpriteFrameData& frameData);
@@ -291,6 +293,11 @@ namespace jasperengine::editor {
         static bool hasTexturePath(const Texture& texture);
         static YAML::Node encodeTexture(const Texture& texture, bool embedData = true);
         static Texture decodeTexture(const YAML::Node& node);
+        // A new reference as saved data has it: Bilinear whatever the engine's Default Filter Mode,
+        // which is only for the textures a game makes at runtime (S42 R3); decoding, comparing with
+        // defaults and clearing use this, so playing never changes what a scene reads or writes
+        static Texture savedTexture();
+        static Texture savedTexture(const std::string& path);
 
         // shader library textures (by @texture uniform) and features of a material or component
         static YAML::Node encodeShaderTextures(const std::vector<std::pair<std::string, Texture>>& textures, bool embedData);
@@ -589,6 +596,12 @@ namespace jasperengine::editor {
         static TextEffectComponent decodeTextEffectComponent(const YAML::Node& node, const TextEffectComponent* oldEffect = nullptr);
         static YAML::Node encodeTextEffectLayer(const TextEffectLayer& layer);
         static TextEffectLayer decodeTextEffectLayer(const YAML::Node& node);
+        // a renderer's Sorting Layer (id) and Order in Layer (S52 R2): written only away from 0, read
+        // as 0 when absent (over an old component too)
+        static void encodeSortingFields(YAML::Node& node, int32_t sortingLayer, int32_t sortingOrder);
+        // a load-report line for the renderers of a decoded scene whose Sorting Layer is unknown
+        static void reportUnknownSortingLayers(Scene* scene);
+        static void decodeSortingFields(const YAML::Node& node, int32_t& sortingLayer, int32_t& sortingOrder);
         static YAML::Node encodeSpriteComponent(const SpriteComponent& sprite);
         static SpriteComponent decodeSpriteComponent(const YAML::Node& node, const SpriteComponent* oldSprite = nullptr);
 

@@ -95,6 +95,7 @@ bool templates::parseInfo(const std::string& text, ProjectTemplate& info, std::s
     string("thumbnail", info.thumbnail);
     string("startScene", info.startScene);
     if (j.contains("order") && j["order"].is_number_integer()) info.order = j["order"].get<int>();
+    if (j.contains("pixelArt") && j["pixelArt"].is_boolean()) info.pixelArt = j["pixelArt"].get<bool>();
     if (!isValidCatalogId(info.id)) {
         error = "template id \"" + info.id + "\" is not a slug (letters, digits, '-', '_', at most 64)";
         return false;
@@ -118,6 +119,7 @@ std::string templates::infoJson(const ProjectTemplate& info) {
     j["accentColor"] = info.accentColor;
     j["thumbnail"] = info.thumbnail;
     j["startScene"] = info.startScene;
+    if (info.pixelArt) j["pixelArt"] = true;
     return j.dump(2) + "\n";
 }
 

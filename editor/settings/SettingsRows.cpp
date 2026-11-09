@@ -22,6 +22,7 @@
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
 #include "command/type/DrawSubmissionSettingsCmd.h"
+#include "command/type/SortingLayersCmd.h"
 #include "command/type/DeviceSettingsCmd.h"
 #include "command/type/ApplePrivacySettingsCmd.h"
 #include "command/UndoOrigin.h"
@@ -792,6 +793,21 @@ bool setDrawSubmission(SettingsContext& ctx, const std::function<void(DrawSubmis
         command->setNoMerge();
         if (!p->getProjectCommandHistory()->addCommand(command)) {
             error = "the draw submission settings could not be applied";
+            return false;
+        }
+    }
+    return true;
+}
+
+// Sorting Layers and Transparency Sort (spec S52): SortingSettings changed, applied as one undoable
+// step (undo scope project)
+bool setSorting(SettingsContext& ctx, const SortingSettings& changed, bool apply, std::string& error) {
+    Project* p = ctx.project();
+    if (apply && changed != SortingSettings::current()) {
+        auto* command = new SortingLayersCmd(p, changed);
+        command->setNoMerge();
+        if (!p->getProjectCommandHistory()->addCommand(command)) {
+            error = "the sorting settings could not be applied";
             return false;
         }
     }
@@ -2280,6 +2296,48 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        // 2D sorting (S52 R4)
+        {
+            Setting s;
+            s.key = "graphics.transparency_sort_mode";
+            s.type = "enum";
+            s.values = {"default", "custom_axis"};
+            s.description = "custom_axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw by "
+                            "graphics.transparency_sort_axis (a larger dot(axis, position) first). Undoable (undo scope project).";
+            s.get = [](SettingsContext& ctx) {
+                return Json(ctx.project()->getTransparencySortMode() == TransparencySortMode::CUSTOM_AXIS ? "custom_axis" : "default");
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string() || (value.get<std::string>() != "default" && value.get<std::string>() != "custom_axis")) {
+                    error = "must be \"default\" or \"custom_axis\"";
+                    return false;
+                }
+                SortingSettings changed = SortingSettings::current();
+                changed.mode = value.get<std::string>() == "custom_axis" ? TransparencySortMode::CUSTOM_AXIS : TransparencySortMode::DEFAULT;
+                return setSorting(ctx, changed, apply, error);
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "graphics.transparency_sort_axis";
+            s.type = "list";
+            s.description = "The Custom Axis, default [0, 1, 0] (a higher y draws first: top-down). Undoable (undo scope project).";
+            s.get = [](SettingsContext& ctx) {
+                const Vector3 axis = ctx.project()->getTransparencySortAxis();
+                return Json::array({axis.x, axis.y, axis.z});
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array() || value.size() != 3 || !value[0].is_number() || !value[1].is_number() || !value[2].is_number()) {
+                    error = "must be [x, y, z]";
+                    return false;
+                }
+                SortingSettings changed = SortingSettings::current();
+                changed.axis = Vector3(value[0].get<float>(), value[1].get<float>(), value[2].get<float>());
+                return setSorting(ctx, changed, apply, error);
+            };
+            add(s);
+        }
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
         // the tiers of volumetric fog and clouds per platform group
@@ -2613,6 +2671,109 @@ std::vector<Setting> mcpSettingsTable() {
         // pixel-art tools' new art
         add(pathSetting("palettes.default", "The Default Palette: the .palette used where none is named (apply_palette, Snap to "
                         "Palette, new pixel art).", [](Project& p) -> fs::path& { return p.getDefaultPalette(); }));
+
+        // ---- Project Settings > Pixel Art (S42 §6.2): Pixel Art Mode, its checks and defaults
+        {
+            // a copy edited and set back, so the mode's hooks follow every change
+            auto pixelArtBool = [](const std::string& key, const std::string& description, bool pixelart::PixelArtSettings::*member) {
+                return boolSetting(key, description, [member](Project& p) { return p.getPixelArtSettings().*member; },
+                                   [member](Project& p, bool v) {
+                                       pixelart::PixelArtSettings settings = p.getPixelArtSettings();
+                                       settings.*member = v;
+                                       p.setPixelArtSettings(settings);
+                                   });
+            };
+            add(pixelArtBool("pixel_art.enabled", "Pixel Art Mode: sprite images added while on import as pixel art, new 2D scenes get a Pixel Perfect "
+                             "Camera, the validator runs on import and at Play. Changes no other setting (check_pixel_art's "
+                             "pixel_art_mode fix applies the preset).", &pixelart::PixelArtSettings::enabled));
+            add(pixelArtBool("pixel_art.check_on_import", "With Pixel Art Mode on, the validator runs after textures import and logs one "
+                             "Console line when it finds problems.", &pixelart::PixelArtSettings::checkOnImport));
+            add(pixelArtBool("pixel_art.check_on_play", "With Pixel Art Mode on, the validator runs at Play start and logs one Console line "
+                             "when it finds problems.", &pixelart::PixelArtSettings::checkOnPlay));
+            auto pixelArtList = [](const std::string& key, const std::string& description,
+                                   std::vector<std::string> pixelart::PixelArtSettings::*member,
+                                   std::function<std::string(const std::string&)> valid) {
+                Setting s;
+                s.key = key;
+                s.type = "list";
+                s.description = description;
+                s.get = [member](SettingsContext& ctx) {
+                    Json list = Json::array();
+                    for (const std::string& item : ctx.project()->getPixelArtSettings().*member) list.push_back(item);
+                    return list;
+                };
+                s.set = [member, valid](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    if (!value.is_array()) {
+                        error = "must be a list of strings";
+                        return false;
+                    }
+                    std::vector<std::string> items;
+                    for (const Json& item : value) {
+                        std::string text;
+                        if (!readString(item, text, error, 64)) return false;
+                        const std::string why = valid(text);
+                        if (!why.empty()) {
+                            error = "\"" + text + "\" " + why;
+                            return false;
+                        }
+                        items.push_back(text);
+                    }
+                    if (apply) {
+                        pixelart::PixelArtSettings settings = ctx.project()->getPixelArtSettings();
+                        settings.*member = items;
+                        ctx.project()->setPixelArtSettings(settings);
+                    }
+                    return true;
+                };
+                return s;
+            };
+            add(pixelArtList("pixel_art.check_screens", "The screen sizes the validator lays each scene out on (\"WxH\").",
+                             &pixelart::PixelArtSettings::checkScreens, [](const std::string& text) {
+                                 pixelart::PixelArtScreen screen;
+                                 return pixelart::parsePixelArtScreen(text, screen) ? std::string() : std::string("is not WxH (1...16384 each)");
+                             }));
+            add(pixelArtList("pixel_art.backdrops", "The project's pixel-art backdrops (\"#rrggbb\": the first dark, the second light).",
+                             &pixelart::PixelArtSettings::backdrops, [](const std::string& text) {
+                                 return pixelart::isPixelArtBackdrop(text) ? std::string() : std::string("is not #rrggbb");
+                             }));
+            Setting upscale;
+            upscale.key = "pixel_art.upscale_mode";
+            upscale.type = "enum";
+            upscale.values = {"integer", "integer_expand", "stretch_fill"};
+            upscale.description = "The Upscale Mode a new Pixel Perfect Camera gets (Pixel Art Mode's new 2D scenes, the preset).";
+            upscale.get = [](SettingsContext& ctx) { return Json(pixelart::pixelUpscaleModeName(ctx.project()->getPixelArtSettings().upscaleMode)); };
+            upscale.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                PixelUpscaleMode mode;
+                if (!value.is_string() || !pixelart::pixelUpscaleModeFromName(value.get<std::string>(), mode)) {
+                    error = "must be one of integer, integer_expand, stretch_fill";
+                    return false;
+                }
+                if (apply) {
+                    pixelart::PixelArtSettings settings = ctx.project()->getPixelArtSettings();
+                    settings.upscaleMode = mode;
+                    ctx.project()->setPixelArtSettings(settings);
+                }
+                return true;
+            };
+            add(upscale);
+            Setting filter;
+            filter.key = "graphics.default_filter_mode";
+            filter.type = "enum";
+            filter.values = {"bilinear", "point"};
+            filter.description = "The filter every Texture a game makes at runtime starts with (Lua Sprite:setTexture), and what a "
+                                 "reference starts with when a texture without its own Filter Mode is assigned. Saved references keep theirs.";
+            filter.get = [](SettingsContext& ctx) { return Json(textureFilterModeName(ctx.project()->getDefaultFilterMode())); };
+            filter.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                TextureFilterMode mode;
+                if (!value.is_string() || !textureFilterModeFromName(value.get<std::string>(), mode) || mode == TextureFilterMode::Trilinear) {
+                    error = "must be bilinear or point";
+                    return false;
+                }
+                if (apply) ctx.project()->setDefaultFilterMode(mode);
+                return true;
+            };
+            add(filter);
+        }
 
         // ---- input (S22, and Unity's Input Manager absorbed from the older Project Settings > Input)
         {
@@ -3328,6 +3489,74 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
+        // Sorting Layers (S52 R34): reads [{id, name}] in draw order; takes names or {id, name}
+        // entries (an id keeps its layer through a rename, a name already in the table keeps its)
+        {
+            Setting s;
+            s.key = "tags_and_layers.sorting_layers";
+            s.type = "list";
+            s.description = "Sorting Layers in draw order, first drawn first, as [{id, name}]; must include \"Default\". Pass the complete "
+                            "list: names, or {id, name} to rename a layer (it keeps its renderers); an unlisted layer is removed (its "
+                            "renderers draw on Default). Undoable (undo scope project).";
+            s.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (const SortingLayerInfo& layer : ctx.project()->getSortingLayers())
+                    list.push_back(Json{{"id", layer.id}, {"name", layer.name}});
+                return list;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of Sorting Layer names or {id, name} entries";
+                    return false;
+                }
+                std::vector<SortingLayerInfo> entries;
+                std::vector<std::string> names;
+                bool hasDefault = false;
+                for (const Json& item : value) {
+                    SortingLayerInfo entry{-1, std::string()};
+                    if (item.is_string()) {
+                        entry.name = item.get<std::string>();
+                    } else if (item.is_object() && item.contains("name") && item["name"].is_string() &&
+                               (!item.contains("id") || item["id"].is_number_integer())) {
+                        entry.name = item["name"].get<std::string>();
+                        if (item.contains("id")) entry.id = item["id"].get<int32_t>();
+                    }
+                    entry.name = TagManager::trimName(entry.name);
+                    if (entry.name.empty()) {
+                        error = "each Sorting Layer is a non-empty name or {id, name}";
+                        return false;
+                    }
+                    if (std::find(names.begin(), names.end(), entry.name) != names.end()) {
+                        error = "\"" + entry.name + "\" is listed twice";
+                        return false;
+                    }
+                    if (entry.id >= 0 && (entry.id == DEFAULT_SORTING_LAYER_ID) != (entry.name == "Default")) {
+                        error = "Default is id 0 and keeps its name";
+                        return false;
+                    }
+                    hasDefault = hasDefault || entry.name == "Default";
+                    names.push_back(entry.name);
+                    entries.push_back(entry);
+                }
+                if (!hasDefault) {
+                    error = "the list must include \"Default\" (it cannot be removed; place it where it draws)";
+                    return false;
+                }
+                SortingSettings changed = SortingSettings::current();
+                if (!SortingLayers::resolve(entries, changed.layers, error)) return false;
+                for (size_t a = 0; a < changed.layers.size(); a++) {
+                    for (size_t b = a + 1; b < changed.layers.size(); b++) {
+                        if (changed.layers[a].id == changed.layers[b].id) {
+                            error = "id " + std::to_string(changed.layers[a].id) + " is listed twice";
+                            return false;
+                        }
+                    }
+                }
+                return setSorting(ctx, changed, apply, error);
+            };
+            add(s);
+        }
+
         // ---- editor preferences (this machine / this editor session)
         {
             Setting s;
@@ -3753,8 +3982,8 @@ const Placement placements[] = {
     {"android.allow_backup", "Player", "Android", "Application Options", "android allow backup"},
     {"android.fullscreen", "Player", "Android", "Screen Options", "android fullscreen"},
     {"sprite_atlas.mode", "2D", "Sprite Atlas", "Mode", "sprite atlas packer pages enabled for builds"},
-    {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution"},
-    {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution"},
+    {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution base resolution pixel art"},
+    {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution base resolution pixel art"},
     {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch integer pixel perfect"},
     {"graphics.pixels_per_unit", "Graphics", "", "Pixels Per Unit", "pixel art ppu sprite tilemap"},
     {"graphics.ui_scale", "Graphics", "", "UI Scale", "canvas scaler ui scaling reference resolution match width height constant pixel physical size dpi"},
@@ -3793,6 +4022,8 @@ const Placement placements[] = {
     {"graphics.dynamic_batching", "Graphics", "", "Dynamic Batching", "batching batches draw calls saved by batching sprites"},
     {"graphics.runtime_shaders", "Graphics", "", "Runtime Shader Compilation", "variants"},
     {"graphics.gpu_instancing", "Graphics", "", "GPU Instancing", "batching instanced draw calls auto instancing"},
+    {"graphics.transparency_sort_mode", "Graphics", "", "Transparency Sort Mode", "2d sorting axis custom axis top-down"},
+    {"graphics.transparency_sort_axis", "Graphics", "", "Transparency Sort Axis", "2d sorting axis custom axis top-down"},
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
@@ -3827,6 +4058,14 @@ const Placement placements[] = {
     {"input.manager_actions", "Input", "Input Manager", "Input Manager", "input manager virtual axes buttons horizontal vertical jump fire gravity sensitivity unity"},
     // Project Settings > Pixel Art (S43 R4b; S42's Pixel Art page joins it)
     {"palettes.default", "Pixel Art", "", "Default Palette", "palette colours colors swatches snap lospec apply palette sweetie pico"},
+    // S42's own rows
+    {"pixel_art.enabled", "Pixel Art", "", "Pixel Art Mode", "pixel art mode crisp point filter nearest lossless"},
+    {"pixel_art.upscale_mode", "Pixel Art", "", "Upscale Mode", "pixel perfect camera integer letterbox expand stretch"},
+    {"graphics.default_filter_mode", "Graphics", "", "Default Filter Mode", "filter point nearest bilinear crisp blurry pixel art"},
+    {"pixel_art.check_on_import", "Pixel Art", "Validation", "Check on Import", "validator check pixel art import"},
+    {"pixel_art.check_on_play", "Pixel Art", "Validation", "Check on Play", "validator check pixel art play"},
+    {"pixel_art.check_screens", "Pixel Art", "Validation", "Check Screens", "screens resolutions integer scale validator"},
+    {"pixel_art.backdrops", "Pixel Art", "", "Backdrops", "backdrop background dark light contact sheet"},
     // Project Settings > Audio
     {"audio.mixer", "Audio", "", "Audio Mixer", "mixer groups master bus sound music"},
     {"audio.default_output_group", "Audio", "", "Default Output Group", "mixer group master output audio source"},
@@ -3876,6 +4115,7 @@ const Placement placements[] = {
     {"editor.assets_dir", "Editor", "", "Assets Directory", "assets root"},
     {"tags_and_layers.tags", "Tags and Layers", "Tags", "Tags", "tag"},
     {"tags_and_layers.layers", "Tags and Layers", "Layers", "Layers", "layer"},
+    {"tags_and_layers.sorting_layers", "Tags and Layers", "Sorting Layers", "Sorting Layers", "sorting layer order 2d draw order"},
     // Project Settings > Native Plugins
     {"android.gradle_dependencies", "Native Plugins", "Android", "Gradle Dependencies", "android gradle dependencies sdk api implementation"},
     {"android.gradle_repositories", "Native Plugins", "Android", "Maven Repositories", "android gradle maven repository url"},
@@ -4218,6 +4458,12 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         [](SettingsContext&) {
             return InputActions::isLoaded() ? Json(InputActions::getOverridesKey()) : Json(nullptr);
         }, "Players' rebinding is kept per asset in the user settings; Reset clears the editor's copy, which Play uses."));
+    // S42 R18: the preset's button (the Pixel Art page shows the Graphics rows a pixel-art project
+    // sets, graphics.canvas_*, pixels_per_unit and default_filter_mode, under their own keys)
+    addOrAbort(registry, uiRow("pixel_art.apply_preset", "Pixel Art", "", "Apply Pixel Art Preset", "preset convert pixel art one click",
+        [](SettingsContext&) { return Json(nullptr); },
+        "Previews and applies the Pixel Art preset: base resolution, integer scaling, Point filtering, Pixel Perfect Cameras and "
+        "lossless textures, as one undo step."));
     addOrAbort(registry, uiRow("mesh.clear_cache", "Mesh", "Cache", "Mesh Cache", "clear cooked models cache size audit",
         [](SettingsContext& ctx) {
             ModelCookQueue& cooks = ModelCookQueue::get();
