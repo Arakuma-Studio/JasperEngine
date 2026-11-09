@@ -316,8 +316,9 @@ namespace jasperengine::editor::pixelart::cleanup {
             if (position > length + 1e-9) break;
             cuts.push_back(position);
         }
-        const double last = cuts.back();
-        if (length - last >= cell / 2) cuts.push_back(length);
+        // grid.ts reads `cuts[-1]` here: undefined when the first line is past the picture, and then
+        // the comparison is false and the picture is one cell
+        if (!cuts.empty() && length - cuts.back() >= cell / 2) cuts.push_back(length);
         // A picture smaller than one cell is one cell
         if (cuts.size() < 2) return {0, length};
         return cuts;

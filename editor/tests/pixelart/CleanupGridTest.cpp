@@ -88,6 +88,13 @@ TEST(CleanupGrid, KeepsPartialCellsAtTheEdgesOnlyWhenAtLeastHalfACell) {
     EXPECT_EQ(uniformCuts(3, 8, 0), (std::vector<double>{0, 3}));
 }
 
+// grid.ts: `cuts` can end up empty (the first line is past a picture narrower than half a cell),
+// and JS's `cuts[-1]` is undefined and `length - undefined` is NaN, so it falls through to one cell
+TEST(CleanupGrid, TreatsAPictureEndingBeforeTheFirstLineAsOneCell) {
+    EXPECT_EQ(uniformCuts(1, 10, 3), (std::vector<double>{0, 1}));
+    EXPECT_EQ(uniformCuts(2, 20, 5), (std::vector<double>{0, 2}));
+}
+
 TEST(CleanupGrid, FollowsCellsThatDriftAcrossThePictureOnceRefined) {
     const PixelArt sprite = makeSprite(40, 40, sweetie16(), 5);
     Upscale options;
