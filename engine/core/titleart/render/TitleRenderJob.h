@@ -57,6 +57,7 @@ namespace jasperengine::titleart {
         float costWeight = 1.0f;
         bool splittable = false;        // writes only its scissor from inputs it does not write
         ShaderKey shader;               // the program variant it binds
+        std::vector<ShaderKey> moreShaders;     // a step of several programs (a 3D layer's: S86 §6.4)
         bool countsAsPass = true;       // a GPU draw pass (passesDone / passesTotal)
         uint32_t passes = 1;            // the draw passes it runs (an effect's kernel may run several)
         // CPU: its estimate

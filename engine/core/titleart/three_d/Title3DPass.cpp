@@ -435,6 +435,7 @@ TitlePx TitlePlanner::title3D(const DrawNode& node, const std::vector<std::strin
     step.layerId = node.layerId;
     step.scissor = {0, 0, rect.width, rect.height};
     step.passes = Title3DRenderer::passCount(*plan);
+    step.moreShaders = Title3DRenderer::programKeys(*plan);
     step.costWeight = 40.0f * (float)(plan->k * plan->k) * (float)step.passes;
     step.splittable = false;
     TitleRenderServices* services = &svc;

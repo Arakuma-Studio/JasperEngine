@@ -23,6 +23,7 @@
 #pragma once
 
 #include "Export.h"
+#include "shader/ShaderBuildTypes.h"
 #include "titleart/TitleArtTypes.h"
 #include "titleart/render/TitleTargetPool.h"
 #include "titleart/three_d/Title3DStyle.h"
@@ -30,6 +31,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace jasperengine {
     class TextureRender;
@@ -68,6 +70,8 @@ namespace jasperengine::titleart {
 
         // false while a program of the mode compiles
         bool ready(GlintMode mode, std::string* error);
+        // the programs of `mode`, as ShaderPool keys (what an export precompiles)
+        static std::vector<ShaderKey> programKeys(GlintMode mode);
         // the glint of `in` into `out`; false with `error`
         bool render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutput& out, std::string& error);
 

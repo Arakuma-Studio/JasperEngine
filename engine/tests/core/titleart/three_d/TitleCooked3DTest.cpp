@@ -21,6 +21,7 @@
 #include "titleart/three_d/Title3DSource.h"
 #include "titleart/three_d/mesher/TitleMesher.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -248,4 +249,39 @@ TEST_F(TitleCooked3DGpu, APlayerDrawsTheExportsDataAsTheEditorDoes) {
         EXPECT_TRUE(hasProblem(*job, "environment_missing"));
         EXPECT_GT(compare(editor[1], studio, 24.0).mean, 3.0) << "the studio stand-in is not the softbox";
     }
+}
+
+TEST_F(TitleCooked3DGpu, TheJobNamesEveryProgramAnExportPrecompiles) {
+    // S86 §6.4, AC22: a build without the runtime shader compiler draws only what the export
+    // precompiled from the job's keys. Low holds compressed light only; High both encodings
+    auto renderer = std::make_unique<TitleArtRenderer>();
+    renderer->setContentProvider(makeGeometryTitleContentProvider());
+    Json layer = plateLayer();
+    layer["style_3d"]["glint"] = Json{{"enabled", true}};
+    auto doc = makeDoc({{"canvas", canvas(512, 256)}, {"layers", Json::array({layer})}, {"scene_3d", {{"supersample", 1}}}});
+    auto keysAt = [&](int tier) {
+        RenderRequest r;
+        r.doc = doc;
+        r.tier = tier;
+        return renderer->begin(r)->shaderKeys();
+    };
+    auto count = [](const std::vector<ShaderKey>& keys, ShaderType type, bool compressed) {
+        int n = 0;
+        for (const ShaderKey& k : keys) {
+            if (k.type == (uint16_t)type && ((k.properties & TitleLitBits::HDR_COMPRESS) != 0) == compressed) n++;
+        }
+        return n;
+    };
+    const std::vector<ShaderKey> low = keysAt(3), high = keysAt(1);
+    EXPECT_GT(count(low, ShaderType::TITLE_LIT, true), 0);
+    EXPECT_EQ(count(low, ShaderType::TITLE_LIT, false), 0) << "Low always draws compressed light";
+    EXPECT_GT(count(high, ShaderType::TITLE_LIT, true), 0) << "a device without float targets";
+    EXPECT_GT(count(high, ShaderType::TITLE_LIT, false), 0);
+    auto has = [](const std::vector<ShaderKey>& keys, ShaderType type) {
+        return std::any_of(keys.begin(), keys.end(), [type](const ShaderKey& k) { return k.type == (uint16_t)type; });
+    };
+    EXPECT_TRUE(has(low, ShaderType::TITLE_3D_POST));
+    EXPECT_TRUE(has(low, ShaderType::TITLE_GLINT_SPRITE)) << "Low's glint is the sprites";
+    EXPECT_FALSE(has(high, ShaderType::TITLE_GLINT_SPRITE));
+    EXPECT_TRUE(has(high, ShaderType::TITLE_GLINT)) << "High's is the full chain";
 }

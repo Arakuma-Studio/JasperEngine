@@ -181,8 +181,11 @@ void TitleRenderJob::splitOversizedSteps(uint32_t maxUs) {
 std::vector<ShaderKey> TitleRenderJob::shaderKeys() const {
     std::vector<ShaderKey> keys;
     for (const TitleRenderStep& s : steps) {
-        if (s.kind != StepKind::Gpu || s.shader == ShaderKey()) continue;
-        if (std::find(keys.begin(), keys.end(), s.shader) == keys.end()) keys.push_back(s.shader);
+        if (s.kind != StepKind::Gpu) continue;
+        if (s.shader != ShaderKey() && std::find(keys.begin(), keys.end(), s.shader) == keys.end()) keys.push_back(s.shader);
+        for (const ShaderKey& more : s.moreShaders) {
+            if (std::find(keys.begin(), keys.end(), more) == keys.end()) keys.push_back(more);
+        }
     }
     return keys;
 }

@@ -174,11 +174,27 @@ Glint3D::Glint3D() : impl(std::make_unique<Impl>()) {}
 
 Glint3D::~Glint3D() = default;
 
+namespace {
+
+    std::vector<uint32_t> glintProgramsOf(GlintMode mode) {
+        std::vector<uint32_t> keys = {BRIGHT, BLUR, HIGHPASS};
+        if (mode == GlintMode::Sprites) keys.push_back(0);
+        else keys.insert(keys.end(), {DOWN, STREAK, ADD, TAME, PINCH, DENSITY});
+        return keys;
+    }
+
+}
+
+std::vector<ShaderKey> Glint3D::programKeys(GlintMode mode) {
+    std::vector<ShaderKey> keys;
+    if (mode == GlintMode::Off) return keys;
+    for (uint32_t k : glintProgramsOf(mode)) keys.push_back(ShaderPool::getShaderKey(k == 0 ? ShaderType::TITLE_GLINT_SPRITE : ShaderType::TITLE_GLINT, k));
+    return keys;
+}
+
 bool Glint3D::ready(GlintMode mode, std::string* error) {
     if (mode == GlintMode::Off) return true;
-    std::vector<uint32_t> keys = {BRIGHT, BLUR, HIGHPASS};
-    if (mode == GlintMode::Sprites) keys.push_back(0);
-    else keys.insert(keys.end(), {DOWN, STREAK, ADD, TAME, PINCH, DENSITY});
+    const std::vector<uint32_t> keys = glintProgramsOf(mode);
     for (uint32_t k : keys) {
         if (!impl->shaderReady(k, error)) return false;
     }

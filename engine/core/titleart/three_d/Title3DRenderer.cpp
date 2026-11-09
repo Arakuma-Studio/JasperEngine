@@ -890,6 +890,41 @@ uint32_t Title3DRenderer::passCount(const Title3DPlan& plan) {
     return passes;
 }
 
+std::vector<ShaderKey> Title3DRenderer::programKeys(const Title3DPlan& plan) {
+    std::vector<ShaderKey> keys;
+    auto add = [&keys](ShaderType type, uint64_t properties) {
+        const ShaderKey key = ShaderPool::getShaderKey(type, properties);
+        if (std::find(keys.begin(), keys.end(), key) == keys.end()) keys.push_back(key);
+    };
+    // the light encoding and the gem behind copy depend on the device's float targets
+    const bool onlyCompressed = titleTierLimits(plan.tier).compressedLight;
+    for (const Title3DSlotMaterial& s : plan.slots) {
+        add(ShaderType::TITLE_LIT, slotBits(s, true, plan.behind));
+        add(ShaderType::TITLE_LIT, slotBits(s, true, false));
+        if (onlyCompressed) continue;
+        add(ShaderType::TITLE_LIT, slotBits(s, false, plan.behind));
+        add(ShaderType::TITLE_LIT, slotBits(s, false, false));
+    }
+    std::vector<uint32_t> posts = {TONEMAP, MITCHELL_H, MITCHELL_V};
+    if (wantsAO(plan)) {
+        posts.insert(posts.end(), {AO, AO_BLUR});
+        add(ShaderType::TITLE_LIT, geometryBits(plan, 3));
+    }
+    if (plan.behind) posts.insert(posts.end(), {BEHIND, BOX_DOWN});
+    for (uint32_t p : posts) add(ShaderType::TITLE_3D_POST, p);
+    for (const ShaderKey& key : Glint3D::programKeys(glintMode(plan))) {
+        if (std::find(keys.begin(), keys.end(), key) == keys.end()) keys.push_back(key);
+    }
+    // a game builds the cube of an environment its export could not cook
+    for (const Title3DEnvPlan& env : plan.environments) {
+        if (env.matcap || env.cooked) continue;
+        add(ShaderType::TITLE_ENV, PREFILTER);
+        add(ShaderType::TITLE_ENV, env.hdri ? EQUIRECT : PROCEDURAL);
+        if (env.hdri) add(ShaderType::TITLE_ENV, DOWNSAMPLE);
+    }
+    return keys;
+}
+
 bool Title3DRenderer::ready(const Title3DPlan& plan, uint32_t testFlags) {
     const bool compressed = compressedLight(plan, testFlags);
     const bool behind = behindActive(plan, testFlags);
