@@ -562,7 +562,7 @@ namespace {
         return fault;
     }
 
-    SceneProject* sceneOf(Project* project, uint32_t sceneId) {
+    SceneProject* terrainSceneOf(Project* project, uint32_t sceneId) {
         SceneProject* scene = project ? project->getScene(sceneId) : nullptr;
         return scene && scene->scene ? scene : nullptr;
     }
@@ -602,7 +602,7 @@ void TerrainGeneration::setJobFaultForTests(std::function<void()> fault) {
 
 std::shared_ptr<TerrainGeneration::Run> TerrainGeneration::start(Project* project, uint32_t sceneId, Entity entity, GenerationRequest request, Done done) {
     GenerationResult refused;
-    SceneProject* sceneProject = sceneOf(project, sceneId);
+    SceneProject* sceneProject = terrainSceneOf(project, sceneId);
     TerrainComponent* component = sceneProject ? sceneProject->scene->findComponent<TerrainComponent>(entity) : nullptr;
     if (!component) {
         addIssue(refused, "no-terrain", "The GameObject has no Terrain.");
@@ -678,7 +678,7 @@ std::shared_ptr<TerrainGeneration::Run> TerrainGeneration::start(Project* projec
                     finish(*result);
                     return;
                 }
-                SceneProject* scene = sceneOf(project, sceneId);
+                SceneProject* scene = terrainSceneOf(project, sceneId);
                 TerrainComponent* terrainNow = scene ? scene->scene->findComponent<TerrainComponent>(entity) : nullptr;
                 if (!terrainNow) {
                     result->ok = false;

@@ -212,7 +212,12 @@ bool jasperengine::terraincore::buildDetailPixels(std::span<const TerrainSurface
     int width = files.width;
     int height = files.height;
     if (width == 0) {
-        return false;
+        // layers with no map at all: one white texel a slice, which their Tint colours. A map that
+        // could not be read is a failure, not that.
+        if (plan.anySource) {
+            return false;
+        }
+        width = height = 1;
     }
     const int cap = std::min(options.maxSize, MAX_TERRAIN_DETAIL_SIZE);
     if (width > cap || height > cap) {

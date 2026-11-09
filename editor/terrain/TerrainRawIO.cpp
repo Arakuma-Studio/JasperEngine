@@ -16,7 +16,7 @@ using namespace jasperengine;
 
 namespace {
 
-    std::string lowerExtension(const std::string& name){
+    std::string rawExtension(const std::string& name){
         const size_t dot = name.find_last_of('.');
         if (dot == std::string::npos) return std::string();
         std::string extension = name.substr(dot + 1);
@@ -90,7 +90,7 @@ namespace {
 }
 
 editor::HeightFileFormat editor::TerrainRawIO::formatOfName(const std::string& name){
-    const std::string extension = lowerExtension(name);
+    const std::string extension = rawExtension(name);
     if (extension == "r8") return HeightFileFormat::R8;
     if (extension == "r16") return HeightFileFormat::R16;
     if (extension == "r32" || extension == "f32") return HeightFileFormat::R32F;

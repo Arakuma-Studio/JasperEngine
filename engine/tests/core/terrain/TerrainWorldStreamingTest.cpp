@@ -24,6 +24,7 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <thread>
@@ -216,6 +217,31 @@ TEST(TerrainWorldStreaming, StoreEditsPinAndCap) {
     EXPECT_TRUE(runtime->tiles().pinned(TileCoord(1, 0)));
     EXPECT_TRUE(runtime->hasDirtyFiles());
     EXPECT_NEAR(runtime->query(64.0f, 11.0f, true).height, 0.9f * 50.0f, 1e-3f);
+}
+
+// R52: the overview follows an edit even when the editor's flush (TerrainWorldFiles::flushWorld: settle,
+// write, release) unpins the tile before the refresh is due; it used to patch only from pinned tiles
+TEST(TerrainWorldStreaming, OverviewFollowsAnEditFlushedBeforeItsRefresh) {
+    WorldScene world;
+    TerrainWorldRuntime* runtime = world.runtime();
+    ASSERT_TRUE(runtime);
+    ASSERT_TRUE(world.pumpUntil([&] { return runtime->isReady(); }));
+    const auto farHeight = [&] { return sampleOverview(runtime->getOverview(), runtime->lattice(), runtime->maxHeight(), 32.0f, 32.0f).height; };
+    const float raised = 0.9f * runtime->maxHeight();
+    ASSERT_GT(std::abs(farHeight() - raised), 1.0f);
+
+    TerrainComponent& terrain = world.scene.getComponent<TerrainComponent>(world.entity);
+    jasperengine::TerrainComponentStore store(&world.scene, world.entity, terrain);
+    const int m = runtime->lattice().heightOrigin();
+    const TexelRect rect{m + 16, m + 16, 33, 33};
+    std::vector<float> values(static_cast<size_t>(rect.area()), 0.9f);
+    ASSERT_TRUE(store.write(MapId{MapKind::Height, 0}, rect, values).ok);
+    runtime->settleEdits();
+    const std::vector<TileCoord> flushed = runtime->takeDirtyFiles();
+    ASSERT_FALSE(flushed.empty());
+    for (const TileCoord& tile : flushed) runtime->releaseFlushed(tile);
+
+    EXPECT_TRUE(world.pumpUntil([&] { return std::abs(farHeight() - raised) < 0.05f; }, 5.0)) << "the overview still shows " << farHeight();
 }
 
 TEST(TerrainWorldStreaming, BrushHoverPinsTiles) {

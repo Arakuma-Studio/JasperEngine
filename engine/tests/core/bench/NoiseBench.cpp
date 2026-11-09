@@ -189,7 +189,7 @@ int main(int argc, char** argv) {
     {
         const int size = 513;
         const std::vector<float> start = erosionGround(size);
-        terraincore::ErosionRegion region;
+        terraincore::HeightfieldRegion region;
         region.width = region.depth = size;
         region.maxHeight = 400.0f;
         region.metresPerTexel = 4.0;

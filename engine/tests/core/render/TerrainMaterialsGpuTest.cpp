@@ -623,6 +623,37 @@ TEST_F(TerrainMaterialsGpu, MacroNormal){
 }
 
 // AC19: 12 flat layers each draw their colour; an opaque map draws layers 10-12 at 0
+// A layer with a Tint and no map draws its Tint, as it does beside a layer that has maps: the terrain
+// had no detail array then, so no blend map weighted anything and it drew its base material alone
+TEST_F(TerrainMaterialsGpu, TintOnlyLayersDraw){
+    JASPER_REQUIRE_GPU();
+    makeTerrain(0.001f, [](float, float){ return 0.0f; });
+    camera.setType(CameraType::CAMERA_ORTHO);
+    camera.setOrtho(-64.0f, 64.0f, -36.0f, 36.0f, 1.0f, 400.0f);
+    camera.setPosition(0.0f, 100.0f, 0.0f);
+    camera.setUp(0.0f, 0.0f, -1.0f);
+    camera.setTarget(0.0f, 0.0f, 0.0f);
+    sun.setIntensity(0.0f);
+    terrain->setReceiveLights(false);
+    const Vector4 tints[3] = {Vector4(0.9f, 0.1f, 0.1f, 1.0f), Vector4(0.1f, 0.8f, 0.1f, 1.0f), Vector4(0.1f, 0.1f, 0.9f, 1.0f)};
+    component().surfaceLayers.assign(3, TerrainSurfaceLayer());
+    for (int l = 0; l < 3; l++){
+        component().surfaceLayers[l].pbr = true;
+        component().surfaceLayers[l].colorFactor = tints[l];
+    }
+    component().needUpdateTerrain = true;
+    // the second layer everywhere
+    setBlendMap(0, [](float, float){ return TerrainGpuColor{0, 255, 0, 255}; });
+    ASSERT_TRUE(render());
+    std::vector<uint8_t> frame;
+    ASSERT_TRUE(readFrame(frame));
+    const size_t center = (static_cast<size_t>(FRAME_HEIGHT / 2) * FRAME_WIDTH + FRAME_WIDTH / 2) * 4;
+    const int r = frame[center], g = frame[center + 1], b = frame[center + 2];
+    EXPECT_GT(g, r + 60) << "the terrain drew (" << r << ", " << g << ", " << b << "), not the green Tint";
+    EXPECT_GT(g, b + 60) << "the terrain drew (" << r << ", " << g << ", " << b << "), not the green Tint";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 TEST_F(TerrainMaterialsGpu, TwelveLayers){
     JASPER_REQUIRE_GPU();
     makeTerrain(0.001f, [](float, float){ return 0.0f; });

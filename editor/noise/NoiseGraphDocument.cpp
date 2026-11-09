@@ -42,12 +42,12 @@ namespace {
         return hash == 0 ? 1 : hash;
     }
 
-    std::string lower(std::string text) {
+    std::string lowerQuery(std::string text) {
         std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return text;
     }
 
-    std::string number(float value) {
+    std::string rangeNumber(float value) {
         char text[32];
         std::snprintf(text, sizeof(text), "%.2f", static_cast<double>(value));
         return text;
@@ -611,10 +611,10 @@ std::vector<NoiseGraphSearchEntry> NoiseGraphDocument::search(const std::string&
     std::vector<NoiseGraphSearchEntry> out;
     std::shared_ptr<const graph::GraphKindDesc> kind = noiseKind();
     const std::optional<PinRef> pin = pinRef(connectPin);
-    const std::string needle = lower(query);
+    const std::string needle = lowerQuery(query);
     for (const graph::NodeTypeDesc& type : kind->nodeTypes) {
-        if (!needle.empty() && lower(type.displayName).find(needle) == std::string::npos && lower(type.category).find(needle) == std::string::npos &&
-            lower(type.id).find(needle) == std::string::npos) {
+        if (!needle.empty() && lowerQuery(type.displayName).find(needle) == std::string::npos && lowerQuery(type.category).find(needle) == std::string::npos &&
+            lowerQuery(type.id).find(needle) == std::string::npos) {
             continue;
         }
         NoiseGraphSearchEntry entry;
@@ -810,6 +810,6 @@ std::vector<std::string> NoiseGraphDocument::takeThumbnailUploads(size_t limit) 
 std::string NoiseGraphDocument::rangeText(const noise::Interval& observed, const noise::Interval& analytic) {
     // symmetric bounds read as one number, the way R56 shows them
     const bool symmetric = analytic.min == -analytic.max;
-    const std::string bound = symmetric ? "\xE2\x89\xA4 \xC2\xB1" + number(analytic.max) : "in " + number(analytic.min) + " ... " + number(analytic.max);
-    return number(observed.min) + " ... " + number(observed.max) + "  " + bound;
+    const std::string bound = symmetric ? "\xE2\x89\xA4 \xC2\xB1" + rangeNumber(analytic.max) : "in " + rangeNumber(analytic.min) + " ... " + rangeNumber(analytic.max);
+    return rangeNumber(observed.min) + " ... " + rangeNumber(observed.max) + "  " + bound;
 }

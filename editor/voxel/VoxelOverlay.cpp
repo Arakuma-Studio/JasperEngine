@@ -15,7 +15,7 @@ namespace {
         return map;
     }
 
-    uint64_t revision = 1;
+    uint64_t overlayRevision = 1;
 
 }
 
@@ -26,7 +26,7 @@ void editor::setVoxelOverlay(Entity owner, VoxelOverlay overlay) {
     if (current == overlay) return;
     if (overlay == VoxelOverlay::None) map.erase(found);
     else map[owner] = overlay;
-    revision++;
+    overlayRevision++;
 }
 
 VoxelOverlay editor::getVoxelOverlay(Entity owner) {
@@ -38,7 +38,7 @@ VoxelOverlay editor::getVoxelOverlay(Entity owner) {
 void editor::clearVoxelOverlays() {
     if (overlays().empty()) return;
     overlays().clear();
-    revision++;
+    overlayRevision++;
 }
 
 bool editor::anyVoxelOverlay() {
@@ -46,7 +46,7 @@ bool editor::anyVoxelOverlay() {
 }
 
 uint64_t editor::voxelOverlayRevision() {
-    return revision;
+    return overlayRevision;
 }
 
 const char* editor::voxelOverlayName(VoxelOverlay overlay) {

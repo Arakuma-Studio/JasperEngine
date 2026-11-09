@@ -21,7 +21,7 @@ using namespace terrainprojecttest;
 
 namespace {
 
-    double msSince(std::chrono::steady_clock::time_point start) {
+    double deltaMsSince(std::chrono::steady_clock::time_point start) {
         return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     }
 
@@ -62,12 +62,12 @@ namespace {
             auto* step = new TerrainMapDeltaCmd(project.get(), scene->id, terrainEntity, terrainEntity, overlay, true);
             overlay.discard();
             EXPECT_TRUE(history()->addCommandNoMerge(step));
-            timing.commitMs = msSince(start);
+            timing.commitMs = deltaMsSince(start);
             timing.tiles = step->tileCount();
 
             start = std::chrono::steady_clock::now();
             EXPECT_TRUE(history()->undo());
-            timing.undoMs = msSince(start);
+            timing.undoMs = deltaMsSince(start);
             return timing;
         }
 

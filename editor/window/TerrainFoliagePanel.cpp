@@ -149,7 +149,7 @@ namespace {
 
     const char* const FOLIAGE_TIER_NAMES[] = {"Desktop", "Mobile", "Web"};
 
-    void rowLabel(const char* label, const char* tooltip = nullptr) {
+    void foliageRowLabel(const char* label, const char* tooltip = nullptr) {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();
@@ -367,20 +367,20 @@ void editor::TerrainFoliagePanel::drawPrototypeGrid(SceneProject* sceneProject, 
 }
 
 void editor::TerrainFoliagePanel::drawImpostor(SceneProject* sceneProject, Entity entity, TerrainComponent& terrain, TerrainTreePrototype& authored) {
-    rowLabel("Impostor", "The last LOD: one quad per instance, lit through baked normals. Baked per mesh, one view per frame.");
+    foliageRowLabel("Impostor", "The last LOD: one quad per instance, lit through baked normals. Baked per mesh, one view per frame.");
     const ImpostorState state = ImpostorBaker::stateOf(project, authored.meshPath.str(), authored.impostorViews, authored.impostorSourceHash);
     ImGui::TextUnformatted(state == ImpostorState::None ? "None" : state == ImpostorState::Baked ? "Baked" : "Out of Date");
 
-    rowLabel("Views");
+    foliageRowLabel("Views");
     int viewChoice = bakeViews == 4 ? 0 : bakeViews == 16 ? 2 : 1;
     const char* const viewNames[] = {"4", "8", "16"};
     if (ImGui::Combo("##impostor_views", &viewChoice, viewNames, 3)) bakeViews = viewChoice == 0 ? 4 : viewChoice == 2 ? 16 : 8;
-    rowLabel("Resolution");
+    foliageRowLabel("Resolution");
     int resolutionChoice = bakeResolution == 128 ? 0 : bakeResolution == 512 ? 2 : 1;
     const char* const resolutionNames[] = {"128", "256", "512"};
     if (ImGui::Combo("##impostor_resolution", &resolutionChoice, resolutionNames, 3)) bakeResolution = resolutionChoice == 0 ? 128 : resolutionChoice == 2 ? 512 : 256;
 
-    rowLabel("Bake");
+    foliageRowLabel("Bake");
     const bool baking = ImpostorBaker::isRunning();
     ImGui::BeginDisabled(baking);
     const auto startBake = [&](std::vector<int> prototypes) {
@@ -420,7 +420,7 @@ void editor::TerrainFoliagePanel::drawImpostor(SceneProject* sceneProject, Entit
         int width = 0, height = 0;
         ImTextureID atlas = Backend::getApp().getProjectWindow()->getAssetThumbnail(authored.impostorAlbedo.getPath(0), width, height);
         if (atlas) {
-            rowLabel("Atlas");
+            foliageRowLabel("Atlas");
             ImGui::Image(atlas, ImVec2(ImGui::GetFrameHeight() * 6.0f, ImGui::GetFrameHeight() * 3.0f));
         }
     }
@@ -434,20 +434,20 @@ void editor::TerrainFoliagePanel::drawPrototypeFoldout(SceneProject* sceneProjec
     bool changed = false;
     if (!ImGui::BeginTable("##prototype_rows", 2, ImGuiTableFlags_SizingStretchProp)) return;
 
-    rowLabel("LODs", "Explicit LOD meshes and where they start; none: the generated levels of the mesh.");
+    foliageRowLabel("LODs", "Explicit LOD meshes and where they start; none: the generated levels of the mesh.");
     ImGui::TextUnformatted(authored.lodMeshes.empty() ? "Generated" : "Explicit");
     for (size_t l = 0; l < authored.lodMeshes.size(); l++) {
-        rowLabel(("LOD " + std::to_string(l + 1)).c_str());
+        foliageRowLabel(("LOD " + std::to_string(l + 1)).c_str());
         ImGui::TextUnformatted(authored.lodMeshes[l].str().c_str());
         if (l < authored.lodDistances.size()) {
-            rowLabel(("LOD " + std::to_string(l + 1) + " Distance").c_str());
+            foliageRowLabel(("LOD " + std::to_string(l + 1) + " Distance").c_str());
             changed |= ImGui::DragFloat(("##lod_distance" + std::to_string(l)).c_str(), &authored.lodDistances[l], 1.0f, 0.0f, 5000.0f, "%.0f");
         }
     }
 
-    rowLabel("Bend Factor", "How far the wind moves the whole tree, height squared; 0 draws the variant without wind.");
+    foliageRowLabel("Bend Factor", "How far the wind moves the whole tree, height squared; 0 draws the variant without wind.");
     changed |= ImGui::SliderFloat("##bend_factor", &authored.bendFactor, 0.0f, 1.0f, "%.2f");
-    rowLabel("Wind Mask", "What masks the leaves' flutter.");
+    foliageRowLabel("Wind Mask", "What masks the leaves' flutter.");
     int windMask = static_cast<int>(authored.windMask);
     const char* const maskNames[] = {"Height", "Vertex Color"};
     if (ImGui::Combo("##wind_mask", &windMask, maskNames, 2)) {
@@ -455,7 +455,7 @@ void editor::TerrainFoliagePanel::drawPrototypeFoldout(SceneProject* sceneProjec
         changed = true;
     }
 
-    rowLabel("Shadows", "Which bands cast: each mesh LOD, and the impostor.");
+    foliageRowLabel("Shadows", "Which bands cast: each mesh LOD, and the impostor.");
     for (int l = 0; l < 4; l++) {
         if (l > 0) ImGui::SameLine();
         bool on = (authored.shadowLodMask & (1u << l)) != 0;
@@ -473,7 +473,7 @@ void editor::TerrainFoliagePanel::drawPrototypeFoldout(SceneProject* sceneProjec
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The impostor casts");
 
-    rowLabel("Collision", "A static capsule per tree, while the scene simulates.");
+    foliageRowLabel("Collision", "A static capsule per tree, while the scene simulates.");
     int collision = static_cast<int>(authored.collision);
     const char* const collisionNames[] = {"None", "Capsule"};
     if (ImGui::Combo("##collision", &collision, collisionNames, 2)) {
@@ -481,11 +481,11 @@ void editor::TerrainFoliagePanel::drawPrototypeFoldout(SceneProject* sceneProjec
         changed = true;
     }
     if (authored.collision == TerrainTreeCollision::Capsule) {
-        rowLabel("Radius");
+        foliageRowLabel("Radius");
         changed |= ImGui::DragFloat("##collision_radius", &authored.collisionRadius, 0.01f, 0.01f, 50.0f, "%.2f");
-        rowLabel("Height");
+        foliageRowLabel("Height");
         changed |= ImGui::DragFloat("##collision_height", &authored.collisionHeight, 0.05f, 0.01f, 500.0f, "%.2f");
-        rowLabel("Fit");
+        foliageRowLabel("Fit");
         if (ImGui::Button("Fit from Mesh")) {
             FoliageSystem* foliage = sceneProject->scene->getSystem<FoliageSystem>().get();
             const Entity meshEntity = foliage->getPrototypeEntity(entity, prototype);
@@ -501,7 +501,7 @@ void editor::TerrainFoliagePanel::drawPrototypeFoldout(SceneProject* sceneProjec
         }
     }
 
-    rowLabel("Nav Obstacle", "Baked navmeshes go around these trees.");
+    foliageRowLabel("Nav Obstacle", "Baked navmeshes go around these trees.");
     changed |= ImGui::Checkbox("##nav_obstacle", &authored.navObstacle);
 
     if (changed) {
@@ -672,38 +672,38 @@ void editor::TerrainFoliagePanel::drawTerrainSettings(SceneProject* sceneProject
     };
     if (!ImGui::BeginTable("##foliage_settings", 2, ImGuiTableFlags_SizingStretchProp)) return;
     float value = terrain.detailDistance;
-    rowLabel("Detail Distance", "A Terrain-wide limit on every layer's Draw Distance; 0: none.");
+    foliageRowLabel("Detail Distance", "A Terrain-wide limit on every layer's Draw Distance; 0: none.");
     if (ImGui::DragFloat("##detail_distance", &value, 1.0f, 0.0f, 5000.0f, "%.0f")) setFloat("detailDistance", value);
     value = terrain.detailDensity;
-    rowLabel("Detail Density");
+    foliageRowLabel("Detail Density");
     if (ImGui::SliderFloat("##detail_density", &value, 0.0f, 1.0f, "%.2f")) setFloat("detailDensity", value);
     value = terrain.treeDistance;
-    rowLabel("Tree Distance");
+    foliageRowLabel("Tree Distance");
     if (ImGui::DragFloat("##tree_distance", &value, 1.0f, 0.0f, 20000.0f, "%.0f")) setFloat("treeDistance", value);
     value = terrain.billboardStart;
-    rowLabel("Billboard Start", "Where meshes hand over to impostors.");
+    foliageRowLabel("Billboard Start", "Where meshes hand over to impostors.");
     if (ImGui::DragFloat("##billboard_start", &value, 1.0f, 0.0f, 20000.0f, "%.0f")) setFloat("billboardStart", value);
     value = terrain.fadeLength;
-    rowLabel("Fade Length", "Dither between mesh and impostor.");
+    foliageRowLabel("Fade Length", "Dither between mesh and impostor.");
     if (ImGui::DragFloat("##fade_length", &value, 0.1f, 0.0f, 200.0f, "%.1f")) setFloat("fadeLength", value);
     int meshTrees = terrain.maxMeshTrees;
-    rowLabel("Max Mesh Trees", "Past this, by distance, a cell draws impostors only.");
+    foliageRowLabel("Max Mesh Trees", "Past this, by distance, a cell draws impostors only.");
     if (ImGui::DragInt("##max_mesh_trees", &meshTrees, 1.0f, 0, 100000)) {
         CommandHandle::get(sceneProject->id)->addCommand(new PropertyCmd<int>(project, sceneProject->id, entity, ComponentType::TerrainComponent, "maxMeshTrees", meshTrees));
     }
     Vector3 direction = terrain.windDirection;
-    rowLabel("Wind Direction");
+    foliageRowLabel("Wind Direction");
     if (ImGui::DragFloat3("##wind_direction", &direction.x, 0.01f, -1.0f, 1.0f, "%.2f")) {
         CommandHandle::get(sceneProject->id)->addCommand(new PropertyCmd<Vector3>(project, sceneProject->id, entity, ComponentType::TerrainComponent, "windDirection", direction));
     }
     value = terrain.windSpeed;
-    rowLabel("Wind Speed");
+    foliageRowLabel("Wind Speed");
     if (ImGui::DragFloat("##wind_speed", &value, 0.01f, 0.0f, 20.0f, "%.2f")) setFloat("windSpeed", value);
     value = terrain.windSize;
-    rowLabel("Wind Size", "World units between waves.");
+    foliageRowLabel("Wind Size", "World units between waves.");
     if (ImGui::DragFloat("##wind_size", &value, 0.1f, 0.01f, 500.0f, "%.1f")) setFloat("windSize", value);
     value = terrain.windBending;
-    rowLabel("Wind Bending");
+    foliageRowLabel("Wind Bending");
     if (ImGui::SliderFloat("##wind_bending", &value, 0.0f, 2.0f, "%.2f")) setFloat("windBending", value);
     ImGui::EndTable();
 }
@@ -773,34 +773,34 @@ bool editor::TerrainFoliagePanel::drawTrees(SceneProject* sceneProject, Entity e
     drawPrototypeGrid(sceneProject, entity, terrain);
 
     if (ImGui::BeginTable("##tree_rows", 2, ImGuiTableFlags_SizingStretchProp)) {
-        rowLabel("Place As", "Tree: stored in the Terrain's tree data, with LODs, impostors and capsules. GameObject: a child of the Terrain, with its components.");
+        foliageRowLabel("Place As", "Tree: stored in the Terrain's tree data, with LODs, impostors and capsules. GameObject: a child of the Terrain, with its components.");
         int placeAs = placeAsTree ? 0 : 1;
         const char* const placeNames[] = {"Tree", "GameObject"};
         if (ImGui::Combo("##place_as", &placeAs, placeNames, 2)) placeAsTree = placeAs == 0;
         if (placeAsTree) {
-            rowLabel("Brush Size");
+            foliageRowLabel("Brush Size");
             ImGui::DragFloat("##tree_brush_size", &brushSize, 0.1f, 0.1f, 500.0f, "%.1f");
-            rowLabel("Tree Density", "Trees per square world unit under the brush.");
+            foliageRowLabel("Tree Density", "Trees per square world unit under the brush.");
             ImGui::DragFloat("##tree_density", &treeDensity, 0.01f, 0.001f, 10.0f, "%.3f");
-            rowLabel("Tree Height", "Scale of the mesh's height, with a random range.");
+            foliageRowLabel("Tree Height", "Scale of the mesh's height, with a random range.");
             ImGui::DragFloat("##tree_height", &treeHeight, 0.01f, 0.05f, 20.0f, "%.2f");
-            rowLabel("Height Random");
+            foliageRowLabel("Height Random");
             ImGui::SliderFloat("##tree_height_random", &treeHeightRandom, 0.0f, 1.0f, "%.2f");
-            rowLabel("Lock Width to Height");
+            foliageRowLabel("Lock Width to Height");
             ImGui::Checkbox("##tree_lock_width", &lockWidthToHeight);
             ImGui::BeginDisabled(lockWidthToHeight);
-            rowLabel("Tree Width");
+            foliageRowLabel("Tree Width");
             ImGui::DragFloat("##tree_width", &treeWidth, 0.01f, 0.05f, 20.0f, "%.2f");
-            rowLabel("Width Random");
+            foliageRowLabel("Width Random");
             ImGui::SliderFloat("##tree_width_random", &treeWidthRandom, 0.0f, 1.0f, "%.2f");
             ImGui::EndDisabled();
-            rowLabel("Random Tree Rotation");
+            foliageRowLabel("Random Tree Rotation");
             ImGui::Checkbox("##tree_rotation", &randomRotation);
-            rowLabel("Color Variation");
+            foliageRowLabel("Color Variation");
             ImGui::SliderFloat("##tree_color", &colorVariation, 0.0f, 1.0f, "%.2f");
-            rowLabel("Normal Alignment");
+            foliageRowLabel("Normal Alignment");
             ImGui::SliderFloat("##tree_align", &normalAlignment, 0.0f, 1.0f, "%.2f");
-            rowLabel("Spacing", "Closest two trees of a stroke may get, world units.");
+            foliageRowLabel("Spacing", "Closest two trees of a stroke may get, world units.");
             ImGui::DragFloat("##tree_spacing", &spacing, 0.05f, 0.0f, 100.0f, "%.2f");
         }
         ImGui::EndTable();
@@ -840,22 +840,22 @@ void editor::TerrainFoliagePanel::drawDetails(SceneProject* sceneProject, Entity
             }
         };
         if (ImGui::BeginTable("##detail_rows", 2, ImGuiTableFlags_SizingStretchProp)) {
-            rowLabel("Min/Max Height", "Random height over the width scale.");
+            foliageRowLabel("Min/Max Height", "Random height over the width scale.");
             if (ImGui::DragFloatRange2("##detail_ratio", &layer.minHeightRatio, &layer.maxHeightRatio, 0.01f, 0.01f, 1.99f, "%.2f", "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
                 set("minHeightRatio", layer.minHeightRatio);
                 set("maxHeightRatio", layer.maxHeightRatio);
             }
-            rowLabel("Healthy Color");
+            foliageRowLabel("Healthy Color");
             colorRow("##detail_healthy", "Healthy Color", "healthyColor", layer.healthyColor);
-            rowLabel("Dry Color");
+            foliageRowLabel("Dry Color");
             colorRow("##detail_dry", "Dry Color", "dryColor", layer.dryColor);
-            rowLabel("Noise Spread", "Noise cells per world unit between Dry and Healthy; 0 picks per instance.");
+            foliageRowLabel("Noise Spread", "Noise cells per world unit between Dry and Healthy; 0 picks per instance.");
             if (ImGui::DragFloat("##detail_noise", &layer.noiseSpread, 0.005f, 0.0f, 10.0f, "%.3f")) set("noiseSpread", layer.noiseSpread);
-            rowLabel("Bend Factor", "How far the wind moves it; 0 draws the variant without wind.");
+            foliageRowLabel("Bend Factor", "How far the wind moves it; 0 draws the variant without wind.");
             if (ImGui::SliderFloat("##detail_bend", &layer.windBend, 0.0f, 1.0f, "%.2f")) set("windBend", layer.windBend);
-            rowLabel("Density Falloff Start", "Share of the draw distance where it starts to thin.");
+            foliageRowLabel("Density Falloff Start", "Share of the draw distance where it starts to thin.");
             if (ImGui::SliderFloat("##detail_falloff", &layer.densityFalloffStart, 0.0f, 1.0f, "%.2f")) set("densityFalloffStart", layer.densityFalloffStart);
-            rowLabel("Far Density", "What it thins to at the draw distance.");
+            foliageRowLabel("Far Density", "What it thins to at the draw distance.");
             if (ImGui::SliderFloat("##detail_far", &layer.farDensity, 0.0f, 1.0f, "%.2f")) set("farDensity", layer.farDensity);
             ImGui::EndTable();
         }

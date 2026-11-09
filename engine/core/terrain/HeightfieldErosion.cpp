@@ -198,7 +198,7 @@ namespace jasperengine { namespace terraincore {
 
     }
 
-    bool HeightfieldErosion::hydraulic(const HydraulicParams& input, const ErosionRegion& region, float* height, const float* hardness,
+    bool HeightfieldErosion::hydraulic(const HydraulicParams& input, const HeightfieldRegion& region, float* height, const float* hardness,
                                        float* flow, float* sediment, const ErosionControl& control, uint64_t* dropletSteps){
         if (region.width < 2 || region.depth < 2) return true;
         HydraulicParams params = input;
@@ -287,7 +287,7 @@ namespace jasperengine { namespace terraincore {
         return finished;
     }
 
-    bool HeightfieldErosion::thermal(const ThermalParams& params, const ErosionRegion& region, float* height, const ErosionControl& control){
+    bool HeightfieldErosion::thermal(const ThermalParams& params, const HeightfieldRegion& region, float* height, const ErosionControl& control){
         if (region.width < 2 || region.depth < 2) return true;
         const size_t width = static_cast<size_t>(region.width);
         const size_t depth = static_cast<size_t>(region.depth);

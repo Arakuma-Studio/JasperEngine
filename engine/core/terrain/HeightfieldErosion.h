@@ -41,7 +41,7 @@ namespace jasperengine { namespace terraincore {
     };
 
     // Which global texels a buffer holds, and the world scale they stand for (R26)
-    struct ErosionRegion {
+    struct HeightfieldRegion {
         int64_t startX = 0, startZ = 0;
         int width = 0, depth = 0;
         float maxHeight = 100.0f;
@@ -58,9 +58,9 @@ namespace jasperengine { namespace terraincore {
         // height: normalized, in and out. hardness: optional, 0..1, scales the cut down. flow and
         // sediment: optional, 0..1 out. False when cancelled, with height partly eroded: the caller
         // owns the only copy and drops it.
-        static bool hydraulic(const HydraulicParams& params, const ErosionRegion& region, float* height, const float* hardness,
+        static bool hydraulic(const HydraulicParams& params, const HeightfieldRegion& region, float* height, const float* hardness,
                               float* flow, float* sediment, const ErosionControl& control = {}, uint64_t* dropletSteps = nullptr);
-        static bool thermal(const ThermalParams& params, const ErosionRegion& region, float* height, const ErosionControl& control = {});
+        static bool thermal(const ThermalParams& params, const HeightfieldRegion& region, float* height, const ErosionControl& control = {});
 
         // The texels of padding a region needs around what it keeps (R22)
         static int hydraulicPadding(const HydraulicParams& params) { return params.lifetime + params.radius + 2; }
