@@ -41,11 +41,26 @@ namespace {
         std::string language, script, region;
     };
 
+    bool digits(const std::string& s){
+        return !s.empty() && std::all_of(s.begin(), s.end(), [](char c){ return std::isdigit((unsigned char)c) != 0; });
+    }
+
+    // the subtags of a canonical tag (LocaleRules' rules, without normalizing again)
     Parts partsOf(const std::string& tag){
         Parts p;
-        p.language = LocaleRules::languageCode(tag);
-        p.script = lower(LocaleRules::scriptCode(tag));
-        p.region = LocaleRules::regionCode(tag);
+        size_t start = 0, index = 0;
+        while (start <= tag.size()){
+            size_t end = tag.find('-', start);
+            if (end == std::string::npos) end = tag.size();
+            const std::string part = tag.substr(start, end - start);
+            if (index == 0) p.language = lower(part);
+            else if (index == 1 && part.size() == 4 && alpha(part)) p.script = lower(part);
+            else if (p.region.empty() && index <= 2 && ((part.size() == 2 && alpha(part)) || (part.size() == 3 && digits(part)))) p.region = part;
+            else if (index >= 1) break;
+            index++;
+            start = end + 1;
+        }
+        for (char& c : p.region) c = (char)std::toupper((unsigned char)c);
         if (p.language == "zh" && p.script.empty()){
             p.script = (p.region == "TW" || p.region == "HK" || p.region == "MO") ? "hant" : "hans";
         }
@@ -102,28 +117,56 @@ bool TitleArtLanguage::isValid(const std::string& tag, std::string* error){
     return ok;
 }
 
+namespace {
+
+    // `available` canonicalised once: renderers ask with the same list every time (R48)
+    struct AvailableCache{
+        std::vector<std::string> source;
+        std::vector<std::string> lowered;
+        std::vector<Parts> parts;
+    };
+
+    const AvailableCache& prepared(const std::vector<std::string>& available){
+        thread_local AvailableCache cache;
+        if (cache.source != available){
+            cache.source = available;
+            cache.lowered.clear();
+            cache.parts.clear();
+            for (const std::string& a : available){
+                const std::string c = TitleArtLanguage::canonicalize(a);
+                cache.lowered.push_back(lower(c));
+                cache.parts.push_back(partsOf(c));
+            }
+        }
+        return cache;
+    }
+
+}
+
 std::string TitleArtLanguage::match(const std::string& candidate, const std::vector<std::string>& available){
     const std::string wanted = canonicalize(candidate);
     if (wanted.empty()) return "";
-    for (const std::string& a : available){
-        if (lower(canonicalize(a)) == lower(wanted)) return a;
+    const AvailableCache& av = prepared(available);
+    const std::string wantedLower = lower(wanted);
+    for (size_t i = 0; i < available.size(); i++){
+        if (av.lowered[i] == wantedLower) return available[i];
     }
     const Parts want = partsOf(wanted);
     // (2) same language and script, region ignored: a tag without region first
     std::string first;
-    for (const std::string& a : available){
-        const Parts have = partsOf(canonicalize(a));
+    for (size_t i = 0; i < available.size(); i++){
+        const Parts& have = av.parts[i];
         if (have.language != want.language || have.script != want.script) continue;
-        if (have.region.empty()) return a;
-        if (first.empty()) first = a;
+        if (have.region.empty()) return available[i];
+        if (first.empty()) first = available[i];
     }
     if (!first.empty()) return first;
     // (3) same language, either script unknown: the bare language first
-    for (const std::string& a : available){
-        const Parts have = partsOf(canonicalize(a));
+    for (size_t i = 0; i < available.size(); i++){
+        const Parts& have = av.parts[i];
         if (have.language != want.language || (!have.script.empty() && !want.script.empty())) continue;
-        if (lower(canonicalize(a)) == want.language) return a;
-        if (first.empty()) first = a;
+        if (av.lowered[i] == want.language) return available[i];
+        if (first.empty()) first = available[i];
     }
     return first;
 }

@@ -1269,7 +1269,7 @@ void registerTitleArtTools(McpRegistry& registry) {
             {"baseline", string("PNG or rev:<n>.")},
             {"save_baseline", string("PNG path.")},
             {"fail_on", withDefault(stringEnum("", {"fail", "warn"}), "fail")},
-            {"languages", Json{{"type", Json::array({"string", "array"})}, {"items", Json{{"type", "string"}}}}},
+            {"languages", Json{{"type", Json::array({"string", "array"})}}},
             {"screenshot", withDefault(stringEnum("", {"on_failure", "always", "never"}), "on_failure")},
             {"wait", withDefault(boolean(""), true)},
             {"timeout_seconds", withDefault(number(""), 120)},
@@ -1289,12 +1289,11 @@ void registerTitleArtTools(McpRegistry& registry) {
         tool.description =
             "Bakes a .titleart's outputs (all, or `outputs` ids) to PNGs with recipes and the bake sidecar as a job; fresh ones "
             "are skipped unless force. dry_run reports files, sizes, bytes and VRAM without writing. Outputs are configured "
-            "with edit_title (set outputs[i].scale). format png/psd/svg/sheet/atlas/sequence/ktx2/csv/xliff: delivery files in out "
-            "per languages; options per jasper://docs/title-art.";
+            "with edit_title (set outputs[i].scale). Other formats write files to out (jasper://docs/title-art).";
         std::vector<std::string> formats;
         for (const FormatOwner& f : FORMATS) formats.push_back(f.format);
         // S87 §6.3: `path` may list several documents (strings formats), `languages` "all", a code or codes
-        const Json stringOrList = Json{{"type", Json::array({"string", "array"})}, {"items", Json{{"type", "string"}}}};
+        const Json stringOrList = Json{{"type", Json::array({"string", "array"})}};
         tool.inputSchema = object({
             {"path", stringOrList},
             {"outputs", array(string(""), "")},
