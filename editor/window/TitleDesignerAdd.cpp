@@ -15,6 +15,7 @@
 #include "titleart/designer/TitleSearchTerms.h"
 #include "search/SearchScorer.h"
 #include "titleart/TitleArtSchema.h"
+#include "util/FileDialogs.h"
 
 #include "imgui.h"
 
@@ -129,7 +130,9 @@ void TitleDesignerWindow::drawAddPalette() {
                   "A " + enumLabel(shape) + " shape with rims and materials like text");
         }
         layer("Layers", "image", "Image...", ta::Json{{"op", "add_layer"}, {"type", "image"}}, "A picture from the project (drop a Texture on the tree)");
-        layer("Layers", "vector", "Vector (SVG)...", ta::Json{{"op", "add_layer"}, {"type", "vector"}}, "An SVG from the project");
+        // R34: a picker action, the chosen file goes through dropFiles
+        layer("Layers", "vector", "Vector (SVG)...", ta::Json(), "An SVG file, split into layers if you ask (import_svg)");
+        entries.back().previewable = false;
         layer("Layers", "group", "Group", ta::Json{{"op", "add_layer"}, {"type", "group"}}, "A folder of layers");
         // the adjustment types of S80's schema
         std::vector<std::string> adjustments;
@@ -266,7 +269,17 @@ void TitleDesignerWindow::drawAddPalette() {
             doc.setPreview(item, &error);
         }
     }
-    if (chosen && doc.editable()) {
+    if (chosen && chosen->id == "layer:vector") {
+        if (doc.editable()) {
+            doc.clearPreview();
+            const std::string file = FileDialogs::openFileDialogFiltered("", "SVG", "svg");
+            std::string error;
+            if (!file.empty() && !dropFiles({file}, std::string(), &error)) reportError(error);
+        }
+        addHovered.clear();
+        addOpen = false;
+        ImGui::CloseCurrentPopup();
+    } else if (chosen && doc.editable()) {
         doc.clearPreview();
         const ta::Json ops = chosen->op.is_array() ? chosen->op : ta::Json::array({chosen->op});
         std::string error;

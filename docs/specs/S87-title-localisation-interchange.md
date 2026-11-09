@@ -1477,3 +1477,25 @@ rest of S82 lands in 6B.
 28. **Decision: `isLanguageReady` answers for the language just asked.** The system sees a change
     at its next update, so the call resolves the candidates itself when one is pending and reads
     false right after `setLanguage`; `getResolvedLanguage` still changes at that update.
+29. **Deviation (Photoshop): parsers written from Adobe's document.** The ag-psd source was not
+    available, so nothing of it was taken and `NOTICE.md` has no ag-psd entry. AC16's
+    Photoshop-made samples and AC20's manual opens in GIMP, Krita and Photoshop were not done
+    (no such files, no such hosts); AC20 reads every export with `psdread.py` and `psd-tools`.
+30. **Implementation (Photoshop):** `import_ps_styles` writes `.titlelook` directly and needs a
+    document `path`; it moves to S84's `lookFromStyle` when S84 lands. Brightness/Contrast is
+    written as `CgEd`. Rim-alone parts hide the face with face opacity 0 (not checked visually).
+    The PSD export has its own layer plan (`PsdExport`), not `titleExportParts`.
+31. **Implementation (R49): the PSD streams.** `PsdAssembler` compresses each render's channels
+    into a working file beside the export (`.<name>.spool`, removed with the job) and frees it,
+    and `writePsdFile` assembles the file, byte-identical to the in-memory writer
+    (`StreamingMatchesTheBatchUnderTheMemoryCap`, 3 x the frame's RGBA16F at both depths). The
+    file is moved into place; only a `zip` export reads it back into memory.
+32. **Measured limit (SVG, AC21):** the AC's limits hold for flat rims with a mask and a gradient.
+    A turned, contrasting title is held to its measured limits (max 110, 11 % of pixels), because
+    LunaSVG blends edges in sRGB where the engine blends in linear light and resamples a turned
+    layer differently. `test_turned_contrasting_title_registers` guards registration, not colour.
+33. **Decision (SVG):** `reflected` gradients are written with mirrored stops; clipping to a
+    rimmed base uses `<mask>`; a mask's feather is drawn hard with a warning.
+34. **R34's Designer entries:** a dropped `.svg` runs `import_svg` (outside the assets it is
+    copied beside the document), and **Add Layer > Vector (SVG)...** is a file picker into the
+    same path, so an empty Vector layer can no longer be added from the palette.

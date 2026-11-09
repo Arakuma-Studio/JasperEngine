@@ -67,6 +67,10 @@ async def test_psd_layers_and_merged(ed: Editor):
     data = (ed.project / r["files"][0]).read_bytes()
     psd = psdread.read(data)
     ed.check_eq((psd["version"], psd["depth"], psd["mode"]), (1, 8, 3), "PSD v1, 8-bit RGB")
+    # R49: the renders are streamed to the working file and it is gone afterwards
+    ed.check(r["peak_pixel_bytes"] <= 3 * psd["width"] * psd["height"] * 8, f"within R49's cap: {r['peak_pixel_bytes']}")
+    folder = (ed.project / r["files"][0]).parent
+    ed.check_eq(sorted(p.name for p in folder.glob(".*")), [], "no .spool or .part file left beside the export")
     ed.check_eq(psd["icc"]["description"], "sRGB (JasperEngine)", "our generated profile, §6.10's layout")
     ed.check(all(abs(a - b) < 1e-4 for a, b in zip(psd["icc"]["white"], [0.9642, 1.0, 0.8249])), "its matrix sums to D50")
     ed.check_eq(names_of(psd, psd["tree"]), ["Title", "Shine", ("Back", ["Plate"]), "Invert"], "the layer tree, bottom first")

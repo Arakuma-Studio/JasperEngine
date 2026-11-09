@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <unistd.h>
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::psd;
@@ -118,6 +119,44 @@ namespace {
         return v;
     }
 
+    void spoolAll(std::vector<PsdWriteLayer>& layers, int bitDepth, PsdChannelSpool& spool) {
+        std::string error;
+        for (PsdWriteLayer& l : layers) {
+            if (l.group) {
+                spoolAll(l.children, bitDepth, spool);
+                continue;
+            }
+            if (l.adjustmentKey.empty()) ASSERT_TRUE(psdSpoolPixels(l, bitDepth, spool, error)) << error;
+            if (l.hasMask) ASSERT_TRUE(psdSpoolMask(l, bitDepth, spool, error)) << error;
+        }
+    }
+
+    // R49: the file assembled from the spool is the same file, with no layer left in memory
+    void streamed(int bps) {
+        std::vector<uint8_t> batch;
+        std::string error;
+        ASSERT_TRUE(writePsd(document(bps), batch, error)) << error;
+        const fs::path dir = fs::temp_directory_path() / ("je_psd_spool_" + std::to_string(::getpid()) + "_" + std::to_string(bps));
+        fs::create_directories(dir);
+        const fs::path spoolPath = dir / "x.spool";
+        {
+            PsdWriteDocument doc = document(bps);
+            PsdChannelSpool spool;
+            ASSERT_TRUE(spool.open(spoolPath, error)) << error;
+            spoolAll(doc.layers, bps * 8, spool);
+            ASSERT_TRUE(psdSpoolMerged(doc, spool, error)) << error;
+            EXPECT_TRUE(doc.merged.empty()) << "the merged image is freed";
+            for (const PsdWriteLayer& l : doc.layers) EXPECT_TRUE(l.rgba.empty()) << l.name << " is freed";
+            ASSERT_TRUE(writePsdFile(doc, spool, dir / "x.psd", error)) << error;
+            EXPECT_TRUE(fs::exists(spoolPath));
+        }
+        EXPECT_FALSE(fs::exists(spoolPath)) << "the working file goes with the spool";
+        std::ifstream in(dir / "x.psd", std::ios::binary);
+        const std::vector<uint8_t> file((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        EXPECT_EQ(file, batch) << "the same bytes as writing in memory";
+        fs::remove_all(dir);
+    }
+
     void roundTrip(int bps) {
         const PsdWriteDocument doc = document(bps);
         std::vector<uint8_t> bytes, again;
@@ -177,6 +216,14 @@ namespace {
         EXPECT_EQ(psdMergedRgba(file, bps * 8), doc.merged);
     }
 
+}
+
+TEST(PsdWriterTest, StreamedFileEqualsTheBatchFile8) {
+    streamed(1);
+}
+
+TEST(PsdWriterTest, StreamedFileEqualsTheBatchFile16) {
+    streamed(2);
 }
 
 TEST(PsdWriter, RoundTrip8) {

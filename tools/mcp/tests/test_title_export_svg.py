@@ -113,3 +113,25 @@ async def test_svg_per_language(ed: Editor):
     r = await ed.call("export_title", path=path, format="svg", languages="all", options={"overwrite": True})
     ed.check_eq(sorted(r["files"]), ["Recordings/Title Art/words/words.de.svg", "Recordings/Title Art/words/words.en.svg"], "a file per language")
     ed.check(r["frames"]["de"] != r["frames"]["en"], "each trimmed to its own text")
+
+
+async def test_embed_raster_uses_the_renderer(ed: Editor):
+    """embed_raster: a layer with no vector form comes from the real renderer, as a PNG in the SVG."""
+    await setup(ed)
+    path = "assets/titles/raster.titleart"
+    await ed.call("edit_title", path=path, create={"text": "RASTER", "canvas": [512, 256]}, bake="never",
+                  ops=[{"op": "add_layer", "type": "generator", "generator": "fill"}])
+    plain = await ed.call("export_title", path=path, format="svg", options={"overwrite": True})
+    ed.check(any("left out" in w for w in plain.get("warnings", [])), f"without it the generator is left out: {plain}")
+    ed.check("<image" not in (ed.project / plain["files"][0]).read_text(), "and nothing is embedded")
+    r = await ed.call("export_title", path=path, format="svg", options={"overwrite": True, "embed_raster": True})
+    ed.check(r.get("ok"), f"exported: {r}")
+    ed.check(not any("left out" in w for w in r.get("warnings", [])), f"the layer is no longer left out: {r}")
+    text = (ed.project / r["files"][0]).read_text()
+    ed.check_in("<image", text, "a raster element")
+    ed.check_in("data:image/png;base64,", text, "with the rendered PNG inside")
+    png = await ed.call("export_title", path=path, format="png", options={"overwrite": True, "dither": False})
+    ed.check_eq(r["frames"], png["frames"], "the same frame")
+    diff = await ed.call("diff_images", a=r["files"][0], b=png["files"][0], tolerance=8, max_fraction=0.02, max_diff=64, max_mean=255)
+    ed.check(diff.get("ok"), f"the SVG renders as the PNG: {diff}")
+

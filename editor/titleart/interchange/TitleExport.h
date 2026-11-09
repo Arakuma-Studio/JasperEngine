@@ -106,6 +106,8 @@ namespace jasperengine::editor {
         std::string fileName(const std::string& part, const std::string& language, const std::string& extension) const;
         // writes (or stages for the ZIP) a file of the export; false after fail() (output_exists, write_failed)
         bool write(const std::string& name, std::string content);
+        // the same for a finished file on disk (moved into place; a ZIP reads it into memory)
+        bool writeFile(const std::string& name, const std::filesystem::path& file);
         // the document resolved for a language ("" = the source), its fit applied
         titleart::TitleArtDoc resolved(const std::string& language) const;
 

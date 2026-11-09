@@ -15,17 +15,48 @@
 //   trimmed to its alpha, and the colour of transparent pixels is written 0 (smaller PackBits;
 //   Photoshop ignores it).
 // - Deterministic: the same document gives the same bytes (no time, no random id; miniz level 6).
-// - Thread-safety: pure function.
+// - Streaming (R49): psdSpoolPixels / psdSpoolMask / psdSpoolMerged compress a layer's channels
+//   into a PsdChannelSpool on disk and free its pixels, and writePsdFile assembles the file from
+//   it, with the same bytes as writePsd; a large export holds one render at a time.
+// - Thread-safety: pure functions; a spool belongs to one thread.
 
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <iosfwd>
 #include <string>
 #include <vector>
 
 namespace jasperengine::editor::psd {
 
     constexpr int PSD_MAX_SIDE = 30000;
+
+    // a compressed channel on disk (compression tag and payload)
+    struct PsdSpooledChannel {
+        int16_t id = 0;
+        uint64_t offset = 0;
+        uint64_t length = 0;
+    };
+
+    // the channels waiting to go into the file; the file is removed with the object
+    class PsdChannelSpool {
+    public:
+        PsdChannelSpool() = default;
+        ~PsdChannelSpool();
+        PsdChannelSpool(const PsdChannelSpool&) = delete;
+        PsdChannelSpool& operator=(const PsdChannelSpool&) = delete;
+
+        bool open(const std::filesystem::path& path, std::string& error);
+        bool append(const std::vector<uint8_t>& data, uint64_t& offset, std::string& error);
+        bool copy(uint64_t offset, uint64_t length, std::ostream& to, std::string& error);
+
+    private:
+        std::filesystem::path path;
+        std::fstream file;
+        uint64_t size = 0;
+    };
 
     struct PsdWriteLayer {
         std::string name;
@@ -48,6 +79,12 @@ namespace jasperengine::editor::psd {
         // a native adjustment layer: its key (levl, curv, hue2, brit, nvrt, post, thrs) and data
         std::string adjustmentKey;
         std::vector<uint8_t> adjustmentData;
+        // set by psdSpoolPixels / psdSpoolMask, with `rgba` / `mask` emptied
+        bool pixelsSpooled = false;
+        int spooledLeft = 0, spooledTop = 0, spooledRight = 0, spooledBottom = 0;
+        std::vector<PsdSpooledChannel> spooledPixels;   // alpha, R, G, B
+        bool maskSpooled = false;
+        PsdSpooledChannel spooledMask;
     };
 
     struct PsdWriteDocument {
@@ -57,9 +94,18 @@ namespace jasperengine::editor::psd {
         std::vector<uint8_t> icc;                  // empty: the generated sRGB profile
         std::vector<PsdWriteLayer> layers;         // bottom first
         std::vector<uint8_t> merged;               // straight RGBA of the whole document
+        bool mergedSpooled = false;                // set by psdSpoolMerged, with `merged` emptied
+        uint64_t mergedOffset = 0, mergedLength = 0;
     };
 
     // false with `error` (psd_too_large, bad_bit_depth, bad_pixels: one sentence)
     bool writePsd(const PsdWriteDocument& doc, std::vector<uint8_t>& out, std::string& error);
+
+    // the layer's pixel channels, trimmed as writePsd trims them, into the spool
+    bool psdSpoolPixels(PsdWriteLayer& layer, int bitDepth, PsdChannelSpool& spool, std::string& error);
+    bool psdSpoolMask(PsdWriteLayer& layer, int bitDepth, PsdChannelSpool& spool, std::string& error);
+    bool psdSpoolMerged(PsdWriteDocument& doc, PsdChannelSpool& spool, std::string& error);
+    // writes the document, whose channels are in `spool`, to `output`
+    bool writePsdFile(const PsdWriteDocument& doc, PsdChannelSpool& spool, const std::filesystem::path& output, std::string& error);
 
 }

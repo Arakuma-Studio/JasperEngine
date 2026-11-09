@@ -218,6 +218,31 @@ bool TitleExportContext::write(const std::string& name, std::string content) {
     return true;
 }
 
+bool TitleExportContext::writeFile(const std::string& name, const fs::path& file) {
+    std::error_code ec;
+    if (request.options.value("zip", false)) {
+        std::string content;
+        const bool read = assetio::readFile(file, content);
+        fs::remove(file, ec);
+        if (!read) return fail("write_failed", "reading " + file.generic_string());
+        return write(name, std::move(content));
+    }
+    const fs::path target = request.out / FileUtils::pathFromUtf8(name);
+    if (fs::exists(target, ec) && !request.options.value("overwrite", false)) {
+        fs::remove(file, ec);
+        return fail("output_exists", "'" + name + "' exists in " + request.out.generic_string() + ": pass options.overwrite true to replace it");
+    }
+    fs::rename(file, target, ec);
+    if (ec) {
+        fs::remove(file, ec);
+        return fail("write_failed", "moving " + name + " into " + request.out.generic_string());
+    }
+    const fs::path project = request.project ? request.project->getProjectPath() : fs::path();
+    std::error_code rel;
+    result.files.push_back(!project.empty() && inside(project, target) ? fs::relative(target, project, rel).generic_string() : target.generic_string());
+    return true;
+}
+
 titleart::TitleArtDoc TitleExportContext::resolved(const std::string& language) const {
     titleart::TitleArtDoc out = titleart::resolveTitleLanguage(request.doc, language);
     const titleart::AssetResolver* assets = TitleArtRenderHost::editor().resolver(request.project);

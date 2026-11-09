@@ -14,8 +14,10 @@
 //   its parent, adjusted, with what it covers hidden; `split_titles` turning each 2D title into a
 //   group of its rims alone, its face alone (hidden, their own part effects only) and "fx".
 // - planPsdExport() makes the plan and its render jobs (a document variant each, rendered by S80's
-//   renderer on the shared frame); assemblePsd() turns the rendered jobs into PsdWriter's input;
-//   the `psd` format of export_title (TitleExport.h) steps the jobs and writes the file.
+//   renderer on the shared frame); PsdAssembler takes each job's pixels as it arrives and, for
+//   the `psd` format of export_title (TitleExport.h), compresses them into a spool and frees them
+//   (R49: at most one render, the live clip bases' alpha and one plane in memory);
+//   assemblePsd() is the same assembly with every render already in memory.
 // - Thread-safety: plan and assembly are pure; the format's plan runs on the main thread.
 
 #pragma once
@@ -70,6 +72,45 @@ namespace jasperengine::editor::psd {
 
     // `doc`: the document as it renders (resolved for the export's language)
     PsdExportPlan planPsdExport(const titleart::TitleArtDoc& doc, const PsdPlanOptions& options);
+
+    // Builds the PSD from the plan's renders, one at a time (`add` in the plan's job order: a
+    // clip base comes before the layers clipped to it). With a spool each render's channels go
+    // to disk and its pixels are freed; without one the pixels stay in document(). A render
+    // that does not match the plan fails with `render_failed`.
+    class PsdAssembler {
+    public:
+        PsdAssembler(const PsdExportPlan& plan, int bitDepth, double dpi, int width, int height, PsdChannelSpool* spool);
+
+        // consumes `pixels` (straight RGBA, frame-sized)
+        bool add(int job, texsynth::Image& pixels, std::string& error);
+        // every job received?
+        bool complete(std::string& error) const;
+        PsdWriteDocument& document() { return doc; }
+        // the most pixel bytes held at once (one render, the clip bases' alpha, one plane)
+        size_t peakBytes() const { return peak; }
+
+    private:
+        struct Consumer {
+            PsdWriteLayer* pixels = nullptr;
+            const PsdPlanNode* node = nullptr;
+            PsdWriteLayer* mask = nullptr;
+            int clipUsers = 0;
+            bool received = false;
+        };
+
+        void buildLayers(const std::vector<PsdPlanNode>& nodes, std::vector<PsdWriteLayer>& out);
+        void bindLayers(const std::vector<PsdPlanNode>& nodes, std::vector<PsdWriteLayer>& layers);
+        double alphaOf(const texsynth::Image& image, size_t pixel) const;
+        void measure(size_t renderBytes);
+
+        const PsdExportPlan& plan;
+        PsdChannelSpool* spool;
+        PsdWriteDocument doc;
+        int bytesPerSample = 1;
+        std::vector<Consumer> consumers;
+        std::vector<std::vector<uint8_t>> clipAlpha;    // by job, while a layer still needs it
+        size_t clipBytes = 0, peak = 0;
+    };
 
     // `renders[i]` the straight RGBA (8- or 16-bit) of plan.jobs[i], every one frame-sized
     bool assemblePsd(const PsdExportPlan& plan, const std::vector<texsynth::Image>& renders, int bitDepth, double dpi,

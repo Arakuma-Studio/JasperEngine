@@ -12,11 +12,14 @@
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
 #include "titleart/interchange/TitleImport.h"
+#include "titleart/interchange/psd/AslReader.h"
+#include "titleart/interchange/psd/PsdReader.h"
 #include "titleart/localisation/TitleStrings.h"
 
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -102,6 +105,39 @@ TEST(InterchangeFuzz, XliffNeverCrashes) {
     EXPECT_GT(refused, 0u);
 }
 
+namespace {
+
+    std::string fixture(const std::string& relative) {
+        std::ifstream in(fs::path(JASPER_TEST_REPO_DIR) / "editor/tests/titleart/fixtures" / relative, std::ios::binary);
+        EXPECT_TRUE(in) << relative;
+        std::ostringstream out;
+        out << in.rdbuf();
+        return out.str();
+    }
+
+}
+
+// the Photoshop readers on mutations of real files (tools/titleart/make_psd_fixtures.py)
+TEST(InterchangeFuzz, PhotoshopReadersNeverCrash) {
+    using namespace jasperengine::editor::psd;
+    size_t runs = 0;
+    for (const char* name : {"psd/layers8.psd", "psd/layers16.psd", "psd/layers.psb", "psd/grey8.psd"}) {
+        for (const std::string& input : mutations(fixture(name), 300)) {
+            PsdFile file;
+            std::string error;
+            if (!readPsd(reinterpret_cast<const uint8_t*>(input.data()), input.size(), file, error)) EXPECT_FALSE(error.empty()) << name;
+            runs++;
+        }
+    }
+    for (const std::string& input : mutations(fixture("psd/styles.asl"), 300)) {
+        AslFile file;
+        std::string error;
+        if (!readAsl(reinterpret_cast<const uint8_t*>(input.data()), input.size(), file, error)) EXPECT_FALSE(error.empty());
+        runs++;
+    }
+    EXPECT_EQ(runs, 1500u);
+}
+
 // every registered importer of create.from (S87's Pachislop, PSD, SVG), on mutations of a file
 // of each kind: an import works or fails with a code and a sentence
 TEST(InterchangeFuzz, ImportersNeverCrash) {
@@ -114,6 +150,9 @@ TEST(InterchangeFuzz, ImportersNeverCrash) {
             "fonts": [], "assets": []})"},
         {"badge.svg", R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><g id="a"><path d="M10 10 L90 10 L50 90 Z" fill="#f00"/></g><circle cx="50" cy="50" r="10"/></svg>)"},
         {"layers.psd", std::string("8BPS\0\1\0\0\0\0\0\0\0\4\0\0\0\x10\0\0\0\x10\0\x08\0\x03\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 46)},
+        {"real.pslot.json", fixture("pachislop/v6_groups_masks_clip.pslot.json")},
+        {"real.psd", fixture("psd/layers8.psd")},
+        {"real16.psd", fixture("psd/layers16.psd")},
     };
     size_t runs = 0;
     for (const auto& [name, seed] : seeds) {
@@ -134,6 +173,6 @@ TEST(InterchangeFuzz, ImportersNeverCrash) {
             runs++;
         }
     }
-    EXPECT_EQ(runs, 900u);
+    EXPECT_EQ(runs, 1800u);
     fs::remove_all(dir);
 }

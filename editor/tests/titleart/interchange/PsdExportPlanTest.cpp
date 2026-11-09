@@ -14,10 +14,17 @@
 #include "titleart/interchange/psd/PsdExport.h"
 #include "titleart/interchange/psd/PsdReader.h"
 
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <unistd.h>
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::psd;
 using titleart::Json;
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -161,4 +168,63 @@ TEST(PsdExportPlan, AssembleWriteAndRead) {
     // a renders/jobs mismatch is refused
     renders.pop_back();
     EXPECT_FALSE(assemblePsd(plan, renders, 8, 72, psd, error));
+}
+
+// R49: the streamed PSD equals the one assembled in memory, and holds at most 3 x the frame's
+// RGBA16F size however many layers it has (red control: holding the renders, as a batch does,
+// is far over that for this plan)
+TEST(PsdExportPlan, StreamingMatchesTheBatchUnderTheMemoryCap) {
+    const PsdExportPlan plan = planPsdExport(document(), {});
+    constexpr int W = 64, H = 32;
+    const size_t cap = 3 * (size_t)W * H * 8;
+    for (int bits : {8, 16}) {
+        const int bps = bits / 8;
+        std::vector<texsynth::Image> renders;
+        for (size_t i = 0; i < plan.jobs.size(); i++) {
+            texsynth::Image img = texsynth::Image::make(W, H, 4, bits);
+            for (size_t p = 0; p < (size_t)W * H; p++) {
+                const uint16_t alpha = plan.jobs[i].purpose == "clip_base" ? (p % W < 16 ? 0xffff : 0) : 0xffff;
+                const uint16_t red = (uint16_t)(257 * (10 + i));
+                if (bps == 1) {
+                    img.data[p * 4 + 0] = (uint8_t)red;
+                    img.data[p * 4 + 3] = (uint8_t)alpha;
+                } else {
+                    std::memcpy(img.data.data() + (p * 4 + 0) * 2, &red, 2);
+                    std::memcpy(img.data.data() + (p * 4 + 3) * 2, &alpha, 2);
+                }
+            }
+            renders.push_back(std::move(img));
+        }
+        PsdWriteDocument batch;
+        std::string error;
+        ASSERT_TRUE(assemblePsd(plan, renders, bits, 72, batch, error)) << error;
+        std::vector<uint8_t> batchBytes;
+        ASSERT_TRUE(writePsd(batch, batchBytes, error)) << error;
+
+        const fs::path dir = fs::temp_directory_path() / ("je_psd_stream_" + std::to_string(::getpid()) + "_" + std::to_string(bits));
+        fs::create_directories(dir);
+        PsdChannelSpool spool;
+        ASSERT_TRUE(spool.open(dir / "x.spool", error)) << error;
+        PsdAssembler assembler(plan, bits, 72, W, H, &spool);
+        for (size_t i = 0; i < renders.size(); i++) ASSERT_TRUE(assembler.add((int)i, renders[i], error)) << error;
+        ASSERT_TRUE(assembler.complete(error)) << error;
+        ASSERT_TRUE(writePsdFile(assembler.document(), spool, dir / "x.psd", error)) << error;
+        std::ifstream in(dir / "x.psd", std::ios::binary);
+        const std::vector<uint8_t> file((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        EXPECT_EQ(file, batchBytes) << bits << "-bit: the same file";
+        EXPECT_LE(assembler.peakBytes(), cap) << bits << "-bit: peak " << assembler.peakBytes() << " of " << plan.jobs.size() << " renders";
+        EXPECT_GT(plan.jobs.size() * (size_t)W * H * 8, cap) << "the plan is large enough for the cap to mean something";
+        fs::remove_all(dir);
+    }
+}
+
+TEST(PsdExportPlan, AssemblerRefusesARenderItDoesNotExpect) {
+    const PsdExportPlan plan = planPsdExport(document(), {});
+    PsdAssembler assembler(plan, 8, 72, 16, 8, nullptr);
+    std::string error;
+    texsynth::Image wrong = texsynth::Image::make(4, 4, 4, 8);
+    EXPECT_FALSE(assembler.add(0, wrong, error));
+    EXPECT_NE(error.find("render_failed"), std::string::npos) << error;
+    EXPECT_FALSE(assembler.complete(error)) << "no render has arrived";
+    EXPECT_FALSE(assembler.add(99999, wrong, error));
 }

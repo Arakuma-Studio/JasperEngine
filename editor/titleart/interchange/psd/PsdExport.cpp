@@ -15,7 +15,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <functional>
+#include <memory>
 #include <set>
 
 using namespace jasperengine;
@@ -23,6 +25,7 @@ using namespace jasperengine::editor;
 using namespace jasperengine::editor::psd;
 using titleart::Json;
 using titleart::TitleArtDoc;
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -382,73 +385,6 @@ namespace {
         }
     };
 
-    // the alpha of sample i (0..1)
-    double alphaAt(const texsynth::Image& img, size_t i) {
-        if (img.bitDepth == 16) {
-            uint16_t v;
-            std::memcpy(&v, img.data.data() + (i * 4 + 3) * 2, 2);
-            return v / 65535.0;
-        }
-        return img.data[i * 4 + 3] / 255.0;
-    }
-
-    void setAlpha(texsynth::Image& img, size_t i, double a) {
-        if (img.bitDepth == 16) {
-            const uint16_t v = (uint16_t)std::lround(std::clamp(a, 0.0, 1.0) * 65535);
-            std::memcpy(img.data.data() + (i * 4 + 3) * 2, &v, 2);
-        } else {
-            img.data[i * 4 + 3] = (uint8_t)std::lround(std::clamp(a, 0.0, 1.0) * 255);
-        }
-    }
-
-    bool assembleNodes(const PsdExportPlan& plan, const std::vector<texsynth::Image>& renders, const std::vector<PsdPlanNode>& nodes,
-                       std::vector<PsdWriteLayer>& out, int w, int h, int bps, std::string& error) {
-        for (const PsdPlanNode& n : nodes) {
-            PsdWriteLayer l;
-            l.name = n.name;
-            l.visible = !n.hidden;
-            l.blendKey = n.blendKey;
-            l.opacity = n.opacity;
-            l.fillOpacity = n.fillOpacity;
-            l.clipping = n.clipping;
-            if (n.maskJob >= 0) {
-                const texsynth::Image& m = renders[(size_t)n.maskJob];
-                l.hasMask = true;
-                l.maskWidth = w;
-                l.maskHeight = h;
-                l.mask.assign((size_t)w * h * bps, 0);
-                for (size_t i = 0; i < (size_t)w * h; i++) {
-                    const double a = alphaAt(m, i);
-                    if (bps == 2) {
-                        const uint16_t v = (uint16_t)std::lround(a * 65535);
-                        std::memcpy(l.mask.data() + i * 2, &v, 2);
-                    } else {
-                        l.mask[i] = (uint8_t)std::lround(a * 255);
-                    }
-                }
-            }
-            if (n.kind == PsdPlanNode::Kind::Group) {
-                l.group = true;
-                if (!assembleNodes(plan, renders, n.children, l.children, w, h, bps, error)) return false;
-            } else if (n.kind == PsdPlanNode::Kind::Adjust) {
-                l.adjustmentKey = n.adjustmentKey;
-                l.adjustmentData = n.adjustmentData;
-            } else {
-                texsynth::Image img = renders[(size_t)n.job];
-                for (size_t i = 0; i < (size_t)w * h; i++) {
-                    double a = n.opaque ? (alphaAt(img, i) > 0 ? 1.0 : 0.0) : alphaAt(img, i);
-                    for (int b : n.clipBases) a *= alphaAt(renders[(size_t)b], i);
-                    setAlpha(img, i, a);
-                }
-                l.width = w;
-                l.height = h;
-                l.rgba = std::move(img.data);
-            }
-            out.push_back(std::move(l));
-        }
-        return true;
-    }
-
 }
 
 PsdExportPlan psd::planPsdExport(const TitleArtDoc& doc, const PsdPlanOptions& options) {
@@ -458,6 +394,162 @@ PsdExportPlan psd::planPsdExport(const TitleArtDoc& doc, const PsdPlanOptions& o
     return std::move(p.plan);
 }
 
+PsdAssembler::PsdAssembler(const PsdExportPlan& plan, int bitDepth, double dpi, int width, int height, PsdChannelSpool* spool)
+    : plan(plan), spool(spool), bytesPerSample(bitDepth == 16 ? 2 : 1), consumers(plan.jobs.size()), clipAlpha(plan.jobs.size()) {
+    doc.width = width;
+    doc.height = height;
+    doc.bitDepth = bitDepth;
+    doc.dpi = dpi;
+    buildLayers(plan.nodes, doc.layers);
+    bindLayers(plan.nodes, doc.layers);
+}
+
+// the records without their pixels: built whole first, so the layers' addresses are stable
+void PsdAssembler::buildLayers(const std::vector<PsdPlanNode>& nodes, std::vector<PsdWriteLayer>& out) {
+    for (const PsdPlanNode& n : nodes) {
+        PsdWriteLayer l;
+        l.name = n.name;
+        l.visible = !n.hidden;
+        l.blendKey = n.blendKey;
+        l.opacity = n.opacity;
+        l.fillOpacity = n.fillOpacity;
+        l.clipping = n.clipping;
+        if (n.maskJob >= 0) {
+            l.hasMask = true;
+            l.maskWidth = doc.width;
+            l.maskHeight = doc.height;
+        }
+        if (n.kind == PsdPlanNode::Kind::Group) {
+            l.group = true;
+            buildLayers(n.children, l.children);
+        } else if (n.kind == PsdPlanNode::Kind::Adjust) {
+            l.adjustmentKey = n.adjustmentKey;
+            l.adjustmentData = n.adjustmentData;
+        } else {
+            l.width = doc.width;
+            l.height = doc.height;
+        }
+        out.push_back(std::move(l));
+    }
+}
+
+void PsdAssembler::bindLayers(const std::vector<PsdPlanNode>& nodes, std::vector<PsdWriteLayer>& layers) {
+    for (size_t i = 0; i < nodes.size(); i++) {
+        const PsdPlanNode& n = nodes[i];
+        if (n.maskJob >= 0) consumers[(size_t)n.maskJob].mask = &layers[i];
+        if (n.kind == PsdPlanNode::Kind::Group) {
+            bindLayers(n.children, layers[i].children);
+        } else if (n.kind == PsdPlanNode::Kind::Pixels && n.job >= 0) {
+            consumers[(size_t)n.job].pixels = &layers[i];
+            consumers[(size_t)n.job].node = &n;
+            for (int base : n.clipBases) consumers[(size_t)base].clipUsers++;
+        }
+    }
+}
+
+double PsdAssembler::alphaOf(const texsynth::Image& image, size_t pixel) const {
+    if (bytesPerSample == 2) {
+        uint16_t v;
+        std::memcpy(&v, image.data.data() + (pixel * 4 + 3) * 2, 2);
+        return v / 65535.0;
+    }
+    return image.data[pixel * 4 + 3] / 255.0;
+}
+
+void PsdAssembler::measure(size_t renderBytes) {
+    const size_t plane = (size_t)doc.width * doc.height * bytesPerSample;
+    peak = std::max(peak, renderBytes + clipBytes + plane);
+}
+
+bool PsdAssembler::add(int job, texsynth::Image& pixels, std::string& error) {
+    if (job < 0 || job >= (int)consumers.size() || consumers[(size_t)job].received) {
+        error = "render_failed: job " + std::to_string(job) + " is not one the plan waits for";
+        return false;
+    }
+    if (pixels.width != doc.width || pixels.height != doc.height || pixels.channels != 4 || pixels.bitDepth != doc.bitDepth) {
+        error = "render_failed: the renders are not all " + std::to_string(doc.width) + " x " + std::to_string(doc.height) + " RGBA " +
+                std::to_string(doc.bitDepth) + "-bit";
+        return false;
+    }
+    Consumer& c = consumers[(size_t)job];
+    c.received = true;
+    const size_t count = (size_t)doc.width * doc.height;
+    if (c.clipUsers > 0) {
+        std::vector<uint8_t>& alpha = clipAlpha[(size_t)job];
+        alpha.resize(count * bytesPerSample);
+        for (size_t i = 0; i < count; i++) std::memcpy(alpha.data() + i * bytesPerSample, pixels.data.data() + (i * 4 + 3) * bytesPerSample, bytesPerSample);
+        clipBytes += alpha.size();
+    }
+    measure(pixels.data.size());
+    if (job == plan.mergedJob) {
+        // while it is encoded the merged image is held twice at worst
+        peak = std::max(peak, pixels.data.size() * 2);
+        doc.merged = std::move(pixels.data);
+        if (spool && !psdSpoolMerged(doc, *spool, error)) return false;
+    }
+    if (c.mask) {
+        PsdWriteLayer& l = *c.mask;
+        l.mask.assign(count * bytesPerSample, 0);
+        for (size_t i = 0; i < count; i++) {
+            const double a = alphaOf(pixels, i);
+            if (bytesPerSample == 2) {
+                const uint16_t v = (uint16_t)std::lround(a * 65535);
+                std::memcpy(l.mask.data() + i * 2, &v, 2);
+            } else {
+                l.mask[i] = (uint8_t)std::lround(a * 255);
+            }
+        }
+        if (spool && !psdSpoolMask(l, doc.bitDepth, *spool, error)) return false;
+    }
+    if (c.pixels) {
+        const PsdPlanNode& n = *c.node;
+        for (int base : n.clipBases) {
+            if (clipAlpha[(size_t)base].empty()) {
+                error = "render_failed: a layer came before its clip base";
+                return false;
+            }
+        }
+        for (size_t i = 0; i < count; i++) {
+            double a = n.opaque ? (alphaOf(pixels, i) > 0 ? 1.0 : 0.0) : alphaOf(pixels, i);
+            for (int base : n.clipBases) {
+                const std::vector<uint8_t>& alpha = clipAlpha[(size_t)base];
+                if (bytesPerSample == 2) {
+                    uint16_t v;
+                    std::memcpy(&v, alpha.data() + i * 2, 2);
+                    a *= v / 65535.0;
+                } else {
+                    a *= alpha[i] / 255.0;
+                }
+            }
+            if (bytesPerSample == 2) {
+                const uint16_t v = (uint16_t)std::lround(std::clamp(a, 0.0, 1.0) * 65535);
+                std::memcpy(pixels.data.data() + (i * 4 + 3) * 2, &v, 2);
+            } else {
+                pixels.data[i * 4 + 3] = (uint8_t)std::lround(std::clamp(a, 0.0, 1.0) * 255);
+            }
+        }
+        PsdWriteLayer& l = *c.pixels;
+        l.rgba = std::move(pixels.data);
+        if (spool && !psdSpoolPixels(l, doc.bitDepth, *spool, error)) return false;
+        for (int base : n.clipBases) {
+            if (--consumers[(size_t)base].clipUsers == 0) {
+                clipBytes -= clipAlpha[(size_t)base].size();
+                std::vector<uint8_t>().swap(clipAlpha[(size_t)base]);
+            }
+        }
+    }
+    return true;
+}
+
+bool PsdAssembler::complete(std::string& error) const {
+    for (size_t i = 0; i < consumers.size(); i++) {
+        if (consumers[i].received) continue;
+        error = "render_failed: job " + std::to_string(i) + " has no render";
+        return false;
+    }
+    return true;
+}
+
 bool psd::assemblePsd(const PsdExportPlan& plan, const std::vector<texsynth::Image>& renders, int bitDepth, double dpi, PsdWriteDocument& out,
                       std::string& error) {
     if (renders.size() != plan.jobs.size() || renders.empty()) {
@@ -465,24 +557,24 @@ bool psd::assemblePsd(const PsdExportPlan& plan, const std::vector<texsynth::Ima
         return false;
     }
     const texsynth::Image& merged = renders[(size_t)plan.mergedJob];
-    const int bps = bitDepth == 16 ? 2 : 1;
-    for (const texsynth::Image& r : renders) {
-        if (r.width != merged.width || r.height != merged.height || r.channels != 4 || r.bitDepth != bitDepth) {
-            error = "render_failed: the renders are not all " + std::to_string(merged.width) + " x " + std::to_string(merged.height) + " RGBA " +
-                    std::to_string(bitDepth) + "-bit";
-            return false;
-        }
+    PsdAssembler assembler(plan, bitDepth, dpi, merged.width, merged.height, nullptr);
+    for (size_t i = 0; i < renders.size(); i++) {
+        texsynth::Image copy = renders[i];
+        if (!assembler.add((int)i, copy, error)) return false;
     }
-    out = PsdWriteDocument();
-    out.width = merged.width;
-    out.height = merged.height;
-    out.bitDepth = bitDepth;
-    out.dpi = dpi;
-    out.merged = merged.data;
-    return assembleNodes(plan, renders, plan.nodes, out.layers, merged.width, merged.height, bps, error);
+    if (!assembler.complete(error)) return false;
+    out = std::move(assembler.document());
+    return true;
 }
 
 namespace {
+
+    // one PSD's plan, working file and assembler, alive until its file is written
+    struct PsdStream {
+        PsdExportPlan plan;
+        PsdChannelSpool spool;
+        std::unique_ptr<PsdAssembler> assembler;
+    };
 
     struct PsdLanguage {
         std::string code;
@@ -534,21 +626,35 @@ namespace {
                             "Photoshop differ where they overlap with partial alpha; the merged image is the true render");
                     blendingWarned = true;
                 }
-                auto renders = std::make_shared<std::vector<texsynth::Image>>(plan->jobs.size());
-                for (size_t j = 0; j < plan->jobs.size(); j++) {
-                    c->renderFrame(plan->jobs[j].doc, "", s.frame, s.scale, plan->jobs[j].isolateLayer,
-                                   [renders, j](texsynth::Image& pixels) { (*renders)[j] = std::move(pixels); }, s.width, s.height);
-                }
+                // R49: each render's channels go to the working file as it arrives
                 const std::string code = s.code;
-                const double dpi = s.doc->root.value("dpi", 72.0);
-                c->then([c, plan, renders, code, dpi] {
-                    PsdWriteDocument psd;
-                    std::string error;
-                    if (!assemblePsd(*plan, *renders, c->image.bitDepth, dpi, psd, error)) return c->fail("render_failed", error);
-                    renders->clear();
-                    std::vector<uint8_t> bytes;
-                    if (!writePsd(psd, bytes, error)) return c->fail(error.substr(0, error.find(':')), error);
-                    return c->write(c->fileName("", code, "psd"), std::string(bytes.begin(), bytes.end()));
+                const std::string name = c->fileName("", code, "psd");
+                std::error_code ec;
+                fs::create_directories(c->request.out, ec);
+                auto stream = std::make_shared<PsdStream>();
+                stream->plan = std::move(*plan);
+                std::string error;
+                if (!stream->spool.open(c->request.out / ("." + name + ".spool"), error)) return c->fail("write_failed", error);
+                stream->assembler = std::make_unique<PsdAssembler>(stream->plan, c->image.bitDepth, s.doc->root.value("dpi", 72.0), s.width, s.height, &stream->spool);
+                for (size_t j = 0; j < stream->plan.jobs.size(); j++) {
+                    c->renderFrame(stream->plan.jobs[j].doc, "", s.frame, s.scale, stream->plan.jobs[j].isolateLayer,
+                                   [c, stream, j](texsynth::Image& pixels) {
+                                       std::string failure;
+                                       if (!stream->assembler->add((int)j, pixels, failure)) c->fail("render_failed", failure);
+                                   },
+                                   s.width, s.height);
+                }
+                c->then([c, stream, name] {
+                    std::string failure;
+                    if (!stream->assembler->complete(failure)) return c->fail("render_failed", failure);
+                    const fs::path part = c->request.out / ("." + name + ".part");
+                    if (!writePsdFile(stream->assembler->document(), stream->spool, part, failure)) {
+                        std::error_code removed;
+                        fs::remove(part, removed);
+                        return c->fail(failure.substr(0, failure.find(':')), failure);
+                    }
+                    c->result.extra["peak_pixel_bytes"] = stream->assembler->peakBytes();
+                    return c->writeFile(name, part);
                 });
             }
             return true;
