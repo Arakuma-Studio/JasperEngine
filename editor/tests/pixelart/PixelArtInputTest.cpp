@@ -97,7 +97,10 @@ namespace {
         CommandHandle::get(sceneId)->addCommandNoMerge(cmd);
         const Entity e = cmd->getEntity();
         Scene* scene = project()->getScene(sceneId)->scene;
-        Texture& base = scene->getComponent<MeshComponent>(e).submeshes[0].material.baseColorTexture;
+        MeshComponent& mesh = scene->getComponent<MeshComponent>(e);
+        // the quad a frame would build (no frame runs here)
+        mesh.numSubmeshes = std::max(mesh.numSubmeshes, 1u);
+        Texture& base = mesh.submeshes[0].material.baseColorTexture;
         base = Texture("sprites/missing.png");
         base.setMinFilter(filter);
         base.setMagFilter(filter);
@@ -172,7 +175,6 @@ TEST(PixelArtInput, ALayerSceneUnderAPixelPerfectCameraIsPixelArt) {
 
     ASSERT_TRUE(project()->addChildScene(parent, layer, true));
     // the scene it is a layer of draws through its Pixel Perfect Camera
-    ASSERT_TRUE(project()->getScene(parent)->scene) << "the parent stays open";
     px::Scope parentScope;
     parentScope.scenes = {"Parent"};
     const px::PixelArtCheckInput parentInput = px::inputFromProject(*project(), parentScope, errors);

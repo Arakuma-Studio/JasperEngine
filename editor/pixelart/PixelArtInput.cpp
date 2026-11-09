@@ -713,12 +713,12 @@ PixelArtCheckInput jasperengine::editor::pixelart::inputFromProject(Project& pro
         for (const SceneProject& other : project.getScenes()){
             if (other.id == id)
                 continue;
-            const bool parentLive = other.scene != nullptr;
-            const std::vector<ChildSceneRef>* children = parentLive ? &other.childScenes : nullptr;
-            if (children && std::none_of(children->begin(), children->end(), [&](const ChildSceneRef& c){ return c.id == id; }))
+            // the project's link (a closed scene's too), else what the closed scene's file holds
+            const bool linked = std::any_of(other.childScenes.begin(), other.childScenes.end(), [&](const ChildSceneRef& c){ return c.id == id; });
+            if (!linked && other.scene)
                 continue;
             SceneFacts* parent = factsOf(other.id, false);
-            if (parent && parent->pixelCamera && std::find(parent->layers.begin(), parent->layers.end(), id) != parent->layers.end())
+            if (parent && parent->pixelCamera && (linked || std::find(parent->layers.begin(), parent->layers.end(), id) != parent->layers.end()))
                 return true;
         }
         return false;
