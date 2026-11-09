@@ -10,6 +10,7 @@
 #include "titleart/localisation/TitleLanguageEditing.h"
 #include "titleart/localisation/TitleLanguageOps.h"
 #include "titleart/localisation/TitleStrings.h"
+#include "titleart/interchange/svg/SvgImport.h"
 #include "window/TitleArtInterchangeWindows.h"
 
 void jasperengine::editor::registerTitleInterchange() {
@@ -18,5 +19,6 @@ void jasperengine::editor::registerTitleInterchange() {
     registerTitleStringsOps();
     registerTitleDesignerLanguages();
     registerTitleArtInterchangeUi();
+    registerSvgInterchange();
     registerPachislopImport();
 }
