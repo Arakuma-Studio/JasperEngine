@@ -93,9 +93,9 @@ TEST(TitleLanguageShipping, DropsTheLanguagesTheProjectDoesNotList) {
     EXPECT_NE(plan.warnings[0].find("ja"), std::string::npos) << plan.warnings[0];
     ASSERT_EQ(plan.sidecars.size(), 1u);
     EXPECT_EQ(plan.sidecars[0].first, "assets/titles/win.titleart.bake.json");
-    TitleBakeInfo shipped;
+    TitleArtBakeInfo shipped;
     std::string error;
-    ASSERT_TRUE(TitleBakeInfo::parse(plan.sidecars[0].second, shipped, error)) << error;
+    ASSERT_TRUE(TitleArtBakeInfo::parse(plan.sidecars[0].second, shipped, error)) << error;
     EXPECT_EQ(shipped.languages.source, "en");
     std::vector<std::string> codes;
     for (const auto& set : shipped.languages.sets) codes.push_back(set.first);

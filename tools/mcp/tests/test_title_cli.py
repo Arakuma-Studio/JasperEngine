@@ -22,14 +22,19 @@ TIMEOUT = 900
 DOC = "assets/titles/cli.titleart"
 
 
+S: dict = {}
+
+
 async def prepared(ed: Editor) -> Path:
-    await ed.call("tool_groups", enable=["title_art"])
-    await ed.call("set_project_settings", values={"title_art.auto_bake": False})
-    await ed.call("edit_title", path=DOC, create={"text": "BIG WIN", "canvas": [640, 320]}, bake="never", ops=[
-        {"op": "add_language", "code": "de", "source": "en"},
-        {"op": "set_translation", "layer": "Title", "language": "de", "text": "GEWINN"},
-    ])
-    await ed.call("save_project")
+    if S.get("ed") is not ed:
+        S["ed"] = ed
+        await ed.call("tool_groups", enable=["title_art"])
+        await ed.call("set_project_settings", values={"title_art.auto_bake": False})
+        await ed.call("edit_title", path=DOC, create={"text": "BIG WIN", "canvas": [640, 320]}, bake="never", ops=[
+            {"op": "add_language", "code": "de", "source": "en"},
+            {"op": "set_translation", "layer": "Title", "language": "de", "text": "GEWINN"},
+        ])
+        await ed.call("save_project")
     copy = Path(tempfile.mkdtemp(prefix="je_title_cli_")) / "project"
     shutil.copytree(ed.project, copy, ignore=shutil.ignore_patterns("*.lock", "lock", "build"))
     return copy
