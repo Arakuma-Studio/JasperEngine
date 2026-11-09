@@ -83,8 +83,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   specs instead of duplicating them, and whichever lands second merges onto the first. New MCP text follows the lean
   rules (a failing eval case for new text, guide limits, budget ratchet).
 - D22. Keep `sculpt_terrain`, pointing agents at `edit_terrain` through its result. Add `qemu-user` to the Android image so ARM
-  determinism can be checked here. Asset types: TreeData 29, TerrainWorld 30, VoxelVolume 31, NoiseGraph 32 (upstream's SoundEvent took 28,
-  so NoiseGraph moved; only T2 declares NoiseGraph, and the others take it from T2's branch).
+  determinism can be checked here. Asset types: TreeData 30, TerrainWorld 31, VoxelVolume 32, NoiseGraph 33 (upstream's SoundEvent took 28 and its
+  ProceduralMaterial 29, so ours moved twice before shipping; no migration).
 - D23. Owner rule: nothing runs a full suite until the very end of the whole programme. Streams run only filtered tests, and
   not `tools/check-changed`. Full gates, the MCP baseline, and web and Android builds run once on the merged tree, by the coordinator.
 
@@ -281,3 +281,11 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   64-tile overlay commit 3.27 -> 0.39 ms (1), runtime setHeights/applyOps 0.55/0.62 -> 0.14/0.19 ms (0.2).
   Still being worked on: height query ratio 1.057x (budget 1.05x); r512 stamp 8.16 ms (budget 8) and 64-tile delta undo (one run of three
   at 1.09 ms, budget 1), both possibly box noise.
+- Second origin/main merge landed (4129d6492, from terrain/upstream-merge c27011931, origin/main 030e948fa). Both sides' graph canvases
+  became one: the Noise Graph window draws through upstream's canvas, which gained footer lines, wrapped node errors and port error rings.
+  A .noisegraph opens in the Noise Graph window. The graph tools moved into upstream's `graphs` group. Renumbered: asset types 30-33;
+  shortcut contexts VoxelBrush 14 and TerrainBrush 15; the Voxels settings page is 18; shader cache v61. Five issues already on
+  integration surfaced and were fixed: Terrain World Enabled not animatable; T4's terrain_vs.glsl changing variants without a World;
+  the reflection fixture missing a Terrain World; VoxelRenderGpu not resetting the view; T2 tests restarting jobs without restarting
+  the asset readers. Upstream's procmat-baked fixture lacks its golden, so Stream.DerivedTransformWorldMatricesUnchanged fails (upstream's).
+- origin/main moved 27 more commits (S49 Pixel Particles, shader cache v60), with 5 conflicts; being merged on terrain/upstream-merge.
