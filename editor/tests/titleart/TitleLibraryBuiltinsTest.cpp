@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// docs/specs/S84-title-library.md AC5, AC6, AC7 on the committed library: capture(apply(look))
+// docs/specs/S84-title-library.md AC5, AC6, AC7 on the committed library: capture(applyOps(look))
 // applies to the same document for every available look, every scheme on every look is idempotent,
 // and our recolouring equals Pachislop's own applyColourway on the dump's colourway_cases.
 
@@ -41,7 +41,7 @@ namespace {
         return titleart::makeNewTitleArt(o);
     }
 
-    TitleOpsResult apply(const TitleArtDoc& doc, const Json& ops) {
+    TitleOpsResult applyOps(const TitleArtDoc& doc, const Json& ops) {
         TitleOpsOptions o;
         o.idSeed = 0x8484;
         return TitleArtOps::apply(doc, ops, o);
@@ -165,7 +165,7 @@ TEST_F(TitleLibraryBuiltins, CaptureRoundTripsEveryBuiltIn) {
     for (const LibraryItemInfo& item : TitleLibrary::get().items(LibraryKind::Look)) {
         if (item.scope != LibraryScope::BuiltIn || !item.available) continue;
         SCOPED_TRACE(item.ref);
-        const TitleOpsResult applied = apply(textDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", item.ref}});
+        const TitleOpsResult applied = applyOps(textDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", item.ref}});
         ASSERT_TRUE(applied.ok) << applied.error();
         const Json* layer = titleLayer(applied);
         ASSERT_NE(layer, nullptr);
@@ -178,7 +178,7 @@ TEST_F(TitleLibraryBuiltins, CaptureRoundTripsEveryBuiltIn) {
         auto files = std::map<std::string, std::string>(TitleLibrary::get().builtinFiles());
         files["looks/metal/captured.titlelook"] = writeLook(captured);
         TitleLibrary::get().setBuiltinsForTesting(files);
-        const TitleOpsResult again = apply(textDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/captured"}});
+        const TitleOpsResult again = applyOps(textDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/captured"}});
         TitleLibrary::get().setBuiltinsForTesting({});
         ASSERT_TRUE(again.ok) << again.error();
         Json a = strippedIds(applied.doc.root["layers"]), b = strippedIds(again.doc.root["layers"]);
@@ -204,7 +204,7 @@ TEST_F(TitleLibraryBuiltins, EverySchemeOnEveryLookIsIdempotent) {
     int checked = 0;
     for (const LibraryItemInfo& look : TitleLibrary::get().items(LibraryKind::Look)) {
         if (look.scope != LibraryScope::BuiltIn || !look.available) continue;
-        const TitleOpsResult applied = apply(textDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", look.ref}});
+        const TitleOpsResult applied = applyOps(textDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", look.ref}});
         ASSERT_TRUE(applied.ok) << look.ref << ": " << applied.error();
         for (const LibraryItemInfo& scheme : TitleLibrary::get().items(LibraryKind::ColorScheme)) {
             if (scheme.scope != LibraryScope::BuiltIn) continue;
@@ -244,7 +244,7 @@ TEST_F(TitleLibraryBuiltins, MatchesPachislop) {
         TitleArtDoc doc = textDoc(is3D ? "BIG" : "確定");
         if (orb) continue;      // orb bodies are covered by OrbTint and the shape-layer port
         Json ops = Json::array({Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", ids[lookId]}}, Json{{"op", "apply_color_scheme"}, {"layer", "Title"}, {"color_scheme", colourway}}});
-        const TitleOpsResult r = apply(doc, ops);
+        const TitleOpsResult r = applyOps(doc, ops);
         ASSERT_TRUE(r.ok) << lookId << "/" << colourway << ": " << r.error();
         const Json* layer = titleLayer(r);
         ASSERT_NE(layer, nullptr);

@@ -115,7 +115,7 @@ namespace {
         return layer.contains(key) ? titleart::writeTitleArtJson(layer[key]) : std::string("<absent>");
     }
 
-    TitleOpsResult apply(const TitleArtDoc& doc, const Json& ops, uint64_t seed = 7) {
+    TitleOpsResult applyOps(const TitleArtDoc& doc, const Json& ops, uint64_t seed = 7) {
         TitleOpsOptions o;
         o.idSeed = seed;
         return TitleArtOps::apply(doc, ops, o);
@@ -254,7 +254,7 @@ TEST_F(TitleLibraryFixture, Availability) {
     ASSERT_NE(drip, nullptr);
     EXPECT_FALSE(drip->available);
     EXPECT_EQ(drip->unavailableReason, "needs effect drips (S83)");
-    TitleOpsResult r = apply(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "horror/test-drip"}});
+    TitleOpsResult r = applyOps(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "horror/test-drip"}});
     EXPECT_FALSE(r.ok);
     ASSERT_FALSE(r.problems.empty());
     EXPECT_EQ(r.problems.back().code, "library_item_unavailable");
@@ -264,7 +264,7 @@ TEST_F(TitleLibraryFixture, Availability) {
 
 TEST_F(TitleLibraryFixture, LookKeepsContract) {
     const TitleArtDoc before = keptDoc();
-    TitleOpsResult r = apply(before, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
+    TitleOpsResult r = applyOps(before, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
     ASSERT_TRUE(r.ok) << r.error();
     const Json* b = titleart::findLayer(before.root, "00000001");
     const Json* a = titleart::findLayer(r.doc.root, "00000001");
@@ -277,7 +277,7 @@ TEST_F(TitleLibraryFixture, LookKeepsContract) {
     EXPECT_EQ((*a)["look"]["id"], "metal/test-gold");
     // red control: an apply that loses the masks is caught by the same comparison
     setDropMasksForTesting(true);
-    TitleOpsResult broken = apply(before, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
+    TitleOpsResult broken = applyOps(before, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
     setDropMasksForTesting(false);
     ASSERT_TRUE(broken.ok);
     const Json* c = titleart::findLayer(broken.doc.root, "00000001");
@@ -285,7 +285,7 @@ TEST_F(TitleLibraryFixture, LookKeepsContract) {
 }
 
 TEST_F(TitleLibraryFixture, PxScaleByRefSize) {
-    TitleOpsResult r = apply(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
+    TitleOpsResult r = applyOps(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
     ASSERT_TRUE(r.ok) << r.error();
     const Json* a = titleart::findLayer(r.doc.root, "00000001");
     // size 400 on a look authored for 200: px params double
@@ -302,9 +302,9 @@ TEST_F(TitleLibraryFixture, OwnedGeneratorsReplaced) {
     doc.root["layers"].push_back(Json{{"id", "000000aa"}, {"type", "generator"}, {"name", "Mine"}, {"follow", "00000001"},
                                       {"generator", {{"type", "glints"}, {"params", Json::object()}}}});
     titleart::normalizeTitleArt(doc, nullptr);
-    TitleOpsResult once = apply(doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
+    TitleOpsResult once = applyOps(doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
     ASSERT_TRUE(once.ok) << once.error();
-    TitleOpsResult twice = apply(once.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
+    TitleOpsResult twice = applyOps(once.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
     ASSERT_TRUE(twice.ok);
     int owned = 0, mine = 0;
     titleart::forEachLayer(twice.doc.root, [&](const Json& l, const Json*, int) {
@@ -325,7 +325,7 @@ TEST_F(TitleLibraryFixture, AutoGroup) {
     auto files = builtins();
     files["looks/metal/test-grouped.titlelook"] = j.dump();
     TitleLibrary::get().setBuiltinsForTesting(files);
-    TitleOpsResult grouped = apply(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-grouped"}});
+    TitleOpsResult grouped = applyOps(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-grouped"}});
     ASSERT_TRUE(grouped.ok) << grouped.error();
     ASSERT_EQ(grouped.doc.root["layers"].size(), 1u);
     const Json& group = grouped.doc.root["layers"][0];
@@ -335,11 +335,11 @@ TEST_F(TitleLibraryFixture, AutoGroup) {
     ASSERT_EQ(group["effects"].size(), 1u);
     EXPECT_TRUE(group["effects"][0]["from_look"].get<bool>());
     // reused by the same look
-    TitleOpsResult again = apply(grouped.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-grouped"}});
+    TitleOpsResult again = applyOps(grouped.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-grouped"}});
     ASSERT_TRUE(again.ok);
     EXPECT_EQ(again.details["0"]["group"], "kept");
     // dissolved by a look without group effects
-    TitleOpsResult plain = apply(again.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "casino/test-zebra"}});
+    TitleOpsResult plain = applyOps(again.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "casino/test-zebra"}});
     ASSERT_TRUE(plain.ok) << plain.error();
     EXPECT_EQ(plain.details["0"]["group"], "dissolved");
     EXPECT_EQ(plain.doc.root["layers"][0]["type"], "text");
@@ -352,15 +352,15 @@ TEST_F(TitleLibraryFixture, KeepColorScheme) {
     auto files = builtins();
     files["color-schemes/test-red.titlecolors"] = scheme;
     TitleLibrary::get().setBuiltinsForTesting(files);
-    TitleOpsResult schemed = apply(keptDoc(), Json::array({Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}},
+    TitleOpsResult schemed = applyOps(keptDoc(), Json::array({Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}},
                                                            Json{{"op", "apply_color_scheme"}, {"layer", "Title"}, {"color_scheme", "test-red"}}}));
     ASSERT_TRUE(schemed.ok) << schemed.error();
     EXPECT_EQ(titleart::findLayer(schemed.doc.root, "00000001")->at("look")["color_scheme"], "test-red");
-    TitleOpsResult kept = apply(schemed.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "casino/test-zebra"}});
+    TitleOpsResult kept = applyOps(schemed.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "casino/test-zebra"}});
     ASSERT_TRUE(kept.ok);
     EXPECT_TRUE(kept.details["0"]["kept_color_scheme"].get<bool>());
     EXPECT_EQ(titleart::findLayer(kept.doc.root, "00000001")->at("look")["color_scheme"], "test-red");
-    TitleOpsResult cleared = apply(schemed.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "casino/test-zebra"}, {"keep_color_scheme", false}});
+    TitleOpsResult cleared = applyOps(schemed.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "casino/test-zebra"}, {"keep_color_scheme", false}});
     ASSERT_TRUE(cleared.ok);
     EXPECT_EQ(titleart::findLayer(cleared.doc.root, "00000001")->at("look")["color_scheme"], "");
 }
@@ -378,7 +378,7 @@ TEST_F(TitleLibraryFixture, FreshLinks) {
     doc.root["layers"][1]["id"] = "00000002";
     doc.root["layers"][1]["name"] = "Second";
     titleart::normalizeTitleArt(doc, nullptr);
-    TitleOpsResult r = apply(doc, Json::array({Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-linked"}},
+    TitleOpsResult r = applyOps(doc, Json::array({Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-linked"}},
                                                Json{{"op", "apply_look"}, {"layer", "Second"}, {"look", "metal/test-linked"}}}));
     ASSERT_TRUE(r.ok) << r.error();
     const std::string a = titleart::findLayer(r.doc.root, "00000001")->at("style")["rims"][1]["material"]["link"].get<std::string>();
@@ -393,8 +393,8 @@ TEST_F(TitleLibraryFixture, FreshLinks) {
 
 TEST_F(TitleLibraryFixture, Deterministic) {
     // the same look on the same document with two id seeds: equal after id normalisation
-    TitleOpsResult a = apply(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}}, 11);
-    TitleOpsResult b = apply(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}}, 99);
+    TitleOpsResult a = applyOps(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}}, 11);
+    TitleOpsResult b = applyOps(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}}, 99);
     ASSERT_TRUE(a.ok && b.ok);
     auto strip = [](Json v) {
         std::function<void(Json&)> walk = [&](Json& x) {
@@ -444,7 +444,7 @@ TEST_F(TitleLibraryFixture, TemplateBuildsAreReproducible) {
 // ---- AC5: capture ----
 
 TEST_F(TitleLibraryFixture, CaptureRoundTripsALook) {
-    TitleOpsResult applied = apply(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
+    TitleOpsResult applied = applyOps(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}});
     ASSERT_TRUE(applied.ok) << applied.error();
     // capture at the look's own size: ref_size 400 and every px value doubled, so re-applying to
     // a layer of size 400 gives the same document
@@ -462,7 +462,7 @@ TEST_F(TitleLibraryFixture, CaptureRoundTripsALook) {
     cj["id"] = "metal/captured";
     files["looks/metal/captured.titlelook"] = writeLook(TitleLook{cj});
     TitleLibrary::get().setBuiltinsForTesting(files);
-    TitleOpsResult again = apply(applied.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/captured"}});
+    TitleOpsResult again = applyOps(applied.doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/captured"}});
     ASSERT_TRUE(again.ok) << again.error();
     const Json* a = titleart::findLayer(applied.doc.root, "00000001");
     const Json* b = titleart::findLayer(again.doc.root, "00000001");
@@ -471,33 +471,33 @@ TEST_F(TitleLibraryFixture, CaptureRoundTripsALook) {
 }
 
 TEST_F(TitleLibraryFixture, SaveLookProjectAndUserScopes) {
-    TitleOpsResult saved = apply(keptDoc(), Json{{"op", "save_look"}, {"layer", "Title"}, {"name", "My Look"}});
+    TitleOpsResult saved = applyOps(keptDoc(), Json{{"op", "save_look"}, {"layer", "Title"}, {"name", "My Look"}});
     ASSERT_TRUE(saved.ok) << saved.error();
     ASSERT_FALSE(saved.files.empty());
     EXPECT_EQ(saved.files.back().path, TitleLibrary::get().scopeDir(LibraryScope::Project, LibraryKind::Look) / "my-look.titlelook");
     EXPECT_TRUE(saved.files.back().undoable);
-    TitleOpsResult user = apply(keptDoc(), Json{{"op", "save_look"}, {"layer", "Title"}, {"name", "My Look"}, {"scope", "user"}});
+    TitleOpsResult user = applyOps(keptDoc(), Json{{"op", "save_look"}, {"layer", "Title"}, {"name", "My Look"}, {"scope", "user"}});
     ASSERT_TRUE(user.ok);
     EXPECT_FALSE(user.files.back().undoable);
     // an existing id needs overwrite
     fs::create_directories(TitleLibrary::get().scopeDir(LibraryScope::Project, LibraryKind::Look));
     std::ofstream(TitleLibrary::get().scopeDir(LibraryScope::Project, LibraryKind::Look) / "my-look.titlelook") << saved.files.back().content;
-    TitleOpsResult clash = apply(keptDoc(), Json{{"op", "save_look"}, {"layer", "Title"}, {"name", "My Look"}});
+    TitleOpsResult clash = applyOps(keptDoc(), Json{{"op", "save_look"}, {"layer", "Title"}, {"name", "My Look"}});
     EXPECT_FALSE(clash.ok);
     EXPECT_EQ(clash.problems.back().code, "library_item_exists");
-    TitleOpsResult builtin = apply(keptDoc(), Json{{"op", "delete_library_item"}, {"ref", "metal/test-gold"}});
+    TitleOpsResult builtin = applyOps(keptDoc(), Json{{"op", "delete_library_item"}, {"ref", "metal/test-gold"}});
     EXPECT_FALSE(builtin.ok);
     EXPECT_EQ(builtin.problems.back().code, "library_item_builtin");
 }
 
 TEST_F(TitleLibraryFixture, SaveTemplateNeedsAPlaceholder) {
     TitleArtDoc doc = keptDoc();
-    TitleOpsResult r = apply(doc, Json{{"op", "save_template"}, {"name", "Mine"}});
+    TitleOpsResult r = applyOps(doc, Json{{"op", "save_template"}, {"name", "Mine"}});
     EXPECT_FALSE(r.ok);
     ASSERT_FALSE(r.problems.empty());
     EXPECT_EQ(r.problems.back().code, "template_without_placeholder");
     // the fix (expose the text, then save) passes
-    TitleOpsResult fixed = apply(doc, r.problems.back().fix);
+    TitleOpsResult fixed = applyOps(doc, r.problems.back().fix);
     EXPECT_TRUE(fixed.ok) << fixed.error();
 }
 
