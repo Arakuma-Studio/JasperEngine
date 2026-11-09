@@ -59,6 +59,15 @@ namespace jasperengine::terrain {
         // undo step is cut from
         using TileVisitor = std::function<void(MapId map, TexelRect rect, std::span<const uint8_t> before, std::span<const uint8_t> after)>;
         void visitTiles(const TileVisitor& visitor) const;
+        // The same tiles as a list, for a caller that works through them in parallel; valid until the next write
+        struct TileView {
+            MapId map;
+            TexelRect rect;
+            std::span<const uint8_t> before;
+            std::span<const uint8_t> after;
+            TexelRect written;      // inside rect: where after can differ from before
+        };
+        std::vector<TileView> tileViews() const;
 
         size_t tileCount() const;
         // The heap this transaction holds in tiles (T1 R26's bound)
@@ -89,6 +98,14 @@ namespace jasperengine::terrain {
             std::vector<uint8_t> before;
             // the base holds a flush of it, not its before bytes
             bool shown = false;
+            // values encoded as stored bytes, kept until the next write to the tile (T1 R48: a commit,
+            // its report and its delta encode a tile once)
+            mutable std::vector<uint8_t> after;
+            mutable bool afterValid = false;
+            mutable bool afterChanged = false;
+            // the texels any write reached: outside them the values decode the before bytes, which
+            // encode back to themselves, so only these are encoded and compared
+            TexelRect written;
         };
 
         struct MapState {
@@ -102,20 +119,23 @@ namespace jasperengine::terrain {
             TexelRect dirty;
             // written since the last flushToBase
             TexelRect unflushed;
+            // what encodeTiles reads the format from, set before its workers start
+            mutable MapFormat encodeFormat;
         };
 
         MapState* findState(MapId map);
         const MapState* findState(MapId map) const;
         MapState& state(MapId map);
         MapFormat currentFormat(MapId map) const;
-        Tile* ensureTile(MapState& mapState, int tileX, int tileY, const MapFormat& format);
         void fillCreatedBytes(const MapState& mapState, TexelRect rect, std::span<uint8_t> out) const;
-        bool tileAfterBytes(const MapState& mapState, const Tile& tile, std::vector<uint8_t>& after) const;
+        // the tile's stored bytes as they are now, and whether they differ from its before bytes
+        const std::vector<uint8_t>& tileAfter(const MapState& mapState, const Tile& tile, bool* changed = nullptr) const;
+        // every tile's after bytes up to date, the stale ones encoded on the job system's workers
+        void encodeTiles() const;
         void clearAll();
 
         TerrainMapStore* baseStore;
         std::vector<std::unique_ptr<MapState>> maps;
-        std::vector<float> scratch;
     };
 
 }

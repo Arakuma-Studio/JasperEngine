@@ -4,6 +4,8 @@
 #include "terrain/TerrainShape.h"
 #include "terrain/TerrainLayers.h"
 
+#include "jobs/JobSystem.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -53,6 +55,12 @@ ShapeEvaluator::ShapeEvaluator(const Shape& shape): shape(&shape) {
         half = Vector2(std::fabs(shape.size.x) * 0.5f, std::fabs(shape.size.y) * 0.5f);
     } else if (shape.type == ShapeType::Circle) {
         middle = shape.center;
+    }
+}
+
+void ShapeEvaluator::sampleRow(const MapLattice& lattice, int x0, int count, float z, ShapeSample* out) const {
+    for (int i = 0; i < count; i++) {
+        out[i] = sample(lattice.x(x0 + i), z);
     }
 }
 
@@ -323,6 +331,9 @@ float jasperengine::terrain::sampleWindow(const HeightWindow& window, float x, f
 
 namespace {
 
+    // T1 R48: a filter over this many texels or more runs its rows on the job system's workers
+    constexpr int64_t PARALLEL_FILTER_TEXELS = 16 * 1024;
+
     bool readMap(const TerrainMapStore& store, MapReader reader, void* user, MapId map, TexelRect rect, std::span<float> out) {
         if (reader) return reader(user, map, rect, out);
         return store.read(map, rect, out);
@@ -376,7 +387,9 @@ void jasperengine::terrain::evaluateFilter(const TerrainMapStore& store, const F
             } else {
                 window.values = heights.data();
                 window.rect = read;
-                for (int y = block.y; y < block.bottom(); y++) {
+                // each row on its own: rows run on the job system's workers past a size (T1 R48)
+                auto filterRow = [&](size_t rowIndex) {
+                    const int y = block.y + static_cast<int>(rowIndex);
                     const float z = lattice.z(y);
                     float* rowWeights = weights.data() + static_cast<size_t>(y - block.y) * block.w;
                     for (int x = block.x; x < block.right(); x++) {
@@ -399,6 +412,11 @@ void jasperengine::terrain::evaluateFilter(const TerrainMapStore& store, const F
                         }
                         rowWeights[x - block.x] *= weight;
                     }
+                };
+                if (block.area() >= PARALLEL_FILTER_TEXELS) {
+                    jobs::parallelFor(static_cast<size_t>(block.h), filterRow);
+                } else {
+                    for (size_t rowIndex = 0; rowIndex < static_cast<size_t>(block.h); rowIndex++) filterRow(rowIndex);
                 }
             }
         }

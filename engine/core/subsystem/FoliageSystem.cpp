@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "subsystem/FoliageSystem.h"
+#include "terrain/TerrainEditModule.h"
 #include "component/TerrainComponent.h"
 #include "memory/MemoryStats.h"
 
@@ -18,7 +19,9 @@
 #include "subsystem/FoliagePhysics.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#if JASPERENGINE_TERRAIN_EDIT
 #include "terrain/FoliageOps.h"
+#endif
 #include "terrain/FoliageRules.h"
 #include "terrain/TerrainDeterministic.h"
 #include "terrain/TerrainMapStore.h"
@@ -2453,7 +2456,10 @@ struct FoliageSystem::Impl {
 
 FoliageSystem::FoliageSystem(Scene* scene): SubSystem(scene), impl(std::make_unique<Impl>(this, scene)) {
     declareHookType(scene->getComponentId<TerrainComponent>());
+#if JASPERENGINE_TERRAIN_EDIT
+    // the foliage ops run through the operation engine, the runtime terrain edit module's (T1 R54)
     registerFoliageOps();
+#endif
 }
 
 FoliageSystem::~FoliageSystem() {

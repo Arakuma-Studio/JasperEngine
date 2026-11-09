@@ -10,35 +10,68 @@
 using namespace jasperengine;
 using namespace jasperengine::terrain;
 
-float jasperengine::terrain::sampleHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY) {
-    if (!pixels || width <= 0 || height <= 0 || channels <= 0) {
-        return 0.0f;
+namespace {
+
+    // the bilinear height of the four texels around (texelX, texelY), clamped to the edge; one body
+    // for every caller in this file, so the query's own path has no call between it and the pixels
+    // (T1 R50: within 1.05x of the code it replaced)
+    // pixels, width, height and channels already known valid
+    inline float bilinearHeightValid(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY) {
+        texelX = std::clamp(texelX, 0.0f, static_cast<float>(width - 1));
+        texelY = std::clamp(texelY, 0.0f, static_cast<float>(height - 1));
+        const int lowerX = std::clamp(static_cast<int>(std::floor(texelX)), 0, width - 1);
+        const int lowerY = std::clamp(static_cast<int>(std::floor(texelY)), 0, height - 1);
+        const int upperX = std::min(lowerX + 1, width - 1);
+        const int upperY = std::min(lowerY + 1, height - 1);
+        const float blendX = texelX - static_cast<float>(lowerX);
+        const float blendY = texelY - static_cast<float>(lowerY);
+
+        const size_t lowerRow = static_cast<size_t>(lowerY) * static_cast<size_t>(width);
+        const size_t upperRow = static_cast<size_t>(upperY) * static_cast<size_t>(width);
+        float h00, h10, h01, h11;
+        if (channels == 1 && bytesPerChannel == 2) {
+            // the common map, a 16-bit height map, read without heightTexelAt's format tests a texel
+            auto texel = [&](size_t index) {
+                return static_cast<float>(static_cast<unsigned int>(pixels[index * 2]) | (static_cast<unsigned int>(pixels[index * 2 + 1]) << 8)) / 65535.0f;
+            };
+            h00 = texel(lowerRow + lowerX);
+            h10 = texel(lowerRow + upperX);
+            h01 = texel(upperRow + lowerX);
+            h11 = texel(upperRow + upperX);
+        } else {
+            h00 = heightTexelAt(pixels, lowerRow + lowerX, channels, bytesPerChannel);
+            h10 = heightTexelAt(pixels, lowerRow + upperX, channels, bytesPerChannel);
+            h01 = heightTexelAt(pixels, upperRow + lowerX, channels, bytesPerChannel);
+            h11 = heightTexelAt(pixels, upperRow + upperX, channels, bytesPerChannel);
+        }
+        const float lower = h00 + (h10 - h00) * blendX;
+        const float upper = h01 + (h11 - h01) * blendX;
+        return lower + (upper - lower) * blendY;
     }
 
-    texelX = std::clamp(texelX, 0.0f, static_cast<float>(width - 1));
-    texelY = std::clamp(texelY, 0.0f, static_cast<float>(height - 1));
-    const int lowerX = std::clamp(static_cast<int>(std::floor(texelX)), 0, width - 1);
-    const int lowerY = std::clamp(static_cast<int>(std::floor(texelY)), 0, height - 1);
-    const int upperX = std::min(lowerX + 1, width - 1);
-    const int upperY = std::min(lowerY + 1, height - 1);
-    const float blendX = texelX - static_cast<float>(lowerX);
-    const float blendY = texelY - static_cast<float>(lowerY);
+    inline float bilinearHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY) {
+        if (!pixels || width <= 0 || height <= 0 || channels <= 0) {
+            return 0.0f;
+        }
+        return bilinearHeightValid(pixels, width, height, channels, bytesPerChannel, texelX, texelY);
+    }
 
-    auto texel = [&](int x, int y) {
-        return heightTexelAt(pixels, static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x), channels, bytesPerChannel);
-    };
+    inline float bilinearHeightLocal(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ) {
+        if (terrainSize <= std::numeric_limits<float>::epsilon()) {
+            return 0.0f;
+        }
+        return bilinearHeight(pixels, width, height, channels, bytesPerChannel,
+                              surfaceTexelCoord(localX, terrainSize, width), surfaceTexelCoord(localZ, terrainSize, height));
+    }
 
-    const float lower = texel(lowerX, lowerY) + (texel(upperX, lowerY) - texel(lowerX, lowerY)) * blendX;
-    const float upper = texel(lowerX, upperY) + (texel(upperX, upperY) - texel(lowerX, upperY)) * blendX;
-    return lower + (upper - lower) * blendY;
+}
+
+float jasperengine::terrain::sampleHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY) {
+    return bilinearHeight(pixels, width, height, channels, bytesPerChannel, texelX, texelY);
 }
 
 float jasperengine::terrain::sampleHeightLocal(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ) {
-    if (terrainSize <= std::numeric_limits<float>::epsilon()) {
-        return 0.0f;
-    }
-    return sampleHeightTexels(pixels, width, height, channels, bytesPerChannel,
-                              surfaceTexelCoord(localX, terrainSize, width), surfaceTexelCoord(localZ, terrainSize, height));
+    return bilinearHeightLocal(pixels, width, height, channels, bytesPerChannel, terrainSize, localX, localZ);
 }
 
 namespace {
@@ -60,7 +93,9 @@ namespace {
     }
 
     float heightAtLocal(const SurfaceView& view, float x, float z) {
-        return view.maxHeight * sampleHeightLocal(view.pixels, view.width, view.height, view.channels, view.bytesPerChannel, view.size, x, z);
+        // hasMap has checked the view: the query's own path tests nothing twice
+        return view.maxHeight * bilinearHeightValid(view.pixels, view.width, view.height, view.channels, view.bytesPerChannel,
+                                                    surfaceTexelCoord(x, view.size, view.width), surfaceTexelCoord(z, view.size, view.height));
     }
 
 }

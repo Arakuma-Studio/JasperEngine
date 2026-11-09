@@ -1472,7 +1472,7 @@ fs::path editor::Exporter::getBuildCacheDir() const {
 std::vector<std::string> editor::Exporter::compiledModules() const {
     // what Project Settings allow (the HTML UI, its video, the sound layer and Terrain Worlds have no
     // switch of their own)
-    std::vector<std::string> modules = {"htmlui", "video", "soundlayer", "voxel", "terrainworld"};
+    std::vector<std::string> modules = {"htmlui", "video", "soundlayer", "voxel", "terrainworld", "terrainedit"};
     if (project->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
@@ -4413,6 +4413,7 @@ bool editor::Exporter::copyEngine() {
         moduleSwitch("JASPERENGINE_SOUND_LAYER", "soundlayer");
         moduleSwitch("JASPERENGINE_VOXEL", "voxel");
         moduleSwitch("JASPERENGINE_TERRAIN_WORLD", "terrainworld");
+        moduleSwitch("JASPERENGINE_TERRAIN_EDIT", "terrainedit");
         // Development Build: the profiler in a Release game (a source export builds it as one)
         if (config.developmentBuild) {
             projectSettings += indent + "set(JASPERENGINE_DEVELOPMENT_BUILD ON)";

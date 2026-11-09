@@ -118,6 +118,9 @@ namespace jasperengine::terrain {
         explicit ShapeEvaluator(const Shape& shape);
 
         ShapeSample sample(float x, float z) const;
+        // sample() over a lattice row's texels x0 .. x0 + count - 1 at z, into out: one call a row, so the
+        // kernels' loops do not pay a call a texel (T1 R47)
+        void sampleRow(const MapLattice& lattice, int x0, int count, float z, ShapeSample* out) const;
         // Terrain-local bounding box of the region; false for All, which has none
         bool bounds(LocalBounds& out) const;
         // The radius kernels scale by (smooth's step): half the smallest extent; 0 for All

@@ -1672,12 +1672,15 @@ the sketch's names, which all still exist unless a line below says otherwise.
   "with slope filter" is measured on Smooth, the budget between Smooth's and the next. R50's "today" is a copy of the pre-T1
   `MeshSystem` code kept in the bench and timed in the same run. R52's upload size is AC36's test, not a bench line. AC38's run
   is on the rented build box (16 shared vCPUs, other jobs on it), not an idle 8-core desktop: the numbers in `docs/perf/terrain.md`
-  are that machine's, and the budgets are confirmed only on reference hardware (`docs/specs/checklists/T1.md`). On the box 9 of
-  `je-bench-terrain`'s 18 budgets miss, the whole-map ops and the overlay commit by 2x to 4x.
+  are that machine's, and the budgets are confirmed only on reference hardware (`docs/specs/checklists/T1.md`). After the budget
+  work two of `je-bench-terrain`'s budgets still miss on the box: the radius-512 stamp by 2% and the height query's ratio (1.057x
+  against 1.05x), whose extra test of the map view is the guard against an unloaded map.
 - **D-40 AC39's overlay check is a unit test,** `TerrainOverlay.OffHasNoEntities`, which counts the scene's meshes with the overlay off,
   on, then off; `sizeof` is asserted per member (`editState`, `surfaceRevision`), which is what R53 states. "Terrain window closed: no
   query per frame" is by reading: `TerrainEditWindow::show` returns before any query when the window is closed.
-- **D-41 R54's base is the merge base with `origin/main`,** so the growth measured is the whole terrain programme's that is in the head
-  (T1, T2, T3, T5, T6): an upper bound for T1's. T1's own share is counted from the head's symbols by source file. Measured
-  (`docs/perf/terrain.md`): about 312 KiB on Linux glcore against the 96 KiB budget, so AC40's gate fails; the operation engine
-  (`TerrainOps*`) is half of it. Not fixed here: cutting it is a change to the engine's code shape, for the integrator to decide.
+- **D-41 R54 is met by a player module.** The runtime edit path (`applyOps`, `setHeights`, `getHeights`, the overlay store, strokes,
+  placement, erosion, T5's registered foliage ops, the edit uploads and the collider refresh) is the module `terrainedit`
+  (`JASPERENGINE_TERRAIN_EDIT`, S34), needed by a terrain with Allow Runtime Edits or a script calling those functions, and left
+  out of `lite3d` and `lite2d`. T1's share is counted from a player's symbols by source file, as the merge base with `origin/main`
+  also holds T2, T3, T5 and T6. Measured (`docs/perf/terrain.md`): 40.1 KiB without the module, inside the 96 KiB; with it
+  320.9 KiB, and the module adds 456 KiB to the Linux glcore player.

@@ -158,8 +158,9 @@ TEST(ContentManifest, RefusesContentNeedingAModuleThePlayerLacks) {
     ASSERT_TRUE(ContentManifest::fromJson(json, old, error)) << error;
     EXPECT_FALSE(old.hasModules);
     EXPECT_EQ(missingModules(old, allModules()), std::vector<std::string>{});
-    // T2 added noise, T6 voxel and T4 terrainworld, which lite variants leave out (N11, T4 R55)
-    EXPECT_EQ(missingModules(old, lite), (std::vector<std::string>{"htmlui", "video", "runtimeshaders", "noise", "voxel", "terrainworld"}));
+    // T2 added noise, T6 voxel, T4 terrainworld and T1 runtime terrain edits, which lite variants leave out (N11, T4 R55)
+    EXPECT_EQ(missingModules(old, lite),
+              (std::vector<std::string>{"htmlui", "video", "runtimeshaders", "noise", "voxel", "terrainworld", "terrainedit"}));
     // and a Compile build (no player id) is not asked
     problems.clear();
     EXPECT_TRUE(checkContent(m, "", access, false, problems, &lite));
@@ -181,18 +182,6 @@ TEST(ContentManifest, ContentNeedingVoxelRefusesLite3D) {
     EXPECT_EQ(missingModules(m, lite3d), std::vector<std::string>{"voxel"});
 }
 
-// T6's module, then T4's, which landed after it
-TEST(PlayerModules, KnowsVoxelBeforeTerrainWorld) {
-    ASSERT_GE(allModules().size(), 2u);
-    EXPECT_EQ(allModules()[allModules().size() - 2], "voxel");
-    EXPECT_EQ(moduleDisplayName("voxel"), "Voxel Volumes");
-#if JASPERENGINE_VOXEL
-    EXPECT_TRUE(isModuleBuilt("voxel"));
-#else
-    EXPECT_FALSE(isModuleBuilt("voxel"));
-#endif
-}
-
 // T4 R55, AC36: lite3d leaves Terrain Worlds out, so content with one does not start on it (S34 R3)
 TEST(ContentManifest, ContentNeedingTerrainWorldRefusesLite3D) {
     ContentManifest m = sample();
@@ -208,14 +197,29 @@ TEST(ContentManifest, ContentNeedingTerrainWorldRefusesLite3D) {
     EXPECT_EQ(missingModules(m, lite3d), std::vector<std::string>{"terrainworld"});
 }
 
-TEST(PlayerModules, KnowsTerrainWorldLast) {
-    ASSERT_FALSE(allModules().empty());
-    EXPECT_EQ(allModules().back(), "terrainworld");
+// the newest last: T6's Voxel Volumes, T4's Terrain World, then T1's runtime terrain edits
+TEST(PlayerModules, KnowsVoxelTerrainWorldAndTerrainEdits) {
+    ASSERT_GE(allModules().size(), 3u);
+    EXPECT_EQ(allModules()[allModules().size() - 3], "voxel");
+    EXPECT_EQ(allModules()[allModules().size() - 2], "terrainworld");
+    EXPECT_EQ(allModules().back(), "terrainedit");
+    EXPECT_EQ(moduleDisplayName("voxel"), "Voxel Volumes");
     EXPECT_EQ(moduleDisplayName("terrainworld"), "Terrain World");
+    EXPECT_EQ(moduleDisplayName("terrainedit"), "runtime terrain edits");
+#if JASPERENGINE_VOXEL
+    EXPECT_TRUE(isModuleBuilt("voxel"));
+#else
+    EXPECT_FALSE(isModuleBuilt("voxel"));
+#endif
 #if JASPERENGINE_TERRAIN_WORLD
     EXPECT_TRUE(isModuleBuilt("terrainworld"));
 #else
     EXPECT_FALSE(isModuleBuilt("terrainworld"));
+#endif
+#if JASPERENGINE_TERRAIN_EDIT
+    EXPECT_TRUE(isModuleBuilt("terrainedit"));
+#else
+    EXPECT_FALSE(isModuleBuilt("terrainedit"));
 #endif
 }
 

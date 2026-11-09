@@ -29,46 +29,69 @@ R53 is `TerrainEdit.ZeroCostWhenUnused` and `TerrainOverlay.OffHasNoEntities`.
 
 ## Measured
 
-One run of `je-bench-terrain` (commit 9714f837d, RelWithDebInfo, the core-tests tree of `tools/build.sh unit-tests`)
-on the programme's rented build box: 16 shared vCPUs (15 job workers), a second build slot open to another stream.
-That is neither the spec's idle 8-core desktop nor an idle machine, so a missed budget here is not shown to be
-missed on reference hardware, and a met one is not shown to be met there; `docs/specs/checklists/T1.md` holds the
-reference run.
+`je-bench-terrain` before and after T1's budget work, on one tree and one box: the before binary from
+`terrain/integration` at d7e17a641, the after one from `terrain/t1-perf` with it merged, both RelWithDebInfo
+(the core-tests tree of `tools/build.sh unit-tests`), run alternately three times each on the programme's rented
+build box: 16 shared vCPUs (15 job workers), another stream's jobs able to share it. The medians of the three
+are below. That is neither the spec's idle 8-core desktop nor an idle machine, so a missed budget here is not
+shown to be missed on reference hardware, and a met one is not shown to be met there;
+`docs/specs/checklists/T1.md` holds the reference run. Every result is bit-identical to before: the golden
+digests (`TerrainGolden.Hashes`) did not change.
 
-| Metric | Budget | This run |
-|---|---|---|
-| Raise stamp, radius 64 | 0.3 ms | 0.41 ms (over) |
-| Smooth stamp, radius 64 | 0.8 ms | 0.52 ms |
-| Smooth stamp with the slope filter | 1.0 ms | 1.12 ms (over) |
-| Raise stamp, radius 512, workers | 8 ms | 13.9 ms (over) |
-| `set_height` on 4096² | 400 ms | 798 ms (over) |
-| `paint_by_rules`, 3 rules, 2048² | 600 ms | 1295 ms (over) |
-| Overlay commit, 64 tiles | 1 ms | 4.3 ms (over) |
-| Height query | 40 ns | 23.6 ns (the old code 21.8 ns: 1.08x, over the 1.05x bound) |
-| Height and normal | 150 ns | 76.0 ns (the old code 73.6 ns: 1.03x) |
-| Raycast, 512 m of 1024² | 30 us | 3.65 us (the old code 3.61 us: 1.01x, the same 3668 hits of 4096) |
-| Node refit, 64×64 | 0.1 ms | 0.032 ms (a full rebuild: 4.9 ms) |
-| Runtime `setHeights` 64×64 | 0.2 ms | 0.57 ms (over) |
-| Runtime `applyOps` circle radius 32 | 0.2 ms | 0.63 ms (over) |
-| Collider refresh, 64×64 samples | 2 ms | 0.57 ms, no rebuild |
+| Metric | Budget | Before | After |
+|---|---|---|---|
+| Raise stamp, radius 64 | 0.3 ms | 0.415 ms | 0.287 ms |
+| Smooth stamp, radius 64 | 0.8 ms | 0.545 ms | 0.496 ms |
+| Smooth stamp with the slope filter | 1.0 ms | 1.156 ms | 0.779 ms |
+| Raise stamp, radius 512, workers | 8 ms | 14.69 ms | 8.16 ms (over; the runs 8.02 to 8.54) |
+| `set_height` on 4096² | 400 ms | 829 ms | 222 ms |
+| `paint_by_rules`, 3 rules, 2048² | 600 ms | 1292 ms | 225 ms |
+| Overlay commit, 64 tiles | 1 ms | 3.27 ms | 0.388 ms |
+| Height query | 40 ns, 1.05x | 24.4 ns, 1.094x | 23.6 ns, 1.057x (over the ratio) |
+| Height and normal | 150 ns | 77.1 ns, 1.043x | 74.1 ns, 0.999x |
+| Raycast, 512 m of 1024² | 30 us | 3.68 us, 1.030x | 3.58 us, 1.004x (the same 3668 hits of 4096) |
+| Node refit, 64×64 | 0.1 ms | 0.030 ms | 0.033 ms (a full rebuild: 5.0 ms) |
+| Runtime `setHeights` 64×64 | 0.2 ms | 0.554 ms | 0.139 ms |
+| Runtime `applyOps` circle radius 32 | 0.2 ms | 0.624 ms | 0.193 ms |
+| Collider refresh, 64×64 samples | 2 ms | 0.539 ms | 0.530 ms, no rebuild |
 
-`TerrainDeltaBench` in the same pass, without the slack (1024² for the whole map): commit of 64 tiles 2.19 ms
-(budget 2), undo of 64 tiles 1.23 ms (budget 1), commit of a whole 1024² map 9.0 ms and its undo 5.0 ms (the
-budget's 4096² was not run). A radius-64 diagonal stroke on 2048² stores 67,026 bytes in 154 tiles against
-today's 8,388,608-byte rectangle: 1/125, inside R49's 1/8.
+What changed, from profiles of the before code: a whole-map op encoded every overlay tile four times (the
+report, its statistics, the commit and the flush) and grew dirty rectangles texel by texel; now a tile's after
+bytes are encoded once, over the texels written, and the report, commit and flush scan and encode tiles on the
+workers. The overlay's writes check, decode and store tiles on the workers too, the rule filter's rows run on
+them, and a large raw read decodes rows on them. A stamp's block no longer zeroes buffers it fills, and samples
+its shape a row at a time. The height query reads a 16-bit map's texels directly.
 
-The ratios are the most trustworthy lines: both sides run interleaved in one process. The whole-map ops and the
-overlay commit miss by 2x to 4x, more than a shared machine explains; they are the place to look first.
+Two budgets still miss here. The radius-512 stamp is 2% over, inside this shared machine's spread. The height
+query's ratio is 1.057x: the query tests its map view and NaN once more than the code it replaced, about 1.5 ns
+of 23.6, and that work is the guard against reading an unloaded or empty map, so it stays.
+
+`TerrainDeltaBench` with `JASPER_TEST_PERF_SLACK=1` (the spec's sizes), three runs on the same box: commit of
+64 tiles 0.39 to 0.50 ms (budget 2; 1.09 to 1.11 ms before the commit packed tiles on the workers), undo of
+64 tiles 0.56 to 0.59 ms with one run at 1.09 ms (budget 1; the undo is unchanged), commit of a whole 4096² map
+10.9 to 12.6 ms (budget 60; 68.8 to 71.5 ms before), its undo 38.6 to 39.3 ms (budget 60). A radius-64
+diagonal stroke on 2048² stores 67,026 bytes in 154 tiles against today's 8,388,608-byte rectangle: 1/125,
+inside R49's 1/8.
 
 ## Size (R54)
 
 `tools/perf/terrain_size.py` compares a Linux glcore player's `.text` + `.rodata` and the web `st` player's
-gzipped `.wasm` between the merge base and the head. Budgets: 96 KiB and 32 KiB.
+gzipped `.wasm` between two players, and with `--t1-share` counts T1's own sources (the operation engine,
+stores, surface query, op JSON, Lua terrain bindings, collider refresh, refit) in a player's debug file by
+their symbols' line information. Budgets: 96 KiB and 32 KiB.
 
-Measured once (the release `full` variant through `tools/players/build_linux_player.sh`): from the merge base
-with `origin/main` (1aa6d41f7) to 9714f837d the Linux glcore player grew by 1,673 KiB of `.text` + `.rodata`.
-That is the whole terrain programme in the head (T1, T2's noise module, T3, T5, T6's voxel module), so it
-bounds T1's growth from above. T1's own sources (the operation engine, stores, surface query, op JSON, Lua
-terrain bindings, collider refresh, refit, X11 pen reader), counted by their symbols' line information in the
-head's debug file, hold 319,172 bytes: about 312 KiB, over R54's 96 KiB. `TerrainOps*` alone is 164,535 bytes.
-The web `st` player was not built: web builds run once at the end of the programme.
+The runtime edit path (`applyOps`, `setHeights`, `getHeights`, the overlay store, strokes, placement, erosion
+and T5's registered foliage ops, the edit uploads and the collider refresh) is the player module `terrainedit`
+(`JASPERENGINE_TERRAIN_EDIT`): a project needs it when a terrain has Allow Runtime Edits or a script calls one
+of those functions, and the `lite3d` and `lite2d` variants leave it out. Measured with
+`tools/players/build_linux_player.sh`, release, warnings as errors, on the merged tree:
+
+| Player | T1's share |
+|---|---|
+| Without runtime edits (`full` less `terrainedit`) | 40.1 KiB, inside the 96 KiB |
+| With them (`full`) | 320.9 KiB, of which `TerrainOps` 170.3 KiB |
+
+The module adds 456.0 KiB to the Linux glcore player's `.text` + `.rodata` (38,331,954 bytes against
+37,864,994), more than T1's share because it also keeps the code it calls in other modules' files. Nothing
+in the module was shrunk: its size is the operation engine's per-op kernels, each a template instance per
+map format. The web `st` player was not built: web builds run once at the end of the programme.

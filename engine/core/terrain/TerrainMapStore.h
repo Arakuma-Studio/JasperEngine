@@ -180,7 +180,11 @@ namespace jasperengine::terrain {
     // R11: the one quantization rule of every map
     inline uint32_t quantizeChannel(float value, int bitsPerChannel) {
         const float top = bitsPerChannel >= 16 ? 65535.0f : 255.0f;
-        return static_cast<uint32_t>(std::round(detClamp01(value) * top));
+        // std::round on a value in [0, 65535], without its library call (T1 R47, R48): the fraction
+        // below 2^23 is exact, and a half rounds up, away from zero, as std::round's does
+        const float scaled = detClamp01(value) * top;
+        const uint32_t whole = static_cast<uint32_t>(scaled);
+        return whole + (scaled - static_cast<float>(whole) >= 0.5f ? 1u : 0u);
     }
 
     inline float decodeChannel(const uint8_t* stored, int bitsPerChannel) {

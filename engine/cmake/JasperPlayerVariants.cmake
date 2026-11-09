@@ -19,6 +19,7 @@ set(JASPERENGINE_MODULE_OPTION_soundlayer JASPERENGINE_SOUND_LAYER)
 set(JASPERENGINE_MODULE_OPTION_noise JASPERENGINE_NOISE)
 set(JASPERENGINE_MODULE_OPTION_voxel JASPERENGINE_VOXEL)
 set(JASPERENGINE_MODULE_OPTION_terrainworld JASPERENGINE_TERRAIN_WORLD)
+set(JASPERENGINE_MODULE_OPTION_terrainedit JASPERENGINE_TERRAIN_EDIT)
 
 # jasperengine_player_variant(<name> <suffix variable>): sets every module option of the caller's
 # scope ON or OFF as the variant lists it, and the variant's id suffix ("" for the full player)

@@ -54,6 +54,7 @@ _MODULE_MACROS = {
     'JASPERENGINE_NOISE': 'noise',
     'JASPERENGINE_VOXEL': 'voxel',
     'JASPERENGINE_TERRAIN_WORLD': 'terrainworld',
+    'JASPERENGINE_TERRAIN_EDIT': 'terrainedit',
 }
 
 

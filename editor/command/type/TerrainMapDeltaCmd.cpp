@@ -6,6 +6,7 @@
 
 #include "Project.h"
 #include "command/CommandNames.h"
+#include "jobs/JobSystem.h"
 #include "object/TerrainEdit.h"
 #include "pool/TextureDataPool.h"
 #include "terrain/EditorTerrainStore.h"
@@ -23,6 +24,9 @@ using namespace jasperengine::terrain;
 
 namespace {
 
+    // T1 R49: below this many tiles a stroke's commit packs them on the main thread
+    constexpr size_t PARALLEL_DELTA_TILES = 32;
+
     TexelRect deltaTileRect(int x, int y, const TexelRect& bounds) {
         return intersect(TexelRect{x, y, OverlayMapStore::TILE_SIZE, OverlayMapStore::TILE_SIZE}, bounds);
     }
@@ -35,17 +39,32 @@ editor::TerrainMapDeltaCmd::TerrainMapDeltaCmd(Project* project, uint32_t sceneI
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     TerrainComponent* terrain = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<TerrainComponent>(entity) : nullptr;
 
-    std::vector<uint8_t> xored;
-    overlay.visitTiles([&](MapId map, TexelRect rect, std::span<const uint8_t> before, std::span<const uint8_t> after) {
-        if (std::find(skipMaps.begin(), skipMaps.end(), map) != skipMaps.end()) return;
-        xored.resize(before.size());
+    // each tile's XOR, packed on the workers; the steps are put together in the overlay's order, so
+    // the stored bytes do not depend on the thread count
+    std::vector<OverlayMapStore::TileView> views = overlay.tileViews();
+    std::erase_if(views, [&](const OverlayMapStore::TileView& view) { return std::find(skipMaps.begin(), skipMaps.end(), view.map) != skipMaps.end(); });
+    std::vector<std::vector<uint8_t>> packed(views.size());
+    auto pack = [&](size_t index) {
+        const OverlayMapStore::TileView& view = views[index];
+        thread_local std::vector<uint8_t> xored;
+        xored.resize(view.before.size());
         bool changed = false;
-        for (size_t i = 0; i < before.size(); i++) {
-            xored[i] = before[i] ^ after[i];
+        for (size_t i = 0; i < view.before.size(); i++) {
+            xored[i] = view.before[i] ^ view.after[i];
             changed = changed || xored[i] != 0;
         }
-        if (!changed) return;
+        if (changed) packed[index] = packTerrainBytes(xored);
+    };
+    if (views.size() >= PARALLEL_DELTA_TILES) {
+        jobs::parallelFor(views.size(), pack);
+    } else {
+        for (size_t i = 0; i < views.size(); i++) pack(i);
+    }
 
+    for (size_t index = 0; index < views.size(); index++) {
+        // an empty pack is an unchanged tile: a changed one packs to at least one byte
+        if (packed[index].empty()) continue;
+        const MapId map = views[index].map;
         if (maps.empty() || maps.back().map != map) {
             MapDelta delta;
             delta.map = map;
@@ -61,11 +80,11 @@ editor::TerrainMapDeltaCmd::TerrainMapDeltaCmd(Project* project, uint32_t sceneI
             maps.push_back(std::move(delta));
         }
         Tile tile;
-        tile.x = rect.x;
-        tile.y = rect.y;
-        tile.bytes = packTerrainBytes(xored);
+        tile.x = views[index].rect.x;
+        tile.y = views[index].rect.y;
+        tile.bytes = std::move(packed[index]);
         maps.back().tiles.push_back(std::move(tile));
-    });
+    }
     for (MapDelta& delta : maps) {
         delta.tiles.shrink_to_fit();
     }

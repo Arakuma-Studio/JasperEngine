@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "MeshSystem.h"
+#include "terrain/TerrainEditModule.h"
 #include "subsystem/FoliageSystem.h"
 #include "component/ActionComponent.h"
 #include "component/Transform.h"
@@ -7545,7 +7546,7 @@ void MeshSystem::update(double dt){
         Entity entity = terrains->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
-#ifndef JASPERENGINE_EDITOR
+#if !defined(JASPERENGINE_EDITOR) && JASPERENGINE_TERRAIN_EDIT
         // T1 R77, R78: a game's terrain with Allow Runtime Edits draws from copies of its maps,
         // made at load and kept readable (the editor makes them when Play starts)
         // (once: both outcomes leave an edit state)
@@ -7568,9 +7569,11 @@ void MeshSystem::update(double dt){
             createOrUpdateTerrain(terrain, mesh, transform);
             updateTerrainAutoRanges(terrain);
         }
+#if JASPERENGINE_TERRAIN_EDIT
         if (terrain.editState){
             flushTerrainEdit(terrain, std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count());
         }
+#endif
     }
     // T1 R42, DC10: a frame's edits reach their subscribers once, by terrain and map
     if (TerrainEditEvents::hasPending()){

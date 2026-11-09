@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PlayerModules.h"
+#include "terrain/TerrainEditModule.h"
 
 #include "component/AudioSourceComponent.h"
 #include "navigation/NavTypes.h"
@@ -12,7 +13,7 @@
 using namespace jasperengine;
 
 const std::vector<std::string>& player::allModules() {
-    static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld"};
+    static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit"};
     return modules;
 }
 
@@ -46,6 +47,9 @@ std::vector<std::string> player::builtModules() {
 #if JASPERENGINE_TERRAIN_WORLD
     modules.push_back("terrainworld");
 #endif
+#if JASPERENGINE_TERRAIN_EDIT
+    modules.push_back("terrainedit");
+#endif
     return modules;
 }
 
@@ -65,5 +69,6 @@ std::string player::moduleDisplayName(const std::string& module) {
     if (module == "noise") return "the Noise and NoiseGraph API";
     if (module == "voxel") return "Voxel Volumes";
     if (module == "terrainworld") return "Terrain World";
+    if (module == "terrainedit") return "runtime terrain edits";
     return module;
 }

@@ -18,7 +18,13 @@ platform may be missing from both, and is then reported as not measured. The bas
         /src/build/terrain-size/head-tree /src/build/terrain-size/head-players
 
 Prints each measure with its budget and exits 1 when one is over, 2 when nothing could be measured.
-Standard library only.
+
+    python3 tools/perf/terrain_size.py --t1-share PLAYER.debug [--t1-share OTHER.debug]
+
+counts T1's own share of one player instead: the .text and .rodata symbols whose debug line information
+points into T1's sources (T1_SOURCES), from `nm -S -l` (binutils) on the player's split debug file, so a
+player built without the runtime edit module (JASPERENGINE_TERRAIN_EDIT=OFF) and one with it can be
+compared against R54's 96 KiB. Standard library and nm only.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ import argparse
 import gzip
 import json
 import struct
+import subprocess
 import sys
 from pathlib import Path
 
@@ -35,6 +42,38 @@ KIB = 1024
 LINUX_BUDGET = 96 * KIB
 WEB_BUDGET = 32 * KIB
 SECTIONS = (".text", ".rodata")
+
+
+# T1's sources (docs/specs/T1-terrain-authoring.md D-41): the operation engine, its stores, the surface
+# query, the op JSON, the runtime edit targets and uploads, the Lua terrain bindings, the collider refresh
+T1_SOURCES = (
+    "engine/core/terrain/TerrainOps", "engine/core/terrain/OverlayMapStore", "engine/core/terrain/RawMapStore",
+    "engine/core/terrain/TerrainMapStore", "engine/core/terrain/TerrainShape", "engine/core/terrain/TerrainStroke",
+    "engine/core/terrain/TerrainPlacement", "engine/core/terrain/TerrainSurface", "engine/core/terrain/TerrainErosion",
+    "engine/core/terrain/TerrainLayers", "engine/core/object/TerrainEdit", "engine/core/object/TerrainOpsJson",
+    "engine/core/script/binding/TerrainClassesLua", "engine/core/physics/JoltTerrainRefresh",
+    "engine/core/subsystem/MeshSystemTerrainEdit",
+)
+
+
+def t1_share(debug_file: Path) -> tuple[int, dict[str, int]]:
+    """Bytes of .text/.rodata symbols defined in T1's sources, in all and by source."""
+    run = subprocess.run(["nm", "-S", "-l", "--defined-only", str(debug_file)], capture_output=True, text=True, check=True)
+    by_source: dict[str, int] = {}
+    total = 0
+    for line in run.stdout.splitlines():
+        parts = line.split("\t")
+        fields = parts[0].split()
+        if len(fields) < 4 or len(parts) < 2 or fields[2] not in "tTrR":
+            continue
+        where = parts[1]
+        for source in T1_SOURCES:
+            if source in where:
+                size = int(fields[1], 16)
+                total += size
+                by_source[source] = by_source.get(source, 0) + size
+                break
+    return total, by_source
 
 
 def elf_sections(path: Path) -> dict[str, int]:
@@ -99,7 +138,23 @@ def main() -> int:
     parser.add_argument("--base-web", type=Path)
     parser.add_argument("--head-web", type=Path)
     parser.add_argument("--json", type=Path, help="write the numbers here")
+    parser.add_argument("--t1-share", type=Path, action="append", default=[], help="a player's .debug file: T1's own bytes")
     args = parser.parse_args()
+
+    if args.t1_share:
+        shares = {}
+        over = 0
+        for debug_file in args.t1_share:
+            total, by_source = t1_share(debug_file)
+            shares[str(debug_file)] = {"bytes": total, "by_source": by_source, "budget": LINUX_BUDGET}
+            ok = total <= LINUX_BUDGET
+            over += 0 if ok else 1
+            print(f"  {'ok  ' if ok else 'FAIL'}  T1's share of {debug_file}: {total / KIB:.1f} KiB (budget {LINUX_BUDGET / KIB:.0f} KiB)")
+            for source, size in sorted(by_source.items(), key=lambda item: -item[1]):
+                print(f"          {size / KIB:8.1f} KiB  {source}")
+        if args.json:
+            args.json.write_text(json.dumps(shares, indent=2) + "\n")
+        return 1 if over else 0
 
     pairs = {
         "linux": (args.base_linux, args.head_linux),
