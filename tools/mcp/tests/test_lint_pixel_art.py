@@ -28,7 +28,7 @@ EDITOR = {"create": True, "name": "LintPixelArt"}
 
 FIXTURES = REPO / "editor" / "tests" / "fixtures" / "pixelart" / "lint"
 ORACLE = REPO / "tools" / "mcp" / "pixel_lint_ref.py"
-ASEPRITE_FIXTURE = REPO / "editor" / "tests" / "fixtures" / "aseprite" / "asefile" / "layers_and_tags.aseprite"
+ASEPRITE_FIXTURE = REPO / "editor" / "tests" / "fixtures" / "aseprite" / "s44-mcp" / "hero_idle.aseprite"
 ART = "assets/art"
 
 
@@ -84,10 +84,11 @@ async def test_tag_against_the_oracle_and_image(ed: Editor):
     ed.check_eq(info.returncode, 0, info.stderr[-500:])
     described = json.loads(info.stdout)
     tags = {t["name"]: t for t in described["tags"]}
-    tag = max(tags, key=lambda name: tags[name]["to"] - tags[name]["from"])
+    tag = "walk"
+    ed.check_eq(tags[tag]["to"] - tags[tag]["from"], 3, "AC14's tag has four frames")
     mtime = os.stat(src).st_mtime_ns
     result = await lint(ed, source=f"{ART}/walker.aseprite", frames=tag)
-    ed.check(result["frames"] >= 1, f"frames: {result['frames']}")
+    ed.check_eq(result["frames"], 4, "the tag's four frames are linted")
     ed.check_eq(os.stat(src).st_mtime_ns, mtime, "linting does not touch the file")
     with_image = await ed.call_raw("lint_pixel_art", {"source": f"{ART}/walker.aseprite", "frames": tag, "image": True})
     ed.check_eq(len(with_image.images), 1, "image: true returns one image")
@@ -115,21 +116,19 @@ async def test_tag_against_the_oracle_and_image(ed: Editor):
             compared += 1
         ed.check(compared >= 5, f"the oracle compared {compared} lints")
 
-        # The magenta marks sit at the lints' spots
-        spotted = await lint(ed, source=f"{ART}/walker.aseprite", frames=tag, image=True)
-        spots = [spot for entry in spotted["results"] for spot in entry["at"]]
-        if spots:
-            rgba_png = pngdiff.decode(with_image.images[0][0])
-            frame, x, y = spots[0]
-            width, height, rgba = rgba_png
-            found = False
-            for sy in range(height):
-                for sx in range(width):
-                    if tuple(rgba[(sy * width + sx) * 4:(sy * width + sx) * 4 + 4]) == (255, 0, 255, 255):
-                        found = True
-                        break
-                if found:
-                    break
-            ed.check(found, "magenta spots are drawn")
+        ed.check(by_id["flicker"]["status"] != "SKIP", f"four frames: flicker runs: {by_id['flicker']}")
+        ed.check("flicker" in answer and answer["flicker"]["status"] != "SKIP", "the oracle judged flicker too")
+
+        # Every lint spot is outlined in magenta where its frame and pixel fall in the picture
+        spots = [spot for entry in result["results"] for spot in entry["at"]]
+        ed.check(spots, "the fixture has spots to mark")
+        width, height, rgba = pngdiff.decode(with_image.images[0][0])
+        frame_w, _, _ = pngdiff.decode(Path(frames[0]).read_bytes())
+        scale = width // ((frame_w + 1) * len(frames))
+        for frame, x, y in spots:
+            left, top = (frame - 1) * (frame_w + 1) * scale + x * scale, y * scale
+            corners = [(left, top), (left + scale - 1, top), (left, top + scale - 1), (left + scale - 1, top + scale - 1)]
+            colors = [tuple(rgba[(cy * width + cx) * 4:(cy * width + cx) * 4 + 3]) for cx, cy in corners]
+            ed.check((255, 0, 255) in colors, f"spot [{frame}, {x}, {y}] is outlined in magenta, got {colors}")
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
