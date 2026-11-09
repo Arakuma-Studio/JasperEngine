@@ -174,7 +174,9 @@ namespace jasperengine::editor::pixelart::lint {
                     for (int d = 1; d <= K; d++) {
                         if (!take(y + d, down)) break;
                     }
-                    if (n < 2 * K) continue;
+                    // every neighbouring line matched: within K lines of the frame's border the fit is one-sided
+                    // and the run is cut, which reads as a width change of the rim that is not there
+                    if (n < 2 * K + 1) continue;
                     const double denom = n * syy - sy * sy;
                     const double slope = denom != 0.0 ? (n * sye - sy * se) / denom : 0.0;
                     if (std::abs(slope) > 1.0) continue;
