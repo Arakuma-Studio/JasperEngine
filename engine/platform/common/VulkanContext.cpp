@@ -8,9 +8,22 @@
 #include <cstring>
 #include <vector>
 
+#if defined(__linux__) && !defined(__ANDROID__)
+    #include <dlfcn.h>
+#endif
+
 using namespace jasperengine;
 
 namespace {
+
+    // NVIDIA's ICD registers a close-display hook with Xlib, and the loader unloads the ICD at
+    // vkDestroyInstance, before the window closes: XCloseDisplay would then jump into unmapped
+    // code (a segfault at every exit on NVIDIA). The driver stays mapped for the process.
+    void keepX11DriverLoaded() {
+#if defined(__linux__) && !defined(__ANDROID__)
+        dlopen("libGLX_nvidia.so.0", RTLD_NOW | RTLD_NOLOAD | RTLD_NODELETE);
+#endif
+    }
 
     // The validation layer reports the present-complete semaphore as reused when
     // the swapchain runs with fewer than three images
@@ -535,6 +548,7 @@ bool VulkanContext::create(const VulkanContextConfig& config) {
     }
 
     if (!createInstance()) return false;
+    keepX11DriverLoaded();
 
     const VkResult result = gConfig.createSurface(gInstance, &gSurface);
     if (result != VK_SUCCESS) {
