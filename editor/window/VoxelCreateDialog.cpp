@@ -14,6 +14,7 @@
 #include "render/SceneRender.h"
 #include "util/FileDialogs.h"
 #include "voxel/VoxelProjectSettings.h"
+#include "window/EditorModal.h"
 #include "window/VoxelEditWindow.h"
 
 #include "imgui.h"
@@ -89,7 +90,7 @@ void VoxelCreateDialog::draw() {
     }
     bool keepOpen = true;
     ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 26.0f, 0.0f), ImGuiCond_Appearing);
-    if (!ImGui::BeginPopupModal(VOXEL_CREATE_TITLE, &keepOpen)) {
+    if (!EditorModal::begin(VOXEL_CREATE_TITLE, &keepOpen)) {
         if (!keepOpen || !ImGui::IsPopupOpen(VOXEL_CREATE_TITLE)) isOpen = false;
         return;
     }
@@ -179,6 +180,7 @@ void VoxelCreateDialog::draw() {
     }
     const std::string problem = voxelCreateProblem(options);
     if (!problem.empty()) ImGui::TextDisabled("%s", problem.c_str());
+    EditorModal::error(error);
     if (!error.empty()) {
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "%s", error.c_str());
@@ -186,7 +188,7 @@ void VoxelCreateDialog::draw() {
     }
 
     ImGui::BeginDisabled(!problem.empty());
-    if (ImGui::Button("Create", ImVec2(ImGui::GetFontSize() * 7.0f, 0.0f))) {
+    if (EditorModal::button("Create", "ok", ImVec2(ImGui::GetFontSize() * 7.0f, 0.0f))) {
         const Entity entity = createVoxelVolume(project, sceneId, options, &error);
         if (entity != NULL_ENTITY) {
             // the slow bases run as a job the panel shows; the rest resolved already
@@ -203,7 +205,7 @@ void VoxelCreateDialog::draw() {
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(ImGui::GetFontSize() * 7.0f, 0.0f))) {
+    if (EditorModal::button("Cancel", "cancel", ImVec2(ImGui::GetFontSize() * 7.0f, 0.0f))) {
         isOpen = false;
         ImGui::CloseCurrentPopup();
     }
