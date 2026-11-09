@@ -64,7 +64,7 @@ async def test_badge_converts_to_3d(ed: Editor):
     await open_designer(ed, helper, "looks", "Chrome 3D")
     await click_tile(helper)
     layer = await title_look(ed)
-    ed.check_eq(layer.get("dimension"), "3d", f"the tile's badge said so and the layer is 3D: {layer.get('dimension')}")
+    ed.check("three_d" in layer, f"the tile's badge said so and the layer is 3D: {sorted(layer)}")
     await helper.key("ctrl+z")
     await helper.frames(8)
 
