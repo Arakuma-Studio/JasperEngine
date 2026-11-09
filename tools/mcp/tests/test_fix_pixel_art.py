@@ -254,6 +254,47 @@ async def test_apply_sets_the_sprite(ed: Editor):
     await ed.check_error("fix_pixel_art", {"source": HERO, "apply": "HeroSprite"}, contains="output")
 
 
+async def test_import_step_through_the_tool(ed: Editor):
+    """R33 for agents: output {import_step: true} stores the resolved recipe in the source's .meta as one undo step, writes no
+    image, leaves the source's bytes alone, and refuses needs_person like a write does."""
+    source = f"{ART}/agent_step.png"
+    (ed.project / ART).mkdir(parents=True, exist_ok=True)
+    (ed.project / source).write_bytes(ai_sprite())
+    before_bytes = (ed.project / source).read_bytes()
+    await ed.call("tool_groups", enable=["pixel_art", "assets_pipeline"])
+    await ed.call("sync_files", paths=[source], full=False)
+    listing = files_in(ed.project)
+
+    result = await ed.call("fix_pixel_art", source=source, output={"import_step": True})
+    ed.check(result["verdict"] == "fixable", f"{result}")
+    ed.check_eq(result["import_step"]["source"], source, f"{result}")
+    ed.check("reimport_textures" in result["next"], f"the result says how to cook it: {result['next']}")
+    ed.check_eq((ed.project / source).read_bytes(), before_bytes, "the source file is unchanged")
+    ed.check_eq(files_in(ed.project), listing, "no image is written")
+    meta = yaml.safe_load((ed.project / f"{source}.meta").read_text())
+    step = meta["import"]["pixelCleanup"]
+    ed.check(step["enabled"] is True, f"{step}")
+    ed.check_eq(json.loads(step["recipe"])["source"]["path"], source, f"{step}")
+    ed.check("Save as Import Step" in result["undo"]["name"], f"{result['undo']}")
+
+    report = await ed.call("reimport_textures", paths=[source], wait=True, timeout_s=300)
+    row = report["textures"][0]["platforms"]["desktop"]
+    ed.check_eq(row["logical_width"], 16, f"the texture cooks the fixed size: {row}")
+
+    await ed.call("undo", scope="project")
+    after_undo = yaml.safe_load((ed.project / f"{source}.meta").read_text()) or {}
+    ed.check("pixelCleanup" not in (after_undo.get("import") or {}), f"one undo removes the step: {after_undo}")
+
+    photo = f"{ART}/photo.jpg"
+    (ed.project / photo).write_bytes((REPO / "editor/tests/fixtures/pixelart/cleanup/photo.jpg").read_bytes())
+    await ed.call("sync_files", paths=[photo], full=False)
+    refused = await ed.call_raw("fix_pixel_art", {"source": photo, "output": {"import_step": True}})
+    ed.check(refused.is_error and "needs_person" in refused.text, f"needs_person is refused: {refused.text}")
+    ed.check(not (ed.project / f"{photo}.meta").exists() or "pixelCleanup" not in (ed.project / f"{photo}.meta").read_text(), "nothing is saved")
+    bad = await ed.call_raw("fix_pixel_art", {"source": source, "output": {"import_step": True, "png": f"{ART}/x.png"}})
+    ed.check(bad.is_error and "import_step" in bad.text, f"paths with import_step are refused: {bad.text}")
+
+
 async def test_import_step(ed: Editor):
     """AC13 (R33, D8): import.pixelCleanup in a raster texture's .meta cooks the fixed pixels at their size; a
     changed source whose verdict is needs_person cooks the raw source and warns; the export carries no recipe chunk."""

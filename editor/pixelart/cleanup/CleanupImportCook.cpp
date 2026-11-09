@@ -11,8 +11,12 @@
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstring>
+#include <deque>
+#include <mutex>
+#include <string>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -82,11 +86,22 @@ namespace jasperengine::editor::pixelart::cleanup {
         return importSectionRecipeText(section);
     }
 
-    TextureCookStep importCookStep(const std::string& recipeText) {
-        TextureCookStep step;
-        if (recipeText.empty()) return step;
-        step.key = recipeText + "\npipeline " + std::to_string(Recipe::kPipelineVersion);
-        step.run = [recipeText](const uint8_t* rgba, int width, int height, const std::string& sourceSha256) {
+    namespace {
+
+        std::atomic<uint64_t> importCookFixes{0};
+
+        // The queue plans a texture and cooks it in two stages, each with its own request, and both
+        // need the step's pixels. The run is deterministic (R40), so the plan's output serves the
+        // cook; taking it frees it. A few slots: textures cook side by side.
+        struct CookMemo {
+            std::string key;
+            TextureCookStep::Outcome outcome;
+        };
+        constexpr size_t kCookMemoSlots = 8;
+        std::mutex cookMemoMutex;
+        std::deque<CookMemo> cookMemo;
+
+        TextureCookStep::Outcome runCookFix(const std::string& recipeText, const uint8_t* rgba, int width, int height, const std::string& sourceSha256) {
             TextureCookStep::Outcome outcome;
             PixelImage source(width, height);
             std::memcpy(source.editPixels().data(), rgba, static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
@@ -114,6 +129,44 @@ namespace jasperengine::editor::pixelart::cleanup {
             outcome.width = out.width();
             outcome.height = out.height();
             outcome.rgba.assign(out.pixels().begin(), out.pixels().end());
+            return outcome;
+        }
+
+        bool takeCookMemo(const std::string& key, TextureCookStep::Outcome& outcome) {
+            std::lock_guard<std::mutex> lock(cookMemoMutex);
+            for (auto it = cookMemo.begin(); it != cookMemo.end(); ++it) {
+                if (it->key == key) {
+                    outcome = std::move(it->outcome);
+                    cookMemo.erase(it);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        void putCookMemo(const std::string& key, const TextureCookStep::Outcome& outcome) {
+            std::lock_guard<std::mutex> lock(cookMemoMutex);
+            cookMemo.push_back({key, outcome});
+            if (cookMemo.size() > kCookMemoSlots) cookMemo.pop_front();
+        }
+
+    }
+
+    uint64_t importCookFixesRun() {
+        return importCookFixes.load();
+    }
+
+    TextureCookStep importCookStep(const std::string& recipeText) {
+        TextureCookStep step;
+        if (recipeText.empty()) return step;
+        step.key = recipeText + "\npipeline " + std::to_string(Recipe::kPipelineVersion);
+        step.run = [recipeText](const uint8_t* rgba, int width, int height, const std::string& sourceSha256) {
+            const std::string memoKey = recipeText + "\n" + sourceSha256 + "\n" + std::to_string(width) + "x" + std::to_string(height);
+            TextureCookStep::Outcome outcome;
+            if (takeCookMemo(memoKey, outcome)) return outcome;
+            importCookFixes++;
+            outcome = runCookFix(recipeText, rgba, width, height, sourceSha256);
+            putCookMemo(memoKey, outcome);
             return outcome;
         };
         return step;

@@ -19,6 +19,7 @@
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "command/type/SetAssetMetaCmd.h"
 #include "component/ActionComponent.h"
 #include "component/MeshComponent.h"
 #include "component/SpriteAnimationComponent.h"
@@ -43,7 +44,10 @@
 #include "util/Base64.h"
 #include "util/FileUtils.h"
 
+#include "yaml-cpp/yaml.h"
+
 #include <algorithm>
+#include <cctype>
 #include <atomic>
 #include <cmath>
 #include <memory>
@@ -195,6 +199,10 @@ bool parseFixArgs(const CallPtr& call, cleanup::Spec& spec, FixState& state, std
         } else if (output.is_object()) {
             spec.output.write = true;
             for (auto it = output.begin(); it != output.end(); ++it) {
+                if (it.key() == "import_step" && it.value().is_boolean()) {
+                    spec.output.importStep = it.value().get<bool>();
+                    continue;
+                }
                 std::string* target = it.key() == "png" ? &spec.output.png : it.key() == "aseprite" ? &spec.output.aseprite : it.key() == "json" ? &spec.output.json : nullptr;
                 if (!target || !it.value().is_string()) {
                     problems.push_back({"output_outside_assets", "output." + it.key(), "output holds {png, aseprite, json} paths", "e.g. {\"png\": \"assets/hero_clean.png\"}"});
@@ -204,6 +212,12 @@ bool parseFixArgs(const CallPtr& call, cleanup::Spec& spec, FixState& state, std
             }
         } else {
             problems.push_back({"output_outside_assets", "output", "output is true, a path or {png, aseprite, json}", "use output: true"});
+        }
+        if (spec.output.importStep) {
+            if (!spec.output.png.empty() || !spec.output.aseprite.empty() || !spec.output.json.empty()) {
+                problems.push_back({"invalid_value", "output.import_step", "import_step writes no file, so it takes no output paths", "pass either {import_step: true} or the paths"});
+            }
+            spec.output.write = false;
         }
     }
     if (args.contains("image")) {
@@ -347,6 +361,40 @@ ApplyOutcome applyAsepriteOutput(Project* project, SceneProject* sp, Entity enti
     return out;
 }
 
+// R33 for agents: the resolved recipe becomes the source's import step (no file is written)
+bool saveImportStep(Project* project, const FixState& state, Problem& problem) {
+    const cleanup::Prepared& prepared = state.prepared;
+    std::string extension = prepared.sourceAbsolute.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (prepared.sourceAbsolute.empty() || extension == ".aseprite" || extension == ".ase" || prepared.frames.size() != 1) {
+        problem = {"invalid_value", "output.import_step", "an import step needs one raster image in the project; " + prepared.sourcePath + " is not one",
+                   "use output: true to write a file"};
+        return false;
+    }
+    if (state.result.resolved.source.sha256.empty()) {
+        problem = {"invalid_value", "output.import_step", "the source has no recorded hash", "use a project image as the source"};
+        return false;
+    }
+    if (state.result.report.verdict == epx::Verdict::NeedsPerson && !prepared.spec.force) {
+        problem = {"needs_person", "force", prepared.sourcePath + " is needs_person: " + state.result.report.summary,
+                   "set recipe.grid or palette and preview again, or pass force: true"};
+        return false;
+    }
+    cleanup::Recipe recipe = state.result.resolved;
+    recipe.forced = state.result.report.verdict == epx::Verdict::NeedsPerson;
+    YAML::Node node(YAML::NodeType::Map);
+    node["enabled"] = true;
+    node["recipe"] = cleanup::recipeText(recipe);
+    auto* command = new SetAssetMetaCmd(project, project->normalizeToProjectRelative(prepared.sourceAbsolute), "import.pixelCleanup", node);
+    command->setAction("Save as Import Step");
+    command->setNoMerge();
+    if (!project->getProjectCommandHistory()->addCommand(command)) {
+        problem = {"write_failed", "output.import_step", "the import step could not be saved", "check that the source's .meta is writable, then try again"};
+        return false;
+    }
+    return true;
+}
+
 void finishFix(const std::shared_ptr<FixState>& state, McpContext& ctx, const std::optional<UndoOrigin>& origin, bool ranOk) {
     const JobPtr& job = state->job;
     Project* project = ctx.project();
@@ -374,6 +422,24 @@ void finishFix(const std::shared_ptr<FixState>& state, McpContext& ctx, const st
         const std::string png = preview.encodePng();
         state->images.push_back({Base64::encode(reinterpret_cast<const uint8_t*>(png.data()), png.size()), "image/png"});
         data["image"] = {{"kind", cleanup::previewKindName(state->image)}, {"width", preview.width()}, {"height", preview.height()}};
+    }
+    if (state->prepared.spec.output.importStep) {
+        Problem problem;
+        if (!saveImportStep(project, *state, problem)) {
+            Json list = Json::array({problemJson(problem)});
+            job->fail(problem.kind + ": " + problem.message + (problem.fix.empty() ? "" : " Fix: " + problem.fix), Json{{"errors", list}});
+            return;
+        }
+        data["import_step"] = {{"source", state->prepared.sourcePath}, {"width", state->result.report.outputWidth}, {"height", state->result.report.outputHeight}};
+        if (UndoTimeline::EntryView last = UndoTimeline::nextUndo(NULL_PROJECT_SCENE); last.entry && last.project) {
+            data["undo"] = {{"id", last.entry->info.id}, {"name", last.entry->name()}};
+        }
+        data["next"] = "Saved: the texture now cooks these pixels and its source file is unchanged. reimport_textures {paths, wait: true} cooks it now.";
+        text += " Saved as the import step of " + state->prepared.sourcePath + ".";
+        state->data = std::move(data);
+        state->text = text;
+        job->succeed(text, state->data);
+        return;
     }
     if (!state->prepared.spec.output.write) {
         if (state->result.frames.empty() && state->result.report.verdict == epx::Verdict::NeedsPerson) {
@@ -692,7 +758,7 @@ void registerPixelArtCleanupTools(McpRegistry& registry) {
         tool.title = "Fix Pixel Art";
         tool.description =
             "Cleans AI or loose pixel art: finds the grid, reads each cell, snaps to a palette, slices sheets into clips; verdict clean, fixable or needs_person. "
-            "Without output it previews (image, nothing written); the same arguments plus output:true write it. Recipe keys: jasper://docs/pixel-art-cleanup. lint_pixel_art only checks.";
+            "Without output it previews (image, nothing written); the same arguments plus output:true write it; output:{import_step:true} instead makes the fix that texture's import step. Recipe keys: jasper://docs/pixel-art-cleanup. lint_pixel_art only checks.";
         const Json outputSchema = Json{{"type", {"boolean", "string", "object"}}};
         tool.inputSchema = object({
             {"source", string("")},

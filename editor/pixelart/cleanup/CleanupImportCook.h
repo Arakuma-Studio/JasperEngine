@@ -17,6 +17,7 @@
 
 #include "yaml-cpp/yaml.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
@@ -29,6 +30,9 @@ namespace jasperengine::editor::pixelart::cleanup {
     // key, `enabled: false`, or not a raster source (.aseprite never takes the step).
     std::string importStepRecipeText(const std::filesystem::path& absoluteAsset);
 
+    // How many fixes the cook steps of this process really ran: the plan and the cook of one texture
+    // are separate stages, and the second reuses the first's result (the spec's "one fix per source change")
+    uint64_t importCookFixesRun();
     // The cook step for a recipe text ("": no step)
     TextureCookStep importCookStep(const std::string& recipeText);
 

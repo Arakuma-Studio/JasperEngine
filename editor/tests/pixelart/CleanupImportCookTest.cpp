@@ -268,3 +268,20 @@ TEST(CleanupImportCook, NeedsPersonOnTheSavedSourceStillCooksTheFix) {
     TextureCookStep::Outcome outcome = step.run(image.pixels().data(), image.width(), image.height(), "this-file");
     EXPECT_TRUE(outcome.applied) << outcome.error << outcome.guard;
 }
+
+// "one fix per source change": the queue's plan and cook stages are separate requests
+TEST(CleanupImportCook, ThePlanAndTheCookRunTheFixOnce) {
+    const PixelImage image = cu::upscale(cu::demoSprite(), {8.0, 0.0, 0.0, 0, 0.0, 7});
+    const std::string recipe = cu::recipeText(cu::Recipe());
+    const uint64_t before = cu::importCookFixesRun();
+    const TextureCookStep planned = cu::importCookStep(recipe);
+    const TextureCookStep cooked = cu::importCookStep(recipe);
+    const TextureCookStep::Outcome first = planned.run(image.pixels().data(), image.width(), image.height(), "once-hash");
+    const TextureCookStep::Outcome second = cooked.run(image.pixels().data(), image.width(), image.height(), "once-hash");
+    EXPECT_EQ(cu::importCookFixesRun(), before + 1);
+    ASSERT_TRUE(first.applied);
+    EXPECT_EQ(first.rgba, second.rgba);
+    // another source of the same size is its own fix
+    (void)cooked.run(image.pixels().data(), image.width(), image.height(), "other-hash");
+    EXPECT_EQ(cu::importCookFixesRun(), before + 2);
+}

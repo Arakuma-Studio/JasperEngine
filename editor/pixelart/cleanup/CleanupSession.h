@@ -59,6 +59,8 @@ namespace jasperengine::editor::pixelart::cleanup {
     struct OutputSpec {
         bool write = false;          // false: a preview, nothing is written
         std::string png, aseprite, json;
+        // R33 for agents: the resolved recipe is stored as the source's import step instead of a file
+        bool importStep = false;
     };
 
     enum class SheetArg : uint8_t { Auto, Off, On };

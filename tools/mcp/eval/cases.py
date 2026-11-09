@@ -1317,6 +1317,31 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_pixel_cleanup_import_step",
+        "kind": "guard",
+        "what_happened": "New tool text (S46 R33): cleaning a texture at cook time, leaving its source file as it is, needs "
+                         "output:{import_step:true}. Without the description's words an agent writes a second file or edits the .meta by hand.",
+        "text_at_issue": "fix_pixel_art: 'output:{import_step:true} instead makes the fix that texture's import step'",
+        "source": "S46 R33 (new tool text); no failure on record",
+        "prompt": "assets/art/hero.png is an AI image that only looks like pixel art. Keep that file exactly as it is and no new image "
+                  "file, but make the game use the cleaned pixels when the texture is cooked. Preview it first.",
+        "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": {"import_step": True}}, "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors. Saved as the import step of assets/art/hero.png.",
+                {"verdict": "fixable", "import_step": {"source": "assets/art/hero.png", "width": 32, "height": 32},
+                 "undo": {"id": 15, "name": "agent: Save as Import Step (hero.png)"}})},
+            {"tool": "fix_pixel_art", "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors. Preview only: nothing written.",
+                {"verdict": "fixable", "confidence": 0.98, "default_output": "assets/art/hero_clean.png",
+                 "next": "Preview only, nothing written: look at the image, adjust recipe if it is wrong, then the same arguments plus "
+                         "output: true write exactly these pixels."})},
+        ],
+        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png"}},
+                             {"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png", "output": {"import_step": True}}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.png$", r"\.meta$"]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_pixel_cleanup_needs_person_not_forced",
         "kind": "guard",
         "what_happened": "New tool text (S46 R30): a needs_person result is a stop sign. Without the result's `next` an agent passes "

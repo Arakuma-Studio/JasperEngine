@@ -54,6 +54,14 @@ The result's `recipe` is the resolved recipe: it re-runs alone. `rerun: true` on
 stored recipe again; an unchanged source gives identical bytes, a changed one reports
 `stale: {source_changed: true}`. A re-run over an output edited since fails `output_edited`.
 
+## Keeping the source as the asset
+
+`output: {import_step: true}` writes no file: the resolved recipe goes in the source's `.meta`
+(`import.pixelCleanup`), as one undo step, and the texture cooks the fixed pixels while its source
+stays as it is. It takes a raster image, never an `.aseprite` or an animated source, and refuses
+`needs_person` like a write does. A source changed later whose verdict drops to `needs_person` cooks
+raw, with a Console warning.
+
 ## Rules of thumb
 
 - Add a lost colour to the palette rather than raising `lost_threshold`.
