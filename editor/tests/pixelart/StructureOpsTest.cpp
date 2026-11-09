@@ -6,7 +6,6 @@
 
 #include "SpriteDrawTestSupport.h"
 
-#include "miniz.h"
 
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
@@ -202,8 +201,8 @@ TEST(StructureOps, PngRoundTripKeepsAncillaryChunks) {
     for (int s = 24; s >= 0; s -= 8) chunk.push_back(static_cast<uint8_t>(size >> s));
     const std::string typed = "tEXt" + body;
     chunk.insert(chunk.end(), typed.begin(), typed.end());
-    const uint32_t crc = static_cast<uint32_t>(mz_crc32(MZ_CRC32_INIT, reinterpret_cast<const uint8_t*>(typed.data()), typed.size()));
-    for (int s = 24; s >= 0; s -= 8) chunk.push_back(static_cast<uint8_t>(crc >> s));
+    // a fake CRC: only this chunk's bytes matter here, and nothing checks an ancillary chunk's
+    chunk.insert(chunk.end(), {0, 0, 0, 0});
     // after IHDR
     bytes.insert(bytes.begin() + 33, chunk.begin(), chunk.end());
     draw::SpriteDoc sprite;
