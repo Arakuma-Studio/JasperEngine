@@ -178,7 +178,7 @@ never build or run them.
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | accepted; merging main (batch 3) |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | in review |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | review fixes |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -244,6 +244,16 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S52's review found 2 blockers and several should-fix issues; all were sent back.
+  - Blockers: an instanced-mesh sprite with FLASH/PALETTE_SWAP reads an unbound `i_spriteFx`
+    (undefined on Vulkan, invalid on Metal/D3D11); deleted Sorting Layer ids are reused.
+  - Should-fix: a non-strict-weak comparator, Sprite Batch reload-per-frame growth, the snap pivot
+    for trimmed rotated frames, duplicate inspector rows, a fake AC3 red control, signed Unity
+    layer ids, missing eval cases.
+  - **Decision: the MCP eval (`tools/mcp/eval/run.py`) runs once for the whole pixel-art family
+    near the end**, on accounts lent with `box_lend_accounts` (owner approval card), not per
+    feature: it uses subscription quota, and the program already hits usage limits. Implementers
+    add the cases.
 - 2026-11-09: S51's review fixes are done at `46ce6ba20`.
   - Built-in font redrawn, with an originality gtest; `preview_font` tool added; red controls
     for the font, nearest sampling, `.fnt` reload and render scale.
