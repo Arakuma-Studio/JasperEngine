@@ -42,6 +42,8 @@ async def test_rule_itself(ed: Editor):
 # the checks of §6.14.3 whose metric cannot separate the library from its red controls; each is a
 # recorded finding (spec Deviations), not a pass
 CANNOT_SEPARATE = {"legibility_contrast", "not_clipped", "style_lint.hard_shadow", "style_lint.rims_thin"}
+# thresholds held on purpose where the calibration would move them (spec Deviation 25)
+PINNED = {"style_lint.contrast": "StyleLintTest.MatchesPachislop holds the lint to Pachislop's constants"}
 
 
 async def test_thresholds_match_the_file(ed: Editor):
@@ -65,6 +67,8 @@ async def test_thresholds_match_the_file(ed: Editor):
             continue
         if cid in CANNOT_SEPARATE:
             ed.check(not entry["separates"], f"{cid}: listed as inseparable, yet it separates: drop it from the list")
+            continue
+        if cid in PINNED:
             continue
         ed.check(entry["separates"], f"{cid}: L {entry['L']} ({entry.get('L_item')}) and R {entry['R']} do not separate")
         ed.check(middle_half(entry["L"], entry["R"], entry["T"]), f"{cid}: T {entry['T']} in the middle half of L {entry['L']} and R {entry['R']}")

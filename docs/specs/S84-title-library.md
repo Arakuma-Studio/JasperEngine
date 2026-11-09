@@ -1885,7 +1885,9 @@ rest of S82 lands in 6B.
     failed with `out_of_target_memory` (512 MB pool at the render's 2 x supersampling). `3d_environment_missing` no
     longer warns for an HDRI environment the loader can provide.
 25. **Thresholds moved by the calibration:** `metal_range` 30 -> 4 L* (§6.14.1 said 30; two looks, `cartoon/jelly-3d`
-    and `retro/arcade-bevel-red-3d`, allowlisted as paint rather than metal); `style_lint.contrast` 12 -> 6 L*.
+    and `retro/arcade-bevel-red-3d`, allowlisted as paint rather than metal). `style_lint.contrast` keeps 12 L*: the
+    calibration suggests 6, but `StyleLintTest.MatchesPachislop` holds the lint to Pachislop's constants, so it is pinned
+    and recorded in the file (it only warns).
     `calibrate` takes the numeric member of each check's measured object (a table in `TitleLibraryCliTools.cpp`) and
     the item's allowlists out of L, and its file records L, R, T, `separates` and `middle_half`. Calibration ran with
     `--samples latin` on the build box's llvmpipe (one render per item, §6.14.3 says all samples).
