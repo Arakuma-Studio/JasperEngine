@@ -4615,6 +4615,9 @@
 		4A534E47FF6CD1AFD60A81F0 /* PixelFxKey.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E5C44E4348747A83 /* PixelFxKey.h */; };
 		4A534E47A31ADC359FC50ABF /* PixelFxLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472C4FC740FC9687D5 /* PixelFxLua.h */; };
 		4A534E473B5B6414382696D5 /* ScreenTransition.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A895801520386487 /* ScreenTransition.h */; };
+		4A534E4757083662175146BF /* PixelFxClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */; };
+		4A534E47882EFCB3A800CD7C /* PixelFxClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */; };
+		4A534E47776C5558B9022F46 /* PixelFxPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E377CB554D876579 /* PixelFxPlayer.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8985,6 +8988,8 @@
 		4A534E47E5C44E4348747A83 /* PixelFxKey.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelFxKey.h; sourceTree = "<group>"; };
 		4A534E472C4FC740FC9687D5 /* PixelFxLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelFxLua.h; sourceTree = "<group>"; };
 		4A534E47A895801520386487 /* ScreenTransition.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScreenTransition.h; sourceTree = "<group>"; };
+		4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelFxClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47E377CB554D876579 /* PixelFxPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelFxPlayer.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9545,6 +9550,7 @@
 				4A534E47397D797409CB8274 /* SortingClassesLua.cpp */,
 				4A534E4714A8A22B685105FF /* HitStopClassesLua.cpp */,
 				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
+				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10869,6 +10875,7 @@
 				4A534E47E5C44E4348747A83 /* PixelFxKey.h */,
 				4A534E472C4FC740FC9687D5 /* PixelFxLua.h */,
 				4A534E47A895801520386487 /* ScreenTransition.h */,
+				4A534E47E377CB554D876579 /* PixelFxPlayer.h */,
 			);
 			path = pixelart;
 			sourceTree = "<group>";
@@ -15967,6 +15974,7 @@
 				4A534E47FF6CD1AFD60A81F0 /* PixelFxKey.h in Headers */,
 				4A534E47A31ADC359FC50ABF /* PixelFxLua.h in Headers */,
 				4A534E473B5B6414382696D5 /* ScreenTransition.h in Headers */,
+				4A534E47776C5558B9022F46 /* PixelFxPlayer.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18538,6 +18546,7 @@
 				4A534E47125B27BDBD29C177 /* HitStopExempt.cpp in Sources */,
 				4A534E47C75DDC3AC497EF70 /* HitStopClassesLua.cpp in Sources */,
 				4A534E478243FC9D5F3E0ECE /* TransitionClassesLua.cpp in Sources */,
+				4A534E4757083662175146BF /* PixelFxClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19400,6 +19409,7 @@
 				4A534E4774391AFF4DA51A8F /* HitStopExempt.cpp in Sources */,
 				4A534E4794F74B609D31BB49 /* HitStopClassesLua.cpp in Sources */,
 				4A534E47B8B81C0916259880 /* TransitionClassesLua.cpp in Sources */,
+				4A534E47882EFCB3A800CD7C /* PixelFxClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
