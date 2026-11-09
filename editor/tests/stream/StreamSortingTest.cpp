@@ -323,19 +323,21 @@ TEST(StreamSorting, RemovedIdsAreNeverGivenAgain){
     const int32_t front = SortingLayers::nameToId("Front");
     ASSERT_GT(front, 0);
     SortingLayers::setLayers(SortingLayers::fromNames({"Default", "Back"}));
-    SortingLayers::setLayers(SortingLayers::fromNames({"Default", "Back", "Clouds"}));
-    EXPECT_NE(SortingLayers::nameToId("Clouds"), front);
     EXPECT_FALSE(SortingLayers::isValid(front)) << "a renderer still naming it draws on Default";
 
-    // saved and loaded: the next id survives a reopen
+    // saved and loaded: the next id survives a reopen (it is past the listed ids now)
     const int32_t next = SortingLayers::getNextId();
+    EXPECT_GT(next, front);
     const YAML::Node saved = Stream::encodeProject(&project);
-    ASSERT_TRUE(saved["sortingLayerNextId"].IsDefined());
+    ASSERT_TRUE(saved["sortingLayerNextId"].IsDefined()) << YAML::Dump(saved);
     SortingLayers::reset();
     Stream::decodeProject(&reloaded, saved, Workspace());
     EXPECT_EQ(SortingLayers::getNextId(), next);
-    SortingLayers::setLayers(SortingLayers::fromNames({"Default", "Back", "Clouds", "Rain"}));
-    EXPECT_GE(SortingLayers::nameToId("Rain"), next);
+
+    // a new layer takes a new id, not the removed one
+    SortingLayers::setLayers(SortingLayers::fromNames({"Default", "Back", "Clouds"}));
+    EXPECT_NE(SortingLayers::nameToId("Clouds"), front);
+    EXPECT_GE(SortingLayers::nameToId("Clouds"), next);
 
     // a rename by id keeps the layer; the old name listed again is a new layer
     const int32_t back = SortingLayers::nameToId("Back");

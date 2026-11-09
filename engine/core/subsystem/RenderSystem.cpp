@@ -8811,9 +8811,12 @@ SubmeshBatchVariant RenderSystem::getSubmeshBatchVariant(const MeshComponent& me
         return batch;
     // a draw is never both batched and instanced: dynamic batching (the Doriax catch-up's
     // sprite-batching) takes single-submesh meshes of up to 64 vertices drawn by the built-in shader
-    // or a @batchable library shader (S52)
-    const bool batchedShader = meshShaderSrc.empty() || ShaderReference::isBuiltin(meshShaderSrc) ||
-                               (inputs.manifest && inputs.manifest->batchable);
+    // or a @batchable library shader that can batch (S52: not one reading the frame rect the mesh
+    // does not carry per vertex, meshBatchForm's ineligible_frame_rect)
+    const bool batchableLibrary = inputs.manifest && inputs.manifest->batchable && !inputs.manifest->depth &&
+        (!inputs.manifest->usesFrameRect(inputs.features) ||
+         (variant.properties & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT)));
+    const bool batchedShader = meshShaderSrc.empty() || ShaderReference::isBuiltin(meshShaderSrc) || batchableLibrary;
     if (batchedShader && mesh.numSubmeshes == 1 && submeshVertexCount(mesh, submesh) <= DYNAMIC_BATCH_MAX_VERTICES)
         return batch;
     // the most vertex inputs it reads (a library shader's a_smoothNormal counted), with the

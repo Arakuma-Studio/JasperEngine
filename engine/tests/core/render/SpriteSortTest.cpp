@@ -299,9 +299,13 @@ TEST(SpriteSortQueue, GroupsAndItemsAloneAreOneStrictOrder){
     for (const auto& a : items){
         EXPECT_FALSE(less(a, a));
         for (const auto& b : items){
-            if (less(a, b)) EXPECT_FALSE(less(b, a)) << a.order << " " << b.order;
+            if (less(a, b)){
+                EXPECT_FALSE(less(b, a)) << a.order << " " << b.order;
+            }
             for (const auto& c : items){
-                if (less(a, b) && less(b, c)) EXPECT_TRUE(less(a, c)) << a.order << " < " << b.order << " < " << c.order;
+                if (less(a, b) && less(b, c)){
+                    EXPECT_TRUE(less(a, c)) << a.order << " < " << b.order << " < " << c.order;
+                }
             }
         }
     }

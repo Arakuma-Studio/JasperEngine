@@ -1132,7 +1132,7 @@ namespace {
     }
 
     // a Unity Sorting Layer id as its 32 bits: TagManager writes uniqueID unsigned, a renderer's
-    // m_SortingLayerID signed (3184598343 and -1110369953 are one layer)
+    // m_SortingLayerID signed (3184597343 and -1110369953 are one layer)
     uint32_t unitySortingLayerBits(const YAML::Node& value){
         return value ? (uint32_t)std::strtoll(value.Scalar().c_str(), nullptr, 10) : 0u;
     }
