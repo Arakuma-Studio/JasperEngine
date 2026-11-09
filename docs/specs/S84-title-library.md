@@ -1882,6 +1882,9 @@ rest of S82 lands in 6B.
     - `not_clipped`: 19 ported canvases grew; generators, groups of them and canvas-filling layers are full-bleed.
     The tuning was scripted on measured failures, not reviewed look by look: the library's appearance changed and needs a
     person's review.
+    **Open bug:** after `render_title` on a document, `fallback_parity` on the same document reads mean 80.65 for
+    `sports/goal-banner` (0.31 without that render, and on a fresh path). Keying 2D node-cache entries by the test flags
+    did not change it, so the cause is unknown; `test_fallback_parity_after_a_render` holds the red case.
 24. **Check metrics and options:** `legibility_contrast` reads the bands of the silhouette from the outer ring inwards to
     5 % of the height (a black outline on black passes on the band inside it); a filled counter whose colour differs from
     the letter by delta L* >= 12 survives; `check_title` gained `render_scale` (the gate's 0.25, §6.14.2), without which 12
