@@ -102,10 +102,12 @@ namespace jasperengine::titleart {
         int newSlot(const TargetKey& key);
         int entrySlot(const std::shared_ptr<TitleCacheEntry>& entry);
         // a GPU pass writing `slot` inside `scissor` (its rows); `fill` sets the pass's program
-        // inputs from the state (textures of other slots) and returns false with an error
+        // inputs from the state (textures of other slots) and returns false with an error;
+        // `variant` the property bits above the program number (TitleElementVariant.h)
         using PassFill = std::function<bool(TitleJobState& state, TitleGpuPass& pass, std::string& error)>;
         void pass(const std::string& label, const std::string& layerId, int slot, const TitleRectI& scissor, TitleRenderProgram program,
-                  PassFill fill, BlendMode blend = BlendMode::NONE, bool clear = false, float costWeight = 1.0f, bool splittable = true);
+                  PassFill fill, BlendMode blend = BlendMode::NONE, bool clear = false, float costWeight = 1.0f, bool splittable = true,
+                  uint32_t variant = 0);
         void clearSlot(const std::string& label, const std::string& layerId, int slot, const float color[4]);
         void cpu(const std::string& label, const std::string& layerId, uint32_t us, std::function<bool(TitleJobState&, std::string&)> run);
         // an effect's or generator's `apply` / `render` as one step of `passes` estimated passes

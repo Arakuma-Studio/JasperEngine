@@ -10,8 +10,8 @@ author's permission (`NOTICE.md`), commit `1c32502dc9feaff1086f615b07f2ca978722d
 - `scene/*.png` from `tests/golden/refs/scene/` (the semantic scenes of `tests/harness/cases.ts`
   `scenes()`, rendered at 0.25 and trimmed): `clipping`, `adjustment-in-group`,
   `adjustment-outside-group`, `effects-only-gaussian-blur`, `part-effects-2d`,
-  `nested-hidden-groups`, `mask-shape-feather`, `mask-group-radial`, `flip-2d`. Not copied:
-  `mask-from-layer-luminance` (its matte is the `sunburst` generator, S83's), the 3D scenes,
+  `nested-hidden-groups`, `mask-shape-feather`, `mask-group-radial`, `flip-2d`,
+  `mask-from-layer-luminance` (its matte is S83's Sunburst). Not copied: the 3D scenes,
   `split-image` and `mask-adjustment` (outside AC11's list).
 - the other `generator/*.png` from `tests/golden/refs/generator/` (S83: every preset of the other
   fifteen generators, a following one with the standard title, at 0.25 and trimmed).

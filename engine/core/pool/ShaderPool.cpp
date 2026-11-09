@@ -753,8 +753,9 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // 'Oir': the OIT resolve, else the contact shadows' mask
         case ShaderType::LIGHTING_PASS: return 1;
         // the program number (bits 0-6), the RGBA8 encodings Sfx, Dfx, S83's effect programs Efx,
-        // the live kernels Liv and S83's generator programs Gen (titleart/render/TitlePasses.h)
-        case ShaderType::TITLE_ART: return 12;
+        // the live kernels Liv and S83's generator programs Gen (titleart/render/TitlePasses.h);
+        // the ELEMENT program's variants in bits 16-30 (titleart/render/TitleElementVariant.h)
+        case ShaderType::TITLE_ART: return 31;
         // the TL_* bits (titleart/three_d/TitleTierFeatures.h TitleLitBits)
         case ShaderType::TITLE_LIT: return 25;
         // the pass number (bits 0-3)
@@ -1031,7 +1032,16 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 9: return shortName ? "Efx" : "Catalogue Effect";
             case 10: return shortName ? "Liv" : "Live Kernel";
             case 11: return shortName ? "Gen" : "Generator";
+            case 21: return shortName ? "Erl" : "Element Relief";
+            case 26: return shortName ? "Egl" : "Element Glass";
+            case 27: return shortName ? "Erf" : "Element Reflection";
+            case 28: return shortName ? "Esa" : "Element Satin";
+            case 29: return shortName ? "Esp" : "Element Spans";
+            case 30: return shortName ? "Ewh" : "Element Whole";
         }
+        // the element's pattern kind (bits 16-20) and texture kind (22-25), bit by bit
+        if (bit >= 16 && bit <= 20) return (shortName ? "Ek" : "Element Pattern Bit ") + std::to_string(bit - 16);
+        if (bit >= 22 && bit <= 25) return (shortName ? "Et" : "Element Texture Bit ") + std::to_string(bit - 22);
     }
     return shortName ? "?" : "Unknown";
 }

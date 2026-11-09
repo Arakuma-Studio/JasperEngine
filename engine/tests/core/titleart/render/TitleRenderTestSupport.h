@@ -29,6 +29,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace jasperengine::titleart::test {
@@ -358,6 +359,8 @@ namespace jasperengine::titleart::test {
             SystemRender::commit();
             if (done) return ::testing::AssertionSuccess();
             if (job.failed()) return ::testing::AssertionFailure() << "the job failed: " << job.error();
+            // a fast GPU spins through the frames while a worker context links a program
+            if (job.waiting()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         return ::testing::AssertionFailure() << "the job did not finish (" << job.passesDone() << " of " << job.passesTotal() << " passes)";
     }

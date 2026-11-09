@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleGpu.h"
+#include "TitleElementVariant.h"
 #include "diag/HangWatchdog.h"
 
 #include "pool/ShaderPool.h"
@@ -50,6 +51,18 @@ const char* titleart::titleRenderProgramName(uint32_t program) {
 
 ShaderKey titleart::titleRenderProgramKey(uint32_t program) {
     return ShaderPool::getShaderKey(ShaderType::TITLE_ART, program);
+}
+
+uint64_t titleart::titleDrawKey(ShaderType type, uint64_t properties, const PipelineState& state) {
+    // the state's FNV-1a, continued over the program
+    uint64_t h = state.hash();
+    for (uint64_t value : {(uint64_t)type, properties}) {
+        for (int i = 0; i < 8; i++) {
+            h ^= (value >> (8 * i)) & 0xFF;
+            h *= 1099511628211ull;
+        }
+    }
+    return h;
 }
 
 // ---- targets ----
@@ -193,7 +206,7 @@ void TitleGpu::release() {
 }
 
 bool TitleGpu::ensureProgram(uint32_t number, std::string* error) {
-    if ((number & 0x7Fu) == 0 || number > 0xFFFu) {
+    if ((number & 0x7Fu) == 0 || (number & ~(0xFFFu | TITLE_ELEMENT_VARIANT_BITS)) != 0) {
         if (error) *error = "title art program " + std::to_string(number) + " does not exist";
         return false;
     }
@@ -275,9 +288,15 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     }
     Program& p = *programs[number];
     const TargetKey& key = t->key();
+    PipelineState state;
+    state.target.color = key.format;
+    state.target.depth = key.depth == TitleDepthFormat::None ? DepthStencilFormat::NONE
+                       : key.depth == TitleDepthFormat::Depth ? DepthStencilFormat::DEPTH
+                                                              : DepthStencilFormat::DEPTH_STENCIL;
+    state.target.sampleCount = std::max(1, key.samples);
+    state.blend = desc.blend;
     // the first draw in this state compiles the driver's variant: one a frame
-    const uint64_t drawKey = ((uint64_t)number << 32) ^ ((uint64_t)key.format << 24) ^ ((uint64_t)key.samples << 16) ^ ((uint64_t)key.depth << 8) ^
-                             (uint64_t)desc.blend;
+    const uint64_t drawKey = titleDrawKey(ShaderType::TITLE_ART, number, state);
     const bool firstDraw = !TitleFirstDraws::drew(drawKey);
     if (!TitleFirstDraws::allow(drawKey)) {
         deferredRun = true;
@@ -307,13 +326,6 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     pass.setLabel("title art");
     pass.startRenderPass(&t->framebuffer());
     pass.applyScissorTopLeft(scissor.x, scissor.y, scissor.width, scissor.height);
-    PipelineState state;
-    state.target.color = key.format;
-    state.target.depth = key.depth == TitleDepthFormat::None ? DepthStencilFormat::NONE
-                       : key.depth == TitleDepthFormat::Depth ? DepthStencilFormat::DEPTH
-                                                              : DepthStencilFormat::DEPTH_STENCIL;
-    state.target.sampleCount = std::max(1, key.samples);
-    state.blend = desc.blend;
     bool drawn = false;
     const auto drawStart = std::chrono::steady_clock::now();
     if (p.object.beginDraw(state)) {
@@ -381,22 +393,16 @@ bool TitleFirstDraws::drew(uint64_t key) {
 }
 
 bool TitleFirstDraws::allow(uint64_t key) {
-    return allowGroup({key});
-}
-
-bool TitleFirstDraws::allowGroup(const std::vector<uint64_t>& keys) {
     FirstDraws& f = firstDraws();
-    size_t fresh = 0;
-    for (uint64_t k : keys) fresh += f.drawn.count(k) ? 0 : 1;
-    if (fresh == 0) return true;
+    if (f.drawn.count(key)) return true;
     uint64_t& grants = f.frameGrants();
     if (grants > 0 && !f.unbounded) {
         f.stats.deferred++;
         return false;
     }
-    for (uint64_t k : keys) f.drawn.insert(k);
-    grants += f.unbounded ? fresh : 1;
-    f.stats.granted += fresh;
+    f.drawn.insert(key);
+    grants++;
+    f.stats.granted++;
     f.stats.maxPerFrame = std::max(f.stats.maxPerFrame, grants);
     return true;
 }
@@ -408,6 +414,31 @@ bool TitleFirstDraws::available() {
 
 const TitleFirstDrawStats& TitleFirstDraws::stats() {
     return firstDraws().stats;
+}
+
+TitleDrawGate::Result TitleDrawGate::check(ShaderType type, uint64_t properties, const PipelineState& state) {
+    const uint64_t key = titleDrawKey(type, properties, state);
+    if (warming && TitleFirstDraws::drew(key)) {
+        skipped = true;
+        return Result::Skip;
+    }
+    if (TitleFirstDraws::allow(key)) return Result::Draw;
+    stop = true;
+    return Result::Stop;
+}
+
+void TitleDrawGate::begin() {
+    stop = false;
+    skipped = false;
+}
+
+bool TitleDrawGate::end() {
+    if (stop) {
+        warming = true;
+        return true;
+    }
+    warming = false;
+    return skipped;
 }
 
 TitleFirstDraws::SynchronousScope::SynchronousScope() : previous(firstDraws().unbounded) {

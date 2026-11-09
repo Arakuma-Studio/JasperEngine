@@ -13,7 +13,8 @@
 // then S83's 16 wood, 17 marble, 18 granite, 19 concrete, 20 brushed metal, 21 diamond plate,
 // 22 carbon fiber, 23 rust, 24 leather, 25 brick, 26 camo, 27 circuit.
 // The pattern space is y-up (Pachislop's layer space), so the C++ side maps frame pixels (y down)
-// into it (TitleFx: patternTransform).
+// into it (TitleFx: patternTransform). An includer that draws one kind only defines
+// TA_PATTERN_ONLY as it (and passes it): the other kinds are not compiled.
 
 #ifndef TITLEART_PATTERNS_GLSL
 #define TITLEART_PATTERNS_GLSL
@@ -406,6 +407,7 @@ vec3 pat_circuit(vec2 q) {
 // functions are used inside, so it is safe anywhere (helper lanes, branches, MSAA edges).
 vec4 patternSampleD(vec2 p, vec2 dpdx, vec2 dpdy, int kind, float seed) {
   if (kind <= 0) return vec4(0.0);
+#if !defined(TA_PATTERN_ONLY) || TA_PATTERN_ONLY == 15
   if (kind == 15) {
 #ifdef TA_PATTERN_IMAGE
     // One image tile per motif unit; v flipped because the texture's first row is the top.
@@ -417,6 +419,7 @@ vec4 patternSampleD(vec2 p, vec2 dpdx, vec2 dpdy, int kind, float seed) {
     return vec4(0.0);
 #endif
   }
+#endif
   // Integer offsets keep lattices anchored to the layer origin while reshuffling cells.
   vec2 so = floor(vec2(pat_h21(vec2(seed, 1.37)), pat_h21(vec2(seed + 3.1, 7.91))) * 512.0);
   // Internal units per motif unit, chosen so one Pattern.scale reads alike across kinds.
@@ -430,6 +433,65 @@ vec4 patternSampleD(vec2 p, vec2 dpdx, vec2 dpdy, int kind, float seed) {
   vec2 dqx = dpdx * S, dqy = dpdy * S;
   float px = max(length(abs(dqx) + abs(dqy)) * 0.7071068, 1e-6); // pixel footprint, internal units
   vec3 r;
+#ifdef TA_PATTERN_ONLY
+  // one kind compiled in (the 2D element program's variants, render/TitleElementVariant.h): the
+  // caller passes that kind, so this is the branch the chain below would take
+  #if TA_PATTERN_ONLY == 1
+  r = pat_zebra(q, dqx, dqy, px);
+  #elif TA_PATTERN_ONLY == 2
+  r = pat_tiger(q, dqx, dqy, px);
+  #elif TA_PATTERN_ONLY == 3
+  r = pat_giraffe(q, seed);
+  #elif TA_PATTERN_ONLY == 4
+  r = pat_leopard(q);
+  #elif TA_PATTERN_ONLY == 5
+  r = pat_checker(q);
+  #elif TA_PATTERN_ONLY == 6
+  r = pat_hazard(q);
+  #elif TA_PATTERN_ONLY == 7
+  r = pat_stripes(q);
+  #elif TA_PATTERN_ONLY == 8
+  r = pat_dots(q);
+  #elif TA_PATTERN_ONLY == 9
+  r = pat_sakura(q);
+  #elif TA_PATTERN_ONLY == 10
+  r = pat_seigaiha(q, px);
+  #elif TA_PATTERN_ONLY == 11
+  r = pat_asanoha(q);
+  #elif TA_PATTERN_ONLY == 12
+  r = pat_shippo(q);
+  #elif TA_PATTERN_ONLY == 13
+  r = pat_kikko(q);
+  #elif TA_PATTERN_ONLY == 14
+  r = pat_uroko(q);
+  #elif TA_PATTERN_ONLY == 15
+  r = vec3(0.0);  // the custom tile returned above
+  #elif TA_PATTERN_ONLY == 16
+  r = pat_wood(q);
+  #elif TA_PATTERN_ONLY == 17
+  r = pat_marble(q);
+  #elif TA_PATTERN_ONLY == 18
+  r = pat_granite(q);
+  #elif TA_PATTERN_ONLY == 19
+  r = pat_concrete(q);
+  #elif TA_PATTERN_ONLY == 20
+  r = pat_brushedMetal(q);
+  #elif TA_PATTERN_ONLY == 21
+  r = pat_diamondPlate(q);
+  #elif TA_PATTERN_ONLY == 22
+  r = pat_carbonFiber(q);
+  #elif TA_PATTERN_ONLY == 23
+  r = pat_rust(q);
+  #elif TA_PATTERN_ONLY == 24
+  r = pat_leather(q);
+  #elif TA_PATTERN_ONLY == 25
+  r = pat_brick(q);
+  #elif TA_PATTERN_ONLY == 26
+  r = pat_camo(q);
+  #else
+  r = pat_circuit(q);
+  #endif
+#else
   if (kind == 1) r = pat_zebra(q, dqx, dqy, px);
   else if (kind == 2) r = pat_tiger(q, dqx, dqy, px);
   else if (kind == 3) r = pat_giraffe(q, seed);
@@ -456,6 +518,7 @@ vec4 patternSampleD(vec2 p, vec2 dpdx, vec2 dpdy, int kind, float seed) {
   else if (kind == 25) r = pat_brick(q);
   else if (kind == 26) r = pat_camo(q);
   else r = pat_circuit(q);
+#endif
   float x = clamp(0.5 - r.x / px, 0.0, 1.0);
   float y = clamp(0.5 - r.y / px, 0.0, 1.0);
   float t = clamp(-r.x / max(r.z, px), 0.0, 1.0);

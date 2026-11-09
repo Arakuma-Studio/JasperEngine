@@ -10,7 +10,8 @@
 // (red control: a threshold nothing passes); an environment build is spread over frames (the 21 s
 // software-rasteriser stall of one-shot builds; red control: one shot); a 2D document makes no
 // 3D renderer; five environments in one layer build once each (red control: the cache evicted
-// them and the builds went round); the environment's level map and CPU scene evaluation.
+// them and the builds went round); a layer's new programs draw one a frame (red control: unbounded);
+// the environment's level map and CPU scene evaluation.
 
 #include "titleart/render/TitleRenderTestSupport.h"
 #include "titleart/support/TitleTestAssets.h"
@@ -504,6 +505,42 @@ TEST_F(Title3DRendererGpu, AnEnvironmentBuildIsSpreadOverFrames) {
     EXPECT_GE(spreadSteps, 2u) << "the build took several calls";
     EXPECT_EQ(oneSteps, 1u);
     EXPECT_LT(spreadMax, oneMax) << "no call ran the whole build";
+}
+
+TEST_F(Title3DRendererGpu, NewProgramsDrawOneAFrame) {
+    // a 3D layer's render meets its programs' first draws one a frame (TitleFirstDraws): the
+    // render stops at the second new one and runs again on the next frame, so no frame holds two
+    // driver compiles (llvmpipe: up to a second each); the image is the one drawn at once. Red
+    // control: unbounded, one frame draws every program of the layer (the group S86 let through)
+    const RenderFeatures& f = SystemRender::getFeatures();
+    if (!f.renderRGBA16F || !f.filterRGBA16F || !f.blendRGBA16F) GTEST_SKIP() << "no float passes here";
+    Json layer = plate3D(0.6, "chrome");
+    layer["style_3d"]["glint"] = Json{{"enabled", true}, {"threshold", 0.5}, {"intensity", 2}, {"radius", 5}, {"streaks", 4}, {"length", 40}};
+    layer["style_3d"]["ao"] = Json{{"enabled", true}};
+    auto run = [&](bool unbounded, uint64_t& deferredRenders) {
+        TitleFirstDraws::resetForTesting(unbounded);
+        auto renderer = geometryRenderer();
+        RenderRequest r = requestOf(doc3D(layer));
+        r.tier = 0;
+        const Pixels p = render(*renderer, r);
+        const Title3DStats* st = stats3D(*renderer);
+        deferredRenders = st ? st->deferredRenders : 0;
+        if (st) { EXPECT_EQ(st->renders, 1u) << "a stopped render is not counted"; }
+        return p;
+    };
+    uint64_t spreadDeferred = 0, togetherDeferred = 0;
+    const Pixels spread = run(false, spreadDeferred);
+    const TitleFirstDrawStats bounded = TitleFirstDraws::stats();
+    const Pixels together = run(true, togetherDeferred);
+    const TitleFirstDrawStats unbounded = TitleFirstDraws::stats();
+    TitleFirstDraws::resetForTesting(false);
+    EXPECT_GT(bounded.granted, 5u) << "the layer met new programs";
+    EXPECT_EQ(bounded.maxPerFrame, 1u) << "one new program's first draw a frame";
+    EXPECT_GT(spreadDeferred, 0u) << "the render stopped at a second new program and ran again";
+    EXPECT_GT(unbounded.maxPerFrame, 1u) << "red control: unbounded, one frame drew several new programs";
+    EXPECT_EQ(togetherDeferred, 0u);
+    const Difference d = compare(spread, together, 1.0);
+    EXPECT_LE(d.max, 1.0) << "the spread render draws the image drawn at once";
 }
 
 TEST(Title3DEnvironmentTest, LevelMapAndSceneTwin) {

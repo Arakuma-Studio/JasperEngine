@@ -556,6 +556,18 @@ void addTitleArtPropertyDefinitions(std::vector<shadercompiler::define_t>& defs,
     if (prop & shaderPropertyBit(8))  defs.push_back({"TA_DISTANCE_FIXED", "1"});        // 'Dfx'
     if (prop & shaderPropertyBit(10)) defs.push_back({"TFX_LIVE", "1"});                 // 'Liv'
     if (prop & shaderPropertyBit(11)) defs.push_back({"TA_GEN", "1"});                   // 'Gen' (S83's generators)
+    // the ELEMENT program's variants (titleart/render/TitleElementVariant.h): bits 16-20 the
+    // pattern kind, 21 its relief, 22-25 the texture kind, then glass, reflection, satin, spans
+    // and the whole program
+    const uint64_t pattern = (prop >> 16) & 0x1Fu, texture = (prop >> 22) & 0xFu;
+    if (pattern) defs.push_back({"TA_EL_PATTERN", std::to_string(pattern)});           // 'Ek0'..'Ek4'
+    if (prop & shaderPropertyBit(21)) defs.push_back({"TA_EL_RELIEF", "1"});             // 'Erl'
+    if (texture) defs.push_back({"TA_EL_TEXTURE", std::to_string(texture)});           // 'Et0'..'Et3'
+    if (prop & shaderPropertyBit(26)) defs.push_back({"TA_EL_GLASS", "1"});              // 'Egl'
+    if (prop & shaderPropertyBit(27)) defs.push_back({"TA_EL_REFLECTION", "1"});         // 'Erf'
+    if (prop & shaderPropertyBit(28)) defs.push_back({"TA_EL_SATIN", "1"});              // 'Esa'
+    if (prop & shaderPropertyBit(29)) defs.push_back({"TA_EL_SPAN", "1"});               // 'Esp'
+    if (prop & shaderPropertyBit(30)) defs.push_back({"TA_EL_WHOLE", "1"});              // 'Ewh'
 }
 
 // the TL_* bits of TitleTierFeatures.h (titleart/title_lit.frag)

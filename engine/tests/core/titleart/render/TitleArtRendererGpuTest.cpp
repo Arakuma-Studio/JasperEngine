@@ -13,6 +13,7 @@
 #include "TitleRenderTestSupport.h"
 
 #include "pool/ShaderPool.h"
+#include "titleart/render/TitleElementVariant.h"
 #include "titleart/render/TitlePrograms.h"
 
 #include <chrono>
@@ -125,8 +126,12 @@ TEST_F(TitleArtRendererGpu, JobMembers) {
     std::set<uint32_t> used;
     for (const ShaderKey& k : keys) {
         EXPECT_EQ(ShaderPool::getShaderTypeFromKey(k), ShaderType::TITLE_ART);
-        EXPECT_TRUE(known.count(ShaderPool::getPropertiesFromKey(k)));
-        used.insert((uint32_t)ShaderPool::getPropertiesFromKey(k));
+        // ELEMENT's variants carry the material's bits (TitleElementVariant.h), no other program does
+        const uint32_t properties = (uint32_t)ShaderPool::getPropertiesFromKey(k);
+        const uint32_t program = properties & ~TITLE_ELEMENT_VARIANT_BITS;
+        EXPECT_TRUE(known.count(program));
+        if (program != (uint32_t)TitleRenderProgram::Element) { EXPECT_EQ(properties, program) << titleRenderProgramName(program); }
+        used.insert(program);
     }
     for (TitleRenderProgram p : {TitleRenderProgram::Element, TitleRenderProgram::Place, TitleRenderProgram::Seed, TitleRenderProgram::Flood,
                                  TitleRenderProgram::Resolve, TitleRenderProgram::Height, TitleRenderProgram::Output, TitleRenderProgram::Copy}) {

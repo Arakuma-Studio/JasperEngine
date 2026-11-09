@@ -2168,9 +2168,10 @@ rest of S82 lands in 6B.
     (`render/TitleArtScenesParityGpuTest.cpp`), not `TitleArtParityGpu.<case>`: gtest needs one
     fixture class per suite, and `TitleArtParityGpu` belongs to the effect test (its EffectRig).
     The framing and the metric moved to `support/TitleParity.h`, shared by both. Nine of AC11's
-    scenes are compared; `mask-from-layer-luminance` is not, because its matte is Pachislop's
-    `sunburst` generator, which S83 registers (S83 §6.7.15); AC11's own golden of that scene
-    stays the gate until then. The red control is in the test: the metric fails the adjustment
+    scenes are compared, and since S83 registered Pachislop's `sunburst` generator (S83 §6.7.15)
+    the tenth, `mask-from-layer-luminance`, whose matte is the Sunburst at its first preset (Red &
+    Gold Rays with its Vignette Gradient Overlay), hidden (red control: the title without the mask
+    is outside the metric). The red control is in the test: the metric fails the adjustment
     outside its group against the in-group reference, and hidden groups drawn against
     `nested-hidden-groups`.
 53. **Finding (no change): the rim "spikes" at acute notches are Canvas2D's.** A rim is the face
@@ -2245,3 +2246,35 @@ rest of S82 lands in 6B.
 57. **Open: AC40's red control was not run.** The `make_title_logo` eval case exists and
     `tool_budget.py --check` passes with the guide's entry; running the case with and without the
     entry needs lent Claude accounts (`tools/mcp/eval/README.md`), which the program did not have.
+58. **Implementation: the ELEMENT program draws in variants of what an element's material shades**
+    (`render/TitleElementVariant.h`). One program with every pattern kind (27, five calls each with
+    relief), every texture kind (12, six calls), glass, reflection, satin and the span seam behind
+    uniforms cost the render thread 8 s in llvmpipe's GLSL front end (`glCompileShader` /
+    `glLinkProgram`) and 4.3-5.4 s in its first-draw JIT (S86 Deviation 23: the editor hung on every
+    new title). An element pass now carries property bits above the program number
+    (`ShaderType::TITLE_ART` bits 16-20 the pattern kind, 21 its relief, 22-25 the texture kind, 26
+    glass, 27 reflection, 28 satin, 29 spans; bit 30 is the whole program, the tests' red control
+    `TITLE_ART_TEST_ELEMENT_WHOLE`), computed from the block values the shader branches on.
+    `element.glsl` makes what is off a constant equal to the block's value and leaves its code out
+    in the preprocessor (`patterns.glsl` compiles one kind under `TA_PATTERN_ONLY`; constants alone
+    left the first draw small but the front end still parsed and optimized everything, 2-4 s on the
+    render thread). So every variant draws the whole program's pixels: byte for byte on both pixel
+    paths for every Material member (`TitleArtScenesGpu.ElementVariantsDrawTheWholeProgram`; red
+    control by hand: without the satin bit the satin case differs by up to 128/255), and every golden
+    and parity test passes unchanged. Count: at most 1 + 27 x 2 pattern states x 13 texture states x
+    2^4 = 11,440 variants; a document plans one per distinct material (a title with rims 2-6), S32's
+    shader lists and an exported player hold the ones a project's titles plan
+    (`TitleRenderJob::shaderKeys`), and bits 12-15 stay free for other programs. Trade: changing a
+    pattern or texture kind in the Designer compiles a new variant, a one-time cost per kind.
+    Measured on llvmpipe (render thread, cold): the whole program 7.9 s created + 4.3-5.4 s first
+    draw; a plain element 0.02 + 0.17-0.21 s; the heaviest title tried (giraffe pattern with
+    relief, liquid texture, glass, reflection, satin, spans together) 0.3-0.4 + 1.2-1.3 s. On an RTX
+    3080 Ti (one run each; creation is off the render thread): the first draws of the plain element,
+    that heaviest variant and the whole program are 25 / 609 / 1233 ms on GL and 50 / 784 / 9197 ms on
+    Vulkan, whose pipeline creation is the render thread's stall. The bound's floor is therefore
+    1 s, a third of the hang threshold.
+    `TitleElementVariantGpu.CompileCostIsBounded` checks the largest variant a heavy title plans
+    against the larger of 1 s and 40 % of the whole program's cost measured in the same process (red control: the same
+    title planned with the whole program). A synchronous render (`TitleArtRenderHost::render`:
+    `check_title`'s pixel checks, `view_asset`, picking a generator) has no frame to spread over: its
+    stall is the sum of the programs it meets.
