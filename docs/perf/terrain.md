@@ -43,16 +43,16 @@ digests (`TerrainGolden.Hashes`) did not change.
 | Raise stamp, radius 64 | 0.3 ms | 0.415 ms | 0.287 ms |
 | Smooth stamp, radius 64 | 0.8 ms | 0.545 ms | 0.496 ms |
 | Smooth stamp with the slope filter | 1.0 ms | 1.156 ms | 0.779 ms |
-| Raise stamp, radius 512, workers | 8 ms | 14.69 ms | 8.16 ms (over; the runs 8.02 to 8.54) |
+| Raise stamp, radius 512, workers | 8 ms | 14.69 ms | 6.50 ms |
 | `set_height` on 4096² | 400 ms | 829 ms | 222 ms |
 | `paint_by_rules`, 3 rules, 2048² | 600 ms | 1292 ms | 225 ms |
 | Overlay commit, 64 tiles | 1 ms | 3.27 ms | 0.388 ms |
-| Height query | 40 ns, 1.05x | 24.4 ns, 1.094x | 23.6 ns, 1.057x (over the ratio) |
+| Height query | 40 ns, 1.05x | 24.4 ns, 1.094x | 21.6 ns, 0.982x |
 | Height and normal | 150 ns | 77.1 ns, 1.043x | 74.1 ns, 0.999x |
 | Raycast, 512 m of 1024² | 30 us | 3.68 us, 1.030x | 3.58 us, 1.004x (the same 3668 hits of 4096) |
 | Node refit, 64×64 | 0.1 ms | 0.030 ms | 0.033 ms (a full rebuild: 5.0 ms) |
-| Runtime `setHeights` 64×64 | 0.2 ms | 0.554 ms | 0.139 ms |
-| Runtime `applyOps` circle radius 32 | 0.2 ms | 0.624 ms | 0.193 ms |
+| Runtime `setHeights` 64×64 | 0.2 ms | 0.554 ms | 0.124 ms |
+| Runtime `applyOps` circle radius 32 | 0.2 ms | 0.624 ms | 0.177 ms |
 | Collider refresh, 64×64 samples | 2 ms | 0.539 ms | 0.530 ms, no rebuild |
 
 What changed, from profiles of the before code: a whole-map op encoded every overlay tile four times (the
@@ -62,13 +62,17 @@ workers. The overlay's writes check, decode and store tiles on the workers too, 
 them, and a large raw read decodes rows on them. A stamp's block no longer zeroes buffers it fills, and samples
 its shape a row at a time. The height query reads a 16-bit map's texels directly.
 
-Two budgets still miss here. The radius-512 stamp is 2% over, inside this shared machine's spread. The height
-query's ratio is 1.057x: the query tests its map view and NaN once more than the code it replaced, about 1.5 ns
-of 23.6, and that work is the guard against reading an unloaded or empty map, so it stays.
+The radius-512 stamp, the height query and the runtime writes come from a second pass, measured the same
+way with the box's other build slot held, five interleaved runs against the first pass's code. The stamp's
+two 4 MB block buffers were fresh pages each call; a stroke now keeps them (`OpOptions::scratch`) and frees
+them with itself. The height query's NaN test of the position cost it about 8 %: the clamp it already does
+is now the guard. The reports compared each texel with a `memcmp` call; a 16-bit texel is compared in place.
+Every `je-bench-terrain` budget is met on the box.
 
 `TerrainDeltaBench` with `JASPER_TEST_PERF_SLACK=1` (the spec's sizes), three runs on the same box: commit of
 64 tiles 0.39 to 0.50 ms (budget 2; 1.09 to 1.11 ms before the commit packed tiles on the workers), undo of
-64 tiles 0.56 to 0.59 ms with one run at 1.09 ms (budget 1; the undo is unchanged), commit of a whole 4096² map
+64 tiles 0.56 to 0.59 ms with one run at 1.09 ms (budget 1; the undo is unchanged; the second pass's five
+runs with the box to itself: 0.555 to 0.592 ms), commit of a whole 4096² map
 10.9 to 12.6 ms (budget 60; 68.8 to 71.5 ms before), its undo 38.6 to 39.3 ms (budget 60). A radius-64
 diagonal stroke on 2048² stores 67,026 bytes in 154 tiles against today's 8,388,608-byte rectangle: 1/125,
 inside R49's 1/8.

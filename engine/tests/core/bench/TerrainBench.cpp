@@ -97,8 +97,10 @@ namespace {
     double stampMs(int mapSize, Op op, int stamps) {
         auto store = hillStore(mapSize);
         OverlayMapStore stroke(*store);
+        OpScratch scratch;
         OpOptions options;
         options.inPlace = true;
+        options.scratch = &scratch;
         const float radius = op.shape.radius;
         const float spacing = radius * 0.25f;
         const float usable = static_cast<float>(mapSize) * 0.5f - radius;

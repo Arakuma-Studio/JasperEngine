@@ -126,6 +126,33 @@ namespace jasperengine::terrain {
         std::vector<Vector2> existingObjects;   // place_objects: spacing checks them; erase_objects: its candidates
     };
 
+    // A float buffer whose growth leaves the values to what fills it whole next: a block's read, its
+    // filter and its output (T1 R47: a radius-512 stamp zeroed 8 MB a call that it then overwrote)
+    class FloatScratch {
+    public:
+        std::span<float> resize(size_t count) {
+            if (count > capacity) {
+                values.reset(new float[count]);
+                capacity = count;
+            }
+            return std::span<float>(values.get(), count);
+        }
+        float* data() { return values.get(); }
+        float& operator[](size_t index) { return values[index]; }
+        const float& operator[](size_t index) const { return values[index]; }
+
+    private:
+        std::unique_ptr<float[]> values;
+        size_t capacity = 0;
+    };
+
+    // An op's block buffers, kept by a caller that runs ops one after another (a stroke's stamps) so
+    // each op writes pages it already has: fresh ones cost a radius-512 stamp over a millisecond in
+    // page faults (T1 R47). They are freed with their owner, so nothing stays allocated after a stroke.
+    struct OpScratch {
+        FloatScratch source, weights, out;
+    };
+
     struct OpOptions {
         bool parallel = true;
         // Runs everything on an overlay and discards it: same result, nothing changes (R10, R69)
@@ -136,6 +163,8 @@ namespace jasperengine::terrain {
         bool inPlace = false;
         // New blend and density maps; 0 is the height map's resolution
         int newMapResolution = 0;
+        // The caller's block buffers; without them each op allocates its own
+        OpScratch* scratch = nullptr;
     };
 
     struct OpError {

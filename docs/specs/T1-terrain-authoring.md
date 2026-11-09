@@ -1673,8 +1673,8 @@ the sketch's names, which all still exist unless a line below says otherwise.
   `MeshSystem` code kept in the bench and timed in the same run. R52's upload size is AC36's test, not a bench line. AC38's run
   is on the rented build box (16 shared vCPUs, other jobs on it), not an idle 8-core desktop: the numbers in `docs/perf/terrain.md`
   are that machine's, and the budgets are confirmed only on reference hardware (`docs/specs/checklists/T1.md`). After the budget
-  work two of `je-bench-terrain`'s budgets still miss on the box: the radius-512 stamp by 2% and the height query's ratio (1.057x
-  against 1.05x), whose extra test of the map view is the guard against an unloaded map.
+  work every `je-bench-terrain` budget is met on the box. A stroke keeps its stamps' block buffers (`OpOptions::scratch`), freed with
+  the stroke.
 - **D-40 AC39's overlay check is a unit test,** `TerrainOverlay.OffHasNoEntities`, which counts the scene's meshes with the overlay off,
   on, then off; `sizeof` is asserted per member (`editState`, `surfaceRevision`), which is what R53 states. "Terrain window closed: no
   query per frame" is by reading: `TerrainEditWindow::show` returns before any query when the window is closed.

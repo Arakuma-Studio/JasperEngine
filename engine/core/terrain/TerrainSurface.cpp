@@ -15,10 +15,12 @@ namespace {
     // the bilinear height of the four texels around (texelX, texelY), clamped to the edge; one body
     // for every caller in this file, so the query's own path has no call between it and the pixels
     // (T1 R50: within 1.05x of the code it replaced)
-    // pixels, width, height and channels already known valid
+    // pixels, width, height and channels already known valid. The clamp is also the NaN guard: a NaN
+    // coordinate fails the > test and reads texel 0, where std::clamp would pass it to the int cast,
+    // which is undefined; a separate test of the position cost the query about 8 % (R50)
     inline float bilinearHeightValid(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY) {
-        texelX = std::clamp(texelX, 0.0f, static_cast<float>(width - 1));
-        texelY = std::clamp(texelY, 0.0f, static_cast<float>(height - 1));
+        texelX = texelX > 0.0f ? std::min(texelX, static_cast<float>(width - 1)) : 0.0f;
+        texelY = texelY > 0.0f ? std::min(texelY, static_cast<float>(height - 1)) : 0.0f;
         const int lowerX = std::clamp(static_cast<int>(std::floor(texelX)), 0, width - 1);
         const int lowerY = std::clamp(static_cast<int>(std::floor(texelY)), 0, height - 1);
         const int upperX = std::min(lowerX + 1, width - 1);
@@ -81,7 +83,7 @@ namespace {
                view.size > std::numeric_limits<float>::epsilon();
     }
 
-    // A NaN position would reach an int cast through the clamp, which is undefined
+    // A NaN position would make the inside and hole tests' answers meaningless
     float finite(float value) {
         return value == value ? value : 0.0f;
     }
@@ -102,13 +104,13 @@ namespace {
 
 SurfaceSample jasperengine::terrain::sampleSurface(const SurfaceView& view, float localX, float localZ) {
     SurfaceSample result;
-    localX = finite(localX);
-    localZ = finite(localZ);
 
     if (view.size > std::numeric_limits<float>::epsilon()) {
+        const float x = finite(localX);
+        const float z = finite(localZ);
         const float half = view.size * 0.5f;
-        result.inside = localX >= -half && localX <= half && localZ >= -half && localZ <= half;
-        result.hole = holeAt(view, localX, localZ);
+        result.inside = x >= -half && x <= half && z >= -half && z <= half;
+        result.hole = holeAt(view, x, z);
     }
     if (!hasMap(view)) {
         return result;
@@ -126,7 +128,7 @@ float jasperengine::terrain::sampleHeight(const SurfaceView& view, float localX,
     if (!hasMap(view)) {
         return 0.0f;
     }
-    return heightAtLocal(view, finite(localX), finite(localZ));
+    return heightAtLocal(view, localX, localZ);
 }
 
 bool jasperengine::terrain::raycastSurface(const SurfaceView& view, const Vector3& origin, const Vector3& direction, float maxT,
