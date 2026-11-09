@@ -834,4 +834,7 @@ Recorded by the implementer (2026-11-08).
   `bad_unknown_sorting_layer`, `bad_bullets_as_gameobjects`, `guard_sort_bucket_break`); the eval
   itself runs on owner-approved Orquester accounts and was not run by the implementer.
 - **AC15's mobile and web numbers** need a device and were not measured; the desktop benches print
-  their `[bench]` lines.
+  their `[bench]` lines and enforce their budgets through `perfSlack()`. R27's pack and upload of
+  10,000 moving instances (measured alone: `SpriteBatchStats::packMs + uploadMs`) took 1.26 ms on
+  the shared build box (software rendering, other jobs running) against the 0.5 ms budget: the
+  budget needs a run on the bench machine (JASPER_TEST_PERF_SLACK set).
