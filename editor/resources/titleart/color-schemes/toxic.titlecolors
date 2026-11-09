@@ -1,0 +1,176 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "toxic",
+  "revision": 1,
+  "name": {
+    "en": "Toxic",
+    "ja": "毒"
+  },
+  "description": {
+    "en": "Glossy acid lime to deep green, a black keyline and an acid green frame.",
+    "ja": "光沢のある酸性のライムから深緑へ、黒の線と酸性の緑の枠。"
+  },
+  "family_hint": [
+    "horror",
+    "scifi",
+    "cartoon"
+  ],
+  "tags": [
+    "green",
+    "lime",
+    "acid",
+    "slime",
+    "gloss"
+  ],
+  "synonyms": {
+    "en": [
+      "acid",
+      "radioactive",
+      "poison",
+      "slime"
+    ],
+    "ja": [
+      "毒",
+      "どく",
+      "蛍光",
+      "doku",
+      "suraimu"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#f4ffc0",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#f4ffc0"
+            },
+            {
+              "pos": 0.3333,
+              "color": "#b8ff2a"
+            },
+            {
+              "pos": 0.6667,
+              "color": "#40c000"
+            },
+            {
+              "pos": 1,
+              "color": "#0a3a00"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#a0f222",
+        "roughness": 0.15,
+        "clearcoat": 1
+      },
+      "shade": "#102a00"
+    },
+    "dark": {
+      "fill": {
+        "color": "#061400"
+      },
+      "material_3d": {
+        "color": "#061400",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "color": "#1a1a1a"
+        },
+        "material_3d": {
+          "color": "#1a1a1a",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#102a00"
+      },
+      {
+        "fill": {
+          "color": "#c8ff00"
+        },
+        "material_3d": {
+          "color": "#c8ff00",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#102a00"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#0a1a00"
+      },
+      "material_3d": {
+        "color": "#0a1a00",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#072900",
+      "roughness": 0.15,
+      "clearcoat": 1
+    }
+  },
+  "face_glow": "#f4ffc0",
+  "glow": "#a0ff20",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#a0ff20"
+      },
+      {
+        "pos": 1,
+        "color": "#7ce015"
+      }
+    ]
+  },
+  "shadow": "#102a00",
+  "glint": "#f4ffc0",
+  "light_ramp": [
+    "#102a00",
+    "#0a3a00",
+    "#40c000",
+    "#a0ff20",
+    "#b8ff2a",
+    "#f4ffc0"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#e2ff93"
+        },
+        {
+          "pos": 0.55,
+          "color": "#6ad60f"
+        },
+        {
+          "pos": 1,
+          "color": "#124e00"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#f4ffc0",
+    "#b8ff2a",
+    "#40c000",
+    "#0a3a00",
+    "#061400",
+    "#c8ff00"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

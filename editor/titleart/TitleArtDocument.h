@@ -56,7 +56,7 @@ namespace jasperengine::editor {
         static std::shared_ptr<TitleArtDocument> open(Project* project, const std::string& path, std::string* error);
         // a new file (refused when it exists) holding `doc` (makeNewTitleArt's when null; its GUID
         // kept when it has a valid one), as one project undo step named `undoName`; `files` (S87's imports: fonts, images,
-        // split SVGs) are written in the same step
+        // split SVGs; S84's imports of a template's fonts and environments) are written in the same step
         static std::shared_ptr<TitleArtDocument> create(Project* project, const std::string& path, const titleart::TitleArtDoc* doc,
                                                         const std::string& undoName, std::string* error,
                                                         const std::vector<TitleOpFile>& files = {});
@@ -74,6 +74,8 @@ namespace jasperengine::editor {
         // document an outside edit reloaded (Auto Bake, previews and thumbnails)
         static void setChangedHook(std::function<void(const std::vector<std::filesystem::path>&)> hook);
         static void notifyChanged(const std::vector<std::filesystem::path>& paths);
+        // called with the project every open or create works in (S84's library follows it)
+        static void setProjectHook(std::function<void(Project*)> hook);
 
         // R5: a file or directory moved (AssetOps::move): open documents at or under `oldPath`
         // follow it, and the recipes of the derived PNGs of every document now at or under
@@ -112,7 +114,9 @@ namespace jasperengine::editor {
         bool commitText(const std::string& text, const std::string& undoName, std::string* error,
                         TitleArtChangeOrigin origin = TitleArtChangeOrigin::Person);
         // an op batch (TitleArtOps::apply) committed as one undo step; the result says why it was
-        // refused (`rev_mismatch`, `read_only`, `write_failed`, or the batch's own problems)
+        // refused (`rev_mismatch`, `read_only`, `write_failed`, or the batch's own problems). The
+        // batch's undoable `files` (S84's imports, project library items) join that step; the others
+        // (the personal library) are written after it.
         TitleOpsResult edit(const TitleJson& ops, const TitleArtEditOptions& options = {});
         // reads the file again (listeners notified with `origin` when it changed; a commit of this
         // document keeps its own origin)

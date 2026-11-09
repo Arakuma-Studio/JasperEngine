@@ -1,0 +1,362 @@
+{
+  "templates": [
+    {
+      "id": "fantasy/kingdom-title",
+      "name": {
+        "en": "Kingdom Title (engraved gold, god rays)",
+        "ja": "王国タイトル (彫金 + 光芒)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 title: engraved gold letters with golden god rays behind and a carved-stone subtitle; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のタイトル：背後に金の光芒が差す彫金の文字、石彫りのサブタイトル。背景はガイドレイヤー。"
+      },
+      "family": "fantasy",
+      "tags": [
+        "title",
+        "subtitle",
+        "gold",
+        "engraved",
+        "stone",
+        "god-rays",
+        "medieval"
+      ],
+      "synonyms": {
+        "en": [
+          "epic title",
+          "rpg logo",
+          "kingdom"
+        ],
+        "ja": [
+          "壮大なタイトル",
+          "RPG ロゴ",
+          "王国"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "ASHEN REALM",
+          "ja": "灰の王国"
+        },
+        "subtitle": {
+          "en": "CHRONICLES",
+          "ja": "年代記"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 185,
+            "transform.position": [
+              0,
+              70
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#2a1a3a",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#08040e",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "text",
+          "name": "Subtitle",
+          "values": {
+            "text": "CHRONICLES",
+            "size": 90,
+            "transform.position": [
+              0,
+              -120
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "fantasy/engraved-gold",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Subtitle",
+          "look": "fantasy/carved-stone",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "backlight",
+          "name": "God Rays",
+          "preset": "god_rays",
+          "follow": "Title",
+          "values": {
+            "gen.color": "#fff0c0",
+            "gen.outer_color": "#e0a030"
+          }
+        },
+        {
+          "op": "expose",
+          "name": "subtitle",
+          "type": "text",
+          "label": "Subtitle",
+          "targets": [
+            {
+              "layer": "Subtitle",
+              "field": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fantasy/quest-complete",
+      "name": {
+        "en": "Quest Complete (3D gilded shield)",
+        "ja": "クエスト達成 (3D 金縁の盾)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 banner: a royal crest title over a 3D gilded shield, glints on the shield and gold dust around the title; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のバナー：3D の金縁の盾に王家の紋章風の文字、盾にきらめき、文字の周りに金の粒子。背景はガイドレイヤー。"
+      },
+      "family": "fantasy",
+      "tags": [
+        "banner",
+        "shield",
+        "3d",
+        "gold",
+        "royal",
+        "glints",
+        "particles"
+      ],
+      "synonyms": {
+        "en": [
+          "quest clear",
+          "achievement",
+          "level complete"
+        ],
+        "ja": [
+          "クエストクリア",
+          "実績解除",
+          "レベルクリア"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "QUEST COMPLETE",
+          "ja": "クエスト達成"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 140,
+            "transform.position": [
+              0,
+              20
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#1a1040",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#06040e",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "shape",
+          "name": "Shield",
+          "before": "Title",
+          "values": {
+            "shape": "shield",
+            "size": 800,
+            "aspect": 0.8,
+            "transform.position": [
+              0,
+              -20
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Shield",
+          "look": "fantasy/gilded-shield-3d",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "fantasy/royal-crest",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "glints",
+          "name": "Glints",
+          "follow": "Shield"
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "particles",
+          "name": "Gold Dust",
+          "preset": "gold_dust",
+          "follow": "Title"
+        }
+      ]
+    },
+    {
+      "id": "fantasy/spell-label",
+      "name": {
+        "en": "Spell Label (arcane sigil)",
+        "ja": "呪文ラベル (魔法陣)"
+      },
+      "description": {
+        "en": "A 1024 × 512 label: violet glass letters over their magic circle; the backdrop is a guide layer.",
+        "ja": "1024 × 512 のラベル：魔法陣の上に紫のガラスの文字。背景はガイドレイヤー。"
+      },
+      "family": "fantasy",
+      "tags": [
+        "label",
+        "spell",
+        "magic",
+        "violet",
+        "magic-circle",
+        "skill"
+      ],
+      "synonyms": {
+        "en": [
+          "skill name",
+          "ability label",
+          "spell name"
+        ],
+        "ja": [
+          "スキル名",
+          "技名",
+          "呪文名"
+        ]
+      },
+      "canvas": [
+        1024,
+        512
+      ],
+      "canvas_note": "1024 × 512, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "FIREBALL",
+          "ja": "火球"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 125,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#1a0830",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#05020a",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "fantasy/arcane-sigil",
+          "apply_font": true
+        }
+      ]
+    }
+  ]
+}

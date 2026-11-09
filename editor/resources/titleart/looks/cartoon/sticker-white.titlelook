@@ -1,0 +1,78 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "cartoon/sticker-white",
+  "revision": 1,
+  "name": {
+    "en": "White Sticker",
+    "ja": "白ふちステッカー"
+  },
+  "description": {
+    "en": "Flat pink face inside a wide round-joined white border, lifted by a soft drop shadow like a sticker.",
+    "ja": "丸い角の太い白ふちの中の平らなピンクの面、ステッカーのように柔らかいドロップシャドウで浮かせる。"
+  },
+  "family": "cartoon",
+  "tags": [
+    "sticker",
+    "pink",
+    "white",
+    "cartoon",
+    "cute",
+    "flat"
+  ],
+  "synonyms": {
+    "en": [
+      "die cut",
+      "label",
+      "decal",
+      "kawaii sticker"
+    ],
+    "ja": [
+      "ステッカー",
+      "シール",
+      "白ふち",
+      "かわいい",
+      "sutekkā",
+      "shīru"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "lilita-one",
+    "ja": "mochiy-pop-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#ff5a8a"
+      }
+    },
+    "rims": [
+      {
+        "width": 6,
+        "join": "round"
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "drop_shadow",
+      "params": {
+        "distance": 6,
+        "size": 10,
+        "opacity": 0.35
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

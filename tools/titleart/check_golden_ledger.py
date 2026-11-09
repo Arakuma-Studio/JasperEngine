@@ -18,6 +18,9 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 GOLDEN = "engine/tests/core/golden/titleart/"
+# S84's library goldens (tools/mcp/tests/test_title_library_golden.py) are ledger rows named
+# `title-library/<case>`
+LIBRARY_GOLDEN = "tools/mcp/tests/golden/title-library/"
 LEDGER = os.path.join(ROOT, "docs", "titleart", "goldens.md")
 
 
@@ -27,13 +30,16 @@ def git(*args):
 
 def changed_goldens(base):
     """(status, path relative to golden/titleart/ without .png) of every title golden changed since base"""
-    out = git("diff", "--name-status", "--no-renames", base + "...HEAD", "--", GOLDEN)
+    out = git("diff", "--name-status", "--no-renames", base + "...HEAD", "--", GOLDEN, LIBRARY_GOLDEN)
     changes = []
     for line in out.splitlines():
         parts = line.split("\t")
         if len(parts) != 2 or not parts[1].endswith(".png"):
             continue
-        changes.append((parts[0][0], parts[1][len(GOLDEN):-len(".png")]))
+        if parts[1].startswith(LIBRARY_GOLDEN):
+            changes.append((parts[0][0], "title-library/" + parts[1][len(LIBRARY_GOLDEN):-len(".png")]))
+        else:
+            changes.append((parts[0][0], parts[1][len(GOLDEN):-len(".png")]))
     return changes
 
 

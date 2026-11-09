@@ -12,6 +12,42 @@ comparison of the old golden against the new image (before) and after the update
 
 | Golden | Reason |
 |---|---|
+| `title-library/anime_candy-pop-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/anime_impact-burst` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/cartoon_bubble-pop` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/cartoon_jelly-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/casino_orb-candy-gold-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/casino_outline-gold` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/elements_fire-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/elements_ice` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/fantasy_engraved-gold` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/fantasy_gilded-shield-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/gems_diamond-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/gems_red-glass` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/horror_blood-drip` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/horror_bloodstone-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/metal_chrome-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/metal_classic-gold` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/minimal_duotone` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/minimal_matte-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/neon_sign-pink` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/neon_tube-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/retro_chrome-80s` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/retro_pixel-block-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/scheme_gold` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/scheme_neon-pink` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/scheme_rainbow` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/scheme_zebra` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/scifi_hud-cyan` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/scifi_visor-chrome-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/sports_trophy-gold-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/sports_varsity` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/template_casino_big-win-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/template_casino_rush-title-fx` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/template_fantasy_kingdom-title` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/template_minimal_clean-title` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/wa_ink-brush` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
+| `title-library/wa_sakura-pearl-3d` | S84 AC28: the library item at 0.25 x on a transparent background (llvmpipe) |
 | `effects/outer_glow` | Outer Glow at defaults (softer, behind), on the standard title |
 | `effects/inner_glow` | Inner Glow at defaults (softer, screen, from the edge), on the standard title |
 | `effects/drop_shadow` | Drop Shadow at defaults (global light 120: falls down-right), on the standard title |

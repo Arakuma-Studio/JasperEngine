@@ -1,0 +1,96 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "scifi/hologram-glitch",
+  "revision": 1,
+  "name": {
+    "en": "Glitch Hologram",
+    "ja": "グリッチホログラム"
+  },
+  "description": {
+    "en": "Translucent ice-blue gradient face with a bright sheen, scanlines, a glitch slicing and a chromatic split.",
+    "ja": "強いシーンを持つ半透明のアイスブルーのグラデーションの面、走査線、グリッチのずれ、色収差。"
+  },
+  "family": "scifi",
+  "tags": [
+    "hologram",
+    "glitch",
+    "blue",
+    "scanlines",
+    "digital",
+    "tech"
+  ],
+  "synonyms": {
+    "en": [
+      "projection",
+      "corrupted signal",
+      "holo",
+      "transmission"
+    ],
+    "ja": [
+      "ホログラム",
+      "グリッチ",
+      "投影",
+      "デジタル",
+      "horoguramu",
+      "guritchi"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "audiowide",
+    "ja": "train-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#bff8ff"
+            },
+            {
+              "pos": 1,
+              "color": "#2a8aff"
+            }
+          ]
+        }
+      },
+      "opacity": 0.75,
+      "sheen": {
+        "enabled": true,
+        "amount": 0.8
+      }
+    }
+  },
+  "effects": [
+    {
+      "type": "scanlines",
+      "params": {}
+    },
+    {
+      "type": "glitch",
+      "params": {
+        "amount": 0.3
+      }
+    },
+    {
+      "type": "chromatic_aberration",
+      "params": {
+        "amount": 4
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

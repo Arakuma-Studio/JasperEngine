@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/zenkakugothicnew/OFL.txt",
+    "sha256": "0fac78a235c98d640cb06332eb5362c211d86fa03c011df438c35005d22ad2c7",
+    "bytes": 4401
+  },
+  "path": "ofl/zenkakugothicnew/ZenKakuGothicNew-Black.ttf",
+  "sha256": "795819a979184981842994d8f4eb9e14ce443d687bd5e731d6ca67ded8f92261",
+  "bytes": 2300600
+}

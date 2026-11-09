@@ -1,0 +1,95 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "retro/vector-green",
+  "revision": 1,
+  "name": {
+    "en": "Green Vector",
+    "ja": "グリーンベクター"
+  },
+  "description": {
+    "en": "Hollow letters traced by one thin phosphor green line with an added green glow and a little grain, like a vector display.",
+    "ja": "ベクターディスプレイのように一本の細い蛍光グリーンの線でなぞった中抜きの文字、加算の緑のグロー、わずかな粒子。"
+  },
+  "family": "retro",
+  "tags": [
+    "vector",
+    "green",
+    "hollow",
+    "retro",
+    "phosphor",
+    "line"
+  ],
+  "synonyms": {
+    "en": [
+      "vector display",
+      "oscilloscope",
+      "wireframe",
+      "terminal"
+    ],
+    "ja": [
+      "ベクター",
+      "ワイヤーフレーム",
+      "緑",
+      "レトロ",
+      "bekutā",
+      "waiyāfurēmu"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "audiowide",
+    "ja": "train-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#000000"
+      },
+      "opacity": 0
+    },
+    "rims": [
+      {
+        "width": 0.6,
+        "material": {
+          "fill": {
+            "color": "#40ff60"
+          }
+        }
+      }
+    ],
+    "knockout": true
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#40ff60",
+        "size": 14,
+        "mode": "add"
+      }
+    },
+    {
+      "type": "grain",
+      "params": {
+        "amount": 0.15
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [
+    {
+      "rule": "rims_thin",
+      "reason": "a vector-display hairline is the look: one thin glowing stroke, no fill"
+    }
+  ],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

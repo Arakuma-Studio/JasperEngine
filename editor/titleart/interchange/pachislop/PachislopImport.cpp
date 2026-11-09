@@ -13,6 +13,8 @@
 #include "titleart/TitleArtAssets.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/interchange/TitleImport.h"
+#include "titleart/library/PachislopPort.h"
+#include "titleart/library/TitleLibraryImports.h"
 #include "titleart/text/TitleTextLayout.h"
 #include "util/FontFace.h"
 #include "util/Sha256.h"
@@ -299,7 +301,10 @@ bool pachislop::importProjectFile(const TitleCreateRequest& request, TitleCreate
     const fs::path document(request.documentPath);
     const fs::path assetsDir(request.assetsPath);
     TitleImportAssets files(document, assetsDir);
-    std::vector<TitleOpFile> packFiles;
+    // the pack fonts and environments the project lacks: S84's copy (with its OFL and provenance)
+    titlelibrary::ImportPlan packImports;
+    packImports.projectDir = fs::path(request.projectPath);
+    packImports.assetsDir = assetsDir;
     std::vector<TitleImportNote> notes;
     const auto note = [&](const std::string& layer, const std::string& field, const std::string& what, const std::string& action,
                           const std::string& codeName) {
@@ -373,21 +378,12 @@ bool pachislop::importProjectFile(const TitleCreateRequest& request, TitleCreate
         if (auto it = fontById.find(fontId); it != fontById.end()) {
             const Blob& b = *it->second;
             ref = titleart::encodeAssetRef(titleart::TitleAssetRef{files.add(withExtension(titleSafeFileName(b.name), fontExtension(b.data)), b.data), ""});
-        } else if (const std::string pack = packFontId(fontId); !pack.empty()) {
-            const fs::path packDir = titleArtLibraryDir() / "fonts" / pack;
-            const std::string file = builtinFontFile(fontId);
-            std::string bytes;
-            std::error_code missing;
-            if (!file.empty() && readFile(packDir / file, bytes, MAX_ASSET_BYTES)) {
-                const fs::path target = assetsDir / "TitleArt" / "Fonts" / pack / file;
-                if (!fs::exists(target, missing)) {
-                    packFiles.push_back({target.string(), bytes});
-                    std::string licence;
-                    if (readFile(packDir / "OFL.txt", licence, MAX_ASSET_BYTES)) packFiles.push_back({(target.parent_path() / "OFL.txt").string(), licence});
-                }
-                ref = titleart::encodeAssetRef(titleart::TitleAssetRef{"TitleArt/Fonts/" + pack + "/" + file, ""});
+        } else if (const std::string pack = titlelibrary::pachislopPackFont(fontId); !pack.empty()) {
+            const std::string path = packImports.font(pack);
+            if (!path.empty()) {
+                ref = titleart::encodeAssetRef(titleart::TitleAssetRef{path, ""});
             } else {
-                note(layerPath, "font", "font '" + builtinFontFamily(fontId) + "' is not in this editor's font pack: the built-in face stands in (the font picker finds it on Google Fonts)",
+                note(layerPath, "font", "font '" + pack + "' is not in this editor's font pack: the built-in face stands in (the font picker finds it on Google Fonts)",
                      "approximated", "font_unavailable");
             }
         } else if (!fontId.empty()) {
@@ -398,7 +394,14 @@ bool pachislop::importProjectFile(const TitleCreateRequest& request, TitleCreate
         return ref;
     };
 
+    sink.environment = [&](const std::string& mapName, const std::string&, const std::string&) -> Json {
+        const std::string environment = titlelibrary::pachislopEnvironment(mapName);
+        const std::string path = environment.empty() ? std::string() : packImports.environment(environment);
+        return path.empty() ? Json() : titleart::encodeAssetRef(titleart::TitleAssetRef{path, ""});
+    };
+
     MapResult mapped = mapProject(bundle.project, sink);
+    const std::vector<TitleOpFile>& packFiles = packImports.files;
     std::vector<TitleOpFile> staged = files.take();
     if (bundle.version == 4) {
         // the layout reads the fonts the import is about to write (embedded and pack fonts)
@@ -422,7 +425,7 @@ bool pachislop::importProjectFile(const TitleCreateRequest& request, TitleCreate
     out.doc = std::move(mapped.doc);
     out.kind = "pachislop";
     out.files = std::move(staged);
-    for (TitleOpFile& f : packFiles) out.files.push_back(std::move(f));
+    out.files.insert(out.files.end(), packFiles.begin(), packFiles.end());
     return true;
 }
 

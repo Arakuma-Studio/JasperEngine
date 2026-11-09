@@ -1,0 +1,98 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "minimal/matte-3d",
+  "revision": 1,
+  "name": {
+    "en": "Matte 3D",
+    "ja": "マット 3D"
+  },
+  "description": {
+    "en": "Shallow extrusion with a small round bevel in matte white plastic with ambient occlusion, in a softbox studio.",
+    "ja": "小さな丸ベベルの浅い押し出し、つや消しの白いプラスチック、アンビエントオクルージョン、ソフトボックスのスタジオ光。"
+  },
+  "family": "minimal",
+  "tags": [
+    "matte",
+    "white",
+    "plastic",
+    "minimal",
+    "clean",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "clay render",
+      "soft 3d",
+      "product render",
+      "neutral 3d"
+    ],
+    "ja": [
+      "マット",
+      "つや消し",
+      "白",
+      "立体",
+      "matto",
+      "tsuyakeshi"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "inter",
+    "ja": "zen-kaku-gothic-new-black",
+    "variations": {
+      "wght": 800
+    }
+  },
+  "style_3d": {
+    "depth": 8,
+    "bevel": {
+      "width": 1,
+      "depth": 1
+    },
+    "face": {
+      "preset": "plastic",
+      "roughness": 0.7
+    },
+    "ao": {
+      "enabled": true
+    }
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "softbox",
+      "intensity": 1,
+      "rotation": 25
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

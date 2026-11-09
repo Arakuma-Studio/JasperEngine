@@ -31,6 +31,7 @@
 
 #include "titleart/TitleArtDoc.h"
 
+#include <filesystem>
 #include <functional>
 #include <optional>
 #include <string>
@@ -71,6 +72,16 @@ namespace jasperengine::editor {
         TitleJson toJson() const;
     };
 
+    // a file a batch writes besides the document (S84: fonts and environments imported into the
+    // project, saved library items): `undoable` ones join the document's undo step, the others
+    // (the personal library, outside the project) are written once the batch is committed
+    struct TitleOpFile {
+        std::filesystem::path path;         // absolute
+        std::string content;
+        bool undoable = true;
+        bool remove = false;                // the file goes (a deleted library item)
+    };
+
     struct TitleOpsOptions {
         uint64_t idSeed = 0;                // 0: random new ids (tests pass a seed for a fixed sequence)
         // where the document lives (absolute paths; empty for a document without a file): ops
@@ -84,12 +95,6 @@ namespace jasperengine::editor {
         const titleart::AssetResolver* assets = nullptr;
     };
 
-    // a file a batch writes in its one undo step, beside the document (absolute path, bytes)
-    struct TitleOpFile {
-        std::string path;
-        std::string content;
-    };
-
     struct TitleOpsResult {
         bool ok = false;
         titleart::TitleArtDoc doc;          // the edited copy (normalized, invariants applied) when ok
@@ -98,9 +103,9 @@ namespace jasperengine::editor {
         std::vector<TitleOpChange> changes;
         TitleJson newIds = TitleJson::object();     // op index -> the id(s) it made
         std::vector<TitleOpProblem> problems;       // the failure (when !ok) and the notes
+        std::vector<TitleOpFile> files;             // the files the batch writes besides the document
+        TitleJson details = TitleJson::object();    // op index -> what a later spec's op reports (S84's apply `changes`)
         std::string undoName;
-        // files the batch writes with the document, in the same undo step (S87's imports)
-        std::vector<TitleOpFile> files;
         // what ops report beyond changes (import_strings' counts, apply_ps_style's summary), by op index
         TitleJson reports = TitleJson::object();
         // the error of a failed batch, ending "Nothing was applied."
@@ -111,6 +116,9 @@ namespace jasperengine::editor {
     class TitleOpContext;
     // an op of a later spec: false after ctx.fail(...) refuses the batch
     using TitleOpHandler = std::function<bool(TitleOpContext& ctx, const TitleJson& op)>;
+    // runs after every op of a successful batch, before the commit invariants (S84: the scheme data
+    // of exposed color_scheme parameters kept in `color_schemes`)
+    using TitleBatchFinisher = std::function<void(TitleOpContext& ctx)>;
 
     // what an op handler works with: the batch's working copy and the helpers S80's own ops use
     class TitleOpContext {
@@ -195,6 +203,8 @@ namespace jasperengine::editor {
         // S80's or already has a handler
         static bool registerOp(const std::string& name, TitleOpHandler handler);
         static bool unregisterOp(const std::string& name);
+        // a later spec's step at the end of every batch (replaces one of the same name)
+        static void registerBatchFinisher(const std::string& name, TitleBatchFinisher finisher);
 
         // S87's importers of `create.from` by kind ("pachislop", "psd", "svg"), each with the
         // sniffer that recognises its files by content (the first 4 KiB) and extension

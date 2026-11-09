@@ -79,7 +79,7 @@ TitleJson editor::titleImportJson(const TitleCreateResult& result, const fs::pat
     for (const TitleOpFile& f : result.files) {
         std::error_code ec;
         const fs::path relative = fs::relative(fs::path(f.path), projectPath, ec);
-        files.push_back(ec ? f.path : generic(relative));
+        files.push_back(generic(ec ? f.path : relative));
     }
     TitleJson warnings = TitleJson::array();
     for (const std::string& w : result.warnings) warnings.push_back(w);

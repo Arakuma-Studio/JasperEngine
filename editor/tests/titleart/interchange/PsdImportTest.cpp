@@ -12,6 +12,7 @@
 #include "texsynth/SynthImage.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
+#include "titleart/library/TitleLibraryFormats.h"
 #include "titleart/interchange/psd/PsdImport.h"
 #include "titleart/interchange/psd/PsdReader.h"
 
@@ -272,21 +273,27 @@ TEST_F(PsdImportTest, ApplyAndImportStyleOps) {
     ASSERT_TRUE(looks.ok) << looks.error();
     size_t titlelooks = 0;
     for (const TitleOpFile& f : looks.files) {
-        if (f.path.size() > 10 && f.path.compare(f.path.size() - 10, 10, ".titlelook") == 0) {
+        const std::string filePath = f.path.generic_string();
+        if (filePath.size() > 10 && filePath.compare(filePath.size() - 10, 10, ".titlelook") == 0) {
             titlelooks++;
             const Json look = Json::parse(f.content);
             EXPECT_EQ(look["format"], "jasperengine.titlelook");
             EXPECT_EQ(look["family"], "custom");
             EXPECT_EQ(look["tags"][0], "photoshop");
             EXPECT_EQ(look["tags"][1], "styles");
-            EXPECT_NE(f.path.find("EditorSettings"), std::string::npos);
+            EXPECT_NE(filePath.find("EditorSettings"), std::string::npos);
+            // S84's format: the look reads back with no warning, and a rewrite changes nothing
+            const titlelibrary::LookParseResult parsed = titlelibrary::parseLook(f.content);
+            ASSERT_TRUE(parsed.ok) << parsed.error;
+            EXPECT_TRUE(parsed.warnings.empty()) << parsed.warnings.front().toString();
+            EXPECT_EQ(titlelibrary::writeLook(parsed.look), f.content) << "canonical text";
         }
     }
     EXPECT_EQ(titlelooks, 17u);
     EXPECT_EQ(looks.reports["0"]["looks"].size(), 17u);
     // the bitmap pattern travels in the look's .files folder
     bool patternFile = false;
-    for (const TitleOpFile& f : looks.files) patternFile = patternFile || f.path.find("bitmap-pattern.files") != std::string::npos;
+    for (const TitleOpFile& f : looks.files) patternFile = patternFile || f.path.generic_string().find("bitmap-pattern.files") != std::string::npos;
     EXPECT_TRUE(patternFile);
 }
 

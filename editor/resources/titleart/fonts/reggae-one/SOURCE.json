@@ -1,0 +1,13 @@
+{
+  "repo": "google/fonts",
+  "commit": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fetched": "2026-11-08",
+  "license": {
+    "path": "ofl/reggaeone/OFL.txt",
+    "sha256": "2756c3dcd85ad997b742330f91332fb478afad302708d4149f7bcd4600543ce2",
+    "bytes": 4483
+  },
+  "path": "ofl/reggaeone/ReggaeOne-Regular.ttf",
+  "sha256": "aebe62598732d76036f30ec11bb0ec5f68938e373a06d1b4ceb6b9cf1abf3db2",
+  "bytes": 2153256
+}

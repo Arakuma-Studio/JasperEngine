@@ -1,0 +1,421 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "giraffe",
+  "revision": 1,
+  "name": {
+    "en": "Giraffe",
+    "ja": "キリン"
+  },
+  "description": {
+    "en": "Brown giraffe patches on gold, a cream line and a copper rim.",
+    "ja": "金にキリンの茶の斑、クリームの線と銅の縁。"
+  },
+  "family_hint": [
+    "casino"
+  ],
+  "tags": [
+    "giraffe",
+    "pattern",
+    "animal",
+    "gold"
+  ],
+  "synonyms": {
+    "en": [
+      "animal print",
+      "patches",
+      "giraffe print"
+    ],
+    "ja": [
+      "きりん",
+      "kirin",
+      "キリン柄"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.16,
+              "color": "#fff8b8"
+            },
+            {
+              "pos": 0.38,
+              "color": "#ffd820"
+            },
+            {
+              "pos": 0.6,
+              "color": "#ff9400"
+            },
+            {
+              "pos": 0.8,
+              "color": "#b84000"
+            },
+            {
+              "pos": 1,
+              "color": "#4a1000"
+            }
+          ]
+        }
+      },
+      "ramp": {
+        "stops": [
+          {
+            "color": "#3a0c00"
+          },
+          {
+            "pos": 0.25,
+            "color": "#a83800"
+          },
+          {
+            "pos": 0.5,
+            "color": "#f08c00"
+          },
+          {
+            "pos": 0.75,
+            "color": "#ffd23a"
+          },
+          {
+            "pos": 1,
+            "color": "#fff8d6"
+          }
+        ]
+      },
+      "material_3d": {
+        "preset": "gold",
+        "color": "#ffc23a",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#fff8d8"
+            },
+            {
+              "pos": 0.06,
+              "color": "#ffe890"
+            },
+            {
+              "pos": 0.16,
+              "color": "#ffc838"
+            },
+            {
+              "pos": 0.3,
+              "color": "#f0a018"
+            },
+            {
+              "pos": 0.4,
+              "color": "#c06a06"
+            },
+            {
+              "pos": 0.47,
+              "color": "#5a2602"
+            },
+            {
+              "pos": 0.51,
+              "color": "#1a0800"
+            },
+            {
+              "pos": 0.55,
+              "color": "#120500"
+            },
+            {
+              "pos": 0.6,
+              "color": "#5a2804"
+            },
+            {
+              "pos": 0.72,
+              "color": "#c87810"
+            },
+            {
+              "pos": 0.84,
+              "color": "#f8b830"
+            },
+            {
+              "pos": 0.94,
+              "color": "#ffe080"
+            },
+            {
+              "pos": 1,
+              "color": "#fff4c8"
+            }
+          ]
+        },
+        "gradient_span": "line",
+        "gradient_bend": 0.6,
+        "metallic": 1,
+        "roughness": 0.06,
+        "pattern": {
+          "kind": "giraffe",
+          "color": "#6a300a",
+          "scale": 11,
+          "seed": 5,
+          "shade": 0.5,
+          "relief": 0.4
+        }
+      },
+      "shade": "#5a2a00",
+      "pattern": {
+        "kind": "giraffe",
+        "color": "#6a300a",
+        "scale": 11,
+        "seed": 5,
+        "shade": 0.5,
+        "relief": 0.25
+      }
+    },
+    "dark": {
+      "fill": {
+        "color": "#2a1000",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#2a1000"
+            },
+            {
+              "pos": 1,
+              "color": "#2a1000"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#2a1000",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "color": "#fff2d0",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#fff2d0"
+              },
+              {
+                "pos": 1,
+                "color": "#fff2d0"
+              }
+            ]
+          }
+        },
+        "material_3d": {
+          "color": "#fff2d0",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#7a4a10"
+      },
+      {
+        "fill": {
+          "kind": "linear",
+          "color": "#ffe0a8",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffe0a8"
+              },
+              {
+                "pos": 0.4,
+                "color": "#e88a20"
+              },
+              {
+                "pos": 0.6,
+                "color": "#8a3a00"
+              },
+              {
+                "pos": 1,
+                "color": "#ffc070"
+              }
+            ]
+          }
+        },
+        "ramp": {
+          "stops": [
+            {
+              "color": "#2a0d00"
+            },
+            {
+              "pos": 0.4,
+              "color": "#a3461a"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ffad7a"
+            },
+            {
+              "pos": 1,
+              "color": "#fff3ea"
+            }
+          ]
+        },
+        "material_3d": {
+          "preset": "copper",
+          "color": "#ff8a52",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#fff0e0"
+              },
+              {
+                "pos": 0.22,
+                "color": "#ffb48a"
+              },
+              {
+                "pos": 0.45,
+                "color": "#d0652a"
+              },
+              {
+                "pos": 0.52,
+                "color": "#6e2a0c"
+              },
+              {
+                "pos": 0.6,
+                "color": "#c05a24"
+              },
+              {
+                "pos": 0.8,
+                "color": "#ffa77a"
+              },
+              {
+                "pos": 1,
+                "color": "#ffe6d6"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.12,
+          "clearcoat": 0.3
+        },
+        "shade": "#4a1a00"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#140800",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#140800"
+            },
+            {
+              "pos": 1,
+              "color": "#140800"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#140800",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "preset": "copper",
+      "color": "#ff8a52",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#fff0e0"
+          },
+          {
+            "pos": 0.22,
+            "color": "#ffb48a"
+          },
+          {
+            "pos": 0.45,
+            "color": "#d0652a"
+          },
+          {
+            "pos": 0.52,
+            "color": "#6e2a0c"
+          },
+          {
+            "pos": 0.6,
+            "color": "#c05a24"
+          },
+          {
+            "pos": 0.8,
+            "color": "#ffa77a"
+          },
+          {
+            "pos": 1,
+            "color": "#ffe6d6"
+          }
+        ]
+      },
+      "metallic": 1,
+      "roughness": 0.12,
+      "clearcoat": 0.3
+    }
+  },
+  "face_glow": "#fff0c8",
+  "glow": "#ff9a20",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ffffff"
+      },
+      {
+        "pos": 0.3,
+        "color": "#ffc860"
+      },
+      {
+        "pos": 1,
+        "color": "#c05000"
+      }
+    ]
+  },
+  "shadow": "#2a1000",
+  "glint": "#fff0d8",
+  "light_ramp": [
+    "#2a1000",
+    "#7a3000",
+    "#e06a10",
+    "#ff9a20",
+    "#ffc860",
+    "#fff0d8"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#fff4a0"
+        },
+        {
+          "pos": 0.55,
+          "color": "#ffb000"
+        },
+        {
+          "pos": 1,
+          "color": "#a83800"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#ffffff",
+    "#fff8b8",
+    "#ffd820",
+    "#ff9400",
+    "#b84000",
+    "#4a1000",
+    "#2a1000",
+    "#8a3a00"
+  ],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/colourways.ts",
+    "line": 332
+  }
+}

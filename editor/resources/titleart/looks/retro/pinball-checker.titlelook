@@ -1,0 +1,109 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "retro/pinball-checker",
+  "revision": 1,
+  "name": {
+    "en": "Pinball Checker",
+    "ja": "ピンボールチェッカー"
+  },
+  "description": {
+    "en": "Chrome-like grey ramp face with a button bevel, a black line, a black and white checkered band and a black outline.",
+    "ja": "ボタンベベルのクローム調グレーのランプの面、黒い線、白黒の市松の帯、黒い外縁。"
+  },
+  "family": "retro",
+  "tags": [
+    "checker",
+    "chrome",
+    "pinball",
+    "retro",
+    "black",
+    "white"
+  ],
+  "synonyms": {
+    "en": [
+      "checkerboard",
+      "arcade",
+      "diner",
+      "racing flag"
+    ],
+    "ja": [
+      "市松模様",
+      "チェッカー",
+      "ピンボール",
+      "レトロ",
+      "ichimatsu",
+      "chekkā"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "bungee",
+    "ja": "rampart-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.5,
+              "color": "#9aa4b4"
+            },
+            {
+              "pos": 1,
+              "color": "#f0f4f8"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "profile": "button",
+        "size": 2
+      }
+    },
+    "rims": [
+      {
+        "width": 1,
+        "material": {
+          "fill": {
+            "color": "#000000"
+          }
+        }
+      },
+      {
+        "material": {
+          "pattern": {
+            "kind": "checker",
+            "scale": 3
+          }
+        }
+      },
+      {
+        "width": 1,
+        "material": {
+          "fill": {
+            "color": "#000000"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

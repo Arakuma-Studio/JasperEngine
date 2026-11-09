@@ -1440,6 +1440,11 @@ rest of S82 lands in 6B.
     (`JASPERENGINE_TITLEART_LIBRARY_DIR`, else `<editor exe>/titleart`) when it exists, because S84's
     `PachislopPort` is not in this tree. It moves to `PachislopPort` when S84 lands; S84 must stage
     the font pack in that directory.
+    **Resolved at the S84 merge:** `PachislopMembers` reads S84's embedded `pachislop-map.json`
+    through `PachislopPort` (`pachislopFieldRule`, `pachislopPackFont`, `pachislopEnvironment`; its own
+    table and map loader are gone), the pack's fonts and environments are planned by S84's
+    `ImportPlan` (one staging path, `.meta` provenance included) and S84 stages the pack beside the
+    editor (`titleart/fonts`, read through `TitleLibrary::packDir()`).
 20. **Implementation (Pachislop import): the mapper writes the document tree** and then runs
     `TitleArtOps::applyCommitInvariants`, rather than one op per field. Effects created by the
     migration steps carry only the parameters they set, the rest coming from S83's defaults on
@@ -1485,6 +1490,9 @@ rest of S82 lands in 6B.
     document `path`; it moves to S84's `lookFromStyle` when S84 lands. Brightness/Contrast is
     written as `CgEd`. Rim-alone parts hide the face with face opacity 0 (not checked visually).
     The PSD export has its own layer plan (`PsdExport`), not `titleExportParts`.
+    **Resolved at the S84 merge:** `import_ps_styles` builds its Looks through S84's
+    `TitleLibraryApply::lookFromStyle` and `writeLook` (canonical, sparse) and is a library-only op
+    (no document `path`, S84 R44).
 31. **Implementation (R49): the PSD streams.** `PsdAssembler` compresses each render's channels
     into a working file beside the export (`.<name>.spool`, removed with the job) and frees it,
     and `writePsdFile` assembles the file, byte-identical to the in-memory writer

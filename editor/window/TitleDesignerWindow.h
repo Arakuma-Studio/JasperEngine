@@ -55,7 +55,6 @@ namespace jasperengine::editor {
     namespace titledesigner {
         class TitleCanvasView;
         class TitleLayerThumbnails;
-        class TitleStarterLibrary;
         class TitleTextEdit;
         class TitleGizmo2D;
         class TitleGizmo3D;
@@ -202,8 +201,7 @@ namespace jasperengine::editor {
         // live only while open (R65)
         std::unique_ptr<titledesigner::TitleCanvasView> canvas;
         std::unique_ptr<titledesigner::TitleLayerThumbnails> thumbnails;
-        std::unique_ptr<titledesigner::TitleLayerThumbnails> libraryTiles;     // the starter Library's tiles
-        std::unique_ptr<titledesigner::TitleStarterLibrary> starterLibrary;    // while no provider is registered
+        std::unique_ptr<titledesigner::TitleLayerThumbnails> libraryTiles;     // the Library's live tiles
         std::unique_ptr<titledesigner::TitleTextEdit> textEdit;
         titledesigner::TitleLetterGizmo letterGizmo;       // the selected characters' gizmos (R38)
         std::unique_ptr<titledesigner::TitleGizmo2D> gizmo2d;
@@ -493,9 +491,9 @@ namespace jasperengine::editor {
         // ---- the Library strip (R3, R40) ----
         bool libraryNarrowOpen = false;     // narrow: opened from its header bar
         bool libraryShown = false;          // its tiles were drawn this frame
-        // a starter tile's document (the committed one with the item applied), made again when the
+        // a Library tile's document (the committed one with the item applied), made again when the
         // document or the target changes
-        struct StarterTileSource {
+        struct LibraryTileSource {
             std::string key;
             std::shared_ptr<const jasperengine::titleart::TitleArtDoc> doc;
             std::string layer;
@@ -503,7 +501,7 @@ namespace jasperengine::editor {
             uint64_t content = 0;
             std::string failed;
         };
-        std::map<std::string, StarterTileSource> starterTileSources;
+        std::map<std::string, LibraryTileSource> libraryTileSources;
 
         // ---- no system CJK font (the editor's fields would show boxes) ----
         const void* cjkScanDocument = nullptr;
@@ -593,9 +591,9 @@ namespace jasperengine::editor {
         void jumpToHit(size_t i);
         void commitNamed(const titledesigner::Json& ops, const std::string& name);
         std::string libraryTargetKey() const;
-        // S84's provider when registered, else the starter Library (TitleStarterLibrary)
+        // S84's provider (null until one is registered: the window shows no Library)
         titledesigner::TitleLibraryProvider* library() const;
-        titledesigner::LibraryTile starterTile(titledesigner::LibraryTab tab, const titledesigner::LibraryItem& item, float width, float height,
+        titledesigner::LibraryTile libraryTile(titledesigner::LibraryTab tab, const titledesigner::LibraryItem& item, float width, float height,
                                                bool visible);
         void drawCjkFontNotice();
         void cycleRegion(int direction);

@@ -1,0 +1,102 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "sports/esports-angular",
+  "revision": 1,
+  "name": {
+    "en": "Esports Angular",
+    "ja": "eスポーツアンギュラー"
+  },
+  "description": {
+    "en": "Cyan to violet gradient face, a white line and a dark plate slanted 12 degrees behind it, with a cyan glow.",
+    "ja": "シアンから紫のグラデーションの面、白い線、12 度傾けた背後の暗いプレート、シアンのグロー。"
+  },
+  "family": "sports",
+  "tags": [
+    "esports",
+    "gaming",
+    "cyan",
+    "violet",
+    "plate",
+    "angular"
+  ],
+  "synonyms": {
+    "en": [
+      "gamer",
+      "tournament",
+      "clan logo",
+      "stream"
+    ],
+    "ja": [
+      "eスポーツ",
+      "ゲーミング",
+      "大会",
+      "配信",
+      "ī supōtsu",
+      "gēmingu"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "teko",
+    "ja": "dela-gothic-one",
+    "variations": {
+      "wght": 700
+    }
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#00e0ff"
+            },
+            {
+              "pos": 1,
+              "color": "#7a2aff"
+            }
+          ]
+        }
+      }
+    },
+    "rims": [
+      {
+        "width": 1.3
+      },
+      {
+        "width": 3.9,
+        "plate": {
+          "kind": "box",
+          "slant": 12
+        },
+        "material": {
+          "fill": {
+            "color": "#10102a"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#00c8ff",
+        "size": 18
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

@@ -220,7 +220,7 @@ namespace {
         });
         const std::pair<const char*, const char*> photos[] = {
             {"highway", "autumn_road"}, {"city", "potsdamer_platz"}, {"sky", "derelict_highway_midday"},
-            {"night_city", "night_city"}, {"night_dark", "night_dark"}, {"sunset_harbour", "sunset_harbour"}, {"warehouse", "warehouse"}};
+            {"night_city", "shanghai_bund"}, {"night_dark", "moonless_golf"}, {"sunset_harbour", "venice_sunset"}, {"warehouse", "empty_warehouse_01"}};
         for (const auto& [id, slug] : photos) {
             const std::string hdri = slug;
             add(id, [hdri](Builder& s) {

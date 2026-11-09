@@ -1,0 +1,166 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "casino/vegas-marquee",
+  "revision": 1,
+  "name": {
+    "en": "Vegas Marquee",
+    "ja": "ベガスマーキー"
+  },
+  "description": {
+    "en": "Gold gradient face with a ring-gloss bevel and a gold finish, a dark keyline, a wide red band of dotted bulbs with an inner glow, a bevelled gold frame, a warm glow behind and highlight glints.",
+    "ja": "リング光沢のベベルと金の仕上げを持つ金グラデーションの面、暗い縁取り、内側が光る電球ドットの太い赤帯、ベベルの金枠、背後の暖かいグロー、ハイライトのキラキラ。"
+  },
+  "family": "casino",
+  "tags": [
+    "gold",
+    "marquee",
+    "bulbs",
+    "red",
+    "bevel",
+    "glow"
+  ],
+  "synonyms": {
+    "en": [
+      "casino sign",
+      "light bulbs",
+      "showtime",
+      "theatre marquee"
+    ],
+    "ja": [
+      "電飾",
+      "マーキー",
+      "電球",
+      "カジノ看板",
+      "denshoku",
+      "māki"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "bungee",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#fff4c0"
+            },
+            {
+              "pos": 0.5,
+              "color": "#ffc020"
+            },
+            {
+              "pos": 1,
+              "color": "#a05a00"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true
+      },
+      "finish": {
+        "enabled": true,
+        "gradient": {
+          "stops": [
+            {
+              "color": "#3a0c00"
+            },
+            {
+              "pos": 0.25,
+              "color": "#a83800"
+            },
+            {
+              "pos": 0.5,
+              "color": "#f08c00"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ffd23a"
+            },
+            {
+              "pos": 1,
+              "color": "#fff8d6"
+            }
+          ]
+        },
+        "amount": 0.6
+      }
+    },
+    "rims": [
+      {
+        "width": 1,
+        "material": {
+          "fill": {
+            "color": "#200800"
+          }
+        }
+      },
+      {
+        "width": 6,
+        "material": {
+          "fill": {
+            "color": "#b00010"
+          },
+          "pattern": {
+            "kind": "dots",
+            "color": "#fff6d0",
+            "scale": 3
+          },
+          "inner_glow": {
+            "enabled": true,
+            "color": "#ffe0a0"
+          }
+        }
+      },
+      {
+        "width": 1.5,
+        "material": {
+          "fill": {
+            "color": "#ffd040"
+          },
+          "bevel": {
+            "enabled": true,
+            "size": 1
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ffb030",
+        "size": 24
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "glints",
+      "preset": "highlights",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

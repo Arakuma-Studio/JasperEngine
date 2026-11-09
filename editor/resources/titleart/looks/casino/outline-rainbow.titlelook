@@ -1,0 +1,522 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "casino/outline-rainbow",
+  "revision": 1,
+  "name": {
+    "en": "Outline Rainbow",
+    "ja": "虹色の縁取り"
+  },
+  "description": {
+    "en": "A rainbow gradient face with a bevel, a gloss band and an inner glow, four rims (purple, white, gold, a black dropped base), a drop shadow and an outer glow.",
+    "ja": "虹色のグラデーションの面（ベベル、光沢の帯、内側の光彩）、4本の縁（紫、白、金、黒の台）、ドロップシャドウ、外側の光彩。"
+  },
+  "family": "casino",
+  "tags": [
+    "casino",
+    "2d",
+    "rainbow",
+    "gradient",
+    "bevel",
+    "gloss",
+    "outline",
+    "shadow",
+    "glow"
+  ],
+  "synonyms": {
+    "en": [
+      "slots",
+      "jackpot",
+      "pachislot",
+      "flat",
+      "spectrum",
+      "multicolour",
+      "iridescent",
+      "ramp",
+      "fade",
+      "emboss",
+      "chiselled",
+      "stroke",
+      "border",
+      "rim",
+      "drop shadow",
+      "shade",
+      "light",
+      "bloom",
+      "shine"
+    ],
+    "ja": [
+      "カジノ",
+      "パチスロ",
+      "スロット",
+      "kajino",
+      "pachisuro",
+      "平面",
+      "へいめん",
+      "heimen",
+      "虹",
+      "レインボー",
+      "にじ",
+      "niji",
+      "reinbo",
+      "グラデーション",
+      "gurade-shon",
+      "guradeshon",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "影",
+      "シャドウ",
+      "かげ",
+      "kage",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#ff1838",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ff1838"
+            },
+            {
+              "pos": 0.14,
+              "color": "#ff5a00"
+            },
+            {
+              "pos": 0.28,
+              "color": "#ffc400"
+            },
+            {
+              "pos": 0.42,
+              "color": "#20d838"
+            },
+            {
+              "pos": 0.5,
+              "color": "#008a40"
+            },
+            {
+              "pos": 0.53,
+              "color": "#004a8a"
+            },
+            {
+              "pos": 0.58,
+              "color": "#0088e8"
+            },
+            {
+              "pos": 0.68,
+              "color": "#18b8ff"
+            },
+            {
+              "pos": 0.82,
+              "color": "#2a34f0"
+            },
+            {
+              "pos": 1,
+              "color": "#9a10f0"
+            }
+          ]
+        },
+        "span": "line"
+      },
+      "bevel": {
+        "enabled": true,
+        "size": 3.2,
+        "depth": 3.5,
+        "light_altitude": 32,
+        "shadow_color": "#3a0060",
+        "shadow_opacity": 0.55
+      },
+      "reflection": {
+        "map": {
+          "path": "TitleArt/Environments/autumn_road_2k.hdr",
+          "guid": ""
+        }
+      },
+      "finish": {
+        "gradient": {
+          "stops": [
+            {
+              "color": "#3a0c00"
+            },
+            {
+              "pos": 0.25,
+              "color": "#a83800"
+            },
+            {
+              "pos": 0.5,
+              "color": "#f08c00"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ffd23a"
+            },
+            {
+              "pos": 1,
+              "color": "#fff8d6"
+            }
+          ]
+        },
+        "amount": 0.8
+      },
+      "inner_glow": {
+        "enabled": true,
+        "color": "#3a0080",
+        "size": 1.4,
+        "opacity": 0.45,
+        "noise": 0.4
+      },
+      "gloss": {
+        "enabled": true,
+        "opacity": 0.42,
+        "position": 0.44,
+        "softness": 0.1
+      }
+    },
+    "rims": [
+      {
+        "width": 1.3,
+        "material": {
+          "fill": {
+            "color": "#1a0030",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#1a0030"
+                },
+                {
+                  "pos": 1,
+                  "color": "#1a0030"
+                }
+              ]
+            }
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "width": 1.9,
+        "material": {
+          "fill": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#ffffff"
+                },
+                {
+                  "pos": 1,
+                  "color": "#ffffff"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "size": 1.2,
+            "depth": 2,
+            "gloss": "linear",
+            "highlight_opacity": 0.6,
+            "shadow_color": "#5a6478",
+            "shadow_opacity": 0.35
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "width": 3.6,
+        "material": {
+          "fill": {
+            "kind": "linear",
+            "color": "#8a2c00",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#8a2c00"
+                },
+                {
+                  "pos": 0.17,
+                  "color": "#ffe470"
+                },
+                {
+                  "pos": 0.33,
+                  "color": "#c05a00"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#ffbe30"
+                },
+                {
+                  "pos": 0.67,
+                  "color": "#fff0a0"
+                },
+                {
+                  "pos": 0.83,
+                  "color": "#f09a10"
+                },
+                {
+                  "pos": 1,
+                  "color": "#ffe060"
+                }
+              ]
+            },
+            "angle": 270
+          },
+          "bevel": {
+            "enabled": true,
+            "size": 2.2,
+            "depth": 3.5,
+            "shadow_color": "#4a2200"
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "enabled": true,
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            },
+            "amount": 0.85
+          }
+        }
+      },
+      {
+        "width": 2.4,
+        "offset": [0, -3.2],
+        "material": {
+          "fill": {
+            "color": "#0a0014",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#0a0014"
+                },
+                {
+                  "pos": 1,
+                  "color": "#0a0014"
+                }
+              ]
+            }
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "drop_shadow",
+      "params": {
+        "angle": 90,
+        "color": "#2a0040",
+        "distance": 6,
+        "opacity": 0.6
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#fff4c8",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ff2a2a",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.17,
+              "color": "#ff9b00",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.33,
+              "color": "#fff200",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.5,
+              "color": "#2bff3a",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.67,
+              "color": "#00c8ff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.83,
+              "color": "#3a3aff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#d22cff",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "intensity": 0.6,
+        "opacity": 0.8,
+        "size": 22,
+        "spread": 0.05
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory.ts",
+    "line": 263,
+    "item": "f-outline-rainbow",
+    "license_note": "used with the author's permission"
+  }
+}

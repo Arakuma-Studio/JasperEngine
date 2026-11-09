@@ -1,0 +1,107 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "horror/gothic-candle",
+  "revision": 1,
+  "name": {
+    "en": "Gothic Candle",
+    "ja": "ゴシックキャンドル"
+  },
+  "description": {
+    "en": "Candlelight cream to amber face in a thick dark outline, a warm glow and faint golden god rays behind.",
+    "ja": "太い暗い縁取りの中のろうそくの光のクリームから琥珀色の面、暖かいグロー、背後のかすかな金色の光芒。"
+  },
+  "family": "horror",
+  "tags": [
+    "candle",
+    "gothic",
+    "amber",
+    "horror",
+    "rays",
+    "warm"
+  ],
+  "synonyms": {
+    "en": [
+      "candlelight",
+      "vampire",
+      "cathedral",
+      "seance"
+    ],
+    "ja": [
+      "キャンドル",
+      "ゴシック",
+      "ろうそく",
+      "吸血鬼",
+      "kyandoru",
+      "rōsoku"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "cinzel-decorative-black",
+    "ja": "zen-old-mincho-black"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffe8b0"
+            },
+            {
+              "pos": 1,
+              "color": "#c08030"
+            }
+          ]
+        }
+      }
+    },
+    "rims": [
+      {
+        "width": 5.2,
+        "material": {
+          "fill": {
+            "color": "#100800"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ffb040",
+        "size": 16
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "backlight",
+      "preset": "god_rays",
+      "place": "below",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {
+        "intensity": 40,
+        "color": "#ffe8a0",
+        "outer_color": "#c08030"
+      },
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

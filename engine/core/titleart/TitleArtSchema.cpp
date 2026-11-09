@@ -5,6 +5,7 @@
 // types.ts) by SafEight, used with the author's permission, renamed snake_case (§6.1).
 
 #include "TitleArtSchema.h"
+#include "ColorScheme.h"
 #include "TitleArtIO.h"
 #include "TitleEffectRegistry.h"
 #include "TitleTranslations.h"
@@ -1125,6 +1126,7 @@ void jasperengine::titleart::registerProgramMembers(TitleArtSchema& schema) {
     registerS81Members(schema);
     registerTitleAnimMembers(schema);
     registerTitleLanguageMembers(schema);
+    registerColorSchemeMembers(schema);
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
     registerTitle3DMembers(schema);
 #endif

@@ -1,0 +1,2843 @@
+{
+  "format": "jasperengine.titleprovenance",
+  "version": 1,
+  "source": "pachislop",
+  "author": "SafEight",
+  "commit": "1c32502",
+  "license_note": "used with the author's permission",
+  "dump": "tools/titleart/pachislop-port/dump/pachislop-1c32502.json",
+  "items": [
+    {
+      "ref": "casino/candy-glitter-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1593,
+      "commit": "1c32502",
+      "item": "f-3d-candy",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x8): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/checker",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1122,
+      "commit": "1c32502",
+      "item": "f-pat-checker",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 5 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x5): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/giraffe",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 977,
+      "commit": "1c32502",
+      "item": "f-pat-giraffe",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/gold-on-red-stack-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1411,
+      "commit": "1c32502",
+      "item": "f-3d-gold-plate",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x12): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/inflate-candy-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1696,
+      "commit": "1c32502",
+      "item": "f-3d-inflate",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/jackpot-rays-sparkles",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1946,
+      "commit": "1c32502",
+      "item": "f-fx-jackpot",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: generators through S83's map (backlight -> backlight)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.groupEffects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/leopard",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1003,
+      "commit": "1c32502",
+      "item": "f-pat-leopard",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/orb-candy-blue-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1906,
+      "commit": "1c32502",
+      "item": "f-orb-candy-blue",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/orb-candy-gold-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1906,
+      "commit": "1c32502",
+      "item": "f-orb-candy-gold",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/orb-candy-green-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1906,
+      "commit": "1c32502",
+      "item": "f-orb-candy-green",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/orb-candy-purple-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1906,
+      "commit": "1c32502",
+      "item": "f-orb-candy-purple",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/orb-candy-rainbow-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1906,
+      "commit": "1c32502",
+      "item": "f-orb-candy-rainbow",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/orb-candy-red-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1906,
+      "commit": "1c32502",
+      "item": "f-orb-candy-red",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/orb-candy-white-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1906,
+      "commit": "1c32502",
+      "item": "f-orb-candy-white",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/orb-glass-green-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1906,
+      "commit": "1c32502",
+      "item": "f-orb-glass-green",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/orb-glass-purple-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1906,
+      "commit": "1c32502",
+      "item": "f-orb-glass-purple",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/orb-metal-gold-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1906,
+      "commit": "1c32502",
+      "item": "f-orb-metal-gold",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/orb-metal-silver-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1906,
+      "commit": "1c32502",
+      "item": "f-orb-metal-silver",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/outline-blue",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 263,
+      "commit": "1c32502",
+      "item": "f-outline-blue",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/outline-giraffe",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 263,
+      "commit": "1c32502",
+      "item": "f-outline-giraffe",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/outline-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 263,
+      "commit": "1c32502",
+      "item": "f-outline-gold",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/outline-green",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 263,
+      "commit": "1c32502",
+      "item": "f-outline-green",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/outline-leopard",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 263,
+      "commit": "1c32502",
+      "item": "f-outline-leopard",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/outline-purple",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 263,
+      "commit": "1c32502",
+      "item": "f-outline-purple",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/outline-rainbow",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 263,
+      "commit": "1c32502",
+      "item": "f-outline-rainbow",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/outline-red",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 263,
+      "commit": "1c32502",
+      "item": "f-outline-red",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/outline-silver",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 263,
+      "commit": "1c32502",
+      "item": "f-outline-silver",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/outline-white",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 263,
+      "commit": "1c32502",
+      "item": "f-outline-white",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/outline-zebra",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 263,
+      "commit": "1c32502",
+      "item": "f-outline-zebra",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/pillow-plate-black-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1174,
+      "commit": "1c32502",
+      "item": "f-plate-makura",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/pop-out-gold-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1637,
+      "commit": "1c32502",
+      "item": "f-3d-popout",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/rainbow-candy-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1444,
+      "commit": "1c32502",
+      "item": "f-3d-rainbow",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x8): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/rainbow-confirm",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 617,
+      "commit": "1c32502",
+      "item": "f-rainbow-kakutei",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/rainbow-glass-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 645,
+      "commit": "1c32502",
+      "item": "f-rainbow-glass-gold",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 5 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
+        "approximated: the 2D reflection map `sky` reads S86's HDRI environment `sky` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x5): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/rainbow-glass-gold-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1826,
+      "commit": "1c32502",
+      "item": "f-3d-rainbow-glass-gold",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x8): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/red-plate-gold-rim",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1153,
+      "commit": "1c32502",
+      "item": "f-plate-red",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/slanted-box-plate",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1199,
+      "commit": "1c32502",
+      "item": null,
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/slanted-box-plates-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1659,
+      "commit": "1c32502",
+      "item": "f-3d-box-plate",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/tiger",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1026,
+      "commit": "1c32502",
+      "item": "f-pat-tiger",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "casino/two-tone-split-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dMore.ts",
+      "line": 399,
+      "commit": "1c32502",
+      "item": "f-3d-two-tone",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x8): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/zebra-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 950,
+      "commit": "1c32502",
+      "item": "f-pat-zebra",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 5 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x5): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "elements/aurora-teal-violet-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetA.ts",
+      "line": 214,
+      "commit": "1c32502",
+      "item": "f-3d-aurora",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "elements/corona-purple",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 863,
+      "commit": "1c32502",
+      "item": "f-corona-purple",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: generators through S83's map (corona -> aura)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.groupEffects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "elements/electric-blue",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 843,
+      "commit": "1c32502",
+      "item": "f-lightning-blue",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: generators through S83's map (lightning -> lightning)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.groupEffects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "elements/fire-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dMore.ts",
+      "line": 267,
+      "commit": "1c32502",
+      "item": "f-3d-fire",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "elements/ice",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 789,
+      "commit": "1c32502",
+      "item": "f-ice",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "elements/ice-crystal-glass-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dMore.ts",
+      "line": 239,
+      "commit": "1c32502",
+      "item": "f-3d-ice-crystal",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: tuned by overrides.json",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x14): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "elements/lava-crust-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetB.ts",
+      "line": 227,
+      "commit": "1c32502",
+      "item": "f-3d-lava",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x8): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "elements/red-hot-fire",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 818,
+      "commit": "1c32502",
+      "item": "f-fire-gekiatsu",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: generators through S83's map (fire -> fire)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.groupEffects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "elements/toxic-acid-glow-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetB.ts",
+      "line": 316,
+      "commit": "1c32502",
+      "item": "f-3d-toxic",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x8): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x6): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "gems/amethyst-crystal-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetA.ts",
+      "line": 267,
+      "commit": "1c32502",
+      "item": "f-3d-amethyst",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x12): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "gems/blue-glass",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 743,
+      "commit": "1c32502",
+      "item": "f-glass-blue",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 3 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "gems/diamond-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1583,
+      "commit": "1c32502",
+      "item": "f-3d-diamond",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x12): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "gems/hologram-foil",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 701,
+      "commit": "1c32502",
+      "item": "f-hologram",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (gradientOverlay -> gradient_overlay)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "gems/jade-gold-rim-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetA.ts",
+      "line": 288,
+      "commit": "1c32502",
+      "item": "f-3d-jade",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x8): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "gems/obsidian-gold-line-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetA.ts",
+      "line": 106,
+      "commit": "1c32502",
+      "item": "f-3d-obsidian",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x12): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "gems/pearl-pink-rim-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dMore.ts",
+      "line": 190,
+      "commit": "1c32502",
+      "item": "f-3d-pearl-pink",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "gems/red-glass",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 742,
+      "commit": "1c32502",
+      "item": "f-glass-red",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 3 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "gems/sapphire-silver-frame-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetA.ts",
+      "line": 29,
+      "commit": "1c32502",
+      "item": "f-3d-sapphire",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x14): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "metal/anodised-titanium-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetB.ts",
+      "line": 143,
+      "commit": "1c32502",
+      "item": "f-3d-titanium",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "metal/black-chrome-red-line-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1729,
+      "commit": "1c32502",
+      "item": "f-3d-black-chrome",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x12): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "metal/black-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 488,
+      "commit": "1c32502",
+      "item": "f-black-gold",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/black-silver",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 490,
+      "commit": "1c32502",
+      "item": "f-black-silver",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/candy-apple-red-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1494,
+      "commit": "1c32502",
+      "item": "f-3d-red",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x14): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "metal/carbon-gunmetal-orange-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetA.ts",
+      "line": 182,
+      "commit": "1c32502",
+      "item": "f-3d-carbon-orange",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "metal/chrome-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1376,
+      "commit": "1c32502",
+      "item": "f-3d-chrome",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "metal/chrome-bevel",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 499,
+      "commit": "1c32502",
+      "item": "f-chrome",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/chrome-blue-stack-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dMore.ts",
+      "line": 55,
+      "commit": "1c32502",
+      "item": "f-3d-chrome-blue",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "metal/chrome-star-glints",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1960,
+      "commit": "1c32502",
+      "item": "f-fx-chrome-glint",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: effects through S83's map (gradientOverlay -> gradient_overlay)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "approximated: a gradient of 70 stops thinned to 32 (S80's limit)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.groupEffects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/classic-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 276,
+      "commit": "1c32502",
+      "item": "f-gold-classic",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (adjust -> adjust)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/copper",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 448,
+      "commit": "1c32502",
+      "item": "f-copper",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/crumpled-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 388,
+      "commit": "1c32502",
+      "item": "f-gold-crumple",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 3 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/double-stroke-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 309,
+      "commit": "1c32502",
+      "item": null,
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/emerald-metal-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dMore.ts",
+      "line": 118,
+      "commit": "1c32502",
+      "item": "f-3d-emerald",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x8): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "metal/gold-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1359,
+      "commit": "1c32502",
+      "item": "f-3d-gold",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x6): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "metal/gradient-map-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 335,
+      "commit": "1c32502",
+      "item": "f-gold-ultimate",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 3 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/holographic-silver-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dMore.ts",
+      "line": 306,
+      "commit": "1c32502",
+      "item": "f-3d-holo-silver",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: tuned by overrides.json",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x8): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "metal/light-glow-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1937,
+      "commit": "1c32502",
+      "item": "f-fx-deepglow-gold",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/liquid-chrome",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 591,
+      "commit": "1c32502",
+      "item": "f-chrome-liquid",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 1 rims)",
+        "mapped: tuned by overrides.json",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/liquid-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 387,
+      "commit": "1c32502",
+      "item": "f-gold-liquid",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 3 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/pale-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 392,
+      "commit": "1c32502",
+      "item": "f-gold-pale",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/rose-copper-teal-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dMore.ts",
+      "line": 367,
+      "commit": "1c32502",
+      "item": "f-3d-copper-bronze",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "metal/rose-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 431,
+      "commit": "1c32502",
+      "item": "f-rose-gold",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/rose-gold-chocolate-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetA.ts",
+      "line": 140,
+      "commit": "1c32502",
+      "item": "f-3d-rose-chocolate",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "metal/satin-chrome",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 525,
+      "commit": "1c32502",
+      "item": "f-chrome-satin",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (gradientOverlay -> gradient_overlay)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "approximated: a gradient of 36 stops thinned to 32 (S80's limit)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/silver-on-gold-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetB.ts",
+      "line": 278,
+      "commit": "1c32502",
+      "item": "f-3d-kin-gin",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "metal/silver-premium",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 409,
+      "commit": "1c32502",
+      "item": "f-silver-premium",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "metal/silver-premium-3d",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1466,
+      "commit": "1c32502",
+      "item": "f-3d-silver",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x8): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "neon/hollow-neon",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 768,
+      "commit": "1c32502",
+      "item": "f-neon-knockout",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 2 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: tuned by overrides.json",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "neon/matte-black-glowing-rim-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dMore.ts",
+      "line": 444,
+      "commit": "1c32502",
+      "item": "f-3d-matte-glow",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x6): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "neon/neon-glass-tube-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetB.ts",
+      "line": 40,
+      "commit": "1c32502",
+      "item": "f-3d-neon-glass",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x8): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "neon/neon-tube",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 747,
+      "commit": "1c32502",
+      "item": "f-neon",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 2 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: tuned by overrides.json",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "neon/violet-neon-edge-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dMore.ts",
+      "line": 152,
+      "commit": "1c32502",
+      "item": "f-3d-violet-neon",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "scifi/galaxy-starfield-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetB.ts",
+      "line": 180,
+      "commit": "1c32502",
+      "item": "f-3d-galaxy",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "scifi/hazard-stripes",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1052,
+      "commit": "1c32502",
+      "item": "f-pat-hazard",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "wa/black-lacquer-gold-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dMore.ts",
+      "line": 82,
+      "commit": "1c32502",
+      "item": "f-3d-lacquer-gold",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "wa/dry-brush-ink",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 918,
+      "commit": "1c32502",
+      "item": "f-brush-kasure",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 2 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "wa/ink-brush",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 910,
+      "commit": "1c32502",
+      "item": "f-brush-black",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "wa/porcelain-cobalt-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetB.ts",
+      "line": 94,
+      "commit": "1c32502",
+      "item": "f-3d-sometsuke",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "wa/red-brush",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 911,
+      "commit": "1c32502",
+      "item": "f-brush-red",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "wa/sakura-pearl-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetB.ts",
+      "line": 364,
+      "commit": "1c32502",
+      "item": "f-3d-sakura",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "wa/sakura-pink",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1074,
+      "commit": "1c32502",
+      "item": "f-pat-sakura",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 4 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "wa/seigaiha-gold",
+      "kind": "look",
+      "file": "src/presets/factory.ts",
+      "line": 1097,
+      "commit": "1c32502",
+      "item": "f-pat-seigaiha",
+      "notes": [
+        "mapped: style (camelCase -> snake_case, 5 rims)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style.rims[].id (x5): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)"
+      ]
+    },
+    {
+      "ref": "wa/vermilion-lacquer-gold-leaf-3d",
+      "kind": "look",
+      "file": "src/presets/factory3dSetA.ts",
+      "line": 50,
+      "commit": "1c32502",
+      "item": "f-3d-shu-lacquer",
+      "notes": [
+        "mapped: style3d through S86's title3DFromPachislop",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
+        "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
+        "dropped: look.style3d.bands[].id (x10): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.lighting.lights[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
+        "dropped: look.style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)"
+      ]
+    },
+    {
+      "ref": "casino/about-80-percent-3d",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 886,
+      "commit": "1c32502",
+      "item": "t-yaku-80",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.layers[].style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/attack-chance-rainbow-3d",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 743,
+      "commit": "1c32502",
+      "item": "t-rainbow-3d",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: generators through S83's map (sunburst -> sunburst)",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: layers (6, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x6): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.layers[].style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/big-bonus-3d",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 466,
+      "commit": "1c32502",
+      "item": "t-bigbonus-3d",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.layers[].style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/big-bonus-3d-groups",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 986,
+      "commit": "1c32502",
+      "item": "t-bigbonus-3d-groups",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: generators through S83's map (sunburst -> sunburst)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: layers (10, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x10): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.layers[].style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/big-win-3d",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 447,
+      "commit": "1c32502",
+      "item": "t-oatari-3d",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: generators through S83's map (sunburst -> sunburst)",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: layers (7, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x7): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.layers[].style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/bonus-ribbon",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 487,
+      "commit": "1c32502",
+      "item": "t-bonus-ribbon",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: layers (6, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x6): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/chain-x3-slanted",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 528,
+      "commit": "1c32502",
+      "item": "t-giji-ren",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: generators through S83's map (sunburst -> sunburst)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].generator.params.count: a stale key some templates carry beside `rays`: Pachislop's sunburst reads only `rays`",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/chance-green-blue",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 692,
+      "commit": "1c32502",
+      "item": "t-chance",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/confirm-giraffe-3d",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 636,
+      "commit": "1c32502",
+      "item": "t-kakutei-giraffe-3d",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: generators through S83's map (sunburst -> sunburst)",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.layers[].style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/confirm-rainbow",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 408,
+      "commit": "1c32502",
+      "item": "t-kakutei-rainbow",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/confirm-zebra-clip",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 956,
+      "commit": "1c32502",
+      "item": "t-kakutei-zebra-clip",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (adjust -> adjust)",
+        "mapped: layers (5, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x5): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/cut-in-band",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 620,
+      "commit": "1c32502",
+      "item": "t-cutin",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: generators through S83's map (sunburst -> sunburst)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: layers (6, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x6): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/cut-in-band-fx",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 1028,
+      "commit": "1c32502",
+      "item": "t-recipe-cutin",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: generators through S83's map (lightning -> lightning)",
+        "mapped: generators through S83's map (particles -> particles)",
+        "mapped: generators through S83's map (speedLines -> speed_lines)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: layers (10, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x10): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/game-counter",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 511,
+      "commit": "1c32502",
+      "item": "t-counter-100g",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/new-machine-flyer",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 679,
+      "commit": "1c32502",
+      "item": "t-shindai-flyer",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: generators through S83's map (sunburst -> sunburst)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (adjust -> adjust)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/original-depth-fade-3d",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 856,
+      "commit": "1c32502",
+      "item": "t-ganso-3d",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.layers[].style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/premium-black-gloss",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 724,
+      "commit": "1c32502",
+      "item": "t-premium",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/premium-rainbow-fx",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 1075,
+      "commit": "1c32502",
+      "item": "t-recipe-premium-rainbow",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: generators through S83's map (speedLines -> speed_lines)",
+        "mapped: effects through S83's map (shatter -> shatter)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: generators through S83's map (particles -> particles)",
+        "mapped: layers (10, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x10): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/push-button-candy-3d",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 566,
+      "commit": "1c32502",
+      "item": "t-push-button",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.layers[].style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/push-button-inflate-3d",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 840,
+      "commit": "1c32502",
+      "item": "t-push-inflate",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.layers[].style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/red-hot-burst",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 422,
+      "commit": "1c32502",
+      "item": "t-gekiatsu-burst",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: generators through S83's map (sunburst -> sunburst)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: layers (8, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].generator.params.count: a stale key some templates carry beside `rays`: Pachislop's sunburst reads only `rays`",
+        "dropped: template.layers[].solo (x8): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/red-hot-fire",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 417,
+      "commit": "1c32502",
+      "item": "t-gekiatsu-fire",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: generators through S83's map (fire -> fire)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/red-hot-plate-fx",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 1014,
+      "commit": "1c32502",
+      "item": "t-recipe-gekinetsu",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: generators through S83's map (speedLines -> speed_lines)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: generators through S83's map (fire -> fire)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: generators through S83's map (particles -> particles)",
+        "mapped: layers (9, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x9): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/red-hot-rim-glow",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 929,
+      "commit": "1c32502",
+      "item": "t-gekiatsu-rim-glow",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: layers (5, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x5): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/reel-symbol-7",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 582,
+      "commit": "1c32502",
+      "item": "t-zugara-7",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: layers (5, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x5): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/reserve-flash-fx",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 1103,
+      "commit": "1c32502",
+      "item": "t-recipe-horyu-issen",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: generators through S83's map (brushSwirl -> brush_swirl)",
+        "mapped: generators through S83's map (lightStreaks -> light_streaks)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: generators through S83's map (shockwave -> shockwave)",
+        "mapped: generators through S83's map (particles -> particles)",
+        "mapped: layers (8, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x8): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.layers[].style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/reserve-orbs-3d",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 545,
+      "commit": "1c32502",
+      "item": "t-horyu-orb",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: layers (8, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x8): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.layers[].style3d.shadow (x7): the 3D shadow catcher: S86 has none (S86 R67 drops it)",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/rush-pop-out-3d",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 765,
+      "commit": "1c32502",
+      "item": "t-popout-3d",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: generators through S83's map (sunburst -> sunburst)",
+        "mapped: effects through S83's map (keyline -> outline)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.layers[].style3d.shadow: the 3D shadow catcher: S86 has none (S86 R67 drops it)",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/rush-title-fx",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 1054,
+      "commit": "1c32502",
+      "item": "t-recipe-rush",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (gradientOverlay -> gradient_overlay)",
+        "mapped: generators through S83's map (sunburst -> sunburst)",
+        "mapped: generators through S83's map (speedLines -> speed_lines)",
+        "mapped: generators through S83's map (particles -> particles)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (adjust -> adjust)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: generators through S83's map (lensFlare -> lens_flare)",
+        "mapped: layers (10, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x10): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/slanted-box-plate",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 812,
+      "commit": "1c32502",
+      "item": null,
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: layers (2, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x2): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/speech-frame-red",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 599,
+      "commit": "1c32502",
+      "item": "t-serif",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "casino/super-red-hot",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 778,
+      "commit": "1c32502",
+      "item": "t-cho-gekiatsu",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: generators through S83's map (fire -> fire)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "metal/liquid-gold-vertical-kicker",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 823,
+      "commit": "1c32502",
+      "item": "t-kanzen-fukkatsu",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "metal/special-satin-chrome",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 797,
+      "commit": "1c32502",
+      "item": "t-satin-chrome",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (gradientOverlay -> gradient_overlay)",
+        "mapped: generators through S83's map (glints -> glints)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: a gradient of 36 stops thinned to 32 (S80's limit)",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "neon/fever-hollow-neon",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 911,
+      "commit": "1c32502",
+      "item": "t-neon-knockout",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: generators through S83's map (sunburst -> sunburst)",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].generator.params.count: a stale key some templates carry beside `rays`: Pachislop's sunburst reads only `rays`",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "wa/awakening-dry-brush",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 920,
+      "commit": "1c32502",
+      "item": "t-kasure-brush",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: layers (2, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x2): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "wa/red-hot-brush-vertical",
+      "kind": "template",
+      "file": "src/presets/templates.ts",
+      "line": 704,
+      "commit": "1c32502",
+      "item": "t-gekinetsu-brush",
+      "notes": [
+        "mapped: background layers -> Fill generator layers",
+        "mapped: generators through S83's map (fire -> fire)",
+        "mapped: effects through S83's map (dropShadow -> drop_shadow)",
+        "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
+        "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
+        "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
+        "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
+        "dropped: template.layers[].solo (x4): a Layers-panel view state; S80 documents have no solo",
+        "dropped: template.version: Pachislop's project format version (11); the document has its own `version`",
+        "not mappable: the looks each layer was built with (layer `look.id`) are not in the dump: left empty"
+      ]
+    },
+    {
+      "ref": "blue",
+      "kind": "color_scheme",
+      "file": "src/presets/colourways.ts",
+      "line": 222,
+      "commit": "1c32502",
+      "item": "blue",
+      "notes": [
+        "mapped: the colourway through the colourway port (PachislopColourways)"
+      ]
+    },
+    {
+      "ref": "giraffe",
+      "kind": "color_scheme",
+      "file": "src/presets/colourways.ts",
+      "line": 332,
+      "commit": "1c32502",
+      "item": "giraffe",
+      "notes": [
+        "mapped: the colourway through the colourway port (PachislopColourways)",
+        "dropped: colourway: COLOURWAY_DEFS.giraffe.swatchPattern: a CSS swatch of the UI, not carried (the swatch colours are): the colourway port does not carry it"
+      ]
+    },
+    {
+      "ref": "gold",
+      "kind": "color_scheme",
+      "file": "src/presets/colourways.ts",
+      "line": 285,
+      "commit": "1c32502",
+      "item": "gold",
+      "notes": [
+        "mapped: the colourway through the colourway port (PachislopColourways)"
+      ]
+    },
+    {
+      "ref": "green",
+      "kind": "color_scheme",
+      "file": "src/presets/colourways.ts",
+      "line": 238,
+      "commit": "1c32502",
+      "item": "green",
+      "notes": [
+        "mapped: the colourway through the colourway port (PachislopColourways)"
+      ]
+    },
+    {
+      "ref": "leopard",
+      "kind": "color_scheme",
+      "file": "src/presets/colourways.ts",
+      "line": 352,
+      "commit": "1c32502",
+      "item": "leopard",
+      "notes": [
+        "mapped: the colourway through the colourway port (PachislopColourways)",
+        "dropped: colourway: COLOURWAY_DEFS.leopard.swatchPattern: a CSS swatch of the UI, not carried (the swatch colours are): the colourway port does not carry it"
+      ]
+    },
+    {
+      "ref": "purple",
+      "kind": "color_scheme",
+      "file": "src/presets/colourways.ts",
+      "line": 254,
+      "commit": "1c32502",
+      "item": "purple",
+      "notes": [
+        "mapped: the colourway through the colourway port (PachislopColourways)"
+      ]
+    },
+    {
+      "ref": "rainbow",
+      "kind": "color_scheme",
+      "file": "src/presets/colourways.ts",
+      "line": 369,
+      "commit": "1c32502",
+      "item": "rainbow",
+      "notes": [
+        "mapped: the colourway through the colourway port (PachislopColourways)"
+      ]
+    },
+    {
+      "ref": "red",
+      "kind": "color_scheme",
+      "file": "src/presets/colourways.ts",
+      "line": 269,
+      "commit": "1c32502",
+      "item": "red",
+      "notes": [
+        "mapped: the colourway through the colourway port (PachislopColourways)"
+      ]
+    },
+    {
+      "ref": "silver",
+      "kind": "color_scheme",
+      "file": "src/presets/colourways.ts",
+      "line": 300,
+      "commit": "1c32502",
+      "item": "silver",
+      "notes": [
+        "mapped: the colourway through the colourway port (PachislopColourways)"
+      ]
+    },
+    {
+      "ref": "white",
+      "kind": "color_scheme",
+      "file": "src/presets/colourways.ts",
+      "line": 207,
+      "commit": "1c32502",
+      "item": "white",
+      "notes": [
+        "mapped: the colourway through the colourway port (PachislopColourways)"
+      ]
+    },
+    {
+      "ref": "zebra",
+      "kind": "color_scheme",
+      "file": "src/presets/colourways.ts",
+      "line": 315,
+      "commit": "1c32502",
+      "item": "zebra",
+      "notes": [
+        "mapped: the colourway through the colourway port (PachislopColourways)",
+        "dropped: colourway: COLOURWAY_DEFS.zebra.swatchPattern: a CSS swatch of the UI, not carried (the swatch colours are): the colourway port does not carry it"
+      ]
+    }
+  ]
+}

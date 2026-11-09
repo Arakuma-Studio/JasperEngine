@@ -1446,6 +1446,15 @@ void AppSettings::setTitleDesignerSettings(const YAML::Node& node) {
     settingsData["title_designer"] = YAML::Clone(node);
 }
 
+YAML::Node AppSettings::getTitleLibrarySettings() {
+    const YAML::Node node = settingsData["title_library"];
+    return node && node.IsMap() ? YAML::Clone(node) : YAML::Node(YAML::NodeType::Map);
+}
+
+void AppSettings::setTitleLibrarySettings(const YAML::Node& node) {
+    settingsData["title_library"] = YAML::Clone(node);
+}
+
 bool AppSettings::getSoundBrowserAutoplay() {
     return soundBrowserAutoplay;
 }

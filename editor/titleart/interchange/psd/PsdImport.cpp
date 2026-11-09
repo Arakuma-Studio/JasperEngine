@@ -13,6 +13,8 @@
 #include "titleart/fonts/FontTables.h"
 #include "titleart/fonts/SystemFontList.h"
 #include "titleart/interchange/TitleImport.h"
+#include "titleart/library/TitleLibraryApply.h"
+#include "titleart/library/TitleLibraryFormats.h"
 #include "util/Sha256.h"
 
 #include <algorithm>
@@ -692,15 +694,31 @@ namespace {
                 const std::string png = pngOf(img);
                 const std::string key = "pattern-" + std::to_string(assetList.size() + 1);
                 const std::string name = titleSafeFileName(p.name) + ".png";
-                files.push_back({(looks / (slug + ".files") / name).string(), png});
+                files.push_back({looks / (slug + ".files") / name, png});
                 assetList.push_back(Json{{"key", key}, {"file", slug + ".files/" + name}, {"sha256", sha256Hex(png)}});
                 return std::string("asset:") + key;
             };
             ConvertedPsStyle converted;
             std::string error;
             if (!convertPsStyle(src, ref, styles.patterns, options, converted, error)) return ctx.fail("bad_value", error, "reference_px");
-            const Json look = psLookJson(slug, src, converted, stem, assetList);
-            files.push_back({target.string(), titleart::writeTitleArtJson(look) + "\n"});
+            titlelibrary::StyleSource source;
+            source.style = converted.style;
+            for (const Json& e : converted.effects) {
+                Json entry = Json{{"type", e["type"]}};
+                if (!e.value("enabled", true)) entry["enabled"] = false;
+                entry["params"] = e["params"];
+                source.effects.push_back(entry);
+            }
+            source.assets = assetList;
+            source.provenance = Json{{"source", "user"}, {"item", src.name}, {"license_note", "imported from a Photoshop " + src.origin}};
+            source.description.en = "Imported from a Photoshop style";
+            titlelibrary::CaptureOptions capture;
+            capture.name.en = src.name;
+            capture.id = "project/" + slug;
+            capture.tags = {"photoshop", stem};
+            titlelibrary::TitleLook look;
+            if (!titlelibrary::lookFromStyle(source, converted.refSize, capture, look, &error)) return ctx.fail("bad_value", error, "file");
+            files.push_back({target, titlelibrary::writeLook(look)});
             for (TitleOpFile& f : files) ctx.result.files.push_back(std::move(f));
             Json r = report(converted);
             r["id"] = "project/" + slug;
@@ -728,26 +746,6 @@ std::string psd::psLookSlug(const std::string& name) {
         if (out.size() >= 48) break;
     }
     return out.empty() ? "style" : out;
-}
-
-titleart::Json psd::psLookJson(const std::string& slug, const PsStyleSource& source, const ConvertedPsStyle& converted, const std::string& fileStem,
-                               const Json& assets) {
-    Json effects = Json::array();
-    for (const Json& e : converted.effects) {
-        Json entry = Json{{"type", e["type"]}};
-        if (!e.value("enabled", true)) entry["enabled"] = false;
-        entry["params"] = e["params"];
-        effects.push_back(entry);
-    }
-    Json look = Json{{"format", "jasperengine.titlelook"}, {"version", 1}, {"id", "project/" + slug}, {"revision", 1},
-                     {"name", Json{{"en", source.name}}}, {"description", Json{{"en", "Imported from a Photoshop style"}}},
-                     {"family", "custom"}, {"tags", Json::array({"photoshop", fileStem})}, {"synonyms", Json{{"en", Json::array()}, {"ja", Json::array()}}},
-                     {"dimension", "2d"}, {"applies", "style"}, {"ref_size", converted.refSize}, {"style", converted.style},
-                     {"effects", effects}, {"part_effects", Json::object()}, {"generators", Json::array()}, {"group_effects", Json::array()},
-                     {"links", Json::object()}, {"lint_allow", Json::array()}, {"check_allow", Json::array()}};
-    if (!assets.empty()) look["assets"] = assets;
-    look["provenance"] = Json{{"source", "user"}, {"item", source.name}, {"license_note", "imported from a Photoshop " + source.origin}};
-    return look;
 }
 
 bool psd::importPsdDocument(const TitleCreateRequest& request, TitleCreateResult& out, std::string& code, std::string& error) {

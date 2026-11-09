@@ -10,6 +10,8 @@
 
 #include "McpTools.h"
 #include "TitleArtToolsShared.h"
+#include "TitleArtToolsLibrary.h"
+#include "titleart/library/TitleLibraryRegistration.h"
 
 #include "Project.h"
 #include "asset/AssetFileWrite.h"
@@ -231,11 +233,12 @@ void listTitleLibraryTool(const CallPtr& call) {
             else if (std::strcmp(k.kind, "environments") == 0) n = titleart::title3DEnvironmentNames().size();
             else if (std::strcmp(k.kind, "bevel_profiles") == 0) n = titleart::three_d::bevelProfileNames().size();
             else if (std::strcmp(k.kind, "animation_presets") == 0) n = TitleAnimPresets::all().size();
+            else if (std::strcmp(k.owner, "S84") == 0) n = libraryCatalogue()[k.kind].value("total", 0);
             counts[k.kind] = n;
             text += " " + std::string(k.kind) + " " + std::to_string(n) + (*k.owner ? " (" + std::string(k.owner) + ")" : "") + ",";
         }
         text.back() = '.';
-        call->ok(text, Json{{"counts", counts}});
+        call->ok(text, Json{{"counts", counts}, {"library", libraryCatalogue()}});
         return;
     }
     const LibraryKind* known = nullptr;
@@ -248,6 +251,8 @@ void listTitleLibraryTool(const CallPtr& call) {
         listAnimationPresets(call);
         return;
     }
+    // S84's kinds: rows, details and sheets of the library (TitleArtToolsLibrary.cpp)
+    if (listLibraryKind(call)) return;
     if (*known->owner && std::strcmp(known->owner, "S86") != 0) {
         call->ok(std::string(known->label) + " arrive with " + known->owner + ".",
                  Json{{"kind", kind}, {"rows", Json::array()}, {"total", 0}, {"note", std::string(known->label) + " arrive with " + known->owner}});
@@ -355,6 +360,8 @@ void listTitleLibraryTool(const CallPtr& call) {
             if (!matches(query, {row.value("path", std::string()), row.value("family", std::string())})) continue;
             rows.push_back(std::move(row));
         }
+        // the library's pack fonts (S84 R28): imported into the project by the first look or template that uses one
+        for (Json& row : packFontRows(query)) rows.push_back(std::move(row));
     } else if (kind == "materials_3d") {
         // S86's material presets (R17), in the picker's sections
         for (const std::string& preset : titleart::title3DMaterialPresetNames()) {
@@ -705,6 +712,8 @@ Json opsResultJson(const TitleOpsResult& result) {
 void editTitleTool(const CallPtr& call) {
     Project* project = call->ctx().project();
     const Json& args = call->args();
+    // S84 R44: a batch of library ops alone needs no document
+    if (editLibraryOnly(call)) return;
     const std::string path = args.value("path", std::string());
     fs::path file;
     std::string relative, error;
@@ -718,17 +727,14 @@ void editTitleTool(const CallPtr& call) {
     std::shared_ptr<TitleArtDocument> document;
     if (args.contains("create")) {
         const Json& create = args["create"];
-        if (create.contains("template") || create.contains("look")) {
-            call->fail(std::string("not_available: create.") + (create.contains("template") ? "template" : "look") +
-                           " arrives with S84 (the Title Art library). Nothing was applied.",
-                       Json{{"code", "not_available"}, {"owner", "S84"}});
-            return;
-        }
         titleart::TitleArtDoc initial;
         TitleCreateResult imported;
+        // the files the new document brings: an import's, or a library item's fonts and environments
+        std::vector<TitleOpFile> createFiles;
+        std::string createName;
         if (create.contains("from")) {
-            // S87 §6.2: an import into the new document; canvas, text and template are its file's
-            for (const char* key : {"canvas", "text", "template"}) {
+            // S87 §6.2: an import into the new document; canvas, text, template and look are its file's
+            for (const char* key : {"canvas", "text", "template", "look"}) {
                 if (create.contains(key)) {
                     call->fail(std::string("bad_option: create.from takes no create.") + key + " (the imported file gives it). Nothing was applied.",
                                Json{{"code", "bad_option"}, {"valid", Json::array({"from", "overwrite"})}});
@@ -747,6 +753,13 @@ void editTitleTool(const CallPtr& call) {
                 return;
             }
             initial = imported.doc;
+            createFiles = imported.files;
+        } else if (create.contains("template") || create.contains("look")) {
+            // S84: the template's document (or a text in a look), its fonts imported in the same step
+            if (!createFromLibrary(project, create, initial, createFiles, createName, error)) {
+                call->fail(error + " Nothing was applied.");
+                return;
+            }
         } else {
             titleart::NewTitleArtOptions options;
             if (create.contains("text") && create["text"].is_string()) options.text = create["text"].get<std::string>();
@@ -772,7 +785,7 @@ void editTitleTool(const CallPtr& call) {
                 call->fail(error + " Nothing was applied.");
                 return;
             }
-            if (!document->commit(initial, "Replace Title Art " + file.filename().string(), {}, &error, TitleArtChangeOrigin::Agent, imported.files)) {
+            if (!document->commit(initial, "Replace Title Art " + file.filename().string(), {}, &error, TitleArtChangeOrigin::Agent, createFiles)) {
                 call->fail(error + " Nothing was applied.");
                 return;
             }
@@ -782,10 +795,11 @@ void editTitleTool(const CallPtr& call) {
                 call->fail(escape + " Nothing was applied.");
                 return;
             }
-            const std::string undoName = create.contains("from")
+            const std::string undoName = !createName.empty() ? createName
+                                         : create.contains("from")
                                              ? titleImportUndoName(imported.kind, FileUtils::pathFromUtf8(create.value("from", std::string())).filename().string())
                                              : "Create Title Art " + file.filename().string();
-            document = TitleArtDocument::create(project, file.string(), &initial, undoName, &error, imported.files);
+            document = TitleArtDocument::create(project, file.string(), &initial, undoName, &error, createFiles);
             if (!document) {
                 call->fail(error + " Nothing was applied.");
                 return;
@@ -1194,15 +1208,16 @@ void registerTitleArtTools(McpRegistry& registry) {
     registerTitleAnimPresetOp();
     registerTitleAnimChecks();
     registerTitleInterchange();
+    titlelibrary::registerTitleLibrary();
     {
         ToolDef tool;
         tool.name = "list_title_library";
         tool.title = "List Title Library";
         tool.description =
-            "The Title Art catalogue. No args: counts per kind. kind effects, generators, blend_modes, fonts, environments, "
-            "materials_3d, bevel_profiles, animation_presets lists rows (looks, color_schemes, templates: later). "
-            "id: one effect's, recipe's or generator's params, presets and the op to paste. query searches names, aliases, presets; "
-            "category filters.";
+            "The Title Art catalogue. No args: counts per kind. kind: rows (looks, color_schemes, templates carry a ready `use` op; "
+            "also effects, generators, blend_modes, fonts, environments, materials_3d, bevel_profiles, animation_presets). "
+            "id: one item's params, presets and op. query: names en/ja, aliases, tags; category, family, dimension, tags, scope, favorites filter. "
+            "sheet: items rendered on your text or layer, numbered: pick by seeing.";
         std::vector<std::string> kinds;
         for (const LibraryKind& k : LIBRARY_KINDS) kinds.push_back(k.kind);
         tool.inputSchema = object({
@@ -1210,6 +1225,21 @@ void registerTitleArtTools(McpRegistry& registry) {
             {"id", string("")},
             {"query", string("")},
             {"category", string("")},
+            {"family", string("")},
+            {"dimension", stringEnum("", {"2d", "3d"})},
+            {"tags", array(string(""), "")},
+            {"scope", withDefault(stringEnum("", {"builtin", "project", "user", "all"}), "all")},
+            {"favorites", boolean("")},
+            {"sheet", object({
+                {"text", string("")},
+                {"ids", array(string(""), "")},
+                {"path", string("")},
+                {"layer", string("")},
+                {"cell", array(integer(""), "")},
+                {"columns", integer("", 1, 5)},
+                {"background", stringEnum("", {"black", "white", "checker", "machine"})},
+                {"color_scheme", string("")},
+            })},
             {"limit", withDefault(integer("", 1, 200), 20)},
             {"offset", integer("", 0, 100000)},
         });
@@ -1268,6 +1298,7 @@ void registerTitleArtTools(McpRegistry& registry) {
                 {"overwrite", boolean("")},
                 {"template", string("")},
                 {"look", string("")},
+                {"language", stringEnum("", {"en", "ja"})},
                 {"from", string("")},
             })},
             {"ops", array(anyObject(""), "")},
@@ -1275,7 +1306,7 @@ void registerTitleArtTools(McpRegistry& registry) {
             {"expect_rev", integer("")},
             {"render", render},
             {"bake", withDefault(stringEnum("", {"auto", "now", "never"}), "auto")},
-        }, {"path"});
+        });
         tool.annotations.idempotent = false;
         tool.writesFiles = [](const Json& args) { return !args.value("dry_run", false); };
         tool.activity = ToolActivity::Edit;
@@ -1337,6 +1368,7 @@ void registerTitleArtTools(McpRegistry& registry) {
             {"save_baseline", string("PNG path.")},
             {"fail_on", withDefault(stringEnum("", {"fail", "warn"}), "fail")},
             {"languages", Json{{"type", Json::array({"string", "array"})}}},
+            {"render_scale", withDefault(number("Render size of pixel checks."), 1)},
             {"screenshot", withDefault(stringEnum("", {"on_failure", "always", "never"}), "on_failure")},
             {"wait", withDefault(boolean(""), true)},
             {"timeout_seconds", withDefault(number(""), 120)},

@@ -1,0 +1,120 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "metal/riveted-iron-3d",
+  "revision": 1,
+  "name": {
+    "en": "Riveted Iron 3D",
+    "ja": "リベット鉄板 3D"
+  },
+  "description": {
+    "en": "Deep chamfered extrusion in hammered dark iron, standing on a gunmetal box plate studded with relief rivets, lit by a warehouse.",
+    "ja": "槌目の暗い鉄で深く面取りした押し出し、レリーフのリベットを打ったガンメタルの箱型プレートの上、倉庫の光で照らす。"
+  },
+  "family": "metal",
+  "tags": [
+    "iron",
+    "metal",
+    "rivets",
+    "industrial",
+    "plate",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "steel plate",
+      "rivet",
+      "heavy metal",
+      "factory"
+    ],
+    "ja": [
+      "鉄",
+      "リベット",
+      "鉄板",
+      "工業",
+      "tetsu",
+      "ribetto"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "russo-one",
+    "ja": "zen-kaku-gothic-new-black"
+  },
+  "style_3d": {
+    "depth": 20,
+    "bevel": {
+      "width": 2,
+      "depth": 2,
+      "profile": "chamfer"
+    },
+    "face": {
+      "color": "#5a5e64",
+      "metallic": 1,
+      "roughness": 0.55,
+      "surface": {
+        "kind": "hammered"
+      }
+    },
+    "bands": [
+      {
+        "grow": 8,
+        "plate": {
+          "kind": "box",
+          "corner": 3
+        },
+        "depth": 18.4,
+        "offset": -20,
+        "material": {
+          "color": "#2e3238",
+          "metallic": 1,
+          "roughness": 0.45,
+          "pattern": {
+            "kind": "dots",
+            "opacity": 0,
+            "scale": 5,
+            "relief": 0.8
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "warehouse",
+      "intensity": 1,
+      "rotation": 25,
+      "contrast": 1.2
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

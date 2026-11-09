@@ -1,0 +1,165 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "candy",
+  "revision": 1,
+  "name": {
+    "en": "Candy",
+    "ja": "キャンディ"
+  },
+  "description": {
+    "en": "Glossy candy pink, a white line and a turquoise frame.",
+    "ja": "光沢のあるキャンディピンク、白の線とターコイズの枠。"
+  },
+  "family_hint": [
+    "cartoon",
+    "anime",
+    "casino"
+  ],
+  "tags": [
+    "pink",
+    "candy",
+    "sweet",
+    "gloss",
+    "bright"
+  ],
+  "synonyms": {
+    "en": [
+      "bubblegum",
+      "sweet",
+      "lollipop"
+    ],
+    "ja": [
+      "キャンディ",
+      "飴",
+      "ピンク",
+      "kyandi",
+      "ame"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#fff0f6",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#fff0f6"
+            },
+            {
+              "pos": 0.5,
+              "color": "#ff7ab8"
+            },
+            {
+              "pos": 1,
+              "color": "#ff2a7a"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#ff92c4",
+        "roughness": 0.15,
+        "clearcoat": 1
+      },
+      "shade": "#5a1030"
+    },
+    "dark": {
+      "fill": {
+        "color": "#5a0024"
+      },
+      "material_3d": {
+        "color": "#5a0024",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "material_3d": {
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#5a1030"
+      },
+      {
+        "fill": {
+          "color": "#3ad8e0"
+        },
+        "material_3d": {
+          "color": "#3ad8e0",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#5a1030"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#3a0018"
+      },
+      "material_3d": {
+        "color": "#3a0018",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#b31d55",
+      "roughness": 0.15,
+      "clearcoat": 1
+    }
+  },
+  "face_glow": "#fff0f6",
+  "glow": "#ff8ad0",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ff8ad0"
+      },
+      {
+        "pos": 1,
+        "color": "#ff7ab8"
+      }
+    ]
+  },
+  "shadow": "#5a1030",
+  "glint": "#fff0f6",
+  "light_ramp": [
+    "#5a1030",
+    "#ff2a7a",
+    "#ff7ab8",
+    "#ff8ad0",
+    "#fff0f6"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#ffd8ea"
+        },
+        {
+          "pos": 0.55,
+          "color": "#ff72b2"
+        },
+        {
+          "pos": 1,
+          "color": "#ff3280"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#fff0f6",
+    "#ff7ab8",
+    "#ff2a7a",
+    "#5a0024",
+    "#3ad8e0"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

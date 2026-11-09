@@ -1,0 +1,357 @@
+{
+  "templates": [
+    {
+      "id": "gems/crystal-title",
+      "name": {
+        "en": "Crystal Title (3D diamond)",
+        "ja": "水晶タイトル (3D ダイヤ)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 title in 3D diamond with glints, bokeh behind and a blue glass subtitle; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のタイトル：きらめく 3D ダイヤの文字、背後のボケ、青いガラスのサブタイトル。背景はガイドレイヤー。"
+      },
+      "family": "gems",
+      "tags": [
+        "title",
+        "subtitle",
+        "3d",
+        "diamond",
+        "crystal",
+        "glints",
+        "bokeh"
+      ],
+      "synonyms": {
+        "en": [
+          "diamond title",
+          "jewel logo",
+          "sparkle"
+        ],
+        "ja": [
+          "ダイヤのタイトル",
+          "宝石ロゴ",
+          "キラキラ"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "CRYSTAL",
+          "ja": "水晶"
+        },
+        "subtitle": {
+          "en": "LEGEND",
+          "ja": "伝説"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 240,
+            "transform.position": [
+              0,
+              70
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#1a1040",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#04020c",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "particles",
+          "name": "Bokeh",
+          "preset": "bokeh",
+          "after": "Backdrop"
+        },
+        {
+          "op": "add_layer",
+          "type": "text",
+          "name": "Subtitle",
+          "values": {
+            "text": "LEGEND",
+            "size": 110,
+            "transform.position": [
+              0,
+              -160
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "gems/diamond-3d",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Subtitle",
+          "look": "gems/blue-glass",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "glints",
+          "name": "Glints",
+          "follow": "Title"
+        },
+        {
+          "op": "expose",
+          "name": "subtitle",
+          "type": "text",
+          "label": "Subtitle",
+          "targets": [
+            {
+              "layer": "Subtitle",
+              "field": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gems/treasure-banner",
+      "name": {
+        "en": "Treasure Banner (ruby, gold ribbon)",
+        "ja": "お宝バナー (ルビー + 金リボン)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 banner: a faceted 3D ruby title over a 3D gold ribbon; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のバナー：3D の金のリボンにファセットカットの 3D ルビーの文字。背景はガイドレイヤー。"
+      },
+      "family": "gems",
+      "tags": [
+        "banner",
+        "ribbon",
+        "3d",
+        "ruby",
+        "gold",
+        "treasure",
+        "reward"
+      ],
+      "synonyms": {
+        "en": [
+          "loot banner",
+          "reward",
+          "treasure chest"
+        ],
+        "ja": [
+          "戦利品",
+          "報酬",
+          "宝箱"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "TREASURE!",
+          "ja": "お宝ゲット！"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 230,
+            "transform.position": [
+              0,
+              10
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#2a0a20",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#08020a",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "shape",
+          "name": "Ribbon",
+          "before": "Title",
+          "values": {
+            "shape": "ribbon",
+            "size": 300,
+            "aspect": 5.4,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Ribbon",
+          "look": "metal/gold-3d",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "gems/ruby-faceted-3d",
+          "apply_font": true
+        }
+      ]
+    },
+    {
+      "id": "gems/gem-counter",
+      "name": {
+        "en": "Gem Counter (3D sapphire)",
+        "ja": "宝石カウンター (3D サファイア)"
+      },
+      "description": {
+        "en": "A 1024 × 512 counter: 3D sapphire digits in a silver frame with glints; the backdrop is a guide layer.",
+        "ja": "1024 × 512 のカウンター：銀枠の 3D サファイアの数字とそのきらめき。背景はガイドレイヤー。"
+      },
+      "family": "gems",
+      "tags": [
+        "counter",
+        "digits",
+        "3d",
+        "sapphire",
+        "glints",
+        "score"
+      ],
+      "synonyms": {
+        "en": [
+          "gem count",
+          "score gain",
+          "points"
+        ],
+        "ja": [
+          "ジェム数",
+          "スコア加算",
+          "ポイント"
+        ]
+      },
+      "canvas": [
+        1024,
+        512
+      ],
+      "canvas_note": "1024 × 512, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "+500",
+          "ja": "+500"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 230,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#0a1a40",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#02040e",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "gems/sapphire-silver-frame-3d",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "glints",
+          "name": "Glints",
+          "follow": "Title"
+        }
+      ]
+    }
+  ]
+}

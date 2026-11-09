@@ -1,0 +1,30 @@
+{
+  "_about": "PachislopPortTest's red control (docs/specs/S84-title-library.md AC11): a one-look Pachislop dump whose face carries `sparkleDust`, a member Pachislop's model does not have and the port has no mapping or dropped entry for. The test also ports it without that member (the twin, which maps cleanly).",
+  "meta": {"commit": "1c32502"},
+  "looks": [
+    {
+      "index": 0,
+      "source": {"file": "src/presets/factory.ts", "line": 263, "match": "template"},
+      "preset": {
+        "builtin": true,
+        "effects": [
+          {"enabled": true, "id": "00000001", "type": "dropShadow", "params": {"angle": 90, "color": "#1A2040", "distance": 6, "opacity": 0.6, "size": 14, "spread": 0.1, "useGlobalLight": true}}
+        ],
+        "group": "Classic outline",
+        "id": "f-outline-white",
+        "kind": "title2d",
+        "name": "White outline",
+        "partEffects": {},
+        "refSize": 200,
+        "style": {
+          "face": {"fill": {"kind": "solid", "color": "#ffffff"}, "sparkleDust": 3},
+          "rims": [
+            {"id": "00000002", "enabled": true, "width": 3, "join": "round", "fillCounters": false, "offsetX": 0, "offsetY": 3.2,
+             "plate": {"kind": "contour", "close": 0, "corner": 4, "slant": 0}, "material": {"fill": {"kind": "solid", "color": "#101010"}}}
+          ],
+          "knockout": false
+        }
+      }
+    }
+  ]
+}

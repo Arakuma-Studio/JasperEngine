@@ -1,0 +1,418 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "scifi/galaxy-starfield-3d",
+  "revision": 1,
+  "name": {
+    "en": "Galaxy Starfield 3D",
+    "ja": "銀河 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with a blue metal face, five bands (chrome, black metal, blue metal, silver, gloss black), an outline, an outer glow and a light glow.",
+    "ja": "青のメタルの面の3D押し出し文字、5本の帯（クローム、黒のメタル、青のメタル、銀、黒の光沢）、アウトライン、外側の光彩、ライトグロー。"
+  },
+  "family": "scifi",
+  "tags": [
+    "scifi",
+    "3d",
+    "blue",
+    "metal",
+    "chrome",
+    "black",
+    "silver",
+    "bands",
+    "outline",
+    "sparkle",
+    "glow",
+    "galaxy"
+  ],
+  "synonyms": {
+    "en": [
+      "science fiction",
+      "futuristic",
+      "three-dimensional",
+      "extruded",
+      "azure",
+      "cobalt",
+      "metallic",
+      "metal finish",
+      "mirror",
+      "polished metal",
+      "dark",
+      "jet black",
+      "silvery",
+      "platinum",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "glint",
+      "twinkle",
+      "shine",
+      "light",
+      "bloom",
+      "space",
+      "starfield",
+      "cosmos"
+    ],
+    "ja": [
+      "SF",
+      "近未来",
+      "きんみらい",
+      "kinmirai",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "青",
+      "ブルー",
+      "あお",
+      "ao",
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "クローム",
+      "鏡面",
+      "kuromu",
+      "kyomen",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "銀",
+      "シルバー",
+      "ぎん",
+      "gin",
+      "shiruba",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "きらめき",
+      "キラキラ",
+      "kirameki",
+      "kirakira",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro",
+      "銀河",
+      "宇宙",
+      "ぎんが",
+      "ginga",
+      "uchu"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style_3d": {
+    "depth": 11.9,
+    "curve_segments": 10,
+    "face": {
+      "color": "#141a70",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#4a2ab0"
+          },
+          {
+            "pos": 0.25,
+            "color": "#141a70"
+          },
+          {
+            "pos": 0.42,
+            "color": "#6a1a9a"
+          },
+          {
+            "pos": 0.56,
+            "color": "#08082a"
+          },
+          {
+            "pos": 0.75,
+            "color": "#1a40a0"
+          },
+          {
+            "pos": 1,
+            "color": "#7a2ab0"
+          }
+        ]
+      },
+      "gradient_angle": 120,
+      "gradient_bend": 0.4,
+      "metallic": 1,
+      "roughness": 0.2,
+      "clearcoat": 1,
+      "flakes": 1
+    },
+    "bands": [
+      {
+        "grow": 1.3,
+        "depth": 10.6,
+        "offset": -11.9,
+        "bevel": {
+          "width": 1.3,
+          "depth": 1.3,
+          "profile": "chamfer"
+        },
+        "material": {
+          "preset": "chrome",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04,
+          "env_multiplier": 0.9,
+          "environment": {
+            "preset": "studio"
+          }
+        }
+      },
+      {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#04061a",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#0a0c22",
+          "metallic": 1,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "grow": 2.2,
+        "bevel": {
+          "width": 1.2,
+          "depth": 1.2
+        },
+        "material": {
+          "preset": "blue_metal",
+          "color": "#16206a",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#4a5ac0"
+              },
+              {
+                "pos": 0.45,
+                "color": "#141c60"
+              },
+              {
+                "pos": 0.55,
+                "color": "#04061e"
+              },
+              {
+                "pos": 1,
+                "color": "#3a48a8"
+              }
+            ]
+          },
+          "metallic": 0.9,
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 0.7,
+        "depth": 4,
+        "bevel": {
+          "width": 0.6,
+          "depth": 0.6
+        },
+        "material": {
+          "preset": "silver",
+          "color": "#d8dde6",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e3e7ee"
+              },
+              {
+                "pos": 0.45,
+                "color": "#a3abb8"
+              },
+              {
+                "pos": 0.52,
+                "color": "#555c68"
+              },
+              {
+                "pos": 0.6,
+                "color": "#9aa2af"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dfe4eb"
+              },
+              {
+                "pos": 1,
+                "color": "#f7f9fc"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.14,
+          "clearcoat": 0.3,
+          "environment": {
+            "preset": "studio"
+          }
+        }
+      },
+      {
+        "grow": 1.2,
+        "depth": 4,
+        "bevel": {
+          "width": 0.5,
+          "depth": 0.5
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#02020a",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      }
+    ],
+    "glint": {
+      "enabled": true,
+      "threshold": 2.5,
+      "intensity": 0.35,
+      "radius": 5,
+      "length": 22,
+      "angle": 15,
+      "tint": "#e8eeff"
+    }
+  },
+  "effects": [
+    {
+      "type": "outline",
+      "params": {
+        "color": "#02020a",
+        "width": 2.5
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#6a5aff",
+        "intensity": 1.4,
+        "opacity": 0.85,
+        "size": 12,
+        "spread": 0.3
+      }
+    },
+    {
+      "type": "light_glow",
+      "params": {
+        "exposure": 0.5,
+        "falloff": 35,
+        "knee": 0.3,
+        "radius": 160,
+        "threshold": 0.5,
+        "tint_amount": 0.7,
+        "tint_outer": "#c0c8ff"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "night",
+      "intensity": 1,
+      "rotation": 0,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 3,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#a0b0ff",
+        "intensity": 2,
+        "position": [800, -400, 600]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory3dSetB.ts",
+    "line": 180,
+    "item": "f-3d-galaxy",
+    "license_note": "used with the author's permission"
+  }
+}

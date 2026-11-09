@@ -9,12 +9,12 @@
 //   Vec2s, asset ids become AssetRefs through the caller, and a key the schema has no member
 //   for is reported (dropped). The same rules as S84's PachislopPort, so a look converted by S84
 //   and a project imported here give the same members.
-// - Data: `pachislop-map.json` (S84) in the Title Art library directory, when present, adds its
-//   `fields` renames (camelCase key -> ours) and its `fonts` table (Pachislop font id -> pack id);
-//   without it the built-in rules and the identity font table apply (TitleArtLibrary dir:
-//   JASPERENGINE_TITLEART_LIBRARY_DIR, else `titleart/` beside the editor).
-// - Thread-safety: the map file is read once (a mutex); conversions are pure apart from the
-//   callbacks.
+// - Data: S84's `pachislop-map.json` (titlelibrary::pachislopFieldRule: the `fields` rules by kind,
+//   with their components and sign flips), the same table PachislopPort converts the library with,
+//   and the key's camelCase -> snake_case rule for everything the table does not name. Font and
+//   environment ids resolve through the same map (titlelibrary::pachislopPackFont, ...), the
+//   files come from S84's pack through its ImportPlan.
+// - Thread-safety: conversions are pure apart from the callbacks.
 
 #pragma once
 
@@ -39,6 +39,8 @@ namespace jasperengine::editor::pachislop {
         std::function<Json(const std::string& assetId, const std::string& field)> asset;
         // a Pachislop layer id -> the new layer id ("" when none)
         std::function<std::string(const std::string& pachislopId)> layer;
+        // a 2D reflection map name -> its environment's AssetRef (null: unavailable, with its own note)
+        std::function<Json(const std::string& mapName, const std::string& field)> environment;
         std::vector<MemberNote>* notes = nullptr;
         bool has3D = false;         // S86's members are registered (style_3d, char 3D members)
         void note(const std::string& field, const std::string& what, const std::string& action = "dropped") const {
@@ -52,13 +54,5 @@ namespace jasperengine::editor::pachislop {
     // a Pachislop object of the shape that `kind` (a TitleArtSchema kind) holds, converted;
     // `path` names it in the notes
     Json convertMembers(const Json& pachislop, const std::string& kind, const MemberContext& context, const std::string& path);
-
-    // the Title Art library directory (S84's pack, pachislop-map.json)
-    std::filesystem::path titleArtLibraryDir();
-    // the font pack id of a Pachislop builtin font id ("" when it is not builtin)
-    std::string packFontId(const std::string& pachislopFontId);
-    // the family names of Pachislop's 12 builtin fonts by id (font_unavailable notes)
-    std::string builtinFontFamily(const std::string& pachislopFontId);
-    std::string builtinFontFile(const std::string& pachislopFontId);
 
 }

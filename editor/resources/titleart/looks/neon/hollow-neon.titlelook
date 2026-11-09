@@ -1,0 +1,290 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "neon/hollow-neon",
+  "revision": 1,
+  "name": {
+    "en": "Hollow Neon",
+    "ja": "中抜きネオン"
+  },
+  "description": {
+    "en": "A pink face, two rims (white, pink), a hollow face, an outer glow and a light glow.",
+    "ja": "ピンクの面、2本の縁（白、ピンク）、中抜き、外側の光彩、ライトグロー。"
+  },
+  "family": "neon",
+  "tags": [
+    "neon",
+    "2d",
+    "pink",
+    "outline",
+    "hollow",
+    "glow"
+  ],
+  "synonyms": {
+    "en": [
+      "neon sign",
+      "tube light",
+      "flat",
+      "rose",
+      "magenta",
+      "stroke",
+      "border",
+      "rim",
+      "knockout",
+      "cut out",
+      "light",
+      "bloom",
+      "shine"
+    ],
+    "ja": [
+      "ネオン",
+      "ネオン管",
+      "neon",
+      "平面",
+      "へいめん",
+      "heimen",
+      "ピンク",
+      "桃色",
+      "ももいろ",
+      "pinku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "中抜き",
+      "なかぬき",
+      "nakanuki",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#ff2ab8",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ff2ab8"
+            },
+            {
+              "pos": 1,
+              "color": "#ff2ab8"
+            }
+          ]
+        }
+      },
+      "opacity": 0,
+      "reflection": {
+        "map": {
+          "path": "TitleArt/Environments/autumn_road_2k.hdr",
+          "guid": ""
+        }
+      },
+      "finish": {
+        "gradient": {
+          "stops": [
+            {
+              "color": "#3a0c00"
+            },
+            {
+              "pos": 0.25,
+              "color": "#a83800"
+            },
+            {
+              "pos": 0.5,
+              "color": "#f08c00"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ffd23a"
+            },
+            {
+              "pos": 1,
+              "color": "#fff8d6"
+            }
+          ]
+        }
+      }
+    },
+    "rims": [
+      {
+        "width": 1,
+        "join": "round",
+        "material": {
+          "fill": {
+            "color": "#fff4fc",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#fff4fc"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff4fc"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "profile": "ridge",
+            "size": 0.5,
+            "gloss": "linear",
+            "highlight_opacity": 0.9,
+            "shadow_color": "#ff1aa8"
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "width": 1.6,
+        "join": "round",
+        "material": {
+          "fill": {
+            "color": "#ff2ab8",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#ff2ab8"
+                },
+                {
+                  "pos": 1,
+                  "color": "#ff2ab8"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "profile": "ridge",
+            "size": 0.8,
+            "gloss": "linear",
+            "highlight_opacity": 0.6,
+            "shadow_color": "#6a0040",
+            "shadow_opacity": 0.7
+          },
+          "reflection": {
+            "map": {
+              "path": "TitleArt/Environments/autumn_road_2k.hdr",
+              "guid": ""
+            }
+          },
+          "finish": {
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "knockout": true
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff2ab8",
+        "intensity": 0.8,
+        "mode": "add",
+        "size": 12,
+        "spread": 0.1
+      }
+    },
+    {
+      "type": "light_glow",
+      "params": {
+        "color": "#ff2ab8",
+        "color_mode": "custom",
+        "exposure": 1.5,
+        "falloff": 20,
+        "intensity": 4,
+        "knee": 0.2,
+        "on_face": 0.3,
+        "radius": 240,
+        "threshold": 0.3
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [
+    {
+      "rule": "rims_thin",
+      "reason": "a thin tube is the look"
+    }
+  ],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory.ts",
+    "line": 768,
+    "item": "f-neon-knockout",
+    "license_note": "used with the author's permission"
+  }
+}

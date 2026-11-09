@@ -1,0 +1,80 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "sports/scoreboard-led",
+  "revision": 1,
+  "name": {
+    "en": "Scoreboard LED",
+    "ja": "スコアボード LED"
+  },
+  "description": {
+    "en": "Amber face broken into a dark dot matrix, with an added amber glow like a stadium scoreboard.",
+    "ja": "暗いドットマトリクスで刻んだ琥珀色の面、スタジアムの得点板のような加算の琥珀色のグロー。"
+  },
+  "family": "sports",
+  "tags": [
+    "led",
+    "scoreboard",
+    "amber",
+    "dots",
+    "sports",
+    "digital"
+  ],
+  "synonyms": {
+    "en": [
+      "dot matrix",
+      "stadium board",
+      "ticker",
+      "display"
+    ],
+    "ja": [
+      "電光掲示板",
+      "LED",
+      "スコアボード",
+      "ドット",
+      "denkō keijiban",
+      "sukoabōdo"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "teko",
+    "ja": "dela-gothic-one",
+    "variations": {
+      "wght": 600
+    }
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#ffb000"
+      },
+      "pattern": {
+        "kind": "dots",
+        "color": "#1a1000",
+        "opacity": 0.8,
+        "scale": 1.2
+      }
+    }
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "size": 10,
+        "mode": "add"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

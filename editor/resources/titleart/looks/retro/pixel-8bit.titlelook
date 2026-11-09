@@ -1,0 +1,91 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "retro/pixel-8bit",
+  "revision": 1,
+  "name": {
+    "en": "8-bit Pixel",
+    "ja": "8ビットピクセル"
+  },
+  "description": {
+    "en": "White face in a mitred royal blue frame over a black base dropped below, pixelated into large 8-bit blocks with a reduced palette.",
+    "ja": "角ばったロイヤルブルーの枠と下にずらした黒い台の白い面、減色した大きな 8 ビットのブロックにピクセル化。"
+  },
+  "family": "retro",
+  "tags": [
+    "pixel",
+    "8bit",
+    "retro",
+    "arcade",
+    "blue",
+    "game"
+  ],
+  "synonyms": {
+    "en": [
+      "8 bit",
+      "chiptune",
+      "retro console",
+      "pixel art"
+    ],
+    "ja": [
+      "ドット絵",
+      "8ビット",
+      "ピコピコ",
+      "レトロゲーム",
+      "dottoe",
+      "hachi bitto"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "press-start-2p",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "rims": [
+      {
+        "width": 4,
+        "material": {
+          "fill": {
+            "color": "#2a40ff"
+          }
+        }
+      },
+      {
+        "width": 4,
+        "offset": [0, -4],
+        "material": {
+          "fill": {
+            "color": "#000000"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "pixelate",
+      "params": {
+        "size": 4,
+        "levels": 4,
+        "dither": "bayer4"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [
+    {
+      "rule": "hard_shadow",
+      "reason": "pixel art has hard shadows"
+    }
+  ],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

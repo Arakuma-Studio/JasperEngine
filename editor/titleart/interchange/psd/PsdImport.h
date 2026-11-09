@@ -38,10 +38,6 @@ namespace jasperengine::editor::psd {
     // R33: the document of a layered PSD
     bool importPsdDocument(const TitleCreateRequest& request, TitleCreateResult& out, std::string& code, std::string& error);
 
-    // a `.titlelook` (S84 §6.1) of one converted style; `slug` its file name, `files` the custom
-    // pattern images it names (written to <slug>.files/)
-    titleart::Json psLookJson(const std::string& slug, const PsStyleSource& source, const ConvertedPsStyle& converted,
-                              const std::string& fileStem, const titleart::Json& assets);
     // "Gold Bevel 2" -> "gold-bevel-2" ([a-z0-9-]{1,48}, "style" when nothing is left)
     std::string psLookSlug(const std::string& name);
 

@@ -57,6 +57,10 @@ namespace {
             fs::create_directories(font);
             fs::copy_file(FONTS / "DelaGothicOne-Regular.ttf", font / "DelaGothicOne-Regular.ttf");
             fs::copy_file(FONTS / "DelaGothicOne-OFL.txt", font / "OFL.txt");
+            // the pack's manifest, which S84's ImportPlan reads
+            std::ofstream(library / "fonts" / "fonts.json")
+                << R"({"version": 1, "fonts": {"dela-gothic-one": {"family": "Dela Gothic One", "style": "Regular", "files": ["DelaGothicOne-Regular.ttf"],)"
+                   R"( "scripts": ["latin", "ja"], "category": "display"}}})";
 #if defined(_WIN32)
             _putenv_s("JASPERENGINE_TITLEART_LIBRARY_DIR", library.string().c_str());
 #else

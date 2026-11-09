@@ -9,9 +9,8 @@
 //   tiers, S85's Exact), lint check sources (S85's animation checks) and the Library provider
 //   (S84's Looks, Color Schemes and Templates, its tile previews, favorites and recents).
 // - A spec compiled out registers nothing: its UI does not exist and costs nothing. Without a
-//   Library provider the window's Library shows S82's starter Looks and Color Schemes
-//   (TitleStarterLibrary), and its empty state offers New Text instead of template cards
-//   (S82 Deviations 2 and 16).
+//   Library provider (S84 registers the one the editor has) the window shows no Library, and its
+//   empty state offers New Text instead of template cards (S82 Deviations 2 and 16).
 // - Registration happens at startup (the spec's editor registration function) or from tests;
 //   reads are from the main thread.
 
@@ -223,6 +222,10 @@ namespace jasperengine::editor::titledesigner {
             if (error) *error = "not supported";
             return false;
         }
+        // the window's live tile renderer (the item's ops applied to the user's layer, through the
+        // preview queue), attached while a Title Designer is open; null detaches it
+        using TileSource = std::function<LibraryTile(LibraryTab, const LibraryItem&, float width, float height, bool visible)>;
+        virtual void attachTileSource(TileSource source) { (void)source; }
         // drop every request of a window (closed) and re-request after a GPU loss (R48)
         virtual void cancelAll() {}
         virtual void deviceLost() {}

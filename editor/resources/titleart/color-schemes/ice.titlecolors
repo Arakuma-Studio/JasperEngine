@@ -1,0 +1,167 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "ice",
+  "revision": 1,
+  "name": {
+    "en": "Ice",
+    "ja": "氷"
+  },
+  "description": {
+    "en": "Glossy white to pale blue to steel blue, a white line and an icy blue frame.",
+    "ja": "白から淡い青、鋼の青への光沢、白の線と氷の青の枠。"
+  },
+  "family_hint": [
+    "elements",
+    "fantasy"
+  ],
+  "tags": [
+    "blue",
+    "ice",
+    "cold",
+    "frozen",
+    "gloss"
+  ],
+  "synonyms": {
+    "en": [
+      "frost",
+      "frozen",
+      "glacier",
+      "winter"
+    ],
+    "ja": [
+      "氷",
+      "こおり",
+      "冷たい",
+      "koori",
+      "kōri"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.3333,
+              "color": "#cfefff"
+            },
+            {
+              "pos": 0.6667,
+              "color": "#7ac8f0"
+            },
+            {
+              "pos": 1,
+              "color": "#1a5a8a"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#bee7fc",
+        "roughness": 0.15,
+        "clearcoat": 1
+      },
+      "shade": "#0a2a40"
+    },
+    "dark": {
+      "fill": {
+        "color": "#06203a"
+      },
+      "material_3d": {
+        "color": "#06203a",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "material_3d": {
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#0a2a40"
+      },
+      {
+        "fill": {
+          "color": "#8ad8ff"
+        },
+        "material_3d": {
+          "color": "#8ad8ff",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#0a2a40"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#0a2a4a"
+      },
+      "material_3d": {
+        "color": "#0a2a4a",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#123f61",
+      "roughness": 0.15,
+      "clearcoat": 1
+    }
+  },
+  "glow": "#9ae0ff",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#9ae0ff"
+      },
+      {
+        "pos": 1,
+        "color": "#a4dbf8"
+      }
+    ]
+  },
+  "shadow": "#0a2a40",
+  "light_ramp": [
+    "#0a2a40",
+    "#1a5a8a",
+    "#7ac8f0",
+    "#9ae0ff",
+    "#cfefff"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#f1faff"
+        },
+        {
+          "pos": 0.55,
+          "color": "#98d6f5"
+        },
+        {
+          "pos": 1,
+          "color": "#286b99"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#ffffff",
+    "#cfefff",
+    "#7ac8f0",
+    "#1a5a8a",
+    "#06203a",
+    "#8ad8ff"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

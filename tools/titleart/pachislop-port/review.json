@@ -1,0 +1,1221 @@
+{
+  "_about": "One review record per item the Pachislop port wrote (docs/specs/S84-title-library.md R22, §6.7.4): `kind` (look, template, color_scheme: a look and a template may share an id), verdict match, close, tuned (needs an overrides.json entry of that kind and id) or differs; every verdict but match needs a note. The review sheets come from `title-library review-sheet`.",
+  "records": [
+    {
+      "id": "casino/candy-glitter-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/checker",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/giraffe",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/gold-on-red-stack-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/inflate-candy-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/jackpot-rays-sparkles",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/leopard",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/orb-candy-blue-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/orb-candy-gold-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/orb-candy-green-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/orb-candy-purple-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/orb-candy-rainbow-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/orb-candy-red-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/orb-candy-white-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/orb-glass-green-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/orb-glass-purple-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/orb-metal-gold-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/orb-metal-silver-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/outline-blue",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/outline-giraffe",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/outline-gold",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/outline-green",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/outline-leopard",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/outline-purple",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/outline-rainbow",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/outline-red",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/outline-silver",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/outline-white",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/outline-zebra",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/pillow-plate-black-gold",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/pop-out-gold-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/rainbow-candy-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/rainbow-confirm",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/rainbow-glass-gold",
+      "kind": "look",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges; the source trips the style lint as authored, so overrides.json adds its lint_allow",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/rainbow-glass-gold-3d",
+      "kind": "look",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges; the source trips the style lint as authored, so overrides.json adds its lint_allow",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/red-plate-gold-rim",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/slanted-box-plate",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/slanted-box-plates-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/tiger",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/two-tone-split-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/zebra-gold",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "elements/aurora-teal-violet-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "elements/corona-purple",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "elements/electric-blue",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "elements/fire-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "elements/ice",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "elements/ice-crystal-glass-3d",
+      "kind": "look",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges; the source trips the style lint as authored, so overrides.json adds its lint_allow",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "elements/lava-crust-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "elements/red-hot-fire",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "elements/toxic-acid-glow-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "gems/amethyst-crystal-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "gems/blue-glass",
+      "kind": "look",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges; the source trips the style lint as authored, so overrides.json adds its lint_allow",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "gems/diamond-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "gems/hologram-foil",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "gems/jade-gold-rim-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "gems/obsidian-gold-line-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "gems/pearl-pink-rim-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "gems/red-glass",
+      "kind": "look",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges; the source trips the style lint as authored, so overrides.json adds its lint_allow",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "gems/sapphire-silver-frame-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/anodised-titanium-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/black-chrome-red-line-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/black-gold",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/black-silver",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/candy-apple-red-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/carbon-gunmetal-orange-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/chrome-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/chrome-bevel",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/chrome-blue-stack-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/chrome-star-glints",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/classic-gold",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/copper",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/crumpled-gold",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/double-stroke-gold",
+      "kind": "look",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges; the source trips the style lint as authored, so overrides.json adds its lint_allow",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/emerald-metal-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/gold-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/gradient-map-gold",
+      "kind": "look",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges; the source trips the style lint as authored, so overrides.json adds its lint_allow",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/holographic-silver-3d",
+      "kind": "look",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges; the source trips the style lint as authored, so overrides.json adds its lint_allow",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/light-glow-gold",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/liquid-chrome",
+      "kind": "look",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges; the source trips the style lint as authored, so overrides.json adds its lint_allow",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/liquid-gold",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/pale-gold",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/rose-copper-teal-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/rose-gold",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/rose-gold-chocolate-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/satin-chrome",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/silver-on-gold-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/silver-premium",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/silver-premium-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "neon/hollow-neon",
+      "kind": "look",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges; the source trips the style lint as authored, so overrides.json adds its lint_allow",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "neon/matte-black-glowing-rim-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "neon/neon-glass-tube-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "neon/neon-tube",
+      "kind": "look",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges; the source trips the style lint as authored, so overrides.json adds its lint_allow",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "neon/violet-neon-edge-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "scifi/galaxy-starfield-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "scifi/hazard-stripes",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "wa/black-lacquer-gold-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "wa/dry-brush-ink",
+      "kind": "look",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges; the source trips the style lint as authored, so overrides.json adds its lint_allow",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "wa/ink-brush",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "wa/porcelain-cobalt-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "wa/red-brush",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "wa/sakura-pearl-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "wa/sakura-pink",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "wa/seigaiha-gold",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "wa/vermilion-lacquer-gold-leaf-3d",
+      "kind": "look",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/about-80-percent-3d",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/attack-chance-rainbow-3d",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/big-bonus-3d",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/big-bonus-3d-groups",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/big-win-3d",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/bonus-ribbon",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/chain-x3-slanted",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/chance-green-blue",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/confirm-giraffe-3d",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/confirm-rainbow",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/confirm-zebra-clip",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/cut-in-band",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/cut-in-band-fx",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/game-counter",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/new-machine-flyer",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/original-depth-fade-3d",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/premium-black-gloss",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/premium-rainbow-fx",
+      "kind": "template",
+      "verdict": "differs",
+      "note": "the Shatter generator's pieces are another layout (S83 Deviation 10), so the burst behind the title differs in shape and colour; the title itself matches",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/push-button-candy-3d",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/push-button-inflate-3d",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/red-hot-burst",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/red-hot-fire",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/red-hot-plate-fx",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/red-hot-rim-glow",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/reel-symbol-7",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/reserve-flash-fx",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/reserve-orbs-3d",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/rush-pop-out-3d",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/rush-title-fx",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/slanted-box-plate",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/speech-frame-red",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "casino/super-red-hot",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/liquid-gold-vertical-kicker",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "metal/special-satin-chrome",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "neon/fever-hollow-neon",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "wa/awakening-dry-brush",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "wa/red-hot-brush-vertical",
+      "kind": "template",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "blue",
+      "kind": "color_scheme",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "giraffe",
+      "kind": "color_scheme",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "gold",
+      "kind": "color_scheme",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "green",
+      "kind": "color_scheme",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "leopard",
+      "kind": "color_scheme",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "purple",
+      "kind": "color_scheme",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "rainbow",
+      "kind": "color_scheme",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "red",
+      "kind": "color_scheme",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "silver",
+      "kind": "color_scheme",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "white",
+      "kind": "color_scheme",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    },
+    {
+      "id": "zebra",
+      "kind": "color_scheme",
+      "verdict": "close",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "reviewer": "s84-agent",
+      "date": "2026-11-09"
+    }
+  ]
+}

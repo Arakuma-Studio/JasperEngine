@@ -36,6 +36,10 @@ ENVIRONMENTS = {
     "highway": ("Autumn Road", "s86"),
     "city": ("Potsdamer Platz", "s86"),
     "sky": ("Derelict Highway Midday", "s86"),
+    "night_city": ("Shanghai Bund", "s84"),
+    "night_dark": ("Moonless Golf", "s84"),
+    "sunset_harbour": ("Venice Sunset", "s84"),
+    "warehouse": ("Empty Warehouse 01", "s84"),
 }
 
 

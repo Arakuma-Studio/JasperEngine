@@ -1,0 +1,223 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "casino/orb-metal-silver-3d",
+  "revision": 1,
+  "name": {
+    "en": "Orb Metal Silver 3D",
+    "ja": "メタル保留玉 銀 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with a silver metal face and a round bevel, one band (chrome).",
+    "ja": "銀のメタルの面の3D押し出し文字（ベベル付き）、1本の帯（クローム）。"
+  },
+  "family": "casino",
+  "tags": [
+    "casino",
+    "3d",
+    "silver",
+    "metal",
+    "bevel",
+    "chrome",
+    "bands",
+    "outline",
+    "orb"
+  ],
+  "synonyms": {
+    "en": [
+      "slots",
+      "jackpot",
+      "pachislot",
+      "three-dimensional",
+      "extruded",
+      "silvery",
+      "platinum",
+      "metallic",
+      "metal finish",
+      "emboss",
+      "chiselled",
+      "mirror",
+      "polished metal",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "sphere",
+      "ball",
+      "reserve ball"
+    ],
+    "ja": [
+      "カジノ",
+      "パチスロ",
+      "スロット",
+      "kajino",
+      "pachisuro",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "銀",
+      "シルバー",
+      "ぎん",
+      "gin",
+      "shiruba",
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "クローム",
+      "鏡面",
+      "kuromu",
+      "kyomen",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "保留玉",
+      "球",
+      "たま",
+      "tama",
+      "horyu"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style_3d": {
+    "depth": 10,
+    "curve_segments": 10,
+    "bevel": {
+      "width": 1,
+      "depth": 1.2
+    },
+    "face": {
+      "color": "#c3cad6",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#ffffff"
+          },
+          {
+            "pos": 0.55,
+            "color": "#c3cad6"
+          },
+          {
+            "pos": 1,
+            "color": "#3a4252"
+          }
+        ]
+      },
+      "gradient_kind": "radial",
+      "gradient_bend": 0.6,
+      "metallic": 1,
+      "roughness": 0.4,
+      "env_multiplier": 1.2
+    },
+    "bands": [
+      {
+        "depth": 4,
+        "bevel": {
+          "width": 1.2,
+          "depth": 1.2
+        },
+        "material": {
+          "preset": "chrome",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "softbox",
+      "intensity": 1,
+      "rotation": 30,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory.ts",
+    "line": 1906,
+    "item": "f-orb-metal-silver",
+    "license_note": "used with the author's permission"
+  }
+}

@@ -17,6 +17,7 @@
 #include "asset/Guid.h"
 #include "io/watch/FileWatchService.h"
 #include "util/FileUtils.h"
+#include "io/AtomicFile.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -36,11 +37,22 @@ namespace {
         std::map<std::string, std::weak_ptr<TitleArtDocument>> documents;
         std::function<void(const std::vector<fs::path>&)> filesWrittenHook;
         std::function<void(const std::vector<fs::path>&)> changedHook;
+        std::function<void(Project*)> projectHook;
     };
 
     Registry& registry() {
         static Registry* r = new Registry();
         return *r;
+    }
+
+    // the batch's files that join the document's undo step (the personal library's do not: edit()
+    // writes those once the step is in); files first, so a reload of the document finds them
+    std::vector<WriteFilesCmd::Item> titleOpFileItems(const std::vector<TitleOpFile>& files) {
+        std::vector<WriteFilesCmd::Item> items;
+        for (const TitleOpFile& f : files) {
+            if (f.undoable && !f.remove) items.push_back({f.path, f.content});
+        }
+        return items;
     }
 
     void useProject(Project* project) {
@@ -50,6 +62,7 @@ namespace {
             reg.project = project;
             reg.projectPath = project->getProjectPath();
         }
+        if (reg.projectHook) reg.projectHook(project);
     }
 
     bool fail(std::string* error, const std::string& message) {
@@ -159,8 +172,7 @@ std::shared_ptr<TitleArtDocument> TitleArtDocument::create(Project* project, con
     titleart::TitleArtDoc initial = doc ? *doc : titleart::makeNewTitleArt();
     if (!titleart::isTitleArtGuid(initial.guid())) initial.root["guid"] = titleart::generateTitleArtGuid();
     titleart::normalizeTitleArt(initial, nullptr);
-    std::vector<WriteFilesCmd::Item> items;
-    for (const TitleOpFile& f : files) items.push_back({fs::path(f.path), f.content});
+    std::vector<WriteFilesCmd::Item> items = titleOpFileItems(files);
     items.push_back({absolute, titleart::writeTitleArt(initial)});
     auto* command = new WriteFilesCmd(std::move(items), &afterWrite);
     command->setName(undoName.empty() ? "Create Title Art " + CommandNames::file(absolute) : undoName);
@@ -172,6 +184,10 @@ std::shared_ptr<TitleArtDocument> TitleArtDocument::create(Project* project, con
         return nullptr;
     }
     return open(project, absolute.string(), error);
+}
+
+void TitleArtDocument::setProjectHook(std::function<void(Project*)> hook) {
+    registry().projectHook = std::move(hook);
 }
 
 void TitleArtDocument::filesChanged(const std::vector<fs::path>& paths, TitleArtChangeOrigin origin) {
@@ -385,14 +401,13 @@ void TitleArtDocument::reload(TitleArtChangeOrigin origin) {
 
 bool TitleArtDocument::write(const std::string& newText, const std::string& undoName, const std::string& mergeKey, std::string* writeError,
                              TitleArtChangeOrigin origin, const std::vector<TitleOpFile>& files) {
-    if (newText == fileText && files.empty()) return true;
+    std::vector<WriteFilesCmd::Item> items = titleOpFileItems(files);
+    if (newText == fileText && items.empty()) return true;
     std::string onDisk;
     if (ProjectChecks::readFile(filePath, onDisk) && onDisk != fileText) {
         reload(TitleArtChangeOrigin::Disk);
         return fail(writeError, "'" + relativePath + "' changed on disk since it was read: it was reloaded, make the edit again");
     }
-    std::vector<WriteFilesCmd::Item> items;
-    for (const TitleOpFile& f : files) items.push_back({fs::path(f.path), f.content});
     items.push_back({filePath, newText});
     auto* command = new WriteFilesCmd(std::move(items), &afterWrite);
     writing = newText;
@@ -445,6 +460,19 @@ TitleOpsResult TitleArtDocument::edit(const TitleJson& ops, const TitleArtEditOp
     if (!commit(result.doc, result.undoName, options.mergeKey, &writeError, options.origin, result.files)) {
         TitleOpsResult failed = refused(value, "write_failed", writeError + ". Nothing was applied.");
         return failed;
+    }
+    // the personal library lives outside the project: written once the step is in
+    for (const TitleOpFile& f : result.files) {
+        if (f.undoable) continue;
+        std::error_code ec;
+        if (f.remove) {
+            fs::remove(f.path, ec);
+            continue;
+        }
+        fs::create_directories(f.path.parent_path(), ec);
+        if (!io::writeFileAtomic(f.path, f.content).ok()) {
+            result.problems.push_back(TitleOpProblem{"warning", "write_failed", -1, f.path.generic_string(), "could not write '" + f.path.generic_string() + "'"});
+        }
     }
     return result;
 }

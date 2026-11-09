@@ -539,7 +539,7 @@ bool editor::importSvgOp(TitleOpContext& ctx, const TitleJson& op) {
     std::vector<TitleOpFile> written = copies.take();
     written.insert(written.end(), beside.staged.begin(), beside.staged.end());
     for (const TitleOpFile& f : written) {
-        files.push_back(f.path);
+        files.push_back(FileUtils::pathToUtf8(f.path));
         ctx.result.files.push_back(f);
     }
     TitleJson& ids = ctx.result.newIds[std::to_string(ctx.opIndex)];

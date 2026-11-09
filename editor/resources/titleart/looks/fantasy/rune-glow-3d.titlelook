@@ -1,0 +1,113 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "fantasy/rune-glow-3d",
+  "revision": 1,
+  "name": {
+    "en": "Rune Glow 3D",
+    "ja": "光るルーン 3D"
+  },
+  "description": {
+    "en": "Extruded letters glowing cyan on their faces, cut in rough crumpled stone on the sides and bevel, in the dark, with glints.",
+    "ja": "前面がシアンに光る押し出し文字、側面とベベルは荒いしわ加工の石、暗闇の光、グリント付き。"
+  },
+  "family": "fantasy",
+  "tags": [
+    "rune",
+    "glow",
+    "cyan",
+    "stone",
+    "fantasy",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "glowing runes",
+      "ancient magic",
+      "enchanted stone",
+      "rune stone"
+    ],
+    "ja": [
+      "ルーン",
+      "光る",
+      "石",
+      "古代",
+      "rūn",
+      "kodai"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "cinzel-decorative-black",
+    "ja": "zen-old-mincho-black"
+  },
+  "style_3d": {
+    "depth": 12,
+    "bevel": {
+      "width": 1.5,
+      "depth": 1.5,
+      "profile": "chamfer"
+    },
+    "face": {
+      "preset": "emissive",
+      "color": "#103040",
+      "roughness": 0.5,
+      "emission": "#50e0ff",
+      "emission_intensity": 1.2
+    },
+    "bevel_material": {
+      "color": "#6a6660",
+      "roughness": 0.8,
+      "surface": {
+        "kind": "crumple"
+      }
+    },
+    "side": {
+      "color": "#6a6660",
+      "roughness": 0.8,
+      "surface": {
+        "kind": "crumple"
+      }
+    },
+    "glint": {
+      "enabled": true
+    }
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "night_dark",
+      "intensity": 1,
+      "rotation": 25
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

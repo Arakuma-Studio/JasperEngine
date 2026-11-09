@@ -1,0 +1,59 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "minimal/flat",
+  "revision": 1,
+  "name": {
+    "en": "Flat",
+    "ja": "フラット"
+  },
+  "description": {
+    "en": "One flat white face and nothing else, for a Color Scheme to colour.",
+    "ja": "平らな白い面だけ、カラースキームで色を付けるために。"
+  },
+  "family": "minimal",
+  "tags": [
+    "flat",
+    "minimal",
+    "clean",
+    "simple",
+    "plain"
+  ],
+  "synonyms": {
+    "en": [
+      "plain text",
+      "solid colour",
+      "basic",
+      "no effects"
+    ],
+    "ja": [
+      "フラット",
+      "シンプル",
+      "無地",
+      "ベタ",
+      "furatto",
+      "shinpuru"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "inter",
+    "ja": "zen-kaku-gothic-new-black",
+    "variations": {
+      "wght": 800
+    }
+  },
+  "style": {},
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

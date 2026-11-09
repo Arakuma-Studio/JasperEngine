@@ -1,0 +1,302 @@
+{
+  "templates": [
+    {
+      "id": "retro/arcade-title",
+      "name": {
+        "en": "Arcade Title (80s chrome, grid)",
+        "ja": "アーケードタイトル (80 年代クローム + グリッド)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 title: 80s horizon-chrome letters over a pixel-art subtitle and a receding stripe-grid floor; the grid backdrop is a guide layer.",
+        "ja": "1920 × 1080 のタイトル：80 年代の地平線クロームの文字、ドット絵のサブタイトル、奥へ続くストライプのグリッドの床。グリッドの背景はガイドレイヤー。"
+      },
+      "family": "retro",
+      "tags": [
+        "title",
+        "subtitle",
+        "chrome",
+        "80s",
+        "pixel",
+        "grid",
+        "arcade"
+      ],
+      "synonyms": {
+        "en": [
+          "retro game title",
+          "synthwave logo",
+          "press start"
+        ],
+        "ja": [
+          "レトロゲーム",
+          "シンセウェイヴ",
+          "プレススタート"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the grid backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "SUPER ARCADE",
+          "ja": "スーパーアーケード"
+        },
+        "subtitle": {
+          "en": "PRESS START",
+          "ja": "プレススタート"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 180,
+            "transform.position": [
+              0,
+              90
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "pattern_fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "stripes",
+            "gen.color": "#ff3ad0",
+            "gen.color2": "#7a2aff",
+            "gen.background": "#1a0040",
+            "gen.scale": 90,
+            "gen.tilt": 62
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "text",
+          "name": "Subtitle",
+          "values": {
+            "text": "PRESS START",
+            "size": 64,
+            "transform.position": [
+              0,
+              -160
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "retro/chrome-80s",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Subtitle",
+          "look": "retro/pixel-8bit",
+          "apply_font": true
+        },
+        {
+          "op": "expose",
+          "name": "subtitle",
+          "type": "text",
+          "label": "Subtitle",
+          "targets": [
+            {
+              "layer": "Subtitle",
+              "field": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "retro/insert-coin",
+      "name": {
+        "en": "Insert Coin (CRT scanlines)",
+        "ja": "コインを入れてね (CRT 走査線)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 banner: warm pixel letters with CRT scanlines and a slight colour split; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のバナー：CRT の走査線とわずかな色ずれのある暖色のドット文字。背景はガイドレイヤー。"
+      },
+      "family": "retro",
+      "tags": [
+        "banner",
+        "crt",
+        "scanlines",
+        "pixel",
+        "arcade",
+        "attract"
+      ],
+      "synonyms": {
+        "en": [
+          "attract mode",
+          "arcade prompt",
+          "continue"
+        ],
+        "ja": [
+          "アトラクトモード",
+          "アーケード",
+          "コンティニュー"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "INSERT COIN",
+          "ja": "コインを入れてね"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 140,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#2a0a40",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#06020c",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "retro/crt-scanline",
+          "apply_font": true
+        }
+      ]
+    },
+    {
+      "id": "retro/high-score",
+      "name": {
+        "en": "High Score (16-bit gradient)",
+        "ja": "ハイスコア (16 ビットのグラデーション)"
+      },
+      "description": {
+        "en": "A 1024 × 256 score line: 16-bit hard-stop gradient letters with black-and-white rims and a hard shadow; the backdrop is a guide layer.",
+        "ja": "1024 × 256 のスコア表示：16 ビット風の段階グラデーション文字、白黒の縁取りと硬い影。背景はガイドレイヤー。"
+      },
+      "family": "retro",
+      "tags": [
+        "label",
+        "score",
+        "pixel",
+        "16-bit",
+        "arcade",
+        "hud"
+      ],
+      "synonyms": {
+        "en": [
+          "hi score",
+          "score display",
+          "leaderboard"
+        ],
+        "ja": [
+          "ハイスコア",
+          "スコア表示",
+          "ランキング"
+        ]
+      },
+      "canvas": [
+        1024,
+        256
+      ],
+      "canvas_note": "1024 × 256, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "HI-SCORE 123450",
+          "ja": "HI-SCORE 123450"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 58,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "linear",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#1a0040",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#06000f",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            },
+            "gen.angle": 90
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "retro/16bit-gradient",
+          "apply_font": true
+        }
+      ]
+    }
+  ]
+}

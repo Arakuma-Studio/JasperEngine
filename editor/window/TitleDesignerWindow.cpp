@@ -26,7 +26,6 @@
 #include "titleart/designer/TitleHandles.h"
 #include "titleart/designer/TitleLayerThumbnails.h"
 #include "titleart/designer/TitlePages.h"
-#include "titleart/designer/TitleStarterLibrary.h"
 #include "titleart/designer/TitleTextEdit.h"
 #include "titleart/fonts/FontCatalog.h"
 #include "titleart/fonts/FontPreviewRaster.h"
@@ -93,9 +92,12 @@ void TitleDesignerWindow::createLive() {
     canvas = std::make_unique<TitleCanvasView>(project);
     thumbnails = std::make_unique<TitleLayerThumbnails>(project, OWNER);
     libraryTiles = std::make_unique<TitleLayerThumbnails>(project, OWNER);
-    starterLibrary = std::make_unique<TitleStarterLibrary>(&doc, [this](LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
-        return starterTile(tab, item, width, height, visible);
-    });
+    // the Library's live tiles (S84's provider): the item's ops on the user's layer, through the one preview queue
+    if (TitleLibraryProvider* provider = libraryProvider()) {
+        provider->attachTileSource([this](LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
+            return libraryTile(tab, item, width, height, visible);
+        });
+    }
     textEdit = std::make_unique<TitleTextEdit>();
     gizmo2d = std::make_unique<TitleGizmo2D>();
     gizmo3d = std::make_unique<TitleGizmo3D>();
@@ -133,8 +135,11 @@ void TitleDesignerWindow::destroyLive() {
     liveStart = -1.0;
     canvas.reset();
     thumbnails.reset();
+    if (TitleLibraryProvider* provider = libraryProvider()) {
+        provider->cancelAll();
+        provider->attachTileSource(nullptr);
+    }
     libraryTiles.reset();
-    starterLibrary.reset();
     textEdit.reset();
     gizmo2d.reset();
     gizmo3d.reset();
@@ -570,7 +575,7 @@ ta::Json TitleDesignerWindow::state() const {
                           for (const auto& [name, ms] : indexUnitCosts) units.push_back(ta::Json::array({name, ms}));
                           return units;
                       }()}, {"index_units_frame", indexUnitsLastFrame}};
-    out["library"] = {{"provider", libraryProvider() ? "registered" : "starter"}, {"shown", libraryShown}};
+    out["library"] = {{"provider", libraryProvider() ? "registered" : "none"}, {"shown", libraryShown}};
     if (addOpen) {
         // the Add palette as drawn last: its rail with counts and the listed entries
         ta::Json rail = ta::Json::array();

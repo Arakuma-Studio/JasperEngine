@@ -267,7 +267,7 @@ TEST_F(TitleArtSchemaTest, ReservedNamesNameTheirOwner) {
     ASSERT_NE(runtime, nullptr);
     EXPECT_EQ(runtime->owner, "S81");
     EXPECT_EQ(schema.reservedOwner("document", "scene_3d"), S86_OWNER);
-    EXPECT_EQ(schema.reservedOwner("document", "color_schemes"), "S84");
+    EXPECT_EQ(schema.reservedOwner("document", "color_schemes"), "");   // S84 registers it (registerColorSchemeMembers)
     // S87 registered its members (TitleTranslations.cpp)
     EXPECT_EQ(schema.reservedOwner("document", "languages"), "");
     ASSERT_NE(schema.member(*schema.kind("document"), "languages"), nullptr);

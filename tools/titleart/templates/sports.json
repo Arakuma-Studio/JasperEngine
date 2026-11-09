@@ -1,0 +1,351 @@
+{
+  "templates": [
+    {
+      "id": "sports/match-title",
+      "name": {
+        "en": "Match Title (3D metal crest)",
+        "ja": "試合タイトル (3D メタルの紋章)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 title: 3D silver crest letters with stadium god rays behind and a lens flare, over a varsity subtitle; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のタイトル：背後にスタジアムの光芒とレンズフレアを受ける 3D シルバーの紋章文字、カレッジ風のサブタイトル。背景はガイドレイヤー。"
+      },
+      "family": "sports",
+      "tags": [
+        "title",
+        "subtitle",
+        "3d",
+        "silver",
+        "lens-flare",
+        "god-rays",
+        "final"
+      ],
+      "synonyms": {
+        "en": [
+          "final match",
+          "tournament",
+          "championship"
+        ],
+        "ja": [
+          "決勝戦",
+          "トーナメント",
+          "選手権"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "FINAL MATCH",
+          "ja": "決勝戦"
+        },
+        "subtitle": {
+          "en": "2026",
+          "ja": "2026"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 200,
+            "transform.position": [
+              0,
+              90
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#0a1f44",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#02060f",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "text",
+          "name": "Subtitle",
+          "values": {
+            "text": "2026",
+            "size": 130,
+            "transform.position": [
+              0,
+              -150
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "sports/metal-crest-3d",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Subtitle",
+          "look": "sports/varsity",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "backlight",
+          "name": "Stadium Rays",
+          "before": "Title",
+          "preset": "god_rays",
+          "follow": "Title",
+          "values": {
+            "gen.color": "#ffffff",
+            "gen.outer_color": "#a0c0ff"
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "lens_flare",
+          "name": "Lens Flare",
+          "before": "Title",
+          "follow": "Title",
+          "values": {
+            "gen.position": [
+              -640,
+              110
+            ]
+          }
+        },
+        {
+          "op": "expose",
+          "name": "subtitle",
+          "type": "text",
+          "label": "Subtitle",
+          "targets": [
+            {
+              "layer": "Subtitle",
+              "field": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sports/goal-banner",
+      "name": {
+        "en": "Goal Banner (fireball, speed lines)",
+        "ja": "ゴールバナー (火の玉 + スピード線)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 banner: fireball letters with a motion trail over horizontal speed lines; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のバナー：残像を引く火の玉の文字、背後に水平のスピード線。背景はガイドレイヤー。"
+      },
+      "family": "sports",
+      "tags": [
+        "banner",
+        "fire",
+        "speed-lines",
+        "motion",
+        "goal",
+        "score"
+      ],
+      "synonyms": {
+        "en": [
+          "goal",
+          "score",
+          "touchdown"
+        ],
+        "ja": [
+          "ゴール",
+          "得点",
+          "タッチダウン"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "GOAL!!",
+          "ja": "ゴール！！"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 260,
+            "transform.position": [
+              60,
+              0
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "linear",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#0a3a1a",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#021006",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            },
+            "gen.angle": 90
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "sports/fireball",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "speed_lines",
+          "name": "Speed Lines",
+          "preset": "flow_h",
+          "follow": "Title",
+          "place": "below"
+        }
+      ]
+    },
+    {
+      "id": "sports/scoreboard",
+      "name": {
+        "en": "Scoreboard (LED)",
+        "ja": "スコアボード (LED)"
+      },
+      "description": {
+        "en": "A 1024 × 256 score: amber dot-matrix LED digits; the backdrop is a guide layer.",
+        "ja": "1024 × 256 のスコア：アンバーのドットマトリクス LED の数字。背景はガイドレイヤー。"
+      },
+      "family": "sports",
+      "tags": [
+        "counter",
+        "score",
+        "led",
+        "dot-matrix",
+        "amber",
+        "hud"
+      ],
+      "synonyms": {
+        "en": [
+          "score display",
+          "match score",
+          "led board"
+        ],
+        "ja": [
+          "スコア表示",
+          "試合スコア",
+          "電光掲示板"
+        ]
+      },
+      "canvas": [
+        1024,
+        256
+      ],
+      "canvas_note": "1024 × 256, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "3 - 2",
+          "ja": "3 - 2"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 180,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "linear",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#101010",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#000000",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            },
+            "gen.angle": 90
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "sports/scoreboard-led",
+          "apply_font": true
+        }
+      ]
+    }
+  ]
+}

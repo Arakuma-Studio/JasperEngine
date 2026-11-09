@@ -1,0 +1,185 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "scifi/reactor-core-3d",
+  "revision": 1,
+  "name": {
+    "en": "Reactor Core 3D",
+    "ja": "リアクターコア 3D"
+  },
+  "description": {
+    "en": "Inflated letters glowing orange from within, ringed by a chrome band and a black gloss band, a rising orange aura behind, in the dark.",
+    "ja": "内側からオレンジに光る膨らんだ文字、クロームの帯と黒い光沢の帯で囲み、背後に立ちのぼるオレンジのオーラ、暗闇の光。"
+  },
+  "family": "scifi",
+  "tags": [
+    "reactor",
+    "orange",
+    "glow",
+    "chrome",
+    "energy",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "power core",
+      "nuclear",
+      "molten core",
+      "engine"
+    ],
+    "ja": [
+      "リアクター",
+      "炉心",
+      "エネルギー",
+      "オレンジ",
+      "riakutā",
+      "roshin"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "russo-one",
+    "ja": "train-one"
+  },
+  "style_3d": {
+    "mode": "inflate",
+    "depth": 4,
+    "inflate": {
+      "height": 20
+    },
+    "face": {
+      "preset": "emissive",
+      "color": "#000000",
+      "roughness": 0.5,
+      "emission": "#ff8a20",
+      "emission_intensity": 1.5
+    },
+    "bands": [
+      {
+        "grow": 1.5,
+        "depth": 2.4,
+        "offset": -4,
+        "material": {
+          "preset": "chrome",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04
+        }
+      },
+      {
+        "depth": 2,
+        "offset": -2.4,
+        "material": {
+          "preset": "black_gloss",
+          "color": "#050505",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "clearcoat": 1
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "aura",
+      "preset": "rising_weak",
+      "place": "below",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.2,
+              "color": "#ffe0a0"
+            },
+            {
+              "pos": 0.45,
+              "color": "#ff8a20"
+            },
+            {
+              "pos": 0.75,
+              "color": "#c03a00"
+            },
+            {
+              "pos": 1,
+              "color": "#5a0a00"
+            }
+          ]
+        }
+      },
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "night_dark",
+      "intensity": 1,
+      "rotation": 25
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

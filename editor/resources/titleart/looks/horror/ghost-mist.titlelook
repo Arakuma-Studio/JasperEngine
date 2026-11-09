@@ -1,0 +1,84 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "horror/ghost-mist",
+  "revision": 1,
+  "name": {
+    "en": "Ghost Mist",
+    "ja": "幽霊の霧"
+  },
+  "description": {
+    "en": "Half-transparent white face with a pale blue inner glow, a cold glow behind and drifting steam over it.",
+    "ja": "淡い青の内側の光を持つ半透明の白い面、背後の冷たいグロー、上を漂う湯気のような霧。"
+  },
+  "family": "horror",
+  "tags": [
+    "ghost",
+    "mist",
+    "white",
+    "horror",
+    "translucent",
+    "smoke"
+  ],
+  "synonyms": {
+    "en": [
+      "spectre",
+      "haunted",
+      "phantom",
+      "fog"
+    ],
+    "ja": [
+      "幽霊",
+      "霧",
+      "おばけ",
+      "亡霊",
+      "yūrei",
+      "obake"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "creepster",
+    "ja": "yuji-syuku"
+  },
+  "style": {
+    "face": {
+      "opacity": 0.55,
+      "inner_glow": {
+        "enabled": true,
+        "color": "#e0f4ff"
+      }
+    }
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#c0e8ff",
+        "size": 30
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "smoke",
+      "preset": "steam",
+      "place": "above",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 0.6,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

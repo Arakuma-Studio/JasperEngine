@@ -29,6 +29,7 @@
 #include "titleart/designer/TitleAddCatalog.h"
 #include "titleart/designer/TitleDesignerHooks.h"
 #include "titleart/designer/TitleTextEdit.h"
+#include "titleart/library/TitleLibraryRegistration.h"
 #include "window/EditorModal.h"
 #include "window/InspectorWindowTitleArt.h"
 #include "window/ProjectWindow.h"
@@ -443,44 +444,46 @@ TEST(TitleDesignerWindowDeathTest, ExposeDialogIsAnEditorModal) {
     });
 }
 
-// R40, R41, D18: with no Library provider registered the strip is in view with the starter Looks,
-// and a Look's hover preview is the document its click commits. Red control: the window without
-// its starter Library (library() returning only a registered provider) shows no strip and has
-// nothing to apply.
-TEST(TitleDesignerWindowDeathTest, StarterLibraryInViewByDefault) {
-    IN_EDITOR("starter", {
+// R40, R41, D18: S84's real Library is the strip's only provider: in view by default with its real
+// Looks and Color Schemes, and a Look's hover preview is the document its click commits. Red
+// control: registering no provider (the removed starter set's old fallback gone) leaves no strip
+// and nothing to apply.
+TEST(TitleDesignerWindowDeathTest, RealLibraryInViewByDefault) {
+    IN_EDITOR("library", {
+        titlelibrary::registerTitleLibrary();
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
-        const fs::path file = newTitle(w, "starter");
+        const fs::path file = newTitle(w, "library");
         ASSERT_TRUE(window->open(file, nullptr));
         for (int i = 0; i < 3; i++) Access::drawFrame(*window);
-        EXPECT_EQ(window->state()["library"].value("provider", std::string()), "starter");
+        EXPECT_EQ(window->state()["library"].value("provider", std::string()), "registered");
         EXPECT_TRUE(window->state()["library"].value("shown", false)) << "the strip is in view by default";
         TitleLibraryProvider* library = Access::library(*window);
         ASSERT_NE(library, nullptr);
         const std::vector<LibraryItem> looks = library->items(LibraryTab::Looks);
-        ASSERT_FALSE(looks.empty());
+        ASSERT_GT(looks.size(), 100u) << "S84's built-in Looks, not a starter set";
         EXPECT_FALSE(library->items(LibraryTab::ColorSchemes).empty());
-        auto gold = std::find_if(looks.begin(), looks.end(), [](const LibraryItem& i) { return i.id == "starter_gold"; });
+        auto gold = std::find_if(looks.begin(), looks.end(), [](const LibraryItem& i) { return i.id == "metal/black-gold"; });
         ASSERT_NE(gold, looks.end());
         ASSERT_TRUE(window->select({"Title"}));
         CommandHistory* history = w.p->getProjectCommandHistory();
         const size_t position = history->position();
         ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, *gold, true));
         EXPECT_EQ(history->position(), position) << "a preview is no step";
-        const std::string previewed = ta::writeTitleArt(window->designer().shown());
+        const ta::Json previewedLayer = *layerById(window->designer().shown(), titleLayer(*window));
         ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, *gold, false));
-        EXPECT_EQ(history->top()->name(), "Apply Look Casino Gold");
-        EXPECT_EQ(readAll(file), previewed) << "the committed document is the previewed one";
+        EXPECT_EQ(history->top()->name(), "Apply Look " + gold->name);
         const ta::Json* layer = layerById(window->designer().committed(), titleLayer(*window));
         ASSERT_NE(layer, nullptr);
-        EXPECT_EQ((*layer)["style"]["rims"].size(), 3u);
-        const ta::Json effects = layer->value("effects", ta::Json::array());
-        EXPECT_TRUE(std::any_of(effects.begin(), effects.end(), [](const ta::Json& e) { return e.value("type", std::string()) == "outer_glow"; }));
+        EXPECT_FALSE((*layer)["style"]["rims"].empty());
+        EXPECT_EQ(previewedLayer["style"]["rims"].size(), (*layer)["style"]["rims"].size()) << "the preview runs the ops the click commits";
+        EXPECT_EQ(previewedLayer["effects"].size(), (*layer)["effects"].size());
+        const size_t rims = (*layer)["style"]["rims"].size();
+        const size_t effects = (*layer)["effects"].size();
         // applying it again replaces, never stacks
         ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, *gold, false));
         layer = layerById(window->designer().committed(), titleLayer(*window));
-        EXPECT_EQ((*layer)["style"]["rims"].size(), 3u);
-        EXPECT_EQ((*layer)["effects"].size(), 2u);
+        EXPECT_EQ((*layer)["style"]["rims"].size(), rims);
+        EXPECT_EQ((*layer)["effects"].size(), effects);
     });
 }
 

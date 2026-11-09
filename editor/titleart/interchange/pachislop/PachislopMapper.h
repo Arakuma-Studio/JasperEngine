@@ -36,6 +36,8 @@ namespace jasperengine::editor::pachislop {
         std::function<Json(const std::string& assetId, const std::string& layerPath, const std::string& field)> asset;
         // a text layer's fontId -> AssetRef (null: the built-in face)
         std::function<Json(const std::string& fontId, const std::string& layerPath)> font;
+        // a 2D reflection map name -> its environment's AssetRef (null: unavailable)
+        std::function<Json(const std::string& mapName, const std::string& layerPath, const std::string& field)> environment;
     };
 
     struct MapResult {

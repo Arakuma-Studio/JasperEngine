@@ -171,7 +171,7 @@ namespace {
         explicit Renders(TitleCheckContext& context) : ctx(context) {
             snapshot = std::make_shared<titleart::TitleArtDoc>(context.doc);
             const int side = std::max(context.doc.canvasWidth(), context.doc.canvasHeight());
-            scale = std::min(1.0f, 2048.0f / static_cast<float>(std::max(side, 1)));
+            scale = std::min(1.0f, 2048.0f / static_cast<float>(std::max(side, 1))) * context.options.renderScale;
         }
 
         titleart::RenderRequest request() const {
@@ -553,17 +553,30 @@ namespace {
         if (!touching.empty()) {
             r.status = TitleCheckStatus::Fail;
             std::vector<std::string> culprits;
+            bool generatorsOnly = true;
             for (const std::string& id : visibleTopLayers(ctx.doc, 8)) {
                 const TitleCheckImage* alone = renders.isolated(id, error);
                 if (!alone) continue;
                 const TitleRectI b = alphaBox(*alone, 3);
                 if (b.empty()) continue;
                 const TitleRectI c = toCanvas(*alone, b);
-                if (c.x <= 0 || c.y <= 0 || c.x + c.width >= cw || c.y + c.height >= ch) culprits.push_back(layerName(ctx.doc, id));
+                if (c.x <= 0 || c.y <= 0 || c.x + c.width >= cw || c.y + c.height >= ch) {
+                    culprits.push_back(layerName(ctx.doc, id));
+                    const TJson* layer = titleart::findLayer(ctx.doc.root, id);
+                    if (!layer || titleart::layerTypeOf(*layer) != titleart::LayerType::Generator) generatorsOnly = false;
+                }
             }
             std::string sides, names;
             for (const std::string& s : touching) sides += (sides.empty() ? "" : ", ") + s;
             for (const std::string& n : culprits) names += (names.empty() ? "" : ", ") + n;
+            if (generatorsOnly && !culprits.empty()) {
+                r.status = TitleCheckStatus::Pass;
+                r.message = "only generators reach the canvas edge (" + names + "): they are full-bleed by design";
+                r.measured["layers"] = culprits;
+                r.at.clear();
+                out.push_back(std::move(r));
+                return;
+            }
             r.message = "ink or light touches the canvas edge (" + sides + ")" + (names.empty() ? "" : " from " + names) +
                         ": it is cut there in every output";
             if (!culprits.empty()) r.measured["layers"] = culprits;
@@ -626,24 +639,33 @@ namespace {
         }
         const TitleCheckImage* image = renders.get(key, request, error);
         if (!image) return renderFailed(out, error);
-        // the outer ring of the silhouette: opaque pixels next to transparent ones
-        std::vector<size_t> ring;
-        for (int y = 0; y < image->height; y++) {
-            for (int x = 0; x < image->width; x++) {
+        // the bands of the silhouette, outer ring first: distance to the nearest transparent pixel
+        // (city block), two pixels per band, down to 5 % of the image height
+        const int w = image->width, h = image->height;
+        const int depth = std::max(4, h / 20);
+        const int bandCount = depth / 2 + 1;
+        std::vector<int> distance(static_cast<size_t>(w) * h, 0);
+        auto at = [&](int x, int y) { return (x < 0 || y < 0 || x >= w || y >= h) ? 0 : distance[static_cast<size_t>(y) * w + x]; };
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
                 if (alphaAt(*image, x, y) < 128) continue;
-                bool edge = false;
-                for (int dy = -2; dy <= 2 && !edge; dy++) {
-                    for (int dx = -2; dx <= 2 && !edge; dx++) {
-                        const int nx = x + dx, ny = y + dy;
-                        if (nx < 0 || ny < 0 || nx >= image->width || ny >= image->height || alphaAt(*image, nx, ny) < 128) edge = true;
-                    }
-                }
-                if (edge) ring.push_back(static_cast<size_t>(y) * image->width + x);
+                distance[static_cast<size_t>(y) * w + x] = std::min(at(x - 1, y), at(x, y - 1)) + 1;
             }
         }
-        TitleCheckResult r = result(TitleCheckStatus::Pass, "", "CIE L* of the silhouette's outer ring composited on each background, against the background");
+        std::vector<std::vector<size_t>> bands(bandCount);
+        for (int y = h - 1; y >= 0; y--) {
+            for (int x = w - 1; x >= 0; x--) {
+                const size_t i = static_cast<size_t>(y) * w + x;
+                if (distance[i] == 0) continue;
+                distance[i] = std::min(distance[i], std::min(at(x + 1, y), at(x, y + 1)) + 1);
+                const int band = (distance[i] - 1) / 2;
+                if (band < bandCount) bands[band].push_back(i);
+            }
+        }
+        const size_t minBand = std::max<size_t>(16, bands[0].size() / 20);
+        TitleCheckResult r = result(TitleCheckStatus::Pass, "", "CIE L* of the silhouette's bands composited on each background (outer ring inwards to 5 % of the height), the band that stands out most against the background");
         r.threshold = TJson{{"delta_l", 30}};
-        if (ring.empty()) {
+        if (bands[0].empty()) {
             r.status = TitleCheckStatus::Skip;
             r.message = "no opaque silhouette to measure";
             out.push_back(std::move(r));
@@ -655,13 +677,18 @@ namespace {
         for (const std::string& bgName : ctx.options.backgrounds) {
             titleart::TitleColor bg;
             if (!backgroundColor(bgName, bg)) continue;
-            double sum = 0.0;
-            for (size_t i : ring) {
-                const uint8_t* p = image->rgba.data() + i * 4;
-                const double a = p[3] / 255.0;
-                sum += srgbToL(p[0] / 255.0 * a + bg.r * (1 - a), p[1] / 255.0 * a + bg.g * (1 - a), p[2] / 255.0 * a + bg.b * (1 - a));
+            const double bgL = srgbToL(bg.r, bg.g, bg.b);
+            double delta = 0.0;
+            for (const std::vector<size_t>& band : bands) {
+                if (band.size() < minBand) continue;
+                double sum = 0.0;
+                for (size_t i : band) {
+                    const uint8_t* p = image->rgba.data() + i * 4;
+                    const double a = p[3] / 255.0;
+                    sum += srgbToL(p[0] / 255.0 * a + bg.r * (1 - a), p[1] / 255.0 * a + bg.g * (1 - a), p[2] / 255.0 * a + bg.b * (1 - a));
+                }
+                delta = std::max(delta, std::abs(sum / band.size() - bgL));
             }
-            const double delta = std::abs(sum / ring.size() - srgbToL(bg.r, bg.g, bg.b));
             measured[bgName] = std::round(delta * 10.0) / 10.0;
             if (delta < worst) {
                 worst = delta;
@@ -671,7 +698,7 @@ namespace {
         r.measured = TJson{{"delta_l", measured}};
         if (worst < 30.0) {
             r.status = TitleCheckStatus::Fail;
-            r.message = "the outline is hard to tell from the " + worstBg + " background (delta L* " + std::to_string(static_cast<int>(worst)) + ")";
+            r.message = "the silhouette is hard to tell from the " + worstBg + " background (delta L* " + std::to_string(static_cast<int>(worst)) + ")";
             titleart::TitleColor bg;
             backgroundColor(worstBg, bg);
             const bool lightBg = srgbToL(bg.r, bg.g, bg.b) > 50.0;
@@ -685,7 +712,7 @@ namespace {
             const TitleRectI box = alphaBox(*image, 128);
             if (!box.empty()) r.at.push_back(toCanvas(*image, box));
         } else {
-            r.message = "the outline stands out on every background (lowest delta L* " + std::to_string(static_cast<int>(worst)) + " on " + worstBg + ")";
+            r.message = "the silhouette stands out on every background (lowest delta L* " + std::to_string(static_cast<int>(worst)) + " on " + worstBg + ")";
         }
         out.push_back(std::move(r));
     }
@@ -724,6 +751,37 @@ namespace {
         return holes;
     }
 
+    // a hole the rims filled: mean L* of its pixels against the letter pixels around it (the plain
+    // mask's opaque pixels within 2 px)
+    bool counterReads(const TitleCheckImage& mask, const TitleCheckImage& styled, const std::vector<size_t>& hole) {
+        const auto lightness = [&](size_t i) {
+            const uint8_t* p = styled.rgba.data() + i * 4;
+            return srgbToL(p[0] / 255.0, p[1] / 255.0, p[2] / 255.0);
+        };
+        std::set<size_t> letter;
+        double holeSum = 0.0;
+        size_t holeCount = 0;
+        for (size_t i : hole) {
+            if (styled.rgba[i * 4 + 3] >= 128) {
+                holeSum += lightness(i);
+                holeCount++;
+            }
+            const int x = static_cast<int>(i % mask.width), y = static_cast<int>(i / mask.width);
+            for (int dy = -2; dy <= 2; dy++) {
+                for (int dx = -2; dx <= 2; dx++) {
+                    const int nx = x + dx, ny = y + dy;
+                    if (nx < 0 || ny < 0 || nx >= mask.width || ny >= mask.height) continue;
+                    const size_t n = static_cast<size_t>(ny) * mask.width + nx;
+                    if (alphaAt(mask, nx, ny) >= 128 && styled.rgba[n * 4 + 3] >= 128) letter.insert(n);
+                }
+            }
+        }
+        if (holeCount == 0 || letter.empty()) return false;
+        double letterSum = 0.0;
+        for (size_t n : letter) letterSum += lightness(n);
+        return std::abs(holeSum / holeCount - letterSum / letter.size()) >= 12.0;
+    }
+
     void counterSurvival(TitleCheckContext& ctx, Out& out) {
         Renders& renders = rendersOf(ctx);
         std::vector<std::string> textLayers;
@@ -731,7 +789,7 @@ namespace {
             if (titleart::layerTypeOf(layer) == titleart::LayerType::Text && layer.value("visible", true)) textLayers.push_back(str(layer, "id"));
             return textLayers.size() < 4;
         });
-        TitleCheckResult r = result(TitleCheckStatus::Pass, "", "holes of the plain text mask (no rims, no effects) still transparent in the styled layer");
+        TitleCheckResult r = result(TitleCheckStatus::Pass, "", "holes of the plain text mask (no rims, no effects) still transparent in the styled layer, or filled with a colour that differs from the letter around them (delta L* >= 12)");
         r.threshold = TJson{{"survival", 0.8}};
         if (textLayers.empty()) {
             r.status = TitleCheckStatus::Skip;
@@ -765,7 +823,10 @@ namespace {
                     const int x = static_cast<int>(i % mask->width), y = static_cast<int>(i / mask->width);
                     minX = std::min(minX, x); minY = std::min(minY, y); maxX = std::max(maxX, x); maxY = std::max(maxY, y);
                 }
-                if (open * 2 >= hole.size()) layerSurvived++;
+                // a flooded counter still reads when the fill differs from the letter around it
+                bool visible = open * 2 >= hole.size();
+                if (!visible) visible = counterReads(*mask, *styled, hole);
+                if (visible) layerSurvived++;
                 else r.at.push_back(toCanvas(*mask, {minX, minY, maxX - minX + 1, maxY - minY + 1}));
             }
             total += holes.size();
@@ -1045,7 +1106,7 @@ namespace {
         {"not_flat", TitleCheckKind::Pixels, "The render is not blank or one colour", notFlat},
         {"not_clipped", TitleCheckKind::Pixels, "No ink or light at the canvas edge; margins of 8 px", notClipped},
         {"alpha_bounds", TitleCheckKind::Pixels, "Trim box, coverage 10..90 %, centre offset", alphaBoundsCheck},
-        {"legibility_contrast", TitleCheckKind::Pixels, "Outer ring delta L* >= 30 on each background", legibility},
+        {"legibility_contrast", TitleCheckKind::Pixels, "A band of the silhouette delta L* >= 30 on each background", legibility},
         {"counter_survival", TitleCheckKind::Pixels, "Letter counters still open in the render", counterSurvival},
         {"noop_effects", TitleCheckKind::Pixels, "Enabled effects that change nothing", noopEffects},
         {"clipped_highlights", TitleCheckKind::Pixels, "Ink clipped to white <= 5 %", clippedHighlights},

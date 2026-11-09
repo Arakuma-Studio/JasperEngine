@@ -1,0 +1,173 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "blood",
+  "revision": 1,
+  "name": {
+    "en": "Blood",
+    "ja": "血"
+  },
+  "description": {
+    "en": "Glossy crimson running to near black, with dark red rings.",
+    "ja": "光沢のある深紅から黒に近い赤へ、暗い赤の縁。"
+  },
+  "family_hint": [
+    "horror"
+  ],
+  "tags": [
+    "red",
+    "dark",
+    "horror",
+    "crimson",
+    "gloss"
+  ],
+  "synonyms": {
+    "en": [
+      "crimson",
+      "gore",
+      "blood red"
+    ],
+    "ja": [
+      "血",
+      "ち",
+      "血の色",
+      "chi",
+      "kurenai"
+    ]
+  },
+  "paints": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "color": "#ff6a6a",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ff6a6a"
+            },
+            {
+              "pos": 0.3333,
+              "color": "#c00010"
+            },
+            {
+              "pos": 0.6667,
+              "color": "#5a0008"
+            },
+            {
+              "pos": 1,
+              "color": "#1a0002"
+            }
+          ]
+        }
+      },
+      "material_3d": {
+        "color": "#ac000e",
+        "roughness": 0.15,
+        "clearcoat": 1
+      },
+      "shade": "#200000"
+    },
+    "dark": {
+      "fill": {
+        "color": "#0a0000"
+      },
+      "material_3d": {
+        "color": "#0a0000",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "color": "#3a0004"
+        },
+        "material_3d": {
+          "color": "#3a0004",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#200000"
+      },
+      {
+        "fill": {
+          "color": "#8a0010"
+        },
+        "material_3d": {
+          "color": "#8a0010",
+          "roughness": 0.15,
+          "clearcoat": 1
+        },
+        "shade": "#200000"
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#100000"
+      },
+      "material_3d": {
+        "color": "#100000",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#120001",
+      "roughness": 0.15,
+      "clearcoat": 1
+    }
+  },
+  "face_glow": "#ff6a6a",
+  "glow": "#ff1a1a",
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ff1a1a"
+      },
+      {
+        "pos": 1,
+        "color": "#8d000c"
+      }
+    ]
+  },
+  "shadow": "#200000",
+  "glint": "#ff6a6a",
+  "light_ramp": [
+    "#1a0002",
+    "#200000",
+    "#5a0008",
+    "#c00010",
+    "#ff1a1a",
+    "#ff6a6a"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#ec4a4f"
+        },
+        {
+          "pos": 0.55,
+          "color": "#7e000b"
+        },
+        {
+          "pos": 1,
+          "color": "#240003"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#ff6a6a",
+    "#c00010",
+    "#5a0008",
+    "#1a0002",
+    "#0a0000",
+    "#8a0010"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

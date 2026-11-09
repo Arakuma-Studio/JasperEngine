@@ -1490,6 +1490,9 @@ rest of S82 lands in 6B.
     slot). S84's `setLibraryProvider` replaces it. Below 960 px the Library's header arrow opens the
     strip in place under the canvas for the session, instead of as an overlay over the canvas
     bottom (R3).
+    **Resolved at the S84 merge:** `TitleStarterLibrary` is gone; S84's `makeTitleLibraryProvider`
+    is the only provider, registered at startup (`TitleLibraryRegistration`). With no provider
+    registered (tests only) the window shows no Library, per Deviation 2.
 17. **Addition: the no-CJK-font notice.** When the editor's system font search (S-unicode-text's
     `SystemFonts`) found no Chinese, Japanese or Korean font and the open title has CJK characters in
     a text or a layer name, the window shows one line under the toolbar naming

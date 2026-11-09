@@ -1,0 +1,107 @@
+{
+  "_about": "Per-item JSON merge patches (RFC 7386) the Pachislop port applies last (docs/specs/S84-title-library.md R20, §6.7.4): the tuning done after the port, so a re-run keeps it. Keyed by kind (looks, templates, color_schemes), then by the item's ref; every entry needs a `tuned` record in review.json.",
+  "looks": {
+    "casino/rainbow-glass-gold": {
+      "lint_allow": [
+        {
+          "rule": "contrast",
+          "reason": "two gold-toned rims read as one frame on purpose"
+        },
+        {
+          "rule": "rims_thin",
+          "reason": "just under the 5 % rule as authored; the look is the source's and its rim stack reads as intended"
+        }
+      ]
+    },
+    "casino/rainbow-glass-gold-3d": {
+      "lint_allow": [
+        {
+          "rule": "contrast",
+          "reason": "two gold bands read as one frame on purpose"
+        }
+      ]
+    },
+    "elements/ice-crystal-glass-3d": {
+      "lint_allow": [
+        {
+          "rule": "contrast",
+          "reason": "clear ice on a pale band: the facets, not lightness, separate them"
+        }
+      ]
+    },
+    "metal/double-stroke-gold": {
+      "lint_allow": [
+        {
+          "rule": "contrast",
+          "reason": "the gold face runs into its first stroke by design: the second stroke is the separation"
+        }
+      ]
+    },
+    "metal/holographic-silver-3d": {
+      "lint_allow": [
+        {
+          "rule": "contrast",
+          "reason": "iridescent silver on a silver band: hue, not lightness, separates them"
+        }
+      ]
+    },
+    "gems/blue-glass": {
+      "lint_allow": [
+        {
+          "rule": "rims_thin",
+          "reason": "just under the 5 % rule as authored; the look is the source's and its rim stack reads as intended"
+        }
+      ]
+    },
+    "gems/red-glass": {
+      "lint_allow": [
+        {
+          "rule": "rims_thin",
+          "reason": "just under the 5 % rule as authored; the look is the source's and its rim stack reads as intended"
+        }
+      ]
+    },
+    "metal/gradient-map-gold": {
+      "lint_allow": [
+        {
+          "rule": "rims_thin",
+          "reason": "just under the 5 % rule as authored; the look is the source's and its rim stack reads as intended"
+        }
+      ]
+    },
+    "metal/liquid-chrome": {
+      "lint_allow": [
+        {
+          "rule": "rims_thin",
+          "reason": "a hairline keyline only: the chrome's own bevel edge carries the shape"
+        }
+      ]
+    },
+    "neon/hollow-neon": {
+      "lint_allow": [
+        {
+          "rule": "rims_thin",
+          "reason": "a thin tube is the look"
+        }
+      ]
+    },
+    "neon/neon-tube": {
+      "lint_allow": [
+        {
+          "rule": "rims_thin",
+          "reason": "a thin tube is the look"
+        }
+      ]
+    },
+    "wa/dry-brush-ink": {
+      "lint_allow": [
+        {
+          "rule": "rims_thin",
+          "reason": "a brush mark has no heavy outline"
+        }
+      ]
+    }
+  },
+  "templates": {},
+  "color_schemes": {}
+}

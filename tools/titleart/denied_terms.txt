@@ -1,0 +1,79 @@
+# (c) Eduardo Doria and contributors
+# SPDX-License-Identifier: MIT
+#
+# Denied terms of the Title Library (docs/specs/S84-title-library.md R38, §6.7.3): franchise,
+# brand, product, company and creator names that no built-in item may carry in an id, name,
+# synonym, tag, description, template sample, placeholder value or text layer. Checked by
+# `title-library port-pachislop`, `title-library verify` and the library gate.
+#
+# One term per line; `#` starts a comment. Latin terms match whole words, case-insensitive, with
+# any run of spaces or punctuation standing for a space ("hiro gold" matches "Hiro-Gold"); terms
+# with Japanese script match as substrings. The list grows by review and never shrinks. Generic
+# genre words (確定, 激アツ, 大当り, BIG BONUS, RUSH, FEVER, CHANCE, 保留, まくら, JACKPOT) are
+# not trademarks and stay allowed.
+
+# found in Pachislop's presets at 1c32502 (§6.7.3's rename table)
+hokuto
+北斗
+青ブタ
+aobuta
+まぺろに
+maperoni
+ヒロデザ
+hiro gold
+photoshopvip
+eye candy
+alien skin
+element 3d
+video copilot
+カバネリ
+kabaneri
+sammy
+サミー
+覇王伝説
+ツラヌキ
+
+# pachinko and pachislot makers
+sankyo
+daito
+kyoraku
+heiwa
+newgin
+sanyo
+
+# game and toy companies
+konami
+sega
+nintendo
+capcom
+bandai
+namco
+
+# game and anime franchises and their catchphrases
+pokemon
+pokémon
+ポケモン
+gundam
+ガンダム
+evangelion
+エヴァ
+dragon ball
+naruto
+one piece
+mario
+zelda
+street fighter
+final fantasy
+dark souls
+you died
+monster hunter
+macross
+lupin
+ルパン
+jojo
+ジョジョ
+juggler
+ジャグラー
+海物語
+番長
+まどか

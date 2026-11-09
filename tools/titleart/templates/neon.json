@@ -1,0 +1,224 @@
+{
+  "templates": [
+    {
+      "id": "neon/bar-sign-title",
+      "name": {
+        "en": "Neon Bar Sign",
+        "ja": "ネオンのバー看板"
+      },
+      "description": {
+        "en": "A 1920 × 1080 neon sign: a pink tube title and a lime outline subtitle over a dark brick wall; the brick wall is a guide layer.",
+        "ja": "1920 × 1080 のネオン看板：ピンクのネオン管のタイトルとライムの輪郭のサブタイトル、暗いレンガの壁。レンガの壁はガイドレイヤー。"
+      },
+      "family": "neon",
+      "tags": [
+        "title",
+        "subtitle",
+        "neon",
+        "sign",
+        "pink",
+        "brick",
+        "night"
+      ],
+      "synonyms": {
+        "en": [
+          "bar sign",
+          "night club",
+          "open sign",
+          "neon wall"
+        ],
+        "ja": [
+          "バーの看板",
+          "ナイトクラブ",
+          "営業中",
+          "ネオン"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the brick wall backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "OPEN LATE",
+          "ja": "深夜営業"
+        },
+        "subtitle": {
+          "en": "BAR",
+          "ja": "バー"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 240,
+            "transform.position": [
+              0,
+              90
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "pattern_fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "brick",
+            "gen.color": "#4a1e16",
+            "gen.color2": "#3a1610",
+            "gen.background": "#140a08",
+            "gen.scale": 120
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "text",
+          "name": "Subtitle",
+          "values": {
+            "text": "BAR",
+            "size": 150,
+            "transform.position": [
+              0,
+              -170
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "neon/sign-pink",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Subtitle",
+          "look": "neon/outline-lime",
+          "apply_font": true
+        },
+        {
+          "op": "expose",
+          "name": "subtitle",
+          "type": "text",
+          "label": "Subtitle",
+          "targets": [
+            {
+              "layer": "Subtitle",
+              "field": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "neon/game-over-neon",
+      "name": {
+        "en": "Game Over (neon, glitch)",
+        "ja": "ゲームオーバー (ネオン + グリッチ)"
+      },
+      "description": {
+        "en": "A 1280 × 720 banner: double cyan neon tubes in a group with a digital glitch; the backdrop is a guide layer.",
+        "ja": "1280 × 720 のバナー：二重のシアンのネオン管、グループにデジタルグリッチ。背景はガイドレイヤー。"
+      },
+      "family": "neon",
+      "tags": [
+        "banner",
+        "neon",
+        "cyan",
+        "glitch",
+        "game-over",
+        "arcade"
+      ],
+      "synonyms": {
+        "en": [
+          "game over screen",
+          "lose screen",
+          "continue screen"
+        ],
+        "ja": [
+          "ゲームオーバー画面",
+          "敗北画面",
+          "コンティニュー"
+        ]
+      },
+      "canvas": [
+        1280,
+        720
+      ],
+      "canvas_note": "1280 × 720, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "GAME OVER",
+          "ja": "ゲームオーバー"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 140,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#101a3a",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#02040c",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "neon/double-tube-cyan",
+          "apply_font": true
+        },
+        {
+          "op": "group",
+          "layers": [
+            "Title"
+          ],
+          "name": "Glitch Group"
+        },
+        {
+          "op": "add_effect",
+          "layer": "Glitch Group",
+          "type": "glitch",
+          "preset": "digital"
+        }
+      ]
+    }
+  ]
+}

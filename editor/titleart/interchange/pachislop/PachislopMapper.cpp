@@ -53,6 +53,9 @@ namespace {
             members.asset = [this](const std::string& assetId, const std::string& field) {
                 return assets.asset ? assets.asset(assetId, currentPath, field) : Json();
             };
+            members.environment = [this](const std::string& mapName, const std::string& field) {
+                return assets.environment ? assets.environment(mapName, currentPath, field) : Json();
+            };
         }
 
         void note(const std::string& field, const std::string& what, const std::string& action = "dropped", const std::string& code = {}) {

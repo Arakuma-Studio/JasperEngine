@@ -1,0 +1,366 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "wa/porcelain-cobalt-3d",
+  "revision": 1,
+  "name": {
+    "en": "Porcelain + Cobalt 3D",
+    "ja": "染付 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with a silver face and a round bevel, five bands (blue metal, blue, gloss white, blue, gloss black), an outline and an outer glow.",
+    "ja": "銀の面の3D押し出し文字（ベベル付き）、5本の帯（青のメタル、青、白の光沢、青、黒の光沢）、アウトライン、外側の光彩。"
+  },
+  "family": "wa",
+  "tags": [
+    "wa",
+    "3d",
+    "silver",
+    "bevel",
+    "blue",
+    "metal",
+    "white",
+    "black",
+    "bands",
+    "outline",
+    "sparkle",
+    "glow"
+  ],
+  "synonyms": {
+    "en": [
+      "japanese",
+      "traditional",
+      "three-dimensional",
+      "extruded",
+      "silvery",
+      "platinum",
+      "emboss",
+      "chiselled",
+      "azure",
+      "cobalt",
+      "metallic",
+      "metal finish",
+      "snow",
+      "pearl white",
+      "dark",
+      "jet black",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "glint",
+      "twinkle",
+      "shine",
+      "light",
+      "bloom"
+    ],
+    "ja": [
+      "和風",
+      "和",
+      "わふう",
+      "wafu",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "銀",
+      "シルバー",
+      "ぎん",
+      "gin",
+      "shiruba",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "青",
+      "ブルー",
+      "あお",
+      "ao",
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "白",
+      "ホワイト",
+      "しろ",
+      "shiro",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "きらめき",
+      "キラキラ",
+      "kirameki",
+      "kirakira",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style_3d": {
+    "depth": 10.5,
+    "curve_segments": 10,
+    "bevel": {
+      "width": 1.2,
+      "depth": 1.2
+    },
+    "face": {
+      "color": "#f4f6fa",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#ffffff"
+          },
+          {
+            "pos": 0.55,
+            "color": "#eef2f8"
+          },
+          {
+            "pos": 0.85,
+            "color": "#c4cee0"
+          },
+          {
+            "pos": 1,
+            "color": "#98a6c0"
+          }
+        ]
+      },
+      "gradient_bend": 0.6,
+      "roughness": 0.2,
+      "env_multiplier": 0.5,
+      "clearcoat": 1
+    },
+    "bands": [
+      {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.5,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.5,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#06104a",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#0a1e90",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#2048d0"
+              },
+              {
+                "pos": 1,
+                "color": "#020830"
+              }
+            ]
+          },
+          "gradient_axis": "depth",
+          "roughness": 0.1,
+          "env_multiplier": 0.6,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 2.2,
+        "bevel": {
+          "width": 0.8,
+          "depth": 0.8
+        },
+        "material": {
+          "color": "#0a1e90",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#3058f0"
+              },
+              {
+                "pos": 0.4,
+                "color": "#0a1e90"
+              },
+              {
+                "pos": 0.55,
+                "color": "#010630"
+              },
+              {
+                "pos": 1,
+                "color": "#1a40c8"
+              }
+            ]
+          },
+          "roughness": 0.1,
+          "env_multiplier": 0.6,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 0.6,
+        "depth": 5,
+        "bevel": {
+          "width": 0.5,
+          "depth": 0.5
+        },
+        "material": {
+          "preset": "white_gloss",
+          "color": "#f0f4ff",
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 2.4,
+        "bevel": {
+          "width": 1,
+          "depth": 1,
+          "profile": "chamfer"
+        },
+        "material": {
+          "color": "#0a1e90",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#3058f0"
+              },
+              {
+                "pos": 0.4,
+                "color": "#0a1e90"
+              },
+              {
+                "pos": 0.55,
+                "color": "#010630"
+              },
+              {
+                "pos": 1,
+                "color": "#1a40c8"
+              }
+            ]
+          },
+          "roughness": 0.1,
+          "env_multiplier": 0.6,
+          "clearcoat": 1,
+          "pattern": {
+            "kind": "seigaiha",
+            "color": "#e8f0ff",
+            "opacity": 0.7,
+            "scale": 5,
+            "shade": 0.7
+          }
+        }
+      },
+      {
+        "grow": 1.2,
+        "depth": 4,
+        "bevel": {
+          "width": 0.5,
+          "depth": 0.5
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#020618",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      }
+    ],
+    "glint": {
+      "enabled": true,
+      "threshold": 2.2,
+      "intensity": 0.35,
+      "radius": 5,
+      "length": 20,
+      "angle": 15,
+      "tint": "#f0f6ff"
+    }
+  },
+  "effects": [
+    {
+      "type": "outline",
+      "params": {
+        "color": "#020618",
+        "width": 2.5
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#2a5aff",
+        "intensity": 1.4,
+        "opacity": 0.85,
+        "size": 12,
+        "spread": 0.3
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "softbox",
+      "intensity": 1,
+      "rotation": 30,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory3dSetB.ts",
+    "line": 94,
+    "item": "f-3d-sometsuke",
+    "license_note": "used with the author's permission"
+  }
+}

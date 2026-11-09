@@ -107,3 +107,44 @@ file(WRITE "${GENERATED_DIR}/title_search_terms.h.in"
     "static const unsigned int title_search_terms_json_size = sizeof(title_search_terms_json) - 1;\n")
 configure_file("${GENERATED_DIR}/title_search_terms.h.in" "${GENERATED_DIR}/title_search_terms.h" COPYONLY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${jasperengineTitleSearchTermsFile}")
+
+# S84's built-in library (editor/resources/titleart: looks/, color-schemes/, templates/,
+# manifest.json) as one zstd-compressed tar embedded as titleart_library.h (included only by
+# editor/titleart/library/TitleLibrary.cpp), with pachislop-map.json (the Pachislop project importer
+# reads it). The fonts, thumbnails and HDRIs are staged beside the editor instead (root CMakeLists.txt).
+set(jasperengineTitleLibraryDir ${jasperengineTitleArtEditorDir}/resources/titleart)
+file(GLOB_RECURSE jasperengineTitleLibraryFiles CONFIGURE_DEPENDS RELATIVE ${jasperengineTitleLibraryDir}
+    ${jasperengineTitleLibraryDir}/looks/*.titlelook
+    ${jasperengineTitleLibraryDir}/color-schemes/*.titlecolors
+    ${jasperengineTitleLibraryDir}/templates/*.titletemplate)
+list(SORT jasperengineTitleLibraryFiles)
+list(PREPEND jasperengineTitleLibraryFiles manifest.json pachislop-map.json)
+foreach(libraryFile IN LISTS jasperengineTitleLibraryFiles)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${jasperengineTitleLibraryDir}/${libraryFile}")
+endforeach()
+execute_process(
+    COMMAND ${CMAKE_COMMAND} -E tar cf ${GENERATED_DIR}/titleart_library.tar.zst --zstd --format=gnutar --mtime=2026-01-01 -- ${jasperengineTitleLibraryFiles}
+    WORKING_DIRECTORY ${jasperengineTitleLibraryDir}
+    RESULT_VARIABLE jasperengineTitleLibraryTar)
+if(NOT jasperengineTitleLibraryTar EQUAL 0)
+    message(FATAL_ERROR "Title Art library: packing editor/resources/titleart failed (${jasperengineTitleLibraryTar})")
+endif()
+file(READ ${GENERATED_DIR}/titleart_library.tar.zst jasperengineTitleLibraryHex HEX)
+string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," jasperengineTitleLibraryBytes "${jasperengineTitleLibraryHex}")
+file(WRITE "${GENERATED_DIR}/titleart_library.h.in"
+    "// Generated from editor/resources/titleart by editor/titleart/TitleArtEditorSources.cmake. Do not edit.\n#pragma once\n\n"
+    "static const unsigned char titleart_library_archive[] = {${jasperengineTitleLibraryBytes}0x00};\n"
+    "static const unsigned int titleart_library_archive_size = sizeof(titleart_library_archive) - 1;\n")
+configure_file("${GENERATED_DIR}/titleart_library.h.in" "${GENERATED_DIR}/titleart_library.h" COPYONLY)
+
+# S84's denied terms (tools/titleart/denied_terms.txt, R38) embedded in the editor:
+# title_denied_terms.h, included only by editor/titleart/library/DeniedTerms.cpp
+set(jasperengineTitleDeniedTermsFile ${CMAKE_CURRENT_LIST_DIR}/../../tools/titleart/denied_terms.txt)
+file(READ "${jasperengineTitleDeniedTermsFile}" jasperengineTitleDeniedTermsHex HEX)
+string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," jasperengineTitleDeniedTermsBytes "${jasperengineTitleDeniedTermsHex}")
+file(WRITE "${GENERATED_DIR}/title_denied_terms.h.in"
+    "// Generated from tools/titleart/denied_terms.txt by editor/titleart/TitleArtEditorSources.cmake. Do not edit.\n#pragma once\n\n"
+    "static const unsigned char title_denied_terms_txt[] = {${jasperengineTitleDeniedTermsBytes}0x00};\n"
+    "static const unsigned int title_denied_terms_txt_size = sizeof(title_denied_terms_txt) - 1;\n")
+configure_file("${GENERATED_DIR}/title_denied_terms.h.in" "${GENERATED_DIR}/title_denied_terms.h" COPYONLY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${jasperengineTitleDeniedTermsFile}")

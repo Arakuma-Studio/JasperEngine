@@ -1,0 +1,83 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "retro/vhs-tape",
+  "revision": 1,
+  "name": {
+    "en": "VHS Tape",
+    "ja": "VHS テープ"
+  },
+  "description": {
+    "en": "Flat white face smeared by a horizontal colour split, a light glitch, tape grain and a short horizontal motion blur.",
+    "ja": "水平の色ずれ、軽いグリッチ、テープの粒子、短い水平のモーションブラーでにじんだ平らな白い面。"
+  },
+  "family": "retro",
+  "tags": [
+    "vhs",
+    "tape",
+    "glitch",
+    "retro",
+    "analog",
+    "90s"
+  ],
+  "synonyms": {
+    "en": [
+      "video tape",
+      "rewind",
+      "home video",
+      "tracking error"
+    ],
+    "ja": [
+      "ビデオテープ",
+      "VHS",
+      "ノイズ",
+      "90年代",
+      "bideo tēpu",
+      "kyūjū nendai"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "silkscreen",
+    "ja": "dela-gothic-one",
+    "latin_file": "Silkscreen-Bold.ttf"
+  },
+  "style": {},
+  "effects": [
+    {
+      "type": "chromatic_aberration",
+      "params": {
+        "type": "directional"
+      }
+    },
+    {
+      "type": "glitch",
+      "params": {
+        "amount": 0.2
+      }
+    },
+    {
+      "type": "grain",
+      "params": {
+        "amount": 0.3
+      }
+    },
+    {
+      "type": "motion_blur",
+      "params": {
+        "distance": 6
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

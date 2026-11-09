@@ -988,6 +988,7 @@ void checkTitleTool(const CallPtr& call) {
             }
         }
         if (project) context.options.projectLanguages = project->getLocalizationSettings().languages;
+        context.options.renderScale = std::clamp(a.value("render_scale", 1.0f), 0.05f, 1.0f);
         const std::string baseline = a.value("baseline", std::string());
         if (baseline.rfind("rev:", 0) == 0) {
             context.options.baseline = revisionRenderPath(project, doc->guid(), std::strtoull(baseline.c_str() + 4, nullptr, 10)).string();
