@@ -7,12 +7,14 @@
 #include "LinuxInputRouter.h"
 #include "SystemLinux.h"
 #include "WindowLinux.h"
+#include "X11Pen.h"
 #include "X11Visibility.h"
 #if !defined(SOKOL_VULKAN)
 #include "GlxWorkerContext.h"
 #endif
 
 #include "Engine.h"
+#include "Input.h"
 #include "PlatformConfig.h"
 #include "player/RunControl.h"
 #include "util/FrameLimiter.h"
@@ -279,6 +281,11 @@ void processEvents() {
         XEvent event{};
         XNextEvent(display, &event);
 
+        if (X11Pen::handleEvent(event)) {
+            Input::setPenPressure(X11Pen::pressure());
+            continue;
+        }
+
         // the input method sees key events first (composition)
         if (inputRouter.filterEvent(event))
             continue;
@@ -381,6 +388,7 @@ int JasperEngineLinux::init(int argc, char **argv) {
         // the window asked to be shown counts as shown until the server says otherwise
         visibility.attach(WindowLinux::display(), WindowLinux::handle(), true);
         inputRouter.openInputMethod(WindowLinux::display(), WindowLinux::handle());
+        X11Pen::start(WindowLinux::display(), WindowLinux::handle());
     }
 
     if (!createContext()) {
@@ -453,6 +461,7 @@ int JasperEngineLinux::init(int argc, char **argv) {
     destroyContext();
     if (!platform.headless)
         inputRouter.closeInputMethod();
+    X11Pen::stop();
     WindowLinux::destroy();
     return player::RunControl::finish();
 }

@@ -30,6 +30,7 @@ namespace {
         {TextureStrategy::NONE, "none"}};
     const EnumNames<AtmosphereQuality> kAtmosphere[] = {{AtmosphereQuality::OFF, "off"}, {AtmosphereQuality::LOW, "low"},
         {AtmosphereQuality::MEDIUM, "medium"}, {AtmosphereQuality::HIGH, "high"}};
+    const EnumNames<FoliageQuality> kFoliage[] = {{FoliageQuality::LOW, "low"}, {FoliageQuality::MEDIUM, "medium"}, {FoliageQuality::HIGH, "high"}};
     const EnumNames<PbrTier> kPbrTier[] = {{PbrTier::FULL, "full"}, {PbrTier::REDUCED, "reduced"}};
     const EnumNames<ShadowTier> kShadowTier[] = {{ShadowTier::LOW, "low"}, {ShadowTier::MEDIUM, "medium"}, {ShadowTier::HIGH, "high"},
         {ShadowTier::ULTRA, "ultra"}};
@@ -90,6 +91,9 @@ json PlayerConfig::toJson() const {
         out["particleWorldBudget"] = particleWorldBudget;
     out["atmosphereQuality"] = {nameOf(kAtmosphere, atmosphereQuality[0]), nameOf(kAtmosphere, atmosphereQuality[1]),
                                 nameOf(kAtmosphere, atmosphereQuality[2])};
+    if (!foliageQualityUncapped) {
+        out["foliageQuality"] = {nameOf(kFoliage, foliageQuality[0]), nameOf(kFoliage, foliageQuality[1]), nameOf(kFoliage, foliageQuality[2])};
+    }
     out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
     out["input"] = {{"deadzone", inputDeadzone}, {"actions", inputActions}};
     json areas = json::array();
@@ -101,6 +105,9 @@ json PlayerConfig::toJson() const {
                           {"stepHeight", agent.stepHeight}, {"maxSlope", agent.maxSlope}});
     out["navigation"] = {{"areas", areas}, {"agentTypes", agents}, {"crowdMaxAgents", navigation.crowdMaxAgents},
                          {"webBakeBudgetMs", navigation.webBakeBudgetMs}, {"maxGridSolvesPerTick", navigation.maxGridSolvesPerTick}};
+    // (only when set: a game without them keeps its file)
+    if (voxelMaxDimension > 0 || voxelCpuBudgetMB > 0 || voxelMeshBudgetMB > 0)
+        out["voxel"] = {{"maxDimension", voxelMaxDimension}, {"cpuBudgetMB", voxelCpuBudgetMB}, {"meshBudgetMB", voxelMeshBudgetMB}};
     json textures = json::array();
     for (const Engine::TexturePlatformDefaults& group : textureDefaults)
         textures.push_back({{"quality", group.quality}, {"memoryBudgetMB", group.memoryBudgetMB}, {"lowMemoryFallback", group.lowMemoryFallback}});
@@ -121,6 +128,8 @@ json PlayerConfig::toJson() const {
     for (ShadowTier tier : shadowTiers) tiers.push_back(nameOf(kShadowTier, tier));
     out["shadowTiers"] = tiers;
     out["device"] = json::parse(device.toJson());
+    out["terrainQualityTiers"] = terrainQualityTiers;
+    out["terrainShippedTiers"] = terrainShippedTiers;
     out["tags"] = tags;
     out["layers"] = layerNames;
     if (!sortingLayers.empty()) {
@@ -214,6 +223,10 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.threading.ioThreads = threading->value("ioThreads", config.threading.ioThreads);
             config.threading.webPumpBudgetMs = threading->value("webPumpBudgetMs", config.threading.webPumpBudgetMs);
         }
+        if (const auto foliage = in.find("foliageQuality"); foliage != in.end() && foliage->is_array()) {
+            config.foliageQualityUncapped = false;
+            for (size_t i = 0; i < 3 && i < foliage->size(); i++) valueOf(kFoliage, (*foliage)[i].get<std::string>(), config.foliageQuality[i]);
+        }
         if (const auto atmosphere = in.find("atmosphereQuality"); atmosphere != in.end() && atmosphere->is_array()) {
             for (size_t i = 0; i < 3 && i < atmosphere->size(); i++) valueOf(kAtmosphere, (*atmosphere)[i].get<std::string>(), config.atmosphereQuality[i]);
         }
@@ -225,6 +238,11 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         if (const auto input = in.find("input"); input != in.end()) {
             config.inputDeadzone = input->value("deadzone", config.inputDeadzone);
             config.inputActions = input->value("actions", "");
+        }
+        if (const auto voxel = in.find("voxel"); voxel != in.end()) {
+            config.voxelMaxDimension = voxel->value("maxDimension", 0);
+            config.voxelCpuBudgetMB = voxel->value("cpuBudgetMB", 0);
+            config.voxelMeshBudgetMB = voxel->value("meshBudgetMB", 0);
         }
         if (const auto navigation = in.find("navigation"); navigation != in.end()) {
             nav::NavigationSettings settings = nav::NavigationSettings::defaults();
@@ -294,6 +312,11 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
                 return false;
             }
         }
+        if (const auto terrainTiers = in.find("terrainQualityTiers"); terrainTiers != in.end() && terrainTiers->is_array()) {
+            for (size_t i = 0; i < config.terrainQualityTiers.size() && i < terrainTiers->size(); i++)
+                config.terrainQualityTiers[i] = (*terrainTiers)[i].get<int>();
+        }
+        config.terrainShippedTiers = in.value("terrainShippedTiers", config.terrainShippedTiers);
         config.tags = in.value("tags", std::vector<std::string>{});
         config.layerNames = in.value("layers", std::vector<std::string>{});
         if (const auto layers = in.find("sortingLayers"); layers != in.end() && layers->is_array()) {

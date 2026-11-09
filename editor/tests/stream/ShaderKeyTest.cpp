@@ -66,9 +66,10 @@ namespace {
     // bits 34-35, the Vertex Animation ('Vat', 'Vab'), bits 36-39, S57's lighting ('Til',
     // 'Cap', 'Cts', 'Oit'), bit 40, S54's LOD cross-fade ('Lfd'), bit 41, S55's automatic GPU
     // instancing ('Aui'), bits 42-43, water-boats' excluders and wakes ('Wex', 'Wwk'), bit 44,
-    // draw-perf's directional-only Lit ('Dlo'), bit 45, S41's Pixel Snap ('Pxs'), and bits 46-48,
-    // S52's pixel-art batching inputs ('Sfx', 'Sfr', 'Spv')
-    const uint64_t meshValidMask = 0x1FFFFFFFFFFFFULL;
+    // draw-perf's directional-only Lit ('Dlo'), bit 45, S41's Pixel Snap ('Pxs'), bits 46-48,
+    // S52's pixel-art batching inputs ('Sfx', 'Sfr', 'Spv'), bits 49-51, T5's foliage ('Cin', 'Wnd',
+    // 'Dth'), bit 52, T3's terrain holes ('Thl'), and bit 53, T4's Terrain World ('Twd')
+    const uint64_t meshValidMask = 0x3FFFFFFFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
 
@@ -198,11 +199,11 @@ TEST(ShaderKey, SpecsTakeSixtyFourBitMasks) {
 // ---- (b) normalization
 
 TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
-    // MESH: every bit past 48 (S52's Snap Pivot) goes; bit 5 (Stochastic Tiling) stays: a stale
+    // MESH: every bit past 53 (T4's 'Twd') goes; bit 5 (Stochastic Tiling) stays: a stale
     // 'Pcf' of an old file is cleared where files are read (Stream), not here
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, ~0ULL)),
               ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));
-    EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | shaderPropertyBit(49) | 0x41)),
+    EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | shaderPropertyBit(54) | 0x41)),
               ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | 0x41));
     // the high shadow filters ('Shq', S10) only with shadows ('Shw', bit 4)
     const uint64_t shq = ShaderPool::getShadowsHQProperty();
@@ -411,7 +412,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, (1u << 3) | (1u << 30), "mesh_PucL16"},
         {ShaderType::MESH, meshMaskWithoutBit5, "mesh_UltUv1Uv2PucShwNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
         // bits past the count add nothing
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(62) | shaderPropertyBit(63), "mesh_UltNor"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(54) | shaderPropertyBit(63), "mesh_UltNor"},
         // bits 36-39, S57's lighting: Tiled lights, capsule and contact shadows, Order Independent
         {ShaderType::MESH, 0x41 | shaderPropertyBit(36), "mesh_UltNorTil"},
         {ShaderType::MESH, 0x51 | shaderPropertyBit(37), "mesh_UltShwNorCap"},
@@ -442,7 +443,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::DEPTH, shaderPropertyBit(19) | shaderPropertyBit(20), "depth_PxsSpv"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiWexWwkDloPxsSfxSfrSpv"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiWexWwkDloPxsSfxSfrSpvCinWndDthThlTwd"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
         {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},
@@ -478,4 +479,75 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
     EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::UI_EFFECT, 1, effect), "uieffect_fx_stripes_Flt");
     EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::UI_EFFECT, 0, effect), "uieffect_fx_stripes");
     EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::UI_EFFECT, 3, effect), "uieffect_fx_stripes_FltStp");
+}
+
+// T5 AC44: appended bits; a shader file on disk names these, so nothing may renumber them
+TEST(ShaderKey, CompactInstanceBitIsPinned) {
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::MESH, 1ULL << 49), "mesh_Cin");
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::DEPTH, 1ULL << 21), "depth_Cin");
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::GBUFFER, 1ULL << 19), "gbuffer_Cin");
+    EXPECT_NE(ShaderPool::getFoliageProperties(ShaderType::MESH, true, false, false) & (1ULL << 49), 0u);
+}
+
+TEST(ShaderKey, FoliageWindBitIsPinned) {
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::MESH, 1ULL << 50), "mesh_Wnd");
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::DEPTH, 1ULL << 22), "depth_Wnd");
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::GBUFFER, 1ULL << 20), "gbuffer_Wnd");
+    EXPECT_NE(ShaderPool::getFoliageProperties(ShaderType::MESH, false, true, false) & (1ULL << 50), 0u);
+}
+
+TEST(ShaderKey, FoliageDitherBitIsPinned) {
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::MESH, 1ULL << 51), "mesh_Dth");
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::DEPTH, 1ULL << 23), "depth_Dth");
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::GBUFFER, 1ULL << 21), "gbuffer_Dth");
+    EXPECT_NE(ShaderPool::getFoliageProperties(ShaderType::MESH, false, false, true) & (1ULL << 51), 0u);
+}
+
+// T3 R20, D2: bits are names plus an order, numbers taken at landing. This pins the number 'Thl' got on
+// each type; a stream landing before it moves them here and bumps the shader cache.
+TEST(ShaderKey, TerrainHolesBitIsPinned) {
+    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::MESH), shaderPropertyBit(52));
+    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::DEPTH), shaderPropertyBit(24));
+    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::GBUFFER), shaderPropertyBit(22));
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 52, true), "Thl");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::DEPTH, 24, true), "Thl");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 22, true), "Thl");
+    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::UI), 0u);
+    // no fallback may drop it: a dropped hole would draw over the hole (T3 R34)
+    const uint64_t withFeatures = shaderPropertyBit(52) | ShaderPool::getShadowsHQProperty() | shaderPropertyBit(4);
+    for (uint64_t candidate : ShaderPool::getFallbackProperties(ShaderType::MESH, withFeatures)) {
+        EXPECT_NE(candidate & shaderPropertyBit(52), 0u);
+    }
+}
+
+// T3 D2: Medium and Low are Lit defines on MESH, and on a G-buffer, which they do not reach, these bits
+TEST(ShaderKey, TerrainTierBitsArePinned) {
+    using terraincore::TerrainQuality;
+    EXPECT_EQ(ShaderPool::getTerrainTierProperty(TerrainQuality::MEDIUM), shaderPropertyBit(23));
+    EXPECT_EQ(ShaderPool::getTerrainTierProperty(TerrainQuality::LOW), shaderPropertyBit(24));
+    EXPECT_EQ(ShaderPool::getTerrainTierProperty(TerrainQuality::HIGH), 0u);
+    EXPECT_EQ(ShaderPool::getTerrainExtendedProperty(), shaderPropertyBit(25));
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 23, true), "Tqm");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 24, true), "Tql");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 25, true), "Txl");
+}
+
+// T4 R58: 'Twd' came after T3's 'Thl' on MESH and DEPTH and after T6's 'Vox' on GBUFFER, pinned here; a
+// stream landing before it moves these and bumps the shader cache
+TEST(ShaderKey, TerrainWorldBitIsPinned) {
+    EXPECT_EQ(ShaderPool::getTerrainWorldProperty(ShaderType::MESH), shaderPropertyBit(53));
+    EXPECT_EQ(ShaderPool::getTerrainWorldProperty(ShaderType::DEPTH), shaderPropertyBit(25));
+    EXPECT_EQ(ShaderPool::getTerrainWorldProperty(ShaderType::GBUFFER), shaderPropertyBit(27));
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 53, true), "Twd");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::DEPTH, 25, true), "Twd");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 27, true), "Twd");
+    EXPECT_EQ(ShaderPool::getTerrainWorldProperty(ShaderType::UI), 0u);
+    // it widens u_vs_terrainParams: no fallback may drop it
+    const uint64_t withFeatures = shaderPropertyBit(53) | ShaderPool::getShadowsHQProperty() | shaderPropertyBit(4);
+    for (uint64_t candidate : ShaderPool::getFallbackProperties(ShaderType::MESH, withFeatures)) {
+        EXPECT_NE(candidate & shaderPropertyBit(53), 0u);
+    }
+    for (uint64_t candidate : ShaderPool::getFallbackProperties(ShaderType::DEPTH, shaderPropertyBit(25) | shaderPropertyBit(0))) {
+        EXPECT_NE(candidate & shaderPropertyBit(25), 0u);
+    }
 }

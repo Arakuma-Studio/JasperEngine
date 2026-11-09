@@ -61,6 +61,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::InstancedMeshComponent, "Draws many copies of the mesh in one call"},
             {ComponentType::MeshPolygonComponent, "Builds a flat mesh from polygon points"},
             {ComponentType::TerrainComponent, "Heightmap terrain with texture layers"},
+            {ComponentType::VoxelVolumeComponent, "A box of smooth voxel terrain: caves, overhangs and destruction"},
             {ComponentType::LatticeComponent, "Cage of control points that bends the meshes bound to it"},
             {ComponentType::LatticeModifierComponent, "Deforms this mesh (and children) with lattices"},
             {ComponentType::LatticeFollowerComponent, "Moves with a point of a lattice's deformation"},

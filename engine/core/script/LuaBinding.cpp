@@ -71,6 +71,9 @@
 #include "object/ui/Progressbar.h"
 #include "object/ui/InputField.h"
 #include "object/ui/OnScreenControls.h"
+#if JASPERENGINE_VOXEL
+#include "object/voxel/VoxelVolume.h"
+#endif
 #if JASPERENGINE_HTMLUI
 #include "object/ui/UIDocument.h"
 #endif
@@ -943,6 +946,7 @@ void LuaBinding::registerClasses(lua_State *L){
 
     registerCoreClasses(L);
     registerGameObjectClasses(L);
+    registerFoliageClasses(L);
     registerActionClasses(L);
     registerECSClasses(L);
     registerAudioClasses(L);
@@ -961,6 +965,17 @@ void LuaBinding::registerClasses(lua_State *L){
     registerGameplayClasses(L);
     registerNavigationClasses(L);
     registerSplineClasses(L);
+    registerTerrainClasses(L);
+#if JASPERENGINE_NOISE
+    registerNoiseClasses(L);
+#endif
+#if JASPERENGINE_VOXEL
+    registerVoxelClasses(L);
+#endif
+#if JASPERENGINE_TERRAIN_WORLD
+    // after the GameObject classes, which it reopens for getTerrainWorld
+    registerTerrainWorldClasses(L);
+#endif
     // after the GameObject classes: Palette Swap's members on Sprite, Tilemap and MeshPolygon
     registerPixelArtClasses(L);
     registerSortingClasses(L);
@@ -1177,6 +1192,9 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Tilemap, "tilemap");
     DISPATCH_TYPE(Model, "model");
     DISPATCH_TYPE(Spline, "spline");
+#if JASPERENGINE_VOXEL
+    DISPATCH_TYPE(VoxelVolume, "voxelvolume");
+#endif
     DISPATCH_TYPE(SplineExtrude, "splineextrude");
     DISPATCH_TYPE(SplineInstantiate, "splineinstantiate");
     DISPATCH_TYPE(SplineAnimate, "splineanimate");

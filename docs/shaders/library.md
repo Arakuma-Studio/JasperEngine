@@ -105,6 +105,8 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Gradient Sky](#librarygradient_sky) `library:gradient_sky` | sky | Sky | none | - |
 | [Heat Haze](#libraryheat_haze) `library:heat_haze` | mesh | Effects | none | alpha |
 | [Hologram](#libraryhologram) `library:hologram` | mesh | Effects | none | additive |
+| [Tree Impostor](#libraryimpostor) `library:impostor` | mesh | Nature | pixel, vertex, none | opaque |
+| [Impostor Bake](#libraryimpostor_bake) `library:impostor_bake` | mesh | Internal | none | opaque |
 | [Lattice Stretch](#librarylattice_stretch) `library:lattice_stretch` | mesh | Effects | none | opaque |
 | [Line Flipbook](#libraryline_flipbook) `library:line_flipbook` | lines | Effects | none | additive |
 | [Matcap](#librarymatcap) `library:matcap` | mesh | Stylized | none | opaque |
@@ -900,6 +902,27 @@ Leaves and grass: wind sway in the vertex stage (masked by the vertex colour's r
 |---|---|---|
 | `WIND_MASK` | `WIND_MASK_VERTEX_COLOR`, `WIND_MASK_HEIGHT` | Wind mask |
 
+<a id="libraryimpostor"></a>
+### Tree Impostor (`library:impostor`)
+
+The last LOD of a tree prototype: one quad per instance, facing the camera around Y, showing the baked view nearest the camera and lit through the baked normals. Baked by Bake Impostor in Paint Trees or edit_terrain's bake_impostors.
+
+- **Type**: mesh (a material's shader); category Nature.
+- **Lighting**: per pixel (default), per vertex, none.
+- **Inputs**: `uv1`, `color`.
+- **Default state**: blend opaque, cull off (both faces).
+- **Depth program**: yes (shadows and depth follow its vertices and clipping).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `baseColor` | colour | (1, 1, 1, 1) | Base colour |
+| `alphaCutoff` | range 0 to 1 | 0.5 | Alpha cutoff |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_baseTexture` | white | Albedo atlas (alpha: cutout) |
+| `u_normalTexture` | flat normal | Normal atlas (a: ambient occlusion) |
+
 <a id="librarywater"></a>
 ### Water (`library:water`)
 
@@ -1401,6 +1424,35 @@ The view from inside a water: the scene fades into the water with the distance t
 | `visibility` | float | 6 | Visibility (world units: the clearest colour keeps 37%) |
 | `waterLevel` | float | 0 | Surface height (world Y; the engine sets it under a water) |
 | `followWater` | toggle | on | Follow water (colours from the water the camera is in) |
+
+## Internal
+
+<a id="libraryimpostor_bake"></a>
+### Impostor Bake (`library:impostor_bake`)
+
+What Bake Impostor renders a tree with: its base colour unlit, or with IMPOSTOR_NORMAL its normal in the view's frame, with the cutout's alpha in both.
+
+- **Type**: mesh (a material's shader); category Internal.
+- **Lighting**: none (default).
+- **Inputs**: `normals`, `uv1`.
+- **Default state**: blend opaque, cull off (both faces).
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `baseColor` | colour | (1, 1, 1, 1) | Base colour |
+| `alphaCutoff` | range 0 to 1 | 0.5 | Alpha cutoff |
+| `viewRight` | vector4 | (1, 0, 0, 0) | The view's right, world |
+| `viewUp` | vector4 | (0, 1, 0, 0) | The view's up, world |
+| `viewForward` | vector4 | (0, 0, 1, 0) | Towards the camera, world |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_baseTexture` | white | Base map (alpha: cutout) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `IMPOSTOR_NORMAL` | off | Write the normal |
 
 ## Outline and stencil
 

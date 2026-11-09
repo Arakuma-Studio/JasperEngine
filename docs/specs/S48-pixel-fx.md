@@ -896,7 +896,7 @@ Implementation notes that change what the spec says. Each item names the require
   (HALF4) and `@instanceable`. `ditherFadeAmount` is `instance=fx.z` and `dissolveProgress` `instance=fx.w`; the
   Pixel FX features that read the frame rect (pixel outlines, Drop Shadow, Dissolve, Ramp Recolour, Dither Fade) are in
   `@batchable framerect=`. AC11 is `PixelArtBatchGpu.FxSlotsDitherFadeDissolve` beside S52's `FxSlotsZW`.
-- **Shader cache.** S48's sources are cached under v62 (S49 took v60, S52 v61).
+- **Shader cache.** S48's sources are cached under v64 (S49 took v60, S52 v61, the terrain programme v63).
 - **Mobile budgets (R34, AC25).** No Adreno 610 / Mali-G57-class device was available: the phone numbers are not
   measured. R35's CPU costs are inferred from the code (idle paths return at once, no draw, upload or allocation).
 - **Test names.** GPU gtests end in `Gpu` (docs/testing.md), so the spec's GPU test names take that suffix.

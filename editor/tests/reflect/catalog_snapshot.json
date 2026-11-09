@@ -2264,34 +2264,130 @@
   },
   {
    "display_name": "Terrain",
-   "enum_options": {},
+   "enum_options": {
+    "macroMode": [
+     [
+      0,
+      "off",
+      "Off"
+     ],
+     [
+      1,
+      "noise",
+      "Noise"
+     ],
+     [
+      2,
+      "base_map",
+      "Base Map"
+     ]
+    ],
+    "offscreenShadows": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "on",
+      "On"
+     ],
+     [
+      2,
+      "off",
+      "Off"
+     ]
+    ],
+    "quality": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "high",
+      "High"
+     ],
+     [
+      2,
+      "medium",
+      "Medium"
+     ],
+     [
+      3,
+      "low",
+      "Low"
+     ]
+    ]
+   },
    "has_enabled": true,
    "icon": "ef9bbc",
    "key": "terrain",
    "known_keys": [
+    "allowRuntimeEdits",
     "autoSetRanges",
+    "billboardStart",
     "blendMap",
     "blendMaps",
+    "detailDensity",
+    "detailDistance",
     "enabled",
+    "fadeLength",
     "foliageLayers",
+    "heightBlendSharpness",
     "heightMap",
+    "holeMap",
     "levels",
+    "limitLayersPerPixel",
+    "macroMode",
+    "macroNormal",
+    "macroScale",
+    "macroSlopeFade",
+    "macroStrength",
+    "macroTintA",
+    "macroTintB",
     "maxHeight",
+    "maxMeshTrees",
+    "offscreenShadows",
     "offset",
+    "quality",
     "ranges",
+    "resampleEnabled",
+    "resampleFar",
+    "resampleNear",
+    "resampleReduction",
     "resolution",
     "rootGridSize",
     "surfaceLayers",
     "terrainSize",
     "textureBaseTiles",
     "textureDetailTiles",
-    "textureLayers"
+    "textureLayers",
+    "treeData",
+    "treeDistance",
+    "treePrototypes",
+    "windBending",
+    "windDirection",
+    "windSize",
+    "windSpeed"
    ],
    "name": "TerrainComponent",
    "properties_of_default": {
+    "allowRuntimeEdits": [
+     0,
+     0,
+     true
+    ],
     "autoSetRanges": [
      0,
      33554432,
+     true
+    ],
+    "billboardStart": [
+     2,
+     0,
      true
     ],
     "blendMaps": [
@@ -2299,8 +2395,23 @@
      67108864,
      true
     ],
+    "detailDensity": [
+     2,
+     0,
+     true
+    ],
+    "detailDistance": [
+     2,
+     34359738368,
+     true
+    ],
     "enabled": [
      0,
+     0,
+     true
+    ],
+    "fadeLength": [
+     2,
      0,
      true
     ],
@@ -2309,9 +2420,19 @@
      34359738368,
      true
     ],
+    "heightBlendSharpness": [
+     2,
+     67108864,
+     true
+    ],
     "heightMap": [
      11,
      34460401664,
+     true
+    ],
+    "holeMap": [
+     11,
+     67108864,
      true
     ],
     "levels": [
@@ -2319,9 +2440,59 @@
      33554440,
      true
     ],
+    "limitLayersPerPixel": [
+     0,
+     67108864,
+     true
+    ],
+    "macroMode": [
+     13,
+     67108864,
+     true
+    ],
+    "macroNormal": [
+     0,
+     67108864,
+     true
+    ],
+    "macroScale": [
+     2,
+     67108864,
+     true
+    ],
+    "macroSlopeFade": [
+     2,
+     67108864,
+     true
+    ],
+    "macroStrength": [
+     2,
+     67108864,
+     true
+    ],
+    "macroTintA": [
+     5,
+     67108864,
+     true
+    ],
+    "macroTintB": [
+     5,
+     67108864,
+     true
+    ],
     "maxHeight": [
      2,
      34393292800,
+     true
+    ],
+    "maxMeshTrees": [
+     8,
+     0,
+     true
+    ],
+    "offscreenShadows": [
+     13,
+     0,
      true
     ],
     "offset": [
@@ -2329,9 +2500,34 @@
      0,
      true
     ],
+    "quality": [
+     13,
+     67108864,
+     true
+    ],
     "ranges": [
      15,
      33554432,
+     true
+    ],
+    "resampleEnabled": [
+     0,
+     67108864,
+     true
+    ],
+    "resampleFar": [
+     2,
+     67108864,
+     true
+    ],
+    "resampleNear": [
+     2,
+     67108864,
+     true
+    ],
+    "resampleReduction": [
+     2,
+     67108864,
      true
     ],
     "resolution": [
@@ -2363,12 +2559,57 @@
      2,
      0,
      true
+    ],
+    "treeData": [
+     18,
+     34359738368,
+     true
+    ],
+    "treeDistance": [
+     2,
+     0,
+     true
+    ],
+    "treePrototypes": [
+     15,
+     34359738368,
+     true
+    ],
+    "windBending": [
+     2,
+     0,
+     true
+    ],
+    "windDirection": [
+     5,
+     0,
+     true
+    ],
+    "windSize": [
+     2,
+     0,
+     true
+    ],
+    "windSpeed": [
+     2,
+     0,
+     true
     ]
    },
    "properties_without_component": {
+    "allowRuntimeEdits": [
+     0,
+     0,
+     true
+    ],
     "autoSetRanges": [
      0,
      33554432,
+     true
+    ],
+    "billboardStart": [
+     2,
+     0,
      true
     ],
     "blendMaps": [
@@ -2381,13 +2622,33 @@
      67108864,
      true
     ],
+    "detailDensity": [
+     2,
+     0,
+     true
+    ],
+    "detailDistance": [
+     2,
+     34359738368,
+     true
+    ],
     "enabled": [
      0,
      0,
      true
     ],
+    "fadeLength": [
+     2,
+     0,
+     true
+    ],
     "foliageLayers": [
      15,
+     34359738368,
+     true
+    ],
+    "foliageLayers[].algorithmVersion": [
+     9,
      34359738368,
      true
     ],
@@ -2406,9 +2667,19 @@
      34359738368,
      true
     ],
+    "foliageLayers[].densityFalloffStart": [
+     2,
+     0,
+     true
+    ],
     "foliageLayers[].densityMap": [
      11,
      34359738368,
+     true
+    ],
+    "foliageLayers[].densityScale": [
+     2,
+     0,
      true
     ],
     "foliageLayers[].drawDistance": [
@@ -2416,7 +2687,27 @@
      34359738368,
      true
     ],
+    "foliageLayers[].dryColor": [
+     6,
+     34359738368,
+     true
+    ],
+    "foliageLayers[].farDensity": [
+     2,
+     0,
+     true
+    ],
+    "foliageLayers[].healthyColor": [
+     6,
+     34359738368,
+     true
+    ],
     "foliageLayers[].maxHeight": [
+     2,
+     34359738368,
+     true
+    ],
+    "foliageLayers[].maxHeightRatio": [
      2,
      34359738368,
      true
@@ -2446,12 +2737,22 @@
      34359738368,
      true
     ],
+    "foliageLayers[].minHeightRatio": [
+     2,
+     34359738368,
+     true
+    ],
     "foliageLayers[].minScale": [
      2,
      34359738368,
      true
     ],
     "foliageLayers[].minSlope": [
+     2,
+     34359738368,
+     true
+    ],
+    "foliageLayers[].noiseSpread": [
      2,
      34359738368,
      true
@@ -2466,9 +2767,24 @@
      34359738368,
      true
     ],
+    "foliageLayers[].windBend": [
+     2,
+     34359738368,
+     true
+    ],
+    "heightBlendSharpness": [
+     2,
+     67108864,
+     true
+    ],
     "heightMap": [
      11,
      34460401664,
+     true
+    ],
+    "holeMap": [
+     11,
+     67108864,
      true
     ],
     "levels": [
@@ -2476,14 +2792,69 @@
      33554440,
      true
     ],
+    "limitLayersPerPixel": [
+     0,
+     67108864,
+     true
+    ],
+    "macroMode": [
+     13,
+     67108864,
+     true
+    ],
+    "macroNormal": [
+     0,
+     67108864,
+     true
+    ],
+    "macroScale": [
+     2,
+     67108864,
+     true
+    ],
+    "macroSlopeFade": [
+     2,
+     67108864,
+     true
+    ],
+    "macroStrength": [
+     2,
+     67108864,
+     true
+    ],
+    "macroTintA": [
+     5,
+     67108864,
+     true
+    ],
+    "macroTintB": [
+     5,
+     67108864,
+     true
+    ],
     "maxHeight": [
      2,
      34393292800,
      true
     ],
+    "maxMeshTrees": [
+     8,
+     0,
+     true
+    ],
+    "offscreenShadows": [
+     13,
+     0,
+     true
+    ],
     "offset": [
      4,
      0,
+     true
+    ],
+    "quality": [
+     13,
+     67108864,
      true
     ],
     "ranges": [
@@ -2494,6 +2865,26 @@
     "ranges[]": [
      2,
      33554432,
+     true
+    ],
+    "resampleEnabled": [
+     0,
+     67108864,
+     true
+    ],
+    "resampleFar": [
+     2,
+     67108864,
+     true
+    ],
+    "resampleNear": [
+     2,
+     67108864,
+     true
+    ],
+    "resampleReduction": [
+     2,
+     67108864,
      true
     ],
     "resolution": [
@@ -2508,6 +2899,11 @@
     ],
     "surfaceLayers": [
      15,
+     67108864,
+     true
+    ],
+    "surfaceLayers[].cliffProjection": [
+     13,
      67108864,
      true
     ],
@@ -2627,6 +3023,136 @@
      true
     ],
     "textureDetailTiles": [
+     2,
+     0,
+     true
+    ],
+    "treeData": [
+     18,
+     34359738368,
+     true
+    ],
+    "treeDistance": [
+     2,
+     0,
+     true
+    ],
+    "treePrototypes": [
+     15,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].bendFactor": [
+     2,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].collision": [
+     13,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].collisionHeight": [
+     2,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].collisionRadius": [
+     2,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].id": [
+     9,
+     0,
+     true
+    ],
+    "treePrototypes[].impostorAlbedo": [
+     11,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].impostorBoundsCenter": [
+     5,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].impostorNormal": [
+     11,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].impostorSize": [
+     4,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].impostorSourceHash": [
+     1,
+     0,
+     true
+    ],
+    "treePrototypes[].impostorViews": [
+     8,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].lodDistances": [
+     15,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].lodDistances[]": [
+     2,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].lodMeshes": [
+     15,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].lodMeshes[]": [
+     18,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].meshPath": [
+     18,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].navObstacle": [
+     0,
+     0,
+     true
+    ],
+    "treePrototypes[].shadowLodMask": [
+     9,
+     34359738368,
+     true
+    ],
+    "treePrototypes[].windMask": [
+     13,
+     34359738368,
+     true
+    ],
+    "windBending": [
+     2,
+     0,
+     true
+    ],
+    "windDirection": [
+     5,
+     0,
+     true
+    ],
+    "windSize": [
+     2,
+     0,
+     true
+    ],
+    "windSpeed": [
      2,
      0,
      true
@@ -14849,6 +15375,8 @@
     "collectObjects",
     "defaultArea",
     "enabled",
+    "followRadius",
+    "followTerrainWorldFocus",
     "includeLayers",
     "maxCarvingObstacles",
     "minRegionArea",
@@ -14886,6 +15414,16 @@
      true
     ],
     "enabled": [
+     0,
+     0,
+     true
+    ],
+    "followRadius": [
+     2,
+     0,
+     true
+    ],
+    "followTerrainWorldFocus": [
      0,
      0,
      true
@@ -14973,6 +15511,16 @@
      true
     ],
     "enabled": [
+     0,
+     0,
+     true
+    ],
+    "followRadius": [
+     2,
+     0,
+     true
+    ],
+    "followTerrainWorldFocus": [
      0,
      0,
      true
@@ -16133,6 +16681,11 @@
      0,
      true
     ],
+    "terrain.clearTrees": [
+     0,
+     0,
+     true
+    ],
     "terrain.extraWidth": [
      2,
      0,
@@ -16261,6 +16814,11 @@
      true
     ],
     "terrain.clearFoliage": [
+     0,
+     0,
+     true
+    ],
+    "terrain.clearTrees": [
      0,
      0,
      true
@@ -21939,6 +22497,528 @@
    "type_of_name": 96
   },
   {
+   "display_name": "Voxel Volume",
+   "enum_options": {
+    "navigationUpdate": [
+     [
+      0,
+      "off",
+      "Off"
+     ],
+     [
+      1,
+      "automatic",
+      "Automatic"
+     ]
+    ],
+    "quality": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "high",
+      "High"
+     ],
+     [
+      2,
+      "medium",
+      "Medium"
+     ],
+     [
+      3,
+      "low",
+      "Low"
+     ]
+    ],
+    "terrainCut": [
+     [
+      0,
+      "off",
+      "Off"
+     ],
+     [
+      1,
+      "automatic",
+      "Automatic"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef86b3",
+   "key": "voxelvolume",
+   "known_keys": [
+    "castShadows",
+    "collision",
+    "collisionRadius",
+    "cutTolerance",
+    "enabled",
+    "focus",
+    "lodLevels",
+    "lodRadius",
+    "materialSlots",
+    "maxDrawDistance",
+    "navigationUpdate",
+    "overlapDepth",
+    "quality",
+    "rescueBodies",
+    "runtimeGeneration",
+    "terrain",
+    "terrainCut",
+    "volumeData"
+   ],
+   "name": "VoxelVolumeComponent",
+   "properties_of_default": {
+    "castShadows": [
+     0,
+     0,
+     true
+    ],
+    "collision": [
+     0,
+     0,
+     true
+    ],
+    "collisionRadius": [
+     8,
+     0,
+     true
+    ],
+    "cutTolerance": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "focus": [
+     16,
+     0,
+     true
+    ],
+    "lodLevels": [
+     8,
+     0,
+     true
+    ],
+    "lodRadius": [
+     8,
+     0,
+     true
+    ],
+    "materialSlots": [
+     15,
+     0,
+     true
+    ],
+    "maxDrawDistance": [
+     2,
+     0,
+     true
+    ],
+    "navigationUpdate": [
+     13,
+     0,
+     true
+    ],
+    "overlapDepth": [
+     2,
+     0,
+     true
+    ],
+    "quality": [
+     13,
+     0,
+     true
+    ],
+    "rescueBodies": [
+     0,
+     0,
+     true
+    ],
+    "runtimeGeneration": [
+     0,
+     0,
+     true
+    ],
+    "terrain": [
+     16,
+     0,
+     true
+    ],
+    "terrainCut": [
+     13,
+     0,
+     true
+    ],
+    "volumeData": [
+     18,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "castShadows": [
+     0,
+     0,
+     true
+    ],
+    "collision": [
+     0,
+     0,
+     true
+    ],
+    "collisionRadius": [
+     8,
+     0,
+     true
+    ],
+    "cutTolerance": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "focus": [
+     16,
+     0,
+     true
+    ],
+    "lodLevels": [
+     8,
+     0,
+     true
+    ],
+    "lodRadius": [
+     8,
+     0,
+     true
+    ],
+    "materialSlots": [
+     15,
+     0,
+     true
+    ],
+    "materialSlots[].layer.cliffProjection": [
+     13,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.colorFactor": [
+     6,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.colorTexture": [
+     11,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.heightTexture": [
+     11,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.hexRotation": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.hexTiling": [
+     0,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.metallicFactor": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.metallicTexture": [
+     11,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.normalStrength": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.normalTexture": [
+     11,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.occlusionStrength": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.occlusionTexture": [
+     11,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.pbr": [
+     0,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.roughnessFactor": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.roughnessTexture": [
+     11,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.stochasticBlendSharpness": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.stochasticCellSize": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.stochasticContrast": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.stochasticRotation": [
+     2,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.stochasticTiling": [
+     0,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.uvOffset": [
+     4,
+     67108864,
+     true
+    ],
+    "materialSlots[].layer.uvScale": [
+     4,
+     67108864,
+     true
+    ],
+    "materialSlots[].linkedTerrainLayer": [
+     8,
+     0,
+     true
+    ],
+    "materialSlots[].name": [
+     1,
+     0,
+     true
+    ],
+    "maxDrawDistance": [
+     2,
+     0,
+     true
+    ],
+    "navigationUpdate": [
+     13,
+     0,
+     true
+    ],
+    "overlapDepth": [
+     2,
+     0,
+     true
+    ],
+    "quality": [
+     13,
+     0,
+     true
+    ],
+    "rescueBodies": [
+     0,
+     0,
+     true
+    ],
+    "runtimeGeneration": [
+     0,
+     0,
+     true
+    ],
+    "terrain": [
+     16,
+     0,
+     true
+    ],
+    "terrainCut": [
+     13,
+     0,
+     true
+    ],
+    "volumeData": [
+     18,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 97,
+   "type_of_key": 97,
+   "type_of_name": 97
+  },
+  {
+   "display_name": "Terrain World",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef89b9",
+   "key": "terrainworld",
+   "known_keys": [
+    "autoAddTiles",
+    "collisionChunkQuads",
+    "collisionRadius",
+    "enabled",
+    "focus",
+    "lodDistance",
+    "overviewCastsShadows",
+    "poolSize",
+    "uploadBudget",
+    "useCameraFocus",
+    "worldData"
+   ],
+   "name": "TerrainWorldComponent",
+   "properties_of_default": {
+    "autoAddTiles": [
+     0,
+     0,
+     true
+    ],
+    "collisionChunkQuads": [
+     8,
+     0,
+     true
+    ],
+    "collisionRadius": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "focus": [
+     16,
+     0,
+     true
+    ],
+    "lodDistance": [
+     2,
+     0,
+     true
+    ],
+    "overviewCastsShadows": [
+     0,
+     0,
+     true
+    ],
+    "poolSize": [
+     8,
+     0,
+     true
+    ],
+    "uploadBudget": [
+     2,
+     0,
+     true
+    ],
+    "useCameraFocus": [
+     0,
+     0,
+     true
+    ],
+    "worldData": [
+     18,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "autoAddTiles": [
+     0,
+     0,
+     true
+    ],
+    "collisionChunkQuads": [
+     8,
+     0,
+     true
+    ],
+    "collisionRadius": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "focus": [
+     16,
+     0,
+     true
+    ],
+    "lodDistance": [
+     2,
+     0,
+     true
+    ],
+    "overviewCastsShadows": [
+     0,
+     0,
+     true
+    ],
+    "poolSize": [
+     8,
+     0,
+     true
+    ],
+    "uploadBudget": [
+     2,
+     0,
+     true
+    ],
+    "useCameraFocus": [
+     0,
+     0,
+     true
+    ],
+    "worldData": [
+     18,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 98,
+   "type_of_key": 98,
+   "type_of_name": 98
+  },
+  {
    "display_name": "Hit Stop Exempt",
    "enum_options": {},
    "has_enabled": true,
@@ -21974,9 +23054,9 @@
     ]
    },
    "structural_update_flags": 0,
-   "type": 97,
-   "type_of_key": 97,
-   "type_of_name": 97
+   "type": 99,
+   "type_of_key": 99,
+   "type_of_name": 99
   }
  ],
  "ease_options": [
@@ -26737,6 +27817,16 @@
     0,
     true
    ],
+   "followRadius": [
+    2,
+    0,
+    true
+   ],
+   "followTerrainWorldFocus": [
+    0,
+    0,
+    true
+   ],
    "includeLayers": [
     9,
     0,
@@ -28223,6 +29313,11 @@
     0,
     true
    ],
+   "terrain.clearTrees": [
+    0,
+    0,
+    true
+   ],
    "terrain.extraWidth": [
     2,
     0,
@@ -28805,9 +29900,19 @@
    ]
   },
   "TerrainComponent": {
+   "allowRuntimeEdits": [
+    0,
+    0,
+    true
+   ],
    "autoSetRanges": [
     0,
     33554432,
+    true
+   ],
+   "billboardStart": [
+    2,
+    0,
     true
    ],
    "blendMaps": [
@@ -28820,8 +29925,23 @@
     67108864,
     true
    ],
+   "detailDensity": [
+    2,
+    0,
+    true
+   ],
+   "detailDistance": [
+    2,
+    34359738368,
+    true
+   ],
    "enabled": [
     0,
+    0,
+    true
+   ],
+   "fadeLength": [
+    2,
     0,
     true
    ],
@@ -28830,9 +29950,19 @@
     34359738368,
     true
    ],
+   "heightBlendSharpness": [
+    2,
+    67108864,
+    true
+   ],
    "heightMap": [
     11,
     34460401664,
+    true
+   ],
+   "holeMap": [
+    11,
+    67108864,
     true
    ],
    "levels": [
@@ -28840,14 +29970,69 @@
     33554440,
     true
    ],
+   "limitLayersPerPixel": [
+    0,
+    67108864,
+    true
+   ],
+   "macroMode": [
+    13,
+    67108864,
+    true
+   ],
+   "macroNormal": [
+    0,
+    67108864,
+    true
+   ],
+   "macroScale": [
+    2,
+    67108864,
+    true
+   ],
+   "macroSlopeFade": [
+    2,
+    67108864,
+    true
+   ],
+   "macroStrength": [
+    2,
+    67108864,
+    true
+   ],
+   "macroTintA": [
+    5,
+    67108864,
+    true
+   ],
+   "macroTintB": [
+    5,
+    67108864,
+    true
+   ],
    "maxHeight": [
     2,
     34393292800,
     true
    ],
+   "maxMeshTrees": [
+    8,
+    0,
+    true
+   ],
+   "offscreenShadows": [
+    13,
+    0,
+    true
+   ],
    "offset": [
     4,
     0,
+    true
+   ],
+   "quality": [
+    13,
+    67108864,
     true
    ],
    "ranges": [
@@ -28858,6 +30043,26 @@
    "ranges[N]": [
     2,
     33554432,
+    true
+   ],
+   "resampleEnabled": [
+    0,
+    67108864,
+    true
+   ],
+   "resampleFar": [
+    2,
+    67108864,
+    true
+   ],
+   "resampleNear": [
+    2,
+    67108864,
+    true
+   ],
+   "resampleReduction": [
+    2,
+    67108864,
     true
    ],
    "resolution": [
@@ -28872,6 +30077,11 @@
    ],
    "surfaceLayers": [
     15,
+    67108864,
+    true
+   ],
+   "surfaceLayers[N].cliffProjection": [
+    13,
     67108864,
     true
    ],
@@ -28992,6 +30202,98 @@
    ],
    "textureDetailTiles": [
     2,
+    0,
+    true
+   ],
+   "treeData": [
+    18,
+    34359738368,
+    true
+   ],
+   "treeDistance": [
+    2,
+    0,
+    true
+   ],
+   "treePrototypes": [
+    15,
+    34359738368,
+    true
+   ],
+   "windBending": [
+    2,
+    0,
+    true
+   ],
+   "windDirection": [
+    5,
+    0,
+    true
+   ],
+   "windSize": [
+    2,
+    0,
+    true
+   ],
+   "windSpeed": [
+    2,
+    0,
+    true
+   ]
+  },
+  "TerrainWorldComponent": {
+   "autoAddTiles": [
+    0,
+    0,
+    true
+   ],
+   "collisionChunkQuads": [
+    8,
+    0,
+    true
+   ],
+   "collisionRadius": [
+    2,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "focus": [
+    16,
+    0,
+    true
+   ],
+   "lodDistance": [
+    2,
+    0,
+    true
+   ],
+   "overviewCastsShadows": [
+    0,
+    0,
+    true
+   ],
+   "poolSize": [
+    8,
+    0,
+    true
+   ],
+   "uploadBudget": [
+    2,
+    0,
+    true
+   ],
+   "useCameraFocus": [
+    0,
+    0,
+    true
+   ],
+   "worldData": [
+    18,
     0,
     true
    ]
@@ -29953,6 +31255,98 @@
    ],
    "windSpeed": [
     2,
+    0,
+    true
+   ]
+  },
+  "VoxelVolumeComponent": {
+   "castShadows": [
+    0,
+    0,
+    true
+   ],
+   "collision": [
+    0,
+    0,
+    true
+   ],
+   "collisionRadius": [
+    8,
+    0,
+    true
+   ],
+   "cutTolerance": [
+    2,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "focus": [
+    16,
+    0,
+    true
+   ],
+   "lodLevels": [
+    8,
+    0,
+    true
+   ],
+   "lodRadius": [
+    8,
+    0,
+    true
+   ],
+   "materialSlots": [
+    15,
+    0,
+    true
+   ],
+   "maxDrawDistance": [
+    2,
+    0,
+    true
+   ],
+   "navigationUpdate": [
+    13,
+    0,
+    true
+   ],
+   "overlapDepth": [
+    2,
+    0,
+    true
+   ],
+   "quality": [
+    13,
+    0,
+    true
+   ],
+   "rescueBodies": [
+    0,
+    0,
+    true
+   ],
+   "runtimeGeneration": [
+    0,
+    0,
+    true
+   ],
+   "terrain": [
+    16,
+    0,
+    true
+   ],
+   "terrainCut": [
+    13,
+    0,
+    true
+   ],
+   "volumeData": [
+    18,
     0,
     true
    ]

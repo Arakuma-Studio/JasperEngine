@@ -9,7 +9,6 @@
 // the lobe ("Set Clear Coat Roughness").
 
 #include "InspectorWindow.h"
-#include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
 
 #include "imgui_internal.h"

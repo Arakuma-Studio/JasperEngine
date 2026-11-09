@@ -11,6 +11,7 @@
 // alone, and sprites of one shape share their GPU buffers (no sprite ceiling). glcore and Vulkan.
 
 #include "Engine.h"
+#include "component/Transform.h"
 #include "Scene.h"
 #include "component/MeshComponent.h"
 #include "object/Camera.h"

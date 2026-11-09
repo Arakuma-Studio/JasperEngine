@@ -45,18 +45,6 @@
 #include "component/TextComponent.h"
 #include "io/watch/FileIdentity.h"
 #include "render/ShaderRender.h"
-// MeshSystem.h's includes without MeshSystem.h: it would bring MeshComponent.h and TerrainComponent.h to every
-// Inspector unit (tools/check_fanout.py)
-#include "SubSystem.h"
-#include "ecs/ComponentFwd.h"
-#include "jobs/JobSystem.h"
-#include "math/Ray.h"
-#include "math/Rect.h"
-#include "subsystem/GltfNormalize.h"
-#include "texture/Material.h"
-#include "texture/MaterialPbr.h"
-#include "texture/Texture.h"
-#include "texture/TexturePack.h"
 
 namespace jasperengine{
     struct ImageComponent;
@@ -1006,7 +994,10 @@ namespace jasperengine::editor{
         std::string legacyConvertError;
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTerrainQualitySection(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // T6 R65 (InspectorVoxels.cpp)
+        void drawVoxelVolumeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLightComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the light's Shadows section (InspectorShadows.cpp), and its pieces
         void drawLightShadows(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

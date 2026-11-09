@@ -1968,6 +1968,15 @@ OVERRIDES = {
     },
 }
 
+# T4 R47: a Terrain World's waits, bound through lua_State* (their arguments read by hand)
+OVERRIDES[('TerrainWorld', 'waitForArea')] = {
+    'doc': ['In an engine coroutine, waits until isAreaReady holds: true, or false at the timeout or when the world stops.'],
+    'overloads': [([('x', 'number'), ('z', 'number'), ('radius', 'number'), ('level', 'string'), ('timeoutSeconds?', 'number')], 'boolean')]}
+OVERRIDES[('TerrainWorld', 'onAreaReady')] = {
+    'doc': ['Calls callback once, in the update phase, when the area is ready.'],
+    'overloads': [([('x', 'number'), ('z', 'number'), ('radius', 'number'), ('level', 'string'), ('callback', 'fun()')], '')]}
+OVERRIDES[('TerrainWorld', 'getStats')] = {'overloads': [([], 'TerrainWorldStats')]}
+
 OVERRIDES[('Screen', 'setExtraInsets')] = {
     'doc': ['Space the game keeps free per edge on top of the device insets (a banner ad): every safe-area',
             'consumer includes it (Screen.safeArea, the Safe Area component, HTML env()). `unit` is',
@@ -2081,6 +2090,31 @@ for _renderer, _what in (('LineRenderer', 'polyline point'), ('TrailRenderer', '
         'overloads': [([('index', 'integer')], 'Vector3')]}
 
 # Particle Systems of version 2 (particles spec 6.6, docs/mcp/guide/particles.md)
+# T2's noise API: lua_CFunctions take optional arguments C++ signatures cannot state (docs/scripting/noise.md)
+for _name, _doc in (('perlin', 'Perlin noise, -1..1.'), ('simplex', 'Simplex noise, -1..1.'), ('value', 'Value noise, -1..1.')):
+    OVERRIDES[('Noise', _name)] = {'doc': [_doc + ' An omitted seed is 0.'],
+                                   'overloads': [([('x', 'number'), ('z', 'number'), ('seed?', 'integer')], 'number')]}
+    OVERRIDES[('Noise', _name + '3')] = {'doc': [_doc + ' An omitted seed is 0.'],
+                                         'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('seed?', 'integer')], 'number')]}
+OVERRIDES[('Noise', 'cellular')] = {'doc': ['Cellular noise: a distance, or -1..1 for cell_value. An omitted seed is 0.'],
+                                    'overloads': [([('x', 'number'), ('z', 'number'), ('seed?', 'integer'), ('cellularReturn?', 'NoiseCellularReturn')], 'number')]}
+OVERRIDES[('Noise', 'cellular3')] = {'doc': ['Cellular noise: a distance, or -1..1 for cell_value. An omitted seed is 0.'],
+                                     'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('seed?', 'integer'), ('cellularReturn?', 'NoiseCellularReturn')], 'number')]}
+_FRACTAL_PARAMS = [('x', 'number'), ('z', 'number'), ('seed?', 'integer'), ('octaves?', 'integer'), ('lacunarity?', 'number'), ('gain?', 'number'), ('basis?', 'NoiseBasis')]
+OVERRIDES[('Noise', 'fbm')] = {'doc': ["FBm, in the basis' range: 4 octaves, lacunarity 2 and gain 0.5 by default."], 'overloads': [(_FRACTAL_PARAMS, 'number')]}
+OVERRIDES[('Noise', 'ridged')] = {'doc': ['Ridged fractal, 0..1: 4 octaves, lacunarity 2 and gain 0.5 by default.'], 'overloads': [(_FRACTAL_PARAMS, 'number')]}
+OVERRIDES[('NoiseGraph', 'load')] = {'doc': ['A compiled Noise Graph, or nil after logging the issues. A graph with an erosion or Terrain Height node does not load in a game.'],
+                                     'overloads': [([('path', 'string')], 'NoiseGraph?')]}
+OVERRIDES[('NoiseGraph', 'rangeOf')] = {'doc': ["An output's analytic range: min, max. The default output is height, else the first."],
+                                        'overloads': [([('output?', 'string')], 'number, number')]}
+OVERRIDES[('NoiseGraph', 'sample')] = {'doc': ['The output at one point. An error, naming the node, on a graph with a grid-only node: use sampleGrid.'],
+                                       'overloads': [([('x', 'number'), ('z', 'number'), ('seed?', 'integer'), ('output?', 'string')], 'number')]}
+OVERRIDES[('NoiseGraph', 'sample3')] = {'doc': ['The output at one 3D point. An error, naming the node, on a graph with a grid-only node: use sampleGrid.'],
+                                        'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('seed?', 'integer'), ('output?', 'string')], 'number')]}
+OVERRIDES[('NoiseGraph', 'sampleGrid')] = {'doc': ['A grid of at most 4,000,000 points, on this thread.'], 'overloads': [([('args', 'NoiseGridArgs')], 'NoiseGrid')]}
+OVERRIDES[('NoiseGraph', 'sampleGridAsync')] = {'doc': ['The same bits as sampleGrid on small jobs, which keep the frame and work without worker threads.'],
+                                                'overloads': [([('args', 'NoiseGridArgs')], 'NoiseGridTask')]}
+OVERRIDES[('NoiseGridTask', 'result')] = {'doc': ['The grid once done; nil before, or after cancel.'], 'overloads': [([], 'NoiseGrid?')]}
 OVERRIDES[('ParticleSystemModule', 'setBursts')] = {
     'doc': ['ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01, probability = 1}, ...}): replaces',
             'the bursts (count a number or a MinMaxCurve; cycles 0 repeats forever). Version 2 systems only.'],
@@ -2733,6 +2767,9 @@ PROPERTY_OVERRIDES = {
     ('Button', 'onClick'): ('FunctionSubscribe', False),
     ('BaseEventData', 'target'): ('GameObject?', False),
     ('BaseEventData', 'selectedObject'): ('GameObject?', False),
+    # T5 R33: write-only handlers (the getter is nil), docs/scripting/foliage.md
+    ('Terrain', 'onTreeHit'): ('fun(hit: table)|nil', False),
+    ('Terrain', 'onTreeRemoved'): ('fun(id: integer, pose: table)|nil', False),
 }
 
 # physics-contacts: the callbacks' values. Their GameObject / body / receiver getters are
@@ -3098,6 +3135,19 @@ OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
             'the hit (position, normal, distance).'],
     'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('NavMeshAgent', 'currentOffMeshLinkData')] = ('OffMeshLinkData', False)
+
+# T1 R75: the terrain writes, raw functions taking and returning tables (docs/scripting/terrain.md)
+OVERRIDES[('Terrain', 'applyOps')] = {
+    'doc': ['Runs edit_terrain\'s op tables (world X and Z, world heights), all or nothing; needs Allow Runtime',
+            'Edits. Returns the result: changed, ops, stats, warnings. docs/scripting/terrain.md.'],
+    'overloads': [([('ops', 'table[]')], 'table')]}
+OVERRIDES[('Terrain', 'getHeights')] = {
+    'doc': ['w * h terrain-local heights of the height map\'s texel rectangle, row by row.'],
+    'overloads': [([('x', 'integer'), ('y', 'integer'), ('w', 'integer'), ('h', 'integer')], 'number[]')]}
+OVERRIDES[('Terrain', 'setHeights')] = {
+    'doc': ['Writes w * h terrain-local heights to the height map\'s texel rectangle; needs Allow Runtime Edits.',
+            'Returns the result table, as applyOps.'],
+    'overloads': [([('x', 'integer'), ('y', 'integer'), ('w', 'integer'), ('h', 'integer'), ('values', 'number[]')], 'table')]}
 # S75 navigation diagnostics: path reasons, isReachable's reason, locate, coverage, islands, the bake report
 OVERRIDES[('NavigationSystem', 'isReachable')] = {
     'doc': ['Whether a Complete path joins the points, then why not ("none" when it does): rejected at once',

@@ -3,6 +3,8 @@
 1004 linerenderer/customShader shader
 1005 light/spotMask texture
 1006 terrain/heightMap texture
+1006 terrain/holeMap texture
+1006 terrain/treeData tree_data
 1007 points/texture texture
 1007 points/customShader shader
 1008 skybox/texture cubemap
@@ -28,3 +30,5 @@
 1073 navgrid/gridData navgrid
 1078 animator/controller animator_controller
 1080 trailrenderer/customShader shader
+1098 voxelvolume/volumeData any
+1099 terrainworld/worldData terrain_world

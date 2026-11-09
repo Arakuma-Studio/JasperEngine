@@ -11,6 +11,7 @@
 #include "render/ViewCameraMirror.h"
 #include "util/ScriptPropertyCache.h"
 #include "component/PrefabComponent.h"
+#include "component/Transform.h"
 
 #include "Project.h"
 #include "EditorHost.h"

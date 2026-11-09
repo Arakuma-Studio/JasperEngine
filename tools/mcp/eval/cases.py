@@ -39,6 +39,13 @@ NOT_OPEN = ("Scene 3 \"Level2\" is not open (its contents are not loaded). Open 
             "{\"scene\": \"scenes/Level2.scene\", \"close_previous\": false} (then select_scene to switch back).")
 
 
+# edit_voxels and sample_voxels, in their real shapes
+VOXEL_CREATED = {"entity": {"id": 21, "name": "Cave", "path": "Cave"}, "asset": "voxels/Cave.voxelvolume", "dimensions": [64, 64, 64],
+                 "voxel_size": 1.0, "estimated_memory": 1048576, "over_budget_targets": []}
+VOXEL_CONNECTED = {"connected": True, "open_to_sky": True, "component_count": 1, "from_in_air": True, "to_in_air": True, "from_component": 0, "to_component": 0,
+                   "air_components": [{"index": 0, "voxels": 180000, "volume": 180000.0, "open_to_sky": True,
+                                       "voxel_bounds": {"min": [0, 0, 0], "max": [63, 63, 63]}, "bounds": {"min": [0, 0, 0], "max": [64, 64, 64]}}]}
+
 # import_project's structuredContent with a leftover beside the new project
 LEFTOVER_IMPORT = {
     "path": "/home/me/Games/Game", "opened": True, "log": [],
@@ -72,6 +79,43 @@ FILE_PICKER_DIALOG = {"kind": "file_picker", "title": "Open Files", "choices": [
                       "fields": [{"name": "path", "type": "path", "value": ""}]}
 
 FILE_PICKER_OPEN = {"text": "The editor is showing the dialog \"Open Files\".", "real": True, "structured": {"dialog": FILE_PICKER_DIALOG}}
+
+# T1: edit_terrain and sample_terrain results in the handler's shapes (editor/mcp/tools/TerrainTools.cpp)
+TERRAIN_ENTITY = {"id": 4, "name": "Island", "type": "terrain"}
+TERRAIN_EDIT_RESULT = {
+    "terrain": TERRAIN_ENTITY, "dry_run": False, "undo_name": "Edit Terrain (Island)", "created_maps": [],
+    "changed": [{"map": "height", "rect": [462, 462, 101, 101], "local": {"min": [-50.0, -50.0], "max": [50.0, 50.0]}, "texels": 7854}],
+    "ops": [{"op": "set_height", "changed_texels": 7854, "clipped_low": 0, "clipped_high": 0, "filtered_out": 0, "outside": 0}],
+    "warnings": [], "stats": {"height_min": 0.0, "height_max": 80.0, "height_min_before": 0.0, "height_max_before": 0.0,
+                              "mean_delta": 41.2, "max_delta": 80.0},
+    "next": "Check the result with sample_terrain (stats, hash) or look with visualize_terrain.",
+}
+TERRAIN_SAMPLE_RESULT = {
+    "terrain": TERRAIN_ENTITY, "space": "world",
+    "stats": {"texels": 1050625, "stride": 1, "height": {"min": 0.0, "max": 80.0, "mean": 3.1, "p05": 0.0, "p50": 0.0, "p95": 41.0,
+                                                         "clipped_low_share": 0.0, "clipped_high_share": 0.0}},
+}
+TERRAIN_CLIPPED_RESULT = TERRAIN_EDIT_RESULT | {
+    "changed": [{"map": "height", "rect": [0, 0, 1025, 1025], "local": {"min": [-512.0, -512.0], "max": [512.0, 512.0]}, "texels": 1050625}],
+    "ops": [{"op": "set_height", "changed_texels": 1050625, "clipped_low": 0, "clipped_high": 1050625, "filtered_out": 0, "outside": 0}],
+    "warnings": [{"op": 0, "code": "clipped_high", "message": "1050625 texel(s) reached the terrain's top (100 m)."}],
+    "stats": {"height_min": 100.0, "height_max": 100.0, "height_min_before": 0.0, "height_max_before": 80.0, "mean_delta": 96.9, "max_delta": 100.0},
+    "next": "Heights reached the terrain's top: raise maxHeight with set_properties, then remap_heights to keep the shape.",
+}
+TERRAIN_CLIPPED_SAMPLE = {
+    "terrain": TERRAIN_ENTITY, "space": "world",
+    "stats": {"texels": 1050625, "stride": 1, "height": {"min": 100.0, "max": 100.0, "mean": 100.0, "p05": 100.0, "p50": 100.0, "p95": 100.0,
+                                                         "clipped_low_share": 0.0, "clipped_high_share": 1.0}},
+}
+TERRAIN_IMPORT_DRY = {
+    "terrain": TERRAIN_ENTITY, "dry_run": True, "undo_name": "Edit Terrain (Island)", "created_maps": [],
+    "changed": [{"map": "height", "rect": [0, 0, 1025, 1025], "local": {"min": [-512.0, -512.0], "max": [512.0, 512.0]}, "texels": 1050625}],
+    "ops": [{"op": "import_heightmap", "changed_texels": 1050625, "clipped_low": 0, "clipped_high": 0, "filtered_out": 0, "outside": 0,
+             "detected": {"format": "r16", "format_guessed": False, "width": 1025, "height": 1025, "size_guessed": True,
+                          "byte_order": "little", "byte_order_guessed": True, "data_min": 812, "data_max": 61022,
+                          "range_low": 812, "range_high": 61022, "clipped_low": 0, "clipped_high": 0}}],
+    "warnings": [], "next": "Nothing changed. Call again without dry_run to apply.",
+}
 
 
 CASES = [
@@ -2493,6 +2537,158 @@ CASES = [
                    "shell_must_not": [r"\brm\b.*importing"]},
         "max_turns": 10,
     },
+    # -- T6 AC54: the Voxel Volume tools. Each fails against a surface from before the tool. --------
+    {
+        "id": "voxel_find_docs",
+        "kind": "guard",
+        "what_happened": "A destructible cave is voxel work, and no voxel tool is listed until the group is enabled: the agent "
+                         "must find the group or the doc rather than fake it with terrain and meshes.",
+        "text_at_issue": "Guide 'Tool groups': voxels; tool_groups' voxels description (start with edit_voxels; jasper://docs/voxels)",
+        "source": "docs/specs/T6-voxel-volumes.md R72, AC54",
+        "prompt": "Add a destructible cave to this level, one the player can blast open while playing.",
+        "mocks": [
+            {"tool": "edit_voxels", "result": ok("Created Cave (voxels/Cave.voxelvolume).", VOXEL_CREATED)},
+            {"tool": "sample_voxels", "result": ok("2 air components.", VOXEL_CONNECTED)},
+        ],
+        "checks": {"calls": [{"tool": "tool_groups", "args": {"enable": ["voxels"]}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "voxel_create_and_dig",
+        "kind": "bad",
+        "groups_enabled": ["voxels"],
+        "what_happened": "An agent made the volume in one call and each dig in others, and never checked that the tunnel joined "
+                         "anything: create takes ops in the same call, and connectivity is the proof.",
+        "text_at_issue": "edit_voxels description and jasper://docs/voxels, 'The loop'",
+        "source": "docs/specs/T6-voxel-volumes.md R67, R72, AC54",
+        "prompt": "Make a voxel volume of ground and dig a tunnel through it, then check that the tunnel really goes through.",
+        "mocks": [
+            {"tool": "edit_voxels", "args": {"ops": "*"}, "result": ok("Created Cave (voxels/Cave.voxelvolume). Dig Capsule: 2120 voxels changed, 8 blocks touched.",
+                                                                      dict(VOXEL_CREATED, voxels_changed=2120))},
+            {"tool": "sample_voxels", "args": {"mode": "connectivity"}, "result": ok("1 air components; from and to are connected.", VOXEL_CONNECTED)},
+        ],
+        "checks": {"calls": [{"tool": "edit_voxels", "args": {"create": "*", "ops": "*"}}, {"tool": "sample_voxels", "args": {"mode": "connectivity"}}],
+                   "order": [["edit_voxels", "sample_voxels"]], "max_calls": {"edit_voxels": 2}},
+        "max_turns": 10,
+    },
+    {
+        "id": "voxel_generate_from_graph",
+        "kind": "guard",
+        "groups_enabled": ["voxels"],
+        "what_happened": "Given a Noise Graph for a whole volume, the agent must give it as a base, a job, not rebuild the shape by "
+                         "hand with ops.",
+        "text_at_issue": "generate_voxels description",
+        "source": "docs/specs/T6-voxel-volumes.md R71, R82, AC54",
+        "prompt": "The Voxel Volume called Caves should take its shape from the noise graph graphs/caves.noisegraph. Set it up.",
+        "mocks": [
+            {"tool": "generate_voxels", "args": {"source": "noise_graph"}, "result": ok(
+                "Generating as job j1.", {"job_id": "j1", "status": "running", "next": "get_job {job_id: \"j1\"} until it ends; cancel_job stops it"})},
+            {"tool": "get_job", "result": ok("Generated: 212 non-uniform blocks, 3473408 bytes.", {"id": "j1", "status": "succeeded", "result": {
+                "blocks_non_uniform": 212, "memory": 3473408, "triangles_estimate": 91000, "content_hash": "1f0c9a7e5d3b2a10",
+                "base_changed": True, "non_watertight": False}})},
+            {"tool": "sample_voxels", "result": ok("Content hash 1f0c9a7e5d3b2a10.", {"content_hash": "1f0c9a7e5d3b2a10"})},
+        ],
+        "checks": {"calls": [{"tool": "generate_voxels", "args": {"source": "noise_graph", "graph": "re:caves\\.noisegraph"}}],
+                   "must_not_call": [{"tool": "edit_voxels", "args": {"ops": "*"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "voxel_control_hill_is_terrain",
+        "kind": "control",
+        "groups_enabled": ["voxels", "terrain"],
+        "what_happened": "A hill is what a heightmap holds: the voxel tools, listed, must not pull it in.",
+        "text_at_issue": "edit_voxels description: a plain hill belongs on a Terrain",
+        "source": "docs/specs/T6-voxel-volumes.md AC54",
+        "prompt": "Raise a gentle hill in the middle of the Terrain.",
+        "mocks": [
+            {"tool": "sculpt_terrain", "result": ok("Sculpted 1 stroke.", {"changed": True})},
+            {"tool": "edit_terrain", "result": ok("Sculpted 1 stroke.", {"changed": True})},
+            {"tool": "sample_terrain", "result": ok("1 sample.", {"samples": [{"height": 3.2}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "sculpt_terrain"}]}, {"calls": [{"tool": "edit_terrain"}]}],
+                   "must_not_call": ["edit_voxels", "generate_voxels"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "voxel_cave_mouth_not_holes_only",
+        "kind": "guard",
+        "groups_enabled": ["voxels", "terrain"],
+        "what_happened": "A hole in a Terrain shows the void under it. A cave entrance needs a volume attached to the Terrain, "
+                         "whose dig cuts the holes.",
+        "text_at_issue": "jasper://docs/voxels, opening and 'Terrain attachment'",
+        "source": "docs/specs/T6-voxel-volumes.md R38, R39, AC54",
+        "prompt": "Add a cave entrance to the hillside of the Terrain called Ground: the player should be able to walk in.",
+        "mocks": [
+            {"tool": "edit_voxels", "result": ok("Created Cave (voxels/Cave.voxelvolume).", VOXEL_CREATED)},
+            {"tool": "generate_voxels", "result": ok(
+                "Generating as job j1.", {"job_id": "j1", "status": "running", "next": "get_job {job_id: \"j1\"} until it ends; cancel_job stops it"})},
+            {"tool": "get_job", "result": ok("Generated: 90 non-uniform blocks, 1474560 bytes.", {"id": "j1", "status": "succeeded", "result": {
+                "blocks_non_uniform": 90, "memory": 1474560, "triangles_estimate": 41000, "content_hash": "77ac01b2c3d4e5f6",
+                "base_changed": True, "non_watertight": False}})},
+            {"tool": "sample_voxels", "result": ok("1 air components; from and to are connected.", VOXEL_CONNECTED)},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "edit_voxels", "args": {"create": {"terrain": "*"}}}]},
+                              {"calls": [{"tool": "generate_voxels", "args": {"preset": "cave_entrance"}}]}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "terrain_foliage_add_details",
+        "kind": "guard",
+        "what_happened": "Asked for grass, an agent has to fill an existing layer's density by rules, not place objects one by one.",
+        "text_at_issue": "edit_terrain's description and jasper://docs/terrain: scatter_by_rules with target detail_layer; sample_terrain foliage reads drawn.",
+        "source": "T5 R65, AC41",
+        "prompt": "Terrain [12] has a grass detail layer 0. Fill it on the flat ground, under 15 degrees, at 2 per square unit.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"ops": "re:scatter_by_rules"}, "result": ok(
+                "Scatter Foliage (Terrain): 0 trees.",
+                {"dry_run": False, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 40960, "instances_added": 0, "instances_removed": 0,
+                 "rejected": {"slope": 2024, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 0}}], "changed": [], "warnings": [], "trees": 0})},
+            {"tool": "sample_terrain", "args": {"foliage": True}, "result": ok(
+                "Sampled terrain \"Terrain\".",
+                {"foliage": {"details": [{"layer": 0, "instances": 81344, "mean_density": 1.6, "drawn": 12033}], "trees": [], "totals": {"resident": 12033}}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:detail_layer"}}],
+                   "must_not_call": ["sculpt_terrain", "create_entity"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_foliage_mass_trees",
+        "kind": "bad",
+        "what_happened": "Asked for a forest, an agent placed thousands of GameObjects with create_entity or sculpt_terrain place_object, which the scene YAML then carried.",
+        "text_at_issue": "edit_terrain's op scatter_by_rules in its listing and guide: dry_run first, then the real run.",
+        "source": "T5 R24, AC41",
+        "prompt": "Plant a pine forest over the whole of Terrain [12]; the prototype Pine exists.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"dry_run": True}, "result": ok(
+                "Dry run of Scatter Foliage (Terrain): 18422 trees.",
+                {"dry_run": True, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 0, "instances_added": 18422, "instances_removed": 0,
+                 "rejected": {"slope": 311, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 90}, "hash": "5c6872872df93554"}], "changed": [], "warnings": [], "trees": 18422})},
+            {"tool": "edit_terrain", "result": ok(
+                "Scatter Foliage (Terrain): 18422 trees.",
+                {"dry_run": False, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 0, "instances_added": 18422, "instances_removed": 0,
+                 "rejected": {"slope": 311, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 90}, "hash": "5c6872872df93554"}], "changed": [], "warnings": [], "trees": 18422,
+                 "next": ["The Terrain has 18422 trees, past the Mobile budget of 8000 visible: bake_impostors, and check sample_terrain foliage on a Low tier."]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:scatter_by_rules", "dry_run": True}}],
+                   "must_not_call": ["create_entity", "sculpt_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_foliage_impostors",
+        "kind": "guard",
+        "what_happened": "Asked why far trees cost so much, an agent has to bake impostors through edit_terrain, not look for a tool of its own.",
+        "text_at_issue": "edit_terrain's op bake_impostors, and the next hint on a tree count past the Mobile budget.",
+        "source": "T5 R56, AC41",
+        "prompt": "The far trees on Terrain [12] cost too much. Fix that with impostors.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"ops": "re:bake_impostors"}, "result": ok(
+                "Baked 2 impostor(s).",
+                {"dry_run": False, "undo_name": "Bake Impostors", "ops": [{"op": "bake_impostors", "entries": [
+                    {"prototype": 0, "albedo": "terrain_maps/a.png", "normal": "terrain_maps/n.png", "views": 8, "ms": 900}]}], "job_id": "7", "status": "succeeded"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:bake_impostors"}}]},
+        "max_turns": 10,
+    },
     {
         "id": "guard_focus_animator",
         "kind": "guard",
@@ -2936,6 +3132,541 @@ CASES = [
                               "args": {"values": {"quality.device_tiers.mobile.low": {"render_scale": 0.6}}}}],
                    "must_not_call": ["set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 12,
+    },
+    # -- T2: terrain generation. Red: a surface from before the tools (AC49) ---------------------
+    {
+        "id": "terrain_generate_preset",
+        "kind": "bad",
+        "what_happened": "Asked for mountains with a seed, an agent scripted noise strokes instead of generating: it must take generate_terrain's preset.",
+        "text_at_issue": "TerrainGenerationTools.cpp generate_terrain: name and description",
+        "source": "docs/specs/T2-noise-graphs.md AC49",
+        "prompt": "Make the terrain in this scene into mountains, seed 7.",
+        "mocks": [
+            {"tool": "generate_terrain", "args": {"preset": "mountains", "seed": 7}, "result": ok(
+                "Generate Terrain (Mountains, seed 7): height 0.02 to 0.98, 1 map(s) changed.",
+                {"seed": 7, "undo_name": "Generate Terrain (Mountains, seed 7)", "changed": [{"map": "height", "rect": [0, 0, 513, 513], "texels": 263169}]})},
+        ],
+        "checks": {"calls": [{"tool": "generate_terrain", "args": {"preset": "mountains", "seed": 7}}],
+                   "must_not_call": ["edit_terrain", "sculpt_terrain", "set_terrain_maps"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "noise_graph_edit_loop",
+        "kind": "guard",
+        "what_happened": "Tuning a graph: the loop is edit_graph, then preview_noise_graph, then a dry run before any write.",
+        "text_at_issue": "docs/mcp/guide/noise-graphs.md The loop; generate_terrain's and preview_noise_graph's descriptions",
+        "source": "docs/specs/T2-noise-graphs.md AC49, R65",
+        "prompt": "Tune graphs/Hills.noisegraph so the hills are gentler (lower its fbm frequency to 2), and show me what the terrain would look like. Don't change the terrain yet.",
+        "mocks": [
+            {"tool": "edit_graph", "args": {"path": "re:Hills"}, "result": ok("Edit: 1 op(s), 0 issue(s).", {"applied": 1, "issues": []})},
+            {"tool": "preview_noise_graph", "args": {"path": "re:Hills"}, "result": ok("Hills: 3 node(s) at 128, seed 1.", {"nodes": [], "outputs": {"height": "00"}})},
+            {"tool": "generate_terrain", "args": {"graph": "re:Hills", "dry_run": True}, "result": ok("Dry run: nothing was written.", {"dry_run": True, "hash": {"height": "00"}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"path": "re:Hills"}}, {"tool": "generate_terrain", "args": {"dry_run": True}}],
+                   "must_not_call": [{"tool": "generate_terrain", "args": {"dry_run": False}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "noise_graph_create",
+        "kind": "guard",
+        "what_happened": "A new graph file: edit_graph's create makes it, as one undo step. write_file refuses the extension.",
+        "text_at_issue": "GraphTools.cpp edit_graph: create",
+        "source": "docs/specs/T2-noise-graphs.md AC49, R16",
+        "prompt": "Start a new noise graph at graphs/Peaks.noisegraph from the alpine preset.",
+        "mocks": [
+            {"tool": "edit_graph", "args": {"path": "re:Peaks", "create": {"kind": "noise", "from_preset": "alpine"}}, "result": ok(
+                "Create Peaks.noisegraph: 0 op(s), 0 issue(s).", {"applied": 0, "issues": [], "undo_name": "Create Peaks.noisegraph"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"create": {"kind": "noise"}}}], "must_not_call": ["write_file"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_generate_error_next",
+        "kind": "guard",
+        "what_happened": "A graph error's result names the fix in next; the agent follows it with edit_graph on that node instead of giving up.",
+        "text_at_issue": "TerrainGenerationTools.cpp addNext",
+        "source": "docs/specs/T2-noise-graphs.md AC49, R65",
+        "prompt": "Generate the terrain from graphs/Bad.noisegraph. Fix it if something is wrong with the graph.",
+        "mocks": [
+            {"tool": "generate_terrain", "args": {"graph": "re:Bad"}, "result": err(
+                "octaves must be 1..12, not 40 (next: edit_graph on node n1 of graphs/Bad.noisegraph, then preview_noise_graph.)")},
+            {"tool": "edit_graph", "args": {"path": "re:Bad"}, "result": ok("Edit: 1 op(s), 0 issue(s).", {"applied": 1, "issues": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"path": "re:Bad"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "noise_graph_undo_timeline",
+        "kind": "guard",
+        "what_happened": "After an edit_graph, 'undo that' with undo's default scene scope found nothing: graph files are project history. The error names the timeline scope.",
+        "text_at_issue": "CoreTools.cpp undo: the empty scene history's error",
+        "source": "docs/specs/T2-noise-graphs.md R57",
+        "history": [
+            {"user": "Set the fbm frequency in graphs/Hills.noisegraph to 9."},
+            {"assistant": "Done.", "calls": [{"tool": "edit_graph", "args": {"path": "graphs/Hills.noisegraph",
+                "ops": [{"op": "setParam", "node": "n1", "name": "frequency", "value": 9}]},
+                "result": json.dumps({"applied": 1, "issues": [], "undo_name": "Set frequency"})}]},
+        ],
+        "prompt": "Actually, undo that.",
+        "mocks": [
+            {"tool": "undo", "args": {"scope": "timeline"}, "result": ok("Undid Set frequency.", {"undone": [{"id": 12, "name": "Set frequency"}]})},
+            {"tool": "undo", "args": {}, "result": err("Nothing to undo in the scene history. The last step is an asset edit: undo scope timeline takes it, as Ctrl+Z does.")},
+        ],
+        "checks": {"calls": [{"tool": "undo", "args": {"scope": "timeline"}}], "must_not_call": ["edit_graph"]},
+        "max_turns": 8,
+    },
+    # -- T3: holes and tiers (docs/mcp/guide/terrain-materials.md) ---------------------------------------------
+    {
+        "id": "terrain_cut_hole_check",
+        "kind": "guard",
+        "what_happened": "A hole that draws can still stop a ball: the agent checks the collider, not only the picture.",
+        "text_at_issue": "docs/mcp/guide/terrain-materials.md: Holes end to end; sample_terrain collision_gap",
+        "source": "T3 AC51",
+        "prompt": "Cut a cave mouth in the terrain at local (0, 0), 6 m across, and check a ball falls in.",
+        "results": [
+            {"tool": "edit_terrain", "result": ok("Applied 1 op.", {"ops": [{"op": "cut_holes", "changed_texels": 113, "hole_texels": 113,
+                "map_created": True, "collision_samples_open": 64}]})},
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": True, "collision_gap": True, "nav_excluded": True}]})},
+        ],
+        "checks": {"calls": ["edit_terrain", "sample_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_mobile_budget",
+        "kind": "bad",
+        "what_happened": "Asked why a terrain is slow on phones, an agent listed materials instead of reading what the pixels cost.",
+        "text_at_issue": "docs/mcp/guide/terrain-materials.md: Material budget and tiers; sample_terrain info.material",
+        "source": "T3 AC51",
+        "prompt": "Why is this terrain slow on phones?",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"info": {"material": {"quality": "high", "quality_source": "project",
+                "fetches": {"flat": 9, "slope": 27, "worst": 111, "by_tier": {"high": {"worst": 111}, "medium": {"worst": 21}, "low": {"worst": 6}}}}}})},
+        ],
+        "checks": {"calls": ["sample_terrain"], "must_not_call": ["list_materials"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_set_quality_tier",
+        "kind": "guard",
+        "what_happened": "A tier per platform is a project setting, not a file edit.",
+        "text_at_issue": "docs/mcp/guide/terrain-materials.md: Material budget and tiers; graphics.terrainQuality.<platform>",
+        "source": "T3 AC51",
+        "prompt": "Use the Low terrain quality on Android.",
+        "results": [
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.", {"changed": ["graphics.terrainQuality.android"]})},
+        ],
+        "checks": {"calls": ["set_project_settings"], "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 8,
+    },
+    # -- T4: Terrain Worlds (docs/mcp/guide/terrain.md, Terrain Worlds) ------------------------------------------
+    {
+        "id": "terrain_world_create",
+        "kind": "bad",
+        "what_happened": "Asked for land kilometres wide, an agent made a grid of Terrain GameObjects (or one huge Terrain) instead of one streamed world.",
+        "text_at_issue": "edit_terrain_world's description (create; never many Terrain GameObjects) and jasper://docs/terrain: Terrain Worlds.",
+        "source": "T4 R43, R59, AC45",
+        "prompt": "Make an 8 by 8 km landscape in this scene that streams on phones.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_world", "args": {"create": "*", "dry_run": True}, "result": ok(
+                "Dry run: a Terrain World of 64 tile(s) at Landscape.terrainworld.",
+                {"dry_run": True, "asset_path": "Landscape.terrainworld", "tile_count": 64, "predicted_bytes": 42467328, "tile_size": 1024.0,
+                 "ops_checked": 0, "warnings": [], "next": "Nothing changed. Call again without dry_run to create it."})},
+            {"tool": "edit_terrain_world", "args": {"create": "*"}, "result": ok(
+                "Created Terrain World \"Landscape\": 64 tile(s), 0 added, 0 removed, 0 repaired.",
+                {"entity": {"id": 7, "name": "Landscape", "path": "Landscape"}, "guid": "5f0c2a9e-41d7-4c8e-9a51-2f1e8d7c6b10",
+                 "asset_path": "Landscape.terrainworld", "tile_count": 64, "predicted_bytes": 42467328, "tile_size": 1024.0,
+                 "changed_tiles": {"added": [], "removed": [], "repaired": []}, "frozen": False, "warnings": [], "dry_run": False,
+                 "undo_name": "Create Terrain World (Landscape)", "ready": True,
+                 "next": "Sculpt and paint across tiles with edit_terrain or sculpt_terrain on this entity; sample_terrain {world} reports streaming."})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_world", "args": {"create": "*"}}],
+                   "must_not_call": [{"tool": "create_entity", "args": {"type": "terrain"}}],
+                   "max_calls": {"edit_terrain_world": 3}},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_world_convert",
+        "kind": "bad",
+        "what_happened": "Asked to grow an existing Terrain into a streamed world, an agent made an empty Terrain World beside it and tried to copy the heights by hand.",
+        "text_at_issue": "edit_terrain_world's description (create.from_terrain converts a Terrain, which stays, inactive) and jasper://docs/terrain: Terrain Worlds.",
+        "source": "T4 R33, R43",
+        "prompt": "The Terrain called Valley needs to become a streamed Terrain World so I can extend it later. Keep its shape and paint.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_world", "args": {"create": {"from_terrain": "*"}, "dry_run": True}, "result": ok(
+                "Dry run: a Terrain World of 4 tile(s) at Valley World.terrainworld.",
+                {"dry_run": True, "asset_path": "Valley World.terrainworld", "tile_count": 4, "predicted_bytes": 2134016, "tile_size": 512.0,
+                 "tile_quads": 512, "spacing": 1.0, "job": False, "ops_checked": 0, "warnings": [],
+                 "next": "Nothing changed. Call again without dry_run to convert; the Terrain is deactivated, not deleted."})},
+            {"tool": "edit_terrain_world", "args": {"create": {"from_terrain": "*"}}, "result": ok(
+                "Converted into Terrain World \"Valley World\": 4 tile(s), 0 added, 0 removed, 0 repaired.",
+                {"entity": {"id": 9, "name": "Valley World", "path": "Valley World"}, "guid": "0b8e7c1d-2a3f-4e5d-8c6b-7a9f1e2d3c4b",
+                 "asset_path": "Valley World.terrainworld", "tile_count": 4, "predicted_bytes": 2134016, "tile_size": 512.0,
+                 "changed_tiles": {"added": [], "removed": [], "imported": [], "repaired": []}, "frozen": False, "warnings": [], "dry_run": False,
+                 "undo_name": "Convert to Terrain World (Valley World)", "ready": True,
+                 "next": "Sculpt and paint across tiles with edit_terrain or sculpt_terrain on this entity; sample_terrain {world} reports streaming."})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_world", "args": {"create": {"from_terrain": "*"}}}],
+                   "must_not_call": [{"tool": "edit_terrain_world", "args": {"create": {"grid": "*"}}}, "delete_entity", "import_heightmap"],
+                   "max_calls": {"edit_terrain_world": 3}},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_world_overlay",
+        "kind": "bad",
+        "what_happened": "Asked to see which tiles of a streamed world are loaded, an agent listed sample_terrain {world} numbers or took a plain screenshot instead of the World's overlay.",
+        "text_at_issue": "jasper://docs/terrain: Terrain Worlds (visualize_terrain's tile_state, tiles, lod and collision overlays on a World).",
+        "source": "T4 R42, R46",
+        "prompt": "Show me in the Scene view which tiles of Terrain World [7] are loaded right now.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "visualize_terrain", "args": {"overlay": "tile_state"}, "result": ok(
+                "Terrain overlay tile_state on.",
+                {"overlay": "tile_state", "legend": [{"label": "cold", "color": [0.27, 0.35, 0.47]}, {"label": "resident", "color": [0.31, 0.75, 0.43]}],
+                 "camera": {"position": [0, 900, 900], "target": [0, 0, 0]}, "image": {"width": 1024, "height": 576},
+                 "next": "The overlay stays on in the Scene view; overlay none hides it."})},
+        ],
+        "checks": {"calls": [{"tool": "visualize_terrain", "args": {"overlay": "tile_state"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_world_import_job",
+        "kind": "guard",
+        "what_happened": "A heightmap import into a Terrain World came back as a running job; an agent sent the import again instead of following the job.",
+        "text_at_issue": "jasper://docs/terrain: Terrain Worlds (import_heightmap alone in its call; a job_id back means get_job).",
+        "source": "T4 R32, R44",
+        "prompt": "Import assets/island.r16 into Terrain World [7] with its first sample on tile (0, 0), and tell me how many tiles it made.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_world", "args": {"ops": [{"op": "import_heightmap"}]}, "result": ok(
+                "Import Heightmap (Landscape) is running.",
+                {"job_id": "job-3", "status": "running", "progress": 0.2})},
+            {"tool": "get_job", "result": ok(
+                "Imported the heightmap into Terrain World \"Landscape\": 16 tile(s).",
+                {"id": "job-3", "status": "succeeded", "result": {"tile_count": 20, "changed_tiles": {"imported": [[0, 0], [1, 0], [2, 0], [3, 0]]},
+                                                               "undo_name": "Import Heightmap (Landscape)"}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_world", "args": {"ops": [{"op": "import_heightmap"}]}}, "get_job"],
+                   "order": [[{"tool": "edit_terrain_world", "args": {"ops": [{"op": "import_heightmap"}]}}, "get_job"]],
+                   "max_calls": {"edit_terrain_world": 1}},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_world_wait_ready",
+        "kind": "guard",
+        "what_happened": "Asked for a screenshot of a far corner of a streamed world, an agent has to wait for its tiles and hold them, not shoot the low-detail overview.",
+        "text_at_issue": "sample_terrain's world key (wait_for, its next naming set_streaming freeze) and jasper://docs/terrain: Terrain Worlds.",
+        "source": "T4 R45, R59, AC45",
+        "prompt": "Terrain World [7] is 8 km wide. Screenshot its far corner around world (3800, 3800) at full detail.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "sample_terrain", "args": {"world": {"wait_for": "*"}}, "result": ok(
+                "The area of Terrain World \"Landscape\" is ready.",
+                {"terrain": {"id": 7, "name": "Landscape"},
+                 "world": {"tile_counts": {"total": 64, "absent": 0, "cold": 52, "queued": 0, "loading": 0, "cpu_ready": 0, "uploading": 0,
+                                           "resident": 12, "error": 0},
+                           "tiles": [{"tile": [3, 3], "state": "resident"}], "ready": True, "frozen": False, "queue": 0, "in_flight": 0,
+                           "pool_exhausted": 0, "seam_errors": 0, "errors": []},
+                 "wait_for": {"ready": True, "seconds": 2.4},
+                 "next": "For screenshots: edit_terrain_world {ops: [{op: \"set_streaming\", freeze: true}]} stops loads, evictions and uploads "
+                         "so frames repeat; freeze false resumes streaming."})},
+            {"tool": "edit_terrain_world", "args": {"ops": [{"op": "set_streaming"}]}, "result": ok(
+                "Edited Terrain World \"Landscape\": 64 tile(s), 0 added, 0 removed, 0 repaired.",
+                {"entity": {"id": 7, "name": "Landscape"}, "tile_count": 64, "changed_tiles": {"added": [], "removed": [], "repaired": []},
+                 "frozen": True, "warnings": [], "dry_run": False, "ready": True})},
+            {"tool": "screenshot", "result": ok("Scene view, 1280x720.", {"view": "scene"})},
+        ],
+        "checks": {"calls": [{"tool": "sample_terrain", "args": {"world": {"wait_for": "*"}}},
+                             {"tool": "edit_terrain_world", "args": {"ops": [{"op": "set_streaming", "freeze": True}]}}, "screenshot"],
+                   "order": [[{"tool": "sample_terrain", "args": {"world": {"wait_for": "*"}}}, "screenshot"],
+                             [{"tool": "edit_terrain_world", "args": {"ops": [{"op": "set_streaming", "freeze": True}]}}, "screenshot"]]},
+        "max_turns": 12,
+    },
+    {
+        "id": "terrain_world_sculpt_across",
+        "kind": "guard",
+        "what_happened": "Asked to shape land across tile borders, an agent has to edit the World with edit_terrain, not look for tile ops in edit_terrain_world.",
+        "text_at_issue": "edit_terrain_world's description (heights and paint: edit_terrain with entity) and jasper://docs/terrain: Terrain Worlds.",
+        "source": "T4 R46, R59, AC45",
+        "prompt": "Raise a 40 m ridge on Terrain World [7] from world (900, 0) to (1150, 0); it crosses the border of two tiles.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"entity": "*"}, "result": ok(
+                "Edited the terrain: 51200 texel(s) changed in 1 map(s).",
+                {"terrain": {"id": 7, "name": "Landscape"}, "dry_run": False, "undo_name": "Edit Terrain (Landscape)",
+                 "changed": [{"map": "height", "texels": 51200, "rect": [131972, 131040, 256, 200]}], "warnings": [],
+                 "next": "Check the result with sample_terrain (stats, hash) or look with visualize_terrain."})},
+            {"tool": "sample_terrain", "result": ok(
+                "Sampled terrain \"Landscape\".",
+                {"terrain": {"id": 7, "name": "Landscape"}, "samples": [{"world": [1020, 40, 0], "height": 40, "state": "full"},
+                                                                       {"world": [1030, 40, 0], "height": 40, "state": "full"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"entity": "*"}}],
+                   "must_not_call": ["edit_terrain_world", "create_entity"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_world_paint_trees",
+        "kind": "guard",
+        "what_happened": "Asked to paint trees with the brush across a Terrain World's tiles, an agent has to use sculpt_terrain's tree brush "
+                         "(T5's tree store, routed per tile), not place_object, which makes GameObjects, nor edit_terrain_world.",
+        "text_at_issue": "sculpt_terrain's description (paint/erase_trees: tree prototypes, a Terrain World across tiles) and its mode enum.",
+        "source": "T4 R27 (tree tools on a World)",
+        "prompt": "With the Paint Trees brush, paint the Terrain's tree prototype pine along Terrain World [7] from world (40, 10) to (90, 10), "
+                  "a brush of 6 m; the line crosses a tile border.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "sculpt_terrain", "args": {"strokes": "*"}, "result": ok(
+                "Applied 1 brush stroke(s) to \"Landscape\" as one undo step.",
+                {"terrain": {"id": 7, "name": "Landscape"}, "strokes": [{"mode": "paint_trees", "points": 6, "placed": 23}], "changed": True})},
+        ],
+        "checks": {"calls": [{"tool": "sculpt_terrain", "args": {"strokes": [{"mode": "paint_trees"}]}}],
+                   "must_not_call": ["edit_terrain_world", {"tool": "sculpt_terrain", "args": {"strokes": [{"mode": "place_object"}]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_world_import_heightmap",
+        "kind": "guard",
+        "what_happened": "Asked to put a heightmap file on a Terrain World, an agent has to use edit_terrain_world's import_heightmap, which makes the tiles, not edit_terrain's.",
+        "text_at_issue": "edit_terrain_world's description (ops: import_heightmap) and jasper://docs/terrain: Terrain Worlds (a heightmap file on a World).",
+        "source": "T4 R32, R44, R59",
+        "prompt": "Put the heightmap assets/dem.r16 (2049 x 2049) on Terrain World [7], its first sample at tile (0, 0).",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_world", "args": {"ops": "*"}, "result": ok(
+                "Edited Terrain World \"Landscape\": 1 op(s).",
+                {"entity": {"id": 7, "name": "Landscape"}, "tile_count": 64, "undo_name": "Edit Terrain World (Landscape)",
+                 "changed_tiles": {"added": [], "removed": [], "imported": [[0, 0], [1, 0]], "repaired": []}, "warnings": []})},
+            {"tool": "edit_terrain", "result": err(
+                "ops[0]: on a Terrain World import_heightmap is edit_terrain_world's op, which makes the tiles the file covers: "
+                "edit_terrain_world {ops: [{op: \"import_heightmap\", path, origin}]}. Nothing was changed.")},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_world", "args": {"ops": "*"}}],
+                   "must_not_call": ["edit_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_point_material_cap",
+        "kind": "guard",
+        "what_happened": "A dense sample_terrain grid says only hole per point; the agent asks again at the few points it cares about.",
+        "text_at_issue": "sample_terrain's result note: over 64 points each says only hole",
+        "source": "T3 R43",
+        "prompt": "Sample the terrain on a 16 x 16 grid of local points over its whole area, then tell me which layers draw at local (0, 0).",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": False}] * 256,
+                "note": "Over 64 points each says only hole: ask for collision_gap, nav_excluded, layers_painted, layers_drawn and fetches at fewer points."})},
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": False, "layers_drawn": [{"layer": 0, "weight": 1.0}], "fetches": 3}]})},
+        ],
+        "checks": {"calls": ["sample_terrain", {"tool": "sample_terrain", "args": {"points": [[0, 0]]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_macro_without_layers",
+        "kind": "guard",
+        "what_happened": "Macro Variation on a terrain with no layer draws nothing; sample_terrain's issue says why, and the agent adds a layer instead of retuning the macro.",
+        "text_at_issue": "sample_terrain issues: macro_without_layers",
+        "source": "T3 (spec Deviations: a terrain with no layer draws its base material alone)",
+        "prompt": "I turned on Macro Variation on the terrain but I see no change. Fix it so it shows.",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"issues": [{"code": "macro_without_layers", "severity": "warning",
+                "message": "Macro Variation applies once the terrain has a layer: set_terrain_maps layers adds one."}]})},
+            {"tool": "set_terrain_maps", "result": ok("Set terrain maps (one undo step).", {"layers": [{"index": 0}]})},
+        ],
+        "checks": {"calls": ["sample_terrain", "set_terrain_maps"]},
+        "max_turns": 10,
+    },
+    # -- T1 terrain (docs/specs/T1-terrain-authoring.md AC74) -----------------------------------
+    {
+        "id": "terrain_find_docs",
+        "kind": "guard",
+        "what_happened": "T1: terrain edits moved to edit_terrain in the terrain group, hidden until enabled; an agent asked to edit "
+                         "a terrain must find the group or its guide and edit declaratively, not script brush strokes.",
+        "text_at_issue": "Guide 'Tool groups': terrain; tool_groups' terrain description (start with edit_terrain; jasper://docs/terrain)",
+        "source": "docs/specs/T1-terrain-authoring.md R73, AC74",
+        "prompt": "The scene has a terrain called Island. Make its middle a plateau 30 m high, about 50 m across.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok(
+                "Edited the terrain: 7854 texel(s) changed in 1 map(s).",
+                TERRAIN_EDIT_RESULT)},
+            {"tool": "sample_terrain", "result": ok("Sampled the terrain.", TERRAIN_SAMPLE_RESULT)},
+        ],
+        "checks": {"calls": ["edit_terrain"], "must_not_call": ["sculpt_terrain", "write_file"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "terrain_hill_declarative",
+        "kind": "bad",
+        "groups_enabled": ["terrain"],
+        "what_happened": "Agents raised hills with sculpt_terrain strokes at a strength rate, then looped sampling until the height looked "
+                         "right; edit_terrain's set_height reaches the height in one undoable call.",
+        "text_at_issue": "edit_terrain description: absolute heights or signed deltas, no rates",
+        "source": "docs/specs/T1-terrain-authoring.md R68, AC74",
+        "prompt": "Raise a hill in the centre of the terrain whose top is at 80 m.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Edited the terrain: 7854 texel(s) changed in 1 map(s).", TERRAIN_EDIT_RESULT)},
+            {"tool": "sample_terrain", "result": ok("Sampled the terrain.", TERRAIN_SAMPLE_RESULT)},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": [{"op": "set_height"}]}}], "must_not_call": ["sculpt_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_verify_edit",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "An edit that hit Max Height clipped silently in the old brushes; edit_terrain warns clipped_high and its next "
+                         "names the fix, which the agent must act on or report, measuring with sample_terrain stats.",
+        "text_at_issue": "edit_terrain result next; sample_terrain stats",
+        "source": "docs/specs/T1-terrain-authoring.md R70, R95, AC74",
+        "prompt": "Flatten the whole terrain to 120 m and check that nothing clipped.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Edited the terrain: 1050625 texel(s) changed in 1 map(s).", TERRAIN_CLIPPED_RESULT)},
+            {"tool": "sample_terrain", "result": ok("Sampled the terrain.", TERRAIN_CLIPPED_SAMPLE)},
+            {"tool": "set_properties", "result": ok("Set 1 value(s).", {"changed": [{"component": "terrain", "property": "maxHeight"}]})},
+        ],
+        "checks": {"calls": ["edit_terrain", {"tool": "sample_terrain", "args": {"stats": "*"}}],
+                   "order": [["edit_terrain", "sample_terrain"]], "reply_must": [r"(?i)clip|max(imum)? ?height|100"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "terrain_import_raw",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "A raw heightmap says nothing about its size, depth or byte order; agents imported with guesses. The import "
+                         "detects them and reports what it guessed, so a dry run comes first.",
+        "text_at_issue": "docs/mcp/guide/terrain.md 'Which tool' and 'Import and export'; edit_terrain dry_run",
+        "source": "docs/specs/T1-terrain-authoring.md R61, R68, AC74",
+        "prompt": "Import assets/dem.r16 into the terrain as its heightmap.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"dry_run": True}, "result": ok("Dry run: 1 map(s) would change.", TERRAIN_IMPORT_DRY)},
+            {"tool": "edit_terrain", "result": ok("Edited the terrain: 1050625 texel(s) changed in 1 map(s).", TERRAIN_IMPORT_DRY | {"dry_run": False})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"dry_run": True, "ops": [{"op": "import_heightmap"}]}}],
+                   "must_not_call": ["set_terrain_maps", "write_file"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_show_slopes",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "Asked where a terrain is too steep, agents took screenshots and guessed from shading; the slope overlay "
+                         "colours each band and its legend gives the degrees.",
+        "text_at_issue": "visualize_terrain description; docs/mcp/guide/terrain.md 'Look'",
+        "source": "docs/specs/T1-terrain-authoring.md R65, AC74",
+        "prompt": "Show me where the terrain is too steep to walk on (over 35 degrees).",
+        "mocks": [
+            {"tool": "visualize_terrain", "result": ok(
+                "Terrain overlay slope on. Image: the Scene view.",
+                {"overlay": "slope", "legend": [{"label": "35-90 deg", "color": [0.9, 0.15, 0.1]}],
+                 "camera": {"position": [700, 600, 700], "target": [0, 40, 0]},
+                 "next": "The overlay stays on in the Scene view; overlay none hides it."})},
+            {"tool": "sample_terrain", "result": ok("Sampled the terrain.", TERRAIN_SAMPLE_RESULT)},
+        ],
+        "checks": {"calls": [{"tool": "visualize_terrain", "args": {"overlay": "slope"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_export_raw",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "Asked for a heightmap file, agents sampled heights and wrote bytes with write_file or a script.",
+        "text_at_issue": "export_terrain_heightmap description",
+        "source": "docs/specs/T1-terrain-authoring.md R61, AC74",
+        "prompt": "Export the terrain's heightmap as a 16-bit raw file to assets/export/heights.r16.",
+        "mocks": [
+            {"tool": "export_terrain_heightmap", "result": ok(
+                "Wrote assets/export/heights.r16 (1025 x 1025).",
+                {"path": "assets/export/heights.r16", "format": "r16", "width": 1025, "height": 1025, "bytes": 2101250,
+                 "min": 12.5, "max": 96.0, "hash": "8f1d22c01a7be310", "warnings": [],
+                 "next": "edit_terrain {op: import_heightmap, path, range: \"full\"} reads it back."})},
+        ],
+        "checks": {"calls": ["export_terrain_heightmap"], "must_not_call": ["write_file", "sample_terrain"],
+                   "shell_must_not": [r"struct\.pack|\.r16"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_large_edit_job",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "On a 4096 terrain an edit runs as a job and the call returns its job_id; agents read the job_id as a "
+                         "failure and edited again, or reported the edit as done without polling.",
+        "text_at_issue": "docs/mcp/guide/terrain.md edit_terrain: 'An edit over more than 4 M texels runs as a job'",
+        "source": "docs/specs/T1-terrain-authoring.md R69, AC74",
+        "prompt": "Raise the whole 4096 terrain by 5 m, without waiting on it, and tell me when it has landed.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Job 7 running: Edit Terrain (World).",
+                                                  {"job_id": "7", "status": "running", "message": "editing a copy of the maps"})},
+            {"tool": "get_job", "result": ok("Job 7 succeeded: Edited the terrain: 16785409 texel(s) changed in 1 map(s).",
+                                             {"id": "7", "status": "succeeded", "result": TERRAIN_EDIT_RESULT})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"wait": False}}, "get_job"], "max_calls": {"edit_terrain": 1},
+                   "order": [["edit_terrain", "get_job"]]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_place_objects",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "Asked to scatter rocks over a clearing, agents sent sculpt_terrain strokes point by point, guessing positions "
+                         "and spacing themselves, instead of one region for edit_terrain to plan.",
+        "text_at_issue": "docs/mcp/guide/terrain.md Which tool: 'Scatter rocks or props over a region | edit_terrain place_objects'",
+        "source": "docs/specs/T1-terrain-authoring.md R21",
+        "prompt": "Scatter about 20 copies of assets/rock.obj over the circle of radius 15 around the middle of the terrain, at least 2 m apart.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Placed 18 and erased 0 object(s) on \"World\" as one undo step.",
+                                                  {"placed": 18, "erased": 0, "undo_name": "Edit Terrain Objects (World)"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:place_objects"}}],
+                   "must_not_call": [{"tool": "sculpt_terrain", "args": {"strokes": "*"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_brush_shortcuts",
+        "kind": "guard",
+        "what_happened": "Asked which keys the terrain brush has, agents listed every shortcut and guessed from the names, or "
+                         "filtered by scene_view, which holds none of them; the brush's keys have a context of their own.",
+        "text_at_issue": "list_shortcuts context enum: 'terrain_brush'",
+        "source": "docs/specs/T1-terrain-authoring.md R57, Table 5",
+        "prompt": "Which keys pick the terrain brush's tools while it is armed? Just list them.",
+        "mocks": [
+            {"tool": "list_shortcuts", "args": {"context": "terrain_brush"}, "result": ok("21 shortcuts.", {"shortcuts": [
+                {"id": "terrain.tool.raise", "name": "Raise", "context": "terrain_brush", "chords": ["R"]},
+                {"id": "terrain.tool.setHeight", "name": "Set Height", "context": "terrain_brush", "chords": ["H"]}]})},
+        ],
+        "checks": {"calls": [{"tool": "list_shortcuts", "args": {"context": "terrain_brush"}}], "max_calls": {"list_shortcuts": 2}},
+        "max_turns": 6,
+    },
+    {
+        "id": "terrain_lua_crater",
+        "kind": "guard",
+        "what_happened": "Asked for a game that digs craters, agents wrote height loops over textures or called the editor's tools "
+                         "from the script; a game edits a terrain with Terrain:applyOps and needs Allow Runtime Edits.",
+        "text_at_issue": "docs/mcp/guide/lua-api.md 'Terrain' line; docs/mcp/guide/terrain.md 'Lua'",
+        "source": "docs/specs/T1-terrain-authoring.md R75, AC74",
+        "files": GAME_FILES,
+        "prompt": "Write scripts/bomb.lua: a script with a function Bomb:explode(x, z) that digs a 3 m deep crater, 6 m wide, into the "
+                  "terrain GameObject named Island at that point while the game runs. Just write the file.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("scripts/bomb.lua: no syntax errors.", {"ok": True, "problems": []})},
+        ],
+        "checks": {"file_must": {"scripts/bomb.lua": [r"applyOps", r"\blower\b|set_height"]},
+                   "file_must_not": {"scripts/bomb.lua": [r"edit_terrain|sculpt_terrain", r"setHeightMap"]},
+                   "must_not_call": ["edit_terrain", "sculpt_terrain", "play"]},
+        "max_turns": 20,
+    },
+    {
+        "id": "terrain_control_tilemap_name",
+        "kind": "control",
+        "groups_enabled": ["terrain"],
+        "what_happened": "A tilemap's 'terrain' is a tile set brush (S50), not the 3D terrain: the terrain tools must not pull it in.",
+        "text_at_issue": "edit_terrain description; tool_groups' terrain description",
+        "source": "docs/specs/T1-terrain-authoring.md AC74",
+        "prompt": "On the Ground tile layer, paint the grass terrain over cells (0,0) to (4,4).",
+        "mocks": [
+            {"tool": "edit_tilemap", "result": ok("Painted 25 cell(s) with terrain grass.", {"painted": 25})},
+        ],
+        "checks": {"calls": ["edit_tilemap"], "must_not_call": ["edit_terrain", "sculpt_terrain"]},
+        "max_turns": 8,
     },
     {
         "id": "guard_ui_button_gamepad_menu",

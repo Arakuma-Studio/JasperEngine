@@ -7,6 +7,7 @@
 // their ComponentDesc's codec (editor/reflect/components). The rest of the scene file is Stream.cpp.
 
 #include "Stream.h"
+#include "terrain/FoliageTypes.h"
 #include "component/BuoyancyComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
@@ -660,6 +661,7 @@ YAML::Node editor::Stream::encodeTerrainSurfaceLayer(const TerrainSurfaceLayer& 
     // hex tiling: written only when on, or with a rotation of its own
     if (layer.hexTiling) node["hexTiling"] = true;
     if (layer.hexRotation != TerrainSurfaceLayer().hexRotation) node["hexRotation"] = YamlNumbers::text(finiteOr(layer.hexRotation, 1.0f));
+    if (layer.cliffProjection != TerrainCliffProjection::AUTO) node["cliffProjection"] = std::string(StreamSchema::terrainCliffProjection().toString(layer.cliffProjection));
     return node;
 }
 
@@ -686,6 +688,7 @@ TerrainSurfaceLayer editor::Stream::decodeTerrainSurfaceLayer(const YAML::Node& 
     layer.stochasticRotation = decodeFinite(node["stochasticRotation"], layer.stochasticRotation);
     if (node["hexTiling"]) layer.hexTiling = YamlNumbers::as<bool>(node["hexTiling"]);
     layer.hexRotation = std::clamp(decodeFinite(node["hexRotation"], layer.hexRotation), 0.0f, 1.0f);
+    if (node["cliffProjection"]) layer.cliffProjection = decodeEnum(node, "cliffProjection", StreamSchema::terrainCliffProjection());
     return layer;
 }
 
@@ -707,7 +710,82 @@ YAML::Node editor::Stream::encodeTerrainFoliageLayer(const TerrainFoliageLayer& 
         node["minDrawDistance"] = layer.minDrawDistance;
     node["seed"] = layer.seed;
     node["castShadows"] = layer.castShadows;
+    // T5: optional, and a default leaves an old scene's file as it was (R60)
+    const TerrainFoliageLayer defaults;
+    if (layer.minDrawDistance != defaults.minDrawDistance) node["minDrawDistance"] = layer.minDrawDistance;
+    if (layer.minHeightRatio != defaults.minHeightRatio) node["minHeightRatio"] = layer.minHeightRatio;
+    if (layer.maxHeightRatio != defaults.maxHeightRatio) node["maxHeightRatio"] = layer.maxHeightRatio;
+    if (layer.healthyColor != defaults.healthyColor) node["healthyColor"] = encodeVector4(layer.healthyColor);
+    if (layer.dryColor != defaults.dryColor) node["dryColor"] = encodeVector4(layer.dryColor);
+    if (layer.noiseSpread != defaults.noiseSpread) node["noiseSpread"] = layer.noiseSpread;
+    if (layer.windBend != defaults.windBend) node["windBend"] = layer.windBend;
+    if (layer.densityFalloffStart != defaults.densityFalloffStart) node["densityFalloffStart"] = layer.densityFalloffStart;
+    if (layer.farDensity != defaults.farDensity) node["farDensity"] = layer.farDensity;
+    if (layer.densityScale != defaults.densityScale) node["densityScale"] = layer.densityScale;
+    if (layer.algorithmVersion != defaults.algorithmVersion) node["algorithmVersion"] = layer.algorithmVersion;
     return node;
+}
+
+YAML::Node editor::Stream::encodeTerrainTreePrototype(const TerrainTreePrototype& prototype) {
+    YAML::Node node;
+    node["id"] = prototype.id;
+    encodeAssetRef(node, "meshPath", prototype.meshPath);
+    if (!prototype.lodMeshes.empty()) {
+        YAML::Node lods;
+        for (const AssetRef& lod : prototype.lodMeshes) lods.push_back(lod.str());
+        node["lodMeshes"] = lods;
+    }
+    if (!prototype.lodDistances.empty()) {
+        YAML::Node distances;
+        for (float distance : prototype.lodDistances) distances.push_back(distance);
+        node["lodDistances"] = distances;
+    }
+    node["bendFactor"] = prototype.bendFactor;
+    node["windMask"] = prototype.windMask == TerrainTreeWindMask::VertexColor ? "vertexColor" : "height";
+    node["shadowLodMask"] = static_cast<unsigned int>(prototype.shadowLodMask);
+    node["collision"] = prototype.collision == TerrainTreeCollision::Capsule ? "capsule" : "none";
+    node["collisionRadius"] = prototype.collisionRadius;
+    node["collisionHeight"] = prototype.collisionHeight;
+    node["navObstacle"] = prototype.navObstacle;
+    if (!prototype.impostorAlbedo.empty()) node["impostorAlbedo"] = encodeTexture(prototype.impostorAlbedo);
+    if (!prototype.impostorNormal.empty()) node["impostorNormal"] = encodeTexture(prototype.impostorNormal);
+    if (prototype.impostorViews != 0) {
+        node["impostorViews"] = prototype.impostorViews;
+        node["impostorBoundsCenter"] = encodeVector3(prototype.impostorBoundsCenter);
+        node["impostorSize"] = encodeVector2(prototype.impostorSize);
+    }
+    if (!prototype.impostorSourceHash.empty()) node["impostorSourceHash"] = prototype.impostorSourceHash;
+    return node;
+}
+
+TerrainTreePrototype editor::Stream::decodeTerrainTreePrototype(const YAML::Node& node) {
+    TerrainTreePrototype prototype;
+    if (node["id"]) prototype.id = YamlNumbers::as<unsigned int>(node["id"]);
+    if (node["meshPath"]) prototype.meshPath = decodeAssetRef(node, "meshPath");
+    if (node["lodMeshes"] && node["lodMeshes"].IsSequence()) {
+        for (std::size_t i = 0; i < node["lodMeshes"].size() && prototype.lodMeshes.size() < 3; i++) {
+            prototype.lodMeshes.push_back(AssetRef(node["lodMeshes"][i].as<std::string>()));
+        }
+    }
+    if (node["lodDistances"] && node["lodDistances"].IsSequence()) {
+        for (std::size_t i = 0; i < node["lodDistances"].size() && prototype.lodDistances.size() < 3; i++) {
+            prototype.lodDistances.push_back(YamlNumbers::as<float>(node["lodDistances"][i]));
+        }
+    }
+    prototype.bendFactor = decodeFinite(node["bendFactor"], prototype.bendFactor);
+    if (node["windMask"]) prototype.windMask = node["windMask"].as<std::string>() == "vertexColor" ? TerrainTreeWindMask::VertexColor : TerrainTreeWindMask::Height;
+    if (node["shadowLodMask"]) prototype.shadowLodMask = static_cast<uint8_t>(YamlNumbers::as<unsigned int>(node["shadowLodMask"]));
+    if (node["collision"]) prototype.collision = node["collision"].as<std::string>() == "capsule" ? TerrainTreeCollision::Capsule : TerrainTreeCollision::None;
+    prototype.collisionRadius = decodeFinite(node["collisionRadius"], prototype.collisionRadius);
+    prototype.collisionHeight = decodeFinite(node["collisionHeight"], prototype.collisionHeight);
+    if (node["navObstacle"]) prototype.navObstacle = YamlNumbers::as<bool>(node["navObstacle"]);
+    if (node["impostorAlbedo"]) prototype.impostorAlbedo = decodeTexture(node["impostorAlbedo"]);
+    if (node["impostorNormal"]) prototype.impostorNormal = decodeTexture(node["impostorNormal"]);
+    if (node["impostorViews"]) prototype.impostorViews = YamlNumbers::as<int>(node["impostorViews"]);
+    if (node["impostorBoundsCenter"]) prototype.impostorBoundsCenter = decodeVector3(node["impostorBoundsCenter"]);
+    if (node["impostorSize"]) prototype.impostorSize = decodeVector2(node["impostorSize"]);
+    if (node["impostorSourceHash"]) prototype.impostorSourceHash = node["impostorSourceHash"].as<std::string>();
+    return prototype;
 }
 
 TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& node, bool clamp, int index) {
@@ -716,6 +794,16 @@ TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& 
     if (node["densityMap"]) layer.densityMap = decodeTexture(node["densityMap"]);
     if (node["seed"]) layer.seed = YamlNumbers::as<unsigned int>(node["seed"]);
     if (node["castShadows"]) layer.castShadows = YamlNumbers::as<bool>(node["castShadows"]);
+    layer.minHeightRatio = decodeFinite(node["minHeightRatio"], layer.minHeightRatio);
+    layer.maxHeightRatio = decodeFinite(node["maxHeightRatio"], layer.maxHeightRatio);
+    if (node["healthyColor"]) layer.healthyColor = decodeVector4(node["healthyColor"]);
+    if (node["dryColor"]) layer.dryColor = decodeVector4(node["dryColor"]);
+    layer.noiseSpread = decodeFinite(node["noiseSpread"], layer.noiseSpread);
+    layer.windBend = decodeFinite(node["windBend"], layer.windBend);
+    layer.densityFalloffStart = decodeFinite(node["densityFalloffStart"], layer.densityFalloffStart);
+    layer.farDensity = decodeFinite(node["farDensity"], layer.farDensity);
+    layer.densityScale = decodeFinite(node["densityScale"], layer.densityScale);
+    if (node["algorithmVersion"]) layer.algorithmVersion = YamlNumbers::as<unsigned int>(node["algorithmVersion"]);
     layer.density = decodeFinite(node["density"], layer.density);
     layer.minScale = decodeFinite(node["minScale"], layer.minScale);
     layer.maxScale = decodeFinite(node["maxScale"], layer.maxScale);
@@ -729,7 +817,7 @@ TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& 
     layer.minDrawDistance = std::max(0.0f, decodeFinite(node["minDrawDistance"], layer.minDrawDistance));
     // a hand-edited or older file: values the renderer cannot use are clamped, and said so
     if (!clamp) return layer;
-    const std::vector<std::string> clamped = editor::terrain::clampDetailLayer(layer);
+    const std::vector<std::string> clamped = editor::terraindetail::clampDetailLayer(layer);
     if (!clamped.empty()) {
         std::string what;
         for (const std::string& change : clamped) what += (what.empty() ? "" : ", ") + change;
@@ -758,6 +846,9 @@ YAML::Node editor::Stream::encodeTerrainComponent(const TerrainComponent& terrai
     YAML::Node node;
     node["enabled"] = terrain.enabled;
     node["heightMap"] = encodeTexture(terrain.heightMap);
+    // only a terrain with holes says so: an old scene saves back byte-identical (T1 R81)
+    if (!terrain.holeMap.empty()) node["holeMap"] = encodeTexture(terrain.holeMap);
+    if (terrain.allowRuntimeEdits) node["allowRuntimeEdits"] = true;
     YAML::Node blendMapsNode;
     for (const Texture& blendMap : terrain.blendMaps) {
         blendMapsNode.push_back(encodeTexture(blendMap));
@@ -779,6 +870,24 @@ YAML::Node editor::Stream::encodeTerrainComponent(const TerrainComponent& terrai
     node["rootGridSize"] = terrain.rootGridSize;
     node["levels"] = terrain.levels;
 
+    // T3 R50: each at its default stays out, so an old scene saves back byte-identical
+    const TerrainComponent defaults{};
+    if (terrain.quality != defaults.quality) node["quality"] = std::string(StreamSchema::terrainQualitySetting().toString(terrain.quality));
+    if (terrain.limitLayersPerPixel) node["limitLayersPerPixel"] = true;
+    if (terrain.offscreenShadows != defaults.offscreenShadows) node["offscreenShadows"] = std::string(StreamSchema::terrainOffscreenShadows().toString(terrain.offscreenShadows));
+    if (terrain.macroMode != defaults.macroMode) node["macroMode"] = std::string(StreamSchema::terrainMacroMode().toString(terrain.macroMode));
+    if (terrain.macroScale != defaults.macroScale) node["macroScale"] = YamlNumbers::text(finiteOr(terrain.macroScale, defaults.macroScale));
+    if (terrain.macroStrength != defaults.macroStrength) node["macroStrength"] = YamlNumbers::text(finiteOr(terrain.macroStrength, defaults.macroStrength));
+    if (terrain.macroTintA != defaults.macroTintA) node["macroTintA"] = encodeVector3(terrain.macroTintA);
+    if (terrain.macroTintB != defaults.macroTintB) node["macroTintB"] = encodeVector3(terrain.macroTintB);
+    if (terrain.macroSlopeFade != defaults.macroSlopeFade) node["macroSlopeFade"] = YamlNumbers::text(finiteOr(terrain.macroSlopeFade, defaults.macroSlopeFade));
+    if (terrain.resampleEnabled) node["resampleEnabled"] = true;
+    if (terrain.resampleNear != defaults.resampleNear) node["resampleNear"] = YamlNumbers::text(finiteOr(terrain.resampleNear, defaults.resampleNear));
+    if (terrain.resampleFar != defaults.resampleFar) node["resampleFar"] = YamlNumbers::text(finiteOr(terrain.resampleFar, defaults.resampleFar));
+    if (terrain.resampleReduction != defaults.resampleReduction) node["resampleReduction"] = YamlNumbers::text(finiteOr(terrain.resampleReduction, defaults.resampleReduction));
+    if (terrain.heightBlendSharpness != defaults.heightBlendSharpness) node["heightBlendSharpness"] = YamlNumbers::text(finiteOr(terrain.heightBlendSharpness, defaults.heightBlendSharpness));
+    if (terrain.macroNormal) node["macroNormal"] = true;
+
     // Auto Ranges: set from the camera's far clip when the terrain runs (MeshSystem::updateTerrainAutoRanges)
     if (!terrain.ranges.empty() && (!terrain.autoSetRanges || reflect::encodesComputedValues())) {
         YAML::Node rangesNode;
@@ -796,6 +905,25 @@ YAML::Node editor::Stream::encodeTerrainComponent(const TerrainComponent& terrai
         node["foliageLayers"] = layersNode;
     }
 
+    // T5 R60: a key only when it says something a load's default would not
+    const TerrainComponent terrainDefaults{};
+    if (terrain.detailDistance != terrainDefaults.detailDistance) node["detailDistance"] = terrain.detailDistance;
+    if (terrain.detailDensity != terrainDefaults.detailDensity) node["detailDensity"] = terrain.detailDensity;
+    if (terrain.treeDistance != terrainDefaults.treeDistance) node["treeDistance"] = terrain.treeDistance;
+    if (terrain.billboardStart != terrainDefaults.billboardStart) node["billboardStart"] = terrain.billboardStart;
+    if (terrain.fadeLength != terrainDefaults.fadeLength) node["fadeLength"] = terrain.fadeLength;
+    if (terrain.maxMeshTrees != terrainDefaults.maxMeshTrees) node["maxMeshTrees"] = terrain.maxMeshTrees;
+    if (terrain.windDirection != terrainDefaults.windDirection) node["windDirection"] = encodeVector3(terrain.windDirection);
+    if (terrain.windSpeed != terrainDefaults.windSpeed) node["windSpeed"] = terrain.windSpeed;
+    if (terrain.windSize != terrainDefaults.windSize) node["windSize"] = terrain.windSize;
+    if (terrain.windBending != terrainDefaults.windBending) node["windBending"] = terrain.windBending;
+    if (!terrain.treePrototypes.empty()) {
+        YAML::Node prototypes;
+        for (const TerrainTreePrototype& prototype : terrain.treePrototypes) prototypes.push_back(encodeTerrainTreePrototype(prototype));
+        node["treePrototypes"] = prototypes;
+    }
+    if (!terrain.treeData.empty()) encodeAssetRef(node, "treeData", terrain.treeData);
+
     return node;
 }
 
@@ -807,6 +935,8 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     }
 
     if (node["heightMap"]) terrain.heightMap = decodeTexture(node["heightMap"]);
+    terrain.holeMap = node["holeMap"] ? decodeTexture(node["holeMap"]) : Texture();
+    terrain.allowRuntimeEdits = node["allowRuntimeEdits"] ? node["allowRuntimeEdits"].as<bool>() : false;
     // Cleared like the other lists below: decoding over a loaded terrain (a stop, a prefab
     // reload) must replace what it has, not append to it.
     terrain.blendMaps.clear();
@@ -866,6 +996,24 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     if (node["rootGridSize"]) terrain.rootGridSize = YamlNumbers::as<int>(node["rootGridSize"]);
     if (node["levels"]) terrain.levels = YamlNumbers::as<int>(node["levels"]);
 
+    // T3 R50: an absent key is the default, also when decoding over a terrain that had another value
+    const TerrainComponent defaults{};
+    terrain.quality = node["quality"] ? decodeEnum(node, "quality", StreamSchema::terrainQualitySetting()) : defaults.quality;
+    terrain.limitLayersPerPixel = node["limitLayersPerPixel"] ? YamlNumbers::as<bool>(node["limitLayersPerPixel"]) : defaults.limitLayersPerPixel;
+    terrain.offscreenShadows = node["offscreenShadows"] ? decodeEnum(node, "offscreenShadows", StreamSchema::terrainOffscreenShadows()) : defaults.offscreenShadows;
+    terrain.macroMode = node["macroMode"] ? decodeEnum(node, "macroMode", StreamSchema::terrainMacroMode()) : defaults.macroMode;
+    terrain.macroScale = decodeFinite(node["macroScale"], defaults.macroScale);
+    terrain.macroStrength = decodeFinite(node["macroStrength"], defaults.macroStrength);
+    terrain.macroTintA = node["macroTintA"] ? decodeVector3(node["macroTintA"]) : defaults.macroTintA;
+    terrain.macroTintB = node["macroTintB"] ? decodeVector3(node["macroTintB"]) : defaults.macroTintB;
+    terrain.macroSlopeFade = decodeFinite(node["macroSlopeFade"], defaults.macroSlopeFade);
+    terrain.resampleEnabled = node["resampleEnabled"] ? YamlNumbers::as<bool>(node["resampleEnabled"]) : defaults.resampleEnabled;
+    terrain.resampleNear = decodeFinite(node["resampleNear"], defaults.resampleNear);
+    terrain.resampleFar = decodeFinite(node["resampleFar"], defaults.resampleFar);
+    terrain.resampleReduction = decodeFinite(node["resampleReduction"], defaults.resampleReduction);
+    terrain.heightBlendSharpness = decodeFinite(node["heightBlendSharpness"], defaults.heightBlendSharpness);
+    terrain.macroNormal = node["macroNormal"] ? YamlNumbers::as<bool>(node["macroNormal"]) : defaults.macroNormal;
+
     // The encoder omits empty ranges, so applying a full component must clear old values.
     terrain.ranges.clear();
     if (node["ranges"] && node["ranges"].IsSequence()) {
@@ -888,6 +1036,27 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
             terrain.foliageLayers.push_back(decodeTerrainFoliageLayer(node["foliageLayers"][i], true, static_cast<int>(i)));
         }
     }
+
+    // T5 R60, F12: a missing key is the default an old scene has
+    const TerrainComponent terrainDefaults{};
+    terrain.detailDistance = decodeFinite(node["detailDistance"], terrainDefaults.detailDistance);
+    terrain.detailDensity = decodeFinite(node["detailDensity"], terrainDefaults.detailDensity);
+    terrain.treeDistance = decodeFinite(node["treeDistance"], terrainDefaults.treeDistance);
+    terrain.billboardStart = decodeFinite(node["billboardStart"], terrainDefaults.billboardStart);
+    terrain.fadeLength = decodeFinite(node["fadeLength"], terrainDefaults.fadeLength);
+    terrain.maxMeshTrees = node["maxMeshTrees"] ? YamlNumbers::as<int>(node["maxMeshTrees"]) : terrainDefaults.maxMeshTrees;
+    terrain.windDirection = node["windDirection"] ? decodeVector3(node["windDirection"]) : terrainDefaults.windDirection;
+    terrain.windSpeed = decodeFinite(node["windSpeed"], terrainDefaults.windSpeed);
+    terrain.windSize = decodeFinite(node["windSize"], terrainDefaults.windSize);
+    terrain.windBending = decodeFinite(node["windBending"], terrainDefaults.windBending);
+    terrain.treePrototypes.clear();
+    if (node["treePrototypes"] && node["treePrototypes"].IsSequence()) {
+        for (std::size_t i = 0; i < node["treePrototypes"].size() && i < static_cast<std::size_t>(jasperengine::terraincore::FOLIAGE_MAX_PROTOTYPES); i++) {
+            if (!node["treePrototypes"][i] || node["treePrototypes"][i].IsNull()) continue;
+            terrain.treePrototypes.push_back(decodeTerrainTreePrototype(node["treePrototypes"][i]));
+        }
+    }
+    terrain.treeData = node["treeData"] ? decodeAssetRef(node, "treeData") : AssetRef();
 
     terrain.needUpdateTerrain = true;
     terrain.needUpdateFoliage = true;

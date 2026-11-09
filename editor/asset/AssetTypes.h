@@ -52,6 +52,11 @@ namespace jasperengine::editor {
         // A directory below the project the asset scan never enters: names starting with '.'
         // (.jasperengine, .trash, .git) and build/, the set Project::findProjectFiles skips
         static bool isSkippedDirectory(const std::string& name);
+        // A directory that is one asset (T4's Name.terrainworld): the scan takes it whole and does not
+        // enter it, so its files have no .meta
+        static bool isFolderAsset(const std::string& name);
+        // The file an in-file identity lives in: the asset, or a folder asset's manifest.yaml
+        static std::filesystem::path identityFileOf(const std::filesystem::path& assetPath);
         // Files with a tracked extension that are not assets: project.yaml and the files the
         // editor generates in the project root (CMakeLists.txt, ProjectBuild.cmake, ...)
         static bool isExcludedFile(const std::filesystem::path& projectRelative);

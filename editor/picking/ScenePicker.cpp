@@ -22,6 +22,7 @@
 #include "picking/SceneBvh.h"
 #include "render/SceneRender.h"
 #include "subsystem/SplineSystem.h"
+#include "subsystem/VoxelSystem.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -173,11 +174,16 @@ PickFilter ScenePicker::makeFilter(const SceneProject* layerScene, const ScenePr
     pickable->insert(entities.begin(), entities.end());
     // what a spline builds is picked as its GameObject (pickedEntity)
     std::shared_ptr<SplineSystem> splines = layerScene->scene ? layerScene->scene->findSystem<SplineSystem>() : nullptr;
-    filter.accept = [pickable, splines](Entity entity){
+    // ... and a Voxel Volume's chunks as the volume (T6 R53)
+    std::shared_ptr<VoxelSystem> voxels = layerScene->scene ? layerScene->scene->findSystem<VoxelSystem>() : nullptr;
+    filter.accept = [pickable, splines, voxels](Entity entity){
         if (pickable->count(entity) > 0){
             return true;
         }
-        const Entity owner = splines ? splines->getGeneratedOwner(entity) : NULL_ENTITY;
+        Entity owner = splines ? splines->getGeneratedOwner(entity) : NULL_ENTITY;
+        if (owner == NULL_ENTITY && voxels){
+            owner = voxels->getGeneratedOwner(entity);
+        }
         return owner != NULL_ENTITY && pickable->count(owner) > 0;
     };
     return filter;
@@ -185,7 +191,11 @@ PickFilter ScenePicker::makeFilter(const SceneProject* layerScene, const ScenePr
 
 Entity ScenePicker::pickedEntity(Scene* scene, Entity hit){
     std::shared_ptr<SplineSystem> splines = scene ? scene->findSystem<SplineSystem>() : nullptr;
-    const Entity owner = splines ? splines->getGeneratedOwner(hit) : NULL_ENTITY;
+    Entity owner = splines ? splines->getGeneratedOwner(hit) : NULL_ENTITY;
+    if (owner == NULL_ENTITY){
+        std::shared_ptr<VoxelSystem> voxels = scene ? scene->findSystem<VoxelSystem>() : nullptr;
+        owner = voxels ? voxels->getGeneratedOwner(hit) : NULL_ENTITY;
+    }
     return owner != NULL_ENTITY ? owner : hit;
 }
 
@@ -429,11 +439,15 @@ Entity ScenePicker::bestOnRay(const std::vector<Entity>& entities, Scene* scene,
     PickFilter filter;
     filter.kinds = PICK_ALL & ~PICK_ICON;
     std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>();
-    filter.accept = [accepted, splines](Entity entity){
+    std::shared_ptr<VoxelSystem> voxels = scene->findSystem<VoxelSystem>();
+    filter.accept = [accepted, splines, voxels](Entity entity){
         if (accepted->count(entity) > 0){
             return true;
         }
-        const Entity owner = splines ? splines->getGeneratedOwner(entity) : NULL_ENTITY;
+        Entity owner = splines ? splines->getGeneratedOwner(entity) : NULL_ENTITY;
+        if (owner == NULL_ENTITY && voxels){
+            owner = voxels->getGeneratedOwner(entity);
+        }
         return owner != NULL_ENTITY && accepted->count(owner) > 0;
     };
     // the editor's incidental queries (what a press lands on, the physics snap's arming) never

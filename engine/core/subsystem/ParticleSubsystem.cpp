@@ -25,6 +25,7 @@
 #include "script/ScriptMessages.h"
 #include "object/sound/Audio.h"
 #include "render/SystemRender.h"
+#include "object/TerrainEdit.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -795,9 +796,12 @@ bool ParticleSubsystem::sampleTerrain(const void* context, const float p[3], flo
         const Vector3 local = t.worldToLocal * point(p);
         if (std::fabs(local.x) > t.halfSize || std::fabs(local.z) > t.halfSize)
             continue;
-        float height = 0.0f;
-        Vector3 n;
-        MeshSystem::sampleTerrainSurface(*t.terrain, local.x, local.z, height, n);
+        const terraincore::SurfaceSample sample = querySurface(*t.terrain, local.x, local.z);
+        // T3 R26: no surface over a hole, so the particle passes
+        if (sample.hole)
+            continue;
+        const float height = sample.height;
+        const Vector3 n = sample.normal;
         const Vector3 world = t.localToWorld * Vector3(local.x, height, local.z);
         // normals by the inverse transpose
         Vector3 wn(t.worldToLocal[0][0] * n.x + t.worldToLocal[0][1] * n.y + t.worldToLocal[0][2] * n.z,

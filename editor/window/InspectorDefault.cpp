@@ -24,6 +24,7 @@
 #include "reflect/Enums.h"
 #include "reflect/Reflect.h"
 #include "external/IconsFontAwesome6.h"
+#include "terrainworld/TerrainWorldPanel.h"
 
 #include "imgui.h"
 
@@ -378,6 +379,9 @@ void editor::InspectorWindow::drawDefaultComponentNotes(ComponentType cpType, Sc
             ImGui::TextWrapped("Local Volumetric Fog shows through volumetric fog only: add a Fog of Type Height and turn its Volumetric Fog on.");
         }
     }
+    if (cpType == ComponentType::TerrainWorldComponent) {
+        TerrainWorldPanel::drawInspectorNotes(project, sceneProject);
+    }
 }
 
 editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawer(ComponentType cpType) {
@@ -460,6 +464,8 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::SplineAnimateComponent: return &InspectorWindow::drawSplineAnimateComponent;
         case ComponentType::AnimatorComponent: return &InspectorWindow::drawAnimatorComponent;
         case ComponentType::VertexAnimatorComponent: return &InspectorWindow::drawVertexAnimatorComponent;
+        // T6 R65 (InspectorVoxels.cpp)
+        case ComponentType::VoxelVolumeComponent: return &InspectorWindow::drawVoxelVolumeComponent;
         // upstream's (InspectorUpstream.cpp)
         case ComponentType::OnScreenStickComponent: return &InspectorWindow::drawOnScreenStickComponent;
         case ComponentType::OnScreenButtonComponent: return &InspectorWindow::drawOnScreenButtonComponent;

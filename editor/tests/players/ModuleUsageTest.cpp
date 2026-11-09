@@ -23,10 +23,14 @@
 #include "component/Rigidbody2DComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "component/ScriptComponent.h"
+#include "component/TerrainComponent.h"
 #include "component/SplineExtrudeComponent.h"
 #include "component/Transform.h"
 #include "component/UIDocumentComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/VoxelVolumeComponent.h"
+#include "component/TerrainWorldComponent.h"
 
 #include <gtest/gtest.h>
 
@@ -88,6 +92,20 @@ TEST(ModuleUsage, AnEmptyProjectNeedsNothing) {
     EXPECT_EQ(modules(withLua("local v = Vector3(1, 2, 3)\nif Input.isKeyPressed(1) then Log.info(tostring(v:length())) end")), "");
 }
 
+// T5 AC17: a tree's capsule is a body the physics module has to build
+TEST(ModuleUsage, TreeCapsulesNeedPhysics3d) {
+    OneEntity plain;
+    TerrainComponent terrain;
+    TerrainTreePrototype prototype;
+    prototype.id = 1;
+    terrain.treePrototypes.push_back(prototype);
+    plain.scene.addComponent<TerrainComponent>(plain.entity, terrain);
+    EXPECT_EQ(modules(plain.usage()).find("physics3d"), std::string::npos) << "no collision, no module";
+
+    plain.scene.getComponent<TerrainComponent>(plain.entity).treePrototypes[0].collision = TerrainTreeCollision::Capsule;
+    EXPECT_NE(modules(plain.usage()).find("physics3d"), std::string::npos);
+}
+
 TEST(ModuleUsage, TheSoundLayerFollowsTheImportTable) {
     ModuleScan scan = empty();
     EXPECT_EQ(modules(ModuleUsageDetector::analyze(scan)), "");
@@ -135,6 +153,151 @@ TEST(ModuleUsage, ASplineExtrudeCollisionNeedsPhysics) {
         one.scene.addComponent<SplineExtrudeComponent>(one.entity, extrude);
         EXPECT_EQ(modules(one.usage()), expected);
     }
+}
+
+// T6 R48: each kind of evidence, and what a volume's fields add
+TEST(ModuleUsage, VoxelComponentNeedsTheModule) {
+    OneEntity one;
+    VoxelVolumeComponent volume;
+    volume.collision = false;
+    volume.navigationUpdate = VoxelNavigationUpdate::Off;
+    one.scene.addComponent<VoxelVolumeComponent>(one.entity, volume);
+    const ModuleUsage usage = one.usage();
+    // its generators reach Noise Graphs (R48), on the volume's own evidence
+    EXPECT_EQ(modules(usage), "noise voxel");
+    EXPECT_EQ(usage.firstEvidence("voxel"), "scene Main: Voxel Volume on Thing");
+    EXPECT_EQ(usage.firstEvidence("noise"), "scene Main: Voxel Volume on Thing: Voxel Volume (its generators use Noise Graphs)");
+}
+
+TEST(ModuleUsage, VoxelCollisionAddsPhysics) {
+    OneEntity one;
+    VoxelVolumeComponent volume;
+    volume.navigationUpdate = VoxelNavigationUpdate::Off;
+    one.scene.addComponent<VoxelVolumeComponent>(one.entity, volume);
+    const ModuleUsage usage = one.usage();
+    EXPECT_EQ(modules(usage), "physics3d noise voxel");
+    EXPECT_EQ(usage.firstEvidence("physics3d"), "scene Main: Voxel Volume collision on Thing");
+}
+
+TEST(ModuleUsage, VoxelNavigationUpdateAddsNavigationOnlyWithASurface) {
+    OneEntity one;
+    VoxelVolumeComponent volume;
+    volume.collision = false;
+    one.scene.addComponent<VoxelVolumeComponent>(one.entity, volume);
+    // Automatic, and nothing to rebake
+    EXPECT_EQ(modules(one.usage()), "noise voxel");
+    one.scene.addComponent<NavMeshSurfaceComponent>(one.entity, {});
+    const ModuleUsage usage = one.usage();
+    EXPECT_EQ(modules(usage), "navigation noise voxel");
+    EXPECT_EQ(usage.firstEvidence("navigation"), "scene Main: Voxel Volume navigation update on Thing");
+    // Off: nothing rebakes it
+    one.scene.getComponent<VoxelVolumeComponent>(one.entity).navigationUpdate = VoxelNavigationUpdate::Off;
+    EXPECT_EQ(modules(one.usage()), "noise voxel");
+}
+
+TEST(ModuleUsage, VoxelScriptPropertyNeedsTheModule) {
+    OneEntity one;
+    ScriptComponent scripts;
+    ScriptEntry entry;
+    entry.type = ScriptType::LUA;
+    entry.className = "Digger";
+    ScriptProperty property;
+    property.name = "cave";
+    property.ptrTypeName = "VoxelVolume*";
+    entry.properties.push_back(property);
+    scripts.scripts.push_back(entry);
+    one.scene.addComponent<ScriptComponent>(one.entity, scripts);
+    const ModuleUsage usage = one.usage();
+    EXPECT_TRUE(usage.needs("voxel"));
+    EXPECT_NE(usage.firstEvidence("voxel").find("script property cave (VoxelVolume)"), std::string::npos) << usage.firstEvidence("voxel");
+}
+
+TEST(ModuleUsage, VoxelLuaNameNeedsTheModule) {
+    const ModuleUsage usage = withLua("local v = VoxelVolume.fromGameObject(self)");
+    EXPECT_TRUE(usage.needs("voxel"));
+    EXPECT_NE(usage.firstEvidence("voxel").find("lua/test.lua:1"), std::string::npos) << usage.firstEvidence("voxel");
+    EXPECT_FALSE(withLua("local v = 1").needs("voxel"));
+}
+
+// T1 R54: runtime terrain edits are a module, needed by a terrain that allows them or a script that writes one
+TEST(ModuleUsage, AllowRuntimeEditsNeedsTerrainEdits) {
+    OneEntity one;
+    TerrainComponent terrain;
+    one.scene.addComponent<TerrainComponent>(one.entity, terrain);
+    EXPECT_EQ(modules(one.usage()), "") << "a terrain alone is drawn and queried by the core";
+    one.scene.getComponent<TerrainComponent>(one.entity).allowRuntimeEdits = true;
+    const ModuleUsage usage = one.usage();
+    EXPECT_EQ(modules(usage), "terrainedit");
+    EXPECT_EQ(usage.firstEvidence("terrainedit"), "scene Main: Allow Runtime Edits on Thing");
+}
+
+TEST(ModuleUsage, TerrainWritesInLuaNeedTerrainEdits) {
+    for (const char* code : {"terrain:applyOps({{op = 'raise', delta = 1}})", "terrain:setHeights(0, 0, 2, 2, heights)",
+                             "local h = terrain:getHeights(0, 0, 4, 4)", "terrain:setRuntimeUploadBudget(1024)"}) {
+        const ModuleUsage usage = withLua(code);
+        EXPECT_TRUE(usage.needs("terrainedit")) << code;
+        EXPECT_NE(usage.firstEvidence("terrainedit").find("lua/test.lua:1"), std::string::npos) << usage.firstEvidence("terrainedit");
+    }
+    // the queries are the core's
+    EXPECT_FALSE(withLua("local y = terrain:getHeightAt(0, 0)\nlocal hit = terrain:raycast(o, d, 100)").needs("terrainedit"));
+}
+
+// T4 R55, AC36: each kind of evidence for terrainworld, and what is not evidence
+TEST(ModuleUsage, TerrainWorldComponentNeedsTheModule) {
+    OneEntity one;
+    one.scene.addComponent<TerrainWorldComponent>(one.entity, {});
+    const ModuleUsage usage = one.usage();
+    EXPECT_EQ(modules(usage), "terrainworld");
+    EXPECT_EQ(usage.firstEvidence("terrainworld"), "scene Main: Terrain World on Thing");
+}
+
+TEST(ModuleUsage, TerrainWorldNotNeededByAnEmptyProjectOrAPlainTerrain) {
+    EXPECT_FALSE(ModuleUsageDetector::analyze(empty()).needs("terrainworld"));
+    OneEntity one;
+    one.scene.addComponent<TerrainComponent>(one.entity, {});
+    EXPECT_FALSE(one.usage().needs("terrainworld"));
+    // a script using the plain Terrain, and the words in a string or a comment
+    EXPECT_FALSE(withLua("local t = Terrain(self.scene, self.entity)\nlocal h = t:getHeightAt(1, 2)").needs("terrainworld"));
+    EXPECT_FALSE(withLua("print('TerrainWorld')\n-- go:getTerrainWorld()\nlocal x = 1").needs("terrainworld"));
+}
+
+TEST(ModuleUsage, TerrainWorldLuaNamesNeedTheModule) {
+    // its class
+    const ModuleUsage byClass = withLua("local w = TerrainWorld(self.scene, self.entity)");
+    EXPECT_TRUE(byClass.needs("terrainworld"));
+    EXPECT_EQ(byClass.firstEvidence("terrainworld"), "lua/test.lua:1: TerrainWorld");
+    // its member on GameObject, after : and in a string
+    const ModuleUsage byMember = withLua("local go = GameObject(self.scene, self.entity)\nlocal w = go:getTerrainWorld()");
+    EXPECT_TRUE(byMember.needs("terrainworld"));
+    EXPECT_EQ(byMember.firstEvidence("terrainworld"), "lua/test.lua:2: getTerrainWorld");
+    EXPECT_TRUE(withLua("local go = GameObject(self.scene, self.entity)\nlocal w = go['getTerrainWorld'](go)").needs("terrainworld"));
+    // dynamic access and C++ code reach anything
+    EXPECT_TRUE(withLua("local t = _G[name]").needs("terrainworld"));
+    ModuleScan cpp = empty();
+    cpp.cppScripts.push_back("scripts/Player.cpp");
+    EXPECT_TRUE(ModuleUsageDetector::analyze(cpp).needs("terrainworld"));
+    // the names come from the binding's condition (R47)
+    const auto entry = ModuleUsageDetector::moduleEntryPoints(LuaApiData::json());
+    ASSERT_TRUE(entry.count("terrainworld"));
+    EXPECT_TRUE(entry.at("terrainworld").count("TerrainWorld"));
+    EXPECT_TRUE(entry.at("terrainworld").count("getTerrainWorld"));
+}
+
+TEST(ModuleUsage, TerrainWorldScriptPropertyNeedsTheModule) {
+    OneEntity one;
+    ScriptComponent scripts;
+    ScriptEntry entry;
+    entry.type = ScriptType::LUA;
+    entry.className = "Streamer";
+    ScriptProperty property;
+    property.name = "world";
+    property.ptrTypeName = "TerrainWorld*";
+    entry.properties.push_back(property);
+    scripts.scripts.push_back(entry);
+    one.scene.addComponent<ScriptComponent>(one.entity, scripts);
+    const ModuleUsage usage = one.usage();
+    EXPECT_TRUE(usage.needs("terrainworld"));
+    EXPECT_NE(usage.firstEvidence("terrainworld").find("script property world (TerrainWorld)"), std::string::npos) << usage.firstEvidence("terrainworld");
 }
 
 TEST(ModuleUsage, ScriptPropertyTypesNeedTheirModules) {
@@ -193,7 +356,7 @@ TEST(ModuleUsage, LuaNamesNeedTheirModules) {
 }
 
 TEST(ModuleUsage, DynamicAccessNeedsEveryModule) {
-    const std::string every = "htmlui video runtimeshaders physics3d physics2d";
+    const std::string every = "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit";
     for (const char* code : {"local f = _G[name]", "local f = _ENV[name]", "local chunk = load(text)", "local s = loadstring(text)",
                              "dofile(path)", "local r = debug.getregistry()", "local g = package.loaded", "local m = require(name)",
                              "local g = require('_G')"}) {
@@ -209,7 +372,7 @@ TEST(ModuleUsage, CppScriptsNeedEveryModule) {
     ModuleScan scan = empty();
     scan.cppScripts.push_back("scripts/Player.cpp");
     const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
-    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d");
+    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit");
     EXPECT_NE(usage.firstEvidence("htmlui").find("scripts/Player.cpp"), std::string::npos);
 }
 
@@ -419,6 +582,14 @@ TEST(PlayerVariants, TheSmallestVariantHoldingTheModules) {
     EXPECT_EQ(PlayerRuntimes::variantFor({"runtimeshaders", "physics3d"}).name, "core");
     EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "physics2d"}).name, "ui");
     EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "video"}).name, "full");
+    // T6 R47: full, ui and core hold Voxel Volumes, the lite ones do not
+    EXPECT_EQ(PlayerRuntimes::variantFor({"voxel"}).name, "core");
+    EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "voxel"}).name, "ui");
+    EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "video", "voxel"}).name, "full");
+    for (const PlayerVariant& variant : variants) {
+        const bool has = std::find(variant.modules.begin(), variant.modules.end(), "voxel") != variant.modules.end();
+        EXPECT_EQ(has, variant.name != "lite3d" && variant.name != "lite2d") << variant.name;
+    }
     for (const PlayerVariant& variant : variants)
         for (const std::string& module : variant.modules)
             EXPECT_NE(std::find(player::allModules().begin(), player::allModules().end(), module), player::allModules().end()) << module;
@@ -437,6 +608,36 @@ TEST(PlayerVariants, TheSmallestVariantHoldingTheModules) {
     EXPECT_EQ(PlayerRuntimes::smallestWith({lite}, {"htmlui"}), nullptr);
     EXPECT_EQ(PlayerRuntimes::runtimeId("linux", "x64", "glcore", false, "lite3d"), "linux-x64-glcore-release-lite3d");
     EXPECT_EQ(PlayerRuntimes::runtimeId("linux", "x64", "glcore", false), "linux-x64-glcore-release");
+}
+
+// T2 R43, AC34: each kind of evidence for noise, and what is not evidence
+// T4 R55: full, ui and core hold Terrain Worlds, the lite ones do not
+TEST(PlayerVariants, TerrainWorldInFullUiAndCore) {
+    EXPECT_EQ(PlayerRuntimes::variantFor({"terrainworld"}).name, "core");
+    EXPECT_EQ(PlayerRuntimes::variantFor({"physics3d", "terrainworld"}).name, "core");
+    EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "terrainworld"}).name, "ui");
+    EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "video", "terrainworld"}).name, "full");
+    for (const PlayerVariant& variant : PlayerRuntimes::variants()) {
+        const bool has = std::find(variant.modules.begin(), variant.modules.end(), "terrainworld") != variant.modules.end();
+        EXPECT_EQ(has, variant.name != "lite3d" && variant.name != "lite2d") << variant.name;
+    }
+}
+
+// T2 R43, AC34: each kind of evidence for noise, and what is not evidence
+TEST(ModuleUsage, NoiseEvidence) {
+    EXPECT_TRUE(withLua("local v = Noise.perlin(1, 2)").needs("noise"));
+    EXPECT_TRUE(withLua("local g = NoiseGraph.load('a.noisegraph')").needs("noise"));
+    // dynamic access and C++ code reach anything, which detectedModules covers
+    EXPECT_TRUE(withLua("local t = _G[name]").needs("noise"));
+    ModuleScan cpp = empty();
+    cpp.cppScripts.push_back("scripts/Player.cpp");
+    EXPECT_TRUE(ModuleUsageDetector::analyze(cpp).needs("noise"));
+}
+
+TEST(ModuleUsage, ABakedProjectDoesNotNeedNoise) {
+    EXPECT_FALSE(ModuleUsageDetector::analyze(empty()).needs("noise"));
+    // a script that never names it; a .noisegraph on disk is not part of the scan at all
+    EXPECT_FALSE(withLua("local noise = 1; print(noise)").needs("noise"));
 }
 
 // docs/specs/S37-sound-events.md 6.6: what needs the soundlayer module, and every variant has it

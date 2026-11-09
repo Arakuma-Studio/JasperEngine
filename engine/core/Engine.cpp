@@ -40,6 +40,9 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "subsystem/TerrainWorldSystem.h"
+#endif
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIClock.h"
 #if JASPERENGINE_HTMLUI
@@ -153,6 +156,10 @@ Vector2 Engine::viewShift = Vector2(0, 0);
 AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
 bool Engine::atmosphereQualityOverridden = false;
 AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
+FoliageQuality Engine::foliageQualityDefaults[3] = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
+bool Engine::foliageQualityUncapped = true;
+bool Engine::foliageQualityOverridden = false;
+FoliageQuality Engine::foliageQualityOverride = FoliageQuality::HIGH;
 float Engine::foliageDistanceScaleDefaults[3] = {1.0f, 1.0f, 1.0f};
 bool Engine::foliageDistanceScaleOverridden = false;
 float Engine::foliageDistanceScaleOverride = 1.0f;
@@ -1039,6 +1046,42 @@ bool Engine::isAtmosphereQualityOverridden(){
     return atmosphereQualityOverridden;
 }
 
+void Engine::setFoliageQualityDefaults(FoliageQuality desktop, FoliageQuality mobile, FoliageQuality web, bool uncapped){
+    foliageQualityDefaults[0] = desktop;
+    foliageQualityDefaults[1] = mobile;
+    foliageQualityDefaults[2] = web;
+    foliageQualityUncapped = uncapped;
+}
+
+FoliageQuality Engine::getFoliageQualityDefault(Platform platform){
+    switch (platform){
+        case Platform::Android:
+        case Platform::iOS:
+            return foliageQualityDefaults[1];
+        case Platform::Web:
+            return foliageQualityDefaults[2];
+        default:
+            return foliageQualityDefaults[0];
+    }
+}
+
+void Engine::setFoliageQuality(FoliageQuality quality){
+    foliageQualityOverride = quality;
+    foliageQualityOverridden = true;
+}
+
+FoliageQuality Engine::getFoliageQuality(){
+    return foliageQualityOverridden ? foliageQualityOverride : getFoliageQualityDefault(getPlatform());
+}
+
+void Engine::resetFoliageQuality(){
+    foliageQualityOverridden = false;
+}
+
+bool Engine::isFoliageQualityUncapped(){
+    return foliageQualityUncapped && !foliageQualityOverridden;
+}
+
 namespace {
     // the Foliage Distance range: 0 draws none, 10 is ten times the authored distances
     float clampFoliageDistanceScale(float scale){
@@ -1463,6 +1506,10 @@ int Engine::defaultUniformBytes(){
 
 int Engine::defaultStreamStagingBytes(){
     return (smallGpuMemoryPlatform() ? 16 : 48) * 1024 * 1024;
+}
+
+int Engine::defaultTerrainUploadBytes(){
+    return (smallGpuMemoryPlatform() ? 2 : 8) * 1024 * 1024;
 }
 
 int Engine::defaultDescriptorBytes(){
@@ -2462,6 +2509,10 @@ void Engine::runFrame(bool draw){
             jobSystem.pump(threadingSettingsStorage().webPumpBudgetMs);
         jobSystem.sampleFrame();
     }
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 D9: the Terrain Worlds' pump, after the job pump and on paused frames too
+    TerrainWorldSystem::pumpAll();
+#endif
 
     {
         JE_PROFILE_SCOPE("SokolCmdQueue execute");

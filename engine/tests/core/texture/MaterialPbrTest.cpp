@@ -368,7 +368,11 @@ TEST(PbrVariant, TerrainHexLeavesStochasticOut){
     inputs.terrain = true;
     inputs.terrainBlendMaps = true;
     inputs.terrainSurface = true;
+    // T3: the variant reads the terrain's layers through terrainVariant, and a terrain with no layer
+    // draws its base material alone, with no terrain define (spec Deviations)
+    inputs.terrainVariant.layerCount = 2;
     inputs.terrainHex = true;
+    inputs.terrainVariant.hex = true;
     const auto has = [](const std::vector<std::string>& defines, const char* define){
         return std::find(defines.begin(), defines.end(), define) != defines.end();
     };
@@ -377,6 +381,7 @@ TEST(PbrVariant, TerrainHexLeavesStochasticOut){
     EXPECT_FALSE(has(hex.litDefines, MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
 
     inputs.terrainHexStochastic = true;
+    inputs.terrainVariant.hexStochastic = true;
     const SubmeshShaderVariant both = RenderSystem::getSubmeshShaderVariant(environment, inputs);
     EXPECT_TRUE(has(both.litDefines, MaterialPbr::TERRAIN_HEX_DEFINE));
     EXPECT_TRUE(has(both.litDefines, MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
@@ -388,6 +393,7 @@ TEST(PbrVariant, TerrainHexLeavesStochasticOut){
 
     // without a hex layer the define never comes (the plain surface path keeps Stochastic Tiling)
     inputs.terrainHex = false;
+    inputs.terrainVariant.hex = false;
     EXPECT_FALSE(has(RenderSystem::getSubmeshShaderVariant(environment, inputs).litDefines, MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE));
 
     // what the render system asks the Terrain

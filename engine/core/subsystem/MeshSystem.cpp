@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "MeshSystem.h"
+#include "terrain/TerrainEditModule.h"
+#include "subsystem/FoliageSystem.h"
 #include "component/ActionComponent.h"
+#include "component/Transform.h"
 #include "component/CameraComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
@@ -14,10 +17,12 @@
 #include "component/TranslateTracksComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/InstancedMeshComponent.h"
+#include "component/TerrainComponent.h"
 #include "pixelart/PixelSnap.h"
 #include "shader/ShaderManifest.h"
 
 #include "Scene.h"
+#include "object/TerrainEdit.h"
 #include "Engine.h"
 #include "System.h"
 #include "animation/ModelSubClips.h"
@@ -3885,7 +3890,7 @@ size_t MeshSystem::getTerrainGridArraySize(int rootGridSize, int levels){
 }
 
 float MeshSystem::terrainTexelCoord(float local, float terrainSize, int size){
-    return ((local + terrainSize * 0.5f) / terrainSize) * static_cast<float>(size) - 0.5f;
+    return terraincore::surfaceTexelCoord(local, terrainSize, size);
 }
 
 // channel 0 of a height or density map texel, 0-1: 8-bit, 16-bit (R16) or 32-bit float (a linear
@@ -3905,190 +3910,17 @@ static float readMapTexel(const unsigned char* pixels, size_t index, int bytesPe
 }
 
 float MeshSystem::sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY){
-    if (!pixels || width <= 0 || height <= 0 || channels <= 0){
-        return 0.0f;
-    }
-
-    // a clamped coordinate blends the edge texel with itself, as the clamp-to-edge sampler does
-    texelX = std::clamp(texelX, 0.0f, static_cast<float>(width - 1));
-    texelY = std::clamp(texelY, 0.0f, static_cast<float>(height - 1));
-    const int lowerX = std::clamp(static_cast<int>(std::floor(texelX)), 0, width - 1);
-    const int lowerY = std::clamp(static_cast<int>(std::floor(texelY)), 0, height - 1);
-    const int upperX = std::min(lowerX + 1, width - 1);
-    const int upperY = std::min(lowerY + 1, height - 1);
-    const float blendX = texelX - static_cast<float>(lowerX);
-    const float blendY = texelY - static_cast<float>(lowerY);
-
-    auto texel = [&](int x, int y){
-        const size_t texelIndex = static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x);
-        const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
-        return readMapTexel(pixels, index, bytesPerChannel);
-    };
-
-    const float lower = texel(lowerX, lowerY) + (texel(upperX, lowerY) - texel(lowerX, lowerY)) * blendX;
-    const float upper = texel(lowerX, upperY) + (texel(upperX, upperY) - texel(lowerX, upperY)) * blendX;
-    return lower + (upper - lower) * blendY;
+    return terraincore::sampleHeightTexels(pixels, width, height, channels, bytesPerChannel, texelX, texelY);
 }
 
 float MeshSystem::sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ){
-    if (terrainSize <= std::numeric_limits<float>::epsilon()){
-        return 0.0f;
-    }
-    return sampleTerrainHeightTexels(pixels, width, height, channels, bytesPerChannel,
-                                     terrainTexelCoord(localX, terrainSize, width), terrainTexelCoord(localZ, terrainSize, height));
+    return terraincore::sampleHeightLocal(pixels, width, height, channels, bytesPerChannel, terrainSize, localX, localZ);
 }
 
-bool MeshSystem::raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint){
-
-    const unsigned char* pixels = nullptr;
-    int width = 0;
-    int height = 0;
-    int channels = 0;
-    int bytesPerChannel = 1;
-
-    if (!terrain.heightMap.empty() && !terrain.heightMap.isFramebuffer()){
-        terrain.heightMap.setReleaseDataAfterLoad(false);
-        TextureLoadResult result = terrain.heightMap.load();
-        if (result.state == ResourceLoadState::Finished && result.data && terrain.heightMap.getData().getData()){
-            TextureData& heightData = terrain.heightMap.getData();
-            pixels = static_cast<const unsigned char*>(heightData.getData());
-            width = heightData.getWidth();
-            height = heightData.getHeight();
-            channels = heightData.getChannels();
-            bytesPerChannel = TextureData::getBytesPerChannel(heightData.getColorFormat());
-        }
-    }
-
-    auto sampleHeight = [&](float localX, float localZ, float& sampledHeight){
-        if (terrain.terrainSize <= std::numeric_limits<float>::epsilon()){
-            return false;
-        }
-
-        const float halfSize = terrain.terrainSize * 0.5f;
-        if (localX < -halfSize || localX > halfSize || localZ < -halfSize || localZ > halfSize){
-            return false;
-        }
-
-        sampledHeight = 0.0f;
-        if (!pixels || width <= 0 || height <= 0 || channels <= 0){
-            return true;
-        }
-
-        sampledHeight = sampleTerrainHeight(pixels, width, height, channels, bytesPerChannel, terrain.terrainSize, localX, localZ) * terrain.maxHeight;
-        return true;
-    };
-
-    Matrix4 inverseModel = transform.modelMatrix.inverse();
-    Vector3 localOrigin = inverseModel * ray.getOrigin();
-    Vector3 localEnd = inverseModel * (ray.getOrigin() + ray.getDirection());
-    Ray localRay(localOrigin, localEnd - localOrigin);
-
-    const float halfSize = terrain.terrainSize * 0.5f;
-    const float surfaceMinHeight = std::min(0.0f, terrain.maxHeight);
-    const float surfaceMaxHeight = std::max(0.0f, terrain.maxHeight);
-    const Vector3 rayOrigin = localRay.getOrigin();
-    const Vector3 rayDirection = localRay.getDirection();
-
-    float rayEntry = 0.0f;
-    float rayExit = 1.0f;
-    auto clipAxis = [&](float axisOrigin, float axisDirection, float minValue, float maxValue){
-        if (std::abs(axisDirection) <= std::numeric_limits<float>::epsilon()){
-            return axisOrigin >= minValue && axisOrigin <= maxValue;
-        }
-
-        float nearParameter = (minValue - axisOrigin) / axisDirection;
-        float farParameter = (maxValue - axisOrigin) / axisDirection;
-        if (nearParameter > farParameter){
-            std::swap(nearParameter, farParameter);
-        }
-        rayEntry = std::max(rayEntry, nearParameter);
-        rayExit = std::min(rayExit, farParameter);
-        return rayEntry <= rayExit;
-    };
-
-    if (!clipAxis(rayOrigin.x, rayDirection.x, -halfSize, halfSize) ||
-        !clipAxis(rayOrigin.y, rayDirection.y, surfaceMinHeight, surfaceMaxHeight) ||
-        !clipAxis(rayOrigin.z, rayDirection.z, -halfSize, halfSize)){
-        return false;
-    }
-
-    auto signedDistanceToSurface = [&](float rayParameter, float& signedDistance, Vector3& point){
-        point = localRay.getPoint(rayParameter);
-        float sampledHeight = 0.0f;
-        if (!sampleHeight(point.x, point.z, sampledHeight)){
-            return false;
-        }
-        signedDistance = point.y - sampledHeight;
-        return true;
-    };
-
-    const int raycastSteps = 160;
-    const float surfaceEpsilon = std::max(0.001f, std::abs(surfaceMaxHeight - surfaceMinHeight) * 0.0005f);
-    float previousParameter = rayEntry;
-    float previousDistance = 0.0f;
-    Vector3 previousPoint;
-    if (!signedDistanceToSurface(previousParameter, previousDistance, previousPoint)){
-        return false;
-    }
-
-    float closestDistance = previousDistance;
-    Vector3 closestPoint = previousPoint;
-    if (std::abs(previousDistance) <= surfaceEpsilon){
-        closestDistance = 0.0f;
-    }
-
-    for (int sampleIndex = 1; sampleIndex <= raycastSteps; sampleIndex++){
-        const float rayParameter = rayEntry + (rayExit - rayEntry) * (static_cast<float>(sampleIndex) / static_cast<float>(raycastSteps));
-        float currentDistance = 0.0f;
-        Vector3 currentPoint;
-        if (!signedDistanceToSurface(rayParameter, currentDistance, currentPoint)){
-            continue;
-        }
-
-        if (std::abs(currentDistance) < std::abs(closestDistance)){
-            closestDistance = currentDistance;
-            closestPoint = currentPoint;
-        }
-
-        const bool crossedSurface = (previousDistance <= 0.0f && currentDistance >= 0.0f) ||
-                                    (previousDistance >= 0.0f && currentDistance <= 0.0f);
-        if (crossedSurface){
-            float lowerParameter = previousParameter;
-            float upperParameter = rayParameter;
-            float lowerDistance = previousDistance;
-            for (int refineIndex = 0; refineIndex < 12; refineIndex++){
-                const float midParameter = (lowerParameter + upperParameter) * 0.5f;
-                float midDistance = 0.0f;
-                Vector3 midPoint;
-                if (!signedDistanceToSurface(midParameter, midDistance, midPoint)){
-                    break;
-                }
-                const bool sameSide = (lowerDistance <= 0.0f && midDistance <= 0.0f) ||
-                                      (lowerDistance >= 0.0f && midDistance >= 0.0f);
-                if (sameSide){
-                    lowerParameter = midParameter;
-                    lowerDistance = midDistance;
-                }else{
-                    upperParameter = midParameter;
-                }
-            }
-            closestPoint = localRay.getPoint((lowerParameter + upperParameter) * 0.5f);
-            closestDistance = 0.0f;
-            break;
-        }
-
-        previousParameter = rayParameter;
-        previousDistance = currentDistance;
-    }
-
-    float localHeight = 0.0f;
-    if (std::abs(closestDistance) > surfaceEpsilon * 4.0f || !sampleHeight(closestPoint.x, closestPoint.z, localHeight)){
-        return false;
-    }
-
-    Vector3 localPoint(closestPoint.x, localHeight, closestPoint.z);
-    worldPoint = transform.modelMatrix * localPoint;
-    return true;
+bool MeshSystem::raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint, bool ignoreHoles){
+    // T3 R25: a crossing inside a hole is passed and the ray goes on; a brush sets ignoreHoles, to
+    // paint and fill inside one
+    return raycastTerrain(terrain, transform, ray, !ignoreHoles, worldPoint);
 }
 
 // Height range of an area of the heightmap, sampling every texel the vertex shader can
@@ -4241,6 +4073,10 @@ bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
             return false;
         }
     }
+    // the collider and the queries read its texels as they read the heights (T3 R52)
+    if (prepareTerrainHoleMap(terrain) == ResourceLoadState::Loading){
+        return false;
+    }
 
     for (int v = 0; v < MAX_TERRAIN_VIEWS; v++){
         for (int s = 0; s < 2; s++){
@@ -4258,6 +4094,55 @@ bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
     prepareTerrainMesh(mesh);
 
     mesh.indices.clear();
+
+    // T4 D1, D5: a World draws skirted grids from its pages, and builds no node tree
+    if (terrain.world){
+        terrain.nodes.clear();
+        terrain.numNodes = 0;
+        terrain.resolution = 32;
+        mesh.numSubmeshes = 2;
+        // the outer ring of a grid, flagged by y = 1 (includes/terrain_world_vs.glsl), each quad both ways
+        auto addSkirt = [&](unsigned int submeshIndex, int segments){
+            Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
+            Attribute* attNormal = mesh.buffer.getAttribute(AttributeType::NORMAL);
+            Attribute* attIndice = mesh.indices.getAttribute(AttributeType::INDEX);
+            const Attribute& gridIndices = mesh.submeshes[submeshIndex].attributes[AttributeType::INDEX];
+            const unsigned int firstGridVertex = (unsigned int)mesh.buffer.getCount() - (unsigned int)((segments + 1) * (segments + 1));
+            std::vector<unsigned int> edge;
+            for (int i = 0; i < segments; i++) edge.push_back(i);
+            for (int i = 0; i < segments; i++) edge.push_back(segments + i * (segments + 1));
+            for (int i = 0; i < segments; i++) edge.push_back((segments + 1) * (segments + 1) - 1 - i);
+            for (int i = 0; i < segments; i++) edge.push_back((segments - i) * (segments + 1));
+            const unsigned int firstRing = (unsigned int)mesh.buffer.getCount();
+            const float step = 1.0f / (float)segments;
+            for (unsigned int e : edge){
+                const int ix = (int)(e % (segments + 1)), iy = (int)(e / (segments + 1));
+                mesh.buffer.addVector3(attVertex, Vector3(ix * step - 0.5f, 1.0f, -(iy * step - 0.5f)));
+                mesh.buffer.addVector3(attNormal, Vector3(0.0f, 1.0f, 0.0f));
+            }
+            unsigned int added = 0;
+            const unsigned int count = (unsigned int)edge.size();
+            for (unsigned int k = 0; k < count; k++){
+                const unsigned int a = firstGridVertex + edge[k], b = firstGridVertex + edge[(k + 1) % count];
+                const unsigned int ra = firstRing + k, rb = firstRing + (k + 1) % count;
+                const unsigned int quad[12] = {a, ra, b, b, ra, rb, a, b, ra, b, rb, ra};
+                for (unsigned int index : quad) mesh.indices.addUInt16(attIndice, (uint16_t)index);
+                added += 12;
+            }
+            addSubmeshAttribute(mesh.submeshes[submeshIndex], "indices", AttributeType::INDEX, 1, AttributeDataType::UNSIGNED_SHORT,
+                                gridIndices.getCount() + added, gridIndices.getOffset(), false);
+        };
+        createPlaneNodeSubmesh(0, mesh, 1, 1, (int)terrain.resolution, (int)terrain.resolution);
+        addSkirt(0, (int)terrain.resolution);
+        createPlaneNodeSubmesh(1, mesh, 1, 1, (int)terrain.resolution / 2, (int)terrain.resolution / 2);
+        addSkirt(1, (int)terrain.resolution / 2);
+        mesh.submeshes[1].generated = true;
+        // the whole addressable extent: the selection culls inside it
+        const float extent = 16384.0f;
+        mesh.aabb = AABB(Vector3(-extent, std::min(0.0f, terrain.maxHeight) - 1.0f, -extent), Vector3(extent, 100000.0f, extent));
+        terrain.heightMapLoaded = true;
+        return true;
+    }
 
     size_t idealSize = getTerrainGridArraySize(terrain.rootGridSize, terrain.levels);
     // createOrUpdateTerrain already caps idealSize; this catch is a last resort for a
@@ -4322,166 +4207,14 @@ bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
     return true;
 }
 
-// Placement cells stay fixed; render batches only group their instances.
-static const int TERRAIN_FOLIAGE_TARGET_BATCH_RADIUS = 2;
-static const float TERRAIN_FOLIAGE_CELL_SIZE = 8.0f;
-static const unsigned int TERRAIN_FOLIAGE_MAX_CHUNK_INSTANCES = 8192;
-// Share of the draw distance that stays full size; the rest shrinks out.
-static const float TERRAIN_FOLIAGE_FADE_START = 0.75f;
-// how long a layer waits for the CPU-readable cook of a map found cooked GPU-only
-static const int TERRAIN_FOLIAGE_CPU_READ_WAIT_SECONDS = 30;
-
-bool MeshSystem::setFoliagePreviewEntity(Entity entity){
-    if (foliagePreviewEntity == entity){
-        return false;
-    }
-
-    foliagePreviewEntity = entity;
-    return true;
-}
-
-bool MeshSystem::hasPendingFoliageUpdates() const{
-    for (const auto& entry : terrainFoliage){
-        for (const TerrainFoliageInstances& instances : entry.second){
-            if (instances.pending){
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-// A zero-density cell must attempt no placements.
-static unsigned int foliageCellAttempts(const TerrainFoliageLayer& layer){
-    const float estimate = layer.density * TERRAIN_FOLIAGE_CELL_SIZE * TERRAIN_FOLIAGE_CELL_SIZE;
-    return static_cast<unsigned int>(std::ceil(std::clamp(estimate, 0.0f, static_cast<float>(TERRAIN_FOLIAGE_MAX_CHUNK_INSTANCES))));
-}
-
-// Wraps coordinates onto the ring, a square sized for the widest view span: a ring sliding by
-// one column reassigns only the column that left it, and walking never resizes it (Doriax de70fa31c)
-static size_t foliageSlotIndex(int chunkX, int chunkZ, int side){
-    const int slotX = ((chunkX % side) + side) % side;
-    const int slotZ = ((chunkZ % side) + side) % side;
-    return static_cast<size_t>(slotZ) * side + slotX;
-}
-
-static unsigned int hashFoliage(unsigned int seed, unsigned int chunkX, unsigned int chunkZ, unsigned int index){
-    unsigned int hash = (seed + 0x9E3779B9u) * 0x9E3779B1u;
-    hash = (hash ^ chunkX) * 0x85EBCA6Bu;
-    hash = (hash ^ chunkZ) * 0xC2B2AE35u;
-    hash = (hash ^ index) * 0x27D4EB2Fu;
-    return hash ^ (hash >> 15);
-}
-
-// Mix each draw independently before selecting its low 24 bits.
-static unsigned int mixFoliage(unsigned int hash){
-    hash = (hash ^ (hash >> 16)) * 0x7FEB352Du;
-    hash = (hash ^ (hash >> 15)) * 0x846CA68Bu;
-    return hash ^ (hash >> 16);
-}
-
-static float randomFoliage(unsigned int hash){
-    return static_cast<float>(hash & 0xFFFFFFu) / 16777216.0f;
-}
-
-// Keep generated chunks outside the authored hierarchy used by undo.
-Entity MeshSystem::createFoliageEntity(unsigned int capacity){
-    Entity entity = scene->createEntity();
-
-    scene->addComponent<Transform>(entity);
-    scene->addComponent<MeshComponent>(entity);
-    scene->addComponent<ModelComponent>(entity);
-    scene->addComponent<InstancedMeshComponent>(entity);
-
-    // A merged root owns all the geometry, so one instanced draw covers an .obj and a glTF alike.
-    scene->getComponent<ModelComponent>(entity).mergeStaticMeshes = true;
-    scene->getComponent<InstancedMeshComponent>(entity).maxInstances = capacity;
-
-    return entity;
-}
-
-void MeshSystem::destroyFoliageEntity(TerrainFoliageChunk& chunk){
-    if (chunk.entity != NULL_ENTITY && scene->isEntityCreated(chunk.entity)){
-        scene->destroyEntity(chunk.entity);
-    }
-    chunk = TerrainFoliageChunk();
-}
-
-void MeshSystem::destroyFoliageInstances(TerrainFoliageInstances& instances){
-    for (TerrainFoliageChunk& chunk : instances.chunks){
-        destroyFoliageEntity(chunk);
-    }
-    instances = TerrainFoliageInstances();
-}
-
-void MeshSystem::destroyTerrainFoliage(Entity entity){
-    // Ownership leaves the map before entity destruction dispatches removal callbacks.
-    auto layers = terrainFoliage.extract(entity);
-    if (layers.empty()){
-        return;
-    }
-
-    for (TerrainFoliageInstances& instances : layers.mapped()){
-        destroyFoliageInstances(instances);
-    }
-}
-
-std::vector<Entity> MeshSystem::getFoliageEntities(Entity terrainEntity) const{
-    std::vector<Entity> entities;
-
-    auto it = terrainFoliage.find(terrainEntity);
-    if (it != terrainFoliage.end()){
-        for (const TerrainFoliageInstances& instances : it->second){
-            for (const TerrainFoliageChunk& chunk : instances.chunks){
-                if (chunk.entity != NULL_ENTITY && scene->isEntityCreated(chunk.entity)){
-                    entities.push_back(chunk.entity);
-                }
-            }
-        }
-    }
-
-    return entities;
-}
-
-size_t MeshSystem::getFoliageInstanceCount(Entity terrainEntity, size_t layer) const{
-    auto it = terrainFoliage.find(terrainEntity);
-    if (it == terrainFoliage.end() || layer >= it->second.size()){
-        return 0;
-    }
-    size_t count = 0;
-    for (const TerrainFoliageChunk& chunk : it->second[layer].chunks){
-        if (chunk.entity == NULL_ENTITY || !scene->isEntityCreated(chunk.entity)){
-            continue;
-        }
-        if (const InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(chunk.entity)){
-            count += instmesh->instances.size();
-        }
-    }
-    return count;
-}
-
-std::string MeshSystem::getFoliageError(Entity terrainEntity, size_t layer) const{
-    auto it = terrainFoliage.find(terrainEntity);
-    return (it == terrainFoliage.end() || layer >= it->second.size()) ? std::string() : it->second[layer].cpuReadError;
-}
-
-Entity MeshSystem::getFoliageOwner(Entity foliageEntity) const{
-    if (foliageEntity == NULL_ENTITY){
-        return NULL_ENTITY;
-    }
-
-    for (const auto& entry : terrainFoliage){
-        for (const TerrainFoliageInstances& instances : entry.second){
-            for (const TerrainFoliageChunk& chunk : instances.chunks){
-                if (chunk.entity == foliageEntity){
-                    return entry.first;
-                }
-            }
-        }
-    }
-
-    return NULL_ENTITY;
-}
+// T5 R6: the foliage lives in FoliageSystem; these keep their callers
+bool MeshSystem::setFoliagePreviewEntity(Entity entity){ return scene->getSystem<FoliageSystem>()->setPreviewEntity(entity); }
+bool MeshSystem::hasPendingFoliageUpdates() const{ return scene->getSystem<FoliageSystem>()->hasPendingUpdates(); }
+std::vector<Entity> MeshSystem::getFoliageEntities(Entity terrainEntity) const{ return scene->getSystem<FoliageSystem>()->getEntities(terrainEntity); }
+Entity MeshSystem::getFoliageOwner(Entity foliageEntity) const{ return scene->getSystem<FoliageSystem>()->getOwner(foliageEntity); }
+void MeshSystem::reloadFoliageMesh(const std::string& filename){ scene->getSystem<FoliageSystem>()->reloadMesh(filename); }
+size_t MeshSystem::getFoliageInstanceCount(Entity terrainEntity, size_t layer) const{ return static_cast<size_t>(scene->getSystem<FoliageSystem>()->getInstanceCount(terrainEntity, static_cast<int>(layer))); }
+std::string MeshSystem::getFoliageError(Entity terrainEntity, size_t layer) const{ return scene->getSystem<FoliageSystem>()->getLayerError(terrainEntity, static_cast<int>(layer)); }
 
 void MeshSystem::retryFailedModelLoads(const std::string& filename){
     const std::string key = getModelFilenameKey(filename);
@@ -4503,479 +4236,20 @@ void MeshSystem::retryFailedModelLoads(const std::string& filename){
     }
 }
 
-void MeshSystem::reloadFoliageMesh(const std::string& filename){
-    const std::string key = getModelFilenameKey(filename);
-    for (auto& entry : terrainFoliage){
-        for (TerrainFoliageInstances& instances : entry.second){
-            // A path that no longer matches the layer makes the next update reload every chunk
-            if (!instances.loadedMeshPath.empty() && getModelFilenameKey(instances.loadedMeshPath) == key){
-                instances.loadedMeshPath.clear();
-                instances.needUpdate = true;
-            }
-        }
-    }
-}
-
-bool MeshSystem::loadPlacedModel(Entity entity, const std::string& path){
+bool MeshSystem::loadPlacedModel(Entity entity, const std::string& path, bool asyncLoad){
     if (FileData::getFilePathExtension(path).compare("obj") == 0){
-        return loadOBJ(entity, path);
+        return loadOBJ(entity, path, asyncLoad);
     }
     // All geometry on the instanced root, the file's node transforms baked in; the system
     // places the copy, not the file's root transform
-    return loadGLTFModel(entity, path, false, true, false, true, true);
+    return loadGLTFModel(entity, path, asyncLoad, true, false, true, true);
 }
 
 // Sample height and normal in terrain-local space.
 void MeshSystem::sampleTerrainSurface(TerrainComponent& terrain, float localX, float localZ, float& height, Vector3& normal){
-    height = 0.0f;
-    normal = Vector3(0.0f, 1.0f, 0.0f);
-
-    if (terrain.terrainSize <= std::numeric_limits<float>::epsilon()){
-        return;
-    }
-    if (terrain.heightMap.empty() || terrain.heightMap.isFramebuffer() || !terrain.heightMap.hasData()){
-        return;
-    }
-
-    TextureData& textureData = terrain.heightMap.getData();
-    const unsigned char* pixels = static_cast<const unsigned char*>(textureData.getData());
-    const int width = textureData.getWidth();
-    const int mapHeight = textureData.getHeight();
-    const int channels = textureData.getChannels();
-    const int bytesPerChannel = TextureData::getBytesPerChannel(textureData.getColorFormat());
-
-    if (!pixels || width <= 0 || mapHeight <= 0 || channels <= 0){
-        return;
-    }
-
-    auto sampleHeight = [&](float x, float z){
-        return terrain.maxHeight * sampleTerrainHeight(pixels, width, mapHeight, channels, bytesPerChannel, terrain.terrainSize, x, z);
-    };
-
-    const float delta = terrain.terrainSize / static_cast<float>(width);
-    height = sampleHeight(localX, localZ);
-    normal = Vector3(height - sampleHeight(localX + delta, localZ), delta, height - sampleHeight(localX, localZ + delta)).normalized();
-}
-
-float MeshSystem::sampleFoliageDensity(TerrainComponent& terrain, TerrainFoliageLayer& layer, float localX, float localZ){
-    if (layer.densityMap.empty() || layer.densityMap.isFramebuffer() || !layer.densityMap.hasData()){
-        return 0.0f;
-    }
-
-    TextureData& textureData = layer.densityMap.getData();
-    const unsigned char* pixels = static_cast<const unsigned char*>(textureData.getData());
-    const int width = textureData.getWidth();
-    const int height = textureData.getHeight();
-    const int channels = textureData.getChannels();
-
-    if (!pixels || width <= 0 || height <= 0 || channels <= 0){
-        return 0.0f;
-    }
-
-    const float halfSize = terrain.terrainSize * 0.5f;
-    const int texelX = std::clamp(static_cast<int>((localX + halfSize) / terrain.terrainSize * width), 0, width - 1);
-    const int texelZ = std::clamp(static_cast<int>((localZ + halfSize) / terrain.terrainSize * height), 0, height - 1);
-    const int bytesPerChannel = TextureData::getBytesPerChannel(textureData.getColorFormat());
-
-    return std::clamp(readMapTexel(pixels, (static_cast<size_t>(texelZ) * width + texelX) * channels * bytesPerChannel, bytesPerChannel), 0.0f, 1.0f);
-}
-
-// Placement depends on the cell and seed, independent of the camera.
-void MeshSystem::appendFoliageCell(TerrainComponent& terrain, TerrainFoliageLayer& layer, int cellX, int cellZ, std::vector<InstanceData>& instances){
-    const float originX = cellX * TERRAIN_FOLIAGE_CELL_SIZE;
-    const float originZ = cellZ * TERRAIN_FOLIAGE_CELL_SIZE;
-    const float halfSize = terrain.terrainSize * 0.5f;
-
-    if (originX > halfSize || originZ > halfSize ||
-        (originX + TERRAIN_FOLIAGE_CELL_SIZE) < -halfSize || (originZ + TERRAIN_FOLIAGE_CELL_SIZE) < -halfSize){
-        return;
-    }
-
-    const unsigned int attempts = foliageCellAttempts(layer);
-    const float expectedInstances = layer.density * TERRAIN_FOLIAGE_CELL_SIZE * TERRAIN_FOLIAGE_CELL_SIZE;
-    const float scaleRange = layer.maxScale - layer.minScale;
-
-    for (unsigned int i = 0; i < attempts; i++){
-        const unsigned int hashX = hashFoliage(layer.seed, static_cast<unsigned int>(cellX), static_cast<unsigned int>(cellZ), i);
-        const unsigned int hashZ = mixFoliage(hashX);
-        const unsigned int hashAccept = mixFoliage(hashZ);
-        const unsigned int hashScale = mixFoliage(hashAccept);
-        const unsigned int hashYaw = mixFoliage(hashScale);
-
-        const float localX = originX + randomFoliage(hashX) * TERRAIN_FOLIAGE_CELL_SIZE;
-        const float localZ = originZ + randomFoliage(hashZ) * TERRAIN_FOLIAGE_CELL_SIZE;
-        if (localX < -halfSize || localX > halfSize || localZ < -halfSize || localZ > halfSize){
-            continue;
-        }
-
-        float density = sampleFoliageDensity(terrain, layer, localX, localZ);
-        // Keep the fractional attempt so sparse layers do not round down to zero.
-        if (i + 1 == attempts){
-            density *= std::min(1.0f, expectedInstances - i);
-        }
-        if (randomFoliage(hashAccept) >= density){
-            continue;
-        }
-
-        float height;
-        Vector3 normal;
-        sampleTerrainSurface(terrain, localX, localZ, height, normal);
-
-        const float slope = Angle::radToDefault(std::acos(std::clamp(normal.y, -1.0f, 1.0f)));
-        if (slope < layer.minSlope || slope > layer.maxSlope){
-            continue;
-        }
-
-        // A zero maxHeight leaves nothing to normalise against, so everything reads as the base.
-        const float normalizedHeight = (terrain.maxHeight != 0.0f) ? (height / terrain.maxHeight) : 0.0f;
-        if (normalizedHeight < layer.minHeight || normalizedHeight > layer.maxHeight){
-            continue;
-        }
-
-        InstanceData instance;
-        instance.position = Vector3(localX, height, localZ);
-        instance.scale = Vector3(layer.minScale + randomFoliage(hashScale) * scaleRange);
-        instance.rotation = Quaternion(randomFoliage(hashYaw) * Angle::degToDefault(360.0f) * layer.rotationJitter, Vector3(0.0f, 1.0f, 0.0f));
-
-        if (layer.alignToNormal > 0.0f){
-            const Vector3 axis = Vector3(0.0f, 1.0f, 0.0f).crossProduct(normal);
-            if (axis.length() > std::numeric_limits<float>::epsilon()){
-                const Quaternion tilt(slope, axis.normalized());
-                instance.rotation = Quaternion::slerp(layer.alignToNormal, Quaternion(), tilt) * instance.rotation;
-            }
-        }
-
-        instances.push_back(instance);
-    }
-}
-
-void MeshSystem::updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLayer& layer, TerrainFoliageInstances& instances, const Vector3& viewLocal, bool preview){
-    const unsigned int attempts = std::max(1u, foliageCellAttempts(layer));
-    const int placementRadius = std::max(1, static_cast<int>(std::ceil(terrain.terrainSize * 0.5f / TERRAIN_FOLIAGE_CELL_SIZE)));
-    const int maxBatchSide = static_cast<int>(std::sqrt(TERRAIN_FOLIAGE_MAX_CHUNK_INSTANCES / attempts));
-    const int previewRadius = (placementRadius + maxBatchSide - 1) / maxBatchSide;
-    // the quality scale (Engine::getFoliageDistanceScale) is a game's; the preview shows the layer
-    const float distanceScale = preview ? 1.0f : Engine::getFoliageDistanceScale();
-    const float drawDistance = std::max(0.0f, layer.drawDistance * distanceScale);
-    // nothing to draw (a scale of 0): an empty fade range would draw the camera's chunk at full size
-    if (!preview && !(drawDistance > 0.0f)){
-        destroyFoliageInstances(instances);
-        return;
-    }
-    // nearer instances grow in over the band a nearer layer whose Draw Distance equals it fades out over
-    const float nearFadeEnd = preview ? 0.0f : std::clamp(layer.minDrawDistance * distanceScale, 0.0f, drawDistance);
-    const float nearFadeStart = nearFadeEnd * TERRAIN_FOLIAGE_FADE_START;
-    const int batchSide = preview ? (placementRadius + previewRadius - 1) / previewRadius :
-        static_cast<int>(std::clamp(std::ceil(drawDistance / (TERRAIN_FOLIAGE_CELL_SIZE * TERRAIN_FOLIAGE_TARGET_BATCH_RADIUS)), 1.0f, static_cast<float>(maxBatchSide)));
-    const float chunkSize = TERRAIN_FOLIAGE_CELL_SIZE * batchSide;
-    const int terrainRadius = (placementRadius + batchSide - 1) / batchSide;
-    auto firstChunk = [&](float position){
-        return preview ? -terrainRadius : static_cast<int>(std::floor(std::clamp(
-            (position - drawDistance) / chunkSize,
-            -static_cast<float>(terrainRadius), static_cast<float>(terrainRadius))));
-    };
-    auto lastChunk = [&](float position){
-        return preview ? terrainRadius - 1 : static_cast<int>(std::floor(std::clamp(
-            (position + drawDistance) / chunkSize,
-            -static_cast<float>(terrainRadius) - 1, static_cast<float>(terrainRadius) - 1)));
-    };
-    const int startX = firstChunk(viewLocal.x);
-    const int startZ = firstChunk(viewLocal.z);
-    const int columns = std::max(0, lastChunk(viewLocal.x) - startX + 1);
-    const int rows = std::max(0, lastChunk(viewLocal.z) - startZ + 1);
-    const int ringSide = preview ? 2 * terrainRadius :
-        std::max(1, std::min(static_cast<int>(std::ceil(2.0f * drawDistance / chunkSize)) + 1, 2 * terrainRadius));
-    const unsigned int capacity = attempts * batchSide * batchSide;
-    const float fadeEnd = preview ? 0.0f : drawDistance;
-    const float fadeStart = fadeEnd * TERRAIN_FOLIAGE_FADE_START;
-    instances.pending = false;
-
-    const size_t chunkCount = static_cast<size_t>(ringSide) * ringSide;
-    if (instances.chunks.size() != chunkCount){
-        while (instances.chunks.size() > chunkCount){
-            destroyFoliageEntity(instances.chunks.back());
-            instances.chunks.pop_back();
-        }
-        instances.chunks.resize(chunkCount);
-        instances.needUpdate = true;
-    }
-    if (instances.appliedDrawDistance != drawDistance || instances.appliedNearFadeEnd != nearFadeEnd){
-        instances.appliedDrawDistance = drawDistance;
-        instances.appliedNearFadeEnd = nearFadeEnd;
-        instances.needUpdate = true;
-    }
-
-    // Reuse meshes when resizing render batches.
-    if (instances.chunkSize != chunkSize){
-        instances.chunkSize = chunkSize;
-        for (TerrainFoliageChunk& chunk : instances.chunks){
-            chunk.assigned = false;
-        }
-    }
-
-    // A failed load is not retried every frame, but a terrain change is a chance at a fixed path.
-    const bool retryMesh = instances.loadFailed && terrain.needUpdateFoliage;
-    if (instances.loadedMeshPath != layer.meshPath || retryMesh){
-        instances.loadedMeshPath = layer.meshPath;
-        instances.loadFailed = false;
-        for (TerrainFoliageChunk& chunk : instances.chunks){
-            chunk.meshLoaded = false;
-            chunk.assigned = false;
-        }
-    }
-
-    // A density map restored from a scene holds only a path, and the resolve reads it on the CPU.
-    layer.densityMap.setReleaseDataAfterLoad(false);
-    if (layer.densityMap.load().state == ResourceLoadState::Loading){
-        instances.needUpdate = true;
-        instances.pending = true;
-        return;
-    }
-    // A GPU-only cook of a map (made before anything read it on the CPU) is never sampled: the
-    // editor cooks it again CPU-readable, and new pixels (that swap, a repaint) refill the layer.
-    // The wait is bounded: a cook that fails or cannot happen leaves the layer empty with one error.
-    const bool densityGpuOnly = isGpuOnlyData(layer.densityMap);
-    if (densityGpuOnly || isGpuOnlyData(terrain.heightMap)){
-        const Texture& map = densityGpuOnly ? layer.densityMap : terrain.heightMap;
-        // (a texture made in memory has an id and no path)
-        const std::string name = map.getPath().empty() ? map.getId() : map.getPath();
-        const auto now = std::chrono::steady_clock::now();
-        if (instances.cpuReadMap != name){
-            instances.cpuReadMap = name;
-            instances.cpuReadSince = now;
-            instances.cpuReadError.clear();
-            CookedTextures::requireCpuReadable(instances.cpuReadMap);
-        }
-        if (instances.cpuReadError.empty()){
-            std::string why = CookedTextures::getCpuReadFailure(instances.cpuReadMap);
-            if (why.empty() && !CookedTextures::hasCpuReadHandler()){
-                why = "its cook is GPU-only; turn on its Read/Write in its import settings and export again";
-            }else if (why.empty() && now - instances.cpuReadSince > std::chrono::seconds(TERRAIN_FOLIAGE_CPU_READ_WAIT_SECONDS)){
-                why = "no CPU-readable cook of it arrived; reimport it (reimport_textures)";
-            }
-            if (!why.empty()){
-                instances.cpuReadError = (densityGpuOnly ? "its density map " : "its terrain's height map ") +
-                                         instances.cpuReadMap + " has no pixels the CPU can read: " + why;
-                Log::error("A detail layer of %s draws nothing: %s", layer.meshPath.c_str(), instances.cpuReadError.c_str());
-            }
-        }
-        // stopped (until the map's pixels change), or still waiting for the CPU-readable cook
-        instances.pending = instances.cpuReadError.empty();
-        instances.needUpdate = true;
-        return;
-    }
-    instances.cpuReadMap.clear();
-    instances.cpuReadError.clear();
-    const void* densityPixels = layer.densityMap.hasData() ? layer.densityMap.getData().getData() : nullptr;
-    const void* heightPixels = terrain.heightMap.hasData() ? terrain.heightMap.getData().getData() : nullptr;
-    if (instances.densityPixels != densityPixels || instances.heightPixels != heightPixels){
-        instances.densityPixels = densityPixels;
-        instances.heightPixels = heightPixels;
-        instances.needUpdate = true;
-    }
-
-    // Layer-wide invalidation only: a single slot going stale clears its own assigned flag.
-    const bool refillAll = instances.needUpdate || terrain.needUpdateFoliage;
-    instances.needUpdate = false;
-
-    // Each chunk entity parses the mesh for itself, so a new grid spreads its loads over frames.
-    int meshLoadBudget = 2;
-
-    // a chunk with nothing to draw keeps its entity and mesh for the next chunk the ring moves onto it
-    auto emptyChunk = [this](TerrainFoliageChunk& chunk){
-        if (chunk.entity != NULL_ENTITY){
-            InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(chunk.entity);
-            if (!instmesh.instances.empty()){
-                instmesh.instances.clear();
-                instmesh.needUpdateInstances = true;
-            }
-        }
-        chunk.assigned = false;
-    };
-
-    for (int offsetZ = 0; offsetZ < ringSide; offsetZ++){
-        for (int offsetX = 0; offsetX < ringSide; offsetX++){
-            const int chunkX = startX + offsetX;
-            const int chunkZ = startZ + offsetZ;
-
-            TerrainFoliageChunk& chunk = instances.chunks[foliageSlotIndex(chunkX, chunkZ, ringSide)];
-
-            // Past the span: every such slot holds a chunk beyond the draw distance, which the fade
-            // and the render's cut already hide, so it stays as it is (the edge column comes back
-            // without a refill when the span grows again), or empties when the layer changes
-            if (offsetX >= columns || offsetZ >= rows){
-                if (refillAll){
-                    emptyChunk(chunk);
-                }
-                continue;
-            }
-
-            // Inside the near fade: nothing of it shows (a far detail layer's inner hole)
-            if (nearFadeStart > 0.0f){
-                const float farX = std::max(std::abs(chunkX * chunkSize - viewLocal.x), std::abs((chunkX + 1) * chunkSize - viewLocal.x));
-                const float farZ = std::max(std::abs(chunkZ * chunkSize - viewLocal.z), std::abs((chunkZ + 1) * chunkSize - viewLocal.z));
-                if (farX * farX + farZ * farZ < nearFadeStart * nearFadeStart){
-                    emptyChunk(chunk);
-                    continue;
-                }
-            }
-
-            if (chunk.entity == NULL_ENTITY){
-                if (instances.loadFailed || meshLoadBudget == 0){
-                    instances.pending = instances.pending || !instances.loadFailed;
-                    continue;
-                }
-                chunk.entity = createFoliageEntity(capacity);
-            }
-
-            bool justLoaded = false;
-            if (!chunk.meshLoaded && !instances.loadFailed && meshLoadBudget > 0){
-                meshLoadBudget--;
-                instances.loadFailed = !loadPlacedModel(chunk.entity, layer.meshPath);
-                chunk.meshLoaded = !instances.loadFailed;
-                chunk.assigned = false;
-                justLoaded = true;
-            }
-
-            // Entity creation and model loading can invalidate component references.
-            MeshComponent& mesh = scene->getComponent<MeshComponent>(chunk.entity);
-            InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(chunk.entity);
-
-            if (justLoaded){
-                mesh.needReload = true;
-
-                if (chunk.meshLoaded && mesh.numSubmeshes == 0){
-                    Log::error("Foliage mesh has no geometry on its root and cannot be instanced: %s", layer.meshPath.c_str());
-                    instances.loadFailed = true;
-                    chunk.meshLoaded = false;
-                }
-            }
-
-            // Hide stale geometry while the replacement mesh loads.
-            if (!chunk.meshLoaded){
-                instances.pending = instances.pending || !instances.loadFailed;
-                if (!instmesh.instances.empty()){
-                    instmesh.instances.clear();
-                    instmesh.needUpdateInstances = true;
-                }
-                chunk.assigned = false;
-                continue;
-            }
-
-            // Shrinks before the draw distance so a chunk does not pop in. The preview shows the
-            // whole terrain, so it empties the band instead of dropping the variant.
-            instmesh.distanceFade = true;
-            instmesh.fadeStart = fadeStart;
-            instmesh.fadeEnd = fadeEnd;
-            instmesh.nearFadeStart = nearFadeStart;
-            instmesh.nearFadeEnd = nearFadeEnd;
-            mesh.castShadows = layer.castShadows;
-
-            // Grows with headroom and never shrinks, so a draw distance drag rebuilds little.
-            if (instmesh.maxInstances < capacity){
-                instmesh.maxInstances = std::min(capacity + capacity / 4, TERRAIN_FOLIAGE_MAX_CHUNK_INSTANCES);
-                chunk.assigned = false;
-                mesh.needReload = true;
-            }
-
-            if (!mesh.loaded || mesh.needReload){
-                instances.pending = true;
-                chunk.assigned = false;
-                continue;
-            }
-
-            if (chunk.assigned && !refillAll && chunk.chunkX == chunkX && chunk.chunkZ == chunkZ){
-                continue;
-            }
-
-            chunk.chunkX = chunkX;
-            chunk.chunkZ = chunkZ;
-            chunk.assigned = true;
-
-            instmesh.instances.clear();
-            for (int z = 0; z < batchSide; z++){
-                for (int x = 0; x < batchSide; x++){
-                    appendFoliageCell(terrain, layer, chunkX * batchSide + x, chunkZ * batchSide + z, instmesh.instances);
-                }
-            }
-            instmesh.needUpdateInstances = true;
-        }
-    }
-}
-
-void MeshSystem::updateTerrainFoliage(Entity entity, TerrainComponent& terrain, Transform& transform){
-    // Chunk creation and destruction can invalidate the terrain transform reference.
-    const Matrix4 terrainModelMatrix = transform.modelMatrix;
-    const Vector3 terrainPosition = transform.worldPosition;
-    const Quaternion terrainRotation = transform.worldRotation;
-    const Vector3 terrainScale = transform.worldScale;
-
-    if (terrain.foliageLayers.empty()){
-        destroyTerrainFoliage(entity);
-        terrain.needUpdateFoliage = false;
-        return;
-    }
-
-    // Wait for the heightmap and terrain rebuild before placing instances.
-    if (!terrain.heightMapLoaded || terrain.needUpdateTerrain){
-        if (!terrain.heightMapLoaded){
-            destroyTerrainFoliage(entity);
-        }
-        terrain.needUpdateFoliage = true;
-        return;
-    }
-
-    std::vector<TerrainFoliageInstances>& layers = terrainFoliage[entity];
-
-    while (layers.size() > terrain.foliageLayers.size()){
-        destroyFoliageInstances(layers.back());
-        layers.pop_back();
-    }
-    layers.resize(terrain.foliageLayers.size());
-
-    Transform* cameraTransform = scene->findComponent<Transform>(scene->getCamera());
-    if (!cameraTransform){
-        return;
-    }
-
-    const Matrix4 inverseModel = terrainModelMatrix.inverse();
-    if (!inverseModel.isValid()){
-        return;
-    }
-
-    const Vector3 viewLocal = inverseModel * cameraTransform->worldPosition;
-
-    for (size_t i = 0; i < terrain.foliageLayers.size(); i++){
-        TerrainFoliageLayer& layer = terrain.foliageLayers[i];
-        TerrainFoliageInstances& instances = layers[i];
-
-        if (layer.meshPath.empty() || layer.densityMap.empty()){
-            destroyFoliageInstances(instances);
-            continue;
-        }
-
-        updateFoliageLayer(terrain, layer, instances, viewLocal, entity == foliagePreviewEntity);
-    }
-
-    // Apply the terrain transform to every chunk, including newly created ones.
-    for (TerrainFoliageInstances& instances : layers){
-        for (TerrainFoliageChunk& chunk : instances.chunks){
-            if (chunk.entity == NULL_ENTITY){
-                continue;
-            }
-            Transform& chunkTransform = scene->getComponent<Transform>(chunk.entity);
-            if (chunkTransform.position != terrainPosition ||
-                chunkTransform.rotation != terrainRotation ||
-                chunkTransform.scale != terrainScale){
-                chunkTransform.position = terrainPosition;
-                chunkTransform.rotation = terrainRotation;
-                chunkTransform.scale = terrainScale;
-                chunkTransform.needUpdate = true;
-            }
-        }
-    }
-
-    terrain.needUpdateFoliage = false;
+    const terraincore::SurfaceSample sample = querySurface(terrain, localX, localZ);
+    height = sample.height;
+    normal = sample.normal;
 }
 
 void MeshSystem::applyTerrainMapSettings(TerrainComponent& terrain){
@@ -8256,7 +7530,7 @@ bool MeshSystem::createOrUpdateTerrain(TerrainComponent& terrain, MeshComponent&
             return false;
         }
 
-        if (terrain.heightMap.empty()){
+        if (terrain.heightMap.empty() && !terrain.world){
             resetTerrainToUnbuilt(terrain, mesh);
             return false;
         }
@@ -8367,10 +7641,7 @@ void MeshSystem::load(){
 }
 
 void MeshSystem::destroy(){
-    foliagePreviewEntity = NULL_ENTITY;
-    while (!terrainFoliage.empty()){
-        destroyTerrainFoliage(terrainFoliage.begin()->first);
-    }
+    TerrainEditEvents::forgetScene(scene);
 }
 
 void MeshSystem::update(double dt){
@@ -8436,19 +7707,6 @@ void MeshSystem::update(double dt){
     }
 
     // The resolve creates and destroys entities, which can compact the terrain array.
-    std::vector<Entity> terrainEntities;
-    auto foliageTerrains = scene->getComponentArray<TerrainComponent>();
-    for (int i = 0; i < foliageTerrains->size(); i++){
-        terrainEntities.push_back(foliageTerrains->getEntity(i));
-    }
-
-    for (Entity terrainEntity : terrainEntities){
-        TerrainComponent* terrain = scene->findComponent<TerrainComponent>(terrainEntity);
-        Transform* transform = scene->findComponent<Transform>(terrainEntity);
-        if (terrain && transform){
-            updateTerrainFoliage(terrainEntity, *terrain, *transform);
-        }
-    }
 
     // a Pixel Perfect Camera's tilemaps round their tile edges to the texel grid (S41 R13)
     RenderSystem* renderSystem = scene->getSystem<RenderSystem>().get();
@@ -8493,6 +7751,22 @@ void MeshSystem::update(double dt){
         Entity entity = terrains->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
+#if !defined(JASPERENGINE_EDITOR) && JASPERENGINE_TERRAIN_EDIT
+        // T1 R77, R78: a game's terrain with Allow Runtime Edits draws from copies of its maps,
+        // made at load and kept readable (the editor makes them when Play starts)
+        // (once: both outcomes leave an edit state)
+        if (terrain.allowRuntimeEdits && !terrain.editState){
+            // R46: a map too large for this device stays shared; writes refuse with the reason
+            const std::string refusal = terrainRuntimeEditRefusal(terrain);
+            if (refusal.empty()){
+                detachTerrainMapsForRuntime(terrain, entity);
+            }else{
+                terrain.editState = std::make_shared<TerrainEditState>();
+                Log::warn("Terrain %u: Allow Runtime Edits is off on this device: %s", entity, refusal.c_str());
+            }
+        }
+#endif
+
         if (signature.test(scene->getComponentId<MeshComponent>()) && signature.test(scene->getComponentId<Transform>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
@@ -8500,6 +7774,15 @@ void MeshSystem::update(double dt){
             createOrUpdateTerrain(terrain, mesh, transform);
             updateTerrainAutoRanges(terrain);
         }
+#if JASPERENGINE_TERRAIN_EDIT
+        if (terrain.editState){
+            flushTerrainEdit(terrain, std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count());
+        }
+#endif
+    }
+    // T1 R42, DC10: a frame's edits reach their subscribers once, by terrain and map
+    if (TerrainEditEvents::hasPending()){
+        TerrainEditEvents::flush(scene);
     }
 
     auto models = scene->getComponentArray<ModelComponent>();
@@ -8579,12 +7862,6 @@ void MeshSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
             keepGeometry(node.second);
         }
         destroyModel(model);
-    }
-    if (componentId == scene->getComponentId<TerrainComponent>()) {
-        if (foliagePreviewEntity == entity){
-            foliagePreviewEntity = NULL_ENTITY;
-        }
-        destroyTerrainFoliage(entity);
     }
     if (componentId == scene->getComponentId<InstancedMeshComponent>()) {
         if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)) {

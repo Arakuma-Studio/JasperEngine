@@ -9,6 +9,7 @@
 #pragma once
 
 #include <functional>
+#include <map>
 #include <string>
 
 namespace jasperengine::editor{
@@ -20,6 +21,13 @@ namespace jasperengine::editor{
         // the selected node of the graph window the Inspector belongs to, drawn instead of the
         // scene selection; true when it drew
         std::function<bool()> drawSelection;
+        // A kind whose own window is not a GraphEditorWindow (the Noise Graph window, T2 R50): its files
+        // open there, from openGraph and focus_window alike, never in the Graph Editor
+        struct KindWindow{
+            std::string windowName;
+            std::function<bool(const std::string& path)> open;     // a project-relative or absolute path
+        };
+        std::map<std::string, KindWindow> kindWindows;              // by kind id
     };
 
     inline GraphEditorHooks& graphEditorHooks(){

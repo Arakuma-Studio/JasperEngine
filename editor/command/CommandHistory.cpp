@@ -745,6 +745,39 @@ void editor::CommandHistory::clear(){
     notifyChanged();
 }
 
+size_t editor::CommandHistory::dropSteps(const std::function<bool(Command&)>& matches){
+    std::vector<UndoEntry> dropped;
+    for (size_t i = list.size(); i-- > 0;){
+        if (!matches(*list[i].cmd)){
+            continue;
+        }
+        const size_t position = i + trimmedCount;
+        for (TrimHold& hold : trimHolds){
+            if (hold.position > position) hold.position--;
+        }
+        if (playFloor > position) playFloor--;
+        if (interactive.open && interactive.start > position) interactive.start--;
+        if (index > i) index--;
+        dropped.push_back(std::move(list[i]));
+        list.erase(list.begin() + static_cast<std::ptrdiff_t>(i));
+    }
+    for (std::vector<UndoEntry>* aside : {&editRedo, &interactive.redoAside}){
+        for (size_t i = aside->size(); i-- > 0;){
+            if (matches(*(*aside)[i].cmd)){
+                dropped.push_back(std::move((*aside)[i]));
+                aside->erase(aside->begin() + static_cast<std::ptrdiff_t>(i));
+            }
+        }
+    }
+    const size_t count = dropped.size();
+    if (count > 0){
+        releaseEntries(dropped);
+        recount();
+        notifyChanged();
+    }
+    return count;
+}
+
 void editor::CommandHistory::freeRedo(){
     if (index < list.size()){
         cutRedoTail();

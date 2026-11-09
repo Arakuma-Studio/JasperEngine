@@ -6,8 +6,10 @@
 #include "EditorHost.h"
 #include "EditorFrame.h"
 #include "GamepadDB.h"
+#include "Input.h"
 #include "WindowLinux.h"
 #include "X11Visibility.h"
+#include "X11Pen.h"
 #include "GlxWorkerContext.h"
 #include "renderer/Renderer.h"
 
@@ -1032,12 +1034,15 @@ NativeWindow* createNativeWindow(int x, int y, int width, int height,
     // changes come as PropertyNotify (handleEvent)
     result->wmHidden = X11Visibility::hasNetWmState(backend->display, result->handle, backend->netWmStateHidden);
     backend->windows[result->handle] = result;
+    // a no-op for the main window, which X11Pen::start (after it) takes
+    X11Pen::addWindow(result->handle);
     return result;
 }
 
 void destroyNativeWindow(NativeWindow* window) {
     if (!window) return;
     backend->windows.erase(window->handle);
+    X11Pen::removeWindow(window->handle);
     if (window->inputContext) XDestroyIC(window->inputContext);
     if (window->handle) XDestroyWindow(backend->display, window->handle);
     if (window->colormap) XFreeColormap(backend->display, window->colormap);
@@ -1694,6 +1699,11 @@ void handleClientMessage(NativeWindow* window, XClientMessageEvent& message) {
 }
 
 void processEvent(XEvent& event) {
+    if (X11Pen::handleEvent(event)) {
+        // a game in Play reads it too
+        Input::setPenPressure(X11Pen::pressure());
+        return;
+    }
     if (backend->randrEventBase >= 0 &&
         (event.type == backend->randrEventBase + RRScreenChangeNotify ||
          event.type == backend->randrEventBase + RRNotify)) {
@@ -2801,6 +2811,7 @@ bool initializeX11(editor::App& app) {
     WindowLinux::adopt(backend->display, backend->screen,
                        backend->mainWindow->handle);
     WindowLinux::updateSize(width, height);
+    X11Pen::start(backend->display, backend->mainWindow->handle);
 
     if (pipe2(backend->wakePipe, O_NONBLOCK | O_CLOEXEC) != 0) {
         backend->wakePipe[0] = backend->wakePipe[1] = -1;
@@ -2825,6 +2836,7 @@ void shutdownX11() {
         destroyNativeWindow(backend->mainWindow);
         backend->mainWindow = nullptr;
     }
+    X11Pen::stop();
     if (backend->inputMethod) XCloseIM(backend->inputMethod);
     if (backend->wakePipe[0] >= 0) close(backend->wakePipe[0]);
     if (backend->wakePipe[1] >= 0) close(backend->wakePipe[1]);
@@ -3028,6 +3040,10 @@ void editor::Backend::closeWindow() {
         const ssize_t ignored = write(backend->wakePipe[1], &byte, 1);
         (void)ignored;
     }
+}
+
+float editor::Backend::penPressure() {
+    return X11Pen::pressure();
 }
 
 bool editor::Backend::isRunningOnWayland() {

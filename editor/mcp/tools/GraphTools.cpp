@@ -17,6 +17,7 @@
 #include "command/type/GraphEditCmd.h"
 #include "graph/Graph.h"
 #include "graph/GraphRegistry.h"
+#include "noise/TerrainPresets.h"
 #include "procmat/ProceduralMaterialKind.h"
 #include "util/ProjectChecks.h"
 
@@ -278,9 +279,52 @@ void validateGraphTool(const CallPtr& call) {
     call->ok(summary, data);
 }
 
+// T2 R16: create {kind, from_preset?} makes the graph a missing file starts as: a preset's copy, or empty
+bool startCreatedGraph(const CallPtr& call, fs::path& file, Graph& out) {
+    const Json& args = call->args();
+    const Json& create = args["create"];
+    const std::string kindId = create.value("kind", std::string());
+    std::shared_ptr<const graph::GraphKindDesc> kind = graph::GraphRegistry::get().kind(kindId);
+    if (!kind) {
+        call->fail("create.kind: no graph kind '" + kindId + "' (list_graph_kinds).");
+        return false;
+    }
+    std::string error;
+    const std::string path = args.value("path", std::string());
+    if (!McpRefs::resolveProjectPath(call->ctx().project(), path, file, error, false)) {
+        call->fail(error.empty() ? "path is required." : error);
+        return false;
+    }
+    std::error_code ec;
+    if (fs::exists(file, ec)) {
+        call->fail(path + " already exists: drop create to edit it.");
+        return false;
+    }
+    if (file.extension().string() != kind->fileExtension) {
+        call->fail("A '" + kindId + "' graph's file ends in " + kind->fileExtension + ".");
+        return false;
+    }
+    graph::LoadReport report;
+    if (create.contains("from_preset") && create["from_preset"].is_string()) {
+        const std::string preset = create["from_preset"].get<std::string>();
+        const std::string text = TerrainPresets::json(preset);
+        if (text.empty()) {
+            call->fail("create.from_preset: no preset '" + preset + "'.");
+            return false;
+        }
+        out = graph::load(text, report);
+    } else {
+        out = Graph();
+        out.kind = kindId;
+        out.kindVersion = kind->kindVersion;
+    }
+    return true;
+}
+
 void editGraphTool(const CallPtr& call) {
     const Json& args = call->args();
-    if (!args.contains("ops") || !args["ops"].is_array() || args["ops"].empty()) {
+    const bool creating = args.contains("create") && args["create"].is_object();
+    if (!args.contains("ops") || !args["ops"].is_array() || (args["ops"].empty() && !creating)) {
         call->fail("ops is a non-empty list of {op, ...}: addNode, removeNode, moveNodes, setParam, connect, disconnect, "
                    "addVariable, removeVariable, renameVariable, setVariable, group, ungroup.");
         return;
@@ -289,12 +333,16 @@ void editGraphTool(const CallPtr& call) {
     std::string before;
     Graph g;
     graph::LoadReport report;
-    if (!readGraph(call, file, before, g, report)) return;
-    // rewriting it would lose what the file holds, or skip what its extension's kind checks
-    const std::string problem = graph::fileProblem(args.value("path", std::string()), g, report);
-    if (!problem.empty()) {
-        call->fail(args.value("path", std::string()) + " is not a graph of its kind: " + problem + "; nothing was written. Fix the file first (read_file shows it).");
-        return;
+    if (creating) {
+        if (!startCreatedGraph(call, file, g)) return;
+    } else {
+        if (!readGraph(call, file, before, g, report)) return;
+        // rewriting it would lose what the file holds, or skip what its extension's kind checks
+        const std::string problem = graph::fileProblem(args.value("path", std::string()), g, report);
+        if (!problem.empty()) {
+            call->fail(args.value("path", std::string()) + " is not a graph of its kind: " + problem + "; nothing was written. Fix the file first (read_file shows it).");
+            return;
+        }
     }
     const bool dryRun = args.value("dry_run", false);
     const bool allowInvalid = args.value("allow_invalid", false);
@@ -330,7 +378,8 @@ void editGraphTool(const CallPtr& call) {
         if (newErrors.empty()) firstNewError = issueText(issue);
         newErrors.push_back(toMcp(graph::toJson(issue)));
     }
-    const std::string undoName = names.size() == 1 ? names.front() : "Edit Graph (" + std::to_string(names.size()) + " Changes)";
+    const std::string undoName = creating ? "Create " + file.filename().string()
+        : (names.size() == 1 ? names.front() : "Edit Graph (" + std::to_string(names.size()) + " Changes)");
     Json data = {{"issues", issuesJson(issues)}, {"applied", names.size()}, {"undo_name", undoName}, {"dry_run", dryRun}};
     if (!newErrors.empty() && !allowInvalid) {
         data["applied"] = 0;
@@ -348,7 +397,7 @@ void editGraphTool(const CallPtr& call) {
     const std::string after = graph::save(g);
     // one step of the project history (file edits are project-wide)
     CommandHistory* history = call->ctx().project()->getProjectCommandHistory();
-    if (after != before && !history->addCommandNoMerge(new GraphEditCmd(file, before, after, undoName))) {
+    if (after != before && !history->addCommandNoMerge(new GraphEditCmd(file, before, after, undoName, creating))) {
         const std::string busy = history->lastBusyRefusal();
         data["applied"] = 0;
         data.erase("added");
@@ -418,12 +467,13 @@ void registerGraphTools(McpRegistry& registry) {
             "moveNodes {ids, delta} | setParam {node, name, value} | connect {from: {node, port}, to} | disconnect {id} | "
             "addVariable {variable} | removeVariable {name} | renameVariable {from, to} | setVariable {name, ...} | "
             "group {title, nodes} | ungroup {id}]. Refused when it adds error issues (allow_invalid: true writes anyway); "
-            "dry_run writes nothing.";
+            "dry_run writes nothing. create makes a missing file, undone by removing it.";
         tool.inputSchema = object({
             {"path", assetPath("A graph file.")},
             {"ops", array(anyObject("{op, ...args}"), "")},
             {"dry_run", withDefault(boolean(""), false)},
-            {"allow_invalid", withDefault(boolean(""), false)}
+            {"allow_invalid", withDefault(boolean(""), false)},
+            {"create", anyObject("{kind, from_preset?}: make the missing file")}
         }, {"path", "ops"});
         tool.handler = editGraphTool;
         registry.addTool(std::move(tool));

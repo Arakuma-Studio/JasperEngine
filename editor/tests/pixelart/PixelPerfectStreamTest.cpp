@@ -238,7 +238,8 @@ TEST(PixelPerfectStream, ShaderCacheVersionCoversThePixelSnap){
 }
 
 // S43's palette sources (library:sprite's PALETTE_SWAP and PALETTE_CYCLE, the uber pass's 'Pal'
-// bit 19) are cached under v59 or later (after S91 took v58): a cache of an older version holds programs without them
+// bit 19) are cached under v59 or later (after S91 took v58; v62: the terrain programme's bits merged
+// with them): a cache of an older version holds programs without them
 TEST(PaletteShaders, ShaderCacheVersionCoversThePalettes){
     const std::string name = editor::App::getUserShaderCacheDir().filename().string();
     ASSERT_EQ(name.rfind('v', 0), 0u) << name;
@@ -254,8 +255,8 @@ TEST(PixelParticleShaders, ShaderCacheVersionCoversThePixelParticles){
 }
 
 // S48's Pixel FX sources (library:sprite's new features, the uber pass's 'Gli' bit, the screen
-// transition) are cached under v62 (after S49 took v60 and S52 v61): an older cache holds sprite
+// transition) are cached under v64 (after S49 took v60, S52 v61 and the terrain programme v63): an older cache holds sprite
 // and uber programs without them
 TEST(PixelFxShaders, ShaderCacheVersionCoversPixelFx){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v62");
+    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v64");
 }

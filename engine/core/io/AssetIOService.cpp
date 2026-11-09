@@ -344,7 +344,7 @@ void AssetIOService::wakeReaders(void* context){
     service->changed.notify_one();
 }
 
-IoRequest* AssetIOService::claimLocked(){
+IoRequest* AssetIOService::claimLocked(bool& returnSlot){
     // highest priority first, FIFO within a level, skipping requests whose class the gate
     // has full: a texture behind a full Heavy share must not hold up the material after it
     jobs::BackgroundGate& gate = schedulerOf(system)->gate;
@@ -367,10 +367,11 @@ IoRequest* AssetIOService::claimLocked(){
                     return nullptr;
                 continue;
             }
-            // a slot taken: the request carries it until its continuation is destroyed
+            // a slot taken: the request carries it until its continuation is destroyed. One
+            // destroyed since isDead() leaves the slot to the caller, past the lock: a release
+            // calls wakeReaders, which takes this mutex
             int expected = jasperengine::detail::kSlotNone;
-            if (!io->slot.compare_exchange_strong(expected, jasperengine::detail::kSlotTaken, std::memory_order_acq_rel))
-                gate.release(io->request.gateClass);
+            returnSlot = !io->slot.compare_exchange_strong(expected, jasperengine::detail::kSlotTaken, std::memory_order_acq_rel);
             queue.erase(it);
             return io;
         }
@@ -387,12 +388,13 @@ void AssetIOService::readerMain(int index){
 
     for (;;){
         IoRequest* io = nullptr;
+        bool returnSlot = false;
         {
             std::unique_lock<std::mutex> lock(mutex);
             for (;;){
                 if (!running)
                     return;   // stop() fails what is still queued
-                io = claimLocked();
+                io = claimLocked(returnSlot);
                 if (io)
                     break;
                 // a gate release or a new request wakes this; the backstop covers a missed one
@@ -401,6 +403,8 @@ void AssetIOService::readerMain(int index){
             io->state.store((int)IoState::Claimed, std::memory_order_release);
             claimedReads.push_back(io);
         }
+        if (returnSlot)
+            schedulerOf(system)->gate.release(io->request.gateClass);
         execute(io, true);
     }
 }

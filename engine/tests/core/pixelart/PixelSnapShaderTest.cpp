@@ -128,9 +128,13 @@ TEST(PixelSnapShaderTest, VariantBitsArePinned){
         while (index < 64 && shaderPropertyBit(index) != bit) index++;
         EXPECT_EQ(ShaderPool::getShaderPropertyName(type, index, true), "Pxs");
         // S49's 'Pxl' and 'Ana' took PARTICLES 12 and 13 after it (ParticlePixelShader.VariantBitsArePinned);
-        // S52's 'Sfx', 'Sfr' and 'Spv' MESH 46 to 48 and 'Spv' DEPTH 20
-        const int after = type == ShaderType::PARTICLES ? 2 : type == ShaderType::MESH ? 3 : type == ShaderType::DEPTH ? 1 : 0;
-        EXPECT_EQ(ShaderPool::getShaderPropertyCount(type), index + 1 + after) << "'Pxs' is the last bit of its type but S49's and S52's";
+        // the terrain programme's bits come after it on MESH and DEPTH (D19)
+        if (type == ShaderType::PARTICLES || type == ShaderType::UI) {
+            const int after = type == ShaderType::PARTICLES ? 2 : 0;
+            EXPECT_EQ(ShaderPool::getShaderPropertyCount(type), index + 1 + after) << "'Pxs' is the last bit of its type but S49's";
+        } else {
+            EXPECT_GE(ShaderPool::getShaderPropertyCount(type), index + 1) << "'Pxs' is a bit of its type";
+        }
     }
     EXPECT_EQ(UBER_SHARP_BILINEAR, 1u << 18);
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 18, true), "Psb");

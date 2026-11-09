@@ -68,6 +68,11 @@ namespace jasperengine {
         // RGBA8, linear, clamped, rewritten whole by updateTexture (width * height * 4 bytes)
         // at most once a frame (the post-processing colour LUTs)
         bool createDynamicColorTexture(const std::string& label, int width, int height);
+        // T1 DC9: a terrain map's stream image (SokolTexture::createDynamicMapTexture)
+        bool createDynamicMapTexture(const std::string& label, int width, int height, ColorFormat colorFormat);
+        bool isDynamicMap() const;
+        // what updateTexture takes per texel of a dynamic map: RED16, R32F, R16F, RED or RGBA
+        ColorFormat getUploadFormat() const;
         // at most once per frame (sokol); the next draw that samples the texture sees the data
         // false when not uploaded: past the frame's stream staging buffer (try again next
         // frame), a wrong size, no data

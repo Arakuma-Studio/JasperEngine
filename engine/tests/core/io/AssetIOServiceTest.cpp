@@ -331,6 +331,26 @@ TEST_F(AssetIOReaders, CancelledClaimedReadIsDiscardedBeforeDecode){
     EXPECT_EQ(outcome.total(), 1);
 }
 
+TEST_F(AssetIOReaders, CancelRacingAReaderClaimStillFinishes){
+    // A cancel that lands between the reader's liveness check and its claim of the slot leaves
+    // the reader a slot to give back; the wait for the cancel sweeps across the reader's wake-up
+    // so that some rounds land there. A hang here is the reader stuck on its own mutex.
+    service->start(2);
+    const std::string path = dir.write("race.txt", "x");
+    testsupport::runWithWatchdog(30.0, "CancelRacingAReaderClaimStillFinishes", [&]{
+        for (int round = 0; round < 400; round++){
+            AssetIOService::ReadRequest request;
+            request.path = path;
+            Task<int> task = service->submitRead(request, [](std::vector<uint8_t>&&){ return 1; });
+            testsupport::spinFor((double)(round % 64) * 5.0);
+            task.cancel();
+            ASSERT_TRUE(testsupport::spinUntil([&]{ return task.isReady(); }, 10000.0));
+        }
+        service->stop();
+    });
+    EXPECT_TRUE(testsupport::spinUntil([&]{ return system->getGate().taken() == 0; }, 10000.0)) << "every slot came back";
+}
+
 TEST_F(AssetIOReaders, AWaitRunsAQueuedReadItself){
     // the gate is full (the waiter may hold the slot itself): the wait reads and decodes inline
     service->start(1);

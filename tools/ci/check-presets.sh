@@ -92,6 +92,7 @@ if [[ "$MODE" == linux ]]; then
     expect_failure editor-address-thread "$SANITIZER_MESSAGE" --preset linux-debug --fresh "-DJASPERENGINE_SANITIZE=address;thread"
     expect_failure engine-address-thread "$SANITIZER_MESSAGE" -S engine --preset engine-linux-debug --fresh "-DJASPERENGINE_SANITIZE=address,thread"
     expect_failure engine-unknown "JASPERENGINE_SANITIZE: unknown sanitizer 'memory'" -S engine --preset engine-linux-debug --fresh -DJASPERENGINE_SANITIZE=memory
+    expect_failure editor-noise-off "The editor needs JASPERENGINE_NOISE" --preset linux-debug --fresh -DJASPERENGINE_NOISE=OFF
     expect_failure engine-werror "JASPERENGINE_WERROR needs JASPERENGINE_WARNINGS=ON" -S engine --preset engine-linux-debug --fresh -DJASPERENGINE_WERROR=ON
 elif [[ "$MODE" == web ]]; then
     for preset in $ENGINE_PRESETS; do

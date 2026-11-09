@@ -416,6 +416,11 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("FoliageQuality")
+        .addVariable("LOW", FoliageQuality::LOW)
+        .addVariable("MEDIUM", FoliageQuality::MEDIUM)
+        .addVariable("HIGH", FoliageQuality::HIGH)
+        .endNamespace()
         .beginNamespace("AtmosphereQuality")
         .addVariable("OFF", AtmosphereQuality::OFF)
         .addVariable("LOW", AtmosphereQuality::LOW)

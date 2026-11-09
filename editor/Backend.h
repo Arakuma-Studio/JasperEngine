@@ -35,6 +35,10 @@ namespace jasperengine::editor{
             // take effect, since the backend is chosen at startup from the saved setting.
             static bool isRunningOnWayland();
 
+            // The latest pointer event's pen pressure: 0..1 for a pen or stylus, -1 for a mouse
+            // (each reading also goes to Input::setPenPressure, for a game in Play)
+            static float penPressure();
+
             static ImVec2 sceneRenderScale(ImVec2 framebufferScale, float dpiScale);
 
             // Installs or updates the application menu. A positive result reserves

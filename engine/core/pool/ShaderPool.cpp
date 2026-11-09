@@ -707,6 +707,40 @@ uint64_t ShaderPool::getSpriteBatchProperty(ShaderType shaderType, SpriteBatchIn
     return 0;
 }
 
+uint64_t ShaderPool::getGBufferVoxelProperty(){
+    return shaderPropertyBit(26);
+}
+
+uint64_t ShaderPool::getTerrainWorldProperty(ShaderType shaderType){
+    switch (shaderType) {
+        case ShaderType::MESH:    return shaderPropertyBit(53);
+        case ShaderType::DEPTH:   return shaderPropertyBit(25);
+        case ShaderType::GBUFFER: return shaderPropertyBit(27);
+        default:                  return 0;
+    }
+}
+
+uint64_t ShaderPool::getTerrainHolesProperty(ShaderType shaderType){
+    switch (shaderType) {
+        case ShaderType::MESH:    return shaderPropertyBit(52);
+        case ShaderType::DEPTH:   return shaderPropertyBit(24);
+        case ShaderType::GBUFFER: return shaderPropertyBit(22);
+        default:                  return 0;
+    }
+}
+
+uint64_t ShaderPool::getTerrainTierProperty(terraincore::TerrainQuality quality){
+    switch (quality) {
+        case terraincore::TerrainQuality::MEDIUM: return shaderPropertyBit(23);
+        case terraincore::TerrainQuality::LOW:    return shaderPropertyBit(24);
+        default:                              return 0;
+    }
+}
+
+uint64_t ShaderPool::getTerrainExtendedProperty(){
+    return shaderPropertyBit(25);
+}
+
 uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return shaderPropertyBit(31);
@@ -722,9 +756,9 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 49;
-        case ShaderType::DEPTH:  return 21;
-        case ShaderType::GBUFFER: return 19;
+        case ShaderType::MESH:   return 54;
+        case ShaderType::DEPTH:  return 26;
+        case ShaderType::GBUFFER: return 28;
         case ShaderType::UI:     return 6;
         case ShaderType::POINTS: return 5;
         // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
@@ -838,6 +872,14 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 46: return shortName ? "Sfx" : "Sprite FX";
             case 47: return shortName ? "Sfr" : "Sprite Frame Rect";
             case 48: return shortName ? "Spv" : "Snap Pivot";
+            // foliage (T5 F3, F6, F8): the 32-byte instance, the wind block, the fade by dither
+            case 49: return shortName ? "Cin" : "Compact Instance";
+            case 50: return shortName ? "Wnd" : "Foliage Wind";
+            case 51: return shortName ? "Dth" : "Foliage Dither";
+            // T3 R20: a terrain with a hole map (TERRAIN_HOLES, includes/terrain_holes_fs.glsl)
+            case 52: return shortName ? "Thl" : "Terrain Holes";
+            // T4 R58: a Terrain World's pages and overview (HAS_TERRAIN_WORLD, includes/terrain_world_vs.glsl)
+            case 53: return shortName ? "Twd" : "Terrain World";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -870,6 +912,11 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 19: return shortName ? "Pxs" : "Pixel Snap";
             // as MESH 48 (S52)
             case 20: return shortName ? "Spv" : "Snap Pivot";
+            case 21: return shortName ? "Cin" : "Compact Instance";
+            case 22: return shortName ? "Wnd" : "Foliage Wind";
+            case 23: return shortName ? "Dth" : "Foliage Dither";
+            case 24: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
+            case 25: return shortName ? "Twd" : "Terrain World"; // T4 R58
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -899,6 +946,16 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 17: return shortName ? "Uv2" : "UV Set 2";
             // the Instanced Mesh distance fade (includes/instance_fade.glsl), as MESH 26 and DEPTH 8
             case 18: return shortName ? "Ifd" : "Instance Fade";
+            case 19: return shortName ? "Cin" : "Compact Instance";
+            case 20: return shortName ? "Wnd" : "Foliage Wind";
+            case 21: return shortName ? "Dth" : "Foliage Dither";
+            case 22: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
+            case 23: return shortName ? "Tqm" : "Terrain Quality Medium"; // T3 D2
+            case 24: return shortName ? "Tql" : "Terrain Quality Low";
+            case 25: return shortName ? "Txl" : "Terrain Extended Layers"; // T3 R15
+            // a Voxel Volume's chunk (T6 R49; the colour pass takes it through Lit defines)
+            case 26: return shortName ? "Vox" : "Voxel Volume";
+            case 27: return shortName ? "Twd" : "Terrain World"; // T4 R58
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {
@@ -1895,6 +1952,18 @@ uint64_t ShaderPool::getMeshProperties(
     prop |= (vat && !vatBones) ? getVatProperty(ShaderType::MESH, false) : 0;
     prop |= vatBones         ? getVatProperty(ShaderType::MESH, true) : 0;
 
+    return prop;
+}
+
+uint64_t ShaderPool::getFoliageProperties(ShaderType shaderType, bool compact, bool wind, bool dither){
+    // appended after each type's last bit: MESH 49-51, DEPTH 21-23, GBUFFER 19-21 (S52 took MESH 46-48, DEPTH 20)
+    int first = 49;
+    if (shaderType == ShaderType::DEPTH) first = 21;
+    if (shaderType == ShaderType::GBUFFER) first = 19;
+    uint64_t prop = 0;
+    prop |= compact ? shaderPropertyBit(first) : 0;
+    prop |= wind    ? shaderPropertyBit(first + 1) : 0;
+    prop |= dither  ? shaderPropertyBit(first + 2) : 0;
     return prop;
 }
 

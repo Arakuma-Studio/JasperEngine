@@ -557,3 +557,57 @@ TEST(StreamComponent, CopyPropertyValueCopiesTableValues){
     EXPECT_EQ(target.getComponent<BuoyancyComponent>(to).customPoints, buoyancy.customPoints);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+// T3 AC42: every field of R49 round-trips, and a terrain at its defaults writes none of them
+TEST(StreamComponent, TerrainMaterialsRoundTrip){
+    TerrainComponent terrain{};
+    terrain.surfaceLayers.resize(1);
+    terrain.surfaceLayers[0].cliffProjection = TerrainCliffProjection::FLAT_ONLY;
+    terrain.quality = TerrainQualitySetting::MEDIUM;
+    terrain.limitLayersPerPixel = true;
+    terrain.offscreenShadows = TerrainOffscreenShadows::OFF;
+    terrain.macroMode = TerrainMacroMode::BASE_MAP;
+    terrain.macroScale = 12.0f;
+    terrain.macroStrength = 0.5f;
+    terrain.macroTintA = Vector3(0.1f, 0.2f, 0.3f);
+    terrain.macroTintB = Vector3(0.4f, 0.5f, 0.6f);
+    terrain.macroSlopeFade = 0.1f;
+    terrain.resampleEnabled = true;
+    terrain.resampleNear = 5.0f;
+    terrain.resampleFar = 50.0f;
+    terrain.resampleReduction = 0.5f;
+    terrain.heightBlendSharpness = 0.7f;
+    terrain.macroNormal = true;
+    terrain.holeMapHolds = 3;
+    const TerrainComponent decoded = roundTrip(ComponentType::TerrainComponent, terrain);
+    EXPECT_EQ(decoded.surfaceLayers[0].cliffProjection, TerrainCliffProjection::FLAT_ONLY);
+    EXPECT_EQ(decoded.quality, TerrainQualitySetting::MEDIUM);
+    EXPECT_TRUE(decoded.limitLayersPerPixel);
+    EXPECT_EQ(decoded.offscreenShadows, TerrainOffscreenShadows::OFF);
+    EXPECT_EQ(decoded.macroMode, TerrainMacroMode::BASE_MAP);
+    EXPECT_FLOAT_EQ(decoded.macroScale, 12.0f);
+    EXPECT_FLOAT_EQ(decoded.macroStrength, 0.5f);
+    EXPECT_EQ(decoded.macroTintA, Vector3(0.1f, 0.2f, 0.3f));
+    EXPECT_EQ(decoded.macroTintB, Vector3(0.4f, 0.5f, 0.6f));
+    EXPECT_FLOAT_EQ(decoded.macroSlopeFade, 0.1f);
+    EXPECT_TRUE(decoded.resampleEnabled);
+    EXPECT_FLOAT_EQ(decoded.resampleNear, 5.0f);
+    EXPECT_FLOAT_EQ(decoded.resampleFar, 50.0f);
+    EXPECT_FLOAT_EQ(decoded.resampleReduction, 0.5f);
+    EXPECT_FLOAT_EQ(decoded.heightBlendSharpness, 0.7f);
+    EXPECT_TRUE(decoded.macroNormal);
+    EXPECT_EQ(decoded.holeMapHolds, 0) << "a hold is not saved";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST(StreamComponent, OldTerrainResavesIdentical){
+    TerrainComponent terrain{};
+    terrain.surfaceLayers.resize(1);
+    const YAML::Node node = Stream::encodeTerrainComponent(terrain);
+    for (const char* key : {"quality", "limitLayersPerPixel", "offscreenShadows", "macroMode", "macroScale", "macroStrength", "macroTintA",
+                            "macroTintB", "macroSlopeFade", "resampleEnabled", "resampleNear", "resampleFar", "resampleReduction",
+                            "heightBlendSharpness", "macroNormal", "holeMap"}){
+        EXPECT_FALSE(node[key]) << key << " written at its default";
+    }
+    EXPECT_FALSE(node["surfaceLayers"][0]["cliffProjection"]);
+}
