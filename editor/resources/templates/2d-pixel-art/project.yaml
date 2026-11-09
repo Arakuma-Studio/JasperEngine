@@ -8,6 +8,23 @@ vsync: true
 pixelArt:
   enabled: true
 htmlUiMsaaSamples: 4
+device:
+  tiers:
+    desktop:
+      low:
+        render_scale: 1.0
+      medium:
+        render_scale: 1.0
+    mobile:
+      low:
+        render_scale: 1.0
+      medium:
+        render_scale: 1.0
+    web:
+      low:
+        render_scale: 1.0
+      medium:
+        render_scale: 1.0
 htmlUiGlyphAtlasMiB: 0
 htmlUiSdfPrimitives: true
 htmlUiTransformAwareText: true
@@ -20,11 +37,11 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
-startSceneId: 2363777547
+startSceneId: 2693380368
 audio:
   mixer: audio/Main.mixer
   outputStage: linear
   iosSessionCategory: ambient
 scenes:
   - filepath: Main.scene
-    filepathGuid: 1b62f51404a01b85b7727a18638e3288
+    filepathGuid: 139c395336be481dbc8b4b350ae4c5df

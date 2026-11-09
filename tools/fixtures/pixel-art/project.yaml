@@ -8,6 +8,23 @@ vsync: true
 pixelArt:
   enabled: true
 htmlUiMsaaSamples: 4
+device:
+  tiers:
+    desktop:
+      low:
+        render_scale: 1.0
+      medium:
+        render_scale: 1.0
+    mobile:
+      low:
+        render_scale: 1.0
+      medium:
+        render_scale: 1.0
+    web:
+      low:
+        render_scale: 1.0
+      medium:
+        render_scale: 1.0
 htmlUiGlyphAtlasMiB: 0
 htmlUiSdfPrimitives: true
 htmlUiTransformAwareText: true

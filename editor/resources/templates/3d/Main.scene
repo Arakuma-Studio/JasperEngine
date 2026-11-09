@@ -1,6 +1,6 @@
-formatVersion: 7
-guid: 2b99a72e2e4e04577919276fa9922450
-id: 881594344
+formatVersion: 8
+guid: 52dd016d665aa9b9ba93cdf66ffb8a69
+id: 3859363873
 name: Main
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -39,15 +39,67 @@ shaderKeys:
     properties: 1112
   - type: mesh
     properties: 8589935704
+  - type: mesh
+    properties: 68719477848
+  - type: mesh
+    properties: 77309412440
+  - type: mesh
+    properties: 1099511628888
+  - type: mesh
+    properties: 1108101563480
+  - type: mesh
+    properties: 1168231105624
+  - type: mesh
+    properties: 1176821040216
+  - type: mesh
+    properties: 17592186045528
+  - type: mesh
+    properties: 17600775980120
+  - type: mesh
+    properties: 18691697673304
+  - type: mesh
+    properties: 18700287607896
   - type: sky
   - type: depth
   - type: blit
+  - type: blit
+    properties: 4096
   - type: shadowcache
   - type: mesh
     properties: 1112
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 8589935704
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 68719477848
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 77309412440
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 1099511628888
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 1108101563480
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 1168231105624
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 1176821040216
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 17592186045528
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 17600775980120
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 18691697673304
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 18700287607896
     customShader: builtin:lit#USE_LIT_QUALITY
 entities:
   - type: Entity
@@ -67,7 +119,6 @@ entities:
         enabled: true
         type: directional
         direction: [-0.2, -0.5, 0.3]
-        worldDirection: [-0.2, -0.5, 0.3]
         color: [1, 1, 1]
         range: 100
         intensity: 4
@@ -193,13 +244,13 @@ entities:
               emissiveTexCoord: 0
               normalTexCoord: 0
               name: materials/Ground.material
-              nameGuid: 71fab0881240ee01d00e0379167cbe0f
+              nameGuid: 5eba9e16417523fe4300f01a93a2025a
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
             vertexCount: 6
             faceCulling: true
             textureShadow: false
-            overrideFields: 17179840511
+            overrideFields: 34359709695
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
@@ -221,9 +272,6 @@ entities:
         verticesAABB:
           min: [-5, 0, -5]
           max: [5, 0, 5]
-        worldAABB:
-          min: [-10, 0, -10]
-          max: [10, 0, 10]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -354,9 +402,6 @@ entities:
         verticesAABB:
           min: [-0.5, -0.5, -0.5]
           max: [0.5, 0.5, 0.5]
-        worldAABB:
-          min: [-0.5, 0, -0.5]
-          max: [0.5, 1, 0.5]
         receiveLights: true
         receiveIBL: false
         castShadows: true

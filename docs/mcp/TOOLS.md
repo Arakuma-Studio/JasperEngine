@@ -4958,7 +4958,7 @@ Pixel-art rules on scenes and textures (filtering, texel size, integer scale, gr
 | `max_width` | integer (256..2048) |  |  |
 | `output` | boolean |  |  |
 | `paths` | array of string |  |  |
-| `rules` | array of `"pixel_art_mode"` \| `"integer_scale"` \| `"filtering"` \| `"mipmaps_compression"` \| `"palette"` \| `"texel_size"` \| `"off_grid"` \| `"rotation"` \| `"font_antialiasing"` \| `"particles_grid"` \| `"anti_aliasing"` \| `"sprite_variants"` \| `"cleanup_outputs"` |  |  |
+| `rules` | array of `"pixel_art_mode"` \| `"integer_scale"` \| `"filtering"` \| `"mipmaps_compression"` \| `"palette"` \| `"texel_size"` \| `"off_grid"` \| `"rotation"` \| `"font_antialiasing"` \| `"particles_grid"` \| `"anti_aliasing"` \| `"render_scale"` \| `"sprite_variants"` \| `"cleanup_outputs"` |  |  |
 | `scenes` | array of string |  |  |
 
 
