@@ -98,6 +98,8 @@ namespace jasperengine {
         static void registerNavigationComponentClasses(lua_State *L);
         static void registerSplineClasses(lua_State *L);
         static void registerPixelArtClasses(lua_State *L);
+        // S48: Transition, TransitionHandle, TransitionKind, PixelFX.glitch (TransitionClassesLua.cpp)
+        static void registerTransitionClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);

@@ -1121,6 +1121,29 @@ Rules:
   Hierarchy lists them under a "DontDestroyOnLoad" row in Play, MCP as the running scene
   "DontDestroyOnLoad" (`persistent: true`).
 
+### 2.8.1 Transition (static): screen transitions
+
+An engine overlay that covers the screen in an ink colour and reveals it again: it survives scene
+loads and covers the HUD's layer scenes and the loading scene (`jasper://docs/pixel-fx` has every
+kind and option). Kinds are names or `TransitionKind` values (`IRIS`, `BLINDS`, `SLASH`,
+`PIXEL_DISSOLVE`, `CRT_OFF`, `BURN_AWAY`, `FADE`); a left-out kind, duration or option comes from
+Project Settings > Graphics > Screen Transitions. Unscaled time.
+
+| Member | |
+|---|---|
+| `Transition.play(kind?, duration?, opts?)` | cover 45 %, hold 10 % (`opts.hold`), reveal 45 %; `opts.onCovered` at the hold. Returns a `TransitionHandle` |
+| `Transition.cover(...)` / `Transition.reveal(...)` | one phase each (cover holds until reveal or stop) |
+| `Transition.loadScene(scene, kind?, duration?, opts?)` | covers, loads, holds while loading, reveals; an unknown scene gives an invalid handle |
+| `Transition.stop()` | ends it, uncovered |
+| `Transition.active`, `covered`, `coverage`, `phase`, `kind` | read only (`phase`: none, cover, hold, reveal) |
+| `handle:isDone()`, `handle.progress`, `handle:stop()`, `handle.valid` | `Coroutine.waitFor(handle)` waits for it |
+
+```lua
+local handle = Transition.play(TransitionKind.FADE, 0.6, {color = "#000000", throughRamp = true})
+Coroutine.waitFor(handle)
+PixelFX.glitch(0.25, 1.0)   -- a burst of the scene's Glitch post effect (where it is enabled)
+```
+
 ### 2.9 Scene (`self.scene`) - methods from EntityRegistry and Scene
 
 Entities are plain integers (`0` = none).

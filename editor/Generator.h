@@ -27,6 +27,7 @@
 #include "io/watch/FileIdentity.h"
 #include "manager/SceneManager.h"
 #include "shader/ShaderGlobals.h"
+#include "pixelart/ScreenTransition.h"
 
 namespace fs = std::filesystem;
 
@@ -269,6 +270,8 @@ namespace jasperengine::editor {
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         DrawSubmissionSettings drawSubmission;
+        // Project Settings > Graphics > Screen Transitions (S48)
+        jasperengine::pixelart::TransitionDefaults transitionDefaults;
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
         std::string inputActionsAsset;
         float inputDeadzone = 0.15f;
@@ -426,6 +429,7 @@ namespace jasperengine::editor {
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
         void setFoliageDistanceScale(const std::array<float, 3>& scale) { foliageDistanceScale = scale; }
         void setDrawSubmission(const DrawSubmissionSettings& settings) { drawSubmission = settings; }
+        void setTransitionDefaults(const jasperengine::pixelart::TransitionDefaults& defaults) { transitionDefaults = defaults; }
         // the project's LOD Bias and Shadow LOD Bias the game starts with; set before configure()
         // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
         void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }

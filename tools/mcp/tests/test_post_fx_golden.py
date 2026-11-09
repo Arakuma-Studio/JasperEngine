@@ -24,6 +24,10 @@ saturated objects, the HUD layer), played at a fixed 60 fps with the uber pass's
   test_pass_counts      halation with bloom adds no pass to bloom's, halation alone adds 2 (its
                         prefilter and one level down), VHS, film damage and the grain types add none
                         to the uber pass alone (JASPERENGINE_FRAME_STATS=all)
+  test_glitch           S48's Glitch (AC15): continuous bursts (rate 0) at three pinned times, each
+                        compared with golden/post_fx/glitch_<t>.png; a pinned time gives one image (the
+                        same time twice: identical), other times differ; it adds no pass to the uber
+                        pass alone
 """
 
 from __future__ import annotations
@@ -225,4 +229,41 @@ async def test_pass_counts(ed: Editor):
               f"halation alone adds 2 passes: {alone} (uber alone: {uber_only})")
         print(f"uber alone {uber_only}; bloom {bloom}; halation {alone}")
     finally:
+        await ed.call("play", action="stop", keep_changes="none")
+
+
+GLITCH = {"glitch_enabled": True, "glitch_burst_rate": 0.0, "glitch_seed": 7, "glitch_tears": 6, "glitch_tear_shift": 24.0,
+          "glitch_rgb_split": 4.0, "glitch_interlace": 1.0}
+GLITCH_TIMES = (0.5, 1.25, 2.0)
+
+
+async def test_glitch(ed: Editor):
+    ed.require_tools("set_post_processing_debug", "get_post_processing_status")
+    sid = await start(ed)
+    try:
+        uber_only_mark = log_length(ed)
+        await show(ed, sid, {"fxaa_enabled": True})
+        await ed.call("wait", frames=10)
+        uber_only = pass_lists(ed, uber_only_mark)
+        await show(ed, sid, GLITCH)
+        status = await ed.call("get_post_processing_status", scene=sid)
+        check(ed, "Glitch" in status["uber_features"], f"the uber variant has Glitch: {status['uber_features']}")
+        images = {}
+        for t in GLITCH_TIMES:
+            await ed.call("set_post_processing_debug", scene=sid, time_seconds=t)
+            await ed.call("wait", frames=4)
+            images[t] = await capture(ed, f"glitch_{t}")
+            compare_golden(ed, f"glitch_{t}", images[t], tolerance=0, max_fraction=0.0)
+        await ed.call("set_post_processing_debug", scene=sid, time_seconds=GLITCH_TIMES[0])
+        await ed.call("wait", frames=4)
+        again = await capture(ed, "glitch_again")
+        check(ed, again[2] == images[GLITCH_TIMES[0]][2], "a pinned time gives one image")
+        check(ed, images[GLITCH_TIMES[0]][2] != images[GLITCH_TIMES[1]][2], "another time, another corruption")
+        mark = log_length(ed)
+        await ed.call("wait", frames=10)
+        lists = pass_lists(ed, mark)
+        check(ed, lists and uber_only and len(lists[-1]) == len(uber_only[-1]) and "uber" in lists[-1],
+              f"Glitch adds no pass: {lists[-1] if lists else None} (uber alone: {uber_only[-1] if uber_only else None})")
+    finally:
+        await ed.call("set_post_processing_debug", scene=sid, time_seconds=TIME)
         await ed.call("play", action="stop", keep_changes="none")

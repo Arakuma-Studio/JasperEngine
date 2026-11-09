@@ -909,6 +909,8 @@ namespace jasperengine::editor{
         HtmlUiRenderSettings htmlUiRender;
         // graphics.gpu_instancing, quality.shadow_lod_bias (spec S55)
         DrawSubmissionSettings drawSubmission;
+        // graphics.screen_transitions.* (S48): the defaults Lua's Transition and the Game view take
+        jasperengine::pixelart::TransitionDefaults transitionDefaults;
         // Project Settings > Quality > Device Tiers, LOD biases, Thermal Response and Graphics >
         // Upload Budget (spec S56): project.yaml's device block
         DeviceSettings deviceSettings;
@@ -1755,6 +1757,11 @@ namespace jasperengine::editor{
         // GPU Instancing (spec S55): applied to the editor's scenes at once and written into exports
         void setDrawSubmissionSettings(const DrawSubmissionSettings& settings);
         const DrawSubmissionSettings& getDrawSubmissionSettings() const;
+
+        // Screen Transitions (S48 R41): applied to the engine at once (Play, the Game view's
+        // preview) and written into exports
+        void setTransitionDefaults(const jasperengine::pixelart::TransitionDefaults& defaults);
+        const jasperengine::pixelart::TransitionDefaults& getTransitionDefaults() const;
 
         // the shadow quality tier of a platform (Engine::Platform as an int), applied to the
         // editor's scenes at once and written into exports (docs/rendering/shadows.md)

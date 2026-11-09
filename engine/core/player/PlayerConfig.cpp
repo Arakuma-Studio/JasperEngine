@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "PlayerConfig.h"
+#include "pixelart/PixelColor.h"
 
 #include "audio/AudioMixer.h"
 #include "subsystem/AudioSystem.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
 
 using namespace jasperengine;
 using namespace jasperengine::player;
@@ -103,6 +106,13 @@ json PlayerConfig::toJson() const {
     out["mobilePbrTier"] = nameOf(kPbrTier, mobilePbrTier);
     out["dynamicBatching"] = dynamicBatching;
     out["lightMode"] = LightingTiers::getModeName(lightMode);
+    if (transitions != pixelart::TransitionDefaults()){
+        char color[8];
+        auto byte = [](float v){ return (int)std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f); };
+        std::snprintf(color, sizeof(color), "#%02x%02x%02x", byte(transitions.color.x), byte(transitions.color.y), byte(transitions.color.z));
+        out["transitions"] = {{"kind", pixelart::transitionKindName(transitions.kind)}, {"duration", transitions.duration}, {"color", color},
+                              {"ramp", transitions.ramp}, {"rim", transitions.rim}, {"pixelSize", transitions.pixelSize}, {"coverUI", transitions.coverUI}};
+    }
     json tiers = json::array();
     for (ShadowTier tier : shadowTiers) tiers.push_back(nameOf(kShadowTier, tier));
     out["shadowTiers"] = tiers;
@@ -245,6 +255,18 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         valueOf(kPbrTier, in.value("mobilePbrTier", "reduced"), config.mobilePbrTier);
         config.dynamicBatching = in.value("dynamicBatching", config.dynamicBatching);
         // absent (a config written before it) or unknown: Automatic
+        if (const auto transitions = in.find("transitions"); transitions != in.end() && transitions->is_object()){
+            pixelart::TransitionDefaults& t = config.transitions;
+            pixelart::transitionKindFromName(transitions->value("kind", std::string("iris")), t.kind);
+            t.duration = transitions->value("duration", t.duration);
+            pixelart::Rgba8 color;
+            if (pixelart::parseHex(transitions->value("color", std::string()), color))
+                t.color = Vector4(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, 1.0f);
+            t.ramp = transitions->value("ramp", t.ramp);
+            t.rim = transitions->value("rim", t.rim);
+            t.pixelSize = transitions->value("pixelSize", t.pixelSize);
+            t.coverUI = transitions->value("coverUI", t.coverUI);
+        }
         const std::string lightMode = in.value("lightMode", "automatic");
         if (!LightingTiers::modeFromName(lightMode.c_str(), config.lightMode)) config.lightMode = LightMode::AUTOMATIC;
         if (const auto tiers = in.find("shadowTiers"); tiers != in.end() && tiers->is_array()) {

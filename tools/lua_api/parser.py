@@ -2840,6 +2840,29 @@ for _cls, _who, _example in (
         'overloads': [([('position', 'Vector3'), ('radius', 'number'), ('preset', _SHAKE_PRESET),
                         ('options?', 'ShakeOptions')], 'ShakeInstance')]}
 
+# S48 screen transitions: lua_CFunctions taking a kind (name or TransitionKind), a duration and an
+# options table (TransitionOptions in engine/core/script/binding/stubs/Transition.lua)
+_TRANSITION_ARGS = [('kind?', 'TransitionKindName|integer'), ('duration?', 'number'), ('options?', 'TransitionOptions')]
+OVERRIDES[('Transition', 'play')] = {
+    'doc': ['Covers the screen (45 % of `duration`), holds it covered (10 %, or `options.hold`) and reveals it',
+            '(45 %), calling `options.onCovered` at the hold. A running transition is replaced from its coverage.',
+            'Left-out arguments come from Project Settings > Graphics > Screen Transitions.',
+            '`local h = Transition.play("crt_off", 1.2); Coroutine.waitFor(h)`'],
+    'overloads': [(_TRANSITION_ARGS, 'TransitionHandle')]}
+OVERRIDES[('Transition', 'cover')] = {
+    'doc': ['Covers the screen and keeps it covered until reveal() or stop(); done once covered.'],
+    'overloads': [(_TRANSITION_ARGS, 'TransitionHandle')]}
+OVERRIDES[('Transition', 'reveal')] = {
+    'doc': ['Uncovers the screen from the running transition\'s coverage (from covered when none runs).'],
+    'overloads': [([('kind?', 'TransitionKindName|integer'), ('duration?', 'number'), ('options?', 'TransitionOptions')],
+                   'TransitionHandle')]}
+OVERRIDES[('Transition', 'loadScene')] = {
+    'doc': ['Covers, calls `options.onCovered`, loads the scene stack (SceneManager.loadScene), holds while it',
+            'loads and reveals once the new scenes drew a frame; a loading scene shown meanwhile is revealed',
+            'and covered again. The handle is invalid when SceneManager has no such scene.',
+            '`Transition.loadScene("Level2", "iris", 0.8, {shape = "diamond"})`'],
+    'overloads': [([('scene', 'string')] + _TRANSITION_ARGS, 'TransitionHandle')]}
+
 # HTML UI (phase 1, p1-lua): the element API's lua_CFunctions (they take Lua functions and
 # option tables, and raise errors with no C++ object alive)
 _LISTENER = 'fun(event: UIEvent)'

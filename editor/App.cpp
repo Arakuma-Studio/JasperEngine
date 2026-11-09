@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "pixelart/ScreenTransition.h"
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
 #include "component/CameraShakerComponent.h"
@@ -4020,6 +4021,14 @@ void editor::App::engineRender(){
     // generated normal maps whose sources changed (badges, the opt-in auto-regenerate)
     spriteNormalsWatcher->tick();
     project.updateGeneratedSources();
+    // screen transitions (S48): the Engine draws them over the game's frame while a game runs; in
+    // edit mode the Game view's preview draws them itself (never the Scene view) on the editor's clock
+    {
+        const bool playing = project.isAnyScenePlaying();
+        jasperengine::pixelart::ScreenTransition::setEngineDrawEnabled(playing);
+        if (!playing)
+            jasperengine::pixelart::ScreenTransition::update(ImGui::GetIO().DeltaTime);
+    }
     // clip previews (the Animation window's clip mode, MCP preview_animation) advance every frame
     if (animationClipAppHooks().frame) {
         animationClipAppHooks().frame(&project, ImGui::GetIO().DeltaTime, ImGui::GetFrameCount());
@@ -4607,6 +4616,8 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
     }
 
     Engine::drawView(GAME_VIEW_ID, target, layers);
+    // the Game view's transition preview (edit mode: the Engine does not draw it)
+    jasperengine::pixelart::ScreenTransition::draw(target);
 
     gameWindow->markEditPassRendered(sceneProject.id);
     renderedSceneThisFrame = true;
@@ -4672,6 +4683,8 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
     renderSystem->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
     Engine::systemDraw();
+    // the Game view's transition preview (edit mode: the Engine does not draw it)
+    jasperengine::pixelart::ScreenTransition::draw(gameWindow->getFramebuffer());
     renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
     // the game camera's Pixel Perfect Camera laid this pass out; the editor's views lay out

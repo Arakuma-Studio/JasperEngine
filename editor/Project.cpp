@@ -1843,6 +1843,15 @@ const editor::DrawSubmissionSettings& editor::Project::getDrawSubmissionSettings
     return drawSubmission;
 }
 
+void editor::Project::setTransitionDefaults(const jasperengine::pixelart::TransitionDefaults& defaults){
+    jasperengine::pixelart::ScreenTransition::setDefaults(defaults);
+    transitionDefaults = jasperengine::pixelart::ScreenTransition::getDefaults();
+}
+
+const jasperengine::pixelart::TransitionDefaults& editor::Project::getTransitionDefaults() const{
+    return transitionDefaults;
+}
+
 void editor::Project::setDeviceSettings(const DeviceSettings& settings){
     deviceSettings = settings;
     Device::setProjectSettings(deviceSettings);
@@ -6220,6 +6229,7 @@ void editor::Project::resetConfigs() {
     setPixelsPerUnit(defaultPixelsPerUnit);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
     setDrawSubmissionSettings(DrawSubmissionSettings());
+    setTransitionDefaults(jasperengine::pixelart::TransitionDefaults());
     setDeviceSettings(DeviceSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
@@ -8174,6 +8184,7 @@ void editor::Project::configureGenerator() {
     generator.setAtmosphereQuality(atmosphereQuality);
     generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
+    generator.setTransitionDefaults(transitionDefaults);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());
@@ -10374,6 +10385,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setAtmosphereQuality(atmosphereQuality);
     generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
+    generator.setTransitionDefaults(transitionDefaults);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());

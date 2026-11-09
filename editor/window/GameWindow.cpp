@@ -35,6 +35,7 @@
 #include "render/SceneDrawModes.h"
 #include "render/RenderUtil.h"
 #include "window/EditorModal.h"
+#include "pixelart/ScreenTransition.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -681,6 +682,39 @@ void editor::GameWindow::drawPixelScale(const PixelPerfectViewRequest& request) 
     }
 }
 
+void editor::GameWindow::drawTransitionMenu() {
+    using namespace jasperengine::pixelart;
+    if (!ImGui::BeginPopup("##GameTransitionMenu"))
+        return;
+    const TransitionDefaults& defaults = ScreenTransition::getDefaults();
+    if (!transitionPreviewSet) {
+        transitionPreviewDuration = defaults.duration;
+        transitionPreviewColor = defaults.color;
+        std::snprintf(transitionPreviewRamp, sizeof(transitionPreviewRamp), "%s", defaults.ramp.c_str());
+        transitionPreviewSet = true;
+    }
+    static const char* const labels[kTransitionKindCount] = {"Iris", "Blinds", "Slash", "Pixel Dissolve", "CRT Off", "Burn Away", "Fade"};
+    for (int k = 0; k < kTransitionKindCount; k++) {
+        if (ImGui::MenuItem(labels[k], nullptr, ScreenTransition::isActive() && ScreenTransition::getKind() == (TransitionKind)k)) {
+            TransitionOptions options = TransitionOptions::fromDefaults();
+            options.ink = transitionPreviewColor;
+            options.ramp = transitionPreviewRamp;
+            ScreenTransition::play((TransitionKind)k, transitionPreviewDuration, options);
+            editPassDirty = true;
+        }
+    }
+    ImGui::Separator();
+    ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+    ImGui::DragFloat("Duration", &transitionPreviewDuration, 0.01f, 0.05f, 10.0f, "%.2f s");
+    ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+    ImGui::ColorEdit3("Colour", &transitionPreviewColor.x);
+    ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+    ImGui::InputTextWithHint("Ramp", "built-in ember ramp", transitionPreviewRamp, sizeof(transitionPreviewRamp));
+    ImGui::SetItemTooltip("A palette ramp, \"<palette>.palette#ramp:<name>\"");
+    ImGui::TextDisabled("Kind, rim and pixel size: Project Settings > Graphics > Screen Transitions");
+    ImGui::EndPopup();
+}
+
 void editor::GameWindow::drawToolbar() {
     float toolbarRowY = ImGui::GetCursorPosY();
     ImGui::SetCursorPosY(toolbarRowY - (ImGui::GetFrameHeight() - ImGui::GetTextLineHeight()) * 0.5f);
@@ -844,9 +878,10 @@ void editor::GameWindow::drawToolbar() {
     auto buttonWidth = [&](const char* label) {
         return ImGui::CalcTextSize(label, nullptr, true).x + style.FramePadding.x * 2.0f;
     };
+    const char* transitionLabel = ICON_FA_CIRCLE_HALF_STROKE "##GameTransition";
     auto groupWidth = [&]() {
-        return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) + buttonWidth(touchLabel) +
-               buttonWidth(maximizeLabel) + buttonWidth(statsLabel) + buttonWidth(physicsLabel) + style.ItemSpacing.x * 6.0f;
+        return buttonWidth(transitionLabel) + buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) +
+               buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) + buttonWidth(physicsLabel) + style.ItemSpacing.x * 7.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
@@ -861,6 +896,13 @@ void editor::GameWindow::drawToolbar() {
     if (rightX > ImGui::GetCursorPosX()) {
         ImGui::SetCursorPosX(rightX);
     }
+
+    if (toggleButton(transitionLabel, jasperengine::pixelart::ScreenTransition::isActive(),
+                     "Transition: play a screen transition (cover, hold, reveal) over the Game view, in edit mode or Play")) {
+        ImGui::OpenPopup("##GameTransitionMenu");
+    }
+    drawTransitionMenu();
+    ImGui::SameLine();
 
     ImGui::BeginDisabled(cooks.getProject() != project);
     if (toggleButton(texturesLabel.c_str(), viewFamily != TextureFamily::Desktop,
@@ -1371,6 +1413,12 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
             drawList->AddRectFilled(ImVec2(at.x - 4.0f, at.y - 2.0f), ImVec2(at.x + size.x + 4.0f, at.y + size.y + 2.0f), IM_COL32(0, 0, 0, 160), 3.0f);
             drawList->AddText(at, IM_COL32(255, 255, 255, 255), capturing);
             UIProbe::rect("game.capturingAudio", at.x, at.y, at.x + size.x, at.y + size.y);
+        }
+
+        // the Transition menu's edit-mode preview: redrawn every frame while it runs
+        if (!running && sceneProject && sceneProject->playState == ScenePlayState::STOPPED && jasperengine::pixelart::ScreenTransition::isActive()) {
+            sceneProject->needUpdateRender = true;
+            editPassDirty = true;
         }
 
         // the Camera Shaker Inspector's edit-mode preview: redrawn every frame while it shakes
