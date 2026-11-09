@@ -4602,6 +4602,19 @@
 		4A534E47FEBAD526820B2A23 /* BitmapTextRaster.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473F26FCADC3D4E55E /* BitmapTextRaster.h */; };
 		4A534E47BB71B30CDDA6672F /* BuiltinPixelFont.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475FE9A61E5C90F42F /* BuiltinPixelFont.h */; };
 		4A534E47AF9E9B2A9802B32C /* FontPixelReport.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F01EA78B341B6095 /* FontPixelReport.h */; };
+		4A534E47125B27BDBD29C177 /* HitStopExempt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4777279AB03243A7B0 /* HitStopExempt.cpp */; };
+		4A534E4774391AFF4DA51A8F /* HitStopExempt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4777279AB03243A7B0 /* HitStopExempt.cpp */; };
+		4A534E47C75DDC3AC497EF70 /* HitStopClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714A8A22B685105FF /* HitStopClassesLua.cpp */; };
+		4A534E4794F74B609D31BB49 /* HitStopClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4714A8A22B685105FF /* HitStopClassesLua.cpp */; };
+		4A534E478243FC9D5F3E0ECE /* TransitionClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */; };
+		4A534E47B8B81C0916259880 /* TransitionClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */; };
+		4A534E47A4B4065684FB36F4 /* HitStopExemptComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473BB6B49B158BE980 /* HitStopExemptComponent.h */; };
+		4A534E4797E4488149C5FBA0 /* HitStopExempt.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47953AF2D4BA6A2D5B /* HitStopExempt.h */; };
+		4A534E47EBC246B681F44173 /* Glitch.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47BEDB430017E3F52D /* Glitch.h */; };
+		4A534E478621D52983820476 /* HitStop.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47665C0A511BB046AE /* HitStop.h */; };
+		4A534E47FF6CD1AFD60A81F0 /* PixelFxKey.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E5C44E4348747A83 /* PixelFxKey.h */; };
+		4A534E47A31ADC359FC50ABF /* PixelFxLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472C4FC740FC9687D5 /* PixelFxLua.h */; };
+		4A534E473B5B6414382696D5 /* ScreenTransition.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A895801520386487 /* ScreenTransition.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8962,6 +8975,16 @@
 		4A534E473F26FCADC3D4E55E /* BitmapTextRaster.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BitmapTextRaster.h; sourceTree = "<group>"; };
 		4A534E475FE9A61E5C90F42F /* BuiltinPixelFont.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BuiltinPixelFont.h; sourceTree = "<group>"; };
 		4A534E47F01EA78B341B6095 /* FontPixelReport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FontPixelReport.h; sourceTree = "<group>"; };
+		4A534E4777279AB03243A7B0 /* HitStopExempt.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HitStopExempt.cpp; sourceTree = "<group>"; };
+		4A534E4714A8A22B685105FF /* HitStopClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HitStopClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TransitionClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E473BB6B49B158BE980 /* HitStopExemptComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HitStopExemptComponent.h; sourceTree = "<group>"; };
+		4A534E47953AF2D4BA6A2D5B /* HitStopExempt.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HitStopExempt.h; sourceTree = "<group>"; };
+		4A534E47BEDB430017E3F52D /* Glitch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Glitch.h; sourceTree = "<group>"; };
+		4A534E47665C0A511BB046AE /* HitStop.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HitStop.h; sourceTree = "<group>"; };
+		4A534E47E5C44E4348747A83 /* PixelFxKey.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelFxKey.h; sourceTree = "<group>"; };
+		4A534E472C4FC740FC9687D5 /* PixelFxLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelFxLua.h; sourceTree = "<group>"; };
+		4A534E47A895801520386487 /* ScreenTransition.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScreenTransition.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9520,6 +9543,8 @@
 				4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */,
 				4A534E470E71C37C07087E7A /* PixelArtClassesLua.cpp */,
 				4A534E47397D797409CB8274 /* SortingClassesLua.cpp */,
+				4A534E4714A8A22B685105FF /* HitStopClassesLua.cpp */,
+				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10839,6 +10864,11 @@
 				4A534E473F26FCADC3D4E55E /* BitmapTextRaster.h */,
 				4A534E475FE9A61E5C90F42F /* BuiltinPixelFont.h */,
 				4A534E47F01EA78B341B6095 /* FontPixelReport.h */,
+				4A534E47BEDB430017E3F52D /* Glitch.h */,
+				4A534E47665C0A511BB046AE /* HitStop.h */,
+				4A534E47E5C44E4348747A83 /* PixelFxKey.h */,
+				4A534E472C4FC740FC9687D5 /* PixelFxLua.h */,
+				4A534E47A895801520386487 /* ScreenTransition.h */,
 			);
 			path = pixelart;
 			sourceTree = "<group>";
@@ -11252,6 +11282,7 @@
 				4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */,
 				4A534E4710D3FF1E2B42C53D /* SortingGroupComponent.h */,
 				4A534E47F8EABA1E0264DEF5 /* SpriteBatchComponent.h */,
+				4A534E473BB6B49B158BE980 /* HitStopExemptComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11369,6 +11400,8 @@
 				4A534E47616E7C0C1157E9CA /* SpriteBatch.cpp */,
 				4A534E47A745F6C74A33424B /* SortingGroup.h */,
 				4A534E474325BCE316DDF010 /* SpriteBatch.h */,
+				4A534E4777279AB03243A7B0 /* HitStopExempt.cpp */,
+				4A534E47953AF2D4BA6A2D5B /* HitStopExempt.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -15927,6 +15960,13 @@
 				4A534E47FEBAD526820B2A23 /* BitmapTextRaster.h in Headers */,
 				4A534E47BB71B30CDDA6672F /* BuiltinPixelFont.h in Headers */,
 				4A534E47AF9E9B2A9802B32C /* FontPixelReport.h in Headers */,
+				4A534E47A4B4065684FB36F4 /* HitStopExemptComponent.h in Headers */,
+				4A534E4797E4488149C5FBA0 /* HitStopExempt.h in Headers */,
+				4A534E47EBC246B681F44173 /* Glitch.h in Headers */,
+				4A534E478621D52983820476 /* HitStop.h in Headers */,
+				4A534E47FF6CD1AFD60A81F0 /* PixelFxKey.h in Headers */,
+				4A534E47A31ADC359FC50ABF /* PixelFxLua.h in Headers */,
+				4A534E473B5B6414382696D5 /* ScreenTransition.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18495,6 +18535,9 @@
 				4A534E47DACEC49793019016 /* FontPixelReport.cpp in Sources */,
 				4A534E47A2B3C314CCF08D7A /* RmlFontEngineBitmap.cpp in Sources */,
 				4A534E4776883513C72BCCBA /* UISystemBitmapText.cpp in Sources */,
+				4A534E47125B27BDBD29C177 /* HitStopExempt.cpp in Sources */,
+				4A534E47C75DDC3AC497EF70 /* HitStopClassesLua.cpp in Sources */,
+				4A534E478243FC9D5F3E0ECE /* TransitionClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19354,6 +19397,9 @@
 				4A534E4778CEF13F9FB3FCDB /* FontPixelReport.cpp in Sources */,
 				4A534E4733FB81EAF3379E76 /* RmlFontEngineBitmap.cpp in Sources */,
 				4A534E47F8B28E5417BB3A37 /* UISystemBitmapText.cpp in Sources */,
+				4A534E4774391AFF4DA51A8F /* HitStopExempt.cpp in Sources */,
+				4A534E4794F74B609D31BB49 /* HitStopClassesLua.cpp in Sources */,
+				4A534E47B8B81C0916259880 /* TransitionClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
