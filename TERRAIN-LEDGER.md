@@ -307,3 +307,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
     volume, and the noise gate never gets ready.
   - The full MCP suite needs build/fixture-unity, which this host lacks. The CI suite (which holds all 24 of the programme's MCP files)
     runs with the slow flags instead.
+- CI MCP suite with the slow flags on 564f6da51: 2159 passed, 46 failed, 4 skipped. 28 of the failures are test_reflection's codegen
+  goldens: every generated main.cpp now carries T5's foliage quality defaults line. Being fixed on terrain/fix-mcp, which also checks
+  the rest against an origin/main baseline. Android and WERROR linux builds pass. The players build and the compile smoke tests were
+  cut off by the chain's 2-hour limit; they rerun on the fixed tree. The box copy-back now skips build/mcp-compile-home (11 GB).
