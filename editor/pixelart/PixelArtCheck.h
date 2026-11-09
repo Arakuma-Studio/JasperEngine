@@ -145,6 +145,10 @@ namespace jasperengine::editor::pixelart {
         std::vector<float> particleSizes;      // constant start sizes (world units)
         bool particleEffectAsset = false;      // its effect is a .particles asset (path in particleEffect)
         std::string particleEffect;
+        // S49's Pixel Art module: absent or disabled reads as not there
+        bool particlePixelArt = false;
+        bool particleSnap = false, particlePixelSizes = false, particleIntegerSize = false;
+        std::string particleFade;              // "dither", "cutout", "alpha"
         // Palette Swap on its material
         bool paletteSwap = false;
         std::string paletteSwapSource;

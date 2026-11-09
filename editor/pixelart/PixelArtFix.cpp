@@ -22,7 +22,9 @@
 #include "pixelart/RgbaImage.h"
 #include "sprite/SpriteAtlasDocument.h"
 #include "util/EntityPath.h"
+#include "util/ParticleEffectEdit.h"
 #include "util/ProjectFileWrites.h"
+#include "particles/ParticleEffectCodec.h"
 
 #include "component/MeshComponent.h"
 #include "component/UIComponent.h"
@@ -121,6 +123,28 @@ namespace {
             const std::string entity = change.target.substr(hash + 1);
             if (change.field == "pixelperfectcamera"){
                 addComponents.push_back({entity, change.to});
+                continue;
+            }
+            if (change.field == "particlesystem.modules.pixelArt"){
+                // S49's module through the particle effects' own merge patch (the asset when it has one)
+                const Entity e = EntityPath::find(*sp, entity.size() > 0 && entity[0] == '/' ? entity.substr(1) : entity);
+                if (e == NULL_ENTITY){
+                    delete steps;
+                    error = "no GameObject " + entity + " in " + scenePath;
+                    return false;
+                }
+                nlohmann::ordered_json patch;
+                patch["modules"]["pixelArt"] = nlohmann::ordered_json::parse(change.to.dump());
+                steps->addStep([p, sceneId, e, patch](std::string& why) -> Command* {
+                    why = "The Pixel Art module could not be set.";
+                    Command* command = ParticleEffectEdit::build(p, sceneId, {e}, [&patch](particles::ParticleEffectDocument& document){
+                        std::vector<particles::Diagnostic> diagnostics;
+                        return particles::ParticleEffectCodec::applyMergePatch(document, patch, diagnostics);
+                    });
+                    return command ? command : new MultiPropertyCmd();
+                });
+                count++;
+                report.changed.push_back(scenePath + "#" + entity);
                 continue;
             }
             const size_t dot = change.field.find('.');

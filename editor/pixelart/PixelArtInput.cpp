@@ -112,6 +112,7 @@ namespace {
             case particles::RenderMode::Mesh: return "mesh";
             case particles::RenderMode::None: return "none";
             case particles::RenderMode::VelocityAligned: return "velocity_aligned";
+            case particles::RenderMode::Pixel: return "pixel";
             case particles::RenderMode::Billboard: default: return "billboard";
         }
     }
@@ -493,6 +494,12 @@ namespace {
                 }
                 d.texture = document.renderer.texture;
                 d.particleRenderMode = renderModeName(document.renderer.renderMode);
+                const particles::PixelArtModule& pixel = document.pixelArt;
+                d.particlePixelArt = pixel.present && pixel.enabled;
+                d.particleSnap = pixel.snap;
+                d.particlePixelSizes = pixel.pixelSizes;
+                d.particleIntegerSize = pixel.integerSize;
+                d.particleFade = pixel.fade == particles::PixelFade::Dither ? "dither" : pixel.fade == particles::PixelFade::Cutout ? "cutout" : "alpha";
                 const particles::MinMaxCurve& size = document.main.startSize;
                 if (size.mode == particles::CurveMode::Constant){
                     d.particleSizes.push_back(size.constant);

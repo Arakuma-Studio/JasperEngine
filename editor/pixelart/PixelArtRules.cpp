@@ -934,25 +934,33 @@ RuleResult jasperengine::editor::pixelart::rules::particlesGrid(const PixelArtCh
             // particle textures are made at runtime: the project's Default Filter Mode samples them
             const bool linear = !d.texture.empty() && input.project.defaultFilterMode != TextureFilterMode::Point;
             const bool stretched = d.particleRenderMode == "stretched_billboard" || d.particleRenderMode == "velocity_aligned";
+            // S49's Pixel Art module: sizes in base pixels, whole-pixel boxes, snapped, dithered
+            const bool module = d.particlePixelArt;
+            const bool moduleOff = !module || !d.particleSnap || !d.particlePixelSizes;
+            const bool alphaFade = module && d.particleFade == "alpha";
             Json sizes = Json::array();
             bool fractionalSize = false;
             for (float size : d.particleSizes){
-                const double pixels = (double)size * ppu;
+                const double pixels = module && d.particlePixelSizes ? (double)size : (double)size * ppu;
                 sizes.push_back(number(pixels));
-                fractionalSize = fractionalSize || !nearInteger(pixels, kGridTolerance);
+                fractionalSize = fractionalSize || (!(module && d.particleIntegerSize) && !nearInteger(pixels, kGridTolerance));
             }
             const bool snapping = hasCameraComponent(scene) && scene.camera.component.pixelSnapping;
             const bool perspective = scene.camera.exists && scene.camera.perspective;
-            if (!linear && !stretched && !fractionalSize && snapping && !perspective)
+            if (!linear && !stretched && !fractionalSize && snapping && !perspective && !moduleOff && !alphaFade)
                 continue;
+            Json moduleJson = module ? Json{{"snap", d.particleSnap}, {"pixel_sizes", d.particlePixelSizes}, {"fade", d.particleFade}} : Json(nullptr);
             Json measured = {{"texture_filter", d.texture.empty() ? "none" : linear ? "linear" : "nearest"},
                              {"render_mode", d.particleRenderMode}, {"sizes_px", sizes}, {"snapping", snapping},
-                             {"camera", perspective ? "perspective" : "ortho"}};
+                             {"pixel_art_module", moduleJson}, {"camera", perspective ? "perspective" : "ortho"}};
             const std::string name = d.entity.substr(d.entity.find_last_of('/') + 1);
             std::vector<std::string> problems;
             if (linear) problems.push_back("a linear texture filter");
             if (stretched) problems.push_back(d.particleRenderMode + " particles");
             if (fractionalSize) problems.push_back("sizes that are not whole pixels");
+            if (!module) problems.push_back("no Pixel Art module");
+            else if (moduleOff) problems.push_back("the Pixel Art module's snap or pixel sizes off");
+            if (alphaFade) problems.push_back("an alpha fade (partial alpha)");
             if (!snapping && !perspective) problems.push_back("Pixel Snapping off on the camera");
             if (perspective) problems.push_back("a perspective camera");
             std::string list;
@@ -960,7 +968,8 @@ RuleResult jasperengine::editor::pixelart::rules::particlesGrid(const PixelArtCh
                 list += (i == 0 ? "" : i + 1 == problems.size() ? " and " : ", ") + problems[i];
             Finding finding = makeFinding("particles_grid", entityRef(d.scene, d.entity), linear ? RuleStatus::Fail : RuleStatus::Warn,
                                           entityTarget(d.scene, d.entity), measured,
-                                          {{"texture_filter", "nearest"}, {"render_mode", "billboard"}, {"sizes_px", "whole pixels"}, {"snapping", true}},
+                                          {{"texture_filter", "nearest"}, {"render_mode", "billboard"}, {"sizes_px", "whole pixels"}, {"snapping", true},
+                                           {"pixel_art_module", {{"snap", true}, {"pixel_sizes", true}, {"fade", "dither"}}}},
                                           name + " is off the pixel grid: " + list + ".");
             std::vector<FixChange> changes;
             std::vector<std::string> labels;
@@ -980,6 +989,16 @@ RuleResult jasperengine::editor::pixelart::rules::particlesGrid(const PixelArtCh
                     changes.push_back({entityRef(scene.path, scene.camera.entity), "pixelperfectcamera.pixelSnapping", false, true});
                     labels.push_back("turn on the camera's Pixel Snapping");
                 }
+            }
+            if (moduleOff || alphaFade){
+                // S49's module as R10 names it: snapped, sizes in pixels, a dither fade
+                Json to = Json::object();
+                if (!module || !d.particleSnap) to["snap"] = true;
+                if (!module || !d.particlePixelSizes) to["pixelSizes"] = true;
+                if (!module || alphaFade) to["fade"] = "dither";
+                if (!module) to["enabled"] = true;
+                changes.push_back({entityRef(d.scene, d.entity), "particlesystem.modules.pixelArt", moduleJson, to});
+                labels.push_back(module ? "fix the Pixel Art module" : "add the Pixel Art module (snap, pixel sizes, dither)");
             }
             if (stretched || fractionalSize || perspective){
                 finding.needsPerson = perspective ? "a perspective camera has no world pixel grid"

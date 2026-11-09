@@ -365,8 +365,26 @@ TEST(PixelArtCheck, ParticlesGrid){
     ASSERT_TRUE(findingOf(linear, "particles_grid"));
     EXPECT_EQ(findingOf(linear, "particles_grid")->status, RuleStatus::Fail);
     EXPECT_EQ(findingOf(linear, "particles_grid")->options.front().changes.front().field, "graphics.default_filter_mode");
-    // red control: billboard, whole-pixel sizes, point filtering, a snapping camera
+    // S49: without its Pixel Art module the effect is off the grid, and the fix adds it
     input.project.defaultFilterMode = TextureFilterMode::Point;
+    const CheckResult noModule = run(input, {"particles_grid"});
+    const Finding* m = findingOf(noModule, "particles_grid");
+    ASSERT_TRUE(m);
+    EXPECT_EQ(m->status, RuleStatus::Warn);
+    EXPECT_TRUE(m->measured["pixel_art_module"].is_null());
+    ASSERT_FALSE(m->options.empty()) << m->needsPerson;
+    const FixChange& add = m->options.front().changes.back();
+    EXPECT_EQ(add.field, "particlesystem.modules.pixelArt");
+    EXPECT_EQ(add.to, (Json{{"snap", true}, {"pixelSizes", true}, {"fade", "dither"}, {"enabled", true}}));
+    // the module with an alpha fade (partial alpha) warns; its fix only changes the fade
+    PixelArtDrawable& sparks = input.scenes.front().drawables.back();
+    sparks.particlePixelArt = sparks.particleSnap = sparks.particlePixelSizes = sparks.particleIntegerSize = true;
+    sparks.particleFade = "alpha";
+    const CheckResult alphaResult = run(input, {"particles_grid"});
+    ASSERT_TRUE(findingOf(alphaResult, "particles_grid"));
+    EXPECT_EQ(findingOf(alphaResult, "particles_grid")->options.front().changes.back().to, (Json{{"fade", "dither"}}));
+    // red control: billboard, whole-pixel sizes, point filtering, a snapping camera, the module dithering
+    sparks.particleFade = "dither";
     EXPECT_EQ(statusOf(input, "particles_grid"), RuleStatus::Pass);
 }
 
