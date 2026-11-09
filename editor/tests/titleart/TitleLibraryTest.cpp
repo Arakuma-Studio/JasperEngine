@@ -13,6 +13,7 @@
 #include "titleart/TitleEffectRegistry.h"
 #include "titleart/library/TitleLibrary.h"
 #include "titleart/library/TitleLibraryApply.h"
+#include "titleart/library/TitleLibraryCliTools.h"
 #include "titleart/library/TitleLibraryFormats.h"
 #include "titleart/library/TitleLibrarySearch.h"
 
@@ -424,6 +425,20 @@ TEST_F(TitleLibraryFixture, PreviewWritesNothing) {
     ASSERT_TRUE(preview(keptDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-gold"}, {"apply_font", true}}, out, nullptr, &error)) << error;
     std::error_code ec;
     EXPECT_FALSE(fs::exists(scratch / "project" / "assets" / "TitleArt", ec));
+}
+
+TEST_F(TitleLibraryFixture, TemplateBuildsAreReproducible) {
+    const Json recipe = Json::parse(R"({"id": "minimal/test-built", "name": {"en": "Built", "ja": "作成"}, "family": "minimal",
+        "tags": ["a", "b", "c"], "texts": {"text": {"en": "HERO", "ja": "英雄"}},
+        "ops": [{"op": "add_layer", "type": "text", "name": "Subtitle", "text": "SUB"},
+                {"op": "apply_look", "layer": "Title", "look": "metal/test-gold"}]})");
+    TitleTemplate a, b;
+    std::string error;
+    ASSERT_TRUE(buildTemplateFromRecipe(recipe, a, error)) << error;
+    ASSERT_TRUE(buildTemplateFromRecipe(recipe, b, error)) << error;
+    EXPECT_EQ(writeTemplate(a), writeTemplate(b));
+    // red control: the unseeded new document differs in the Title layer's id
+    EXPECT_NE(titleart::makeNewTitleArt().root["layers"][0]["id"], titleart::makeNewTitleArt().root["layers"][0]["id"]);
 }
 
 // ---- AC5: capture ----

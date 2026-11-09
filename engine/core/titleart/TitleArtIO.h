@@ -94,6 +94,7 @@ namespace jasperengine::titleart {
         int height = 1080;
         std::string text = "Title";
         std::string guid;       // empty: a new one
+        uint64_t idSeed = 0;    // 0: random ids; else a fixed sequence (a reproducible build of a template)
     };
     JASPERENGINE_API TitleArtDoc makeNewTitleArt(const NewTitleArtOptions& options = {});
 

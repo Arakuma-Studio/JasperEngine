@@ -878,7 +878,7 @@ TitleArtParseResult titleart::parseTitleArt(const std::string& text) {
 }
 
 TitleArtDoc titleart::makeNewTitleArt(const NewTitleArtOptions& options) {
-    TitleIdGenerator ids;
+    TitleIdGenerator ids = options.idSeed ? TitleIdGenerator(options.idSeed) : TitleIdGenerator();
     const std::string layerId = ids.next();
     TitleArtDoc doc;
     doc.root = Json::object();

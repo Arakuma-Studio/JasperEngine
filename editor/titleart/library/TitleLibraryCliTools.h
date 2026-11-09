@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "TitleLibraryFormats.h"
+
 #include <string>
 #include <vector>
 
@@ -26,6 +28,9 @@ namespace jasperengine::editor::titlelibrary {
     // the new templates from their recipes (tools/titleart/templates/*.json: identity, texts and
     // edit_title ops on an empty document), written as canonical .titletemplate files (--check compares)
     int runBuildTemplatesCommand(const std::vector<std::string>& args);
+    // one recipe as its template (a fixed id sequence and a guid from the id: the same bytes on every
+    // run); false with `error` when an op fails
+    bool buildTemplateFromRecipe(const titleart::Json& recipe, TitleTemplate& out, std::string& error);
     int runBakeThumbnailsCommand(const std::vector<std::string>& args, const char* executable);
     int runReviewSheetCommand(const std::vector<std::string>& args, const char* executable);
     int runCalibrateCommand(const std::vector<std::string>& args, const char* executable);

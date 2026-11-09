@@ -414,6 +414,52 @@ int titlelibrary::runGenDocsCommand(const std::vector<std::string>& args) {
     return OK;
 }
 
+bool titlelibrary::buildTemplateFromRecipe(const Json& r, TitleTemplate& t, std::string& error) {
+    const std::string id = r.value("id", std::string());
+    const Json texts = r.contains("texts") ? r["texts"] : Json::object();
+    const std::string language = r.value("language", std::string("en"));
+    titleart::NewTitleArtOptions o;
+    if (r.contains("canvas") && r["canvas"].is_array() && r["canvas"].size() == 2) {
+        o.width = r["canvas"][0].get<int>();
+        o.height = r["canvas"][1].get<int>();
+    }
+    o.text = texts.contains("text") ? texts["text"].value(language, std::string("TITLE")) : std::string("TITLE");
+    o.idSeed = 0x5384;                  // a fixed sequence: re-running gives the same ids
+    const titleart::TitleArtDoc start = titleart::makeNewTitleArt(o);
+    TitleOpsOptions options;
+    options.idSeed = 0x5384;
+    TitleOpsResult result = TitleArtOps::apply(start, r.contains("ops") ? r["ops"] : Json::array(), options);
+    if (!result.ok) {
+        error = result.error();
+        return false;
+    }
+    t.doc = result.doc;
+    // a stable guid per template: the FNV-1a of its id, as 32 hex
+    uint64_t h1 = 1469598103934665603ull, h2 = 1099511628211ull;
+    for (unsigned char c : id) {
+        h1 = (h1 ^ c) * 1099511628211ull;
+        h2 = (h2 ^ c) * 1469598103934665603ull + 0x9e3779b97f4a7c15ull;
+    }
+    char guid[33];
+    std::snprintf(guid, sizeof(guid), "%016llx%016llx", (unsigned long long)h1, (unsigned long long)h2);
+    t.doc.root["guid"] = std::string(guid);
+    Json placeholders = Json::array();
+    for (const Json& e : t.doc.root["exposed"]) {
+        if (e.value("type", std::string()) != "text") continue;
+        const std::string name = e.value("name", std::string());
+        Json sample = Json{{"en", ""}, {"ja", ""}};
+        if (texts.contains(name)) sample = Json{{"en", texts[name].value("en", std::string())}, {"ja", texts[name].value("ja", std::string())}};
+        const char* role = name == "text" ? "title" : name == "subtitle" ? "subtitle" : name == "counter" ? "counter" : name == "kicker" ? "kicker" : "label";
+        const size_t longest = std::max(sample["en"].get<std::string>().size(), sample["ja"].get<std::string>().size() / 3);
+        placeholders.push_back(Json{{"name", name}, {"role", role}, {"sample", sample}, {"max_chars", std::max<size_t>(8, longest + 4)}});
+    }
+    t.meta = Json{{"version", TITLE_TEMPLATE_MEMBER_VERSION}, {"id", id}, {"revision", r.value("revision", 1)}, {"name", r.value("name", Json::object())},
+                  {"description", r.value("description", Json::object())}, {"family", r.value("family", std::string("custom"))},
+                  {"tags", r.value("tags", Json::array())}, {"synonyms", r.value("synonyms", Json::object())}, {"placeholders", placeholders},
+                  {"canvas_note", r.value("canvas_note", std::string())}, {"provenance", r.value("provenance", Json{{"source", "jasperengine"}})}};
+    return true;
+}
+
 int titlelibrary::runBuildTemplatesCommand(const std::vector<std::string>& args) {
     const Args a = parseArgs(args, {"--recipes", "--out"}, {"--check"});
     if (!a.error.empty()) {
@@ -441,52 +487,13 @@ int titlelibrary::runBuildTemplatesCommand(const std::vector<std::string>& args)
         const Json list = parsed.is_array() ? parsed : (parsed.contains("templates") ? parsed["templates"] : Json::array({parsed}));
         for (const Json& r : list) {
             const std::string id = r.value("id", std::string());
-            const Json texts = r.contains("texts") ? r["texts"] : Json::object();
-            const std::string language = r.value("language", std::string("en"));
-            titleart::NewTitleArtOptions o;
-            if (r.contains("canvas") && r["canvas"].is_array() && r["canvas"].size() == 2) {
-                o.width = r["canvas"][0].get<int>();
-                o.height = r["canvas"][1].get<int>();
-            }
-            o.text = texts.contains("text") ? texts["text"].value(language, std::string("TITLE")) : std::string("TITLE");
-            const titleart::TitleArtDoc start = titleart::makeNewTitleArt(o);
-            TitleOpsOptions options;
-            options.idSeed = 0x5384;        // a fixed sequence: re-running gives the same ids
-            TitleOpsResult result = TitleArtOps::apply(start, r.contains("ops") ? r["ops"] : Json::array(), options);
-            if (!result.ok) {
-                std::cout << "error " << id << ": " << result.error() << "\n";
+            TitleTemplate t;
+            std::string buildError;
+            if (!buildTemplateFromRecipe(r, t, buildError)) {
+                std::cout << "error " << id << ": " << buildError << "\n";
                 problems++;
                 continue;
             }
-            for (const TitleOpProblem& p : result.problems) {
-                if (p.severity == "error") continue;
-                std::cout << "note " << id << ": " << p.code << " " << p.message << "\n";
-            }
-            TitleTemplate t;
-            t.doc = result.doc;
-            // a stable guid per template: the FNV-1a of its id, as 32 hex
-            uint64_t h1 = 1469598103934665603ull, h2 = 1099511628211ull;
-            for (unsigned char c : id) {
-                h1 = (h1 ^ c) * 1099511628211ull;
-                h2 = (h2 ^ c) * 1469598103934665603ull + 0x9e3779b97f4a7c15ull;
-            }
-            char guid[33];
-            std::snprintf(guid, sizeof(guid), "%016llx%016llx", (unsigned long long)h1, (unsigned long long)h2);
-            t.doc.root["guid"] = std::string(guid);
-            Json placeholders = Json::array();
-            for (const Json& e : t.doc.root["exposed"]) {
-                if (e.value("type", std::string()) != "text") continue;
-                const std::string name = e.value("name", std::string());
-                Json sample = Json{{"en", ""}, {"ja", ""}};
-                if (texts.contains(name)) sample = Json{{"en", texts[name].value("en", std::string())}, {"ja", texts[name].value("ja", std::string())}};
-                const char* role = name == "text" ? "title" : name == "subtitle" ? "subtitle" : name == "counter" ? "counter" : name == "kicker" ? "kicker" : "label";
-                const size_t longest = std::max(sample["en"].get<std::string>().size(), sample["ja"].get<std::string>().size() / 3);
-                placeholders.push_back(Json{{"name", name}, {"role", role}, {"sample", sample}, {"max_chars", std::max<size_t>(8, longest + 4)}});
-            }
-            t.meta = Json{{"version", TITLE_TEMPLATE_MEMBER_VERSION}, {"id", id}, {"revision", r.value("revision", 1)}, {"name", r.value("name", Json::object())},
-                          {"description", r.value("description", Json::object())}, {"family", r.value("family", std::string("custom"))},
-                          {"tags", r.value("tags", Json::array())}, {"synonyms", r.value("synonyms", Json::object())}, {"placeholders", placeholders},
-                          {"canvas_note", r.value("canvas_note", std::string())}, {"provenance", r.value("provenance", Json{{"source", "jasperengine"}})}};
             const std::string written = writeTemplate(t);
             const fs::path target = out / (id + TITLE_TEMPLATE_EXTENSION);
             if (a.flags.count("--check")) {
