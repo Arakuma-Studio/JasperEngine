@@ -1795,3 +1795,59 @@ rest of S82 lands in 6B.
 7. **Reconciled: 3D look members use S86's names** (`metallic`, `emission_intensity`, `surface`,
    no 3D shadow catcher); 2D members use S80's (`gloss` ring, gloss `opacity`); Backlight intensity
    is S83's percent.
+
+8. **Implementation: namespace `jasperengine::editor::titlelibrary`** (§6.16 said `editor::titleart`),
+   as S82 Deviation 14: `editor::titleart` would shadow the engine's `titleart::` in every editor file.
+   `LibraryItemInfo::requires` is `requirements` (`requires` is a C++20 keyword).
+9. **Implementation: what the ops carry besides the document.** S80's `TitleOpsResult` gains `files`
+   (`TitleOpFile`: path, content, undoable, remove) and `details` (op index -> the op's `changes`
+   object of §6.5.1 step 13). `TitleArtDocument::edit` writes the undoable files in the document's
+   own `WriteFilesCmd` (one undo step: the fonts, `OFL.txt`, `.meta` and environments an apply
+   imports, a project Save As), the personal ones after it; `TitleArtDocument::create` takes the same
+   files (create-from-template). A batch of `copy_library_item` / `delete_library_item` only runs
+   without a document (`runLibraryBatch`: a `WriteFilesCmd` or a `RemoveFilesCmd` named by the op);
+   a project delete inside a document batch is refused (it is its own step). `ImportPlan` writes the
+   `.meta` itself (S36's `provenance` section, opaque to S04, already parsed by `AssetMeta`), so no
+   `CopyFileCmd` / `SetAssetMetaCmd` pair is needed.
+10. **Implementation: S80 hooks added.** `TitleArtOps::registerBatchFinisher` (keeps `color_schemes`
+    filled for exposed `color_scheme` parameters after every batch, AC23), `TitleArtDocument::setProjectHook`
+    (the library follows the project every document opens in), a batch of identical `Apply ...` steps
+    is named `Apply Look X (n layers)` (R7). `edit_title`'s `path` is no longer `required` in the
+    schema (library-only batches, R44); a missing path still fails for document ops.
+11. **Implementation: the embedded library is a zstd tar.** `cmake -E tar --zstd --format=gnutar` packs
+    `looks/`, `color-schemes/`, `templates/` and `manifest.json` at configure time into
+    `titleart_library.h`; `TitleLibrary` decompresses it (zstd streaming) on the first library call
+    and reads the tar itself. `pachislop-map.json` and the provenance file stay files of the source
+    tree (tools read them; the editor needs neither to apply items).
+12. **Implementation: scopes rescan by listing**, not on S05 file-watcher events: every library call
+    compares each scope folder's listing (names, sizes, times) with the last scan (one directory read,
+    well under a millisecond for a user library), which also covers folders the watcher does not
+    watch (the personal library outside the project).
+13. **Implementation: Library tiles.** S82's window renders the live tiles (the item's ops applied to
+    the user's layer, `TitleLayerThumbnails` through `TitlePreviewQueue` at priority Tiles, keyed by
+    the layer's content hash, the previous picture kept per tile, cancelled when the window closes,
+    device loss handled by the queue): the registered provider is handed that renderer
+    (`TitleLibraryProvider::attachTileSource`, a small S82 hook) instead of duplicating it in a
+    `TitleLibraryPreviews` class. S84 adds the baked first paint (the staged thumbnail of the script
+    of the layer's text: the window's target key now carries the text) and the LRU of baked
+    textures (240). There is no separate S84 disk cache of live tiles: the preview queue's renders
+    are fast enough on a GPU and the baked tiles cover first paint; AC20's preview-service test is
+    therefore the baked-sample selection test plus S82's own thumbnail tests.
+14. **Implementation: GPU subcommands drive a headless editor.** `bake-thumbnails`, `review-sheet` and
+    `calibrate` write a scratch project (the documents of every item and sample, the pack's fonts and
+    HDRIs at the paths applies name) and run `jasperengine-editor batch --project <scratch>` with
+    `render_title {save_path}` / `check_title` calls, so the CLI renders and checks exactly as MCP does;
+    the PNGs are framed (alpha bounds plus a margin, fitted to 240 x 135) and stamped with the recipe
+    `tEXt` chunk in the CLI. `build-templates` (no GPU) builds the 36 new templates from recipes of
+    edit_title ops (`tools/titleart/templates/`), so they are reproducible and reviewed as data.
+15. **Content: thin hairline looks allowlisted.** `retro/vector-green`, `minimal/outline-thin` and
+    `minimal/frosted-glass` carry `lint_allow: rims_thin` with reasons (a hairline is the look).
+16. **Finding: eleven pack fonts declare a Reserved Font Name** (§6.11 said none): Audiowide, Lilita One,
+    Orbitron, Russo One, Creepster, Cinzel Decorative, Monoton, MedievalSharp, Press Start 2P, Titan One
+    and Nosifer (read from each upstream `OFL.txt`; `NOTICE.md` names them). The pack ships the fonts
+    byte-identical, so it is unaffected; S81's export subsetting makes a Modified Version under the OFL,
+    which may not carry a reserved name: S81 needs a decision (rename the subset's name table, or do
+    not subset these eleven). Not changed here.
+17. **Binary content lands in two commits** (R50 said one): the fonts and HDRIs first, the thumbnails
+    with the finished library, because the thumbnails need every item and the commits must be safe
+    against interruptions. Squash on landing if the one-commit rule still matters.
