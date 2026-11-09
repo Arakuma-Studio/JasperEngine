@@ -278,7 +278,9 @@ void editor::InspectorWindow::drawTitleArtRendererComponent(ComponentType cpType
         transition.enumEntries = &transitions;
         propertyRow(RowPropertyType::Enum, cpType, "transition", "Transition", sceneProject, entities, transition);
         propertyRow(RowPropertyType::FloatPositive, cpType, "transitionDuration", "Transition Duration", sceneProject, entities);
-        propertyRow(RowPropertyType::String, cpType, "qualityTier", "Quality Tier", sceneProject, entities);
+        RowSettings qualityTier;
+        qualityTier.help = "A 3D title's tier: auto (the device's tier, else Project Settings > Title Art > Realtime 3D Quality), high, medium or low.";
+        propertyRow(RowPropertyType::String, cpType, "qualityTier", "Quality Tier", sceneProject, entities, qualityTier);
         if (title->renderMode == TitleArtRenderMode::GLYPH_ATLAS){
             static std::vector<int> pageSizes = {512, 1024, 2048};
             RowSettings pages;
