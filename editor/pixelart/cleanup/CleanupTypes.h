@@ -237,6 +237,10 @@ namespace jasperengine::editor::pixelart::cleanup {
         bool operator==(const RecipeSource& other) const = default;
     };
 
+    // Default: the key was absent; None: "none" (own colours); Auto: proposed from the picture;
+    // Fixed: given colours, a preset, or an S43 asset (RecipePalette::assetPath/assetGuid)
+    enum class PaletteMode : uint8_t { Default, None, Auto, Fixed };
+
     struct Recipe {
         static constexpr const char* kFormat = "jasperengine.pixel-cleanup-recipe";
         static constexpr int kVersion = 1;
@@ -247,7 +251,11 @@ namespace jasperengine::editor::pixelart::cleanup {
         Outlines outlines = Outlines::Auto;
         std::vector<std::pair<std::string, double>> moved;   // ["x:3", 41.5]
         SampleOptions sample;
-        // nullopt and no autoPalette: each cell keeps its own colour
+        // How the palette was asked for (R9). The pipeline reads only `palette`: the session resolves
+        // Default (the project's Default Palette, else auto), Auto (proposed from the picture) and an
+        // unresolved asset into `palette`'s colours before running, so a resolved recipe re-runs alone.
+        PaletteMode paletteMode = PaletteMode::Default;
+        // nullopt: each cell keeps its own colour
         std::optional<RecipePalette> palette;
         // set while the palette is still to be proposed from the picture (resolved into palette)
         std::optional<AutoPalette> autoPalette;
@@ -275,6 +283,8 @@ namespace jasperengine::editor::pixelart::cleanup {
         bool forced = false;
         std::string engineVersion;
         int pipelineVersion = kPipelineVersion;
+
+        bool operator==(const Recipe& other) const = default;
     };
 
 }
