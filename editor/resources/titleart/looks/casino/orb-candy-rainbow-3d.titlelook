@@ -146,7 +146,6 @@
       },
       "gradient_angle": 60,
       "metallic": 0.85,
-      "roughness": 0.3,
       "env_multiplier": 1.1,
       "specular_multiplier": 1.5,
       "clearcoat": 1,

@@ -54,9 +54,7 @@
     },
     "face": {
       "preset": "plastic",
-      "color": "#ffffff",
-      "roughness": 0.7,
-      "env_multiplier": 1
+      "roughness": 0.7
     },
     "ao": {
       "enabled": true

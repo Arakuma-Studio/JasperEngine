@@ -144,6 +144,7 @@
       },
       "gradient_bend": 0.6,
       "roughness": 0.2,
+      "env_multiplier": 0.5,
       "clearcoat": 1
     },
     "bands": [
@@ -230,6 +231,8 @@
       {
         "grow": 2.4,
         "bevel": {
+          "width": 1,
+          "depth": 1,
           "profile": "chamfer"
         },
         "material": {

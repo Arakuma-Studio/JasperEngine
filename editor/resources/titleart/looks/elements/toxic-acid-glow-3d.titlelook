@@ -171,6 +171,8 @@
       },
       {
         "bevel": {
+          "width": 1,
+          "depth": 1,
           "profile": "chamfer"
         },
         "material": {

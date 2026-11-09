@@ -51,7 +51,6 @@
     },
     "face": {
       "preset": "chrome",
-      "color": "#ffffff",
       "gradient": {
         "stops": [
           {
@@ -68,8 +67,7 @@
         ]
       },
       "metallic": 1,
-      "roughness": 0.04,
-      "env_multiplier": 1
+      "roughness": 0.04
     },
     "side": {
       "color": "#3a3e46",

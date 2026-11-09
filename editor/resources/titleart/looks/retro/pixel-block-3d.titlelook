@@ -49,7 +49,6 @@
       "preset": "plastic",
       "color": "#ffd000",
       "roughness": 0.35,
-      "env_multiplier": 1,
       "clearcoat": 0.8
     },
     "side": {

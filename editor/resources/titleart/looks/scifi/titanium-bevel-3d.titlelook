@@ -86,7 +86,6 @@
       },
       "metallic": 0.9,
       "roughness": 0.15,
-      "env_multiplier": 1,
       "clearcoat": 1,
       "flakes": 0.2,
       "pattern": {

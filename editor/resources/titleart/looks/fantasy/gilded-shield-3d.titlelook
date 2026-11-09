@@ -106,8 +106,7 @@
       "gradient_span": "line",
       "gradient_bend": 0.6,
       "metallic": 1,
-      "roughness": 0.06,
-      "env_multiplier": 1
+      "roughness": 0.06
     },
     "bands": [
       {

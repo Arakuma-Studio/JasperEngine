@@ -124,7 +124,6 @@
     "curve_segments": 10,
     "face": {
       "preset": "rainbow",
-      "color": "#ffffff",
       "gradient": {
         "stops": [
           {

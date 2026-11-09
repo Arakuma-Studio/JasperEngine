@@ -95,7 +95,6 @@
     },
     "face": {
       "preset": "chrome",
-      "color": "#ffffff",
       "gradient": {
         "stops": [
           {

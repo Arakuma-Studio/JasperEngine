@@ -151,7 +151,6 @@
       "gradient_bend": 0.4,
       "metallic": 1,
       "roughness": 0.2,
-      "env_multiplier": 1,
       "clearcoat": 1,
       "flakes": 1
     },

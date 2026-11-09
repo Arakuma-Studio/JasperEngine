@@ -122,7 +122,6 @@
         ]
       },
       "roughness": 0.45,
-      "env_multiplier": 1,
       "clearcoat": 0.2,
       "pattern": {
         "kind": "giraffe",

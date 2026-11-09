@@ -133,10 +133,7 @@
         "grow": 0,
         "depth": 1,
         "offset": -11.3,
-        "bevel": {
-          "width": 0,
-          "depth": 0
-        },
+        "bevel": {},
         "material": {
           "preset": "blue_metal",
           "color": "#2a6bff",

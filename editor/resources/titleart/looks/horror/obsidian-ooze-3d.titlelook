@@ -54,7 +54,6 @@
       "color": "#050505",
       "metallic": 0.2,
       "roughness": 0.08,
-      "env_multiplier": 1,
       "clearcoat": 1
     },
     "side": {

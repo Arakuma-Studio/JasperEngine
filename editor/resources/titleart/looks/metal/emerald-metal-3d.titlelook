@@ -150,6 +150,7 @@
         "depth": 10.6,
         "offset": -11.5,
         "bevel": {
+          "width": 1,
           "depth": 0.9
         },
         "material": {

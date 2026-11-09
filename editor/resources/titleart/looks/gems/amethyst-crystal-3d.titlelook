@@ -130,10 +130,7 @@
         "grow": 0,
         "depth": 1,
         "offset": -11.3,
-        "bevel": {
-          "width": 0,
-          "depth": 0
-        },
+        "bevel": {},
         "material": {
           "preset": "purple_metal",
           "color": "#a43aff",

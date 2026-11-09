@@ -54,7 +54,6 @@
       "preset": "emissive",
       "color": "#103040",
       "roughness": 0.5,
-      "env_multiplier": 1,
       "emission": "#50e0ff",
       "emission_intensity": 1.2
     },

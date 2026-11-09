@@ -112,6 +112,7 @@
     "face": {
       "color": "#06060a",
       "roughness": 0.02,
+      "env_multiplier": 0.5,
       "specular_multiplier": 2,
       "clearcoat": 0.3,
       "iridescence": 0.6,

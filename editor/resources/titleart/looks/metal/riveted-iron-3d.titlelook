@@ -54,7 +54,6 @@
       "color": "#5a5e64",
       "metallic": 1,
       "roughness": 0.55,
-      "env_multiplier": 1,
       "surface": {
         "kind": "hammered"
       }

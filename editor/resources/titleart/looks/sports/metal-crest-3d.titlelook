@@ -81,7 +81,6 @@
       },
       "metallic": 1,
       "roughness": 0.14,
-      "env_multiplier": 1,
       "clearcoat": 0.3
     },
     "bands": [
