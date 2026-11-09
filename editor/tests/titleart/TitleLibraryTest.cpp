@@ -554,3 +554,23 @@ TEST(TitleLibraryCommitted, EveryBuiltInParses) {
     }
     std::cout << "[library] " << looks << " looks, " << schemes << " schemes, " << templates << " templates" << std::endl;
 }
+
+// the look's `cjk` member thins rims only on Japanese text; Latin keeps the look as designed
+TEST_F(TitleLibraryFixture, CjkScaleAppliesOnlyToJapaneseText) {
+    Json look = Json::parse(GOLD_LOOK);
+    look["id"] = "metal/test-cjk";
+    look["style"]["rims"] = Json::array({Json{{"width", 8.0}}});
+    look["cjk"] = Json{{"rim_scale", 0.5}};
+    auto files = builtins();
+    files["looks/metal/test-cjk.titlelook"] = look.dump();
+    TitleLibrary::get().setBuiltinsForTesting(files);
+    const auto widthOn = [&](const std::string& text) {
+        TitleArtDoc doc = keptDoc();
+        doc.root["layers"][0]["text"] = text;
+        const TitleOpsResult r = applyOps(doc, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/test-cjk"}});
+        EXPECT_TRUE(r.ok) << r.error();
+        return r.doc.root["layers"][0]["style"]["rims"][0]["width"].get<double>();
+    };
+    EXPECT_DOUBLE_EQ(widthOn("HERO"), 8.0);
+    EXPECT_DOUBLE_EQ(widthOn("\xE5\xA4\xA7\xE5\xBD\x93\xE3\x82\x8A"), 4.0);
+}

@@ -286,7 +286,7 @@ namespace {
     }
 
     const char* const LOOK_ORDER[] = {"format", "version", "id", "revision", "name", "description", "family", "tags", "synonyms",
-                                      "dimension", "applies", "ref_size", "background", "font", "thumbnail_texts", "style", "style_3d", "effects",
+                                      "dimension", "applies", "ref_size", "background", "font", "cjk", "thumbnail_texts", "style", "style_3d", "effects",
                                       "part_effects", "generators", "group_effects", "lighting", "links", "lint_allow", "check_allow",
                                       "assets", "provenance"};
 
@@ -460,6 +460,7 @@ Json titlelibrary::canonicalLookJson(const Json& root, std::vector<LibraryWarnin
         if (root["font"].is_object()) out["font"] = root["font"];
         else warn(warnings, "bad_member", "font", "not {latin, ja}: dropped");
     }
+    if (root.contains("cjk") && root["cjk"].is_object()) out["cjk"] = root["cjk"];
     if (root.contains("thumbnail_texts") && root["thumbnail_texts"].is_object()) out["thumbnail_texts"] = root["thumbnail_texts"];
     const bool styleLook = out["applies"] == "style";
     if (styleLook) {

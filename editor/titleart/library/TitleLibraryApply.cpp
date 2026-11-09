@@ -376,6 +376,12 @@ namespace {
         const titleart::TitleVec2 origin = positionOf(layer);
         ImportPlan plan = newPlan();
         std::map<std::string, std::string> linkIds;
+        // CJK's denser glyphs keep their counters open with thinner rims and bands: the look's `cjk`
+        // member, applied only to Japanese text so Latin keeps the look as designed
+        const Json& cjk = look->member("cjk");
+        const bool cjkText = type == titleart::LayerType::Text && cjk.is_object() && hasJapaneseScript(str(layer, "text"));
+        const double rimScale = cjkText ? cjk.value("rim_scale", 1.0) : 1.0;
+        const double bandScale = cjkText ? cjk.value("band_scale", 1.0) : 1.0;
 
         if (styleLook) {
             const std::string before = str(layer, "dimension", "2d");
@@ -388,6 +394,9 @@ namespace {
                 const Json oldFill = layer.contains("style") && layer["style"].contains("face") && layer["style"]["face"].contains("fill") ? layer["style"]["face"]["fill"] : Json();
                 Json style = expandObject(look->member("style"), "style2d", &ctx.ids);
                 giveIds(style, "rims", ctx);
+                if (rimScale != 1.0 && style.contains("rims")) {
+                    for (Json& rim : style["rims"]) if (rim.contains("width") && rim["width"].is_number()) rim["width"] = rim["width"].get<double>() * rimScale;
+                }
                 if (oldFill.is_object() && str(oldFill, "kind") == "source") style["face"]["fill"] = oldFill;
                 freshLinks(style, linkIds, ctx);
                 layer["style"] = std::move(style);
@@ -395,6 +404,14 @@ namespace {
             } else {
                 Json style = expandObject(look->member("style_3d"), "style_3d", &ctx.ids);
                 giveIds(style, "bands", ctx);
+                if (bandScale != 1.0 && style.contains("bands")) {
+                    for (Json& band : style["bands"]) {
+                        if (band.contains("grow") && band["grow"].is_number()) band["grow"] = band["grow"].get<double>() * bandScale;
+                        if (band.contains("bevel") && band["bevel"].is_object() && band["bevel"].contains("width") && band["bevel"]["width"].is_number()) {
+                            band["bevel"]["width"] = band["bevel"]["width"].get<double>() * bandScale;
+                        }
+                    }
+                }
                 if (look->member("lighting").is_object()) style["lighting"] = expandObject(look->member("lighting"), "lighting_3d", &ctx.ids);
                 freshLinks(style, linkIds, ctx);
                 layer["style_3d"] = std::move(style);
