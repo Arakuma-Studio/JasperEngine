@@ -141,7 +141,7 @@ namespace jasperengine{
         void update(double dt) override;
         void fixedUpdate(double dt) override;
         void draw() override;
-        void setPaused(bool value);
+        void setPaused(bool value) override;
 
         // ---- chunks (R19)
         Entity getGeneratedOwner(Entity entity) const;
