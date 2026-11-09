@@ -41,7 +41,8 @@ async def import_file(ed: Editor, path: str, source: Path) -> dict:
 
 
 def files_under(root: Path) -> set[str]:
-    return {str(p.relative_to(root)) for p in root.rglob("*") if p.is_file() and p.suffix != ".meta"} if root.exists() else set()
+    # the asset importer's working files (".x.meta.<pid>.je-tmp") come and go on the main thread
+    return {str(p.relative_to(root)) for p in root.rglob("*") if p.is_file() and p.suffix != ".meta" and not p.name.startswith(".")} if root.exists() else set()
 
 
 async def test_fixtures_import_and_render(ed: Editor):

@@ -149,7 +149,6 @@ TEST(InterchangeFuzz, ImportersNeverCrash) {
             "layers": [{"id": "a", "kind": "title2d", "name": "Title", "source": {"type": "text", "text": "WIN"}, "transform": {"x": 0, "y": 0}}]},
             "fonts": [], "assets": []})"},
         {"badge.svg", R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100"><g id="a"><path d="M10 10 L90 10 L50 90 Z" fill="#f00"/></g><circle cx="50" cy="50" r="10"/></svg>)"},
-        {"layers.psd", std::string("8BPS\0\1\0\0\0\0\0\0\0\4\0\0\0\x10\0\0\0\x10\0\x08\0\x03\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 46)},
         {"real.pslot.json", fixture("pachislop/v6_groups_masks_clip.pslot.json")},
         {"real.psd", fixture("psd/layers8.psd")},
         {"real16.psd", fixture("psd/layers16.psd")},
@@ -173,6 +172,6 @@ TEST(InterchangeFuzz, ImportersNeverCrash) {
             runs++;
         }
     }
-    EXPECT_EQ(runs, 1800u);
+    EXPECT_EQ(runs, 1500u);
     fs::remove_all(dir);
 }

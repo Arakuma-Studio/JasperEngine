@@ -20,6 +20,7 @@
 #include "command/CommandHistory.h"
 #include "shortcuts/CommandCatalog.h"
 #include "shortcuts/DefaultCommands.h"
+#include "titleart/interchange/TitleImport.h"
 #include "titleart/TitleArtDocument.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitlePreviewQueue.h"
@@ -349,6 +350,7 @@ TEST(TitleDesignerWindowDeathTest, SearchJumpClearsTheField) {
 // is copied beside the document, from inside it is referenced where it is.
 TEST(TitleDesignerWindowDeathTest, DroppedSvgComesInThroughImportSvg) {
     IN_EDITOR("dropsvg", {
+        registerTitleInterchange();
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         const fs::path file = newTitle(w, "dropsvg");
         ASSERT_TRUE(window->open(file, nullptr));

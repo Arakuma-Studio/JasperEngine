@@ -130,8 +130,11 @@ async def test_embed_raster_uses_the_renderer(ed: Editor):
     text = (ed.project / r["files"][0]).read_text()
     ed.check_in("<image", text, "a raster element")
     ed.check_in("data:image/png;base64,", text, "with the rendered PNG inside")
+    # the raster alone: no vector text edges (their AA differs, Deviation 32), so it must register exactly
+    await ed.call("edit_title", path=path, bake="never", ops=[{"op": "set", "layer": "Title", "values": {"visible": False}}])
+    alone = await ed.call("export_title", path=path, format="svg", options={"overwrite": True, "embed_raster": True})
     png = await ed.call("export_title", path=path, format="png", options={"overwrite": True, "dither": False})
-    ed.check_eq(r["frames"], png["frames"], "the same frame")
-    diff = await ed.call("diff_images", a=r["files"][0], b=png["files"][0], tolerance=8, max_fraction=0.02, max_diff=64, max_mean=255)
-    ed.check(diff.get("ok"), f"the SVG renders as the PNG: {diff}")
+    ed.check_eq(alone["frames"], png["frames"], "the same frame")
+    diff = await ed.call("diff_images", a=alone["files"][0], b=png["files"][0], tolerance=8, max_fraction=0.001, max_diff=16, max_mean=255)
+    ed.check(diff.get("ok"), f"the embedded render registers with the PNG: {diff}")
 
