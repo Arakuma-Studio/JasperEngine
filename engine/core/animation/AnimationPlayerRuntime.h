@@ -113,6 +113,10 @@ namespace jasperengine::anim{
         uint64_t hierarchyRevision = 0;     // EntityRegistry::hierarchyRevision() bound at
         uint64_t checkedFrame = 0;          // the player update that last looked at them
         std::vector<Entity> targets;        // per clip track, NULL_ENTITY = unresolved
+        // per clip track, each target's rest resolved at bind (empty when bound without a rest map:
+        // a preview's). Nodes of the player's RestMap: stable, and an erased one's target fails
+        // validation before anything samples
+        std::vector<ChannelRest*> rests;
         std::vector<KeyCursor> cursors;     // per clip track
         float nextUnresolvedRetry = 0.0f;   // re-resolve throttle for unresolved paths (4 Hz)
         // the root's index in the Transform array at bind (SIZE_MAX without a Transform): a

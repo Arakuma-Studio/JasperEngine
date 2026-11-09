@@ -2270,6 +2270,12 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
     if (ds.showAllLattices)
         sceneNode["showAllLattices"] = ds.showAllLattices;
+    if (ds.showIK)
+        sceneNode["showIK"] = ds.showIK;
+    if (ds.showRootMotion)
+        sceneNode["showRootMotion"] = ds.showRootMotion;
+    if (ds.showFootTrails)
+        sceneNode["showFootTrails"] = ds.showFootTrails;
     if (ds.drawMode != ViewDrawMode::SHADED)
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
     if (ds.showStats)
@@ -2315,6 +2321,9 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     ds.pixelSnapPreview = node["pixelSnapPreview"] ? YamlNumbers::as<bool>(node["pixelSnapPreview"]) : true;
     ds.pixelMoveSnap = node["pixelMoveSnap"] ? YamlNumbers::as<bool>(node["pixelMoveSnap"]) : true;
     ds.showAllLattices = node["showAllLattices"] ? YamlNumbers::as<bool>(node["showAllLattices"]) : false;
+    ds.showIK = node["showIK"] ? YamlNumbers::as<bool>(node["showIK"]) : false;
+    ds.showRootMotion = node["showRootMotion"] ? YamlNumbers::as<bool>(node["showRootMotion"]) : false;
+    ds.showFootTrails = node["showFootTrails"] ? YamlNumbers::as<bool>(node["showFootTrails"]) : false;
     ds.drawMode = ViewDrawMode::SHADED;
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
@@ -3087,6 +3096,28 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (threading.webPumpBudgetMs != defaults.webPumpBudgetMs) threadingNode["webPumpBudgetMs"] = threading.webPumpBudgetMs;
         if (threading.webMultithreaded != defaults.webMultithreaded) threadingNode["webMultithreaded"] = threading.webMultithreaded;
         if (threadingNode.size()) root["threading"] = threadingNode;
+        // only when set: an old project.yaml stays as it was
+        if (project->getParticleWorldBudget() != 0) root["particleWorldBudget"] = project->getParticleWorldBudget();
+        {
+            const ParticleQaSettings& qa = project->getParticleQaSettings();
+            const ParticleQaSettings defaults;
+            YAML::Node qaNode;
+            for (const ParticleQaField& field : particleQaFields()) {
+                if (field.real && qa.*field.real != defaults.*field.real) qaNode[field.yaml] = qa.*field.real;
+                if (field.whole && qa.*field.whole != defaults.*field.whole) qaNode[field.yaml] = qa.*field.whole;
+            }
+            if (qaNode.size()) root["particleQa"] = qaNode;
+        }
+        {
+            const procmat::ProcMatQaSettings& qa = project->getProcMatQaSettings();
+            const procmat::ProcMatQaSettings defaults;
+            YAML::Node qaNode;
+            for (const procmat::ProcMatQaField& field : procmat::procMatQaFields()) {
+                if (field.real && qa.*field.real != defaults.*field.real) qaNode[field.yaml] = qa.*field.real;
+                if (field.whole && qa.*field.whole != defaults.*field.whole) qaNode[field.yaml] = qa.*field.whole;
+            }
+            if (qaNode.size()) root["proceduralMaterialQa"] = qaNode;
+        }
         // Shader Creation (spec S32): the values away from their defaults, by its reflection table
         const YAML::Node shaderCreationNode = reflect::encode(reflect::shaderCreationStruct(), &project->getShaderCreationSettings(), reflect::EncodeContext{});
         if (shaderCreationNode.IsMap() && shaderCreationNode.size()) root["shaderCreation"] = shaderCreationNode;
@@ -3922,6 +3953,28 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (threadingNode["webMultithreaded"]) threading.webMultithreaded = YamlNumbers::as<bool>(threadingNode["webMultithreaded"]);
         }
         project->setThreadingSettings(threading);
+        // missing: 0, the platform's default
+        project->setParticleWorldBudget(node["particleWorldBudget"] ? std::min(YamlNumbers::as<unsigned int>(node["particleWorldBudget"]), Project::maxParticleWorldBudget) : 0u);
+        ParticleQaSettings particleQa;
+        if (node["particleQa"] && node["particleQa"].IsMap()) {
+            const YAML::Node qaNode = node["particleQa"];
+            for (const ParticleQaField& field : particleQaFields()) {
+                if (!qaNode[field.yaml]) continue;
+                if (field.real) particleQa.*field.real = std::clamp(YamlNumbers::as<float>(qaNode[field.yaml]), (float)field.minimum, (float)field.maximum);
+                else particleQa.*field.whole = std::clamp(YamlNumbers::as<int>(qaNode[field.yaml]), (int)field.minimum, (int)field.maximum);
+            }
+        }
+        project->setParticleQaSettings(particleQa);
+        procmat::ProcMatQaSettings procMatQa;
+        if (node["proceduralMaterialQa"] && node["proceduralMaterialQa"].IsMap()) {
+            const YAML::Node qaNode = node["proceduralMaterialQa"];
+            for (const procmat::ProcMatQaField& field : procmat::procMatQaFields()) {
+                if (!qaNode[field.yaml]) continue;
+                if (field.real) procMatQa.*field.real = std::clamp(YamlNumbers::as<float>(qaNode[field.yaml]), (float)field.minimum, (float)field.maximum);
+                else procMatQa.*field.whole = std::clamp(YamlNumbers::as<int>(qaNode[field.yaml]), (int)field.minimum, (int)field.maximum);
+            }
+        }
+        project->setProcMatQaSettings(procMatQa);
     }
 
     {

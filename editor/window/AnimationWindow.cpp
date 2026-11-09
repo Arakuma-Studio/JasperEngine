@@ -29,6 +29,7 @@
 #include "component/RotateTracksComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/TranslateTracksComponent.h"
+#include "component/Transform.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/TweenComponent.h"
 #include "component/PositionTweenComponent.h"

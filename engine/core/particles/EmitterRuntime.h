@@ -33,12 +33,14 @@ namespace jasperengine { namespace jobs { class JobSystem; } }
 namespace jasperengine { namespace particles {
 
     struct AnalyticProgram;
+    struct ScalarDriver;
 
     inline constexpr uint32_t kMaxTicksPerFrame = 4;
     inline constexpr double kMaxVariableStep = 1.0 / 20.0;
     inline constexpr uint32_t kMaxSpawnRequests = 4096;
     inline constexpr uint32_t kMaxForceFields = 64;
     inline constexpr uint32_t kMaxDeathEvents = 64;
+    inline constexpr uint32_t kMaxSoundEvents = 16;
 
     struct EmitterInput {
         // the emitter's transform, column-major 4x4 (null: the identity)
@@ -93,9 +95,10 @@ namespace jasperengine { namespace particles {
         float rotation = 0.0f;
         float lifetime = 1.0f;
         uint32_t count = 1;
-        uint32_t parentId = 0;
+        uint32_t parentId = 0;           // kNoParent: fired at the emitter, from no particle
         uint8_t inherit = 0;             // InheritBits
         float factor = 1.0f;
+        float parentQuat[4] = {0, 0, 0, 1};   // Follow Rotation: the parent's rotation (simulation space)
     };
     enum InheritBits : uint8_t { InheritColor = 1, InheritSize = 2, InheritRotation = 4, InheritLifetime = 8, InheritVelocity = 16 };
 
@@ -111,6 +114,16 @@ namespace jasperengine { namespace particles {
         uint32_t entry = 0;
         uint32_t count = 0;
         float position[3] = {0, 0, 0};
+    };
+
+    // a Sound Event (S37) the effect asked for: a burst's, a sub-emitter entry's or a trigger's
+    // (by its index in the effect's document), at a world position or at the emitter
+    struct ParticleSoundEvent {
+        enum class Source : uint8_t { Burst, SubEmitter, Trigger };
+        Source source = Source::Burst;
+        bool atEmitter = true;
+        uint16_t index = 0;
+        float position[3] = {0, 0, 0};   // world space, when not at the emitter
     };
 
     enum class PlayState : uint8_t { Stopped, Playing, Paused };
@@ -136,6 +149,9 @@ namespace jasperengine { namespace particles {
         // levels): `resolve` compiles an entry's effect (null when it cannot be read)
         using SubEmitterResolver = std::function<std::shared_ptr<const CompiledEffect>(const SubEmitterEntry& entry)>;
         void bindSubEmitters(const SubEmitterResolver& resolve, int depth = 1);
+        // gives the bound children their effects again, keeping their particles; false when one
+        // changed structure and they need bindSubEmitters (a child's file was edited)
+        bool rebindSubEmitters(const SubEmitterResolver& resolve, int depth = 1);
         EmitterRuntime* child(size_t index) const { return index < children.size() ? children[index].get() : nullptr; }
         size_t childCount() const { return children.size(); }
         const CompiledEffect* effect() const { return compiled.get(); }
@@ -179,6 +195,9 @@ namespace jasperengine { namespace particles {
         void settleSeek(double remainder, double tick);
         // queued for the next tick
         void emit(uint32_t count, const EmitOverrides* overrides = nullptr);
+        // the effect's triggers of that name act now (play, pause, stop); its Trigger
+        // sub-emitters of that name fire on the next tick, from every live particle or, with none,
+        // from the emitter (a stopped emitter runs that tick without its own emission)
         void sendTrigger(uint32_t nameHash);
         bool queueSpawn(const SpawnRequest& request);
         bool isPrewarming() const { return prewarm.pending; }
@@ -210,6 +229,14 @@ namespace jasperengine { namespace particles {
         // the live particles of a Simulated emitter (an Analytic one keeps none: analyticAlive)
         uint32_t count() const { return channels.count; }
         uint32_t capacity() const { return channels.capacity(); }
+        // the same with its sub-emitter children's, down the tree: what stats and the budget count
+        uint32_t totalCount() const;
+        uint32_t totalCapacity() const;
+        // the most the tree may hold: each emitter is held to its own Max Particles
+        uint32_t totalMaxParticles() const;
+        // what the tree wants alive at its peak: its own capacity hint, and for each child what
+        // that many parents ask for (a child's own Emission is ignored), up to its Max Particles
+        uint32_t treeCapacityHint() const;
         float interpolation() const { return alpha; }
         // the length of the last tick (the time between the previous and the current channels)
         float lastTickSeconds() const { return lastTick; }
@@ -226,6 +253,9 @@ namespace jasperengine { namespace particles {
         std::span<const CollisionEvent> collisionEvents() const { return {collisions.data(), collisions.size()}; }
         std::span<const ParticleDeathEvent> deathEvents() const { return {deaths.data(), deaths.size()}; }
         std::span<const SubEmitEvent> subEmitEvents() const { return {subEmits.data(), subEmits.size()}; }
+        // the sounds asked for since the last takeSoundEvents (at most kMaxSoundEvents; seeks ask none)
+        std::span<const ParticleSoundEvent> soundEvents() const { return {sounds.data(), sounds.size()}; }
+        void takeSoundEvents() { sounds.clear(); }
         // computed bounds of the live particles in simulation space (min, max), padded by size
         void bounds(float outMin[3], float outMax[3]) const;
         // (an Analytic program's are its compiled bounds: a clear or a seek keeps them)
@@ -239,6 +269,8 @@ namespace jasperengine { namespace particles {
         uint32_t seedValue() const { return seed; }
         // counts its resets, clears and seeks: what was drawn of it before is not its state now
         uint64_t generation() const { return resetGeneration; }
+        // particles spawned since the last reset, its children's not counted (what the preview's metrics call emitted)
+        uint32_t spawnedCount() const { return spawnCounter; }
         uint32_t raysLastTick() const { return lastRays; }
 
         // a copy of the state (seek checkpoints)
@@ -282,8 +314,22 @@ namespace jasperengine { namespace particles {
                         const SpawnRequest* request, const EmitOverrides* overrides);
         void trailStage();
         void childrenStage(const EmitterInput& input);
+        // the children render between the same two ticks as their parent
+        void shareInterpolation();
+        uint64_t childrenCapacityHint(uint64_t parents) const;
         void raiseSubEmitters(SubEmitterTrigger trigger, uint32_t index, const float* normal);
         void raiseEntry(uint32_t entry, SubEmitterTrigger trigger, uint32_t index, const float* normal);
+        // a Trigger entry fired with no live particle: once, at the emitter
+        void raiseEntryAtEmitter(uint32_t entry);
+        void recordSound(ParticleSoundEvent::Source source, uint32_t index, const float* position);
+        // a particle's size and roll as the renderer shows them (appearance's)
+        float sizeOf(uint32_t index, const ScalarDriver& driver) const;
+        float rollOf(uint32_t index, const ScalarDriver& driver) const;
+        void driverOf(uint32_t index, ScalarDriver& driver) const;
+        // a particle's rotation in simulation space: its quaternion, or its roll about Z
+        void particleRotation(uint32_t index, float q[4]) const;
+        // Follow Parent: moves `child`'s particles with the particles of this emitter that spawned them
+        void followStage(EmitterRuntime& child, const SubEmitterEntry& entry);
         void continueSeekTicks(const EmitterInput& input, SeekState& seek, double budgetMs);
         static uint32_t childSeed(uint32_t parent, uint32_t index);
         void simToWorldPoint(const float in[3], float out[3]) const;
@@ -397,6 +443,10 @@ namespace jasperengine { namespace particles {
         std::vector<CollisionEvent> collisions;
         std::vector<ParticleDeathEvent> deaths;
         std::vector<SubEmitEvent> subEmits;
+        std::vector<ParticleSoundEvent> sounds;
+        // Follow Parent: this tick's live particles as (spawn index << 32 | slot), sorted
+        std::vector<uint64_t> followIndex;
+        bool followIndexed = false;
         const EmitterInput* currentInput = nullptr;
     };
 

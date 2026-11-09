@@ -1,0 +1,83 @@
+{
+ "code": [],
+ "description": "Scales its input",
+ "format": 1,
+ "functions": [
+  "scale"
+ ],
+ "id": "scale",
+ "inputs": [
+  {
+   "default": "vec4($uv, 0.0, 1.0)",
+   "description": "An input image",
+   "label": "",
+   "name": "i#",
+   "short_description": "Input#",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Scale",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a scaled image",
+   "expr": "$i#(scale($uv, vec2(0.5+$cx, 0.5+$cy), vec2($scale_x, $scale_y)))",
+   "label": "Output#",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The position of the scale center",
+   "label": "Center X",
+   "max": 1,
+   "min": -1,
+   "name": "cx",
+   "short_description": "Center.x",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The poisition of the scale center",
+   "label": "Center Y",
+   "max": 1,
+   "min": -1,
+   "name": "cy",
+   "short_description": "Center.y",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The scale amount along the X axis",
+   "label": "Scale X",
+   "max": 50,
+   "min": 0,
+   "name": "scale_x",
+   "short_description": "Scale.x",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The scale amount along the Y axis",
+   "label": "Scale Y",
+   "max": 50,
+   "min": 0,
+   "name": "scale_y",
+   "short_description": "Scale.y",
+   "step": 0.005,
+   "type": "float"
+  }
+ ],
+ "short_description": "Scale",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/scale.mmg"
+ },
+ "type_version": 1
+}

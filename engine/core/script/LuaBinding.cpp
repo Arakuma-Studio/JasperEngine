@@ -191,6 +191,15 @@ namespace {
         }
     }
 
+    // for uses that allocate nothing (a field read, a float's write): the allocator's check below
+    // cannot see them
+    void checkLuaThread(){
+#ifndef NO_THREAD_SUPPORT
+        if (std::this_thread::get_id() != luaThread.load(std::memory_order_relaxed))
+            reportOffThreadLuaUse();
+#endif
+    }
+
     // the Lua heap in the memory stats (get_memory_stats, Jobs & Memory)
     memory::TrackedBytes& luaHeapBytes(){
         static auto* tracked = new memory::TrackedBytes("Lua.Heap", memory::Residency::Cpu);
@@ -1882,6 +1891,7 @@ bool LuaBinding::getLuaScriptProperty(Scene* scene, Entity entity, const std::st
     }
     lua_State* L = luastate;
     if (L && entry->instance) {
+        checkLuaThread();
         const int top = lua_gettop(L);
         lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(entry->instance)));
         if (lua_istable(L, -1)) {
@@ -1921,6 +1931,7 @@ bool LuaBinding::setLuaScriptProperty(Scene* scene, Entity entity, const std::st
     if (!L || !entry->instance) {
         return true;
     }
+    checkLuaThread();
     const int top = lua_gettop(L);
     lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(entry->instance)));
     if (!lua_istable(L, -1)) {

@@ -81,6 +81,7 @@ namespace jasperengine::player {
         bool asyncLoading = false;
 
         ThreadingSettings threading;
+        uint32_t particleWorldBudget = 0;   // 0: the platform's default
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::MEDIUM, AtmosphereQuality::LOW};
         // Quality > Foliage Distance (desktop, mobile, web)
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};

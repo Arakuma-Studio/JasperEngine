@@ -23,7 +23,11 @@ namespace jasperengine { namespace particles {
         Constant,
         TwoConstants,   // Random Between Two Constants
         Curve,
-        TwoCurves       // Random Between Two Curves
+        TwoCurves,      // Random Between Two Curves
+        // from a start value to an end value along an ease preset: an ordinary curve (curve)
+        // made by Curve::fromEase, evaluated as one, with its start (constant), end
+        // (constantMax) and preset (ease) kept so it can be made again
+        Ease
     };
 
     enum class GradientValueMode : uint8_t {
@@ -67,6 +71,7 @@ namespace jasperengine { namespace particles {
         float driverMin = 0.0f;     // driver values at the curve's 0 and 1
         float driverMax = 1.0f;
         CurveWrap wrap = CurveWrap::Clamp;
+        EaseType ease = static_cast<EaseType>(0);   // Ease: the preset (LINEAR by default)
 
         MinMaxCurve() = default;
         MinMaxCurve(float value): constant(value), constantMax(value) {}
@@ -83,8 +88,14 @@ namespace jasperengine { namespace particles {
             value.multiplier = multiplier;
             return value;
         }
+        // Ease mode from `start` to `end` along `type` (CUSTOM and CURVE ease linearly)
+        static MinMaxCurve fromEase(EaseType type, float start, float end);
+        // Ease mode: makes the curve again from the start, end and preset
+        void rebuildEase();
+        // the preset's keys from `start` to `end` over [0, 1]
+        static Curve easeCurve(EaseType type, float start, float end);
 
-        bool usesCurve() const { return mode == CurveMode::Curve || mode == CurveMode::TwoCurves; }
+        bool usesCurve() const { return mode == CurveMode::Curve || mode == CurveMode::TwoCurves || mode == CurveMode::Ease; }
         bool usesRandom() const { return mode == CurveMode::TwoConstants || mode == CurveMode::TwoCurves; }
         // the same value for every particle at every age
         bool isConstant() const { return mode == CurveMode::Constant || (mode == CurveMode::TwoConstants && constant == constantMax); }

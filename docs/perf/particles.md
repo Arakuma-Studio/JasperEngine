@@ -96,6 +96,29 @@ stretch channels (ChAnimVel*) went in: 3.49 ms on 1 thread, 0.65 ms projected, w
 0.81 ms, SIMD 66 x, Noise 81 x, prep 1.41 ms, `many_small_1000x100` 1.44 ms, no allocation: every
 budget holds.
 
+**BF23 F1 and F2** (a sub-emitter's children drawn and counted), 2026-11-04. A system without
+sub-emitters takes the same paths and allocates nothing new. Measured on the shared 8-core build host
+under other builds' load (load average 9-14), the core-tests build, `--workers 3 --count-allocs`, three
+runs each (median, range), so these compare with each other and not with server E's table above:
+`check_bench.py` on one run of each misses the same 5 budgets here before and after, and only E can say
+an absolute budget holds. The sort's code did not change; its range is this host's noise.
+
+| Metric | Before | After |
+|---|---|---|
+| Reference stack, 100 k, one tick, 1 thread | 8.25 ms (8.22-8.50) | 8.24 ms (8.04-8.32) |
+| the same, 8 workers (projected) | 1.53 ms (1.52-1.57) | 1.53 ms (1.49-1.54) |
+| Without Noise, 1 thread | 2.51 ms (2.42-2.56) | 2.46 ms (2.39-3.05) |
+| Render prep, 100 k, 1 thread | 6.60 ms (6.59-6.81) | 6.63 ms (6.47-6.83) |
+| Render prep, 8 workers (projected) | 1.22 ms (1.22-1.26) | 1.23 ms (1.20-1.26) |
+| Back-to-front sort, 100 k, 1 thread (extra) | 1.22 ms (1.03-1.49) | 1.61 ms (1.19-2.91) |
+| `trails_10k`, one tick | 1.10 ms (0.98-1.11) | 1.08 ms (1.02-1.11) |
+| `trails_10k`, prep | 4.60 ms (4.52-4.77) | 4.61 ms (4.43-4.75) |
+
+Channel storage (56 B), trail storage (17.3 B) and 100143 live are the same. Heap allocations in the
+steady state: 0, 0, 1 before, 0, 0, 0 after. The draw path of children is not in this bench (it packs
+directly); `ParticlesGpu.SubEmittersDrawWithTheirOwnRenderers` checks a system without sub-emitters makes no
+child render state.
+
 ### Web
 
 The web rows of R21, R22 and R24, measured by the particles test project
@@ -157,3 +180,24 @@ python3 tools/perf/check_web_particles.py build/test-results/web/particles.log b
   gather of the records.
 - Trails: their strips are 2 x points vertices of 28 bytes; 10 k trails of 17 points are 9.5 MB
   a frame to upload, which is what the GPU side pays.
+
+**S91 runtime features** (Ease mode, distortion, Ring, triggers, exposed values written without
+compiling, Follow Parent, sound events), 2026-11-07, on the shared 8-core build host under other
+builds' load, the core-tests build, `--workers 3 --count-allocs`, three runs each (median, range):
+before on 2c5594c49 (with its test file's missing brace closed), after on 31414622c. A system without
+these features compiles and runs the same ops; the new channels exist only for Follow Parent
+children and the exposed slots only for effects with exposed parameters.
+
+| Metric | Before | After |
+|---|---|---|
+| Reference stack, 100 k, one tick, 1 thread | 8.83 ms (8.75-10.80) | 8.46 ms (8.38-8.61) |
+| the same, 8 workers (projected) | 1.64 ms (1.62-2.00) | 1.57 ms (1.55-1.60) |
+| Without Noise, 1 thread | 2.61 ms (2.55-2.66) | 2.44 ms (2.39-2.60) |
+| Render prep, 100 k, 1 thread | 6.65 ms (6.53-7.08) | 6.72 ms (6.56-9.51) |
+| Render prep, 8 workers (projected) | 1.23 ms (1.21-1.31) | 1.25 ms (1.21-1.76) |
+| `trails_10k`, one tick | 1.10 ms (1.09-1.16) | 1.10 ms (1.08-1.13) |
+| `trails_10k`, prep | 4.54 ms (4.40-4.65) | 4.64 ms (4.45-4.80) |
+
+Channel storage (56 B) and 100143 live are the same; steady-state allocations 0, 1, 0 before and
+0, 0, 0 after. The differences are within this host's run-to-run range; only server E can say an
+absolute budget holds.

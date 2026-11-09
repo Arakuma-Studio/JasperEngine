@@ -51,6 +51,25 @@ namespace {
         return scrolls;
     }
 
+    std::map<std::string, int>& writtenBegins() {
+        static std::map<std::string, int> begins;
+        return begins;
+    }
+
+    // ImGuiWindow::BeginCount holds its last active frame's count until the next first Begin, so
+    // it is whole here however late in the frame the window draws
+    std::map<std::string, int> multipleBegins() {
+        std::map<std::string, int> begins;
+        const ImGuiContext& g = *ImGui::GetCurrentContext();
+        for (const ImGuiWindow* window : g.Windows) {
+            // (a docked panel carries the child flag too, and is what this is for)
+            if (((window->Flags & ImGuiWindowFlags_ChildWindow) && !window->DockIsActive) || window->BeginCount < 2) continue;
+            if (window->LastFrameActive < g.FrameCount - 1) continue;
+            begins[window->Name] = window->BeginCount;
+        }
+        return begins;
+    }
+
     bool visibleInWindow(const ImVec2& min, const ImVec2& max) {
         ImGuiWindow* window = ImGui::GetCurrentWindow();
         if (!window || window->SkipItems) return false;
@@ -99,7 +118,8 @@ void editor::UIProbe::flush() {
     if (!enabled()) return;
     static unsigned long frame = 0;
     frame++;
-    if (current() != written() || currentScroll() != writtenScroll()) {
+    const std::map<std::string, int> begins = multipleBegins();
+    if (current() != written() || currentScroll() != writtenScroll() || begins != writtenBegins()) {
         std::ostringstream json;
         json << "{\"frame\": " << frame << ", \"items\": {";
         bool first = true;
@@ -113,6 +133,12 @@ void editor::UIProbe::flush() {
             json << (first ? "" : ", ") << jsonString(name) << ": [" << s[0] << ", " << s[1] << "]";
             first = false;
         }
+        json << "}, \"begins\": {";
+        first = true;
+        for (const auto& [name, count] : begins) {
+            json << (first ? "" : ", ") << jsonString(name) << ": " << count;
+            first = false;
+        }
         json << "}}\n";
         // whole files only (a reader never sees half of one): an atomic Cache write
         io::AtomicWriteOptions options;
@@ -120,6 +146,7 @@ void editor::UIProbe::flush() {
         io::writeFileAtomic(probePath(), json.str(), options);
         written() = current();
         writtenScroll() = currentScroll();
+        writtenBegins() = begins;
     }
     current().clear();
     currentScroll().clear();

@@ -1,0 +1,117 @@
+{
+ "code": [],
+ "description": "Generates variations for its input",
+ "format": 1,
+ "functions": [],
+ "id": "variations_tex3d",
+ "inputs": [
+  {
+   "default": "vec3(0.0)",
+   "description": "The input image",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "tex3d"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Variations",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a variation of the input",
+   "expr": "$in.variation($uv, $seed+$v1)",
+   "label": "Output1",
+   "type": "tex3d"
+  },
+  {
+   "description": "Shows a variation of the input",
+   "expr": "$in.variation($uv, $seed+$v2)",
+   "label": "Output2",
+   "type": "tex3d"
+  },
+  {
+   "description": "Shows a variation of the input",
+   "expr": "$in.variation($uv, $seed+$v3)",
+   "label": "Output3",
+   "type": "tex3d"
+  },
+  {
+   "description": "Shows a variation of the input",
+   "expr": "$in.variation($uv, $seed+$v4)",
+   "label": "Output4",
+   "type": "tex3d"
+  },
+  {
+   "description": "Shows a variation of the input",
+   "expr": "$in.variation($uv, $seed+$v5)",
+   "label": "Output5",
+   "type": "tex3d"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "Seed modifier for output 1",
+   "label": "",
+   "max": 1,
+   "min": 0,
+   "name": "v1",
+   "short_description": "Seed modifier",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "Seed modifier for output 2",
+   "label": "",
+   "max": 1,
+   "min": 0,
+   "name": "v2",
+   "short_description": "Seed modifier",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.2,
+   "description": "Seed modifier for output 3",
+   "label": "",
+   "max": 1,
+   "min": 0,
+   "name": "v3",
+   "short_description": "Seed modifier",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.3,
+   "description": "Seed modifier for output 4",
+   "label": "",
+   "max": 1,
+   "min": 0,
+   "name": "v4",
+   "short_description": "Seed modifier",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.4,
+   "description": "Seed modifier for output 5",
+   "label": "",
+   "max": 1,
+   "min": 0,
+   "name": "v5",
+   "short_description": "Seed modifier",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Variations",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/variations_tex3d.mmg"
+ },
+ "type_version": 1
+}

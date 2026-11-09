@@ -1,0 +1,93 @@
+{
+ "code": [
+  "vec4 $(name_uv)_blurred = $(name)_blur($uv, vec2(1.0)/$in.size, max(1.0, floor($sigma*$in.size/2048.0)), int($quality), _seed_variation_, _controlled_variation_);"
+ ],
+ "description": "",
+ "format": 1,
+ "functions": [],
+ "id": "fast_blur_shader",
+ "inputs": [
+  {
+   "default": "vec4(1.0)",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "type": "rgba"
+  }
+ ],
+ "instance": [
+  "vec4 $(name)_blur(vec2 uv, vec2 scale, float sigma, int quality, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tvec4 O = vec4(0.0);",
+  "\tfloat samples = sigma * 4.0; ",
+  "\tint LOD = max(0, int(log2(float(samples)))-quality-2);",
+  "\tint sLOD = 1 << LOD;",
+  "\tint s = max(1, int(samples/float(sLOD)));",
+  "\tfloat sum = 0.0;",
+  "\tfor (int i = 0; i < s*s; i++) {",
+  "\t\tvec2 d = vec2(float(i%s), float(i/s))*float(sLOD) - 0.5*float(samples);",
+  "\t\tvec2 dd = d / sigma;",
+  "\t\tfloat g = exp(-.5*dot(dd,dd))/(6.28*sigma*sigma);",
+  "\t\tO += g * textureLod($in.texture, uv + scale * d, float(LOD));",
+  "\t\tsum += g;",
+  "\t}",
+  "\t",
+  "\treturn O / sum;",
+  "}",
+  ""
+ ],
+ "kind": "shader",
+ "name": "Fast Blur",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "$(name_uv)_blurred",
+   "label": "Low Pass",
+   "type": "rgba"
+  },
+  {
+   "expr": "($in($uv) - $(name_uv)_blurred) * $strength",
+   "label": "High Pass",
+   "type": "rgba"
+  },
+  {
+   "expr": "($in($uv) - $(name_uv)_blurred) * ($strength+1.0) + $(name_uv)_blurred",
+   "label": "Sharpened",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 1,
+   "label": "",
+   "max": 256,
+   "min": 1,
+   "name": "sigma",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "label": "",
+   "max": 3,
+   "min": 0,
+   "name": "quality",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 2,
+   "label": "",
+   "max": 10,
+   "min": 0,
+   "name": "strength",
+   "step": 0.1,
+   "type": "float"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/fast_blur_shader.mmg"
+ },
+ "type_version": 1
+}

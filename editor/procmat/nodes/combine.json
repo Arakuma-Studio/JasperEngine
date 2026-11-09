@@ -1,0 +1,60 @@
+{
+ "code": [],
+ "description": "Combines 4 grayscale inputs into an RGBA image",
+ "format": 1,
+ "functions": [],
+ "id": "combine",
+ "inputs": [
+  {
+   "default": "0.0",
+   "description": "The grayscale input for the red channel",
+   "label": "R",
+   "name": "r",
+   "short_description": "Red",
+   "type": "f"
+  },
+  {
+   "default": "0.0",
+   "description": "The grayscale input for the green channel",
+   "label": "G",
+   "name": "g",
+   "short_description": "Green",
+   "type": "f"
+  },
+  {
+   "default": "0.0",
+   "description": "The grayscale input for the blue channel",
+   "label": "B",
+   "name": "b",
+   "short_description": "Blue",
+   "type": "f"
+  },
+  {
+   "default": "1.0",
+   "description": "The grayscale input for the alpha channel",
+   "label": "A",
+   "name": "a",
+   "short_description": "Alpha",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Combine",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the combined RGBA image",
+   "expr": "vec4($r($uv), $g($uv), $b($uv), $a($uv))",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [],
+ "short_description": "Combine",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/combine.mmg"
+ },
+ "type_version": 1
+}

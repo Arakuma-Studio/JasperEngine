@@ -42,11 +42,12 @@ namespace jasperengine {
         Palette = 24,               // a .palette palette (S43)
         AsepriteSprite = 25,        // an .aseprite / .ase file (S44): its sheet, frames, clips and slices are sub-assets
         SpriteAtlas = 26,           // a .spriteatlas Sprite Atlas (S45; its GUID in its JSON)
-        SoundEvent = 28             // a .soundevent Sound Event (S37; its GUID in its .meta)
+        SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
+        ProceduralMaterial = 29     // a .procmat node graph baked in the editor (S90; its GUID in its JSON; never ships)
     };
 
     // the highest value present (a sibling's reserved value below it may still be missing)
-    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::SoundEvent);
+    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::ProceduralMaterial);
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
     inline const char* assetTypeName(AssetType type) {
@@ -78,6 +79,7 @@ namespace jasperengine {
             case AssetType::AsepriteSprite: return "aseprite_sprite";
             case AssetType::SpriteAtlas: return "sprite_atlas";
             case AssetType::SoundEvent: return "sound_event";
+            case AssetType::ProceduralMaterial: return "procedural_material";
             case AssetType::Unknown: break;
         }
         return "unknown";

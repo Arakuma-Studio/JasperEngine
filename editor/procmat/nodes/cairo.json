@@ -1,0 +1,83 @@
+{
+ "code": [],
+ "description": "Draws a grayscale Cairo tiles pattern",
+ "format": 1,
+ "functions": [
+  "cairo_bbox",
+  "cairo_round"
+ ],
+ "id": "cairo",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Cairo",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the grayscale pattern",
+   "expr": "cairo_round($uv*vec2($sx, $sy), $angle*0.01745329251, 200.0-190.0*$round)",
+   "label": "Output",
+   "type": "f"
+  },
+  {
+   "description": "An output that should be plugged into a Fill companion node",
+   "expr": "floor(8192.0*fract(cairo_bbox($uv*vec2($sx, $sy), $angle*0.01745329251)/vec2($sx, $sy).xyxy))/8192.0",
+   "label": "Fill",
+   "type": "fill"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 4,
+   "description": "The number of columns of the pattern (odd values do not tile correctly)",
+   "label": "Size X",
+   "max": 64,
+   "min": 1,
+   "name": "sx",
+   "short_description": "Size.x",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 4,
+   "description": "The number of rows of the pattern (odd values do not tile correctly)",
+   "label": "Size Y",
+   "max": 64,
+   "min": 1,
+   "name": "sy",
+   "short_description": "Size.y",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 30,
+   "description": "The angle of the pentagons that form the pattern",
+   "label": "Angle",
+   "max": 90,
+   "min": 0,
+   "name": "angle",
+   "short_description": "Angle",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The roundness of the corners",
+   "label": "Round",
+   "max": 1,
+   "min": 0,
+   "name": "round",
+   "short_description": "Round",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Cairo tiles pattern",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/cairo.mmg"
+ },
+ "type_version": 1
+}

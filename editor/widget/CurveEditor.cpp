@@ -194,6 +194,17 @@ void CurveEditor::drawCurves(ImDrawList* drawList, const std::vector<CurveBindin
     }
 }
 
+void CurveEditor::pasteAt(float time, std::vector<CurveBinding>& curves, CurveEditorResult& result) {
+    const int active = activeCurve(curves);
+    if (active < 0 || clipboard.empty()) return;
+    beginGesture(curves, result);
+    const std::vector<int> pasted = curveops::pasteKeys(*curves[(size_t)active].curve, clipboard, time, hasRange ? &range : nullptr);
+    selection.clear();
+    for (int index : pasted) selection.push_back({active, index});
+    result.changed = true;
+    result.ended = true;
+}
+
 void CurveEditor::drawKeyMenu(std::vector<CurveBinding>& curves, CurveEditorResult& result) {
     if (!ImGui::BeginPopup("##curveKeyMenu")) return;
     // one action on every key the menu opened on
@@ -259,6 +270,27 @@ void CurveEditor::drawKeyMenu(std::vector<CurveBinding>& curves, CurveEditorResu
             }
         }
         ImGui::EndMenu();
+    }
+    ImGui::Separator();
+    // the selection as a whole (S91 R23)
+    auto applySelection = [&](void (*op)(std::vector<Curve*>&, const std::vector<KeyRef>&)) {
+        beginGesture(curves, result);
+        std::vector<Curve*> all = mutableCurves(curves);
+        op(all, menuSelection);
+        if (hasRange) {
+            for (CurveBinding& b : curves) curveops::clampToRange(*b.curve, range);
+        }
+        result.changed = true;
+        result.ended = true;
+    };
+    if (ImGui::MenuItem("Align", nullptr, false, menuSelection.size() > 1)) applySelection(curveops::alignKeys);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The selected keys take their mean value");
+    if (ImGui::MenuItem("Smooth")) applySelection(curveops::smoothKeys);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Free tangents along the neighbours' mean slope");
+    if (ImGui::MenuItem("Sharpen")) applySelection(curveops::sharpenKeys);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Linear on both sides: a corner at each key");
+    if (hasPlayhead && ImGui::MenuItem("Paste at Playhead", nullptr, false, !clipboard.empty())) {
+        pasteAt(playhead, curves, result);
     }
     ImGui::Separator();
     if (ImGui::MenuItem("Delete Key", CommandCatalog::editor().menuShortcutText("curve.delete").c_str())) {
@@ -376,16 +408,9 @@ void CurveEditor::runCommand(Command command, std::vector<CurveBinding>& curves,
         case Command::Copy:
             clipboard = curveops::copyKeys(*curves[(size_t)active].curve, selection, active);
             break;
-        case Command::Paste: {
-            beginGesture(curves, result);
-            const float time = hovered ? view.toTime(mouseX) : dragStartTime;
-            const std::vector<int> pasted = curveops::pasteKeys(*curves[(size_t)active].curve, clipboard, time, hasRange ? &range : nullptr);
-            selection.clear();
-            for (int index : pasted) selection.push_back({active, index});
-            result.changed = true;
-            result.ended = true;
+        case Command::Paste:
+            pasteAt(hovered ? view.toTime(mouseX) : dragStartTime, curves, result);
             break;
-        }
     }
 }
 
@@ -411,6 +436,10 @@ CurveEditorResult CurveEditor::draw(const char* id, std::vector<CurveBinding>& c
     drawList->AddRectFilled(min, max, IM_COL32(28, 28, 30, 255));
     drawGrid(drawList);
     drawCurves(drawList, curves);
+    if (hasPlayhead) {
+        const float x = view.toX(playhead);
+        drawList->AddLine(ImVec2(x, min.y), ImVec2(x, max.y), IM_COL32(240, 80, 70, 230), 1.5f);
+    }
 
     ImGuiIO& io = ImGui::GetIO();
     const ImVec2 mouse = io.MousePos;
@@ -587,6 +616,9 @@ CurveEditorResult CurveEditor::draw(const char* id, std::vector<CurveBinding>& c
                 result.ended = true;
                 if (!result.changed) result.began = false;
             }
+        }
+        if (hasPlayhead && ImGui::MenuItem("Paste at Playhead", nullptr, false, !clipboard.empty() && activeCurve(curves) >= 0)) {
+            pasteAt(playhead, curves, result);
         }
         if (ImGui::MenuItem("Frame All", CommandCatalog::editor().menuShortcutText("curve.frame").c_str())) {
             selection.clear();

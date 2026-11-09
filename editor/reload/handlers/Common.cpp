@@ -4,6 +4,7 @@
 #include "ReloadHandlers.h"
 
 #include "Project.h"
+#include "graph/GraphRegistry.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -38,14 +39,16 @@ std::string reload::kindOf(const fs::path& path) {
     if (Util::isFontFile(text)) return "font";
     if (Util::isScriptFile(text) || ext == ".c" || ext == ".inl") return "script";
     if (Util::isHtmlFile(text) || Util::isCssFile(text) || ext == ".json" || ext == ".lottie") return "ui";
-    // pose animations, the models' humanoid maps, animation clips, the Animator's assets,
-    // Vertex Animations and Shake Presets: their documents and players
+    // pose animations, the models' humanoid maps and clip settings, animation clips, the Animator's
+    // assets, Vertex Animations and Shake Presets: their documents and players
     if (Util::isPoseAnimationFile(text) || Util::isAnimationClipFile(text) || Util::isAnimatorAssetFile(text) || Util::isVertexAnimationFile(text) ||
-        Util::isShakePresetFile(text) || ext == ".humanoid") {
+        Util::isShakePresetFile(text) || ext == ".humanoid" || ext == ".clips") {
         return "animation";
     }
     if (Util::isSceneFile(text)) return "scene";
     if (Util::isPrefabFile(text)) return "prefab";
+    // any registered kind's files
+    if (graph::GraphRegistry::get().kindForFile(text)) return "graph";
     if (ext == ".txt" || ext == ".md" || ext == ".yaml" || ext == ".yml" || ext == ".xml" || ext == ".csv" || ext == ".ini" || ext == ".cfg" ||
         ext == ".cmake" || ext == ".hlsl") {
         return "text";

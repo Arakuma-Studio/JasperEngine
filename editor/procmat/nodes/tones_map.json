@@ -1,0 +1,81 @@
+{
+ "code": [],
+ "description": "Maps linearly an input tones interval to an output tones interval.",
+ "format": 1,
+ "functions": [],
+ "id": "tones_map",
+ "inputs": [
+  {
+   "default": "vec4(0.5 ,0.5, 0.5, 1.0)",
+   "description": "The input image",
+   "label": "",
+   "name": "in#",
+   "short_description": "Input#",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Tones Map",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the generated remapped image",
+   "expr": "vec4(vec3($out_min)+($in#($uv).rgb-vec3($in_min))*vec3(($out_max-($out_min))/($in_max-($in_min))), $in#($uv).a)",
+   "label": "Output#",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.5,
+   "description": "The minimum value of the input interval",
+   "label": "Input min",
+   "max": 1,
+   "min": 0,
+   "name": "in_min",
+   "short_description": "InputMin",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "description": "The maximum value of the input interval",
+   "label": "Input max",
+   "max": 1,
+   "min": 0,
+   "name": "in_max",
+   "short_description": "InputMax",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The minimum value of the output interval",
+   "label": "Output min",
+   "max": 1,
+   "min": 0,
+   "name": "out_min",
+   "short_description": "OutputMin",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "description": "The maximum value of the output interval",
+   "label": "Output max",
+   "max": 1,
+   "min": 0,
+   "name": "out_max",
+   "short_description": "OutputMax",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Tones map",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/tones_map.mmg"
+ },
+ "type_version": 1
+}

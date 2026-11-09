@@ -1,0 +1,58 @@
+{
+ "code": [],
+ "description": "Convert between Linear and sRGB color space",
+ "format": 1,
+ "functions": [
+  "fromLinear",
+  "toLinear"
+ ],
+ "id": "color_conversion",
+ "inputs": [
+  {
+   "default": "vec4(vec3(0.0), 1.0)",
+   "description": "The image to be converted",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Color Conversion",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The color converted image",
+   "expr": "$mode($in($uv))",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 1,
+   "description": "Controls whether the node converts from Linear to sRGB or from sRGB to Linear",
+   "label": "Mode",
+   "name": "mode",
+   "short_description": "Mode",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Linear to sRGB",
+     "value": "fromLinear"
+    },
+    {
+     "name": "sRGB to Linear",
+     "value": "toLinear"
+    }
+   ]
+  }
+ ],
+ "short_description": "Color Conversion",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/color_conversion.mmg"
+ },
+ "type_version": 1
+}

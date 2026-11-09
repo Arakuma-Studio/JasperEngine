@@ -16,7 +16,8 @@
 //
 // Render modes (particlesParams.mode.x, the Renderer module's): 0 Billboard (the camera
 // plane), 1 Facing Camera Position, 2 Stretched (STRETCH), 3 Horizontal, 4 Vertical, 5 World
-// oriented, 6 Local oriented, 7 Mesh (PARTICLE_MESH), 9 Velocity aligned (8, None, draws no
+// oriented, 6 Local oriented, 7 Mesh (PARTICLE_MESH), 9 Velocity aligned, 10 Ring (a mesh), 11 Pixel
+// (PARTICLE_PIXEL) (8, None, draws no
 // particles). Rotation is clockwise as seen.
 
 #define FRAME_VS

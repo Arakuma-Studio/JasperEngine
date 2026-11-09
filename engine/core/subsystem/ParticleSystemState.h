@@ -38,6 +38,8 @@ namespace jasperengine{
             BufferRender indices;
             uint32_t indexCount = 0;
             bool created = false;
+            // what they were made from (the mesh source, or the ring's settings)
+            uint64_t source = 0;
         };
 
         // RenderSystem's objects of one particle system (RenderSystemParticles.cpp)
@@ -98,36 +100,25 @@ namespace jasperengine{
             // Hold Frames (S49 R5): per view, the step last packed and its records
             HeldPacks held;
 
-            // the sub-emitters' objects, one per child of the runtime (runtime.child(i)), and
-            // theirs below (S20 R10: depth at most 3)
+            // the sub-emitter children's, one per EmitterRuntime child (null where it has none):
+            // empty, with nothing made, for a system without sub-emitters
             std::vector<std::unique_ptr<ParticleRenderData>> children;
-
-            // loaded, and so every child
-            bool loadedAll() const{
-                if (!loaded)
-                    return false;
-                for (const auto& child : children){
-                    if (child && !child->loadedAll()) return false;
-                }
-                return true;
-            }
-            // loaded with nothing waiting, and so every child
-            bool ready() const{
-                if (!loaded || needReload)
-                    return false;
-                for (const auto& child : children){
-                    if (child && !child->ready()) return false;
-                }
-                return true;
-            }
         };
 
         struct ParticleSystemState {
             EmitterRuntime runtime;
             // the effect it runs (the asset or the inline document, the exposed values applied)
             std::shared_ptr<const CompiledEffect> effect;
+            // its own copy of the effect once a script changed an exposed value (the values written
+            // into it, not compiled again), and the values the running effect holds
+            std::shared_ptr<CompiledEffect> ownEffect;
+            std::vector<ParticleExposedValue> exposedApplied;
             std::string effectPath;          // the asset it was read from (empty: inline)
             uint64_t effectVersion = 0;      // the asset's version it was compiled from
+            // the sub-emitter files it was bound from (their paths and versions, down the tree),
+            // and the library's generation when that was last checked
+            uint64_t subEmitterSignature = 0;
+            uint64_t subEmitterGeneration = 0;
             std::vector<Diagnostic> diagnostics;
             bool started = false;            // Play On Awake ran (or a script played it)
             // it was playing (or paused) after the last frame: its stop action runs when it is not
@@ -156,6 +147,7 @@ namespace jasperengine{
             double renderMicros = 0.0;
             uint32_t sortedViews = 0;
             uint32_t drawnViews = 0;
+            uint64_t sortedViewKey = 0;      // the last view sortedViews counted
 
             // the editor's preview scrubbing (seek with checkpoints, R29)
             std::unique_ptr<ParticlePreview> preview;

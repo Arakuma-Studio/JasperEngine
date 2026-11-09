@@ -1,0 +1,92 @@
+{
+ "code": [],
+ "description": "A triangle described as a signed distance function",
+ "format": 1,
+ "functions": [
+  "sdTriangle"
+ ],
+ "id": "sdtriangle",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "sdTriangle",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The triangle as a signed distance function",
+   "expr": "sdTriangle($uv - 0.5, vec2($p1x, $p1y), vec2($p2x, $p2y), vec2($p3x, $p3y))",
+   "label": "Output",
+   "type": "sdf2d"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.2,
+   "description": "The position on the X axis of the first point of the triangle",
+   "label": "Point 1 X",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "p1x",
+   "short_description": "Center.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": -0.25,
+   "description": "The position on the Y axis of the first point of the triangle",
+   "label": "Point 1 Y",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "p1y",
+   "short_description": "Center.y",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.3,
+   "description": "The position on the X axis of the second point of the triangle",
+   "label": "Point 2 X",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "p2x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.3,
+   "description": "The position on the Y axis of the second point of the triangle",
+   "label": "Point 2 Y",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "p2y",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": -0.4,
+   "description": "The position on the X axis of the third point of the triangle",
+   "label": "Point 3 X",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "p3x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.2,
+   "description": "The position on the Y axis of the third point of the triangle",
+   "label": "Point 3 Y",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "p3y",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "sdTriangle",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdtriangle.mmg"
+ },
+ "type_version": 1
+}

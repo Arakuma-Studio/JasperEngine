@@ -190,6 +190,7 @@ void EmitterRuntime::bind(std::shared_ptr<const CompiledEffect> effect, uint32_t
     collisions.reserve(prog->maxCollisionEvents);
     deaths.reserve(kMaxDeathEvents);
     subEmits.reserve(64);
+    sounds.reserve(kMaxSoundEvents);
     burstGroups.reserve(kMaxBursts * 8);
     collisionContacts = false;
     for (const Op& op : prog->updateOps){
@@ -205,6 +206,21 @@ void EmitterRuntime::bind(std::shared_ptr<const CompiledEffect> effect, uint32_t
 bool EmitterRuntime::rebind(std::shared_ptr<const CompiledEffect> effect){
     if (!prog || !effect || !effect->valid || !prog->sameStructure(effect->program))
         return false;
+    // the children are bound per entry: what an entry names is structure, its other fields are
+    // read when it fires
+    const std::vector<SubEmitterEntry>& before = compiled->document.subEmitters;
+    const std::vector<SubEmitterEntry>& after = effect->document.subEmitters;
+    if (prog->subEmitters){
+        if (before.size() != after.size())
+            return false;
+        for (size_t e = 0; e < before.size(); e++){
+            // what an entry compiles into its child (its channels) is structure too
+            if (before[e].effect != after[e].effect || before[e].inheritRotation != after[e].inheritRotation ||
+                before[e].followParent != after[e].followParent || before[e].followRotation != after[e].followRotation ||
+                before[e].followScale != after[e].followScale)
+                return false;
+        }
+    }
     compiled = std::move(effect);
     prog = &compiled->program;
     return true;
@@ -238,6 +254,23 @@ void EmitterRuntime::bindSubEmitters(const SubEmitterResolver& resolve, int dept
         }
     }
     setChildren(std::move(list));
+}
+
+bool EmitterRuntime::rebindSubEmitters(const SubEmitterResolver& resolve, int depth){
+    if (!prog || !prog->subEmitters || depth >= kMaxSubEmitterDepth)
+        return children.empty();
+    const std::vector<SubEmitterEntry>& entries = compiled->document.subEmitters;
+    if (entries.size() != children.size())
+        return false;
+    for (size_t e = 0; e < entries.size(); e++){
+        std::shared_ptr<const CompiledEffect> effect = resolve(entries[e]);
+        const bool readable = effect && effect->valid;
+        if (readable != (children[e] != nullptr))
+            return false;
+        if (readable && (!children[e]->rebind(std::move(effect)) || !children[e]->rebindSubEmitters(resolve, depth + 1)))
+            return false;
+    }
+    return true;
 }
 
 void EmitterRuntime::unbind(){
@@ -308,6 +341,7 @@ void EmitterRuntime::reset(uint32_t newSeed){
     collisions.clear();
     deaths.clear();
     subEmits.clear();
+    sounds.clear();
     std::fill(std::begin(planeGrid), std::end(planeGrid), CachedPlane());
     for (size_t i = 0; i < children.size(); i++){
         if (children[i]) children[i]->reset(childSeed(newSeed, (uint32_t)i));
@@ -429,6 +463,55 @@ bool EmitterRuntime::isEmitting() const{
     return playState != PlayState::Stopped && emitting;
 }
 
+uint32_t EmitterRuntime::totalCount() const{
+    uint32_t total = channels.count;
+    for (const auto& c : children){
+        if (c) total += c->totalCount();
+    }
+    return total;
+}
+
+uint32_t EmitterRuntime::totalCapacity() const{
+    uint32_t total = channels.capacity();
+    for (const auto& c : children){
+        if (c) total += c->totalCapacity();
+    }
+    return total;
+}
+
+uint32_t EmitterRuntime::totalMaxParticles() const{
+    uint32_t total = prog ? prog->maxParticles : 0u;
+    for (const auto& c : children){
+        if (c) total += c->totalMaxParticles();
+    }
+    return total;
+}
+
+uint32_t EmitterRuntime::treeCapacityHint() const{
+    if (!prog)
+        return 0u;
+    const uint32_t own = prog->capacityHint();
+    if (children.empty())
+        return own;
+    // the children from the parents' peak itself: the storage hint's padding would multiply
+    const uint64_t parents = (uint64_t)std::ceil(prog->peakEstimate());
+    return (uint32_t)std::min<uint64_t>((uint64_t)own + childrenCapacityHint(parents), UINT32_MAX);
+}
+
+uint64_t EmitterRuntime::childrenCapacityHint(uint64_t parents) const{
+    const std::vector<SubEmitterEntry>& entries = compiled->document.subEmitters;
+    uint64_t total = 0;
+    for (size_t e = 0; e < children.size() && e < entries.size(); e++){
+        const EmitterRuntime* child = children[e].get();
+        if (!child || !child->prog || entries[e].emitCount <= 0)
+            continue;
+        const double asked = (double)parents * (double)entries[e].emitCount * (double)std::clamp(entries[e].probability, 0.0f, 1.0f);
+        const uint64_t held = (uint64_t)std::min(std::ceil(asked), (double)child->prog->maxParticles);
+        total += held + child->childrenCapacityHint(held);
+    }
+    return total;
+}
+
 bool EmitterRuntime::isAlive() const{
     if (channels.count > 0 || trailStore.usedRings() > 0)
         return true;
@@ -460,9 +543,50 @@ void EmitterRuntime::emit(uint32_t n, const EmitOverrides* overrides){
     }
 }
 
-void EmitterRuntime::sendTrigger(uint32_t nameHash){
-    if (triggers.size() < 64)
-        triggers.push_back(nameHash);
+void EmitterRuntime::sendTrigger(uint32_t name){
+    if (!prog)
+        return;
+    const ParticleEffectDocument& d = compiled->document;
+    for (size_t t = 0; t < d.triggers.size(); t++){
+        const EffectTrigger& trigger = d.triggers[t];
+        if (nameHash(trigger.name) != name)
+            continue;
+        switch (trigger.action){
+            case TriggerAction::Play: play(); break;
+            case TriggerAction::Pause: pause(); break;
+            case TriggerAction::Stop: stop(false); break;
+            case TriggerAction::StopAndClear: stop(true); break;
+            case TriggerAction::None: break;
+        }
+        if (!trigger.soundEvent.empty())
+            recordSound(ParticleSoundEvent::Source::Trigger, (uint32_t)t, nullptr);
+    }
+    // its Trigger sub-emitters fire on the next tick (after the actions: a play resets)
+    bool fires = false;
+    if (prog->subEmitters){
+        for (const SubEmitterEntry& entry : d.subEmitters)
+            fires = fires || (entry.trigger == SubEmitterTrigger::Trigger && nameHash(entry.triggerName) == name);
+    }
+    if (!fires || triggers.size() >= 64)
+        return;
+    triggers.push_back(name);
+    // a stopped emitter runs that tick, without its own emission (as emit() does)
+    if (playState == PlayState::Stopped){
+        playState = PlayState::Playing;
+        emitting = false;
+    }
+}
+
+void EmitterRuntime::recordSound(ParticleSoundEvent::Source source, uint32_t index, const float* position){
+    if (!recordEffects || sounds.size() >= kMaxSoundEvents)
+        return;
+    ParticleSoundEvent event;
+    event.source = source;
+    event.index = (uint16_t)index;
+    event.atEmitter = position == nullptr;
+    if (position)
+        std::memcpy(event.position, position, sizeof(event.position));
+    sounds.push_back(event);
 }
 
 bool EmitterRuntime::queueSpawn(const SpawnRequest& request){
@@ -475,7 +599,13 @@ bool EmitterRuntime::queueSpawn(const SpawnRequest& request){
 // ---------------------------------------------------------------- frames and ticks
 
 uint32_t EmitterRuntime::limit(const EmitterInput& input) const{
-    return std::min({prog->maxParticles, input.budget, kMaxParticlesPerEmitter});
+    // what its children hold comes out of the budget it shares with them
+    uint32_t held = 0;
+    for (const auto& c : children){
+        if (c) held += c->totalCount();
+    }
+    const uint32_t budget = input.budget > held ? input.budget - held : 0u;
+    return std::min({prog->maxParticles, budget, kMaxParticlesPerEmitter});
 }
 
 uint32_t EmitterRuntime::planFrame(const EmitterInput& input, double dt, uint32_t maxTicks){
@@ -552,6 +682,16 @@ void EmitterRuntime::endFrame(){
         alpha = (float)std::clamp(accumulator / frameTick, 0.0, 1.0);
     else
         alpha = 1.0f;
+    shareInterpolation();
+}
+
+void EmitterRuntime::shareInterpolation(){
+    for (auto& c : children){
+        if (!c || !c->prog)
+            continue;
+        c->alpha = c->prog->interpolate ? alpha : 1.0f;
+        c->shareInterpolation();
+    }
 }
 
 void EmitterRuntime::setFrameTransforms(const EmitterInput& input, double fraction){
@@ -1081,6 +1221,9 @@ void EmitterRuntime::emissionStage(const EmitterInput& input){
                     const SubEmitterEntry& entry = compiled->document.subEmitters[e];
                     if (entry.trigger != SubEmitterTrigger::Trigger || nameHash(entry.triggerName) != name)
                         continue;
+                    // from every live particle, or from the emitter when there is none
+                    if (channels.count == 0)
+                        raiseEntryAtEmitter((uint32_t)e);
                     for (uint32_t i = 0; i < channels.count; i++)
                         raiseEntry((uint32_t)e, SubEmitterTrigger::Trigger, i, nullptr);
                 }
@@ -1134,6 +1277,8 @@ void EmitterRuntime::emissionStage(const EmitterInput& input){
                     burstGroups.push_back(n);
                     burstCount += n;
                 }
+                if (b < compiled->document.emission.bursts.size() && !compiled->document.emission.bursts[b].soundEvent.empty())
+                    recordSound(ParticleSoundEvent::Source::Burst, (uint32_t)b, nullptr);
             }
         }
         burstCount = std::min(burstCount, budget);
@@ -1341,6 +1486,23 @@ void EmitterRuntime::spawnBatch(const EmitterInput& input, uint32_t n, const flo
         }
     }
 
+    // Follow Parent: the parent each child moves with, and its rotation and size now
+    if (ctx.ch[ChParentId]){
+        uint32_t* parent = reinterpret_cast<uint32_t*>(ctx.ch[ChParentId]);
+        for (uint32_t k = 0; k < n; k++) parent[k] = request ? request->parentId : kNoParent;
+        if (ctx.ch[ChFollowQuatX]){
+            const float identity[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+            const float* q = request ? request->parentQuat : identity;
+            for (uint32_t k = 0; k < n; k++){
+                ctx.ch[ChFollowQuatX][k] = q[0]; ctx.ch[ChFollowQuatY][k] = q[1];
+                ctx.ch[ChFollowQuatZ][k] = q[2]; ctx.ch[ChFollowQuatW][k] = q[3];
+            }
+        }
+        if (ctx.ch[ChFollowSize]){
+            for (uint32_t k = 0; k < n; k++) ctx.ch[ChFollowSize][k] = request ? request->size : 1.0f;
+        }
+    }
+
     // the pre-advance: the update ops over the part of the tick after each spawn (R3, the
     // old spawn sub-step)
     if (preAdvance){
@@ -1450,6 +1612,10 @@ void EmitterRuntime::raiseEntry(uint32_t e, SubEmitterTrigger trigger, uint32_t 
     r.inherit = (entry.inheritColor ? InheritColor : 0) | (entry.inheritSize ? InheritSize : 0) | (entry.inheritRotation ? InheritRotation : 0) |
                 (entry.inheritLifetime ? InheritLifetime : 0) | (entry.inheritVelocity ? InheritVelocity : 0);
     r.factor = entry.inheritFactor;
+    if (entry.followParent && entry.followRotation)
+        particleRotation(index, r.parentQuat);
+    if (!entry.soundEvent.empty())
+        recordSound(ParticleSoundEvent::Source::SubEmitter, e, r.position);
     if (target->queueSpawn(r) && recordEffects && subEmits.size() < 64){
         SubEmitEvent ev;
         ev.trigger = trigger;
@@ -1460,15 +1626,83 @@ void EmitterRuntime::raiseEntry(uint32_t e, SubEmitterTrigger trigger, uint32_t 
     }
 }
 
-void EmitterRuntime::appearance(uint32_t i, float color[4], float& size, float& rotation) const{
-    const RenderParams& rp = prog->render;
-    ScalarDriver d;
+void EmitterRuntime::raiseEntryAtEmitter(uint32_t e){
+    const SubEmitterEntry& entry = compiled->document.subEmitters[e];
+    EmitterRuntime* target = e < children.size() ? children[e].get() : nullptr;
+    if (!target || !target->prog || entry.emitCount <= 0)
+        return;
+    // the draw of a particle-less fire: the tick's
+    if (entry.probability < 1.0f && random01(seed ^ randomSalt((uint32_t)ModuleId::SubEmitters, e) ^ 0x7f4a7c15u, (uint32_t)ticks) >= entry.probability)
+        return;
+    SpawnRequest r;
+    r.position[0] = tickTransform[12];
+    r.position[1] = tickTransform[13];
+    r.position[2] = tickTransform[14];
+    std::memcpy(r.velocity, emitterVelocity, sizeof(r.velocity));
+    r.count = (uint32_t)entry.emitCount;
+    r.parentId = kNoParent;
+    // nothing to inherit from
+    r.inherit = 0;
+    if (!entry.soundEvent.empty())
+        recordSound(ParticleSoundEvent::Source::SubEmitter, e, r.position);
+    if (target->queueSpawn(r) && recordEffects && subEmits.size() < 64){
+        SubEmitEvent ev;
+        ev.trigger = SubEmitterTrigger::Trigger;
+        ev.entry = e;
+        ev.count = r.count;
+        std::memcpy(ev.position, r.position, sizeof(r.position));
+        subEmits.push_back(ev);
+    }
+}
+
+void EmitterRuntime::driverOf(uint32_t i, ScalarDriver& d) const{
     d.seed = seed;
     d.age = channels.get(ChAge)[i];
     d.normAge = d.age * channels.get(ChInvLife)[i];
     d.spawn = channels.getU(ChSpawnIndex)[i];
     const float vx = channels.get(ChVelX)[i], vy = channels.get(ChVelY)[i], vz = channels.get(ChVelZ)[i];
     d.speed = std::sqrt(vx * vx + vy * vy + vz * vz);
+}
+
+float EmitterRuntime::sizeOf(uint32_t i, const ScalarDriver& d) const{
+    const RenderParams& rp = prog->render;
+    float size = rp.storedSize ? channels.get(ChSizeX)[i] : channels.get(ChStartSize)[i];
+    if (rp.sizeOverLifetime) size *= curveScalar(*prog, rp.sizeX, d);
+    if (rp.sizeBySpeed) size *= curveScalar(*prog, rp.speedSizeX, d);
+    if (rp.noiseSize) size *= channels.get(ChNoiseSize)[i];
+    return size;
+}
+
+float EmitterRuntime::rollOf(uint32_t i, const ScalarDriver& d) const{
+    const RenderParams& rp = prog->render;
+    if (rp.storedRotation)
+        return channels.get(ChRotation)[i];
+    float rotation = rp.startRotationStored ? channels.get(ChStartRotation)[i] : curveScalar(*prog, rp.startRotation, d);
+    if (rp.rotationOverLifetime){
+        if (rp.rotationRate.kind == CurveParam::Const || rp.rotationRate.kind == CurveParam::Range)
+            rotation += curveScalar(*prog, rp.rotationRate, d) * d.age;
+        else
+            rotation += curveScalar(*prog, rp.rotationRate, d) / channels.get(ChInvLife)[i];
+    }
+    return rotation;
+}
+
+void EmitterRuntime::particleRotation(uint32_t i, float q[4]) const{
+    if (prog->has(ChQuatX)){
+        q[0] = channels.get(ChQuatX)[i]; q[1] = channels.get(ChQuatY)[i];
+        q[2] = channels.get(ChQuatZ)[i]; q[3] = channels.get(ChQuatW)[i];
+        return;
+    }
+    ScalarDriver d;
+    driverOf(i, d);
+    const float half = 0.5f * rollOf(i, d);
+    q[0] = 0.0f; q[1] = 0.0f; q[2] = std::sin(half); q[3] = std::cos(half);
+}
+
+void EmitterRuntime::appearance(uint32_t i, float color[4], float& size, float& rotation) const{
+    const RenderParams& rp = prog->render;
+    ScalarDriver d;
+    driverOf(i, d);
     if (rp.storedColor){
         color[0] = channels.get(ChColorR)[i]; color[1] = channels.get(ChColorG)[i];
         color[2] = channels.get(ChColorB)[i]; color[3] = channels.get(ChColorA)[i];
@@ -1488,24 +1722,106 @@ void EmitterRuntime::appearance(uint32_t i, float color[4], float& size, float& 
         gradientScalar(*prog, rp.speedColor, d, m);
         for (int k = 0; k < 4; k++) color[k] *= m[k];
     }
-    size = rp.storedSize ? channels.get(ChSizeX)[i] : channels.get(ChStartSize)[i];
-    if (rp.sizeOverLifetime) size *= curveScalar(*prog, rp.sizeX, d);
-    if (rp.sizeBySpeed) size *= curveScalar(*prog, rp.speedSizeX, d);
-    if (rp.noiseSize) size *= channels.get(ChNoiseSize)[i];
-    if (rp.storedRotation){
-        rotation = channels.get(ChRotation)[i];
-    }else{
-        rotation = rp.startRotationStored ? channels.get(ChStartRotation)[i] : curveScalar(*prog, rp.startRotation, d);
-        if (rp.rotationOverLifetime){
-            if (rp.rotationRate.kind == CurveParam::Const || rp.rotationRate.kind == CurveParam::Range)
-                rotation += curveScalar(*prog, rp.rotationRate, d) * d.age;
-            else
-                rotation += curveScalar(*prog, rp.rotationRate, d) / channels.get(ChInvLife)[i];
+    size = sizeOf(i, d);
+    rotation = rollOf(i, d);
+}
+
+void EmitterRuntime::followStage(EmitterRuntime& child, const SubEmitterEntry& entry){
+    // the parents by spawn index, once a tick (after this tick's deaths and compaction)
+    if (!followIndexed){
+        const uint32_t* spawn = channels.getU(ChSpawnIndex);
+        followIndex.resize(channels.count);
+        for (uint32_t i = 0; i < channels.count; i++) followIndex[i] = ((uint64_t)spawn[i] << 32) | i;
+        std::sort(followIndex.begin(), followIndex.end());
+        followIndexed = true;
+    }
+    const bool rotate = entry.followRotation && child.prog->followsRotation;
+    const bool scale = entry.followScale && child.prog->followsScale;
+    // the same simulation space (the child's transform is the parent's tick's): no conversion
+    const bool sameSpace = child.prog->space == prog->space;
+    uint32_t* parentOf = child.channels.getU(ChParentId);
+    float* cx = child.channels.get(ChPosX); float* cy = child.channels.get(ChPosY); float* cz = child.channels.get(ChPosZ);
+    float* vx = child.channels.get(ChVelX); float* vy = child.channels.get(ChVelY); float* vz = child.channels.get(ChVelZ);
+    const float* px = channels.get(ChPosX); const float* py = channels.get(ChPosY); const float* pz = channels.get(ChPosZ);
+    const float* qx = channels.get(ChPrevX); const float* qy = channels.get(ChPrevY); const float* qz = channels.get(ChPrevZ);
+    for (uint32_t i = 0; i < child.channels.count; i++){
+        const uint32_t parent = parentOf[i];
+        if (parent == kNoParent)
+            continue;
+        const uint64_t key = (uint64_t)parent << 32;
+        const auto found = std::lower_bound(followIndex.begin(), followIndex.end(), key);
+        if (found == followIndex.end() || (uint32_t)(*found >> 32) != parent){
+            // its parent died: it stays where it is from now on
+            parentOf[i] = kNoParent;
+            continue;
+        }
+        const uint32_t p = (uint32_t)(*found & 0xffffffffu);
+        // the child in the parent's space, as an offset from where the parent was a tick ago
+        float c[3] = {cx[i], cy[i], cz[i]}, v[3] = {vx[i], vy[i], vz[i]};
+        if (!sameSpace){
+            float w[3];
+            child.simToWorldPoint(c, w);
+            worldToSimPoint(w, c);
+            child.simToWorldDir(v, w);
+            worldToSimDir(w, v);
+        }
+        float offset[3] = {c[0] - qx[p], c[1] - qy[p], c[2] - qz[p]};
+        if (rotate){
+            // the parent's turn since the last tick: now * conjugate(then)
+            float now[4];
+            particleRotation(p, now);
+            float* then[4] = {child.channels.get(ChFollowQuatX) + i, child.channels.get(ChFollowQuatY) + i,
+                              child.channels.get(ChFollowQuatZ) + i, child.channels.get(ChFollowQuatW) + i};
+            const float b[4] = {-*then[0], -*then[1], -*then[2], *then[3]};
+            const float turn[4] = {now[3] * b[0] + now[0] * b[3] + now[1] * b[2] - now[2] * b[1],
+                                   now[3] * b[1] - now[0] * b[2] + now[1] * b[3] + now[2] * b[0],
+                                   now[3] * b[2] + now[0] * b[1] - now[1] * b[0] + now[2] * b[3],
+                                   now[3] * b[3] - now[0] * b[0] - now[1] * b[1] - now[2] * b[2]};
+            auto turnVector = [&turn](float x[3]){
+                // x + 2w (q x x) + 2 q x (q x x)
+                const float t[3] = {2.0f * (turn[1] * x[2] - turn[2] * x[1]), 2.0f * (turn[2] * x[0] - turn[0] * x[2]), 2.0f * (turn[0] * x[1] - turn[1] * x[0])};
+                const float r[3] = {x[0] + turn[3] * t[0] + turn[1] * t[2] - turn[2] * t[1], x[1] + turn[3] * t[1] + turn[2] * t[0] - turn[0] * t[2],
+                                    x[2] + turn[3] * t[2] + turn[0] * t[1] - turn[1] * t[0]};
+                x[0] = r[0]; x[1] = r[1]; x[2] = r[2];
+            };
+            turnVector(offset);
+            turnVector(v);
+            for (int k = 0; k < 4; k++) *then[k] = now[k];
+        }
+        if (scale){
+            ScalarDriver d;
+            driverOf(p, d);
+            const float now = sizeOf(p, d);
+            float& then = child.channels.get(ChFollowSize)[i];
+            if (then > 0.0f){
+                const float ratio = now / then;
+                for (int k = 0; k < 3; k++) offset[k] *= ratio;
+            }
+            then = now;
+        }
+        c[0] = px[p] + offset[0]; c[1] = py[p] + offset[1]; c[2] = pz[p] + offset[2];
+        if (!sameSpace){
+            float w[3];
+            simToWorldPoint(c, w);
+            child.worldToSimPoint(w, c);
+            simToWorldDir(v, w);
+            child.worldToSimDir(w, v);
+        }
+        cx[i] = c[0]; cy[i] = c[1]; cz[i] = c[2];
+        vx[i] = v[0]; vy[i] = v[1]; vz[i] = v[2];
+        // its chunk's bounds take it where it is now
+        ChunkOutput& o = child.chunkOut[i / child.activeChunkSize];
+        for (int k = 0; k < 3; k++){
+            o.boundsMin[k] = std::min(o.boundsMin[k], c[k]);
+            o.boundsMax[k] = std::max(o.boundsMax[k], c[k]);
         }
     }
 }
 
 void EmitterRuntime::childrenStage(const EmitterInput& input){
+    followIndexed = false;
+    // the tree shares its budget: what the parent and the other entries hold, a child has not
+    uint32_t held = totalCount();
     for (size_t c = 0; c < children.size(); c++){
         EmitterRuntime* child = children[c].get();
         if (!child || !child->prog)
@@ -1514,7 +1830,9 @@ void EmitterRuntime::childrenStage(const EmitterInput& input){
         EmitterInput childInput = input;
         childInput.transform = tickTransform;
         childInput.seed = child->seed;
-        childInput.budget = input.budget > channels.count ? input.budget - channels.count : 0u;
+        const uint32_t childBefore = child->totalCount();
+        const uint32_t others = held - childBefore;
+        childInput.budget = input.budget > others ? input.budget - others : 0u;
         child->playState = PlayState::Playing;
         std::memcpy(child->prevFrame, tickTransform, sizeof(tickTransform));
         std::memcpy(child->curFrame, tickTransform, sizeof(tickTransform));
@@ -1535,8 +1853,13 @@ void EmitterRuntime::childrenStage(const EmitterInput& input){
         }else if (chunks > 1){
             jobsOf(input).parallelFor(chunks, [child](size_t k){ child->updateChunk((uint32_t)k); });
         }
+        // after their own motion, before their newborns: the children that follow move on with
+        // their parents
+        const std::vector<SubEmitterEntry>& entries = compiled->document.subEmitters;
+        if (child->prog->followsParent && c < entries.size() && entries[c].followParent && chunks > 0)
+            followStage(*child, entries[c]);
         child->finishTick(childInput);
-        child->alpha = alpha;
+        held = others + child->totalCount();
     }
 }
 
@@ -1582,6 +1905,7 @@ void EmitterRuntime::step(const EmitterInput& input){
     std::memcpy(prevFrame, curFrame, sizeof(prevFrame));
     accumulator = 0.0;
     alpha = 1.0f;
+    shareInterpolation();
 }
 
 void EmitterRuntime::beginSeek(const EmitterInput& input, double time, SeekState& s){
@@ -1643,6 +1967,7 @@ void EmitterRuntime::continueSeekTicks(const EmitterInput& input, SeekState& s, 
         // the remainder of the target drives the interpolation
         accumulator = std::max(0.0, s.target - s.total * s.tick);
         alpha = prog->interpolate ? (float)std::clamp(accumulator / s.tick, 0.0, 1.0) : 1.0f;
+        shareInterpolation();
     }
 }
 
@@ -1677,6 +2002,7 @@ void EmitterRuntime::seekStep(const EmitterInput& input, double tick){
 void EmitterRuntime::settleSeek(double remainder, double tick){
     accumulator = std::max(0.0, remainder);
     alpha = (prog && prog->interpolate && tick > 0.0) ? (float)std::clamp(accumulator / tick, 0.0, 1.0) : 1.0f;
+    shareInterpolation();
 }
 
 void EmitterRuntime::seek(const EmitterInput& input, double time){

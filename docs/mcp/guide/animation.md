@@ -49,6 +49,68 @@ State machines, blend trees, layers, IK and humanoid retargeting over these clip
 `get_animation {entity: "Hero"}` lists the player's states (`players[0].states: [{name, clip,
 wrap}]`) and a binding report per state; use it after renames or when retargeting a clip.
 
+## Quality: numbers before pictures
+
+Screenshots cost tokens and cannot show a slide or a one-frame pop. Measure first. Both tools below
+are in the `animation` group (`tool_groups {enable: ["animation"]}`) and run as jobs.
+
+| Question | Call | Read |
+|---|---|---|
+| How big? | `get_animation {clip, max_keys: 1}` or `get_asset_info {path}` | `stats.runtime_bytes`, `keys` |
+| How many joints, before placing it? | `get_asset_info {path, skeleton: true}` | `model.skeleton_summary` |
+| Which bone hangs from which, once placed? | `get_model_info {entity}` | `bones[i].parent` (null: a root) |
+| What costs most in the project? | `check_animation {checks: ["stats"], top: 8}` | `clips` (largest first), `totals` |
+| A clean loop? Does the root drift? | `check_animation {clips: [clip]}` | `loop_seam`, `root_motion`, `findings`, `ok` |
+| Is this clip the same as that one? | `check_animation {clips: [a], compare_to: b, limits: {error_mm: 1}}` | `compare.max_error_mm`, `worst_joint`, `within_tolerance` |
+| Do the feet slide? | `check_animation {clips: [clip], checks: ["foot_sliding"], feet: [...]}` | `foot_sliding.max_slide_mm`, `matching_ground_speed_mps`, `contact_source` |
+| Why does it pop? | `check_animation {entity, transition: {from, to}}` | `transition.max_step_mm`, `worst_joint`, `causes` |
+| Do they slide in the game? | `play`, then `check_animation {entity, record_seconds: 3}` | `foot_sliding` of the Animator's Foot IK and Foot Lock legs |
+
+`ok: false` is a successful call that has findings (the `ProjectChecks` shape: `docs/mcp/checks.md`). Every
+mm is measured: both clips sampled with the runtime sampler at each key time and halfway between them, then
+each joint and six points `skin_distance_mm` from it are compared. A check that has no number to give says
+so (`anim-no-rig`, `anim-compare-unmeasured`, `contact_source: "none"`); silence never means a pass.
+
+**Feet.** A foot is on the ground while it is within 2 cm of the lowest it gets; `max_slide_mm` is how far it
+gets from where it touched down (`anim-foot-slide` over 15 mm, `limits.foot_slide_mm`). The feet are `feet`
+(bone names or paths), else a humanoid model's feet; a generic rig with neither has `contact_source: "none"` and
+no number. An in-place clip is measured on ground moving at `matching_ground_speed_mps` (move the character at
+it); `move_speed` measures at your speed instead. `record_seconds` (play mode) watches the Animator's own Foot
+IK and Foot Lock constraints; with neither, `contact_source` is `"none"`. A slide on a planted foot: match the
+speed, or add a `foot_lock` constraint and record again. Live numbers: `get_animator` `live` (`docs/animator`).
+
+**Transitions.** `transition {from, to}` crossfades two states of `entity` (duration and start from its
+controller's transition, else `duration`, `at`): `max_step_mm` is the largest joint step in 1/60 s through it,
+`baseline_step_mm` the largest around it, `causes` what explains a pop (`anim-transition-pop` over 30 mm and twice
+the baseline, `limits.pop_mm`).
+
+**Reducing keys: preview, write, prove.** Usually a small gain: JasperArcade-Ported's 51 clips, already
+key-reduced by their FBX import, have a median of 1.1x fewer keys at 1 mm, and tracks that lose different keys
+stop sharing their key times, so Memory can stay as it was or grow. Read the numbers; keep the source when they
+do not pay (`warnings`: `no_gain`, `kept_all_keys`).
+
+1. `optimize_animation {clips: ["assets/anim/walk.anim"]}`: nothing is written. Read `bytes_before`,
+   `bytes_after`, `keys_before`, `keys_after`, `max_error_mm`, `worst_joint`.
+2. The same arguments + `output: true`: writes `walk.opt.anim` beside it, one undo step, its error measured
+   again from the file. A model's clip (`model#Clip`, or a model for all of them) writes a new `.anim`; a
+   model is never changed. `output: "<the source>", overwrite: true` replaces the source (one undo step).
+   `root: "Hero"` switches that GameObject's Animation Player to the new files (one scene undo step).
+3. `check_animation {clips: ["assets/anim/walk.opt.anim"], compare_to: "assets/anim/walk.anim"}`: the limit is
+   the tolerance its `optimize` record kept. Require `compare.within_tolerance`.
+
+`tolerance_mm` (default 1) bounds the measured error at `skin_distance_mm` (default 100, floor 10). It is capped
+at 0.1 % of the height of what the clip moves (`effective_tolerance_mm`). Feet and toes (the humanoid map, or
+names with foot, toe, ankle, `ball_`) get half of it, measured; `joints: [{path, tolerance_mm}]` overrides one joint
+(its path or name, a trailing `*` matches the rest). Tightening a joint tightens its ancestors, since they move it,
+but not its siblings or children. A clip must name its rig: a model's clip has one; for an `.anim` pass `on` (or
+`entity`) or give it a Preview Model, else `no_rig`.
+
+Tracks with tangents, eases or steps, morph, lattice, property and humanoid tracks, and paths not on the rig keep
+all their keys and are counted in `skipped_tracks`. A clip with humanoid tracks only has nothing to reduce.
+
+**Common mistakes.** Reading a whole clip on a dense rig (tens of thousands of tokens: pass `max_keys: 1`).
+Comparing a `.poseanim`'s numbers with a clip's. Calling a preview's keys a saving before reading `bytes_after`.
+
 ## The .anim file
 
 UTF-8 JSON, written canonically (fixed key order, 2-space indent, one keyframe per line, tracks
@@ -154,6 +216,15 @@ sorted by path then channel, events by time). Writing the same data twice gives 
 - With `root`, a track may give `target` (a GameObject ref) instead of `path`: it is turned into
   the path from the root (results always show `path`).
 
+## What a clip costs
+
+`get_animation {clip, max_keys: 1}` and `get_asset_info {path}` (under `clip`) return `stats`:
+`runtime_bytes` (what the clip holds in memory, the number `Clip memory` adds up), `file_bytes` (null for a model clip), `keys`, `tracks`, `length_s`,
+`constant_tracks` (tracks of several keys that never move) and `audio_cues`. Asking does not keep the clip loaded.
+Across the project: `get_memory_stats {prefix: "Animation.Clips"}` is what is loaded now, and
+`get_frame_times {monitors: ["Animators", "Animators sampled", "Animators culled", "Anim Prepare ms",
+"Anim Wave ms", "Anim Finalize ms", "Clip memory"]}` what the Animators cost per frame.
+
 ## Channels and keys
 
 edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead of `value`):
@@ -201,6 +272,10 @@ Catalog key (as `set_properties`) or the Inspector name (`"Image"` -> `ui`), `ga
 component: `color.a`). An unknown name is refused with a did-you-mean and the component's list.
 List what a GameObject has with `get_animation {root, list_properties: "Panel/Stats"}`
 (`[{component, property, kind, label, value}]`).
+
+On an Animator, Lua fields, `active` and a script's `enabled` apply on the main thread before the
+frame's root motion, state callbacks and events, in the order in `docs/animator.md`, "Order of a
+frame". Two Animators keying one GameObject's property: the later Animator's value stays.
 
 | component | properties |
 |---|---|
@@ -414,7 +489,7 @@ player beside an Animator hands over to it, so scripts written for upstream keep
 
 | scene mode refuses | why |
 |---|---|
-| `wrap`, `length`, `frame_rate`, `events`, `events_mode`, `root`, `create` | clip-file settings: pass `clip` |
+| `wrap`, `length`, `frame_rate`, `events`, `events_mode`, `root`, `create`, `root_motion` | clip-file settings: pass `clip` |
 | `tracks[].path` | clip binding: pass `clip`; scene tracks use `target` |
 | `audio[].source`, `audio[].stop`, `audio[].follow_speed` | clip cue keys: an audio action lasts its frame (`duration`) |
 
@@ -422,8 +497,9 @@ Clip mode arguments: `clip`, `create` (`{}` a new file; `{from: <entity Animatio
 its keyframe tracks into the file and gives the Animation's target, or `root`, an Animation
 Player playing it, and `remove_tracks: true` also removes the converted tracks from the
 Animation; `{from: "assets/models/hero.gltf#Walk"}` extracts a model clip into an editable
-file), `tracks`, `events`, `audio`, `events_mode`, `wrap`, `frame_rate`, `length`, `root`, `scene` (of
-`root` / `from`), `max_keys`. `create` fails when the file exists; without it the file must
+file), `tracks`, `events`, `audio`, `events_mode`, `wrap`, `frame_rate`, `length`, `root_motion`
+(`{bone, bake_rotation, bake_position_y, bake_position_xz}`, the members given change; `bone` `""` is
+the Animator's choice), `root`, `scene` (of `root` / `from`), `max_keys`. `create` fails when the file exists; without it the file must
 exist. A call is all or nothing; a setting given with its current value is a no-change, not an
 error (retries are safe).
 
@@ -446,7 +522,12 @@ changed it (else the file stays and the console says so).
 - glTF/FBX animations are read-only clips named `<model>#<animation>`
   (`assets/models/hero.gltf#Walk`; `#Animation <i>` for unnamed ones (`#<i>` is accepted too),
   `"Walk 2"` for a duplicate name). Reference them in `clips` like files; read them with
-  `get_animation {clip}` (`get_asset_info` on the model lists the animations). To edit one,
+  `get_animation {clip}` (`get_asset_info` on the model lists the animations, each with its
+  `keys`, `runtime_bytes`, `wrap` and `root_motion`).
+- A model clip's `wrap` and `root_motion` are its import settings: `edit_animation {clip:
+  "assets/models/hero.gltf#Walk", wrap: "loop"}` writes them to `hero.gltf.clips` beside the model
+  (one project undo step); Play and an exported game read that file, so a model clip loops without
+  extracting it. Any other argument on a model clip is refused. To edit its keys or events,
   extract it: `edit_animation {clip: "assets/anim/walk.anim", create: {from:
   "assets/models/hero.gltf#Walk"}, root: "Hero"}`. With `root` whose Animation Player lists the
   model clip, those entries switch to the new file (state names kept) in the same call, one
@@ -569,7 +650,8 @@ stops; their undo goes back to the authored value, never a previewed pose.
 - Relative scale keys of `[0, 0, 0]` for "unchanged": relative scale multiplies, use `[1, 1, 1]`.
 - Editing a key read from a result: change `euler` (it wins over `quat`), or send only one.
 - Expecting `once` clips to snap back: they hold the last pose (use `stop`, or `loop`).
-- Editing a model clip: it is read-only; extract it first.
+- Editing a model clip's keys or events: it is read-only; extract it first (`wrap` and
+  `root_motion` are its settings, no extract needed).
 - Events on a script of a child: handlers run on the scripts of the player's own GameObject.
 - `onEvent = function(name, args)`: the callback gets one `event` (`event.functionName`,
   `event.args`).

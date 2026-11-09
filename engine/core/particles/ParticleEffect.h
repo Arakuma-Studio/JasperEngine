@@ -34,6 +34,8 @@ namespace jasperengine { namespace particles {
     inline constexpr uint32_t kMaxTrailPoints = 64;
     inline constexpr size_t kMaxSetOverAgeEntries = 16;
     inline constexpr size_t kMaxExposed = 32;
+    inline constexpr size_t kMaxTriggers = 16;
+    inline constexpr int kMaxRingSegments = 256;
 
     enum class SimulationSpace : uint8_t { Local, World };
     enum class ScalingMode : uint8_t { Hierarchy, Local, Shape };
@@ -82,6 +84,9 @@ namespace jasperengine { namespace particles {
         int cycles = 1;           // 0 repeats for ever
         float interval = 0.01f;   // seconds between cycles
         float probability = 1.0f;
+        // a .soundevent (S37) played at the emitter each time the burst fires
+        std::string soundEvent;
+        std::string soundEventGuid;
     };
 
     struct EmissionModule {
@@ -395,6 +400,8 @@ namespace jasperengine { namespace particles {
         Mesh,
         None,                    // trails only
         VelocityAligned,         // faces along the velocity (Unity's Velocity alignment)
+        // a flat ring (or arc) made from the Renderer's ring settings, drawn as a mesh particle
+        Ring,
         Pixel                    // a pixel shape drawn per base pixel on the grid (S49 R9)
     };
     // How Mesh particles turn (Unity's Render Alignment): in the simulation space (the
@@ -507,6 +514,12 @@ namespace jasperengine { namespace particles {
         std::string emissionMapGuid;
         Vector4 emissionColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);   // sRGB
         float emissionIntensity = 0.0f;
+        // Ring mode: the ring in XY facing +Z, at a particle size of 1 (U along the arc from +X,
+        // V from the outer edge to the inner)
+        float ringOuterRadius = 0.5f;
+        float ringInnerRadius = 0.25f;
+        float ringArc = 360.0f;       // degrees, from +X towards +Y
+        int ringSegments = 32;        // over the whole arc
         // the Pixel render mode's shape and its settings (S49 R9)
         PixelShape pixelShape = PixelShape::Dot;
         float streakLengthScale = 0.022f;   // px of length per px/s
@@ -560,6 +573,26 @@ namespace jasperengine { namespace particles {
         float inheritFactor = 1.0f; // scales the inherited size, lifetime and velocity
         int emitCount = 1;
         float probability = 1.0f;
+        // the children keep moving with the particle that spawned them while it lives (its
+        // position every tick; with followRotation also its turn, with followScale its growth)
+        bool followParent = false;
+        bool followRotation = false;
+        bool followScale = false;
+        // a .soundevent (S37) played where the entry fires
+        std::string soundEvent;
+        std::string soundEventGuid;
+    };
+
+    // What a named trigger (sendTrigger) does to the emitter that receives it, besides firing its
+    // Trigger sub-emitters of that name and playing its sound
+    enum class TriggerAction : uint8_t { None, Play, Pause, Stop, StopAndClear };
+
+    struct EffectTrigger {
+        std::string name;
+        TriggerAction action = TriggerAction::Play;
+        // a .soundevent (S37) played at the emitter when it runs
+        std::string soundEvent;
+        std::string soundEventGuid;
     };
 
     // A named parameter scripts and the component set (setFloat("Intensity", 2)): it writes
@@ -635,6 +668,7 @@ namespace jasperengine { namespace particles {
 
         std::vector<SubEmitterEntry> subEmitters;
         std::vector<ExposedParameter> exposed;
+        std::vector<EffectTrigger> triggers;
     };
 
     // A finding of the validation: the JSON path of the field and what is wrong with it
@@ -646,6 +680,7 @@ namespace jasperengine { namespace particles {
         // a typed finding ("analytic_unsupported") and how to fix it; empty for the others
         std::string code;
         std::string fix;
+        bool unknownKey = false;   // a key the format does not have: read past in a file, refused in a patch
     };
 
     // A .particles JSON text into a document, for code that cannot include the JSON library

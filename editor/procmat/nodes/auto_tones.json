@@ -1,0 +1,244 @@
+{
+ "connections": [
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "tones_map",
+   "to_port": 0
+  },
+  {
+   "from": "tones_map",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "combine",
+   "from_port": 0,
+   "to": "iterate_buffer",
+   "to_port": 0
+  },
+  {
+   "from": "iterate_buffer",
+   "from_port": 0,
+   "to": "decompose",
+   "to_port": 0
+  },
+  {
+   "from": "iterate_buffer",
+   "from_port": 1,
+   "to": "14423",
+   "to_port": 0
+  },
+  {
+   "from": "14423",
+   "from_port": 0,
+   "to": "iterate_buffer",
+   "to_port": 1
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "combine",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "combine",
+   "to_port": 1
+  },
+  {
+   "from": "decompose",
+   "from_port": 0,
+   "to": "tones_map",
+   "to_port": 1
+  },
+  {
+   "from": "decompose",
+   "from_port": 1,
+   "to": "tones_map",
+   "to_port": 2
+  }
+ ],
+ "description": "Finds the minimum and maximum values in the input texture and tone maps it to the full 0.0 - 1.0 range.",
+ "format": 1,
+ "id": "auto_tones",
+ "inputs": [
+  {
+   "description": "The input image",
+   "group_size": 0,
+   "label": "Input",
+   "name": "in",
+   "type": "f"
+  }
+ ],
+ "kind": "graph",
+ "name": "Auto Tones",
+ "nodes": [
+  {
+   "id": "tones_map",
+   "parameters": {},
+   "seed": -54302,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "0.5",
+      "description": "The input image",
+      "label": "",
+      "name": "in",
+      "short_description": "Input",
+      "type": "f"
+     },
+     {
+      "default": "0.0",
+      "label": "",
+      "name": "in_min",
+      "type": "f"
+     },
+     {
+      "default": "1.0",
+      "label": "",
+      "name": "in_max",
+      "type": "f"
+     }
+    ],
+    "instance": [],
+    "outputs": [
+     {
+      "description": "Shows the generated remapped image",
+      "expr": "($in($uv)-$in_min($uv))/($in_max($uv)-$in_min($uv))",
+      "label": "Output",
+      "type": "f"
+     }
+    ],
+    "parameters": []
+   }
+  },
+  {
+   "id": "decompose",
+   "parameters": {},
+   "seed": 35843,
+   "type": "decompose"
+  },
+  {
+   "id": "combine",
+   "parameters": {},
+   "seed": -46531,
+   "type": "combine"
+  },
+  {
+   "id": "iterate_buffer",
+   "parameters": {
+    "autostop": false,
+    "f32": false,
+    "filter": false,
+    "iterations": 13,
+    "mipmap": false,
+    "shrink": true,
+    "size": 11
+   },
+   "seed": 29168,
+   "seed_locked": true,
+   "type": "iterate_buffer"
+  },
+  {
+   "id": "14423",
+   "parameters": {
+    "size": 11
+   },
+   "seed": 53617,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "vec3(0.0)",
+      "function": true,
+      "label": "",
+      "name": "in",
+      "type": "rgb"
+     }
+    ],
+    "instance": [
+     "vec3 $(name)_compare(vec2 uv, float size, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tfloat iter = $in(uv).b;",
+     "\tsize = size / exp2(floor(iter * 100.0 + 0.5));",
+     "\titer += 0.01;",
+     "\tfloat pixel_offset = 1.0 / size;",
+     "\tvec2 half_res_uv = floor(uv * size / 2.0) / size * 2.0 + pixel_offset / 2.0;",
+     "\tvec3 values[4];",
+     "\tvalues[0] = $in(half_res_uv);",
+     "\tvalues[1] = $in(half_res_uv + vec2(pixel_offset, 0.0));",
+     "\tvalues[2] = $in(half_res_uv + vec2(0.0, pixel_offset));",
+     "\tvalues[3] = $in(half_res_uv + vec2(pixel_offset, pixel_offset));",
+     "\t",
+     "\tfloat lowest = 1.0;",
+     "\tfloat highest = 0.0;",
+     "\t",
+     "\tfor (int i = 0; i < 4; i++) {",
+     "\t\tlowest = values[i].r < lowest ? values[i].r : lowest;",
+     "\t\thighest = values[i].g > highest ? values[i].g : highest;",
+     "\t}",
+     "\t",
+     "\treturn vec3( lowest, highest , iter);",
+     "}"
+    ],
+    "outputs": [
+     {
+      "expr": "$(name)_compare($uv, $size, _seed_variation_, _controlled_variation_)",
+      "type": "rgb"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 10,
+      "first": 1,
+      "label": "",
+      "last": 13,
+      "name": "size",
+      "type": "size"
+     }
+    ]
+   }
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the generated remapped image",
+   "group_size": 0,
+   "label": "Output",
+   "name": "out",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 11,
+   "first": 4,
+   "label": "",
+   "last": 13,
+   "links": [
+    {
+     "node": "iterate_buffer",
+     "param": "size"
+    },
+    {
+     "node": "14423",
+     "param": "size"
+    }
+   ],
+   "name": "size",
+   "type": "size"
+  }
+ ],
+ "short_description": "Auto Tones",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/auto_tones.mmg"
+ },
+ "type_version": 1
+}

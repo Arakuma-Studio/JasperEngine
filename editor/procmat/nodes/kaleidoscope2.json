@@ -1,0 +1,70 @@
+{
+ "code": [
+  "vec3 $(name_uv)_kal = kal_rotate($uv, $count, $offset, $seed);"
+ ],
+ "description": "Replicated an angle of the input image several times around the center.",
+ "format": 1,
+ "functions": [
+  "kal_rotate"
+ ],
+ "id": "kaleidoscope2",
+ "inputs": [
+  {
+   "default": "vec4($uv, 0, 1)",
+   "description": "The input image",
+   "function": true,
+   "label": "",
+   "name": "i#",
+   "short_description": "Input#",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Kaleidoscope",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the transformed image",
+   "expr": "$i#.variation($(name_uv)_kal.xy, $variations ? $(name_uv)_kal.z : 0.0)",
+   "label": "Output#",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 5,
+   "description": "The number of replications of an angle of the input",
+   "label": "Count",
+   "max": 10,
+   "min": 2,
+   "name": "count",
+   "short_description": "Count",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The angular offset of the replicated angle of the input",
+   "label": "Offset",
+   "max": 180,
+   "min": -180,
+   "name": "offset",
+   "short_description": "Offset",
+   "step": 0.1,
+   "type": "float"
+  },
+  {
+   "default": false,
+   "label": "Variations",
+   "name": "variations",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Kaleidoscope",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/kaleidoscope2.mmg"
+ },
+ "type_version": 1
+}

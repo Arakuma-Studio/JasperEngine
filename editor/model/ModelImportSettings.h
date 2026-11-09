@@ -92,6 +92,15 @@ namespace jasperengine::editor {
     enum class ScriptMeshData : uint8_t { Automatic, Keep, Release };
     const char* scriptMeshDataName(ScriptMeshData value);
 
+    // Project Settings > Animation > Animation Entities (S77 R38): whether a model placed in a scene
+    // makes an Animation entity per clip. Always is what every project did before; Auto, which new
+    // projects get, places a model of kAutoAnimationEntitiesClips or more clips with
+    // ModelComponent::animationEntities false (its clips play through an Animation Player or an
+    // Animator). A missing key is Always, so an older project keeps its behaviour.
+    enum class AnimationEntitiesMode : uint8_t { Always, Auto };
+    const char* animationEntitiesModeName(AnimationEntitiesMode value);    // "always", "auto"
+    inline constexpr int kAutoAnimationEntitiesClips = 5;
+
     // A platform's render budget (R25): 0 is no limit for that metric
     struct RenderBudget {
         long long triangles = 0;        // the main view's, as the Game view draws a frame
@@ -103,13 +112,15 @@ namespace jasperengine::editor {
         bool operator==(const RenderBudget&) const = default;
     };
 
-    // Project Settings > Mesh (R19) and Quality's render budgets (R25): project.yaml's `mesh:`
+    // Project Settings > Mesh (R19), Quality's render budgets (R25) and Animation's Animation
+    // Entities (S77 R38): project.yaml's `mesh:`
     struct ModelProjectSettings {
         // the defaults of every model setting a model does not set, per platform
         std::array<ModelSettingValues, kModelFamilyCount> defaults;
         int cacheSizeMB = 2048;
         ScriptMeshData scriptMeshData = ScriptMeshData::Automatic;
         std::array<RenderBudget, kModelFamilyCount> renderBudgets;
+        AnimationEntitiesMode animationEntities = AnimationEntitiesMode::Always;
 
         bool operator==(const ModelProjectSettings&) const = default;
     };

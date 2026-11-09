@@ -1,0 +1,68 @@
+{
+ "code": [],
+ "description": "Creates a grayscale image from a shape described as a 2D Signed Distance Function",
+ "format": 1,
+ "functions": [],
+ "id": "sdshow2",
+ "inputs": [
+  {
+   "default": "0.0",
+   "description": "The input shape",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "sdf2d"
+  }
+ ],
+ "instance": [
+  "float $(name)_d(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tfloat e = 0.0001;",
+  "\tfloat d = $in(uv);",
+  "\tfloat k = length(vec2($in(uv+vec2(e, 0.0))-d, $in(uv+vec2(0.0, e))-d))/e;",
+  "\treturn d/k;",
+  "}",
+  ""
+ ],
+ "kind": "shader",
+ "name": "sdShow 2",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the shape as a grayscale image",
+   "expr": "clamp($base-$(name)_d($uv, _seed_variation_, _controlled_variation_)/max($bevel, 0.00001), 0.0, 1.0)",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The width of the gradient at the edges of the shape",
+   "label": "Bevel",
+   "max": 1,
+   "min": 0,
+   "name": "bevel",
+   "short_description": "Bevel",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The base value of the output",
+   "label": "Base",
+   "max": 1,
+   "min": 0,
+   "name": "base",
+   "short_description": "Base",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "sdShow",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdshow2.mmg"
+ },
+ "type_version": 1
+}

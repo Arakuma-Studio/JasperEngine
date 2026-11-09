@@ -69,6 +69,11 @@ void ParticleEffectLibrary::set(const std::string& path, const ParticleEffectDoc
 
 void ParticleEffectLibrary::clear(){
     library().assets.clear();
+    library().nextVersion++;
+}
+
+uint64_t ParticleEffectLibrary::generation(){
+    return library().nextVersion;
 }
 
 uint64_t ParticleEffectLibrary::version(const std::string& path){
