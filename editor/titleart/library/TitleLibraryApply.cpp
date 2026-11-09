@@ -330,6 +330,15 @@ namespace {
         return layer;
     }
 
+    // rims and bands get their ids here (a lone object's normalize does not mint them): the part keys
+    // of the look's part effects name them
+    void giveIds(Json& style, const char* list, TitleOpContext& ctx) {
+        if (!style.contains(list) || !style[list].is_array()) return;
+        for (Json& element : style[list]) {
+            if (element.is_object() && !titleart::isTitleArtId(str(element, "id"))) element["id"] = ctx.newId();
+        }
+    }
+
     bool applyLook(TitleOpContext& ctx, const Json& op) {
         Json* found = ctx.layer(op);
         if (!found) return false;
@@ -378,12 +387,14 @@ namespace {
             if (!look3D) {
                 const Json oldFill = layer.contains("style") && layer["style"].contains("face") && layer["style"]["face"].contains("fill") ? layer["style"]["face"]["fill"] : Json();
                 Json style = expandObject(look->member("style"), "style2d", &ctx.ids);
+                giveIds(style, "rims", ctx);
                 if (oldFill.is_object() && str(oldFill, "kind") == "source") style["face"]["fill"] = oldFill;
                 freshLinks(style, linkIds, ctx);
                 layer["style"] = std::move(style);
                 changes["replaced"].push_back("style");
             } else {
                 Json style = expandObject(look->member("style_3d"), "style_3d", &ctx.ids);
+                giveIds(style, "bands", ctx);
                 if (look->member("lighting").is_object()) style["lighting"] = expandObject(look->member("lighting"), "lighting_3d", &ctx.ids);
                 freshLinks(style, linkIds, ctx);
                 layer["style_3d"] = std::move(style);

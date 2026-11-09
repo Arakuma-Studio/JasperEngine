@@ -584,6 +584,14 @@ namespace {
             if (n == natural) continue;
             if (assignRoles(rings, A, n, 0, 0, found, budget)) return found;
         }
+        // no one count of accents explains every ring (a material link gave two rings one paint): each
+        // ring keeps the kind of paint that produced it, and the link sync settles the colours again
+        for (size_t i = 0; i < rings.size(); i++) {
+            const RingFit& r = rings[i];
+            if (r.face) roles[i] = Role::Face;
+            else if (r.dark) roles[i] = Role::Dark;
+            else if (std::find(r.accent.begin(), r.accent.end(), 1) != r.accent.end()) roles[i] = Role::Accent;
+        }
         return roles;
     }
 

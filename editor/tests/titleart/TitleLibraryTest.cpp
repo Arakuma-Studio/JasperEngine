@@ -404,7 +404,7 @@ TEST_F(TitleLibraryFixture, Deterministic) {
                     std::string k = it.key();
                     if (k.rfind("rim:", 0) == 0) k = "rim:*";
                     Json value = it.value();
-                    if (k == "id" || k == "owner" || k == "follow") value = "*";
+                    if (k == "id" || k == "owner" || k == "follow" || k == "guid") value = "*";
                     walk(value);
                     out[k] = value;
                 }
