@@ -163,9 +163,7 @@ async def test_preview_then_write_then_rerun(ed: Editor):
     message = await ed.check_error("fix_pixel_art", {"source": HERO_CLEAN, "rerun": True, "output": True}, contains="output_edited")
     ed.check("force" in message, f"the fix offers force: {message[:300]}")
 
-    # one undo removes the first write's step (the file is gone again once back past it): undo the
-    # two writes of this test in order
-    await ed.call("undo", scope="project")
+    # one undo removes the write (the re-run's identical bytes made no step of its own)
     await ed.call("undo", scope="project")
     ed.check(not (ed.project / HERO_CLEAN).exists(), "undo removes the written file")
 
@@ -211,15 +209,15 @@ async def test_needs_person_is_refused_then_forced(ed: Editor):
 
 async def test_cancelled_job_writes_nothing(ed: Editor):
     (ed.project / ART).mkdir(parents=True, exist_ok=True)
-    width = height = 1500
-    rng = random.Random(5)
-    rows = bytearray()
-    for y in range(height):
-        rows.append(0)
-        for x in range(width):
-            v = (x // 11 + y // 11) % 7 * 30 + rng.randint(0, 2)
-            rows += bytes((v, 255 - v, v // 2, 255))
-    data = zlib.compress(bytes(rows), 1)
+    # big enough that bent grid lines run past the 1 s the call waits: flat cells of 3 px, 4,000 px square
+    width = height = 4000
+    pixel_rows = []
+    for k in range(7):
+        a = bytes(((k * 40) & 255, 255 - (k * 30) & 255, (k * 17) & 255, 255))
+        b = bytes(((k * 40 + 60) & 255, (k * 30) & 255, 255 - (k * 17) & 255, 255))
+        pixel_rows.append(b"\0" + (a * 3 + b * 3) * (width // 6) + a * (width % 6))
+    raw = b"".join(pixel_rows[(y // 3) % 7] for y in range(height))
+    data = zlib.compress(raw, 1)
     png = b"\x89PNG\r\n\x1a\n"
     for kind, body in ((b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)), (b"IDAT", data), (b"IEND", b"")):
         png += struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xffffffff)
@@ -227,7 +225,7 @@ async def test_cancelled_job_writes_nothing(ed: Editor):
     (ed.project / big).write_bytes(png)
     await enable(ed)
     before = files_in(ed.project)
-    started = await ed.call("fix_pixel_art", {"source": big, "output": True, "timeout_seconds": 1})
+    started = await ed.call("fix_pixel_art", {"source": big, "output": True, "timeout_seconds": 1, "recipe": {"grid": {"kind": "cells", "cell_width": 3}, "follow": "bend"}})
     ed.check_eq(started.get("status"), "running", f"past 1 s it is a job: {str(started)[:200]}")
     await ed.call("cancel_job", job_id=started["job_id"])
     for _ in range(600):
@@ -245,12 +243,13 @@ async def test_apply_sets_the_sprite(ed: Editor):
     await ed.call("create_entity", name="HeroSprite", type="sprite")
     r = await ed.call("fix_pixel_art", {"source": HERO, "output": {"png": f"{ART}/hero_applied.png"}, "apply": "HeroSprite"})
     ed.check("applied" in r, f"applied: {str(r)[:300]}")
-    props = await ed.call("get_components", entity="HeroSprite", components=["mesh"])
+    props = await ed.call("get_entity", entity="HeroSprite", components=["mesh"])
     text = json.dumps(props)
     ed.check("hero_applied.png" in text, f"the Sprite's texture is the output: {text[:300]}")
     entries = (await ed.call("get_undo_history", scope="timeline", limit=5))["entries"]
     names = [e["name"] for e in entries]
-    ed.check(any("Cleaned Sprite" in n for n in names), f"a scene step: {names}")
+    ed.check(any("HeroSprite" in n and "Set Properties" in n for n in names), f"a scene step: {names}")
+    ed.check_eq(r["applied"]["undo"]["name"], names[0], "the result names the scene step")
     ed.check(any("Pixel Art Cleanup" in n for n in names), f"the file step: {names}")
     await ed.check_error("fix_pixel_art", {"source": HERO, "apply": "HeroSprite"}, contains="output")
 
@@ -306,6 +305,7 @@ async def test_import_step(ed: Editor):
              f"the report keeps the warning: {report}")
 
     # the export: the recipe chunk never ships
+    await ed.call("save_project")
     out = ed.scratch.root / "export-step"
     built = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", timeout_seconds=900)
     ed.check_eq(built["status"], "succeeded", f"{built}")

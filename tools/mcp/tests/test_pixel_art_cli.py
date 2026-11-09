@@ -51,6 +51,8 @@ def ai_png() -> bytes:
 
 
 def native_png() -> bytes:
+    """Pixel art at its own size: no fake cells, every pixel on its own."""
+    rng = random.Random(3)
     colors = [(26, 28, 44, 255), (239, 125, 87, 255), (255, 205, 117, 255), (41, 54, 111, 255)]
     size = 16
     rgba = bytearray()
@@ -59,7 +61,7 @@ def native_png() -> bytes:
             if x in (0, size - 1) or y in (0, size - 1):
                 rgba += bytes((0, 0, 0, 0))
             else:
-                rgba += bytes(colors[(x // 3 + y // 3) % 4])
+                rgba += bytes(rng.choice(colors))
     return pngdiff.encode(size, size, bytes(rgba))
 
 
@@ -155,6 +157,37 @@ async def test_check_pixel_art_cleanup_outputs(ed: Editor):
     cli = subprocess.run(editor_cmd("check", "--project", str(ed.project), "--pixel-art", "--format", "json"), capture_output=True, text=True, timeout=240)
     report = json.loads(cli.stdout)
     assert not [f for f in report.get("pixel_art", report).get("findings", []) if f.get("rule") == "cleanup_outputs"], cli.stdout[-800:]
+
+    # a pixel no longer on the output's stored palette: a FAIL lint, and check exits 1 on it (R49)
+    output = art / "ai_clean.png"
+    (art / "ai_clean.png").write_bytes(_tweaked_keeping_chunk(output.read_bytes()))
+    tool = await ed.call("check_pixel_art", {"rules": ["cleanup_outputs"]})
+    finds = [f for f in tool["findings"] if f["rule"] == "cleanup_outputs"]
+    assert any(f["status"] == "FAIL" and "off_palette" in f["key"] for f in finds), f"FAIL lint finding: {finds}"
+    cli = subprocess.run(editor_cmd("check", "--project", str(ed.project), "--pixel-art", "--format", "json"), capture_output=True, text=True, timeout=240)
+    assert cli.returncode == 1, cli.stdout[-800:] + cli.stderr[-800:]
+    assert "cleanup_outputs" in cli.stdout and "off_palette" in cli.stdout, cli.stdout[-800:]
+
+
+def _tweaked_keeping_chunk(png: bytes) -> bytes:
+    """An opaque pixel off every palette colour, with the recipe chunk kept, so the file still reads as an output."""
+    import struct
+
+    at = 8
+    chunk = b""
+    while at < len(png):
+        length, kind = struct.unpack(">I4s", png[at:at + 8])
+        if kind == b"iTXt" and png[at + 8:].startswith(b"jasper.pixelcleanup\0"):
+            chunk = png[at:at + 12 + length]
+        at += 12 + length
+    w, h, rgba = pngdiff.decode(png)
+    for i in range(3, len(rgba), 4):
+        if rgba[i] == 255:
+            rgba[i - 3:i] = bytes((1, 2, 3))
+            break
+    plain = pngdiff.encode(w, h, bytes(rgba))
+    ihdr_end = 8 + 12 + struct.unpack(">I", plain[8:12])[0]
+    return plain[:ihdr_end] + chunk + plain[ihdr_end:]
 
 
 def _tweaked(png: bytes) -> bytes:

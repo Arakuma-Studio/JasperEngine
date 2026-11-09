@@ -425,8 +425,8 @@ void finishFix(const std::shared_ptr<FixState>& state, McpContext& ctx, const st
     }
     text += " Wrote " + (firstAseprite.empty() ? firstPng : firstAseprite) + " as one undo step.";
 
-    auto finishOk = [state, job, data, text]() mutable {
-        state->data = std::move(data);
+    const auto finishOk = [&]() {
+        state->data = data;
         state->text = text;
         job->succeed(text, state->data);
     };
@@ -446,8 +446,12 @@ void finishFix(const std::shared_ptr<FixState>& state, McpContext& ctx, const st
                 data["apply_error"] = "the GameObject went away; the file was written (undo removes it)";
             } else {
                 ApplyOutcome outcome = applyAsepriteOutput(current, sp, entity, assetPath);
-                if (outcome.ok) data["applied"] = {{"undo", {{"scope", "scene"}, {"scene", sceneId}, {"name", outcome.undoName}}}};
-                else data["apply_error"] = problemJson(outcome.problem);
+                if (outcome.ok) {
+                    UndoTimeline::EntryView last = UndoTimeline::nextUndo(sceneId);
+                    data["applied"] = {{"undo", {{"scope", "scene"}, {"scene", sceneId}, {"name", last.entry ? last.entry->name() : outcome.undoName}}}};
+                } else {
+                    data["apply_error"] = problemJson(outcome.problem);
+                }
             }
             state->data = std::move(data);
             state->text = text;
@@ -461,8 +465,12 @@ void finishFix(const std::shared_ptr<FixState>& state, McpContext& ctx, const st
     std::string error;
     if (!McpValues::assetPathFromJson(project, firstPng, assetPath, error)) assetPath = firstPng;
     ApplyOutcome outcome = applyPngOutput(project, sp, state->applyEntity, assetPath, state->result);
-    if (outcome.ok) data["applied"] = {{"undo", {{"scope", "scene"}, {"scene", state->applyScene}, {"name", outcome.undoName}}}};
-    else data["apply_error"] = problemJson(outcome.problem);
+    if (outcome.ok) {
+        UndoTimeline::EntryView last = UndoTimeline::nextUndo(state->applyScene);
+        data["applied"] = {{"undo", {{"scope", "scene"}, {"scene", state->applyScene}, {"name", last.entry ? last.entry->name() : outcome.undoName}, {"id", last.entry ? last.entry->info.id : 0}}}};
+    } else {
+        data["apply_error"] = problemJson(outcome.problem);
+    }
     finishOk();
 }
 

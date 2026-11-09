@@ -28,7 +28,7 @@ EDITOR = {"create": True, "name": "LintPixelArt"}
 
 FIXTURES = REPO / "editor" / "tests" / "fixtures" / "pixelart" / "lint"
 ORACLE = REPO / "tools" / "mcp" / "pixel_lint_ref.py"
-ASEPRITE_FIXTURE = REPO / "editor" / "tests" / "fixtures" / "asefile" / "layers_and_tags.aseprite"
+ASEPRITE_FIXTURE = REPO / "editor" / "tests" / "fixtures" / "aseprite" / "asefile" / "layers_and_tags.aseprite"
 ART = "assets/art"
 
 
@@ -80,15 +80,11 @@ async def test_tag_against_the_oracle_and_image(ed: Editor):
     (ed.project / ART).mkdir(parents=True, exist_ok=True)
     src = ed.project / ART / "walker.aseprite"
     shutil.copy(ASEPRITE_FIXTURE, src)
-    described = await ed.call("get_asset_info", path=f"{ART}/walker.aseprite")
-    text = json.dumps(described)
-    # the fixture's tags
-    tag = None
-    for candidate in ("walk", "Walk", "run", "idle", "Idle"):
-        if f'"{candidate}"' in text:
-            tag = candidate
-            break
-    ed.check(tag is not None, f"the fixture has a tag: {text[:400]}")
+    info = subprocess.run(harness.editor_command() + ["aseprite", "info", str(src), "--json"], capture_output=True, text=True, timeout=120)
+    ed.check_eq(info.returncode, 0, info.stderr[-500:])
+    described = json.loads(info.stdout)
+    tags = {t["name"]: t for t in described["tags"]}
+    tag = max(tags, key=lambda name: tags[name]["to"] - tags[name]["from"])
     mtime = os.stat(src).st_mtime_ns
     result = await lint(ed, source=f"{ART}/walker.aseprite", frames=tag)
     ed.check(result["frames"] >= 1, f"frames: {result['frames']}")
@@ -99,9 +95,6 @@ async def test_tag_against_the_oracle_and_image(ed: Editor):
     # The oracle reads the same frames (rendered by S44's `aseprite render`, the pixels the Sprite Preview shows)
     scratch = Path(tempfile.mkdtemp(prefix="je-lint-oracle-"))
     try:
-        info = subprocess.run(harness.editor_command() + ["aseprite", "info", str(src), "--json"], capture_output=True, text=True, timeout=120)
-        tags = {t["name"]: t for t in json.loads(info.stdout)["tags"]}
-        ed.check(tag in tags, f"tag {tag} in {list(tags)}")
         first, last = tags[tag]["from"], tags[tag]["to"]
         frames = []
         for frame in range(first, last + 1):

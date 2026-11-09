@@ -363,7 +363,10 @@ TEST_F(CleanupSessionFiles, SheetsRoundTripAsAsepriteAndPngJson) {
     const std::string source = writePng("run_sheet.png", fake.image);
 
     Spec spec = specOf(source);
-    spec.recipe = {{"remove_background", true}, {"palette", {"#2a2d3e", "#e43b44", "#f77622", "#ffe762"}}};
+    // the grid is given: the fake sheet's own frames are too small for a confident shared cell (R21's guard)
+    const std::vector<std::string> hex = {jasperengine::pixelart::toHex(sweetie[2]), jasperengine::pixelart::toHex(sweetie[3]),
+                                          jasperengine::pixelart::toHex(sweetie[4]), jasperengine::pixelart::toHex(sweetie[1])};
+    spec.recipe = {{"remove_background", true}, {"palette", hex}, {"grid", {{"kind", "cells"}, {"cell_width", 6}}}};
     spec.output.write = true;
     Prepared prepared = preparedOf(spec);
     const Result result = run(prepared);

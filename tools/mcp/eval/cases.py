@@ -1349,7 +1349,7 @@ CASES = [
         "what_happened": "New tool (S46): checking a sprite's craft (jaggies, palette, flicker) is lint_pixel_art, read-only; an agent "
                          "that doesn't know it writes its own analysis script or calls fix_pixel_art on art that is meant to stay as it is.",
         "text_at_issue": "lint_pixel_art: 'Checks an image, .aseprite ... or Sprite: craft lints and rule lints'; the group row "
-                         "'cleanup of AI art, lints'",
+                         "'lints, cleanup'",
         "source": "S46 R46 (new tool text); no failure on record",
         "prompt": "Check assets/art/walk.aseprite's walk tag for pixel-art problems (jaggies, flicker, palette use). Don't change the file.",
         "mocks": [
@@ -3549,7 +3549,7 @@ CASES = [
         "what_happened": "New tool (S42): blurry, uneven pixel art is check_pixel_art's to measure and fix (one call to "
                          "preview, the same with output: true to apply); without the group's description and the result's `next` "
                          "an agent edits import settings and filters by hand, or stops at the preview.",
-        "text_at_issue": "tool_groups' pixel_art: 'Pixel art: checks, palettes and font previews (jasper://docs/pixel-art)'; check_pixel_art: 'fix previews the changes; "
+        "text_at_issue": "tool_groups' pixel_art: 'Pixel art: checks, lints, cleanup, palettes, fonts (jasper://docs/pixel-art)'; check_pixel_art: 'fix previews the changes; "
                          "the same call with output:true applies them as one undo step'; the results' `next`",
         "source": "S42 R22 (new tool text); no failure on record",
         "prompt": "Our pixel-art game looks blurry and some sprite columns are wider than others on a 1366x768 laptop. "
