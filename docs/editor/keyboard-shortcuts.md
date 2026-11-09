@@ -230,6 +230,12 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 |---|---|---|
 | Run Pixel Art Check | F5 | Pixel Art Check |
 
+## Pixel Art Cleanup
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Write Pixel Art Cleanup | Ctrl+Enter | Pixel Art Cleanup |
+
 ## Palette
 
 | Command | Shortcut | Context |

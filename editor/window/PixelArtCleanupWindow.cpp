@@ -1328,12 +1328,14 @@ void PixelArtCleanupWindow::drawHighlights(ImDrawList* draw, bool canvasHovered)
     }
     if (any && !canvasHovered) {
         // find_ui_item's handle on the outlines (the mouse is over the list that lit them)
-        const ImVec2 cursor = ImGui::GetCursorScreenPos();
         const ImVec2 a = viewToScreen(minX, minY), b = viewToScreen(maxX, maxY);
-        ImGui::SetCursorScreenPos(a);
-        ImGui::InvisibleButton("##cleanup_highlight", ImVec2(std::max(1.0f, b.x - a.x), std::max(1.0f, b.y - a.y)));
-        UIProbe::item("pixelArtCleanup.highlight");
-        ImGui::SetCursorScreenPos(cursor);
+        const ImRect rect(a, ImVec2(std::max(a.x + 1.0f, b.x), std::max(a.y + 1.0f, b.y)));
+        const ImGuiID id = ImGui::GetID("##cleanup_highlight");
+        ImGuiContext& g = *GImGui;   // the macro's
+        if (ImGui::ItemAdd(rect, id)) {
+            IMGUI_TEST_ENGINE_ITEM_INFO(id, "##cleanup_highlight", ImGuiItemStatusFlags_None);
+        }
+        UIProbe::rect("pixelArtCleanup.highlight", rect.Min.x, rect.Min.y, rect.Max.x, rect.Max.y);
     }
 }
 
@@ -1880,7 +1882,7 @@ void PixelArtCleanupWindow::drawLostColorsTab() {
         char label[96];
         std::snprintf(label, sizeof(label), "%d px###cleanup_lost_%d", entry.pixels, i);
         const float avail = ImGui::GetContentRegionAvail().x;
-        if (ImGui::Selectable(label, false, ImGuiSelectableFlags_AllowOverlap, ImVec2(avail - Theme::dpi(100.0f), size)) && !entry.at.empty()) {
+        if (ImGui::Selectable(label, false, ImGuiSelectableFlags_AllowOverlap, ImVec2(avail - Theme::dpi(160.0f), size)) && !entry.at.empty()) {
             double x0, y0, x1, y1;
             if (cellRect(entry.frame < 0 ? -1 : entry.frame - 1, entry.at[0][0], entry.at[0][1], x0, y0, x1, y1)) {
                 if (resultSpace() && !shown->result.animation) {
