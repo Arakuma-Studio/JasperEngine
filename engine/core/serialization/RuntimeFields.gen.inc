@@ -2558,6 +2558,7 @@ const FieldEntry kBody_SpriteBatchComponent_fields[] = {
     JE_RF(SpriteBatchComponent, sortInstances, 0xb551f71eu, Bool),
 };
 const StructTable kBody_SpriteBatchComponent{"spritebatch", kBody_SpriteBatchComponent_fields, std::size(kBody_SpriteBatchComponent_fields)};
+
 const FieldEntry kBody_VoxelVolumeComponent_fields[] = {
     JE_RF(VoxelVolumeComponent, enabled, 0xe0232cc6u, Bool),
     JE_RF(VoxelVolumeComponent, volumeData, 0xcf672fffu, AssetPath),
