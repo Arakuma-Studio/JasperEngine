@@ -58,6 +58,12 @@ ShapeEvaluator::ShapeEvaluator(const Shape& shape): shape(&shape) {
     }
 }
 
+void ShapeEvaluator::sampleRow(const MapLattice& lattice, int x0, int count, float z, ShapeSample* out) const {
+    for (int i = 0; i < count; i++) {
+        out[i] = sample(lattice.x(x0 + i), z);
+    }
+}
+
 float ShapeEvaluator::falloffOf(float distance01) const {
     // the share of the radius past the solid core
     if (shape->falloff == Falloff::Constant || feather <= 0.0f) return 1.0f;

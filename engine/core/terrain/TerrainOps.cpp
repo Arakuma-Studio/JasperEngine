@@ -731,6 +731,12 @@ namespace {
                     const int y = blockRect.y + static_cast<int>(rowIndex);
                     const float z = lattice.z(y);
                     const size_t rowStart = rowIndex * blockRect.w;
+                    // the row's samples in one call; a worker keeps its buffer from row to row
+                    thread_local std::vector<ShapeSample> rowSamples;
+                    if (!forced) {
+                        rowSamples.resize(static_cast<size_t>(blockRect.w));
+                        shape.sampleRow(lattice, blockRect.x, blockRect.w, z, rowSamples.data());
+                    }
                     for (int x = blockRect.x; x < blockRect.right(); x++) {
                         const size_t column = static_cast<size_t>(x - blockRect.x);
                         const float* current = block.at(x, y);
@@ -739,7 +745,7 @@ namespace {
                             next[c] = current[c];
                         }
 
-                        const ShapeSample sample = forced ? forcedSample : shape.sample(lattice.x(x), z);
+                        const ShapeSample& sample = forced ? forcedSample : rowSamples[column];
                         const float base = useFalloff ? sample.falloff : sample.weight;
                         if (base <= 0.0f) continue;
                         rowCount.touched++;
@@ -1665,23 +1671,26 @@ namespace {
             if (view.map.kind != MapKind::Height) return;
             const MapFormat format = overlay.format(view.map);
             const int stride = bytesPerTexel(format);
-            const size_t texels = static_cast<size_t>(view.rect.area());
             TileStats& tile = perTile[index];
-            for (size_t i = 0; i < texels; i++) {
-                if (std::memcmp(view.before.data() + i * stride, view.after.data() + i * stride, stride) == 0) continue;
-                const float was = decodeChannel(view.before.data() + i * stride, format.bitsPerChannel) * maxHeight;
-                const float now = decodeChannel(view.after.data() + i * stride, format.bitsPerChannel) * maxHeight;
-                if (!tile.valid) {
-                    tile.valid = true;
-                    tile.minBefore = tile.maxBefore = was;
-                    tile.minAfter = tile.maxAfter = now;
+            // in the tile's order; only where a write reached can a texel differ
+            for (int y = view.written.y; y < view.written.bottom(); y++) {
+                for (int x = view.written.x; x < view.written.right(); x++) {
+                    const size_t i = static_cast<size_t>(y - view.rect.y) * view.rect.w + (x - view.rect.x);
+                    if (std::memcmp(view.before.data() + i * stride, view.after.data() + i * stride, stride) == 0) continue;
+                    const float was = decodeChannel(view.before.data() + i * stride, format.bitsPerChannel) * maxHeight;
+                    const float now = decodeChannel(view.after.data() + i * stride, format.bitsPerChannel) * maxHeight;
+                    if (!tile.valid) {
+                        tile.valid = true;
+                        tile.minBefore = tile.maxBefore = was;
+                        tile.minAfter = tile.maxAfter = now;
+                    }
+                    tile.minBefore = std::min(tile.minBefore, was);
+                    tile.maxBefore = std::max(tile.maxBefore, was);
+                    tile.minAfter = std::min(tile.minAfter, now);
+                    tile.maxAfter = std::max(tile.maxAfter, now);
+                    tile.maxDelta = std::max(tile.maxDelta, std::fabs(now - was));
+                    tile.deltas.push_back(now - was);
                 }
-                tile.minBefore = std::min(tile.minBefore, was);
-                tile.maxBefore = std::max(tile.maxBefore, was);
-                tile.minAfter = std::min(tile.minAfter, now);
-                tile.maxAfter = std::max(tile.maxAfter, now);
-                tile.maxDelta = std::max(tile.maxDelta, std::fabs(now - was));
-                tile.deltas.push_back(now - was);
             }
         };
         if (views.size() >= PARALLEL_STAT_TILES) {

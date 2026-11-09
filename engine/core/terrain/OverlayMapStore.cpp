@@ -219,6 +219,7 @@ WriteResult OverlayMapStore::write(MapId map, TexelRect rect, std::span<const fl
                 target[i] = detClamp01(source[i]);
             }
         }
+        tile.written = unite(tile.written, part);
         tile.afterValid = false;
     };
     const bool parallel = parts.size() >= PARALLEL_TILES;
@@ -257,20 +258,30 @@ WriteResult OverlayMapStore::write(MapId map, TexelRect rect, std::span<const fl
     return WriteResult{true, "", 0};
 }
 
-const std::vector<uint8_t>& OverlayMapStore::tileAfter(const MapState& mapState, const Tile& tile, bool* changed) const {
-    if (!tile.afterValid) {
-        const MapFormat& format = mapState.created ? mapState.format : baseStore->format(mapState.id);
+namespace {
+
+    // T1 R48: a tile's after bytes, its before bytes with the written texels encoded over them
+    template<typename Tile>
+    void encodeTile(MapId map, const MapFormat& format, const Tile& tile) {
         tile.after = tile.before;
-        const int count = floatChannels(mapState.id, format);
+        const int count = floatChannels(map, format);
         const int stride = bytesPerTexel(format);
-        const size_t texels = static_cast<size_t>(tile.rect.area());
+        const TexelRect span = intersect(tile.written, tile.rect);
         bool differs = false;
-        for (size_t i = 0; i < texels; i++) {
-            differs |= encodeTexel(mapState.id, format, tile.values.data() + i * count, tile.after.data() + i * stride);
+        for (int y = span.y; y < span.bottom(); y++) {
+            const size_t first = static_cast<size_t>(y - tile.rect.y) * tile.rect.w + (span.x - tile.rect.x);
+            for (int x = 0; x < span.w; x++) {
+                differs |= encodeTexel(map, format, tile.values.data() + (first + x) * count, tile.after.data() + (first + x) * stride);
+            }
         }
         tile.afterChanged = differs;
         tile.afterValid = true;
     }
+
+}
+
+const std::vector<uint8_t>& OverlayMapStore::tileAfter(const MapState& mapState, const Tile& tile, bool* changed) const {
+    if (!tile.afterValid) encodeTile(mapState.id, mapState.created ? mapState.format : baseStore->format(mapState.id), tile);
     if (changed) *changed = tile.afterChanged;
     return tile.after;
 }
@@ -292,19 +303,7 @@ void OverlayMapStore::encodeTiles() const {
         mapState->encodeFormat = mapState->created ? mapState->format : baseStore->format(mapState->id);
     }
     auto encode = [&](size_t index) {
-        const MapState& mapState = *stale[index].mapState;
-        const Tile& tile = *stale[index].tile;
-        const MapFormat& format = mapState.encodeFormat;
-        tile.after = tile.before;
-        const int count = floatChannels(mapState.id, format);
-        const int stride = bytesPerTexel(format);
-        const size_t texels = static_cast<size_t>(tile.rect.area());
-        bool differs = false;
-        for (size_t i = 0; i < texels; i++) {
-            differs |= encodeTexel(mapState.id, format, tile.values.data() + i * count, tile.after.data() + i * stride);
-        }
-        tile.afterChanged = differs;
-        tile.afterValid = true;
+        encodeTile(stale[index].mapState->id, stale[index].mapState->encodeFormat, *stale[index].tile);
     };
     if (stale.size() >= PARALLEL_TILES) {
         jobs::parallelFor(stale.size(), encode);
@@ -496,12 +495,13 @@ std::vector<OverlayMapStore::MapChange> OverlayMapStore::changes() const {
             const Tile& tile = *tiles[index];
             MapChange& part = parts[index];
             const size_t rowBytes = static_cast<size_t>(tile.rect.w) * stride;
-            for (int y = 0; y < tile.rect.h; y++) {
+            const TexelRect span = intersect(tile.written, tile.rect);
+            for (int y = span.y - tile.rect.y; y < span.bottom() - tile.rect.y; y++) {
                 const uint8_t* after = tile.after.data() + rowBytes * y;
                 const uint8_t* before = tile.before.data() + rowBytes * y;
                 if (std::memcmp(after, before, rowBytes) == 0) continue;
                 int first = -1, last = -1;
-                for (int x = 0; x < tile.rect.w; x++) {
+                for (int x = span.x - tile.rect.x; x < span.right() - tile.rect.x; x++) {
                     if (std::memcmp(after + x * stride, before + x * stride, stride) == 0) continue;
                     if (first < 0) first = x;
                     last = x;
@@ -700,7 +700,7 @@ std::vector<OverlayMapStore::TileView> OverlayMapStore::tileViews() const {
     std::vector<TileView> views;
     for (const std::unique_ptr<MapState>& mapState : maps) {
         for (const auto& [key, tile] : mapState->tiles) {
-            views.push_back(TileView{mapState->id, tile.rect, tile.before, tile.after});
+            views.push_back(TileView{mapState->id, tile.rect, tile.before, tile.after, intersect(tile.written, tile.rect)});
         }
     }
     return views;

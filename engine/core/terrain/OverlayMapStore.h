@@ -65,6 +65,7 @@ namespace jasperengine::terrain {
             TexelRect rect;
             std::span<const uint8_t> before;
             std::span<const uint8_t> after;
+            TexelRect written;      // inside rect: where after can differ from before
         };
         std::vector<TileView> tileViews() const;
 
@@ -102,6 +103,9 @@ namespace jasperengine::terrain {
             mutable std::vector<uint8_t> after;
             mutable bool afterValid = false;
             mutable bool afterChanged = false;
+            // the texels any write reached: outside them the values decode the before bytes, which
+            // encode back to themselves, so only these are encoded and compared
+            TexelRect written;
         };
 
         struct MapState {
