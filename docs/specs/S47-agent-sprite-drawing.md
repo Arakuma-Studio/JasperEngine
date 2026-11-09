@@ -894,8 +894,15 @@ Recorded while implementing (branch `feature/s47-agent-sprite-drawing`):
   is exact on palette indices by construction (AC5).
 - **R27 `context`** is a deferred reply (`captureView` renders the frame; the call waits on the main
   thread's frames), not an `McpJobs` job: it is at most a few frames long.
-- **AC15 measures the JSON of `structuredContent`**, what a client like Claude Code shows the model (its
-  text mirrors the grids): it is the bigger part of a reply.
+- **AC15 measures the text bytes** of each §6.3 row, as written, and prints the `structuredContent` JSON
+  sizes beside them (what some clients show instead of the text). The JSON of `get_sprite` on the 32 x 32
+  fixture is 930 bytes against the 0.6 KB estimate, because R10's shape lists every cel and frame; every
+  other row's JSON fits its estimate (20-edit session 11.2 KB of 20 KB).
 - **R38's bench** is `editor/tests/pixelart/SpriteDrawBench.cpp` (`SpriteDrawBench.*`, printed `[bench]`
   lines, enforced by `JASPER_TEST_PERF_SLACK`), not `tools/perf/sprite_draw_bench`, matching the
-  repository's bench suites.
+  repository's bench suites. Measured on box B (Release, under the batch's load): 50 paint ops on a
+  128 x 128 x 8 indexed file 2 ms of ops and 7.6 ms in all (budgets 10 and 40), one cel of a 512 x 512 x 32
+  RGBA file 45 ms (120), a read of 4,096 pixels 0.04 ms (2), `render_sprite` of 64 frames of 64 x 64 at 4x
+  47 ms with its PNG (60), cleanEdge at 128 x 128 5.8 ms (40), a stat 0.1 ms or less.
+- **`render_sprite`'s PNG** is `encodeSheetPng` (palette PNG when the sheet has at most 256 colours, miniz
+  level 1), not `PixelImage::encodePng`, whose encoder takes 450 ms on the 64-frame sheet.

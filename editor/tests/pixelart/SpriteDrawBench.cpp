@@ -35,7 +35,9 @@ namespace {
     void budget(const char* name, double ms, double limit) {
         std::printf("[bench] %s: %.2f ms (budget %.0f)\n", name, ms, limit);
         const double slack = editor::test::perfSlack();
-        if (slack > 0) EXPECT_LE(ms, limit * slack) << name;
+        if (slack > 0) {
+            EXPECT_LE(ms, limit * slack) << name;
+        }
     }
 
     draw::SpriteDoc framedSprite(int size, aseprite::ColorMode mode, int frames) {
