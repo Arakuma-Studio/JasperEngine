@@ -234,6 +234,37 @@ TEST(SpriteVariants, CompileForEveryBackend){
     EXPECT_EQ(fragment->textures.size(), 7u);
 }
 
+// R11: the flash's body sits behind a branch on its amount where the variant has the Pixel FX
+// structure (a lone FLASH keeps the legacy source: LegacyIdentical); counted in the SPIR-V because
+// branches are what the idle path is
+TEST(SpriteVariants, FlashHasAnIdleBranchBesidePixelFx){
+    ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
+    auto branches = [](const std::vector<std::string>& features){
+        const Built built = spriteVariant(features, MaterialBlendMode::AUTO, MeshShaderEnvironment());
+        ShaderData data;
+        std::string error, log;
+        EXPECT_TRUE(ShaderVariantCompiler::compile(built.key, ShaderBackend::Vulkan, &built.sources, data, &error, &log)) << error;
+        const ShaderStage* fragment = stageOf(data, ShaderStageType::FRAGMENT);
+        int count = -1;
+        if (fragment){
+            count = 0;
+            const uint32_t* words = reinterpret_cast<const uint32_t*>(fragment->bytecode.data);
+            const size_t size = fragment->bytecode.size / sizeof(uint32_t);
+            for (size_t i = 5; i < size;){
+                const uint32_t instruction = words[i];
+                if ((instruction & 0xFFFF) == 250) count++;  // OpBranchConditional
+                const uint32_t length = instruction >> 16;
+                i += length ? length : size;
+            }
+        }
+        return count;
+    };
+    const int base = branches({"DITHER_FADE"});
+    const int flash = branches({"DITHER_FADE", "FLASH"});
+    ASSERT_GE(base, 0);
+    EXPECT_GT(flash, base) << "FLASH's body is one more uniform branch beside a Pixel FX feature";
+}
+
 // AC9, R33: the texture reads each S48 feature adds to the base sprite's fragment stage (static
 // count in the Vulkan SPIR-V) within the budget
 TEST(SpriteVariants, TapBudget){

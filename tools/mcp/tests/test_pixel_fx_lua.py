@@ -86,6 +86,43 @@ async def test_effects_end_where_the_spec_says(ed: Editor):
         await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
 
 
+async def test_batched_sprite_uses_its_fx_slots(ed: Editor):
+    """AC20, S52: three `@batchable` library:sprite sprites stay one Dynamic Batching run while one of them plays a
+    flash (its amount through the per-sprite FX slot, not a uniform that would break the batch) and it ends at 0."""
+    scene = (await ed.call("create_scene", name="PixelFxBatch", type="2D"))["scene"]["id"]
+    await ed.call("select_scene", scene=scene)
+    value = {"path": TEXTURE, "min_filter": "nearest", "mag_filter": "nearest"}
+    for i in range(3):
+        made = await ed.call("create_entity", scene=scene, type="sprite", name=f"Batch{i}", select=False, position=[60 + 24 * i, 90, 0],
+                             values={"mesh": {M + "baseColorTexture": value}, "sprite": {"pivotPreset": "center", "width": 16, "height": 16}})
+        await ed.call("set_properties", scene=scene, entity=made["entity_id"], values={"mesh": {M + "shader": "library:sprite", M + "shaderFeatures": ["FLASH"]}})
+    await ed.call("save_scene", scene=scene, path="scenes/PixelFxBatch")
+    await ed.call("play", action="start", scene=scene)
+    try:
+        await ed.call("wait", frames=30)
+        before = (await ed.call("get_render_stats", view="game")).get("batching", {})
+        ed.check_eq(before.get("batches"), 1, f"the three sprites are one run before the flash: {before}")
+        ed.check_eq(before.get("saved_by_batching"), 2, f"two draws saved: {before}")
+        started = await lua(ed, f"PFX_B = PixelFX.play({go('Batch1')}, 'flash', 0.6) return PFX_B.valid")
+        ed.check_eq(started, [True], "a valid handle")
+        await ed.call("wait", frames=6)
+        mid = (await ed.call("get_render_stats", view="game")).get("batching", {})
+        amount = (await lua(ed, f"return {param('Batch1', 'flashAmount')}"))[0]
+        ed.check(0.0 < amount < 1.0, f"the flash is playing on the batched sprite: {amount}")
+        ed.check_eq(mid.get("batches"), 1, f"still one run while one sprite flashes (its FX slot): {mid}")
+        ed.check_eq(mid.get("saved_by_batching"), 2, f"still two draws saved: {mid}")
+        waited = await ed.call_raw("wait", {"until": "PFX_B:isDone()", "timeout_seconds": 30})
+        ed.check(not waited.is_error, f"the handle finishes: {waited.text}")
+        values = await lua(ed, f"return PFX_B.progress, {param('Batch1', 'flashAmount')}")
+        ed.check_eq(values, [1.0, 0.0], "ends at the neutral value")
+        await ed.call("wait", frames=6)
+        after = (await ed.call("get_render_stats", view="game")).get("batching", {})
+        ed.check_eq(after.get("batches"), 1, f"one run after it ends: {after}")
+    finally:
+        await ed.call("play", action="stop")
+        await ed.call("select_scene", scene=S["scene"])
+
+
 async def test_wait_for_resumes_once(ed: Editor):
     """Coroutine.waitFor(handle) resumes once, the frame the effect ends; onFinished runs once."""
     await ed.call("play", action="start", scene=S["scene"], fixed_fps=60, auto_pause=True)

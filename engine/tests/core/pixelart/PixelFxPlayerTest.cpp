@@ -269,6 +269,49 @@ TEST_F(PixelFxPlayerScene, RunsOnGameTimeAndEndsAtNeutral){
     EXPECT_NEAR(handle.getProgress(), 0.5f, 1e-4f);
 }
 
+// R24: what an effect changes for its look comes back to the material's own value when it ends:
+// the outline pulse's and the flash's option colours, the status looks' bevel and pulse
+TEST_F(PixelFxPlayerScene, EndsAtTheMaterialsOwnColoursAndBevel){
+    auto setParam = [&](Entity e, const char* member, const Vector4& value){
+        ShaderUniforms::set(scene.getComponent<MeshComponent>(e).submeshes[0].material.shaderParams, member, value);
+    };
+    // the first update makes a run ready at time 0; the rest pass its 0.1 s
+    auto runToEnd = [](){ for (int i = 0; i < 4; i++) PixelFxPlayer::update(0.2, 0.2); };
+    const Vector4 blue(0.1f, 0.2f, 1.0f, 1.0f);
+
+    const Entity pulsed = sprite({"OUTLINE"});
+    setParam(pulsed, "outlineColor", blue);
+    PixelFxOptions red;
+    red.hasColor = true;
+    red.color = Vector4(1.0f, 0.0f, 0.0f, 1.0f);
+    PixelFxPlayer::play(&scene, pulsed, PixelFxEffect::OUTLINE_PULSE, 0.1f, red);
+    loadVariant(pulsed);
+    runToEnd();
+    EXPECT_FLOAT_EQ(param(pulsed, "outlineColor").x, blue.x) << "the material's own outline, not opts.color";
+    EXPECT_FLOAT_EQ(param(pulsed, "outlineColor").z, blue.z);
+
+    const Entity flashed = sprite({"FLASH"});
+    setParam(flashed, "flashColor", blue);
+    PixelFxPlayer::play(&scene, flashed, PixelFxEffect::FLASH, 0.1f, red);
+    runToEnd();
+    EXPECT_FLOAT_EQ(param(flashed, "flashColor").x, blue.x) << "the flash's colour back at its end";
+    PixelFxHandle stopped = PixelFxPlayer::play(&scene, flashed, PixelFxEffect::FLASH, 0.5f, red);
+    PixelFxPlayer::update(0.1, 0.1);
+    EXPECT_FLOAT_EQ(param(flashed, "flashColor").x, red.color.x) << "playing, its colour shows";
+    stopped.stop();
+    EXPECT_FLOAT_EQ(param(flashed, "flashColor").x, blue.x) << "and back when stopped";
+
+    const Entity petrified = sprite({"RAMP_RECOLOR"});
+    setParam(petrified, "rampBevel", Vector4(0.25f, 0.0f, 0.0f, 0.0f));
+    setParam(petrified, "rampPulse", Vector4(3.0f, 0.0f, 0.0f, 0.0f));
+    PixelFxPlayer::play(&scene, petrified, PixelFxEffect::PETRIFY, 0.1f);
+    EXPECT_FLOAT_EQ(param(petrified, "rampBevel").x, 1.0f) << "the status look's bevel while it plays";
+    runToEnd();
+    EXPECT_FLOAT_EQ(param(petrified, "rampBevel").x, 0.25f) << "the material's own bevel at the end";
+    EXPECT_FLOAT_EQ(param(petrified, "rampPulse").x, 3.0f) << "the material's own pulse at the end";
+    EXPECT_FLOAT_EQ(param(petrified, "rampAmount").x, 0.0f);
+}
+
 // R25: a missing feature is turned on in the GameObject's material; the effect waits for the variant
 // (progress 0) and starts once it draws
 TEST_F(PixelFxPlayerScene, MissingFeatureWaitsForItsVariant){

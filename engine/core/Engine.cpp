@@ -245,6 +245,7 @@ Semaphore Engine::drawSemaphore;
 
 Framebuffer* Engine::framebuffer = nullptr;
 Framebuffer Engine::compositeFramebuffer;
+bool Engine::compositeExpected = false;
 
 //-----JasperEngine user events-----
 FunctionSubscribe<void()> Engine::onViewLoaded;
@@ -492,6 +493,14 @@ void Engine::removeAllScenes(){
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();
+}
+
+void Engine::setCompositeExpected(bool expected){
+    compositeExpected = expected;
+}
+
+bool Engine::isCompositeExpected(){
+    return compositeExpected;
 }
 
 bool Engine::isSceneRunning(Scene* scene){

@@ -103,6 +103,21 @@ TEST_F(ProjectShaderList, WhatTheKeysAlsoReadCountsAsAChange) {
     EXPECT_EQ(project.refreshClosedSceneShaderKeys().scenesRead, 0u);
 }
 
+// S48: a game whose scripts play a screen transition ships the transition's program
+TEST_F(ProjectShaderList, AScriptNamingATransitionAddsItsProgram) {
+    const ShaderKey transition = ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::TRANSITION, 0));
+    ASSERT_TRUE(project.refreshClosedSceneShaderKeys().complete());
+    std::set<ShaderKey> keys;
+    project.collectBuildShaderKeys(keys);
+    EXPECT_EQ(project.finishBuildShaderKeys(keys, {}, {}).count(transition), 0u) << "no script names one";
+
+    writeText(dir.path() / "scripts" / "game.lua", "Transition.play('iris', 0.5)\n");
+    ASSERT_TRUE(project.refreshClosedSceneShaderKeys().complete());
+    keys.clear();
+    project.collectBuildShaderKeys(keys);
+    EXPECT_EQ(project.finishBuildShaderKeys(keys, {}, {}).count(transition), 1u) << "the script names one: its program ships";
+}
+
 TEST_F(ProjectShaderList, ALimitLeavesTheRestPending) {
     ShaderListLimit none;
     none.maxScenes = 0;
