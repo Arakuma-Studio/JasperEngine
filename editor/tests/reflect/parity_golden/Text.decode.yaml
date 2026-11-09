@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 7d46f75a88f8e780
+digest efc401147bc713b1
 --- 0
 font: []
 text: "multi\nline"
@@ -25,7 +25,6 @@ fixedWidth: true
 fixedHeight: true
 pivotBaseline: false
 pivotCentered: false
-shadowColor: [91.28571, -84, 95, 1e-45]
 visibleCharacters: 0
 --- 2
 font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf]
@@ -54,6 +53,7 @@ fixedWidth: false
 fixedHeight: true
 pivotBaseline: false
 pivotCentered: true
+visibleCharacters: 3
 --- 4
 font: []
 text: "  padded  "
@@ -81,6 +81,7 @@ fixedHeight: true
 pivotBaseline: false
 pivotCentered: false
 outlineColor: [3e+38, -0, 5256.1304, -22.714285]
+shadowEnabled: true
 shadowColor: [-94.57143, -102.28571, 0, 23]
 shadowOffset: [-47, 2822.8708]
 --- 6
@@ -111,4 +112,4 @@ pivotCentered: false
 outlineWidth: 0.44957882
 shadowEnabled: true
 shadowColor: [3e+38, 0, 0, 4453.748]
-shadowOffset: [0.6752126, -88.57143]
+visibleCharacters: 14

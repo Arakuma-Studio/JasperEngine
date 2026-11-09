@@ -912,7 +912,8 @@ Rml::TextureHandle RmlRenderer::createAtlasTexture(int width, int height, const 
         // dynamic: glyphs added to the page are uploaded into the same texture
         gpuCreateCount++;
         std::unique_ptr<HtmlUITexture> created = HtmlUITexture::createDynamic(coverage ? "htmlui-glyph-atlas" : "htmlui-glyph-atlas-rgba",
-                                                                              width, height, coverage ? ColorFormat::RED : ColorFormat::RGBA);
+                                                                              width, height, coverage ? ColorFormat::RED : ColorFormat::RGBA,
+                                                                              desc.nearest ? TextureFilter::NEAREST : TextureFilter::LINEAR);
         if (!created)
             return 0;
         texture = created.release();

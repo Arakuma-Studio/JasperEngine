@@ -970,6 +970,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_canvasHeight = project->getCanvasHeight();
     m_scalingModeIndex = findScalingIndex(project->getScalingMode());
     m_pixelsPerUnit = project->getPixelsPerUnit();
+    m_bitmapTextCacheMiB = project->getBitmapTextCacheMiB();
     m_uiScale = project->getUIScale();
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
@@ -1947,6 +1948,12 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                            "Texels per world unit of sprites and tilemaps whose own Pixels Per Unit is 0 (1: a world unit is a pixel). "
                            "1 to 256.");
             m_pixelsPerUnit = std::min(m_pixelsPerUnit, Project::maxPixelsPerUnit);
+        }
+
+        if (settingsui::beginRow("graphics.bitmap_text_cache_mib")) {
+            drawIntSetting("Bitmap Text Cache (MiB)", "##BitmapTextCacheMiB", m_bitmapTextCacheMiB, 0, 0,
+                           "Memory for pixel-font outlines and shadows. 0: 2 MiB on Android, iOS and HTML5, 8 MiB on desktop.");
+            m_bitmapTextCacheMiB = std::min(m_bitmapTextCacheMiB, Project::maxBitmapTextCacheMiB);
         }
 
         // the Canvas Scaler's project default: the UI's own space, apart from the game canvas
@@ -5397,6 +5404,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setCanvasSize(m_canvasWidth, m_canvasHeight);
     m_project->setScalingMode(scalingModeValues[m_scalingModeIndex]);
     m_project->setPixelsPerUnit(m_pixelsPerUnit);
+    m_project->setBitmapTextCacheMiB(m_bitmapTextCacheMiB);
     if (m_project->getUIScale() != m_uiScale)
         m_project->setUIScale(m_uiScale);
     m_project->setTextureStrategy(textureStrategyValues[m_textureStrategyIndex]);

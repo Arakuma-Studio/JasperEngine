@@ -10574,6 +10574,7 @@
     "maxTextSize",
     "multiline",
     "outlineColor",
+    "outlineNeighbors",
     "outlineWidth",
     "pivotBaseline",
     "pivotCentered",
@@ -10619,6 +10620,11 @@
     ],
     "outlineColor": [
      6,
+     32768,
+     true
+    ],
+    "outlineNeighbors": [
+     8,
      32768,
      true
     ],
@@ -10706,6 +10712,11 @@
     ],
     "outlineColor": [
      6,
+     32768,
+     true
+    ],
+    "outlineNeighbors": [
+     8,
      32768,
      true
     ],
@@ -29802,6 +29813,11 @@
    ],
    "outlineColor": [
     6,
+    32768,
+    true
+   ],
+   "outlineNeighbors": [
+    8,
     32768,
     true
    ],

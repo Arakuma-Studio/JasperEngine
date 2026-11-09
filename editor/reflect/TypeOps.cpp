@@ -676,6 +676,18 @@ bool reflect::detail::intClampedFromYaml(const FieldDesc& field, const YAML::Nod
     return true;
 }
 
+bool reflect::detail::outlineNeighborsFromYaml(const FieldDesc&, const YAML::Node& node, void* value, const DecodeContext&, std::string& reason) {
+    int read = 0;
+    std::string why;
+    if (!readScalar(node, read, why)) return unreadable(node, why, reason);
+    if (read != 4 && read != 8) {
+        reason = "outlineNeighbors is 4 (plus) or 8 (square), not " + std::to_string(read);
+        return false;
+    }
+    *static_cast<int*>(value) = read;
+    return true;
+}
+
 YAML::Node reflect::detail::kelvinToYaml(const FieldDesc&, const void* value, const EncodeContext&) {
     return YAML::Node(YamlNumbers::text(Stream::finiteOr(*static_cast<const float*>(value), LightPhotometry::WHITE_TEMPERATURE)));
 }

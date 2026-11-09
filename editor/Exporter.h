@@ -221,6 +221,9 @@ namespace jasperengine::editor {
         std::set<std::string> cookedTextureSources;
         // S53: the same for models (and the .bin files only they read)
         std::set<std::string> cookedModelSources;
+        // S51 R34: the files only bitmap fonts read (sheets, pages, TrueType sources), which ship
+        // inside the fonts' .jfont and not themselves (asset-relative)
+        std::set<std::string> fontOnlySources;
         // S53 R21: what the export's cooks measured, for the Build Report: a cooked file's build
         // path -> its source asset and that source's bytes
         std::map<std::string, std::pair<std::string, uint64_t>> cookedModelSizes;
@@ -441,6 +444,11 @@ namespace jasperengine::editor {
         bool copyAssets();
         // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
         bool cookColorLut(const fs::path& source, const fs::path& destination);
+        // S51 R34: the project's bitmap fonts' sources no asset references (main thread)
+        void collectFontOnlySources();
+        // a .bitmapfont or .fnt cooked to <destination>.jfont (lossless); false (warned) when it
+        // does not load, and it ships as it is
+        bool cookBitmapFont(const fs::path& relPath, const fs::path& destination);
         // S04: a reference of the build's scenes (and the prefabs and materials they use) that
         // resolves to no asset fails the export, listing each one, unless allowMissingAssets
         bool checkMissingAssets();

@@ -632,6 +632,7 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
 
         {"UI", "Image", ICON_FA_IMAGE, T::IMAGE, "Image", CREATE_IN_ALL},
         {"UI", "Text", ICON_FA_FONT, T::TEXT, "Text", CREATE_IN_ALL},
+        {"UI", "Text (Pixel)", ICON_FA_FONT, T::TEXT_PIXEL, "Text", CREATE_IN_ALL},
         {"UI", "Button", ICON_FA_SQUARE_CARET_RIGHT, T::BUTTON, "Button", CREATE_IN_ALL},
         {"UI", "Scrollbar", ICON_FA_ARROWS_UP_DOWN, T::SCROLLBAR, "Scrollbar", CREATE_IN_ALL},
         {"UI", "Progress Bar", ICON_FA_BARS_PROGRESS, T::PROGRESSBAR, "Progress Bar", CREATE_IN_ALL},

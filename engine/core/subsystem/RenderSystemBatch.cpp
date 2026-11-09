@@ -329,6 +329,9 @@ BatchBreak RenderSystem::uiBatchForm(UIComponent& ui, TextureRender* textureOver
         return BatchBreak::INELIGIBLE_NOT_READY;
     if (ui.customShaderId != 0 || !ui.libraryBindings.textures.empty())
         return BatchBreak::INELIGIBLE_CUSTOM_SHADER;
+    // a bitmap Text's origin is rounded per draw (S51 R8)
+    if (ui.pixelOriginSnap)
+        return BatchBreak::INELIGIBLE_TRANSFORM;
     // the UI shader properties a batch reads as drawn alone (an allowlist, as the meshes': a
     // property added later draws alone until it is checked here)
     static const uint64_t uiAllowed = ShaderPool::getUIProperties(true, true, true, true, true);

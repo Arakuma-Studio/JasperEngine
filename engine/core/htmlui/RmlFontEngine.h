@@ -24,6 +24,10 @@
 #include <unordered_set>
 #include <vector>
 
+namespace jasperengine::pixelart {
+    class BitmapFont;
+}
+
 namespace jasperengine {
 
     class FontFace;
@@ -125,6 +129,8 @@ namespace jasperengine {
         size_t getPageCount() const;        // tests: base glyph pages
         size_t getEffectPageCount() const;  // tests: RGBA8 pages of effect glyphs
         size_t getDistancePageCount() const;   // tests: RGBA8 pages of distance glyphs
+        size_t getPixelPageCount() const;   // tests: pages of bitmap faces' glyphs (both kinds)
+        size_t getBitmapGlyphCount(uint64_t serial) const;   // tests: glyphs held for that bitmap font
         size_t getEffectSetCount() const;   // tests: prepared effect sets
 
         // R13: the atlas budget in MiB of base pages (R8 coverage, 1 MiB each, and the RGBA8
@@ -195,6 +201,9 @@ namespace jasperengine {
             Rml::FontMetrics metrics = {};
             int version = 1;
             int epoch = 0;                 // the engine epoch version last saw
+            // a bitmap face (S51 R15): its font and pixel scale k; then chain and faces are empty
+            std::shared_ptr<pixelart::BitmapFont> bitmap;
+            int pixelScale = 0;
         };
 
         struct GlyphKey {
@@ -203,10 +212,11 @@ namespace jasperengine {
             int rasterPixelSize;   // round(size * rasterScale * 64), transform-aware text round(size * scale * 4); effect glyphs: raster scale 1
             int bold;              // synthetic bold dilation in raster px, 0 = none
             size_t effect;         // RmlFontEffects::effectId, 0 = the base glyph
+            uint64_t bitmap = 0;   // a bitmap face's font (BitmapFont::getSerial, face null), 0 = a FontFace's glyph
 
             bool operator==(const GlyphKey& other) const{
                 return face == other.face && glyphIndex == other.glyphIndex && rasterPixelSize == other.rasterPixelSize &&
-                       bold == other.bold && effect == other.effect;
+                       bold == other.bold && effect == other.effect && bitmap == other.bitmap;
             }
         };
 
@@ -214,7 +224,10 @@ namespace jasperengine {
             size_t operator()(const GlyphKey& key) const;
         };
 
-        enum class PageKind : uint8_t { BASE, EFFECT, DISTANCE };
+        // PIXEL, PIXEL_EFFECT: a bitmap face's glyphs (S51 R15), sampled nearest so a transform
+        // magnifies their pixels as blocks
+        enum class PageKind : uint8_t { BASE, EFFECT, DISTANCE, PIXEL, PIXEL_EFFECT };
+        static bool isCoverageKind(PageKind kind){ return kind == PageKind::BASE || kind == PageKind::PIXEL; }
 
         struct GlyphEntry {
             int page = -1;          // -1: nothing to draw (no ink, or it fits no page)
@@ -308,7 +321,7 @@ namespace jasperengine {
         // packs a bitmap into a page of the kind with room (a new page within the budget, else
         // the least recently used page cleared); false (logged once) when it fits no page
         bool place(PageKind kind, const unsigned char* pixels, int width, int height, int& page, int& x, int& y,
-                   const FontFace& face, int size);
+                   const std::string& label, int size);
         PageList& pagesOf(PageKind kind);
         size_t budgetBytes(PageKind kind) const;
         size_t usedBytes(PageKind kind) const;
@@ -334,6 +347,8 @@ namespace jasperengine {
         PageList pages;         // base glyphs
         PageList effectPages;   // glyphs of effects with their own texture
         PageList distancePages; // MTSDF glyphs
+        PageList pixelPages;    // bitmap faces' monochrome glyphs (nearest)
+        PageList pixelEffectPages;  // bitmap faces' coloured glyphs, outlines and masks (nearest)
 
         // prepared font-effect lists by their effect ids; kept until Shutdown, as RmlUi keeps
         // the handles it was given
@@ -369,6 +384,28 @@ namespace jasperengine {
         void retryDeferredGlyphs();
 
         Rml::FontMetrics emptyMetrics = {};
+
+        // bitmap faces (S51 R15, RmlFontEngineBitmap.cpp): registered by family, drawn from the
+        // same pages at d = max(1, round(k * raster scale)) device pixels per font pixel, never as
+        // distance glyphs or re-rasterised under a transform
+        bool loadBitmapFace(const std::string& file, const std::string& family);
+        std::unique_ptr<FaceHandle> makeBitmapHandle(const std::shared_ptr<pixelart::BitmapFont>& font, int size);
+        int bitmapStringWidth(const FaceHandle& handle, Rml::StringView string, const Rml::TextShapingContext& context) const;
+        int generateBitmapString(Rml::RenderManager& renderManager, FaceHandle& handle, const RmlFontEffects::Set* effects, Rml::StringView string,
+                                 Rml::Vector2f position, Rml::ColourbPremultiplied colour, float opacity, const Rml::TextShapingContext& context,
+                                 Rml::TexturedMeshList& meshList);
+        // a bitmap glyph at d device px per font px: style 0 the glyph, 1 its mask (white), 16 * w + n a
+        // pixel outline of w font px through n neighbours
+        const GlyphEntry& bitmapGlyph(const FaceHandle& handle, uint32_t codepoint, int d, int style);
+        bool reloadBitmapFontFile(const std::string& path);
+        // drops the glyphs of a bitmap font that is no longer drawn (a re-registered family, a reload)
+        void purgeBitmapGlyphs(uint64_t serial);
+    public:
+        // a family @font-face registered with a .bitmapfont or .fnt source, and its font
+        static bool isBitmapFamily(const std::string& family);
+        static std::shared_ptr<pixelart::BitmapFont> bitmapFamilyFont(const std::string& family);
+        // a file a registered bitmap face read (its sheet, pages): a change reloads the face
+        static bool isBitmapDependency(const std::string& path);
     };
 
 }

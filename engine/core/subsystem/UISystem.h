@@ -191,6 +191,15 @@ namespace jasperengine{
         void syncFontAtlas(TextComponent& text, UIComponent& ui);
         bool loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
         void createText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
+        // the pivot, clip, visible characters and indices of a text's glyph quads (pivotStep > 0:
+        // a bitmap text's font pixel, the pivot offsets stay whole font pixels)
+        void finishTextGeometry(TextComponent& text, UIComponent& ui, RectTransformComponent& layout, float ascent, float pivotStep,
+                                bool fillColors, std::vector<uint16_t>& indices);
+        // bitmap fonts (S51, UISystemBitmapText.cpp)
+        bool loadBitmapFont(TextComponent& text, UIComponent& ui);
+        void createBitmapText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
+        // per frame: a reloaded font, a new scale or style, a recycled cache page, a new colour
+        void updateBitmapText(TextComponent& text, UIComponent& ui);
 
         //Button
         // the state shown: Unity's priority, Disabled > Pressed > Selected > Highlighted > Normal
@@ -366,6 +375,10 @@ namespace jasperengine{
         // the scale glyphs rasterize at: view pixels per UI unit when the Canvas Scaler
         // scales this scene (crisp text), else 1 (the text's own pixel size, as before)
         float getTextRasterScale() const;
+        // S51 R7-R8: units per font pixel of a bitmap Text at pixel scale k: k / PPU for world
+        // text under a Pixels Per Unit > 1, else d / s with d = max(1, round(k * s)) device pixels
+        // (s the canvas raster scale), so every font pixel is whole device pixels
+        float getBitmapTextUnit(int pixelScale) const;
 
         // UI.reducedMotion: Text Effects skip their motion layers (wave, bounce, shake, pulse,
         // grow, unfold) and keep colour and reveal ones. Global, default false.

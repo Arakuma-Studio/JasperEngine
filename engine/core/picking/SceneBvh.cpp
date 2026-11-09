@@ -32,6 +32,8 @@
 #include "subsystem/RenderSystem.h"
 #include "profiler/Profile.h"
 #include "util/STBText.h"
+#include "pixelart/BitmapFont.h"
+#include "pixelart/BitmapText.h"
 
 #include <cstring>
 #include <algorithm>
@@ -78,6 +80,8 @@ namespace {
         if (const TextComponent* text = scene->findComponent<TextComponent>(entity)){
             if (text->pivotBaseline && text->stbtext){
                 center.y = (float)text->stbtext->getAscent();
+            }else if (text->pivotBaseline && text->bitmapText){
+                center.y = text->bitmapText->getAscent(text->pixelUnit);
             }
             if (text->pivotCentered){
                 center.x = layout.width / 2.0f;

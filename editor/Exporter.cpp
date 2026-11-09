@@ -49,6 +49,7 @@
 #include "util/Base64.h"
 #include "util/FbxImporter.h"
 #include "util/CubeLut.h"
+#include "pixelart/BitmapFont.h"
 #include "io/AtomicFile.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
@@ -3211,6 +3212,7 @@ bool editor::Exporter::cookTextures() {
     std::set<std::string> droppedTerrainSources;
     editor::getEditorHost().enqueueMainThreadTask([this, &inputs, &gatherError, &gathered, &droppedTerrainSources]() {
         project->getAssetIndex().waitUntilReady();
+        collectFontOnlySources();
         gathered.set_value(TextureExport::gather(*project, inputs, gatherError) &&
                            gatherTerrainSliceInputs(*project, inputs, droppedTerrainSources, gatherError));
     });
@@ -3230,6 +3232,8 @@ bool editor::Exporter::cookTextures() {
             inputs[in.assetPath] = std::move(in);
         }
     }
+    // a font's sheet ships in its .jfont, lossless (S51 R34): no texture cook of its own
+    for (const std::string& source : fontOnlySources) inputs.erase(source);
     // S44: the pages of imports set to compression "project" cook as the project's sprites do,
     // under their je-imported/ path (which the sheet records name)
     for (const auto& record : importedRecords) {
@@ -3594,6 +3598,10 @@ bool editor::Exporter::copyAssets() {
         if (cookedTextureSources.count(relPath.generic_string())) {
             return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();
         }
+        // and a bitmap font's sheet, pages or TrueType file inside the font's .jfont (S51 R34)
+        if (fontOnlySources.count(relPath.generic_string())) {
+            return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();
+        }
         // and a model's as assets/je-cooked/models/ (an FBX's import too, S53)
         if (cookedModelSources.count(relPath.generic_string())) {
             if (!removeStale(assetsDst / relPath)) return stop();
@@ -3698,6 +3706,10 @@ bool editor::Exporter::copyAssets() {
         // is, so the game logs the same error the editor does
         if (Util::isColorLutFile(entry.path().string()) && cookColorLut(entry.path(), destPath)) return TreeStep::Skip;
 
+        // A bitmap font ships cooked (S51 R34): <name>.jfont next to where it was, which the game
+        // loads in its place; one that does not load ships as it is (the game logs its error)
+        if (Util::isBitmapFontFile(entry.path().string()) && cookBitmapFont(relPath, destPath)) return TreeStep::Skip;
+
         // a PNG ships without the editor's own chunks (the sprite normals recipe and paint layer,
         // the texture synthesis recipe: jasper.* text chunks a game never reads); losslessly, the
         // file read once
@@ -3734,6 +3746,54 @@ bool editor::Exporter::cookColorLut(const fs::path& source, const fs::path& dest
     }
     // a .cube left from an earlier export would shadow nothing (the game prefers the .jlut), but
     // it is not part of this one
+    std::error_code ec;
+    fs::remove(destination, ec);
+    return true;
+}
+
+void editor::Exporter::collectFontOnlySources() {
+    fontOnlySources.clear();
+    const fs::path assetsRoot = getAssetsSourceDir();
+    std::set<std::string> sources;
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(assetsRoot, fs::directory_options::skip_permission_denied, ec), end; it != end; it.increment(ec)) {
+        if (ec) break;
+        if (!it->is_regular_file(ec) || !Util::isBitmapFontFile(it->path().string())) continue;
+        const std::string rel = it->path().lexically_relative(assetsRoot).generic_string();
+        std::shared_ptr<::jasperengine::pixelart::BitmapFont> font = ::jasperengine::pixelart::BitmapFont::load(rel);
+        if (!font) continue;
+        for (const std::string& dependency : font->getDependencies()) {
+            if (dependency == rel || Util::isBitmapFontFile(dependency)) continue;
+            sources.insert(fs::path(dependency).lexically_normal().generic_string());
+        }
+    }
+    // a file an asset references (a sheet also drawn as a sprite) ships as the texture it is
+    for (const std::string& source : sources) {
+        const fs::path projectRelative = (project->getAssetsPath() / source).lexically_normal().lexically_relative(project->getProjectPath());
+        AssetDatabase::AssetInfo identity;
+        const Guid guid = project->getAssetDatabase().getInfo(projectRelative, identity) ? identity.guid : Guid();
+        if (project->getAssetIndex().referencesTo(guid, projectRelative.generic_string(), false, 1).empty()) fontOnlySources.insert(source);
+    }
+}
+
+bool editor::Exporter::cookBitmapFont(const fs::path& relPath, const fs::path& destination) {
+    ::jasperengine::pixelart::BitmapFontReport report;
+    std::shared_ptr<::jasperengine::pixelart::BitmapFont> font = ::jasperengine::pixelart::BitmapFont::load(relPath.generic_string(), &report);
+    if (!font) {
+        Out::warning("%s ships uncooked: %s", relPath.generic_string().c_str(),
+                     report.errors.empty() ? "it does not load" : report.errors[0].message.c_str());
+        return false;
+    }
+    const std::vector<uint8_t> bytes = font->toCooked();
+    fs::path cooked = destination;
+    cooked += ".jfont";
+    io::AtomicWriteOptions options;
+    options.skipIfUnchanged = true;
+    const io::WriteResult written = io::writeFileAtomic(cooked, std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()), options);
+    if (!written.ok()) {
+        Out::warning("%s ships uncooked: %s", relPath.generic_string().c_str(), written.message.c_str());
+        return false;
+    }
     std::error_code ec;
     fs::remove(destination, ec);
     return true;

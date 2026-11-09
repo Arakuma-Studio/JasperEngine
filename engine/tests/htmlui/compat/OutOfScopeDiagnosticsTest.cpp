@@ -135,3 +135,27 @@ TEST(OutOfScopeDiagnostics, PhaseTwoHandlesTheRest){
             EXPECT_EQ(d.severity, Severity::Info) << toText(d);
     }
 }
+
+// S51 R15 (check --ui): a rule that sets a bitmap face (@font-face of a .bitmapfont or .fnt) and a
+// glow, a blur or a blurred text-shadow reports HTMLUI-CSS-0024; a sharp shadow, whose colour may
+// be a function with commas, does not
+TEST(OutOfScopeDiagnostics, BitmapFontBlurIsReported){
+    const std::string face = "@font-face {\n  font-family: Hud;\n  src: url(fonts/hud.bitmapfont);\n}\n";
+    struct Item { const char* rule; bool reported; };
+    const Item items[] = {
+        {".a {\n  font-family: Hud;\n  font-effect: glow(1px 2px 0px 0px #00ff00);\n}", true},
+        {".a {\n  font-family: Hud;\n  text-shadow: 0 0 4px #00ff00;\n}", true},
+        {".a {\n  font-family: Hud;\n  text-shadow: 1px 1px 0 #000, 2px 2px 3px rgba(0, 0, 0, 0.5);\n}", true},
+        {".a {\n  font-family: Hud;\n  text-shadow: rgba(0, 0, 0, 1) 1px 1px;\n}", false},
+        {".a {\n  font-family: Hud;\n  text-shadow: 2px 2px 0px rgb(0, 0, 255);\n}", false},
+        {".a {\n  font-family: Hud;\n  font-effect: outline(1px #ff0000);\n}", false},
+        {".a {\n  font-family: Other;\n  text-shadow: 0 0 4px #00ff00;\n}", false},
+    };
+    for (const Item& item : items){
+        SCOPED_TRACE(item.rule);
+        const std::vector<Diagnostic> diagnostics = diagnosticsOf(face + item.rule);
+        const bool found = std::any_of(diagnostics.begin(), diagnostics.end(),
+                                       [](const Diagnostic& d){ return d.code.id() == "HTMLUI-CSS-0024"; });
+        EXPECT_EQ(found, item.reported);
+    }
+}
