@@ -131,6 +131,10 @@ namespace jasperengine::titleart {
         double slowestPassMs = 0.0;
         uint32_t slowestProgram = 0;
         bool slowestWasFirstDraw = false;   // its (program, state, sampled textures) key drew for the first time
+        // the longest build of a program (its shader's compile and link, on the render thread on a
+        // software GL: the other compile a frame can hold) and which
+        double slowestBuildMs = 0.0;
+        uint32_t slowestBuildProgram = 0;
     };
 
     // The first draw of a program in a pipeline state makes the driver compile that variant on the

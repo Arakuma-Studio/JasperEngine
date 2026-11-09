@@ -2248,4 +2248,9 @@ rest of S82 lands in 6B.
 58. **Implementation: the first-draw key holds the sampled textures' state** (`TitleGpu::run`, `TextureRender::getSamplingKey`: pixel
     format, image type, filters, wraps, power-of-two sides, mipmaps). llvmpipe compiles a fragment variant per that state, so a
     program "drawn before" with other textures compiled again and two compiles of seconds shared a frame
-    (`TitleFirstDrawGpu.NewProgramsDrawOneAFrame` failed there: 6.4-8.5 s against a 4.9-5.7 s bound; slowest pass "drawn before").
+    (the test's slowest pass read "drawn before"). `TitleFirstDrawGpu.NewProgramsDrawOneAFrame` failed on llvmpipe (6.4-8.8 s against a
+    4.9-5.7 s bound) for a second reason, measured by logging each step: frame 0 spent its 8.8 s in a step's readiness check, the
+    build of ELEMENT's program (the GL compile and link, on the render thread on a software GL), and drew nothing. That frame
+    holds one compile, as the rule says; the test's bound counted only draws. It now takes the slower of the slowest pass and
+    the slowest build (`TitleGpuStats::slowestBuildMs`), still one compile plus the 1 s rest, and the hang-threshold check on
+    GPUs is unchanged. The 8.8 s itself remains ELEMENT's size (S86 deviation 23).

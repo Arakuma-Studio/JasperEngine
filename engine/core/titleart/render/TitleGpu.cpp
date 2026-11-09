@@ -201,6 +201,19 @@ bool TitleGpu::ensureProgram(uint32_t number, std::string* error) {
     if (!slot) slot = std::make_unique<Program>();
     Program& p = *slot;
     if (p.loaded) return true;
+    // what building it takes this call (a software GL links on this thread)
+    struct BuildTimer {
+        TitleGpuStats& stats;
+        uint32_t program;
+        std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+        ~BuildTimer() {
+            const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            if (ms > stats.slowestBuildMs) {
+                stats.slowestBuildMs = ms;
+                stats.slowestBuildProgram = program;
+            }
+        }
+    } buildTimer{counters, number};
     if (p.failed || ShaderPool::isShaderBuildFailed(ShaderType::TITLE_ART, number)) {
         p.failed = true;
         if (error) *error = "the title art shader " + ShaderPool::getShaderStr(ShaderType::TITLE_ART, number) + " could not be built";

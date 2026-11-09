@@ -136,16 +136,19 @@ TEST_F(TitleFirstDrawGpu, NewProgramsDrawOneAFrame) {
     EXPECT_GT(bounded.granted, 3u) << "the render met new programs";
     EXPECT_EQ(bounded.maxPerFrame, 1u) << "one new program's first draw a frame";
     EXPECT_GT(bounded.deferred, 0u) << "the others waited for later frames";
-    // a frame holds at most one compile: the longest is the slowest pass and the frame's cheap
-    // rest. On a GPU (milliseconds a compile) no frame reaches the editor's hang threshold; on a
-    // software rasteriser one compile alone can (ELEMENT's first draw: 5.3 s on llvmpipe here)
+    // a frame holds at most one compile: a program's first draw, or its build (a software GL links
+    // on the render thread: ELEMENT's took 8.8 s on llvmpipe, in the readiness check of a frame that
+    // then drew nothing), so the longest frame is the slowest of those and the frame's cheap rest.
+    // On a GPU (milliseconds a compile) no frame reaches the editor's hang threshold; on a software
+    // rasteriser one compile alone can
     const auto describe = [](const TimedRender& r) {
         return std::string("longest frame ") + std::to_string(r.longestFrameMs) + " ms of " + std::to_string(r.frames) + "; the slowest pass " +
                titleRenderProgramName(r.gpu.slowestProgram) + " (" + (r.gpu.slowestWasFirstDraw ? "a first draw" : "drawn before") + ") " +
-               std::to_string(r.gpu.slowestPassMs) + " ms";
+               std::to_string(r.gpu.slowestPassMs) + " ms; the slowest build " + titleRenderProgramName(r.gpu.slowestBuildProgram) + " " +
+               std::to_string(r.gpu.slowestBuildMs) + " ms";
     };
     ::testing::Test::RecordProperty("bounded", describe(spread));
-    EXPECT_LE(spread.longestFrameMs, spread.gpu.slowestPassMs + ONE_FRAME_REST_MS) << describe(spread);
+    EXPECT_LE(spread.longestFrameMs, std::max(spread.gpu.slowestPassMs, spread.gpu.slowestBuildMs) + ONE_FRAME_REST_MS) << describe(spread);
     const std::string device = SystemRender::getDeviceName();
     const bool software = device.find("llvmpipe") != std::string::npos || device.find("softpipe") != std::string::npos ||
                           device.find("SwiftShader") != std::string::npos || device.find("Software Rasterizer") != std::string::npos;
