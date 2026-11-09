@@ -244,6 +244,11 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: The Doriax and mats-fx sessions have ended, but `main`'s shared-data failures remain
+  (no `procmat-baked` goldens; `procmat-baked` saves `vertexCount` 0 or 3672 depending on whether
+  it was drawn; the Animator IK `ShaderNeutralApi` hash).
+  - A fix agent is working on `fix/main-shared-green` on box C: root-cause the determinism bug,
+    review then update the hash, and generate the goldens. It lands as its own small batch.
 - 2026-11-09: S52's review found 2 blockers and several should-fix issues; all were sent back.
   - Blockers: an instanced-mesh sprite with FLASH/PALETTE_SWAP reads an unbound `i_spriteFx`
     (undefined on Vulkan, invalid on Metal/D3D11); deleted Sorting Layer ids are reused.
