@@ -10,6 +10,8 @@
 
 #include "McpTools.h"
 #include "TitleArtToolsShared.h"
+#include "TitleArtToolsLibrary.h"
+#include "titleart/library/TitleLibraryRegistration.h"
 
 #include "Project.h"
 #include "asset/AssetFileWrite.h"
@@ -219,11 +221,12 @@ void listTitleLibraryTool(const CallPtr& call) {
             else if (std::strcmp(k.kind, "materials_3d") == 0) n = titleart::title3DMaterialPresetNames().size();
             else if (std::strcmp(k.kind, "environments") == 0) n = titleart::title3DEnvironmentNames().size();
             else if (std::strcmp(k.kind, "bevel_profiles") == 0) n = titleart::three_d::bevelProfileNames().size();
+            else if (std::strcmp(k.owner, "S84") == 0) n = libraryCatalogue()[k.kind].value("total", 0);
             counts[k.kind] = n;
             text += " " + std::string(k.kind) + " " + std::to_string(n) + (*k.owner ? " (" + std::string(k.owner) + ")" : "") + ",";
         }
         text.back() = '.';
-        call->ok(text, Json{{"counts", counts}});
+        call->ok(text, Json{{"counts", counts}, {"library", libraryCatalogue()}});
         return;
     }
     const LibraryKind* known = nullptr;
@@ -232,6 +235,8 @@ void listTitleLibraryTool(const CallPtr& call) {
         call->fail("Unknown kind '" + kind + "'.");
         return;
     }
+    // S84's kinds: rows, details and sheets of the library (TitleArtToolsLibrary.cpp)
+    if (listLibraryKind(call)) return;
     if (*known->owner && std::strcmp(known->owner, "S86") != 0) {
         call->ok(std::string(known->label) + " arrive with " + known->owner + ".",
                  Json{{"kind", kind}, {"rows", Json::array()}, {"total", 0}, {"note", std::string(known->label) + " arrive with " + known->owner}});
@@ -339,6 +344,8 @@ void listTitleLibraryTool(const CallPtr& call) {
             if (!matches(query, {row.value("path", std::string()), row.value("family", std::string())})) continue;
             rows.push_back(std::move(row));
         }
+        // the library's pack fonts (S84 R28): imported into the project by the first look or template that uses one
+        for (Json& row : packFontRows(query)) rows.push_back(std::move(row));
     } else if (kind == "materials_3d") {
         // S86's material presets (R17), in the picker's sections
         for (const std::string& preset : titleart::title3DMaterialPresetNames()) {
@@ -646,6 +653,8 @@ Json opsResultJson(const TitleOpsResult& result) {
 void editTitleTool(const CallPtr& call) {
     Project* project = call->ctx().project();
     const Json& args = call->args();
+    // S84 R44: a batch of library ops alone needs no document
+    if (editLibraryOnly(call)) return;
     const std::string path = args.value("path", std::string());
     fs::path file;
     std::string relative, error;
@@ -659,14 +668,16 @@ void editTitleTool(const CallPtr& call) {
     std::shared_ptr<TitleArtDocument> document;
     if (args.contains("create")) {
         const Json& create = args["create"];
-        if (create.contains("template") || create.contains("look")) {
-            call->fail(std::string("not_available: create.") + (create.contains("template") ? "template" : "look") +
-                           " arrives with S84 (the Title Art library). Nothing was applied.",
-                       Json{{"code", "not_available"}, {"owner", "S84"}});
-            return;
-        }
         titleart::TitleArtDoc initial;
-        if (create.contains("from")) {
+        std::vector<TitleOpFile> createFiles;
+        std::string createName;
+        if (create.contains("template") || create.contains("look")) {
+            // S84: the template's document (or a text in a look), its fonts imported in the same step
+            if (!createFromLibrary(project, create, initial, createFiles, createName, error)) {
+                call->fail(error + " Nothing was applied.");
+                return;
+            }
+        } else if (create.contains("from")) {
             std::string code;
             if (!TitleArtOps::createFrom(create.value("from", std::string()), initial, code, error)) {
                 call->fail(error + " Nothing was applied.", Json{{"code", code}});
@@ -707,7 +718,8 @@ void editTitleTool(const CallPtr& call) {
                 call->fail(escape + " Nothing was applied.");
                 return;
             }
-            document = TitleArtDocument::create(project, file.string(), &initial, "Create Title Art " + file.filename().string(), &error);
+            document = TitleArtDocument::create(project, file.string(), &initial, createName.empty() ? "Create Title Art " + file.filename().string() : createName,
+                                                &error, &createFiles);
             if (!document) {
                 call->fail(error + " Nothing was applied.");
                 return;
@@ -1058,15 +1070,17 @@ void registerTitleArtTools(McpRegistry& registry) {
     registerBuiltinTitleChecks();
     registerTitleFxOps();
     registerTitle3DEditor();
+    titlelibrary::registerTitleLibrary();
     {
         ToolDef tool;
         tool.name = "list_title_library";
         tool.title = "List Title Library";
         tool.description =
-            "The Title Art catalogue. No args: counts per kind. kind effects, generators, blend_modes, fonts, environments, "
-            "materials_3d, bevel_profiles lists rows (looks, color_schemes, templates, animation_presets: later). "
-            "id: one effect's, recipe's or generator's params, presets and the op to paste. query searches names, aliases, presets; "
-            "category filters.";
+            "The Title Art catalogue. No args: counts per kind. kind lists rows (effects, generators, blend_modes, fonts, environments, "
+            "materials_3d, bevel_profiles; looks, color_schemes, templates with a ready `use` op; animation_presets: later). "
+            "id: one item's params, presets or keep/replace contract. query searches names en/ja, aliases, tags; category, family, "
+            "dimension, tags, scope, favorites filter. sheet: items rendered on your text or layer as one numbered image: pick by seeing. "
+            "Apply with edit_title ops apply_look, apply_color_scheme, apply_template.";
         std::vector<std::string> kinds;
         for (const LibraryKind& k : LIBRARY_KINDS) kinds.push_back(k.kind);
         tool.inputSchema = object({
@@ -1074,6 +1088,21 @@ void registerTitleArtTools(McpRegistry& registry) {
             {"id", string("")},
             {"query", string("")},
             {"category", string("")},
+            {"family", string("")},
+            {"dimension", stringEnum("", {"2d", "3d"})},
+            {"tags", array(string(""), "")},
+            {"scope", withDefault(stringEnum("", {"builtin", "project", "user", "all"}), "all")},
+            {"favorites", boolean("")},
+            {"sheet", object({
+                {"text", string("")},
+                {"ids", array(string(""), "")},
+                {"path", string("")},
+                {"layer", string("")},
+                {"cell", array(integer(""), "")},
+                {"columns", integer("", 1, 5)},
+                {"background", stringEnum("", {"black", "white", "checker", "machine"})},
+                {"color_scheme", string("")},
+            })},
             {"limit", withDefault(integer("", 1, 200), 20)},
             {"offset", integer("", 0, 100000)},
         });
@@ -1130,6 +1159,7 @@ void registerTitleArtTools(McpRegistry& registry) {
                 {"overwrite", boolean("")},
                 {"template", string("")},
                 {"look", string("")},
+                {"language", stringEnum("", {"en", "ja"})},
                 {"from", string("")},
             })},
             {"ops", array(anyObject(""), "")},
@@ -1137,7 +1167,7 @@ void registerTitleArtTools(McpRegistry& registry) {
             {"expect_rev", integer("")},
             {"render", render},
             {"bake", withDefault(stringEnum("", {"auto", "now", "never"}), "auto")},
-        }, {"path"});
+        });
         tool.annotations.idempotent = false;
         tool.writesFiles = [](const Json& args) { return !args.value("dry_run", false); };
         tool.activity = ToolActivity::Edit;

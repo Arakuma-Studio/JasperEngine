@@ -178,6 +178,10 @@ namespace jasperengine::editor::titledesigner {
             if (error) *error = "not supported";
             return false;
         }
+        // the window's live tile renderer (the item's ops applied to the user's layer, through the
+        // preview queue), attached while a Title Designer is open; null detaches it
+        using TileSource = std::function<LibraryTile(LibraryTab, const LibraryItem&, float width, float height, bool visible)>;
+        virtual void attachTileSource(TileSource source) { (void)source; }
         // drop every request of a window (closed) and re-request after a GPU loss (R48)
         virtual void cancelAll() {}
         virtual void deviceLost() {}

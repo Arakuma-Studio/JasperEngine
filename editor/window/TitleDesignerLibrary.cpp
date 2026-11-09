@@ -93,7 +93,10 @@ std::string TitleDesignerWindow::libraryTargetKey() const {
         documentPasses++;
     }
     auto it = committedHashes.layers.find(options.layers.back());
-    return it == committedHashes.layers.end() ? std::string("sample") : std::to_string(it->second.content);
+    if (it == committedHashes.layers.end()) return "sample";
+    // the layer's text after a '|': S84 picks the baked first paint of its script (S84 R33)
+    const ta::Json* layer = layerById(doc.committed(), options.layers.back());
+    return std::to_string(it->second.content) + "|" + (layer ? layer->value("text", std::string()) : std::string());
 }
 
 bool TitleDesignerWindow::applyLibraryItem(LibraryTab tab, const LibraryItem& item, bool preview) {
@@ -170,7 +173,8 @@ TitleLibraryProvider* TitleDesignerWindow::library() const {
 LibraryTile TitleDesignerWindow::starterTile(LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
     JE_PROFILE_SCOPE("TD starterTile");
     LibraryTile out;
-    if (!libraryTiles || !starterLibrary || !geometry || !doc.isOpen()) return out;
+    TitleLibraryProvider* library = this->library();
+    if (!libraryTiles || !library || !geometry || !doc.isOpen()) return out;
     const LibraryApplyOptions options = libraryOptions(tab);
     std::string targets = options.wholeTitle ? std::string("*") : std::string();
     for (const std::string& id : options.layers) targets += id + ",";
@@ -181,7 +185,7 @@ LibraryTile TitleDesignerWindow::starterTile(LibraryTab tab, const LibraryItem& 
         // the user's own layer with the item applied: the ops a click commits (R41, R44)
         source = StarterTileSource();
         source.key = key;
-        const ta::Json ops = starterLibrary->applyOps(tab, item, options);
+        const ta::Json ops = library->applyOps(tab, item, options);
         TitleOpsResult applied = ops.empty() ? TitleOpsResult() : TitleArtOps::apply(doc.committed(), ops);
         if (!applied.ok) {
             source.failed = ops.empty() ? std::string("Nothing it applies to") : applied.error();

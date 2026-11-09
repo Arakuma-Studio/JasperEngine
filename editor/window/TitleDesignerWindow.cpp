@@ -92,6 +92,12 @@ void TitleDesignerWindow::createLive() {
     starterLibrary = std::make_unique<TitleStarterLibrary>(&doc, [this](LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
         return starterTile(tab, item, width, height, visible);
     });
+    // a registered Library (S84) gets its live tiles from the same path: its item's ops on the user's layer
+    if (TitleLibraryProvider* provider = libraryProvider()) {
+        provider->attachTileSource([this](LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
+            return starterTile(tab, item, width, height, visible);
+        });
+    }
     textEdit = std::make_unique<TitleTextEdit>();
     gizmo2d = std::make_unique<TitleGizmo2D>();
     gizmo3d = std::make_unique<TitleGizmo3D>();
@@ -127,6 +133,10 @@ void TitleDesignerWindow::destroyLive() {
     }
     canvas.reset();
     thumbnails.reset();
+    if (TitleLibraryProvider* provider = libraryProvider()) {
+        provider->cancelAll();
+        provider->attachTileSource(nullptr);
+    }
     libraryTiles.reset();
     starterLibrary.reset();
     textEdit.reset();

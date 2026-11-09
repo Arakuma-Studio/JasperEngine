@@ -19,6 +19,7 @@
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
+#include <fstream>
 #include <optional>
 #include <set>
 #include <system_error>
@@ -35,6 +36,7 @@ namespace {
         std::map<std::string, std::weak_ptr<TitleArtDocument>> documents;
         std::function<void(const std::vector<fs::path>&)> filesWrittenHook;
         std::function<void(const std::vector<fs::path>&)> changedHook;
+        std::function<void(Project*)> projectHook;
     };
 
     Registry& registry() {
@@ -49,6 +51,7 @@ namespace {
             reg.project = project;
             reg.projectPath = project->getProjectPath();
         }
+        if (reg.projectHook) reg.projectHook(project);
     }
 
     bool fail(std::string* error, const std::string& message) {
@@ -135,7 +138,8 @@ std::shared_ptr<TitleArtDocument> TitleArtDocument::open(Project* project, const
 }
 
 std::shared_ptr<TitleArtDocument> TitleArtDocument::create(Project* project, const std::string& path, const titleart::TitleArtDoc* doc,
-                                                           const std::string& undoName, std::string* error) {
+                                                           const std::string& undoName, std::string* error,
+                                                        const std::vector<TitleOpFile>* files) {
     if (!project || project->getProjectPath().empty()) {
         fail(error, "no project is open");
         return nullptr;
@@ -158,7 +162,11 @@ std::shared_ptr<TitleArtDocument> TitleArtDocument::create(Project* project, con
     titleart::TitleArtDoc initial = doc ? *doc : titleart::makeNewTitleArt();
     if (!titleart::isTitleArtGuid(initial.guid())) initial.root["guid"] = titleart::generateTitleArtGuid();
     titleart::normalizeTitleArt(initial, nullptr);
-    auto* command = new WriteFilesCmd({{absolute, titleart::writeTitleArt(initial)}}, &afterWrite);
+    std::vector<WriteFilesCmd::Item> items = {{absolute, titleart::writeTitleArt(initial)}};
+    if (files) {
+        for (const TitleOpFile& f : *files) if (f.undoable && !f.remove) items.push_back({f.path, f.content});
+    }
+    auto* command = new WriteFilesCmd(std::move(items), &afterWrite);
     command->setName(undoName.empty() ? "Create Title Art " + CommandNames::file(absolute) : undoName);
     command->setNoMerge();
     auto failure = std::make_shared<std::string>();
@@ -168,6 +176,10 @@ std::shared_ptr<TitleArtDocument> TitleArtDocument::create(Project* project, con
         return nullptr;
     }
     return open(project, absolute.string(), error);
+}
+
+void TitleArtDocument::setProjectHook(std::function<void(Project*)> hook) {
+    registry().projectHook = std::move(hook);
 }
 
 void TitleArtDocument::filesChanged(const std::vector<fs::path>& paths, TitleArtChangeOrigin origin) {
@@ -381,13 +393,17 @@ void TitleArtDocument::reload(TitleArtChangeOrigin origin) {
 
 bool TitleArtDocument::write(const std::string& newText, const std::string& undoName, const std::string& mergeKey, std::string* writeError,
                              TitleArtChangeOrigin origin) {
-    if (newText == fileText) return true;
+    std::vector<TitleOpFile> extra = std::move(pendingFiles);
+    pendingFiles.clear();
+    if (newText == fileText && extra.empty()) return true;
     std::string onDisk;
     if (ProjectChecks::readFile(filePath, onDisk) && onDisk != fileText) {
         reload(TitleArtChangeOrigin::Disk);
         return fail(writeError, "'" + relativePath + "' changed on disk since it was read: it was reloaded, make the edit again");
     }
-    auto* command = new WriteFilesCmd({{filePath, newText}}, &afterWrite);
+    std::vector<WriteFilesCmd::Item> items = {{filePath, newText}};
+    for (const TitleOpFile& f : extra) if (f.undoable && !f.remove) items.push_back({f.path, f.content});
+    auto* command = new WriteFilesCmd(std::move(items), &afterWrite);
     writing = newText;
     writingOrigin = origin;
     command->setName(undoName.empty() ? "Edit Title Art " + CommandNames::file(filePath) : undoName);
@@ -428,9 +444,25 @@ TitleOpsResult TitleArtDocument::edit(const TitleJson& ops, const TitleArtEditOp
     if (!result.ok || options.dryRun) return result;
     if (!options.undoName.empty()) result.undoName = options.undoName;
     std::string writeError;
+    pendingFiles = result.files;
     if (!commit(result.doc, result.undoName, options.mergeKey, &writeError, options.origin)) {
+        pendingFiles.clear();
         TitleOpsResult failed = refused(value, "write_failed", writeError + ". Nothing was applied.");
         return failed;
+    }
+    pendingFiles.clear();
+    // the personal library lives outside the project: written once the step is in
+    for (const TitleOpFile& f : result.files) {
+        if (f.undoable) continue;
+        std::error_code ec;
+        if (f.remove) {
+            fs::remove(f.path, ec);
+            continue;
+        }
+        fs::create_directories(f.path.parent_path(), ec);
+        std::ofstream out(f.path, std::ios::binary | std::ios::trunc);
+        out << f.content;
+        if (!out) result.problems.push_back(TitleOpProblem{"warning", "write_failed", -1, f.path.generic_string(), "could not write '" + f.path.generic_string() + "'"});
     }
     return result;
 }

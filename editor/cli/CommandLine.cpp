@@ -302,6 +302,7 @@ static void printMainUsage(const std::string& commandName) {
         << "                                                     Measure audio files (the analyze_audio numbers; exit 0/2).\n"
         << "  " << commandName << " sound-library verify|list [options]\n"
         << "                                                     Check or list the starter library (exit 0/1/2).\n"
+        << "  " << commandName << " title-library <subcommand> [options]  Port, normalize and check the Title Art library (exit 0/1/2).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
         << "  " << commandName << " call [options] <tool> ...  Run one MCP tool of an editor from the shell.\n"
         << "  " << commandName << " batch [options] < calls  Run MCP tool calls from stdin (one JSON per line).\n"

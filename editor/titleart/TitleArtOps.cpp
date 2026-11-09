@@ -32,6 +32,7 @@ namespace {
     struct OpRegistry {
         std::map<std::string, TitleOpHandler> handlers;
         std::map<std::string, TitleCreateImporter> importers;
+        std::vector<std::pair<std::string, TitleBatchFinisher>> finishers;
     };
 
     OpRegistry& registry() {
@@ -1359,6 +1360,12 @@ TitleJson TitleOpsResult::toJson() const {
     for (const TitleOpChange& c : changes) list.push_back(c.toJson());
     out["changes"] = list;
     out["new_ids"] = newIds;
+    if (!details.empty()) out["details"] = details;
+    if (!files.empty()) {
+        TitleJson written = TitleJson::array();
+        for (const TitleOpFile& f : files) written.push_back(TitleJson{{"path", f.path.generic_string()}, {"undoable", f.undoable}, {"remove", f.remove}});
+        out["files"] = written;
+    }
     TitleJson problemList = TitleJson::array();
     for (const TitleOpProblem& p : problems) problemList.push_back(p.toJson());
     out["problems"] = problemList;
@@ -1585,6 +1592,17 @@ bool TitleArtOps::registerOp(const std::string& name, TitleOpHandler handler) {
     return registry().handlers.emplace(name, std::move(handler)).second;
 }
 
+void TitleArtOps::registerBatchFinisher(const std::string& name, TitleBatchFinisher finisher) {
+    auto& list = registry().finishers;
+    for (auto& entry : list) {
+        if (entry.first == name) {
+            entry.second = std::move(finisher);
+            return;
+        }
+    }
+    list.emplace_back(name, std::move(finisher));
+}
+
 bool TitleArtOps::unregisterOp(const std::string& name) {
     return registry().handlers.erase(name) > 0;
 }
@@ -1765,13 +1783,20 @@ TitleOpsResult TitleArtOps::apply(const TitleArtDoc& doc, const TitleJson& ops, 
             result.doc = doc;
             result.changes.clear();
             result.newIds = TitleJson::object();
+            result.files.clear();
+            result.details = TitleJson::object();
             return result;
         }
         result.applied++;
     }
+    for (const auto& finisher : registry().finishers) finisher.second(ctx);
     applyCommitInvariants(&doc, result.doc, ids, result);
     result.ok = true;
-    result.undoName = names.size() == 1 && !names[0].empty() ? names[0]
-                                                             : "Edit Title Art (" + std::to_string(std::max(result.changes.size(), names.size())) + " changes)";
+    // S84 R7: one library apply per layer in a batch is one step, "Apply Look Gold (3 layers)"
+    const bool sameApply = names.size() > 1 && names[0].rfind("Apply ", 0) == 0 &&
+                           std::all_of(names.begin(), names.end(), [&](const std::string& n) { return n == names[0]; });
+    if (sameApply) result.undoName = names[0] + " (" + std::to_string(names.size()) + " layers)";
+    else result.undoName = names.size() == 1 && !names[0].empty() ? names[0]
+                                                                : "Edit Title Art (" + std::to_string(std::max(result.changes.size(), names.size())) + " changes)";
     return result;
 }

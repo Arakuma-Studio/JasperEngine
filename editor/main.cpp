@@ -10,6 +10,7 @@
 #include "hub/ProjectHubWindow.h"
 #include "mcp/McpLaunch.h"
 #include "reload/HotReloadService.h"
+#include "titleart/library/TitleLibraryCli.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ShellEnv.h"
 #include "util/TextEncoding.h"
@@ -76,6 +77,7 @@ int runEditor(int argc, char* argv[]) {
     if (argc >= 2 && std::strcmp(argv[1], "sound-library") == 0) {
         return editor::SoundLibraryCli::runSoundLibrary(argc - 1, argv + 1, argv[0]);
     }
+    if (argc >= 2 && std::strcmp(argv[1], "title-library") == 0) return editor::TitleLibraryCli::run(argc - 1, argv + 1, argv[0]);
     if (argc >= 2 && std::strcmp(argv[1], "check") == 0) {
         return editor::CommandLine::runCheckCommand(argc - 1, argv + 1, argv[0]);
     }
