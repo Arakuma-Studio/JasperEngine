@@ -26,6 +26,7 @@
 #include <cstdio>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <set>
 #include <sstream>
 
@@ -1049,8 +1050,50 @@ namespace {
             return out;
         }
 
+        // S80 keeps at most 32 stops; Pachislop's foil and glint gradients have up to 70: the stops that
+        // change the ramp least go first (an approximation the report lists)
+        size_t maxStops() const { return schema.member(*schema.kind("gradient"), "stops")->maxItems; }
+
+        void thinGradients(Json& value) {
+            if (value.is_array()) {
+                for (Json& v : value) thinGradients(v);
+                return;
+            }
+            if (!value.is_object()) return;
+            for (auto it = value.begin(); it != value.end(); ++it) {
+                if (it.key() == "stops" && it.value().is_array() && it.value().size() > maxStops()) thinStops(it.value());
+                else thinGradients(it.value());
+            }
+        }
+
+        void thinStops(Json& stops) {
+            const size_t before = stops.size();
+            auto colorOf = [](const Json& stop) {
+                titleart::TitleColor c;
+                if (stop.contains("color")) titleart::parseTitleColor(stop["color"], c);
+                return c;
+            };
+            while (stops.size() > maxStops()) {
+                size_t best = 1;
+                double bestError = std::numeric_limits<double>::max();
+                for (size_t i = 1; i + 1 < stops.size(); i++) {
+                    const double p0 = stops[i - 1].value("pos", 0.0), p1 = stops[i + 1].value("pos", 1.0), p = stops[i].value("pos", 0.5);
+                    const double t = p1 > p0 ? (p - p0) / (p1 - p0) : 0.0;
+                    const titleart::TitleColor a = colorOf(stops[i - 1]), b = colorOf(stops[i + 1]), m = colorOf(stops[i]);
+                    const double error = std::abs(a.r + (b.r - a.r) * t - m.r) + std::abs(a.g + (b.g - a.g) * t - m.g) + std::abs(a.b + (b.b - a.b) * t - m.b);
+                    if (error < bestError) {
+                        bestError = error;
+                        best = i;
+                    }
+                }
+                stops.erase(stops.begin() + (long)best);
+            }
+            approximate("a gradient of " + std::to_string(before) + " stops thinned to " + std::to_string(stops.size()) + " (S80's limit)");
+        }
+
         // an object of `kind` normalized (defaults filled, ranges clamped), its warnings as notes
         Json normalizedEntry(Json value, const char* kind, const Ctx& c) {
+            thinGradients(value);
             std::vector<titleart::TitleWarning> warnings;
             titleart::NormalizeContext context;
             context.warnings = &warnings;
@@ -1666,6 +1709,10 @@ namespace {
         // the members every Pachislop layer has (LayerBase), onto ours
         void layerBase(const Json& L, Json& out, const Ctx& c) {
             out["name"] = L.value("name", std::string());
+            // a layer or group named after a replaced text takes the replacement (§6.7.3: no old text survives)
+            for (const TextEntry& e : t.texts) {
+                if (e.source == out["name"].get<std::string>()) out["name"] = t.storeJa ? e.ja : e.en;
+            }
             for (const char* key : {"visible", "locked", "guide", "clip"}) {
                 if (L.contains(key)) out[key] = L[key];
             }

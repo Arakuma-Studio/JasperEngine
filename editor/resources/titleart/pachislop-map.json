@@ -988,6 +988,10 @@
       "reason": "the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)"
     },
     {
+      "path": "kind:gen:sunburst.count",
+      "reason": "a stale key some templates carry beside `rays`: Pachislop's sunburst reads only `rays`"
+    },
+    {
       "path": "template.layers[].solo",
       "reason": "a Layers-panel view state; S80 documents have no solo"
     },
