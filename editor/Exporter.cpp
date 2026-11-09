@@ -2561,6 +2561,9 @@ bool editor::Exporter::loadAndSaveAllScenes() {
             // S04: the references of the build (its scenes, and the prefabs and materials they
             // use) that resolve to no asset, checked by checkMissingAssets()
             missingBuildReferences.clear();
+            // the disk as it is now: a file the editor wrote moments ago (a terrain map) is no
+            // reference to a missing asset because no watcher walk has listed it yet
+            project->refreshAssetDatabase(true);
             project->getAssetIndex().waitUntilReady();
             {
                 std::set<Guid> owners;
