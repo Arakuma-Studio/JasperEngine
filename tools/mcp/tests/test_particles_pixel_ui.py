@@ -161,18 +161,37 @@ async def test_overlay_scrub_is_exact(ed: Editor):
 
 
 async def test_pixel_grid_toggle(ed: Editor):
-    """Pixel Grid draws the base-pixel grid on a Scene view zoomed in past 4x."""
+    """Pixel Grid draws the base-pixel grid on a Scene view zoomed in past 4x (an overlay of the editor's
+    Scene view: compared in editor screenshots, inside the view and outside the panel)."""
     await setup(ed)
     ui = ui_input.for_editor(ed)
     # a 2D view's zoom is world units a screen pixel: 0.1 is 10 screen pixels a base pixel at PPU 1
     await ed.call("set_scene_camera", scene=S["scene"], center=[0, 0], zoom=0.1)
+    view = (await ed.call("focus_window", window="scene"))["rect"]
+    await ed.call("select_entities", scene=S["scene"], entity=S["system"])
+    toggle = await ui.find("Pixel Grid")
+    ed.check(toggle is not None, "the panel's Pixel Grid toggle is drawn")
+    panel = toggle.get("window_rect", toggle["rect"])
+    await ed.call("control_particles", scene=S["scene"], entity=S["system"], action="pause")
     await ui_input.frames(ed, 6)
-    view = await ed.call_raw("screenshot", {"view": "scene", "max_width": 8192})
-    await ui.click_item("Pixel Grid")
+    before = await editor_shot(ed)
+    await ui.click(ui.centre(toggle["rect"]))
     await ui_input.frames(ed, 6)
-    grid = await ed.call_raw("screenshot", {"view": "scene", "max_width": 8192})
-    ed.check(view.images and grid.images and view.images[0][0] != grid.images[0][0], "Pixel Grid changes the Scene view")
-    await ui.click_item("Pixel Grid")
+    after = await editor_shot(ed)
+    width, height, a = pngdiff.decode(before)
+    _, _, b = pngdiff.decode(after)
+
+    def inside(r, x, y):
+        return r["x"] <= x < r["x"] + r["width"] and r["y"] <= y < r["y"] + r["height"]
+    changed = 0
+    for y in range(int(view["y"]), min(height, int(view["y"] + view["height"]))):
+        for x in range(int(view["x"]), min(width, int(view["x"] + view["width"]))):
+            if inside(panel, x, y):
+                continue
+            i = (y * width + x) * 4
+            changed += 1 if a[i:i + 3] != b[i:i + 3] else 0
+    ed.check(changed > 100, f"Pixel Grid draws over the Scene view: {changed} pixels changed")
+    await ui.click(ui.centre(toggle["rect"]))
 
 
 async def test_palette_ramp_drag(ed: Editor):

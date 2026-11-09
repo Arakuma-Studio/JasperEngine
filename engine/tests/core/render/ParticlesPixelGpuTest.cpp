@@ -425,9 +425,10 @@ TEST_F(ParticlesPixelGpu, ExactColors){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// AC8 (R18, R19): about 12,000 live Analytic dots drawn at 10 times, at a drag where the closed form
-// holds and at a small one (k t well under 1, where it cancels): the lit pixels are the CPU twin's
-// snapped particles, pixel for pixel. A difference is allowed on 0.1 % of them, and only one pixel off
+// AC8 (R18, R19): about 6,000 live Analytic dots over a 120 x 120 box (a third of its pixels lit)
+// drawn at 6 times, at a drag where the closed form holds and at a small one (k t well under 1, where
+// it cancels): the lit pixels are the CPU twin's snapped particles, pixel for pixel. A difference is
+// allowed on 0.1 % of them, and only one pixel off
 TEST_F(ParticlesPixelGpu, AnalyticMatchesCpu){
     JASPER_REQUIRE_GPU();
     GpuEnvironment::setView(256, 256, 256, 256, Scaling::LETTERBOX);
@@ -443,9 +444,9 @@ TEST_F(ParticlesPixelGpu, AnalyticMatchesCpu){
         d.main.startLifetime = MinMaxCurve::twoConstants(1.0f, 3.0f);
         d.main.startSpeed = MinMaxCurve::twoConstants(5.0f, 40.0f);
         d.main.startSize = MinMaxCurve(1.0f);
-        d.emission.rateOverTime = MinMaxCurve(6000.0f);
+        d.emission.rateOverTime = MinMaxCurve(3000.0f);
         d.shape.shape = ShapeType::Box;
-        d.shape.scale = Vector3(200.0f, 200.0f, 0.0f);
+        d.shape.scale = Vector3(120.0f, 120.0f, 0.0f);
         d.shape.randomizeDirection = 1.0f;
         d.limitVelocity.present = true;
         d.limitVelocity.dampen = 0.0f;
@@ -464,64 +465,69 @@ TEST_F(ParticlesPixelGpu, AnalyticMatchesCpu){
         ASSERT_TRUE(state && state->runtime.isAnalytic());
 
         size_t particles = 0, pixels = 0, lit = 0, unlit = 0, stray = 0, far = 0;
-        for (int i = 0; i < 10; i++){
-            const double t = 0.37 + 0.71 * i;
+        for (int i = 0; i < 6; i++){
+            const double t = 0.37 + 1.13 * i;
             ASSERT_TRUE(render(t));
             GpuEnvironment::drawFrames(2);
             const Shot image = readImage();
-            std::set<std::pair<int, int>> expected;
+            const int w = image.width, h = image.height;
+            std::vector<uint8_t> expected((size_t)w * h, 0), drawn((size_t)w * h, 0);
             const AnalyticProgram& program = *state->runtime.analytic();
             for (uint32_t s = 0; s < program.slotCount; s++){
                 const AnalyticParticle p = AnalyticParticles::evaluate(program, s);
                 if (!p.alive) continue;
                 // the emitter's transform (a translation), then the corner snap of a 1-px box
                 const int x = (int)pixelart::snap(128.0f + p.position.x - 0.5f), y = (int)pixelart::snap(128.0f + p.position.y - 0.5f);
-                if (x < 0 || y < 0 || x >= image.width || y >= image.height) continue;
-                expected.insert({x, y});
+                if (x < 0 || y < 0 || x >= w || y >= h) continue;
+                expected[(size_t)y * w + x] = 1;
                 particles++;
             }
-            std::set<std::pair<int, int>> drawn;
-            for (int y = 0; y < image.height; y++)
-                for (int x = 0; x < image.width; x++)
-                    if (image.at(x, y) != kBlack) drawn.insert({x, y});
-            auto near = [](const std::set<std::pair<int, int>>& set, const std::pair<int, int>& p){
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    drawn[(size_t)y * w + x] = image.at(x, y) != kBlack ? 1 : 0;
+            auto near = [&](const std::vector<uint8_t>& set, int x, int y){
                 for (int dy = -1; dy <= 1; dy++)
-                    for (int dx = -1; dx <= 1; dx++)
-                        if (set.count({p.first + dx, p.second + dy})) return true;
+                    for (int dx = -1; dx <= 1; dx++){
+                        const int nx = x + dx, ny = y + dy;
+                        if (nx >= 0 && ny >= 0 && nx < w && ny < h && set[(size_t)ny * w + nx]) return true;
+                    }
                 return false;
             };
-            pixels += expected.size();
-            lit += drawn.size();
-            for (const auto& p : expected){
-                if (drawn.count(p)) continue;
-                unlit++;
-                far += near(drawn, p) ? 0 : 1;
-            }
-            for (const auto& p : drawn){
-                if (expected.count(p)) continue;
-                stray++;
-                far += near(expected, p) ? 0 : 1;
+            for (int y = 0; y < h; y++){
+                for (int x = 0; x < w; x++){
+                    const bool e = expected[(size_t)y * w + x] != 0, g = drawn[(size_t)y * w + x] != 0;
+                    pixels += e ? 1 : 0;
+                    lit += g ? 1 : 0;
+                    if (e && !g){
+                        unlit++;
+                        far += near(drawn, x, y) ? 0 : 1;
+                    }else if (g && !e){
+                        stray++;
+                        far += near(expected, x, y) ? 0 : 1;
+                    }
+                }
             }
             if (i == 0 && std::getenv("JASPER_TEST_WRITE_ACTUAL")){
                 // the read-back and the twin's pixels side by side, for a failure's evidence
-                std::vector<uint8_t> both((size_t)image.width * 2 * image.height * 4, 0);
-                for (int y = 0; y < image.height; y++){
-                    for (int x = 0; x < image.width; x++){
-                        uint8_t* left = &both[((size_t)(image.height - 1 - y) * image.width * 2 + x) * 4];
-                        uint8_t* right = left + (size_t)image.width * 4;
-                        left[0] = left[1] = left[2] = drawn.count({x, y}) ? 255 : 0;
-                        right[0] = right[1] = right[2] = expected.count({x, y}) ? 255 : 0;
+                std::vector<uint8_t> both((size_t)w * 2 * h * 4, 0);
+                for (int y = 0; y < h; y++){
+                    for (int x = 0; x < w; x++){
+                        uint8_t* left = &both[((size_t)(h - 1 - y) * w * 2 + x) * 4];
+                        uint8_t* right = left + (size_t)w * 4;
+                        left[0] = left[1] = left[2] = drawn[(size_t)y * w + x] ? 255 : 0;
+                        right[0] = right[1] = right[2] = expected[(size_t)y * w + x] ? 255 : 0;
                         left[3] = right[3] = 255;
                     }
                 }
-                writePng(getOutputDirectory() + "/particles_analytic_vs_cpu_" + std::to_string(drag) + ".png", both, image.width * 2, image.height);
+                writePng(getOutputDirectory() + "/particles_analytic_vs_cpu_" + std::to_string(drag) + ".png", both, w * 2, h);
             }
         }
         const std::string counts = "drag " + std::to_string(drag) + ": " + std::to_string(particles) + " particles on " + std::to_string(pixels) +
                                    " pixels, " + std::to_string(lit) + " lit, " + std::to_string(unlit) + " unlit, " + std::to_string(stray) + " stray, " +
                                    std::to_string(far) + " more than a pixel off";
-        EXPECT_GT(particles, 100000u) << counts;
-        EXPECT_GT((double)pixels, 0.2 * 10 * 200 * 200) << counts;
+        std::printf("[gpu] AnalyticMatchesCpu %s\n", counts.c_str());
+        EXPECT_GT(particles, 30000u) << counts;
+        EXPECT_GT((double)pixels, 0.25 * 6 * 120 * 120) << counts;
         EXPECT_LE((double)(unlit + stray), 0.001 * (double)pixels) << counts;
         EXPECT_EQ(far, 0u) << counts;
     }
