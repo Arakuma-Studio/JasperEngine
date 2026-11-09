@@ -179,8 +179,10 @@ namespace jasperengine::editor::pixelart::cleanup {
         SampleOptions sample = recipe.sample;
         if (spec.cellWidth == 1 && spec.cellHeight == 1) sample.alphaThreshold = recipe.alphaCutoff;
         const std::string key = sampleKey(sample);
-        if (!use.hasSamples || use.samplesGrid != outcome.grid || use.samplesKey != key) {
+        const uint64_t picture = imageKey(image);
+        if (!use.hasSamples || use.samplesImage != picture || use.samplesGrid != outcome.grid || use.samplesKey != key) {
             use.samples = sampleCells(image, outcome.grid, sample);
+            use.samplesImage = picture;
             use.samplesGrid = outcome.grid;
             use.samplesKey = key;
             use.hasSamples = true;

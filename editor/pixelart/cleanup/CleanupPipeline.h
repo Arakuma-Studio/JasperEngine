@@ -38,6 +38,7 @@ namespace jasperengine::editor::pixelart::cleanup {
         Grid baseGrid;
 
         bool hasSamples = false;
+        uint64_t samplesImage = 0;
         Grid samplesGrid;
         std::string samplesKey;
         CellSamples samples;
