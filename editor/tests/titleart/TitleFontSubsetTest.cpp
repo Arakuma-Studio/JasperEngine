@@ -232,6 +232,22 @@ TEST(TitleFontSubset, LatinKeepsCodepointsAndVertClosure) {
 }
 
 // AC15: shaping a subset gives the full font's glyphs and positions (ligatures and kerning included)
+// the library's pack fonts declare a Reserved Font Name in three different ways; all must rename
+TEST(TitleFontSubset, ReservedNamesOfThePackFonts) {
+    const fs::path fonts = fs::path(JASPER_TEST_REPO_DIR) / "editor" / "resources" / "titleart" / "fonts";
+    for (const fs::path& file : {fonts / "monoton" / "Monoton-Regular.ttf", fonts / "audiowide" / "Audiowide-Regular.ttf", fonts / "medievalsharp" / "MedievalSharp.ttf",
+                                 fonts / "russo-one" / "RussoOne-Regular.ttf"}) {
+        std::ifstream in(file, std::ios::binary);
+        ASSERT_TRUE(in.good()) << file;
+        const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), {});
+        TitleFontInfo info;
+        std::string error;
+        ASSERT_TRUE(readTitleFontInfo(bytes, 0, info, error)) << file << ": " << error;
+        EXPECT_TRUE(info.ofl) << file;
+        EXPECT_TRUE(info.reservedFontName) << file;
+    }
+}
+
 TEST(TitleFontSubset, ShapesLikeTheFullFont) {
     for (const char* name : {"SourceSans3-Regular.otf", "DelaGothicOne-Regular.ttf"}) {
         const std::vector<uint8_t> bytes = fixture(name);

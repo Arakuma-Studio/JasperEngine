@@ -225,7 +225,8 @@
           "look": "anime/ki-aura",
           "apply_font": true
         }
-      ]
+      ],
+      "background": "dark"
     },
     {
       "id": "anime/combo-counter",

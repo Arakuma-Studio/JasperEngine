@@ -282,15 +282,21 @@ namespace {
                 request.tier = tier;
                 titleart::three_d::TitleMesher mesher;
                 const auto mesh = mesher.build(request);
-                const titleart::TitleTierFit fit = titleart::titleTierFit(mesh->stats, mesh->bytes(), tier);
+                // the tier's solid limit counts the layer's stack (the letter and its enabled bands, as
+                // fit_to_tier reduces it), while the mesh stats count every island of every solid
+                uint32_t stack = 1;
+                for (const titleart::Band3D& band : request.style.bands) stack += band.enabled ? 1 : 0;
+                titleart::TitleMeshStats stats = mesh->stats;
+                stats.solids = stack;
+                const titleart::TitleTierFit fit = titleart::titleTierFit(stats, mesh->bytes(), tier);
                 const std::string name = layer.value("name", std::string());
                 TitleCheckResult r = result("3d_tier_budget", fit.fits ? TitleCheckStatus::Pass : TitleCheckStatus::Fail,
                                             "'" + name + "' at " + titleart::titleTierName(tier) + ": " +
                                                 (fit.fits ? std::string("fits") : "over (" + fit.over.front() + ")"));
                 r.id = std::string("3d_tier_budget.") + titleart::titleTierName(tier);
-                r.measured = Json{{"layer", name}, {"triangles", mesh->stats.triangles}, {"solids", mesh->stats.solids}, {"mesh_bytes", mesh->bytes()}};
+                r.measured = Json{{"layer", name}, {"triangles", mesh->stats.triangles}, {"solids", mesh->stats.solids}, {"stack", stack}, {"mesh_bytes", mesh->bytes()}};
                 const titleart::TitleTierLimits l = titleart::titleTierLimits(tier);
-                r.threshold = Json{{"triangles", l.maxTriangles}, {"solids", l.maxSolids}, {"mesh_bytes", l.meshBytes}};
+                r.threshold = Json{{"triangles", l.maxTriangles}, {"stack", l.maxSolids}, {"mesh_bytes", l.meshBytes}};
                 r.method = "the layer meshed with the tier's reductions";
                 if (!fit.fits) {
                     r.fix = Json{{"ops", Json::array({Json{{"op", "fit_to_tier"}, {"layer", "id:" + layer.value("id", std::string())},

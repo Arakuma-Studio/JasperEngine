@@ -286,7 +286,7 @@ namespace {
     }
 
     const char* const LOOK_ORDER[] = {"format", "version", "id", "revision", "name", "description", "family", "tags", "synonyms",
-                                      "dimension", "applies", "ref_size", "font", "thumbnail_texts", "style", "style_3d", "effects",
+                                      "dimension", "applies", "ref_size", "background", "font", "thumbnail_texts", "style", "style_3d", "effects",
                                       "part_effects", "generators", "group_effects", "lighting", "links", "lint_allow", "check_allow",
                                       "assets", "provenance"};
 

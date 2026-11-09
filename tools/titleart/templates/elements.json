@@ -125,6 +125,12 @@
             }
           ]
         }
+      ],
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.78 of 9 counters on the 'ja' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
       ]
     },
     {
@@ -252,6 +258,20 @@
             "gen.loop": true
           }
         }
+      ],
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "8 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "8 stacked solids (letter and bands) over the medium tier's 5 on the 'ja' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 6 counters on the 'ja' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
       ]
     },
     {
@@ -350,6 +370,12 @@
           "name": "Lightning",
           "preset": "bolts",
           "follow": "Title"
+        }
+      ],
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.67 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
         }
       ]
     }

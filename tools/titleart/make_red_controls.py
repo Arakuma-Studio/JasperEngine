@@ -67,7 +67,9 @@ PAIRS = {
     "color_scheme_match": (doc(face={"fill": {"kind": "linear", "gradient": {"stops": [{"pos": 0, "color": "#e8f0a0"}, {"pos": 1, "color": "#5a6a10"}]}}, "finish": {"enabled": True, "gradient": {"stops": [{"pos": 0, "color": "#2a3000"}, {"pos": 1, "color": "#f0ffc0"}]}}},
                                rims=[rim(6, "#0a0604")], look={"id": "", "color_scheme": "gold", "owner": ""}),
                            None),
-    "metal_range": (doc(face={"fill": {"kind": "solid", "color": "#c09040"}, "bevel": {"enabled": True, "depth": 0, "highlight_opacity": 0, "shadow_opacity": 0}}, rims=[rim(6, "#0a0604")]),
+    # a metal that reads flat: a real ramp, but only about 1.5 L* once its finish is flat (the library's real metals span 18 and up)
+    "metal_range": (doc(face={"fill": {"kind": "linear", "gradient": {"stops": [{"pos": 0, "color": "#a89060"}, {"pos": 1, "color": "#c8b078"}]}},
+                             "finish": {"enabled": True, "gradient": {"stops": [{"pos": 0, "color": "#a89060"}, {"pos": 1, "color": "#c8b078"}]}}}, rims=[rim(6, "#0a0604")]),
                     doc(face={"fill": {"kind": "linear", "gradient": GOLD}, "bevel": {"enabled": True, "depth": 4}, "finish": {"enabled": True, "gradient": GOLD}}, rims=[rim(6, "#0a0604")])),
     "not_clipped": (doc(rims=[rim(6, "#000000")], position=(560, 0)), doc(rims=[rim(6, "#000000")])),
     "glyphs_present": (doc(text="HERO大", rims=[rim(6, "#000000")]), doc(rims=[rim(6, "#000000")])),

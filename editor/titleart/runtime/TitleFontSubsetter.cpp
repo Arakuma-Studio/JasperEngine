@@ -17,6 +17,7 @@
 #include <chrono>
 #include <fstream>
 #include <iterator>
+#include <set>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -100,7 +101,12 @@ namespace {
         const std::string url = lower(out.licenseUrl);
         out.ofl = licence.find("open font license") != std::string::npos || out.license.find("OFL") != std::string::npos ||
                   url.find("/ofl") != std::string::npos || url.find("openfontlicense") != std::string::npos;
-        out.reservedFontName = lower(out.copyright).find("reserved font name") != std::string::npos;
+        out.reservedFontName = lower(out.copyright).find("reserved font name") != std::string::npos ||
+                               lower(out.license).find("reserved font name") != std::string::npos;
+        // the library's OFL fonts that declare their Reserved Font Name only in the OFL.txt shipped
+        // beside them (NOTICE.md): their name table does not say so
+        static const std::set<std::string> RESERVED_IN_LICENSE_FILE = {"Audiowide", "Monoton"};
+        if (RESERVED_IN_LICENSE_FILE.count(out.family)) out.ofl = out.reservedFontName = true;
         out.variable = hb_ot_var_has_data(face);
         return true;
     }

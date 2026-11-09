@@ -218,7 +218,8 @@
           "type": "glitch",
           "preset": "digital"
         }
-      ]
+      ],
+      "background": "dark"
     }
   ]
 }

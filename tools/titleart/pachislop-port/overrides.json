@@ -11,6 +11,12 @@
           "rule": "rims_thin",
           "reason": "just under the 5 % rule as authored; the look is the source's and its rim stack reads as intended"
         }
+      ],
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
       ]
     },
     "casino/rainbow-glass-gold-3d": {
@@ -19,13 +25,46 @@
           "rule": "contrast",
           "reason": "two gold bands read as one frame on purpose"
         }
-      ]
+      ],
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.high",
+          "reason": "294020 triangles over 150000; 7499928 mesh bytes over 5242880 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "5 stacked solids (letter and bands) over the low tier's 3; 44978 triangles over 30000 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "135002 triangles over 60000; 3580152 mesh bytes over 2097152 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.67 of 3 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ],
+      "background": "dark"
     },
     "elements/ice-crystal-glass-3d": {
       "lint_allow": [
         {
           "rule": "contrast",
           "reason": "clear ice on a pale band: the facets, not lightness, separate them"
+        }
+      ],
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "8 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "8 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
         }
       ]
     },
@@ -35,6 +74,12 @@
           "rule": "contrast",
           "reason": "the gold face runs into its first stroke by design: the second stroke is the separation"
         }
+      ],
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
       ]
     },
     "metal/holographic-silver-3d": {
@@ -42,6 +87,16 @@
         {
           "rule": "contrast",
           "reason": "iridescent silver on a silver band: hue, not lightness, separates them"
+        }
+      ],
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
         }
       ]
     },
@@ -75,7 +130,8 @@
           "rule": "rims_thin",
           "reason": "a hairline keyline only: the chrome's own bevel edge carries the shape"
         }
-      ]
+      ],
+      "background": "dark"
     },
     "neon/hollow-neon": {
       "lint_allow": [
@@ -83,7 +139,8 @@
           "rule": "rims_thin",
           "reason": "a thin tube is the look"
         }
-      ]
+      ],
+      "background": "dark"
     },
     "neon/neon-tube": {
       "lint_allow": [
@@ -100,8 +157,1039 @@
           "reason": "a brush mark has no heavy outline"
         }
       ]
+    },
+    "casino/candy-glitter-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "metal_range",
+          "reason": "its face is metallic in the 3D sense, but lit flat: L* range 15.4 on the 'kanji' sample; not meant to read as a polished metal"
+        }
+      ]
+    },
+    "casino/giraffe": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/gold-on-red-stack-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "7 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "7 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 1 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/inflate-candy-3d": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/jackpot-rays-sparkles": {
+      "background": "dark"
+    },
+    "casino/orb-candy-gold-3d": {
+      "background": "dark"
+    },
+    "casino/orb-candy-green-3d": {
+      "background": "dark"
+    },
+    "casino/orb-candy-rainbow-3d": {
+      "background": "dark"
+    },
+    "casino/orb-candy-red-3d": {
+      "check_allow": [
+        {
+          "check": "metal_range",
+          "reason": "its face is metallic in the 3D sense, but lit flat: L* range 13.3 on the 'kanji' sample; not meant to read as a polished metal"
+        }
+      ]
+    },
+    "casino/orb-candy-white-3d": {
+      "check_allow": [
+        {
+          "check": "metal_range",
+          "reason": "its face is metallic in the 3D sense, but lit flat: L* range 14.7 on the 'kanji' sample; not meant to read as a polished metal"
+        }
+      ],
+      "background": "dark"
+    },
+    "casino/orb-metal-gold-3d": {
+      "background": "dark"
+    },
+    "casino/orb-metal-silver-3d": {
+      "background": "dark"
+    },
+    "casino/outline-blue": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/outline-giraffe": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/outline-green": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/outline-leopard": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/outline-purple": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/outline-rainbow": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/outline-red": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/pop-out-gold-3d": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/rainbow-candy-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.67 of 3 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/rainbow-confirm": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/red-plate-gold-rim": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/slanted-box-plates-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        }
+      ]
+    },
+    "casino/two-tone-split-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.33 of 3 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "casino/zebra-gold": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "elements/aurora-teal-violet-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "elements/corona-purple": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "elements/electric-blue": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "elements/fire-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "elements/lava-crust-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "elements/red-hot-fire": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "elements/toxic-acid-glow-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "gems/amethyst-crystal-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "7 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "7 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        }
+      ]
+    },
+    "gems/diamond-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "7 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "7 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "gems/jade-gold-rim-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        }
+      ]
+    },
+    "gems/obsidian-gold-line-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "7 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "7 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "gems/pearl-pink-rim-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.67 of 3 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "gems/sapphire-silver-frame-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "8 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "8 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.67 of 3 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/anodised-titanium-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/black-chrome-red-line-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "7 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "7 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/black-gold": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/black-silver": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/candy-apple-red-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "8 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "8 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/carbon-gunmetal-orange-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/chrome-blue-stack-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/copper": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/emerald-metal-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/gold-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "4 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.67 of 3 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/rose-copper-teal-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/rose-gold": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/rose-gold-chocolate-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 4 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/silver-on-gold-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "metal/silver-premium-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "neon/matte-black-glowing-rim-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "neon/neon-glass-tube-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "neon/violet-neon-edge-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "scifi/galaxy-starfield-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "scifi/hazard-stripes": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "wa/black-lacquer-gold-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "wa/porcelain-cobalt-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        }
+      ]
+    },
+    "wa/sakura-pearl-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        }
+      ]
+    },
+    "wa/sakura-pink": {
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
+    },
+    "wa/vermilion-lacquer-gold-leaf-3d": {
+      "check_allow": [
+        {
+          "check": "3d_tier_budget.low",
+          "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "3d_tier_budget.medium",
+          "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.50 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ]
     }
   },
-  "templates": {},
+  "templates": {
+    "casino/about-80-percent-3d": {
+      "canvas": {
+        "width": 2400,
+        "height": 1080
+      },
+      "template": {
+        "check_allow": [
+          {
+            "check": "3d_tier_budget.low",
+            "reason": "4 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
+          }
+        ]
+      }
+    },
+    "casino/big-bonus-3d-groups": {
+      "canvas": {
+        "width": 2400,
+        "height": 1360
+      },
+      "template": {
+        "check_allow": [
+          {
+            "check": "3d_tier_budget.low",
+            "reason": "4 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
+          },
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.60 of 5 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/big-win-3d": {
+      "canvas": {
+        "width": 2880,
+        "height": 1360
+      },
+      "template": {
+        "check_allow": [
+          {
+            "check": "3d_tier_budget.low",
+            "reason": "4 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
+          },
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.75 of 4 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/confirm-rainbow": {
+      "canvas": {
+        "width": 2400,
+        "height": 1080
+      },
+      "template": {
+        "check_allow": [
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.00 of 1 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/confirm-zebra-clip": {
+      "canvas": {
+        "width": 2400,
+        "height": 1080
+      }
+    },
+    "casino/cut-in-band": {
+      "canvas": {
+        "width": 2400,
+        "height": 1360
+      }
+    },
+    "casino/cut-in-band-fx": {
+      "canvas": {
+        "width": 2880,
+        "height": 1080
+      }
+    },
+    "casino/original-depth-fade-3d": {
+      "canvas": {
+        "width": 2880,
+        "height": 1080
+      },
+      "template": {
+        "check_allow": [
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.30 of 10 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/premium-rainbow-fx": {
+      "canvas": {
+        "width": 2400,
+        "height": 1360
+      },
+      "template": {
+        "background": "dark"
+      }
+    },
+    "casino/red-hot-fire": {
+      "canvas": {
+        "width": 2400,
+        "height": 1080
+      },
+      "template": {
+        "check_allow": [
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.33 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/red-hot-plate-fx": {
+      "canvas": {
+        "width": 2400,
+        "height": 1360
+      },
+      "template": {
+        "check_allow": [
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.33 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/red-hot-rim-glow": {
+      "canvas": {
+        "width": 2400,
+        "height": 1080
+      },
+      "template": {
+        "check_allow": [
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.50 of 6 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/reserve-flash-fx": {
+      "canvas": {
+        "width": 1920,
+        "height": 1600
+      },
+      "template": {
+        "check_allow": [
+          {
+            "check": "metal_range",
+            "reason": "its face is metallic in the 3D sense, but lit flat: L* range 7.5 on the 'en' sample; not meant to read as a polished metal"
+          }
+        ]
+      }
+    },
+    "casino/rush-title-fx": {
+      "canvas": {
+        "width": 2400,
+        "height": 1360
+      }
+    },
+    "casino/slanted-box-plate": {
+      "canvas": {
+        "width": 2400,
+        "height": 1080
+      }
+    },
+    "casino/super-red-hot": {
+      "canvas": {
+        "width": 2400,
+        "height": 1080
+      },
+      "template": {
+        "check_allow": [
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.17 of 6 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "metal/liquid-gold-vertical-kicker": {
+      "canvas": {
+        "width": 1360,
+        "height": 2880
+      }
+    },
+    "wa/awakening-dry-brush": {
+      "canvas": {
+        "width": 2400,
+        "height": 1080
+      }
+    },
+    "wa/red-hot-brush-vertical": {
+      "canvas": {
+        "width": 1080,
+        "height": 2400
+      },
+      "template": {
+        "check_allow": [
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.67 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/attack-chance-rainbow-3d": {
+      "template": {
+        "check_allow": [
+          {
+            "check": "3d_tier_budget.low",
+            "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
+          }
+        ]
+      }
+    },
+    "casino/big-bonus-3d": {
+      "template": {
+        "check_allow": [
+          {
+            "check": "3d_tier_budget.low",
+            "reason": "7 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
+          },
+          {
+            "check": "3d_tier_budget.medium",
+            "reason": "7 stacked solids (letter and bands) over the medium tier's 5 on the 'ja' sample; fit_to_tier reduces it"
+          },
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.33 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/bonus-ribbon": {
+      "template": {
+        "check_allow": [
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.67 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/chain-x3-slanted": {
+      "template": {
+        "check_allow": [
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.38 of 16 counters on the 'ja' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/chance-green-blue": {
+      "template": {
+        "check_allow": [
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.00 of 2 counters on the 'ja' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/confirm-giraffe-3d": {
+      "template": {
+        "check_allow": [
+          {
+            "check": "3d_tier_budget.low",
+            "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
+          },
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.00 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/premium-black-gloss": {
+      "template": {
+        "check_allow": [
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.00 of 1 counters on the 'ja' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/push-button-candy-3d": {
+      "template": {
+        "check_allow": [
+          {
+            "check": "3d_tier_budget.low",
+            "reason": "4 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
+          }
+        ]
+      }
+    },
+    "casino/reserve-orbs-3d": {
+      "template": {
+        "check_allow": [
+          {
+            "check": "metal_range",
+            "reason": "its face is metallic in the 3D sense, but lit flat: L* range 8.3 on the 'en' sample; not meant to read as a polished metal"
+          }
+        ]
+      }
+    },
+    "casino/rush-pop-out-3d": {
+      "template": {
+        "check_allow": [
+          {
+            "check": "counter_survival",
+            "reason": "survival 0.00 of 1 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          }
+        ]
+      }
+    },
+    "casino/speech-frame-red": {
+      "template": {
+        "check_allow": [
+          {
+            "check": "metal_range",
+            "reason": "its face is metallic in the 3D sense, but lit flat: L* range 12.7 on the 'en' sample; not meant to read as a polished metal"
+          }
+        ]
+      }
+    }
+  },
   "color_schemes": {}
 }

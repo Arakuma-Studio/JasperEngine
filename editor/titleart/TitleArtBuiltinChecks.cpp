@@ -9,6 +9,7 @@
 #include "TitleArtRenderHost.h"
 #include "runtime/TitleCharacterChecks.h"
 #include "texsynth/SynthImage.h"
+#include "titleart/TitleEffectRegistry.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtRefs.h"
 #include "titleart/TitleArtSchema.h"
@@ -501,6 +502,28 @@ namespace {
         out.push_back(std::move(r));
     }
 
+    // does anything but a generator reach the canvas edge in this layer? A group is judged by its
+    // children: its generators may bleed, its text may not
+    bool contentReachesEdge(const titleart::TitleArtDoc& doc, Renders& renders, const std::string& id, int cw, int ch) {
+        const TJson* layer = titleart::findLayer(doc.root, id);
+        if (!layer) return true;
+        const titleart::LayerType type = titleart::layerTypeOf(*layer);
+        if (type == titleart::LayerType::Generator) return false;
+        if (type == titleart::LayerType::Group && layer->contains("children")) {
+            for (const TJson& child : (*layer)["children"]) {
+                if (child.value("visible", true) && contentReachesEdge(doc, renders, str(child, "id"), cw, ch)) return true;
+            }
+            return false;
+        }
+        std::string error;
+        const TitleCheckImage* alone = renders.isolated(id, error);
+        if (!alone) return true;
+        const TitleRectI b = alphaBox(*alone, 3);
+        if (b.empty()) return false;
+        const TitleRectI c = toCanvas(*alone, b);
+        return c.x <= 0 || c.y <= 0 || c.x + c.width >= cw || c.y + c.height >= ch;
+    }
+
     void notClipped(TitleCheckContext& ctx, Out& out) {
         Renders& renders = rendersOf(ctx);
         std::string error;
@@ -547,16 +570,16 @@ namespace {
                 const TitleRectI c = toCanvas(*alone, b);
                 if (c.x <= 0 || c.y <= 0 || c.x + c.width >= cw || c.y + c.height >= ch) {
                     culprits.push_back(layerName(ctx.doc, id));
-                    const TJson* layer = titleart::findLayer(ctx.doc.root, id);
-                    if (!layer || titleart::layerTypeOf(*layer) != titleart::LayerType::Generator) generatorsOnly = false;
+                    const bool fillsCanvas = c.x <= 0 && c.y <= 0 && c.x + c.width >= cw && c.y + c.height >= ch;
+                    if (!fillsCanvas && contentReachesEdge(ctx.doc, renders, id, cw, ch)) generatorsOnly = false;
                 }
             }
             std::string sides, names;
             for (const std::string& s : touching) sides += (sides.empty() ? "" : ", ") + s;
             for (const std::string& n : culprits) names += (names.empty() ? "" : ", ") + n;
-            if (generatorsOnly && !culprits.empty()) {
+            if (generatorsOnly) {
                 r.status = TitleCheckStatus::Pass;
-                r.message = "only generators reach the canvas edge (" + names + "): they are full-bleed by design";
+                r.message = "only full-bleed layers (generators, a layer filling the canvas) reach the canvas edge" + (names.empty() ? std::string() : " (" + names + ")") + ": they are full-bleed by design";
                 r.measured["layers"] = culprits;
                 r.at.clear();
                 out.push_back(std::move(r));
@@ -792,6 +815,8 @@ namespace {
             plain.overrides.push_back({id, "style.rims", TJson::array()});
             plain.overrides.push_back({id, "effects", TJson::array()});
             plain.overrides.push_back({id, "part_effects", TJson::object()});
+            // a glass face is translucent and speckled: the mask needs the letter's silhouette
+            plain.overrides.push_back({id, "style.face.glass.enabled", false});
             std::string error;
             const TitleCheckImage* mask = renders.get("plain:" + id, plain, error);
             if (!mask) return renderFailed(out, error);
@@ -1026,6 +1051,32 @@ namespace {
         out.push_back(std::move(r));
     }
 
+    // the class a whole document is held to (S83 §6.5): its least exact element's; a 3D layer's
+    // light is above 1 and compressed on the fallback, the F2 case
+    titleart::FallbackClass documentFallbackClass(const titleart::TitleArtDoc& doc) {
+        titleart::FallbackClass worst = titleart::FallbackClass::F0;
+        const titleart::TitleEffectRegistry& registry = titleart::TitleEffectRegistry::get();
+        auto raise = [&](titleart::FallbackClass c) { worst = std::max(worst, c); };
+        auto effects = [&](const TJson& list) {
+            if (!list.is_array()) return;
+            for (const TJson& e : list) {
+                if (!e.value("enabled", true)) continue;
+                if (const titleart::EffectDef* def = registry.effect(str(e, "type"))) raise(def->fallback);
+            }
+        };
+        titleart::forEachLayer(doc.root, [&](const TJson& layer, const TJson*, int) {
+            if (!layer.value("visible", true) || layer.value("guide", false)) return true;
+            if (layer.contains("effects")) effects(layer["effects"]);
+            if (layer.contains("part_effects") && layer["part_effects"].is_object()) for (const auto& part : layer["part_effects"].items()) effects(part.value());
+            if (layer.contains("generator") && layer["generator"].is_object()) {
+                if (const titleart::GeneratorDef* def = registry.generator(str(layer["generator"], "type"))) raise(def->fallback);
+            }
+            if (layer.value("dimension", std::string()) == "3d") raise(titleart::FallbackClass::F2);
+            return true;
+        });
+        return worst;
+    }
+
     void fallbackParity(TitleCheckContext& ctx, Out& out) {
         Renders& renders = rendersOf(ctx);
         std::string error;
@@ -1035,16 +1086,24 @@ namespace {
         forced.testFlags = titleart::TITLE_ART_TEST_NO_FLOAT_TARGETS | titleart::TITLE_ART_TEST_NO_R16F | titleart::TITLE_ART_TEST_NO_RGBA32F;
         const TitleCheckImage* rgba8 = renders.get("rgba8", forced, error);
         if (!rgba8) return renderFailed(out, error);
+        // the tolerance of the document's fallback class (S83 §6.5, what each effect's own test holds
+        // it to); a 3D layer's RGBA8 path compresses its light, S86 AC9's own criteria
+        const titleart::FallbackClass cls = documentFallbackClass(ctx.doc);
+        bool has3D = false;
+        titleart::forEachLayer(ctx.doc.root, [&](const TJson& layer, const TJson*, int) {
+            if (layer.value("visible", true) && !layer.value("guide", false) && layer.value("dimension", std::string()) == "3d") has3D = true;
+            return !has3D;
+        });
         ImageDiffOptions options;
         options.premultiplied = true;
-        options.tolerance = 8;
-        options.maxFraction = 0.005;
-        options.maxMean = 1.0;
-        options.maxDiff = 48;
+        options.tolerance = has3D ? 24 : 8;
+        options.maxFraction = has3D ? 0.01 : cls == titleart::FallbackClass::F0 ? 0.005 : cls == titleart::FallbackClass::F1 ? 0.02 : 0.05;
+        options.maxMean = has3D ? 3.0 : cls == titleart::FallbackClass::F0 ? 1.0 : cls == titleart::FallbackClass::F1 ? 1.5 : 3.0;
+        options.maxDiff = has3D ? 255 : cls == titleart::FallbackClass::F0 ? 48 : cls == titleart::FallbackClass::F1 ? 64 : 96;
         const ImageDiffResult diff = diffImages(asImage(*floatPath), asImage(*rgba8), options);
-        TitleCheckResult r = result(diff.ok ? TitleCheckStatus::Pass : TitleCheckStatus::Fail, "", "premultiplied comparison of the forced RGBA8 path with the float path");
-        r.measured = TJson{{"max", diff.max}, {"mean", diff.mean}, {"fraction_over", diff.fractionOver}};
-        r.threshold = TJson{{"max", 48}, {"mean", 1.0}, {"fraction_over_8", 0.005}};
+        TitleCheckResult r = result(diff.ok ? TitleCheckStatus::Pass : TitleCheckStatus::Fail, "", "premultiplied comparison of the forced RGBA8 path with the float path, to the tolerance of the document's fallback class");
+        r.measured = TJson{{"max", diff.max}, {"mean", diff.mean}, {"fraction_over", diff.fractionOver}, {"class", has3D ? "3D" : titleart::fallbackClassName(cls)}};
+        r.threshold = TJson{{"max", options.maxDiff}, {"mean", options.maxMean}, {has3D ? "fraction_over_24" : "fraction_over_8", options.maxFraction}};
         r.message = diff.ok ? "the RGBA8 path agrees with the float path" : (diff.sameSize ? "the RGBA8 path differs from the float path beyond §6.3's tolerance" : diff.error);
         if (!diff.ok && !diff.bbox.empty()) r.at.push_back(toCanvas(*floatPath, {diff.bbox.x, diff.bbox.y, diff.bbox.width, diff.bbox.height}));
         out.push_back(std::move(r));

@@ -133,7 +133,8 @@
             }
           ]
         }
-      ]
+      ],
+      "background": "light"
     },
     {
       "id": "horror/the-end",

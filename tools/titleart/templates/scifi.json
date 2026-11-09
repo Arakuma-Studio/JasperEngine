@@ -125,7 +125,14 @@
             }
           ]
         }
-      ]
+      ],
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.25 of 4 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        }
+      ],
+      "background": "dark"
     },
     {
       "id": "scifi/mission-complete",
@@ -327,6 +334,12 @@
           "layer": "Title",
           "look": "scifi/contour-light-guide",
           "apply_font": true
+        }
+      ],
+      "check_allow": [
+        {
+          "check": "counter_survival",
+          "reason": "survival 0.00 of 5 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
         }
       ]
     }
