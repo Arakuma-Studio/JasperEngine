@@ -22,6 +22,9 @@
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
 #include "command/type/DrawSubmissionSettingsCmd.h"
+#include "command/type/TransitionSettingsCmd.h"
+#include "pixelart/PaletteRampTexture.h"
+#include "pixelart/PixelColor.h"
 #include "command/type/DeviceSettingsCmd.h"
 #include "command/type/ApplePrivacySettingsCmd.h"
 #include "command/UndoOrigin.h"
@@ -48,6 +51,7 @@
 #include "window/ConsoleWindow.h"
 #include "vcs/VcsService.h"
 
+#include <cmath>
 #include <algorithm>
 #include <fstream>
 #include <cctype>
@@ -790,6 +794,19 @@ bool setDrawSubmission(SettingsContext& ctx, const std::function<void(DrawSubmis
             error = "the draw submission settings could not be applied";
             return false;
         }
+    }
+    return true;
+}
+
+// Screen Transitions (S48 R41): the defaults changed, applied as one undoable step (undo scope project)
+bool setTransitionDefaults(SettingsContext& ctx, const std::function<void(jasperengine::pixelart::TransitionDefaults&)>& change, bool apply) {
+    Project* p = ctx.project();
+    jasperengine::pixelart::TransitionDefaults changed = p->getTransitionDefaults();
+    change(changed);
+    if (apply && changed != p->getTransitionDefaults()) {
+        auto* command = new TransitionSettingsCmd(p, changed);
+        command->setNoMerge();
+        p->getProjectCommandHistory()->addCommand(command);
     }
     return true;
 }
@@ -2230,6 +2247,95 @@ std::vector<Setting> mcpSettingsTable() {
                 return setDrawSubmission(ctx, [b](DrawSubmissionSettings& settings) { settings.gpuInstancing = b; }, apply, error);
             };
             add(s);
+        }
+        // Screen Transitions (S48 R41): what Lua's Transition and the Game view's preview take by default
+        {
+            using jasperengine::pixelart::TransitionDefaults;
+            auto transitionSetting = [&](const std::string& key, const std::string& type, const std::string& description,
+                                         std::function<Json(const TransitionDefaults&)> get,
+                                         std::function<bool(TransitionDefaults&, const Json&, std::string&)> set,
+                                         std::vector<std::string> values = {}) {
+                Setting s;
+                s.key = key;
+                s.type = type;
+                s.values = std::move(values);
+                s.description = description + " Undoable (undo scope project).";
+                s.get = [get](SettingsContext& ctx) { return get(ctx.project()->getTransitionDefaults()); };
+                s.set = [set](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    TransitionDefaults changed = ctx.project()->getTransitionDefaults();
+                    if (!set(changed, value, error)) return false;
+                    return setTransitionDefaults(ctx, [&changed](TransitionDefaults& settings) { settings = changed; }, apply);
+                };
+                add(s);
+            };
+            std::vector<std::string> kinds;
+            for (int k = 0; k < jasperengine::pixelart::kTransitionKindCount; k++)
+                kinds.push_back(jasperengine::pixelart::transitionKindName((jasperengine::pixelart::TransitionKind)k));
+            transitionSetting("graphics.screen_transitions.kind", "enum", "The screen transition Transition.play and the Game view use when none is named.",
+                [](const TransitionDefaults& t) { return Json(jasperengine::pixelart::transitionKindName(t.kind)); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    if (!v.is_string() || !jasperengine::pixelart::transitionKindFromName(v.get<std::string>(), t.kind)) {
+                        e = "must be one of iris, blinds, slash, pixel_dissolve, crt_off, burn_away, fade";
+                        return false;
+                    }
+                    return true;
+                }, kinds);
+            transitionSetting("graphics.screen_transitions.duration", "number", "Seconds of a whole transition (cover, hold, reveal) when none is given.",
+                [](const TransitionDefaults& t) { return Json(t.duration); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    double d;
+                    if (!readNumber(v, 0.0, 30.0, d, e)) return false;
+                    t.duration = (float)d;
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.color", "string", "The ink the screen is covered in, \"#rrggbb\" (sRGB).",
+                [](const TransitionDefaults& t) {
+                    auto byte = [](float c) { return (uint8_t)std::lround(std::clamp(c, 0.0f, 1.0f) * 255.0f); };
+                    return Json(jasperengine::pixelart::toHex(jasperengine::pixelart::Rgba8{byte(t.color.x), byte(t.color.y), byte(t.color.z), 255}, false));
+                },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    jasperengine::pixelart::Rgba8 c;
+                    if (!v.is_string() || !jasperengine::pixelart::parseHex(v.get<std::string>(), c)) {
+                        e = "must be \"#rrggbb\"";
+                        return false;
+                    }
+                    t.color = Vector4(c.r / 255.0f, c.g / 255.0f, c.b / 255.0f, 1.0f);
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.ramp", "string",
+                "The rims' ramp, \"<palette>.palette#ramp:<name>\" (\"\": the built-in ember ramp).",
+                [](const TransitionDefaults& t) { return Json(t.ramp); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    std::string ramp;
+                    if (!readString(v, ramp, e, 512)) return false;
+                    if (!ramp.empty() && !jasperengine::pixelart::parsePaletteRampPath(ramp)) {
+                        e = "must be \"<palette>.palette#ramp:<name>\" or \"\"";
+                        return false;
+                    }
+                    t.ramp = ramp;
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.rim", "int", "Rim width in art pixels (0..8).",
+                [](const TransitionDefaults& t) { return Json(t.rim); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    long long n;
+                    if (!readInt(v, 0, 8, n, e)) return false;
+                    t.rim = (int)n;
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.pixel_size", "int",
+                "Screen pixels per art pixel (0: the Pixel Perfect Camera's grid, else 1 without one).",
+                [](const TransitionDefaults& t) { return Json(t.pixelSize); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) {
+                    long long n;
+                    if (!readInt(v, 0, 64, n, e)) return false;
+                    t.pixelSize = (int)n;
+                    return true;
+                });
+            transitionSetting("graphics.screen_transitions.cover_ui", "bool",
+                "On: transitions cover every scene (the HUD too). Off: they draw after the main scene, under its layer scenes.",
+                [](const TransitionDefaults& t) { return Json(t.coverUI); },
+                [](TransitionDefaults& t, const Json& v, std::string& e) { return readBool(v, t.coverUI, e); });
         }
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
@@ -3684,6 +3790,14 @@ const Placement placements[] = {
     {"graphics.dynamic_batching", "Graphics", "", "Dynamic Batching", "batching batches draw calls saved by batching sprites"},
     {"graphics.runtime_shaders", "Graphics", "", "Runtime Shader Compilation", "variants"},
     {"graphics.gpu_instancing", "Graphics", "", "GPU Instancing", "batching instanced draw calls auto instancing"},
+    // S48 R41
+    {"graphics.screen_transitions.kind", "Graphics", "Screen Transitions", "Default Kind", "transition iris wipe fade scene change pixel"},
+    {"graphics.screen_transitions.duration", "Graphics", "Screen Transitions", "Duration", "transition seconds"},
+    {"graphics.screen_transitions.color", "Graphics", "Screen Transitions", "Colour", "transition ink color"},
+    {"graphics.screen_transitions.ramp", "Graphics", "Screen Transitions", "Ramp", "transition rim palette ramp"},
+    {"graphics.screen_transitions.rim", "Graphics", "Screen Transitions", "Rim", "transition rim width art pixels"},
+    {"graphics.screen_transitions.pixel_size", "Graphics", "Screen Transitions", "Pixel Size", "transition art pixel grid"},
+    {"graphics.screen_transitions.cover_ui", "Graphics", "Screen Transitions", "Cover UI", "transition hud layer scenes"},
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},

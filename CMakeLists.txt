@@ -1477,6 +1477,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ShaderCreationSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DrawSubmissionSettingsCmd.cpp
+    # S48 Screen Transitions
+    ${EDITOR_DIR}/command/type/TransitionSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DeviceSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteFileCmd.cpp
     ${EDITOR_DIR}/command/type/SetMainCameraCmd.cpp

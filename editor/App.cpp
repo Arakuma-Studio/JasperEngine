@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "pixelart/ScreenTransition.h"
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
 #include "component/CameraShakerComponent.h"
@@ -4041,6 +4042,15 @@ void editor::App::engineRender(){
     // generated normal maps whose sources changed (badges, the opt-in auto-regenerate)
     spriteNormalsWatcher->tick();
     project.updateGeneratedSources();
+    // screen transitions (S48): the Engine draws them over the game's frame while a game runs; in
+    // edit mode the Game view's preview draws them itself (never the Scene view) on the editor's clock
+    {
+        const bool playing = project.isAnyScenePlaying();
+        jasperengine::pixelart::ScreenTransition::setEngineDrawEnabled(playing);
+        jasperengine::pixelart::ScreenTransition::setViewDrawId(playing ? 0 : GAME_VIEW_ID);
+        if (!playing)
+            jasperengine::pixelart::ScreenTransition::update(ImGui::GetIO().DeltaTime);
+    }
     // clip previews (the Animation window's clip mode, MCP preview_animation) advance every frame
     if (animationClipAppHooks().frame) {
         animationClipAppHooks().frame(&project, ImGui::GetIO().DeltaTime, ImGui::GetFrameCount());
@@ -4630,6 +4640,7 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
         layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, childCanvasWidth, childCanvasHeight});
     }
 
+    // (the Game view's transition preview draws inside it: ScreenTransition::setViewDrawId)
     Engine::drawView(GAME_VIEW_ID, target, layers);
 
     gameWindow->markEditPassRendered(sceneProject.id);
@@ -4695,7 +4706,10 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
     renderSystem->setDisableClouds(false);
     renderSystem->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
+    // the Game view's transition preview: this frame is the game's, the Engine draws it over the scenes
+    jasperengine::pixelart::ScreenTransition::setEngineDrawEnabled(true);
     Engine::systemDraw();
+    jasperengine::pixelart::ScreenTransition::setEngineDrawEnabled(false);
     renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
     // the game camera's Pixel Perfect Camera laid this pass out; the editor's views lay out

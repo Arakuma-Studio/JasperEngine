@@ -3,6 +3,8 @@
 
 #include "pixelart/BitmapTextCache.h"
 #include "Project.h"
+#include "pixelart/Glitch.h"
+#include "pixelart/ScreenTransition.h"
 #include "util/ScriptPropertyCache.h"
 #include "util/ProjectChecks.h"
 #include "asset/ModelSubAssets.h"
@@ -1861,6 +1863,15 @@ void editor::Project::setDrawSubmissionSettings(const DrawSubmissionSettings& se
 
 const editor::DrawSubmissionSettings& editor::Project::getDrawSubmissionSettings() const{
     return drawSubmission;
+}
+
+void editor::Project::setTransitionDefaults(const jasperengine::pixelart::TransitionDefaults& defaults){
+    jasperengine::pixelart::ScreenTransition::setDefaults(defaults);
+    transitionDefaults = jasperengine::pixelart::ScreenTransition::getDefaults();
+}
+
+const jasperengine::pixelart::TransitionDefaults& editor::Project::getTransitionDefaults() const{
+    return transitionDefaults;
 }
 
 void editor::Project::setDeviceSettings(const DeviceSettings& settings){
@@ -4417,6 +4428,9 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     // a fluid a script makes (FluidSimulation in Lua or C++) needs its programs too
     if (scriptsMention("FluidSimulation"))
         ShaderVariantCollector::addFluidKeys(keys);
+    // S48's screen transition: a script playing one (Transition in Lua or ScreenTransition in C++)
+    if (scriptsMention("Transition"))
+        keys.insert(ShaderPool::getShaderKey(ShaderType::TRANSITION, 0));
 }
 
 bool editor::Project::scriptsMention(const char* text) const {
@@ -6240,6 +6254,7 @@ void editor::Project::resetConfigs() {
     setBitmapTextCacheMiB(0);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
     setDrawSubmissionSettings(DrawSubmissionSettings());
+    setTransitionDefaults(jasperengine::pixelart::TransitionDefaults());
     setDeviceSettings(DeviceSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
@@ -8194,6 +8209,7 @@ void editor::Project::configureGenerator() {
     generator.setAtmosphereQuality(atmosphereQuality);
     generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
+    generator.setTransitionDefaults(transitionDefaults);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());
@@ -10236,6 +10252,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         ScriptScheduler::clear();
         // the PixelFX effects of the play and their callbacks (they may hold Lua)
         jasperengine::pixelart::PixelFxPlayer::reset();
+        jasperengine::pixelart::ScreenTransition::reset();
+        jasperengine::pixelart::Glitch::stop();
         SceneManager::clearAll();
         PrefabManager::clearAll();
         ObjectManager::clearAll();
@@ -10395,6 +10413,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setAtmosphereQuality(atmosphereQuality);
     generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
+    generator.setTransitionDefaults(transitionDefaults);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());
@@ -11302,6 +11321,9 @@ void editor::Project::stop(uint32_t sceneId) {
             ScriptScheduler::clear();
             // the PixelFX effects of the play and their callbacks (they may hold Lua)
             jasperengine::pixelart::PixelFxPlayer::reset();
+            // a screen transition of the play and its callbacks (they may hold Lua), the scripted glitch
+            jasperengine::pixelart::ScreenTransition::reset();
+            jasperengine::pixelart::Glitch::stop();
             // the debug overlay and the console commands of the scripts, before the scripts go
             DebugOverlay::shutdown();
             debugSettingsInPlay = false;

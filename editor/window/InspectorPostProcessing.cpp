@@ -23,6 +23,7 @@
 #include "command/CommandHandle.h"
 #include "command/type/ScenePropertyCmd.h"
 #include "external/IconsFontAwesome6.h"
+#include "pixelart/Glitch.h"
 #include "pixelart/Palette.h"
 #include "pixelart/PaletteUse.h"
 #include "subsystem/RenderSystem.h"
@@ -170,6 +171,15 @@ namespace {
                  "A projected film print: hairs, scratches and dust (up to 8 of each per film frame), the gate's weave "
                  "and its frame (Academy 1.37, widescreen 1.85, anamorphic 2.39 or rounded corners).",
                  [](PostProcessingSettings& s) { s.filmDamageEnabled = true; }, nullptr},
+                {"Glitch", "glitch_enabled",
+                 {{"glitch_intensity", "Intensity"}, {"glitch_rgb_split", "RGB Split"}, {"glitch_tears", "Tears"},
+                  {"glitch_tear_shift", "Tear Shift"}, {"glitch_interlace", "Interlace"}, {"glitch_burst_rate", "Burst Rate"},
+                  {"glitch_burst_length", "Burst Length"}, {"glitch_fps", "Frame Rate"}, {"glitch_seed", "Seed"}},
+                 "Digital corruption in bursts: rows torn sideways, red and blue split apart and every other row dark, all "
+                 "in whole source texels (art pixels with a Pixel Perfect Camera). Burst Rate 0 corrupts every frame at the "
+                 "Intensity; Intensity 0 shows only scripted bursts (PixelFX.glitch). The schedule changes on Frame Rate "
+                 "steps and depends only on the time and Seed. Two extra taps.",
+                 [](PostProcessingSettings& s) { s.glitchEnabled = true; }, nullptr},
             }},
             {"Palette Quantize", {
                 {"Palette Quantize", "palette_enabled",
@@ -295,6 +305,21 @@ namespace {
             case editor::PostProcessingCostTier::NONE: break;
         }
         return "";
+    }
+
+    // Glitch's test row while playing: a scripted burst (PixelFX.glitch) on the running game,
+    // never saved
+    void drawGlitchBurstRow(editor::SceneProject* sceneProject) {
+        if (!sceneProject || sceneProject->playState == editor::ScenePlayState::STOPPED)
+            return;
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Test");
+        ImGui::TableSetColumnIndex(1);
+        if (ImGui::Button(ICON_FA_BOLT " Burst now"))
+            jasperengine::pixelart::Glitch::burst(0.3f, 1.0f);
+        ImGui::SetItemTooltip("A 0.3 s burst at full intensity on the running game, as PixelFX.glitch(0.3, 1) (not saved)");
     }
 
     // "aces" -> "ACES", "neutral" -> "Neutral (Khronos PBR)"; other enums: capitalized
@@ -828,6 +853,8 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
                             drawn.insert(param.field);
                             drawPostProcessingFieldRow(sceneProject, settings, field(param.field), param.label, std::string(), true);
                         }
+                        if (std::strcmp(effect.enable, "glitch_enabled") == 0)
+                            drawGlitchBurstRow(sceneProject);
                     } else {
                         for (const ParamDef& param : effect.params) drawn.insert(param.field);
                     }
