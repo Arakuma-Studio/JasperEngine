@@ -546,6 +546,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (sceneNode["align_to_surface"]) sceneViewSettings.alignToSurface = sceneNode["align_to_surface"].as<bool>();
                 if (sceneNode["rulers"]) sceneViewSettings.rulers = sceneNode["rulers"].as<bool>();
                 if (sceneNode["preview_particles"]) sceneViewSettings.previewParticles = sceneNode["preview_particles"].as<bool>();
+                if (sceneNode["alt_alternates"]) sceneViewSettings.altAlternates = sceneNode["alt_alternates"].as<bool>();
             }
             if (editorNode["profiler"]) {
                 auto profilerNode = editorNode["profiler"];
@@ -878,6 +879,7 @@ bool AppSettings::saveSettings() {
         sceneViewNode["align_to_surface"] = sceneViewSettings.alignToSurface;
         sceneViewNode["rulers"] = sceneViewSettings.rulers;
         sceneViewNode["preview_particles"] = sceneViewSettings.previewParticles;
+        sceneViewNode["alt_alternates"] = sceneViewSettings.altAlternates;
         editorNode["scene_view"] = sceneViewNode;
         YAML::Node profilerNode;
         profilerNode["budget_fps"] = profilerSettings.budgetFps;

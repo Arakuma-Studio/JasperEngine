@@ -565,6 +565,7 @@ Functions:
 | `Input.getTouchCount()`, `Input.getTouch(i)` | this frame's touches (0-based, nil out of range): the fingers down, then those lifted in the frame: `{pointer, position, phase, delta, startPosition, time, began}` plus Unity's fields (below) |
 | `Input.getTouchDown(pointer)`, `Input.getTouchUp(pointer)` | bool, this frame |
 | `Input.getPointerLockState()` | `Input.POINTER_UNLOCKED` / `POINTER_PENDING` / `POINTER_LOCKED` |
+| `Input.getPenPressure()` | number, the latest pointer input's pressure: 0..1 for a pen or stylus, -1 for a mouse or a finger |
 | `Input.isTouch()` | bool, any touch active |
 | `Input.isMouseEntered()` | bool |
 | `Input.getMousePosition()` | `Vector2` |
@@ -3155,6 +3156,7 @@ makes a GameObject with one.
   warning once, for a GPU-compressed texture; set Read/Write in its import settings, or reference
   it from a CPU slot such as a terrain height map).
 - `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings. A Terrain's painted layers (`TerrainSurfaceLayer`) also have `hexTiling` (anti-repetition of the flat projection) and `hexRotation` (0..1).
+- `Terrain` queries the surface at world X, Z (`getHeightAt`, `getNormalAt`, `isHoleAt`, `contains`, `raycast`) and, with Allow Runtime Edits on, edits it (`applyOps` with `edit_terrain`'s op tables, `getHeights`, `setHeights`): `docs/scripting/terrain.md`.
 - `ObjectRender.getLivePipelineCount()` (static, diagnostics): the render pipelines objects
   made and did not destroy yet (a leak check: the count before creating objects and after
   destroying them, once their loads settled).
@@ -3690,4 +3692,17 @@ assert(b.x == 3 and b.y == 4 and b.z == 6)
 assert(math.abs(Vector3(3, 4, 0):length() - 5) < 1e-6)
 local q = Quaternion(0, 0, 45)
 assert(math.abs(q:getRoll() - 45) < 1e-3)
+```
+
+## Noise and NoiseGraph
+
+Module `noise`: naming `Noise` or `NoiseGraph` makes the project carry it. Same bits as the editor's
+generation on every target. `NoiseGraph.load` returns nil for a graph with an erosion or Terrain Height
+node, and `sample` errors on a grid-only one. Details: `jasper://docs/noise-graphs`.
+
+```lua
+local v = Noise.perlin(1.5, 2.5, 7)
+assert(v >= -1 and v <= 1)
+local r = Noise.ridged(1.5, 2.5, 7, 4)
+assert(r >= 0 and r <= 1)
 ```

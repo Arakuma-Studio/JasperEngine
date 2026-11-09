@@ -6,6 +6,7 @@
 // and tile order, the 32-bit reference limit and runtime tile updates.
 
 #include "NavTestUtil.h"
+#include "component/Transform.h"
 
 #include "AllocationCounter.h"
 #include "TestPaths.h"
@@ -23,6 +24,7 @@
 
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/RigidbodyComponent.h"
+#include "component/TerrainComponent.h"
 #endif
 
 #if JASPERENGINE_NAVIGATION
@@ -223,7 +225,7 @@ TEST_F(NavBakeTest, CollectPolicy){
     staticBody.colliders[0].type = Collider3DType::BOX;
     scene->addComponent<RigidbodyComponent>(staticBox, staticBody);
     const Heightmap heights = hills(33, 3);
-    terrain(*scene, Vector3(0.0f, -1.0f, 0.0f), 30.0f, 0.5f, heights);
+    navtest::terrain(*scene, Vector3(0.0f, -1.0f, 0.0f), 30.0f, 0.5f, heights);
     scene->getComponent<NavMeshSurfaceComponent>(surface).useGeometry = NavUseGeometry::PHYSICS_COLLIDERS;
     collect(surface, &stats);
     EXPECT_EQ(stats.meshes, 0);

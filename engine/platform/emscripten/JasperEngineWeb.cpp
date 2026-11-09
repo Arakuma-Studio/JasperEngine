@@ -192,6 +192,12 @@ extern "C" {
     void jasper_web_safe_area(float left, float top, float right, float bottom) {
         jasperengine::Screen::setPlatformSafeArea(jasperengine::EdgeInsets(left, top, right, bottom));
     }
+
+    // a pointer event on the canvas (jasper_pen_install): a pen's pressure, -1 for a mouse or a finger
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_pen_pressure(float pressure) {
+        jasperengine::Input::setPenPressure(pressure);
+    }
 }
 
 // Screen.safeArea on the web: a hidden fixed <div id="jasper-safe-area"> padded by the page's
@@ -231,6 +237,21 @@ EM_JS(void, jasper_safe_area_create, (), {
 
 EM_JS(void, jasper_safe_area_read, (), {
     if (Module.jasperReadSafeArea) Module.jasperReadSafeArea();
+});
+
+// The pen's pressure, which the mouse and touch events lack. A pointer event comes before the
+// mouse event it makes, so the pressure is in Input when the press or move reaches the engine.
+// Passive, and never stopped or prevented: the mouse and touch callbacks get the same events.
+EM_JS(void, jasper_pen_install, (), {
+    // the element of the "#canvas" the mouse and touch callbacks listen on
+    var canvas = Module.canvas || document.getElementById('canvas');
+    if (!canvas || Module.jasperPen) return;
+    Module.jasperPen = function(e) {
+        ccall('jasper_web_pen_pressure', null, ['number'], [e.pointerType === 'pen' ? e.pressure : -1]);
+    };
+    ['pointerdown', 'pointermove', 'pointerup'].forEach(function(type) {
+        canvas.addEventListener(type, Module.jasperPen, {passive: true});
+    });
 });
 
 
@@ -518,6 +539,7 @@ int JasperEngineWeb::init(int argc, char **argv){
 
     jasper_ime_create();
     jasper_safe_area_create();
+    jasper_pen_install();
 
     sampleCount = 4;
 

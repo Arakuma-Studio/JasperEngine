@@ -16,8 +16,8 @@ names (engine/libs/<library>, engine/core/<area>...).
 A WebAssembly module (a web player's .wasm) is read directly: its functions' code bytes, named
 by its "name" section (--profiling-funcs keeps it in release builds), and its data segments.
 --modules rolls the groups up into the player modules of docs/specs/S34-player-size.md (HTML UI,
-video, the runtime shader compiler, 3D and 2D physics, navigation, the sound layer; the Lua bindings and the C++
-standard library apart); --baseline <json> prints each group next to another build's --json.
+video, the runtime shader compiler, 3D and 2D physics, navigation, the sound layer, Terrain Worlds; the Lua
+bindings and the C++ standard library apart); --baseline <json> prints each group next to another build's --json.
 
 NM defaults to llvm-nm, then nm. Standard library only.
 """
@@ -108,9 +108,14 @@ ENGINE_AREAS = [(re.compile(p, re.I), g) for p, g in [
     (r"fluid", "engine: fluid simulation"),
     (r"nav(igation|mesh|grid|agent)?|crowd", "engine: navigation"),
     (r"AudioClipSource|AudioImportTable|ClipImportSettings|clipFadeWeight", "engine: sound layer"),
+    # Curl noise shares jasperengine::noise and stays with the particles: only what the module holds counts (T2 R42)
+    (r"curl", "engine: particles"),
+    (r"noise::|NoiseGraph|CompiledGraph|HeightfieldErosion|NoiseClassesLua", "engine: noise"),
     (r"spline", "engine: splines"),
     (r"lattice", "engine: lattice deformer"),
     (r"particle", "engine: particles"),
+    (r"voxel", "engine: voxel volumes"),
+    (r"terrainworld|tilestreamer|tiledmapstore|terraintile|worldchunk|worldlattice", "engine: terrain world"),
     (r"terrain|foliage", "engine: terrain"),
     (r"physics|body|joint|collider|character|buoyan|raycast", "engine: physics"),
     (r"video|webm", "engine: video"),
@@ -313,6 +318,9 @@ MODULES = [(re.compile(p), m) for p, m in [
     (r"2D physics", "physics2d"),
     (r"navigation", "navigation"),
     (r"sound layer", "soundlayer"),
+    (r"engine: noise", "noise"),
+    (r"voxel", "voxel"),
+    (r"terrain world", "terrainworld"),
     (r"luabridge3", "Lua bindings"),
     (r"^lib: lua$", "Lua"),
     (r"C\+\+ standard library", "C++ standard library"),

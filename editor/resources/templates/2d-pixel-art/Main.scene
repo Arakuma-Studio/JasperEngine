@@ -1,6 +1,6 @@
 formatVersion: 8
-guid: 655c5443d26653fdb77990caf7a95100
-id: 272392431
+guid: c5258b3cf0774b85065b45563b8aced3
+id: 654718099
 name: Main
 scene:
   backgroundColor: [0.231, 0.298, 0.475, 1]
@@ -39,6 +39,8 @@ shaderKeys:
     properties: 3075
   - type: mesh
     properties: 35184372091907
+  - type: mesh
+    properties: 316659348802563
   - type: blit
   - type: blit
     properties: 4096

@@ -5,23 +5,32 @@
 // (MIT, see the header and NOTICE.md).
 
 #include "TerrainSplineBake.h"
+#include "Out.h"
+#include "command/type/TreeEditCmd.h"
+#include "terrainworld/TerrainWorldTrees.h"
+#include "subsystem/FoliageSystem.h"
+#include "terrain/FoliageRules.h"
 #include "component/Transform.h"
 
 #include "Catalog.h"
 #include "command/CommandHandle.h"
 #include "command/CommandNames.h"
-#include "command/type/TerrainMapPatchCmd.h"
+#include "command/type/TerrainMapDeltaCmd.h"
 #include "component/TerrainComponent.h"
+#include "object/TerrainEdit.h"
 #include "spline/SplineEvaluator.h"
 #include "spline/SplinePolygonFill.h"
 #include "spline/SplineStations.h"
 #include "subsystem/SplineSystem.h"
+#include "terrain/RawMapStore.h"
+#include "terrain/TerrainOps.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <span>
 
 using namespace jasperengine;
 
@@ -76,34 +85,6 @@ namespace {
             }
         }
         return inside;
-    }
-
-    float readTexel(const editor::TerrainBakeMap& map, size_t texel, int channel){
-        const size_t byte = (texel * static_cast<size_t>(map.channels) + static_cast<size_t>(channel)) * static_cast<size_t>(map.bytesPerChannel);
-        if (map.bytesPerChannel >= 2){
-            const unsigned int value = static_cast<unsigned int>(map.pixels[byte]) | (static_cast<unsigned int>(map.pixels[byte + 1]) << 8);
-            return static_cast<float>(value) / 65535.0f;
-        }
-        return static_cast<float>(map.pixels[byte]) / 255.0f;
-    }
-
-    // true when the stored value changed
-    bool writeTexel(editor::TerrainBakeMap& map, size_t texel, int channel, float value){
-        const float clamped = std::clamp(value, 0.0f, 1.0f);
-        const size_t byte = (texel * static_cast<size_t>(map.channels) + static_cast<size_t>(channel)) * static_cast<size_t>(map.bytesPerChannel);
-        if (map.bytesPerChannel >= 2){
-            const unsigned int q = static_cast<unsigned int>(std::lround(clamped * 65535.0f));
-            const unsigned char lo = static_cast<unsigned char>(q & 0xFF);
-            const unsigned char hi = static_cast<unsigned char>((q >> 8) & 0xFF);
-            const bool changed = map.pixels[byte] != lo || map.pixels[byte + 1] != hi;
-            map.pixels[byte] = lo;
-            map.pixels[byte + 1] = hi;
-            return changed;
-        }
-        const unsigned char q = static_cast<unsigned char>(std::lround(clamped * 255.0f));
-        const bool changed = map.pixels[byte] != q;
-        map.pixels[byte] = q;
-        return changed;
     }
 
     // The route's evaluation over a map: for each texel centre of the footprint, its world
@@ -183,29 +164,117 @@ namespace {
             return weight > 0.0f;
         }
 
+        // T1 R20, R40: fn(world, current, sample) over the footprint through applyField, returning
+        // what its bytes changed
         template<typename Fn>
-        editor::TerrainMapRegion forEachTexel(int width, int height, Fn&& fn) const{
+        editor::TerrainMapRegion forEachTexel(terraincore::TerrainMapStore& store, terraincore::MapId map, Fn&& fn) const{
             editor::TerrainMapRegion changed;
-            const editor::TerrainMapRegion region = footprint(width, height);
+            const terraincore::MapFormat format = store.format(map);
+            if (!format.exists){
+                return changed;
+            }
+            const editor::TerrainMapRegion region = footprint(format.bounds.w, format.bounds.h);
             if (region.empty()){
                 return changed;
             }
-            const float half = frame.terrainSize * 0.5f;
-            const float texelX = frame.terrainSize / static_cast<float>(width);
-            const float texelZ = frame.terrainSize / static_cast<float>(height);
-            for (int j = region.minY; j <= region.maxY; j++){
-                for (int i = region.minX; i <= region.maxX; i++){
-                    const float lx = (static_cast<float>(i) + 0.5f) * texelX - half;
-                    const float lz = (static_cast<float>(j) + 0.5f) * texelZ - half;
-                    const Vector3 world = frame.localToWorld * Vector3(lx, 0.0f, lz);
-                    if (fn(static_cast<size_t>(j) * static_cast<size_t>(width) + static_cast<size_t>(i), world)){
-                        changed.merge(i, j, i, j);
-                    }
-                }
+            struct Call{
+                const RouteField* field;
+                Fn* fn;
+            } call{this, &fn};
+            const terraincore::FieldFn callback = [](void* user, float localX, float localZ, std::span<const float> current){
+                const Call& c = *static_cast<const Call*>(user);
+                terraincore::FieldSample sample;
+                (*c.fn)(c.field->frame.localToWorld * Vector3(localX, 0.0f, localZ), current, sample);
+                return sample;
+            };
+            const terraincore::TexelRect rect{region.minX, region.minY, region.width(), region.height()};
+            const terraincore::TerrainOpResult result = terraincore::applyField(store, map, rect, callback, &call);
+            for (const terraincore::MapChangeReport& report : result.changed){
+                changed.merge(report.rect.x, report.rect.y, report.rect.right() - 1, report.rect.bottom() - 1);
             }
             return changed;
         }
     };
+
+    // The bake's kernels, on any store: heights
+
+    editor::TerrainMapRegion storeBakeHeights(terraincore::TerrainMapStore& store, const std::vector<spline::SplineStation>& route, const std::vector<Vector3>& closedOutline,
+                                              const SplineTerrainSettings& settings, const editor::TerrainBakeFrame& frame){
+        if (frame.maxHeight == 0.0f){
+            return editor::TerrainMapRegion();
+        }
+        const terraincore::MapId map{terraincore::MapKind::Height, 0};
+        const RouteField field(route, closedOutline, settings, frame, settings.falloff);
+        return field.forEachTexel(store, map, [&](const Vector3& world, std::span<const float> current, terraincore::FieldSample& out){
+            float weight = 0.0f;
+            float bed = 0.0f;
+            if (!field.sample(world.x, world.z, 0.0f, settings.falloff, weight, bed)){
+                return;
+            }
+            // the bed in the terrain's local units, normalized to maxHeight
+            const float target = (frame.worldToLocal * Vector3(world.x, bed, world.z)).y / frame.maxHeight;
+            const float next = current[0] + (target - current[0]) * weight;
+            if ((settings.flattenMode == SplineFlattenMode::CutOnly && next >= current[0]) ||
+                (settings.flattenMode == SplineFlattenMode::FillOnly && next <= current[0])){
+                return;
+            }
+            out.weight = weight;
+            out.target[0] = target;
+        });
+    }
+
+    editor::TerrainMapRegion storeBakeBlend(terraincore::TerrainMapStore& store, int blendMap, const std::vector<spline::SplineStation>& route, const std::vector<Vector3>& closedOutline,
+                                            const SplineTerrainSettings& settings, const editor::TerrainBakeFrame& frame, int channel){
+        const terraincore::MapId map{terraincore::MapKind::Blend, blendMap};
+        const terraincore::MapFormat format = store.format(map);
+        if (!format.exists || format.channels < 3 || channel < 0 || channel > 2){
+            return editor::TerrainMapRegion();
+        }
+        const float falloff = std::max(0.0f, settings.paintFalloff);
+        const float noise = std::clamp(settings.paintNoise, 0.0f, 1.0f);
+        const float strength = std::clamp(settings.paintStrength, 0.0f, 1.0f);
+        const RouteField field(route, closedOutline, settings, frame, falloff + noise * falloff);
+        return field.forEachTexel(store, map, [&](const Vector3& world, std::span<const float> current, terraincore::FieldSample& out){
+            // the edge breaks up: the band grows or shrinks by up to paintNoise of the falloff
+            const float band = noise > 0.0f ? (valueNoise(world.x, world.z) - 0.5f) * 2.0f * noise * falloff : 0.0f;
+            float weight = 0.0f;
+            float bed = 0.0f;
+            if (!field.sample(world.x, world.z, band, falloff, weight, bed)){
+                return;
+            }
+            out.weight = weight * strength;
+            if (!(out.weight > 0.0f)){
+                return;
+            }
+            for (int c = 0; c < 3; c++){
+                out.target[c] = c == channel ? 1.0f : 0.0f;
+            }
+            // whatever the weight, a painted texel ends opaque: the target that lands exactly on 1
+            if (current.size() > 3){
+                out.target[3] = current[3] + (1.0f - current[3]) / out.weight;
+            }
+        });
+    }
+
+    editor::TerrainMapRegion storeBakeDensity(terraincore::TerrainMapStore& store, int layer, const std::vector<spline::SplineStation>& route, const std::vector<Vector3>& closedOutline,
+                                              const SplineTerrainSettings& settings, const editor::TerrainBakeFrame& frame){
+        const RouteField field(route, closedOutline, settings, frame, settings.falloff);
+        return field.forEachTexel(store, terraincore::MapId{terraincore::MapKind::Density, layer}, [&](const Vector3& world, std::span<const float>, terraincore::FieldSample& out){
+            float weight = 0.0f;
+            float bed = 0.0f;
+            if (field.sample(world.x, world.z, 0.0f, settings.falloff, weight, bed)){
+                out.weight = weight;
+                out.target[0] = 0.0f;
+            }
+        });
+    }
+
+    // The pure bake's frame and pixels as a store
+    terraincore::RawMapStore rawStoreOf(const editor::TerrainBakeFrame& frame, terraincore::MapId map, editor::TerrainBakeMap& pixels){
+        terraincore::RawMapStore store(frame.terrainSize, frame.maxHeight);
+        store.borrowMap(map, pixels.width, pixels.height, pixels.channels, pixels.bytesPerChannel * 8, pixels.pixels);
+        return store;
+    }
 
     editor::TerrainBakeFrame frameOf(Scene* scene, Entity terrainEntity){
         editor::TerrainBakeFrame frame;
@@ -216,25 +285,6 @@ namespace {
         frame.terrainSize = terrain.terrainSize;
         frame.maxHeight = terrain.maxHeight;
         return frame;
-    }
-
-    editor::TerrainBakeMap viewOf(Texture& texture){
-        editor::TerrainBakeMap map;
-        if (!editor::TerrainMapUtils::hasLoadedData(texture)){
-            return map;
-        }
-        TextureData& data = texture.getData();
-        map.pixels = static_cast<unsigned char*>(data.getData());
-        map.width = data.getWidth();
-        map.height = data.getHeight();
-        map.channels = data.getChannels();
-        map.bytesPerChannel = TextureData::getBytesPerChannel(data.getColorFormat());
-        return map;
-    }
-
-    size_t mapBytes(const editor::TerrainBakeMap& map){
-        return static_cast<size_t>(map.width) * static_cast<size_t>(map.height) * static_cast<size_t>(map.channels) *
-               static_cast<size_t>(map.bytesPerChannel);
     }
 
     // the spline's world route and (Area) outline, as the bake reads them
@@ -293,59 +343,21 @@ void editor::TerrainSplineBake::routeStations(const std::vector<spline::SplineSt
 editor::TerrainMapRegion editor::TerrainSplineBake::bakeHeights(const std::vector<spline::SplineStation>& route,
         const std::vector<Vector3>& closedOutline, const SplineTerrainSettings& settings, const TerrainBakeFrame& frame,
         TerrainBakeMap& map){
-    if (!map.valid() || frame.maxHeight == 0.0f){
+    if (!map.valid()){
         return TerrainMapRegion();
     }
-    const RouteField field(route, closedOutline, settings, frame, settings.falloff);
-    return field.forEachTexel(map.width, map.height, [&](size_t texel, const Vector3& world){
-        float weight = 0.0f;
-        float bed = 0.0f;
-        if (!field.sample(world.x, world.z, 0.0f, settings.falloff, weight, bed)){
-            return false;
-        }
-        // the bed in the terrain's local units, normalized to maxHeight
-        const float target = (frame.worldToLocal * Vector3(world.x, bed, world.z)).y / frame.maxHeight;
-        const float current = readTexel(map, texel, 0);
-        float next = current + (target - current) * weight;
-        if (settings.flattenMode == SplineFlattenMode::CutOnly){
-            next = std::min(current, next);
-        }else if (settings.flattenMode == SplineFlattenMode::FillOnly){
-            next = std::max(current, next);
-        }
-        return writeTexel(map, texel, 0, next);
-    });
+    terraincore::RawMapStore store = rawStoreOf(frame, terraincore::MapId{terraincore::MapKind::Height, 0}, map);
+    return storeBakeHeights(store, route, closedOutline, settings, frame);
 }
 
 editor::TerrainMapRegion editor::TerrainSplineBake::bakeBlend(const std::vector<spline::SplineStation>& route,
         const std::vector<Vector3>& closedOutline, const SplineTerrainSettings& settings, const TerrainBakeFrame& frame,
         int channel, TerrainBakeMap& map){
-    if (!map.valid() || map.channels < 3 || channel < 0 || channel > 2){
+    if (!map.valid()){
         return TerrainMapRegion();
     }
-    const float falloff = std::max(0.0f, settings.paintFalloff);
-    const float noise = std::clamp(settings.paintNoise, 0.0f, 1.0f);
-    const float strength = std::clamp(settings.paintStrength, 0.0f, 1.0f);
-    const RouteField field(route, closedOutline, settings, frame, falloff + noise * falloff);
-    return field.forEachTexel(map.width, map.height, [&](size_t texel, const Vector3& world){
-        // the edge breaks up: the band grows or shrinks by up to paintNoise of the falloff
-        const float band = noise > 0.0f ? (valueNoise(world.x, world.z) - 0.5f) * 2.0f * noise * falloff : 0.0f;
-        float weight = 0.0f;
-        float bed = 0.0f;
-        if (!field.sample(world.x, world.z, band, falloff, weight, bed)){
-            return false;
-        }
-        weight *= strength;
-        bool changed = false;
-        for (int c = 0; c < 3; c++){
-            const float current = readTexel(map, texel, c);
-            const float target = c == channel ? 1.0f : 0.0f;
-            changed = writeTexel(map, texel, c, current + (target - current) * weight) || changed;
-        }
-        if (map.channels > 3){
-            changed = writeTexel(map, texel, 3, 1.0f) || changed;
-        }
-        return changed;
-    });
+    terraincore::RawMapStore store = rawStoreOf(frame, terraincore::MapId{terraincore::MapKind::Blend, 0}, map);
+    return storeBakeBlend(store, 0, route, closedOutline, settings, frame, channel);
 }
 
 editor::TerrainMapRegion editor::TerrainSplineBake::bakeDensity(const std::vector<spline::SplineStation>& route,
@@ -354,15 +366,8 @@ editor::TerrainMapRegion editor::TerrainSplineBake::bakeDensity(const std::vecto
     if (!map.valid()){
         return TerrainMapRegion();
     }
-    const RouteField field(route, closedOutline, settings, frame, settings.falloff);
-    return field.forEachTexel(map.width, map.height, [&](size_t texel, const Vector3& world){
-        float weight = 0.0f;
-        float bed = 0.0f;
-        if (!field.sample(world.x, world.z, 0.0f, settings.falloff, weight, bed)){
-            return false;
-        }
-        return writeTexel(map, texel, 0, readTexel(map, texel, 0) * (1.0f - weight));
-    });
+    terraincore::RawMapStore store = rawStoreOf(frame, terraincore::MapId{terraincore::MapKind::Density, 0}, map);
+    return storeBakeDensity(store, 0, route, closedOutline, settings, frame);
 }
 
 Entity editor::TerrainSplineBake::findTerrain(Scene* scene, Entity splineEntity){
@@ -408,6 +413,19 @@ bool editor::TerrainSplineBake::isHeightMap8Bit(Scene* scene, Entity terrainEnti
 
 bool editor::TerrainSplineBake::bakeInPlace(Project* project, uint32_t sceneId, Entity splineEntity, Entity terrainEntity,
                                            TerrainBakeChanges& changes, std::string& error){
+    SceneProject* sceneProject = project->getScene(sceneId);
+    TerrainComponent* terrain = sceneProject && terrainEntity != NULL_ENTITY ? sceneProject->scene->findComponent<TerrainComponent>(terrainEntity) : nullptr;
+    if (!terrain){
+        changes = TerrainBakeChanges();
+        error = !sceneProject ? "No such scene." : "No terrain under the spline.";
+        return false;
+    }
+    EditorTerrainStore store(project, sceneId, sceneProject->scene, terrainEntity, *terrain);
+    return bakeInto(store, project, sceneId, splineEntity, terrainEntity, changes, error);
+}
+
+bool editor::TerrainSplineBake::bakeInto(terraincore::TerrainMapStore& store, Project* project, uint32_t sceneId, Entity splineEntity, Entity terrainEntity,
+                                         TerrainBakeChanges& changes, std::string& error){
     changes = TerrainBakeChanges();
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject){
@@ -430,14 +448,14 @@ bool editor::TerrainSplineBake::bakeInPlace(Project* project, uint32_t sceneId, 
     const SplineTerrainSettings& settings = spline->terrain;
 
     if (settings.flatten){
-        TerrainBakeMap map = viewOf(terrain->heightMap);
-        if (!map.valid()){
+        const terraincore::MapFormat heights = store.format(terraincore::MapId{terraincore::MapKind::Height, 0});
+        if (!heights.exists){
             changes.warnings.push_back("The terrain's heightmap has no data: nothing flattened.");
         }else{
-            if (map.bytesPerChannel < 2){
+            if (heights.bitsPerChannel < 16){
                 changes.warnings.push_back("The heightmap is 8-bit: the road bed steps visibly (Convert heightmap to 16-bit).");
             }
-            changes.heights = bakeHeights(route, outline, settings, frame, map);
+            changes.heights = storeBakeHeights(store, route, outline, settings, frame);
         }
     }
     if (settings.paint){
@@ -445,14 +463,11 @@ bool editor::TerrainSplineBake::bakeInPlace(Project* project, uint32_t sceneId, 
         if (blendMap >= static_cast<int>(terrain->blendMaps.size())){
             changes.warnings.push_back("The terrain has no blend map for surface layer " + std::to_string(settings.paintLayer) +
                                        ": paint it once with the Terrain tool to create it.");
+        }else if (store.format(terraincore::MapId{terraincore::MapKind::Blend, blendMap}).exists){
+            changes.blend = storeBakeBlend(store, blendMap, route, outline, settings, frame, static_cast<int>(settings.paintLayer % 3));
+            changes.blendMap = blendMap;
         }else{
-            TerrainBakeMap map = viewOf(terrain->blendMaps[blendMap]);
-            if (map.valid()){
-                changes.blend = bakeBlend(route, outline, settings, frame, static_cast<int>(settings.paintLayer % 3), map);
-                changes.blendMap = blendMap;
-            }else{
-                changes.warnings.push_back("The blend map has no data: nothing painted.");
-            }
+            changes.warnings.push_back("The blend map has no data: nothing painted.");
         }
     }
     if (settings.clearFoliage){
@@ -460,11 +475,7 @@ bool editor::TerrainSplineBake::bakeInPlace(Project* project, uint32_t sceneId, 
             if (!(settings.foliageMask & (1u << layer))){
                 continue;
             }
-            TerrainBakeMap map = viewOf(terrain->foliageLayers[layer].densityMap);
-            if (!map.valid()){
-                continue;
-            }
-            const TerrainMapRegion region = bakeDensity(route, outline, settings, frame, map);
+            const TerrainMapRegion region = storeBakeDensity(store, static_cast<int>(layer), route, outline, settings, frame);
             if (!region.empty()){
                 changes.density.emplace_back(static_cast<int>(layer), region);
             }
@@ -472,6 +483,97 @@ bool editor::TerrainSplineBake::bakeInPlace(Project* project, uint32_t sceneId, 
     }
     changes.texels = static_cast<uint32_t>(changes.heights.width() * changes.heights.height() +
                                            changes.blend.width() * changes.blend.height());
+    return true;
+}
+
+// The trees whose base is within the band of the route the bake flattened (S18 R11's footprint)
+std::vector<uint32_t> editor::TerrainSplineBake::treesInFootprint(const terraincore::TreeStore& store, float terrainSize, const std::vector<Vector2>& line, float reach){
+    std::vector<uint32_t> ids;
+    for (const terraincore::TreeRecord& record : store.records()){
+        const float x = terraincore::foliageTreeLocalX(record, terrainSize);
+        const float z = terraincore::foliageTreeLocalZ(record, terrainSize);
+        if (terraincore::foliageDistanceToPolyline(line, x, z) <= reach){
+            ids.push_back(record.id);
+        }
+    }
+    return ids;
+}
+
+static bool clearSplineTrees(editor::Project* project, uint32_t sceneId, Entity splineEntity, Entity terrainEntity){
+    editor::SceneProject* sceneProject = project->getScene(sceneId);
+    Scene* scene = sceneProject->scene;
+    const SplineComponent* spline = scene->findComponent<SplineComponent>(splineEntity);
+    const Transform* terrainTransform = scene->findComponent<Transform>(terrainEntity);
+    TerrainComponent* terrain = scene->findComponent<TerrainComponent>(terrainEntity);
+    if (!spline || !spline->terrain.clearTrees || !terrainTransform || !terrain){
+        return false;
+    }
+    FoliageSystem* foliage = scene->getSystem<FoliageSystem>().get();
+    std::shared_ptr<terraincore::TreeStore> store = foliage->getTreeStore(terrainEntity);
+    if (!terrain->world && (!store || store->empty())){
+        return false;
+    }
+    std::shared_ptr<SplineSystem> system = scene->findSystem<SplineSystem>();
+    std::vector<spline::SplineStation> stations;
+    if (!system || !system->getWorldStations(splineEntity, 0.0f, stations, true) || stations.size() < 2){
+        return false;
+    }
+    const Matrix4 inverse = terrainTransform->modelMatrix.inverse();
+    std::vector<Vector2> line;
+    line.reserve(stations.size());
+    float radius = 0.0f;
+    for (const spline::SplineStation& station : stations){
+        const Vector3 local = inverse * station.position;
+        line.emplace_back(local.x, local.z);
+        radius = std::max({radius, station.halfWidthLeft, station.halfWidthRight});
+    }
+    const float reach = radius + spline->terrain.extraWidth + spline->terrain.falloff;
+    if (terrain->world){
+        // T4 R27: the trees of each tile the footprint reaches, each in its tile's frame
+        editor::TerrainWorldTreeEdit edit(project, sceneId, terrainEntity);
+        if (!edit.runtime()){
+            return false;
+        }
+        float minX = line.front().x, maxX = minX, minZ = line.front().y, maxZ = minZ;
+        for (const Vector2& point : line){
+            minX = std::min(minX, point.x);
+            maxX = std::max(maxX, point.x);
+            minZ = std::min(minZ, point.y);
+            maxZ = std::max(maxZ, point.y);
+        }
+        for (const terraincore::TileCoord& tile : edit.tilesIn(minX - reach, minZ - reach, maxX + reach, maxZ + reach)){
+            const terraincore::TreeStore* trees = edit.trees(tile);
+            if (!trees){
+                continue;
+            }
+            const Vector2 centre = edit.centre(tile);
+            std::vector<Vector2> moved;
+            for (const Vector2& point : line){
+                moved.push_back(Vector2(point.x - centre.x, point.y - centre.y));
+            }
+            const std::vector<uint32_t> ids = editor::TerrainSplineBake::treesInFootprint(*trees, edit.tileSize(), moved, reach);
+            if (!ids.empty()){
+                edit.apply(tile, ids, {});
+            }
+        }
+        if (!edit.touched()){
+            return false;
+        }
+        std::string error;
+        if (!edit.commit("Erase Trees (" + scene->getEntityName(terrainEntity) + ")", &error)){
+            editor::Out::error("%s", error.c_str());
+            return false;
+        }
+        return true;
+    }
+    const std::vector<uint32_t> removed = editor::TerrainSplineBake::treesInFootprint(*store, terrain->terrainSize, line, reach);
+    if (removed.empty()){
+        return false;
+    }
+    terraincore::TreeDelta delta;
+    store->apply(removed, {}, {}, &delta);
+    editor::CommandHandle::get(sceneId)->addCommand(new editor::TreeEditCmd(project, sceneId, terrainEntity,
+        "Erase Trees (" + scene->getEntityName(terrainEntity) + ")", std::move(delta)));
     return true;
 }
 
@@ -490,83 +592,39 @@ bool editor::TerrainSplineBake::apply(Project* project, uint32_t sceneId, Entity
     }
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(terrainEntity);
 
-    // the maps as they are: the patches' before pixels
-    struct Before{
-        TerrainMapRef ref;
-        std::vector<unsigned char> pixels;
-    };
-    std::vector<Before> before;
-    auto keep = [&](const TerrainMapRef& ref){
-        Texture* texture = TerrainMapUtils::findTexture(terrain, ref);
-        TerrainBakeMap map = texture ? viewOf(*texture) : TerrainBakeMap();
-        if (map.valid()){
-            before.push_back({ref, std::vector<unsigned char>(map.pixels, map.pixels + mapBytes(map))});
-        }
-    };
-    keep(TerrainMapRef(TerrainMapTarget::HeightMap));
-    for (int m = 0; m < static_cast<int>(terrain.blendMaps.size()); m++){
-        keep(TerrainMapRef(TerrainMapTarget::BlendMap, m));
-    }
-    for (int l = 0; l < static_cast<int>(terrain.foliageLayers.size()); l++){
-        keep(TerrainMapRef(TerrainMapTarget::DensityMap, l));
-    }
-
-    if (!bakeInPlace(project, sceneId, splineEntity, terrainEntity, changes, error)){
+    // The bake lands on an overlay, and the step applies what it holds: the maps are written once
+    EditorTerrainStore store(project, sceneId, scene, terrainEntity, terrain);
+    terraincore::OverlayMapStore overlay(store);
+    if (!bakeInto(overlay, project, sceneId, splineEntity, terrainEntity, changes, error)){
         return false;
     }
 
-    // each changed rect: its map back to before, then a patch command writes the bake again
+    auto delta = std::make_unique<TerrainMapDeltaCmd>(project, sceneId, terrainEntity, splineEntity, overlay, false, "Apply Spline to Terrain");
+    overlay.discard();
+    // T5 R29: the footprint's trees go in the same undo step as the maps
     CommandHistory* history = CommandHandle::get(sceneId);
     const size_t mark = history->mark();
-    size_t patches = 0;
-    auto commit = [&](const TerrainMapRef& ref, const TerrainMapRegion& region){
-        if (region.empty()){
-            return;
-        }
-        Texture* texture = TerrainMapUtils::findTexture(terrain, ref);
-        TerrainBakeMap map = texture ? viewOf(*texture) : TerrainBakeMap();
-        auto it = std::find_if(before.begin(), before.end(), [&](const Before& b){ return b.ref == ref; });
-        if (!map.valid() || it == before.end()){
-            return;
-        }
-        const int bytesPerTexel = map.channels * map.bytesPerChannel;
-        TerrainMapPatch patch;
-        patch.path = texture->getPath(0);
-        patch.colorFormat = texture->getData().getColorFormat();
-        patch.mapWidth = map.width;
-        patch.mapHeight = map.height;
-        patch.channels = map.channels;
-        patch.region = region;
-        patch.afterPixels = TerrainMapUtils::copyRegion(map.pixels, map.width, bytesPerTexel, region);
-        patch.beforePixels = TerrainMapUtils::copyRegion(it->pixels.data(), map.width, bytesPerTexel, region);
-        TerrainMapUtils::writeRegion(map.pixels, map.width, bytesPerTexel, region, patch.beforePixels);
-        if (patch.path.empty()){
+    const bool treesCleared = clearSplineTrees(project, sceneId, splineEntity, terrainEntity);
+    if (delta->empty()){
+        if (treesCleared) history->groupSince(mark);
+        return true;
+    }
+    auto warnIfNoFile = [&](const Texture* texture){
+        if (texture && texture->getPath(0).empty()){
             changes.warnings.push_back("A terrain map is not saved in a file: the bake of it is kept until the scene is saved.");
         }
-        history->addCommandNoMerge(new TerrainMapPatchCmd(project, sceneId, terrainEntity, ref, std::move(patch)));
-        patches++;
     };
-    commit(TerrainMapRef(TerrainMapTarget::HeightMap), changes.heights);
-    if (changes.blendMap >= 0){
-        commit(TerrainMapRef(TerrainMapTarget::BlendMap, changes.blendMap), changes.blend);
-    }
+    if (!changes.heights.empty()) warnIfNoFile(&terrain.heightMap);
+    if (!changes.blend.empty() && changes.blendMap >= 0) warnIfNoFile(&terrain.blendMaps[changes.blendMap]);
     for (const auto& item : changes.density){
-        commit(TerrainMapRef(TerrainMapTarget::DensityMap, item.first), item.second);
+        warnIfNoFile(&terrain.foliageLayers[item.first].densityMap);
     }
-    if (patches > 0){
-        history->groupSince(mark, "Apply Spline to Terrain (" + CommandNames::entity(project, sceneId, splineEntity) + ")");
-    }
+    history->addCommandNoMerge(delta.release());
+    if (treesCleared) history->groupSince(mark);
     return true;
 }
 
 // ---- Live Terrain
-
-editor::TerrainSplineLiveSession::MapCopy* editor::TerrainSplineLiveSession::findMap(const TerrainMapRef& ref){
-    for (MapCopy& map : maps){
-        if (map.ref == ref) return &map;
-    }
-    return nullptr;
-}
 
 bool editor::TerrainSplineLiveSession::begin(Project* project, uint32_t sceneId, Entity splineEntity, std::string& error){
     cancel();
@@ -585,56 +643,13 @@ bool editor::TerrainSplineLiveSession::begin(Project* project, uint32_t sceneId,
     this->sceneId = sceneId;
     this->spline = splineEntity;
     this->terrain = terrainEntity;
-    maps.clear();
-    TerrainComponent& t = scene->getComponent<TerrainComponent>(terrainEntity);
-    auto snapshot = [&](const TerrainMapRef& ref){
-        Texture* texture = TerrainMapUtils::findTexture(t, ref);
-        TerrainBakeMap map = texture ? viewOf(*texture) : TerrainBakeMap();
-        if (!map.valid()){
-            return;
-        }
-        MapCopy copy;
-        copy.ref = ref;
-        copy.path = texture->getPath(0);
-        copy.width = map.width;
-        copy.height = map.height;
-        copy.bytesPerTexel = map.channels * map.bytesPerChannel;
-        copy.start.assign(map.pixels, map.pixels + mapBytes(map));
-        maps.push_back(std::move(copy));
-    };
-    snapshot(TerrainMapRef(TerrainMapTarget::HeightMap));
-    for (int m = 0; m < static_cast<int>(t.blendMaps.size()); m++){
-        snapshot(TerrainMapRef(TerrainMapTarget::BlendMap, m));
-    }
-    for (int l = 0; l < static_cast<int>(t.foliageLayers.size()); l++){
-        snapshot(TerrainMapRef(TerrainMapTarget::DensityMap, l));
-    }
+    store = std::make_unique<EditorTerrainStore>(project, sceneId, scene, terrainEntity, scene->getComponent<TerrainComponent>(terrainEntity));
+    overlay = std::make_unique<terraincore::OverlayMapStore>(*store);
+    // the map's file waits until the session ends, as for a stroke
+    store->beginStroke();
     bakedVersion = 0;
     active = true;
     return update(error);
-}
-
-void editor::TerrainSplineLiveSession::restore(){
-    SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
-    if (!sceneProject){
-        return;
-    }
-    TerrainComponent* t = sceneProject->scene->findComponent<TerrainComponent>(terrain);
-    if (!t){
-        return;
-    }
-    for (MapCopy& copy : maps){
-        if (copy.touched.empty()){
-            continue;
-        }
-        Texture* texture = TerrainMapUtils::findTexture(*t, copy.ref);
-        TerrainBakeMap map = texture ? viewOf(*texture) : TerrainBakeMap();
-        if (!map.valid() || map.width != copy.width || map.height != copy.height){
-            continue;
-        }
-        const std::vector<unsigned char> start = TerrainMapUtils::copyRegion(copy.start.data(), copy.width, copy.bytesPerTexel, copy.touched);
-        TerrainMapUtils::writeRegion(map.pixels, map.width, copy.bytesPerTexel, copy.touched, start);
-    }
 }
 
 bool editor::TerrainSplineLiveSession::update(std::string& error){
@@ -644,11 +659,13 @@ bool editor::TerrainSplineLiveSession::update(std::string& error){
     SceneProject* sceneProject = project->getScene(sceneId);
     SplineComponent* splineComponent = sceneProject ? sceneProject->scene->findComponent<SplineComponent>(spline) : nullptr;
     const Transform* transform = sceneProject ? sceneProject->scene->findComponent<Transform>(spline) : nullptr;
-    if (!splineComponent || !transform){
+    TerrainComponent* terrainComponent = sceneProject ? sceneProject->scene->findComponent<TerrainComponent>(terrain) : nullptr;
+    if (!splineComponent || !transform || !terrainComponent){
         cancel();
         error = "The spline is gone.";
         return false;
     }
+    store->rebind(*terrainComponent);
     // a change of the curve or of its GameObject's place
     uint64_t version = splineComponent->spline.version() * 1000003ull;
     for (int c = 0; c < 4; c++){
@@ -663,30 +680,13 @@ bool editor::TerrainSplineLiveSession::update(std::string& error){
         return false;
     }
     const auto start = std::chrono::steady_clock::now();
-    // the snapshot back over the old footprint (every texel an earlier re-bake wrote), then
-    // the bake on the terrain as the session found it
-    restore();
+    // what an earlier re-bake wrote goes back, then the bake on the terrain as the session found it
+    overlay->rewind();
     TerrainBakeChanges changes;
-    if (!TerrainSplineBake::bakeInPlace(project, sceneId, spline, terrain, changes, error)){
+    if (!TerrainSplineBake::bakeInto(*overlay, project, sceneId, spline, terrain, changes, error)){
         return false;
     }
-    auto touch = [&](const TerrainMapRef& ref, const TerrainMapRegion& region){
-        if (MapCopy* copy = findMap(ref); copy && !region.empty()){
-            copy->touched.merge(region.minX, region.minY, region.maxX, region.maxY);
-        }
-    };
-    touch(TerrainMapRef(TerrainMapTarget::HeightMap), changes.heights);
-    if (changes.blendMap >= 0){
-        touch(TerrainMapRef(TerrainMapTarget::BlendMap, changes.blendMap), changes.blend);
-    }
-    for (const auto& item : changes.density){
-        touch(TerrainMapRef(TerrainMapTarget::DensityMap, item.first), item.second);
-    }
-    for (const MapCopy& copy : maps){
-        if (!copy.touched.empty()){
-            TerrainMapUtils::refresh(sceneProject, terrain, copy.ref);
-        }
-    }
+    overlay->flushToBase();
     lastBakeMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     bakedVersion = version;
     return true;
@@ -699,56 +699,29 @@ void editor::TerrainSplineLiveSession::end(){
     active = false;
     SceneProject* sceneProject = project->getScene(sceneId);
     TerrainComponent* t = sceneProject ? sceneProject->scene->findComponent<TerrainComponent>(terrain) : nullptr;
-    if (!t){
-        maps.clear();
-        return;
-    }
-    CommandHistory* history = CommandHandle::get(sceneId);
-    const size_t mark = history->mark();
-    size_t patches = 0;
-    for (MapCopy& copy : maps){
-        if (copy.touched.empty()){
-            continue;
+    if (t){
+        store->rebind(*t);
+        overlay->flushToBase();
+        auto delta = std::make_unique<TerrainMapDeltaCmd>(project, sceneId, terrain, spline, *overlay, true, "Apply Spline to Terrain");
+        if (!delta->empty()){
+            CommandHandle::get(sceneId)->addCommandNoMerge(delta.release());
         }
-        Texture* texture = TerrainMapUtils::findTexture(*t, copy.ref);
-        TerrainBakeMap map = texture ? viewOf(*texture) : TerrainBakeMap();
-        if (!map.valid() || map.width != copy.width || map.height != copy.height){
-            continue;
-        }
-        TerrainMapPatch patch;
-        patch.path = copy.path;
-        patch.colorFormat = texture->getData().getColorFormat();
-        patch.mapWidth = map.width;
-        patch.mapHeight = map.height;
-        patch.channels = map.channels;
-        patch.region = copy.touched;
-        patch.afterPixels = TerrainMapUtils::copyRegion(map.pixels, map.width, copy.bytesPerTexel, copy.touched);
-        patch.beforePixels = TerrainMapUtils::copyRegion(copy.start.data(), copy.width, copy.bytesPerTexel, copy.touched);
-        if (patch.afterPixels == patch.beforePixels){
-            continue;
-        }
-        history->addCommandNoMerge(new TerrainMapPatchCmd(project, sceneId, terrain, copy.ref, std::move(patch)));
-        patches++;
     }
-    if (patches > 0){
-        history->groupSince(mark, "Apply Spline to Terrain (" + CommandNames::entity(project, sceneId, spline) + ")");
-    }
-    maps.clear();
+    overlay.reset();
+    store.reset();
 }
 
 void editor::TerrainSplineLiveSession::cancel(){
     if (active){
-        restore();
         SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
-        if (sceneProject){
-            for (const MapCopy& copy : maps){
-                if (!copy.touched.empty()){
-                    TerrainMapUtils::refresh(sceneProject, terrain, copy.ref);
-                }
-            }
+        TerrainComponent* t = sceneProject ? sceneProject->scene->findComponent<TerrainComponent>(terrain) : nullptr;
+        if (t){
+            store->rebind(*t);
+            overlay->rewind();
         }
     }
     active = false;
-    maps.clear();
+    overlay.reset();
+    store.reset();
     bakedVersion = 0;
 }

@@ -7884,6 +7884,62 @@
   },
   {
    "component": "terrain",
+   "group": "Quality",
+   "kind": "Enum",
+   "label": "Quality",
+   "path": "quality",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Quality",
+   "kind": "Bool",
+   "label": "Limit Layers Per Pixel",
+   "path": "limitLayersPerPixel",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Quality",
+   "kind": "Enum",
+   "label": "Off-screen Shadows",
+   "path": "offscreenShadows",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Quality",
+   "kind": "Enum",
+   "label": "Macro Variation",
+   "path": "macroMode",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Quality",
+   "kind": "Bool",
+   "label": "Distance Resampling",
+   "path": "resampleEnabled",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Quality",
+   "kind": "Float_0_1",
+   "label": "Height Blend Sharpness",
+   "path": "heightBlendSharpness",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
+   "group": "Quality",
+   "kind": "Bool",
+   "label": "Macro Normal Map",
+   "path": "macroNormal",
+   "read_only": false
+  },
+  {
+   "component": "terrain",
    "group": "Ranges",
    "kind": "Bool",
    "label": "Auto Ranges",

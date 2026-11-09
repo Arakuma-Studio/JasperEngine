@@ -2131,37 +2131,46 @@ namespace SoLoud
 		}
 #endif
 
+		// JasperEngine local patch: denormals flush to zero only while this call mixes; the caller's
+		// modes come back on return. Stock SoLoud turned flush-to-zero and denormals-are-zero on once
+		// per process, in whichever thread mixed first, and never off: when that was the main thread
+		// (the null and deterministic drivers mix there, and so do offline renders), all its later
+		// float arithmetic flushed denormals, and noise (T2) stopped matching its workers' bits.
+		// (0x8040: MXCSR's flush-to-zero and denormals-are-zero bits; the SSE headers lack the latter.)
+		struct DenormalFlushScope
+		{
+			bool mActive;
 #ifdef _MCW_DN
-		{
-			static bool once = false;
-			if (!once)
-			{
-				once = true;
-				if (!(mFlags & NO_FPU_REGISTER_CHANGE))
-				{
-					_controlfp(_DN_FLUSH, _MCW_DN);
-				}
-			}
-		}
+			unsigned int mSavedControl = 0;
 #endif
-
 #ifdef SOLOUD_SSE_INTRINSICS
-		{
-			static bool once = false;
-			if (!once)
-			{
-				once = true;
-				// Set denorm clear to zero (CTZ) and denorms are zero (DAZ) flags on.
-				// This causes all math to consider really tiny values as zero, which
-				// helps performance. I'd rather use constants from the sse headers,
-				// but for some reason the DAZ value is not defined there(!)
-				if (!(mFlags & NO_FPU_REGISTER_CHANGE))
-				{
-					_mm_setcsr(_mm_getcsr() | 0x8040);
-				}
-			}
-		}
+			unsigned int mSavedCsr = 0;
 #endif
+			explicit DenormalFlushScope(bool aActive) : mActive(aActive)
+			{
+				if (!mActive)
+					return;
+#ifdef _MCW_DN
+				mSavedControl = _controlfp(0, 0) & _MCW_DN;
+				_controlfp(_DN_FLUSH, _MCW_DN);
+#endif
+#ifdef SOLOUD_SSE_INTRINSICS
+				mSavedCsr = _mm_getcsr() & 0x8040u;
+				_mm_setcsr(_mm_getcsr() | 0x8040u);
+#endif
+			}
+			~DenormalFlushScope()
+			{
+				if (!mActive)
+					return;
+#ifdef SOLOUD_SSE_INTRINSICS
+				_mm_setcsr((_mm_getcsr() & ~0x8040u) | mSavedCsr);
+#endif
+#ifdef _MCW_DN
+				_controlfp(mSavedControl, _MCW_DN);
+#endif
+			}
+		} denormalFlush(!(mFlags & NO_FPU_REGISTER_CHANGE));
 
 		float buffertime = aSamples / (float)mSamplerate;
 		float globalVolume[2];

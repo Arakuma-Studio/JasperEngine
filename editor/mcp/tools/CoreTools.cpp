@@ -436,7 +436,12 @@ void undoRedo(const CallPtr& call, bool undo) {
         data["can_redo"] = UndoTimeline::canRedo(sceneId);
     }
     if (done.empty()) {
-        call->fail(busy ? why : refused ? refusal : std::string("Nothing to ") + verb + " in the " + scope + " history.", data);
+        std::string empty = std::string("Nothing to ") + verb + " in the " + scope + " history.";
+        // An asset step (a graph file, an import) is newer than the scene's: Ctrl+Z would take it
+        if (scope == "scene" && (undo ? UndoTimeline::canUndo(sceneId) : UndoTimeline::canRedo(sceneId))) {
+            empty += std::string(" The last step is an asset edit: ") + verb + " scope timeline takes it, as Ctrl+Z does.";
+        }
+        call->fail(busy ? why : refused ? refusal : empty, data);
         return;
     }
     std::string names;

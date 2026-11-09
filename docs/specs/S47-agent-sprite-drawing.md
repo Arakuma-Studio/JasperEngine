@@ -874,7 +874,7 @@ Recorded while implementing (branch `feature/s47-agent-sprite-drawing`):
 - **R5/R24 structure limits.** A `frame add` or `layer add` past 256 fails with `too_many_ops` (the
   closest listed kind) naming the limit.
 - **S46's lint library** (`editor/pixelart/lint/PixelLint`, `CraftLints`, `EffectLints`) is copied
-  verbatim from `feature/s46-pixel-art-cleanup` (byte-identical to its branch at `0b4b0ca1d`) so `edit_sprite {lint}` runs against
+  verbatim from `feature/s46-pixel-art-cleanup` (byte-identical to its branch; keep them so at the batch landing) so `edit_sprite {lint}` runs against
   the real API; the batch landing keeps S46's copy. `SpriteDrawLint` is the one call site (R31).
 - **`.png` deviations from R1:** 16-bit PNGs are refused (`unsupported_feature`, their precision would be
   lost). A PNG re-saves as 8-bit: a palette PNG at 1/2/4 bits becomes 8-bit indexed.

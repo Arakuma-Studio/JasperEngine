@@ -235,12 +235,16 @@ namespace jasperengine::editor{
         PixelPerfectCameraComponent,
         // 2D sorting and bulk sprites (S52): Unity's Sorting Group, and instances of a Sprite
         SortingGroupComponent,
-        SpriteBatchComponent
+        SpriteBatchComponent,
+        // T6: a bounded box of smooth voxel terrain
+        VoxelVolumeComponent,
+        // T4: a Terrain's tiles past one map, streamed round its focuses
+        TerrainWorldComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::SpriteBatchComponent;
+    constexpr ComponentType LastComponentType = ComponentType::TerrainWorldComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

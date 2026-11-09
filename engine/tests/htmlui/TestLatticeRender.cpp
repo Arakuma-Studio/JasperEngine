@@ -9,6 +9,7 @@
 // a vertex colour mask, skinned meshes (before and after skinning) and instanced meshes.
 
 #include "TestGoldenCommon.h"
+#include "component/Transform.h"
 
 #include "Scene.h"
 #include "component/LatticeComponent.h"

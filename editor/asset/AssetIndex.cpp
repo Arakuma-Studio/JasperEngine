@@ -13,6 +13,8 @@
 #include "animation/ModelSubClips.h"
 #include "audio/SoundEventIO.h"
 #include "util/Util.h"
+#include "voxel/VoxelFile.h"
+#include "voxel/VoxelGenerator.h"
 
 #include "json.hpp"
 #include "particles/ParticleEffectCodec.h"
@@ -168,6 +170,7 @@ bool AssetIndex::isReferrerType(AssetType type, const std::string& relativePath)
         case AssetType::SoundEvent:
         // its audio cues' sounds (S40 R3)
         case AssetType::AnimationClip:
+        case AssetType::VoxelVolume:
             return true;
         case AssetType::Script:
             return indexExtension(relativePath) == ".lua";
@@ -310,6 +313,32 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
                     }
                     if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
                 });
+                break;
+            }
+            case AssetType::VoxelVolume: {
+                // T6 R77: what its generator reads, a Noise Graph, a mesh or what it blends
+                std::string text;
+                if (!assetio::readFile(full, text)) break;
+                const voxel::VolumeFileResult info = voxel::readVolumeFileInfo(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(text.data()), text.size()));
+                voxel::GeneratorDesc generator;
+                if (!info.ok || !voxel::generatorFromJson(info.info.generatorJson, generator)) break;
+                auto addSource = [&](const std::string& kind, const std::string& guid, const std::string& path, const char* field) {
+                    if (guid.empty() && path.empty()) return;
+                    DepEdge edge;
+                    edge.referrer = referrer;
+                    edge.kind = DepEdgeKind::Other;
+                    edge.field = field;
+                    edge.expected = kind == "mesh" ? AssetType::Model : AssetType::Unknown;
+                    edge.target = Guid::parse(guid);
+                    edge.targetPath = toProjectRelative(roots, AssetPathBase::Assets, path);
+                    if (edge.target.isNull()) {
+                        const AssetDatabase::Resolution resolution = database.resolve(Guid(), edge.targetPath, edge.expected, false);
+                        if (resolution.found()) edge.target = resolution.guid;
+                    }
+                    if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
+                };
+                addSource(generator.kind, generator.sourceGuid, generator.sourcePath, "generator.source");
+                addSource(generator.otherKind, generator.otherGuid, generator.otherPath, "generator.other");
                 break;
             }
             case AssetType::AnimatorController:

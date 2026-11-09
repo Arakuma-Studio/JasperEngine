@@ -99,7 +99,12 @@ out vec2 v_projZW;
     #endif
 #endif
 
-#ifdef HAS_INSTANCING
+#include "includes/foliage_instance.glsl"
+#include "includes/foliage_wind.glsl"
+#ifdef USE_FOLIAGE_DITHER
+    out float v_foliageFade;
+#endif
+#if defined(HAS_INSTANCING) && !defined(HAS_COMPACT_INSTANCE)
     in vec4 i_matrix_col1;
     in vec4 i_matrix_col2;
     in vec4 i_matrix_col3;
@@ -145,6 +150,9 @@ float surfaceFadeVisible;
 #endif
 
 void main() {
+    #ifdef HAS_COMPACT_INSTANCE
+        compactInstanceSetup();
+    #endif
     // the baked vertex animation first (HAS_VAT), as includes/surface_vs.glsl
     vatEvaluate();
     mat4 boneTransform = getBoneTransform();
@@ -200,6 +208,19 @@ void main() {
         #ifdef SURFACE_SMOOTH_NORMAL_INPUT
             smoothNormal = normalize(instanceNormal(mat3(instanceMatrix), smoothNormal));
         #endif
+
+    // the impostor places its quad in its displace hook, with its own whole-tree sway
+    #ifndef FOLIAGE_IMPOSTOR
+    #ifdef USE_FOLIAGE_WIND
+        pos.xyz = foliageWindSway(pos.xyz, i_matrix_col4.xyz, a_position.y, 1.0);
+    #endif
+    #ifdef USE_FOLIAGE_DITHER
+        v_foliageFade = foliageFadeFactor(i_matrix_col4.xyz);
+    #endif
+    #endif
+    #if defined(USE_FOLIAGE_DITHER) && defined(FOLIAGE_IMPOSTOR)
+        v_foliageFade = foliageFadeFactor(i_matrix_col4.xyz);
+    #endif
     #else
         vec4 pos = vec4(position, 1.0);
     #endif

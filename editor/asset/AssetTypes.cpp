@@ -38,6 +38,7 @@ namespace {
             {{AssetType::Data, AssetIdentity::Sidecar, AssetPathBase::Assets, false, true}, {".json", ".txt", ".csv", ".xml", ".bytes", ".inputactions"}},
             {{AssetType::ColorLut, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".cube"}},
             {{AssetType::ParticleEffect, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".particles"}},
+            {{AssetType::NoiseGraph, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".noisegraph"}},
             // animation clips keep their GUID in their own JSON ("guid", AnimationClipIO), as the
             // engine's YAML assets do; pose animations have a meta like other data files
             {{AssetType::AnimationClip, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".anim"}},
@@ -47,9 +48,11 @@ namespace {
             {{AssetType::VertexAnimation, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".vat"}},
             {{AssetType::NavMesh, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".navmesh"}},
             {{AssetType::NavGrid, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".navgrid"}},
+            {{AssetType::VoxelVolume, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".voxelvolume"}},
             // the Animator's assets (S21) keep their GUID in their JSON like clips
             {{AssetType::AnimatorController, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".controller"}},
             {{AssetType::AvatarMask, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".mask"}},
+            {{AssetType::TreeData, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".jetrees"}},
             {{AssetType::AnimationMontage, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".montage"}},
             // the pixel-art family's assets (PIXEL-ART-LEDGER.md)
             // its ramps are sub-assets ("<file>.palette#ramp:<name>", a texture strip)
@@ -62,6 +65,8 @@ namespace {
             {{AssetType::SoundEvent, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".soundevent"}},
             // a Procedural Material's node graph (S90): the GUID in its JSON, baked in the editor, never shipped
             {{AssetType::ProceduralMaterial, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".procmat"}},
+            // T4 R48: a folder, one asset; its GUID is in its manifest.yaml and the scan does not enter it
+            {{AssetType::TerrainWorld, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".terrainworld"}},
         };
         return table;
     }
@@ -126,6 +131,15 @@ fs::path editor::AssetTypes::assetPathForMeta(const fs::path& metaPath) {
     fs::path asset = metaPath;
     asset.replace_extension();
     return asset;
+}
+
+bool editor::AssetTypes::isFolderAsset(const std::string& name) {
+    static const std::string extension = ".terrainworld";
+    return name.size() > extension.size() && name.compare(name.size() - extension.size(), extension.size(), extension) == 0;
+}
+
+fs::path editor::AssetTypes::identityFileOf(const fs::path& assetPath) {
+    return isFolderAsset(assetPath.filename().string()) ? assetPath / "manifest.yaml" : assetPath;
 }
 
 bool editor::AssetTypes::isSkippedDirectory(const std::string& name) {

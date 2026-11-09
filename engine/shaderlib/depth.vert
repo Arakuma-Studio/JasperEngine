@@ -40,7 +40,12 @@ invariant gl_Position;
 in vec3 a_position;
 out vec2 v_projZW;
 
-#ifdef HAS_INSTANCING
+#include "includes/foliage_instance.glsl"
+#include "includes/foliage_wind.glsl"
+#ifdef USE_FOLIAGE_DITHER
+    out float v_foliageFade;
+#endif
+#if defined(HAS_INSTANCING) && !defined(HAS_COMPACT_INSTANCE)
     in vec4 i_matrix_col1;
     in vec4 i_matrix_col2;
     in vec4 i_matrix_col3;
@@ -63,7 +68,7 @@ out vec2 v_projZW;
 #endif
 
 // a lattice's vertex colour mask (includes/lattice.glsl)
-#ifdef HAS_LATTICE
+#if defined(HAS_LATTICE) || defined(USE_FOLIAGE_WIND)
     #if defined(HAS_VERTEX_COLOR_VEC3)
         in vec3 a_color;
     #elif defined(HAS_VERTEX_COLOR_VEC4)
@@ -91,7 +96,16 @@ vec4 getPosition(mat4 boneTransform){
     return vec4(pos, 1.0);
 }
 
+#if defined(HAS_VERTEX_COLOR_VEC3) || defined(HAS_VERTEX_COLOR_VEC4)
+    #define FOLIAGE_VERTEX_RED a_color.r
+#else
+    #define FOLIAGE_VERTEX_RED 1.0
+#endif
+
 void main() {
+    #ifdef HAS_COMPACT_INSTANCE
+        compactInstanceSetup();
+    #endif
     // the baked vertex animation first (HAS_VAT), as mesh.vert
     vatEvaluate();
     mat4 boneTransform = getBoneTransform();
@@ -116,6 +130,13 @@ void main() {
         vec4 pos = instanceMatrix *  getPosition(boneTransform);
     #else
         vec4 pos = getPosition(boneTransform);
+    #endif
+
+    #ifdef USE_FOLIAGE_WIND
+        pos.xyz = foliageWindSway(pos.xyz, i_matrix_col4.xyz, a_position.y, FOLIAGE_VERTEX_RED);
+    #endif
+    #ifdef USE_FOLIAGE_DITHER
+        v_foliageFade = foliageFadeFactor(i_matrix_col4.xyz);
     #endif
 
     #if defined(HAS_TEXTURE)

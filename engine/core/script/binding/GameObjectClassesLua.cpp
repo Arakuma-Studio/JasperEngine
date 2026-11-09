@@ -3,6 +3,7 @@
 
 #include "LuaBinding.h"
 #include "component/MeshComponent.h"
+#include "component/Transform.h"
 #include "object/spline/Spline.h"
 #include "object/spline/SplineAnimate.h"
 #include "object/spline/SplineExtrude.h"
@@ -2419,12 +2420,29 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // hex tiling of the flat projection (anti-repetition), and how far a tile may turn (0..1)
         .addProperty("hexTiling", &TerrainSurfaceLayer::hexTiling, &TerrainSurfaceLayer::hexTiling)
         .addProperty("hexRotation", &TerrainSurfaceLayer::hexRotation, &TerrainSurfaceLayer::hexRotation)
+        // Auto is the Quality tier's projection, Flat Only never reads a side plane (T3 R11)
+        .addProperty("cliffProjection", &TerrainSurfaceLayer::cliffProjection, &TerrainSurfaceLayer::cliffProjection)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Terrain, Mesh>("Terrain")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &Terrain::isEnabled, &Terrain::setEnabled)
+        // T3 R48: the material's Quality and features
+        .addProperty("terrainQuality", &Terrain::getTerrainQuality, &Terrain::setTerrainQuality)
+        .addProperty("effectiveQuality", &Terrain::getEffectiveQuality)
+        .addProperty("limitLayersPerPixel", &Terrain::isLimitLayersPerPixel, &Terrain::setLimitLayersPerPixel)
+        .addProperty("offscreenShadows", &Terrain::getOffscreenShadows, &Terrain::setOffscreenShadows)
+        .addProperty("macroMode", &Terrain::getMacroMode, &Terrain::setMacroMode)
+        .addProperty("macroScale", &Terrain::getMacroScale, &Terrain::setMacroScale)
+        .addProperty("macroStrength", &Terrain::getMacroStrength, &Terrain::setMacroStrength)
+        .addProperty("resampleEnabled", &Terrain::isResampleEnabled, &Terrain::setResampleEnabled)
+        .addProperty("resampleNear", &Terrain::getResampleNear, &Terrain::setResampleNear)
+        .addProperty("resampleFar", &Terrain::getResampleFar, &Terrain::setResampleFar)
+        .addProperty("heightBlendSharpness", &Terrain::getHeightBlendSharpness, &Terrain::setHeightBlendSharpness)
+        .addProperty("macroNormal", &Terrain::isMacroNormal, &Terrain::setMacroNormal)
+        .addFunction("setHoleMap", &Terrain::setHoleMap)
+        .addFunction("getHoleMapPath", &Terrain::getHoleMapPath)
         .addFunction("setHeightMap", (void(Terrain::*)(const std::string&))&Terrain::setHeightMap)
         .addFunction("setBlendMap", (void(Terrain::*)(const std::string&))&Terrain::setBlendMap)
         .addFunction("setBlendMapIndex", (void(Terrain::*)(unsigned int, const std::string&))&Terrain::setBlendMap)

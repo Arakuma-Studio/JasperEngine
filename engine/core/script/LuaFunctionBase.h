@@ -29,6 +29,9 @@ namespace jasperengine{
     struct ParticleDeathInfo;
     struct ParticleSubEmitInfo;
     struct AnimationEvent;
+    struct VoxelEditEvent;
+    class AABB;
+    class GameObject;
     class VideoPlayer;
     namespace nav { enum class PathFailure : uint8_t; }
 
@@ -97,6 +100,10 @@ namespace jasperengine{
         void push_value(lua_State *vm, nav::PathFailure o);
         // an input action's callback gets the event itself: event:consume() reaches it
         void push_value(lua_State *vm, const InputActionEvent& o);
+        // a Voxel Volume's events (T6 R31): onEdited's plain table, onCollisionUpdated's bounds, onBodyRescued's GameObject
+        void push_value(lua_State *vm, const VoxelEditEvent& o);
+        void push_value(lua_State *vm, const AABB& o);
+        void push_value(lua_State *vm, const GameObject& o);
         // the Video Player of an event (onPrepareCompleted, ...)
         void push_value(lua_State *vm, const VideoPlayer &o);
 

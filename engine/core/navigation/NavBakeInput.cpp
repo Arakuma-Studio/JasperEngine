@@ -133,7 +133,8 @@ uint64_t NavBuildConfig::hash() const {
 Vector3 NavTerrainInput::localAt(int i, int j) const {
     const float x = (i == samples - 1) ? halfSize : (-halfSize + spacing * (float)i);
     const float z = (j == samples - 1) ? halfSize : (-halfSize + spacing * (float)j);
-    return Vector3(x, heightAt(i, j), z);
+    // a centre of 0 (every lattice but a World's tile) leaves the sum exact
+    return Vector3(centerX + x, heightAt(i, j), centerZ + z);
 }
 
 void NavTerrainInput::computeBounds() {
@@ -142,16 +143,25 @@ void NavTerrainInput::computeBounds() {
         bmin[a] = std::numeric_limits<float>::max();
         bmax[a] = -std::numeric_limits<float>::max();
     }
-    if (samples < 2 || heights.size() < (size_t)samples * (size_t)samples)
+    if (samples < 2 || (!tileSamples && heights.size() < (size_t)samples * (size_t)samples))
         return;
     float minH = std::numeric_limits<float>::max(), maxH = -std::numeric_limits<float>::max();
+    if (tileSamples) {
+        for (int j = 0; j < samples; j++) {
+            for (int i = 0; i < samples; i++) {
+                const float h = heightAt(i, j);
+                minH = std::min(minH, h);
+                maxH = std::max(maxH, h);
+            }
+        }
+    }
     for (float h : heights) {
         minH = std::min(minH, h);
         maxH = std::max(maxH, h);
     }
     // the 8 corners of the local box bound the lattice under any affine map
     for (int c = 0; c < 8; c++) {
-        const Vector3 local((c & 1) ? halfSize : -halfSize, (c & 2) ? maxH : minH, (c & 4) ? halfSize : -halfSize);
+        const Vector3 local(centerX + ((c & 1) ? halfSize : -halfSize), (c & 2) ? maxH : minH, centerZ + ((c & 4) ? halfSize : -halfSize));
         const Vector3 p = toNav * local;
         for (int a = 0; a < 3; a++) {
             bmin[a] = std::min(bmin[a], p[(unsigned)a]);
@@ -175,6 +185,10 @@ bool NavTerrainInput::cellRange(const float* boxMin, const float* boxMax, int& i
         lmaxZ = std::max(lmaxZ, local.z);
     }
     const int cells = samples - 1;
+    lminX -= centerX;
+    lmaxX -= centerX;
+    lminZ -= centerZ;
+    lmaxZ -= centerZ;
     i0 = std::clamp((int)std::floor((lminX + halfSize) / spacing), 0, cells);
     i1 = std::clamp((int)std::floor((lmaxX + halfSize) / spacing) + 1, 0, cells);
     j0 = std::clamp((int)std::floor((lminZ + halfSize) / spacing), 0, cells);
@@ -309,6 +323,11 @@ void NavBakeInput::finalize() {
             hasher.f32(terrain.spacing);
             hasher.i32(terrain.samples);
             hasher.u8(terrain.recastArea);
+            // a World's tiles share toNav: their centres tell them apart (other lattices hash as before)
+            if (terrain.tileSamples) {
+                hasher.f32(terrain.centerX);
+                hasher.f32(terrain.centerZ);
+            }
             hasher.i32(i0);
             hasher.i32(i1);
             hasher.i32(j0);
@@ -316,6 +335,13 @@ void NavBakeInput::finalize() {
             for (int j = j0; j <= j1; j++) {
                 for (int i = i0; i <= i1; i++)
                     hasher.f32(terrain.heightAt(i, j));
+            }
+            // T3 R23: a hole under this tile bakes it again. No holes hash as before.
+            if (!terrain.holeCells.empty()) {
+                for (int j = j0; j < j1; j++) {
+                    for (int i = i0; i < i1; i++)
+                        hasher.u8(terrain.isHoleCell(i, j) ? 1 : 0);
+                }
             }
         }
 

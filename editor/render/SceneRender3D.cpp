@@ -9,6 +9,7 @@
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "component/AudioSourceComponent.h"
+#include "component/Transform.h"
 #include "component/BoneComponent.h"
 #include "component/CharacterControllerComponent.h"
 #include "component/Joint3DComponent.h"

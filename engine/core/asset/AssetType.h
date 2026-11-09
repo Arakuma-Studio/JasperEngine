@@ -43,11 +43,16 @@ namespace jasperengine {
         AsepriteSprite = 25,        // an .aseprite / .ase file (S44): its sheet, frames, clips and slices are sub-assets
         SpriteAtlas = 26,           // a .spriteatlas Sprite Atlas (S45; its GUID in its JSON)
         SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
-        ProceduralMaterial = 29     // a .procmat node graph baked in the editor (S90; its GUID in its JSON; never ships)
+        ProceduralMaterial = 29,    // a .procmat node graph baked in the editor (S90; its GUID in its JSON; never ships)
+        // The terrain programme's (T2-T6) follow upstream's 29. Stored in assetmap.bin: these never move.
+        TreeData = 30,              // a .jetrees file of a Terrain's trees (T5 R22)
+        TerrainWorld = 31,          // a Name.terrainworld folder, its GUID in its manifest.yaml (T4 R48)
+        VoxelVolume = 32,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
+        NoiseGraph = 33             // a .noisegraph Noise Graph (T2)
     };
 
     // the highest value present (a sibling's reserved value below it may still be missing)
-    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::ProceduralMaterial);
+    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::NoiseGraph);
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
     inline const char* assetTypeName(AssetType type) {
@@ -73,6 +78,7 @@ namespace jasperengine {
             case AssetType::NavGrid: return "navgrid";
             case AssetType::AnimatorController: return "animator_controller";
             case AssetType::AvatarMask: return "avatar_mask";
+            case AssetType::TreeData: return "tree_data";
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
             case AssetType::Palette: return "palette";
@@ -80,6 +86,9 @@ namespace jasperengine {
             case AssetType::SpriteAtlas: return "sprite_atlas";
             case AssetType::SoundEvent: return "sound_event";
             case AssetType::ProceduralMaterial: return "procedural_material";
+            case AssetType::TerrainWorld: return "terrain_world";
+            case AssetType::NoiseGraph: return "noise_graph";
+            case AssetType::VoxelVolume: return "voxel_volume";
             case AssetType::Unknown: break;
         }
         return "unknown";

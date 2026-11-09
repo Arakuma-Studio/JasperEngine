@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: MIT
 
 #include "PlayerModules.h"
+#include "terrain/TerrainEditModule.h"
 
 #include "component/AudioSourceComponent.h"
 #include "navigation/NavTypes.h"
+#include "noise/NoiseSwitch.h"
 
 #include <algorithm>
 
 using namespace jasperengine;
 
 const std::vector<std::string>& player::allModules() {
-    static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer"};
+    static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit"};
     return modules;
 }
 
@@ -36,6 +38,18 @@ std::vector<std::string> player::builtModules() {
 #if JASPERENGINE_SOUND_LAYER
     modules.push_back("soundlayer");
 #endif
+#if JASPERENGINE_NOISE_ENABLED
+    modules.push_back("noise");
+#endif
+#if JASPERENGINE_VOXEL
+    modules.push_back("voxel");
+#endif
+#if JASPERENGINE_TERRAIN_WORLD
+    modules.push_back("terrainworld");
+#endif
+#if JASPERENGINE_TERRAIN_EDIT
+    modules.push_back("terrainedit");
+#endif
     return modules;
 }
 
@@ -52,5 +66,9 @@ std::string player::moduleDisplayName(const std::string& module) {
     if (module == "physics2d") return "2D physics";
     if (module == "navigation") return "navigation meshes";
     if (module == "soundlayer") return "Sound Events and clip import settings";
+    if (module == "noise") return "the Noise and NoiseGraph API";
+    if (module == "voxel") return "Voxel Volumes";
+    if (module == "terrainworld") return "Terrain World";
+    if (module == "terrainedit") return "runtime terrain edits";
     return module;
 }

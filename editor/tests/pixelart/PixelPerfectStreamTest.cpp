@@ -238,7 +238,8 @@ TEST(PixelPerfectStream, ShaderCacheVersionCoversThePixelSnap){
 }
 
 // S43's palette sources (library:sprite's PALETTE_SWAP and PALETTE_CYCLE, the uber pass's 'Pal'
-// bit 19) are cached under v59 or later (after S91 took v58): a cache of an older version holds programs without them
+// bit 19) are cached under v59 or later (after S91 took v58; v62: the terrain programme's bits merged
+// with them): a cache of an older version holds programs without them
 TEST(PaletteShaders, ShaderCacheVersionCoversThePalettes){
     const std::string name = editor::App::getUserShaderCacheDir().filename().string();
     ASSERT_EQ(name.rfind('v', 0), 0u) << name;

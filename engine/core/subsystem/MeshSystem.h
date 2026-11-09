@@ -25,7 +25,6 @@
 #include <string>
 #include <unordered_map>
 #include "component/MeshComponent.h"
-#include "component/TerrainComponent.h"
 #include "io/watch/FileIdentity.h"
 #include "math/Rect.h"
 #include "texture/Material.h"
@@ -63,41 +62,6 @@ namespace jasperengine{
 
         // Files that already failed to load, so createOrUpdateModel stops retrying them.
         std::set<std::string> failedModelLoads;
-
-        // One instanced entity per chunk, so each is culled on its own AABB. Slots are recycled as
-        // the ring follows the camera: a chunk that stays in it keeps its mesh and its instances.
-        struct TerrainFoliageChunk{
-            Entity entity = NULL_ENTITY;
-            int chunkX = 0;
-            int chunkZ = 0;
-            bool assigned = false; //false until the slot holds the resolve of the coordinate above
-            bool meshLoaded = false;
-        };
-
-        struct TerrainFoliageInstances{
-            std::vector<TerrainFoliageChunk> chunks; //grid indexed by wrapped coordinates
-            std::string loadedMeshPath;
-            bool loadFailed = false;
-            float chunkSize = 0; //the size the slot coordinates are in
-            // the scaled distances the slots were filled for: a slot past the span keeps its
-            // instances and fade, so a new distance (the quality scale too) refills every slot
-            float appliedDrawDistance = -1.0f;
-            float appliedNearFadeEnd = -1.0f;
-            bool needUpdate = true;
-            bool pending = false;
-            // a map found cooked GPU-only: asked to be cooked again CPU-readable, since when, and
-            // the error the layer stopped with (it draws nothing until the map's pixels change)
-            std::string cpuReadMap;
-            std::chrono::steady_clock::time_point cpuReadSince;
-            std::string cpuReadError;
-            const void* densityPixels = nullptr; // the pixels the slots were filled from
-            const void* heightPixels = nullptr;
-        };
-
-        Entity foliagePreviewEntity = NULL_ENTITY;
-
-        // Resolve of each terrain's foliageLayers. Kept here so the authored component stays copiable.
-        std::unordered_map<Entity, std::vector<TerrainFoliageInstances>> terrainFoliage;
 
         static void decodeGLTFImage(tinygltf::Image& image, size_t index, int maxDimension);
         static void decodeGLTFImagesParallel(tinygltf::Model& model, int maxDimension);
@@ -213,16 +177,10 @@ namespace jasperengine{
         void resetTerrainToUnbuilt(TerrainComponent& terrain, MeshComponent& mesh);
         bool createTerrain(TerrainComponent& terrain, MeshComponent& mesh);
         void createTerrainNode(TerrainComponent& terrain, float x, float y, float size, int lodDepth);
+        // T1 R23 (MeshSystemTerrainEdit.cpp): true when the node's range was computed again
+        bool refitTerrainNode(TerrainComponent& terrain, size_t nodeIndex, int rectX, int rectY, int rectW, int rectH, int mapWidth, int mapHeight);
         void updateTerrainAutoRanges(TerrainComponent& terrain);
 
-        Entity createFoliageEntity(unsigned int capacity);
-        void destroyFoliageEntity(TerrainFoliageChunk& chunk);
-        void destroyFoliageInstances(TerrainFoliageInstances& instances);
-        void destroyTerrainFoliage(Entity entity);
-        float sampleFoliageDensity(TerrainComponent& terrain, TerrainFoliageLayer& layer, float localX, float localZ);
-        void appendFoliageCell(TerrainComponent& terrain, TerrainFoliageLayer& layer, int cellX, int cellZ, std::vector<InstanceData>& instances);
-        void updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLayer& layer, TerrainFoliageInstances& instances, const Vector3& viewLocal, bool preview);
-        void updateTerrainFoliage(Entity entity, TerrainComponent& terrain, Transform& transform);
 
     public:
         // Sprite:playTag (S44 R38): the tag's frames at the sheet's durations, at the tag's speed; a
@@ -284,12 +242,12 @@ namespace jasperengine{
 
         // Foliage ownership, for editor shader collection and selection.
         std::vector<Entity> getFoliageEntities(Entity terrainEntity) const;
-        // The instances the chunks of one detail layer (foliageLayers[layer]) hold now (MCP readback)
+        // The instances one detail layer (foliageLayers[layer]) holds now, over its resident cells (MCP readback)
         size_t getFoliageInstanceCount(Entity terrainEntity, size_t layer) const;
         // why the layer draws nothing (a map without CPU-readable pixels), or empty
         std::string getFoliageError(Entity terrainEntity, size_t layer) const;
         Entity getFoliageOwner(Entity foliageEntity) const;
-        // Reloads the foliage chunks drawn from a model file that changed on disk
+        // Loads again what foliage draws from a model file that changed on disk
         void reloadFoliageMesh(const std::string& filename);
         // Retries the failed loads of a file that appeared or changed on disk
         void retryFailedModelLoads(const std::string& filename);
@@ -354,8 +312,9 @@ namespace jasperengine{
         // shader variant collector probes one the same way): an .obj, or a glTF/FBX with its node
         // transforms baked and no skeleton, at rest as static geometry (no skin, the blend shapes'
         // default weights baked), since instancing with blend shapes needs more vertex inputs than
-        // a GPU has
-        bool loadPlacedModel(Entity entity, const std::string& path);
+        // a GPU has. asyncLoad: on the Background path, false while it loads (foliage prototypes,
+        // T5 R6; isAsyncModelLoadPending says which)
+        bool loadPlacedModel(Entity entity, const std::string& path, bool asyncLoad = false);
 
         // A game's loading thread (Engine::startAsyncThread) owns a scene the frames do not run, and
         // loads into it what the main thread does: the whole entity tree. A running scene is the main
@@ -435,7 +394,12 @@ namespace jasperengine{
 
         void resetModelToBindPose(Entity entity, ModelComponent& model);
 
-        bool raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint);
+        bool raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint, bool ignoreHoles = false);
+        // T1 R23, DC10: a height edit refits the node ranges over the rectangle and their ancestors
+        // instead of rebuilding the tree, and the surface revision follows (MeshSystemTerrainEdit.cpp)
+        void refitTerrainNodes(TerrainComponent& terrain, int rectX, int rectY, int rectW, int rectH);
+        // What the terrain's edit state holds for this frame; nowSeconds is any steady clock
+        void flushTerrainEdit(TerrainComponent& terrain, double nowSeconds);
         // Height and normal in terrain-local space, the surface the foliage scatter uses
         // (static and read-only: particle collisions call it from the job system's workers)
         static void sampleTerrainSurface(TerrainComponent& terrain, float localX, float localZ, float& height, Vector3& normal);

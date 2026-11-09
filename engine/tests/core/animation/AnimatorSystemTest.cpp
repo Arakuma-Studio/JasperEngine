@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "AnimatorTestUtil.h"
+#include "component/Transform.h"
 #include "support/AllocationCounter.h"
 
 #include "Engine.h"

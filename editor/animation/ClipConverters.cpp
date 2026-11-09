@@ -12,6 +12,7 @@
 #include "pose/ModelRig.h"
 #include "animation/ModelSubClips.h"
 #include "component/ActionComponent.h"
+#include "component/Transform.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/ColorTweenComponent.h"

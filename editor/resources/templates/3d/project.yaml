@@ -5,10 +5,23 @@ canvasHeight: 720
 scalingMode: fitwidth
 textureStrategy: none
 vsync: true
+foliageQuality:
+  desktop: high
+  mobile: low
+  web: low
 htmlUiMsaaSamples: 4
 htmlUiGlyphAtlasMiB: 0
 htmlUiSdfPrimitives: true
 htmlUiTransformAwareText: true
+graphics:
+  terrainQuality:
+    macos: high
+    ios: low
+    web: medium
+    android: low
+    linux: high
+    windows: high
+  compressTerrainLayers: true
 windowMode: windowed
 windowWidth: 1280
 windowHeight: 720
@@ -16,7 +29,7 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
-startSceneId: 2321920697
+startSceneId: 1127948758
 mesh:
   animationEntities: auto
 audio:
@@ -25,4 +38,4 @@ audio:
   iosSessionCategory: ambient
 scenes:
   - filepath: Main.scene
-    filepathGuid: b09eb1eb310c06648080003c5fd5aff4
+    filepathGuid: a989229f10804aca86e70545ed9b9cfe
