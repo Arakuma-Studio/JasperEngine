@@ -103,6 +103,8 @@ namespace {
         const fs::path path = headless().dir / "scenes" / file;
         fs::create_directories(path.parent_path());
         EXPECT_TRUE(project()->saveSceneToPath(sceneId, path));
+        // the last open scene does not close: another one stays open
+        newScene("Open");
         std::string error;
         EXPECT_TRUE(project()->closeSceneNow(sceneId, UnsavedChoice::Discard, &error)) << error;
         return path;
@@ -132,6 +134,8 @@ TEST(PixelArtInput, ClosedScenesAreDecodedOnceWhileUnchanged) {
     // warm: the same input, no file decoded again
     const px::PixelArtCheckInput warm = px::inputFromProject(*project(), scope, errors);
     EXPECT_EQ(px::lastInputReads().scenesDecoded, 0);
+    ASSERT_EQ(cold.scenes.size(), 1u);
+    ASSERT_EQ(warm.scenes.size(), 1u);
     EXPECT_EQ(cold.scenes.front().drawables.size(), warm.scenes.front().drawables.size());
     // a newer file is decoded again
     fs::last_write_time(file, fs::last_write_time(file) + std::chrono::seconds(2));
@@ -176,7 +180,9 @@ TEST(PixelArtInput, CollectorsAddALaterSpecsDrawables) {
     px::Scope scope;
     scope.scenes = {"Batch"};
     std::vector<px::PixelProblem> errors;
-    const size_t before = px::inputFromProject(*project(), scope, errors).scenes.front().drawables.size();
+    const px::PixelArtCheckInput first = px::inputFromProject(*project(), scope, errors);
+    ASSERT_EQ(first.scenes.size(), 1u);
+    const size_t before = first.scenes.front().drawables.size();
 
     // S52's Sprite Batch: one more sprite drawable per batch, with the GameObject's Transform
     px::registerDrawableCollector("sprite_batch", [batch](const SceneProject&, const px::DrawableBase& base,
@@ -187,6 +193,7 @@ TEST(PixelArtInput, CollectorsAddALaterSpecsDrawables) {
     });
     const px::PixelArtCheckInput input = px::inputFromProject(*project(), scope, errors);
     px::unregisterDrawableCollector("sprite_batch");
+    ASSERT_EQ(input.scenes.size(), 1u);
     ASSERT_EQ(input.scenes.front().drawables.size(), before + 1);
     const px::PixelArtDrawable& added = input.scenes.front().drawables.back();
     EXPECT_EQ(added.texture, "sprites/batch.png");
