@@ -100,6 +100,7 @@ async def test_gate(ed: Editor):
     await setup(ed)
     counts = {"looks": [0, 0], "color_schemes": [0, 0], "templates": [0, 0]}   # checked, unavailable
     reasons: dict = {}
+    dropped: dict = {}
     work = []
     for kind in [k for k in os.environ.get("JASPER_TITLE_LIBRARY_KINDS", "looks,color_schemes,templates").split(",") if k]:
         for r in await rows(ed, kind):
@@ -137,11 +138,13 @@ async def test_gate(ed: Editor):
         report = await ed.call("check_title", path=path, backgrounds=backgrounds, render_scale=0.25)
         for check in report["checks"]:
             cid = check["id"]
+            if cid.endswith(".bands_dropped"):
+                dropped[kind] = dropped.get(kind, 0) + 1
             if check["status"] not in ("FAIL",):
                 continue
             ed.check(False, f"{ref} ({text or language}): {cid} {check['status']}: {check.get('message', '')} measured {check.get('measured')}")
         counts[kind][0] += 1
-    print(f"[gate] checked/unavailable per kind: {counts}; unavailable by reason: {reasons}")
+    print(f"[gate] checked/unavailable per kind: {counts}; unavailable by reason: {reasons}; tier band drops reported: {dropped}")
 
 
 RED = __import__("pathlib").Path(__file__).resolve().parent / "fixtures" / "title-library-red"

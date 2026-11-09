@@ -1,0 +1,66 @@
+{
+  "format": "jasperengine.titleart",
+  "version": 1,
+  "guid": "84000000000000000000000000000000",
+  "canvas": {
+    "width": 1280,
+    "height": 640
+  },
+  "layers": [
+    {
+      "id": "00000001",
+      "type": "text",
+      "name": "Title",
+      "text": "HERO",
+      "size": 200,
+      "transform": {
+        "position": [
+          0,
+          0
+        ]
+      },
+      "style": {
+        "face": {
+          "fill": {
+            "kind": "solid",
+            "color": "#40a0f0"
+          }
+        },
+        "rims": [
+          {
+            "width": 2,
+            "material": {
+              "fill": {
+                "kind": "solid",
+                "color": "#40a0f0"
+              }
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "id": "00000021",
+          "type": "outline",
+          "params": {
+            "width": 16,
+            "color": "#40a0f0",
+            "opacity": 1
+          }
+        }
+      ]
+    }
+  ],
+  "exposed": [
+    {
+      "name": "text",
+      "type": "text",
+      "targets": [
+        {
+          "layer": "00000001",
+          "field": "text"
+        }
+      ]
+    }
+  ]
+}

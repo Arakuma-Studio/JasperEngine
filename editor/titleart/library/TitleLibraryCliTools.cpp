@@ -347,7 +347,7 @@ namespace {
     const CalibrationMetric* calibrationMetric(const std::string& id) {
         static const std::map<std::string, CalibrationMetric> METRICS = {
             {"legibility_contrast", {"delta_l", true, "delta_l"}},
-            {"counter_survival", {"survival", true, "survival"}},
+            {"counter_survival", {"delta_e", true, "delta_e"}},
             {"metal_range", {"l_range", true, "l_range_min"}},
             {"not_clipped", {"min_margin_px", true, "margin_px"}},
             {"clipped_highlights", {"clipped_pct", false, "clipped_pct_max"}},

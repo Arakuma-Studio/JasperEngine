@@ -64,9 +64,19 @@
     "bad": "noop_effects-bad.titleart",
     "good": "noop_effects-good.titleart"
   },
+  "counter_survival": {
+    "check": "counter_survival",
+    "bad": "counter_survival-bad.titleart",
+    "good": "counter_survival-good.titleart"
+  },
   "legibility_contrast": {
     "check": "legibility_contrast",
     "bad": "legibility_contrast-bad.titleart",
     "good": "legibility_contrast-good.titleart"
+  },
+  "counter_survival-flooded": {
+    "check": "counter_survival",
+    "bad": "counter_survival-bad-flooded.titleart",
+    "good": "counter_survival-good.titleart"
   }
 }

@@ -75,6 +75,8 @@ PAIRS = {
     "glyphs_present": (doc(text="HERO大", rims=[rim(6, "#000000")]), doc(rims=[rim(6, "#000000")])),
     "noop_effects": (doc(rims=[rim(6, "#000000")], effects=[{"id": "00000021", "type": "outer_glow", "params": {"opacity": 0}}]),
                      doc(rims=[rim(6, "#000000")], effects=[{"id": "00000021", "type": "outer_glow", "params": {"opacity": 0.8}}])),
+    # a rim of the face's own colour closes the counters: nothing tells them from the letter
+    "counter_survival": (doc(face=solid("#f0c020"), rims=[rim(14, "#f0c020")]), doc(face=solid("#f0c020"), rims=[rim(14, "#201008")])),
     "legibility_contrast": (doc(face=solid("#101010")), doc(face=solid("#ffffff"), rims=[rim(6, "#000000")])),
 }
 
@@ -92,6 +94,10 @@ def main():
         else:
             entry["good"] = None   # the twin is the bad one with its check's fix ops applied
         index[name] = entry
+    # a counter flooded by an effect of the face's colour, the second way to close one
+    flooded = doc(face=solid("#40a0f0"), rims=[rim(2, "#40a0f0")], effects=[{"id": "00000021", "type": "outline", "params": {"width": 16, "color": "#40a0f0", "opacity": 1}}])
+    (OUT / "counter_survival-bad-flooded.titleart").write_text(json.dumps(flooded, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    index["counter_survival-flooded"] = {"check": "counter_survival", "bad": "counter_survival-bad-flooded.titleart", "good": "counter_survival-good.titleart"}
     (OUT / "index.json").write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {len(PAIRS)} red controls to {OUT}")
 
