@@ -27,7 +27,7 @@ namespace {
 
     // three top-level groups: a nested transform, a gradient referenced from <defs>, a <use> of a
     // symbol and a <use> of a path that lives outside <defs>
-    const char* LOGO = R"(<?xml version="1.0" encoding="UTF-8"?>
+    const char* LOGO = R"svg(<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="160" height="96" viewBox="0 0 160 96">
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient>
@@ -38,12 +38,12 @@ namespace {
     <g transform="scale(1.5)" fill="#ffcc00"><circle cx="20" cy="20" r="16"/><path id="tri" d="M0 40 L30 40 L15 10 Z" fill-opacity="0.75"/></g>
   </g>
   <g id="front"><use xlink:href="#dot" x="120" y="60" width="24" height="24"/><use href="#tri" x="100" y="20" fill="#3366ff"/></g>
-</svg>)";
+</svg>)svg";
 
-    const char* ICON = R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 2h20v20H2z" fill="#ffffff"/><circle cx="12" cy="12" r="4" fill="black" stroke="none"/></svg>)";
-    const char* MULTI = R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="10" height="10" fill="#ff0000"/><rect x="12" width="10" height="10" fill="#00ff00"/></svg>)";
-    const char* STYLED = R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><style>.a { fill: #ff0000 } .b { fill: #00ff00 }</style><rect class="a" width="10" height="10"/></svg>)";
-    const char* WITH_TEXT = R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><filter id="f"/></defs><rect width="64" height="64" filter="url(#f)"/><text x="4" y="40">Hi</text><image href="a.png" width="8" height="8"/></svg>)";
+    const char* ICON = R"svg(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 2h20v20H2z" fill="#ffffff"/><circle cx="12" cy="12" r="4" fill="black" stroke="none"/></svg>)svg";
+    const char* MULTI = R"svg(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="10" height="10" fill="#ff0000"/><rect x="12" width="10" height="10" fill="#00ff00"/></svg>)svg";
+    const char* STYLED = R"svg(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><style>.a { fill: #ff0000 } .b { fill: #00ff00 }</style><rect class="a" width="10" height="10"/></svg>)svg";
+    const char* WITH_TEXT = R"svg(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><filter id="f"/></defs><rect width="64" height="64" filter="url(#f)"/><text x="4" y="40">Hi</text><image href="a.png" width="8" height="8"/></svg>)svg";
 
     // premultiplied RGBA8 of an SVG at its own size
     bool raster(const std::string& svg, std::vector<uint8_t>& pixels, int& w, int& h) {
