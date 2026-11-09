@@ -164,7 +164,9 @@ TEST(TitlePngExport, BleedRemovesTheDarkFringe) {
         for (int x = 0; x < 128; x++) {
             const uint8_t* p = bled.pixel(x, y);
             const double d = std::hypot(x + 0.5 - 64, y + 0.5 - 64) - 128 * 0.3;
-            if (p[3] == 0 && d < 7) EXPECT_EQ(p[0], 255) << x << "," << y;
+            if (p[3] == 0 && d < 7) {
+                EXPECT_EQ(p[0], 255) << x << "," << y;
+            }
         }
     }
 }

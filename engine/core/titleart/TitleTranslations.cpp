@@ -190,23 +190,6 @@ void titleart::registerTitleLanguageMembers(TitleArtSchema& schema) {
 
 namespace {
 
-    // a text key from a layer name: lowercase ASCII letters and digits, other runs as '_'
-    std::string slugKey(const std::string& name, size_t limit) {
-        std::string out;
-        bool gap = false;
-        for (unsigned char c : name) {
-            if (std::isalnum(c) && c < 128) {
-                if (gap && !out.empty()) out += '_';
-                out += (char)std::tolower(c);
-                gap = false;
-            } else {
-                gap = true;
-            }
-            if (out.size() >= limit) break;
-        }
-        return out;
-    }
-
     std::string uniqueOf(const std::string& base, std::set<std::string>& used, size_t limit) {
         if (used.insert(base).second) return base;
         for (int n = 2;; n++) {

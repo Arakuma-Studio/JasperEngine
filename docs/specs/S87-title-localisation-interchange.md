@@ -1451,3 +1451,29 @@ rest of S82 lands in 6B.
 22. **Implementation: the v4 glyph-scale compensation uses `TitleTextLayout`**, not Pachislop's
     layout, so the v4/v11-twin fixture has no scaled characters and the compensation has its own
     test. `v11_all_kinds` embeds the whole Oswald OFL font (272 KB), not a subset.
+23. **Implementation: test names.** AC5 is `tools/mcp/tests/test_title_language_checks.py`; AC6 is
+    `test_title_languages.py::test_language_bakes`; AC11 and AC12 are
+    `editor/tests/titleart/TitleStringsTest.cpp`; AC8 is
+    `engine/tests/core/titleart/runtime/TitleRealtimeLanguageTest.cpp`.
+24. **Not done: AC7's per-frame capture.** `TitleBakedLanguageTest` does not exist. The Baked switch
+    is covered in Play by `test_title_lua_language.py` (not ready, then ready; `onLanguageReady`
+    once), which cannot see every frame or prove the Japanese texture is never requested.
+25. **Partly done: AC10.** `TitleLanguageShippingTest` covers the plan (dropped files, the shipped
+    table, `W-TITLE-LANGUAGE-DROPPED`, the project's sidecar unchanged);
+    `test_title_export_languages.py` against a prebuilt player was not written.
+26. **Partly done: AC22 until S85 lands.** `TitleSheetExportTest` covers the writers and the frame
+    times over frames made by the test; rendering frames needs S85's `registerTitleAnimFrameSource`,
+    so the job end to end is unverified here.
+27. **Deviation: AC28's bench is `TitleLocalisationBenchTest`,** a unit test, not
+    `tools/perf/title_localisation_bench`. Measured on build box 2 (15 workers), never on a phone:
+
+    | What | Result |
+    |---|---|
+    | `TitleArtLanguage::match` | 0.515 us |
+    | `TitleArt.setLanguage`, 100 listeners | 0.0103 ms |
+    | CSV 1,000 rows, export / parse | 2.22 / 0.79 ms |
+    | XLIFF 1,000 units, export / parse | 2.19 / 2.71 ms |
+    | PNG 4,096 x 2,048, 8-bit / 16-bit | 48.0 / 61.6 ms |
+28. **Decision: `isLanguageReady` answers for the language just asked.** The system sees a change
+    at its next update, so the call resolves the candidates itself when one is pending and reads
+    false right after `setLanguage`; `getResolvedLanguage` still changes at that update.

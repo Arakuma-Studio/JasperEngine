@@ -175,7 +175,9 @@ TEST_F(PachislopImportTest, AssetsAreExtractedAndReimportWritesNothingNew) {
                                             "titles/kinds_assets/flag.png"};
     EXPECT_EQ(names, expected) << "fonts and images extracted, the GIF as a PNG, the WebP left out";
     for (const TitleOpFile& f : first.files) {
-        if (fs::path(f.path).filename() == "flag.png") EXPECT_EQ(f.content.substr(1, 3), "PNG");
+        if (fs::path(f.path).filename() == "flag.png") {
+            EXPECT_EQ(f.content.substr(1, 3), "PNG");
+        }
     }
     writeFiles(first);
     const TitleCreateResult again = import(FIXTURES / "v11_all_kinds.pslot.json", "kinds");
