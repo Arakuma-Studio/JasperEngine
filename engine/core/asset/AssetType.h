@@ -42,9 +42,9 @@ namespace jasperengine {
         AsepriteSprite = 25,        // an .aseprite / .ase file (S44): its sheet, frames, clips and slices are sub-assets
         SpriteAtlas = 26,           // a .spriteatlas Sprite Atlas (S45; its GUID in its JSON)
         SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
-        // 30 Terrain World (programme D19, D22); NoiseGraph took 32 when upstream took 28. Stored in
-        // assetmap.bin: these never move.
+        // NoiseGraph took 32 when upstream took 28. Stored in assetmap.bin: these never move.
         TreeData = 29,              // a .jetrees file of a Terrain's trees (T5 R22)
+        TerrainWorld = 30,          // a Name.terrainworld folder, its GUID in its manifest.yaml (T4 R48)
         VoxelVolume = 31,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
         NoiseGraph = 32             // a .noisegraph Noise Graph (T2)
     };
@@ -82,6 +82,7 @@ namespace jasperengine {
             case AssetType::AsepriteSprite: return "aseprite_sprite";
             case AssetType::SpriteAtlas: return "sprite_atlas";
             case AssetType::SoundEvent: return "sound_event";
+            case AssetType::TerrainWorld: return "terrain_world";
             case AssetType::NoiseGraph: return "noise_graph";
             case AssetType::VoxelVolume: return "voxel_volume";
             case AssetType::Unknown: break;

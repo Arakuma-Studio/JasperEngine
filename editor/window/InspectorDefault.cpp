@@ -23,6 +23,7 @@
 #include "reflect/Reflect.h"
 #include "subsystem/RenderSystem.h"
 #include "external/IconsFontAwesome6.h"
+#include "terrainworld/TerrainWorldPanel.h"
 
 #include "imgui.h"
 
@@ -369,6 +370,9 @@ void editor::InspectorWindow::drawDefaultComponentNotes(ComponentType cpType, Sc
             ImGui::SameLine();
             ImGui::TextWrapped("Local Volumetric Fog shows through volumetric fog only: add a Fog of Type Height and turn its Volumetric Fog on.");
         }
+    }
+    if (cpType == ComponentType::TerrainWorldComponent) {
+        TerrainWorldPanel::drawInspectorNotes(project, sceneProject);
     }
 }
 

@@ -10,6 +10,10 @@
 #include "math/Matrix4.h"
 #include "texture/Texture.h"
 #include "texture/TextureData.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "jobs/JobSystem.h"
+#include "subsystem/TerrainWorldRuntime.h"
+#endif
 #include "texture/TexturePrepare.h"
 
 #include <algorithm>
@@ -107,6 +111,21 @@ namespace {
 
 }
 
+namespace {
+
+    // T4 R28, D12: a World's maps are its tiles, through its TiledMapStore; every store route (brush,
+    // edit_terrain, Lua, bakes, generation) reaches them by the entity, unchanged
+    TerrainMapStore* worldStoreOf(const TerrainComponent& terrain) {
+#if JASPERENGINE_TERRAIN_WORLD
+        return terrain.world && terrain.world->started() ? &terrain.world->store() : nullptr;
+#else
+        (void)terrain;
+        return nullptr;
+#endif
+    }
+
+}
+
 SurfaceView jasperengine::terrainSurfaceView(TerrainComponent& terrain) {
     SurfaceView view;
     view.size = terrain.terrainSize;
@@ -134,10 +153,29 @@ ResourceLoadState jasperengine::prepareTerrainHoleMap(TerrainComponent& terrain)
 }
 
 SurfaceSample jasperengine::querySurface(TerrainComponent& terrain, float localX, float localZ) {
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R24: the tile's own samples; a job or the editor may wait for a cold tile, the game's main
+    // thread answers from the overview (exact false)
+    if (terrain.world && terrain.world->started()) {
+        return terrain.world->query(localX, localZ, !jobs::isMainThread() || !terrain.world->playing());
+    }
+#endif
     return sampleSurface(terrainSurfaceView(terrain), localX, localZ);
 }
 
 bool jasperengine::raycastTerrain(TerrainComponent& terrain, const Transform& transform, const Ray& ray, bool skipHoles, Vector3& worldPoint) {
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R24: a grid walk over the tiles (MeshRaycast.TERRAIN, picking, the brush cursor); a World
+    // only translates (R4)
+    if (terrain.world && terrain.world->started()) {
+        const Vector3 localOrigin = ray.getOrigin() - transform.worldPosition;
+        Vector3 localPoint;
+        float t = 0.0f;
+        if (!terrain.world->raycast(localOrigin, ray.getDirection(), 1.0f, skipHoles, !terrain.world->playing(), localPoint, t)) return false;
+        worldPoint = localPoint + transform.worldPosition;
+        return true;
+    }
+#endif
     // A ray may be the first to want the pixels, so it asks for them; it is on the main thread
     if (!terrain.heightMap.empty() && !terrain.heightMap.isFramebuffer()) {
         terrain.heightMap.setReleaseDataAfterLoad(false);
@@ -164,10 +202,18 @@ SurfaceSample TerrainComponentQuery::sample(float localX, float localZ) const {
 }
 
 float TerrainComponentQuery::heightAt(float localX, float localZ) const {
+#if JASPERENGINE_TERRAIN_WORLD
+    if (component->world && component->world->started()) return querySurface(*component, localX, localZ).height;
+#endif
     return sampleHeight(terrainSurfaceView(*component), localX, localZ);
 }
 
 bool TerrainComponentQuery::raycast(const Vector3& origin, const Vector3& direction, float maxT, bool skipHoles, Vector3& point, float& t) const {
+#if JASPERENGINE_TERRAIN_WORLD
+    if (component->world && component->world->started()) {
+        return component->world->raycast(origin, direction, maxT, skipHoles, !jobs::isMainThread() || !component->world->playing(), point, t);
+    }
+#endif
     return raycastSurface(terrainSurfaceView(*component), origin, direction, maxT, skipHoles, point, t);
 }
 
@@ -500,18 +546,22 @@ void TerrainComponentStore::afterWrite() {
 }
 
 TerrainFrame TerrainComponentStore::frame() const {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->frame();
     return TerrainFrame{terrainPtr->maxHeight};
 }
 
 MapFormat TerrainComponentStore::format(MapId map) const {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->format(map);
     return sync(map) ? bytes.format(map) : MapFormat{};
 }
 
 bool TerrainComponentStore::read(MapId map, TexelRect rect, std::span<float> out) const {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->read(map, rect, out);
     return sync(map) && bytes.read(map, rect, out);
 }
 
 WriteResult TerrainComponentStore::write(MapId map, TexelRect rect, std::span<const float> in) {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->write(map, rect, in);
     if (!sync(map)) return WriteResult{false, "the terrain has no such map loaded", 0};
     if (bytes.format(map).bitsPerChannel >= 32) return WriteResult{false, FLOAT_MAP_ERROR, 0};
     const WriteResult result = bytes.write(map, rect, in);
@@ -520,10 +570,12 @@ WriteResult TerrainComponentStore::write(MapId map, TexelRect rect, std::span<co
 }
 
 bool TerrainComponentStore::readBytes(MapId map, TexelRect rect, std::span<uint8_t> out) const {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->readBytes(map, rect, out);
     return sync(map) && bytes.readBytes(map, rect, out);
 }
 
 WriteResult TerrainComponentStore::writeBytes(MapId map, TexelRect rect, std::span<const uint8_t> in) {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->writeBytes(map, rect, in);
     if (!sync(map)) return WriteResult{false, "the terrain has no such map loaded", 0};
     if (bytes.format(map).bitsPerChannel >= 32) return WriteResult{false, FLOAT_MAP_ERROR, 0};
     const WriteResult result = bytes.writeBytes(map, rect, in);
@@ -532,6 +584,7 @@ WriteResult TerrainComponentStore::writeBytes(MapId map, TexelRect rect, std::sp
 }
 
 bool TerrainComponentStore::canWrite(MapId map, TexelRect rect, std::string* why) const {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->canWrite(map, rect, why);
     if (!sync(map)) {
         if (why) *why = "the terrain has no such map loaded";
         return false;
@@ -544,6 +597,7 @@ bool TerrainComponentStore::canWrite(MapId map, TexelRect rect, std::string* why
 }
 
 bool TerrainComponentStore::canCreateMap(MapId map, std::string* why) const {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->canCreateMap(map, why);
     if (map.kind == MapKind::Density && (map.index < 0 || map.index >= static_cast<int>(terrainPtr->foliageLayers.size()))) {
         if (why) *why = "foliage layer " + std::to_string(map.index) + " does not exist: the terrain has " +
                         std::to_string(terrainPtr->foliageLayers.size()) + " foliage layer(s).";
@@ -557,6 +611,7 @@ bool TerrainComponentStore::canCreateMap(MapId map, std::string* why) const {
 }
 
 WriteResult TerrainComponentStore::createMap(MapId map, MapFormat newFormat, float fill) {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->createMap(map, newFormat, fill);
     std::string why;
     if (!canCreateMap(map, &why)) return WriteResult{false, why, 0};
     if (format(map).exists) return WriteResult{false, "map already exists", 0};
@@ -603,11 +658,13 @@ WriteResult TerrainComponentStore::createMap(MapId map, MapFormat newFormat, flo
 }
 
 bool TerrainComponentStore::canRemoveMap(MapId map) const {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->canRemoveMap(map);
     // T3 R29: while a volume holds it, a last fill keeps the map, all solid
     return map.kind == MapKind::Hole && !terrainPtr->holeMap.empty() && terrainPtr->holeMapHolds == 0;
 }
 
 WriteResult TerrainComponentStore::removeMap(MapId map) {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->removeMap(map);
     if (!canRemoveMap(map)) return WriteResult{false, "this map stays with the terrain", 0};
     const MapFormat before = format(map);
     terrainPtr->holeMap = Texture();
@@ -617,30 +674,39 @@ WriteResult TerrainComponentStore::removeMap(MapId map) {
 }
 
 void TerrainComponentStore::takeDirty(std::vector<std::pair<MapId, TexelRect>>& out) {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) {
+        world->takeDirty(out);
+        return;
+    }
     out.insert(out.end(), dirty.begin(), dirty.end());
     dirty.clear();
 }
 
 Vector2 TerrainComponentStore::worldOfTexel(MapId map, int x, int y) const {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->worldOfTexel(map, x, y);
     sync(map);
     bytes.setFrame(terrainPtr->terrainSize, terrainPtr->maxHeight);
     return bytes.worldOfTexel(map, x, y);
 }
 
 Vector2 TerrainComponentStore::texelOfWorld(MapId map, float localX, float localZ) const {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->texelOfWorld(map, localX, localZ);
     sync(map);
     bytes.setFrame(terrainPtr->terrainSize, terrainPtr->maxHeight);
     return bytes.texelOfWorld(map, localX, localZ);
 }
 
 TexelRect TerrainComponentStore::preferredBlock(MapId map) const {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->preferredBlock(map);
     return sync(map) ? bytes.preferredBlock(map) : TexelRect{};
 }
 
-std::unique_ptr<TerrainLargeEdit> TerrainComponentStore::beginLarge(MapId, TexelRect) {
+std::unique_ptr<TerrainLargeEdit> TerrainComponentStore::beginLarge(MapId map, TexelRect rect) {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->beginLarge(map, rect);
     return nullptr;
 }
 
 std::unique_ptr<TerrainStoreUndoHook> TerrainComponentStore::takeUndoHook() {
+    if (TerrainMapStore* world = worldStoreOf(*terrainPtr)) return world->takeUndoHook();
     return nullptr;
 }

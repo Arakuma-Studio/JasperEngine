@@ -28,6 +28,7 @@
 #include "component/RigidbodyComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/SplineExtrudeComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/VideoPlayerComponent.h"
@@ -49,7 +50,7 @@ namespace {
 
     // the modules a dynamic access or C++ code can reach: every one the detection decides
     const std::vector<std::string>& detectedModules() {
-        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "noise", "voxel"};
+        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "noise", "voxel", "terrainworld"};
         return modules;
     }
 
@@ -372,6 +373,8 @@ namespace {
                         }
                     }
                 }
+                // T4 R55: the tiles stream, draw and page their colliders in the module alone
+                if (has(registry->findComponent<TerrainWorldComponent>(entity))) add("terrainworld", content.label, "Terrain World on " + object);
                 // a Convex Hull excluder's hull is built by Jolt (a box of the mesh's bounds without it)
                 if (const WaterExcluderComponent* excluder = registry->findComponent<WaterExcluderComponent>(entity);
                         excluder && excluder->shape == WaterExcluderShape::CONVEX_HULL)

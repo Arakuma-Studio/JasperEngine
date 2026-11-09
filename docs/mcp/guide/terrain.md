@@ -19,6 +19,7 @@ Served as `jasper://docs/terrain`. The terrain tools are in the `terrain` group:
 | Foliage counts, draws and memory | `sample_terrain` `foliage: true` |
 | Scatter rocks or props over a region | `edit_terrain` `place_objects` (`asset`, `shape`, `count`, `spacing`); `instanced` plants a tree prototype; `erase_objects` |
 | A game changing the terrain | Lua `Terrain:applyOps` (below) |
+| Land wider than about 2 km, streamed in tiles | `edit_terrain_world` `create` ([Terrain Worlds](#terrain-worlds)) |
 | Material cost, tiers, holes, Macro Variation | `jasper://docs/terrain-materials` |
 
 ## The Terrain component
@@ -248,6 +249,37 @@ detail layer) and `tree_density`, per square unit. To see impostors, set `billbo
 {"tool": "visualize_terrain", "overlay": "slope", "framing": "fit"}
 {"tool": "undo"}
 ```
+
+## Terrain Worlds
+
+A Terrain World is one GameObject whose land is a grid of tiles (`Name.terrainworld/`) streamed round the
+camera and focuses. Use it when the land is wider than about 2 km; one Terrain World, never a grid of Terrain
+GameObjects.
+
+- Making one: `edit_terrain_world {create: {name, grid: {width, length}, tile_quads, spacing, max_height}}`.
+  `tile_quads` is 64 to 1024 and `spacing` a power of two from 0.25 to 8 m, so a tile is `tile_quads * spacing`
+  metres a side; `dry_run` gives the tile count and memory first.
+- A Terrain into a World: `edit_terrain_world {create: {from_terrain: <entity>}}`. Tiles and spacing come from the
+  Terrain (`tile_quads`, `spacing` override them); the Terrain stays, inactive. `dry_run` shows the plan.
+- Trees on a World: place them on a Terrain first, then convert it; `edit_terrain`'s foliage ops refuse a World.
+- Heights, paint and holes across tiles: `edit_terrain` or `sculpt_terrain` with the World as `entity`. A
+  stroke past the last tile makes the tile it reaches; one undo removes it.
+- More land, or less: ops `add_tiles` / `remove_tiles` with `tiles: [[x, z], ...]`.
+- A heightmap file on a World: `edit_terrain_world` op `import_heightmap`, alone in its call, not `edit_terrain`'s; it
+  makes the tiles the file covers from `origin`. It is a job: a `job_id` back means `get_job` until it ends.
+- Which tiles are loaded, at what detail, with what collision: `visualize_terrain` overlay `tile_state`, `tiles`
+  (borders), `lod` or `collision` (in Play) on the World.
+- `sample_terrain {world: {}}` reports `seam_errors` above 0: op `repair_seams`.
+- Screenshot or test one place: `sample_terrain {world: {wait_for: {x, z, radius}}}`, then
+  `edit_terrain_world` op `set_streaming {freeze: true}`, then `screenshot`. `freeze: false` after.
+- In Play only `set_streaming`, `set_focus` and `remove_focus` run.
+
+Op fields: `add_tiles`, `remove_tiles` and `repair_seams` take `tiles`; `set_streaming` takes `pool_size`,
+`lod_distance`, `upload_budget`, `freeze`; `set_focus` takes `x`, `z` (world), `id` (to move one),
+`radius_scale`, `velocity: [x, z]` and returns `focus_ids`; `remove_focus` takes `id`; `set_collision` takes
+`radius` and `chunk_quads`; `rebuild_overview` takes nothing; `import_heightmap` takes `path` (.r16, .raw,
+.png, .exr), `width` and `height` (a raw file's samples, else detected), `flip_vertically`, `origin: [x, z]`
+(the tile of the file's first sample, default `[0, 0]`).
 
 ## Lua
 

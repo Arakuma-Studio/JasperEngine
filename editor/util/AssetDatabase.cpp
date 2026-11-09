@@ -734,9 +734,10 @@ std::string editor::AssetDatabase::readGuid(const fs::path& fullPath) {
     return {};
 }
 
-bool editor::AssetDatabase::readInFileIdentity(const fs::path& fullPath, Guid& guid, std::vector<Guid>& formerGuids) {
+bool editor::AssetDatabase::readInFileIdentity(const fs::path& assetPath, Guid& guid, std::vector<Guid>& formerGuids) {
     guid = Guid();
     formerGuids.clear();
+    const fs::path fullPath = AssetTypes::identityFileOf(assetPath);
     if (isClipFile(fullPath)) {
         std::string text;
         return assetio::readFile(fullPath, text) && clipIdentity(text, guid, formerGuids);
@@ -808,8 +809,9 @@ bool editor::AssetDatabase::writeInFileIdentity(const fs::path& fullPath, const 
     return false;
 }
 
-bool editor::AssetDatabase::writeInFileIdentityOnce(const fs::path& fullPath, const Guid& guid, const std::vector<Guid>& formerGuids,
+bool editor::AssetDatabase::writeInFileIdentityOnce(const fs::path& assetPath, const Guid& guid, const std::vector<Guid>& formerGuids,
                                                     bool* superseded) {
+    const fs::path fullPath = AssetTypes::identityFileOf(assetPath);
     const assetio::ReadStamp read = assetio::stampOf(fullPath);
     std::string text;
     if (!read.exists || !assetio::readFile(fullPath, text)) {
@@ -1023,7 +1025,8 @@ std::string editor::AssetDatabase::key(const fs::path& path) const {
 
 bool editor::AssetDatabase::fileExists(const std::string& relative) const {
     std::error_code ec;
-    return fs::is_regular_file(projectPath / relative, ec);
+    const fs::path full = projectPath / relative;
+    return fs::is_regular_file(full, ec) || (AssetTypes::isFolderAsset(full.filename().string()) && fs::is_directory(full, ec));
 }
 
 void editor::AssetDatabase::statFile(const std::string& relative, fs::file_time_type& time, uint64_t& size) const {
@@ -1448,7 +1451,7 @@ void editor::AssetDatabase::collect(const fs::path& fullPath, std::vector<std::s
     if (fullPath != projectPath && pending.empty() && !identityTargetAllowed(start)) {
         return;
     }
-    if (pending.empty() && fs::is_regular_file(start, ec)) {
+    if (pending.empty() && (fs::is_regular_file(start, ec) || (AssetTypes::isFolderAsset(start.filename().string()) && fs::is_directory(start, ec)))) {
         consider(start);
         // a file's meta goes with it
         const fs::path meta = AssetTypes::metaPathFor(start);
@@ -1472,7 +1475,10 @@ void editor::AssetDatabase::collect(const fs::path& fullPath, std::vector<std::s
             }
             std::error_code entryError;
             if (entry.is_directory(entryError)) {
-                if (AssetTypes::isSkippedDirectory(entry.path().filename().string())) {
+                if (AssetTypes::isFolderAsset(entry.path().filename().string())) {
+                    consider(entry.path());
+                    it.disable_recursion_pending();
+                } else if (AssetTypes::isSkippedDirectory(entry.path().filename().string())) {
                     it.disable_recursion_pending();
                 }
                 continue;
@@ -1571,7 +1577,10 @@ void editor::AssetDatabase::collectLinks(std::set<std::string>& pending, std::ve
             }
             std::error_code entryError;
             if (entry.is_directory(entryError)) {
-                if (AssetTypes::isSkippedDirectory(name)) {
+                if (AssetTypes::isFolderAsset(name)) {
+                    considerFile(entryRelative.generic_string());
+                    it.disable_recursion_pending();
+                } else if (AssetTypes::isSkippedDirectory(name)) {
                     it.disable_recursion_pending();
                 } else if (table.outside.size() > 1) {
                     // a folder another link already names (a link to the parent of a linked folder)

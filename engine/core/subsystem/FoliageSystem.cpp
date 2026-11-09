@@ -332,6 +332,9 @@ namespace {
         Vector3 viewLocal;
         float terrainSize = 0.0f;
         float terrainMaxHeight = 0.0f;
+        // T4 R27: a world tile's frame is its own (FoliageRegion::frame); 0 for a lone Terrain's map
+        float heightMapSize = 0.0f;
+        bool tile = false;
 
         FoliageStats stats;
         Subscription events;
@@ -355,8 +358,15 @@ struct FoliageSystem::Impl {
     std::vector<std::unique_ptr<RegionState>> dying;
     std::unordered_map<Entity, PrototypeRef> prototypeEntities;
     std::vector<uint32_t> freeSlots;
-    // a cell body's entity: its terrain, for a hit
-    std::unordered_map<Entity, std::pair<Entity, const std::vector<uint32_t>*>> bodyCells;
+    // a cell body's entity: its terrain and region, for a hit
+    struct BodyCell {
+        Entity terrain = NULL_ENTITY;
+        uint32_t regionKey = 0;
+        const std::vector<uint32_t>* ids = nullptr;
+    };
+    std::unordered_map<Entity, BodyCell> bodyCells;
+    // T4 R27: a world's regions summed, what getStats gives for it
+    std::unordered_map<Entity, FoliageStats> ownerStats;
     double clock = 0.0;
     Subscription contactSubscription;
 
@@ -367,6 +377,17 @@ struct FoliageSystem::Impl {
             if (region->owner == owner && region->region->regionKey() == key) return region.get();
         }
         return nullptr;
+    }
+
+    // T4 R27: a world's tile region holding a world position, else the owner's lone region
+    RegionState* regionAt(Entity owner, const Vector3& position) const {
+        for (const std::unique_ptr<RegionState>& region : regions) {
+            if (region->owner != owner || !region->tile) continue;
+            const Vector3 local = region->inverseModel * position;
+            const float half = region->terrainSize * 0.5f;
+            if (local.x >= -half && local.x < half && local.z >= -half && local.z < half) return region.get();
+        }
+        return regionOf(owner);
     }
 
     uint32_t takeSlot() {
@@ -650,9 +671,11 @@ struct FoliageSystem::Impl {
         input.cellZ = cellZ;
         state.region->cellOffset(input.regionOffsetX, input.regionOffsetZ);
         input.terrainSize = size;
+        input.heightMapSize = state.heightMapSize;
         input.terrainMaxHeight = state.terrainMaxHeight;
 
-        const FoliagePatchRect heightRect = foliageHeightPatchRect(cellX, cellZ, size, heightFormat.bounds.w, heightFormat.bounds.h);
+        const float heightSize = state.heightMapSize > 0.0f ? state.heightMapSize : size;
+        const FoliagePatchRect heightRect = foliageHeightPatchRect(cellX, cellZ, heightSize, heightFormat.bounds.w, heightFormat.bounds.h);
         job.heightTexels.resize(static_cast<size_t>(heightRect.width) * heightRect.height * bytesPerTexel(heightFormat));
         if (!maps.readBytes(heightId, TexelRect{heightRect.x, heightRect.y, heightRect.width, heightRect.height}, job.heightTexels)) return false;
         input.heightMap.texels = job.heightTexels.data();
@@ -842,10 +865,12 @@ struct FoliageSystem::Impl {
     void syncPrototypeTransform(RegionState& state, Entity entity) {
         const Transform& terrainTransform = scene->getComponent<Transform>(state.owner);
         Transform& transform = scene->getComponent<Transform>(entity);
-        if (transform.position != terrainTransform.worldPosition ||
+        // a world's tile draws from its own origin; a world translates only (T4 R4)
+        const Vector3 position = state.tile ? Vector3(state.model[3][0], state.model[3][1], state.model[3][2]) : terrainTransform.worldPosition;
+        if (transform.position != position ||
             transform.rotation != terrainTransform.worldRotation ||
             transform.scale != terrainTransform.worldScale) {
-            transform.position = terrainTransform.worldPosition;
+            transform.position = position;
             transform.rotation = terrainTransform.worldRotation;
             transform.scale = terrainTransform.worldScale;
             transform.needUpdate = true;
@@ -1221,7 +1246,8 @@ struct FoliageSystem::Impl {
 
     void onEdit(Entity owner, MapId map, TexelRect rect) {
         RegionState* state = regionOf(owner);
-        if (!state) return;
+        // a world's tiles hear of their edits from TerrainWorldSystem (regionChanged)
+        if (!state || state->tile) return;
         if (map.kind == MapKind::Density) {
             state->densityDirty.emplace_back(map.index, rect);
             return;
@@ -1393,7 +1419,7 @@ struct FoliageSystem::Impl {
         const Entity before = cell.body.entity;
         foliagephysics::setCellBody(*scene, state.owner, cell.body, capsules);
         if (before != NULL_ENTITY && before != cell.body.entity) bodyCells.erase(before);
-        if (cell.body.entity != NULL_ENTITY) bodyCells[cell.body.entity] = {state.owner, &cell.body.ids};
+        if (cell.body.entity != NULL_ENTITY) bodyCells[cell.body.entity] = BodyCell{state.owner, state.region->regionKey(), &cell.body.ids};
     }
 
     // R18: no prototype with collision: no body and no Jolt work. Compound shapes are made in the
@@ -1462,22 +1488,27 @@ struct FoliageSystem::Impl {
             self->residencyRevision++;
         }
 
-        // Wait for the heightmap and terrain rebuild before placing instances.
-        if (!terrain.heightMapLoaded || terrain.needUpdateTerrain) {
+        // T4 R27: a world's tile has its frame and is in memory whole; a lone Terrain waits for its
+        // heightmap and rebuild before placing instances
+        FoliageRegion::Frame frame;
+        state.tile = state.region->frame(frame);
+        if (!state.tile && (!terrain.heightMapLoaded || terrain.needUpdateTerrain)) {
             return;
         }
+        const float size = state.tile ? frame.size : terrain.terrainSize;
 
         // tree cells are in terrain units: built before the size was known, or from another size,
         // they are in the wrong place
-        if (state.terrainSize != terrain.terrainSize) {
+        if (state.terrainSize != size) {
             state.cellsReady = false;
             state.indexing.reset();
             state.indexTask = jobs::Task<std::shared_ptr<TreeCellMap>>();
         }
-        state.terrainSize = terrain.terrainSize;
-        state.terrainMaxHeight = terrain.maxHeight;
-        state.model = transform.modelMatrix;
-        state.inverseModel = transform.modelMatrix.inverse();
+        state.terrainSize = size;
+        state.terrainMaxHeight = state.tile ? frame.maxHeight : terrain.maxHeight;
+        state.heightMapSize = state.tile ? frame.heightMapSize : 0.0f;
+        state.model = state.tile ? state.region->localToWorld() : transform.modelMatrix;
+        state.inverseModel = state.model.inverse();
         if (!state.inverseModel.isValid()) return;
         state.terrainScale = std::max(std::abs(transform.worldScale.x), std::max(std::abs(transform.worldScale.y), std::abs(transform.worldScale.z)));
 
@@ -1512,7 +1543,8 @@ struct FoliageSystem::Impl {
             TerrainFoliageLayer& layer = terrain.foliageLayers[i];
             DetailLayerState& layerState = state.layers[i];
 
-            if (layer.meshPath.empty() || layer.densityMap.empty()) {
+            // a world's density is in its tiles, not in the layer's map
+            if (layer.meshPath.empty() || (!state.tile && layer.densityMap.empty())) {
                 if (layerState.entity != NULL_ENTITY || !layerState.ring.empty()) {
                     destroyLayer(layerState);
                     self->residencyRevision++;
@@ -1586,11 +1618,13 @@ struct FoliageSystem::Impl {
             }
 
             // A density map restored from a scene holds only a path, and the resolve reads it on the CPU.
-            layer.densityMap.setReleaseDataAfterLoad(false);
-            if (layer.densityMap.load().state == ResourceLoadState::Loading) {
-                layerState.waitingForMap = true;
-                state.stats.pendingCells++;
-                continue;
+            if (!state.tile) {
+                layer.densityMap.setReleaseDataAfterLoad(false);
+                if (layer.densityMap.load().state == ResourceLoadState::Loading) {
+                    layerState.waitingForMap = true;
+                    state.stats.pendingCells++;
+                    continue;
+                }
             }
             if (layerState.waitingForMap) {
                 layerState.waitingForMap = false;
@@ -1619,11 +1653,20 @@ struct FoliageSystem::Impl {
         }
 
         // ---- trees
-        if (!terrain.treePrototypes.empty() || !terrain.treeData.empty() || state.store) {
+        const bool trees = state.tile ? !terrain.treePrototypes.empty() : (!terrain.treePrototypes.empty() || !terrain.treeData.empty() || state.store);
+        if (trees) {
             updatePrototypes(state, terrain);
 
             const std::string path = terrain.treeData;
-            if (path != state.storePath && !state.storeShared) {
+            if (state.tile) {
+                // T4 R27: a tile's .jetrees comes from the region when its load ends; the region keeps
+                // it, so a write copies it first
+                if (!state.store && !state.storeRefused) {
+                    state.store = state.region->trees();
+                    state.storeShared = state.store != nullptr;
+                }
+                if (frame.treesLoading) state.stats.pendingCells++;
+            } else if (path != state.storePath && !state.storeShared) {
                 if (state.storeLoading) {
                     state.storeTask.cancel();
                     state.storeLoading = false;
@@ -1679,6 +1722,63 @@ struct FoliageSystem::Impl {
         state.stats.treesResident = resident;
         state.stats.cpuBytes = (detail + resident) * sizeof(FoliageInstance) + state.stats.treesTotal * sizeof(TreeRecord);
         state.stats.mainThreadMs = foliageNowMs() - startMs;
+    }
+
+    // T4 R27: every tile region of a world, one Terrain's settings for all; its stats summed
+    bool updateWorldRegions(Entity owner, TerrainComponent& terrain, float dt) {
+        const bool refill = terrain.needUpdateFoliage;
+        terrain.needUpdateFoliage = false;
+        if (refill) self->residencyRevision++;
+        Transform* transform = scene->findComponent<Transform>(owner);
+        FoliageStats total;
+        bool found = false;
+        for (size_t i = 0; i < regions.size(); i++) {
+            RegionState& state = *regions[i];
+            if (state.owner != owner) continue;
+            FoliageRegion::Frame frame;
+            if (!state.region->frame(frame)) {
+                // the lone region it had before it was a world
+                destroyRegion(state);
+                regions.erase(regions.begin() + static_cast<std::ptrdiff_t>(i));
+                i--;
+                self->residencyRevision++;
+                continue;
+            }
+            found = true;
+            if (refill) {
+                state.refill = true;
+                state.holeCopyValid = false;
+            }
+            if (transform) updateRegion(state, terrain, *transform, dt);
+            const FoliageStats& stats = state.stats;
+            total.detailResident += stats.detailResident;
+            total.treesTotal += stats.treesTotal;
+            total.treesResident += stats.treesResident;
+            total.cells += stats.cells;
+            total.pendingCells += stats.pendingCells;
+            total.detailCellsPlaced += stats.detailCellsPlaced;
+            total.treeCellsRebuilt += stats.treeCellsRebuilt;
+            total.meshLoads += stats.meshLoads;
+            total.applied += stats.applied;
+            total.bufferBytes += stats.bufferBytes;
+            total.cpuBytes += stats.cpuBytes;
+            total.gpuBytes += stats.gpuBytes;
+            total.mainThreadMs += stats.mainThreadMs;
+            // one list for every region: what the main view drew of them all
+            total.detailVisible = stats.detailVisible;
+            total.treesVisible = stats.treesVisible;
+            total.meshTrees = stats.meshTrees;
+            total.draws = stats.draws;
+            total.streamBytes = stats.streamBytes;
+            total.uploadBytes = stats.uploadBytes;
+            total.budgetExceeded = stats.budgetExceeded;
+        }
+        if (found) {
+            ownerStats[owner] = total;
+        } else {
+            ownerStats.erase(owner);
+        }
+        return found;
     }
 
     // -------------------------------------------------------------------------------- views
@@ -2161,6 +2261,7 @@ void FoliageSystem::destroy() {
     impl->regions.clear();
     impl->dying.clear();
     impl->prototypeEntities.clear();
+    impl->ownerStats.clear();
     drawables = false;
 }
 
@@ -2169,6 +2270,7 @@ void FoliageSystem::draw() {
 
 void FoliageSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     if (componentId != scene->getComponentId<TerrainComponent>()) return;
+    impl->ownerStats.erase(entity);
     for (size_t i = 0; i < impl->regions.size(); i++) {
         if (impl->regions[i]->owner == entity) {
             impl->destroyRegion(*impl->regions[i]);
@@ -2190,8 +2292,14 @@ void FoliageSystem::update(double dt) {
     for (int i = 0; i < terrains->size(); i++) {
         TerrainComponent& terrain = terrains->getComponentFromIndex(i);
         const Entity entity = terrains->getEntity(i);
-        RegionState* state = impl->regionOf(entity);
+        // T4 R27: a Terrain World's foliage is its resident tiles' regions, which TerrainWorldSystem
+        // adds and removes, never one of its own
+        if (terrain.world) {
+            any = impl->updateWorldRegions(entity, terrain, static_cast<float>(dt)) || any;
+            continue;
+        }
 
+        RegionState* state = impl->regionOf(entity);
         if (terrain.foliageLayers.empty() && terrain.treePrototypes.empty() && terrain.treeData.empty()) {
             // R38: a Terrain with no layer and no prototype has no state at all
             if (state) {
@@ -2361,6 +2469,10 @@ void FoliageSystem::addRegion(Entity owner, std::shared_ptr<FoliageRegion> regio
     created->owner = owner;
     created->region = std::move(region);
     created->store = created->region->trees();
+    // the region keeps the store it gave: a write copies it first
+    created->storeShared = created->store != nullptr;
+    FoliageRegion::Frame frame;
+    created->tile = created->region->frame(frame);
     impl->regions.push_back(std::move(created));
     residencyRevision++;
 }
@@ -2378,6 +2490,32 @@ void FoliageSystem::removeRegion(Entity owner, uint32_t regionKey) {
             residencyRevision++;
             return;
         }
+    }
+}
+
+void FoliageSystem::regionChanged(Entity owner, uint32_t regionKey) {
+    RegionState* state = impl->regionOf(owner, regionKey);
+    if (!state) return;
+    state->holeCopyValid = false;
+    // the whole square, through the edits' debounce: a stroke settles before its cells go again
+    const float half = state->terrainSize * 0.5f;
+    state->heightDirty = true;
+    state->heightDirtyMin[0] = -half;
+    state->heightDirtyMin[1] = -half;
+    state->heightDirtyMax[0] = half;
+    state->heightDirtyMax[1] = half;
+    state->heightDirtyAge = 0.0f;
+}
+
+size_t FoliageSystem::getRegionCount(Entity owner) const {
+    size_t count = 0;
+    for (const std::unique_ptr<RegionState>& region : impl->regions) count += region->owner == owner ? 1 : 0;
+    return count;
+}
+
+void FoliageSystem::forEachTreeStore(Entity owner, const std::function<void(const TreeStore& store)>& visit) const {
+    for (const std::unique_ptr<RegionState>& region : impl->regions) {
+        if (region->owner == owner && region->store) visit(*region->store);
     }
 }
 
@@ -2490,33 +2628,37 @@ bool FoliageSystem::getTreePose(Entity terrainEntity, TreeId id, FoliageInstance
     const TreeRecord* record = impl->findRecord(*state, recordId);
     if (!record) return false;
     const TerrainComponent& terrain = scene->getComponent<TerrainComponent>(terrainEntity);
+    // a world's tile has its own square and origin (T4 R27)
+    const float size = state->tile ? state->terrainSize : terrain.terrainSize;
+    const float maxHeight = state->tile ? state->terrainMaxHeight : terrain.maxHeight;
     FoliageInstance instance;
     float normal[3] = {0.0f, 1.0f, 0.0f};
     const bool leans = (record->flags & TREE_ALIGN_TO_NORMAL) != 0;
     if (leans) {
-        const SurfaceSample sample = state->region->surface().sample(foliageTreeLocalX(*record, terrain.terrainSize), foliageTreeLocalZ(*record, terrain.terrainSize));
+        const SurfaceSample sample = state->region->surface().sample(foliageTreeLocalX(*record, size), foliageTreeLocalZ(*record, size));
         normal[0] = sample.normal.x;
         normal[1] = sample.normal.y;
         normal[2] = sample.normal.z;
     }
-    foliageInstanceFromTree(*record, terrain.terrainSize, terrain.maxHeight, 0, leans ? normal : nullptr, instance);
+    foliageInstanceFromTree(*record, size, maxHeight, 0, leans ? normal : nullptr, instance);
 
     const Transform& transform = scene->getComponent<Transform>(terrainEntity);
+    const Matrix4& model = state->tile ? state->model : transform.modelMatrix;
     out.id = id;
     out.tree = true;
     out.prototype = Impl::prototypeIndexOf(terrain, record->prototypeId);
-    out.position = transform.modelMatrix * Vector3(instance.position[0], instance.position[1], instance.position[2]);
+    out.position = model * Vector3(instance.position[0], instance.position[1], instance.position[2]);
     out.rotation = transform.worldRotation * Quaternion(instance.rotation[3] / 32767.0f, instance.rotation[0] / 32767.0f, instance.rotation[1] / 32767.0f, instance.rotation[2] / 32767.0f);
     out.scale = instance.scale;
     return true;
 }
 
 // R30: in the same frame: its cell's array, buffer and body
-void FoliageSystem::rebuildCellNow(Entity terrainEntity, const TreeRecord& record) {
-    RegionState* state = impl->regionOf(terrainEntity);
+void FoliageSystem::rebuildCellNow(Entity terrainEntity, uint32_t regionKey, const TreeRecord& record) {
+    RegionState* state = impl->regionOf(terrainEntity, regionKey);
     if (!state) return;
     const TerrainComponent& terrain = scene->getComponent<TerrainComponent>(terrainEntity);
-    const float size = terrain.terrainSize;
+    const float size = state->tile ? state->terrainSize : terrain.terrainSize;
     const int x = static_cast<int>(std::floor(foliageTreeLocalX(record, size) / FOLIAGE_TREE_CELL_SIZE));
     const int z = static_cast<int>(std::floor(foliageTreeLocalZ(record, size) / FOLIAGE_TREE_CELL_SIZE));
     const auto it = state->cells.find(foliageTreeCellKey(x, z));
@@ -2536,7 +2678,7 @@ std::optional<FoliageInstanceInfo> FoliageSystem::removeTreeInstance(Entity terr
     state->runtime.removed.insert(recordId);
     if (const TreeRecord* record = impl->findRecord(*state, recordId)) {
         impl->markTreeCellDirtyForRecord(*state, *record, false, false);
-        rebuildCellNow(terrainEntity, *record);
+        rebuildCellNow(terrainEntity, treeIdRegion(id), *record);
     }
     residencyRevision++;
     onTreeRemoved(terrainEntity, id, pose);
@@ -2554,26 +2696,27 @@ bool FoliageSystem::restoreTreeInstance(Entity terrainEntity, TreeId id) {
     if (state->runtime.removed.erase(recordId) == 0) return false;
     if (const TreeRecord* record = impl->findRecord(*state, recordId)) {
         impl->markTreeCellDirtyForRecord(*state, *record, false, false);
-        rebuildCellNow(terrainEntity, *record);
+        rebuildCellNow(terrainEntity, treeIdRegion(id), *record);
     }
     residencyRevision++;
     return true;
 }
 
 TreeId FoliageSystem::addTreeInstance(Entity terrainEntity, int prototype, const Vector3& position, float yawDegrees, float scale) {
-    RegionState* state = impl->regionOf(terrainEntity);
+    RegionState* state = impl->regionAt(terrainEntity, position);
     if (!state) return 0;
     const TerrainComponent& terrain = scene->getComponent<TerrainComponent>(terrainEntity);
     if (prototype < 0 || prototype >= static_cast<int>(terrain.treePrototypes.size())) return 0;
     const Transform& transform = scene->getComponent<Transform>(terrainEntity);
-    const Matrix4 inverse = transform.modelMatrix.inverse();
+    const Matrix4 inverse = state->tile ? state->inverseModel : transform.modelMatrix.inverse();
     const Vector3 local = inverse.isValid() ? inverse * position : position;
 
-    const float size = terrain.terrainSize;
+    const float size = state->tile ? state->terrainSize : terrain.terrainSize;
+    const float maxHeight = state->tile ? state->terrainMaxHeight : terrain.maxHeight;
     const SurfaceSample sample = state->region->surface().sample(local.x, local.z);
     TreeRecord record{};
     record.id = state->runtime.nextAdded++;
-    foliageSetTreeSurface(record, size, terrain.maxHeight, local.x, local.z, sample.height);
+    foliageSetTreeSurface(record, size, maxHeight, local.x, local.z, sample.height);
     record.yOffset = local.y > sample.height ? local.y - sample.height : 0.0f;
     record.scale = scale;
     float rotation[4];
@@ -2594,57 +2737,70 @@ TreeId FoliageSystem::addTreeInstance(Entity terrainEntity, int prototype, const
 }
 
 void FoliageSystem::clearDetailsInRadius(Entity terrainEntity, const Vector3& position, float radius, int layer) {
-    RegionState* state = impl->regionOf(terrainEntity);
-    if (!state) return;
-    const Transform& transform = scene->getComponent<Transform>(terrainEntity);
-    const Matrix4 inverse = transform.modelMatrix.inverse();
-    const Vector3 local = inverse.isValid() ? inverse * position : position;
-
-    if (static_cast<int>(state->runtime.discs.size()) >= MAX_RUNTIME_DISCS) {
-        // F10's limit: the oldest makes way, and what it cleared comes back when its cell is placed again
-        state->runtime.discs.erase(state->runtime.discs.begin());
-    }
-    state->runtime.discs.push_back(TreeRuntimeState::Disc{local.x, local.z, radius, layer});
-
-    for (size_t l = 0; l < state->layers.size(); l++) {
-        if (layer >= 0 && layer != static_cast<int>(l)) continue;
-        DetailLayerState& layerState = state->layers[l];
-        for (DetailSlot& slot : layerState.ring) {
-            if (!slot.instances || slot.instances->empty()) continue;
-            const float originX = static_cast<float>(slot.x) * FOLIAGE_DETAIL_CELL_SIZE;
-            const float originZ = static_cast<float>(slot.z) * FOLIAGE_DETAIL_CELL_SIZE;
-            const float nearestX = std::clamp(local.x, originX, originX + FOLIAGE_DETAIL_CELL_SIZE);
-            const float nearestZ = std::clamp(local.z, originZ, originZ + FOLIAGE_DETAIL_CELL_SIZE);
-            const float dx = local.x - nearestX;
-            const float dz = local.z - nearestZ;
-            if (dx * dx + dz * dz > radius * radius) continue;
-
-            auto kept = std::make_shared<std::vector<FoliageInstance>>();
-            kept->reserve(slot.instances->size());
-            for (const FoliageInstance& instance : *slot.instances) {
-                const float ix = instance.position[0] - local.x;
-                const float iz = instance.position[2] - local.z;
-                if (ix * ix + iz * iz > radius * radius) kept->push_back(instance);
-            }
-            layerState.resident -= slot.instances->size() - kept->size();
-            slot.instances = std::move(kept);
-            layerState.boundsDirty = true;
-            residencyRevision++;
+    const Transform* transform = scene->findComponent<Transform>(terrainEntity);
+    if (!transform) return;
+    const Matrix4 ownerInverse = transform->modelMatrix.inverse();
+    const auto clear = [&](RegionState* state, const Vector3& local) {
+        if (static_cast<int>(state->runtime.discs.size()) >= MAX_RUNTIME_DISCS) {
+            // F10's limit: the oldest makes way, and what it cleared comes back when its cell is placed again
+            state->runtime.discs.erase(state->runtime.discs.begin());
         }
+        state->runtime.discs.push_back(TreeRuntimeState::Disc{local.x, local.z, radius, layer});
+
+        for (size_t l = 0; l < state->layers.size(); l++) {
+            if (layer >= 0 && layer != static_cast<int>(l)) continue;
+            DetailLayerState& layerState = state->layers[l];
+            for (DetailSlot& slot : layerState.ring) {
+                if (!slot.instances || slot.instances->empty()) continue;
+                const float originX = static_cast<float>(slot.x) * FOLIAGE_DETAIL_CELL_SIZE;
+                const float originZ = static_cast<float>(slot.z) * FOLIAGE_DETAIL_CELL_SIZE;
+                const float nearestX = std::clamp(local.x, originX, originX + FOLIAGE_DETAIL_CELL_SIZE);
+                const float nearestZ = std::clamp(local.z, originZ, originZ + FOLIAGE_DETAIL_CELL_SIZE);
+                const float dx = local.x - nearestX;
+                const float dz = local.z - nearestZ;
+                if (dx * dx + dz * dz > radius * radius) continue;
+
+                auto kept = std::make_shared<std::vector<FoliageInstance>>();
+                kept->reserve(slot.instances->size());
+                for (const FoliageInstance& instance : *slot.instances) {
+                    const float ix = instance.position[0] - local.x;
+                    const float iz = instance.position[2] - local.z;
+                    if (ix * ix + iz * iz > radius * radius) kept->push_back(instance);
+                }
+                layerState.resident -= slot.instances->size() - kept->size();
+                slot.instances = std::move(kept);
+                layerState.boundsDirty = true;
+                residencyRevision++;
+            }
+        }
+    };
+    // a world's disc may reach several tiles (T4 R27): each takes it in its own space
+    for (const std::unique_ptr<RegionState>& region : impl->regions) {
+        if (region->owner != terrainEntity) continue;
+        RegionState* state = region.get();
+        const Matrix4& inverse = state->tile ? state->inverseModel : ownerInverse;
+        const Vector3 local = inverse.isValid() ? inverse * position : position;
+        if (state->tile) {
+            const float half = state->terrainSize * 0.5f + radius;
+            if (std::abs(local.x) > half || std::abs(local.z) > half) continue;
+        }
+        clear(state, local);
     }
 }
 
 void FoliageSystem::restoreDetails(Entity terrainEntity) {
-    RegionState* state = impl->regionOf(terrainEntity);
-    if (!state || state->runtime.discs.empty()) return;
-    state->runtime.discs.clear();
-    for (DetailLayerState& layer : state->layers) {
-        for (DetailSlot& slot : layer.ring) {
-            impl->cancelSlot(slot);
-            slot.assigned = false;
+    for (const std::unique_ptr<RegionState>& region : impl->regions) {
+        RegionState* state = region.get();
+        if (state->owner != terrainEntity || state->runtime.discs.empty()) continue;
+        state->runtime.discs.clear();
+        for (DetailLayerState& layer : state->layers) {
+            for (DetailSlot& slot : layer.ring) {
+                impl->cancelSlot(slot);
+                slot.assigned = false;
+            }
+            layer.pending.clear();
+            layer.needScan = true;
         }
-        layer.pending.clear();
-        layer.needScan = true;
     }
 }
 
@@ -2738,7 +2894,7 @@ bool FoliageSystem::setRuntimeState(Entity terrainEntity, const std::string& tex
     for (uint32_t id : state->runtime.removed) {
         if (const TreeRecord* record = impl->findRecord(*state, id)) {
             impl->markTreeCellDirtyForRecord(*state, *record, false, false);
-            rebuildCellNow(terrainEntity, *record);
+            rebuildCellNow(terrainEntity, 0, *record);
         }
     }
     if (!state->runtime.discs.empty()) {
@@ -2782,71 +2938,77 @@ void FoliageSystem::clearRuntimeState(Entity terrainEntity) {
 
 std::vector<FoliageInstanceInfo> FoliageSystem::getInstancesInRadius(Entity terrainEntity, const Vector3& position, float radius, int kind, size_t maxResults) const {
     std::vector<FoliageInstanceInfo> found;
-    RegionState* state = impl->regionOf(terrainEntity);
-    if (!state) return found;
-    const Transform& transform = scene->getComponent<Transform>(terrainEntity);
-    const Matrix4 inverse = transform.modelMatrix.inverse();
-    if (!inverse.isValid()) return found;
-    const Vector3 local = inverse * position;
+    const Transform* transform = scene->findComponent<Transform>(terrainEntity);
+    if (!transform) return found;
     const float radiusSquared = radius * radius;
 
     struct Near { float distance; FoliageInstanceInfo info; };
     std::vector<Near> near;
 
-    const auto makeInfo = [&](const FoliageInstance& instance, FoliageInstanceInfo& info) {
-        info.position = transform.modelMatrix * Vector3(instance.position[0], instance.position[1], instance.position[2]);
-        info.rotation = transform.worldRotation * Quaternion(instance.rotation[3] / 32767.0f, instance.rotation[0] / 32767.0f, instance.rotation[1] / 32767.0f, instance.rotation[2] / 32767.0f);
-        info.scale = instance.scale;
-    };
+    // every region of the Terrain: a world's tiles each in their own space (T4 R27)
+    for (const std::unique_ptr<RegionState>& region : impl->regions) {
+        RegionState* state = region.get();
+        if (state->owner != terrainEntity) continue;
+        const Matrix4 model = state->tile ? state->model : transform->modelMatrix;
+        const Matrix4 inverse = state->tile ? state->inverseModel : model.inverse();
+        if (!inverse.isValid()) continue;
+        const Vector3 local = inverse * position;
 
-    if (kind == 0 || kind == 2) {
-        for (int64_t key : state->residentOrder) {
-            const auto it = state->cells.find(key);
-            if (it == state->cells.end()) continue;
-            const TreeCell& cell = it->second;
-            const float closestX = std::clamp(local.x, cell.boxMin[0], cell.boxMax[0]) - local.x;
-            const float closestZ = std::clamp(local.z, cell.boxMin[2], cell.boxMax[2]) - local.z;
-            if (closestX * closestX + closestZ * closestZ > radiusSquared) continue;
-            for (const TreeProtoRange& range : cell.ranges) {
-                for (uint32_t i = range.first; i < range.first + range.count; i++) {
-                    const FoliageInstance& instance = cell.instances[i];
-                    const float dx = instance.position[0] - local.x;
-                    const float dz = instance.position[2] - local.z;
-                    const float squared = dx * dx + dz * dz;
-                    if (squared > radiusSquared) continue;
-                    Near entry;
-                    entry.distance = squared;
-                    entry.info.tree = true;
-                    entry.info.id = makeTreeId(state->region->regionKey(), cell.slotIds[i]);
-                    entry.info.prototype = range.prototype;
-                    makeInfo(instance, entry.info);
-                    near.push_back(std::move(entry));
+        const auto makeInfo = [&](const FoliageInstance& instance, FoliageInstanceInfo& info) {
+            info.position = model * Vector3(instance.position[0], instance.position[1], instance.position[2]);
+            info.rotation = transform->worldRotation * Quaternion(instance.rotation[3] / 32767.0f, instance.rotation[0] / 32767.0f, instance.rotation[1] / 32767.0f, instance.rotation[2] / 32767.0f);
+            info.scale = instance.scale;
+        };
+
+        if (kind == 0 || kind == 2) {
+            for (int64_t key : state->residentOrder) {
+                const auto it = state->cells.find(key);
+                if (it == state->cells.end()) continue;
+                const TreeCell& cell = it->second;
+                const float closestX = std::clamp(local.x, cell.boxMin[0], cell.boxMax[0]) - local.x;
+                const float closestZ = std::clamp(local.z, cell.boxMin[2], cell.boxMax[2]) - local.z;
+                if (closestX * closestX + closestZ * closestZ > radiusSquared) continue;
+                for (const TreeProtoRange& range : cell.ranges) {
+                    for (uint32_t i = range.first; i < range.first + range.count; i++) {
+                        const FoliageInstance& instance = cell.instances[i];
+                        const float dx = instance.position[0] - local.x;
+                        const float dz = instance.position[2] - local.z;
+                        const float squared = dx * dx + dz * dz;
+                        if (squared > radiusSquared) continue;
+                        Near entry;
+                        entry.distance = squared;
+                        entry.info.tree = true;
+                        entry.info.id = makeTreeId(state->region->regionKey(), cell.slotIds[i]);
+                        entry.info.prototype = range.prototype;
+                        makeInfo(instance, entry.info);
+                        near.push_back(std::move(entry));
+                    }
                 }
             }
         }
-    }
 
-    if (kind == 1 || kind == 2) {
-        for (size_t l = 0; l < state->layers.size(); l++) {
-            for (const DetailSlot& slot : state->layers[l].ring) {
-                if (!slot.instances || slot.instances->empty()) continue;
-                const float originX = static_cast<float>(slot.x) * FOLIAGE_DETAIL_CELL_SIZE;
-                const float originZ = static_cast<float>(slot.z) * FOLIAGE_DETAIL_CELL_SIZE;
-                const float cx = std::clamp(local.x, originX, originX + FOLIAGE_DETAIL_CELL_SIZE) - local.x;
-                const float cz = std::clamp(local.z, originZ, originZ + FOLIAGE_DETAIL_CELL_SIZE) - local.z;
-                if (cx * cx + cz * cz > radiusSquared) continue;
-                for (const FoliageInstance& instance : *slot.instances) {
-                    const float dx = instance.position[0] - local.x;
-                    const float dz = instance.position[2] - local.z;
-                    const float squared = dx * dx + dz * dz;
-                    if (squared > radiusSquared) continue;
-                    Near entry;
-                    entry.distance = squared;
-                    entry.info.tree = false;
-                    entry.info.id = 0;
-                    entry.info.layer = static_cast<int>(l);
-                    makeInfo(instance, entry.info);
-                    near.push_back(std::move(entry));
+        if (kind == 1 || kind == 2) {
+            for (size_t l = 0; l < state->layers.size(); l++) {
+                for (const DetailSlot& slot : state->layers[l].ring) {
+                    if (!slot.instances || slot.instances->empty()) continue;
+                    const float originX = static_cast<float>(slot.x) * FOLIAGE_DETAIL_CELL_SIZE;
+                    const float originZ = static_cast<float>(slot.z) * FOLIAGE_DETAIL_CELL_SIZE;
+                    const float cx = std::clamp(local.x, originX, originX + FOLIAGE_DETAIL_CELL_SIZE) - local.x;
+                    const float cz = std::clamp(local.z, originZ, originZ + FOLIAGE_DETAIL_CELL_SIZE) - local.z;
+                    if (cx * cx + cz * cz > radiusSquared) continue;
+                    for (const FoliageInstance& instance : *slot.instances) {
+                        const float dx = instance.position[0] - local.x;
+                        const float dz = instance.position[2] - local.z;
+                        const float squared = dx * dx + dz * dz;
+                        if (squared > radiusSquared) continue;
+                        Near entry;
+                        entry.distance = squared;
+                        entry.info.tree = false;
+                        entry.info.id = 0;
+                        entry.info.layer = static_cast<int>(l);
+                        makeInfo(instance, entry.info);
+                        near.push_back(std::move(entry));
+                    }
                 }
             }
         }
@@ -3017,26 +3179,32 @@ Entity FoliageSystem::getDetailEntity(Entity terrainEntity, int layer) const {
 }
 
 void FoliageSystem::forEachNavObstacle(Entity terrainEntity, const std::function<void(const Vector3&, float, float)>& visit) const {
-    RegionState* state = impl->regionOf(terrainEntity);
-    if (!state) return;
-    const TerrainComponent& terrain = scene->getComponent<TerrainComponent>(terrainEntity);
-    const Transform& transform = scene->getComponent<Transform>(terrainEntity);
-    const float size = terrain.terrainSize;
-    const float worldScale = std::max(std::abs(transform.worldScale.x), std::abs(transform.worldScale.z));
+    const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(terrainEntity);
+    const Transform* transform = scene->findComponent<Transform>(terrainEntity);
+    if (!terrain || !transform) return;
+    const float worldScale = std::max(std::abs(transform->worldScale.x), std::abs(transform->worldScale.z));
 
-    const auto emit = [&](const TreeRecord& record) {
-        if ((record.flags & TREE_HIDDEN_BY_HOLE) || state->runtime.removed.count(record.id)) return;
-        const int prototype = Impl::prototypeIndexOf(terrain, record.prototypeId);
-        if (prototype < 0 || !terrain.treePrototypes[prototype].navObstacle) return;
-        const TerrainTreePrototype& authored = terrain.treePrototypes[prototype];
-        const Vector3 base = transform.modelMatrix * Vector3(foliageTreeLocalX(record, size), record.height * terrain.maxHeight + record.yOffset, foliageTreeLocalZ(record, size));
-        const float heightRatio = static_cast<float>(record.heightRatio) / 128.0f;
-        visit(base, authored.collisionRadius * record.scale * worldScale, authored.collisionHeight * record.scale * heightRatio * std::abs(transform.worldScale.y));
-    };
-    if (state->store) {
-        for (const TreeRecord& record : state->store->records()) emit(record);
+    // every region of the Terrain: a world's tiles each with their own square and origin (T4 R27)
+    for (const std::unique_ptr<RegionState>& region : impl->regions) {
+        const RegionState* state = region.get();
+        if (state->owner != terrainEntity) continue;
+        const float size = state->tile ? state->terrainSize : terrain->terrainSize;
+        const float maxHeight = state->tile ? state->terrainMaxHeight : terrain->maxHeight;
+        const Matrix4& model = state->tile ? state->model : transform->modelMatrix;
+        const auto emit = [&](const TreeRecord& record) {
+            if ((record.flags & TREE_HIDDEN_BY_HOLE) || state->runtime.removed.count(record.id)) return;
+            const int prototype = Impl::prototypeIndexOf(*terrain, record.prototypeId);
+            if (prototype < 0 || !terrain->treePrototypes[prototype].navObstacle) return;
+            const TerrainTreePrototype& authored = terrain->treePrototypes[prototype];
+            const Vector3 base = model * Vector3(foliageTreeLocalX(record, size), record.height * maxHeight + record.yOffset, foliageTreeLocalZ(record, size));
+            const float heightRatio = static_cast<float>(record.heightRatio) / 128.0f;
+            visit(base, authored.collisionRadius * record.scale * worldScale, authored.collisionHeight * record.scale * heightRatio * std::abs(transform->worldScale.y));
+        };
+        if (state->store) {
+            for (const TreeRecord& record : state->store->records()) emit(record);
+        }
+        for (const TreeRecord& record : state->runtime.added) emit(record);
     }
-    for (const TreeRecord& record : state->runtime.added) emit(record);
 }
 
 void FoliageSystem::forEachResidentCell(Entity terrainEntity, const std::function<void(int cellX, int cellZ, std::span<const FoliageInstance> instances, std::span<const uint32_t> ids)>& visit) const {
@@ -3050,6 +3218,8 @@ void FoliageSystem::forEachResidentCell(Entity terrainEntity, const std::functio
 }
 
 const FoliageStats& FoliageSystem::getStats(Entity terrainEntity) const {
+    const auto world = impl->ownerStats.find(terrainEntity);
+    if (world != impl->ownerStats.end()) return world->second;
     if (RegionState* state = impl->regionOf(terrainEntity)) return state->stats;
     static const FoliageStats empty;
     return empty;
@@ -3232,10 +3402,10 @@ void FoliageSystem::buildView(FoliageViewList& list, const FoliageViewRequest& r
 bool FoliageSystem::getTreeFromBody(Entity bodyEntity, size_t colliderIndex, Entity& terrainEntity, TreeId& id) const {
     const auto it = impl->bodyCells.find(bodyEntity);
     if (it == impl->bodyCells.end()) return false;
-    const std::vector<uint32_t>& ids = *it->second.second;
+    const std::vector<uint32_t>& ids = *it->second.ids;
     if (colliderIndex >= ids.size()) return false;
-    terrainEntity = it->second.first;
-    id = makeTreeId(0, ids[colliderIndex]);
+    terrainEntity = it->second.terrain;
+    id = makeTreeId(it->second.regionKey, ids[colliderIndex]);
     return true;
 }
 

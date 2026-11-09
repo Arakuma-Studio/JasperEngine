@@ -168,7 +168,9 @@ TEST(TerrainUniformBudgetSlow, PaintedTerrainFitsAtEveryLightCapacity){
 // T3's painted terrain variants (12 layers, holes, the macro maps, distance resampling, cliffs,
 // height blend, stochastic tiling, every tier at High Lit Quality) in the heaviest scene above stay
 // within GLES3's limits as upstream's lit-uniforms work requires of every built-in terrain variant:
-// 8 blocks, 16 textures and samplers (checkResourceBudget), 224 fragment and 256 vertex vectors
+// 8 blocks, 16 textures and samplers (checkResourceBudget), 224 fragment and 256 vertex vectors.
+// T4's Terrain World ('Twd') widens u_vs_terrainParams by its page, page size and tile: each
+// variant as a World too, its depth program with it
 TEST(TerrainUniformBudgetSlow, TerrainProgrammeVariantsFitGles3){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
     SubmeshShaderInputs terrain;
@@ -186,9 +188,12 @@ TEST(TerrainUniformBudgetSlow, TerrainProgrammeVariantsFitGles3){
                                                       jasperengine::terrain::TerrainQuality::LOW}){
         for (bool holes : {false, true}){
             for (bool features : {false, true}){
-                for (bool heavy : {false, true}){
+                for (int both = 0; both < 4; both++){
+                    const bool heavy = (both & 1) != 0;
+                    const bool world = (both & 2) != 0;
                     SubmeshShaderInputs inputs = terrain;
                     inputs.terrainHoles = holes;
+                    inputs.terrainWorld = world;
                     inputs.terrainVariant.limitLayers = features;
                     inputs.terrainVariant.macro = features;
                     inputs.terrainVariant.macroNormal = features;
@@ -224,7 +229,7 @@ TEST(TerrainUniformBudgetSlow, TerrainProgrammeVariantsFitGles3){
                         sources = ShaderVariantCompiler::resolveCustomShaderSources(reference, nullptr, ShaderType::MESH);
                     const std::string name = std::string(jasperengine::terrain::terrainQualityName(tier)) + (holes ? ", holes" : "") +
                                              (features ? ", every feature" : "") + (heavy ? ", capsule shadows, 2d lights and shadows" : "") +
-                                             " (" + ShaderPool::getShaderStr(ShaderType::MESH, variant.properties, customId) + ")";
+                                             (world ? ", Terrain World" : "") + " (" + ShaderPool::getShaderStr(ShaderType::MESH, variant.properties, customId) + ")";
                     ShaderData data;
                     std::string error, log;
                     ASSERT_TRUE(ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::MESH, variant.properties, customId), ShaderBackend::GLES3,
@@ -240,11 +245,25 @@ TEST(TerrainUniformBudgetSlow, TerrainProgrammeVariantsFitGles3){
                         worst = fragment;
                         worstName = name;
                     }
+                    if (world){
+                        ASSERT_NE(variant.properties & ShaderPool::getTerrainWorldProperty(ShaderType::MESH), 0u) << name;
+                        ASSERT_NE(variant.depthProperties & ShaderPool::getTerrainWorldProperty(ShaderType::DEPTH), 0u) << name;
+                        const std::string depthName = name + ", depth (" + ShaderPool::getShaderStr(ShaderType::DEPTH, variant.depthProperties) + ")";
+                        ShaderData depth;
+                        ASSERT_TRUE(ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::DEPTH, variant.depthProperties), ShaderBackend::GLES3,
+                                                                   nullptr, depth, &error, &log)) << depthName << ": " << error << "\n" << log;
+                        compiled++;
+                        std::string depthFragmentBlocks, depthVertexBlocks;
+                        EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(depth), "") << depthName;
+                        EXPECT_LE(terrainStageVectors(depth, ShaderStageType::FRAGMENT, depthFragmentBlocks), 224u) << depthName << "; fragment blocks: " << depthFragmentBlocks;
+                        EXPECT_LE(terrainStageVectors(depth, ShaderStageType::VERTEX, depthVertexBlocks), 256u) << depthName << "; vertex blocks: " << depthVertexBlocks;
+                    }
                 }
             }
         }
     }
-    EXPECT_EQ(compiled, 24u);
+    // 24 terrain variants, each a World too, with its depth program
+    EXPECT_EQ(compiled, 72u);
     std::printf("[terrain] %zu terrain programme variants; the most fragment uniform vectors: %zu of 224, %s\n",
                 compiled, worst, worstName.c_str());
 }

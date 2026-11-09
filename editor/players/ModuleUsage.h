@@ -9,8 +9,8 @@
 // its objects:
 //
 // - a component of a scene or prefab whose system is the module's (a UI Document, a Rigidbody, a
-//   Voxel Volume), or a component field that makes the engine create one (a Spline Extrude's
-//   collision, a Voxel Volume's collision and, with a NavMesh Surface, its navigation update);
+//   Voxel Volume, a Terrain World), or a component field that makes the engine create one (a Spline
+//   Extrude's collision, a Voxel Volume's collision and, with a NavMesh Surface, its navigation update);
 // - a Lua script naming one of the module's entry points: its classes, enums and globals, its
 //   members of classes outside it, and every member whose type is one of its classes, read from
 //   the Lua API description (the `modules` of tools/lua_api, the bindings' own #if conditions);

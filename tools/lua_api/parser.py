@@ -1968,6 +1968,15 @@ OVERRIDES = {
     },
 }
 
+# T4 R47: a Terrain World's waits, bound through lua_State* (their arguments read by hand)
+OVERRIDES[('TerrainWorld', 'waitForArea')] = {
+    'doc': ['In an engine coroutine, waits until isAreaReady holds: true, or false at the timeout or when the world stops.'],
+    'overloads': [([('x', 'number'), ('z', 'number'), ('radius', 'number'), ('level', 'string'), ('timeoutSeconds?', 'number')], 'boolean')]}
+OVERRIDES[('TerrainWorld', 'onAreaReady')] = {
+    'doc': ['Calls callback once, in the update phase, when the area is ready.'],
+    'overloads': [([('x', 'number'), ('z', 'number'), ('radius', 'number'), ('level', 'string'), ('callback', 'fun()')], '')]}
+OVERRIDES[('TerrainWorld', 'getStats')] = {'overloads': [([], 'TerrainWorldStats')]}
+
 OVERRIDES[('Screen', 'setExtraInsets')] = {
     'doc': ['Space the game keeps free per edge on top of the device insets (a banner ad): every safe-area',
             'consumer includes it (Screen.safeArea, the Safe Area component, HTML env()). `unit` is',

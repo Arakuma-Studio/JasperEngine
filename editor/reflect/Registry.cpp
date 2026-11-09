@@ -114,6 +114,7 @@ namespace {
         &kWaterWakeDesc,
         &kPixelPerfectCameraDesc,
         &kVoxelVolumeDesc,
+        &kTerrainWorldDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -216,6 +217,7 @@ namespace {
         &kWaterWakeDesc,
         &kPixelPerfectCameraDesc,
         &kVoxelVolumeDesc,
+        &kTerrainWorldDesc,
     };
 
     // the order a GameObject lists its components in (Catalog::findComponents: the exported code)
@@ -316,6 +318,7 @@ namespace {
         &kWaterWakeDesc,
         &kPixelPerfectCameraDesc,
         &kVoxelVolumeDesc,
+        &kTerrainWorldDesc,
     };
 
     constexpr const EnumDesc* kEnums[] = {

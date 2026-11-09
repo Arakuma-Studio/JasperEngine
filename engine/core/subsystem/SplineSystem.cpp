@@ -31,6 +31,9 @@
 #include "spline/SplineTileLayout.h"
 #include "spline/SplineUtility.h"
 #include "subsystem/MeshSystem.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "subsystem/TerrainWorldRuntime.h"
+#endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Rigidbody.h"
 #include "subsystem/PhysicsSystem.h"
@@ -425,6 +428,57 @@ struct SplineSystem::BuildJob{
             finishChunkMesh(mesh, fill.bounds);
         }
     }
+
+    // The flood over the ground lattice, its warnings and its chunks (each to build, hashed by build)
+    void floodFill(const spline::SplineFillParams& fill){
+        field = spline::buildSplineFillField(stations, ground, fill);
+        const spline::SplineFillDiagnostics& d = field.diagnostics;
+        if (d.waterlineRiseMetres > spline::SPLINE_WATERLINE_RISE_TOLERANCE_METRES){
+            const int knot = d.waterlineRiseStation != spline::SPLINE_FILL_NO_STATION &&
+                             stations[d.waterlineRiseStation].splineT >= 0.0f
+                             ? static_cast<int>(stations[d.waterlineRiseStation].splineT) : -1;
+            addWarning(warnings, SplineWarningKind::WaterlineRise, knot,
+                       "The waterline rises " + std::to_string(d.waterlineRiseMetres) + " units to close the banks.");
+        }
+        if (d.exceededBudget){
+            addWarning(warnings, SplineWarningKind::InstanceCap, -1, "The flooded region is larger than the fill's budget.");
+        }
+        fillRanges = spline::carveFillChunks(field);
+        const size_t count = fillRanges.size();
+        hashes.resize(count);
+        rebuild.assign(count, 1);
+        meshes.resize(count);
+        for (size_t i = 0; i < count; i++){
+            // the fill's chunks depend on the whole field: a chunk's hash is the field's plus its block
+            Hasher h;
+            h.u(generation);
+            h.u(i);
+            hashes[i] = h.value;
+        }
+        stats.stations = static_cast<uint32_t>(stations.size());
+    }
+
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R26: a Terrain World's ground, the world's own sample lattice over the footprint, read here on
+    // the job, which may wait for a tile that is not in memory (R24), then the flood and its chunks
+    std::shared_ptr<TerrainWorldHeightReader> worldGround;
+    int worldX0 = 0, worldZ0 = 0;
+    float worldBaseY = 0.0f;
+    spline::SplineFillParams worldFill;
+
+    void buildOnWorld(){
+        JE_PROFILE_SCOPE("SplineSystem::waterOnTerrainWorld");
+        worldGround->read(worldX0, worldZ0, static_cast<int>(ground.countX), static_cast<int>(ground.countZ), groundHeights);
+        for (float& height : groundHeights){
+            height += worldBaseY;
+        }
+        ground.heights = groundHeights;
+        floodFill(worldFill);
+        for (size_t i = 0; i < fillRanges.size(); i++){
+            buildChunk(i);
+        }
+    }
+#endif
 
     bool ready() const{
         for (const jobs::Task<void>& task : tasks){
@@ -823,7 +877,10 @@ TerrainComponent* SplineSystem::findTerrainUnder(const Vector3& worldPoint, Enti
         }
         const Vector3 local = transform->modelMatrix.inverse() * worldPoint;
         const float half = terrain.terrainSize * 0.5f;
-        if (local.x >= -half && local.x <= half && local.z >= -half && local.z <= half){
+        // T4: a World is under the point where one of its tiles is
+        const bool under = terrain.world ? querySurface(terrain, local.x, local.z).present
+                                         : (local.x >= -half && local.x <= half && local.z >= -half && local.z <= half);
+        if (under){
             terrainEntity = entity;
             return &terrain;
         }
@@ -864,11 +921,15 @@ bool SplineSystem::collectStations(Entity entity, const SplineComponent& spline,
             }
             const Vector3 local = terrainTransform->modelMatrix.inverse() * point;
             const float half = terrain->terrainSize * 0.5f;
-            if (local.x < -half || local.x > half || local.z < -half || local.z > half || !terrain->heightMap.hasData()){
+            // T4 R26: a World's ground is its tiles' (a job waits for a cold one), absent off them
+            if (!terrain->world && (local.x < -half || local.x > half || local.z < -half || local.z > half || !terrain->heightMap.hasData())){
                 return sample;
             }
             // T3 R26: the height map stays defined under a hole, so a road bridges it
             const terrain::SurfaceSample ground = querySurface(*terrain, local.x, local.z);
+            if (terrain->world && !ground.present){
+                return sample;
+            }
             if (ground.hole){
                 (*stationsOverHole)++;
             }
@@ -999,7 +1060,14 @@ void SplineSystem::scheduleExtrude(Entity entity, Resolve& resolve, const Spline
         TerrainComponent* terrain = terrainEntity != NULL_ENTITY ? scene->findComponent<TerrainComponent>(terrainEntity)
                                                                  : findTerrainUnder(stations.front().position, terrainEntity);
         const Transform* terrainTransform = terrain ? scene->findComponent<Transform>(terrainEntity) : nullptr;
-        if (!terrain || !terrainTransform || !terrain->heightMap.hasData() || flat2D){
+#if JASPERENGINE_TERRAIN_WORLD
+        TerrainWorldRuntime* world = terrain && terrain->world && terrain->world->started() ? terrain->world : nullptr;
+#endif
+        bool ground = terrain && terrain->heightMap.hasData();
+#if JASPERENGINE_TERRAIN_WORLD
+        ground = ground || world != nullptr;
+#endif
+        if (!terrain || !terrainTransform || !ground || flat2D){
             addWarning(warnings, SplineWarningKind::NoTerrain, -1, "WaterBanks needs a terrain under the spline.");
             job->hashes.clear();
             resolve.extrudeJob = job;
@@ -1009,6 +1077,61 @@ void SplineSystem::scheduleExtrude(Entity entity, Resolve& resolve, const Spline
         for (spline::SplineStation& s : stations){
             s.position.y += extrude.verticalOffset;
         }
+        spline::SplineFillParams fill;
+        fill.maxHalfWidth = extrude.maxHalfWidth;
+        fill.edgeDrop = extrude.waterEdgeDrop;
+        fill.seaLevelFloor = extrude.seaLevelFloor ? extrude.seaLevel : spline::SPLINE_NO_SEA_LEVEL_FLOOR;
+        job->fillParams.edgeDrop = extrude.waterEdgeDrop;
+        job->fillParams.flowSpeedScale = extrude.flowSpeed;
+        resolve.waterStations = stations;
+        resolve.waterHalfWidth = extrude.maxHalfWidth;
+        resolve.waterSpeed = extrude.flow ? extrude.flowSpeed : 0.0f;
+#if JASPERENGINE_TERRAIN_WORLD
+        if (world){
+            // the footprint's block of the world's samples (sample s at s * spacing, the World only
+            // translates, R4), within its tiles: an absent tile there reads the base height
+            const jasperengine::terrain::WorldLattice& lattice = world->lattice();
+            const float spacing = lattice.spacing;
+            const Vector3 at = terrainTransform->worldPosition;
+            float minX = std::numeric_limits<float>::max(), minZ = minX;
+            float maxX = std::numeric_limits<float>::lowest(), maxZ = maxX;
+            for (const spline::SplineStation& s : stations){
+                minX = std::min(minX, s.position.x - at.x); maxX = std::max(maxX, s.position.x - at.x);
+                minZ = std::min(minZ, s.position.z - at.z); maxZ = std::max(maxZ, s.position.z - at.z);
+            }
+            jasperengine::terrain::TileCoord low, high;
+            world->occupancy().bounds(low, high);
+            const int n = lattice.tileQuads;
+            const float margin = extrude.maxHalfWidth + 2.0f * spacing;
+            const int x0 = std::clamp(static_cast<int>(std::floor((minX - margin) / spacing)), low.x * n, (high.x + 1) * n);
+            const int x1 = std::clamp(static_cast<int>(std::ceil((maxX + margin) / spacing)), low.x * n, (high.x + 1) * n);
+            const int z0 = std::clamp(static_cast<int>(std::floor((minZ - margin) / spacing)), low.z * n, (high.z + 1) * n);
+            const int z1 = std::clamp(static_cast<int>(std::ceil((maxZ + margin) / spacing)), low.z * n, (high.z + 1) * n);
+            job->worldGround = world->heightReader(jasperengine::terrain::TileCoord(jasperengine::terrain::floorDiv(x0, n) - 1, jasperengine::terrain::floorDiv(z0, n) - 1),
+                                                   jasperengine::terrain::TileCoord(jasperengine::terrain::floorDiv(x1, n), jasperengine::terrain::floorDiv(z1, n)));
+            job->worldX0 = x0;
+            job->worldZ0 = z0;
+            job->worldBaseY = at.y;
+            job->worldFill = fill;
+            job->ground.originX = at.x + static_cast<float>(x0) * spacing;
+            job->ground.originZ = at.z + static_cast<float>(z0) * spacing;
+            job->ground.spacingX = spacing;
+            job->ground.spacingZ = spacing;
+            job->ground.countX = static_cast<uint32_t>(x1 - x0 + 1);
+            job->ground.countZ = static_cast<uint32_t>(z1 - z0 + 1);
+            if (!jobs::hasSystem()){
+                job->buildOnWorld();
+                resolve.extrudeJob = job;
+                finishExtrude(entity, resolve);
+            }else{
+                BuildJob* raw = job.get();
+                job->tasks.push_back(jobs::submit([raw](){ raw->buildOnWorld(); },
+                                                  {jobs::Lane::Background, jobs::GateClass::Default, "spline-water-world"}));
+                resolve.extrudeJob = job;
+            }
+            return;
+        }
+#endif
         // the ground lattice is the heightmap's texel centres (S18 D9; the terrain samples its
         // map at (i + 0.5) / size, MeshSystem::terrainTexelCoord), the footprint's block of them
         TextureData& data = terrain->heightMap.getData();
@@ -1051,46 +1174,13 @@ void SplineSystem::scheduleExtrude(Entity entity, Resolve& resolve, const Spline
         job->ground.countX = countX;
         job->ground.countZ = countZ;
         job->ground.heights = job->groundHeights;
-
-        spline::SplineFillParams fill;
-        fill.maxHalfWidth = extrude.maxHalfWidth;
-        fill.edgeDrop = extrude.waterEdgeDrop;
-        fill.seaLevelFloor = extrude.seaLevelFloor ? extrude.seaLevel : spline::SPLINE_NO_SEA_LEVEL_FLOOR;
-        job->field = spline::buildSplineFillField(stations, job->ground, fill);
-        const spline::SplineFillDiagnostics& d = job->field.diagnostics;
-        if (d.waterlineRiseMetres > spline::SPLINE_WATERLINE_RISE_TOLERANCE_METRES){
-            const int knot = d.waterlineRiseStation != spline::SPLINE_FILL_NO_STATION &&
-                             stations[d.waterlineRiseStation].splineT >= 0.0f
-                             ? static_cast<int>(stations[d.waterlineRiseStation].splineT) : -1;
-            addWarning(warnings, SplineWarningKind::WaterlineRise, knot,
-                       "The waterline rises " + std::to_string(d.waterlineRiseMetres) + " units to close the banks.");
-        }
-        if (d.exceededBudget){
-            addWarning(warnings, SplineWarningKind::InstanceCap, -1, "The flooded region is larger than the fill's budget.");
-        }
-        job->fillParams.edgeDrop = extrude.waterEdgeDrop;
-        job->fillParams.flowSpeedScale = extrude.flowSpeed;
-        job->fillRanges = spline::carveFillChunks(job->field);
+        job->floodFill(fill);
         const size_t count = job->fillRanges.size();
-        job->hashes.resize(count);
-        job->rebuild.assign(count, 1);
-        job->meshes.resize(count);
-        for (size_t i = 0; i < count; i++){
-            // the fill's chunks depend on the whole field: a chunk's hash is the field's plus its block
-            Hasher h;
-            h.u(job->generation);
-            h.u(i);
-            job->hashes[i] = h.value;
-        }
-        job->stats.stations = static_cast<uint32_t>(stations.size());
         double cells = 0.0;
         for (const spline::SplineFillChunkRange& r : job->fillRanges){
             cells += static_cast<double>(r.maxCornerX - r.minCornerX) * (r.maxCornerZ - r.minCornerZ);
         }
         const double estimateMs = cells * SPLINE_NS_PER_FILL_CELL * 1.0e-6;
-        resolve.waterStations = stations;
-        resolve.waterHalfWidth = extrude.maxHalfWidth;
-        resolve.waterSpeed = extrude.flow ? extrude.flowSpeed : 0.0f;
         if (estimateMs < INLINE_BUDGET_MS || !jobs::hasSystem()){
             for (size_t i = 0; i < count; i++){
                 job->buildChunk(i);

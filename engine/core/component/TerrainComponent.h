@@ -21,6 +21,7 @@
 namespace jasperengine{
 
     struct TerrainEditState;    // object/TerrainEdit.h
+    class TerrainWorldRuntime;  // subsystem/TerrainWorldRuntime.h
 
     // T3 R49. All stored as ints: append only.
     enum class TerrainQualitySetting : int { AUTO, HIGH, MEDIUM, LOW };
@@ -189,6 +190,9 @@ namespace jasperengine{
         // Null until the terrain is first edited (T1 R53, DC10). Neither is saved, and a clone
         // starts without them.
         std::shared_ptr<TerrainEditState> editState;
+        // T4: a Terrain World's runtime, set by TerrainWorldSystem while its Terrain World is enabled; its
+        // maps are the world's tiles. Not saved, not reflected; a clone starts without it.
+        TerrainWorldRuntime* world = nullptr;
 
         bool needUpdateTerrain = true;
         bool needUpdateTexture = false;

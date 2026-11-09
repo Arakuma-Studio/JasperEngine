@@ -3946,6 +3946,55 @@ bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
 
     mesh.indices.clear();
 
+    // T4 D1, D5: a World draws skirted grids from its pages, and builds no node tree
+    if (terrain.world){
+        terrain.nodes.clear();
+        terrain.numNodes = 0;
+        terrain.resolution = 32;
+        mesh.numSubmeshes = 2;
+        // the outer ring of a grid, flagged by y = 1 (includes/terrain_world_vs.glsl), each quad both ways
+        auto addSkirt = [&](unsigned int submeshIndex, int segments){
+            Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
+            Attribute* attNormal = mesh.buffer.getAttribute(AttributeType::NORMAL);
+            Attribute* attIndice = mesh.indices.getAttribute(AttributeType::INDEX);
+            const Attribute& gridIndices = mesh.submeshes[submeshIndex].attributes[AttributeType::INDEX];
+            const unsigned int firstGridVertex = (unsigned int)mesh.buffer.getCount() - (unsigned int)((segments + 1) * (segments + 1));
+            std::vector<unsigned int> edge;
+            for (int i = 0; i < segments; i++) edge.push_back(i);
+            for (int i = 0; i < segments; i++) edge.push_back(segments + i * (segments + 1));
+            for (int i = 0; i < segments; i++) edge.push_back((segments + 1) * (segments + 1) - 1 - i);
+            for (int i = 0; i < segments; i++) edge.push_back((segments - i) * (segments + 1));
+            const unsigned int firstRing = (unsigned int)mesh.buffer.getCount();
+            const float step = 1.0f / (float)segments;
+            for (unsigned int e : edge){
+                const int ix = (int)(e % (segments + 1)), iy = (int)(e / (segments + 1));
+                mesh.buffer.addVector3(attVertex, Vector3(ix * step - 0.5f, 1.0f, -(iy * step - 0.5f)));
+                mesh.buffer.addVector3(attNormal, Vector3(0.0f, 1.0f, 0.0f));
+            }
+            unsigned int added = 0;
+            const unsigned int count = (unsigned int)edge.size();
+            for (unsigned int k = 0; k < count; k++){
+                const unsigned int a = firstGridVertex + edge[k], b = firstGridVertex + edge[(k + 1) % count];
+                const unsigned int ra = firstRing + k, rb = firstRing + (k + 1) % count;
+                const unsigned int quad[12] = {a, ra, b, b, ra, rb, a, b, ra, b, rb, ra};
+                for (unsigned int index : quad) mesh.indices.addUInt16(attIndice, (uint16_t)index);
+                added += 12;
+            }
+            addSubmeshAttribute(mesh.submeshes[submeshIndex], "indices", AttributeType::INDEX, 1, AttributeDataType::UNSIGNED_SHORT,
+                                gridIndices.getCount() + added, gridIndices.getOffset(), false);
+        };
+        createPlaneNodeSubmesh(0, mesh, 1, 1, (int)terrain.resolution, (int)terrain.resolution);
+        addSkirt(0, (int)terrain.resolution);
+        createPlaneNodeSubmesh(1, mesh, 1, 1, (int)terrain.resolution / 2, (int)terrain.resolution / 2);
+        addSkirt(1, (int)terrain.resolution / 2);
+        mesh.submeshes[1].generated = true;
+        // the whole addressable extent: the selection culls inside it
+        const float extent = 16384.0f;
+        mesh.aabb = AABB(Vector3(-extent, std::min(0.0f, terrain.maxHeight) - 1.0f, -extent), Vector3(extent, 100000.0f, extent));
+        terrain.heightMapLoaded = true;
+        return true;
+    }
+
     size_t idealSize = getTerrainGridArraySize(terrain.rootGridSize, terrain.levels);
     // createOrUpdateTerrain already caps idealSize; this catch is a last resort for a
     // genuine out-of-memory at an in-budget size, so the terrain fails to build (and
@@ -7305,7 +7354,7 @@ bool MeshSystem::createOrUpdateTerrain(TerrainComponent& terrain, MeshComponent&
             return false;
         }
 
-        if (terrain.heightMap.empty()){
+        if (terrain.heightMap.empty() && !terrain.world){
             resetTerrainToUnbuilt(terrain, mesh);
             return false;
         }

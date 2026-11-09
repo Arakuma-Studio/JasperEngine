@@ -429,6 +429,7 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::OIT)) defs.push_back({"USE_OIT", "1"});                         // 'Oit'
     if (prop & ShaderPool::getPixelSnapProperty(ShaderType::MESH)) defs.push_back({"PIXEL_SNAP", "1"}); // 'Pxs' (S41)
     if (prop & ShaderPool::getTerrainHolesProperty(ShaderType::MESH)) defs.push_back({"TERRAIN_HOLES", "1"});       // 'Thl'
+    if (prop & ShaderPool::getTerrainWorldProperty(ShaderType::MESH)) defs.push_back({"HAS_TERRAIN_WORLD", "1"});   // 'Twd'
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -455,6 +456,7 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & ShaderPool::getAutoInstancingProperty(ShaderType::DEPTH)) defs.push_back({"HAS_AUTO_INSTANCING", "1"}); // 'Aui'
     if (prop & ShaderPool::getPixelSnapProperty(ShaderType::DEPTH)) defs.push_back({"PIXEL_SNAP", "1"}); // 'Pxs' (S41)
     if (prop & ShaderPool::getTerrainHolesProperty(ShaderType::DEPTH)) defs.push_back({"TERRAIN_HOLES", "1"});      // 'Thl'
+    if (prop & ShaderPool::getTerrainWorldProperty(ShaderType::DEPTH)) defs.push_back({"HAS_TERRAIN_WORLD", "1"});  // 'Twd'
     // T5's foliage (ShaderPool::getFoliageProperties): 'Cin', 'Wnd', 'Dth'
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
@@ -484,6 +486,7 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if ((prop & shaderPropertyBit(17)) && !(prop & shaderPropertyBit(6))) defs.push_back({"HAS_UV_SET2", "1"}); // 'Uv2' (never on a terrain)
     if (prop & shaderPropertyBit(18)) defs.push_back({"USE_INSTANCE_FADE", "1"});             // 'Ifd'
     if (prop & ShaderPool::getTerrainHolesProperty(ShaderType::GBUFFER)) defs.push_back({"TERRAIN_HOLES", "1"});    // 'Thl'
+    if (prop & ShaderPool::getTerrainWorldProperty(ShaderType::GBUFFER)) defs.push_back({"HAS_TERRAIN_WORLD", "1"}); // 'Twd'
     // T3 D2: Lit defines do not reach a G-buffer, so its tier and its twelve layers are bits
     if (prop & ShaderPool::getTerrainTierProperty(terrain::TerrainQuality::MEDIUM)) defs.push_back({"TERRAIN_QUALITY_MEDIUM", "1"}); // 'Tqm'
     if (prop & ShaderPool::getTerrainTierProperty(terrain::TerrainQuality::LOW)) defs.push_back({"TERRAIN_QUALITY_LOW", "1"});       // 'Tql'

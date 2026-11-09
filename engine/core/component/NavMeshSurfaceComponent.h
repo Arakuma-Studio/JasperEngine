@@ -58,6 +58,10 @@ namespace jasperengine{
         bool runtimeCarving = false;
         // the carving obstacles the navmesh holds at once (1-4096; more are avoided instead)
         int maxCarvingObstacles = 128;
+        // T4 R25: bake the Terrain World's tiles round its focus (its Focus GameObject or camera)
+        // and rebake as the focus moves; off on single-threaded web unless a script turns it on
+        bool followTerrainWorldFocus = false;
+        float followRadius = 128.0f;
         // the baked .navmesh
         AssetRef navMeshData;
 

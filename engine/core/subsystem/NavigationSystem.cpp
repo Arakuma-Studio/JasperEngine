@@ -24,6 +24,7 @@
 #include "navigation/NavBakeCollector.h"
 #include "navigation/NavBakeScheduler.h"
 #include "navigation/NavCrowd.h"
+#include "navigation/NavTerrainWorld.h"
 #include "object/navigation/NavMeshAgent.h"
 #include "object/navigation/NavMeshSurface.h"
 #include "profiler/Profile.h"
@@ -43,6 +44,9 @@
 #include "object/physics/Rigidbody.h"
 #endif
 
+#if JASPERENGINE_TERRAIN_WORLD
+#include "subsystem/TerrainWorldSystem.h"
+#endif
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -52,6 +56,7 @@
 #include <limits>
 #include <map>
 #include <set>
+#include <thread>
 #include <unordered_map>
 
 using namespace jasperengine;
@@ -139,6 +144,16 @@ struct NavigationSystem::Runtime {
         std::chrono::steady_clock::time_point bakeStarted;
         std::unique_ptr<NavBakeResult> lastResult;
         int dirtyTiles = -1;
+        // T4 R25: a bake or updateTiles waiting for a Terrain World's tiles to load; processBakes
+        // collects again until they are in
+        bool collectPending = false;
+        bool pendingUpdate = false;
+        NavBakeMode pendingMode = NavBakeMode::DIRTY;
+        AABB pendingBounds;
+        // what it keeps of its Terrain Worlds (held tiles, its Follow region)
+        nav::NavWorldContext world;
+        // Follow Terrain World Focus set by a script (single-threaded web follows only then)
+        bool followScripted = false;
         // S75 R17: each tile's last build in this session, ms by (y, x); cleared on a load
         std::map<std::pair<int, int>, double> tileMs;
         // A bake that landed in play while its carved tiles still build (spec S74 R15): the new
@@ -639,6 +654,8 @@ NavSurfaceStatus NavigationSystem::getSurfaceStatus(Entity surface) {
     } else if (state.pendingResult) {
         status.state = NavBakeState::BAKING;
         status.progress = 1.0f;
+    } else if (state.collectPending) {
+        status.state = NavBakeState::BAKING;
     }
     if (state.crowd) {
         status.crowdAgents = state.crowd->getAgentCount();
@@ -765,6 +782,8 @@ bool NavigationSystem::bake(Entity surface, NavBakeMode mode, std::string& error
         return refuseBake(nullptr, NavBakeError::Busy, error, code);
     }
     if (mode == NavBakeMode::CLEAR) {
+        state.collectPending = false;
+        state.world = nav::NavWorldContext();
         runtime->replaceMesh(surface, state, nullptr, true);
         state.loaded = true;
         state.loadedPath = component->navMeshData.path;
@@ -778,9 +797,18 @@ bool NavigationSystem::bake(Entity surface, NavBakeMode mode, std::string& error
     JE_PROFILE_SCOPE("Nav.Bake");
     NavCollectStats stats;
     NavBakeError collectError = NavBakeError::None;
-    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, error, &stats, {}, &collectError);
-    if (!input)
-        return refuseBake(&state.lastResult, collectError, error, code, &stats);
+    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, error, &stats, {}, &collectError, &state.world);
+    state.collectPending = false;
+    if (!input) {
+        if (stats.pendingTiles == 0)
+            return refuseBake(&state.lastResult, collectError, error, code, &stats);
+        // T4 R25: started, waiting for its tiles
+        state.collectPending = true;
+        state.pendingUpdate = false;
+        state.pendingMode = mode;
+        error.clear();
+        return true;
+    }
 
     // Dirty: the tiles whose hashes changed (a different configuration rebuilds all); Full: all
     std::vector<uint32_t> tiles;
@@ -843,9 +871,18 @@ bool NavigationSystem::updateTiles(Entity surface, const AABB& worldBounds, std:
     }
     NavCollectStats stats;
     NavBakeError collectError = NavBakeError::None;
-    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, error, &stats, {}, &collectError);
-    if (!input)
-        return refuseBake(&state.lastResult, collectError, error, code, &stats);
+    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, error, &stats, {}, &collectError, &state.world);
+    state.collectPending = false;
+    if (!input) {
+        if (stats.pendingTiles == 0)
+            return refuseBake(&state.lastResult, collectError, error, code, &stats);
+        // T4 R25: started, waiting for its tiles
+        state.collectPending = true;
+        state.pendingUpdate = true;
+        state.pendingBounds = worldBounds;
+        error.clear();
+        return true;
+    }
     if (!state.mesh || !state.mesh->getData() || state.mesh->getHeader().config.hash() != input->config.hash())
         return bake(surface, NavBakeMode::FULL, error, code);
 
@@ -874,6 +911,17 @@ bool NavigationSystem::updateTiles(Entity surface, const AABB& worldBounds, std:
         else
             removed.push_back(coord);
     }
+    // baked tiles the box meets outside the grid of what is there now lost all their input (a
+    // Terrain World's tile that left a Follow region, T4 R25)
+    for (const NavTileBlob& blob : state.mesh->getData()->tiles) {
+        if (blob.x >= input->minTileX && blob.x <= input->maxTileX && blob.y >= input->minTileY && blob.y <= input->maxTileY)
+            continue;
+        float tmin[3], tmax[3];
+        input->tileBounds(blob.x, blob.y, tmin, tmax);
+        if (tmax[0] + border < lo.x || tmin[0] - border > hi.x || tmax[2] + border < lo.z || tmin[2] - border > hi.z)
+            continue;
+        removed.push_back(NavTileCoord{blob.x, blob.y});
+    }
     NavBakeOptions options;
     options.lane = bakeInBackground ? jobs::Lane::Background : jobs::Lane::Normal;
     state.bake = std::make_unique<NavBake>(input, tiles, options);
@@ -900,6 +948,23 @@ NavBakeResult NavigationSystem::bakeNow(Entity surface, NavBakeMode mode) {
         return result;
     }
     Runtime::Surface& state = rt().surfaces[surface];
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R25: a Terrain World's tiles load on the streamer's jobs, which its pump polls
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (state.collectPending && std::chrono::steady_clock::now() < until) {
+        if (jobs::hasSystem() && jobs::system().isSingleThreaded())
+            jobs::system().pump(4.0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (std::shared_ptr<TerrainWorldSystem> worlds = scene->findSystem<TerrainWorldSystem>())
+            worlds->pump(Engine::getRealtimeSinceStartup());
+        processBakes(0.0);
+    }
+#endif
+    if (state.collectPending) {
+        cancelBake(surface);
+        result.error = "the Terrain World's tiles did not load";
+        return result;
+    }
     if (state.bake) {
         while (state.bake->isTimeSliced() && !state.bake->isDone())
             state.bake->pump(1000.0);
@@ -916,8 +981,17 @@ bool NavigationSystem::cancelBake(Entity surface) {
     if (!runtime)
         return false;
     auto found = runtime->surfaces.find(surface);
-    if (found == runtime->surfaces.end() || !found->second.bake)
+    if (found == runtime->surfaces.end() || (!found->second.bake && !found->second.collectPending))
         return false;
+    if (found->second.collectPending) {
+        found->second.collectPending = false;
+        found->second.world.held.clear();
+        found->second.world.hasTarget = false;
+        found->second.lastResult = std::make_unique<NavBakeResult>();
+        found->second.lastResult->cancelled = true;
+        found->second.lastResult->error = "cancelled";
+        return true;
+    }
     found->second.bake->cancel();
     return true;
 }
@@ -927,14 +1001,14 @@ bool NavigationSystem::isBaking(Entity surface) const {
         return false;
     auto found = runtime->surfaces.find(surface);
     // a bake that landed in play is baking until its carved tiles are built (spec S74 R15)
-    return found != runtime->surfaces.end() && (found->second.bake || found->second.pendingResult);
+    return found != runtime->surfaces.end() && (found->second.bake || found->second.pendingResult || found->second.collectPending);
 }
 
 bool NavigationSystem::isAnyBaking() const {
     if (!runtime)
         return false;
     for (const auto& entry : runtime->surfaces) {
-        if (entry.second.bake || entry.second.pendingResult)
+        if (entry.second.bake || entry.second.pendingResult || entry.second.collectPending)
             return true;
     }
     return false;
@@ -966,6 +1040,19 @@ void NavigationSystem::processBakes(double budgetMs) {
     Runtime& r = *runtime;
     for (auto& entry : r.surfaces) {
         Runtime::Surface& state = entry.second;
+        if (state.collectPending && !state.bake) {
+            // T4 R25: collect again; it waits on while tiles are still loading
+            std::string error;
+            const bool started = state.pendingUpdate ? updateTiles(entry.first, state.pendingBounds, error)
+                                                     : bake(entry.first, state.pendingMode, error);
+            if (!started) {
+                state.world.hasTarget = false;
+                state.lastResult = std::make_unique<NavBakeResult>();
+                state.lastResult->error = error;
+                Log::error("NavMeshSurface '%s' bake failed: %s", scene->getEntityName(entry.first).c_str(), error.c_str());
+                continue;
+            }
+        }
         if (!state.bake)
             continue;
         if (state.bake->isTimeSliced() && !state.bake->isDone() && budgetMs > 0.0) {
@@ -1068,7 +1155,7 @@ void NavigationSystem::processBakes(double budgetMs) {
             data.header.agent = getSettings().agentTypeOrDefault(component ? component->agentType : 0);
             data.header.areaTableHash = hashAreaTable(getSettings());
             data.header.config = input->config;
-            data.header.maxTiles = std::max(1, input->tileCount());
+            data.header.maxTiles = std::max({1, input->tileCount(), input->reserveTiles});
             data.header.linkAreaCosts = input->linkAreaCosts;
             // informational in the file: a load takes the surface's own (spec S74 R17)
             data.header.maxObstacles = maxCarvingObstaclesOf(component);
@@ -1137,6 +1224,42 @@ void NavigationSystem::processBakes(double budgetMs) {
     // outside the fixed tick (the editor, a script's wait) the events fire now
     if (!r.inFixedUpdate)
         r.dispatch(scene);
+}
+
+// ---------------------------------------------------------------- Terrain Worlds (T4 R25)
+
+void NavigationSystem::setFollowTerrainWorldFocus(Entity surface, bool follow) {
+    NavMeshSurfaceComponent* component = surfaceComponent(scene, surface);
+    if (!component)
+        return;
+    component->followTerrainWorldFocus = follow;
+    rt().surfaces[surface].followScripted = follow;
+}
+
+const nav::NavWorldContext* NavigationSystem::getTerrainWorldContext(Entity surface) const {
+    if (!runtime)
+        return nullptr;
+    auto found = runtime->surfaces.find(surface);
+    return found != runtime->surfaces.end() ? &found->second.world : nullptr;
+}
+
+void NavigationSystem::followTerrainWorlds() {
+#if JASPERENGINE_TERRAIN_WORLD
+    auto array = scene->getComponentArray<NavMeshSurfaceComponent>();
+    for (size_t i = 0; i < array->size(); i++) {
+        if (!array->getComponentFromIndex(i).followTerrainWorldFocus)
+            continue;
+        const Entity surface = array->getEntity(i);
+        Runtime::Surface& state = rt().surfaces[surface];
+        state.entity = surface;
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+        // a single-threaded web build bakes on the main thread (S19 R23): only a script's choice follows
+        if (!state.followScripted)
+            continue;
+#endif
+        nav::followTerrainWorldFocus(*this, scene, surface, state.world);
+    }
+#endif
 }
 
 // ---------------------------------------------------------------- queries
@@ -4371,6 +4494,8 @@ void NavigationSystem::fixedUpdate(double dt) {
 
     // 1. finished bake tiles land
     processBakes(0.0);
+    // surfaces following a Terrain World's focus rebake round it (T4 R25)
+    followTerrainWorlds();
     // the project's area costs reach the crowds' filters
     if (r.settingsVersion != getSettingsVersion()) {
         r.settingsVersion = getSettingsVersion();

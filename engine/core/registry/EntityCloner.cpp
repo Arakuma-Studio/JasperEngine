@@ -4,6 +4,7 @@
 #include "EntityCloner.h"
 #include "model/ModelCpuData.h"
 #include "component/ActionComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "component/VoxelVolumeComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
@@ -467,6 +468,7 @@ void prepare<TerrainComponent>(TerrainComponent& terrain, Entity, CloneContext& 
     terrain.holeMapHolds = 0;
     terrain.surfaceRevision = 0;
     terrain.editState.reset();
+    terrain.world = nullptr;
 }
 
 template<>
@@ -1357,6 +1359,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<TranslateTracksComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScaleTracksComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TerrainComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<TerrainWorldComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AudioSourceComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TilemapComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 #ifdef JASPERENGINE_PHYSICS_2D

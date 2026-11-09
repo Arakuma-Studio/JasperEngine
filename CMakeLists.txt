@@ -737,8 +737,10 @@ set_source_files_properties(${EDITOR_DIR}/audio/AudioAnalysis.cpp ${EDITOR_DIR}/
     PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
 
 include(${EDITOR_DIR}/terrain/TerrainEditorSources.cmake)
+include(${EDITOR_DIR}/terrainworld/TerrainWorldEditorSources.cmake)
 set(JASPERENGINE_EDITOR_SOURCES
     ${JASPERENGINE_TERRAIN_EDITOR_SOURCES}
+    ${JASPERENGINE_TERRAIN_WORLD_EDITOR_SOURCES}
     ${EDITOR_DIR}/main.cpp
     ${EDITOR_DIR}/cli/CommandLine.cpp
     ${EDITOR_DIR}/cli/SchemaArgs.cpp
@@ -747,6 +749,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
+    ${EDITOR_DIR}/cook/TerrainWorldCooker.cpp
     ${EDITOR_DIR}/cook/VoxelVolumeCook.cpp
     ${EDITOR_DIR}/voxel/VoxelAssetFile.cpp
     ${EDITOR_DIR}/voxel/VoxelGeneration.cpp
@@ -808,6 +811,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/DebugReflect.cpp
     ${EDITOR_DIR}/reflect/components/AnimationReflect.cpp
     ${EDITOR_DIR}/reflect/components/CameraAudioReflect.cpp
+    ${EDITOR_DIR}/reflect/components/TerrainWorldReflect.cpp
     ${EDITOR_DIR}/reflect/components/LightingReflect.cpp
     ${EDITOR_DIR}/reflect/components/MaterialReflect.cpp
     ${EDITOR_DIR}/reflect/components/GameplayReflect.cpp
@@ -937,6 +941,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SplineTools.cpp
     ${EDITOR_DIR}/mcp/tools/VoxelTools.cpp
     ${EDITOR_DIR}/mcp/tools/TerrainTools.cpp
+    ${EDITOR_DIR}/mcp/tools/TerrainWorldTools.cpp
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
     ${EDITOR_DIR}/mcp/tools/VatTools.cpp
@@ -1473,6 +1478,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ReplacePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
+    ${EDITOR_DIR}/command/type/TerrainWorldImportCmd.cpp
+    ${EDITOR_DIR}/command/type/TerrainWorldTilesCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainTextureEditCmd.cpp
     ${EDITOR_DIR}/command/type/WriteFilesCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveFilesCmd.cpp

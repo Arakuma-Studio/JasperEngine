@@ -22,6 +22,7 @@
 #include "navigation/NavTypes.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -97,8 +98,8 @@ namespace jasperengine::nav {
     };
 
     // A height lattice (terrain, heightfield collider): samples x samples heights in its own
-    // space, sample (i, j) at (-halfSize + spacing * i, height, -halfSize + spacing * j), brought
-    // into nav space by toNav (scale included)
+    // space, sample (i, j) at (centerX - halfSize + spacing * i, height, centerZ - halfSize +
+    // spacing * j), brought into nav space by toNav (scale included)
     struct JASPERENGINE_API NavTerrainInput {
         Matrix4 toNav;
         float halfSize = 0.0f;
@@ -106,6 +107,19 @@ namespace jasperengine::nav {
         int samples = 0;
         std::vector<float> heights;
         uint8_t recastArea = 1;
+        // T4 R25: a Terrain World's tiles share the World's toNav and are placed by their centres,
+        // so two neighbours' border samples land on the same nav point and the lattices weld
+        float centerX = 0.0f;
+        float centerZ = 0.0f;
+        // T4 R25: a tile's lattice reads the tile's own 16-bit samples (little-endian, tileRow
+        // texels a row, sample (i, j) at texel (tileFirst + i * tileStep, tileFirst + j * tileStep))
+        // instead of heights, and holds the tile's data by shared reference while the bake runs
+        std::shared_ptr<const void> tileData;
+        const uint8_t* tileSamples = nullptr;
+        int tileRow = 0;
+        int tileFirst = 0;
+        int tileStep = 1;
+        float tileMaxHeight = 0.0f;
         // T3 R23: (samples - 1)^2 flags, row by row: a lattice cell that overlaps a hole texel is
         // left out of the bake. Empty without holes.
         std::vector<uint8_t> holeCells;
@@ -114,7 +128,13 @@ namespace jasperengine::nav {
         float bmin[3] = {0, 0, 0};
         float bmax[3] = {0, 0, 0};
 
-        float heightAt(int i, int j) const { return heights[(size_t)j * (size_t)samples + (size_t)i]; }
+        float heightAt(int i, int j) const {
+            if (tileSamples) {
+                const uint8_t* at = tileSamples + ((size_t)(tileFirst + j * tileStep) * (size_t)tileRow + (size_t)(tileFirst + i * tileStep)) * 2;
+                return (float)(at[0] | (at[1] << 8)) / 65535.0f * tileMaxHeight;
+            }
+            return heights[(size_t)j * (size_t)samples + (size_t)i];
+        }
         bool isHoleCell(int i, int j) const { return !holeCells.empty() && holeCells[(size_t)j * (size_t)(samples - 1) + (size_t)i] != 0; }
         Vector3 localAt(int i, int j) const;
         // The sample cells [i0, i1) x [j0, j1) whose nav-space footprint may touch the nav box
@@ -191,6 +211,9 @@ namespace jasperengine::nav {
 
         // the tile grid (tile (x, y) covers [x, x+1) * tileWorldSize in nav x and z), inclusive
         int minTileX = 0, minTileY = 0, maxTileX = -1, maxTileY = -1;
+        // T4 R25: the tile pool a new navmesh holds at least: a Follow surface's whole region, so
+        // that its steps replace tiles in place and never make the navmesh again under its agents
+        int reserveTiles = 0;
 
         // finalize(): per tile in index order, the triangles that touch it with its border, and
         // the hash of every input of the tile

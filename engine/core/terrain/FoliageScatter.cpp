@@ -229,6 +229,7 @@ void jasperengine::terrain::scatterFoliageCell(const FoliageCellInput& input, st
     const float originX = static_cast<float>(input.cellX) * FOLIAGE_DETAIL_CELL_SIZE;
     const float originZ = static_cast<float>(input.cellZ) * FOLIAGE_DETAIL_CELL_SIZE;
     const float halfSize = size * 0.5f;
+    const float heightSize = input.heightMapSize > 0.0f ? input.heightMapSize : size;
 
     if (originX > halfSize || originZ > halfSize ||
         (originX + FOLIAGE_DETAIL_CELL_SIZE) < -halfSize || (originZ + FOLIAGE_DETAIL_CELL_SIZE) < -halfSize) {
@@ -281,9 +282,9 @@ void jasperengine::terrain::scatterFoliageCell(const FoliageCellInput& input, st
             continue;
         }
 
-        const float height = foliagePatchHeight(input.heightMap, size, input.terrainMaxHeight, localX, localZ);
+        const float height = foliagePatchHeight(input.heightMap, heightSize, input.terrainMaxHeight, localX, localZ);
         float normal[3];
-        foliagePatchNormal(input.heightMap, size, input.terrainMaxHeight, localX, localZ, height, normal);
+        foliagePatchNormal(input.heightMap, heightSize, input.terrainMaxHeight, localX, localZ, height, normal);
 
         const float normalY = std::clamp(normal[1], -1.0f, 1.0f);
         if (normalY > cosineMinSlope || normalY < cosineMaxSlope) {

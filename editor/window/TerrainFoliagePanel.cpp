@@ -744,6 +744,13 @@ bool editor::TerrainFoliagePanel::drawTrees(SceneProject* sceneProject, Entity e
     update();
     drawPrototypeGrid(sceneProject, entity, terrain);
 
+    // T4 R27: a World draws its prototypes from each tile's own tree file, which these tools do not write
+    if (terrain.world) {
+        ImGui::TextWrapped("Trees can't be painted on a Terrain World: its trees are a file per tile, and these tools edit one Terrain's "
+                           "Tree Data. Place the trees on a Terrain, then Convert to Terrain World.");
+        return false;
+    }
+
     if (ImGui::BeginTable("##tree_rows", 2, ImGuiTableFlags_SizingStretchProp)) {
         rowLabel("Place As", "Tree: stored in the Terrain's tree data, with LODs, impostors and capsules. GameObject: a child of the Terrain, with its components.");
         int placeAs = placeAsTree ? 0 : 1;

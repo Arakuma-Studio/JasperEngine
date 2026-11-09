@@ -3,6 +3,7 @@
 
 #include "RenderSystem.h"
 #include "TerrainRenderInfo.h"
+#include "subsystem/TerrainWorldRender.h"
 #include "FoliageSystem.h"
 #include "component/CameraComponent.h"
 #if JASPERENGINE_VOXEL
@@ -3571,6 +3572,7 @@ SubmeshShaderInputs RenderSystem::getExtraPassShaderInputs(const SubmeshShaderIn
     inputs.terrainHex = false;
     inputs.terrainHexStochastic = false;
     inputs.terrainHoles = false;
+    inputs.terrainWorld = false;
     return inputs;
 }
 
@@ -4012,7 +4014,9 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     // terrain of plain color layers keeps the cheaper one it always had.
     inputs.terrainSurface = terrain && hasTerrainSurfaceLayers(*terrain);
     inputs.voxelTier = mesh.voxelTier;
-    inputs.terrainHoles = terrain && !terrain->holeMap.empty();
+    // T4 D14: a World's holes are the world's (hasHoles), each tile binding its map or a solid texel
+    inputs.terrainHoles = terrain && (terrain->world ? terrainWorldHasHoles(*terrain) : !terrain->holeMap.empty());
+    inputs.terrainWorld = terrain && terrain->world;
     if (terrain){
         inputs.terrainVariant = getTerrainVariantInputs(*terrain);
     }
@@ -4450,6 +4454,12 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         variant.properties |= ShaderPool::getTerrainHolesProperty(ShaderType::MESH);
         variant.depthProperties |= ShaderPool::getTerrainHolesProperty(ShaderType::DEPTH);
         variant.gbufferProperties |= ShaderPool::getTerrainHolesProperty(ShaderType::GBUFFER);
+    }
+    // T4 R58: every pass of a World reads its pages
+    if (inputs.terrainWorld){
+        variant.properties |= ShaderPool::getTerrainWorldProperty(ShaderType::MESH);
+        variant.depthProperties |= ShaderPool::getTerrainWorldProperty(ShaderType::DEPTH);
+        variant.gbufferProperties |= ShaderPool::getTerrainWorldProperty(ShaderType::GBUFFER);
     }
     // a G-buffer of a painted terrain reads what its tier reads, and all of its layers
     if (variant.gbuffer && p_terrainSurface){
@@ -6199,6 +6209,9 @@ void RenderSystem::updateAllTerrainRenderTextures(){
         TerrainComponent& terrain = terrains->getComponentFromIndex(i);
         updateTerrainMacroNormal(entity, terrain, *mesh);
         updateTerrainRenderTextures(entity, terrain, *mesh);
+        // T4: a World's pages and overview go up before the passes (D6)
+        if (terrain.world)
+            updateTerrainWorldPages(entity, terrain);
     }
 }
 
@@ -6528,7 +6541,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
     if (terrain){
         for (int v = 0; v < MAX_TERRAIN_VIEWS; v++){
             for (int s = 0; s < 2; s++){
-                size_t bufferSize = terrain->nodes.size() * terrain->views[v].nodesbuffer[s].getStride();
+                // (a World's nodes are its selection's, at most TERRAIN_WORLD_MAX_NODES a grid: R36)
+                size_t bufferSize = (terrain->world ? TERRAIN_WORLD_MAX_NODES : terrain->nodes.size()) * terrain->views[v].nodesbuffer[s].getStride();
                 JE_GPU_ALLOC_SCOPE(Terrain, "Terrain");
                 terrain->views[v].nodesbuffer[s].getRender()->createBuffer(bufferSize, terrain->views[v].nodesbuffer[s].getData(), terrain->views[v].nodesbuffer[s].getType(), terrain->views[v].nodesbuffer[s].getUsage());
             }
@@ -10656,7 +10670,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             if (terrain){
                 // morph from this view's eye position (paired with its node selection)
                 terrain->eyePos = terrainNodes->nodesEyePos;
-                render.applyUniformBlock(mesh.submeshes[i].slotVSTerrain, sizeof(float) * 8, &(terrain->eyePos));
+                // (a World's block is wider and per draw item: drawTerrainWorldItems)
+                if (!terrain->world)
+                    render.applyUniformBlock(mesh.submeshes[i].slotVSTerrain, sizeof(float) * 8, &(terrain->eyePos));
                 applyTerrainLayersUniform(render, mesh.submeshes[i].slotFSTerrainLayers, entity, *terrain, mesh.submeshes[i].litDefineBits,
                                           (mesh.submeshes[i].litDefineBits & MaterialPbr::getDefineBit("TERRAIN_EXTENDED_LAYERS")) != 0);
                 applyTerrainMacroVertexUniform(render, mesh.submeshes[i].slotVSTerrainMacro, *terrain);
@@ -10682,6 +10698,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 for (const TilemapDrawRange& range : tilemapDrawRanges){
                     render.draw(range.offset, range.count, instanceCount);
                 }
+            }else if (terrain && terrain->world){
+                drawTerrainWorldItems(render, mesh, i, *terrain, *terrainNodes, TerrainWorldPass::COLOR, mesh.submeshes[i].slotVSTerrain);
             }else if (fadeShader || passLodFade == LodFadePass::FADE){
                 drawSubmeshFade(render, entity, mesh, i, instmesh, instanceView, draw, mesh.submeshes[i].slotVSParams, objectBlock, beforeLevel);
             }else{
@@ -10813,7 +10831,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             if (terrain){
                 instanceCount = terrainNodes->nodesbuffer[i].getCount();
                 depthRender.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrainNodes->nodesbuffer[i].getRender());
-                if (passShadowTerrain && i < 2){
+                if (passShadowTerrain && i < 2 && !terrain->world){
                     const std::vector<float>& nodes = passShadowTerrain->nodes[i];
                     if (nodes.empty())
                         continue;
@@ -10876,10 +10894,16 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             if (terrain){
                 // shadow depth renders the view camera's selection, or the slot's own (from its eye)
                 terrain->eyePos = ownTerrainCut ? passShadowTerrain->eye : terrainNodes->nodesEyePos;
-                depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthTerrain, sizeof(float) * 8, &(terrain->eyePos));
+                if (!terrain->world)
+                    depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthTerrain, sizeof(float) * 8, &(terrain->eyePos));
             }
 
-            if (batch){
+            if (terrain && terrain->world){
+                // T4: near items, and the overview unless it is a shadow (R9)
+                drawTerrainWorldItems(depthRender, mesh, i, *terrain, *terrainNodes,
+                                      pipelineType == PipelineType::PIP_SHADOW_DEPTH ? TerrainWorldPass::SHADOW : TerrainWorldPass::DEPTH,
+                                      mesh.submeshes[i].slotVSDepthTerrain);
+            }else if (batch){
                 drawBatchGeometry(depthRender, mesh.buffer, *batch);
             }else if (tilemap && !tilemapDrawRanges.empty()){
                 if (instmesh){
@@ -11914,14 +11938,17 @@ void RenderSystem::drawMeshGBuffer(GBufferDraw& record, const float cameraFar, c
 #endif
         if (terrain){
             terrain->eyePos = terrainNodes->nodesEyePos;
-            gbufferRender.applyUniformBlock(mesh.submeshes[i].slotVSGBufferTerrain, sizeof(float) * 8, &(terrain->eyePos));
+            if (!terrain->world)
+                gbufferRender.applyUniformBlock(mesh.submeshes[i].slotVSGBufferTerrain, sizeof(float) * 8, &(terrain->eyePos));
             applyTerrainLayersUniform(gbufferRender, mesh.submeshes[i].slotFSGBufferTerrainLayers, entity, *terrain, 0,
                                       (mesh.submeshes[i].gbufferShaderProperties & ShaderPool::getTerrainExtendedProperty()) != 0);
             instanceCount = terrainNodes->nodesbuffer[i].getCount();
             gbufferRender.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrainNodes->nodesbuffer[i].getRender());
         }
 
-        if (tilemap && !tilemapDrawRanges.empty()){
+        if (terrain && terrain->world){
+            drawTerrainWorldItems(gbufferRender, mesh, i, *terrain, *terrainNodes, TerrainWorldPass::GBUFFER, mesh.submeshes[i].slotVSGBufferTerrain);
+        }else if (tilemap && !tilemapDrawRanges.empty()){
             if (instmesh){
                 bindInstances(gbufferRender, *instmesh, instanceView, record.draw.instanceFirst, record.draw.vatFirst);
             }
@@ -15620,6 +15647,11 @@ void RenderSystem::sortPoints(PointsComponent& points, Transform& transform, Cam
 }
 
 void RenderSystem::updateTerrain(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainView& view){
+    // T4 D4: a World selects over its tiles (RenderSystemTerrainWorld.cpp)
+    if (terrain.world){
+        if (terrain.heightMapLoaded) selectTerrainWorld(terrain, transform, camera, cameraTransform, view);
+        return;
+    }
     if (terrain.heightMapLoaded){
         for (int i = 0; i < terrain.numNodes; i++){
             terrain.nodes[i].visible = false;
@@ -17767,8 +17799,13 @@ void RenderSystem::update(double dt){
                 // T3 R29: the first cut and the last fill swap the variant, the loaded one drawing
                 // meanwhile (a stand-in for holes binds an all-solid map)
                 if (terrain && mesh.loaded && !mesh.needReload &&
-                        ((mesh.submeshes[s].shaderProperties & ShaderPool::getTerrainHolesProperty(ShaderType::MESH)) != 0) != !terrain->holeMap.empty()){
+                        ((mesh.submeshes[s].shaderProperties & ShaderPool::getTerrainHolesProperty(ShaderType::MESH)) != 0) !=
+                        (terrain->world ? terrainWorldHasHoles(*terrain) : !terrain->holeMap.empty())){
                     mesh.needVariantReload = true;
+                }
+                // T4: a Terrain becomes a World, or stops being one
+                if (terrain && mesh.loaded && ((mesh.submeshes[s].shaderProperties & ShaderPool::getTerrainWorldProperty(ShaderType::MESH)) != 0) != (terrain->world != nullptr)){
+                    mesh.needReload = true;
                 }
 
                 // A layer gains or loses its own surface from the editor, a script or an AI
@@ -20857,7 +20894,7 @@ void RenderSystem::selectPassTerrain(PassObjects& objects, CameraComponent& came
         }
 
         // every node can be selected once at most, like the frame's own buffers
-        const size_t needed = std::max<size_t>(terrain.nodes.size(), 1) * view.nodesbuffer[0].getStride();
+        const size_t needed = std::max<size_t>(terrain.world ? TERRAIN_WORLD_MAX_NODES : terrain.nodes.size(), 1) * view.nodesbuffer[0].getStride();
         if (capacity < needed || !view.nodesbuffer[0].getRender()->isCreated()){
             for (int s = 0; s < 2; s++){
                 InterleavedBuffer& buffer = view.nodesbuffer[s];

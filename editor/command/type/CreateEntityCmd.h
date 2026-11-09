@@ -120,7 +120,9 @@ namespace jasperengine::editor{
         SOUND_EVENT_ACTION,
         MIXER_SNAPSHOT_ACTION,
         // a Voxel Volume; the Hierarchy's row opens its dialog (T6 R59), which makes it with its file
-        VOXEL_VOLUME
+        VOXEL_VOLUME,
+        // a Terrain World: the Hierarchy's row opens Create Terrain World (T4 R40), which makes it with its folder
+        TERRAIN_WORLD
     };
 
     class CreateEntityCmd: public Command{

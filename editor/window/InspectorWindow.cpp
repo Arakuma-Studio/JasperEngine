@@ -17,6 +17,8 @@
 #include "component/TextEffectComponent.h"
 #include "EditorModal.h"
 #include "window/TerrainEditWindow.h"
+#include "terrainworld/TerrainWorldPanel.h"
+#include "component/TerrainWorldComponent.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
 
@@ -10674,13 +10676,23 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
         }
     }
 
-    separatorText("Maps");
-    beginTable(cpType, getLabelSize("Height Map"), "terrain_maps");
-    propertyRow(RowPropertyType::Texture, cpType, "heightMap", "Height Map", sceneProject, entities, textureSettings);
-    endTable();
+    // T4 R40: a World's maps, sizes and LOD are its tiles' and its asset's
+    const bool world = terrain.world != nullptr;
+    if (entities.size() == 1 && !world && !sceneProject->scene->findComponent<TerrainWorldComponent>(entities[0])){
+        // R33: the Terrain becomes a World at its place; it stays, inactive
+        if (ImGui::Button("Convert to Terrain World...", ImVec2(-1, 0))){
+            ConvertTerrainWorldDialog::instance().open(project, sceneProject->id, entities[0]);
+        }
+    }
+    if (!world){
+        separatorText("Maps");
+        beginTable(cpType, getLabelSize("Height Map"), "terrain_maps");
+        propertyRow(RowPropertyType::Texture, cpType, "heightMap", "Height Map", sceneProject, entities, textureSettings);
+        endTable();
+    }
 
     // The Terrain window owns adding and removing these, so here they are only listed
-    if (!terrain.blendMaps.empty()){
+    if (!terrain.blendMaps.empty() && !world){
         separatorText("Blend Maps");
         beginTable(cpType, getLabelSize("Blend Map 1"), "terrain_blendmaps");
         for (size_t i = 0; i < terrain.blendMaps.size(); i++){
@@ -10794,15 +10806,17 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
     settingsLevels.intMin = 1;
     settingsLevels.intMax = 9;
 
-    separatorText("Mesh Resolution");
-    beginTable(cpType, getLabelSize("Root Grid Size"), "terrain_shape");
-    propertyRow(RowPropertyType::FloatPositive, cpType, "terrainSize", "Size", sceneProject, entities, settingsFloat);
-    propertyRow(RowPropertyType::FloatPositive, cpType, "maxHeight", "Max Height", sceneProject, entities, settingsFloat);
-    propertyRow(RowPropertyType::FloatPositive, cpType, "resolution", "Resolution", sceneProject, entities, settingsGridResolution);
-    propertyRow(RowPropertyType::Int, cpType, "rootGridSize", "Root Grid Size", sceneProject, entities, settingsRootGrid);
-    propertyRow(RowPropertyType::Int, cpType, "levels", "Levels", sceneProject, entities, settingsLevels);
-    propertyRow(RowPropertyType::Vector2, cpType, "offset", "Offset", sceneProject, entities);
-    endTable();
+    if (!world){
+        separatorText("Mesh Resolution");
+        beginTable(cpType, getLabelSize("Root Grid Size"), "terrain_shape");
+        propertyRow(RowPropertyType::FloatPositive, cpType, "terrainSize", "Size", sceneProject, entities, settingsFloat);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "maxHeight", "Max Height", sceneProject, entities, settingsFloat);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "resolution", "Resolution", sceneProject, entities, settingsGridResolution);
+        propertyRow(RowPropertyType::Int, cpType, "rootGridSize", "Root Grid Size", sceneProject, entities, settingsRootGrid);
+        propertyRow(RowPropertyType::Int, cpType, "levels", "Levels", sceneProject, entities, settingsLevels);
+        propertyRow(RowPropertyType::Vector2, cpType, "offset", "Offset", sceneProject, entities);
+        endTable();
+    }
 
     separatorText("Texturing");
     beginTable(cpType, getLabelSize("Detail Tiles"), "terrain_tiling");
@@ -10812,6 +10826,9 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
 
     drawTerrainQualitySection(cpType, sceneProject, entities);
 
+    if (world){
+        return;
+    }
     separatorText("Ranges");
     beginTable(cpType, getLabelSize("Auto Ranges"), "terrain_ranges_auto");
     propertyRow(RowPropertyType::Bool, cpType, "autoSetRanges", "Auto Ranges", sceneProject, entities);
