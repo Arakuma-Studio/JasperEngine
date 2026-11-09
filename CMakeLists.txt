@@ -1536,6 +1536,9 @@ include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
 # the pixel-art family (S41-S52): PixelImage, the .aseprite codec, the importer and its windows
 include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
 
+# grid tilemaps (S50): tileset editing, brushes, importers, the Tile Palette and Tileset Editor
+include(${EDITOR_DIR}/tilemap/TilemapEditorSources.cmake)
+
 # The engine build C++ script libraries must be made for (S23 toolchain fingerprint): the
 # editor version, on this one file (as on the engine's ToolchainFingerprint.cpp)
 set_source_files_properties(${EDITOR_DIR}/util/EditorFingerprint.cpp PROPERTIES
