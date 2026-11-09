@@ -103,6 +103,7 @@ JASPERENGINE_INIT void init(){
     scene.setBackgroundColor(0.157f, 0.784f, 0.353f, 1.0f);
     sceneCamera.setPosition(0.0f, 40.0f, 0.0f);
     sceneCamera.setTarget(0.0f, 140.0f, -200.0f);
+    sceneCamera.setFarClip(1000.0f);
     sceneCamera.activate();
     Engine::setScene(&scene);
     Engine::onUpdate.add("foliageGate", update);

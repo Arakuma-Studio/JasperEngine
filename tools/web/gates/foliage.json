@@ -7,6 +7,7 @@
   ],
   "tolerance": 40,
   "isolated": true,
+  "seconds": 15,
   "ordered": true,
   "console": [
     {
