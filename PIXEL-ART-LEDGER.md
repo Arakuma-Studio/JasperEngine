@@ -174,7 +174,7 @@ never build or run them.
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | implementing |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | implementing |
-| S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
+| S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | in review |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | implementing |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | merged and pushed |
@@ -255,6 +255,12 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 - Destroy the build boxes A–D when the program ends.
 
 ## Log
+
+- 2026-11-09: S48's lighter gate passed at `e8c5db318` (`WERROR` build, editor 206/206, core 173/173,
+  MCP 150 passed and 3 skipped, transition goldens 8/8, Vulkan 29/29, post-FX 3/3; red controls for
+  GlitchBit and GlitchCollector). Independent review started. Not measured: phone budgets (no
+  device), desktop and web cost. Smoke, web and android wait for its batch landing. Main took the
+  terrain programme (`fae92eef7`), so S48, S46, S47 and S50 still merge it at landing.
 
 - 2026-11-09: S46, S47 and S50 stopped on an API weekly limit; the session moved accounts and all
   four remaining implementers were revived. Heads: S46 `5499a9fc3` (+ uncommitted work), S47 and
