@@ -9,8 +9,10 @@
 #include "ParticleCompiler.h"
 
 #include "math/noise/GradientCurl3D.h"
+#include "particles/AnalyticParticles.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleKernels.h"
+#include "pixelart/PixelColor.h"
 #include "particles/ParticleModules.h"
 #include "util/Color.h"
 
@@ -184,6 +186,37 @@ namespace {
             out[0] = l.x; out[1] = l.y; out[2] = l.z; out[3] = l.w;
         };
         switch (v.mode){
+            case GradientValueMode::Ramp: {
+                // the exact steps (S49 R13): no LUT between them; Start Color picks one at random.
+                // lut0 the steps in linear, lut1 their sRGB8 bytes (packed, bit for bit in the pool)
+                const std::vector<pixelart::Rgba8> colors = v.resolveRamp();
+                if (colors.empty()){
+                    g.kind = GradientParam::Const;
+                    for (int c = 0; c < 4; c++) g.c0[c] = g.c1[c] = 1.0f;
+                    return true;
+                }
+                g.kind = GradientParam::Ramp;
+                if (startValue){
+                    g.driver = CurveDriver::Random;
+                    g.scale = 1.0f;
+                    g.offset = 0.0f;
+                }
+                g.lutSize = (uint32_t)colors.size();
+                std::vector<float> values, bytes;
+                for (const pixelart::Rgba8& c : colors){
+                    const Vector4 l = pixelart::toEngineLinear(c);
+                    values.insert(values.end(), {l.x, l.y, l.z, l.w});
+                    const uint32_t packed = (uint32_t)c.r | ((uint32_t)c.g << 8) | ((uint32_t)c.b << 16) | ((uint32_t)c.a << 24);
+                    float word;
+                    std::memcpy(&word, &packed, sizeof(word));
+                    bytes.push_back(word);
+                }
+                if (!place(values, false, g.lut0) || !place(bytes, true, g.lut1))
+                    return false;
+                g.rampBias = std::clamp(v.rampBias, 0.1f, 10.0f);
+                g.rampReverse = v.rampReverse ? 1u : 0u;
+                return true;
+            }
             case GradientValueMode::Color:
                 g.kind = GradientParam::Const;
                 linear(v.color, g.c0);
@@ -329,6 +362,11 @@ namespace {
             buildGradient(v, randomSalt((uint32_t)module, stream), startValue, append(), g);
             if (!bound.empty())
                 record(source ? source : &v, g, true, nullptr, &v, 1.0f, startValue);
+            // a ramp that cannot be read draws white (S49 R12)
+            if (v.mode == GradientValueMode::Ramp && g.kind != GradientParam::Ramp)
+                diagnostics.push_back({Diagnostic::Severity::Warning, std::string(ParticleModules::get(module).key),
+                                       "the palette ramp \"" + v.ramp + "\" cannot be read: drawn white", "ramp_missing",
+                                       "pick a ramp of a .palette in the project"});
             return g;
         }
 
@@ -347,6 +385,83 @@ namespace {
         m[0] = cy * cz + sy * sx * sz;  m[1] = cx * sz;  m[2] = -sy * cz + cy * sx * sz;
         m[3] = -cy * sz + sy * sx * cz; m[4] = cx * cz;  m[5] = sy * sz + cy * sx * cz;
         m[6] = sy * cx;                 m[7] = -sx;      m[8] = cy * cx;
+    }
+
+    // ---------------------------------------------------------------- pixel art (S49)
+
+    // the camera-facing modes the Pixel Art module applies to (R1)
+    bool pixelArtMode(RenderMode mode){
+        return mode == RenderMode::Billboard || mode == RenderMode::FacingCameraPosition || mode == RenderMode::StretchedBillboard ||
+               mode == RenderMode::VelocityAligned || mode == RenderMode::Pixel;
+    }
+
+    void compilePixel(Context& cx, RenderParams& r, const ColorOverLifetimeModule& col, const ColorBySpeedModule& cbs, bool replaceColor, bool storedColor){
+        const ParticleEffectDocument& d = cx.doc;
+        const RendererModule& rm = d.renderer;
+        const PixelArtModule& pa = d.pixelArt;
+        PixelParams& p = r.pixel;
+        const bool module = on(pa.present, pa.enabled);
+        if (module && rm.enabled && rm.renderMode == RenderMode::Mesh)
+            cx.diagnostics.push_back({Diagnostic::Severity::Warning, "modules.pixelArt", "Mesh particles ignore the Pixel Art module", "pixel_art_mesh",
+                                      "use Render Mode Pixel or a billboard mode"});
+        p.shapes = r.mode == RenderMode::Pixel ? 1 : 0;
+        p.module = (module && pixelArtMode(r.mode)) ? 1 : 0;
+        p.active = (p.shapes || p.module) ? 1 : 0;
+        if (!p.active)
+            return;
+        // without the module the Pixel mode keeps S20's look otherwise: blended, unsnapped sizes in pixels
+        const PixelArtModule defaults;
+        const PixelArtModule& m = p.module ? pa : defaults;
+        p.snap = (p.module && m.snap) ? 1 : 0;
+        p.pixelSizes = (!p.module || m.pixelSizes) ? 1 : 0;
+        p.integerSize = (!p.module || m.integerSize) ? 1 : 0;
+        p.fade = p.module ? m.fade : PixelFade::Alpha;
+        p.ditherSize = (uint8_t)(m.ditherSize <= 2 ? 2 : (m.ditherSize >= 8 ? 8 : 4));
+        p.ditherSpace = m.ditherSpace;
+        p.secondary = m.secondary;
+        p.secondaryOffset = (int8_t)std::clamp(m.secondaryOffset, -8, 8);
+        p.secondaryColor[0] = m.secondaryColor.x; p.secondaryColor[1] = m.secondaryColor.y;
+        p.secondaryColor[2] = m.secondaryColor.z; p.secondaryColor[3] = m.secondaryColor.w;
+        p.holdFrameRate = p.module ? std::max(m.holdFrameRate, 0.0f) : 0.0f;
+        p.fadeCurve = (p.module && !(m.fadeOverLifetime.isConstant() && m.fadeOverLifetime.constant == 1.0f)) ? 1 : 0;
+        if (p.fadeCurve)
+            p.fadeOverLifetime = cx.curve(m.fadeOverLifetime, ModuleId::PixelArt, 4);
+        p.wobble = (p.module && (m.wobbleAmplitude.x != 0.0f || m.wobbleAmplitude.y != 0.0f)) ? 1 : 0;
+        p.wobbleRandomPhase = m.wobbleRandomPhase ? 1 : 0;
+        p.wobbleAmplitude[0] = m.wobbleAmplitude.x; p.wobbleAmplitude[1] = m.wobbleAmplitude.y;
+        p.wobbleFrequency[0] = m.wobbleFrequency.x; p.wobbleFrequency[1] = m.wobbleFrequency.y;
+        p.flickerBelow = p.module ? std::clamp(m.flickerBelow, 0.0f, 1.0f) : 0.0f;
+        p.flickerRate = std::max(m.flickerRate, 0.1f);
+        p.shape = rm.pixelShape;
+        p.streakLengthScale = std::max(rm.streakLengthScale, 0.0f);
+        p.streakMaxLength = std::clamp(rm.streakMaxLength, 1.0f, 64.0f);
+        p.streakHeadFraction = std::clamp(rm.streakHeadFraction, 0.0f, 1.0f);
+        p.streakWidth = (uint32_t)std::clamp(rm.streakWidth, 1, 3);
+        p.discRim = rm.discRim ? 1 : 0;
+        p.ringWidth = (uint32_t)std::clamp(rm.ringWidth, 1, 8);
+        p.dotShadeBottom = rm.dotShadeBottom ? 1 : 0;
+        p.glowBands = (uint32_t)std::clamp(rm.glowBands, 1, 4);
+        p.rotationSteps = (uint32_t)std::clamp(rm.rotationSteps, 1, 360);
+
+        // the ramp: Color over Lifetime's when it is one, else Start Color's (R6)
+        const bool colOn = on(col.present, col.enabled);
+        const bool cbsOn = on(cbs.present, cbs.enabled);
+        if (colOn && !col.setMode && r.colorOverLifetime && r.color.kind == GradientParam::Ramp){
+            p.rampSource = 2;
+            p.ramp = r.color;
+        }else if (d.main.startColor.mode == GradientValueMode::Ramp){
+            p.ramp = cx.gradient(d.main.startColor, ModuleId::Main, 10, true);
+            p.rampSource = p.ramp.kind == GradientParam::Ramp ? 1 : 0;
+        }
+        // the ramp's bytes are drawn as they are when every other colour is white (R13)
+        const MinMaxGradient& start = d.main.startColor;
+        const bool startWhiteRgb = start.mode == GradientValueMode::Color && start.color.x == 1.0f && start.color.y == 1.0f && start.color.z == 1.0f;
+        const bool othersWhite = !cbsOn && !replaceColor && !storedColor;
+        if (p.rampSource == 2)
+            p.exactColor = (startWhiteRgb && othersWhite) ? 1 : 0;
+        else if (p.rampSource == 1)
+            p.exactColor = (othersWhite && (!colOn || (col.color.mode == GradientValueMode::Color && col.color.color.x == 1.0f &&
+                                                      col.color.color.y == 1.0f && col.color.color.z == 1.0f))) ? 1 : 0;
     }
 
     // ---------------------------------------------------------------- the Low noise field
@@ -471,6 +586,10 @@ namespace {
         if (on(d.noise.present, d.noise.enabled) && !d.noise.rotationAmount.isZero())
             s.rotation = true;
         if (on(d.rotationOverLifetime.present, d.rotationOverLifetime.enabled) && !drivenPurely(d.rotationOverLifetime.angularVelocity))
+            s.rotation = true;
+        // a particle at rest stops turning: its rotation is ticked, so the tick can hold it (S49 R14)
+        if (on(d.rotationOverLifetime.present, d.rotationOverLifetime.enabled) && on(d.collision.present, d.collision.enabled) &&
+                d.collision.settleSpeed > 0.0f)
             s.rotation = true;
         const bool mesh = d.renderer.enabled && (d.renderer.renderMode == RenderMode::Mesh || d.renderer.renderMode == RenderMode::Ring);
         if (mesh){
@@ -819,6 +938,9 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
     effect.exposedSlots.clear();
     effect.exposedBindings.clear();
     effect.valid = ParticleEffectCodec::validate(d, effect.diagnostics);
+    // an Analytic effect computes a subset of the modules (S49 R15): the rest refuse it
+    if (effect.valid && d.simulationMode == SimulationMode::Analytic)
+        effect.valid = AnalyticParticles::validate(d, effect.diagnostics);
     if (!effect.valid)
         return;
 
@@ -913,6 +1035,8 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
     const bool collisionOn = on(d.collision.present, d.collision.enabled);
     const bool worldCollision = collisionOn && (d.collision.type == CollisionType::World || d.collision.type == CollisionType::World2D);
     if (worldCollision) need({ChPlaneNX, ChPlaneNY, ChPlaneNZ, ChPlaneD, ChPlaneTick});
+    // only an effect that settles pays for the flag (S49 R14)
+    if (collisionOn && d.collision.settleSpeed > 0.0f) need({ChSettled});
     const bool trailsOn = on(d.trails.present, d.trails.enabled) && d.trails.mode == TrailMode::PerParticle;
     if (trailsOn) need({ChTrailSlot});
     {
@@ -1285,6 +1409,7 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         cp.maxQueries = c.quality == CollisionQuality::High ? 0xffffffffu : (uint32_t)std::max(c.maxQueriesPerTick, 1);
         cp.planeCacheTicks = (uint32_t)std::max(c.planeCacheTicks, 1);
         cp.maxEvents = (uint32_t)std::max(c.maxCollisionEvents, 1);
+        cp.settleSpeed = std::max(c.settleSpeed, 0.0f);
         prog.hasCollision = true;
         prog.collisionKind = cp.kind;
         prog.collisionEvents = c.sendEvents;
@@ -1449,6 +1574,7 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         r.maxScreenSize = rm.maxScreenSize;
         r.sortingFudge = rm.sortingFudge;
         r.emissive = rm.emissionIntensity;
+        compilePixel(cx, r, col, cbs, replaceColor, stored.color);
     }
 
     // ---- trails
@@ -1478,6 +1604,19 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
     sizeHints(d, prog);
     if (!effect.exposedSlots.empty())
         locateSlots(prog, cx.patterns, effect.exposedSlots);
+    // ---- Analytic (S49): the slot count must fit; each system compiles its seed's program
+    if (d.simulationMode == SimulationMode::Analytic){
+        prog.analytic = true;
+        prog.render.pixel.holdFrameRate = 0.0f;   // its time is quantised instead (AnalyticParticles::setTime)
+        float lo, hi;
+        d.main.startLifetime.range(lo, hi);
+        prog.maxLifetime = std::max(hi, 1.0e-4f);
+        AnalyticProgram probe;
+        if (!AnalyticParticles::compile(d, prog, 1u, probe, effect.diagnostics)){
+            effect.valid = false;
+            effect.program = ParticleProgram();
+        }
+    }
 }
 
 // ---------------------------------------------------------------- program queries
@@ -1599,7 +1738,7 @@ bool ParticleProgram::sameStructure(const ParticleProgram& other) const{
     if (trails.enabled != other.trails.enabled || (trails.enabled && (trails.mode != other.trails.mode || trails.maxPoints != other.trails.maxPoints ||
                                                                       trails.ratio != other.trails.ratio)))
         return false;
-    return render.mode == other.render.mode && render.mesh == other.render.mesh && subEmitters == other.subEmitters;
+    return render.mode == other.render.mode && render.mesh == other.render.mesh && subEmitters == other.subEmitters && analytic == other.analytic;
 }
 
 uint32_t ParticleProgram::capacityHint() const{
@@ -1671,6 +1810,6 @@ const char* particles::channelName(Channel channel){
         "startSizeZ", "quatX", "quatY", "quatZ", "quatW", "angVelX", "angVelY", "angVelZ", "colorR", "colorG", "colorB",
         "colorA", "accelX", "accelY", "accelZ", "frame", "noiseSize", "planeNX", "planeNY", "planeNZ", "planeD", "planeTick",
         "trailSlot", "animVelX", "animVelY", "animVelZ", "parentId", "followQuatX", "followQuatY", "followQuatZ", "followQuatW",
-        "followSize"};
+        "followSize", "settled"};
     return channel < ChCount ? names[channel] : "?";
 }

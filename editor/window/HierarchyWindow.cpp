@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "pixelart/PaletteUse.h"
+#include "pixelart/PixelSnap.h"
+#include "pixelart/particles/PixelParticlePresets.h"
+#include "pixelart/particles/PixelPresetCreate.h"
+#include "util/ProjectFileWrites.h"
 #include "util/ScriptAttach.h"
 #include "audio/SoundDrop.h"
 #include "util/UIProbe.h"
@@ -595,6 +600,16 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Effects", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D, true},
         {"Effects", "Local Volumetric Fog", ICON_FA_SMOG, T::LOCAL_VOLUMETRIC_FOG, "Local Volumetric Fog", CREATE_IN_3D},
         {"Effects", "Volumetric Clouds", ICON_FA_CLOUD, T::VOLUMETRIC_CLOUDS, "Volumetric Clouds", CREATE_IN_3D},
+        // S49's pixel presets (editor/pixelart/particles): a nested submenu, the entity name the preset's label
+        {"Effects/Pixel", "Spark", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Spark", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Smoke", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Smoke", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Fire", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Fire", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Ember", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Ember", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Grit", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Grit", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Debris", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Debris", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Light Flash", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Light Flash", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Smoke Loop", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Smoke Loop", CREATE_IN_WORLD, true},
+        {"Effects/Pixel", "Ember Loop", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Ember Loop", CREATE_IN_WORLD},
 
         {"Light", "Directional Light", ICON_FA_SUN, T::DIRECTIONAL_LIGHT, "Directional Light", CREATE_IN_3D},
         {"Light", "Point Light", ICON_FA_LIGHTBULB, T::POINT_LIGHT, "Point Light", CREATE_IN_3D},
@@ -610,6 +625,7 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
 
         {"UI", "Image", ICON_FA_IMAGE, T::IMAGE, "Image", CREATE_IN_ALL},
         {"UI", "Text", ICON_FA_FONT, T::TEXT, "Text", CREATE_IN_ALL},
+        {"UI", "Text (Pixel)", ICON_FA_FONT, T::TEXT_PIXEL, "Text", CREATE_IN_ALL},
         {"UI", "Button", ICON_FA_SQUARE_CARET_RIGHT, T::BUTTON, "Button", CREATE_IN_ALL},
         {"UI", "Scrollbar", ICON_FA_ARROWS_UP_DOWN, T::SCROLLBAR, "Scrollbar", CREATE_IN_ALL},
         {"UI", "Progress Bar", ICON_FA_BARS_PROGRESS, T::PROGRESSBAR, "Progress Bar", CREATE_IN_ALL},
@@ -723,6 +739,10 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
         project->setSelectedEntity(sceneProject->id, parent);
         return;
     }
+    if (entry.type == EntityCreationType::PIXEL_PARTICLE_SYSTEM) {
+        createPixelParticles(entry, parent, addToPrefab);
+        return;
+    }
     CreateEntityCmd* createCmd = new CreateEntityCmd(project, sceneProject->id, entry.entityName, entry.type, parent, addToPrefab);
     CommandHandle::get(sceneProject->id)->addCommandNoMerge(createCmd);
     openParent = parent;
@@ -731,6 +751,50 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
         SplineEditor::get().beginDraw(sceneProject->id, createCmd->getEntity());
     }
     // The new GameObject is selected: scroll it into view, as Unity does
+    std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+    if (selected.size() == 1) {
+        revealEntity(sceneProject->id, selected[0]);
+    }
+}
+
+// GameObject › Effects › Pixel › <preset> (S49 R20): a Particle System playing the preset inline at
+// the Scene view's pivot, snapped to the pixel grid; the palette copy and the child effects it
+// needs are written as one project step linked to the creation (one undo)
+void editor::HierarchyWindow::createPixelParticles(const CreateMenuEntry& entry, Entity parent, bool addToPrefab){
+    SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->scene) {
+        return;
+    }
+    std::string preset;
+    for (const std::string& name : pixelart::pixelParticlePresetNames()) {
+        if (pixelart::pixelParticlePresetLabel(name) == entry.label) preset = name;
+    }
+    pixelart::ProjectPixelPreset made;
+    std::string error;
+    if (preset.empty() || !pixelart::prepareProjectPixelPreset(*project, preset, "Particles/Pixel", made, error)) {
+        Out::error("Could not make the pixel preset %s: %s", entry.label, error.c_str());
+        return;
+    }
+    const bool wrote = !made.writes.empty();
+    if (wrote && !ProjectFileWrites::writeUndoable(project, made.writes, error, nullptr, nullptr, {}, true)) {
+        Out::error("Could not write the pixel preset's files: %s", error.c_str());
+        return;
+    }
+    Vector3 pivot = Vector3::ZERO;
+    if (parent == NULL_ENTITY && sceneProject->sceneRender) {
+        if (Camera* camera = sceneProject->sceneRender->getCamera()) {
+            camera->updateTransform();
+            pivot = camera->getWorldTarget();
+            if (!pivot.isValid()) pivot = Vector3::ZERO;
+        }
+        pivot = jasperengine::pixelart::snapWorld(pivot, std::max(project->getPixelsPerUnit(), 1));
+    }
+    CreateEntityCmd* createCmd = new CreateEntityCmd(project, sceneProject->id, entry.entityName, EntityCreationType::PARTICLE_SYSTEM, parent, addToPrefab);
+    createCmd->addProperty<particles::ParticleEffectDocument>(ComponentType::ParticleSystemComponent, "inlineEffect", made.document);
+    createCmd->addProperty<Vector3>(ComponentType::Transform, "position", pivot);
+    CommandHandle::get(sceneProject->id)->addCommandNoMerge(createCmd);
+    if (wrote) pixelart::linkPaletteCopy(*project, sceneProject->id);
+    openParent = parent;
     std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
     if (selected.size() == 1) {
         revealEntity(sceneProject->id, selected[0]);
@@ -832,7 +896,9 @@ void editor::HierarchyWindow::showCreateMenuItems(bool atRoot, Entity parent, bo
             continue;
         }
 
-        const std::string submenu = entry.submenu;
+        // "Effects/Pixel": a submenu inside "Effects"
+        const std::string full = entry.submenu;
+        const std::string submenu = full.substr(0, full.find('/'));
         if (std::find(shownSubmenus.begin(), shownSubmenus.end(), submenu) != shownSubmenus.end()) {
             continue;
         }
@@ -840,11 +906,33 @@ void editor::HierarchyWindow::showCreateMenuItems(bool atRoot, Entity parent, bo
         if (lastKind == 0) ImGui::Separator();
         lastKind = 1;
 
-        const std::string submenuLabel = std::string(createSubmenuIcon(entry.submenu)) + "  " + submenu;
+        const std::string submenuLabel = std::string(createSubmenuIcon(submenu.c_str())) + "  " + submenu;
         if (ImGui::BeginMenu(submenuLabel.c_str())) {
             bool first = true;
+            std::vector<std::string> nested;
             for (const CreateMenuEntry& child : entries) {
-                if (!child.submenu || submenu != child.submenu || !offered(child)) {
+                if (!child.submenu || !offered(child)) {
+                    continue;
+                }
+                const std::string childMenu = child.submenu;
+                if (childMenu.rfind(submenu + "/", 0) == 0) {
+                    const std::string inner = childMenu.substr(submenu.size() + 1);
+                    if (std::find(nested.begin(), nested.end(), inner) != nested.end()) continue;
+                    nested.push_back(inner);
+                    if (ImGui::BeginMenu(inner.c_str())) {
+                        bool firstInner = true;
+                        for (const CreateMenuEntry& item : entries) {
+                            if (!item.submenu || childMenu != item.submenu || !offered(item)) continue;
+                            if (item.separatorBefore && !firstInner) ImGui::Separator();
+                            firstInner = false;
+                            if (ImGui::MenuItem(itemLabel(item).c_str())) createGameObject(item, parent, addToPrefab);
+                        }
+                        ImGui::EndMenu();
+                    }
+                    first = false;
+                    continue;
+                }
+                if (submenu != childMenu) {
                     continue;
                 }
                 if (child.separatorBefore && !first) ImGui::Separator();

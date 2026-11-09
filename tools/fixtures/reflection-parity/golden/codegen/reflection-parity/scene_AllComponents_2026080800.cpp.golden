@@ -1506,6 +1506,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         text.pivotCentered = true;
         text.outlineWidth = 0.000000f;
         text.outlineColor = Vector4(0.000000f, 0.000000f, 0.000000f, 1.000000f);
+        text.outlineNeighbors = 8;
         text.shadowEnabled = false;
         text.shadowColor = Vector4(0.000000f, 0.000000f, 0.000000f, 0.500000f);
         text.shadowOffset = Vector2(2.000000f, 2.000000f);

@@ -9,6 +9,7 @@
 // cooked files instead of compiled in.
 
 #include "JasperEngine.h"
+#include "pixelart/BitmapTextCache.h"
 
 #include "PlatformConfig.h"
 #include "io/Data.h"
@@ -310,6 +311,7 @@ JASPERENGINE_INIT void init() {
     Engine::setCanvasSize(game.canvasWidth, game.canvasHeight);
     Engine::setScalingMode(game.scaling);
     Engine::setPixelsPerUnit(game.pixelsPerUnit);
+    pixelart::BitmapTextCache::get().setBudgetMiB(game.bitmapTextCacheMiB);
     Engine::setTextureStrategy(game.textureStrategy);
     Engine::setAtmosphereQualityDefaults(game.atmosphereQuality[0], game.atmosphereQuality[1], game.atmosphereQuality[2]);
     Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);

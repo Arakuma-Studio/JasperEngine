@@ -168,17 +168,17 @@ never build or run them.
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
 | S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | merged and pushed |
-| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | implementing |
+| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | landing (batch 4) |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
-| S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | spec done |
-| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | in review |
+| S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
+| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
-| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | in review |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | implementing |
+| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | merged and pushed |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | landing (batch 4) |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -210,6 +210,7 @@ deadline of 2026-11-11 19:0x UTC:
 | A | 5.161.240.186 | 205d9b263da5 | S51, S52 |
 | B | 5.161.235.8 | 32dda2ca7cd1 | S42, batch-landing verification |
 | C | 5.161.197.83 | 961a152cfd81 | S49 |
+| D | 5.161.197.6 | dd138a2601b3 | S48 (rented 2026-11-09, deadline 2026-11-12 00:01 UTC) |
 
 - `/var/lib/orquester/workspaces/jaspersito/je-remote/rbox <box> '<cmd>' | --img '<cmd>' |
   --fetch <path> <dst>`.
@@ -241,8 +242,171 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 **Batch landings (owner, 2026-11-08):** finished features are merged together with `origin/main` on one tree. That tree is verified once (each feature's filtered gate plus web, android, the Vulkan/GLES3 GPU sets and a smoke test) and pushed.
 
+## Follow-ups (owned by the coordinator)
+
+- Wire S51's font analyzer into S42's validator (`setFontAnalyzer`; S51 deviation 11 has the
+  mapping) once S42 and S51 are both on `main`.
+- `main` test issues seen during landings, from other programs:
+  - `FullPathGoldenTest.UIParticleSystemsClippedByAPanel` reads after 4 frames instead of
+    waiting for emitted particles;
+  - `DebugOverlayTest` gestures inherit state from an earlier test in the full run;
+  - LatticeRender shadows, SharedMeshBuffers ×2 and TestScriptEvents touch fail on Vulkan
+    `htmlui-tests`;
+  - `PopupCountsTapAndDrag` and `TextFallbackRtl` are flaky on repeat.
+- Run the MCP eval once for every pixel-art case (needs accounts lent with `box_lend_accounts`).
+- Destroy the build boxes A–D when the program ends.
+
 ## Log
 
+- 2026-11-09: Batch 4's first verification (S42 + S52 on box B): `WERROR` linux pass, core 129/129,
+  editor 203 passed.
+  - Failures: `main`'s known 4 (fixed by `fix/main-shared-green`), plus 2 new reflection goldens
+    (`pixel_art`, `pixel_art_bad`) because S52's fields enter S42's fixture re-saves.
+  - Merging `main` (now with S51) into the batch gives 18 conflicts, so an integration agent is
+    assembling batch 4: S42 + S52 + S51 (via `main`) + `fix/main-shared-green` + the S51 → S42
+    font-analyzer wiring + the reviewed goldens. Full verification and backends follow on box B.
+- 2026-11-09: `fix/main-shared-green` is done (box C, verified with `WERROR`; the shared-data set
+  is green):
+  - the reviewed Animator IK hash (5 members, none needs a shader variant);
+  - a determinism fix: `vertexCount` is computed from the buffers, not only after the first draw
+    (with a unit test);
+  - the `procmat-baked` goldens, one suite per commit;
+  - fanout 152→147: an unneeded `RenderSystem.h` include removed from 5 units, limit unchanged.
+
+  It joins batch 4 once the current batch-4 run finishes.
+- 2026-11-09: **Batch 3: S51 Pixel Fonts merged into `main` and pushed** (branch `6e0376917`).
+  - Verified on main + S51: web, android, Vulkan 98/98, `htmlui-tests` Vulkan.
+  - Of the 6 HTML UI failures, 4 also fail on plain `main`. `UIParticleSystemsClippedByAPanel`
+    fails on `main` too once its shader is cached: the test reads after 4 frames, before the first
+    fixed tick emits. `DebugOverlay` gestures pass 20/20 alone on S51 and 10/10 on `main`; they
+    fail only through order in the full run.
+  - These are `main` test issues to fix later (wait for the state, not frames; find the test that
+    leaks the gesture state). Also seen flaky on repeat on `main`: `PopupCountsTapAndDrag`,
+    `TextFallbackRtl`.
+- 2026-11-09: Batch 4 assembled on `land/batch3` (the worktree is reused): `main` + S42 (`9c7f0b34b`,
+  clean merge) + S52 (`0bea149af`).
+  - Three conflicts resolved, keeping both sides: `Project.cpp` (S42's default filter beside
+    S52's sorting fields), `McpValues.cpp` includes, and the eval cases (143, no duplicates,
+    `test_grade` OK).
+  - S52: shader cache v61, mesh bits 46–48, depth 20. The `Transform.h` fanout 152 comes from
+    S49's `ParticleEffectPreview.cpp`/`ParticlePreviewSource.cpp` includes (the main-green fix
+    handles it).
+  - Verification running on box B: `WERROR` linux, the filtered editor and core sets with the
+    shared data, 18 MCP files, budget, grader. Then web, android and Vulkan.
+- 2026-11-09: S42 merged `main` at `9c7f0b34b` and wired the S49 `particles_grid` hook.
+  - `pixel_art` group: 3 tools, 3,191 characters.
+  - Gate on box B: `WERROR`, core 85, editor 205, 168 MCP tests. The failures are `main`'s
+    (Animator hash, `procmat-baked`), plus `check_fanout`: `Transform.h` rebuilds 152 units
+    against 150, apparently on `main`, now added to the main-green fix.
+  - S42 is ready for batch 4 with S52 (merging) and the main-green fix.
+- 2026-11-09: Box D deadlocked for ~1h40m. An S48 sub-task started a detached job from inside a
+  box job, so it inherited the box lock's file descriptor and then waited on the same lock. S48
+  cleared it. `rbox` now runs `flock -o`, so no child can hold the lock, and the brief forbids
+  nested box jobs.
+- 2026-11-09: S52's review fixes are done at `8243584e2`.
+  - Gate on box A: editor 154, core 165, Vulkan 74, 107 MCP tests; red controls for the fixes.
+  - The 10k pack+upload takes 1.26 ms against 0.5 ms (shared box, software rendering), accepted
+    through `perfSlack` as needing a bench machine.
+  - S52 is merging `main` for the next batch, taking shader cache v61.
+- 2026-11-09: S42's review fixes are done at `16ca3d6af`.
+  - Includes the new `render_scale` rule; the preset raises the Low/Medium tier render scale
+    to 1.
+  - Gate on box B: editor 205, core 85, 168 MCP tests.
+  - The cold check takes 3.77 s against 3 s on the shared box, accepted as a measurement through
+    the harness slack.
+  - The trial merge with `main` has 7 conflicts, so S42 is merging `main` for the next batch.
+- 2026-11-09: The batch-3 `htmlui-tests` Vulkan baseline on `main`: 4 of the 6 fail there too
+  (LatticeRender shadows, SharedMeshBuffers ×2, TestScriptEvents touch). Two fail only with S51
+  (`FullPathGoldenTest.UIParticleSystemsClippedByAPanel`,
+  `DebugOverlayTest.GesturesResetOnFocusLossPauseAndCancel`) and were sent back to S51 to
+  root-cause before landing.
+- 2026-11-09: Batch 3 (S51) checks on box B: web pass, android pass, Vulkan font/palette/pixel
+  98/98.
+  - `htmlui-tests` Vulkan: 3,394 passed, 6 failed (SharedMeshBuffers ×2, LatticeRender shadows,
+    the UIParticleSystems clipping golden, DebugOverlay gestures, TestScriptEvents touch).
+  - The six are being re-run on plain `main` to check they're pre-existing before S51 lands.
+  - Every agent stopped on the 5-hour limit again (reset 06:40 UTC); S42, S52, S48 (with its
+    sub-tasks) and the main-green fix were revived at 06:42.
+- 2026-11-09: S51 merged `main` at `6e0376917` (13 conflicts resolved).
+  - Gate on box A: `WERROR`, core 74, HTML UI GL 8/8, 39 MCP tests. The `pixel_art` group is 3
+    tools and 2,850 characters; core 98,983 of 99,000; guide headroom 1,503.
+  - The only failures are `main`'s four (being fixed on `fix/main-shared-green`).
+  - Batch 3 is S51 on `land/batch3`: web, android, `htmlui-tests` Vulkan and the Vulkan font GPU
+    set are queued on box B. No shader change, so no cache bump.
+- 2026-11-09: The Doriax and mats-fx sessions have ended, but `main`'s shared-data failures remain
+  (no `procmat-baked` goldens; `procmat-baked` saves `vertexCount` 0 or 3672 depending on whether
+  it was drawn; the Animator IK `ShaderNeutralApi` hash).
+  - A fix agent is working on `fix/main-shared-green` on box C: root-cause the determinism bug,
+    review then update the hash, and generate the goldens. It lands as its own small batch.
+- 2026-11-09: S52's review found 2 blockers and several should-fix issues; all were sent back.
+  - Blockers: an instanced-mesh sprite with FLASH/PALETTE_SWAP reads an unbound `i_spriteFx`
+    (undefined on Vulkan, invalid on Metal/D3D11); deleted Sorting Layer ids are reused.
+  - Should-fix: a non-strict-weak comparator, Sprite Batch reload-per-frame growth, the snap pivot
+    for trimmed rotated frames, duplicate inspector rows, a fake AC3 red control, signed Unity
+    layer ids, missing eval cases.
+  - **Decision: the MCP eval (`tools/mcp/eval/run.py`) runs once for the whole pixel-art family
+    near the end**, on accounts lent with `box_lend_accounts` (owner approval card), not per
+    feature: it uses subscription quota, and the program already hits usage limits. Implementers
+    add the cases.
+- 2026-11-09: S51's review fixes are done at `46ce6ba20`.
+  - Built-in font redrawn, with an originality gtest; `preview_font` tool added; red controls
+    for the font, nearest sampling, `.fnt` reload and render scale.
+  - R20 budgets met (0.016 and 0.036 ms).
+  - **Export blur root-caused:** S56's Low/Medium device tiers cap the render scale (0.5/0.85),
+    then stretch the frame with LINEAR filtering. S51 fixed the UI-camera case (`8f11b53b5`).
+    S42 must keep the render scale at 1 for pixel-art projects, with a validator rule (routed to
+    S42).
+  - S51 deleted `/dev/null` by accident and restored it at once; verified it's a character device
+    1,3 and writable.
+  - The trial merge with `main` conflicts in 13 files, so S51 is merging `main` for batch 3.
+- 2026-11-09: S52's lighter gate passed on box A at `9a4f86a54` (editor 153, core 157, 106 MCP
+  tests; red controls for AC1–10). An independent review is running.
+- 2026-11-09: **Batch 2: S49 Pixel Particles merged into `main` and pushed** (branch `9da5e1936`).
+  - At landing I added the shader cache v60 for S49's particle shaders: S49 had changed shaders
+    without bumping it. S43's pin became "v59 or later", with a new S49 pin.
+  - Verified on box B: S49's gate (above); web, android and Vulkan 97/97 (`Particles*`,
+    `Analytic*`, `Palette*`, `PixelPerfect*`); and after the bump, `WERROR` editor tests plus the
+    pins and `ShaderKey*` (21/21).
+  - S48 (v60 on its branch) and S52 (v59 on its branch) are renumbered when they land.
+- 2026-11-09: S49 merged `main` at `9da5e1936`.
+  - `main` had already drawn sub-emitters (BF23 F1), so S49 kept `main`'s renderer and moved its
+    pixel, Analytic and Hold Frames draws onto it.
+  - Its bake, contact sheets and checks now live in S91's preview, bake and checks machinery,
+    with duplicates removed.
+  - Render Mode Pixel is 11 (saved by name). PARTICLES bits 12/13; `.particles` stays v1.
+  - Gate on box C: core 237, editor 201 (2 failures from `main`), 72 particle MCP tests, 98 shared
+    MCP tests (2 failures from `main`: the Animator `ShaderNeutralApi` hash and the
+    `procmat-baked` fixture goldens/determinism).
+  - S49 also fixed two of `main`'s test files that failed `WERROR`.
+  - Batch 2 is S49 alone. Its web, android and Vulkan checks are running on box B.
+- 2026-11-09: S42's lighter gate passed at `08ee95baa` (editor 191, core 85, 165 MCP tests).
+  The review found 1 blocker (the stale generated `ui` template breaks `HubTest`) and 8 should-fix
+  issues:
+  - Point Default Filter Mode changes LINEAR UI data on Stop;
+  - `mipmaps_compression` ignores the project's texture settings;
+  - the rotation fix un-flips sprites;
+  - stale fixes can overwrite newer edits;
+  - `check --hook` is noisy;
+  - a meta leak hidden by the flaky-test fix;
+  - main-thread cost;
+  - Project scope equals Build Scenes.
+
+  All were sent back.
+- 2026-11-09: S49's review fixes are done at `833e98d5c`. Sub-emitters now draw in S20's renderer
+  for every effect. Gate on box C: core 180, editor 146, 148 MCP tests.
+  - The trial batch-2 merge with `main` conflicts in 21 files (mats-fx's S91 particle work), so
+    S49 is merging `main` itself.
+  - Overlap found: `main`'s S91 already has `ParticleEffectPreview`, `ParticleSheetBake`,
+    `ParticleEffectChecks`, `preview_particle_effect`, `bake_particle_sheet` and
+    `check --particles`.
+  - S49 now builds its bake, contact sheets and checks on S91's machinery instead of duplicating
+    them. S48's contact sheets and lints reuse the same capture and check plumbing.
+- 2026-11-09: Every agent (S42, S48 with its four sub-tasks, S49, S51, S52) stopped on a 5-hour
+  API limit that reset at 01:40 UTC. All were revived at 01:41; their work was committed or saved.
+  S48 was told to keep at most 2–3 sub-agents active at once, to limit API load.
+- 2026-11-09: S48 Pixel FX started from `main` `de77eef9d` on a fourth box, D. S49's review
+  (blocker: sub-emitters never drawn, to be fixed in S20's renderer; 10 should-fix issues) was sent
+  back.
 - 2026-11-09: **Batch 1: S43 Palettes merged into `main` and pushed** (branch `0762ecd1d`).
   - Verified on the landing tree (`main` `c5e0a2a92` + S43): S43's gate on box B (`WERROR`; core
     584 and editor 389 filtered tests; 152 MCP tests), plus the batch checks on box B: web build,

@@ -2443,6 +2443,19 @@ OVERRIDES.update({
         'overloads': [([('interval', 'number'), ('fn', 'fun(timer: Timer): boolean?'), ('opts?', 'TimerOptions')], 'Timer')]},
 })
 
+# pixel fonts (GameObjectClassesLua.cpp, docs/specs/S51-pixel-fonts.md R29): load returns the font or
+# nil and the reason; measure returns two integers
+OVERRIDES.update({
+    ('BitmapFont', 'load'): {
+        'doc': ['A bitmap font (.bitmapfont, .fnt or "builtin:pixel") and its metrics, in whole font pixels;',
+                '`nil, error` when it does not load.'],
+        'overloads': [([('path', 'string')], 'BitmapFont?, string?')]},
+    ('BitmapFont', 'measure'): {
+        'doc': ['The width and height of the text (newlines split lines) in whole pixels at `scale` (default 1):',
+                'the layout a Text draws.'],
+        'overloads': [([('text', 'string'), ('scale?', 'integer')], 'integer, integer')]},
+})
+
 # audio-mixer (ECSClassesLua.cpp, GameObjectClassesLua.cpp): option tables ({unscaled = true}),
 # `nil` results and table results; AudioTimeOptions / AudioFadeOutOptions are in
 # engine/core/script/binding/stubs/Audio.lua
@@ -2682,7 +2695,7 @@ PROPERTY_OVERRIDES = {
         'main', 'emission', 'shape', 'velocityOverLifetime', 'limitVelocityOverLifetime', 'inheritVelocity',
         'forceOverLifetime', 'colorOverLifetime', 'colorBySpeed', 'sizeOverLifetime', 'sizeBySpeed',
         'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'collision', 'trails',
-        'customData', 'externalForces', 'renderer')},
+        'customData', 'externalForces', 'renderer', 'pixelArt')},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
     # ui-multitouch: the GameObjects of a PointerEventData (nil: none)

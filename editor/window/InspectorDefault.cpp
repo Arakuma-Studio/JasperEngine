@@ -401,6 +401,7 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::VolumetricCloudsComponent: return &InspectorWindow::drawVolumetricCloudsComponent;
         case ComponentType::ReflectionProbeComponent: return &InspectorWindow::drawReflectionProbeComponent;
         case ComponentType::UIDocumentComponent: return &InspectorWindow::drawUIDocumentComponent;
+        case ComponentType::TextComponent: return &InspectorWindow::drawTextComponent;
         case ComponentType::CameraComponent: return &InspectorWindow::drawCameraComponent;
         case ComponentType::AudioSourceComponent: return &InspectorWindow::drawAudioComponent;
         case ComponentType::AudioSnapshotComponent: return &InspectorWindow::drawAudioSnapshotComponent;

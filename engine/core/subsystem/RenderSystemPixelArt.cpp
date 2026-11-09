@@ -307,7 +307,9 @@ void RenderSystem::fillPassPixelSnap(frame_t& frame, const CameraComponent& came
     passPixelSnap = false;
     passPixelPerfect = nullptr;
     frame.pixelSnap = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-    frame.pixelSnapOffset = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    // the rounding bias without a grid too: S49's pixel particles round their boxes with
+    // pixelSnapRound on the orthographic and screen grids
+    frame.pixelSnapOffset = Vector4(0.0f, 0.0f, 0.0f, pixelSnapBias);
     if (!pixelSnapVariants)
         return;
 
@@ -354,6 +356,21 @@ float RenderSystem::pixelSnapDrawMode(const Matrix4& mvp) const{
     if (!passPixelSnap)
         return 0.0f;
     return pixelart::isGridAligned(mvp, passSnapGrid) ? 1.0f : 2.0f;
+}
+
+Matrix4 RenderSystem::pixelOriginSnapMVP(const Matrix4& mvp) const{
+    pixelart::SnapGrid grid;
+    grid.width = passResolution.x;
+    grid.height = passResolution.y;
+    if (!grid.isValid())
+        return mvp;
+    grid.flipY = (passCamera && isRenderingFlipped(*passCamera)) ? -1.0f : 1.0f;
+    const Vector4 origin(mvp[3][0], mvp[3][1], mvp[3][2], mvp[3][3]);
+    const Vector4 delta = pixelart::snapCenterDelta(origin, grid);
+    Matrix4 snapped = mvp;
+    snapped[3][0] += delta.x;
+    snapped[3][1] += delta.y;
+    return snapped;
 }
 
 void RenderSystem::applyObjectBlock(ObjectRender& render, int slot, unsigned int reflectedSize, uint64_t meshProperties, const Matrix4* objectBlock){

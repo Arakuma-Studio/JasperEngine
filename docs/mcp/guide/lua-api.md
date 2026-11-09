@@ -2558,7 +2558,8 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 
 | Class | rw properties | methods |
 |---|---|---|
-| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all) | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
+| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
+| `BitmapFont` | `BitmapFont.load(path)` (nil and the reason when it does not load); ro `nativeSize`, `lineHeight`, `baseline`, `glyphCount`, `colored` | `hasGlyph(char)`, `advance(char)`, `measure(text[, scale])` -> width, height (whole pixels, a Text's layout) |
 | `TextEffect(scene, entity)` (adds the component) | `enabled`, `autoPlay`, `loop`, `useUnscaledTime` (default true), `startIndex`, `length` (-1 to the end), `forWords`; events `onComplete`, `onCharacterRevealed(index)` | `getLayer(i)` (1..4, a `TextEffectLayerRef` whose fields write through: `type` (`TextEffectType.Wave`/`Bounce`/`Shake`/`Pulse`/`Typewriter`/`FadeIn`/`Grow`/`Unfold`/`Rainbow`/`Gradient`/`None`), `enabled`, `amplitude`, `duration`, `spread`, `phaseStep`, `frequency`, `charactersPerSecond`, `fadeTime`, `gradient` (list of `TextEffectGradientStop` {`color` sRGB Vector4, `position`}), `mix` (`TextEffectMix.Multiply`/`Add`/`Replace`), `saturation`, `lightness`), `setLayer(i, layerOrTable)`, `play()`, `stop()` (plain text), `finish()`, `restart()`, `isFinished()`, `isPlaying()` (`jasper://docs/ui`) |
 | `Image` | `color` (Vector4), `alpha`, `textureScaleFactor`, `flipY`, `patchMarginLeft/Right/Top/Bottom` | `setTexture(path)`, `setColor(r,g,b[,a])`, `setPatchMargin(m)` / `(l,r,t,b)`, `getUIComponent()` |
 | `Button` (Image) | `label`, `labelColor`, `labelFont`, `labelFontSize`, `colorNormal`, `colorHovered`, `colorPressed`, `colorSelected`, `colorDisabled`, `disabled`, `interactable`, `color` (with a tinting transition: Normal's), `onClick`; `transition` (`ButtonTransition.*`), `fadeDuration`, `scaleHovered/Pressed/Selected`; `navigationMode` (`NavigationMode.*`), `wrapAround`, `selectOnUp/Down/Left/Right` (GameObject or nil), `selectOnEnable`; ro `selected`, `state` (`SelectionState.*`) | `getButtonComponent()`, `getLabelObject()`, `setTextureNormal/Hovered/Pressed/Selected/Disabled(path)`, `setTexture(path)` (with a swapping transition: Normal's), `setColorNormal(r,g,b[,a])` (and Hovered/Pressed/Selected/Disabled), `setLabelColor(r,g,b,a)`, `select()`, `findSelectableOnUp/Down/Left/Right()` (jasper://docs/ui) |
@@ -2953,6 +2954,27 @@ ps:play()
 ps:onCollision(function(events)
     print(#events .. " hits, first at " .. events[1].position.y)
 end)
+```
+
+Pixel particles (S49): `ps.pixelArt` is the Pixel Art module's view (`snap`, `pixelSizes`,
+`integerSize`, `fade` (`ParticleFade.Dither` / `Cutout` / `Alpha`), `ditherSize`, `holdFrameRate`,
+`secondaryOffset`, `wobbleAmplitude`, `flickerBelow`, ...); `ps.renderer.renderMode =
+ParticleSystemRenderMode.Pixel` with `ps.renderer.pixelShape` (`ParticlePixelShape.Dot` ... `Glow`).
+A module's colour (`ps.colorOverLifetime.color`, `ps.main.startColor`) is a live
+`ParticleSystemGradient`: it reads as a MinMaxGradient, and `:setRamp(palettePath, rampName[,
+steps])` makes it a Palette Ramp of that system (a MinMaxGradient value has `setRamp` too, and rw
+`ramp`, `rampSteps`, `rampReverse`, `rampBias`). rw `ps.simulationMode` (`ParticleSimulationMode.Simulated`
+/ `Analytic`; a change restarts the system); `ps:getAnalyticParticle(slot, time)` is the CPU twin of an
+Analytic particle (`alive`, `index`, `age`, `life`, `position`, `velocity`, `rotation`, `size`,
+`color`, `rampStep`; nil for a Simulated system). An Analytic system raises no `onParticleDeath`,
+`onCollision` or sub-emitter events (adding a listener warns `analytic_no_events`).
+
+```lua
+local ps = ParticleSystem(scene)
+ps.renderer.renderMode = ParticleSystemRenderMode.Pixel
+ps.renderer.pixelShape = ParticlePixelShape.Disc
+ps.pixelArt.fade = ParticleFade.Dither
+ps.colorOverLifetime.color:setRamp("palettes/fx.palette", "fire")
 ```
 
 Deprecated (the old Action API, kept for old scripts: they edit the inline effect and warn
@@ -3382,7 +3404,7 @@ gate.area = 0 ; gate:remove()
 | `TangentMode` | `Free`, `Auto`, `Linear`, `Constant`, `ClampedAuto` |
 | `GradientMode` | `Blend`, `Fixed` |
 | `MinMaxCurveMode` | `Constant`, `TwoConstants`, `Curve`, `TwoCurves` |
-| `MinMaxGradientMode` | `Color`, `Gradient`, `TwoColors`, `TwoGradients` |
+| `MinMaxGradientMode` | `Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor`, `Ramp` |
 | `ActionState` | `Running`, `Paused`, `Stopped` |
 | `AudioSourceState` | `Playing`, `Paused`, `Stopped` |
 | `AudioSourceAttenuation` | `NO_ATTENUATION`, `INVERSE_DISTANCE`, `LINEAR_DISTANCE`, `EXPONENTIAL_DISTANCE` |

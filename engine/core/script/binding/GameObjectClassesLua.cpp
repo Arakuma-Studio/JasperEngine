@@ -48,6 +48,7 @@
 #include "Model.h"
 #include "PoseAnimator.h"
 #include "AnimationPlayer.h"
+#include <set>
 #include <cstdio>
 
 #include "Log.h"
@@ -68,6 +69,10 @@
 #include "Sprite.h"
 #include "script/LuaJson.h"
 #include "sprite/SpriteSheet.h"
+#include "pixelart/BitmapFont.h"
+#include "pixelart/BitmapFontPool.h"
+#include "pixelart/BitmapText.h"
+#include "util/StringUtils.h"
 #include "sprite/SpriteSheetPool.h"
 #include "object/ui/Text.h"   // by path: lexbor has a dom/interfaces/text.h (Xcode header maps ignore case)
 #include "object/ui/TextEffect.h"
@@ -130,6 +135,61 @@ namespace{
         out.speed = info.speed;
         out.loop = info.loop;
         return out;
+    }
+
+}
+
+// The Lua BitmapFont (docs/specs/S51-pixel-fonts.md R29): a loaded bitmap font's metrics and its
+// layout, in whole font pixels
+namespace {
+
+    struct LuaBitmapFont {
+        std::shared_ptr<pixelart::BitmapFont> font;
+    };
+
+    // BitmapFont.load(path) -> font, or nil and why
+    int luaBitmapFontLoad(lua_State* L){
+        size_t length = 0;
+        const char* path = luaL_checklstring(L, 1, &length);
+        pixelart::BitmapFontReport report;
+        std::shared_ptr<pixelart::BitmapFont> font = pixelart::BitmapFontPool::get(std::string(path, length), &report);
+        if (!font){
+            lua_pushnil(L);
+            const std::string why = report.errors.empty() ? std::string("not a bitmap font: ") + path
+                                                          : report.errors[0].message + " (" + report.errors[0].fix + ")";
+            lua_pushlstring(L, why.data(), why.size());
+            return 2;
+        }
+        if (!luabridge::push(L, LuaBitmapFont{font}))
+            lua_pushnil(L);
+        return 1;
+    }
+
+    LuaBitmapFont* luaBitmapFontSelf(lua_State* L){
+        auto self = luabridge::get<LuaBitmapFont*>(L, 1);
+        if (!self || !*self || !(*self)->font)
+            luaL_argerror(L, 1, "a BitmapFont (call it with ':')");
+        return *self;
+    }
+
+    // one character's codepoint (its first)
+    uint32_t luaBitmapFontChar(const std::string& text){
+        bool invalid = false;
+        const std::vector<uint32_t> codepoints = StringUtils::decodeUtf8ToCodepoints(text, invalid);
+        return codepoints.empty() ? 0 : codepoints[0];
+    }
+
+    // font:measure(text [, scale]) -> width, height (whole pixels)
+    int luaBitmapFontMeasure(lua_State* L){
+        LuaBitmapFont* self = luaBitmapFontSelf(L);
+        size_t length = 0;
+        const char* text = luaL_checklstring(L, 2, &length);
+        const int scale = (lua_gettop(L) >= 3 && !lua_isnil(L, 3)) ? std::max(1, (int)luaL_checkinteger(L, 3)) : 1;
+        int width = 0, height = 0;
+        pixelart::BitmapText::measure(*self->font, std::string(text, length), width, height);
+        lua_pushinteger(L, (lua_Integer)width * scale);
+        lua_pushinteger(L, (lua_Integer)height * scale);
+        return 2;
     }
 
 }
@@ -988,6 +1048,24 @@ int luaCameraShakerShakeAt(lua_State* L){
 
 }
 
+
+#ifndef DISABLE_LUA_BINDINGS
+namespace {
+
+    // an Analytic effect raises no particle events (S49 R19): said once a system, when a script
+    // first listens to one of them
+    void warnAnalyticEvents(ParticleSystem& system){
+        if (system.getEffectDocument().simulationMode != particles::SimulationMode::Analytic)
+            return;
+        static std::set<std::pair<const void*, Entity>> warned;
+        if (!warned.insert({system.getScene(), system.getEntity()}).second)
+            return;
+        Log::warn("analytic_no_events: %s is Analytic: its particles raise no onParticleDeath, onCollision or sub-emitter events",
+                  system.getName().c_str());
+    }
+
+}
+#endif
 
 void LuaBinding::registerGameObjectClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
@@ -2595,16 +2673,19 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("onCollision", +[](ParticleSystem* self, lua_State* L) {
             luaL_checktype(L, 2, LUA_TFUNCTION);
             lua_settop(L, 2);
+            warnAnalyticEvents(*self);
             return self->getComponent<ParticleSystemComponent>().onCollision.add("lua", L);
         })
         .addFunction("onParticleDeath", +[](ParticleSystem* self, lua_State* L) {
             luaL_checktype(L, 2, LUA_TFUNCTION);
             lua_settop(L, 2);
+            warnAnalyticEvents(*self);
             return self->getComponent<ParticleSystemComponent>().onParticleDeath.add("lua", L);
         })
         .addFunction("onSubEmit", +[](ParticleSystem* self, lua_State* L) {
             luaL_checktype(L, 2, LUA_TFUNCTION);
             lua_settop(L, 2);
+            warnAnalyticEvents(*self);
             return self->getComponent<ParticleSystemComponent>().onSubEmit.add("lua", L);
         })
         .addFunction("getParticleSystemComponent", &ParticleSystem::getComponent<ParticleSystemComponent>)
@@ -3385,8 +3466,28 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("shadowSoftness", &Text::getShadowSoftness, &Text::setShadowSoftness)
         .addProperty("shadowDilate", &Text::getShadowDilate, &Text::setShadowDilate)
         .addProperty("visibleCharacters", &Text::getVisibleCharacters, &Text::setVisibleCharacters)
+        .addProperty("outlineNeighbors", &Text::getOutlineNeighbors, &Text::setOutlineNeighbors)
+        .addProperty("pixelScale", &Text::getPixelScale)
+        .addProperty("effectiveFontSize", &Text::getEffectiveFontSize)
         .addFunction("getAABB", &Text::getAABB)
         .addFunction("getWorldAABB", &Text::getWorldAABB)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<LuaBitmapFont>("BitmapFont")
+        .addStaticFunction("load", &luaBitmapFontLoad)
+        .addProperty("nativeSize", [](const LuaBitmapFont* self) -> int { return self->font->getNativeSize(); })
+        .addProperty("lineHeight", [](const LuaBitmapFont* self) -> int { return self->font->getLineHeight(); })
+        .addProperty("baseline", [](const LuaBitmapFont* self) -> int { return self->font->getBaseline(); })
+        .addProperty("glyphCount", [](const LuaBitmapFont* self) -> int { return (int)self->font->getGlyphCount(); })
+        .addProperty("colored", [](const LuaBitmapFont* self) -> bool { return self->font->isColored(); })
+        .addFunction("hasGlyph", [](const LuaBitmapFont* self, const std::string& character) -> bool {
+            return self->font->hasGlyph(luaBitmapFontChar(character));
+        })
+        .addFunction("advance", [](const LuaBitmapFont* self, const std::string& character) -> int {
+            return self->font->advanceOf(luaBitmapFontChar(character));
+        })
+        .addFunction("measure", &luaBitmapFontMeasure)
         .endClass();
 
     // Text Effect (per-character animation of a Text): enums, a layer's values, the component's

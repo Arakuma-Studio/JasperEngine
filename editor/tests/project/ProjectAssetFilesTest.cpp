@@ -60,7 +60,7 @@ namespace {
         return h;
     }
 
-    std::string readBytes(const fs::path& path) {
+    [[maybe_unused]] std::string readBytes(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }

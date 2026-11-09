@@ -129,7 +129,20 @@ bool ParticlePreviewSource::applyArgs(const nlohmann::json& args, ParticlePrevie
         error += ".";
         return false;
     };
-    if (!text("view", "three_quarter", {"three_quarter", "front", "side", "top"}, request.view)) return false;
+    if (!text("view", "three_quarter", {"three_quarter", "front", "side", "top", "pixel"}, request.view)) return false;
+    // the pixel view (S49): the base-pixel grid from the front, the cells at an integer scale
+    request.pixelGrid = request.view == "pixel";
+    if (args.contains("scale")){
+        if (!args["scale"].is_number_integer() || args["scale"].get<int>() < 1 || args["scale"].get<int>() > 8){
+            error = "scale is a whole number from 1 to 8 (the pixel view's screen pixels a base pixel).";
+            return false;
+        }
+        if (!request.pixelGrid){
+            error = "scale is the pixel view's: give view: \"pixel\" with it.";
+            return false;
+        }
+        request.pixelScale = args["scale"].get<int>();
+    }
     if (!text("background", "dark", {"dark", "light", "checker"}, request.background)) return false;
     if (!text("platform", "mobile", {"mobile", "web", "desktop"}, request.platform)) return false;
     request.overdrawMap = args.value("overdraw_map", false);
@@ -139,6 +152,7 @@ bool ParticlePreviewSource::applyArgs(const nlohmann::json& args, ParticlePrevie
 bool ParticlePreviewSource::complete(Project* project, const nlohmann::json& args, const std::string& scope, ParticlePreviewRequest& request,
                                      std::string& error){
     if (!applyArgs(args, request, error)) return false;
+    if (project) request.pixelsPerUnit = std::max(project->getPixelsPerUnit(), 1);
     error = ParticleEffectPreview::validate(request);
     if (!error.empty()) return false;
     if (project) request.qa = project->getParticleQaSettings();

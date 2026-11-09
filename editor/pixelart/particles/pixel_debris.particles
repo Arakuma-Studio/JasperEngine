@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "duration": 3,
+  "looping": false,
+  "maxParticles": 16,
+  "modules": [
+    {"type": "main", "startLifetime": 0.05, "startSpeed": 0, "startSize": 1, "startColor": [1, 1, 1, 1]},
+    {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 10}]},
+    {"type": "shape", "shape": "sphere", "radius": 0.5},
+    {"type": "subEmitters"},
+    {"type": "renderer", "renderMode": "none"}
+  ],
+  "subEmitters": [
+    {"trigger": "birth", "effect": "preset:pixel_debris_shard", "probability": 0.5},
+    {"trigger": "birth", "effect": "preset:pixel_debris_chunk", "probability": 0.5}
+  ]
+}

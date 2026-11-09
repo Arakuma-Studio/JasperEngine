@@ -9,6 +9,7 @@
 #include "object/Camera.h"
 #include "object/Light.h"
 #include "object/ParticleSystem.h"
+#include "particles/AnalyticParticles.h"
 #include "particles/EmitterRuntime.h"
 #include "particles/ParticleCompiler.h"
 #include "particles/ParticleEffectCodec.h"
@@ -45,6 +46,40 @@ namespace {
     constexpr int HEAT_STEP = 4;
     // the analytic grid's ticks at most (a longer run takes every n-th tick)
     constexpr uint64_t MAX_GRID_TICKS = 600;
+
+    // the live particles of a system's tree: an Analytic emitter's are its twin's (S49 R19)
+    uint32_t liveOf(const particles::EmitterRuntime& r){
+        return r.isAnalytic() ? r.analyticAlive() + (r.totalCount() - r.count()) : r.totalCount();
+    }
+
+    // the world box a system's live particles take this tick: an Analytic one's from its twin (its
+    // culling box holds everything it may ever draw); false with none
+    bool liveBoundsOf(const particles::ParticleSystemState& state, float lo[3], float hi[3]){
+        const particles::EmitterRuntime& r = state.runtime;
+        if (!r.isAnalytic()){
+            if (!state.hasBounds || r.totalCount() == 0)
+                return false;
+            for (int k = 0; k < 3; k++){
+                lo[k] = state.boundsMin[k];
+                hi[k] = state.boundsMax[k];
+            }
+            return true;
+        }
+        float sLo[3], sHi[3];
+        if (!particles::AnalyticParticles::liveBounds(*r.analytic(), sLo, sHi))
+            return false;
+        const float* m = r.simToWorld();
+        for (int k = 0; k < 3; k++){ lo[k] = 3.0e38f; hi[k] = -3.0e38f; }
+        for (int corner = 0; corner < 8; corner++){
+            const float p[3] = {(corner & 1) ? sHi[0] : sLo[0], (corner & 2) ? sHi[1] : sLo[1], (corner & 4) ? sHi[2] : sLo[2]};
+            for (int k = 0; k < 3; k++){
+                const float w = m[k] * p[0] + m[4 + k] * p[1] + m[8 + k] * p[2] + m[12 + k];
+                lo[k] = std::min(lo[k], w);
+                hi[k] = std::max(hi[k], w);
+            }
+        }
+        return true;
+    }
 
     double previewNow(){
         return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -161,6 +196,9 @@ namespace {
         float nearClip = 0.01f;
         float farClip = 100.0f;
         float tanHalf = 0.41421356f;
+        // the pixel view (S49): orthographic, `orthoHalf` world units above and below the centre
+        bool ortho = false;
+        float orthoHalf = 1.0f;
     };
 
     // one private scene of the run
@@ -278,7 +316,10 @@ namespace {
         s.camera->setPosition(camera.position);
         s.camera->setTarget(camera.target);
         s.camera->setUp(camera.up);
-        s.camera->setPerspective(PREVIEW_FOV, 1.0f, camera.nearClip, camera.farClip);
+        if (camera.ortho)
+            s.camera->setOrtho(-camera.orthoHalf, camera.orthoHalf, -camera.orthoHalf, camera.orthoHalf, camera.nearClip, camera.farClip);
+        else
+            s.camera->setPerspective(PREVIEW_FOV, 1.0f, camera.nearClip, camera.farClip);
         RenderSystem& render = *s.scene->getSystem<RenderSystem>();
         render.update(0);
 
@@ -353,6 +394,8 @@ struct ParticleEffectPreview::Impl {
     CameraSetup camera;
     Vector3 frameCenter;
     float frameWorldSize = 1.0f;     // the view's height at the framed centre
+    int drawSize = 192;              // the offscreen target's side (the pixel view: base pixels x PIXEL_PROBE)
+    int pixelSide = 0;               // the pixel view's base pixels each way
     std::vector<uint64_t> cellTicks;
     std::vector<double> cellTimes;
 
@@ -384,33 +427,28 @@ struct ParticleEffectPreview::Impl {
         scene.emitters(emitters);
         for (const TreeEmitter& e : emitters){
             const EmitterRuntime& r = *e.runtime;
-            const particles::ParticleChannels& ch = r.particleChannels();
-            const uint32_t count = r.count();
-            if (!count || !r.program()) continue;
-            const float* px = ch.get(particles::ChPosX);
-            const float* py = ch.get(particles::ChPosY);
-            const float* pz = ch.get(particles::ChPosZ);
+            if (!r.program()) continue;
             const float* m = r.simToWorld();
             const bool additive = r.effect()->document.renderer.blend == particles::ParticleBlend::Additive;
             const float minShare = r.effect()->document.renderer.minScreenSize;
             const float maxShare = r.effect()->document.renderer.maxScreenSize;
             double area = 0.0;
-            for (uint32_t i = 0; i < count; i++){
-                const Vector3 world(m[0] * px[i] + m[4] * py[i] + m[8] * pz[i] + m[12],
-                                    m[1] * px[i] + m[5] * py[i] + m[9] * pz[i] + m[13],
-                                    m[2] * px[i] + m[6] * py[i] + m[10] * pz[i] + m[14]);
+            // one particle of the emitter onto the grid (simulation space, its size and colour)
+            auto addParticle = [&](float sx, float sy, float sz, float size, const float color[4]){
+                const Vector3 world(m[0] * sx + m[4] * sy + m[8] * sz + m[12],
+                                    m[1] * sx + m[5] * sy + m[9] * sz + m[13],
+                                    m[2] * sx + m[6] * sy + m[10] * sz + m[14]);
                 const Vector3 rel = world - camera.position;
                 const float depth = rel.dotProduct(camera.forward);
-                if (depth <= camera.nearClip) continue;
-                float color[4], size, rotation;
-                r.appearance(i, color, size, rotation);
-                if (size <= 0.0f) continue;
+                if (depth <= camera.nearClip || size <= 0.0f) return;
+                // the view's half height at the particle: perspective, or the orthographic pixel view
+                const float halfHeight = camera.ortho ? camera.orthoHalf : depth * camera.tanHalf;
                 // the shader's screen-size clamp: a share of the view height
-                float share = size / (depth * 2.0f * camera.tanHalf);
+                float share = size / (2.0f * halfHeight);
                 share = std::clamp(share, minShare, std::max(minShare, maxShare));
                 const float half = share * 0.5f * (float)GRID;
-                const float cx = (rel.dotProduct(camera.right) / (depth * camera.tanHalf) * 0.5f + 0.5f) * (float)GRID;
-                const float cy = (0.5f - rel.dotProduct(camera.up) / (depth * camera.tanHalf) * 0.5f) * (float)GRID;
+                const float cx = (rel.dotProduct(camera.right) / halfHeight * 0.5f + 0.5f) * (float)GRID;
+                const float cy = (0.5f - rel.dotProduct(camera.up) / halfHeight * 0.5f) * (float)GRID;
                 const float weight = additive ? color[3] * std::max({color[0], color[1], color[2]}) : color[3];
                 area += (double)share * share;
                 const int x0 = std::max(0, (int)std::floor(cx - half)), x1 = std::min(GRID - 1, (int)std::floor(cx + half));
@@ -424,6 +462,27 @@ struct ParticleEffectPreview::Impl {
                         gridLayers[(size_t)y * GRID + x] += ox * oy;
                         gridWeighted[(size_t)y * GRID + x] += ox * oy * weight;
                     }
+                }
+            };
+            if (r.isAnalytic()){
+                // an Analytic emitter stores nothing: its CPU twin places the particles (S49 R19)
+                const particles::AnalyticProgram& program = *r.analytic();
+                for (uint32_t slot = 0; slot < program.slotCount; slot++){
+                    const particles::AnalyticParticle a = particles::AnalyticParticles::evaluate(program, slot);
+                    if (!a.alive) continue;
+                    const float color[4] = {(float)(a.color & 255u) / 255.0f, (float)((a.color >> 8) & 255u) / 255.0f,
+                                            (float)((a.color >> 16) & 255u) / 255.0f, (float)(a.color >> 24) / 255.0f};
+                    addParticle(a.position.x, a.position.y, a.position.z, std::max(a.size.x, a.size.y), color);
+                }
+            }else{
+                const particles::ParticleChannels& ch = r.particleChannels();
+                const float* px = ch.get(particles::ChPosX);
+                const float* py = ch.get(particles::ChPosY);
+                const float* pz = ch.get(particles::ChPosZ);
+                for (uint32_t i = 0; i < r.count(); i++){
+                    float color[4], size, rotation;
+                    r.appearance(i, color, size, rotation);
+                    addParticle(px[i], py[i], pz[i], size, color);
                 }
             }
             emitterArea[e.name] += area;
@@ -461,6 +520,8 @@ std::string ParticleEffectPreview::validate(const ParticlePreviewRequest& reques
     if (request.frames < 0 || request.frames > MAX_FRAMES) return "frames is 0 to " + std::to_string(MAX_FRAMES) + ".";
     if (request.seconds < 0.0 || request.seconds > MAX_SECONDS) return "seconds is 0 (one play) to " + std::to_string((int)MAX_SECONDS) + ".";
     if (request.times.size() > (size_t)MAX_FRAMES) return "times holds at most " + std::to_string(MAX_FRAMES) + " values.";
+    if (request.pixelGrid && (request.pixelScale < 1 || request.pixelScale > 8)) return "scale is a whole number from 1 to 8.";
+    if (request.pixelGrid && request.overdrawMap) return "overdraw_map draws the perspective view: leave it out with pixel: true.";
     for (double t : request.times){
         if (!(t >= 0.0) || t > MAX_SECONDS) return "times are seconds from 0 to " + std::to_string((int)MAX_SECONDS) + ".";
     }
@@ -648,14 +709,15 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
             for (size_t i = 0; i < n; i++){
                 particles::ParticleSystemState* state = d.sim->state(i);
                 if (!state) continue;
-                live += state->runtime.totalCount();
+                live += liveOf(state->runtime);
                 alive = alive || state->runtime.isAlive();
                 emitting = emitting || state->runtime.isEmitting();
-                if (state->hasBounds && state->runtime.totalCount() > 0){
+                float sLo[3], sHi[3];
+                if (liveBoundsOf(*state, sLo, sHi)){
                     bounded = true;
                     for (int a = 0; a < 3; a++){
-                        lo[a] = std::min(lo[a], state->boundsMin[a]);
-                        hi[a] = std::max(hi[a], state->boundsMax[a]);
+                        lo[a] = std::min(lo[a], sLo[a]);
+                        hi[a] = std::max(hi[a], sHi[a]);
                     }
                 }
             }
@@ -825,9 +887,44 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
         d.frameWorldSize = 2.0f * distance * c.tanHalf;
         c.nearClip = std::max(0.01f, distance - radius * 1.5f);
         c.farClip = distance + radius * 1.5f + 1.0f;
+        d.drawSize = request.cellSize;
+        if (request.pixelGrid){
+            // the pixel view: from the front, on whole base pixels around the run's box (an even
+            // count, so the centre is a grid corner and every base pixel covers whole screen pixels)
+            const float ppu = (float)std::max(request.pixelsPerUnit, 1);
+            const int margin = 4;
+            const int minX = (int)std::floor(lo.x * ppu) - margin, maxX = (int)std::ceil(hi.x * ppu) + margin;
+            const int minY = (int)std::floor(lo.y * ppu) - margin, maxY = (int)std::ceil(hi.y * ppu) + margin;
+            int side = std::max(maxX - minX, maxY - minY);
+            side = std::clamp(side + (side & 1), 2, MAX_PIXEL_SIDE);
+            const int cx = (int)std::floor((minX + maxX) * 0.5f), cy = (int)std::floor((minY + maxY) * 0.5f);
+            const Vector3 grid((float)cx / ppu, (float)cy / ppu, center.z);
+            c.ortho = true;
+            c.orthoHalf = (float)side * 0.5f / ppu;
+            c.position = grid + Vector3(0.0f, 0.0f, radius * 2.0f + 10.0f);
+            c.target = grid;
+            c.forward = Vector3(0.0f, 0.0f, -1.0f);
+            c.right = Vector3(1.0f, 0.0f, 0.0f);
+            c.up = Vector3(0.0f, 1.0f, 0.0f);
+            c.nearClip = 0.01f;
+            c.farClip = radius * 4.0f + 20.0f;
+            d.frameCenter = grid;
+            d.frameWorldSize = (float)side / ppu;
+            d.pixelSide = side;
+            d.drawSize = side * PIXEL_PROBE;
+            // the cells the filmstrip lays out: the base pixels at the asked scale
+            request.cellSize = side * request.pixelScale;
+        }
 
         d.look = std::make_unique<PreviewScene>();
         d.look->build(request, d.documents, d.seeds, needsGpu());
+        // a pixel effect: an emitter of the tree draws on the grid (off_grid's subject, S49)
+        {
+            std::vector<TreeEmitter> emitters;
+            d.look->emitters(emitters);
+            for (const TreeEmitter& e : emitters)
+                measured.pixelEffect = measured.pixelEffect || (e.runtime->program() && e.runtime->program()->render.pixel.active);
+        }
         if (request.overdrawMap){
             std::vector<ParticleEffectDocument> heatDocs;
             for (const ParticleEffectDocument& doc : d.documents) heatDocs.push_back(heatDocument(doc));
@@ -849,7 +946,7 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
                 PreviewScene& scene = d.drawPhase == 2 ? *d.heat : *d.look;
                 PoseImage& target = d.drawPhase == 0 ? d.onBlack : d.drawPhase == 1 ? d.onWhite : d.heatImage;
                 const Vector4 clear = d.drawPhase == 1 ? Vector4(1.0f, 1.0f, 1.0f, 1.0f) : Vector4(0.0f, 0.0f, 0.0f, 1.0f);
-                if (drawScene(scene, d.camera, request.cellSize, clear, target, d.waitingFor) == Drawn::Wait){
+                if (drawScene(scene, d.camera, d.drawSize, clear, target, d.waitingFor) == Drawn::Wait){
                     if (previewNow() - d.drawStarted > RENDER_TIMEOUT_SECONDS){
                         finish("A cell could not be drawn within " + std::to_string((int)RENDER_TIMEOUT_SECONDS) + " s: still waiting for " + d.waitingFor +
                                ". Nothing is returned rather than a stand-in.");
@@ -864,7 +961,7 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
                 if (d.drawPhase < 3) return false;   // one draw a frame
                 d.drawPhase = 0;
                 // the cell: premultiplied colour on black, coverage from black against white
-                const int size = request.cellSize;
+                const int size = d.drawSize;
                 PoseImage cell(size, size);
                 double covered = 0.0, clipped = 0.0;
                 for (int y = 0; y < size; y++){
@@ -902,10 +999,39 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
                     measured.clippedPercent = clippedShare;
                     measured.clippedAt = d.cellTimes[d.nextCell];
                 }
+                if (request.pixelGrid){
+                    // the pixel view (S49): a base pixel whose screen pixels differ (on black or on
+                    // white) was drawn between grid lines; the cell is the base pixels at pixelScale
+                    const int side = d.pixelSide, scale = request.pixelScale;
+                    auto same = [](const PoseColor& a, const PoseColor& b){ return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a; };
+                    PoseImage pixels(side * scale, side * scale);
+                    for (int by = 0; by < side; by++){
+                        for (int bx = 0; bx < side; bx++){
+                            const int x0 = bx * PIXEL_PROBE, y0 = by * PIXEL_PROBE;
+                            const PoseColor b0 = d.onBlack.getPixel(x0, y0), w0 = d.onWhite.getPixel(x0, y0);
+                            bool even = true;
+                            for (int sy = 0; sy < PIXEL_PROBE && even; sy++){
+                                for (int sx = 0; sx < PIXEL_PROBE && even; sx++)
+                                    even = same(d.onBlack.getPixel(x0 + sx, y0 + sy), b0) && same(d.onWhite.getPixel(x0 + sx, y0 + sy), w0);
+                            }
+                            const PoseColor c = cell.getPixel(x0, y0);
+                            const bool drawn = !same(b0, PoseColor(0, 0, 0, 255)) || !same(w0, PoseColor(255, 255, 255, 255));
+                            measured.pixelsDrawn += drawn ? 1 : 0;
+                            if (!even){
+                                measured.offGrid++;
+                                if (measured.offGridAt.size() < (size_t)qa::MAX_AT) measured.offGridAt.push_back({d.cellTimes[d.nextCell], {bx, by}});
+                            }
+                            for (int y = 0; y < scale; y++)
+                                for (int x = 0; x < scale; x++) pixels.setPixel(bx * scale + x, by * scale + y, c);
+                        }
+                    }
+                    measured.pixelGrid = true;
+                    cell = std::move(pixels);
+                }
                 cells.push_back(std::move(cell));
                 uint32_t live = 0;
                 for (size_t i = 0; i < n; i++){
-                    if (particles::ParticleSystemState* state = d.look->state(i)) live += state->runtime.totalCount();
+                    if (particles::ParticleSystemState* state = d.look->state(i)) live += liveOf(state->runtime);
                 }
                 d.cellLive.push_back(live);
                 if (d.heat){
@@ -1065,6 +1191,10 @@ void ParticleEffectPreview::composeFilmstrip(){
 
 void ParticleEffectPreview::buildReport(){
     Impl& d = *impl;
+    for (const ParticlePreviewSystem& system : request.systems){
+        const particles::ParticleEffectDocument& doc = system.document;
+        if ((doc.pixelArt.present && doc.pixelArt.enabled) || doc.renderer.renderMode == particles::RenderMode::Pixel) measured.pixelEffect = true;
+    }
     ParticleCheckRequest checkRequest;
     checkRequest.platform = request.platform;
     checkRequest.qa = request.qa;
@@ -1107,6 +1237,12 @@ void ParticleEffectPreview::buildReport(){
               {"cells", cellList},
               {"frame", {{"view", request.view}, {"center", {d.frameCenter.x, d.frameCenter.y, d.frameCenter.z}},
                          {"world_size", std::round(d.frameWorldSize * 1000.0) / 1000.0}}}};
+    if (request.pixelGrid && d.pixelSide > 0){
+        // the pixel view: base pixels each way, and a cell's pixels a base pixel
+        report["frame"]["view"] = "pixel";
+        report["frame"]["base_pixels"] = d.pixelSide;
+        report["frame"]["scale"] = request.pixelScale;
+    }
 }
 
 // ---------------------------------------------------------------- driving

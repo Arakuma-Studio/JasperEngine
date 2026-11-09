@@ -392,6 +392,14 @@ Ported, each function keeping the original notice next to ours:
 | The contact sheet's backdrops (`editor/pixelart/fx/ContactSheet.cpp`: dark, ground, sky, light, black and their colours) and its grid | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `src/core/scene.js` `backdrop`, `tools/lib/fxlib.mjs` `contactSheet` | MIT, Copyright (c) 2026 Patch |
 | The spill, one-shot end, loop seam, determinism and slow-frame rules (`editor/pixelart/lint/EffectLints.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `tools/check.mjs` | MIT, Copyright (c) 2026 Patch |
 
+## Pixel particles (S49)
+
+Ported or copied, each file keeping the original notices next to ours:
+
+| Code or data | Taken from | Licence |
+|---|---|---|
+| The pixel shapes (Cross, Streak, Puff, Shard, Chunk, Glow: `engine/core/particles/ParticlePixel.cpp`, `engine/shaderlib/includes/particles_pixel.glsl`), the dithered fade, the presets' constants (`editor/pixelart/particles/*.particles`), and the closed-form flight and seamless cycle of Analytic particles (`engine/core/particles/AnalyticParticles.cpp`, `engine/shaderlib/includes/particles_analytic_vs.glsl`) | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `src/core/sim.js`, `painter.js`, `particles.js`; `sim.js` adapts Sprite Fusion's [pixel art VFX](https://www.spritefusion.com/pixel-art-vfx) | MIT, Copyright (c) 2026 Patch and Copyright (c) 2026 Hugo Duprez |
+
 ## Ideas re-implemented, no code copied
 
 [ozz-animation](https://github.com/guillaumeblanc/ozz-animation) (MIT, 0.17.0 `744eb9d`, (c) Guillaume Blanc): `editor/animation/ClipReduction.*` re-implements the idea of its `AnimationOptimizer` and `decimate.h` (a hierarchical error metric and Ramer-Douglas-Peucker decimation), with the changes of `docs/specs/S77-clip-quality.md` D5. No ozz source ships here.

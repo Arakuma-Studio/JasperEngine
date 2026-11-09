@@ -13,6 +13,7 @@
 
 #include "animation/AnimatorAssetIO.h"
 #include "animation/ClipReport.h"
+#include "window/BitmapFontInspector.h"
 #include "media/VideoFormats.h"
 #include "component/Transform.h"
 #include "util/NativePlugins.h"
@@ -1554,6 +1555,14 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         std::error_code ec;
         if (!fs::is_regular_file(asset, ec)) return false;
         drawVatAsset(asset);
+        return true;
+    }
+    // a bitmap font, a BMFont file or a TTF/OTF: the Bitmap Font Inspector (S51 R23)
+    if (Util::isFontFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        if (!bitmapFontInspector) bitmapFontInspector = std::make_shared<BitmapFontInspector>(project);
+        bitmapFontInspector->draw(asset);
         return true;
     }
     // a .shake: its own view (InspectorWindowCamera.cpp)

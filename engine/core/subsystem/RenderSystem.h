@@ -2365,6 +2365,9 @@ namespace jasperengine{
 		void fillPassPixelSnap(frame_t& frame, const CameraComponent& camera);
 		// a draw's mode for pixelSnapDraw.x: 0 none, 1 every vertex, 2 the pivot
 		float pixelSnapDrawMode(const Matrix4& mvp) const;
+		// a bitmap Text drawn without a Pixel Perfect Camera's snap: its MVP with the origin moved
+		// onto the pass target's nearest pixel (S51 R8, the CPU twin's snapCenterDelta)
+		Matrix4 pixelOriginSnapMVP(const Matrix4& mvp) const;
 		// u_vs_pbrParams of a draw (model, normal, mvp; and the snap mode of a 'Pxs' variant)
 		void applyObjectBlock(ObjectRender& render, int slot, unsigned int reflectedSize, uint64_t meshProperties, const Matrix4* objectBlock);
 		// the blit's source rect within a pixel-perfect target (its smoothing margin and shift)
@@ -3368,6 +3371,12 @@ namespace jasperengine{
 		ParticleStream particleRotationStream;
 		ParticleStream particleCustomStream;
 		ParticleStream particleTrailStream;
+		ParticleStream particlePixelStream;      // the Pixel render mode's 4-byte stream (S49)
+		// Analytic's slot indices (0, 1, 2, ...), shared by every Analytic system and grown in
+		// powers of two up to 65,536 (S49 R22)
+		BufferRender particleSlotBuffer;
+		uint32_t particleSlotCapacity = 0;
+		bool ensureParticleSlots(uint32_t count);
 		// the quad's corners and triangles, and what each stream is bound to at load (a draw
 		// swaps it for this frame's page at its offset)
 		BufferRender particleCornerBuffer;
@@ -3376,6 +3385,7 @@ namespace jasperengine{
 		BufferRender particleRotationPlaceholder;
 		BufferRender particleCustomPlaceholder;
 		BufferRender particleTrailPlaceholder;
+		BufferRender particlePixelPlaceholder;
 		bool particleStaticBuffers = false;
 		bool ensureParticleBuffers();
 		void destroyParticleBuffers();
@@ -3797,7 +3807,10 @@ namespace jasperengine{
 		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings);
 		// Palette Quantize's table is being baked (the previous one, or none, draws meanwhile: S43 R20)
 		bool isPaletteQuantizeBaking() const;
-		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut);
+		// deviceRenderScale false: the device tier's render-scale cap is not applied (a UI camera's
+		// image, S51 R8)
+		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut,
+		                                                  bool deviceRenderScale = true);
 		// the k of the in-shader LUT's shaper s = sqrt(x / (x + k)) for a LUT of that side
 		// (PostColorLut::bake, includes/post_color.glsl): 1, or with tone mapping NONE the
 		// one putting the clip point (2^-exposure) on a texel, so whites reach 255 at any side

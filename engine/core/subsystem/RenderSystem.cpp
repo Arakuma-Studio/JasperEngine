@@ -3776,10 +3776,14 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
         // a text with outline or shadow draws SDF glyphs, one with a Text Effect a vertex colour
         bool fontAtlasSdf = false;
         if (!ui->texture.empty()){
-            if (isText){
-                vertexColorVec4 = text->vertexColor || scene->findComponent<TextEffectComponent>(entity) != nullptr;
+            if (isText && ui->textRgba){
+                // a coloured bitmap font or the styled glyph cache (S51 R9)
+                vertexColorVec4 = ui->vertexColorAbsolute;
+                hasTexture = true;
+            }else if (isText){
+                vertexColorVec4 = text->vertexColor || ui->vertexColorAbsolute || scene->findComponent<TextEffectComponent>(entity) != nullptr;
                 hasFontAtlasTexture = true;
-                fontAtlasSdf = (std::isfinite(text->outlineWidth) && text->outlineWidth > 0.0f) || text->shadowEnabled;
+                fontAtlasSdf = !ui->pixelOriginSnap && ((std::isfinite(text->outlineWidth) && text->outlineWidth > 0.0f) || text->shadowEnabled);
             }else{
                 hasTexture = true;
             }
@@ -4739,10 +4743,10 @@ PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSet
     return getPostProcessingTiers(settings, lut.get());
 }
 
-PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut){
+PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut, bool deviceRenderScale){
     PostProcessingTiers tiers;
     // the device tier's and the thermal response's caps (QualityResolver)
-    tiers.renderScale = std::min(std::max(QualityResolver::renderScale(settings.renderScale), 0.5f), 1.0f);
+    tiers.renderScale = std::min(std::max(deviceRenderScale ? QualityResolver::renderScale(settings.renderScale) : settings.renderScale, 0.5f), 1.0f);
     const int msaaSamples = QualityResolver::msaaSamples(settings.msaaSamples);
     tiers.msaaSamples = msaaSamples >= 4 ? 4 : (msaaSamples >= 2 ? 2 : 1);
 
@@ -4851,7 +4855,13 @@ void RenderSystem::applyPostProcessing(){
         postLutPath = lutPath;
         postLut = getCachedColorLut(lutPath);
     }
-    const PostProcessingTiers tiers = getPostProcessingTiers(settings, postLut.get());
+    // a UI camera's image is the UI: the device tier's render-scale cap, there to cut 3D fill,
+    // would only upscale its text and images through a linear filter (a Low tier's 0.5 blurs every
+    // edge, S51 R8); the scale its settings give still applies
+    const Entity mainCamera = scene->getCamera();
+    const CameraComponent* mainCameraComponent = mainCamera != NULL_ENTITY ? scene->findComponent<CameraComponent>(mainCamera) : nullptr;
+    const bool uiImage = mainCameraComponent && mainCameraComponent->type == CameraType::CAMERA_UI;
+    const PostProcessingTiers tiers = getPostProcessingTiers(settings, postLut.get(), !uiImage);
 
     // a new uber variant applies once it is built (or failed): until then the frame keeps the
     // tiers it draws with (its uber variant, its in-shader colour), instead of frames without
@@ -13537,7 +13547,11 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     bool p_hasFontAtlasTexture = false;
     bool p_fontAtlasSdf = false;
     if (hasUITexture){
-        if (isText){
+        if (isText && ui.textRgba){
+            // RGBA glyph art (S51 R9): a coloured bitmap font, or the styled glyph cache's layers
+            p_vertexColorVec4 = ui.buffer.getAttribute(AttributeType::COLOR) != nullptr;
+            p_hasTexture = true;
+        }else if (isText){
             // a text's buffer has a colour only for a Text Effect
             p_vertexColorVec4 = ui.buffer.getAttribute(AttributeType::COLOR) != nullptr;
             p_hasFontAtlasTexture = true;
@@ -13699,6 +13713,9 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
             block[18] = 0.0f;
             block[19] = 0.0f;
             render.applyUniformBlock(ui.slotVSParams, uniformUploadSize(sizeof(block), ui.sizeVSParams), block);
+        }else if (!batch && ui.pixelOriginSnap){
+            const Matrix4 mvp = pixelOriginSnapMVP(objectMVP(transform));
+            render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)&mvp);
         }else{
             render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)(batch ? &batch->objectBlock[2] : &objectMVP(transform)));
         }
@@ -18304,7 +18321,7 @@ void RenderSystem::update(double dt){
 
             if (ui.needUpdateTexture){
                 // a text samples its atlas as 'Ftx', everything else its texture as 'Tex'
-                const uint64_t textureProperty = isText ? (1 << 1) : (1 << 0);
+                const uint64_t textureProperty = (isText && !ui.textRgba) ? (1 << 1) : (1 << 0);
                 if (!ui.texture.empty()){
                     if (!(ui.shaderProperties & textureProperty)){
                         ui.needReload = true;

@@ -256,6 +256,7 @@ namespace jasperengine::editor{
 
         // A lattice fitted around targets and bound to them (LatticeEditorOps::createLattice),
         // or a unit lattice at the Scene view's focus point without targets; one undo step
+        void createPixelParticles(const CreateMenuEntry& entry, Entity parent, bool addToPrefab);
         void createLatticeAround(const std::vector<Entity>& targets);
 
         // Search-related methods

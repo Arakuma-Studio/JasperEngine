@@ -87,6 +87,14 @@ namespace jasperengine::editor {
 
         // the emitters whose Renderer turns Distortion on (it bends the scene colour behind them)
         std::vector<std::string> distorting;
+
+        // the pixel view (S49): each base pixel drawn as a block of screen pixels; a block that is
+        // not one colour is a base pixel drawn between grid lines
+        bool pixelGrid = false;         // the run drew on the pixel grid (cells were taken)
+        bool pixelEffect = false;       // an emitter of the tree draws on the grid (Pixel Art, Pixel mode)
+        uint64_t pixelsDrawn = 0;       // base pixels the cells drew
+        uint64_t offGrid = 0;           // of them, between grid lines
+        std::vector<std::pair<double, std::pair<int, int>>> offGridAt;   // (t, base pixel x, y from the top left)
     };
 
     struct ParticleCheckRequest {

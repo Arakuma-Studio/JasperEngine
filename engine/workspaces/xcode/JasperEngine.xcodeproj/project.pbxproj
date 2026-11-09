@@ -4544,6 +4544,44 @@
 		4A534E47A036AA4F954A2A01 /* ModelClipSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474E197FD9213D710B /* ModelClipSettings.cpp */; };
 		4A534E47D655F6EFD7B40EA7 /* ModelClipSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474E197FD9213D710B /* ModelClipSettings.cpp */; };
 		4A534E47223C0640EAFFC11F /* ModelClipSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4770702AB38EE8F1C5 /* ModelClipSettings.h */; };
+		4A534E47658BC34FB3D2DB54 /* BitmapFont.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471309A8A34E90D9DF /* BitmapFont.cpp */; };
+		4A534E476331F66392997C5A /* BitmapFont.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471309A8A34E90D9DF /* BitmapFont.cpp */; };
+		4A534E477AA096E109CBF233 /* BitmapFontParsers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473B877CAEDF642E38 /* BitmapFontParsers.cpp */; };
+		4A534E47812BF9BAD720C516 /* BitmapFontParsers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473B877CAEDF642E38 /* BitmapFontParsers.cpp */; };
+		4A534E4737CCC3C0DAB106D9 /* BitmapFontPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AC2146EFC218EEDC /* BitmapFontPool.cpp */; };
+		4A534E4779DB724F90EC3F9C /* BitmapFontPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AC2146EFC218EEDC /* BitmapFontPool.cpp */; };
+		4A534E47C8526864405C6DC9 /* BitmapText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474B8B1082F2DDC7F5 /* BitmapText.cpp */; };
+		4A534E47B1CB722990C815F9 /* BitmapText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474B8B1082F2DDC7F5 /* BitmapText.cpp */; };
+		4A534E47B20E57D62B3C19F6 /* BitmapTextCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D6A78835B7D7B283 /* BitmapTextCache.cpp */; };
+		4A534E47710D3CA667AFE394 /* BitmapTextCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D6A78835B7D7B283 /* BitmapTextCache.cpp */; };
+		4A534E47489168141833AE26 /* BitmapTextRaster.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D4B2D102EEF9DED1 /* BitmapTextRaster.cpp */; };
+		4A534E475119FD6969C6D5E4 /* BitmapTextRaster.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D4B2D102EEF9DED1 /* BitmapTextRaster.cpp */; };
+		4A534E474964F91BBC729943 /* BuiltinPixelFont.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DD9028B293E6B637 /* BuiltinPixelFont.cpp */; };
+		4A534E47470D3DA4CC9556CE /* BuiltinPixelFont.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DD9028B293E6B637 /* BuiltinPixelFont.cpp */; };
+		4A534E47DACEC49793019016 /* FontPixelReport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EEDE4E6006AFE127 /* FontPixelReport.cpp */; };
+		4A534E4778CEF13F9FB3FCDB /* FontPixelReport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EEDE4E6006AFE127 /* FontPixelReport.cpp */; };
+		4A534E47A2B3C314CCF08D7A /* RmlFontEngineBitmap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */; };
+		4A534E4733FB81EAF3379E76 /* RmlFontEngineBitmap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */; };
+		4A534E475D156192E79D96FB /* PixelArtClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470E71C37C07087E7A /* PixelArtClassesLua.cpp */; };
+		4A534E47F24F029740063154 /* PixelArtClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470E71C37C07087E7A /* PixelArtClassesLua.cpp */; };
+		4A534E4776883513C72BCCBA /* UISystemBitmapText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E7D2EF012075E033 /* UISystemBitmapText.cpp */; };
+		4A534E47F8B28E5417BB3A37 /* UISystemBitmapText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E7D2EF012075E033 /* UISystemBitmapText.cpp */; };
+		4A534E47BADA103CE8473DB6 /* BitmapFont.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B1DEE766937DBA48 /* BitmapFont.h */; };
+		4A534E47C14290B6F49407DE /* BitmapFontParsers.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4720F56DCF0A1A88B4 /* BitmapFontParsers.h */; };
+		4A534E4764FA2E21ECE61233 /* BitmapFontPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472C51A5863AEFA107 /* BitmapFontPool.h */; };
+		4A534E477337C2C148BA1A10 /* BitmapText.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B8EA4D38A9AE7C9D /* BitmapText.h */; };
+		4A534E4750F80E19A8A3B3D9 /* BitmapTextCache.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C7DF15AECF22EA17 /* BitmapTextCache.h */; };
+		4A534E47FEBAD526820B2A23 /* BitmapTextRaster.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473F26FCADC3D4E55E /* BitmapTextRaster.h */; };
+		4A534E47BB71B30CDDA6672F /* BuiltinPixelFont.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475FE9A61E5C90F42F /* BuiltinPixelFont.h */; };
+		4A534E47AF9E9B2A9802B32C /* FontPixelReport.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F01EA78B341B6095 /* FontPixelReport.h */; };
+		4A534E471BB6F3D7678C5B63 /* Palette.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4756FFEAE1F98FDCFE /* Palette.h */; };
+		4A534E4768B3312269AFC6EF /* PaletteBinding.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A7DF7234F41B0E73 /* PaletteBinding.h */; };
+		4A534E47F11EC913ED031CA6 /* PaletteMaterial.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477BB1478D302C8847 /* PaletteMaterial.h */; };
+		4A534E47595C33ED5BF0D36D /* PaletteQuantize.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F05F5EFE87DA79E0 /* PaletteQuantize.h */; };
+		4A534E47957E8BD25A7874AA /* PaletteRampTexture.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E087D29F372FD652 /* PaletteRampTexture.h */; };
+		4A534E474FE4CBC5B0B1914E /* PaletteSwap.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4764A7209406FFE2C8 /* PaletteSwap.h */; };
+		4A534E47698E5ED9FD04F1FD /* PixelColor.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A5FD34914CFC70C4 /* PixelColor.h */; };
+		4A534E473412B8ADD3BBAF47 /* Rgba8.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CF95F5E16366E329 /* Rgba8.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8864,6 +8902,33 @@
 		4A534E474365841B0820D5A8 /* NearestName.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NearestName.h; sourceTree = "<group>"; };
 		4A534E474E197FD9213D710B /* ModelClipSettings.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ModelClipSettings.cpp; sourceTree = "<group>"; };
 		4A534E4770702AB38EE8F1C5 /* ModelClipSettings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ModelClipSettings.h; sourceTree = "<group>"; };
+		4A534E471309A8A34E90D9DF /* BitmapFont.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BitmapFont.cpp; sourceTree = "<group>"; };
+		4A534E473B877CAEDF642E38 /* BitmapFontParsers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BitmapFontParsers.cpp; sourceTree = "<group>"; };
+		4A534E47AC2146EFC218EEDC /* BitmapFontPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BitmapFontPool.cpp; sourceTree = "<group>"; };
+		4A534E474B8B1082F2DDC7F5 /* BitmapText.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BitmapText.cpp; sourceTree = "<group>"; };
+		4A534E47D6A78835B7D7B283 /* BitmapTextCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BitmapTextCache.cpp; sourceTree = "<group>"; };
+		4A534E47D4B2D102EEF9DED1 /* BitmapTextRaster.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BitmapTextRaster.cpp; sourceTree = "<group>"; };
+		4A534E47DD9028B293E6B637 /* BuiltinPixelFont.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BuiltinPixelFont.cpp; sourceTree = "<group>"; };
+		4A534E47EEDE4E6006AFE127 /* FontPixelReport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FontPixelReport.cpp; sourceTree = "<group>"; };
+		4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RmlFontEngineBitmap.cpp; sourceTree = "<group>"; };
+		4A534E470E71C37C07087E7A /* PixelArtClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelArtClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47E7D2EF012075E033 /* UISystemBitmapText.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemBitmapText.cpp; sourceTree = "<group>"; };
+		4A534E47B1DEE766937DBA48 /* BitmapFont.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BitmapFont.h; sourceTree = "<group>"; };
+		4A534E4720F56DCF0A1A88B4 /* BitmapFontParsers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BitmapFontParsers.h; sourceTree = "<group>"; };
+		4A534E472C51A5863AEFA107 /* BitmapFontPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BitmapFontPool.h; sourceTree = "<group>"; };
+		4A534E47B8EA4D38A9AE7C9D /* BitmapText.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BitmapText.h; sourceTree = "<group>"; };
+		4A534E47C7DF15AECF22EA17 /* BitmapTextCache.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BitmapTextCache.h; sourceTree = "<group>"; };
+		4A534E473F26FCADC3D4E55E /* BitmapTextRaster.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BitmapTextRaster.h; sourceTree = "<group>"; };
+		4A534E475FE9A61E5C90F42F /* BuiltinPixelFont.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BuiltinPixelFont.h; sourceTree = "<group>"; };
+		4A534E47F01EA78B341B6095 /* FontPixelReport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FontPixelReport.h; sourceTree = "<group>"; };
+		4A534E4756FFEAE1F98FDCFE /* Palette.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Palette.h; sourceTree = "<group>"; };
+		4A534E47A7DF7234F41B0E73 /* PaletteBinding.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PaletteBinding.h; sourceTree = "<group>"; };
+		4A534E477BB1478D302C8847 /* PaletteMaterial.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PaletteMaterial.h; sourceTree = "<group>"; };
+		4A534E47F05F5EFE87DA79E0 /* PaletteQuantize.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PaletteQuantize.h; sourceTree = "<group>"; };
+		4A534E47E087D29F372FD652 /* PaletteRampTexture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PaletteRampTexture.h; sourceTree = "<group>"; };
+		4A534E4764A7209406FFE2C8 /* PaletteSwap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PaletteSwap.h; sourceTree = "<group>"; };
+		4A534E47A5FD34914CFC70C4 /* PixelColor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelColor.h; sourceTree = "<group>"; };
+		4A534E47CF95F5E16366E329 /* Rgba8.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Rgba8.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9420,6 +9485,7 @@
 				4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */,
 				4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */,
 				4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */,
+				4A534E470E71C37C07087E7A /* PixelArtClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10713,6 +10779,30 @@
 				4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */,
 				4A534E47D3B649BD59C300EB /* PixelRotation.h */,
 				4A534E474815DCD00E6D3674 /* PixelSnap.h */,
+				4A534E471309A8A34E90D9DF /* BitmapFont.cpp */,
+				4A534E473B877CAEDF642E38 /* BitmapFontParsers.cpp */,
+				4A534E47AC2146EFC218EEDC /* BitmapFontPool.cpp */,
+				4A534E474B8B1082F2DDC7F5 /* BitmapText.cpp */,
+				4A534E47D6A78835B7D7B283 /* BitmapTextCache.cpp */,
+				4A534E47D4B2D102EEF9DED1 /* BitmapTextRaster.cpp */,
+				4A534E47DD9028B293E6B637 /* BuiltinPixelFont.cpp */,
+				4A534E47EEDE4E6006AFE127 /* FontPixelReport.cpp */,
+				4A534E47B1DEE766937DBA48 /* BitmapFont.h */,
+				4A534E4720F56DCF0A1A88B4 /* BitmapFontParsers.h */,
+				4A534E472C51A5863AEFA107 /* BitmapFontPool.h */,
+				4A534E47B8EA4D38A9AE7C9D /* BitmapText.h */,
+				4A534E47C7DF15AECF22EA17 /* BitmapTextCache.h */,
+				4A534E473F26FCADC3D4E55E /* BitmapTextRaster.h */,
+				4A534E475FE9A61E5C90F42F /* BuiltinPixelFont.h */,
+				4A534E47F01EA78B341B6095 /* FontPixelReport.h */,
+				4A534E4756FFEAE1F98FDCFE /* Palette.h */,
+				4A534E47A7DF7234F41B0E73 /* PaletteBinding.h */,
+				4A534E477BB1478D302C8847 /* PaletteMaterial.h */,
+				4A534E47F05F5EFE87DA79E0 /* PaletteQuantize.h */,
+				4A534E47E087D29F372FD652 /* PaletteRampTexture.h */,
+				4A534E4764A7209406FFE2C8 /* PaletteSwap.h */,
+				4A534E47A5FD34914CFC70C4 /* PixelColor.h */,
+				4A534E47CF95F5E16366E329 /* Rgba8.h */,
 			);
 			path = pixelart;
 			sourceTree = "<group>";
@@ -11401,6 +11491,7 @@
 				4A534E47B790A1EA35BBD60C /* WaterInteractionSystem.h */,
 				4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */,
 				4A534E477308C84C63C31D40 /* NavigationAreas.h */,
+				4A534E47E7D2EF012075E033 /* UISystemBitmapText.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -13544,6 +13635,7 @@
 				53313658461554B63CF29564 /* RmlFontMsdf.h */,
 				434F4D5012F57D78BB1B6072 /* widgets */,
 				4A534E47535074DEA48446A6 /* controls */,
+				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -15758,6 +15850,22 @@
 				4A534E47D87F5455BEE3D153 /* NavigationAreas.h in Headers */,
 				4A534E47F70E7AE87350F4F9 /* NearestName.h in Headers */,
 				4A534E47223C0640EAFFC11F /* ModelClipSettings.h in Headers */,
+				4A534E47BADA103CE8473DB6 /* BitmapFont.h in Headers */,
+				4A534E47C14290B6F49407DE /* BitmapFontParsers.h in Headers */,
+				4A534E4764FA2E21ECE61233 /* BitmapFontPool.h in Headers */,
+				4A534E477337C2C148BA1A10 /* BitmapText.h in Headers */,
+				4A534E4750F80E19A8A3B3D9 /* BitmapTextCache.h in Headers */,
+				4A534E47FEBAD526820B2A23 /* BitmapTextRaster.h in Headers */,
+				4A534E47BB71B30CDDA6672F /* BuiltinPixelFont.h in Headers */,
+				4A534E47AF9E9B2A9802B32C /* FontPixelReport.h in Headers */,
+				4A534E471BB6F3D7678C5B63 /* Palette.h in Headers */,
+				4A534E4768B3312269AFC6EF /* PaletteBinding.h in Headers */,
+				4A534E47F11EC913ED031CA6 /* PaletteMaterial.h in Headers */,
+				4A534E47595C33ED5BF0D36D /* PaletteQuantize.h in Headers */,
+				4A534E47957E8BD25A7874AA /* PaletteRampTexture.h in Headers */,
+				4A534E474FE4CBC5B0B1914E /* PaletteSwap.h in Headers */,
+				4A534E47698E5ED9FD04F1FD /* PixelColor.h in Headers */,
+				4A534E473412B8ADD3BBAF47 /* Rgba8.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18308,6 +18416,17 @@
 				4A534E47B61CE4D4BE2CB2FA /* AsepriteClips.cpp in Sources */,
 				4A534E47AF9123501EBADC96 /* SpriteSheetSources.cpp in Sources */,
 				4A534E47A036AA4F954A2A01 /* ModelClipSettings.cpp in Sources */,
+				4A534E47658BC34FB3D2DB54 /* BitmapFont.cpp in Sources */,
+				4A534E477AA096E109CBF233 /* BitmapFontParsers.cpp in Sources */,
+				4A534E4737CCC3C0DAB106D9 /* BitmapFontPool.cpp in Sources */,
+				4A534E47C8526864405C6DC9 /* BitmapText.cpp in Sources */,
+				4A534E47B20E57D62B3C19F6 /* BitmapTextCache.cpp in Sources */,
+				4A534E47489168141833AE26 /* BitmapTextRaster.cpp in Sources */,
+				4A534E474964F91BBC729943 /* BuiltinPixelFont.cpp in Sources */,
+				4A534E47DACEC49793019016 /* FontPixelReport.cpp in Sources */,
+				4A534E47A2B3C314CCF08D7A /* RmlFontEngineBitmap.cpp in Sources */,
+				4A534E475D156192E79D96FB /* PixelArtClassesLua.cpp in Sources */,
+				4A534E4776883513C72BCCBA /* UISystemBitmapText.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19149,6 +19268,17 @@
 				4A534E475671C5EB980CA830 /* AsepriteClips.cpp in Sources */,
 				4A534E47B9A475E7C5CD7CA3 /* SpriteSheetSources.cpp in Sources */,
 				4A534E47D655F6EFD7B40EA7 /* ModelClipSettings.cpp in Sources */,
+				4A534E476331F66392997C5A /* BitmapFont.cpp in Sources */,
+				4A534E47812BF9BAD720C516 /* BitmapFontParsers.cpp in Sources */,
+				4A534E4779DB724F90EC3F9C /* BitmapFontPool.cpp in Sources */,
+				4A534E47B1CB722990C815F9 /* BitmapText.cpp in Sources */,
+				4A534E47710D3CA667AFE394 /* BitmapTextCache.cpp in Sources */,
+				4A534E475119FD6969C6D5E4 /* BitmapTextRaster.cpp in Sources */,
+				4A534E47470D3DA4CC9556CE /* BuiltinPixelFont.cpp in Sources */,
+				4A534E4778CEF13F9FB3FCDB /* FontPixelReport.cpp in Sources */,
+				4A534E4733FB81EAF3379E76 /* RmlFontEngineBitmap.cpp in Sources */,
+				4A534E47F24F029740063154 /* PixelArtClassesLua.cpp in Sources */,
+				4A534E47F8B28E5417BB3A37 /* UISystemBitmapText.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

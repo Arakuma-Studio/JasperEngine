@@ -97,6 +97,13 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pixelart/PaletteAssets.cpp
 )
 
+# S49 (Pixel Particles): the presets, the offscreen capture (contact sheets, Bake to Sprite
+# Sheet) and its pixel-art checks
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/particles/PixelParticlePresets.cpp
+    ${EDITOR_DIR}/pixelart/particles/PixelPresetCreate.cpp
+)
+
 # the colour decisions give the same bits on every platform, as engine/core/pixelart's
 if(MSVC)
     set(JASPERENGINE_EDITOR_PIXELART_FLAGS /fp:precise)
@@ -148,4 +155,14 @@ jasperengine_skip_unity_build(
 list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pixelart/SpriteFxPreview.cpp
     ${EDITOR_DIR}/window/InspectorSpriteFx.cpp
+)
+
+# S51 (Pixel Fonts): preview_font, the font parts of get_asset_info and write_file, the Bitmap Font
+# Inspector, Create > Bitmap Font, the Text Inspector's pixel rows, hot reload and cooking
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/mcp/tools/FontTools.cpp
+    ${EDITOR_DIR}/reload/handlers/BitmapFonts.cpp
+    ${EDITOR_DIR}/pixelart/BitmapFontCreate.cpp
+    ${EDITOR_DIR}/window/BitmapFontInspector.cpp
+    ${EDITOR_DIR}/window/InspectorPixelFont.cpp
 )

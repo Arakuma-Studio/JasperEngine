@@ -1375,6 +1375,43 @@ CASES = [
                    "reply_must": [r"(?i)\bno\b|not only|37|off.palette|fixable"]},
         "max_turns": 10,
     },
+    {   # -- S49 pixel particles: the pixel presets and the preview's pixel view with its off_grid check ----------
+        "id": "guard_pixel_particles_sheet",
+        "kind": "guard",
+        "what_happened": "New text (S49): a pixel-art effect is a pixel_* preset of create_particle_effect, and checking it "
+                         "is preview_particle_effect with view pixel (the run on the base-pixel grid, off_grid among its "
+                         "checks); without them an agent writes a soft-alpha effect JSON by hand and judges a perspective view.",
+        "text_at_issue": "create_particle_effect's preset enum (pixel_spark ...); preview_particle_effect's view enum 'pixel'; "
+                         "the guide's Pixel particles: 'preview_particle_effect {path or entity, view: \"pixel\", scale}'",
+        "source": "S49 R20, R38 on S91's preview (new tool text); no failure on record",
+        "prompt": "Our game is pixel art. Make a hit-spark particle effect at assets/fx/hit_spark.particles that fits the "
+                  "pixel look, put it on the Particle System 'Sparks' (entity 12) and check it for pixel-art problems over "
+                  "its life.",
+        "mocks": [
+            {"tool": "create_particle_effect", "result": ok(
+                "Created assets/fx/hit_spark.particles (pixel_spark) as one undo step (undo with scope project).",
+                {"path": "assets/fx/hit_spark.particles", "diagnostics": [], "undo": {"id": 3, "name": "Create File hit_spark.particles"},
+                 "next": "set_particle_effect {entity, effect: \"assets/fx/hit_spark.particles\"} plays it on a Particle System."})},
+            {"tool": "set_particle_effect", "result": ok(
+                "Particle System 12 'Sparks' plays assets/fx/hit_spark.particles.",
+                {"entity": 12, "effect": "assets/fx/hit_spark.particles", "undo": {"id": 4, "name": "Set Particle Effect"}})},
+            {"tool": "preview_particle_effect", "args": {"view": "pixel"}, "result": ok(
+                "assets/fx/hit_spark.particles: 108 ticks of 0.008333 s (0.9 s), peak 24 particles at 0.0083 s, emitted 24. Verdict PASS.\n"
+                "PASS off_grid: {\"drawn\": 412, \"off_grid\": 0}.\nSKIP off_palette: needs S48 (Pixel FX).",
+                {"verdict": "PASS", "frame": {"view": "pixel", "base_pixels": 96, "scale": 4},
+                 "checks": [{"id": "off_grid", "status": "PASS", "measured": {"off_grid": 0, "drawn": 412}},
+                            {"id": "off_palette", "status": "SKIP", "limited_by": "needs S48 (Pixel FX): its EffectLints compute off_palette"}],
+                 "next": "Report these numbers."})},
+            {"tool": "preview_particle_effect", "result": ok(
+                "assets/fx/hit_spark.particles: three-quarter view. Verdict PASS.\nSKIP off_grid: Measured on the pixel view's cells: run with view pixel.",
+                {"verdict": "PASS", "frame": {"view": "three_quarter"},
+                 "checks": [{"id": "off_grid", "status": "SKIP", "limited_by": "Measured on the pixel view's cells: run with view pixel."}]})},
+        ],
+        "checks": {"calls": [{"tool": "create_particle_effect", "args": {"preset": "pixel_spark"}},
+                             {"tool": "preview_particle_effect", "args": {"view": "pixel"}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.particles$"]},
+        "max_turns": 14,
+    },
     {
         "id": "guard_nav_carve_tiles_per_tick",
         "kind": "guard",
@@ -3339,6 +3376,77 @@ CASES = [
                    "must_not_call": ["fork_shader", "apply_post_processing_preset",
                                      {"tool": "set_scene_settings", "args": {"settings": {"fixed_resolution_enabled": True}}}]},
         "max_turns": 16,
+    },
+    {
+        "id": "guard_pixel_font_preview",
+        "kind": "guard",
+        "groups_enabled": ["pixel_art"],
+        "what_happened": "Asked whether a bitmap font covers a string and how it looks, an agent should draw the string with "
+                         "preview_font text at scale (its result lists the missing characters) instead of building a scene, "
+                         "playing and taking screenshots (S51).",
+        "text_at_issue": "preview_font description: '`text` at a whole `scale` ... with the missing characters listed'; its text and scale parameters",
+        "source": "S51 (docs/specs/S51-pixel-fonts.md R26, AC16); no failure on record",
+        "files": {"assets/fonts/hud.bitmapfont": "{\"format\": \"jasperengine.bitmapfont\", \"version\": 1, "
+                                                 "\"source\": {\"type\": \"grid\", \"image\": \"hud@6x9.png\"}}"},
+        "prompt": "Does assets/fonts/hud.bitmapfont have every character of 'SCORE 120 \u00a1Ol\u00e9!'? Show me that "
+                  "string in it, three times its size.",
+        "mocks": [
+            {"tool": "preview_font", "args": {"path": "re:hud\\.bitmapfont"}, "result": ok(
+                "assets/fonts/hud.bitmapfont: the text at x3 (78x10 font pixels), white on a dark checker. Missing (drawn as "
+                "the fallback glyph): \u00a1\u00e9.",
+                {"font": {"kind": "bitmap", "native_size": 9, "line_height": 10, "baseline": 7, "glyphs": 95, "colored": False,
+                          "scale": 3, "width": 242, "height": 38, "missing": ["\u00a1", "\u00e9"]}})},
+            {"tool": "get_asset_info", "args": {"path": "re:hud\\.bitmapfont"}, "result": ok(
+                "assets/fonts/hud.bitmapfont: font, a bitmap font: 95 glyphs, 9 px (line 10, baseline 7).",
+                {"path": "assets/fonts/hud.bitmapfont", "type": "font", "font": {"kind": "bitmap", "glyphs": 95,
+                 "native_size": 9, "missing_ascii": ""}})},
+        ],
+        "checks": {"calls": [{"tool": "preview_font", "args": {"path": "re:hud\\.bitmapfont", "text": "re:SCORE", "scale": 3}}],
+                   "must_not_call": ["play", "create_entity"], "reply_must": [r"(?i)\u00e9|missing|lack"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_bitmap_font_write_report",
+        "kind": "guard",
+        "what_happened": "Making a pixel font from a sheet, an agent should write the .bitmapfont with write_file and read the "
+                         "import report it returns (glyphs, typed errors with the field to fix), not hand-edit a scene's "
+                         "font or guess (S51).",
+        "text_at_issue": "write_file result: a .bitmapfont's import report (font, errors with their field)",
+        "source": "S51 (docs/specs/S51-pixel-fonts.md R28, AC17); no failure on record",
+        "files": {"assets/fonts/hud@6x9.png": "binary placeholder"},
+        "prompt": "Turn assets/fonts/hud@6x9.png (printable ASCII on a 6x9 grid) into a bitmap font and tell me if it imported "
+                  "cleanly.",
+        "mocks": [
+            {"tool": "write_file", "args": {"path": "re:\\.bitmapfont$"}, "result": ok(
+                "Created assets/fonts/hud.bitmapfont (120 bytes; undo with scope project). Bitmap font: 95 glyphs, 9 px, line "
+                "10, baseline 7.",
+                {"path": "assets/fonts/hud.bitmapfont", "created": True, "font": {"glyphs": 95, "native_size": 9,
+                 "missing_ascii": "", "partial_alpha_share": 0.0}})},
+            {"tool": "read_file", "result": ok("# Pixel fonts ...", {})},
+        ],
+        "checks": {"calls": [{"tool": "write_file", "args": {"path": "re:\\.bitmapfont$"}}],
+                   "shell_must_not": [r"python", r"convert\s"], "reply_must": [r"95|clean|glyph"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_font_metrics_info",
+        "kind": "guard",
+        "groups_enabled": ["pixel_art"],
+        "what_happened": "Asked for a pixel font's metrics, an agent should read them from get_asset_info (native size, "
+                         "baseline, kerning, pixel report) instead of opening the sheet or the JSON, or drawing it, and measuring (S51).",
+        "text_at_issue": "preview_font description: 'Metrics, kerning, pixel report: get_asset_info'",
+        "source": "S51 (docs/specs/S51-pixel-fonts.md R27, AC17); no failure on record",
+        "files": {"assets/fonts/hud.fnt": "info face=\"Hud\" size=9\ncommon lineHeight=10 base=7\n"},
+        "prompt": "What is the native pixel size and baseline of assets/fonts/hud.fnt, and does it have antialiased pixels?",
+        "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:hud\\.fnt"}, "result": ok(
+                "assets/fonts/hud.fnt: font, a bitmap font: 95 glyphs, 9 px (line 10, baseline 7).",
+                {"path": "assets/fonts/hud.fnt", "type": "font", "font": {"kind": "bitmap", "native_size": 9, "baseline": 7},
+                 "pixel_report": {"antialiased": False, "partial_alpha_share": 0.0, "native_size": 9}})},
+        ],
+        "checks": {"calls": [{"tool": "get_asset_info", "args": {"path": "re:hud\\.fnt"}}],
+                   "must_not_call": ["read_file", "view_asset", "preview_font"], "reply_must": [r"9", r"7"]},
+        "max_turns": 6,
     },
     {
         "id": "guard_game_view_pixel_scale",

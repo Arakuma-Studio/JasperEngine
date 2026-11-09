@@ -83,6 +83,11 @@ namespace jasperengine::editor {
         int columns = 4;
         int rowsCount = 4;
         int cellSize = 128;
+        // the pixel view (S49): the base-pixel grid, cells at an integer scale; and Record's
+        // Aseprite json-hash beside the sheet
+        bool pixelView = false;
+        int pixelScale = 4;
+        bool aseprite = false;
         char recordPath[512] = {};
         std::unique_ptr<ParticleEffectPreview> recording;
         bool recordingSheet = true;

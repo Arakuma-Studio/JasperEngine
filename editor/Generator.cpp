@@ -2341,6 +2341,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // for every build, an exported one too (only the project's own CMake defines the macro below)
     if (particleWorldBudget != 0)
         mainContent += "#include \"particles/ParticleWorld.h\"\n";
+    if (bitmapTextCacheMiB != 0)
+        mainContent += "#include \"pixelart/BitmapTextCache.h\"\n";
     mainContent += "#ifdef JASPERENGINE_PROJECT_PATH\n";
     mainContent += "#include \"shader/ShaderManifest.h\"\n";
     mainContent += "#include \"shader/ShaderVariantCompiler.h\"\n";
@@ -2555,6 +2557,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     }
     if (pixelsPerUnit != 1)
         mainContent += "    Engine::setPixelsPerUnit(" + std::to_string(pixelsPerUnit) + ");\n";
+    if (bitmapTextCacheMiB != 0)
+        mainContent += "    jasperengine::pixelart::BitmapTextCache::get().setBudgetMiB(" + std::to_string(bitmapTextCacheMiB) + ");\n";
 
     // the Canvas Scaler's project default (absent: Follow Game Canvas, the engine default)
     if (uiScale != CanvasScalerSettings())

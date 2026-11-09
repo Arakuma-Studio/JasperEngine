@@ -5,6 +5,7 @@
 
 #include "Log.h"
 #include "jobs/JobSystem.h"
+#include "particles/AnalyticParticles.h"
 #include "particles/ParticleCompiler.h"
 #include "particles/ParticleEval.h"
 
@@ -166,8 +167,14 @@ void EmitterRuntime::bind(std::shared_ptr<const CompiledEffect> effect, uint32_t
         channels.release(0.0);
         return;
     }
-    const uint32_t cap = capacityOverride ? std::min(capacityOverride, prog->maxParticles) : prog->capacityHint();
+    // Analytic keeps no particles: its storage stays empty (S49 R29)
+    const uint32_t cap = prog->analytic ? 0u : (capacityOverride ? std::min(capacityOverride, prog->maxParticles) : prog->capacityHint());
     configureStorage(cap);
+    if (prog->analytic){
+        if (!analyticProgram) analyticProgram = std::make_unique<AnalyticProgram>();
+    }else{
+        analyticProgram.reset();
+    }
     if (prog->trails.enabled && prog->trails.mode == TrailMode::PerParticle){
         const uint32_t trailed = (uint32_t)std::ceil((double)prog->maxParticles * std::clamp(prog->trails.ratio, 0.0f, 1.0f));
         // as many again for the trails of dead particles fading out
@@ -305,6 +312,7 @@ uint32_t EmitterRuntime::childSeed(uint32_t parent, uint32_t index){
 
 void EmitterRuntime::reset(uint32_t newSeed){
     seed = newSeed;
+    resetGeneration++;
     channels.count = 0;
     if (trailStore.ringCount() > 0) trailStore.clear();
     spawnCounter = 0;
@@ -338,6 +346,50 @@ void EmitterRuntime::reset(uint32_t newSeed){
     for (size_t i = 0; i < children.size(); i++){
         if (children[i]) children[i]->reset(childSeed(newSeed, (uint32_t)i));
     }
+    analyticEnd = 1.0e30;
+    if (prog && prog->analytic && analyticProgram){
+        // the program of this seed (the effect validated it when it compiled)
+        std::vector<Diagnostic> diagnostics;
+        AnalyticParticles::compile(compiled->document, *prog, newSeed, *analyticProgram, diagnostics);
+        AnalyticParticles::setTime(*analyticProgram, cycleTime, analyticEnd);
+    }
+}
+
+bool EmitterRuntime::isAnalytic() const{
+    return prog && prog->analytic && analyticProgram && analyticProgram->valid;
+}
+
+uint32_t EmitterRuntime::analyticAlive() const{
+    if (!isAnalytic() || playState == PlayState::Stopped)
+        return 0u;
+    return AnalyticParticles::aliveCount(*analyticProgram);
+}
+
+void EmitterRuntime::analyticUpdate(const EmitterInput& input){
+    const float* transform = input.transform ? input.transform : kIdentity;
+    // the particles are worked out in the emitter's frame and drawn through its transform; the
+    // world's gravity and world-space values turned into that frame
+    std::memcpy(simWorld, transform, sizeof(simWorld));
+    inverseAffine(transform, worldSim);
+    if (prog->space == SimulationSpace::World && analyticHasTransform && !analyticMovedWarned &&
+            std::memcmp(analyticLastTransform, transform, sizeof(analyticLastTransform)) != 0){
+        // R18: live World-space particles would follow the emitter
+        Log::warn("[Particles] analytic_moving_world_emitter: an Analytic effect in World space moves with its emitter; keep the emitter still or use Local");
+        analyticMovedWarned = true;
+    }
+    std::memcpy(analyticLastTransform, transform, sizeof(analyticLastTransform));
+    analyticHasTransform = true;
+    std::memcpy(analyticGravity, input.gravity, sizeof(analyticGravity));
+    float rotation[9];
+    for (int c = 0; c < 3; c++){
+        // the world-to-emitter rotation, unit axes (a scaled emitter scales positions, not forces)
+        float len = 0.0f;
+        for (int r = 0; r < 3; r++) len += worldSim[c * 4 + r] * worldSim[c * 4 + r];
+        len = len > 0.0f ? std::sqrt(len) : 1.0f;
+        for (int r = 0; r < 3; r++) rotation[c * 3 + r] = worldSim[c * 4 + r] / len;
+    }
+    AnalyticParticles::setMotion(*analyticProgram, analyticGravity, rotation);
+    AnalyticParticles::setTime(*analyticProgram, cycleTime, analyticEnd);
 }
 
 double EmitterRuntime::pickStartDelay() const{
@@ -362,7 +414,8 @@ void EmitterRuntime::play(){
             reset(seed);
         emitting = true;
         playState = PlayState::Playing;
-        if (prog->prewarm){
+        // an Analytic loop starts at any phase: its prewarm costs nothing (R17)
+        if (prog->prewarm && !prog->analytic){
             prewarm.pending = true;
             prewarm.tick = prog->tickRate > 0 ? 1.0 / prog->tickRate : kMaxVariableStep;
             prewarm.target = prog->duration;
@@ -378,6 +431,8 @@ void EmitterRuntime::pause(){
 }
 
 void EmitterRuntime::stop(bool clear){
+    if (emitting && isAnalytic())
+        analyticEnd = std::min(analyticEnd, cycleTime);
     emitting = false;
     if (clear){
         reset(seed);
@@ -386,6 +441,7 @@ void EmitterRuntime::stop(bool clear){
 }
 
 void EmitterRuntime::clear(){
+    resetGeneration++;
     channels.count = 0;
     if (trailStore.ringCount() > 0) trailStore.clear();
     boundsValid = false;
@@ -459,6 +515,11 @@ uint64_t EmitterRuntime::childrenCapacityHint(uint64_t parents) const{
 bool EmitterRuntime::isAlive() const{
     if (channels.count > 0 || trailStore.usedRings() > 0)
         return true;
+    if (isAnalytic() && playState != PlayState::Stopped){
+        // until the last particle born before the emission ended has died
+        const double end = std::min(analyticEnd, prog->looping ? 1.0e30 : (double)prog->duration);
+        return cycleTime < end + (double)prog->maxLifetime;
+    }
     for (const auto& c : children){
         if (c && c->isAlive()) return true;
     }
@@ -567,6 +628,19 @@ uint32_t EmitterRuntime::planFrame(const EmitterInput& input, double dt, uint32_
     if (prewarm.pending){
         // spread over the first frames at most 1 ms each; the effect is hidden meanwhile
         continueSeekTicks(input, prewarm, 1.0);
+        std::memcpy(prevFrame, curFrame, sizeof(prevFrame));
+        return 0;
+    }
+    if (isAnalytic()){
+        // the time only: the GPU computes every particle from it (R15)
+        if (dt > 0.0 && std::isfinite(dt)){
+            const double scaled = dt * std::max(0.0, (double)input.speed * prog->simulationSpeed);
+            elapsed += scaled;
+            cycleTime += scaled;
+            if (!prog->looping && emitting && cycleTime >= prog->duration)
+                emitting = false;
+        }
+        analyticUpdate(input);
         std::memcpy(prevFrame, curFrame, sizeof(prevFrame));
         return 0;
     }
@@ -1846,6 +1920,15 @@ void EmitterRuntime::beginSeek(const EmitterInput& input, double time, SeekState
     std::memcpy(tickTransform, curFrame, sizeof(tickTransform));
     std::memcpy(lastTickTransform, curFrame, sizeof(lastTickTransform));
     started = true;
+    if (isAnalytic()){
+        // exact and immediate (R39): the time is the state
+        elapsed = std::max(time, 0.0);
+        cycleTime += elapsed;
+        if (!prog->looping && cycleTime >= prog->duration)
+            emitting = false;
+        analyticUpdate(input);
+        return;
+    }
     if (!(time > 0.0))
         return;
     s.target = time;
@@ -1931,6 +2014,12 @@ void EmitterRuntime::seek(const EmitterInput& input, double time){
 // ---------------------------------------------------------------- queries
 
 void EmitterRuntime::bounds(float outMin[3], float outMax[3]) const{
+    if (isAnalytic()){
+        // every particle it can draw, padded already
+        std::memcpy(outMin, analyticProgram->boundsMin, 3 * sizeof(float));
+        std::memcpy(outMax, analyticProgram->boundsMax, 3 * sizeof(float));
+        return;
+    }
     const float pad = prog ? 0.5f * prog->maxStartSize * prog->maxSizeFactor * 1.7320508f : 0.0f;
     for (int k = 0; k < 3; k++){
         outMin[k] = boundsLo[k] - pad;
@@ -1982,6 +2071,7 @@ void EmitterRuntime::saveCheckpoint(Checkpoint& out) const{
 }
 
 void EmitterRuntime::restoreCheckpoint(const Checkpoint& in){
+    resetGeneration++;
     if (!prog)
         return;
     growTo(in.channels.count);

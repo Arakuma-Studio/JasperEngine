@@ -63,6 +63,8 @@ namespace jasperengine::anim {
 
 namespace jasperengine::editor{
 
+    class BitmapFontInspector;
+
     namespace reflect {
         struct EnumDesc;
         struct FieldDesc;
@@ -215,6 +217,8 @@ namespace jasperengine::editor{
         // and its model files (S53)
         std::unique_ptr<ModelImporterView> modelImporter;
         std::unique_ptr<AsepriteImporterView> asepriteImporter;
+        // .bitmapfont, .fnt and TTF/OTF files (S51 R23; shared_ptr: declared, not defined, here)
+        std::shared_ptr<BitmapFontInspector> bitmapFontInspector;
         // (shared: the type stays out of this header, which App.h includes; its sprite:: names would
         // make `sprite` a namespace in every source that includes App.h)
         std::shared_ptr<SpriteAtlasInspector> spriteAtlasInspector;
@@ -1014,6 +1018,8 @@ namespace jasperengine::editor{
                              SceneProject* sceneProject, const std::vector<Entity>& entities, bool visible = true);
         void drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // its table's rows, then a bitmap font's Pixel Font rows (S51 R22, InspectorPixelFont.cpp)
+        void drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPoseAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
