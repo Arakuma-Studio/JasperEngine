@@ -262,7 +262,12 @@ namespace {
         TextureRender* texture = ta::TitleArtRuntime::display(*p.live);
         const ta::TitleDisplayImage& front = p.live->front();
         if (status.failed) drawList->AddText(ImVec2(min.x + 12.0f, min.y + 30.0f), IM_COL32(240, 120, 90, 255), status.error.c_str());
-        if (!texture || !front.valid()) return false;
+        if (!texture || !front.valid()) {
+            // what it is waiting for: "queued", "shaders", "rendering 3/7" (S82 R71)
+            drawList->AddText(ImVec2(min.x + 12.0f, min.y + 30.0f), IM_COL32(200, 200, 200, 255),
+                              ("Glyph Atlas: " + (status.pending.empty() ? std::string("waiting") : status.pending)).c_str());
+            return true;
+        }
         const ta::TitleArtDoc& doc = *p.live->document();
         const ta::TitleRectI frame = front.frame.empty() ? ta::TitleRectI{0, 0, doc.canvasWidth(), doc.canvasHeight()} : front.frame;
         const double left = frame.x - doc.canvasWidth() * 0.5, top = doc.canvasHeight() * 0.5 - frame.y;

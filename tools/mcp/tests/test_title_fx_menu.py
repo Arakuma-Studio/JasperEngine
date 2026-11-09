@@ -117,7 +117,7 @@ async def test_seed_dice_and_cost_badge(ed: Editor):
     before = (ed.project / path).read_text()
     # the generator's section sits under Transform: fold it so the dice is in view
     await ui.click_item("Transform", "Title Designer")
-    await ui.click_revealed("Randomize Seed")
+    await ui.click_revealed("\uf522 Randomize Seed")  # the whole label finds it out of view
     await ui.frames(4)
     ed.check_eq(await top_step(ed), "Randomize Seed", "the dice is one step")
     ed.check(before != (ed.project / path).read_text(), "the seed changed")

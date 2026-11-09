@@ -14,6 +14,9 @@ CI = True
 EDITOR = {"create": True, "name": "Title Designer 3D", "xvfb": "harness"}
 TIMEOUT = 600
 
+# the whole label (icon, text and id) finds a control scrolled out of view
+BEVEL_PICKER = "\uf55b Profiles...##bevelpick"
+
 S: dict = {}
 
 
@@ -52,7 +55,7 @@ async def test_rows_parts_and_tiers(ed: Editor):
     await focus(ed, path=path, select="Title", panel="properties", search="")
     # the Dimension section (open on a 3D layer) is under Transform: fold it
     await ui.click_item("Transform", "Title Designer")
-    item = await ui.reveal("##bevelpick", frames=120)
+    item = await ui.reveal(BEVEL_PICKER, frames=120)
     ed.check(item is not None, "the Dimension section's Geometry has the bevel profile picker")
     r = await focus(ed, select="Title/band#0")
     ed.check_eq(r["state"]["selection"], ["Title/band#0"], "the band is a part")

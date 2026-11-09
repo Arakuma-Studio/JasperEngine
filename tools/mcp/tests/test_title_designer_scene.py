@@ -95,14 +95,14 @@ async def test_open_in_context(ed: Editor):
     scene = made["scene"]["id"]
     await ed.call("create_ui", scene=scene, root={"type": "image", "name": "Logo", "layout": {"anchor": "center", "size": [480, 270]}})
     await ed.call("add_component", scene=scene, entity="Logo", component="titleart")
+    await ed.call("export_title", path=path)
     await ed.call("set_properties", scene=scene, entity="Logo", values={"titleart": {"title": path}})
     await ed.call("select_scene", scene=scene)
     await ed.call("select_entities", scene=scene, entities=["Logo"])
     await ed.call("focus_window", window="inspector")
     await ui.frames(6)
-    if await ui.find("Open in Title Designer", "Inspector") is None:
-        (shots_dir() / "in-context.png").write_bytes(await ed.screenshot("editor", max_width=0))
-    await ui.click_revealed("Open in Title Designer", "Inspector")
+    # the whole label finds it below the Inspector's fold
+    await ui.click_revealed("\uf044 Open in Title Designer", "Inspector")
     state = {}
     for _ in range(60):
         await ui.frames(4)

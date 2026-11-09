@@ -298,8 +298,15 @@ namespace {
         std::string section;
         int column = 0;
         const int columns = 4;
-        for (const std::string& preset : ta::title3DMaterialPresetNames()) {
-            if (preset == "custom") continue;
+        // R54's sections, each once (the preset list interleaves them)
+        std::vector<std::string> ordered;
+        for (const char* wanted : {"Metals", "Gloss and Paint", "Glass and Gems", "Special"}) {
+            for (const std::string& preset : ta::title3DMaterialPresetNames()) {
+                if (preset != "custom" && wanted == std::string(ta::materialPresetSection(preset))) ordered.push_back(preset);
+            }
+        }
+        ImGui::BeginChild("##materials", ImVec2(4.0f * 116.0f, 440.0f));
+        for (const std::string& preset : ordered) {
             if (!query.empty() && preset.find(query) == std::string::npos && titleCase(preset).find(pickerQuery()) == std::string::npos) continue;
             const std::string presetSection = ta::materialPresetSection(preset);
             if (presetSection != section) {
@@ -336,6 +343,7 @@ namespace {
             ImGui::PopID();
             column = (column + 1) % columns;
         }
+        ImGui::EndChild();
         if (!hovering) clearPreviewWithPrefix(ctx, "mat:");
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             clearPreviewWithPrefix(ctx, "mat:");
@@ -402,10 +410,22 @@ namespace {
         if (custom.is_object()) shape.custom = ta::decodeCurve(custom);
         dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), IM_COL32(40, 40, 44, 255), 3.0f);
         const float m = 6.0f;
-        for (const ta::three_d::UnitPiece& piece : ta::three_d::unitBevel(shape, segments)) {
+        const std::vector<ta::three_d::UnitPiece> pieces = ta::three_d::unitBevel(shape, segments);
+        // a profile may leave the unit square (Inset, Tube): the cross-section fits its cell
+        double minO = 0.0, maxO = 1.0, minH = 0.0, maxH = 1.0;
+        for (const ta::three_d::UnitPiece& piece : pieces) {
+            for (const ta::three_d::UnitPoint& u : piece) {
+                minO = std::min(minO, u.o);
+                maxO = std::max(maxO, u.o);
+                minH = std::min(minH, u.h);
+                maxH = std::max(maxH, u.h);
+            }
+        }
+        for (const ta::three_d::UnitPiece& piece : pieces) {
             std::vector<ImVec2> line;
             for (const ta::three_d::UnitPoint& u : piece) {
-                line.push_back(ImVec2(p.x + m + (float)u.o * (size.x - 2 * m), p.y + size.y - m - (float)u.h * (size.y - 2 * m)));
+                line.push_back(ImVec2(p.x + m + (float)((u.o - minO) / (maxO - minO)) * (size.x - 2 * m),
+                                      p.y + size.y - m - (float)((u.h - minH) / (maxH - minH)) * (size.y - 2 * m)));
             }
             if (line.size() >= 2) dl->AddPolyline(line.data(), (int)line.size(), IM_COL32(230, 200, 120, 255), 0, 2.0f);
         }
