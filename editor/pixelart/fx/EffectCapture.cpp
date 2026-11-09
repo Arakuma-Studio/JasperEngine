@@ -276,6 +276,9 @@ namespace {
         void describeLints(lint::EffectLintInput& input) const override {
             input.transition = true;
             input.artPixel = std::max(options.pixelSize, 1);
+            using jasperengine::pixelart::TransitionKind;
+            if (kind == TransitionKind::PIXEL_DISSOLVE || kind == TransitionKind::FADE)
+                input.rimSkipReason = "this kind covers in blocks or by dither: it has no continuous edge to measure";
             input.rimColors = jasperengine::pixelart::ScreenTransition::resolveRamp(options);
             input.spillApplies = false;
             input.spillSkipReason = "a transition draws over the whole screen";

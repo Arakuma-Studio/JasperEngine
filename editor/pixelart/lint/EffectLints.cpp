@@ -586,7 +586,10 @@ namespace jasperengine::editor::pixelart::lint {
         if (wanted("partial_alpha")) report.add(lintPartialAlpha(input.frames));
         if (wanted("frame_cost")) report.add(lintFrameCost(input.cost));
         if (wanted("hit_stop_length")) report.add(lintHitStopLength(input.hitStopSeconds, input.hitStopSkipReason));
-        if (wanted("transition_edges")) report.add(lintTransitionEdges(input.frames, input.rimColors, input.transition, input.artPixel));
+        if (wanted("transition_edges")) {
+            report.add(!input.rimSkipReason.empty() ? skipped("transition_edges", input.rimSkipReason)
+                                                    : lintTransitionEdges(input.frames, input.rimColors, input.transition, input.artPixel));
+        }
         return report;
     }
 

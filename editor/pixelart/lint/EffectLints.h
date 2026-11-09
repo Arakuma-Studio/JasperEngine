@@ -126,6 +126,7 @@ namespace jasperengine::editor::pixelart::lint {
         std::string hitStopSkipReason;
         bool transition = false;
         int artPixel = 1;                  // frame pixels per art pixel of a transition's capture
+        std::string rimSkipReason;         // set when the kind draws no continuous edge to measure
         std::vector<jasperengine::pixelart::Rgba8> rimColors;
     };
     // `only`: ids to run (empty: every one); unknown ids are the caller's to refuse (isEffectLintId)
