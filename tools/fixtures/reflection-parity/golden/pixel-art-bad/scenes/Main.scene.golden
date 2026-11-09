@@ -41,6 +41,14 @@ shaderKeys:
     properties: 3075
   - type: mesh
     properties: 35184372091907
+  - type: mesh
+    properties: 70368744180739
+  - type: mesh
+    properties: 105553116269571
+  - type: mesh
+    properties: 316659348802563
+  - type: mesh
+    properties: 387028092980227
   - type: ui
     properties: 2
   - type: ui
@@ -83,6 +91,15 @@ shaderKeys:
     customShader: library:sprite#BLEND_ALPHA,PALETTE_SWAP
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,PALETTE_SWAP
+  - type: mesh
+    properties: 70368744180739
+    customShader: library:sprite#BLEND_ALPHA,PALETTE_SWAP
+  - type: mesh
+    properties: 105553116269571
+    customShader: library:sprite#BLEND_ALPHA,PALETTE_SWAP
+  - type: mesh
+    properties: 387028092980227
     customShader: library:sprite#BLEND_ALPHA,PALETTE_SWAP
 entities:
   - type: Entity

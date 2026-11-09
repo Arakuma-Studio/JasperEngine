@@ -39,6 +39,26 @@ shaderKeys:
     properties: 3075
   - type: mesh
     properties: 35184372091907
+  - type: mesh
+    properties: 70368744180739
+  - type: mesh
+    properties: 105553116269571
+  - type: mesh
+    properties: 140737488358403
+  - type: mesh
+    properties: 175921860447235
+  - type: mesh
+    properties: 211106232536067
+  - type: mesh
+    properties: 246290604624899
+  - type: mesh
+    properties: 316659348802563
+  - type: mesh
+    properties: 387028092980227
+  - type: mesh
+    properties: 457396837157891
+  - type: mesh
+    properties: 527765581335555
   - type: blit
   - type: blit
     properties: 4096
@@ -49,178 +69,406 @@ shaderKeys:
     properties: 35184372091907
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE
   - type: mesh
+    properties: 316659348802563
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE
+  - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH
+  - type: mesh
+    properties: 70368744180739
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH
+  - type: mesh
+    properties: 105553116269571
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH
+  - type: mesh
+    properties: 387028092980227
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE
+  - type: mesh
+    properties: 70368744180739
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE
+  - type: mesh
+    properties: 105553116269571
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE
+  - type: mesh
+    properties: 387028092980227
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE,HUE_SHIFT
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE,HUE_SHIFT
+  - type: mesh
+    properties: 70368744180739
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE,HUE_SHIFT
+  - type: mesh
+    properties: 105553116269571
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE,HUE_SHIFT
+  - type: mesh
+    properties: 387028092980227
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE,HUE_SHIFT
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE,OUTLINE
+  - type: mesh
+    properties: 211106232536067
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE,OUTLINE
+  - type: mesh
+    properties: 246290604624899
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE,OUTLINE
+  - type: mesh
+    properties: 527765581335555
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,GRAYSCALE,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,HUE_SHIFT
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,HUE_SHIFT
+  - type: mesh
+    properties: 70368744180739
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,HUE_SHIFT
+  - type: mesh
+    properties: 105553116269571
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,HUE_SHIFT
+  - type: mesh
+    properties: 387028092980227
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,HUE_SHIFT
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 211106232536067
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 246290604624899
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 527765581335555
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,OUTLINE
+  - type: mesh
+    properties: 211106232536067
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,OUTLINE
+  - type: mesh
+    properties: 246290604624899
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,OUTLINE
+  - type: mesh
+    properties: 527765581335555
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,FLASH,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE
+  - type: mesh
+    properties: 316659348802563
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE,HUE_SHIFT
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE,HUE_SHIFT
+  - type: mesh
+    properties: 316659348802563
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE,HUE_SHIFT
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 140737488358403
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 175921860447235
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 457396837157891
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE,OUTLINE
+  - type: mesh
+    properties: 140737488358403
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE,OUTLINE
+  - type: mesh
+    properties: 175921860447235
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE,OUTLINE
+  - type: mesh
+    properties: 457396837157891
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,GRAYSCALE,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,HUE_SHIFT
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,HUE_SHIFT
+  - type: mesh
+    properties: 316659348802563
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,HUE_SHIFT
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 140737488358403
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 175921860447235
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 457396837157891
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,OUTLINE
+  - type: mesh
+    properties: 140737488358403
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,OUTLINE
+  - type: mesh
+    properties: 175921860447235
+    customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,OUTLINE
+  - type: mesh
+    properties: 457396837157891
     customShader: library:sprite#BLEND_ALPHA,COLOR_REPLACE,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,FLASH
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,FLASH
+  - type: mesh
+    properties: 70368744180739
+    customShader: library:sprite#BLEND_ALPHA,FLASH
+  - type: mesh
+    properties: 105553116269571
+    customShader: library:sprite#BLEND_ALPHA,FLASH
+  - type: mesh
+    properties: 387028092980227
     customShader: library:sprite#BLEND_ALPHA,FLASH
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE
+  - type: mesh
+    properties: 70368744180739
+    customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE
+  - type: mesh
+    properties: 105553116269571
+    customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE
+  - type: mesh
+    properties: 387028092980227
     customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,HUE_SHIFT
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,HUE_SHIFT
+  - type: mesh
+    properties: 70368744180739
+    customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,HUE_SHIFT
+  - type: mesh
+    properties: 105553116269571
+    customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,HUE_SHIFT
+  - type: mesh
+    properties: 387028092980227
     customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,HUE_SHIFT
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 211106232536067
+    customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 246290604624899
+    customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 527765581335555
     customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,OUTLINE
+  - type: mesh
+    properties: 211106232536067
+    customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,OUTLINE
+  - type: mesh
+    properties: 246290604624899
+    customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,OUTLINE
+  - type: mesh
+    properties: 527765581335555
     customShader: library:sprite#BLEND_ALPHA,FLASH,GRAYSCALE,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,FLASH,HUE_SHIFT
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,FLASH,HUE_SHIFT
+  - type: mesh
+    properties: 70368744180739
+    customShader: library:sprite#BLEND_ALPHA,FLASH,HUE_SHIFT
+  - type: mesh
+    properties: 105553116269571
+    customShader: library:sprite#BLEND_ALPHA,FLASH,HUE_SHIFT
+  - type: mesh
+    properties: 387028092980227
     customShader: library:sprite#BLEND_ALPHA,FLASH,HUE_SHIFT
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,FLASH,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,FLASH,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 211106232536067
+    customShader: library:sprite#BLEND_ALPHA,FLASH,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 246290604624899
+    customShader: library:sprite#BLEND_ALPHA,FLASH,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 527765581335555
     customShader: library:sprite#BLEND_ALPHA,FLASH,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,FLASH,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,FLASH,OUTLINE
+  - type: mesh
+    properties: 211106232536067
+    customShader: library:sprite#BLEND_ALPHA,FLASH,OUTLINE
+  - type: mesh
+    properties: 246290604624899
+    customShader: library:sprite#BLEND_ALPHA,FLASH,OUTLINE
+  - type: mesh
+    properties: 527765581335555
     customShader: library:sprite#BLEND_ALPHA,FLASH,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,GRAYSCALE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,GRAYSCALE
+  - type: mesh
+    properties: 316659348802563
     customShader: library:sprite#BLEND_ALPHA,GRAYSCALE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,GRAYSCALE,HUE_SHIFT
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,GRAYSCALE,HUE_SHIFT
+  - type: mesh
+    properties: 316659348802563
     customShader: library:sprite#BLEND_ALPHA,GRAYSCALE,HUE_SHIFT
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,GRAYSCALE,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,GRAYSCALE,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 140737488358403
+    customShader: library:sprite#BLEND_ALPHA,GRAYSCALE,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 175921860447235
+    customShader: library:sprite#BLEND_ALPHA,GRAYSCALE,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 457396837157891
     customShader: library:sprite#BLEND_ALPHA,GRAYSCALE,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,GRAYSCALE,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,GRAYSCALE,OUTLINE
+  - type: mesh
+    properties: 140737488358403
+    customShader: library:sprite#BLEND_ALPHA,GRAYSCALE,OUTLINE
+  - type: mesh
+    properties: 175921860447235
+    customShader: library:sprite#BLEND_ALPHA,GRAYSCALE,OUTLINE
+  - type: mesh
+    properties: 457396837157891
     customShader: library:sprite#BLEND_ALPHA,GRAYSCALE,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,HUE_SHIFT
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,HUE_SHIFT
+  - type: mesh
+    properties: 316659348802563
     customShader: library:sprite#BLEND_ALPHA,HUE_SHIFT
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 140737488358403
+    customShader: library:sprite#BLEND_ALPHA,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 175921860447235
+    customShader: library:sprite#BLEND_ALPHA,HUE_SHIFT,OUTLINE
+  - type: mesh
+    properties: 457396837157891
     customShader: library:sprite#BLEND_ALPHA,HUE_SHIFT,OUTLINE
   - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,OUTLINE
   - type: mesh
     properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,OUTLINE
+  - type: mesh
+    properties: 140737488358403
+    customShader: library:sprite#BLEND_ALPHA,OUTLINE
+  - type: mesh
+    properties: 175921860447235
+    customShader: library:sprite#BLEND_ALPHA,OUTLINE
+  - type: mesh
+    properties: 457396837157891
     customShader: library:sprite#BLEND_ALPHA,OUTLINE
 entities:
   - type: Entity
