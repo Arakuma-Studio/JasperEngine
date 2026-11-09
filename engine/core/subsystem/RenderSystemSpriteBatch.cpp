@@ -512,7 +512,10 @@ bool RenderSystem::drawSpriteChunks(ObjectRender& render, Submesh& submesh, Spri
                                     const Transform& transform, float cameraFar, const Plane frustumPlanes[6]){
     const uint64_t commit = SokolSystem::getCommitCount();
     bool drawn = false;
-    for (SpriteInstanceChunk& chunk : list.chunks){
+    const size_t firstPart = passSpritePart >= 0 ? (size_t)passSpritePart : 0;
+    const size_t endPart = passSpritePart >= 0 ? std::min(list.chunks.size(), firstPart + 1) : list.chunks.size();
+    for (size_t part = firstPart; part < endPart; part++){
+        SpriteInstanceChunk& chunk = list.chunks[part];
         if (!isInsideCamera(cameraFar, frustumPlanes, transform.modelMatrix * chunk.bounds))
             continue;
         chunk.lastDrawn = commit;
@@ -530,13 +533,13 @@ bool RenderSystem::drawSpriteChunks(ObjectRender& render, Submesh& submesh, Spri
             if (!batch.createGpu())
                 continue;
         }
-        drawn = drawSpriteInstances(render, submesh, batch, shader, baseColorSlotType, &list.lead) || drawn;
+        drawn = drawSpriteInstances(render, submesh, batch, shader, baseColorSlotType, &list.lead, chunk.rangeFirst, chunk.rangeCount) || drawn;
     }
     return drawn;
 }
 
 bool RenderSystem::drawSpriteInstances(ObjectRender& render, Submesh& submesh, SpriteInstanceBatch& batch, ShaderRender* shader, int baseColorSlotType,
-                                       SpriteInstanceBatch* bound){
+                                       SpriteInstanceBatch* bound, uint32_t rangeFirst, uint32_t rangeCount){
     if (batch.getCount() == 0 || !batch.isGpuCreated() || batch.getCount() > batch.getGpuCapacity())
         return false;
     const uint64_t commit = SokolSystem::getCommitCount();
@@ -560,9 +563,14 @@ bool RenderSystem::drawSpriteInstances(ObjectRender& render, Submesh& submesh, S
     const std::string materialPage = submesh.material.baseColorTexture.getPath();
     TextureRender* materialTexture = submesh.material.baseColorTexture.getRender(&emptyWhite);
     bool lent = false;
-    for (const SpritePageRun& run : batch.getPageRuns()){
-        if (run.count == 0)
+    const uint64_t rangeEnd = rangeCount == UINT32_MAX ? UINT64_MAX : (uint64_t)rangeFirst + rangeCount;
+    for (const SpritePageRun& pageRun : batch.getPageRuns()){
+        // the whole run, or its part inside this piece's range
+        const uint64_t runBegin = std::max<uint64_t>(pageRun.first, rangeFirst);
+        const uint64_t runEnd = std::min<uint64_t>((uint64_t)pageRun.first + pageRun.count, rangeEnd);
+        if (runBegin >= runEnd)
             continue;
+        const SpritePageRun run{(uint32_t)runBegin, (uint32_t)(runEnd - runBegin), pageRun.page};
         if (slot.first >= 0){
             Texture* page = batch.getPageTexture(run.page);
             if (page && page->getPath() != materialPage){

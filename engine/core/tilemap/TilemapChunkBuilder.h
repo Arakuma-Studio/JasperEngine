@@ -48,11 +48,21 @@ namespace jasperengine{
         bool snapEdges = false;
         uint32_t seed = 0;               // the random_start hash's
         int64_t animationMs = 0;
+        bool individual = false;         // Individual mode: painter's order, and out.rows
+    };
+
+    // one anchor row of a chunk's instances (Individual mode: a sort item of its own)
+    struct TilemapChunkRow{
+        uint32_t first = 0;
+        uint32_t count = 0;
+        double anchorU = 0.0;            // layer space, world units
+        double anchorV = 0.0;
     };
 
     struct TilemapChunkBuild{
         std::vector<TilemapAnimatedInstance> animated;
         std::vector<SpritePageRun> runs;
+        std::vector<TilemapChunkRow> rows;
         // the earliest time (in animationMs) an animated instance changes frame; INT64_MAX: never
         int64_t nextFrameMs = INT64_MAX;
         // an animated tile needs another page than the one it was built with (the chunk rebuilds)

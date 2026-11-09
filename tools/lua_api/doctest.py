@@ -37,6 +37,11 @@ def doc_files(root):
     for path in sorted(glob.glob(os.path.join(root, 'docs', '**', '*.md'), recursive=True)):
         if os.path.basename(path).lower().startswith('lua') and path not in files:
             files.append(path)
+    # a feature's user page with a Lua walkthrough (S50 AC12)
+    for name in ('tilemaps.md',):
+        path = os.path.join(root, 'docs', name)
+        if os.path.exists(path) and path not in files:
+            files.append(path)
     return files
 
 

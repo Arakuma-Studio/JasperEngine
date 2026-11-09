@@ -12,6 +12,7 @@
 #include "component/TilemapLayerComponent.h"
 #include "jobs/JobSystem.h"
 #include "tilemap/TilesetPool.h"
+#include "Engine.h"
 #include "Log.h"
 
 #include <algorithm>
@@ -43,30 +44,30 @@ namespace {
         return collider;
     }
 
-    std::vector<Vector2> toPoints(const std::vector<TilePoint>& points){
+    std::vector<Vector2> toPoints(const std::vector<TilePoint>& points, double unitsPerPixel){
         std::vector<Vector2> out;
         out.reserve(points.size());
         for (const TilePoint& point : points){
-            out.push_back(Vector2((float)point.x, (float)point.y));
+            out.push_back(Vector2((float)(point.x * unitsPerPixel), (float)(point.y * unitsPerPixel)));
         }
         return out;
     }
 
-    std::vector<Collider2D> makeColliders(const TileColliderChunk& built, const TilemapCollider2DComponent& source){
+    std::vector<Collider2D> makeColliders(const TileColliderChunk& built, const TilemapCollider2DComponent& source, double unitsPerPixel){
         std::vector<Collider2D> colliders;
         colliders.reserve(built.chainCount() + built.polygonCount());
         auto addChain = [&](const TileColliderChain& chain){
             Collider2D collider = colliderTemplate(source);
             collider.type = Collider2DType::CHAIN;
             collider.loop = chain.loop;
-            collider.points = toPoints(chain.points);
+            collider.points = toPoints(chain.points, unitsPerPixel);
             colliders.push_back(std::move(collider));
         };
         auto addPolygon = [&](const TileColliderPolygon& polygon, bool sensor){
             Collider2D collider = colliderTemplate(source);
             collider.type = Collider2DType::POLYGON;
             collider.sensor = sensor;
-            collider.points = toPoints(polygon.points);
+            collider.points = toPoints(polygon.points, unitsPerPixel);
             colliders.push_back(std::move(collider));
         };
         for (const TileColliderChain& chain : built.loops) addChain(chain);
@@ -139,11 +140,21 @@ void tilemapcolliders::update(Scene* scene, Entity entity, const TilemapLayerCom
     settings.cells = &cells;
     settings.tileset = tileset && tileset->data ? tileset->data.get() : nullptr;
     settings.runtime = tileset;
-    settings.grid = grid;
+    // the builder's lattice is in texels (tile polygons are); a project of other Pixels Per Unit
+    // scales its grid into texels and the outlines back to world units
+    const double pixelsPerUnit = (double)Engine::getPixelsPerUnit();
+    const double unitsPerPixel = 1.0 / pixelsPerUnit;
+    TileGridSpec gridPixels = grid;
+    gridPixels.cellWidth *= pixelsPerUnit;
+    gridPixels.cellHeight *= pixelsPerUnit;
+    gridPixels.gapX *= pixelsPerUnit;
+    gridPixels.gapY *= pixelsPerUnit;
+    gridPixels.hexSideLength *= pixelsPerUnit;
+    settings.grid = gridPixels;
     settings.source = collider.source;
     settings.geometry = collider.geometry;
     settings.merge = collider.merge;
-    settings.offset = TilePoint{(double)collider.offset.x, (double)collider.offset.y};
+    settings.offset = TilePoint{(double)collider.offset.x * pixelsPerUnit, (double)collider.offset.y * pixelsPerUnit};
     settings.tileAnchor = TilePoint{(double)layer.tileAnchor.x, (double)layer.tileAnchor.y};
     settings.dualGrid = layer.dualGrid;
     if (collider.source == TileColliderSource::Terrain && settings.tileset){
@@ -188,13 +199,13 @@ void tilemapcolliders::update(Scene* scene, Entity entity, const TilemapLayerCom
         const bool hadColliders = found != state.built.end();
         // an unchanged chunk keeps its shapes (and the contacts on them), unless the surface
         // every collider copies changed
-        if (!forceAll && (hadColliders ? found->second == result : result.empty())){
+        if (hadColliders ? (!forceAll && found->second == result) : result.empty()){
             continue;
         }
         if (!body->generated){
             body->generated = std::make_shared<GeneratedColliders2D>();
         }
-        body->generated->replaceChunk(coord, result.empty() ? std::vector<Collider2D>() : makeColliders(result, collider));
+        body->generated->replaceChunk(coord, result.empty() ? std::vector<Collider2D>() : makeColliders(result, collider, unitsPerPixel));
         if (result.empty()){
             if (hadColliders){
                 state.built.erase(found);

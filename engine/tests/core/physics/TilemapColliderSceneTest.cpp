@@ -150,12 +150,13 @@ TEST_F(TilemapColliderScene, GeneratesChunkedCollidersAndShapes) {
 
     ASSERT_TRUE(body().generated);
     EXPECT_EQ(body().generated->chunks.size(), 3u);
-    EXPECT_EQ(collider.generatedChains, 2u + 2u + 2u);
+    // each end chunk's outline is one run around its cap; the middle chunk has a top and a bottom run
+    EXPECT_EQ(collider.generatedChains, 1u + 2u + 1u);
     EXPECT_EQ(collider.generatedPolygons, 0u);
 
     const uint64_t chainsBefore = physics->getChainsCreated2D();
     step();
-    EXPECT_EQ(physics->getChainsCreated2D() - chainsBefore, 6u);
+    EXPECT_EQ(physics->getChainsCreated2D() - chainsBefore, 4u);
     EXPECT_TRUE(body().colliders.empty());
     for (const auto& [coord, chunk] : body().generated->chunks) {
         for (const Collider2D& generated : chunk.colliders) {
@@ -173,7 +174,8 @@ TEST_F(TilemapColliderScene, EditRebuildsOnlyTouchedAndBorderChunks) {
     }
     updateColliders();
     step();
-    ASSERT_EQ(state().chunksReplaced, 9u);
+    // the middle chunk of a solid 3x3 block has no outline of its own
+    ASSERT_EQ(state().chunksReplaced, 8u);
     const uint64_t builtBefore = state().chunksBuilt;
     const uint64_t replacedBefore = state().chunksReplaced;
     const uint64_t chainsBefore = physics->getChainsCreated2D();
@@ -281,7 +283,7 @@ TEST_F(TilemapColliderScene, BodyReloadRemakesGeneratedShapes) {
     const uint64_t chainsBefore = physics->getChainsCreated2D();
     body().needReloadBody = true;
     step();
-    EXPECT_EQ(physics->getChainsCreated2D() - chainsBefore, 6u);
+    EXPECT_EQ(physics->getChainsCreated2D() - chainsBefore, 4u);
     for (const auto& [coord, chunk] : body().generated->chunks) {
         for (const Collider2D& generated : chunk.colliders) {
             EXPECT_TRUE(b2Chain_IsValid(generated.chain));

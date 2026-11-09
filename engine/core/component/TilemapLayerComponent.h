@@ -49,6 +49,8 @@ namespace jasperengine{
         uint32_t chunkCount = 0;
         // a field changed (the system re-reads the tileset and rebuilds every chunk)
         bool needUpdate = true;
+        // the Scene view's Focus On (S50 R65): multiplies the tint's alpha while another layer has focus
+        float focusDim = 1.0f;
     };
 
 }

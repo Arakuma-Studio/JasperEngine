@@ -23,6 +23,7 @@
 #include "component/InstancedMeshComponent.h"
 #include "math/AABB.h"
 #include "math/Vector2.h"
+#include "math/Vector3.h"
 #include "math/Vector4.h"
 #include "texture/Texture.h"
 
@@ -136,6 +137,13 @@ namespace jasperengine{
         AABB bounds;                     // in the GameObject's space, overhang included
         uint64_t lastDrawn = 0;          // the frame (SokolSystem commit) it was last drawn
         bool needsBuild = false;
+        // the part of the batch this piece draws (a chunk list in Individual mode shares a chunk's
+        // batch between its rows); the whole batch by default
+        uint32_t rangeFirst = 0;
+        uint32_t rangeCount = UINT32_MAX;
+        // its own sort item in the 2D passes: the sort point in the GameObject's space (R32)
+        bool sortItem = false;
+        Vector3 sortPoint = Vector3(0.0f, 0.0f, 0.0f);
     };
 
     // Several batches drawn as the instances of one GameObject: one sort item, each piece culled,

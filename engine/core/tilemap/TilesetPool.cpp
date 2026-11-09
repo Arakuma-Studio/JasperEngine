@@ -360,6 +360,29 @@ void TilesetPool::invalidate(const std::string& path){
     pool.revision++;
 }
 
+void TilesetPool::asepriteSourceChanged(const std::string& asepritePath){
+    const std::string changed = ImportedAssets::normalize(asepritePath);
+    TilesetPoolState& pool = tilesetPoolState();
+    std::vector<std::pair<std::string, std::shared_ptr<const TilesetData>>> affected;
+    {
+        std::lock_guard<std::mutex> lock(pool.mutex);
+        for (const auto& [key, entry] : pool.entries){
+            const std::shared_ptr<const TilesetData>& data = entry.runtime->data;
+            if (!data)
+                continue;
+            for (const TilesetSource& source : data->sources){
+                if (source.kind == TilesetSourceKind::Aseprite && ImportedAssets::normalize(source.asset.path) == changed){
+                    affected.emplace_back(entry.runtime->path, data);
+                    break;
+                }
+            }
+        }
+    }
+    // outside the lock, as set() resolves: the strip's new file is on disk before this runs
+    for (const auto& [path, data] : affected)
+        set(path, data);
+}
+
 void TilesetPool::clear(){
     TilesetPoolState& pool = tilesetPoolState();
     std::lock_guard<std::mutex> lock(pool.mutex);

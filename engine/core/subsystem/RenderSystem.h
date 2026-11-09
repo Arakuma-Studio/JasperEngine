@@ -3573,6 +3573,8 @@ namespace jasperengine{
 		struct SortedDraw{
 			uint32_t index = 0;
 			uint64_t bucket = 0;
+			// a chunk list's piece drawn alone (Individual mode); -1: the whole GameObject
+			int32_t part = -1;
 		};
 		// the bucket of the UI subtrees (they keep their place: not sort items)
 		static constexpr uint64_t UI_SORT_BUCKET = UINT64_MAX - 1;
@@ -3624,6 +3626,7 @@ namespace jasperengine{
 			uint32_t index = 0;
 			uint32_t last = 0;       // a Sorting Group: its subtree's last transform index
 			bool group = false;
+			int32_t part = -1;       // a chunk list's piece sorted on its own
 		};
 		bool sortingActive = false;
 		uint64_t sortFrame = 0;          // bumped by update(): the order is gathered once per frame
@@ -3638,6 +3641,8 @@ namespace jasperengine{
 		std::vector<uint32_t> sortGroupSequence;
 		// the bucket of the draw the 2D loop submits now (BatchItem::sortKey)
 		uint64_t passSortBucket = 0;
+		// the piece of a chunk list the 2D loop draws now (-1: the whole list, its usual draw)
+		int32_t passSpritePart = -1;
 		// layer value, order and axis point of an entity's renderer (or Sorting Group); false
 		// when it has no renderer
 		bool rendererSortFields(Entity entity, Signature signature, uint16_t& layerValue, int32_t& order, Vector3& point);
@@ -3663,7 +3668,7 @@ namespace jasperengine{
 		// to, -1 none); false when it has nothing to draw
 		// (bound: the batch whose buffers the render was loaded with, when another one's are drawn)
 		bool drawSpriteInstances(ObjectRender& render, Submesh& submesh, SpriteInstanceBatch& batch, ShaderRender* shader, int baseColorSlotType,
-		                         SpriteInstanceBatch* bound = nullptr);
+		                         SpriteInstanceBatch* bound = nullptr, uint32_t rangeFirst = 0, uint32_t rangeCount = UINT32_MAX);
 		// the chunk list of the GameObject (null: none), and its pieces' draws, culled against
 		// the pass's frustum
 		SpriteInstanceChunkList* spriteInstanceChunksOf(Entity entity);

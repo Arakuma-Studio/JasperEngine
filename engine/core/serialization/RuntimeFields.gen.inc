@@ -2468,6 +2468,54 @@ const FieldEntry kBody_SpriteBatchComponent_fields[] = {
 };
 const StructTable kBody_SpriteBatchComponent{"spritebatch", kBody_SpriteBatchComponent_fields, std::size(kBody_SpriteBatchComponent_fields)};
 
+const FieldEntry kBody_GridComponent_fields[] = {
+    JE_RF(GridComponent, layout, 0xb55794f7u, Enum),
+    JE_RF(GridComponent, cellSize, 0xb3da7c14u, Vector2),
+    JE_RF(GridComponent, cellGap, 0xd7f08577u, Vector2),
+    JE_RF(GridComponent, plane, 0x886c692du, Enum),
+    JE_RF(GridComponent, staggerAxis, 0x7d1986a5u, Enum),
+    JE_RF(GridComponent, staggerIndex, 0x65183050u, Enum),
+    JE_RF(GridComponent, hexSideLength, 0x18e33029u, Float),
+    JE_RF(GridComponent, importSource, 0x61ad7eb9u, AssetPath),
+    JE_RF(GridComponent, linked, 0x680b4728u, Bool),
+};
+const StructTable kBody_GridComponent{"grid", kBody_GridComponent_fields, std::size(kBody_GridComponent_fields)};
+
+const FieldEntry kBody_TilemapLayerComponent_fields[] = {
+    JE_RF(TilemapLayerComponent, version, 0xf62e9c74u, Int),
+    JE_RF(TilemapLayerComponent, enabled, 0x29852799u, Bool),
+    JE_RF(TilemapLayerComponent, tileset, 0xaef943f4u, AssetPath),
+    JE_RF(TilemapLayerComponent, tint, 0xb4bb818du, Vector4),
+    JE_RF(TilemapLayerComponent, mode, 0x5e09679bu, Enum),
+    JE_RF(TilemapLayerComponent, chunkSize, 0x4dcc4cdcu, Int),
+    JE_RF(TilemapLayerComponent, tileAnchor, 0x43084d8du, Vector2),
+    JE_RF(TilemapLayerComponent, animationSpeed, 0xac32f839u, Float),
+    JE_RF(TilemapLayerComponent, dualGrid, 0x845e6f66u, Bool),
+    JE_RF(TilemapLayerComponent, seed, 0x5ef5fb7du, UInt),
+    JE_RF(TilemapLayerComponent, gpuResidency, 0xa006c136u, Enum),
+    JE_RF(TilemapLayerComponent, cells, 0xc612bda2u, Custom),
+};
+const StructTable kBody_TilemapLayerComponent{"tilemaplayer", kBody_TilemapLayerComponent_fields, std::size(kBody_TilemapLayerComponent_fields)};
+
+const FieldEntry kBody_TilemapCollider2DComponent_fields[] = {
+    JE_RF(TilemapCollider2DComponent, enabled, 0x68ad2374u, Bool),
+    JE_RF(TilemapCollider2DComponent, source, 0x23d3d08au, Enum),
+    JE_RF(TilemapCollider2DComponent, solidTerrains, 0xea576528u, Array),
+    JE_RF(TilemapCollider2DComponent, geometry, 0x2fc6fca7u, Enum),
+    JE_RF(TilemapCollider2DComponent, merge, 0xb5ac7185u, Bool),
+    JE_RF(TilemapCollider2DComponent, offset, 0xdb1af314u, Vector2),
+    JE_RF(TilemapCollider2DComponent, friction, 0x4e7e6381u, Float),
+    JE_RF(TilemapCollider2DComponent, restitution, 0x2ab5453du, Float),
+    JE_RF(TilemapCollider2DComponent, material, 0x51ad5a96u, String),
+    JE_RF(TilemapCollider2DComponent, categoryBits, 0x4dacf007u, UInt),
+    JE_RF(TilemapCollider2DComponent, maskBits, 0x1ed454dfu, UInt),
+    JE_RF(TilemapCollider2DComponent, groupIndex, 0xe9da907au, Int),
+    JE_RF(TilemapCollider2DComponent, contactEvents, 0x503adc20u, Bool),
+    JE_RF(TilemapCollider2DComponent, sensorEvents, 0x3fad7e08u, Bool),
+    JE_RF(TilemapCollider2DComponent, enableHitEvents, 0x7174992cu, Bool),
+};
+const StructTable kBody_TilemapCollider2DComponent{"tilemapcollider2d", kBody_TilemapCollider2DComponent_fields, std::size(kBody_TilemapCollider2DComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2580,6 +2628,9 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(PixelPerfectCameraComponent, "pixelperfectcamera", 0xc6cced7fu),
     JE_RF_COMPONENT(SortingGroupComponent, "sortinggroup", 0xc8581eb6u),
     JE_RF_COMPONENT(SpriteBatchComponent, "spritebatch", 0xb9349884u),
+    JE_RF_COMPONENT(GridComponent, "grid", 0xaf871a91u),
+    JE_RF_COMPONENT(TilemapLayerComponent, "tilemaplayer", 0x94e4d9f6u),
+    JE_RF_COMPONENT(TilemapCollider2DComponent, "tilemapcollider2d", 0xc18e71fbu),
     JE_RF_COMPONENTS_END
 };
 

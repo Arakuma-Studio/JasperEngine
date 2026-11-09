@@ -19904,11 +19904,13 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // 2D sorting (S52 R3): a pass without distance sort draws in this frame's gathered order (UI
     // subtrees in place), each draw with its batcher bucket; with defaults, the hierarchy's
     const std::vector<SortedDraw>* sortedDraws = (!distanceSort && sortingActive) ? &getSorted2DOrder() : nullptr;
-    const bool sorted2D = sortedDraws && sortedDraws->size() == (size_t)transforms->size();
-    const int hierarchyCount = (int)transforms->size();
+    // (a chunk list in Individual mode adds an item per row: at least one item per transform)
+    const bool sorted2D = sortedDraws && sortedDraws->size() >= (size_t)transforms->size();
+    const int hierarchyCount = sorted2D ? (int)sortedDraws->size() : (int)transforms->size();
     for (int k = 0; k < hierarchyCount; k++){
         const int i = sorted2D ? (int)(*sortedDraws)[(size_t)k].index : k;
         passSortBucket = sorted2D ? (*sortedDraws)[(size_t)k].bucket : 0;
+        passSpritePart = sorted2D ? (*sortedDraws)[(size_t)k].part : -1;
         Transform& transform = transforms->getComponentFromIndex(i);
         Entity entity = transforms->getEntity(i);
         Signature signature = scene->getSignature(entity);
@@ -20106,6 +20108,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
     passSortBucket = 0;
+    passSpritePart = -1;
 
     //---------Draw transparent renderers----------
     // layered around the pass's waters (WaterLayering.h): nothing to do without one

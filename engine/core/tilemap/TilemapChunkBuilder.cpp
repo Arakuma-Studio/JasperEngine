@@ -181,6 +181,7 @@ AABB tilechunk::chunkBounds(const TileGridSpec& grid, const CellRect& rect, doub
 void tilechunk::build(const TilemapChunkParams& params, ChunkCoord coord, SpriteInstanceBatch& batch, TilemapChunkBuild& out){
     out.animated.clear();
     out.runs.clear();
+    out.rows.clear();
     out.nextFrameMs = kNoFrameChange;
     std::vector<PlacedCell> placed;
     const TileChunk* chunk = params.cells->chunk(coord);
@@ -199,7 +200,7 @@ void tilechunk::build(const TilemapChunkParams& params, ChunkCoord coord, Sprite
         }
     }
     // R32: where tiles may overlap the painter's order wins; otherwise one draw per page
-    bool overlap = tilegrid::layoutOverlaps(params.grid);
+    bool overlap = params.individual || tilegrid::layoutOverlaps(params.grid);
     const double ppu = params.pixelsPerUnit;
     if (!overlap){
         const double cellW = params.grid.cellWidth * ppu, cellH = params.grid.cellHeight * ppu;
@@ -244,6 +245,12 @@ void tilechunk::build(const TilemapChunkParams& params, ChunkCoord coord, Sprite
             }
         }
         writeInstance(params, shown, instances[n], pivots.empty() ? nullptr : &pivots[n]);
+        if (params.individual){
+            const TilePoint anchor = tilegrid::cellToLocal(params.grid, shown.cell);
+            if (out.rows.empty() || out.rows.back().anchorV != anchor.y)
+                out.rows.push_back({(uint32_t)n, 0u, anchor.x, anchor.y});
+            out.rows.back().count++;
+        }
         if (!fx.empty())
             fx[n] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
         if (!out.runs.empty() && out.runs.back().page == shown.info->page)

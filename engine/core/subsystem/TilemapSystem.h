@@ -83,6 +83,7 @@ namespace jasperengine{
         void buildChunk(TilemapLayerComponent& layer, TilemapChunkRuntime& chunk) const;
         TilemapChunkParams chunkParams(const TilemapLayerComponent& layer) const;
         void syncChunkList(TilemapLayerComponent& layer);
+        void syncIndividualRows(TilemapLayerComponent& layer);
         void updateAnimations(Entity entity, TilemapLayerComponent& layer, double dt);
     };
 

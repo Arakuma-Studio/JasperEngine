@@ -106,6 +106,7 @@ TilemapChunkParams TilemapSystem::chunkParams(const TilemapLayerComponent& layer
     params.snapEdges = state.snapEdges;
     params.seed = layer.seed;
     params.animationMs = (int64_t)state.animationMs;
+    params.individual = layer.mode == TilemapRenderMode::Individual;
     return params;
 }
 
@@ -157,6 +158,46 @@ void TilemapSystem::syncChunkList(TilemapLayerComponent& layer){
     list.revision++;
 }
 
+void TilemapSystem::syncIndividualRows(TilemapLayerComponent& layer){
+    TilemapLayerState& state = *layer.state;
+    SpriteInstanceChunkList& list = state.list;
+    const std::vector<SpriteInstanceChunk> chunks = list.chunks;
+    list.chunks.clear();
+    for (size_t c = 0; c < chunks.size(); c++){
+        for (auto& entry : state.chunks){
+            if (&entry.second->batch != chunks[c].batch)
+                continue;
+            TilemapChunkRuntime& runtime = *entry.second;
+            bool first = true;
+            for (const TilemapChunkRow& row : runtime.build.rows){
+                SpriteInstanceChunk part = chunks[c];
+                part.rangeFirst = row.first;
+                part.rangeCount = row.count;
+                part.sortItem = true;
+                float local[3];
+                tilegrid::planeToLocal(state.spec, TilePoint{row.anchorU, row.anchorV}, local);
+                part.sortPoint = Vector3(local[0], local[1], local[2]);
+                if (first){
+                    runtime.listIndex = list.chunks.size();
+                    first = false;
+                }
+                list.chunks.push_back(part);
+            }
+            if (first){
+                // an empty chunk keeps one entry, so the next sync still knows its batch
+                SpriteInstanceChunk part = chunks[c];
+                part.rangeFirst = 0;
+                part.rangeCount = 0;
+                part.sortItem = true;
+                runtime.listIndex = list.chunks.size();
+                list.chunks.push_back(part);
+            }
+            break;
+        }
+    }
+    list.revision++;
+}
+
 void TilemapSystem::updateAnimations(Entity entity, TilemapLayerComponent& layer, double dt){
     TilemapLayerState& state = *layer.state;
     (void)entity;
@@ -174,8 +215,12 @@ void TilemapSystem::updateAnimations(Entity entity, TilemapLayerComponent& layer
         if (ms < chunk.build.nextFrameMs)
             continue;
         bool changed = false;
-        if (!tilechunk::updateAnimation(params, chunk.batch, chunk.build, ms, changed))
-            state.list.chunks[chunk.listIndex].needsBuild = true;
+        if (!tilechunk::updateAnimation(params, chunk.batch, chunk.build, ms, changed)){
+            if (layer.mode == TilemapRenderMode::Individual)
+                layer.needUpdate = true;
+            else
+                state.list.chunks[chunk.listIndex].needsBuild = true;
+        }
     }
 }
 
@@ -247,9 +292,12 @@ void TilemapSystem::updateLayer(Entity entity, TilemapLayerComponent& layer, dou
             mesh->submeshes[0].needUpdateTexture = true;
         }
     }
-    if (mesh->numSubmeshes > 0 && std::memcmp(state.appliedTint, &layer.tint, sizeof(state.appliedTint)) != 0){
-        std::memcpy(state.appliedTint, &layer.tint, sizeof(state.appliedTint));
-        mesh->submeshes[0].material.baseColorFactor = layer.tint;
+    // the Scene view's Focus On dims the other layers through the alpha (S50 R65): runtime only
+    Vector4 tint = layer.tint;
+    tint.w *= layer.focusDim;
+    if (mesh->numSubmeshes > 0 && std::memcmp(state.appliedTint, &tint, sizeof(state.appliedTint)) != 0){
+        std::memcpy(state.appliedTint, &tint, sizeof(state.appliedTint));
+        mesh->submeshes[0].material.baseColorFactor = tint;
     }
     uint8_t attributes = MeshSystem::spriteBatchAttributes(*mesh, false, scene->getDefaultCustomShader(ShaderType::MESH));
     attributes &= (uint8_t)MeshBatchAttribute_SpriteFx;
@@ -330,11 +378,24 @@ void TilemapSystem::updateLayer(Entity entity, TilemapLayerComponent& layer, dou
         state.overhangY = overhangY / state.ppu;
         listChanged = true;
     }
-    if (listChanged)
+    const bool individual = layer.mode == TilemapRenderMode::Individual;
+    // (Individual mode sorted the list into rows: back to one entry per chunk to compare)
+    if (listChanged || (individual && !changed.empty()))
         syncChunkList(layer);
+    if (individual){
+        for (const ChunkCoord& coord : changed){
+            auto found = state.chunks.find(coord);
+            if (found != state.chunks.end()){
+                buildChunk(layer, *found->second);
+                state.rebuilt++;
+            }
+        }
+        for (SpriteInstanceChunk& entry : state.list.chunks)
+            entry.needsBuild = false;
+    }
     for (const ChunkCoord& coord : changed){
         auto found = state.chunks.find(coord);
-        if (found != state.chunks.end())
+        if (found != state.chunks.end() && !individual)
             state.list.chunks[found->second->listIndex].needsBuild = true;
     }
 
@@ -354,7 +415,7 @@ void TilemapSystem::updateLayer(Entity entity, TilemapLayerComponent& layer, dou
             builds.push_back(entry.second.get());
             listed.needsBuild = false;
         }
-        if (layer.gpuResidency == TilemapGpuResidency::Visible && entry.second->batch.isGpuCreated()){
+        if (!individual && layer.gpuResidency == TilemapGpuResidency::Visible && entry.second->batch.isGpuCreated()){
             if (listed.lastDrawn + 1 >= commit){
                 entry.second->unseenSeconds = 0.0f;
             }else{
@@ -374,6 +435,8 @@ void TilemapSystem::updateLayer(Entity entity, TilemapLayerComponent& layer, dou
                 buildChunk(layer, *chunk);
         }
     }
+    if (individual && (listChanged || !changed.empty()))
+        syncIndividualRows(layer);
     if (TilemapCollider2DComponent* collider = scene->findComponent<TilemapCollider2DComponent>(entity)){
         if (allDirty)
             tilemapcolliders::markAll(*collider);

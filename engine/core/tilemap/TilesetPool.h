@@ -80,6 +80,8 @@ namespace jasperengine{
         // replaces the cached entry for `path` with `data` (the editor after a write)
         static void set(const std::string& path, std::shared_ptr<const TilesetData> data);
         static void invalidate(const std::string& path);
+        // an .aseprite file imported again: the tilesets drawing its strips resolve the new ones
+        static void asepriteSourceChanged(const std::string& asepritePath);
         static void clear();
         // moves on with every change of any entry (layers compare it once per frame)
         static uint64_t revision();
