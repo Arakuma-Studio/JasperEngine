@@ -177,7 +177,7 @@ never build or run them.
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
-| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | landing (batch 3) |
+| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | merged and pushed |
 | S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | landing (batch 4) |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
@@ -244,6 +244,15 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: **Batch 3: S51 Pixel Fonts merged into `main` and pushed** (branch `6e0376917`).
+  - Verified on main + S51: web, android, Vulkan 98/98, `htmlui-tests` Vulkan.
+  - Of the 6 HTML UI failures, 4 also fail on plain `main`. `UIParticleSystemsClippedByAPanel`
+    fails on `main` too once its shader is cached: the test reads after 4 frames, before the first
+    fixed tick emits. `DebugOverlay` gestures pass 20/20 alone on S51 and 10/10 on `main`; they
+    fail only through order in the full run.
+  - These are `main` test issues to fix later (wait for the state, not frames; find the test that
+    leaks the gesture state). Also seen flaky on repeat on `main`: `PopupCountsTapAndDrag`,
+    `TextFallbackRtl`.
 - 2026-11-09: Batch 4 assembled on `land/batch3` (the worktree is reused): `main` + S42 (`9c7f0b34b`,
   clean merge) + S52 (`0bea149af`).
   - Three conflicts resolved, keeping both sides: `Project.cpp` (S42's default filter beside
