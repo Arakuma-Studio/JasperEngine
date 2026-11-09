@@ -101,3 +101,8 @@ async def test_fixed_times_match_the_goldens(ed: Editor):
             if not ok:
                 bad.append(f"{stem}: {fraction:.4f} of the pixels differ")
     ed.check(not bad, "\n".join(bad))
+    if not UPDATE:
+        # red control: two different times of one fixture are not within the tolerance
+        same, fraction, _ = pngdiff.compare(pngdiff.load(GOLDEN / "two_word_0000.png"), pngdiff.load(GOLDEN / "two_word_0500.png"),
+                                            channel_tolerance=TOLERANCE, max_fraction=MAX_FRACTION)
+        ed.check(not same, f"the comparison tells times apart ({fraction:.4f} of the pixels differ)")

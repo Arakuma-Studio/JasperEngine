@@ -25,7 +25,9 @@
 #include "titleart/anim/TitleAnimPresets.h"
 #include "titleart/anim/TitleAnimRender.h"
 #include "titleart/anim/TitleFlipbookBaker.h"
+#include "mcp/McpRefs.h"
 #include "util/AssetDatabase.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -263,12 +265,16 @@ void mcp::titletools::renderTitleAnimation(const CallPtr& call, RenderSpec spec)
         tt::TitleRectI region;
         size_t next = 0;
         std::string relative;
+        std::string savePath;
+        Project* project = nullptr;
     };
     auto s = std::make_shared<State>();
     std::string error;
     s->name = anim["name"].get<std::string>();
     if (anim.contains("as")) titleAnimRenderAsFromName(anim["as"].get<std::string>(), s->as);
     s->relative = spec.relative;
+    s->savePath = args.value("save_path", std::string());
+    s->project = call->ctx().project();
     if (!parseBackgrounds(project, args.contains("backgrounds") ? args["backgrounds"] : Json(), s->backgrounds, error)){
         call->fail(error);
         return;
@@ -417,6 +423,25 @@ void mcp::titletools::renderTitleAnimation(const CallPtr& call, RenderSpec spec)
                                                         (int)std::lround(c.height * factor)})}});
             result["sheet"] = boxJson;
             t->images.push_back(toolImage(shown));
+        }
+        // the frame itself, with its real alpha (render_title's save_path; a filmstrip has several)
+        if (!s->savePath.empty()){
+            if (s->frames.size() != 1){
+                job.fail("save_path: options.animation renders " + std::to_string(s->frames.size()) + " frames: give one time to save it");
+                return true;
+            }
+            fs::path file;
+            std::string error;
+            std::vector<uint8_t> png;
+            if (!McpRefs::resolveProjectWritePath(s->project, s->savePath, file, error)){
+                job.fail("save_path: " + error);
+                return true;
+            }
+            if (!texsynth::encodePng(s->frames[0].image, png) || !FileUtils::writeFileReplacing(file, std::string(png.begin(), png.end()))){
+                job.fail("save_path: could not write " + s->savePath);
+                return true;
+            }
+            result["saved_to"] = s->project->normalizeToProjectRelative(file).generic_string();
         }
         t->text = "Rendered " + std::to_string(s->frames.size()) + " frame(s) of '" + s->name + "' (" + titleAnimRenderAsName(s->as) + ") of " + s->relative + ".";
         job.succeed(t->text, result);

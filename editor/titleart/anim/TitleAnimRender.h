@@ -23,6 +23,7 @@
 #include "texsynth/SynthImage.h"
 #include "titleanim/TitleAnimPlayer.h"
 #include "titleart/TitleArtDoc.h"
+#include "titleart/render/TitleArtRenderer.h"
 #include "titleart/TitleArtTypes.h"
 #include "titleart/anim/TitleAnimPlan.h"
 #include "util/TitleArtBakeInfo.h"
@@ -68,6 +69,7 @@ namespace jasperengine::editor {
         uint64_t poseHash = 0;          // what was rendered (equal frames: equal hashes)
     };
 
+    struct TitleRenderedImage;
     class TitleAnimRenderer {
     public:
         // the document's animations compiled with the project's fonts (glyph units from the layout)
@@ -84,10 +86,16 @@ namespace jasperengine::editor {
         const TitleArtBakeInfo& stillFrame() const{ return still; }
 
         bool render(const TitleAnimFrameRequest& request, TitleAnimFrame& out, std::string& error);
+        // R39: steps the pose's base render within `budgetMs`; false while it is not ready (keep
+        // showing the previous image), with `error` set when it failed
+        bool advancePose(const TitleAnimFrameRequest& request, double budgetMs, std::string& error);
         // the title-level pose of an animation at a time (what the companion draws)
         titleanim::TitlePoseSummary summaryAt(const std::string& animation, double time) const;
 
     private:
+        bool baseRender(const titleart::RenderRequest& request, TitleRenderedImage& image, std::string& error);
+        struct PoseSetup;
+        bool poseSetup(const TitleAnimFrameRequest& request, PoseSetup& setup, TitleAnimFrame& out, std::string& error);
         Project* project = nullptr;
         std::shared_ptr<const titleart::TitleArtDoc> doc;
         std::shared_ptr<titleanim::TitleAnimLibrary> lib;

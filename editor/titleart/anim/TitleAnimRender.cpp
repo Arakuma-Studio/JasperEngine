@@ -13,6 +13,8 @@
 #include "util/Fnv.h"
 
 #include <algorithm>
+#include <chrono>
+#include <list>
 #include <cmath>
 #include <functional>
 
@@ -198,6 +200,8 @@ namespace {
         }
     }
 
+    uint64_t baseKey(const tt::RenderRequest& request);
+
     uint64_t overridesHash(const std::vector<tt::FieldOverride>& overrides){
         uint64_t h = 0x55;
         for (const tt::FieldOverride& o : overrides) h = fnv1a64(o.layerId + "\x1f" + o.path + "\x1f" + o.value.dump(), h);
@@ -353,6 +357,31 @@ struct TitleAnimRenderer::Cache {
     std::map<std::pair<uint64_t, uint32_t>, Cells> cells;
     std::map<uint64_t, Linear> glowImages;
     std::unique_ptr<tt::TitleTextLayout> layout;
+    // R39: base renders by what they rendered (re-render values, scale, region)
+    std::map<uint64_t, TitleRenderedImage> bases;
+    std::list<uint64_t> baseOrder;
+    // the base render being stepped across frames
+    std::unique_ptr<tt::TitleRenderJob> sliced;
+    uint64_t slicedKey = 0;
+
+    void storeBase(uint64_t key, const TitleRenderedImage& image){
+        if (bases.count(key)) return;
+        bases[key] = image;
+        baseOrder.push_back(key);
+        while (baseOrder.size() > 32){
+            bases.erase(baseOrder.front());
+            baseOrder.pop_front();
+        }
+    }
+};
+
+struct TitleAnimRenderer::PoseSetup {
+    const ta::CompiledTitleAnimation* animation = nullptr;
+    tt::PlayerPose pose;
+    std::vector<tt::FieldOverride> overrides;
+    tt::RenderRequest base;
+    std::string cellLayer;
+    ta::TitleAnimPlayer player;
 };
 
 TitleAnimRenderer::TitleAnimRenderer(Project* project, std::shared_ptr<const tt::TitleArtDoc> doc)
@@ -386,14 +415,71 @@ ta::TitlePoseSummary TitleAnimRenderer::summaryAt(const std::string& animation, 
     return s;
 }
 
-bool TitleAnimRenderer::render(const TitleAnimFrameRequest& request, TitleAnimFrame& out, std::string& error){
-    out = TitleAnimFrame();
+namespace {
+    uint64_t baseKey(const tt::RenderRequest& request){
+        uint64_t h = overridesHash(request.overrides);
+        h = tt::hashCombine(h, (uint64_t)std::llround((double)request.pxScale * 1000.0));
+        return tt::hashCombine(h, (((uint64_t)(uint32_t)request.region.x) << 32) ^ (uint32_t)request.region.y ^ ((uint64_t)request.region.width << 16) ^ request.region.height);
+    }
+}
+
+// R39: a pose that differs only in title-live, layer-live or glyph values reuses this image
+bool TitleAnimRenderer::baseRender(const tt::RenderRequest& request, TitleRenderedImage& image, std::string& error){
+    const uint64_t key = baseKey(request);
+    auto found = cache->bases.find(key);
+    if (found != cache->bases.end()){
+        image = found->second;
+        return true;
+    }
+    if (!TitleArtRenderHost::editor().render(project, request, image, error)) return false;
+    cache->storeBase(key, image);
+    return true;
+}
+
+// R39: the pose's base image advanced within `budgetMs` of this frame; true once it is ready, and
+// render() then only composes (the glyph-cell path renders its plates in render())
+bool TitleAnimRenderer::advancePose(const TitleAnimFrameRequest& request, double budgetMs, std::string& error){
+    PoseSetup setup;
+    TitleAnimFrame scratch;
+    if (!poseSetup(request, setup, scratch, error)) return false;
+    if (!setup.cellLayer.empty()) return true;
+    tt::RenderRequest r = setup.base;
+    r.overrides = setup.overrides;
+    const uint64_t key = baseKey(r);
+    if (cache->bases.count(key)) return true;
+    if (cache->slicedKey != key || !cache->sliced){
+        cache->sliced = TitleArtRenderHost::editor().begin(project, r, error);
+        cache->slicedKey = key;
+        if (!cache->sliced) return false;
+    }
+    const auto start = std::chrono::steady_clock::now();
+    while (!cache->sliced->done() && !cache->sliced->failed()){
+        cache->sliced->step(tt::StepBudget{1, 0});
+        if (cache->sliced->waiting()) break;
+        if (std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() >= budgetMs) break;
+    }
+    if (cache->sliced->failed()){
+        error = cache->sliced->error();
+        cache->sliced.reset();
+        return false;
+    }
+    if (!cache->sliced->done()) return false;
+    TitleRenderedImage image;
+    const bool ok = TitleArtRenderHost::readBack(*cache->sliced, 8, image, error);
+    cache->sliced.reset();
+    if (!ok) return false;
+    cache->storeBase(key, image);
+    return true;
+}
+
+bool TitleAnimRenderer::poseSetup(const TitleAnimFrameRequest& request, PoseSetup& setup, TitleAnimFrame& out, std::string& error){
     const ta::CompiledTitleAnimation* animation = lib->find(request.animation);
+    setup.animation = animation;
     if (!animation){
         error = "no animation '" + request.animation + "'";
         return false;
     }
-    ta::TitleAnimPlayer player;
+    ta::TitleAnimPlayer& player = setup.player;
     player.setLibrary(lib);
     player.sample(request.animation, request.time);
     out.localTime = player.baseAnimation()->localTime();
@@ -420,7 +506,7 @@ bool TitleAnimRenderer::render(const TitleAnimFrameRequest& request, TitleAnimFr
     // Baked: frames hold the values of their frame time (k / fps); Realtime and Glyph Atlas
     // re-render at rerender_fps
     float pxScale = std::max(0.05f, request.pxScale);
-    tt::PlayerPose pose;
+    tt::PlayerPose& pose = setup.pose;
     if (request.as == TitleAnimRenderAs::Baked){
         const double fps = std::min((double)ta::TITLE_ANIM_MAX_FLIPBOOK_FPS, std::max(1.0, (double)animation->flipbookSettings.fps));
         const double frameTime = std::floor(out.localTime * fps + 1e-6) / fps;
@@ -433,10 +519,11 @@ bool TitleAnimRenderer::render(const TitleAnimFrameRequest& request, TitleAnimFr
         tt::playerPose(*doc, player, request.as != TitleAnimRenderAs::Exact, include, pose);
     }
 
-    std::vector<tt::FieldOverride> overrides = request.overrides;
+    std::vector<tt::FieldOverride>& overrides = setup.overrides;
+    overrides = request.overrides;
     for (tt::FieldOverride& o : pose.values.overrides()) overrides.push_back(std::move(o));
 
-    tt::RenderRequest base;
+    tt::RenderRequest& base = setup.base;
     base.doc = doc;
     base.pxScale = pxScale;
     base.region = request.region;
@@ -444,7 +531,7 @@ bool TitleAnimRenderer::render(const TitleAnimFrameRequest& request, TitleAnimFr
     base.output = tt::TitleOutputFormat::Srgb8;
 
     // the glyph-cell text layer (the first with a pose that moves anything)
-    std::string cellLayer;
+    std::string& cellLayer = setup.cellLayer;
     for (const auto& [layer, poses] : pose.glyphs){
         for (const auto& [cluster, g] : poses) if (!g.identity()){ cellLayer = layer; break; }
         if (!cellLayer.empty()) break;
@@ -453,13 +540,28 @@ bool TitleAnimRenderer::render(const TitleAnimFrameRequest& request, TitleAnimFr
         const std::vector<std::string> layers = tt::cellLayersOf(*doc, *animation);
         if (!layers.empty()) cellLayer = layers.front();
     }
+    return true;
+}
+
+bool TitleAnimRenderer::render(const TitleAnimFrameRequest& request, TitleAnimFrame& out, std::string& error){
+    out = TitleAnimFrame();
+    PoseSetup setup;
+    if (!poseSetup(request, setup, out, error)) return false;
+    const ta::CompiledTitleAnimation* animation = setup.animation;
+    (void)animation;
+    ta::TitleAnimPlayer& player = setup.player;
+    tt::PlayerPose& pose = setup.pose;
+    std::vector<tt::FieldOverride>& overrides = setup.overrides;
+    tt::RenderRequest& base = setup.base;
+    std::string& cellLayer = setup.cellLayer;
+    const float pxScale = base.pxScale;
     Linear composed;
     tt::TitleRectI frame;
     if (cellLayer.empty()){
         tt::RenderRequest r = base;
         r.overrides = overrides;
         TitleRenderedImage image;
-        if (!TitleArtRenderHost::editor().render(project, r, image, error)) return false;
+        if (!baseRender(r, image, error)) return false;
         frame = image.frame;
         out.problems = image.problems;
         composed = linearOf(image.image);
@@ -474,7 +576,7 @@ bool TitleAnimRenderer::render(const TitleAnimFrameRequest& request, TitleAnimFr
             r.overrides.push_back({cellLayer, "visible", false});
             for (const std::string& id : hidden) r.overrides.push_back({id, "visible", false});
             if (transparentCanvas) r.overrides.push_back({"", "canvas.background.transparent", true});
-            return TitleArtRenderHost::editor().render(project, r, image, error);
+            return baseRender(r, image, error);
         };
         TitleRenderedImage backPlate, frontPlate;
         if (!plate(above, false, backPlate) || !plate(below, true, frontPlate)) return false;

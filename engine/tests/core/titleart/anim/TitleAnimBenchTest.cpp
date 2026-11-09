@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include "support/AllocationCounter.h"
+#include "titleanim/TitleAnimDataIO.h"
 #include "titleanim/TitleAnimPlayer.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/anim/TitleAnimPlan.h"
@@ -47,6 +48,7 @@ namespace {
             std::snprintf(id, sizeof(id), "%08x", 0x10 + i);
             layers.push_back(shapeLayer(id, "rect", 40, solidFace("#ffffff")));
         }
+        layers.push_back(Json{{"id", "00000040"}, {"type", "generator"}, {"name", "Grain"}, {"generator", {{"type", "particles"}}}});
         Json tracks = Json::array();
         const char* glyphFields[] = {"glyph.opacity", "glyph.offset", "glyph.rotation", "glyph.scale", "glyph.stretch", "glyph.tint", "glyph.flash.amount", "glyph.flash.color"};
         Json glyphA[] = {0.0, Json::array({0, 0}), 0.0, 1.0, Json::array({1, 1}), "#ffffff", 0.0, "#ffffff"};
@@ -70,7 +72,7 @@ namespace {
         tracks.push_back(drive("live.tint_amount"));
         tracks.push_back(drive("live.glow_pulse"));
         tracks.push_back(Json{{"layer", ""}, {"field", "seed"}, {"reseed", {{"rate", 8}}}});
-        tracks.push_back(Json{{"layer", "00000001"}, {"field", "seed"}, {"reseed", {{"rate", 6}}}});
+        tracks.push_back(Json{{"layer", "00000040"}, {"field", "generator.params.seed"}, {"reseed", {{"rate", 6}}}});
         Json markers = Json::array();
         for (int i = 0; i < 8; i++) markers.push_back(Json{{"name", "m" + std::to_string(i)}, {"time", 0.1 * i}});
         Json animation = {{"name", "Bench"}, {"duration", 1.0}, {"wrap", "loop"}, {"tracks", tracks}, {"markers", markers}};
@@ -99,9 +101,9 @@ TEST(TitleAnimBench, Sample64){
     ASSERT_EQ(library->animations.size(), 1u);
     const ta::CompiledTitleAnimation& compiled = library->animations[0];
     EXPECT_EQ(compiled.tracks.size(), 40u);
-    int orphan = 0;
-    for (const ta::CompiledTitleTrack& t : compiled.tracks) orphan += t.cls == ta::TrackClass::None ? 1 : 0;
-    EXPECT_EQ(orphan, 0) << "every field of the bench resolved";
+    std::string unresolved;
+    for (const ta::CompiledTitleTrack& t : compiled.tracks) if (t.cls == ta::TrackClass::None) unresolved += t.layer + "/" + t.field + " ";
+    EXPECT_TRUE(unresolved.empty()) << "every field of the bench resolves, not: " << unresolved;
 
     ta::TitleAnimPlayer player;
     player.setLibrary(library);

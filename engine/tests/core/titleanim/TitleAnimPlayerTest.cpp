@@ -11,10 +11,7 @@
 #include "titleanim/TitleAnimDataIO.h"
 #include "titleanim/TitleAnimPlayer.h"
 
-#include <algorithm>
-#include <chrono>
 #include <cmath>
-#include <cstdio>
 #include <memory>
 
 using namespace jasperengine;
@@ -306,59 +303,6 @@ TEST(TitleAnimPlayerTest, ZeroAllocSteadyState){
         companionUniforms(s, g, TrackPivot::Origin, nullptr, -1, -1, 0.0f, u);
     }
     EXPECT_EQ(scope.count(), 0u);
-}
-
-// R35 on the test machine: 40 keyed and driven title tracks with 8 markers sampled per update (the
-// spec's bench adds 8 staggered glyph tracks and 2 reseeds through the module's compiler)
-TEST(TitleAnimBench, Sample64){
-    auto lib = std::make_shared<TitleAnimLibrary>();
-    TitleAnimation a;
-    a.name = "Sample";
-    a.duration = 2.0f;
-    a.wrap = AnimWrap::Loop;
-    for (int i = 0; i < 40; i++){
-        TitleTrack t;
-        if (i < 4){
-            t.field = "transform.rotation";
-            TitleDrive d;
-            d.from = {0.0f};
-            d.to = {360.0f};
-            d.cycles = 1.0f;
-            t.drive = d;
-        }else{
-            t = track("opacity", {{0.0f, {0.0f}}, {0.5f, {1.0f}}, {1.0f, {0.5f}}, {1.5f, {1.0f}}, {2.0f, {0.0f}}});
-        }
-        a.tracks.push_back(t);
-    }
-    for (int i = 0; i < 8; i++){
-        TitleMarker m;
-        m.time = (float)i * 0.25f;
-        m.name = "m" + std::to_string(i);
-        a.markers.push_back(m);
-    }
-    lib->animations.push_back(compiled(a));
-    TitleAnimPlayer player;
-    player.setLibrary(lib);
-    ASSERT_TRUE(player.play("Sample"));
-    std::vector<FiredMarker> markers;
-    markers.reserve(64);
-    std::vector<std::string> finished;
-    finished.reserve(8);
-    TitlePoseSummary s;
-    std::vector<double> us;
-    us.reserve(600);
-    for (int i = 0; i < 660; i++){
-        const auto start = std::chrono::steady_clock::now();
-        markers.clear();
-        player.update(1.0 / 60.0, markers, finished);
-        player.summary(nullptr, s);
-        const double elapsed = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
-        if (i >= 60) us.push_back(elapsed);
-    }
-    std::sort(us.begin(), us.end());
-    const double median = us[us.size() / 2];
-    std::printf("[title anim] Sample64: median %.2f us, p95 %.2f us over 600 frames (R35: 25 us median)\n", median, us[us.size() * 95 / 100]);
-    EXPECT_LT(median, 250.0) << "an order of magnitude over R35's budget even in a debug build";
 }
 
 TEST(TitleAnimDataIOTest, RoundTrip){

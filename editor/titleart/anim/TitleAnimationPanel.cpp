@@ -54,6 +54,7 @@ namespace {
 
     // a played or scrubbed pose stays at most this side (a synchronous render inside a frame)
     constexpr float MAX_POSE_SIDE = 960.0f;
+    constexpr double POSE_SLICE_MS = 6.0;
     constexpr float MAX_PLAYING_POSE_SIDE = 640.0f;
     // the cached pose textures (2 MiB each, about, at the capped side)
     constexpr size_t POSE_CACHE = 48;
@@ -269,6 +270,13 @@ namespace {
         if (!titleAnimRenderAsFromName(p.previewAs, request.as)) request.as = TitleAnimRenderAs::Exact;
         TitleAnimFrame frame;
         std::string error;
+        // R39: a new re-render steps here within the frame budget, the previous image staying;
+        // title-live, layer-live and glyph values reuse the cached base and compose this frame
+        if (!renderer->advancePose(request, POSE_SLICE_MS, error)){
+            if (!error.empty()) p.status = error;
+            Backend::getApp().requestRedraw();
+            return nullptr;
+        }
         if (!renderer->render(request, frame, error)){
             p.status = error;
             return nullptr;
@@ -314,7 +322,8 @@ namespace {
         refresh(p, state);
         const tt::TitleArtDoc& doc = state.shown();
         const float scale = poseScaleFor(doc, xform.zoom, p.playing);
-        PoseTexture* pose = poseAt(p, state, p.time, scale, true);
+        PoseTexture* fresh = poseAt(p, state, p.time, scale, true);
+        PoseTexture* pose = fresh ? fresh : p.poses.empty() ? nullptr : p.poses.back().second.get();
         dl->PushClipRect(min, max, true);
         const float w = (float)doc.canvasWidth(), h = (float)doc.canvasHeight();
         if (pose) drawPoseImage(dl, *pose, w, h, xform, IM_COL32_WHITE);
@@ -563,7 +572,14 @@ namespace {
                     ta::TitleKey key = k < t.keys.size() ? t.keys[k] : t.keys.back();
                     key.key.time = first.keys[k].time;
                     key.key.ease = EaseType::LINEAR;
-                    key.key.tangentMode = ClipTangentMode::Free;
+                    // the key menu's choice (R43): the op recomputes the mode's tangents
+                    const CurveKey& modeOf = first.keys[k];
+                    if (modeOf.broken()) key.key.tangentMode = ClipTangentMode::Broken;
+                    else if (modeOf.outMode() == CurveTangentMode::Auto) key.key.tangentMode = ClipTangentMode::Auto;
+                    else if (modeOf.outMode() == CurveTangentMode::ClampedAuto) key.key.tangentMode = ClipTangentMode::ClampedAuto;
+                    else if (modeOf.outMode() == CurveTangentMode::Linear) key.key.tangentMode = ClipTangentMode::Linear;
+                    else if (modeOf.outMode() == CurveTangentMode::Constant) key.key.tangentMode = ClipTangentMode::Constant;
+                    else key.key.tangentMode = ClipTangentMode::Free;
                     key.key.value.resize(comps.size());
                     key.key.inTangent.resize(comps.size());
                     key.key.outTangent.resize(comps.size());

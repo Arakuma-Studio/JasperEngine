@@ -1345,37 +1345,35 @@ rest of S82 lands in 6B.
     role, params and description; the contact sheet (`sheet`) is S84's library surface and is not
     wired in this stream. Generators `shake`, `flicker`, `beats`, `ticks`, and the members `repeat`
     and `vars`, were added to the preset format (§6.4 asked for expressions only).
-15. **R14 layer live is re-rendered, not composed live.** S81's layer-split compose is not in the
-    runtime, so Realtime layer-live tracks play through the rate-limited re-render (R18), with
-    code `no_layer_compose` and a plan reason `layer-live tracks re-render: the runtime has no
-    layer split compose`; `build_title_plan`-style reports say so. The split-blocker reasons are
-    still reported.
-16. **R15 cells at runtime need the Glyph Atlas plan.** Glyph tracks compose through the Glyph
-    Atlas path (new program `GLYPH_COMPOSE_ANIM`, 43: moved cell quads with opacity, tint and
-    flash, 7 quads per pass); Realtime titles switch to it while the animation plays and back at
-    rest, using the plan S81 computes for the document. A document whose plan has a `fallback`, or
-    a second text layer with glyph tracks, keeps its merged render for those tracks.
-17. **R39's time slicing does not apply to the canvas pose.** The Animation panel renders poses
-    synchronously at a capped side (640 px while playing, 960 px scrubbing), and caches 48 of them
-    per document change, instead of S82's slice-budgeted job. A pose is a full title render at
-    that scale; slower documents will drop preview frames, not freeze the window for long.
-18. **Prerender (R18's policy) renders on demand.** `rerender: prerender` keeps the plan and cost
-    figures and stores nothing: `prepareAnimation` only loads flipbook pages. The `prerender` how
-    still plays as rate-limited re-render.
-19. **The Designer preferences of §6.9 are session-only.** `onion_skin`, `preview_as` and
-    `preview_sounds` live in the panel for the session; the project-level
-    `title_art.animation.{flipbook_budget_mib, default_fps}` are the S25 settings.
-20. **R49's edit-mode Preview button and the marker-sound Audio Source warning are not in the
-    Inspector.** The rows are Play Automatically, Default Animation, Animation Speed, Unscaled Time
-    (the spec's Animation Update) and Drive Animation.
-21. **R43 tangent edits replace the keys (not `ClipTangents`).** The Curves tab edits Hermite keys
-    through `CurveEditor` and writes the whole track on release as Free tangents.
-23. **Test scope differs from §7.** Documents are built inside the tests instead of
-    `tools/fixtures/title-art-anim/`; no image goldens at fixed times (filmstrips are checked as
-    numbers, the panel and poses by screenshots a person looked at); `TitleAnimBench.Sample64` uses
-    title-level tracks and drives (no staggered glyph tracks or reseeds), `.Scene30` and AC8's
-    `LayerSplitEqualsRender` do not exist (Deviation 15), and AC16's clip tracks have no test of
-    their own.
+15. **R14, as built.** Realtime layer-live transform, opacity, tint and flash tracks compose per
+    frame (`TitleAnimCompose`: still layers as cached plates, the split quad on `GLYPH_COMPOSE_ANIM`).
+    S83's L effect parameters re-render with code `not_composable`, and a layer that also has a
+    re-render or glyph track re-renders whole (`split_redrawn`): one split image cannot hold it.
+16. **R15, as built.** Realtime glyph tracks compose as cells for any number of `cells` text
+    layers, in draw order. A Glyph Atlas title composes the one layer S81's plan names: the other
+    text layers are plates by S81's design, so their glyph tracks are not played there.
+17. **R39, as built.** A pose's base render steps within 6 ms a frame, the previous image staying;
+    poses that differ only in title-live, layer-live or glyph values reuse it and compose in that
+    frame. The glyph-cell path renders its plates once inside the frame. Preview As Baked renders
+    frames in that slice on the main thread rather than from a background-lane flipbook cache. The
+    panel's 200 tracks x 20 keys budget has not been measured.
+18. **R18, as built.** `prerender` requests every sample time ahead so S81's frame cache holds
+    them (half the Cache Budget, S81's budget for shown-before images; over it the animation plays
+    live and warns once). S81's Release Delay frees them like any idle image.
+19. **§6.9 preferences** persist in the Title Designer's settings (`onion_skin`,
+    `animation_preview_as`, `animation_preview_sounds`).
+20. **R49, as built.** The Preview button runs the default animation silently on the wall clock
+    (markers do not fire, no script runs in Edit mode), Stop restores it through `PreviewOwner`.
+    "Animation Update" is the row Unscaled Time.
+21. **R43, as built.** The Curves tab writes each key's tangent mode from the key menu; in and out
+    share a mode unless the key is Broken.
+23. **Tests.** Fixtures are `tools/fixtures/title-art-anim/` (the kanji title draws with the default
+    font, whose coverage of those characters was not checked), goldens at fixed times in `tools/mcp/tests/golden/title/anim/`, built by
+    `test_title_animation_goldens.py` with `JASPER_MCP_TITLE_ANIM_UPDATE_GOLDEN=1`. AC8 is
+    `TitleAnimComposeGpu.LayerSplitEqualsRender` over one fixture. `TitleAnimBench.Scene30` measures
+    30 players with their companion uniforms, without the ECS loop: there is no headless Scene.
+    The bench runs in the unit-test build, not on server E's Release build. AC11, AC12 and AC21
+    (exported player, GPU lane, Android and web gates) have not been run.
 24. **S81/S86 fix:** the Glyph Atlas job asks for all its draw states with
     `TitleFirstDraws::allowGroup` before drawing. S86's one-new-draw-a-frame rule reports a skipped
     pass through `lastRunDeferred()`, which this job never read, so a process's first Glyph Atlas
