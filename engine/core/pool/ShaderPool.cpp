@@ -716,7 +716,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::SSR_BLUR: return 0;
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
-        case ShaderType::BLIT:   return 19;
+        case ShaderType::BLIT:   return 20;  // RenderSystem::UBER_FEATURE_COUNT (PostProcessingTiers.S13Bits checks it)
         case ShaderType::BLOOM:  return 4;
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
@@ -730,7 +730,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // the source's texture type: 2D (none), array, cube or 3D
         case ShaderType::PASS_PREVIEW: return 3;
         // ShaderPool::getParticlesProperties
-        case ShaderType::PARTICLES: return 12;
+        case ShaderType::PARTICLES: return 14;
         case ShaderType::HTMLUI_PRIM: return 0;
         // 'Oir': the OIT resolve, else the contact shadows' mask
         case ShaderType::LIGHTING_PASS: return 1;
@@ -941,6 +941,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 10: return shortName ? "Pcl" : "Post Color";
             // centres (and 90-degree quads' corners) on the pixel grid (S41)
             case 11: return shortName ? "Pxs" : "Pixel Snap";
+            // pixel particles (S49): the grid, the shapes and the dither; Analytic simulation
+            case 12: return shortName ? "Pxl" : "Pixel";
+            case 13: return shortName ? "Ana" : "Analytic";
         }
     } else if (shaderType == ShaderType::LINES) {
         switch (bit) {
@@ -978,6 +981,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 17: return shortName ? "Gfm" : "Film Grain Filmic";
             // the Pixel Perfect Camera's Stretch Fill (S41 R11, UBER_SHARP_BILINEAR)
             case 18: return shortName ? "Psb" : "Pixel Sharp Bilinear";
+            // Palette Quantize (S43 R19, UBER_PALETTE)
+            case 19: return shortName ? "Pal" : "Palette Quantize";
         }
     } else if (shaderType == ShaderType::BLOOM) {
         // the pass of the bloom and blur chain (bloom.frag); 0 is the dual-filter downsample
@@ -1982,6 +1987,8 @@ uint64_t ShaderPool::getParticlesProperties(const ParticlesShaderFlags& flags){
     prop |= flags.customData     ? (1 <<  7) : 0;
     prop |= flags.receiveShadows ? (1 <<  8) : 0;
     prop |= flags.fog            ? (1 <<  9) : 0;
+    prop |= flags.pixel          ? (1 << 12) : 0;
+    prop |= flags.analytic       ? (1 << 13) : 0;
 
     return prop;
 }

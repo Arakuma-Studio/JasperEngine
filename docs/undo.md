@@ -8,7 +8,7 @@ Move Player", "Undo Rename File a.png → b.png"). The design and acceptance rec
 
 Ctrl+Z (Cmd+Z) and Ctrl+Y (Cmd+Shift+Z on macOS) always walk one timeline: the selected
 scene's steps and the asset steps of the Project window (rename, move, copy, delete, create
-folder or material, file writes) in the order you made them. Which window had focus no longer
+folder or material, file writes, a `.material` edited in the Inspector) in the order you made them. Which window had focus no longer
 matters: rename a file, click into the Scene view, and Ctrl+Z still undoes the rename. Only a
 text field you are typing in and the Code editor keep their own undo.
 
@@ -28,7 +28,8 @@ A drag is one step: the move, rotate and scale gizmos and every other Scene view
 Inspector slider, field drag or colour picker, a terrain stroke, a key or block drag in the
 Animation window. **Esc** (or Ctrl+Z) while the mouse is still down puts everything back as it
 was, the selection and the unsaved mark included, and adds no step. Opening a menu or a popup,
-or switching to another application, ends the drag as it is. An edit that changes nothing (a
+or switching to another application, ends the drag as it is. A node drag in the Animator is one
+step too, and Esc puts it back; Ctrl+Z during it undoes the step before it. An edit that changes nothing (a
 click on a field, a drag back to where it started) is no step either.
 
 ## Selection

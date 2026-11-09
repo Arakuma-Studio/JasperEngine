@@ -45,6 +45,12 @@ namespace jasperengine {
         bool softDisc = false;
     };
 
+    // One sub-emitter child's particles and what its own Renderer draws them with
+    struct UIParticleBatch {
+        UIParticleMaterial material;
+        std::vector<UIParticleQuad> quads;
+    };
+
     // The particles of a Particle System (docs/specs/S20-particles.md: it renders itself) as its
     // billboards show them this frame: the render extraction's records (interpolated position,
     // size, rotation, colour, sprite frame), in its GameObject's local space. The seam the
@@ -54,6 +60,9 @@ namespace jasperengine {
         JASPERENGINE_API bool read(Scene* scene, Entity emitter, std::vector<UIParticleQuad>& out);
         // false without a Particle System
         JASPERENGINE_API bool material(Scene* scene, Entity emitter, UIParticleMaterial& out);
+        // its sub-emitter children, in the effect's order down the tree (each in the same space
+        // as read's); empty, with nothing allocated, without any
+        JASPERENGINE_API void readChildren(Scene* scene, Entity emitter, std::vector<UIParticleBatch>& out);
     }
 
     // <particle-system src="fx/confetti.prefab" autoplay loop time="ui|game" scale="1">: a
@@ -103,6 +112,16 @@ namespace jasperengine {
         bool instantiate();
         void applyAttributes();
         void fail(const std::string& message);
+        // what one material's quads were last drawn with
+        struct DrawState {
+            Rml::Geometry geometry;
+            Rml::Texture texture;
+            // the soft disc of an untextured system, made here (kept alive while it is drawn)
+            Rml::CallbackTexture discTexture;
+            std::string loadedTexture;
+            bool loadedDisc = false;
+        };
+        void renderQuads(Rml::RenderManager* renderManager, const UIParticleMaterial& quadMaterial, const std::vector<UIParticleQuad>& quadList, DrawState& state);
 
         enum class Command { None, Play, Pause, Stop };
         Command pending = Command::None;
@@ -118,13 +137,11 @@ namespace jasperengine {
         UIParticleMaterial material;
 
         std::vector<UIParticleQuad> quads;
+        // the sub-emitter children's, each with its own Renderer
+        std::vector<UIParticleBatch> childBatches;
+        std::vector<DrawState> childDraws;
         size_t drawn = 0;
-        Rml::Geometry geometry;
-        Rml::Texture texture;
-        // the soft disc of an untextured system, made here (kept alive while it is drawn)
-        Rml::CallbackTexture discTexture;
-        std::string loadedTexture;
-        bool loadedDisc = false;
+        DrawState rootDraw;
     };
 
 }

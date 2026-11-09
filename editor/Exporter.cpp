@@ -2893,6 +2893,7 @@ bool editor::Exporter::writeAssetMap() {
     const AssetIndex::Roots roots = project->getAssetRoots();
     std::vector<AssetMap::Entry> entries;
     project->getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        if (info.type == AssetType::ProceduralMaterial) return; // editor-only: copyAssets leaves it out
         const AssetTypeInfo& type = AssetTypes::info(info.type);
         std::string path = info.path;
         if (type.base == AssetPathBase::Assets) {
@@ -3541,6 +3542,9 @@ bool editor::Exporter::copyAssets() {
         // Skip project support files that should not ship as assets, and the assets' metas
         if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) return TreeStep::Enter;
 
+        // A Procedural Material ships as what it baked: PNGs and a .material (S90 R4)
+        if (Util::isProceduralMaterialFile(entry.path().string())) return TreeStep::Enter;
+
         // A texture only sprites read, packed in an atlas, ships as the atlas's pages only (S45 R19)
         if (atlasOnlySources.count(relPath.generic_string())) {
             return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();
@@ -3841,6 +3845,8 @@ bool editor::Exporter::copyLua() {
         if (luaRootIsProjectRoot && !isLuaExportFile(entry.path())) return TreeStep::Skip;
         // editor scripts (Editor/ with ---@menu annotations) never ship
         if (EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) return TreeStep::Skip;
+        // nor does a Procedural Material in a Lua root of its own (S90 R4)
+        if (Util::isProceduralMaterialFile(entry.path().string())) return TreeStep::Skip;
 
         if (!copyOrFail(entry.path(), luaDst / relPath)) {
             failed = true;

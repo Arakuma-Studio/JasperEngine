@@ -62,6 +62,9 @@ namespace jasperengine::editor{
 
         // --- Set up by Project (tests set their own) ---
         void setProjectHistory(CommandHistory* history);
+        // The history of the Inspector's .material rows (CommandHandle::Redirect), whose scene is
+        // not the selected one: a drag there is the timeline's too, as Ctrl+Z in it cancels it
+        void setAssetEditHistory(CommandHistory* history);
         CommandHistory* getProjectHistory();
         // The selected scene: the redo tail an asset edit frees with P's (R20)
         extern std::function<uint32_t()> selectedScene;

@@ -1287,6 +1287,130 @@ CASES = [
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
+    },    # -- S43 palettes: the "Other areas" entry, edit_palette's preview-then-write and apply_palette's check --------
+    {
+        "id": "guard_palette_apply_route",
+        "kind": "guard",
+        "what_happened": "New area (S43): recolouring a sprite onto a fixed palette is apply_palette in the pixel_art group; "
+                         "without the guide's index entry an agent edits the PNG with its own scripts or a shader.",
+        "text_at_issue": "Guide 'Other areas': 'palettes (edit_palette, apply_palette)'; apply_palette: 'palette: path, "
+                         "builtin:<id> or [hex]'; 'A preview until output: true overwrites the texture'",
+        "source": "S43 R40 (new tool text); no failure on record",
+        "prompt": "Our pixel-art hero sprite assets/sprites/hero.png has to use only the PICO-8 colours. Recolour it onto "
+                  "that palette and keep the result in the same file.",
+        "mocks": [
+            {"tool": "apply_palette", "args": {"output": True}, "result": ok(
+                "Apply Palette PICO-8 (built-in) on assets/sprites/hero.png: fixable. Colours 41 -> 12, 380 pixels changed, "
+                "mean dE 3.10, max dE 9.80, 0 lost-colour group(s). Wrote assets/sprites/hero.png as one undo step (undo "
+                "with scope project).",
+                {"path": "assets/sprites/hero.png", "verdict": "fixable", "written": "assets/sprites/hero.png",
+                 "undo": {"id": 12, "name": "Write File hero.png"}})},
+            {"tool": "apply_palette", "result": ok(
+                "Apply Palette PICO-8 (built-in) on assets/sprites/hero.png: fixable. Colours 41 -> 12, 380 pixels changed, "
+                "mean dE 3.10, max dE 9.80, 0 lost-colour group(s). Preview only, nothing written: call again with the same "
+                "arguments plus output: true (overwrite assets/sprites/hero.png) or output: \"<new .png path>\".",
+                {"path": "assets/sprites/hero.png", "verdict": "fixable", "lost": [],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output: true (overwrite "
+                         "assets/sprites/hero.png) or output: \"<new .png path>\"."})},
+        ],
+        "checks": {"calls": [{"tool": "apply_palette", "args": {"palette": "re:(?i)pico", "output": True}}],
+                   "must_not_call": ["fork_shader", "write_file"], "edits_must_not": [r"\.png$"],
+                   "shell_must_not": [r"(?i)\bPIL\b|from PIL|magick|convert\s"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_palette_lospec_write",
+        "kind": "guard",
+        "what_happened": "New tool (S43): edit_palette previews by default; an agent asked to add a palette must call again "
+                         "with output: true, which the description and the result's `next` say.",
+        "text_at_issue": "edit_palette: 'from creates one (builtin, Lospec slug, ...)'; 'A preview until output: true writes "
+                         "it (one undo)'; the result's `next`",
+        "source": "S43 R39 (new tool text); no failure on record",
+        "prompt": "Add the Lospec palette endesga-32 to the project as a palette asset.",
+        "mocks": [
+            {"tool": "edit_palette", "args": {"output": True}, "result": ok(
+                "Palette assets/Palettes/endesga-32.palette (Endesga 32, 32 colours, 0 ramps, 0 variants). Wrote "
+                "assets/Palettes/endesga-32.palette as one undo step (undo with scope project).",
+                {"path": "assets/Palettes/endesga-32.palette", "asset_path": "Palettes/endesga-32.palette",
+                 "written": ["assets/Palettes/endesga-32.palette"], "undo": {"id": 4, "name": "Create File endesga-32.palette"},
+                 "job_id": "job-3", "status": "succeeded"})},
+            {"tool": "edit_palette", "args": {"from": {"lospec": "re:(?i)endesga"}}, "result": ok(
+                "Palette assets/Palettes/endesga-32.palette (Endesga 32, 32 colours, 0 ramps, 0 variants). Preview only, "
+                "nothing written: call again with the same arguments plus output: true to write assets/Palettes/endesga-32.palette.",
+                {"path": "assets/Palettes/endesga-32.palette", "palette": {"name": "Endesga 32", "count": 32},
+                 "next": "Preview only, nothing written: call again with the same arguments plus output: true to write "
+                         "assets/Palettes/endesga-32.palette.", "job_id": "job-2", "status": "succeeded"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_palette", "args": {"from": {"lospec": "re:(?i)endesga"}, "output": True}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.(palette|hex|gpl)$"], "shell_must_not": [r"curl|wget"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_palette_measure_only",
+        "kind": "guard",
+        "what_happened": "New tool (S43): checking art against a palette is a read-only apply_palette (measure_only, or a "
+                         "preview) or edit_palette's texture usage; the texture must stay as it is.",
+        "text_at_issue": "apply_palette: 'measure_only only checks', 'verdict clean|fixable|needs_person'; edit_palette: "
+                         "'texture counts its colours'",
+        "source": "S43 R40, R43 (new tool text); no failure on record",
+        "prompt": "Does assets/sprites/tiles.png use only colours of assets/Palettes/level.palette? Don't change any file, "
+                  "just tell me.",
+        "mocks": [
+            {"tool": "apply_palette", "args": {"output": True}, "result": err("apply_palette must not write in this case")},
+            {"tool": "apply_palette", "result": ok(
+                "Apply Palette assets/Palettes/level.palette on assets/sprites/tiles.png: fixable. Colours 18 -> 16, 37 "
+                "pixels changed, mean dE 1.20, max dE 4.10, 0 lost-colour group(s).",
+                {"path": "assets/sprites/tiles.png", "verdict": "fixable", "cli_exit": 3,
+                 "stats": {"colors_before": 18, "colors_after": 16, "pixels_changed": 37}})},
+            {"tool": "edit_palette", "args": {"texture": "*"}, "result": ok(
+                "Palette assets/Palettes/level.palette (Level, 16 colours, 2 ramps, 0 variants). assets/sprites/tiles.png: 37 "
+                "off-palette pixels in 2 colours.",
+                {"path": "assets/Palettes/level.palette", "usage": {"texture": "assets/sprites/tiles.png", "off_palette_pixels": 37,
+                                                                   "off_palette_colors": 2}})},
+        ],
+        "checks": {"any_of": [{"calls": ["apply_palette"]}, {"calls": [{"tool": "edit_palette", "args": {"texture": "*"}}]}],
+                   "must_not_call": [{"tool": "apply_palette", "args": {"output": True}},
+                                     {"tool": "apply_palette", "args": {"output": "re:\\.png$"}},
+                                     {"tool": "edit_palette", "args": {"output": True}}],
+                   "reply_must": [r"(?i)\bno\b|not only|37|off.palette|fixable"]},
+        "max_turns": 10,
+    },
+    {   # -- S49 pixel particles: the pixel presets and the preview's pixel view with its off_grid check ----------
+        "id": "guard_pixel_particles_sheet",
+        "kind": "guard",
+        "what_happened": "New text (S49): a pixel-art effect is a pixel_* preset of create_particle_effect, and checking it "
+                         "is preview_particle_effect with view pixel (the run on the base-pixel grid, off_grid among its "
+                         "checks); without them an agent writes a soft-alpha effect JSON by hand and judges a perspective view.",
+        "text_at_issue": "create_particle_effect's preset enum (pixel_spark ...); preview_particle_effect's view enum 'pixel'; "
+                         "the guide's Pixel particles: 'preview_particle_effect {path or entity, view: \"pixel\", scale}'",
+        "source": "S49 R20, R38 on S91's preview (new tool text); no failure on record",
+        "prompt": "Our game is pixel art. Make a hit-spark particle effect at assets/fx/hit_spark.particles that fits the "
+                  "pixel look, put it on the Particle System 'Sparks' (entity 12) and check it for pixel-art problems over "
+                  "its life.",
+        "mocks": [
+            {"tool": "create_particle_effect", "result": ok(
+                "Created assets/fx/hit_spark.particles (pixel_spark) as one undo step (undo with scope project).",
+                {"path": "assets/fx/hit_spark.particles", "diagnostics": [], "undo": {"id": 3, "name": "Create File hit_spark.particles"},
+                 "next": "set_particle_effect {entity, effect: \"assets/fx/hit_spark.particles\"} plays it on a Particle System."})},
+            {"tool": "set_particle_effect", "result": ok(
+                "Particle System 12 'Sparks' plays assets/fx/hit_spark.particles.",
+                {"entity": 12, "effect": "assets/fx/hit_spark.particles", "undo": {"id": 4, "name": "Set Particle Effect"}})},
+            {"tool": "preview_particle_effect", "args": {"view": "pixel"}, "result": ok(
+                "assets/fx/hit_spark.particles: 108 ticks of 0.008333 s (0.9 s), peak 24 particles at 0.0083 s, emitted 24. Verdict PASS.\n"
+                "PASS off_grid: {\"drawn\": 412, \"off_grid\": 0}.\nSKIP off_palette: needs S48 (Pixel FX).",
+                {"verdict": "PASS", "frame": {"view": "pixel", "base_pixels": 96, "scale": 4},
+                 "checks": [{"id": "off_grid", "status": "PASS", "measured": {"off_grid": 0, "drawn": 412}},
+                            {"id": "off_palette", "status": "SKIP", "limited_by": "needs S48 (Pixel FX): its EffectLints compute off_palette"}],
+                 "next": "Report these numbers."})},
+            {"tool": "preview_particle_effect", "result": ok(
+                "assets/fx/hit_spark.particles: three-quarter view. Verdict PASS.\nSKIP off_grid: Measured on the pixel view's cells: run with view pixel.",
+                {"verdict": "PASS", "frame": {"view": "three_quarter"},
+                 "checks": [{"id": "off_grid", "status": "SKIP", "limited_by": "Measured on the pixel view's cells: run with view pixel."}]})},
+        ],
+        "checks": {"calls": [{"tool": "create_particle_effect", "args": {"preset": "pixel_spark"}},
+                             {"tool": "preview_particle_effect", "args": {"view": "pixel"}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.particles$"]},
+        "max_turns": 14,
     },
     {
         "id": "guard_nav_carve_tiles_per_tick",
@@ -2370,6 +2494,247 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "guard_focus_animator",
+        "kind": "guard",
+        "what_happened": "focus_window handled \"animator\" and its enum left it out, so the schema told agents the window "
+                         "could not be named (BF23 F14); guards the enum when core is trimmed.",
+        "text_at_issue": "focus_window's window enum: 'animator'",
+        "source": "audit (BF23 F14); no failure on record",
+        "prompt": "Bring the Animator window to the front in the editor, I want to look at it with you.",
+        "mocks": [
+            {"tool": "focus_window", "args": {"window": "animator"}, "result": ok("Focused the Animator window.", {"window": "animator"})},
+        ],
+        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "animator"}}], "must_not_call": ["screenshot"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_focus_graph_editor",
+        "kind": "guard",
+        "what_happened": "The Graph Editor (S90) shows a graph to a watching human. Without its enum value the schema says it "
+                         "cannot be named; without path, the agent can only show whatever graph was open last.",
+        "text_at_issue": "focus_window's window enum: 'graph_editor', and its path parameter",
+        "source": "S90 M2 (s90-canvas) and its review (I6); no failure on record",
+        "prompt": "Open assets/materials/Wood.procmat in the editor's Graph Editor so I can look at it with you.",
+        "mocks": [
+            {"tool": "focus_window", "args": {"window": "graph_editor", "path": "assets/materials/Wood.procmat"},
+             "result": ok("Focused the Graph Editor window.", {"window": "graph_editor", "graph": "assets/materials/Wood.procmat"})},
+        ],
+        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "graph_editor", "path": "re:Wood\\.procmat"}}],
+                   "must_not_call": ["screenshot"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_focus_particle_effect",
+        "kind": "guard",
+        "what_happened": "S91 added the Particle Effect window; focus_window's enum names it so an agent showing a human an "
+                         "effect brings that window up instead of a screenshot or the Inspector.",
+        "text_at_issue": "focus_window's window enum: 'particle_effect'",
+        "source": "S91 (new window); no failure on record",
+        "prompt": "Bring the Particle Effect window to the front, I want to watch the effect's timing with you.",
+        "mocks": [
+            {"tool": "focus_window", "args": {"window": "particle_effect"},
+             "result": ok("Focused the Particle Effect window.", {"window": "particle_effect"})},
+        ],
+        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "particle_effect"}}], "must_not_call": ["screenshot"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_patch_did_you_mean",
+        "kind": "guard",
+        "what_happened": "A misspelled particle field used to vanish from a reply that said success (BF23 F10); the refusal names "
+                         "the field meant, and the agent should send that name instead of inspecting the effect's format.",
+        "text_at_issue": "edit_particle_effect's refusal: 'did you mean'",
+        "source": "audit (BF23 F10); no failure on record",
+        "prompt": "In assets/fx/fire.particles set the emission rate over time to 20. Use field rateOverTim.",
+        "mocks": [
+            {"tool": "edit_particle_effect", "args": {"patch": {"modules": {"emission": {"rateOverTim": "*"}}}}, "result": err(
+                "The patch was refused (emission.rateOverTim: unknown field of Emission (did you mean 'rateOverTime'?)); nothing changed.")},
+            {"tool": "edit_particle_effect", "args": {"patch": {"modules": {"emission": {"rateOverTime": 20}}}}, "result": ok(
+                "Edited the effect (one undo step).", {"changed": True, "diagnostics": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_particle_effect", "args": {"patch": {"modules": {"emission": {"rateOverTime": 20}}}}}],
+                   "max_calls": {"edit_particle_effect": 2}},
+        "max_turns": 6,
+    },
+    {
+        "id": "particle_trigger_action",
+        "kind": "guard",
+        "what_happened": "Triggers were Lua-only (S91 R9): an agent asked to fire an effect's named trigger had no tool and "
+                         "wrote a script or played the scene; control_particles now takes action trigger with the name.",
+        "text_at_issue": "control_particles' description: 'trigger name (the effect's triggers and Trigger sub-emitters)'",
+        "source": "audit (S91 R9); no failure on record",
+        "prompt": "The Particle System on GameObject 12 has a trigger called ignite in its effect. Fire it now in the editor.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "control_particles", "args": {"entity": 12, "action": "trigger", "name": "ignite"}, "result": ok(
+                "trigger: 0 particles at 0.000000 s (Edit mode: the Scene view's preview runs it).",
+                {"action": "trigger", "edit_mode": True, "stats": {"playing": True, "particle_count": 0}})},
+        ],
+        "checks": {"calls": [{"tool": "control_particles", "args": {"action": "trigger", "name": "ignite"}}],
+                   "must_not_call": ["eval_lua", "play"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "pick_particle_preview",
+        "kind": "guard",
+        "what_happened": "Agents checked an effect with capture_particles, one frame per call, which seeks the live system "
+                         "and shows whatever the view shows; preview_particle_effect runs it apart, with a filmstrip and "
+                         "checks, and its result's fix_hint is the next edit.",
+        "text_at_issue": "preview_particle_effect's description; capacity_hit's fix_hint",
+        "source": "S91 R26, D2 (design study 3.3); no failure on record",
+        "prompt": "Check assets/fx/muzzle.particles for problems on mobile and fix what the check finds.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "preview_particle_effect", "args": {"path": "assets/fx/muzzle.particles"}, "result": ok(
+                "assets/fx/muzzle.particles: 30 ticks of 0.0333 s (1 s), peak 400 particles at 0.0333 s, emitted 400. Verdict FAIL.\n"
+                "FAIL capacity_hit: {\"max_particles\":400,\"never_born\":200,\"peak\":400}. assets/fx/muzzle.particles: Max Particles "
+                "400 refused 200 births; emission was silently limited. Raise assets/fx/muzzle.particles's Max Particles to 600, or "
+                "emit fewer (lower the burst or the rate).\nPASS platform_budget: {\"cpu_ms\":0.04,\"estimate\":true}\n"
+                "Cost on mobile: 0.03 ms simulation + 0.01 ms render prep a frame (estimate, not measured on a device).",
+                {"verdict": "FAIL", "next": "Fix what fix_hint says, preview again. Never loosen a threshold. Report these numbers; "
+                 "cost is an estimate, not measured on a device, and never says an effect runs on a phone."})},
+            {"tool": "edit_particle_effect", "args": {"patch": {"maxParticles": 600}}, "result": ok(
+                "Edited the effect (one undo step).", {"changed": True, "diagnostics": []})},
+        ],
+        "checks": {"calls": ["preview_particle_effect", {"tool": "edit_particle_effect", "args": {"patch": {"maxParticles": 600}}}],
+                   "order": [["preview_particle_effect", "edit_particle_effect"]],
+                   "must_not_call": ["capture_particles"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "pick_particle_sheet_bake",
+        "kind": "guard",
+        "what_happened": "Asked for a flipbook of an effect, agents captured frames one by one and stitched them; "
+                         "bake_particle_sheet bakes the sheet and the effect playing it, and writes only with output.",
+        "text_at_issue": "bake_particle_sheet's description: 'Without output nothing is written ... With output both files'",
+        "source": "S91 R12; no failure on record",
+        "prompt": "Bake assets/fx/smoke.particles into a 4x4 sprite sheet at assets/fx/smoke_sheet, so I can use it as a cheap flipbook.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "bake_particle_sheet", "result": ok(
+                "assets/fx/smoke.particles: 4x4 frames of 128 px over 2.0 s, straight alpha. Wrote assets/fx/smoke_sheet.png and "
+                "assets/fx/smoke_sheet.particles (Texture Sheet Animation 4x4) as one undo step \"Bake Sprite Sheet\".",
+                {"written": ["assets/fx/smoke_sheet.png", "assets/fx/smoke_sheet.particles"],
+                 "next": "set_particle_effect plays assets/fx/smoke_sheet.particles on a Particle System."})},
+        ],
+        "checks": {"calls": [{"tool": "bake_particle_sheet", "args": {"output": "re:smoke_sheet"}}],
+                   "must_not_call": ["capture_particles"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "pick_procedural_material_preview",
+        "kind": "guard",
+        "what_happened": "Asked to make a tileable material from a graph, agents baked it and judged the result from a screenshot "
+                         "of a mesh; preview_procedural_material evaluates the graph without writing anything and its tileability "
+                         "row's fix_hint names the next edit, so the bake comes after the checks pass.",
+        "text_at_issue": "preview_procedural_material's description; bake_procedural_material's 'Check it with "
+                         "preview_procedural_material first'; tileability's fix_hint",
+        "source": "S90 R34, R35 (design study 3.2); no failure on record",
+        "prompt": "assets/mats/stone.procmat should tile seamlessly. Check it, fix what the check finds, then bake it.",
+        "groups_enabled": ["graphs", "materials"],
+        "mocks": [
+            {"tool": "preview_procedural_material", "args": {"path": "assets/mats/stone.procmat"}, "result": ok(
+                "assets/mats/stone.procmat: 4 output(s) at 512 (seed 0) on gpu (NVIDIA RTX 4070). Verdict FAIL.\n"
+                "FAIL tileability: {\"base_color\":2.41,\"height\":2.38}. seam 2.41 on base_color across its left and right edges. "
+                "A node feeding it does not tile: give its scale a whole number of repeats, or turn its tiling on.\n"
+                "PASS normal: {\"length_error\":0.004,\"z_negative_percent\":0}",
+                {"verdict": "FAIL", "device": {"tier": "gpu", "name": "NVIDIA RTX 4070"},
+                 "next": "Fix what fix_hint says, preview again and check again. Never loosen a threshold."})},
+            {"tool": "get_graph", "result": ok(
+                "procedural_material graph: 2 node(s), 3 edge(s).",
+                {"graph": {"nodes": [{"id": "n1", "type": "perlin", "params": {"scale_x": 4.5, "scale_y": 4}},
+                                     {"id": "out", "type": "material_output"}]}})},
+            {"tool": "edit_graph", "result": ok("Set scale_x of n1: 1 op(s), 0 issue(s).", {"applied": 1, "added": []})},
+            {"tool": "bake_procedural_material", "result": ok(
+                "Baked assets/mats/stone.procmat at 1024 (seed 0) on gpu (NVIDIA RTX 4070): 4 PNG(s) and "
+                "assets/mats/stone/stone.material, one undo step \"Bake Procedural Material stone\" (id 41).",
+                {"material": "assets/mats/stone/stone.material", "undo": {"scope": "project", "id": 41}})},
+        ],
+        "checks": {"calls": ["preview_procedural_material", {"tool": "edit_graph", "args": {"ops": "*"}}, "bake_procedural_material"],
+                   "order": [["preview_procedural_material", "edit_graph"], ["edit_graph", "bake_procedural_material"]],
+                   "must_not_call": ["screenshot"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_procedural_material_group_route",
+        "kind": "guard",
+        "what_happened": "The guide has no Other-areas entry for procedural materials (it has no room left); an agent asked to "
+                         "check a .procmat must find the materials group from the guide's Tool groups list and its tool_groups "
+                         "line, enable it and preview the graph, instead of baking it or judging a screenshot.",
+        "text_at_issue": "Guide 'Tool groups': '... graphs, ..., materials, ...'; tool_groups' materials entry: 'Procedural "
+                         "Materials: preview any material with checks, bake a graph to PNGs and a .material'",
+        "source": "merge of origin/main into mats-fx (the guide's headroom); no failure on record",
+        "prompt": "Does assets/mats/stone.procmat tile seamlessly? Check it and tell me; don't change or bake anything.",
+        "mocks": [
+            {"tool": "preview_procedural_material", "args": {"path": "assets/mats/stone.procmat"}, "result": ok(
+                "assets/mats/stone.procmat: 4 output(s) at 512 (seed 0) on gpu (NVIDIA RTX 4070). Verdict FAIL.\n"
+                "FAIL tileability: {\"base_color\":2.41,\"height\":2.38}. seam 2.41 on base_color across its left and right edges. "
+                "A node feeding it does not tile: give its scale a whole number of repeats, or turn its tiling on.",
+                {"verdict": "FAIL", "device": {"tier": "gpu", "name": "NVIDIA RTX 4070"},
+                 "next": "Fix what fix_hint says, preview again and check again. Never loosen a threshold."})},
+        ],
+        "checks": {"calls": ["preview_procedural_material"],
+                   "must_not_call": ["bake_procedural_material", "screenshot", "edit_graph"],
+                   "reply_must": [r"(?i)seam|not tile|does not tile|doesn.?t tile"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_procedural_material_catalog",
+        "kind": "guard",
+        "what_happened": "Listing a large kind's node types returned every node's ports and parameters (tens of thousands of "
+                         "characters); the catalog now answers with categories until a search narrows it, then one signature "
+                         "line per node.",
+        "text_at_issue": "list_graph_node_types' description: 'A large kind lists its categories until category, search or ids narrows it'",
+        "source": "S90 R33; no failure on record",
+        "prompt": "In assets/mats/wall.procmat, add a brick pattern node and connect its pattern to the Material Output's height.",
+        "groups_enabled": ["graphs"],
+        "mocks": [
+            {"tool": "list_graph_node_types", "args": {"kind": "procedural_material", "search": "re:brick"}, "result": ok(
+                "2 of 255 node type(s) of procedural_material:\nbricks3(rows=6[1..64] columns=3[1..64] ...) -> bricks_pattern:f "
+                "brick_fill:fill\nbricks(...) -> pattern:f",
+                {"signatures": ["bricks3(rows=6[1..64] columns=3[1..64]) -> bricks_pattern:f brick_fill:fill"]})},
+            {"tool": "edit_graph", "result": ok("Edit Graph (2 Changes): 2 op(s), 0 issue(s).",
+                                                {"applied": 2, "added": [{"op_index": 0, "id": "n4"}, {"op_index": 1, "id": "e5"}]})},
+        ],
+        "checks": {"calls": [{"tool": "list_graph_node_types", "args": {"search": "re:brick"}}, "edit_graph"],
+                   "must_not_call": ["read_file"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_particle_subtree_seek",
+        "kind": "guard",
+        "what_happened": "A multi-system effect (a parent GameObject with several Particle Systems) was sought one child at a "
+                         "time; with_children seeks the subtree as one.",
+        "text_at_issue": "control_particles' with_children",
+        "source": "S91 R31; no failure on record",
+        "prompt": "In the open scene, jump the Explosion effect (a GameObject with child Particle Systems) to 0.5 seconds.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "control_particles", "args": {"with_children": True}, "result": ok(
+                "seek: 340 particles in 3 systems at 0.500000 s (Edit mode: the Scene view's preview runs it).", {"systems": []})},
+            {"tool": "control_particles", "result": err("\"Explosion\" has no Particle System (create_particles adds one).")},
+        ],
+        "checks": {"calls": [{"tool": "control_particles", "args": {"action": "seek", "with_children": True}}],
+                   "max_calls": {"control_particles": 2}},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_graph_new_ids",
+        "kind": "guard",
+        "what_happened": "edit_graph returned no ids, so agents supplied their own and lost the type's defaults (BF23 F6, F7); "
+                         "the result's added names the new node, and the next call should use it.",
+        "text_at_issue": "edit_graph's result: added [{op_index, id}]",
+        "source": "audit (BF23 F6); no failure on record",
+        "prompt": "In graphs/Blend.testgraph add a speed node, then connect its value output to input a of node n2.",
+        "mocks": [
+            {"tool": "edit_graph", "args": {"ops": [{"op": "addNode"}]}, "result": ok(
+                "Add Speed: 1 op(s), 0 issue(s).", {"applied": 1, "added": [{"op_index": 0, "id": "n4"}], "issues": []})},
+            {"tool": "edit_graph", "result": ok("Connect Speed: 1 op(s), 0 issue(s).", {"applied": 1, "added": [{"op_index": 0, "id": "e5"}], "issues": []})},
+        ],
+        "checks": {"calls": ["edit_graph"], "max_calls": {"edit_graph": 3}, "must_not_call": ["write_file"]},
+        "max_turns": 8,
+    },
+    {
         "id": "bad_footsteps_built_in_lua",
         "kind": "bad",
         "what_happened": "Asked for varied footsteps, an agent wrote a Lua table of clips with math.random and its own pitch "
@@ -2468,6 +2833,32 @@ CASES = [
         "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim", "audio": "*"}}],
                    "must_not_call": [{"tool": "create_script"}], "edits_must_not": [r"\.lua$"]},
         "max_turns": 12,
+    },
+    {
+        "id": "bad_model_clip_loop_by_extract",
+        "kind": "bad",
+        "what_happened": "Asked to make a model's Walk loop, an agent extracted it to a .anim and pointed the player at the copy: "
+                         "a second clip to keep in sync with the model. A model clip's wrap and root_motion are its import "
+                         "settings, which edit_animation writes to the model's .clips file.",
+        "text_at_issue": "get_asset_info's animations[i].wrap; animation.md Model clips: 'A model clip's wrap and root_motion are its import settings'",
+        "source": "docs/specs/S77-clip-quality.md R53",
+        "prompt": "The Hero's Animation Player plays assets/models/hero.gltf#Walk, and it stops after one step. Make the Walk "
+                  "clip of that model loop wherever it plays.",
+        "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:hero\\.gltf"}, "result": ok(
+                "assets/models/hero.gltf: 2 meshes, 1 material, 2 animation(s).",
+                {"path": "assets/models/hero.gltf", "type": "model", "model": {"animations": [
+                    {"name": "Walk", "duration_seconds": 1.0, "keys": 40, "runtime_bytes": 2048, "wrap": "once", "root_motion": None},
+                    {"name": "Idle", "duration_seconds": 2.0, "keys": 12, "runtime_bytes": 1024, "wrap": "once", "root_motion": None}]}})},
+            {"tool": "edit_animation", "args": {"clip": "re:hero\\.gltf#Walk", "wrap": "loop"}, "result": ok(
+                "assets/models/hero.gltf#Walk: wrap loop (wrote assets/models/hero.gltf.clips: one project undo step, undo scope "
+                "project; its players reload)",
+                {"clip": "assets/models/hero.gltf#Walk", "settings_file": "assets/models/hero.gltf.clips", "wrap": "loop",
+                 "root_motion": None, "changed": True})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:hero\\.gltf#Walk", "wrap": "loop"}}],
+                   "must_not_call": [{"tool": "edit_animation", "args": {"create": "*"}}]},
+        "max_turns": 8,
     },
     {
         "id": "bad_music_manager_by_hand",

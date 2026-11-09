@@ -11,6 +11,9 @@
 #include "asset/AssetTypes.h"
 #include "camera/ShakePreset.h"
 #include "camera/ShakeInstance.h"
+#include "graph/Graph.h"
+#include "graph/GraphRegistry.h"
+#include "particles/ParticleEffectCodec.h"
 #include "media/VideoFormats.h"
 #include "media/VideoSourceFactory.h"
 #include "McpTools.h"
@@ -392,6 +395,52 @@ bool encodePng(const unsigned char* rgba, int width, int height, int maxSize, st
 
 // ------------------------------------------------------------------ model / audio info
 
+// The joints of a glTF's skins and the nodes between them, without loading it: what a model weighs
+// before it is placed (S77 R53). Bones with no parent joint are its `roots`.
+Json skeletonSummary(const Json& gltf) {
+    const Json nodes = gltf.value("nodes", Json::array());
+    std::vector<int> parents(nodes.size(), -1);
+    for (size_t i = 0; i < nodes.size(); i++) {
+        for (const Json& child : nodes[i].value("children", Json::array())) {
+            if (child.is_number_integer() && child.get<size_t>() < parents.size() && child.get<size_t>() != i) parents[child.get<size_t>()] = (int)i;
+        }
+    }
+    std::set<int> skinned;
+    for (const Json& skin : gltf.value("skins", Json::array())) {
+        for (const Json& joint : skin.value("joints", Json::array())) {
+            if (joint.is_number_integer() && joint.get<size_t>() < nodes.size()) skinned.insert(joint.get<int>());
+        }
+    }
+    // the nodes on the way between two joints move them too: joints of the skeleton, not of the skin
+    std::set<int> joints = skinned;
+    for (int joint : skinned) {
+        std::vector<int> chain;
+        size_t steps = 0;
+        for (int at = parents[(size_t)joint]; at >= 0 && steps <= nodes.size(); at = parents[(size_t)at], steps++) {
+            chain.push_back(at);
+            if (skinned.count(at)) {
+                joints.insert(chain.begin(), chain.end());
+                break;
+            }
+        }
+    }
+    size_t maxDepth = 0;
+    Json roots = Json::array();
+    for (int joint : joints) {
+        size_t depth = 0;
+        size_t steps = 0;
+        int above = -1;
+        for (int at = parents[(size_t)joint]; at >= 0 && steps <= nodes.size(); at = parents[(size_t)at], steps++) {
+            if (!joints.count(at)) continue;
+            depth++;
+            if (above < 0) above = at;
+        }
+        maxDepth = std::max(maxDepth, depth + 1);
+        if (above < 0) roots.push_back(nodes[(size_t)joint].value("name", "Node " + std::to_string(joint)));
+    }
+    return {{"joint_count", joints.size()}, {"skinned_joints", skinned.size()}, {"max_depth", maxDepth}, {"roots", roots}};
+}
+
 Json gltfSummary(const Json& gltf) {
     Json info = Json::object();
     auto names = [](const Json& list, const char* fallback) {
@@ -455,6 +504,7 @@ Json gltfSummary(const Json& gltf) {
         }
     }
     info["images"] = images;
+    info["skeleton_summary"] = skeletonSummary(gltf);
     return info;
 }
 
@@ -683,11 +733,7 @@ bool loadMaterialFile(const fs::path& file, Material& material, std::string& err
 // The file's text with its identity (S04: the GUID it has, or a new one for a new file),
 // formatVersion first and the existing file's unknown root keys kept (docs/data-safety.md)
 std::string materialFileContent(Project* project, const fs::path& file, const Material& material) {
-    Material bound = material;
-    project->bindMaterialAssetRefs(bound);
-    YAML::Node root = Stream::encodeMaterial(bound);
-    project->prepareDocumentIdentity(root, file);
-    return DocumentFiles::materialText(root, file) + "\n";
+    return project->materialFileText(file, material);
 }
 
 // A material file that did not load completely is written only with allow_data_loss: false
@@ -944,6 +990,8 @@ void getAssetInfoTool(const CallPtr& call) {
             data["cook"] = ModelAudit::cookSummaryJson(*project, project->normalizeToAssetsRelative(file).generic_string());
         if (info.is_null()) data["error"] = error;
         else {
+            if (info.contains("animations")) clip_tools::addModelClipStats(file, info["animations"]);
+            if (!call->args().value("skeleton", false)) info.erase("skeleton_summary");
             data["model"] = info;
             if (info.contains("meshes")) {
                 text += ", " + std::to_string(info["meshes"].size()) + " mesh(es), " + std::to_string(info["materials"].size()) +
@@ -1407,6 +1455,34 @@ void writeFileTool(const CallPtr& call) {
             return;
         }
     }
+    // Particle effects must stay loadable (Particle Systems read them): unknown fields and other
+    // content problems are warnings
+    std::vector<std::string> effectWarnings;
+    if (Util::isParticleEffectFile(rel)) {
+        particles::ParticleEffectDocument document;
+        std::vector<particles::Diagnostic> diagnostics;
+        const bool valid = particles::ParticleEffectCodec::read(content, document, diagnostics);
+        if (!valid) {
+            call->fail("Not a valid particle effect: " + particles::ParticleEffectCodec::format(diagnostics) + ". Prefer edit_particle_effect (jasper://docs/particles).");
+            return;
+        }
+        for (const particles::Diagnostic& d : diagnostics) effectWarnings.push_back(d.path + ": " + d.message);
+    }
+    // A graph kind's files must stay graphs of that kind; what they say wrong is the kind's to report
+    const bool graphFile = graph::GraphRegistry::get().kindForFile(rel) != nullptr;
+    Json graphIssues = Json::array();
+    std::vector<std::string> graphWarnings;
+    if (graphFile) {
+        graph::LoadReport report;
+        const graph::Graph loaded = graph::load(content, report);
+        const std::string problem = graph::fileProblem(rel, loaded, report);
+        if (!problem.empty()) {
+            call->fail("Not a valid graph: " + problem + ". Prefer edit_graph.");
+            return;
+        }
+        graphWarnings = graph::fileWarnings(report);
+        for (const graph::Issue& issue : graph::validate(loaded)) graphIssues.push_back(Json::parse(graph::toJson(issue).dump()));
+    }
     std::string error;
     if (!writeFilesUndoable(call->ctx(), {{file, content}}, error)) {
         call->fail(error);
@@ -1449,6 +1525,14 @@ void writeFileTool(const CallPtr& call) {
         data["warnings"] = clipWarnings;
         text += clipWarnings.empty() ? std::string(" Valid clip.") : " Clip loads with " + std::to_string(clipWarnings.size()) + " warning(s) (the bad parts are dropped):";
         for (size_t i = 0; i < clipWarnings.size() && i < 8; i++) text += "\n" + clipWarnings[i];
+    } else if (Util::isParticleEffectFile(rel)) {
+        data["warnings"] = effectWarnings;
+        text += effectWarnings.empty() ? std::string(" Valid particle effect.") : " Particle effect loads with " + std::to_string(effectWarnings.size()) + " warning(s) (unknown fields are read past):";
+        for (size_t i = 0; i < effectWarnings.size() && i < 8; i++) text += "\n" + effectWarnings[i];
+    } else if (graphFile) {
+        data["issues"] = graphIssues;
+        data["warnings"] = graphWarnings;
+        text += " Graph with " + std::to_string(graphIssues.size()) + " issue(s).";
     }
     if (Util::isShaderFile(rel)) {
         std::vector<ProjectChecks::ShaderUse> forks = ProjectChecks::shaderForksUsingFiles(project, {rel});
@@ -4167,7 +4251,7 @@ void registerAssetTools(McpRegistry& registry) {
             "audio format/duration; .material fields, "
             ".anim clip settings, tracks, events, users; .vat clips, staleness, users; .aseprite layers, tags, slices, outputs; "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
-        tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
+        tool.inputSchema = object({{"path", assetPath("")}, {"skeleton", boolean("")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getAssetInfoTool;

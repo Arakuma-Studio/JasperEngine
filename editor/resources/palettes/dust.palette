@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Dust",
+  "author": "pixelfx",
+  "description": "pixelfx's 'dust' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "dust"},
+  "columns": 7,
+  "colors": ["#1c1610", "#33281c", "#4f3f2c", "#6e5a40", "#927a58", "#b89f78", "#dcc8a2"],
+  "ramps": [
+    {"name": "dust", "colors": [0, 1, 2, 3, 4, 5, 6]}
+  ]
+}

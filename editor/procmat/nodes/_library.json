@@ -1,0 +1,3229 @@
+{
+ "entries": [
+  {
+   "aliases": [
+    "hue",
+    "saturation",
+    "value",
+    "brightness",
+    "color",
+    "colour",
+    "tone"
+   ],
+   "display_name": "Adjust HSV",
+   "parameters": {
+    "hue": 0.0,
+    "saturation": 1.0,
+    "value": 1.0
+   },
+   "tree_item": "Filter/Adjust HSV",
+   "type": "adjust_hsv"
+  },
+  {
+   "display_name": "Alter HSV",
+   "parameters": {
+    "all": 0.2,
+    "hue": 0.1,
+    "saturation": 0.1,
+    "value": 0.1
+   },
+   "tree_item": "Filter/Alter HSV",
+   "type": "alter_hsv"
+  },
+  {
+   "display_name": "Anisotropic Kuwahara",
+   "parameters": {
+    "eccentricity": 1.0,
+    "resolution": 9.0,
+    "sharpness": 1.0,
+    "size": 6.0,
+    "uniformity": 4.0
+   },
+   "tree_item": "Filter/Anisotropic Kuwahara",
+   "type": "anisotropic_kuwahara"
+  },
+  {
+   "display_name": "Bevel",
+   "parameters": {
+    "bevel": {
+     "points": [
+      {
+       "ls": 0.0,
+       "rs": 1.0,
+       "x": 0.0,
+       "y": 0.0
+      },
+      {
+       "ls": 1.0,
+       "rs": 0.0,
+       "x": 1.0,
+       "y": 1.0
+      }
+     ],
+     "type": "Curve"
+    },
+    "distance": 0.1,
+    "size": 10.0
+   },
+   "tree_item": "Filter/Bevel",
+   "type": "bevel"
+  },
+  {
+   "display_name": "Binary Smooth",
+   "parameters": {
+    "offset": 0.5,
+    "size": 10.0,
+    "smooth": 60.0
+   },
+   "tree_item": "Filter/Binary Smooth",
+   "type": "binary_smooth"
+  },
+  {
+   "aliases": [
+    "merge",
+    "mix",
+    "overlay",
+    "combine",
+    "fuse",
+    "rgba"
+   ],
+   "display_name": "Blend",
+   "parameters": {
+    "amount": 0.5,
+    "blend_type": 0.0
+   },
+   "tree_item": "Filter/Blend",
+   "type": "blend2"
+  },
+  {
+   "aliases": [
+    "gaussian",
+    "soften",
+    "feather"
+   ],
+   "display_name": "Blur",
+   "parameters": {
+    "param0": 9.0,
+    "param1": 50.0,
+    "param2": 0.0
+   },
+   "tree_item": "Filter/Blur",
+   "type": "gaussian_blur"
+  },
+  {
+   "display_name": "Directional",
+   "parameters": {
+    "param0": 9.0,
+    "param1": 50.0,
+    "param2": 45.0
+   },
+   "tree_item": "Filter/Blur/Directional",
+   "type": "directional_blur2"
+  },
+  {
+   "aliases": [
+    "gaussian",
+    "soften",
+    "feather",
+    "sharpen",
+    "high",
+    "low",
+    "pass"
+   ],
+   "display_name": "Fast",
+   "parameters": {
+    "param0": 11.0,
+    "param1": 100.0,
+    "param2": 1.0
+   },
+   "tree_item": "Filter/Blur/Fast",
+   "type": "fast_blur"
+  },
+  {
+   "display_name": "Blur HQ",
+   "parameters": {
+    "param0": 9.0,
+    "param1": 0.2,
+    "param2": 0.0,
+    "param3": false
+   },
+   "tree_item": "Filter/Blur/HQ",
+   "type": "gaussian_blur_hq"
+  },
+  {
+   "display_name": "Slope",
+   "parameters": {
+    "param0": 9.0,
+    "param1": 20.0
+   },
+   "tree_item": "Filter/Blur/Slope",
+   "type": "slope_blur2"
+  },
+  {
+   "aliases": [
+    "adjust"
+   ],
+   "display_name": "BrightnessContrast",
+   "parameters": {
+    "brightness": 0.0,
+    "contrast": 1.0,
+    "steps": 6.0
+   },
+   "tree_item": "Filter/BrightnessContrast",
+   "type": "brightness_contrast"
+  },
+  {
+   "display_name": "Classic Kuwahara",
+   "parameters": {
+    "buffer": 1.0,
+    "resolution": 10.0,
+    "size": 6.0
+   },
+   "tree_item": "Filter/Classic Kuwahara",
+   "type": "classic_kuwahara"
+  },
+  {
+   "aliases": [
+    "colour conversion"
+   ],
+   "display_name": "Color Conversion",
+   "parameters": {
+    "mode": 0.0
+   },
+   "tree_item": "Filter/Color Conversion",
+   "type": "color_conversion"
+  },
+  {
+   "display_name": "Color Pick",
+   "tree_item": "Filter/Color Pick",
+   "type": "color_pick"
+  },
+  {
+   "aliases": [
+    "gradient",
+    "map",
+    "color",
+    "colour",
+    "tint",
+    "ramp",
+    "colourize"
+   ],
+   "display_name": "Colorize",
+   "parameters": {
+    "gradient": [
+     {
+      "a": 1.0,
+      "b": 0.0,
+      "g": 0.0,
+      "pos": 0.0,
+      "r": 0.0
+     },
+     {
+      "a": 1.0,
+      "b": 1.0,
+      "g": 1.0,
+      "pos": 1.0,
+      "r": 1.0
+     }
+    ]
+   },
+   "tree_item": "Filter/Colorize",
+   "type": "colorize"
+  },
+  {
+   "aliases": [
+    "negative"
+   ],
+   "display_name": "Invert",
+   "parameters": {
+    "gradient": [
+     {
+      "b": 1.0,
+      "g": 1.0,
+      "pos": 0.0,
+      "r": 1.0
+     },
+     {
+      "b": 0.0,
+      "g": 0.0,
+      "pos": 1.0,
+      "r": 0.0
+     }
+    ]
+   },
+   "tree_item": "Filter/Colorize/Invert",
+   "type": "colorize"
+  },
+  {
+   "display_name": "Rainbow",
+   "parameters": {
+    "gradient": {
+     "points": [
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "pos": 0.0,
+       "r": 1.0
+      },
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.96875,
+       "pos": 0.254545,
+       "r": 1.0
+      },
+      {
+       "a": 1.0,
+       "b": 0.125,
+       "g": 1.0,
+       "pos": 0.527273,
+       "r": 0.0
+      },
+      {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 0.0625,
+       "pos": 0.772727,
+       "r": 0.0
+      },
+      {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 0.0,
+       "pos": 1.0,
+       "r": 0.84375
+      }
+     ],
+     "type": "Gradient"
+    }
+   },
+   "tree_item": "Filter/Colorize/Rainbow",
+   "type": "colorize"
+  },
+  {
+   "aliases": [
+    "gradient",
+    "dynamic",
+    "colourmap"
+   ],
+   "display_name": "Colormap",
+   "tree_item": "Filter/Colormap",
+   "type": "colormap"
+  },
+  {
+   "aliases": [
+    "colourspace roundtrip"
+   ],
+   "display_name": "Colorspace Roundtrip",
+   "tree_item": "Filter/Colorspace Roundtrip",
+   "type": "colorspace_roundtrip"
+  },
+  {
+   "aliases": [
+    "compose",
+    "rgba"
+   ],
+   "display_name": "Combine",
+   "tree_item": "Filter/Combine",
+   "type": "combine"
+  },
+  {
+   "display_name": "Convert from RGB",
+   "tree_item": "Filter/Convert from RGB",
+   "type": "convert_from_rgb"
+  },
+  {
+   "display_name": "Convert to RGB",
+   "tree_item": "Filter/Convert to RGB",
+   "type": "convert_to_rgb"
+  },
+  {
+   "aliases": [
+    "split",
+    "rgba"
+   ],
+   "display_name": "Decompose",
+   "tree_item": "Filter/Decompose",
+   "type": "decompose"
+  },
+  {
+   "display_name": "Denoiser",
+   "parameters": {
+    "param0": 10.0,
+    "param1": 3.0,
+    "param2": 4.0,
+    "param3": 0.7
+   },
+   "tree_item": "Filter/Denoiser",
+   "type": "denoiser"
+  },
+  {
+   "aliases": [
+    "distance"
+   ],
+   "display_name": "Dilate",
+   "parameters": {
+    "param0": 11.0,
+    "param1": 0.1,
+    "param2": 0.0
+   },
+   "tree_item": "Filter/Dilate",
+   "type": "dilate"
+  },
+  {
+   "display_name": "Edge Detect",
+   "parameters": {
+    "size": 9.0,
+    "threshold": 0.4,
+    "width": 2.0
+   },
+   "tree_item": "Filter/Edge Detect",
+   "type": "edge_detect"
+  },
+  {
+   "display_name": "Axis Aligned",
+   "parameters": {
+    "size": 6.0
+   },
+   "tree_item": "Filter/Edge Detect/Axis Aligned",
+   "type": "edge_detect_2"
+  },
+  {
+   "display_name": "Diagonal",
+   "parameters": {
+    "size": 6.0
+   },
+   "tree_item": "Filter/Edge Detect/Diagonal",
+   "type": "edge_detect_3"
+  },
+  {
+   "display_name": "Simple",
+   "parameters": {
+    "size": 6.0
+   },
+   "tree_item": "Filter/Edge Detect/Simple",
+   "type": "edge_detect_1"
+  },
+  {
+   "display_name": "Emboss",
+   "parameters": {
+    "param0": 9.0,
+    "param1": 0.0,
+    "param2": 5.0
+   },
+   "tree_item": "Filter/Emboss",
+   "type": "emboss2"
+  },
+  {
+   "display_name": "Fill",
+   "parameters": {
+    "param0": 8.0,
+    "param1": 10.0
+   },
+   "tree_item": "Filter/Fill",
+   "type": "fill2"
+  },
+  {
+   "aliases": [
+    "from colours"
+   ],
+   "display_name": "From Colors",
+   "parameters": {
+    "param0": 8.0,
+    "param1": 10.0
+   },
+   "tree_item": "Filter/Fill/From Colors",
+   "type": "fill_from_colors"
+  },
+  {
+   "display_name": "From RGBA",
+   "tree_item": "Filter/Fill/From RGBA",
+   "type": "rgba_to_fill"
+  },
+  {
+   "display_name": "Select",
+   "parameters": {
+    "x": 0.0,
+    "y": 0.0
+   },
+   "tree_item": "Filter/Fill/Select",
+   "type": "fill_select"
+  },
+  {
+   "display_name": "To Color",
+   "parameters": {
+    "edgecolor": {
+     "a": 1.0,
+     "b": 0.0,
+     "g": 0.0,
+     "r": 0.0,
+     "type": "Color"
+    }
+   },
+   "tree_item": "Filter/Fill/To Color",
+   "type": "fill_to_color2"
+  },
+  {
+   "display_name": "To Gradient",
+   "parameters": {
+    "grad": {
+     "interpolation": 1.0,
+     "points": [
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "pos": 0.0,
+       "r": 0.0
+      },
+      {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 1.0,
+       "pos": 1.0,
+       "r": 1.0
+      }
+     ],
+     "type": "Gradient"
+    },
+    "layers": 1.0,
+    "mode": 0.0,
+    "r_offset": 0.0,
+    "r_rotate": 180.0,
+    "rotate": 0.0
+   },
+   "tree_item": "Filter/Fill/To Gradient",
+   "type": "fill_to_gradient2"
+  },
+  {
+   "display_name": "To Orientation",
+   "parameters": {
+    "invert": false
+   },
+   "tree_item": "Filter/Fill/To Orientation",
+   "type": "fill_to_orientation2"
+  },
+  {
+   "display_name": "To Position",
+   "parameters": {
+    "axis": 0.0
+   },
+   "tree_item": "Filter/Fill/To Position",
+   "type": "fill_to_position2"
+  },
+  {
+   "display_name": "To RGBA",
+   "tree_item": "Filter/Fill/To RGBA",
+   "type": "fill_to_rgba"
+  },
+  {
+   "display_name": "To Random Color",
+   "parameters": {
+    "edgecolor": {
+     "a": 1.0,
+     "b": 1.0,
+     "g": 1.0,
+     "r": 1.0,
+     "type": "Color"
+    }
+   },
+   "tree_item": "Filter/Fill/To Random Color",
+   "type": "fill_to_random_color3"
+  },
+  {
+   "aliases": [
+    "to random grey"
+   ],
+   "display_name": "To Random Gray",
+   "parameters": {
+    "edgecolor": 1.0
+   },
+   "tree_item": "Filter/Fill/To Random Gray",
+   "type": "fill_to_random_grey2"
+  },
+  {
+   "display_name": "To Size",
+   "parameters": {
+    "formula": 0.0
+   },
+   "tree_item": "Filter/Fill/To Size",
+   "type": "fill_to_size2"
+  },
+  {
+   "display_name": "To UV",
+   "tree_item": "Filter/Fill/To UV",
+   "type": "fill_to_uv2"
+  },
+  {
+   "display_name": "Generalized Kuwahara",
+   "parameters": {
+    "buffer": 1.0,
+    "resolution": 10.0,
+    "size": 6.0
+   },
+   "tree_item": "Filter/Generalized Kuwahara",
+   "type": "generalized_kuwahara"
+  },
+  {
+   "aliases": [
+    "desaturate",
+    "greyscale"
+   ],
+   "display_name": "Grayscale",
+   "parameters": {
+    "brightness": 0.0,
+    "contrast": 1.0,
+    "mode": 2.0,
+    "steps": 6.0
+   },
+   "tree_item": "Filter/Grayscale",
+   "type": "greyscale"
+  },
+  {
+   "aliases": [
+    "negative"
+   ],
+   "display_name": "Invert",
+   "parameters": {
+    "steps": 6.0
+   },
+   "tree_item": "Filter/Invert",
+   "type": "invert"
+  },
+  {
+   "display_name": "Make Tileable",
+   "parameters": {
+    "w": 0.1
+   },
+   "tree_item": "Filter/Make Tileable",
+   "type": "make_tileable"
+  },
+  {
+   "display_name": "Make Tileable Square",
+   "parameters": {
+    "fw": 0.1
+   },
+   "tree_item": "Filter/Make Tileable Square",
+   "type": "make_tileable_square"
+  },
+  {
+   "aliases": [
+    "add",
+    "subtract",
+    "multiply",
+    "divide",
+    "log",
+    "log2",
+    "pow",
+    "abs",
+    "round",
+    "floor",
+    "ceil",
+    "trunc",
+    "fract",
+    "min",
+    "max",
+    "cos",
+    "sin",
+    "tan",
+    "sqrt",
+    "compare",
+    "greater",
+    "less",
+    "smoothstep",
+    "pingpong",
+    "sign",
+    "mod",
+    "atan2",
+    "asin",
+    "atan",
+    "acos",
+    "atan",
+    "sinh",
+    "cosh",
+    "tanh",
+    "exp",
+    "snap",
+    "radians",
+    "degrees",
+    "sqrt"
+   ],
+   "display_name": "Math",
+   "parameters": {
+    "clamp": false,
+    "default_in1": 0.0,
+    "default_in2": 0.0,
+    "op": 0.0
+   },
+   "tree_item": "Filter/Math",
+   "type": "math"
+  },
+  {
+   "display_name": "Smooth MinMax",
+   "parameters": {
+    "clamp": false,
+    "default_in1": 0.0,
+    "default_in2": 0.0,
+    "k": 0.0,
+    "op": 0.0
+   },
+   "tree_item": "Filter/Math/Smooth MinMax",
+   "type": "smooth_minmax"
+  },
+  {
+   "aliases": [
+    "add",
+    "subtract",
+    "multiply",
+    "divide",
+    "log",
+    "log2",
+    "pow",
+    "abs",
+    "round",
+    "floor",
+    "ceil",
+    "trunc",
+    "fract",
+    "min",
+    "max",
+    "less",
+    "cos",
+    "sin",
+    "tan",
+    "sqrt",
+    "length",
+    "distance",
+    "dot",
+    "cross",
+    "normalize",
+    "sign",
+    "mod",
+    "snap",
+    "sinh",
+    "cosh",
+    "tanh"
+   ],
+   "display_name": "Vec3",
+   "parameters": {
+    "clamp": false,
+    "d_in1_x": 0.0,
+    "d_in1_y": 0.0,
+    "d_in1_z": 0.0,
+    "d_in2_x": 0.0,
+    "d_in2_y": 0.0,
+    "d_in2_z": 0.0,
+    "op": 0.0
+   },
+   "tree_item": "Filter/Math/Vec3",
+   "type": "math_v3"
+  },
+  {
+   "display_name": "Normal Map",
+   "parameters": {
+    "buffer": 1.0,
+    "param2": 0.0,
+    "size": 10.0,
+    "strength": 1.0
+   },
+   "tree_item": "Filter/Normal Map",
+   "type": "normal_map2"
+  },
+  {
+   "display_name": "Blend",
+   "parameters": {
+    "amount": 0.5
+   },
+   "tree_item": "Filter/Normal Map/Blend",
+   "type": "normal_blend2"
+  },
+  {
+   "display_name": "Convert",
+   "parameters": {
+    "op": 0.0
+   },
+   "tree_item": "Filter/Normal Map/Convert",
+   "type": "normal_map_convert"
+  },
+  {
+   "display_name": "Normal to Height",
+   "parameters": {
+    "param0": 25.0,
+    "param1": 0.5,
+    "param2": 10.0
+   },
+   "tree_item": "Filter/Normal to Height",
+   "type": "normal2height"
+  },
+  {
+   "display_name": "Simple",
+   "parameters": {
+    "center_height": 0.5,
+    "scale": 25.0,
+    "size": 10.0
+   },
+   "tree_item": "Filter/Normal to Height/Simple",
+   "type": "normal2height_simple"
+  },
+  {
+   "display_name": "Occlusion",
+   "parameters": {
+    "param0": 11.0,
+    "param1": 20.0,
+    "param2": 1.5,
+    "param3": 1.0
+   },
+   "tree_item": "Filter/Occlusion",
+   "type": "occlusion2"
+  },
+  {
+   "display_name": "Palettize",
+   "parameters": {
+    "size": 16.0
+   },
+   "tree_item": "Filter/Palettize",
+   "type": "palettize"
+  },
+  {
+   "display_name": "Pixelize",
+   "parameters": {
+    "c": 8.0,
+    "d": 0.5,
+    "x": 16.0,
+    "y": 16.0
+   },
+   "tree_item": "Filter/Pixelize",
+   "type": "pixelize"
+  },
+  {
+   "aliases": [
+    "posterize"
+   ],
+   "display_name": "Quantize",
+   "parameters": {
+    "steps": 4.0
+   },
+   "tree_item": "Filter/Quantize",
+   "type": "quantize"
+  },
+  {
+   "aliases": [
+    "alpha",
+    "mask"
+   ],
+   "display_name": "Set Alpha",
+   "tree_item": "Filter/Set Alpha",
+   "type": "set_alpha"
+  },
+  {
+   "display_name": "Sharpen",
+   "parameters": {
+    "size": 6.0
+   },
+   "tree_item": "Filter/Sharpen",
+   "type": "sharpen"
+  },
+  {
+   "display_name": "Smooth Curvature",
+   "parameters": {
+    "param0": 9.0,
+    "param2": 1.0
+   },
+   "tree_item": "Filter/Smooth Curvature",
+   "type": "smooth_curvature"
+  },
+  {
+   "display_name": "Smooth Curvature 2",
+   "parameters": {
+    "param0": 10.0,
+    "param1": 16.0,
+    "param2": 2.0,
+    "param3": 2.0,
+    "param4": 1.0
+   },
+   "tree_item": "Filter/Smooth Curvature 2",
+   "type": "smooth_curvature2"
+  },
+  {
+   "aliases": [
+    "antialias",
+    "smoothen"
+   ],
+   "display_name": "Supersample",
+   "parameters": {
+    "count": 2.0,
+    "size": 9.0,
+    "width": 1.0
+   },
+   "tree_item": "Filter/Supersample",
+   "type": "supersample"
+  },
+  {
+   "aliases": [
+    "shuffle",
+    "change",
+    "bind"
+   ],
+   "display_name": "Swap Channels",
+   "parameters": {
+    "out_a": 8.0,
+    "out_b": 6.0,
+    "out_g": 4.0,
+    "out_r": 2.0
+   },
+   "tree_item": "Filter/Swap Channels",
+   "type": "swap_channels"
+  },
+  {
+   "display_name": "Symmetric Nearest Neighbor",
+   "tree_item": "Filter/Symmetric Nearest Neighbor",
+   "type": "symmetric_nearest_neighbor"
+  },
+  {
+   "aliases": [
+    "curves"
+   ],
+   "display_name": "Tonality",
+   "parameters": {
+    "curve": {
+     "points": [
+      {
+       "ls": 0.0,
+       "rs": 1.0,
+       "x": 0.0,
+       "y": 0.0
+      },
+      {
+       "ls": 1.0,
+       "rs": 0.0,
+       "x": 1.0,
+       "y": 1.0
+      }
+     ],
+     "type": "Curve"
+    }
+   },
+   "tree_item": "Filter/Tonality",
+   "type": "tonality"
+  },
+  {
+   "aliases": [
+    "levels"
+   ],
+   "display_name": "Tones",
+   "parameters": {
+    "in_max": {
+     "a": 1.0,
+     "b": 1.0,
+     "g": 1.0,
+     "r": 1.0,
+     "type": "Color"
+    },
+    "in_mid": {
+     "a": 0.5,
+     "b": 0.5,
+     "g": 0.5,
+     "r": 0.5,
+     "type": "Color"
+    },
+    "in_min": {
+     "a": 0.0,
+     "b": 0.0,
+     "g": 0.0,
+     "r": 0.0,
+     "type": "Color"
+    },
+    "out_max": {
+     "a": 1.0,
+     "b": 1.0,
+     "g": 1.0,
+     "r": 1.0,
+     "type": "Color"
+    },
+    "out_min": {
+     "a": 0.0,
+     "b": 0.0,
+     "g": 0.0,
+     "r": 0.0,
+     "type": "Color"
+    }
+   },
+   "tree_item": "Filter/Tones",
+   "type": "tones"
+  },
+  {
+   "display_name": "Auto Tones",
+   "parameters": {
+    "param0": 10.0
+   },
+   "tree_item": "Filter/Tones/Auto Tones",
+   "type": "auto_tones"
+  },
+  {
+   "display_name": "Map",
+   "parameters": {
+    "invert": false,
+    "value": 0.5,
+    "width": 0.1
+   },
+   "tree_item": "Filter/Tones/Map",
+   "type": "tones_map"
+  },
+  {
+   "aliases": [
+    "select",
+    " histogram select"
+   ],
+   "display_name": "Range",
+   "parameters": {
+    "contrast": 0.5,
+    "invert": false,
+    "value": 0.5,
+    "width": 0.25
+   },
+   "tree_item": "Filter/Tones/Range",
+   "type": "tones_range"
+  },
+  {
+   "aliases": [
+    "threshold",
+    "scan",
+    "histogram scan"
+   ],
+   "display_name": "Step",
+   "parameters": {
+    "invert": false,
+    "value": 0.5,
+    "width": 0.1
+   },
+   "tree_item": "Filter/Tones/Step",
+   "type": "tones_step"
+  },
+  {
+   "aliases": [
+    "pause",
+    "wait",
+    "optimize"
+   ],
+   "display_name": "Buffer",
+   "host": true,
+   "parameters": {
+    "size": 9.0
+   },
+   "tree_item": "Miscellaneous/Buffer",
+   "type": "buffer"
+  },
+  {
+   "display_name": "Advanced",
+   "host": true,
+   "parameters": {
+    "filter": true,
+    "mipmap": true,
+    "size": 9.0
+   },
+   "tree_item": "Miscellaneous/Buffer/Advanced",
+   "type": "buffer"
+  },
+  {
+   "aliases": [
+    "pause",
+    "wait",
+    "optimize"
+   ],
+   "display_name": "Iterate Buffer",
+   "host": true,
+   "parameters": {
+    "iterations": 10.0,
+    "size": 8.0
+   },
+   "tree_item": "Miscellaneous/Iterate Buffer",
+   "type": "iterate_buffer"
+  },
+  {
+   "display_name": "pack 1x32 to 2x16",
+   "tree_item": "Miscellaneous/Pack/pack 1x32 to 2x16",
+   "type": "pack_1x32_to_2x16"
+  },
+  {
+   "display_name": "pack 2x16 to 1x32",
+   "tree_item": "Miscellaneous/Pack/pack 2x16 to 1x32",
+   "type": "pack_2x16_to_1x32"
+  },
+  {
+   "display_name": "pack 2x32 to 4x16",
+   "tree_item": "Miscellaneous/Pack/pack 2x32 to 4x16",
+   "type": "pack_2x32_to_4x16"
+  },
+  {
+   "display_name": "pack 4x16 to 2x32",
+   "tree_item": "Miscellaneous/Pack/pack 4x16 to 2x32",
+   "type": "pack_4x16_to_2x32"
+  },
+  {
+   "display_name": "Randomize",
+   "tree_item": "Miscellaneous/Randomize",
+   "type": "randomize"
+  },
+  {
+   "aliases": [
+    "change",
+    "trigger",
+    "toggle",
+    "select"
+   ],
+   "display_name": "Switch",
+   "host": true,
+   "tree_item": "Miscellaneous/Switch",
+   "type": "switch"
+  },
+  {
+   "display_name": "Variations",
+   "tree_item": "Miscellaneous/Variations",
+   "type": "variations_greyscale"
+  },
+  {
+   "aliases": [
+    "colour"
+   ],
+   "display_name": "Color",
+   "tree_item": "Miscellaneous/Variations/Color",
+   "type": "variations_color"
+  },
+  {
+   "display_name": "Controlled",
+   "generic_size": 1,
+   "parameters": {
+    "v1": 0.5,
+    "variable": 0.0
+   },
+   "tree_item": "Miscellaneous/Variations/Controlled",
+   "type": "controlled_variations"
+  },
+  {
+   "display_name": "Iterate",
+   "parameters": {
+    "combine": 1.0,
+    "randomize": false,
+    "step": 0.1,
+    "v1": 0.0,
+    "v2": 1.0,
+    "variable": 0.0
+   },
+   "tree_item": "Miscellaneous/Variations/Iterate",
+   "type": "iterate_variations"
+  },
+  {
+   "display_name": "Layer",
+   "parameters": {
+    "randomize": false,
+    "step": 0.1,
+    "v1": 0.0,
+    "v2": 1.0,
+    "variable": 0.0
+   },
+   "tree_item": "Miscellaneous/Variations/Layer",
+   "type": "layer_variations"
+  },
+  {
+   "display_name": "Layer Color",
+   "parameters": {
+    "randomize": false,
+    "step": 0.1,
+    "v1": 0.0,
+    "v2": 1.0,
+    "variable": 0.0
+   },
+   "tree_item": "Miscellaneous/Variations/Layer Color",
+   "type": "layer_variations_color"
+  },
+  {
+   "display_name": "RGBA",
+   "tree_item": "Miscellaneous/Variations/RGBA",
+   "type": "variations_rgba"
+  },
+  {
+   "display_name": "SDF2D",
+   "tree_item": "Miscellaneous/Variations/SDF2D",
+   "type": "variations_sdf2d"
+  },
+  {
+   "display_name": "SDF3D",
+   "tree_item": "Miscellaneous/Variations/SDF3D",
+   "type": "variations_sdf3dc"
+  },
+  {
+   "display_name": "TEX3D",
+   "tree_item": "Miscellaneous/Variations/TEX3D",
+   "type": "variations_tex3d"
+  },
+  {
+   "aliases": [
+    "pixel",
+    "static"
+   ],
+   "display_name": "Noise",
+   "parameters": {
+    "density": 0.5,
+    "size": 4.0
+   },
+   "tree_item": "Noise",
+   "type": "noise2"
+  },
+  {
+   "display_name": "Anisotropic",
+   "parameters": {
+    "interpolation": 1.0,
+    "scale_x": 4.0,
+    "scale_y": 256.0,
+    "smoothness": 1.0
+   },
+   "tree_item": "Noise/Anisotropic",
+   "type": "noise_anisotropic"
+  },
+  {
+   "aliases": [
+    "pixel",
+    "static",
+    "colour"
+   ],
+   "display_name": "Color",
+   "parameters": {
+    "density": 0.5,
+    "size": 9.0
+   },
+   "tree_item": "Noise/Color",
+   "type": "color_noise"
+  },
+  {
+   "display_name": "Clouds Noise",
+   "parameters": {
+    "n_scale": 1.0,
+    "param0": 11.0,
+    "param1": 0.0
+   },
+   "tree_item": "Noise/Composite/Clouds Noise",
+   "type": "clouds_noise2"
+  },
+  {
+   "display_name": "Crystal",
+   "parameters": {
+    "param0": 16.0,
+    "param1": 16.0
+   },
+   "tree_item": "Noise/Composite/Crystal",
+   "type": "crystal"
+  },
+  {
+   "display_name": "Directional Noise",
+   "parameters": {
+    "n_scale": 1.0,
+    "param0": 0.0,
+    "param1": 11.0
+   },
+   "tree_item": "Noise/Composite/Directional Noise",
+   "type": "directional_noise"
+  },
+  {
+   "display_name": "Dirt",
+   "parameters": {
+    "d_scale": 1.0,
+    "param0": 0.0,
+    "param1": 11.0
+   },
+   "tree_item": "Noise/Composite/Dirt",
+   "type": "dirt"
+  },
+  {
+   "aliases": [
+    "value",
+    "perlin",
+    "cellular"
+   ],
+   "display_name": "FBM",
+   "parameters": {
+    "folds": 0.0,
+    "iterations": 5.0,
+    "lacunarity": 2.0,
+    "noise": 0.0,
+    "persistence": 0.5,
+    "scale_x": 2.0,
+    "scale_y": 2.0
+   },
+   "tree_item": "Noise/FBM",
+   "type": "fbm4"
+  },
+  {
+   "display_name": "Value",
+   "parameters": {
+    "iterations": 3.0,
+    "persistence": 0.5,
+    "scale_x": 4.0,
+    "scale_y": 4.0
+   },
+   "tree_item": "Noise/Value",
+   "type": "perlin"
+  },
+  {
+   "aliases": [
+    "colour"
+   ],
+   "display_name": "Color",
+   "parameters": {
+    "iterations": 3.0,
+    "persistence": 0.5,
+    "scale_x": 4.0,
+    "scale_y": 4.0
+   },
+   "tree_item": "Noise/Value/Color",
+   "type": "perlin_color"
+  },
+  {
+   "display_name": "Warp 1",
+   "tree_item": "Noise/Value/Warp 1",
+   "type": "graph_noise_value_warp_1"
+  },
+  {
+   "display_name": "Warp 2",
+   "tree_item": "Noise/Value/Warp 2",
+   "type": "graph_noise_value_warp_2"
+  },
+  {
+   "aliases": [
+    "dots",
+    "spots",
+    "cells"
+   ],
+   "display_name": "Voronoi",
+   "parameters": {
+    "intensity": 1.0,
+    "scale_x": 4.0,
+    "scale_y": 4.0
+   },
+   "tree_item": "Noise/Voronoi",
+   "type": "voronoi2"
+  },
+  {
+   "display_name": "Wavelet",
+   "parameters": {
+    "frequency": 2.0,
+    "iterations": 2.0,
+    "offset": 0.0,
+    "persistence": 0.5,
+    "scale_x": 2.0,
+    "scale_y": 2.0,
+    "type": 0.0
+   },
+   "tree_item": "Noise/Wavelet",
+   "type": "wavelet_noise2"
+  },
+  {
+   "display_name": "White",
+   "parameters": {
+    "size": 11.0
+   },
+   "tree_item": "Noise/White",
+   "type": "noise_white"
+  },
+  {
+   "display_name": "Arc Pavement",
+   "parameters": {
+    "bevel": 0.2,
+    "columns": 2.0,
+    "items": 8.0,
+    "mortar": 0.05,
+    "rows": 12.0
+   },
+   "tree_item": "Pattern/Arc Pavement",
+   "type": "arc_pavement"
+  },
+  {
+   "aliases": [
+    "alveolus",
+    "hexagons"
+   ],
+   "display_name": "Beehive",
+   "parameters": {
+    "sx": 4.0,
+    "sy": 4.0
+   },
+   "tree_item": "Pattern/Beehive",
+   "type": "beehive2"
+  },
+  {
+   "display_name": "Bricks",
+   "parameters": {
+    "bevel": 0.1,
+    "columns": 3.0,
+    "corner": 0.3,
+    "mortar": 0.1,
+    "pattern": 0.0,
+    "round": 0.0,
+    "row_offset": 0.5,
+    "rows": 6.0
+   },
+   "tree_item": "Pattern/Bricks",
+   "type": "bricks3"
+  },
+  {
+   "display_name": "Basket Weave",
+   "parameters": {
+    "bevel": 0.05,
+    "columns": 4.0,
+    "mortar": 0.05,
+    "pattern": 4.0,
+    "row_offset": 0.0,
+    "rows": 4.0
+   },
+   "tree_item": "Pattern/Bricks/Basket Weave",
+   "type": "bricks3"
+  },
+  {
+   "display_name": "Herringbone",
+   "parameters": {
+    "bevel": 0.05,
+    "columns": 4.0,
+    "mortar": 0.05,
+    "pattern": 3.0,
+    "row_offset": 0.0,
+    "rows": 4.0
+   },
+   "tree_item": "Pattern/Bricks/Herringbone",
+   "type": "bricks3"
+  },
+  {
+   "display_name": "Spanish Bond",
+   "parameters": {
+    "bevel": 0.05,
+    "columns": 4.0,
+    "mortar": 0.05,
+    "pattern": 5.0,
+    "row_offset": 0.0,
+    "rows": 4.0
+   },
+   "tree_item": "Pattern/Bricks/Spanish Bond",
+   "type": "bricks3"
+  },
+  {
+   "display_name": "Tiles",
+   "parameters": {
+    "bevel": 0.05,
+    "columns": 4.0,
+    "mortar": 0.05,
+    "row_offset": 0.0,
+    "rows": 4.0
+   },
+   "tree_item": "Pattern/Bricks/Tiles",
+   "type": "bricks3"
+  },
+  {
+   "display_name": "Cairo",
+   "parameters": {
+    "angle": 30.0,
+    "round": 0.5,
+    "sx": 4.0,
+    "sy": 4.0
+   },
+   "tree_item": "Pattern/Cairo",
+   "type": "cairo"
+  },
+  {
+   "display_name": "Custom Tiles",
+   "parameters": {
+    "bevel": 0.05,
+    "columns": 3.0,
+    "mirror": false,
+    "mortar": 0.0,
+    "row_offset": 0.25,
+    "rows": 4.0
+   },
+   "tree_item": "Pattern/Custom Tiles",
+   "type": "custom_tiles"
+  },
+  {
+   "display_name": "Diagonal Weave",
+   "parameters": {
+    "size": 4.0
+   },
+   "tree_item": "Pattern/Diagonal Weave",
+   "type": "diagonal_weave"
+  },
+  {
+   "display_name": "Fibers",
+   "tree_item": "Pattern/Fibers",
+   "type": "graph_pattern_fibers"
+  },
+  {
+   "aliases": [
+    "grid"
+   ],
+   "display_name": "Generic",
+   "parameters": {
+    "mix": 0.0,
+    "x_scale": 4.0,
+    "x_wave": 0.0,
+    "y_scale": 4.0,
+    "y_wave": 0.0
+   },
+   "tree_item": "Pattern/Generic",
+   "type": "pattern"
+  },
+  {
+   "aliases": [
+    "background",
+    "chess"
+   ],
+   "display_name": "Checkerboard",
+   "parameters": {
+    "mix": 4.0,
+    "x_scale": 4.0,
+    "x_wave": 2.0,
+    "y_scale": 4.0,
+    "y_wave": 2.0
+   },
+   "tree_item": "Pattern/Generic/Checkerboard",
+   "type": "pattern"
+  },
+  {
+   "display_name": "Mesh",
+   "parameters": {
+    "diagonal": false,
+    "shape": 0.0,
+    "tiling": 2.0
+   },
+   "tree_item": "Pattern/Mesh",
+   "type": "mesh"
+  },
+  {
+   "display_name": "Random Weave",
+   "parameters": {
+    "random": 0.5,
+    "scale_x": 4.0,
+    "scale_y": 4.0,
+    "stitch": 2.0,
+    "width_x": 0.9,
+    "width_y": 0.9
+   },
+   "tree_item": "Pattern/Random Weave",
+   "type": "weave_random"
+  },
+  {
+   "display_name": "Runes",
+   "parameters": {
+    "columns": 4.0,
+    "rows": 4.0
+   },
+   "tree_item": "Pattern/Runes",
+   "type": "runes"
+  },
+  {
+   "display_name": "I Ching",
+   "parameters": {
+    "columns": 2.0,
+    "rows": 2.0
+   },
+   "tree_item": "Pattern/Runes/I Ching",
+   "type": "iching"
+  },
+  {
+   "display_name": "Scratches",
+   "parameters": {
+    "Randomness": 0.5,
+    "angle": -1.0,
+    "layers": 5.0,
+    "length": 0.25,
+    "randomness": 0.44,
+    "waviness": 0.51,
+    "width": 0.4
+   },
+   "tree_item": "Pattern/Scratches",
+   "type": "scratches2"
+  },
+  {
+   "display_name": "Sine Wave",
+   "parameters": {
+    "amplitude": 0.5,
+    "frequency": 2.0,
+    "phase": 0.0
+   },
+   "tree_item": "Pattern/Sine Wave",
+   "type": "sine_wave"
+  },
+  {
+   "aliases": [
+    "maze"
+   ],
+   "display_name": "Truchet",
+   "parameters": {
+    "Size": 4.0,
+    "shape": 0.0,
+    "size": 4.0,
+    "type": 1.0
+   },
+   "tree_item": "Pattern/Truchet",
+   "type": "truchet"
+  },
+  {
+   "display_name": "Uneven Bricks",
+   "parameters": {
+    "bevel": 0.1,
+    "corner": 0.3,
+    "iterations": 8.0,
+    "min_size": 0.3,
+    "mortar": 0.1,
+    "randomness": 0.5,
+    "round": 0.0
+   },
+   "tree_item": "Pattern/Uneven Bricks",
+   "type": "bricks_uneven2_2"
+  },
+  {
+   "display_name": "Uneven Bricks 2",
+   "parameters": {
+    "bevel": 0.1,
+    "corner": 0.3,
+    "iterations": 8.0,
+    "min_size": 0.3,
+    "mortar": 0.1,
+    "round": 0.0,
+    "rows": 6.0
+   },
+   "tree_item": "Pattern/Uneven Bricks 2",
+   "type": "bricks_uneven3_2"
+  },
+  {
+   "display_name": "Uneven Bricks 3",
+   "parameters": {
+    "bevel": 0.1,
+    "corner": 0.3,
+    "mortar": 0.1,
+    "randomness": 0.5,
+    "round": 0.0,
+    "x": 6.0,
+    "y": 6.0
+   },
+   "tree_item": "Pattern/Uneven Bricks 3",
+   "type": "bricks_uneven4"
+  },
+  {
+   "display_name": "Weave",
+   "parameters": {
+    "columns": 4.0,
+    "rows": 4.0,
+    "stitch": 1.0,
+    "width_x": 0.9,
+    "width_y": 0.9
+   },
+   "tree_item": "Pattern/Weave",
+   "type": "weave2"
+  },
+  {
+   "aliases": [
+    "line"
+   ],
+   "display_name": "Curve",
+   "parameters": {
+    "ax": -0.35,
+    "ay": -0.2,
+    "bx": 0.0,
+    "by": 0.5,
+    "cx": 0.35,
+    "cy": -0.2,
+    "repeat": 1.0,
+    "width": 0.05
+   },
+   "tree_item": "Simple/Curve",
+   "type": "curve"
+  },
+  {
+   "aliases": [
+    "fountain",
+    "linear",
+    "fill",
+    "straight"
+   ],
+   "display_name": "Gradient",
+   "parameters": {
+    "gradient": {
+     "interpolation": 1.0,
+     "points": [
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "pos": 0.0,
+       "r": 0.0
+      },
+      {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 1.0,
+       "pos": 1.0,
+       "r": 1.0
+      }
+     ],
+     "type": "Gradient"
+    },
+    "repeat": 1.0,
+    "rotate": 0.0
+   },
+   "tree_item": "Simple/Gradient",
+   "type": "gradient"
+  },
+  {
+   "aliases": [
+    "fountain",
+    "conical",
+    "fill"
+   ],
+   "display_name": "Circular",
+   "parameters": {
+    "gradient": {
+     "interpolation": 1.0,
+     "points": [
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "pos": 0.0,
+       "r": 0.0
+      },
+      {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 1.0,
+       "pos": 1.0,
+       "r": 1.0
+      }
+     ],
+     "type": "Gradient"
+    },
+    "repeat": 1.0
+   },
+   "tree_item": "Simple/Gradient/Circular",
+   "type": "circular_gradient"
+  },
+  {
+   "aliases": [
+    "fountain",
+    "elliptical",
+    "fill",
+    "round"
+   ],
+   "display_name": "Radial",
+   "parameters": {
+    "gradient": {
+     "interpolation": 1.0,
+     "points": [
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "pos": 0.0,
+       "r": 0.0
+      },
+      {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 1.0,
+       "pos": 1.0,
+       "r": 1.0
+      }
+     ],
+     "type": "Gradient"
+    },
+    "repeat": 1.0
+   },
+   "tree_item": "Simple/Gradient/Radial",
+   "type": "radial_gradient"
+  },
+  {
+   "display_name": "Spiral",
+   "parameters": {
+    "amount": 1.0,
+    "gradient": {
+     "interpolation": 1.0,
+     "points": [
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "pos": 0.0,
+       "r": 0.0
+      },
+      {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 1.0,
+       "pos": 1.0,
+       "r": 1.0
+      }
+     ],
+     "type": "Gradient"
+    },
+    "perspective": 0.3,
+    "use_perspective": true
+   },
+   "tree_item": "Simple/Gradient/Spiral",
+   "type": "spiral_gradient"
+  },
+  {
+   "aliases": [
+    "texture",
+    "png"
+   ],
+   "display_name": "Image",
+   "host": true,
+   "parameters": {
+    "filter": true
+   },
+   "tree_item": "Simple/Image",
+   "type": "image"
+  },
+  {
+   "display_name": "Japanese Glyphs",
+   "parameters": {
+    "bevel": 0.01,
+    "char": 1.0,
+    "gs": 1.0,
+    "rad": 0.025,
+    "scale": 1.0,
+    "sys": 0.0
+   },
+   "tree_item": "Simple/Japanese Glyphs",
+   "type": "japanese_glyphs2"
+  },
+  {
+   "display_name": "Pixels",
+   "parameters": {
+    "pixels": {
+     "bpp": 1.0,
+     "h": 4.0,
+     "pl": [
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "r": 0.0
+      },
+      {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 1.0,
+       "r": 1.0
+      }
+     ],
+     "px": [
+      0.0
+     ],
+     "type": "Pixels",
+     "w": 4.0
+    }
+   },
+   "tree_item": "Simple/Pixels",
+   "type": "pixels"
+  },
+  {
+   "display_name": "Smooth",
+   "parameters": {
+    "pixels": {
+     "bpp": 1.0,
+     "h": 4.0,
+     "pl": [
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "r": 0.0
+      },
+      {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 1.0,
+       "r": 1.0
+      }
+     ],
+     "px": [
+      0.0
+     ],
+     "type": "Pixels",
+     "w": 4.0
+    }
+   },
+   "tree_item": "Simple/Pixels/Smooth",
+   "type": "pixels_smooth"
+  },
+  {
+   "display_name": "Poly Curve",
+   "parameters": {
+    "curve": {
+     "points": [
+      {
+       "x": 0.756152,
+       "y": 0.894855
+      },
+      {
+       "x": 0.205817,
+       "y": 0.917226
+      },
+      {
+       "x": 0.217897,
+       "y": 0.634004
+      },
+      {
+       "x": 0.720358,
+       "y": 0.693512
+      },
+      {
+       "x": 0.661969,
+       "y": 0.406712
+      },
+      {
+       "x": 0.181208,
+       "y": 0.355704
+      },
+      {
+       "x": 0.274721,
+       "y": 0.140716
+      }
+     ],
+     "type": "Polygon"
+    },
+    "ends": true,
+    "repeat": 1.0,
+    "width": 0.1
+   },
+   "tree_item": "Simple/Poly Curve",
+   "type": "polycurve"
+  },
+  {
+   "display_name": "Profile",
+   "parameters": {
+    "gradient": {
+     "interpolation": 2.0,
+     "points": [
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "pos": 0.0,
+       "r": 0.0
+      },
+      {
+       "a": 1.0,
+       "b": 0.55,
+       "g": 0.55,
+       "pos": 0.504545,
+       "r": 0.55
+      },
+      {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 1.0,
+       "pos": 1.0,
+       "r": 1.0
+      }
+     ],
+     "type": "Gradient"
+    },
+    "style": 1.0
+   },
+   "tree_item": "Simple/Profile",
+   "type": "profile"
+  },
+  {
+   "display_name": "Roman Numerals",
+   "parameters": {
+    "a": 0.5,
+    "bevel": 0.1,
+    "h": 0.75,
+    "n": 5.0,
+    "r": 0.05,
+    "s": 0.0,
+    "w": 0.5
+   },
+   "tree_item": "Simple/Roman Numerals",
+   "type": "roman_numerals3"
+  },
+  {
+   "display_name": "Mask to SDF",
+   "parameters": {
+    "param0": 10.0,
+    "param1": 30.0,
+    "param2": true,
+    "param3": 0.0
+   },
+   "tree_item": "Simple/SDF/Operators/Mask to SDF",
+   "type": "sd_mask_to_sdf"
+  },
+  {
+   "display_name": "sdAnnularShape",
+   "parameters": {
+    "bevel": 0.0,
+    "cx": 0.0,
+    "cy": 0.0,
+    "h": 0.08,
+    "k": 0.15,
+    "op": 0.0,
+    "r": 0.1,
+    "w": 0.28
+   },
+   "tree_item": "Simple/SDF/Operators/sdAnnularShape",
+   "type": "sdannularshape"
+  },
+  {
+   "aliases": [
+    "combine",
+    "merge"
+   ],
+   "display_name": "sdBoolean",
+   "parameters": {
+    "op1": 0.0
+   },
+   "tree_item": "Simple/SDF/Operators/sdBoolean",
+   "type": "sdboolean_v"
+  },
+  {
+   "display_name": "sdCircle Repeat",
+   "parameters": {
+    "c": 6.0
+   },
+   "tree_item": "Simple/SDF/Operators/sdCircle Repeat",
+   "type": "sdcirclerepeat"
+  },
+  {
+   "display_name": "sdMorph",
+   "parameters": {
+    "amount": 0.5,
+    "bevel": 0.0,
+    "cx": 0.0,
+    "cy": 0.0,
+    "h": 0.08,
+    "op": 0.0,
+    "r": 0.3,
+    "w": 0.28
+   },
+   "tree_item": "Simple/SDF/Operators/sdMorph",
+   "type": "sdmorph"
+  },
+  {
+   "display_name": "sdRepeat",
+   "parameters": {
+    "r": 0.5,
+    "rx": 3.0,
+    "ry": 3.0
+   },
+   "tree_item": "Simple/SDF/Operators/sdRepeat",
+   "type": "sdrepeat"
+  },
+  {
+   "aliases": [
+    "smooth"
+   ],
+   "display_name": "sdRoundedShape",
+   "parameters": {
+    "bevel": 0.0,
+    "cx": 0.0,
+    "cy": 0.0,
+    "h": 0.08,
+    "k": 0.15,
+    "op": 0.0,
+    "r": 0.2,
+    "w": 0.28
+   },
+   "tree_item": "Simple/SDF/Operators/sdRoundedShape",
+   "type": "sdroundedshape"
+  },
+  {
+   "display_name": "sdSmooth Boolean",
+   "parameters": {
+    "k1": 0.15,
+    "op1": 0.0
+   },
+   "tree_item": "Simple/SDF/Operators/sdSmooth Boolean",
+   "type": "sdsmoothboolean_v"
+  },
+  {
+   "display_name": "sdArc",
+   "parameters": {
+    "a1": 30.0,
+    "a2": 150.0,
+    "cx": 0.0,
+    "cy": 0.0,
+    "r": 0.4,
+    "r1": 0.3,
+    "r2": 0.1
+   },
+   "tree_item": "Simple/SDF/Shapes/sdArc",
+   "type": "sdarc"
+  },
+  {
+   "display_name": "sdArrow",
+   "parameters": {
+    "ax": -0.3,
+    "ay": -0.3,
+    "bx": 0.3,
+    "by": 0.3,
+    "k": 0.55,
+    "wh": 0.3,
+    "wt": 0.1
+   },
+   "tree_item": "Simple/SDF/Shapes/sdArrow",
+   "type": "sdarrow"
+  },
+  {
+   "aliases": [
+    "rectangle",
+    "square"
+   ],
+   "display_name": "sdBox",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "h": 0.2,
+    "w": 0.3
+   },
+   "tree_item": "Simple/SDF/Shapes/sdBox",
+   "type": "sdbox"
+  },
+  {
+   "aliases": [
+    "ellipse",
+    "oval"
+   ],
+   "display_name": "sdCircle",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "r": 0.4
+   },
+   "tree_item": "Simple/SDF/Shapes/sdCircle",
+   "type": "sdcircle"
+  },
+  {
+   "display_name": "sdCross",
+   "parameters": {
+    "bx": 0.5,
+    "by": 0.15,
+    "cx": 0.0,
+    "cy": 0.0,
+    "r": 0.15
+   },
+   "tree_item": "Simple/SDF/Shapes/sdCross",
+   "type": "sdcross"
+  },
+  {
+   "display_name": "sdCutDisk",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "h": -1.1,
+    "r": 0.5
+   },
+   "tree_item": "Simple/SDF/Shapes/sdCutDisk",
+   "type": "sdcutdisk"
+  },
+  {
+   "display_name": "sdEgg",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.1,
+    "pointiness": 0.9,
+    "radius": 0.25
+   },
+   "tree_item": "Simple/SDF/Shapes/sdEgg",
+   "type": "sdegg"
+  },
+  {
+   "display_name": "sdEllipse",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "h": 0.3,
+    "w": 0.4
+   },
+   "tree_item": "Simple/SDF/Shapes/sdEllipse",
+   "type": "sdellipse"
+  },
+  {
+   "display_name": "sdEquilateralTriangle",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "r": 0.4
+   },
+   "tree_item": "Simple/SDF/Shapes/sdEquilateralTriangle",
+   "type": "sdequilateraltriangle"
+  },
+  {
+   "display_name": "sdHeart",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.05,
+    "r": 0.4
+   },
+   "tree_item": "Simple/SDF/Shapes/sdHeart",
+   "type": "sdheart"
+  },
+  {
+   "display_name": "sdHexagram",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "r": 0.2
+   },
+   "tree_item": "Simple/SDF/Shapes/sdHexagram",
+   "type": "sdhexagram"
+  },
+  {
+   "display_name": "sdIsoscelesTriangle",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.2,
+    "height": 0.2,
+    "width": 0.4
+   },
+   "tree_item": "Simple/SDF/Shapes/sdIsoscelesTriangle",
+   "type": "sdisoscelestriangle"
+  },
+  {
+   "display_name": "sdKite",
+   "parameters": {
+    "apex": -0.3,
+    "base": 0.4,
+    "width": 0.225
+   },
+   "tree_item": "Simple/SDF/Shapes/sdKite",
+   "type": "sdkite"
+  },
+  {
+   "display_name": "sdLine",
+   "parameters": {
+    "ax": -0.3,
+    "ay": -0.3,
+    "bx": 0.3,
+    "by": 0.3,
+    "r": 0.1
+   },
+   "tree_item": "Simple/SDF/Shapes/sdLine",
+   "type": "sdline2"
+  },
+  {
+   "display_name": "sdMoon",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "d": 0.2,
+    "ra": 0.45,
+    "rb": 0.35
+   },
+   "tree_item": "Simple/SDF/Shapes/sdMoon",
+   "type": "sdmoon"
+  },
+  {
+   "display_name": "sdNgon",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "n": 5.0,
+    "r": 0.4,
+    "rot": 0.0
+   },
+   "tree_item": "Simple/SDF/Shapes/sdNgon",
+   "type": "sdngon"
+  },
+  {
+   "display_name": "sdParallelogram",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "height": 0.4,
+    "skew": 0.1,
+    "width": 0.3
+   },
+   "tree_item": "Simple/SDF/Shapes/sdParallelogram",
+   "type": "sdparallelogram"
+  },
+  {
+   "display_name": "sdPie",
+   "parameters": {
+    "a": -55.0,
+    "cx": 0.0,
+    "cy": 0.0,
+    "r": 0.4
+   },
+   "tree_item": "Simple/SDF/Shapes/sdPie",
+   "type": "sdpie"
+  },
+  {
+   "display_name": "sdPolygon",
+   "parameters": {
+    "polygon": {
+     "points": [
+      {
+       "x": 0.2,
+       "y": 0.2
+      },
+      {
+       "x": 0.4,
+       "y": 0.7
+      },
+      {
+       "x": 0.7,
+       "y": 0.4
+      }
+     ],
+     "type": "Polygon"
+    }
+   },
+   "tree_item": "Simple/SDF/Shapes/sdPolygon",
+   "type": "sdpolygon"
+  },
+  {
+   "aliases": [
+    "diamond"
+   ],
+   "display_name": "sdRhombus",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "h": 0.2,
+    "w": 0.3
+   },
+   "tree_item": "Simple/SDF/Shapes/sdRhombus",
+   "type": "sdrhombus"
+  },
+  {
+   "display_name": "sdRoundedBox",
+   "parameters": {
+    "bottom_left": 0.2,
+    "bottom_right": 0.0,
+    "center_x": 0.0,
+    "center_y": 0.0,
+    "height": 0.25,
+    "top_left": 0.0,
+    "top_right": 0.2,
+    "width": 0.4
+   },
+   "tree_item": "Simple/SDF/Shapes/sdRoundedBox",
+   "type": "sdroundedbox"
+  },
+  {
+   "display_name": "sdRoundedCross",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "height": 0.25,
+    "width": 0.45
+   },
+   "tree_item": "Simple/SDF/Shapes/sdRoundedCross",
+   "type": "sdroundedcross"
+  },
+  {
+   "display_name": "sdRoundedX",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "r": 0.1,
+    "w": 0.5
+   },
+   "tree_item": "Simple/SDF/Shapes/sdRoundedX",
+   "type": "sdroundedx"
+  },
+  {
+   "display_name": "sdStairs",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "h": 0.35,
+    "steps": 5.0,
+    "w": 0.35
+   },
+   "tree_item": "Simple/SDF/Shapes/sdStairs",
+   "type": "sdstairs"
+  },
+  {
+   "display_name": "sdStar",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "ir": 0.5,
+    "n": 6.0,
+    "r": 0.45,
+    "rot": 0.0
+   },
+   "tree_item": "Simple/SDF/Shapes/sdStar",
+   "type": "sdstar"
+  },
+  {
+   "display_name": "sdStar5",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "r": 0.5,
+    "rf": 0.45
+   },
+   "tree_item": "Simple/SDF/Shapes/sdStar5",
+   "type": "sdstar5"
+  },
+  {
+   "display_name": "sdTrapezoid",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "height": 0.4,
+    "r1": 0.15,
+    "r2": 0.4
+   },
+   "tree_item": "Simple/SDF/Shapes/sdTrapezoid",
+   "type": "sdtrapezoid"
+  },
+  {
+   "display_name": "sdTriangle",
+   "parameters": {
+    "p1x": 0.2,
+    "p1y": -0.25,
+    "p2x": 0.3,
+    "p2y": 0.3,
+    "p3x": -0.4,
+    "p3y": 0.2
+   },
+   "tree_item": "Simple/SDF/Shapes/sdTriangle",
+   "type": "sdtriangle"
+  },
+  {
+   "display_name": "sdTunnel",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "h": 0.35,
+    "w": 0.35
+   },
+   "tree_item": "Simple/SDF/Shapes/sdTunnel",
+   "type": "sdtunnel"
+  },
+  {
+   "display_name": "sdUnevenCapsule",
+   "parameters": {
+    "cx": 0.0,
+    "cy": -0.25,
+    "h": 0.4,
+    "r1": 0.2,
+    "r2": 0.3
+   },
+   "tree_item": "Simple/SDF/Shapes/sdUnevenCapsule",
+   "type": "sdunevencapsule"
+  },
+  {
+   "display_name": "sdVesica",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "d": 0.3,
+    "r": 0.5
+   },
+   "tree_item": "Simple/SDF/Shapes/sdVesica",
+   "type": "sdvesica"
+  },
+  {
+   "aliases": [
+    "turn"
+   ],
+   "display_name": "Rotate",
+   "parameters": {
+    "a": 0.0,
+    "x": 0.35,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "tree_item": "Simple/SDF/Transforms/Rotate",
+   "type": "sdrotate"
+  },
+  {
+   "aliases": [
+    "zoom"
+   ],
+   "display_name": "Scale",
+   "parameters": {
+    "a": 0.0,
+    "s": 1.0,
+    "x": 0.35,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "tree_item": "Simple/SDF/Transforms/Scale",
+   "type": "sdscale"
+  },
+  {
+   "display_name": "Scale XY",
+   "parameters": {
+    "s": 1.0,
+    "sx": 1.0,
+    "sy": 1.0
+   },
+   "tree_item": "Simple/SDF/Transforms/Scale XY",
+   "type": "sdscalexy"
+  },
+  {
+   "aliases": [
+    "move",
+    "shift",
+    "push"
+   ],
+   "display_name": "Translate",
+   "parameters": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+   },
+   "tree_item": "Simple/SDF/Transforms/Translate",
+   "type": "sdtranslate"
+  },
+  {
+   "aliases": [
+    "render",
+    "finish"
+   ],
+   "display_name": "sdShow",
+   "parameters": {
+    "bevel": 0.1,
+    "cx": 0.0,
+    "cy": 0.0,
+    "h": 0.08,
+    "r": 0.3,
+    "w": 0.28
+   },
+   "tree_item": "Simple/SDF/sdShow",
+   "type": "sdshow"
+  },
+  {
+   "display_name": "FixDist",
+   "parameters": {
+    "base": 0.0,
+    "bevel": 0.1
+   },
+   "tree_item": "Simple/SDF/sdShow/FixDist",
+   "type": "sdshow2"
+  },
+  {
+   "aliases": [
+    "7"
+   ],
+   "display_name": "Seven Segment Display",
+   "parameters": {
+    "bevel": 0.0,
+    "n": 8.0,
+    "s": 1.0,
+    "sl": 0.9,
+    "st": 0.3
+   },
+   "tree_item": "Simple/Seven Segment Display",
+   "type": "seven_segment2"
+  },
+  {
+   "aliases": [
+    "basic"
+   ],
+   "display_name": "Shape",
+   "parameters": {
+    "edge": 0.1,
+    "radius": 0.85,
+    "shape": 1.0,
+    "sides": 6.0
+   },
+   "tree_item": "Simple/Shape",
+   "type": "shape"
+  },
+  {
+   "aliases": [
+    "basic"
+   ],
+   "display_name": "Circle",
+   "parameters": {
+    "edge": 0.2,
+    "radius": 0.9,
+    "shape": 0.0,
+    "sides": 2.0
+   },
+   "tree_item": "Simple/Shape/Circle",
+   "type": "shape"
+  },
+  {
+   "aliases": [
+    "basic"
+   ],
+   "display_name": "Curved Star",
+   "parameters": {
+    "edge": 0.6,
+    "radius": 0.5,
+    "shape": 3.0,
+    "sides": 6.0
+   },
+   "tree_item": "Simple/Shape/Curved Star",
+   "type": "shape"
+  },
+  {
+   "aliases": [
+    "basic"
+   ],
+   "display_name": "Rays",
+   "parameters": {
+    "edge": 0.6,
+    "radius": 0.5,
+    "shape": 4.0,
+    "sides": 9.0
+   },
+   "tree_item": "Simple/Shape/Rays",
+   "type": "shape"
+  },
+  {
+   "aliases": [
+    "basic",
+    "square",
+    "box",
+    "rectangle"
+   ],
+   "display_name": "Square",
+   "parameters": {
+    "edge": 0.1,
+    "radius": 0.8,
+    "shape": 1.0,
+    "sides": 4.0
+   },
+   "tree_item": "Simple/Shape/Square",
+   "type": "shape"
+  },
+  {
+   "aliases": [
+    "basic"
+   ],
+   "display_name": "Star",
+   "parameters": {
+    "edge": 0.2,
+    "radius": 0.3,
+    "shape": 2.0,
+    "sides": 5.0
+   },
+   "tree_item": "Simple/Shape/Star",
+   "type": "shape"
+  },
+  {
+   "aliases": [
+    "16"
+   ],
+   "display_name": "Sixteen Segment Display",
+   "parameters": {
+    "a": 31.0,
+    "b": 0.0,
+    "da": 60.0,
+    "dp": false,
+    "dps": 0.65,
+    "dpx": 0.3,
+    "dpy": 0.415,
+    "sl": 0.15,
+    "st": 0.2,
+    "t": 0.0
+   },
+   "tree_item": "Simple/Sixteen Segment Display",
+   "type": "sixteen_segment"
+  },
+  {
+   "aliases": [
+    "color",
+    "colour",
+    "rgb",
+    "fill",
+    "solid"
+   ],
+   "display_name": "Uniform",
+   "parameters": {
+    "color": {
+     "a": 1.0,
+     "b": 1.0,
+     "g": 0.415686,
+     "r": 0.0,
+     "type": "Color"
+    }
+   },
+   "tree_item": "Simple/Uniform",
+   "type": "uniform"
+  },
+  {
+   "aliases": [
+    "value",
+    "fill",
+    "solid",
+    "greyscale"
+   ],
+   "display_name": "Grayscale",
+   "parameters": {
+    "color": 0.5
+   },
+   "tree_item": "Simple/Uniform/Grayscale",
+   "type": "uniform_greyscale"
+  },
+  {
+   "aliases": [
+    "move",
+    "shift",
+    "push",
+    "translate",
+    "rotate",
+    "scale",
+    "turn",
+    "modify"
+   ],
+   "display_name": "Transform",
+   "parameters": {
+    "rotate": 0.0,
+    "scale_x": 1.0,
+    "scale_y": 1.0,
+    "translate_x": 0.0,
+    "translate_y": 0.0
+   },
+   "tree_item": "Transform",
+   "type": "transform2"
+  },
+  {
+   "aliases": [
+    "polar"
+   ],
+   "display_name": "Circle Map",
+   "tree_item": "Transform/Circle Map",
+   "type": "circle_map"
+  },
+  {
+   "aliases": [
+    "duplicate",
+    "copy",
+    "clone",
+    "repeat",
+    "ring"
+   ],
+   "display_name": "Circle Splatter",
+   "parameters": {
+    "count": 20.0,
+    "i_rotate": 0.0,
+    "i_scale": 0.0,
+    "radius": 0.4,
+    "rings": 2.0,
+    "rotate": 0.0,
+    "scale": 0.0,
+    "scale_x": 1.0,
+    "scale_y": 1.0,
+    "select_inputs": 0.0,
+    "spiral": 0.0,
+    "value": 0.0
+   },
+   "tree_item": "Transform/Circle Splatter",
+   "type": "circle_splatter"
+  },
+  {
+   "aliases": [
+    "duplicate",
+    "copy",
+    "clone",
+    "repeat",
+    "ring",
+    "colour"
+   ],
+   "display_name": "Color",
+   "parameters": {
+    "count": 20.0,
+    "i_rotate": 0.0,
+    "i_scale": 0.0,
+    "opacity": 0.0,
+    "radius": 0.4,
+    "rings": 2.0,
+    "rotate": 0.0,
+    "scale": 0.0,
+    "scale_x": 1.0,
+    "scale_y": 1.0,
+    "select_inputs": 0.0,
+    "spiral": 0.0
+   },
+   "tree_item": "Transform/Circle Splatter/Color",
+   "type": "circle_splatter_color"
+  },
+  {
+   "display_name": "Crop",
+   "parameters": {
+    "edge": 3.0,
+    "edge_color": {
+     "a": 1.0,
+     "b": 0.0,
+     "g": 0.0,
+     "r": 0.0,
+     "type": "Color"
+    },
+    "keep_aspect": false,
+    "pa": 0.5,
+    "x1": -0.5,
+    "x2": 0.5,
+    "y1": -0.5,
+    "y2": 0.5
+   },
+   "tree_item": "Transform/Crop",
+   "type": "crop"
+  },
+  {
+   "display_name": "Custom UV",
+   "tree_item": "Transform/Custom UV",
+   "type": "custom_uv2"
+  },
+  {
+   "display_name": "Directional Warp",
+   "parameters": {
+    "angle": 0.0,
+    "strength": 0.1
+   },
+   "tree_item": "Transform/Directional Warp",
+   "type": "directional_warp"
+  },
+  {
+   "display_name": "Distort",
+   "parameters": {
+    "lattice": {
+     "points": [
+      {
+       "x": 0.0,
+       "y": 0.0
+      },
+      {
+       "x": 1.0,
+       "y": 0.0
+      },
+      {
+       "x": 0.0,
+       "y": 1.0
+      },
+      {
+       "x": 1.0,
+       "y": 1.0
+      }
+     ],
+     "size": {
+      "x": 1.0,
+      "y": 1.0
+     },
+     "type": "Lattice"
+    }
+   },
+   "tree_item": "Transform/Distort",
+   "type": "distort"
+  },
+  {
+   "aliases": [
+    "cartesian"
+   ],
+   "display_name": "Inverse Circle Map",
+   "tree_item": "Transform/Inverse Circle Map",
+   "type": "inverse_circle_map"
+  },
+  {
+   "aliases": [
+    "repeat"
+   ],
+   "display_name": "Kaleidoscope",
+   "parameters": {
+    "count": 5.0,
+    "direction": 0.0,
+    "offset": 0.0
+   },
+   "tree_item": "Transform/Kaleidoscope",
+   "type": "kaleidoscope2"
+  },
+  {
+   "display_name": "Mirror",
+   "parameters": {
+    "direction": 0.0,
+    "offset": 0.0
+   },
+   "tree_item": "Transform/Mirror",
+   "type": "mirror"
+  },
+  {
+   "display_name": "Morphology",
+   "parameters": {
+    "distance": 0.05,
+    "operation": 0.0,
+    "resolution": 10.0
+   },
+   "tree_item": "Transform/Morphology",
+   "type": "morphology3"
+  },
+  {
+   "display_name": "Multi Warp",
+   "parameters": {
+    "param0": 10.0,
+    "param1": 4.0,
+    "param2": 15.0,
+    "param3": 0.0
+   },
+   "tree_item": "Transform/Multi Warp",
+   "type": "multi_warp2"
+  },
+  {
+   "aliases": [
+    "turn"
+   ],
+   "display_name": "Rotate",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "rotate": 0.0
+   },
+   "tree_item": "Transform/Rotate",
+   "type": "rotate"
+  },
+  {
+   "aliases": [
+    "size"
+   ],
+   "display_name": "Scale",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "scale_x": 1.0,
+    "scale_y": 1.0
+   },
+   "tree_item": "Transform/Scale",
+   "type": "scale"
+  },
+  {
+   "aliases": [
+    "skew"
+   ],
+   "display_name": "Shear",
+   "parameters": {
+    "amount": 1.0,
+    "direction": 0.0
+   },
+   "tree_item": "Transform/Shear",
+   "type": "shear"
+  },
+  {
+   "display_name": "Slope",
+   "parameters": {
+    "length": 0.1,
+    "size": 11.0,
+    "slope": 1.0
+   },
+   "tree_item": "Transform/Slope",
+   "type": "slope"
+  },
+  {
+   "display_name": "Spherize",
+   "parameters": {
+    "a": 1.0,
+    "cx": 0.0,
+    "cy": 0.0,
+    "r": 0.9
+   },
+   "tree_item": "Transform/Spherize",
+   "type": "spherize"
+  },
+  {
+   "aliases": [
+    "duplicate",
+    "copy",
+    "clone",
+    "repeat"
+   ],
+   "display_name": "Splatter",
+   "parameters": {
+    "count": 25.0,
+    "rotate": 0.0,
+    "scale": 0.0,
+    "select_inputs": 0.0
+   },
+   "tree_item": "Transform/Splatter",
+   "type": "splatter"
+  },
+  {
+   "aliases": [
+    "duplicate",
+    "copy",
+    "clone",
+    "repeat",
+    "colour"
+   ],
+   "display_name": "Color",
+   "parameters": {
+    "count": 25.0,
+    "rotate": 0.0,
+    "scale": 0.0,
+    "select_inputs": 0.0
+   },
+   "tree_item": "Transform/Splatter/Color",
+   "type": "splatter_color"
+  },
+  {
+   "display_name": "Swirl",
+   "parameters": {
+    "angle": 360.0,
+    "cx": 0.0,
+    "cy": 0.0,
+    "radius": 0.5,
+    "tile": false
+   },
+   "tree_item": "Transform/Swirl",
+   "type": "swirl"
+  },
+  {
+   "aliases": [
+    "input",
+    "multiple",
+    "several"
+   ],
+   "display_name": "Tile 2x2",
+   "tree_item": "Transform/Tile 2x2",
+   "type": "tile2x2"
+  },
+  {
+   "display_name": "Variations",
+   "tree_item": "Transform/Tile 2x2/Variations",
+   "type": "tile2x2_variations"
+  },
+  {
+   "aliases": [
+    "duplicate",
+    "copy",
+    "clone",
+    "repeat",
+    "grid"
+   ],
+   "display_name": "Tiler",
+   "parameters": {
+    "offset": 0.25,
+    "overlap": 2.0,
+    "rotate": 45.0,
+    "scale": 0.2,
+    "select_inputs": 0.0,
+    "tx": 4.0,
+    "ty": 4.0
+   },
+   "tree_item": "Transform/Tiler",
+   "type": "tiler"
+  },
+  {
+   "display_name": "Advanced",
+   "parameters": {
+    "overlap": 1.0,
+    "rotate": 0.0,
+    "scale_x": 1.0,
+    "scale_y": 1.0,
+    "select_inputs": 0.0,
+    "translate_x": 0.0,
+    "translate_y": 0.0,
+    "tx": 4.0,
+    "ty": 4.0
+   },
+   "tree_item": "Transform/Tiler/Advanced",
+   "type": "tiler_advanced"
+  },
+  {
+   "aliases": [
+    "colour"
+   ],
+   "display_name": "Color",
+   "parameters": {
+    "overlap": 1.0,
+    "rotate": 0.0,
+    "scale_x": 1.0,
+    "scale_y": 1.0,
+    "select_inputs": 0.0,
+    "translate_x": 0.0,
+    "translate_y": 0.0,
+    "tx": 4.0,
+    "ty": 4.0
+   },
+   "tree_item": "Transform/Tiler/Advanced/Color",
+   "type": "tiler_advanced_color"
+  },
+  {
+   "display_name": "Height to Angle",
+   "parameters": {
+    "angle": 0.0
+   },
+   "tree_item": "Transform/Tiler/Advanced/Height to Angle",
+   "type": "height_to_angle"
+  },
+  {
+   "display_name": "Height to Offset",
+   "parameters": {
+    "target": 0.0
+   },
+   "tree_item": "Transform/Tiler/Advanced/Height to Offset",
+   "type": "height_to_offset"
+  },
+  {
+   "display_name": "Remap",
+   "parameters": {
+    "max": 1.0,
+    "min": -1.0,
+    "step": 0.0
+   },
+   "tree_item": "Transform/Tiler/Advanced/Remap",
+   "type": "remap"
+  },
+  {
+   "aliases": [
+    "duplicate",
+    "copy",
+    "clone",
+    "repeat",
+    "grid",
+    "colour"
+   ],
+   "display_name": "Color",
+   "parameters": {
+    "offset": 0.25,
+    "overlap": 1.0,
+    "rotate": 45.0,
+    "scale": 0.2,
+    "select_inputs": 0.0,
+    "tx": 4.0,
+    "ty": 4.0
+   },
+   "tree_item": "Transform/Tiler/Color",
+   "type": "tiler_color"
+  },
+  {
+   "aliases": [
+    "move",
+    "scroll",
+    "shift",
+    "push"
+   ],
+   "display_name": "Translate",
+   "parameters": {
+    "translate_x": 0.0,
+    "translate_y": 0.0
+   },
+   "tree_item": "Transform/Translate",
+   "type": "translate"
+  },
+  {
+   "display_name": "Trimsheet",
+   "generic_size": 2,
+   "parameters": {
+    "d": 1.0,
+    "size1": 0.5,
+    "size2": 0.5
+   },
+   "tree_item": "Transform/Trimsheet",
+   "type": "trimsheet"
+  },
+  {
+   "aliases": [
+    "distortion",
+    "deform",
+    "shift",
+    "push"
+   ],
+   "display_name": "Warp",
+   "parameters": {
+    "amount": 0.1,
+    "eps": 0.1,
+    "epsilon": 0.0
+   },
+   "tree_item": "Transform/Warp",
+   "type": "warp"
+  },
+  {
+   "display_name": "Warp Dilation",
+   "parameters": {
+    "a": 0.0,
+    "angle": 0.0,
+    "d": 0.5,
+    "param0": 1.0,
+    "s": 10.0
+   },
+   "tree_item": "Transform/Warp Dilation",
+   "type": "warp_dilation3"
+  },
+  {
+   "display_name": "Apply Map",
+   "tree_item": "Workflow/Apply Map",
+   "type": "mwf_map"
+  },
+  {
+   "display_name": "Create Map",
+   "parameters": {
+    "angle": 0.0,
+    "height": 1.0
+   },
+   "tree_item": "Workflow/Create Map",
+   "type": "mwf_create_map"
+  },
+  {
+   "display_name": "Paint 1",
+   "tree_item": "Workflow/Effects/Paint 1",
+   "type": "graph_workflow_effects_paint_1"
+  },
+  {
+   "display_name": "Paint 2",
+   "tree_item": "Workflow/Effects/Paint 2",
+   "type": "graph_workflow_effects_paint_2"
+  },
+  {
+   "display_name": "Marble",
+   "tree_item": "Workflow/Materials/Marble",
+   "type": "graph_workflow_materials_marble"
+  },
+  {
+   "display_name": "Metal",
+   "tree_item": "Workflow/Materials/Metal",
+   "type": "graph_workflow_materials_metal"
+  },
+  {
+   "display_name": "Template",
+   "tree_item": "Workflow/Materials/Template",
+   "type": "graph_workflow_materials_template"
+  },
+  {
+   "display_name": "Wood",
+   "tree_item": "Workflow/Materials/Wood",
+   "type": "graph_workflow_materials_wood"
+  },
+  {
+   "display_name": "Mix",
+   "tree_item": "Workflow/Mix",
+   "type": "mwf_mix"
+  },
+  {
+   "display_name": "Mix Maps",
+   "parameters": {
+    "angle": 45.0,
+    "height": 0.8
+   },
+   "tree_item": "Workflow/Mix Maps",
+   "type": "mwf_mix_maps"
+  },
+  {
+   "display_name": "Smooth",
+   "parameters": {
+    "width": 0.05
+   },
+   "tree_item": "Workflow/Mix/Smooth",
+   "type": "mwf_mix_smooth"
+  },
+  {
+   "display_name": "Output",
+   "parameters": {
+    "param0": 1.0,
+    "param1": 10.0,
+    "param2": 1.0
+   },
+   "tree_item": "Workflow/Output",
+   "type": "mwf_output"
+  },
+  {
+   "display_name": "Splat",
+   "tree_item": "Workflow/Shapes/Splat",
+   "type": "graph_workflow_shapes_splat"
+  }
+ ],
+ "format": 1
+}

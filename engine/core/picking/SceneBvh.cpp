@@ -17,6 +17,7 @@
 #include "component/MeshComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "subsystem/ParticleSystemState.h"
+#include "particles/AnalyticParticles.h"
 #include "component/PointsComponent.h"
 #include "component/PolygonComponent.h"
 #include "component/RectTransformComponent.h"
@@ -776,6 +777,21 @@ bool SceneBvh::computeLeafBounds(const Leaf& leaf, AABB& bounds) const{
                     return false;
                 }
                 const particles::ParticleSystemState& state = *system->state;
+                if (state.runtime.isAnalytic()){
+                    // an Analytic system's culling bounds hold every particle it may ever draw:
+                    // picking takes the CPU twin's live particles now (S49 R19)
+                    float lo[3], hi[3];
+                    if (!particles::AnalyticParticles::liveBounds(*state.runtime.analytic(), lo, hi))
+                        return false;
+                    const float* m = state.runtime.simToWorld();
+                    bounds.setNull();
+                    for (int corner = 0; corner < 8; corner++){
+                        const float p[3] = {(corner & 1) ? hi[0] : lo[0], (corner & 2) ? hi[1] : lo[1], (corner & 4) ? hi[2] : lo[2]};
+                        bounds.merge(Vector3(m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13],
+                                             m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14]));
+                    }
+                    return true;
+                }
                 bounds = AABB(state.boundsMin[0], state.boundsMin[1], state.boundsMin[2], state.boundsMax[0], state.boundsMax[1], state.boundsMax[2]);
                 return true;
             }

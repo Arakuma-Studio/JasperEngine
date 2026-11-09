@@ -1,0 +1,486 @@
+{
+ "connections": [
+  {
+   "from": "shader_1",
+   "from_port": 0,
+   "to": "buffer_2",
+   "to_port": 0
+  },
+  {
+   "from": "buffer_2",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "shader_2",
+   "from_port": 0,
+   "to": "gaussian_blur_2",
+   "to_port": 0
+  },
+  {
+   "from": "_3",
+   "from_port": 0,
+   "to": "gaussian_blur_2",
+   "to_port": 1
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "shader_2",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "shader_1",
+   "to_port": 0
+  },
+  {
+   "from": "gaussian_blur_2",
+   "from_port": 0,
+   "to": "shader_1",
+   "to_port": 1
+  }
+ ],
+ "description": "Edge-preserving smoothing filter",
+ "format": 1,
+ "id": "anisotropic_kuwahara",
+ "inputs": [
+  {
+   "description": "Input Image",
+   "group_size": 0,
+   "label": "Input",
+   "name": "port0",
+   "type": "rgb"
+  }
+ ],
+ "kind": "graph",
+ "name": "Anisotropic Kuwahara",
+ "nodes": [
+  {
+   "id": "shader_2",
+   "parameters": {
+    "s": 9
+   },
+   "seed": 0.0,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "vec4(0.0)",
+      "function": true,
+      "label": "",
+      "name": "in",
+      "type": "rgba"
+     }
+    ],
+    "instance": [
+     "// The MIT License - Copyright (c) 2022 Garrett Gunnell",
+     "// Adapted from https://github.com/GarrettGunnell/Post-Processing/",
+     "// blob/871a7ffcc44174f237b4c0127db51026c438d7a4/Assets/Kuwahara%20Filter/AnisotropicKuwahara.shader",
+     "",
+     "vec4 $(name)_calc_eigenvectors(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tvec2 d = 1.0/vec2($s);",
+     "\tvec3 Sx = (",
+     "\t\t 1.0 * $in(uv + vec2(-d.x, -d.y)).rgb +",
+     "\t\t 2.0 * $in(uv + vec2(-d.x,  0.0)).rgb +",
+     "\t\t 1.0 * $in(uv + vec2(-d.x,  d.y)).rgb +",
+     "\t\t-1.0 * $in(uv + vec2(d.x, -d.y)).rgb +",
+     "\t\t-2.0 * $in(uv + vec2(d.x,  0.0)).rgb +",
+     "\t\t-1.0 * $in(uv + vec2(d.x,  d.y)).rgb",
+     "\t) * 0.25;",
+     "",
+     "\tvec3 Sy = (",
+     "\t\t 1.0 * $in(uv + vec2(-d.x, -d.y)).rgb +",
+     "\t\t 2.0 * $in(uv + vec2( 0.0, -d.y)).rgb +",
+     "\t\t 1.0 * $in(uv + vec2( d.x, -d.y)).rgb +",
+     "\t\t-1.0 * $in(uv + vec2(-d.x, d.y)).rgb +",
+     "\t\t-2.0 * $in(uv + vec2( 0.0, d.y)).rgb +",
+     "\t\t-1.0 * $in(uv + vec2( d.x, d.y)).rgb",
+     "\t) * 0.25;",
+     "",
+     "\treturn vec4(dot(Sx, Sx), dot(Sy, Sy), dot(Sx, Sy), 1.0);",
+     "}"
+    ],
+    "outputs": [
+     {
+      "expr": "$(name)_calc_eigenvectors($uv, _seed_variation_, _controlled_variation_)",
+      "type": "rgba"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 9,
+      "first": 4,
+      "label": "",
+      "last": 13,
+      "name": "s",
+      "type": "size"
+     }
+    ]
+   }
+  },
+  {
+   "id": "shader_1",
+   "parameters": {
+    "eccentricity": 1.0,
+    "s": 9,
+    "sharpness": 1.0,
+    "size": 6.0
+   },
+   "seed": 0.0,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "vec3(0.0)",
+      "function": true,
+      "label": "",
+      "name": "in",
+      "type": "rgb"
+     },
+     {
+      "default": "vec4(0.0)",
+      "function": true,
+      "label": "",
+      "name": "b",
+      "type": "rgba"
+     }
+    ],
+    "instance": [
+     "// The MIT License - Copyright (c) 2022 Garrett Gunnell",
+     "// Adapted from https://github.com/GarrettGunnell/Post-Processing/",
+     "// blob/871a7ffcc44174f237b4c0127db51026c438d7a4/Assets/Kuwahara%20Filter/AnisotropicKuwahara.shader",
+     "",
+     "vec3 $(name)_anisotropic_kuwahara(vec2 uv, int size, float _sharpness, float _ecc, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tfloat sharpness = mix(3.0, 18.0, clamp(_sharpness, 0.0, 1.0));",
+     "\tint _KernelSize = max(0, size * 2);",
+     "\tconst float alpha = 1.0; const float _Hardness = 8.0; const float _ZeroCrossing = 0.58;",
+     "\tfloat zeta = 1.0 / (float(_KernelSize) / 2.0);",
+     "",
+     "\tfloat ecc = mix(0.7, 1.5, clamp(_ecc, 0.0, 1.0));",
+     "",
+     "\tvec4 g = $b(uv);",
+     "\tfloat lambda1 = 0.5 * (g.y + g.x + sqrt(g.y * g.y - 2.0 * g.x * g.y + g.x * g.x + 4.0 * g.z * g.z));",
+     "\tfloat lambda2 = 0.5 * (g.y + g.x - sqrt(g.y * g.y - 2.0 * g.x * g.y + g.x * g.x + 4.0 * g.z * g.z));",
+     "",
+     "\tvec2 v = vec2(lambda1 - g.x, -g.z);",
+     "\tfloat A = (lambda1 + lambda2 > 0.0) ? (lambda1 - lambda2) / (lambda1 + lambda2) : 0.0;",
+     "\tvec4 t = vec4(length(v) > 0.0 ? normalize(v) : vec2(0.0, 1.0), 0.0, A);",
+     "",
+     "\tint kernelRadius = _KernelSize / 2;",
+     "\tfloat a = float(kernelRadius) * clamp((alpha + t.w) / alpha, 0.1, 2.0);",
+     "\tfloat b = float(kernelRadius) * clamp(alpha / (alpha + t.w), 0.1, 2.0);",
+     "",
+     "\tfloat cos_phi = t.x;",
+     "\tfloat sin_phi = t.y;",
+     "",
+     "\tmat2 R = mat2(vec2(cos_phi, -sin_phi), vec2(sin_phi, cos_phi));",
+     "\tmat2 S = mat2(vec2(0.5 / a / ecc, 0.0), vec2(0.0, 0.5 / b * ecc));",
+     "",
+     "\tmat2 SR = S * R;",
+     "",
+     "\tint max_x = int(sqrt(a * a * cos_phi * cos_phi + b * b * sin_phi * sin_phi));",
+     "\tint max_y = int(sqrt(a * a * sin_phi * sin_phi + b * b * cos_phi * cos_phi));",
+     "",
+     "\tfloat zeroCross = _ZeroCrossing;",
+     "\tfloat sinZeroCross = sin(zeroCross);",
+     "\tfloat eta = (zeta + cos(zeroCross)) / (sinZeroCross * sinZeroCross);",
+     "",
+     "\tvec4 m[8];",
+     "\tvec3 s[8];",
+     "",
+     "\tfor (int k = 0; k < 8; ++k) {",
+     "\t\tm[k] = vec4(0.0);",
+     "\t\ts[k] = vec3(0.0);",
+     "\t}",
+     "",
+     "\tfor (int y = -max_y; y <= max_y; ++y) {",
+     "\t\tfor (int x = -max_x; x <= max_x; ++x) {",
+     "\t\t\tvec2 v = SR * vec2(float(x), float(y));",
+     "\t\t\tif (dot(v, v) <= 0.125) {",
+     "\t\t\t\tvec3 c = $in( uv + vec2(float(x), float(y)) * 1.0/vec2($s) ).rgb;",
+     "\t\t\t\tc = clamp(c, vec3(0.0), vec3(1.0));",
+     "\t\t\t\tfloat sum = 0.0;",
+     "\t\t\t\tfloat w[8];",
+     "\t\t\t\tfloat z, vxx, vyy;",
+     "",
+     "\t\t\t\t // Calculate Polynomial Weights",
+     "\t\t\t\tvxx = zeta - eta * v.x * v.x;",
+     "\t\t\t\tvyy = zeta - eta * v.y * v.y;",
+     "\t\t\t\tz = max(0.0, v.y + vxx);",
+     "\t\t\t\tw[0] = z * z;",
+     "\t\t\t\tsum += w[0];",
+     "\t\t\t\tz = max(0, -v.x + vyy); ",
+     "\t\t\t\tw[2] = z * z;",
+     "\t\t\t\tsum += w[2];",
+     "\t\t\t\tz = max(0.0, -v.y + vxx); ",
+     "\t\t\t\tw[4] = z * z;",
+     "\t\t\t\tsum += w[4];",
+     "\t\t\t\tz = max(0.0, v.x + vyy); ",
+     "\t\t\t\tw[6] = z * z;",
+     "\t\t\t\tsum += w[6];",
+     "\t\t\t\t v = sqrt(2.0) / 2.0 * vec2(v.x - v.y, v.x + v.y);",
+     "\t\t\t\tvxx = zeta - eta * v.x * v.x;",
+     "\t\t\t\tvyy = zeta - eta * v.y * v.y;",
+     "\t\t\t\tz = max(0, v.y + vxx); ",
+     "\t\t\t\tw[1] = z * z;",
+     "\t\t\t\tsum += w[1];",
+     "\t\t\t\tz = max(0.0, -v.x + vyy); ",
+     "\t\t\t\tw[3] = z * z;",
+     "\t\t\t\tsum += w[3];",
+     "\t\t\t\tz = max(0.0, -v.y + vxx); ",
+     "\t\t\t\tw[5] = z * z;",
+     "\t\t\t\tsum += w[5];",
+     "\t\t\t\tz = max(0.0, v.x + vyy); ",
+     "\t\t\t\tw[7] = z * z;",
+     "\t\t\t\tsum += w[7];",
+     "\t\t\t\t",
+     "\t\t\t\tfloat g = exp(-3.125 * dot(v, v)) / sum;",
+     "\t\t\t\t",
+     "\t\t\t\tfor (int k = 0; k < 8; ++k) {",
+     "\t\t\t\t\tfloat wk = w[k] * g;",
+     "\t\t\t\t\tm[k] += vec4(c * wk, wk);",
+     "\t\t\t\t\ts[k] += c * c * wk;",
+     "\t\t\t\t}",
+     "\t\t\t}",
+     "\t\t}",
+     "\t}",
+     "",
+     "\tvec4 result = vec4(0.0);",
+     "\tfor (int k = 0; k < 8; ++k) {",
+     "\t\tm[k].rgb /= m[k].w;",
+     "\t\ts[k] = abs(s[k] / m[k].w - m[k].rgb * m[k].rgb);",
+     "",
+     "\t\tfloat sigma2 = s[k].r + s[k].g + s[k].b;",
+     "\t\tfloat w = 1.0 / (1.0 + pow(_Hardness * 1000.0 * sigma2, 0.5 * sharpness));",
+     "",
+     "\t\tresult += vec4(m[k].rgb * w, w);",
+     "\t}",
+     "",
+     "\treturn clamp(result.rgb / result.w, vec3(0.0), vec3(1.0));",
+     "}"
+    ],
+    "outputs": [
+     {
+      "expr": "$(name)_anisotropic_kuwahara($uv, int($size), $sharpness, $eccentricity * 0.5, _seed_variation_, _controlled_variation_)",
+      "type": "rgb"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 10,
+      "first": 4,
+      "label": "",
+      "last": 13,
+      "name": "s",
+      "type": "size"
+     },
+     {
+      "default": 5.0,
+      "label": "size",
+      "max": 32.0,
+      "min": 1.0,
+      "name": "size",
+      "short_description": "size",
+      "step": 1.0,
+      "type": "float"
+     },
+     {
+      "default": 1.0,
+      "label": "sharpness",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "sharpness",
+      "step": 0.01,
+      "type": "float"
+     },
+     {
+      "default": 1.0,
+      "label": "eccentricity",
+      "max": 2.0,
+      "min": 0.0,
+      "name": "eccentricity",
+      "step": 0.01,
+      "type": "float"
+     }
+    ]
+   }
+  },
+  {
+   "id": "_3",
+   "parameters": {
+    "val": 4.0
+   },
+   "seed": 0.0,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [],
+    "instance": [],
+    "outputs": [
+     {
+      "expr": "$val",
+      "type": "f"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 4.0,
+      "label": "",
+      "max": 50.0,
+      "min": 0.0,
+      "name": "val",
+      "step": 1.0,
+      "type": "float"
+     }
+    ]
+   }
+  },
+  {
+   "id": "buffer_2",
+   "parameters": {
+    "size": 9
+   },
+   "seed": 0.0,
+   "type": "buffer",
+   "version": 1
+  },
+  {
+   "id": "gaussian_blur_2",
+   "parameters": {
+    "param0": 9,
+    "param1": 1.0,
+    "param2": 0.0,
+    "param3": false
+   },
+   "seed": 0.0,
+   "type": "gaussian_blur"
+  }
+ ],
+ "notices": [
+  {
+   "holder": "Garrett Gunnell",
+   "license": "MIT",
+   "node": "anisotropic_kuwahara",
+   "url": "https://github.com/GarrettGunnell/Post-Processing/",
+   "year": "2022"
+  }
+ ],
+ "outputs": [
+  {
+   "description": "Filtered Image",
+   "group_size": 0,
+   "label": "Output",
+   "name": "unnamed",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 9,
+   "description": "Resolution used to sample the image",
+   "first": 4,
+   "label": "Resolution",
+   "last": 13,
+   "links": [
+    {
+     "node": "shader_1",
+     "param": "s"
+    },
+    {
+     "node": "shader_2",
+     "param": "s"
+    },
+    {
+     "node": "buffer_2",
+     "param": "size"
+    },
+    {
+     "node": "gaussian_blur_2",
+     "param": "param0"
+    }
+   ],
+   "name": "resolution",
+   "short_description": "Input Resolution",
+   "type": "size"
+  },
+  {
+   "default": 6.0,
+   "description": "Higher values produce more stylized results but also increases computation time.",
+   "label": "Size",
+   "links": [
+    {
+     "node": "shader_1",
+     "param": "size"
+    }
+   ],
+   "max": 32.0,
+   "min": 1.0,
+   "name": "size",
+   "short_description": "Filter Size",
+   "step": 1.0,
+   "type": "float"
+  },
+  {
+   "default": 4.0,
+   "description": "Uniformity of the image edge directions",
+   "label": "Uniformity",
+   "links": [
+    {
+     "node": "_3",
+     "param": "val"
+    }
+   ],
+   "max": 50.0,
+   "min": 0.0,
+   "name": "uniformity",
+   "short_description": "Uniformity",
+   "step": 1.0,
+   "type": "float"
+  },
+  {
+   "default": 1.0,
+   "description": "Edge Sharpness",
+   "label": "Sharpness",
+   "links": [
+    {
+     "node": "shader_1",
+     "param": "sharpness"
+    }
+   ],
+   "max": 1.0,
+   "min": 0.0,
+   "name": "sharpness",
+   "short_description": "Sharpness",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1.0,
+   "description": "Affects directionality of the filter. Higher values preserve directional features more closely.",
+   "label": "Eccentricity",
+   "links": [
+    {
+     "node": "shader_1",
+     "param": "eccentricity"
+    }
+   ],
+   "max": 2.0,
+   "min": 0.0,
+   "name": "eccentricity",
+   "short_description": "Eccentricity",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Anisotropic Kuwahara",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/anisotropic_kuwahara.mmg"
+ },
+ "type_version": 1
+}

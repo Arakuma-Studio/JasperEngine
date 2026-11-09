@@ -1266,6 +1266,57 @@ ShaderGlobalBindings editor::Stream::decodeShaderGlobalBindings(const YAML::Node
     return bindings;
 }
 
+YAML::Node editor::Stream::encodeShaderPalettes(const jasperengine::pixelart::ShaderPalettes& palettes) {
+    YAML::Node node(YAML::NodeType::Map);
+    for (const auto& [uniform, binding] : palettes) {
+        YAML::Node entry(YAML::NodeType::Map);
+        encodeAssetRef(entry, "source", binding.source);
+        if (!binding.targets.empty()) {
+            YAML::Node targets(YAML::NodeType::Sequence);
+            for (const jasperengine::pixelart::PaletteTarget& target : binding.targets) {
+                YAML::Node item(YAML::NodeType::Map);
+                encodeAssetRef(item, "palette", target.palette);
+                if (!target.variant.empty()) item["variant"] = target.variant;
+                targets.push_back(item);
+            }
+            entry["targets"] = targets;
+        }
+        if (!binding.useVariants) entry["useVariants"] = false;
+        node[uniform] = entry;
+    }
+    return node;
+}
+
+jasperengine::pixelart::ShaderPalettes editor::Stream::decodeShaderPalettes(const YAML::Node& node) {
+    jasperengine::pixelart::ShaderPalettes palettes;
+    if (!node || !node.IsMap()) return palettes;
+    for (const auto& entry : node) {
+        const std::string uniform = entry.first.as<std::string>();
+        const YAML::Node value = entry.second;
+        if (uniform.empty() || !value.IsMap()) continue;
+        jasperengine::pixelart::PaletteBinding binding;
+        binding.source = decodeAssetRef(value, "source");
+        const YAML::Node targets = value["targets"];
+        if (targets && targets.IsSequence()) {
+            for (const YAML::Node& item : targets) {
+                jasperengine::pixelart::PaletteTarget target;
+                if (item.IsScalar()) {
+                    target = jasperengine::pixelart::PaletteTarget::parse(item.as<std::string>());
+                } else if (item.IsMap()) {
+                    target.palette = decodeAssetRef(item, "palette");
+                    if (item["variant"] && item["variant"].IsScalar()) target.variant = item["variant"].as<std::string>();
+                } else {
+                    continue;
+                }
+                binding.targets.push_back(target);
+            }
+        }
+        if (value["useVariants"] && value["useVariants"].IsScalar()) binding.useVariants = value["useVariants"].as<bool>();
+        palettes.push_back({uniform, binding});
+    }
+    return palettes;
+}
+
 YAML::Node editor::Stream::encodeQuaternion(const Quaternion& quat) {
     YAML::Node node;
     node.SetStyle(YAML::EmitterStyle::Flow);
@@ -2219,6 +2270,12 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
     if (ds.showAllLattices)
         sceneNode["showAllLattices"] = ds.showAllLattices;
+    if (ds.showIK)
+        sceneNode["showIK"] = ds.showIK;
+    if (ds.showRootMotion)
+        sceneNode["showRootMotion"] = ds.showRootMotion;
+    if (ds.showFootTrails)
+        sceneNode["showFootTrails"] = ds.showFootTrails;
     if (ds.drawMode != ViewDrawMode::SHADED)
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
     if (ds.showStats)
@@ -2264,6 +2321,9 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     ds.pixelSnapPreview = node["pixelSnapPreview"] ? YamlNumbers::as<bool>(node["pixelSnapPreview"]) : true;
     ds.pixelMoveSnap = node["pixelMoveSnap"] ? YamlNumbers::as<bool>(node["pixelMoveSnap"]) : true;
     ds.showAllLattices = node["showAllLattices"] ? YamlNumbers::as<bool>(node["showAllLattices"]) : false;
+    ds.showIK = node["showIK"] ? YamlNumbers::as<bool>(node["showIK"]) : false;
+    ds.showRootMotion = node["showRootMotion"] ? YamlNumbers::as<bool>(node["showRootMotion"]) : false;
+    ds.showFootTrails = node["showFootTrails"] ? YamlNumbers::as<bool>(node["showFootTrails"]) : false;
     ds.drawMode = ViewDrawMode::SHADED;
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
@@ -2595,6 +2655,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         scale["mobile"] = project->getFoliageDistanceScale()[1];
         scale["web"] = project->getFoliageDistanceScale()[2];
         root["foliageDistanceScale"] = scale;
+    }
+    // Project Settings > Default Palette (S43), omitted when there is none
+    if (!project->getDefaultPalette().empty()) {
+        YAML::Node palettes;
+        palettes["default"] = project->getDefaultPalette().generic_string();
+        root["palettes"] = palettes;
     }
     // Project Settings > Input, omitted at its defaults
     if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
@@ -3033,6 +3099,28 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (threading.webPumpBudgetMs != defaults.webPumpBudgetMs) threadingNode["webPumpBudgetMs"] = threading.webPumpBudgetMs;
         if (threading.webMultithreaded != defaults.webMultithreaded) threadingNode["webMultithreaded"] = threading.webMultithreaded;
         if (threadingNode.size()) root["threading"] = threadingNode;
+        // only when set: an old project.yaml stays as it was
+        if (project->getParticleWorldBudget() != 0) root["particleWorldBudget"] = project->getParticleWorldBudget();
+        {
+            const ParticleQaSettings& qa = project->getParticleQaSettings();
+            const ParticleQaSettings defaults;
+            YAML::Node qaNode;
+            for (const ParticleQaField& field : particleQaFields()) {
+                if (field.real && qa.*field.real != defaults.*field.real) qaNode[field.yaml] = qa.*field.real;
+                if (field.whole && qa.*field.whole != defaults.*field.whole) qaNode[field.yaml] = qa.*field.whole;
+            }
+            if (qaNode.size()) root["particleQa"] = qaNode;
+        }
+        {
+            const procmat::ProcMatQaSettings& qa = project->getProcMatQaSettings();
+            const procmat::ProcMatQaSettings defaults;
+            YAML::Node qaNode;
+            for (const procmat::ProcMatQaField& field : procmat::procMatQaFields()) {
+                if (field.real && qa.*field.real != defaults.*field.real) qaNode[field.yaml] = qa.*field.real;
+                if (field.whole && qa.*field.whole != defaults.*field.whole) qaNode[field.yaml] = qa.*field.whole;
+            }
+            if (qaNode.size()) root["proceduralMaterialQa"] = qaNode;
+        }
         // Shader Creation (spec S32): the values away from their defaults, by its reflection table
         const YAML::Node shaderCreationNode = reflect::encode(reflect::shaderCreationStruct(), &project->getShaderCreationSettings(), reflect::EncodeContext{});
         if (shaderCreationNode.IsMap() && shaderCreationNode.size()) root["shaderCreation"] = shaderCreationNode;
@@ -3245,6 +3333,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setAtmosphereQuality(quality);
+    }
+
+    {
+        const YAML::Node palettes = node["palettes"];
+        // (a missing key is an undefined node: IsMap on it would throw)
+        const bool hasDefaultPalette = palettes.IsDefined() && palettes.IsMap() && palettes["default"].IsDefined() && palettes["default"].IsScalar();
+        project->setDefaultPalette(hasDefaultPalette ? fs::path(palettes["default"].as<std::string>()) : fs::path());
     }
 
     {
@@ -3866,6 +3961,28 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (threadingNode["webMultithreaded"]) threading.webMultithreaded = YamlNumbers::as<bool>(threadingNode["webMultithreaded"]);
         }
         project->setThreadingSettings(threading);
+        // missing: 0, the platform's default
+        project->setParticleWorldBudget(node["particleWorldBudget"] ? std::min(YamlNumbers::as<unsigned int>(node["particleWorldBudget"]), Project::maxParticleWorldBudget) : 0u);
+        ParticleQaSettings particleQa;
+        if (node["particleQa"] && node["particleQa"].IsMap()) {
+            const YAML::Node qaNode = node["particleQa"];
+            for (const ParticleQaField& field : particleQaFields()) {
+                if (!qaNode[field.yaml]) continue;
+                if (field.real) particleQa.*field.real = std::clamp(YamlNumbers::as<float>(qaNode[field.yaml]), (float)field.minimum, (float)field.maximum);
+                else particleQa.*field.whole = std::clamp(YamlNumbers::as<int>(qaNode[field.yaml]), (int)field.minimum, (int)field.maximum);
+            }
+        }
+        project->setParticleQaSettings(particleQa);
+        procmat::ProcMatQaSettings procMatQa;
+        if (node["proceduralMaterialQa"] && node["proceduralMaterialQa"].IsMap()) {
+            const YAML::Node qaNode = node["proceduralMaterialQa"];
+            for (const procmat::ProcMatQaField& field : procmat::procMatQaFields()) {
+                if (!qaNode[field.yaml]) continue;
+                if (field.real) procMatQa.*field.real = std::clamp(YamlNumbers::as<float>(qaNode[field.yaml]), (float)field.minimum, (float)field.maximum);
+                else procMatQa.*field.whole = std::clamp(YamlNumbers::as<int>(qaNode[field.yaml]), (int)field.minimum, (int)field.maximum);
+            }
+        }
+        project->setProcMatQaSettings(procMatQa);
     }
 
     {
@@ -5430,6 +5547,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     }
     if (!material.shaderFeatures.empty()) node["shaderFeatures"] = encodeShaderFeatures(material.shaderFeatures);
     if (!material.shaderGlobalBindings.empty()) node["shaderGlobalBindings"] = encodeShaderGlobalBindings(material.shaderGlobalBindings);
+    if (!material.shaderPalettes->empty()) node["shaderPalettes"] = encodeShaderPalettes(material.shaderPalettes.get());
     if (material.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(material.blendMode);
     if (material.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(material.cullMode);
     if (material.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(material.depthWrite);
@@ -5574,6 +5692,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
     material.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
     material.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
+    material.shaderPalettes = decodeShaderPalettes(node["shaderPalettes"]);
     material.blendMode = node["blendMode"] ? decodeEnum(node, "blendMode", StreamSchema::materialBlendMode()) : MaterialBlendMode::AUTO;
     material.cullMode = node["cullMode"] ? decodeEnum(node, "cullMode", StreamSchema::materialCullMode()) : MaterialCullMode::AUTO;
     material.depthWrite = node["depthWrite"] ? decodeEnum(node, "depthWrite", StreamSchema::materialDepthWrite()) : MaterialDepthWrite::AUTO;

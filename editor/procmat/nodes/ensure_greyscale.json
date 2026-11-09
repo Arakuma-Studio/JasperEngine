@@ -1,0 +1,36 @@
+{
+ "code": [],
+ "description": "Remaps a grayscale image tonality using a curve",
+ "format": 1,
+ "functions": [],
+ "id": "ensure_greyscale",
+ "inputs": [
+  {
+   "default": "0.0",
+   "description": "The input grayscale image",
+   "label": "",
+   "name": "input",
+   "short_description": "Input",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "EnsureGreyscale",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The remapped grayscale image",
+   "expr": "$input($uv)",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [],
+ "short_description": "Tonality",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/ensure_greyscale.mmg"
+ },
+ "type_version": 1
+}

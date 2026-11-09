@@ -62,9 +62,13 @@
 #include <unordered_map>
 #include <unordered_set>
 
+namespace jasperengine::pixelart{
+    class PaletteQuantizer;
+}
+
 namespace jasperengine{
 
-	namespace particles { struct CompiledEffect; }
+	namespace particles { struct CompiledEffect; struct ParticleRenderData; struct ParticleSystemState; class EmitterRuntime; }
 	// Legacy u_fs_lighting, declared by forks written before per-object lights: filled per
 	// draw with the object's first MAX_LIGHTS pixel lights (the camera part per camera)
 	typedef struct fs_lighting_t {
@@ -385,6 +389,7 @@ namespace jasperengine{
 		Vector4 damage;              // x strength, y hair, z scratch, w dust candidates
 		Vector4 gateWeave;           // xy offset (output pixels), z cos, w sin of the rotation
 		Vector4 gateMask;            // xy half size, z corner radius, w feather (output pixels); x 0: none
+		Vector4 palette;             // Palette Quantize: x cells per axis, y dither size (0 none), w 1 when its table is baked
 	} fs_uber_t;
 
 	// the bloom and blur chain's passes (shaderlib/bloom.vert, bloom.frag)
@@ -519,7 +524,8 @@ namespace jasperengine{
 		UBER_GRAIN_LENS   = 1u << 16, // 'Gln' the Lens film grain (with UBER_GRAIN)
 		UBER_GRAIN_FILMIC = 1u << 17, // 'Gfm' the Filmic film grain (with UBER_GRAIN)
 		UBER_SHARP_BILINEAR = 1u << 18, // 'Psb' the Pixel Perfect Camera's Stretch Fill (S41 R11)
-		UBER_FEATURE_COUNT = 19
+		UBER_PALETTE      = 1u << 19, // 'Pal' Palette Quantize (S43): the frame onto a palette, ordered dither per art pixel
+		UBER_FEATURE_COUNT = 20
 	};
 
 	// What a PostProcessingSettings turns on (shader library phase 4): the in-shader colour
@@ -544,6 +550,8 @@ namespace jasperengine{
 		bool halationChain = false;
 		// dynamic resolution drives the scale (S13): the uber pass stays on at any scale
 		bool dynamicResolution = false;
+		// Palette Quantize is enabled with no palette: it stays off (the inspector and the log say so)
+		bool paletteMissing = false;
 	};
 
 	// Dynamic resolution as the renderer applies it now (RenderSystem::getDynamicResolutionStatus,
@@ -732,6 +740,10 @@ namespace jasperengine{
 			// own, or its waters' group's: waterPlace)
 			int8_t waterRank = 0;
 			float waterSortDistance = 0.0f;
+			// a system with sub-emitters queues each emitter by its own priority and distance:
+			// the one this is (null: the system has one emitter)
+			const particles::EmitterRuntime* emitter = nullptr;
+			particles::ParticleRenderData* emitterRender = nullptr;
 		};
 
 		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)
@@ -2054,6 +2066,10 @@ namespace jasperengine{
 		std::pair<int, int> uberSlotBlur = {-1, -1};
 		std::pair<int, int> uberSlotHalation = {-1, -1};
 		std::pair<int, int> uberSlotHalationWide = {-1, -1};
+		std::pair<int, int> uberSlotPaletteCells = {-1, -1};
+		std::pair<int, int> uberSlotPaletteRow = {-1, -1};
+		// Palette Quantize's table and its bake (S43), made while UBER_PALETTE is on
+		std::shared_ptr<pixelart::PaletteQuantizer> paletteQuantizer;
 		vs_uber_t vs_uber;
 		fs_uber_t fs_uber;
 		// what the uber pass composites (the bloom chain's output and its blurred copy, phase 4
@@ -2604,7 +2620,13 @@ namespace jasperengine{
 		// ShaderReference::getEnabledFeatures) pick a @texture's default[<DEFINE>]= default
 		bool loadShaderLibraryBindings(ShaderLibraryBindings& bindings, ShaderData& shaderData, ObjectRender& render,
 		                               std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest,
-		                               const std::vector<std::string>& enabledFeatures = {});
+		                               const std::vector<std::string>& enabledFeatures = {},
+		                               const pixelart::ShaderPalettes* palettes = nullptr);
+		// the swap textures of the shader's @palette slots (S43 Palette Swap), from the
+		// material's bindings (none: the identity, which draws unchanged); update binds again
+		// only when a binding or the palette library changed (an edit, a hot reload)
+		void bindShaderPalettes(ShaderLibraryBindings& bindings, ObjectRender& render, const pixelart::ShaderPalettes* palettes);
+		void updateShaderPalettes(ShaderLibraryBindings& bindings, ObjectRender& render, const pixelart::ShaderPalettes* palettes);
 		// binds the resolved custom textures again (they changed or a render target was redrawn)
 		bool bindShaderTextures(const ShaderLibraryBindings& bindings, ObjectRender& render, std::vector<std::pair<std::string, Texture>>& textures);
 		static bool shaderTexturesOutdated(const ShaderLibraryBindings& bindings, const std::vector<std::pair<std::string, Texture>>& textures);
@@ -3346,6 +3368,12 @@ namespace jasperengine{
 		ParticleStream particleRotationStream;
 		ParticleStream particleCustomStream;
 		ParticleStream particleTrailStream;
+		ParticleStream particlePixelStream;      // the Pixel render mode's 4-byte stream (S49)
+		// Analytic's slot indices (0, 1, 2, ...), shared by every Analytic system and grown in
+		// powers of two up to 65,536 (S49 R22)
+		BufferRender particleSlotBuffer;
+		uint32_t particleSlotCapacity = 0;
+		bool ensureParticleSlots(uint32_t count);
 		// the quad's corners and triangles, and what each stream is bound to at load (a draw
 		// swaps it for this frame's page at its offset)
 		BufferRender particleCornerBuffer;
@@ -3354,12 +3382,21 @@ namespace jasperengine{
 		BufferRender particleRotationPlaceholder;
 		BufferRender particleCustomPlaceholder;
 		BufferRender particleTrailPlaceholder;
+		BufferRender particlePixelPlaceholder;
 		bool particleStaticBuffers = false;
 		bool ensureParticleBuffers();
 		void destroyParticleBuffers();
 		bool appendParticleStream(ParticleStream& stream, const void* data, size_t bytes, BufferRender*& buffer, size_t& offset);
 		bool loadParticles(Entity entity, ParticleSystemComponent& particles, uint16_t pipelines);
+		// one emitter's objects, the root's or a sub-emitter child's
+		bool loadParticleEmitter(Entity entity, const particles::EmitterRuntime& runtime, const particles::CompiledEffect& effect, particles::ParticleRenderData& rd, uint16_t pipelines);
+		// loads (again) what the children need; true when one loaded
+		bool updateParticleChildren(Entity entity, const particles::EmitterRuntime& emitter, particles::ParticleRenderData& rd, uint16_t pipelines);
 		void destroyParticles(ParticleSystemComponent& particles);
+		void destroyParticleRender(particles::ParticleRenderData& rd);
+		// the scene inputs of a system's tree, and whether all of it has loaded
+		static uint32_t particleSceneInputs(const particles::ParticleRenderData& rd);
+		static bool isParticleTreeLoaded(const particles::EmitterRuntime& emitter, const particles::ParticleRenderData& rd);
 		// load, reload and the scene inputs of every particle system (update)
 		void updateParticleRenders(uint16_t pipelines);
 		// what the draw tests besides the component's checkbox: the GameObject active, the
@@ -3367,8 +3404,19 @@ namespace jasperengine{
 		bool isParticleRenderActive(Entity entity, uint32_t cullingMask) const;
 		bool particleBoundsVisible(const particles::ParticleSystemState& state, CameraComponent& camera);
 		void setParticleSceneInputUser(Entity entity, uint32_t inputs);
-		uint64_t particleRenderKey(const particles::ParticleSystemState& state) const;
-		void drawParticles(Entity entity, ParticleSystemComponent& particles, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
+		uint64_t particleRenderKey(const particles::CompiledEffect& effect) const;
+		// only: the one emitter to draw (a queued item of a system with sub-emitters), else its whole tree
+		void drawParticles(Entity entity, ParticleSystemComponent& particles, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType,
+		                   const particles::EmitterRuntime* only = nullptr, particles::ParticleRenderData* onlyRender = nullptr);
+		// an emitter and its children as items of the transparent queue
+		void queueParticleTree(Entity entity, ParticleSystemComponent& particles, const particles::EmitterRuntime& emitter, particles::ParticleRenderData& rd,
+		                       Transform& transform, const Transform& cameraTransform, bool root, uint32_t& order);
+		// an emitter, then its children in the effect's order
+		void drawParticleTree(const particles::ParticleSystemState& state, const particles::EmitterRuntime& runtime, particles::ParticleRenderData& rd, Transform& transform,
+		                      CameraComponent& camera, Transform& camTransform, PipelineType pipType, bool boundsVisible, uint32_t& drawn, bool& sorted);
+		// its draws (sorted: this view sorted its particles)
+		uint32_t drawParticleEmitter(const particles::ParticleSystemState& state, const particles::EmitterRuntime& runtime, particles::ParticleRenderData& rd, Transform& transform,
+		                             CameraComponent& camera, Transform& camTransform, PipelineType pipType, bool boundsVisible, bool& sorted);
 		float getPointsViewportHeight(const CameraComponent& camera) const;
 		float computePointsScale(const CameraComponent& camera, float viewportHeight) const;
 		void destroyPoints(Entity entity, PointsComponent& points);
@@ -3754,6 +3802,8 @@ namespace jasperengine{
 		// The user LUT is read through the CubeLut cache to know its stage (a scene-stage .cube
 		// changes the curve, not the grade); the second form takes the loaded one (null: none)
 		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings);
+		// Palette Quantize's table is being baked (the previous one, or none, draws meanwhile: S43 R20)
+		bool isPaletteQuantizeBaking() const;
 		// deviceRenderScale false: the device tier's render-scale cap is not applied (a UI camera's
 		// image, S51 R8)
 		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut,

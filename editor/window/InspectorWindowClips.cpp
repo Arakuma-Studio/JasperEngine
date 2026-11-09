@@ -11,12 +11,16 @@
 // Window actions (open, convert, extract, use player, create) are AnimationClipInspectorHooks:
 // a button shows once its hook is set. Owner: T2c.
 
+#include "animation/AnimatorAssetIO.h"
+#include "animation/ClipReport.h"
 #include "window/BitmapFontInspector.h"
 #include "media/VideoFormats.h"
 #include "component/Transform.h"
 #include "util/NativePlugins.h"
 #include "InspectorWindow.h"
 #include "window/HumanoidConvertDialog.h"
+#include "window/ModelClipSettingsView.h"
+#include "window/ReduceKeysDialog.h"
 #include "pose/PoseRigProvider.h"
 #include "App.h"
 #include "Backend.h"
@@ -405,6 +409,10 @@ inspectorclips::InspectedObjectTracker::Result inspectorclips::InspectedObjectTr
 namespace jasperengine::editor{
 
     struct InspectorClipState{
+        // the info line of the clip shown: worked out once per document revision
+        std::string infoReference;
+        uint64_t infoRevision = 0;
+        std::string infoLine;
         struct ModelClipsEntry{
             int64_t stamp = 0;
             int checkedFrame = -1;
@@ -451,7 +459,8 @@ namespace jasperengine::editor{
 
         std::string playerError;
         std::string assetError;
-        std::string modelAssetClip;         // the model asset section's selected sub-clip
+        // the model asset section: its clips' settings, the selection whose clip shows below
+        std::unique_ptr<ModelClipSettingsView> modelClipSettings;
         // the Bindings report's humanoid rig of the inspected player (anim-retarget)
         std::shared_ptr<anim::HumanoidSlots> humanoidRig;
         Entity humanoidRoot = NULL_ENTITY;
@@ -483,6 +492,7 @@ namespace jasperengine::editor{
             exists.clear();
             relativeOf.clear();
             relative.clear();
+            modelClipSettings.reset();
             project = path;
         }
     };
@@ -1616,6 +1626,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawPhysicsMaterialAsset(asset);
         return true;
     }
+    // a .material: the rows of a submesh's material (InspectorMaterialPbr.cpp)
+    if (Util::isMaterialFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawMaterialAsset(asset);
+        return true;
+    }
     // a generated normal map or its source image: their own view; any other image keeps the scene selection
     if (Util::isImageFile(file)) return drawSpriteNormalsAsset(asset);
     const bool clip = Util::isAnimationClipFile(file);
@@ -1728,47 +1745,14 @@ void editor::InspectorWindow::drawModelClipsAsset(const fs::path& asset, const s
     drawAssetHeader(ICON_FA_CUBE, asset, "Model");
     const std::vector<anim::ModelClipInfo> clips = modelClipsOf(project, state, model);
 
-    ImGui::SeparatorText("Animation Clips");
-    ImGui::TextDisabled("Read-only clips of the model: Extract to .anim to edit one.");
-    if (std::none_of(clips.begin(), clips.end(), [&](const anim::ModelClipInfo& info){ return info.name == state.modelAssetClip; })){
-        state.modelAssetClip = clips.empty() ? std::string() : clips[0].name;
-    }
-    const bool bakeColumn = vatbakeentry::available();
-    if (ImGui::BeginTable("model_asset_clips", bakeColumn ? 3 : 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)){
-        ImGui::TableSetupColumn("Clip");
-        ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthFixed, textWidth("000.00 s") + ImGui::GetStyle().CellPadding.x * 2);
-        if (bakeColumn){
-            ImGui::TableSetupColumn("Bake", ImGuiTableColumnFlags_WidthFixed, textWidth(ICON_FA_FILM " Bake " ICON_FA_CARET_DOWN) +
-                                    ImGui::GetStyle().CellPadding.x * 2 + ImGui::GetStyle().FramePadding.x * 2);
-        }
-        for (const anim::ModelClipInfo& info : clips){
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            const std::string label = info.name + "##model_asset_clip" + std::to_string(info.index);
-            if (ImGui::Selectable(label.c_str(), info.name == state.modelAssetClip, ImGuiSelectableFlags_SpanAllColumns)){
-                state.modelAssetClip = info.name;
-            }
-            ImGui::TableNextColumn();
-            ImGui::TextDisabled("%s", inspectorclips::formatSeconds(info.duration).c_str());
-            if (bakeColumn){
-                // Bake ▾ › Vertex Animation… of this clip (no scene: the model file is the source)
-                ImGui::TableNextColumn();
-                ImGui::PushID(info.index);
-                VatBakeEntry entry;
-                entry.kind = VatBakeEntry::Kind::ModelClip;
-                entry.asset = FileUtils::pathToUtf8(asset);
-                entry.clip = info.name;
-                vatbakeentry::bakeButton(project, entry, !project->isAnyScenePlaying(), "model_clip_bake",
-                                         "modelAsset.bake." + std::to_string(info.index), true);
-                ImGui::PopID();
-            }
-        }
-        ImGui::EndTable();
-    }
-    if (state.modelAssetClip.empty()) return;
+    // the clip list with its import settings (S77 R48); the first selected clip shows below
+    if (!state.modelClipSettings) state.modelClipSettings = std::make_unique<ModelClipSettingsView>(project);
+    state.modelClipSettings->draw(asset, model, clips);
+    const std::string shown = state.modelClipSettings->shownClip();
+    if (shown.empty()) return;
 
-    const std::string reference = anim::formatSubClipReference(model, state.modelAssetClip);
-    ImGui::SeparatorText(state.modelAssetClip.c_str());
+    const std::string reference = anim::formatSubClipReference(state.modelClipSettings->shownModel(), shown);
+    ImGui::SeparatorText(shown.c_str());
     std::string error;
     std::shared_ptr<AnimationClipDocument> document = findClipDocument(project, state, reference, &error);
     if (!document){
@@ -1790,6 +1774,44 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
     // the document's data (a commit replaces it: edits copy it first)
     const ClipData& data = document.data();
     const ImVec4 warning = Theme::Colors::WarningText;
+
+    // The info line, printed from ClipReport (the numbers get_animation returns). Once per revision:
+    // the pool's load and release are not free
+    if (state.infoReference != reference || state.infoRevision != document.revision()){
+        state.infoReference = reference;
+        state.infoRevision = document.revision();
+        anim::ClipReportRequest request;
+        anim::SubClipReference parts;
+        request.reference = anim::parseSubClipReference(reference, parts)
+            ? FileUtils::pathToGenericUtf8(project->resolveAssetPath(FileUtils::pathFromUtf8(parts.model)).lexically_normal()) + "#" + parts.clip
+            : FileUtils::pathToGenericUtf8(document.absolutePath());
+        state.infoLine = anim::clipInfoLine(anim::analyzeClip(request));
+    }
+    if (!state.infoLine.empty()){
+        // wrapped by hand: a selectable's label is what find_ui_item reads, whole
+        std::string wrapped;
+        std::string current;
+        const float width = ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x;
+        const std::string dot = " \xC2\xB7 ";
+        for (size_t at = 0; at <= state.infoLine.size();){
+            size_t next = state.infoLine.find(dot, at);
+            const std::string part = state.infoLine.substr(at, next == std::string::npos ? std::string::npos : next - at);
+            const std::string extended = current.empty() ? part : current + dot + part;
+            if (!current.empty() && ImGui::CalcTextSize(extended.c_str()).x > width){
+                wrapped += current + dot + "\n";
+                current = part;
+            }else{
+                current = extended;
+            }
+            if (next == std::string::npos) break;
+            at = next + dot.size();
+        }
+        wrapped += current;
+        ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
+        ImGui::Selectable((wrapped + "##clip_info_line").c_str(), false, ImGuiSelectableFlags_None, ImVec2(0, ImGui::CalcTextSize(wrapped.c_str()).y));
+        ImGui::PopStyleColor();
+        ImGui::SetItemTooltip("Memory: the heap this clip takes when loaded. File: its size on disk");
+    }
 
     auto commit = [&](const ClipData& newData, const std::string& undoName){
         std::string error;
@@ -1833,6 +1855,16 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
         ImGui::TextColored(Theme::Colors::PrefabText, ICON_FA_PERSON " Humanoid clip%s%s", data.humanoid.sourceModel.empty() ? "" : " (made on ",
                            data.humanoid.sourceModel.empty() ? "" : (data.humanoid.sourceModel + ")").c_str());
     }
+    // Reduce Keys...: the dialog measures; nothing changes until it writes
+    ImGui::BeginDisabled(playing);
+    if (ImGui::Button(ICON_FA_COMPRESS " Reduce Keys...##clip_asset_reduce", ImVec2(ImGui::GetContentRegionAvail().x, 0))){
+        anim::SubClipReference parts;
+        ReduceKeysDialog::open(project, anim::parseSubClipReference(reference, parts)
+            ? FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->resolveAssetPath(FileUtils::pathFromUtf8(parts.model)))) + "#" + parts.clip
+            : document.path());
+    }
+    ImGui::SetItemTooltip("Remove keys a skeleton does not need, with the error it causes measured. The preview writes nothing");
+    ImGui::EndDisabled();
     if (readOnly){
         ImGui::TextDisabled(ICON_FA_LOCK " Read-only: a clip of %s", data.source.path.empty() ? "a model" : data.source.path.c_str());
     }
@@ -1953,6 +1985,55 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
 
     ImGui::EndDisabled();
     endTable();
+
+    // Root Motion (Unity's clip import names): the block a .anim keeps for the Animator. Each toggle
+    // is one project undo step through document.commit; a model's clip reads as it is
+    if (!data.isHumanoid() && ImGui::CollapsingHeader("Root Motion##clip_asset_root_motion")){
+        const anim::ClipRootMotion rootMotion = anim::readClipRootMotion(data.unknownKeys);
+        auto commitRootMotion = [&](const anim::ClipRootMotion& changed, const std::string& undoName){
+            ClipData newData = data;
+            const std::string text = anim::writeClipRootMotion(changed);
+            auto at = std::find_if(newData.unknownKeys.begin(), newData.unknownKeys.end(), [](const auto& entry){ return entry.first == "root_motion"; });
+            if (at != newData.unknownKeys.end()) at->second = text;
+            else newData.unknownKeys.push_back({"root_motion", text});
+            commit(newData, undoName);
+        };
+        beginTable(ComponentType::AnimationPlayerComponent, getLabelSize("Root Transform Position (XZ)"), "clip_asset_root_motion");
+        ImGui::BeginDisabled(readOnly);
+        propertyHeader("Root Motion Node");
+        char bone[256];
+        std::snprintf(bone, sizeof(bone), "%s", rootMotion.bone.c_str());
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::InputTextWithHint("##clip_root_motion_bone", "Auto", bone, sizeof(bone), ImGuiInputTextFlags_EnterReturnsTrue) && rootMotion.bone != bone){
+            anim::ClipRootMotion changed = rootMotion;
+            changed.bone = bone;
+            commitRootMotion(changed, "Root Motion Node");
+        }
+        ImGui::SetItemTooltip("The bone's path. Auto: the Animator's Root Motion bone, the hips, then the shallowest bone the clip moves");
+        struct Row{
+            const char* label;
+            const char* id;
+            bool anim::ClipRootMotion::* member;
+            const char* tooltip;
+        };
+        const Row rows[] = {
+            {"Root Transform Rotation", "Bake Into Pose##clip_root_rotation", &anim::ClipRootMotion::bakeRotation, "Keep the heading in the pose: no turning root motion"},
+            {"Root Transform Position (Y)", "Bake Into Pose##clip_root_y", &anim::ClipRootMotion::bakePositionY, "Keep the height in the pose"},
+            {"Root Transform Position (XZ)", "Bake Into Pose##clip_root_xz", &anim::ClipRootMotion::bakePositionXZ, "Keep the horizontal motion in the pose"},
+        };
+        for (const Row& row : rows){
+            propertyHeader(row.label);
+            bool value = rootMotion.*row.member;
+            if (ImGui::Checkbox(row.id, &value)){
+                anim::ClipRootMotion changed = rootMotion;
+                changed.*row.member = value;
+                commitRootMotion(changed, row.label);
+            }
+            ImGui::SetItemTooltip("%s", row.tooltip);
+        }
+        ImGui::EndDisabled();
+        endTable();
+    }
 
     if (!state.assetError.empty()){
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ErrorText);

@@ -962,7 +962,7 @@ const char* anim::ikTypeName(AnimatorIKType type){ return nameOf(kIKTypes, type)
 bool anim::ikTypeFromName(const std::string& name, AnimatorIKType& out){ return valueOf(kIKTypes, name, out); }
 
 bool anim::isClipExtensionKey(const std::string& key){
-    return key == "root_motion" || key == "editor";
+    return key == "root_motion" || key == "editor" || key == "optimize";
 }
 
 std::string anim::AnimatorParseError::toString() const{

@@ -81,7 +81,9 @@ struct PanelVisibilitySettings {
     bool terrain = false;
     bool textureSynthesis = false;
     bool audioMixer = false;
+    bool particleEffect = false;
     bool soundBrowser = false;
+    bool graphEditor = false;
     bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
     bool spriteNormals = false;
@@ -100,7 +102,9 @@ struct PanelVisibilitySettings {
             && terrain == other.terrain
             && textureSynthesis == other.textureSynthesis
             && audioMixer == other.audioMixer
+            && particleEffect == other.particleEffect
             && soundBrowser == other.soundBrowser
+            && graphEditor == other.graphEditor
             && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
             && spriteNormals == other.spriteNormals
@@ -265,6 +269,7 @@ private:
     static YAML::Node loadedSettings;
     static bool autosaveEnabled;
     static int autosaveIntervalSeconds;
+    static bool networkOffline;
     // settingsData parsed into the members
     static bool applySettings(const YAML::Node& node);
     static bool writeMerged();
@@ -599,6 +604,11 @@ public:
     static void setAutosaveEnabled(bool enabled);
     static int getAutosaveIntervalSeconds();
     static void setAutosaveIntervalSeconds(int seconds);
+
+    // Preferences > General > Network > Offline (settings.yaml network.offline): the editor
+    // makes no network request of its own (Lospec, S43 R8) and says so before trying
+    static bool isNetworkOffline();
+    static void setNetworkOffline(bool offline);
 };
 
 } // namespace jasperengine::editor

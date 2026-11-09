@@ -34,13 +34,15 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"audio", "Audio Mixer, sound analysis, placeholders, sound search, Sound Events, Play capture and checks."},
         {"editor_tools", "Colour picker, curve editor, project templates and movie recording."},
         {"vcs", "Version control: status, locks, commits and scene diffs."},
-        {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, graph files."},
+        {"scripting", "Script hot reload and status, editor-script menus and numeric expressions."},
+        {"graphs", "Graph files (Procedural Materials and other node graphs): kinds, node catalog, read, validate, edit."},
+        {"materials", "Procedural Materials: preview any material with checks, bake a graph to PNGs and a .material (jasper://docs/procedural-materials)."},
         {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
         {"shipping", "Player runtimes, native plugins, build shader overrides, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
         // the pixel-art family's sprites (S44 adds the row; S45 and S47 add their tools)
         {"sprites", "Aseprite import settings, sprite atlases, and agent sprite drawing on .aseprite files (jasper://docs/sprites)."},
-        // the pixel-art family's group (S51 adds the row with preview_font; S42 and S43 add their tools)
-        {"pixel_art", "Pixel art: bitmap font previews (jasper://docs/pixel-fonts)."},
+        // the pixel-art family's group: S43's palettes, S51's font previews (S42, S49 add their tools)
+        {"pixel_art", "Pixel art: palettes and Apply Palette (jasper://docs/palettes), bitmap font previews (jasper://docs/pixel-fonts)."},
     };
     if (selftestGroupMode() > 0) {
         groups.push_back({"selftest", "Test-only group of the MCP tests (JASPER_MCP_SELFTEST_GROUP)."});

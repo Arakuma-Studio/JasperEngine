@@ -142,6 +142,7 @@ namespace {
         {"material.shaderTextures", SubmeshOverride_ShaderTextures},
         {"material.shaderFeatures", SubmeshOverride_ShaderFeatures},
         {"material.shaderGlobalBindings", SubmeshOverride_ShaderGlobalBindings},
+        {"material.shaderPalettes", SubmeshOverride_ShaderPalettes},
         {"material.blendMode", SubmeshOverride_BlendMode},
         {"material.cullMode", SubmeshOverride_CullMode},
         {"material.depthWrite", SubmeshOverride_DepthWrite},

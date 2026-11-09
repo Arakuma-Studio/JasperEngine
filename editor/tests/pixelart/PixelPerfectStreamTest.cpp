@@ -230,7 +230,25 @@ TEST(PixelPerfectStream, FixturesResaveWithoutS41Keys){
 }
 
 // S41's shader sources ('Pxs', pixel_snap.glsl, the frame block's last members) are cached under
-// v57: a cache of an older version holds programs without them
+// v57 or later: a cache of an older version holds programs without them
 TEST(PixelPerfectStream, ShaderCacheVersionCoversThePixelSnap){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v57");
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 57) << name;
+}
+
+// S43's palette sources (library:sprite's PALETTE_SWAP and PALETTE_CYCLE, the uber pass's 'Pal'
+// bit 19) are cached under v59 or later (after S91 took v58): a cache of an older version holds programs without them
+TEST(PaletteShaders, ShaderCacheVersionCoversThePalettes){
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 59) << name;
+}
+
+// S49's particle sources (the Pixel render mode 'Pxl', the Analytic simulation 'Ana' and its vertex
+// stage) are cached under v60 or later: a cache of an older version holds programs without them
+TEST(PixelParticleShaders, ShaderCacheVersionCoversThePixelParticles){
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 60) << name;
 }

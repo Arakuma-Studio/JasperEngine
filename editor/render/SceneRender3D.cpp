@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender3D.h"
+#include "animation/AnimatorDebug.h"
+#include "animation/AnimatorInstance.h"
+#include "animation/BoneOverlay.h"
+#include "component/AnimatorComponent.h"
+#include "component/ModelComponent.h"
+#include "component/Transform.h"
 #include "component/AudioSourceComponent.h"
 #include "component/BoneComponent.h"
 #include "component/CharacterControllerComponent.h"
@@ -38,6 +44,7 @@
 #include <limits>
 #include <map>
 #include <set>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -72,6 +79,7 @@ editor::SceneRender3D::SceneRender3D(Scene* scene): SceneRender(scene, false, tr
     uilayer.setViewportGizmoTexture(viewgizmo.getFramebuffer());
 
     poseViewport = std::make_unique<PoseViewport>(scene, toolslayer.getScene());
+    animatorOverlay = std::make_unique<anim::AnimatorOverlayPass>();
 }
 
 editor::SceneRender3D::~SceneRender3D(){
@@ -131,6 +139,10 @@ editor::SceneRender3D::~SceneRender3D(){
     }
 
     for (auto& pair : controllerLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : animatorLines) {
         delete pair.second;
     }
 
@@ -346,7 +358,7 @@ void editor::SceneRender3D::createOrUpdateParticleLines(Entity entity, const Tra
     }
 
     // the bounds the culling and the budget use (the particles' last frame)
-    if (ParticleEffectOverlay::gizmos().bounds && particles.state && particles.state->runtime.count() > 0){
+    if (ParticleEffectOverlay::gizmos().bounds && particles.state && particles.state->runtime.totalCount() > 0){
         const particles::ParticleSystemState& state = *particles.state;
         addBoxLines(lines, Vector3(state.boundsMin[0], state.boundsMin[1], state.boundsMin[2]),
                     Vector3(state.boundsMax[0], state.boundsMax[1], state.boundsMax[2]), Vector4(1.0f, 0.85f, 0.2f, 1.0f));
@@ -913,62 +925,53 @@ void editor::SceneRender3D::createOrUpdateBoneLines(Entity entity, const ModelCo
     const Vector4 boneColor(0.9f, 0.9f, 0.2f, alpha);
     const Vector4 tipColor(1.0f, 0.5f, 0.1f, alpha);
 
-    for (const auto& [boneId, boneEntity] : model.bonesIdMapping) {
-        Transform* boneTransform = scene->findComponent<Transform>(boneEntity);
-        if (!boneTransform || !boneTransform->visible) continue;
+    // a bone's position from the Animator's pose where its Transform is not written (Write Bones: Exposed)
+    for (const BoneOverlaySegment& segment : boneOverlaySegments(scene, model)) {
+        const Vector3& bonePos = segment.bone;
 
-        Vector3 bonePos = boneTransform->worldPosition;
+        if (segment.hasParent) {
+            const Vector3& parentPos = segment.parent;
+            Vector3 dir = bonePos - parentPos;
+            float length = dir.length();
 
-        Entity parentEntity = boneTransform->parent;
-        if (parentEntity != NULL_ENTITY) {
-            BoneComponent* parentBone = scene->findComponent<BoneComponent>(parentEntity);
-            if (parentBone) {
-                Transform* parentTransform = scene->findComponent<Transform>(parentEntity);
-                if (parentTransform) {
-                    Vector3 parentPos = parentTransform->worldPosition;
-                    Vector3 dir = bonePos - parentPos;
-                    float length = dir.length();
+            if (length < 1e-6f) continue;
 
-                    if (length < 1e-6f) continue;
+            dir = dir / length;
 
-                    dir = dir / length;
+            // Build perpendicular basis
+            Vector3 up = (std::abs(dir.y) < 0.99f) ? Vector3(0, 1, 0) : Vector3(1, 0, 0);
+            Vector3 right = dir.crossProduct(up).normalized();
+            up = right.crossProduct(dir).normalized();
 
-                    // Build perpendicular basis
-                    Vector3 up = (std::abs(dir.y) < 0.99f) ? Vector3(0, 1, 0) : Vector3(1, 0, 0);
-                    Vector3 right = dir.crossProduct(up).normalized();
-                    up = right.crossProduct(dir).normalized();
+            // Wireframe pyramid: base near parent, tip at child
+            float baseOffset = length * 0.15f;
+            float baseSize = length * 0.08f;
+            Vector3 baseCenter = parentPos + dir * baseOffset;
 
-                    // Wireframe pyramid: base near parent, tip at child
-                    float baseOffset = length * 0.15f;
-                    float baseSize = length * 0.08f;
-                    Vector3 baseCenter = parentPos + dir * baseOffset;
+            Vector3 b0 = baseCenter + (right + up) * baseSize;
+            Vector3 b1 = baseCenter + (right - up) * baseSize;
+            Vector3 b2 = baseCenter + (right * -1.0f - up) * baseSize;
+            Vector3 b3 = baseCenter + (up - right) * baseSize;
 
-                    Vector3 b0 = baseCenter + (right + up) * baseSize;
-                    Vector3 b1 = baseCenter + (right - up) * baseSize;
-                    Vector3 b2 = baseCenter + (right * -1.0f - up) * baseSize;
-                    Vector3 b3 = baseCenter + (up - right) * baseSize;
+            // Base square
+            boneLinesObj->addLine(b0, b1, boneColor);
+            boneLinesObj->addLine(b1, b2, boneColor);
+            boneLinesObj->addLine(b2, b3, boneColor);
+            boneLinesObj->addLine(b3, b0, boneColor);
 
-                    // Base square
-                    boneLinesObj->addLine(b0, b1, boneColor);
-                    boneLinesObj->addLine(b1, b2, boneColor);
-                    boneLinesObj->addLine(b2, b3, boneColor);
-                    boneLinesObj->addLine(b3, b0, boneColor);
+            // Lines from parent to base
+            boneLinesObj->addLine(parentPos, b0, tipColor);
+            boneLinesObj->addLine(parentPos, b1, tipColor);
+            boneLinesObj->addLine(parentPos, b2, tipColor);
+            boneLinesObj->addLine(parentPos, b3, tipColor);
 
-                    // Lines from parent to base
-                    boneLinesObj->addLine(parentPos, b0, tipColor);
-                    boneLinesObj->addLine(parentPos, b1, tipColor);
-                    boneLinesObj->addLine(parentPos, b2, tipColor);
-                    boneLinesObj->addLine(parentPos, b3, tipColor);
-
-                    // Lines from base to child tip
-                    boneLinesObj->addLine(b0, bonePos, boneColor);
-                    boneLinesObj->addLine(b1, bonePos, boneColor);
-                    boneLinesObj->addLine(b2, bonePos, boneColor);
-                    boneLinesObj->addLine(b3, bonePos, boneColor);
-                }
-            }
+            // Lines from base to child tip
+            boneLinesObj->addLine(b0, bonePos, boneColor);
+            boneLinesObj->addLine(b1, bonePos, boneColor);
+            boneLinesObj->addLine(b2, bonePos, boneColor);
+            boneLinesObj->addLine(b3, bonePos, boneColor);
         } else {
-            // Root bone: draw a small octahedron marker
+            // A root (its parent is no bone, or there is none): a small octahedron marker
             float markSize = 0.03f;
             boneLinesObj->addLine(bonePos + Vector3(0, markSize, 0), bonePos + Vector3(markSize, 0, 0), tipColor);
             boneLinesObj->addLine(bonePos + Vector3(markSize, 0, 0), bonePos + Vector3(0, -markSize, 0), tipColor);
@@ -1386,6 +1389,7 @@ void editor::SceneRender3D::dropGoneGizmos(){
     dropGoneGizmos(trackLines, render);
     dropGoneGizmos(reflectionProbeLines, render);
     dropGoneGizmos(capsuleShadowLines, render);
+    dropGoneGizmos(animatorLines, render);
 }
 
 void editor::SceneRender3D::hideAllGizmos(){
@@ -1428,6 +1432,9 @@ void editor::SceneRender3D::hideAllGizmos(){
         pair.second->setVisible(false);
     }
     for (auto& pair : controllerLines) {
+        pair.second->setVisible(false);
+    }
+    for (auto& pair : animatorLines) {
         pair.second->setVisible(false);
     }
     for (auto& pair : waterVolumeLines) {
@@ -1863,6 +1870,30 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         }
     }
 
+    // Gizmos > Animation (S77 R49): with every toggle off the pass takes no snapshot and draws nothing
+    const anim::AnimatorOverlayFlags animatorFlags{displaySettings.showIK, displaySettings.showRootMotion, displaySettings.showFootTrails};
+    std::set<Entity> currentAnimatorLines;
+    animatorOverlay->update(scene, entities, animatorFlags, [&](Entity entity, const std::vector<anim::AnimatorOverlayLine>& drawn){
+        // in the tools layer, as the skeleton overlay: drawn over the meshes the chains run inside
+        if (animatorLines.find(entity) == animatorLines.end()) {
+            ScopedDefaultEntityPool sys(*toolslayer.getScene(), EntityPool::System);
+            animatorLines[entity] = new LineRenderer(toolslayer.getScene());
+        }
+        currentAnimatorLines.insert(entity);
+        LineRenderer* overlayLines = animatorLines[entity];
+        overlayLines->clearLines();
+        for (const anim::AnimatorOverlayLine& line : drawn) overlayLines->addLine(line.a, line.b, line.color);
+        overlayLines->setVisible(true);
+    });
+    for (auto it = animatorLines.begin(); it != animatorLines.end();) {
+        if (currentAnimatorLines.find(it->first) == currentAnimatorLines.end()) {
+            delete it->second;
+            it = animatorLines.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
     // Remove sun icons for entities that are no longer directional lights
     auto it = lightObjects.begin();
     while (it != lightObjects.end()) {
@@ -2040,4 +2071,95 @@ void editor::SceneRender3D::setGridPlane(int plane){
     }else{
         lines->setRotation(Quaternion());
     }
+}
+
+// The skeleton overlay's reading of the pose (animation/BoneOverlay.h). Defined here, in a unit that reads
+// Transforms already, so the overlay adds none to Transform.h's fan-out (tools/check_fanout.py)
+namespace{
+
+    // The Exposed Animator on `entity` or above it whose rig holds `entity`, with a pose evaluated
+    struct ExposedBone{
+        const anim::AnimatorInstance* instance = nullptr;
+        Entity root = NULL_ENTITY;
+        int bone = -1;
+    };
+
+    ExposedBone findExposedBone(Scene* scene, Entity entity){
+        ExposedBone found;
+        for (Entity at = entity; at != NULL_ENTITY;){
+            const AnimatorComponent* animator = scene->findComponent<AnimatorComponent>(at);
+            if (animator && animator->writeBones == AnimatorWriteBones::Exposed){
+                const anim::AnimatorInstance* instance = animator->runtime.get();
+                if (instance){
+                    const int bone = instance->rig.findBone(entity);
+                    if (bone >= 0){
+                        found.instance = instance;
+                        found.root = at;
+                        found.bone = bone;
+                        return found;
+                    }
+                }
+            }
+            const Transform* transform = scene->findComponent<Transform>(at);
+            at = transform ? transform->parent : NULL_ENTITY;
+        }
+        return found;
+    }
+
+}
+
+std::vector<editor::BoneOverlaySegment> editor::boneOverlaySegments(Scene* scene, const ModelComponent& model){
+    std::vector<editor::BoneOverlaySegment> segments;
+    segments.reserve(model.bonesIdMapping.size());
+    // a bone's position once: each bone is usually some other's parent
+    std::unordered_map<Entity, Vector3> positions;
+    auto positionOf = [&](Entity entity, const Transform& transform) -> Vector3{
+        const auto known = positions.find(entity);
+        if (known != positions.end()) return known->second;
+        Vector3 position = transform.worldPosition;
+        const ExposedBone exposed = findExposedBone(scene, entity);
+        if (exposed.instance && (size_t)exposed.bone < exposed.instance->rigWorld().size()){
+            const Vector3 inRig = exposed.instance->rigWorld()[(size_t)exposed.bone].translation();
+            const Transform* root = scene->findComponent<Transform>(exposed.root);
+            position = root ? root->modelMatrix * inRig : inRig;
+        }
+        positions.emplace(entity, position);
+        return position;
+    };
+    for (const auto& [boneId, boneEntity] : model.bonesIdMapping){
+        const Transform* transform = scene->findComponent<Transform>(boneEntity);
+        if (!transform || !transform->visible) continue;
+        editor::BoneOverlaySegment segment;
+        segment.bone = positionOf(boneEntity, *transform);
+        if (transform->parent != NULL_ENTITY && scene->findComponent<BoneComponent>(transform->parent)){
+            if (const Transform* parent = scene->findComponent<Transform>(transform->parent)){
+                segment.parent = positionOf(transform->parent, *parent);
+                segment.hasParent = true;
+            }
+        }
+        segments.push_back(segment);
+    }
+    return segments;
+}
+
+bool editor::isUnwrittenAnimatorBone(Scene* scene, Entity entity){
+    const ExposedBone exposed = findExposedBone(scene, entity);
+    if (!exposed.instance || (size_t)exposed.bone >= exposed.instance->writeMask.size()) return false;
+    return !exposed.instance->writeMask[(size_t)exposed.bone];
+}
+
+anim::AnimatorRoot anim::animatorRoot(const Transform& transform){
+    AnimatorRoot root;
+    root.position = transform.worldPosition;
+    root.rotation = transform.worldRotation;
+    root.scale = transform.worldScale;
+    root.matrix = transform.modelMatrix;
+    return root;
+}
+
+bool anim::animatorRootOf(Scene* scene, Entity entity, AnimatorRoot& root){
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform) return false;
+    root = animatorRoot(*transform);
+    return true;
 }

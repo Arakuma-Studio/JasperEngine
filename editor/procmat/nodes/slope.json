@@ -1,0 +1,603 @@
+{
+ "connections": [
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "buffer",
+   "to_port": 0
+  },
+  {
+   "from": "buffer",
+   "from_port": 0,
+   "to": "dilate_pass_1",
+   "to_port": 0
+  },
+  {
+   "from": "dilate_pass_1",
+   "from_port": 0,
+   "to": "buffer_2",
+   "to_port": 0
+  },
+  {
+   "from": "buffer_2",
+   "from_port": 0,
+   "to": "dilate_pass_4",
+   "to_port": 0
+  },
+  {
+   "from": "buffer_3",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "dilate_pass_2",
+   "from_port": 0,
+   "to": "buffer_4",
+   "to_port": 0
+  },
+  {
+   "from": "buffer_4",
+   "from_port": 0,
+   "to": "dilate_pass_3",
+   "to_port": 0
+  },
+  {
+   "from": "buffer",
+   "from_port": 0,
+   "to": "dilate_pass_2",
+   "to_port": 0
+  },
+  {
+   "from": "dilate_pass_3",
+   "from_port": 0,
+   "to": "math",
+   "to_port": 1
+  },
+  {
+   "from": "dilate_pass_4",
+   "from_port": 0,
+   "to": "math",
+   "to_port": 0
+  },
+  {
+   "from": "math",
+   "from_port": 0,
+   "to": "buffer_3",
+   "to_port": 0
+  }
+ ],
+ "description": "Dilates the white areas of a mask, using the colors of an optional input",
+ "format": 1,
+ "id": "slope",
+ "inputs": [
+  {
+   "description": "The input mask whose white areas will be dilated",
+   "group_size": 0,
+   "label": "Mask",
+   "name": "mask",
+   "type": "f"
+  }
+ ],
+ "kind": "graph",
+ "name": "Slope",
+ "nodes": [
+  {
+   "id": "buffer",
+   "parameters": {
+    "lod": 0,
+    "size": 11
+   },
+   "seed": 32897,
+   "type": "buffer"
+  },
+  {
+   "id": "buffer_2",
+   "parameters": {
+    "lod": 0,
+    "size": 11
+   },
+   "seed": 65434,
+   "type": "buffer"
+  },
+  {
+   "id": "dilate_pass_1",
+   "parameters": {
+    "d": 0.2,
+    "p": 1,
+    "s": 11
+   },
+   "seed": 71939,
+   "seed_locked": true,
+   "shader": {
+    "code": [
+     "vec2 $(name_uv)_dist = $(name)_distance_h($uv, _seed_variation_, _controlled_variation_);",
+     ""
+    ],
+    "functions": [
+     "pack_2x32_to_4x16"
+    ],
+    "inputs": [
+     {
+      "default": "0.0",
+      "function": true,
+      "label": "",
+      "name": "in",
+      "type": "f"
+     }
+    ],
+    "instance": [
+     "vec2 $(name)_distance_h(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tvec2 e = vec2(1.0/$s, 0.0);",
+     "\tint steps = int($s*$d/max(1.0, $p));",
+     "\tfloat rv = 0.0;",
+     "\tvec2 source_uv;",
+     "\tfloat source_h;",
+     "\tfloat best_source_h = 0.0;",
+     "\tfloat h;",
+     "\tfloat best_h = 0.0;",
+     "\tfloat best_x = 0.0;",
+     "\tfor (int i = -steps; i <= steps; ++i) {",
+     "\t\tsource_uv = uv+float(i)*e;",
+     "\t\tsource_h = $in(source_uv);",
+     "\t\th = source_h-abs(float(i))*e.x/$d;",
+     "\t\tif (h > best_h) {",
+     "\t\t\tbest_h = h;",
+     "\t\t\tbest_source_h = source_h;",
+     "\t\t\tbest_x = source_uv.x;",
+     "\t\t}",
+     "\t}",
+     "\treturn vec2(best_source_h, best_x);",
+     "}",
+     ""
+    ],
+    "outputs": [
+     {
+      "expr": "pack_2x32_to_4x16($(name_uv)_dist)",
+      "type": "rgba"
+     },
+     {
+      "expr": "$(name_uv)_dist.x-abs($(name_uv)_dist.y-$uv.x)/$d",
+      "type": "f"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 9,
+      "first": 6,
+      "label": "",
+      "last": 12,
+      "name": "s",
+      "type": "size"
+     },
+     {
+      "default": 0.5,
+      "label": "",
+      "max": 1,
+      "min": 0,
+      "name": "d",
+      "step": 0.01,
+      "type": "float"
+     },
+     {
+      "default": 1,
+      "label": "",
+      "max": 1,
+      "min": 0,
+      "name": "p",
+      "step": 0.01,
+      "type": "float"
+     }
+    ]
+   }
+  },
+  {
+   "id": "dilate_pass_4",
+   "parameters": {
+    "d": 0.2,
+    "p": 1,
+    "s": 11
+   },
+   "seed": 50297,
+   "shader": {
+    "code": [],
+    "functions": [
+     "pack_4x16_to_2x32"
+    ],
+    "inputs": [
+     {
+      "default": "vec3(0.0)",
+      "function": true,
+      "label": "",
+      "name": "in",
+      "type": "rgba"
+     }
+    ],
+    "instance": [
+     "float $(name)_distance_v(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tint steps = int($s*$d/max(1.0, $p));",
+     "\tfloat best_h = 0.0;",
+     "\tfloat l;",
+     "\tfloat h;",
+     "\tvec2 in_uv = uv;",
+     "\tfor (int i = -steps; i <= steps; ++i) {",
+     "\t\tin_uv.y = uv.y+float(i)/$s;",
+     "\t\tvec2 h_x = pack_4x16_to_2x32($in(in_uv));",
+     "\t\tl = length(vec2(h_x.y-uv.x, float(i)/$s));",
+     "\t\tif (l < $d) {",
+     "\t\t\th = h_x.x-l*$p/$d;",
+     "\t\t\tif (h > best_h) {",
+     "\t\t\t\tbest_h = h;",
+     "\t\t\t}",
+     "\t\t}",
+     "\t}",
+     "\treturn best_h;",
+     "}",
+     ""
+    ],
+    "outputs": [
+     {
+      "expr": "$(name)_distance_v($uv, _seed_variation_, _controlled_variation_)",
+      "type": "f"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 9,
+      "first": 6,
+      "label": "",
+      "last": 12,
+      "name": "s",
+      "type": "size"
+     },
+     {
+      "default": 0.5,
+      "label": "",
+      "max": 1,
+      "min": 0,
+      "name": "d",
+      "step": 0.01,
+      "type": "float"
+     },
+     {
+      "default": 1,
+      "label": "",
+      "max": 1,
+      "min": 0,
+      "name": "p",
+      "step": 0.01,
+      "type": "float"
+     }
+    ]
+   }
+  },
+  {
+   "id": "buffer_3",
+   "parameters": {
+    "size": 11
+   },
+   "seed": 0.0,
+   "type": "buffer",
+   "version": 1
+  },
+  {
+   "id": "buffer_4",
+   "parameters": {
+    "lod": 0,
+    "size": 11
+   },
+   "seed": 65434,
+   "type": "buffer"
+  },
+  {
+   "id": "dilate_pass_2",
+   "parameters": {
+    "d": 0.2,
+    "p": 1,
+    "s": 11
+   },
+   "seed": 71939,
+   "seed_locked": true,
+   "shader": {
+    "code": [
+     "vec2 $(name_uv)_dist = $(name)_distance_h($uv, _seed_variation_, _controlled_variation_);",
+     ""
+    ],
+    "functions": [
+     "pack_2x32_to_4x16"
+    ],
+    "inputs": [
+     {
+      "default": "0.0",
+      "function": true,
+      "label": "",
+      "name": "in",
+      "type": "f"
+     }
+    ],
+    "instance": [
+     "vec2 $(name)_distance_h(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tvec2 e = vec2(0.0, 1.0/$s);",
+     "\tint steps = int($s*$d/max(1.0, $p));",
+     "\tfloat rv = 0.0;",
+     "\tvec2 source_uv;",
+     "\tfloat source_h;",
+     "\tfloat best_source_h = 0.0;",
+     "\tfloat h;",
+     "\tfloat best_h = 0.0;",
+     "\tfloat best_y = 0.0;",
+     "\tfor (int i = 0; i < steps; ++i) {",
+     "\t\tsource_uv = uv+float(i)*e;",
+     "\t\tsource_h = $in(source_uv);",
+     "\t\th = source_h-float(i)*e.y/$d;",
+     "\t\tif (h > best_h) {",
+     "\t\t\tbest_h = h;",
+     "\t\t\tbest_source_h = source_h;",
+     "\t\t\tbest_y = source_uv.y;",
+     "\t\t}",
+     "\t\tsource_uv = uv-float(i)*e;",
+     "\t\tsource_h = $in(source_uv);",
+     "\t\th = source_h-float(i)*e.y/$d;",
+     "\t\tif (h > best_h) {",
+     "\t\t\tbest_h = h;",
+     "\t\t\tbest_source_h = source_h;",
+     "\t\t\tbest_y = source_uv.y;",
+     "\t\t}",
+     "\t}",
+     "\treturn vec2(best_source_h, best_y);",
+     "}",
+     ""
+    ],
+    "outputs": [
+     {
+      "expr": "pack_2x32_to_4x16($(name_uv)_dist)",
+      "type": "rgba"
+     },
+     {
+      "expr": "$(name_uv)_dist.x-abs($(name_uv)_dist.y-$uv.y)/$d",
+      "type": "f"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 9,
+      "first": 6,
+      "label": "",
+      "last": 12,
+      "name": "s",
+      "type": "size"
+     },
+     {
+      "default": 0.5,
+      "label": "",
+      "max": 1,
+      "min": 0,
+      "name": "d",
+      "step": 0.01,
+      "type": "float"
+     },
+     {
+      "default": 1,
+      "label": "",
+      "max": 1,
+      "min": 0,
+      "name": "p",
+      "step": 0.01,
+      "type": "float"
+     }
+    ]
+   }
+  },
+  {
+   "id": "dilate_pass_3",
+   "parameters": {
+    "d": 0.2,
+    "p": 1,
+    "s": 11
+   },
+   "seed": 50297,
+   "shader": {
+    "code": [],
+    "functions": [
+     "pack_4x16_to_2x32"
+    ],
+    "inputs": [
+     {
+      "default": "vec3(0.0)",
+      "function": true,
+      "label": "",
+      "name": "in",
+      "type": "rgba"
+     }
+    ],
+    "instance": [
+     "float $(name)_distance_v(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tint steps = int($s*$d/max(1.0, $p));",
+     "\tfloat best_h = 0.0;",
+     "\tfloat l;",
+     "\tfloat h;",
+     "\tvec2 in_uv = uv;",
+     "\tfor (int i = -steps; i <= steps; ++i) {",
+     "\t\tin_uv.x = uv.x+float(i)/$s;",
+     "\t\tvec2 h_x = pack_4x16_to_2x32($in(in_uv));",
+     "\t\tl = length(vec2(h_x.y-uv.y, float(i)/$s));",
+     "\t\tif (l < $d) {",
+     "\t\t\th = h_x.x-l*$p/$d;",
+     "\t\t\tif (h > best_h) {",
+     "\t\t\t\tbest_h = h;",
+     "\t\t\t}",
+     "\t\t}",
+     "\t}",
+     "\treturn best_h;",
+     "}",
+     ""
+    ],
+    "outputs": [
+     {
+      "expr": "$(name)_distance_v($uv, _seed_variation_, _controlled_variation_)",
+      "type": "f"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 9,
+      "first": 6,
+      "label": "",
+      "last": 12,
+      "name": "s",
+      "type": "size"
+     },
+     {
+      "default": 0.5,
+      "label": "",
+      "max": 1,
+      "min": 0,
+      "name": "d",
+      "step": 0.01,
+      "type": "float"
+     },
+     {
+      "default": 0.5,
+      "label": "",
+      "max": 1,
+      "min": 0,
+      "name": "p",
+      "step": 0.01,
+      "type": "float"
+     }
+    ]
+   }
+  },
+  {
+   "id": "math",
+   "parameters": {
+    "clamp": false,
+    "default_in1": 0,
+    "default_in2": 0,
+    "op": 14
+   },
+   "seed": 0.0,
+   "type": "math"
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the dilated image",
+   "group_size": 0,
+   "label": "Output",
+   "name": "out",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 11,
+   "description": "The resolution of the input images",
+   "first": 4,
+   "label": "",
+   "last": 13,
+   "links": [
+    {
+     "node": "buffer",
+     "param": "size"
+    },
+    {
+     "node": "buffer_2",
+     "param": "size"
+    },
+    {
+     "node": "dilate_pass_1",
+     "param": "s"
+    },
+    {
+     "node": "dilate_pass_4",
+     "param": "s"
+    },
+    {
+     "node": "buffer_3",
+     "param": "size"
+    },
+    {
+     "node": "dilate_pass_2",
+     "param": "s"
+    },
+    {
+     "node": "dilate_pass_3",
+     "param": "s"
+    },
+    {
+     "node": "buffer_4",
+     "param": "size"
+    }
+   ],
+   "name": "size",
+   "short_description": "Size",
+   "type": "size"
+  },
+  {
+   "default": 0.2,
+   "description": "The maximum length of the slope effect",
+   "label": "",
+   "links": [
+    {
+     "node": "dilate_pass_1",
+     "param": "d"
+    },
+    {
+     "node": "dilate_pass_4",
+     "param": "d"
+    },
+    {
+     "node": "dilate_pass_2",
+     "param": "d"
+    },
+    {
+     "node": "dilate_pass_3",
+     "param": "d"
+    }
+   ],
+   "max": 1,
+   "min": 0,
+   "name": "length",
+   "short_description": "Length",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The slope of the effect",
+   "label": "",
+   "links": [
+    {
+     "node": "dilate_pass_4",
+     "param": "p"
+    },
+    {
+     "node": "dilate_pass_3",
+     "param": "p"
+    },
+    {
+     "node": "dilate_pass_1",
+     "param": "p"
+    },
+    {
+     "node": "dilate_pass_2",
+     "param": "p"
+    }
+   ],
+   "max": 1,
+   "min": 0,
+   "name": "slope",
+   "short_description": "Slope",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Dilate",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/slope.mmg"
+ },
+ "type_version": 1
+}

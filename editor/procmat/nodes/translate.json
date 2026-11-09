@@ -1,0 +1,59 @@
+{
+ "code": [],
+ "description": "Translates its input",
+ "format": 1,
+ "functions": [],
+ "id": "translate",
+ "inputs": [
+  {
+   "default": "vec4($uv, 0.0, 1.0)",
+   "description": "An input image",
+   "label": "",
+   "name": "i#",
+   "short_description": "Input#",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Translate",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a translated image",
+   "expr": "$i#($uv-vec2($translate_x, $translate_y))",
+   "label": "Output#",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The translation along the X axis",
+   "label": "Translate X",
+   "max": 1,
+   "min": -1,
+   "name": "translate_x",
+   "short_description": "Translate.x",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The translation along the Y axis",
+   "label": "Translate Y",
+   "max": 1,
+   "min": -1,
+   "name": "translate_y",
+   "short_description": "Translate.y",
+   "step": 0.005,
+   "type": "float"
+  }
+ ],
+ "short_description": "Translate",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/translate.mmg"
+ },
+ "type_version": 1
+}

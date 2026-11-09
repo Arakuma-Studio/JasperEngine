@@ -31,6 +31,13 @@ precision highp int;
 //      (UBER_GRAIN: the classic hash, or with UBER_GRAIN_LENS / UBER_GRAIN_FILMIC the film
 //      simulation's), dither (UBER_DITHER, last)
 //
+// Palette Quantize (UBER_PALETTE, S43) sits between 6 and 7: the graded, edged and vignetted
+// colour onto the palette, and the display emulations on top of it the way a real screen would
+// show it. The table (engine/core/pixelart/PaletteQuantize.h) gives each display colour two
+// palette colours and a ratio; the Bayer threshold of the art pixel (the source texel, or the
+// pixelate block) picks one, so the pattern never smears across an upscaled pixel. The anti-banding
+// UBER_DITHER is never compiled with it (it would push pixels off the palette).
+//
 // Colour maths is mediump (fp16 on GLES where the GPU has it); UVs and texel sizes stay highp
 // (the parameter block too: GL uploads it as one vec4 array).
 // The source is always sampled bilinear (the corner taps and the FXAA search rely on it): the
@@ -73,6 +80,11 @@ uniform sampler u_sceneColor_smp;
     uniform texture2D u_blurTexture;
     uniform sampler u_blur_smp;
 #endif
+#ifdef UBER_PALETTE
+    uniform texture2D u_paletteQuantize;
+    uniform texture2D u_paletteQuantizeRow;
+    uniform sampler u_paletteQuantize_smp;
+#endif
 #ifdef UBER_HALATION
     uniform texture2D u_halationTexture;
     uniform sampler u_halation_smp;
@@ -103,6 +115,7 @@ uniform u_fs_uberParams {
     vec4 damage;                    // x strength, y hair, z scratch, w dust candidates
     vec4 gateWeave;           // xy offset (output px), z cos, w sin of the rotation
     vec4 gateMask;            // xy half size, z corner radius, w feather (output px); x 0: none
+    vec4 palette;             // x cells per axis (32, 64), y dither size (0 none), w 1: the table is baked
 } uber;
 
 mediump vec3 sceneTap(highp vec2 uv){
@@ -161,6 +174,25 @@ mediump vec3 sceneTap(highp vec2 uv){
 #endif
 #if defined(UBER_FILM_DAMAGE) || defined(UBER_GRAIN_LENS) || defined(UBER_GRAIN_FILMIC)
     #include "includes/post_film.glsl"
+#endif
+#ifdef UBER_PALETTE
+    #include "includes/bayer.glsl"
+
+    // the display colour onto the palette: the cell's (a, b, ratio), b where the dither cell's
+    // threshold is below the ratio
+    mediump vec3 paletteQuantize(mediump vec3 color, ivec2 ditherCell){
+        ivec3 c = ivec3(clamp(color, 0.0, 1.0) * 255.0 + 0.5);
+        int cellsPerAxis = int(uber.palette.x + 0.5);
+        ivec3 cell = c / (256 / cellsPerAxis);
+        ivec4 entry = ivec4(texelFetch(sampler2D(u_paletteQuantize, u_paletteQuantize_smp),
+                                       ivec2(cell.r + cellsPerAxis * (cell.b % 8), cell.g + cellsPerAxis * (cell.b / 8)), 0) * 255.0 + 0.5);
+        int index = entry.r;
+        int ditherSize = int(uber.palette.y + 0.5);
+        // the ratio is in steps of the matrix's cells (4, 16, 64)
+        if (entry.b > 0 && ditherSize > 0 && bayerThreshold(ditherSize, ditherCell) < float(entry.b) / float(ditherSize * ditherSize))
+            index = entry.g;
+        return texelFetch(sampler2D(u_paletteQuantizeRow, u_paletteQuantize_smp), ivec2(index, 0), 0).rgb;
+    }
 #endif
 
 // interleaved gradient noise in 0..1 (stable per pixel)
@@ -294,6 +326,18 @@ void main(){
         color *= filmGateMask(imagePixel) * gate;
     #endif
 
+    #ifdef UBER_PALETTE
+        if (uber.palette.w > 0.5){
+            // one art pixel: the pixelate block, else the source texel
+            #ifdef UBER_PIXELATE
+                ivec2 ditherCell = ivec2(floor(screen / block));
+            #else
+                ivec2 ditherCell = ivec2(floor(uv * uber.sourceTexel.zw));
+            #endif
+            color = paletteQuantize(color, max(ditherCell, ivec2(0)));
+        }
+    #endif
+
     #ifdef UBER_VHS
         color = vhsNoise(color, vhs, v_texcoord);
     #endif
@@ -326,7 +370,7 @@ void main(){
         color += (noise - 0.5) * uber.effects.z * 0.5 * mix(1.0, 1.0 - luma, uber.effects.w);
     #endif
 
-    #ifdef UBER_DITHER
+    #if defined(UBER_DITHER) && !defined(UBER_PALETTE)
         color += (uberNoise(gl_FragCoord.xy) - 0.5) * uber.edgeColorDither.a;
     #endif
 

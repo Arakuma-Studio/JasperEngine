@@ -1,0 +1,71 @@
+{
+ "code": [
+  "vec3 $(name_uv)_b = $b($uv);",
+  "vec3 $(name_uv)_l;",
+  "float $(name_uv)_a;",
+  "#for",
+  "$(name_uv)_l = $l#($uv);",
+  "$(name_uv)_a = $amount# * $a#($uv);",
+  "$(name_uv)_b = normal_blend($uv, $(name_uv)_l, $(name_uv)_b, $(name_uv)_a);",
+  "#end"
+ ],
+ "description": "Blends normal maps using an optional mask",
+ "format": 1,
+ "functions": [
+  "normal_blend"
+ ],
+ "id": "normal_blend2",
+ "inputs": [
+  {
+   "default": "vec3(0.5, 0.5, 0.0)",
+   "description": "The foreground input",
+   "label": "Background",
+   "name": "b",
+   "short_description": "Foreground",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.5, 0.5, 0.0)",
+   "description": "The background input",
+   "label": "Layer#",
+   "name": "l#",
+   "short_description": "Background",
+   "type": "rgb"
+  },
+  {
+   "default": "1.0",
+   "description": "The optional opacity mask",
+   "label": "Opacity#",
+   "name": "a#",
+   "short_description": "Mask",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Normal Blend",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "$(name_uv)_b",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.5,
+   "label": "3:",
+   "max": 1,
+   "min": 0,
+   "name": "amount#",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Normal Blend",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/normal_blend2.mmg"
+ },
+ "type_version": 1
+}

@@ -245,6 +245,9 @@ namespace luabridge
     template<> struct Stack<MonochromeMode> : EnumWrapper<MonochromeMode>{};
     template<> struct Stack<FilmGrainType> : EnumWrapper<FilmGrainType>{};
     template<> struct Stack<FilmGateMask> : EnumWrapper<FilmGateMask>{};
+    template<> struct Stack<PaletteDither> : EnumWrapper<PaletteDither>{};
+    template<> struct Stack<PaletteDistance> : EnumWrapper<PaletteDistance>{};
+    template<> struct Stack<PalettePrecision> : EnumWrapper<PalettePrecision>{};
     template<> struct Stack<LutInputEncoding> : EnumWrapper<LutInputEncoding>{};
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};

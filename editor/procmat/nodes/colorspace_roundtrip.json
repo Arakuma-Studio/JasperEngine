@@ -1,0 +1,353 @@
+{
+ "connections": [
+  {
+   "from": "convert_colorspace",
+   "from_port": 0,
+   "to": "decompose",
+   "to_port": 0
+  },
+  {
+   "from": "combine",
+   "from_port": 0,
+   "to": "convert_colorspace_2",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "convert_colorspace",
+   "to_port": 0
+  },
+  {
+   "from": "convert_colorspace_2",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "decompose",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 1
+  },
+  {
+   "from": "decompose",
+   "from_port": 1,
+   "to": "gen_outputs",
+   "to_port": 2
+  },
+  {
+   "from": "decompose",
+   "from_port": 2,
+   "to": "gen_outputs",
+   "to_port": 3
+  },
+  {
+   "from": "decompose",
+   "from_port": 3,
+   "to": "gen_outputs",
+   "to_port": 4
+  },
+  {
+   "from": "decompose",
+   "from_port": 0,
+   "to": "shader_1",
+   "to_port": 0
+  },
+  {
+   "from": "shader_1",
+   "from_port": 0,
+   "to": "combine",
+   "to_port": 0
+  },
+  {
+   "from": "decompose",
+   "from_port": 1,
+   "to": "shader_1",
+   "to_port": 1
+  },
+  {
+   "from": "decompose",
+   "from_port": 2,
+   "to": "shader_1",
+   "to_port": 2
+  },
+  {
+   "from": "decompose",
+   "from_port": 3,
+   "to": "shader_1",
+   "to_port": 3
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 1,
+   "to": "shader_1",
+   "to_port": 4
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 2,
+   "to": "shader_1",
+   "to_port": 5
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 3,
+   "to": "shader_1",
+   "to_port": 6
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 4,
+   "to": "shader_1",
+   "to_port": 7
+  },
+  {
+   "from": "shader_1",
+   "from_port": 1,
+   "to": "combine",
+   "to_port": 1
+  },
+  {
+   "from": "shader_1",
+   "from_port": 2,
+   "to": "combine",
+   "to_port": 2
+  },
+  {
+   "from": "shader_1",
+   "from_port": 3,
+   "to": "combine",
+   "to_port": 3
+  }
+ ],
+ "description": "Converts input to another colorspace, applies a \"lambda subgraph\" to individual channels in that colorspace, and converts it back to RGB.",
+ "format": 1,
+ "id": "colorspace_roundtrip",
+ "inputs": [
+  {
+   "description": "RGBA input",
+   "group_size": 0,
+   "label": "Input",
+   "name": "Input",
+   "type": "rgba"
+  },
+  {
+   "description": "First channel of the working colorspace",
+   "group_size": 0,
+   "label": "X",
+   "name": "X",
+   "type": "f"
+  },
+  {
+   "description": "Second channel of the working colorspace",
+   "group_size": 0,
+   "label": "Y",
+   "name": "Y",
+   "type": "f"
+  },
+  {
+   "description": "Third channel of the working colorspace",
+   "group_size": 0,
+   "label": "Z",
+   "name": "Z",
+   "type": "f"
+  },
+  {
+   "description": "Alpha channel, unmodified by the colorspace conversion",
+   "group_size": 0,
+   "label": "Alpha",
+   "name": "Alpha",
+   "type": "f"
+  }
+ ],
+ "kind": "graph",
+ "name": "Colorspace Roundtrip",
+ "nodes": [
+  {
+   "id": "convert_colorspace_2",
+   "parameters": {
+    "colorspace": 0,
+    "direction": 1
+   },
+   "seed": 0.0,
+   "type": "convert_colorspace"
+  },
+  {
+   "id": "convert_colorspace",
+   "parameters": {
+    "colorspace": 0,
+    "direction": 0
+   },
+   "seed": 0.0,
+   "type": "convert_colorspace"
+  },
+  {
+   "id": "combine",
+   "parameters": {},
+   "seed": 0.0,
+   "type": "combine"
+  },
+  {
+   "id": "decompose",
+   "parameters": {},
+   "seed": 0.0,
+   "type": "decompose"
+  },
+  {
+   "id": "shader_1",
+   "parameters": {},
+   "seed": 0.0,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "1.0",
+      "label": "",
+      "name": "in1_default",
+      "type": "f"
+     },
+     {
+      "default": "1.0",
+      "label": "",
+      "name": "in2_default",
+      "type": "f"
+     },
+     {
+      "default": "1.0",
+      "label": "",
+      "name": "in3_default",
+      "type": "f"
+     },
+     {
+      "default": "1.0",
+      "label": "",
+      "name": "in4_default",
+      "type": "f"
+     },
+     {
+      "default": "$in1_default($uv)",
+      "label": "",
+      "name": "in1_optional",
+      "type": "f"
+     },
+     {
+      "default": "$in2_default($uv)",
+      "label": "",
+      "name": "in2_optional",
+      "type": "f"
+     },
+     {
+      "default": "$in3_default($uv)",
+      "label": "",
+      "name": "in3_optional",
+      "type": "f"
+     },
+     {
+      "default": "$in4_default($uv)",
+      "label": "",
+      "name": "in4_optional",
+      "type": "f"
+     }
+    ],
+    "instance": [],
+    "outputs": [
+     {
+      "expr": "$in1_optional($uv)",
+      "type": "f"
+     },
+     {
+      "expr": "$in2_optional($uv)",
+      "type": "f"
+     },
+     {
+      "expr": "$in3_optional($uv)",
+      "type": "f"
+     },
+     {
+      "expr": "$in4_optional($uv)",
+      "type": "f"
+     }
+    ],
+    "parameters": []
+   }
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "RGBA output",
+   "group_size": 0,
+   "label": "Output",
+   "name": "Output",
+   "type": "rgba"
+  },
+  {
+   "description": "First channel of the working colorspace",
+   "group_size": 0,
+   "label": "X",
+   "name": "X",
+   "type": "f"
+  },
+  {
+   "description": "Second channel of the working colorspace",
+   "group_size": 0,
+   "label": "Y",
+   "name": "Y",
+   "type": "f"
+  },
+  {
+   "description": "Third channel of the working colorspace",
+   "group_size": 0,
+   "label": "Z",
+   "name": "Z",
+   "type": "f"
+  },
+  {
+   "description": "Alpha channel, unmodified by the colorspace conversion",
+   "group_size": 0,
+   "label": "Alpha",
+   "name": "Alpha",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "label": "RGB <->",
+   "links": [
+    {
+     "node": "convert_colorspace",
+     "param": "colorspace"
+    },
+    {
+     "node": "convert_colorspace_2",
+     "param": "colorspace"
+    }
+   ],
+   "name": "param0",
+   "type": "enum",
+   "values": [
+    {
+     "name": "RGB (no-op)",
+     "value": "rgb"
+    },
+    {
+     "name": "HSV",
+     "value": "hsv"
+    },
+    {
+     "name": "YUV",
+     "value": "yuv"
+    }
+   ]
+  }
+ ],
+ "short_description": "Colorspace Roundtrip",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/colorspace_roundtrip.mmg"
+ },
+ "type_version": 1
+}

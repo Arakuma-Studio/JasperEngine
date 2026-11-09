@@ -23,6 +23,7 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/VertexAnimation.h"
 #include "animation/AnimatorAssetIO.h"
+#include "graph/Graph.h"
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
@@ -253,7 +254,8 @@ namespace {
 
     bool isClipFile(const fs::path& path) {
         return editor::Util::isAnimationClipFile(path.string()) || editor::Util::isVertexAnimationFile(path.string()) ||
-               editor::Util::isAnimatorAssetFile(path.string()) || isSpriteAtlasFile(path);
+               editor::Util::isAnimatorAssetFile(path.string()) || editor::Util::isProceduralMaterialFile(path.string()) ||
+               isSpriteAtlasFile(path);
     }
 
     // the Animator asset text parses (its writer is what the identity rewrite uses)
@@ -308,6 +310,11 @@ namespace {
         if (editor::Util::isAnimatorAssetFile(path.string())) {
             return animatorAssetParses(text);
         }
+        if (editor::Util::isProceduralMaterialFile(path.string())) {
+            graph::LoadReport report;
+            graph::load(text, report);
+            return report.ok;
+        }
         return anim::parseClip(text).ok();
     }
 
@@ -353,6 +360,27 @@ namespace {
     // are no former GUIDs to write or drop; else the asset written again canonically. False for
     // a text that is not one (a Unity YAML .anim, broken JSON: its error must keep its line).
     bool withJsonAssetIdentity(const fs::path& path, std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
+        // a graph file has no "version" member to insert after: written canonically, the identity
+        // among its unknown keys, which the graph model keeps
+        if (editor::Util::isProceduralMaterialFile(path.string())) {
+            graph::LoadReport report;
+            graph::Graph file = graph::load(text, report);
+            if (!report.ok) {
+                return false;
+            }
+            file.passthrough["guid"] = guid.str();
+            file.passthrough.erase("formerGuids");
+            if (!formerGuids.empty()) {
+                std::vector<Guid> sorted = formerGuids;
+                std::sort(sorted.begin(), sorted.end());
+                sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+                graph::Json list = graph::Json::array();
+                for (const Guid& former : sorted) list.push_back(former.str());
+                file.passthrough["formerGuids"] = std::move(list);
+            }
+            text = graph::save(file);
+            return true;
+        }
         // Sprite Atlases (S45): their own reader and canonical writer
         if (isSpriteAtlasFile(path)) {
             editor::sprite::SpriteAtlasParseResult parsed = editor::sprite::parseSpriteAtlas(text);
@@ -1285,7 +1313,9 @@ bool editor::AssetDatabase::refreshSubAssets(Entry& entry, const Entry* previous
         return had;
     }
     ModelContents contents;
-    if (entry.type == AssetType::AsepriteSprite) {
+    if (entry.type == AssetType::Palette) {
+        scanPaletteFile(projectPath / entry.path, contents);
+    } else if (entry.type == AssetType::AsepriteSprite) {
         // its named outputs (tag clips, slices, tilesets): the index-keyed ones (frames, pages,
         // the palette) are always derived, never kept (S44 §6.5)
         pixelart::aseprite::scanAsepriteSubAssets(projectPath / entry.path, contents.subAssets);

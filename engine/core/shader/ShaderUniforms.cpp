@@ -135,6 +135,8 @@ bool CustomUniformBlock::resolve(ShaderData& shaderData, const std::string& bloc
         uniform.name = ShaderData::getUniformShortName(uniform.name);
         if (uniform.name == "time"){
             timeMember = (int)members.size();
+        }else if (uniform.name == "gameTime"){
+            gameTimeMember = (int)members.size();
         }else if (uniform.name == "resolution"){
             resolutionMember = (int)members.size();
         }else if (uniform.name == "sceneTime"){
@@ -161,6 +163,7 @@ void CustomUniformBlock::clear(){
     members.clear();
     data.clear();
     timeMember = -1;
+    gameTimeMember = -1;
     resolutionMember = -1;
     sceneTimeMember = -1;
     waterInteractionOffset = -1;

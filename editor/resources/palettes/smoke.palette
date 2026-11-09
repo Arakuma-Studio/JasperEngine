@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Smoke",
+  "author": "pixelfx",
+  "description": "pixelfx's 'smoke' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "smoke"},
+  "columns": 7,
+  "colors": ["#0e0c12", "#1d1a22", "#2e2a35", "#433e4b", "#5c5664", "#7b7484", "#a39cab"],
+  "ramps": [
+    {"name": "smoke", "colors": [0, 1, 2, 3, 4, 5, 6]}
+  ]
+}

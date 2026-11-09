@@ -76,8 +76,8 @@ std::vector<float> gradientops::alphaTimes(const Gradient& gradient){
     return times;
 }
 
-int gradientops::addColorKey(Gradient& gradient, float time){
-    if (gradient.colorKeys.size() >= Gradient::kMaxKeys) return -1;
+int gradientops::addColorKey(Gradient& gradient, float time, size_t maxKeys){
+    if (gradient.colorKeys.size() >= maxKeys) return -1;
     const float t = clamp01(time);
     // the colour as it is blended there (the keys' own encoding), so the look stays
     const GradientColorKey key{t, gradient.evaluateEncoded(t)};
@@ -86,8 +86,8 @@ int gradientops::addColorKey(Gradient& gradient, float time){
     return (int)at;
 }
 
-int gradientops::addAlphaKey(Gradient& gradient, float time){
-    if (gradient.alphaKeys.size() >= Gradient::kMaxKeys) return -1;
+int gradientops::addAlphaKey(Gradient& gradient, float time, size_t maxKeys){
+    if (gradient.alphaKeys.size() >= maxKeys) return -1;
     const float t = clamp01(time);
     const GradientAlphaKey key{t, gradient.evaluateAlpha(t)};
     const size_t at = insertionIndex(gradient.alphaKeys, t);

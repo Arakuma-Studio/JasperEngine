@@ -135,6 +135,7 @@ std::filesystem::path AppSettings::configFilePath;
 YAML::Node AppSettings::settingsData;
 YAML::Node AppSettings::loadedSettings;
 bool AppSettings::autosaveEnabled = true;
+bool AppSettings::networkOffline = false;
 int AppSettings::autosaveIntervalSeconds = AppSettings::defaultAutosaveInterval;
 std::vector<hub::RecentProject> AppSettings::recentProjects;
 std::filesystem::path AppSettings::lastProjectPath;
@@ -441,6 +442,11 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             }
         }
 
+        // Network: the editor's own requests (Lospec)
+        if (settingsData["network"] && settingsData["network"]["offline"]) {
+            networkOffline = settingsData["network"]["offline"].as<bool>();
+        }
+
         // Load editor viewport settings
         if (settingsData["editor"]) {
             auto editorNode = settingsData["editor"];
@@ -489,7 +495,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["textureSynthesis"]) panelVisibility.textureSynthesis = panelsNode["textureSynthesis"].as<bool>();
                 if (panelsNode["audioMixer"]) panelVisibility.audioMixer = panelsNode["audioMixer"].as<bool>();
+                if (panelsNode["particleEffect"]) panelVisibility.particleEffect = panelsNode["particleEffect"].as<bool>();
                 if (panelsNode["soundBrowser"]) panelVisibility.soundBrowser = panelsNode["soundBrowser"].as<bool>();
+                if (panelsNode["graphEditor"]) panelVisibility.graphEditor = panelsNode["graphEditor"].as<bool>();
                 if (panelsNode["vertexAnimationBaker"]) panelVisibility.vertexAnimationBaker = panelsNode["vertexAnimationBaker"].as<bool>();
                 if (panelsNode["physicsPlacement"]) panelVisibility.physicsPlacement = panelsNode["physicsPlacement"].as<bool>();
                 if (panelsNode["spriteNormals"]) panelVisibility.spriteNormals = panelsNode["spriteNormals"].as<bool>();
@@ -784,6 +792,10 @@ bool AppSettings::saveSettings() {
         codeNode["font_size"] = codeEditorFontSize;
         settingsData["code_editor"] = codeNode;
 
+        YAML::Node networkNode;
+        networkNode["offline"] = networkOffline;
+        settingsData["network"] = networkNode;
+
         // Editor viewport settings
         YAML::Node editorNode;
         editorNode["multi_viewport"] = multiViewportEnabled;
@@ -811,7 +823,9 @@ bool AppSettings::saveSettings() {
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["textureSynthesis"] = panelVisibility.textureSynthesis;
         panelsNode["audioMixer"] = panelVisibility.audioMixer;
+        panelsNode["particleEffect"] = panelVisibility.particleEffect;
         panelsNode["soundBrowser"] = panelVisibility.soundBrowser;
+        panelsNode["graphEditor"] = panelVisibility.graphEditor;
         panelsNode["vertexAnimationBaker"] = panelVisibility.vertexAnimationBaker;
         panelsNode["physicsPlacement"] = panelVisibility.physicsPlacement;
         panelsNode["spriteNormals"] = panelVisibility.spriteNormals;
@@ -1765,6 +1779,14 @@ int AppSettings::getAutosaveIntervalSeconds() {
 
 void AppSettings::setAutosaveIntervalSeconds(int seconds) {
     autosaveIntervalSeconds = std::clamp(seconds, minAutosaveInterval, maxAutosaveInterval);
+}
+
+bool AppSettings::isNetworkOffline() {
+    return networkOffline;
+}
+
+void AppSettings::setNetworkOffline(bool offline) {
+    networkOffline = offline;
 }
 
 } // namespace jasperengine::editor

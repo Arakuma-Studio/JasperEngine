@@ -1,0 +1,107 @@
+{
+ "code": [],
+ "description": "Japanese (Hiragana/Katakana) Glyphs",
+ "format": 1,
+ "functions": [
+  "c_h",
+  "c_k"
+ ],
+ "id": "japanese_glyphs2",
+ "inputs": [
+  {
+   "default": "1.0",
+   "description": "Map that affects the bevel parameter",
+   "label": "6:",
+   "name": "bevel_map",
+   "short_description": "Bevel Map",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Japanese Glyphs",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "1.0 - c_$sys($uv-0.5, int($char), $scale, int($gs), $rad*$bevel*$bevel_map($uv), $rad)",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.0,
+   "label": "System",
+   "name": "sys",
+   "short_description": "Writing System",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Hiragana",
+     "value": "h"
+    },
+    {
+     "name": "Katakana",
+     "value": "k"
+    }
+   ]
+  },
+  {
+   "default": 1.0,
+   "label": "Character",
+   "max": 46.0,
+   "min": 1.0,
+   "name": "char",
+   "short_description": "Character",
+   "step": 1.0,
+   "type": "float"
+  },
+  {
+   "default": 1.0,
+   "label": "Scale",
+   "max": 1.0,
+   "min": 0.0,
+   "name": "scale",
+   "short_description": "Glyph Scale",
+   "step": 0.001,
+   "type": "float"
+  },
+  {
+   "default": 0.025,
+   "label": "Radius",
+   "max": 1.0,
+   "min": 0.0,
+   "name": "rad",
+   "short_description": "Line thickness",
+   "step": 0.001,
+   "type": "float"
+  },
+  {
+   "default": 1.0,
+   "description": "Number of column/rows of the grid.",
+   "label": "Grid Size",
+   "max": 32.0,
+   "min": 1.0,
+   "name": "gs",
+   "short_description": "Grid Size",
+   "step": 1.0,
+   "type": "float"
+  },
+  {
+   "default": 0.01,
+   "label": "Bevel",
+   "max": 1.0,
+   "min": 0.0,
+   "name": "bevel",
+   "short_description": "Width of the edge of the glyphs",
+   "step": 0.001,
+   "type": "float"
+  }
+ ],
+ "short_description": "Japanese Glyphs",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/japanese_glyphs2.mmg"
+ },
+ "type_version": 1
+}

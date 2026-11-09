@@ -60,6 +60,10 @@ namespace jasperengine::editor::ui {
         // runs in the next draw: an edit is that frame's gesture, a paste lands at its pointer
         void request(Command command) { requested.push_back(command); }
         size_t clipboardSize() const { return clipboard.size(); }
+        // a time the graph marks (the Particle Effect window's clock, S91 R23): a line, and the
+        // menus' Paste at Playhead; it lasts until cleared
+        void setPlayhead(bool shown, float time = 0.0f) { hasPlayhead = shown; playhead = time; }
+        bool getPlayhead(float& time) const { time = playhead; return hasPlayhead; }
         const curveops::View& getView() const { return view; }
 
     private:
@@ -85,6 +89,9 @@ namespace jasperengine::editor::ui {
         std::vector<Command> requested;
         std::vector<CurveKey> clipboard;
         std::vector<curveops::KeyRef> menuSelection;
+        bool hasPlayhead = false;
+        float playhead = 0.0f;
+        void pasteAt(float time, std::vector<CurveBinding>& curves, CurveEditorResult& result);
 
         void beginGesture(const std::vector<CurveBinding>& curves, CurveEditorResult& result);
         void restoreGesture(std::vector<CurveBinding>& curves);

@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Stone",
+  "author": "pixelfx",
+  "description": "pixelfx's 'stone' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "stone"},
+  "columns": 8,
+  "colors": ["#0e0e12", "#1c1c24", "#2c2c38", "#42424f", "#5c5c6b", "#7d7d8c", "#a4a4b2", "#d0d0da"],
+  "ramps": [
+    {"name": "stone", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}

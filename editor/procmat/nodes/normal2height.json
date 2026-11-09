@@ -1,0 +1,331 @@
+{
+ "connections": [
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "normal2height_base",
+   "to_port": 1
+  },
+  {
+   "from": "buffer",
+   "from_port": 0,
+   "to": "normal2height_base",
+   "to_port": 0
+  },
+  {
+   "from": "buffer",
+   "from_port": 0,
+   "to": "edge_detect_1",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "edge_detect_1",
+   "to_port": 1
+  },
+  {
+   "from": "edge_detect_1",
+   "from_port": 0,
+   "to": "normal2height_base",
+   "to_port": 2
+  },
+  {
+   "from": "normal2height_base",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "normal2height_base",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "normal2height_base",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "normal2height_simple_2",
+   "to_port": 0
+  },
+  {
+   "from": "normal2height_simple_2",
+   "from_port": 0,
+   "to": "buffer",
+   "to_port": 0
+  }
+ ],
+ "description": "Generates a height map from a normal map in Material Maker's internal format",
+ "format": 1,
+ "id": "normal2height",
+ "inputs": [
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "NormalMap",
+   "name": "normal",
+   "type": "rgb"
+  }
+ ],
+ "kind": "graph",
+ "name": "Normal to Height",
+ "nodes": [
+  {
+   "id": "buffer",
+   "parameters": {
+    "filter": false,
+    "mipmap": false,
+    "size": 10
+   },
+   "seed": 0,
+   "type": "buffer",
+   "version": 2
+  },
+  {
+   "id": "edge_detect_1",
+   "parameters": {
+    "amount": 25,
+    "size": 10
+   },
+   "seed": -11547,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "0.0",
+      "function": true,
+      "label": "",
+      "name": "in",
+      "type": "f"
+     },
+     {
+      "default": "vec3(0.0)",
+      "label": "",
+      "name": "n",
+      "type": "rgb"
+     }
+    ],
+    "instance": [
+     "vec3 nm_compare_$name(vec2 uv, float amount, float size, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tvec3 e = vec3(1.0/size, -1.0/size, 0);",
+     "\tvec2 rv;",
+     "\trv = vec2(1.0, -1.0)*$in(uv+e.xy);",
+     "\trv += vec2(-1.0, 1.0)*$in(uv-e.xy);",
+     "\trv += vec2(1.0, 1.0)*$in(uv+e.xx);",
+     "\trv += vec2(-1.0, -1.0)*$in(uv-e.xx);",
+     "\trv += vec2(2.0, 0.0)*$in(uv+e.xz);",
+     "\trv += vec2(-2.0, 0.0)*$in(uv-e.xz);",
+     "\trv += vec2(0.0, 2.0)*$in(uv+e.zx);",
+     "\trv += vec2(0.0, -2.0)*$in(uv-e.zx);",
+     "\trv *= size*40.0/amount/128.0;",
+     "\treturn vec3(0.5)+0.5*normalize(vec3(rv, -1.0));",
+     "}",
+     ""
+    ],
+    "outputs": [
+     {
+      "expr": "length(nm_compare_$name($uv, $amount, $size, _seed_variation_, _controlled_variation_)-$n($uv))",
+      "type": "f"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 9,
+      "first": 4,
+      "label": "",
+      "last": 12,
+      "name": "size",
+      "type": "size"
+     },
+     {
+      "default": 25,
+      "label": "",
+      "max": 50,
+      "min": 0,
+      "name": "amount",
+      "step": 0.01,
+      "type": "float"
+     }
+    ]
+   }
+  },
+  {
+   "id": "normal2height_base",
+   "parameters": {
+    "scale": 25,
+    "size": 10
+   },
+   "seed": 0,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "0.5",
+      "function": true,
+      "label": "",
+      "name": "h",
+      "type": "f"
+     },
+     {
+      "default": "vec3(0.5)",
+      "function": true,
+      "label": "",
+      "name": "nm",
+      "type": "rgb"
+     },
+     {
+      "default": "0.0",
+      "function": true,
+      "label": "",
+      "name": "q",
+      "type": "f"
+     }
+    ],
+    "instance": [
+     "float height_$name(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tfloat height = 0.0;",
+     "\tfloat sum = 0.0;",
+     "\tfor (int dx = -5; dx <= 5; ++dx) {",
+     "\t\tfor (int dy = -5; dy <= 5; ++dy) {",
+     "\t\t\tvec2 d = vec2(float(dx), float(dy));",
+     "\t\t\tvec2 p = uv+d/$size;",
+     "\t\t\tfloat h = $h(p);",
+     "\t\t\tfloat w = max(1.0-50.0*$q(p), 0.01)/(1.0+dot(d,d));",
+     "\t\t\th -= $scale*dot(d/$size, $nm(p).xy-vec2(0.5));",
+     "\t\t\theight += w*h;",
+     "\t\t\tsum += w;",
+     "\t\t}",
+     "\t}",
+     "\treturn height/sum;",
+     "}",
+     ""
+    ],
+    "outputs": [
+     {
+      "expr": "height_$name($uv, _seed_variation_, _controlled_variation_)",
+      "type": "f"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 10,
+      "first": 6,
+      "label": "",
+      "last": 12,
+      "name": "size",
+      "type": "size"
+     },
+     {
+      "default": 20,
+      "label": "",
+      "max": 50,
+      "min": 0,
+      "name": "scale",
+      "step": 0.01,
+      "type": "float"
+     }
+    ]
+   }
+  },
+  {
+   "id": "normal2height_simple_2",
+   "parameters": {
+    "center_height": 0.5,
+    "scale": 25,
+    "size": 10
+   },
+   "seed": 0,
+   "type": "normal2height_simple"
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Height map generated from normals",
+   "group_size": 0,
+   "label": "Height",
+   "name": "height",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 10,
+   "first": 4,
+   "label": "Size",
+   "last": 13,
+   "links": [
+    {
+     "node": "buffer",
+     "param": "size"
+    },
+    {
+     "node": "edge_detect_1",
+     "param": "size"
+    },
+    {
+     "node": "normal2height_base",
+     "param": "size"
+    },
+    {
+     "node": "normal2height_simple_2",
+     "param": "size"
+    }
+   ],
+   "name": "param2",
+   "type": "size"
+  },
+  {
+   "default": 0.5,
+   "label": "Base Height",
+   "links": [
+    {
+     "node": "normal2height_simple_2",
+     "param": "center_height"
+    }
+   ],
+   "max": 1,
+   "min": 0,
+   "name": "param1",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 25,
+   "label": "Strength",
+   "links": [
+    {
+     "node": "edge_detect_1",
+     "param": "amount"
+    },
+    {
+     "node": "normal2height_base",
+     "param": "scale"
+    },
+    {
+     "node": "normal2height_simple_2",
+     "param": "scale"
+    }
+   ],
+   "max": 50,
+   "min": 0,
+   "name": "param0",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Normal to Height",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/normal2height.mmg"
+ },
+ "type_version": 1
+}

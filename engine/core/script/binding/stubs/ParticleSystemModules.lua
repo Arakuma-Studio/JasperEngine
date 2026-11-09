@@ -26,7 +26,7 @@
 ---@field startRotationY MinMaxCurve|number|{min: number, max: number}
 ---@field startRotationYMultiplier number
 ---@field flipRotation number
----@field startColor MinMaxGradient|Vector4|Gradient
+---@field startColor ParticleSystemGradient|MinMaxGradient|Vector4|Gradient
 ---@field gravityModifier MinMaxCurve|number|{min: number, max: number}
 ---@field gravityModifierMultiplier number
 ---@field gravitySource string
@@ -207,7 +207,7 @@
 ---radians, as Unity's).
 ---@class ParticleSystemColorOverLifetimeModule: ParticleSystemModule
 ---@field enabled boolean
----@field color MinMaxGradient|Vector4|Gradient
+---@field color ParticleSystemGradient|MinMaxGradient|Vector4|Gradient
 ---@field setMode boolean
 
 ---The colorBySpeed module of a Particle System (ps.colorBySpeed): a live view of its effect (an inline one;
@@ -215,7 +215,7 @@
 ---radians, as Unity's).
 ---@class ParticleSystemColorBySpeedModule: ParticleSystemModule
 ---@field enabled boolean
----@field color MinMaxGradient|Vector4|Gradient
+---@field color ParticleSystemGradient|MinMaxGradient|Vector4|Gradient
 ---@field speedRange Vector2
 
 ---The sizeOverLifetime module of a Particle System (ps.sizeOverLifetime): a live view of its effect (an inline one;
@@ -343,6 +343,7 @@
 ---@field planeCacheTicks integer
 ---@field sendEvents boolean
 ---@field maxCollisionEvents integer
+---@field settleSpeed number
 
 ---The trails module of a Particle System (ps.trails): a live view of its effect (an inline one;
 ---an asset is copied inline first), its fields read and write it now with Unity's names (angles in
@@ -360,13 +361,12 @@
 ---@field dieWithParticles boolean
 ---@field widthOverTrail MinMaxCurve|number|{min: number, max: number}
 ---@field widthOverTrailMultiplier number
----@field colorOverLifetime MinMaxGradient|Vector4|Gradient
----@field colorOverTrail MinMaxGradient|Vector4|Gradient
+---@field colorOverLifetime ParticleSystemGradient|MinMaxGradient|Vector4|Gradient
+---@field colorOverTrail ParticleSystemGradient|MinMaxGradient|Vector4|Gradient
 ---@field inheritParticleColor boolean
 ---@field sizeAffectsWidth boolean
 ---@field sizeAffectsLifetime boolean
 ---@field textureMode string
----@field generateLightingData boolean
 
 ---The customData module of a Particle System (ps.customData): a live view of its effect (an inline one;
 ---an asset is copied inline first), its fields read and write it now with Unity's names (angles in
@@ -401,6 +401,10 @@
 ---@field freezeInView boolean
 ---@field verticalLock string
 ---@field meshSelection string
+---@field ringOuterRadius number
+---@field ringInnerRadius number
+---@field ringArc number
+---@field ringSegments integer
 ---@field meshAlignment string
 ---@field pivot Vector3
 ---@field flip Vector3
@@ -431,3 +435,36 @@
 ---@field emissionMapGuid string
 ---@field emissionColor Vector4
 ---@field emissionIntensity number
+---@field pixelShape string
+---@field streakLengthScale number
+---@field streakMaxLength number
+---@field streakHeadFraction number
+---@field streakWidth integer
+---@field discRim boolean
+---@field ringWidth integer
+---@field dotShadeBottom boolean
+---@field glowBands integer
+---@field rotationSteps integer
+
+---The pixelArt module of a Particle System (ps.pixelArt): a live view of its effect (an inline one;
+---an asset is copied inline first), its fields read and write it now with Unity's names (angles in
+---radians, as Unity's).
+---@class ParticleSystemPixelArtModule: ParticleSystemModule
+---@field enabled boolean
+---@field snap boolean
+---@field pixelSizes boolean
+---@field integerSize boolean
+---@field fade string
+---@field ditherSize integer
+---@field ditherSpace string
+---@field fadeOverLifetime MinMaxCurve|number|{min: number, max: number}
+---@field fadeOverLifetimeMultiplier number
+---@field holdFrameRate number
+---@field secondary string
+---@field secondaryOffset integer
+---@field secondaryColor Vector4
+---@field wobbleAmplitude Vector2
+---@field wobbleFrequency Vector2
+---@field wobbleRandomPhase boolean
+---@field flickerBelow number
+---@field flickerRate number

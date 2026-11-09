@@ -13,6 +13,8 @@
 // @feature COLOR_REPLACE "Colour replace"
 // @feature OVERLAY "Overlay (hard light)"
 // @feature GLOW "Glow"
+// @feature PALETTE_SWAP "Palette Swap"
+// @feature PALETTE_CYCLE "Palette Cycling"
 // @property outlineColor color (1, 1, 1, 1) "Outline colour" feature=OUTLINE
 // @property outlineWidth range(0, 8) 1 "Outline width (texels)" feature=OUTLINE
 // @property hueShift range(0, 360) 120 "Hue shift (degrees)" feature=HUE_SHIFT
@@ -31,10 +33,14 @@
 // @property glowPower range(0.1, 8) 2 "Glow falloff power" feature=GLOW
 // @texture u_replaceMaskTexture black "Replace mask (RGB selects the replacement colour)" feature=COLOR_REPLACE
 // @texture u_overlayTexture white "Overlay texture" feature=OVERLAY
+// @palette u_palette "Palette" feature=PALETTE_SWAP,PALETTE_CYCLE
+// @property paletteRow int 0 "Active palette (0: original)" feature=PALETTE_SWAP
+// @property paletteCycleSpeed float 1 "Cycling speed" feature=PALETTE_CYCLE
 
 // Sprites keep the engine's own material: the texture and colour of the Sprite (or Tilemap,
-// MeshPolygon), its texture rect (atlas frame), the vertex and instance colours. The
-// effects run on straight-alpha linear colour in this order: colour replace, hue shift,
+// MeshPolygon), its texture rect (atlas frame), the vertex and instance colours. Palette
+// Swap and Palette Cycling come first, on the raw texel (its exact bytes, before the tint:
+// includes/palette.glsl); the other effects run on straight-alpha linear colour in this order: colour replace, hue shift,
 // grayscale, overlay, flash, outline (behind the sprite), the material's alpha mode, 2D
 // lights (shaped by the material's Normal Texture when it has one: @require normalmap), glow. With OUTLINE or OVERLAY the texture is read inside the current frame only.
 // The blend mode is the material's (alpha by default): with Premultiplied (BLEND_PREMULTIPLIED)
@@ -51,7 +57,7 @@
     #define SURFACE_POSITION
 #endif
 
-#if defined(HUE_SHIFT) || defined(FLASH) || defined(GRAYSCALE) || defined(OUTLINE) || defined(COLOR_REPLACE) || defined(OVERLAY) || defined(GLOW)
+#if defined(HUE_SHIFT) || defined(FLASH) || defined(GRAYSCALE) || defined(OUTLINE) || defined(COLOR_REPLACE) || defined(OVERLAY) || defined(GLOW) || defined(PALETTE_SWAP) || defined(PALETTE_CYCLE)
 uniform u_fs_customParams {
     float time; // engine-written seconds
     #ifdef OUTLINE
@@ -84,6 +90,13 @@ uniform u_fs_customParams {
         float glowScale;
         float glowPower;
     #endif
+    #ifdef PALETTE_SWAP
+        float paletteRow;
+    #endif
+    #ifdef PALETTE_CYCLE
+        float paletteCycleSpeed;
+        float sceneTime; // engine-written: the scene clock, which holds while the game is paused
+    #endif
 } customParams;
 #endif
 
@@ -111,6 +124,7 @@ out vec4 g_finalColor;
 #include "includes/output.glsl"
 #include "includes/color_fx.glsl"
 #include "includes/base_color_fs.glsl"
+#include "includes/palette.glsl"
 #ifdef USE_LIGHT2D
     #include "includes/lighting2d.glsl"
 #endif
@@ -177,6 +191,22 @@ void main() {
     #endif
 
     vec4 texel = spriteTexel(uv);
+    #if defined(PALETTE_SWAP) || defined(PALETTE_CYCLE)
+        // the authored bytes, before the tint: a white tint keeps the exact palette
+        #ifdef PALETTE_SWAP
+            float paletteRow = customParams.paletteRow;
+        #else
+            float paletteRow = 0.0;
+        #endif
+        #ifdef PALETTE_CYCLE
+            float paletteCycleSpeed = customParams.paletteCycleSpeed;
+            float paletteTime = customParams.sceneTime;
+        #else
+            float paletteCycleSpeed = 0.0;
+            float paletteTime = 0.0;
+        #endif
+        texel = paletteSwapTexel(texel, paletteRow, paletteTime, paletteCycleSpeed);
+    #endif
     vec4 tint = pbrParams.baseColorFactor * v_color;
     vec4 color = vec4(sRGBToLinear(texel.rgb), texel.a) * tint;
 

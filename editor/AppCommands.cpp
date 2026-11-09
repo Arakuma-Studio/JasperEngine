@@ -9,6 +9,7 @@
 #include "App.h"
 #include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
+#include "window/GraphEditorWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/MainToolbar.h"
@@ -19,6 +20,8 @@
 #include "window/GameWindow.h"
 #include "window/SpriteNormalsWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "window/ApplyPaletteDialog.h"
+#include "window/PaletteWindow.h"
 
 #include "AppMenuCommand.h"
 #include "Backend.h"
@@ -48,6 +51,7 @@
 #include "widget/CurveField.h"
 #include "widget/GradientField.h"
 #include "window/InputActionsWindow.h"
+#include "window/AnimationStatisticsWindow.h"
 #include "window/JobsMemoryWindow.h"
 #include "window/vcs/VcsUi.h"
 
@@ -482,7 +486,22 @@ void editor::App::registerPanelClaims(){
     // its selected state, sub-state machine, transition or layer
     claims.add({"Animator", [this]() { return animatorWindow->isFocused(); },
                 {{Verb::Delete, {{}, [this]() { return animatorWindow->canDelete(); }, [this]() { animatorWindow->removeSelection(); }}}}});
+    // its selected nodes or wire; Copy and Paste carry nodes as JSON text
+    // (any graph window: the Graph Editor or a graph kind's own)
+    // the graph window that held the keys when the claim was found may have lost them by the time the
+    // menu asks (a click in its pane moves the focus mid-frame): each verb asks again, a no-op without one
+    claims.add({"Graph Editor", []() { return GraphEditorWindow::focused() != nullptr; },
+                {{Verb::Delete, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && w->canDelete(); },
+                                 []() { if (auto* w = GraphEditorWindow::focused()) w->removeSelection(); }}},
+                 {Verb::Copy, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && !w->selectedNodes().empty(); },
+                               []() { if (auto* w = GraphEditorWindow::focused()) w->copySelection(); }}},
+                 {Verb::Paste, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && w->canPaste(); },
+                                []() { if (auto* w = GraphEditorWindow::focused()) w->paste(); }}},
+                 {Verb::Duplicate, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && !w->selectedNodes().empty(); },
+                                    []() { if (auto* w = GraphEditorWindow::focused()) w->duplicateSelection(); }}},
+                 {Verb::Frame, {{}, nullptr, []() { if (auto* w = GraphEditorWindow::focused()) w->frameSelected(); }}}}});
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
+    claims.add({"Animation Statistics", [this]() { return animationStatisticsWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },
                 {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},
                  {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")},
@@ -577,6 +596,7 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (ui::ColorPickerWindow::get().isFocused()) state.panels.push_back(ShortcutContext::ColorPicker);
     if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
     if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
+    if (paletteWindow->takesKeys() || applyPaletteDialog->takesKeys()) state.panels.push_back(ShortcutContext::Palette);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
     if (spritePreviewWindow->isFocused()) state.panels.push_back(ShortcutContext::SpritePreview);
     return state;
