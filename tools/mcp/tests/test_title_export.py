@@ -5,8 +5,8 @@ Scene Hud (UI): a counter "1234" as a Glyph Atlas Title Art Renderer with Prebak
 Lua probe on it that prints its state once it is ready and quits. Built with the run's prebuilt glcore
 player: the build holds the atlas manifest (<title>.glyphs-<style>.json) and its page PNGs beside the
 title, the manifest's cells cover the counter's digits at each place, and the player, run headless,
-logs that the atlas showed its first string after 0 cell renders, with the cells restored from the
-build's prebake.
+shows the prebaked initial state at once and, on a new value of the same places, logs that the atlas
+showed its first string after 0 cell renders, with the cells restored from the build's prebake.
 
 Set JASPER_SLOW_BUILD=1 to run it: it uses the run's prebuilt glcore runtime (tools/mcp/build_cache.py).
 """
@@ -17,6 +17,7 @@ import os
 import re
 import subprocess
 import time
+from pathlib import Path
 
 import build_cache
 from harness import REPO, Editor, skip
@@ -34,11 +35,23 @@ function Probe:start()
     self.frames = 0
     RegisterEngineEvent(self, 'onUpdate')
 end
+function Probe:report(what, t)
+    print(string.format("glyphprobe %s frames=%d ready=%s pending=%s text=%s", what, self.frames, tostring(t.ready), t.pending, t.text))
+end
 function Probe:onUpdate(dt)
     self.frames = self.frames + 1
     local t = TitleArt(self.scene, self.entity)
-    if t.ready or self.frames >= 600 then
-        print(string.format("glyphprobe frames=%d ready=%s pending=%s text=%s", self.frames, tostring(t.ready), t.pending, t.text))
+    if self.frames >= 900 then
+        self:report("timeout", t)
+        Engine.quit(0)
+    elseif not self.changed and t.ready then
+        -- the prebaked image of the initial state is up at once; a new value (every digit of it
+        -- at a place the prebake covers) composes from the shipped atlas
+        self:report("first", t)
+        t.text = "4321"
+        self.changed = true
+    elseif self.changed and t.ready and t.text == "4321" then
+        self:report("second", t)
         Engine.quit(0)
     end
 end
@@ -56,6 +69,13 @@ async def wait_job(ed: Editor, job: dict, timeout: float, poll: float = 3.0) -> 
         await asyncio.sleep(poll)
         job = await ed.call("get_job", job_id=job["job_id"], log_lines=10)
     return job
+
+
+def build_text(job: dict) -> str:
+    """What a build said: its warnings and its log."""
+    result = job.get("result") or {}
+    log = Path(result["log_file"]).read_text(errors="replace") if result.get("log_file") else ""
+    return json.dumps(result.get("warnings", [])) + log
 
 
 async def test_glyph_atlas_prebake_ships_and_serves_the_first_value(ed: Editor):
@@ -86,7 +106,9 @@ async def test_glyph_atlas_prebake_ships_and_serves_the_first_value(ed: Editor):
 
     # the shipped atlas: its manifest beside the title, and the pages it names
     manifests = sorted(out.rglob("score.titleart.glyphs-*.json"))
-    ed.check(len(manifests) == 1, f"one prebaked atlas manifest in {out}: {manifests}")
+    shipped = sorted(p.relative_to(out).as_posix() for p in out.rglob("*.titleart*"))
+    said = [line for line in build_text(job).splitlines() if "itle Art" in line or "titleart" in line or "Prebak" in line]
+    ed.check(len(manifests) == 1, f"one prebaked atlas manifest in {out}: {manifests}; {shipped}; {said}")
     manifest = json.loads(manifests[0].read_text())
     pages = sorted(manifests[0].parent.glob(manifests[0].stem + "-p*.png"))
     ed.check(pages, f"the atlas pages beside {manifests[0].name}: {sorted(p.name for p in manifests[0].parent.iterdir())}")
@@ -106,10 +128,12 @@ async def test_glyph_atlas_prebake_ships_and_serves_the_first_value(ed: Editor):
     log = run.stdout + run.stderr
     (ed.scratch.root / "title-glyphs-player.log").write_text(log)
     ed.check_eq(run.returncode, 0, f"the player quits: {log[-2000:]}")
-    ed.check("glyphprobe" in log and "ready=true" in log, f"the counter is ready in the player: {log[-2000:]}")
-    ed.check("text=1234" in log, f"it shows its initial value: {log[-2000:]}")
+    ed.check("glyphprobe first" in log and "ready=true pending= text=1234" in log, f"the initial value is ready: {log[-2000:]}")
+    frames = re.search(r"glyphprobe first frames=(\d+)", log)
+    ed.check(frames is not None and int(frames.group(1)) <= 3, f"R11: the prebaked initial state shows at once: {log[-2000:]}")
+    ed.check("glyphprobe second" in log and "text=4321" in log, f"the new value is ready: {log[-2000:]}")
     first = FIRST.search(log)
     ed.check(first is not None, f"the atlas reports its first string: {log[-3000:]}")
     if first:
-        ed.check_eq(int(first.group(1)), 0, "the first value renders no glyph cell: the build's prebake holds them")
+        ed.check_eq(int(first.group(1)), 0, "the player's first composed value renders no glyph cell: the build's prebake holds them")
         ed.check(int(first.group(2)) >= 4, f"cells restored from the prebake: {first.group(0)}")

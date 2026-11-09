@@ -159,3 +159,33 @@ TEST(TitleFxRuntimeChecks, HdrOn8BitNeedsARender) {
     EXPECT_EQ(r.status, TitleCheckStatus::Skip);
     EXPECT_EQ(r.kind, TitleCheckKind::Pixels);
 }
+
+TEST(TitleFxRuntimeChecks, HdrOn8BitReportsLightAboveFourAsInfo) {
+    // the check renders the document's light at 1/4: a pixel at the full code is light above 4.0
+    registerBuiltinTitleChecks();
+    const CheckDef* check = TitleArtChecks::find("fx_hdr_on_8bit");
+    ASSERT_TRUE(check);
+    const TitleArtDoc doc = documentOf(Json::array({shape("00000001", Json::array({effect("00000101", "light_glow")}))}));
+    const auto runWith = [&](uint8_t alpha) {
+        TitleCheckContext context(doc, "assets/titles/test.titleart");
+        context.render = [alpha](const titleart::RenderRequest& request, TitleCheckImage& out, std::string&) {
+            EXPECT_EQ(request.content, titleart::OutputContent::Glow);
+            EXPECT_FLOAT_EQ(request.lightScale, 0.25f);
+            out.width = 2;
+            out.height = 2;
+            out.rgba = {255, 255, 255, alpha, 10, 10, 10, 20, 0, 0, 0, 0, 0, 0, 0, 0};
+            return true;
+        };
+        std::vector<TitleCheckResult> results;
+        check->run(context, results);
+        return results.at(0);
+    };
+    const TitleCheckResult over = runWith(255);
+    EXPECT_EQ(over.status, TitleCheckStatus::Pass) << "info, not a warning";
+    EXPECT_NE(over.message.find("info:"), std::string::npos) << over.message;
+    EXPECT_DOUBLE_EQ(over.measured["over_4_fraction"].get<double>(), 0.25);
+    const TitleCheckResult within = runWith(200);
+    EXPECT_EQ(within.status, TitleCheckStatus::Pass);
+    EXPECT_EQ(within.message.find("info:"), std::string::npos) << within.message;
+    EXPECT_DOUBLE_EQ(within.measured["over_4_fraction"].get<double>(), 0.0);
+}

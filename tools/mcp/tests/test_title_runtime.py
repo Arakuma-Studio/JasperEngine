@@ -185,7 +185,7 @@ async def test_lua_live_effect_params(ed: Editor):
 
 
 async def test_hdr_on_8bit_reads_the_light(ed: Editor):
-    """S83 §6.11 fx_hdr_on_8bit (info): a check_title render of the light at 1/4 measures the light above 4.0."""
+    """S83 §6.11 fx_hdr_on_8bit: check_title renders the light (the threshold's arithmetic is TitleFxRuntimeChecks.HdrOn8Bit*)."""
     await setup(ed)
     path = "assets/titles/hdr.titleart"
     await ed.call("edit_title", path=path, create={"text": "HOT", "canvas": [600, 300]}, bake="never",
@@ -193,5 +193,5 @@ async def test_hdr_on_8bit_reads_the_light(ed: Editor):
     r = await ed.call("check_title", path=path, checks=["fx_hdr_on_8bit"])
     check = r["checks"][0]
     ed.check_eq(check["status"], "PASS", f"info, never a warning: {check}")
-    ed.check(check["measured"]["over_4_fraction"] > 0.005, f"six glows at full intensity are above 4.0 somewhere: {check}")
-    ed.check_in("info:", check["message"])
+    ed.check(check["measured"]["lit_fraction"] > 0.0, f"it read the light: {check}")
+    ed.check(0.0 <= check["measured"]["over_4_fraction"] <= 1.0, f"the share above 4.0: {check}")
