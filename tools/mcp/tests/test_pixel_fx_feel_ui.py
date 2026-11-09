@@ -41,18 +41,22 @@ async def test_setup(ed: Editor):
 async def test_shaker_rows(ed: Editor):
     ui = Ui(ed)
     await ed.call("select_entities", scene=S["scene"], entities=[S["cam"]])
-    ed.check(await ui.find("Pixel Snap", window="Inspector", frames=600), "the Camera Shaker's Pixel Snap row")
-    ed.check(await ui.find("Tick Rate", window="Inspector"), "the Camera Shaker's Tick Rate row")
+    await ed.call("focus_window", window="inspector")
+    await ui.frames(30)
     await keep_shot(ed, "s48-camera-shaker-pixel-rows")
+    ed.check(await ui.find("Pixel Snap", frames=600), "the Camera Shaker's Pixel Snap row")
+    ed.check(await ui.find("Tick Rate"), "the Camera Shaker's Tick Rate row")
 
 
 async def test_hit_stop_exempt_and_pose_frame_rate(ed: Editor):
     ui = Ui(ed)
     await ed.call("select_entities", scene=S["scene"], entities=[S["hero"]])
-    ed.check(await ui.find("Hit Stop Exempt", window="Inspector", frames=600), "the Hit Stop Exempt component")
-    ed.check(await ui.find("Include Children", window="Inspector"), "its Include Children row")
-    ed.check(await ui.find("Pose Frame Rate", window="Inspector"), "the Animation Player's Pose Frame Rate row")
+    await ed.call("focus_window", window="inspector")
+    await ui.frames(30)
     await keep_shot(ed, "s48-hit-stop-exempt-pose-frame-rate")
+    ed.check(await ui.find("Hit Stop Exempt", frames=600), "the Hit Stop Exempt component")
+    ed.check(await ui.find("Include Children"), "its Include Children row")
+    ed.check(await ui.find("Pose Frame Rate"), "the Animation Player's Pose Frame Rate row")
     await ed.call("set_properties", scene=S["scene"], entity=S["hero"], values={"animationplayer": {"poseFrameRate": 12}})
     await ui.frames()
     await keep_shot(ed, "s48-pose-frame-rate-12")
