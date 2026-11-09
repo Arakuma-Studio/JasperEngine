@@ -62,10 +62,7 @@
       },
       {
         "width": 1.5,
-        "offset": [
-          0,
-          -1.5
-        ],
+        "offset": [0, -1.5],
         "material": {
           "fill": {
             "color": "#0a1f44"

@@ -508,30 +508,8 @@
       "name": "Gold"
     }
   },
-  "lint_allow": [
-    {
-      "rule": "contrast",
-      "reason": "two gold bands read as one frame on purpose"
-    }
-  ],
-  "check_allow": [
-    {
-      "check": "3d_tier_budget.high",
-      "reason": "294020 triangles over 150000; 7499928 mesh bytes over 5242880 on the 'digits' sample; fit_to_tier reduces it"
-    },
-    {
-      "check": "3d_tier_budget.low",
-      "reason": "5 stacked solids (letter and bands) over the low tier's 3; 44978 triangles over 30000 on the 'digits' sample; fit_to_tier reduces it"
-    },
-    {
-      "check": "3d_tier_budget.medium",
-      "reason": "135002 triangles over 60000; 3580152 mesh bytes over 2097152 on the 'digits' sample; fit_to_tier reduces it"
-    },
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.67 of 3 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "lint_allow": [],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

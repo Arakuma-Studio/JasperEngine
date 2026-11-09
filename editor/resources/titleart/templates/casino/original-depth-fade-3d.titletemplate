@@ -676,13 +676,7 @@
       "line": 856,
       "item": "t-ganso-3d",
       "license_note": "used with the author's permission"
-    },
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.22 of 9 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      }
-    ]
+    }
   },
   "name": "The Original (3D depth-fade walls)",
   "canvas": {

@@ -119,13 +119,7 @@
       "line": 704,
       "item": "t-gekinetsu-brush",
       "license_note": "used with the author's permission"
-    },
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.67 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      }
-    ]
+    }
   },
   "name": "Red Hot Brush (vertical)",
   "canvas": {

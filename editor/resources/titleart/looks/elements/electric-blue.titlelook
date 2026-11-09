@@ -430,16 +430,7 @@
   ],
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    },
-    {
-      "check": "fallback_parity",
-      "reason": "RGBA8 path differs on the 'digits' sample (class F2): max 207, mean 4.71, 11.04 % of pixels over tolerance"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

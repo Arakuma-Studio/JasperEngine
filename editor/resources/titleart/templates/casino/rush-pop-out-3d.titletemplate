@@ -128,13 +128,7 @@
       "line": 765,
       "item": "t-popout-3d",
       "license_note": "used with the author's permission"
-    },
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.00 of 1 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      }
-    ]
+    }
   },
   "name": "Rush Pop-out (3D slanted extrusion + AO)",
   "canvas": {

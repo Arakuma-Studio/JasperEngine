@@ -138,13 +138,7 @@
       "line": 743,
       "item": "t-rainbow-3d",
       "license_note": "used with the author's permission"
-    },
-    "check_allow": [
-      {
-        "check": "3d_tier_budget.low",
-        "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
-      }
-    ]
+    }
   },
   "name": "Attack Chance (3D rainbow, two lines)",
   "canvas": {

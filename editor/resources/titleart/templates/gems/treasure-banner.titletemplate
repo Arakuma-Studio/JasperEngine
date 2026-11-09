@@ -50,13 +50,7 @@
     "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
     "provenance": {
       "source": "jasperengine"
-    },
-    "check_allow": [
-      {
-        "check": "3d_tier_budget.low",
-        "reason": "35688 triangles over 30000 on the 'ja' sample; fit_to_tier reduces it"
-      }
-    ]
+    }
   },
   "name": "",
   "canvas": {

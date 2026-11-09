@@ -121,22 +121,14 @@
         "type": "directional",
         "color": "#ffffff",
         "intensity": 2,
-        "position": [
-          -600,
-          800,
-          1000
-        ]
+        "position": [-600, 800, 1000]
       },
       {
         "id": "",
         "type": "ambient",
         "color": "#ffffff",
         "intensity": 0.3,
-        "position": [
-          0,
-          0,
-          0
-        ]
+        "position": [0, 0, 0]
       }
     ]
   },
