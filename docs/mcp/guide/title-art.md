@@ -255,3 +255,34 @@ value by value in `3d.lighting`, a material's environment in `3d.face.environmen
   `3d_environment_missing`, `3d_light_limit`, `3d_mesh_fallback`).
 - Bake a 3D title for anything static (an image costs nothing at run time); `export_title {format: "glb"}` writes the solids
   with their materials (`KHR_materials_*`) beside the title for use as a model.
+
+### Library: Looks, Color Schemes, Templates
+
+Three independent axes; each states what it keeps:
+- `apply_look {layer, look, apply_font: false, keep_color_scheme: true}` restyles one layer: replaces
+  its style (face, rims or 3D bands, bevel), effects, part effects and the generator layers its look
+  made; keeps text, size, transform, masks, blend, warp, font (the look's font pair with
+  `apply_font`); a 3D look switches the layer to 3D. Px values scale with the layer's size.
+- `apply_color_scheme {layer?, color_scheme}` recolours by role (face, dark keyline, accent rims,
+  dropped base, glows, shadows, light colours); every width, bevel and effect stays. Without
+  `layer` the whole title. Twice changes nothing.
+- `apply_template {template, keep_text: true, language: en|ja}` replaces the document's content;
+  keeps the file, GUID, name and non-default outputs; your exposed texts go into its placeholders.
+- `edit_title {path, create: {template | look, text?, language?}}` makes a new document from one.
+
+Refs: built-ins `<family>/<slug>` (`metal/classic-gold`; schemes flat: `gold`), your project's
+`project/<slug>`, your personal ones `user/<slug>`. A typo returns the three closest ids.
+
+Tiers of `list_title_library`: no args (counts), `kind: looks | color_schemes | templates` with
+`query` (en/ja/romaji), `family`, `dimension`, `tags` (rows with a ready `use` op), `id` (one item:
+structure, keep/replace contract, font pair, requirements), `sheet {text | path + layer, ids?}`
+(the items rendered on your own text or layer, numbered as the rows). Pick by seeing: render a
+sheet on your own text before applying. Items with `available: false` need a type this build
+lacks. Pack fonts list under `kind: fonts` (`pack: true`): a look names a pair `{latin, ja}`, the
+first apply copies the face (with its OFL.txt) into `assets/TitleArt/Fonts/`.
+
+Save your own: `save_look {layer, name, scope: project | user}`, `save_color_scheme {layer?, name}`,
+`save_template {name, placeholders?}` (expose the title's text first), `copy_library_item {ref, to}`,
+`delete_library_item {ref}` (the last two need no `path`). The whole catalogue by family:
+`jasper://docs/title-library`. `check_title`'s `style_lint.*` checks report a layer's look; passing
+checks is not approval: show the render to a person.

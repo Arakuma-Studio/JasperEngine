@@ -18,6 +18,9 @@ Projects made before the rename are migrated once with
 | Edit > Duplicate (Ctrl+D) on assets: copies beside the originals named `hero 1.png`, the copies selected | none (new); Copy then Paste in the same folder made such a copy |
 | The Project window's Create menu (toolbar "+", right-click > Create on empty space, a file, a folder, a folder of the tree), the same as Assets > Create, into the right-clicked folder | a Create menu without scripts, only in the folder shown ([docs/editor/project-window.md](editor/project-window.md)) |
 | Maximize On Play (the Game view toolbar; F11, Edit > Maximize On Play) | the toolbar toggle only |
+| Preset (a saved set of a component's settings) | a Title Art **Look** (`.titlelook`): a saved style of one title layer, applied by Apply Look (none before) |
+| Preset Library | the **Title Library** (Looks, Color Schemes, Templates in the Title Designer's Library) (none before) |
+| Swatches / Color Presets | a Title Art **Color Scheme** (`.titlecolors`): colours by role, applied without changing the style (none before) |
 | Console window | Output window |
 | Game view (Window > General > Game) | none: play ran inside the scene tab |
 | Main toolbar: Hand, Move, Rotate, Scale, Rect tools; Play, Pause, Step | Per-scene toolbar: Pan, Translate, Rotate, Scale, 2D gizmo; Play, Pause, Stop |
