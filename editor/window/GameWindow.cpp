@@ -32,6 +32,7 @@
 #include "subsystem/RenderSystem.h"
 #include "render/SystemRender.h"
 #include "render/RenderStats.h"
+#include "pixelart/HitStop.h"
 #include "render/SceneDrawModes.h"
 #include "render/RenderUtil.h"
 #include "window/EditorModal.h"
@@ -1511,6 +1512,12 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
         lineCount++;
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "HTML UI: %u stencil draws, glyph atlas %.1f MiB", ui.stencilDraws,
                  (double)ui.atlasBytes / (1024.0 * 1024.0));
+        lineCount++;
+    }
+
+    // S48: the game frozen by a hit-stop, and for how long still
+    if (playing && ::jasperengine::pixelart::HitStop::isActive() && lineCount < 16) {
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "HIT STOP %.2f s", ::jasperengine::pixelart::HitStop::getRemaining());
         lineCount++;
     }
 

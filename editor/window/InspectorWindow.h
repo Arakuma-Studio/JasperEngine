@@ -946,6 +946,10 @@ namespace jasperengine::editor{
         void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the Pixel Perfect Camera (InspectorPixelArt.cpp, S41)
         void drawPixelPerfectCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // S48 (InspectorPixelFx.cpp): Pose Frame Rate's combo row (inside a table) and the Camera
+        // Shaker's Pixel Snap and Tick Rate rows
+        void drawPoseFrameRateRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities, float current);
+        void drawShakerPixelRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
         // "Inherited alpha 0.25 · not interactable · click-through (Canvas Group: Panel)" and a
         // Select button, when the entity is under a Canvas Group
         void drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity);

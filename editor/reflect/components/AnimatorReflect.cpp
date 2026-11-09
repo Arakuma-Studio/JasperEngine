@@ -89,6 +89,8 @@ namespace {
         JE_FIELD(AnimatorComponent, enabled),
         JE_FIELD(AnimatorComponent, controller, .updateFlags = kReload, .asset = AssetKind::AnimatorController, .tooltip = "The Animator Controller (.controller) it plays."),
         JE_FIELD(AnimatorComponent, speed, .tooltip = "Multiplies every state's speed."),
+        JE_FIELD(AnimatorComponent, poseFrameRate, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .max = 120.0f, .label = "Pose Frame Rate",
+                 .tooltip = "Frames per second the poses hold on (0: smooth). Each track steps from its previous key, so every key shows; transitions step too. Root motion and events stay at the true time.", .drawer = "poseFrameRate"),
         JE_FIELD(AnimatorComponent, applyRootMotion, .tooltip = "The clips' root motion moves the GameObject (or its Character Controller)."),
         JE_FIELD(AnimatorComponent, rootMotionBone, .updateFlags = kReload, .tooltip = "Path or humanoid slot (empty: the clip's, the hips, the shallowest moving bone)."),
         JE_FIELD(AnimatorComponent, updateMode, .enumDesc = &enums::kAnimatorUpdateMode),

@@ -11995,6 +11995,7 @@ void editor::InspectorWindow::drawPoseAnimatorComponent(ComponentType cpType, Sc
     propertyRow(RowPropertyType::Bool, cpType, "autoplay", "Autoplay", sceneProject, entities, autoplaySettings);
     propertyRow(RowPropertyType::Float, cpType, "speed", "Speed", sceneProject, entities, speedSettings);
     propertyRow(RowPropertyType::Float_0_1, cpType, "weight", "Weight", sceneProject, entities, weightSettings);
+    drawPoseFrameRateRow(cpType, sceneProject, entities, animator.poseFrameRate);
 
     // Bake (pose baker) and Open (Pose Animation window): shown once the editor tasks hook them in
     const PoseInspectorHooks& hooks = poseInspectorHooks();

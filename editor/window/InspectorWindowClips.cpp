@@ -884,6 +884,7 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
     propertyRow(RowPropertyType::Bool, cpType, "playAutomatically", "Play Automatically", sceneProject, entities, autoSettings);
     propertyRow(RowPropertyType::Float, cpType, "speed", "Speed", sceneProject, entities, speedSettings);
     propertyRow(RowPropertyType::FloatPositive, cpType, "defaultFadeTime", "Default Fade", sceneProject, entities, fadeSettings);
+    drawPoseFrameRateRow(cpType, sceneProject, entities, sceneProject->scene->getComponent<AnimationPlayerComponent>(entities[0]).poseFrameRate);
     endTable();
 
     if (entities.size() != 1){
