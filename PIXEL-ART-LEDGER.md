@@ -244,6 +244,10 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: Box D deadlocked for ~1h40m. An S48 sub-task started a detached job from inside a
+  box job, so it inherited the box lock's file descriptor and then waited on the same lock. S48
+  cleared it. `rbox` now runs `flock -o`, so no child can hold the lock, and the brief forbids
+  nested box jobs.
 - 2026-11-09: S52's review fixes are done at `8243584e2`.
   - Gate on box A: editor 154, core 165, Vulkan 74, 107 MCP tests; red controls for the fixes.
   - The 10k pack+upload takes 1.26 ms against 0.5 ms (shared box, software rendering), accepted
