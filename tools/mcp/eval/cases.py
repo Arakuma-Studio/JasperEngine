@@ -887,6 +887,68 @@ CASES = [
         "max_turns": 8,
     },
 
+    {
+        "id": "bad_sprite_edit_frame_from_one",
+        "kind": "bad",
+        "what_happened": "Asked to change the sprite's third frame, an agent used to 0-based APIs edited frame index 2 of the file; "
+                         "Aseprite's frame 3 is frame: 3 (S47 D10).",
+        "text_at_issue": "edit_sprite's frame parameter description 'frames from 1' and the no_frame fix",
+        "source": "S47 spec (paraphrased)",
+        "files": {"assets/hero.aseprite": "binary placeholder"},
+        "prompt": "In assets/hero.aseprite, on frame 3 as Aseprite numbers it, set pixel (2,2) to palette colour 4.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "get_sprite", "args": {}, "result": ok(
+                "hero.aseprite: 16x16 indexed, 4 frames, 1 layer. Revision abc123abc123.",
+                {"path": "assets/hero.aseprite", "revision": "abc123abc123", "size": [16, 16], "mode": "indexed",
+                 "frames": [{"frame": 1, "duration_ms": 100}, {"frame": 2, "duration_ms": 100}, {"frame": 3, "duration_ms": 100}, {"frame": 4, "duration_ms": 100}]})},
+            {"tool": "edit_sprite", "args": {}, "result": ok(
+                "hero.aseprite: 1 op(s), 1 pixel(s) in 1 rect(s).",
+                {"revision": "def456def456", "applied": 1, "changed": {"pixels": 1, "rects": [{"frame": 3, "layer": "Layer 1", "rect": [2, 2, 1, 1]}]}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "edit_sprite", "args": {"frame": 3}}]},
+                               {"calls": [{"tool": "edit_sprite", "args": {"ops": [{"frame": 3}]}}]}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_sprite_changed_then_read_again",
+        "kind": "bad",
+        "what_happened": "After sprite_changed an agent resent the same ops at once; the person's version must be read first (S47 R34).",
+        "text_at_issue": "edit_sprite's sprite_changed error text (fix: read the region again, then resend with expect_revision)",
+        "source": "S47 spec (paraphrased)",
+        "files": {"assets/hero.aseprite": "binary placeholder"},
+        "prompt": "Set pixel (1,1) of assets/hero.aseprite to palette colour 2.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "get_sprite", "args": {}, "result": ok("hero.aseprite: 16x16 indexed. Revision aaa111aaa111.", {"revision": "aaa111aaa111", "size": [16, 16]})},
+            {"tool": "edit_sprite", "args": {"expect_revision": "bbb222bbb222"}, "result": ok(
+                "hero.aseprite: 1 op(s), 1 pixel(s).", {"revision": "ccc333ccc333", "applied": 1})},
+            {"tool": "edit_sprite", "args": {}, "result": err(
+                "sprite_changed: hero.aseprite changed since this session last saw it (revision aaa111aaa111 to bbb222bbb222) "
+                "Fix: read the region again, then resend with expect_revision: bbb222bbb222")},
+            {"tool": "read_sprite_pixels", "args": {}, "result": ok(
+                "hero.aseprite chars revision bbb222bbb222", {"revision": "bbb222bbb222", "encoding": "chars", "frames": [{"frame": 1, "layer": "composite", "rect": [0, 0, 4, 4], "rows": ["....", "....", "....", "...."]}]})},
+        ],
+        "checks": {"calls": [{"tool": "read_sprite_pixels"}, {"tool": "edit_sprite", "args": {"expect_revision": "bbb222bbb222"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_sprite_grid_alphabet",
+        "kind": "bad",
+        "what_happened": "An agent wrote palette index 1 as '0' (tenten's alphabet); here 0 and '.' are index 0 and '1' is index 1 (S47 R6).",
+        "text_at_issue": "read_sprite_pixels description ('.'=0, 1-9, a-z=10-35, A-Z=36-61) and jasper://docs/sprites Grids",
+        "source": "S47 spec (tenten's off-by-one, paraphrased)",
+        "files": {"assets/hero.aseprite": "binary placeholder"},
+        "prompt": "Paste a 2x1 grid at (0,0) in assets/hero.aseprite that sets the first pixel to palette index 1 and the second to palette index 10.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "read_file", "args": {}, "result": ok("Grids: chars: . = 0, 1-9 = 1-9, a-z = 10-35, A-Z = 36-61.", {})},
+            {"tool": "edit_sprite", "args": {}, "result": ok("hero.aseprite: 1 op(s), 2 pixel(s).", {"revision": "d1", "applied": 1, "changed": {"pixels": 2}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite", "args": {"ops": [{"rows": ["re:^1a"]}]}}]},
+        "max_turns": 8,
+    },
+
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
     {
         "id": "guard_play_and_look",

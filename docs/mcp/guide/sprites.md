@@ -171,3 +171,110 @@ read.
 frames and the atlas problems (exit 1 on an atlas error). Convert them with
 `set_sprite_frames {entity, convert: true, all_users: true}`, the Inspector's **Convert to Sprite
 Sheet** or **Assets > Convert Inline Sprite Frames...**.
+
+## Drawing
+
+`create_sprite`, `get_sprite`, `read_sprite_pixels`, `edit_sprite`, `render_sprite` and
+`diff_sprite` (group `sprites`) edit `.aseprite` / `.ase` files (and plain `.png` files) directly.
+They need no open step: the project file is the document. A person's copy in Aseprite is the same
+file, so never fight a person's save: when `edit_sprite` says `sprite_changed`, read again.
+
+**Frames are numbered from 1, as Aseprite shows them. Layers are a name, a group path
+(`"Body/Arm"`) or an index from 0 at the bottom.** A frame is an integer, a list, a tag name or
+`"all"`. Colours are a palette index, `"#rrggbb"`, `"#rrggbbaa"` or `"transparent"`. On an indexed
+sprite a hex colour must be in the palette exactly (the error names the nearest index and the
+`palette` op that adds it). Index 0 of an indexed sprite is its transparent index.
+
+### The loop
+
+1. `get_sprite` for the structure, no pixels.
+2. `render_sprite` to look (a 32 x 32 at 8x costs about 90 tokens, its full grid about 450).
+3. `read_sprite_pixels {rect}` on the part to change.
+4. `edit_sprite` with a batch of ops and `lint: true`; the reply echoes what changed.
+5. `render_sprite {highlight: "last_edit"}` to see the edit.
+6. Fix the worst lint spot (a spot's `[frame, x, y]` goes straight into a `pixel` op), and repeat.
+
+`expect_revision` on every call when a person may be editing. `undo {scope: "timeline",
+expect_top_id: <the result's undo id>}` takes back only your own step. A person's Ctrl+Z undoes
+agent steps too; a step refused because the file changed outside the editor stays in the history.
+Render size: `max_width` caps the image; a single small sprite with the default 1,024 is costly,
+pass 256. A file a person edits in Aseprite should be reopened there after an agent edit.
+
+### Grids
+
+`read_sprite_pixels`, the `edit_sprite` echo and `diff_sprite` return rows:
+
+- `chars` (palettes up to 62 entries): `.` = 0, `1`-`9` = 1-9, `a`-`z` = 10-35, `A`-`Z` = 36-61.
+  `5` is index 5, `b` is 11, `0` also reads as 0.
+- `hex2` (larger palettes): `00`-`ff` per pixel.
+- `legend` (RGBA): characters assigned in order of first appearance, with `legend: {"1":
+  "#rrggbbaa"}`; `.` is alpha 0.
+- `hex8` (RGBA, past 61 colours in a region): `rrggbbaa` per pixel.
+
+`paste` takes the same rows. `-` and space keep the pixel (`--` in `hex2`, `--------` in `hex8`);
+every other character writes, `.` included. `blend: "over"` also keeps index 0 / alpha 0. A
+`diff_sprite` frame's `rows` and `encoding` paste back as a patch at `bbox`'s `[x, y]`.
+
+### edit_sprite
+
+`{sprite, ops: [...], frame, layer, symmetry: {x, y, diagonal}, echo, echo_max, image, lint,
+expect_revision}`. `frame` and `layer` are defaults for ops that name none (frame 1, the topmost
+visible pixel layer). Ops run in order on a copy; any failure leaves the file as it was and names
+`op_index`. Field mistakes fail before any op runs (`bad_op_field` lists the op's fields).
+
+Every pixel op takes `frame`, `layer` and `ignore_selection`. `points` are `[[x, y], ...]`, `rect`
+is `[x, y, w, h]`, ops outside the canvas are clipped, and an op that changes nothing warns
+`nothing_drawn`.
+
+| op | fields |
+|---|---|
+| `pixel` | `points`, `color` |
+| `line` | `points` (2 or more), `color`, `thickness` 1-16, `pixel_perfect` (default true, removes L-corners) |
+| `rect` | `rect`, `color`, `fill`, `thickness`, `radius` 0-64 |
+| `ellipse` | `rect` (the box it fits), `color`, `fill`, `thickness` |
+| `polygon` | `points` (3 or more), `color`, `fill` (even-odd) |
+| `paste` | `rows`, `at`, `encoding` auto\|chars\|hex2\|legend\|hex8, `legend`, `blend` replace\|over |
+| `fill` | `at`, `color`, `tolerance` 0-255, `contiguous` (default true), `connectivity` 4\|8, `sample` layer\|composite |
+| `replace` | `from`, `to`, `tolerance`, `rect` |
+| `dither` | `colors` [a, b], `pattern` bayer2\|bayer4\|bayer8\|bayer16\|checker, `level` 0-1 or `gradient` {`from`, `to`, `kind` linear\|radial}, `rect` |
+| `clear` | `rect` (else the selection, else the cel) |
+| `outline`, `inline` | `color`, `width` 1-10, `shape` diamond\|circle\|square |
+| `shade` | `mode` simple\|hue_shift\|ramp, `direction` lighten\|darken, `amount` 0-100, `hue`, `saturation`, `value`, `ramp` [indices] or `ramp_name` (a palette's ramp), `points`, `rect`, `match` (a colour), `palette_mode` snap\|add |
+| `shift` | `by` [dx, dy], `wrap`, `rect` |
+| `flip` | `axis` x\|y, `rect` |
+| `rotate` | `angle` (clockwise degrees), `method` auto\|cleanedge\|rotxel\|omniscale\|nearest, `pivot` [x, y] (halves allowed), `rect` |
+| `scale` | `factor` 2-4, `method` nearest\|scale2x\|scale3x, `tolerance`, `rect` |
+| `mirror` | `axis` x\|y, `from_side` left\|right\|top\|bottom, `at` (the axis), `rect` |
+| `copy` | `source` {`frame`, `layer`, `rect`}, `at`, `to_frame`, `to_layer`, `blend`, `cut` |
+| `select` | `shape` rect\|ellipse\|polygon\|color\|all\|none\|invert, `select_mode` replace\|add\|subtract\|intersect, `rect`, `points`, `at`, `tolerance`, `contiguous` |
+| `layer` | `action` add\|remove\|rename\|move\|set, `name` (or `index`), `new_name`, `at` (position in its group, 0 is the bottom), `visible`, `opacity`, `blend_mode`, `group` |
+| `frame` | `action` add\|remove\|move\|duplicate\|set, `at`, `count`, `copy`, `link`, `duration_ms`, `from`, `to` |
+| `tag` | `action` set\|remove, `name`, `new_name`, `from`, `to`, `direction`, `repeat`, `color` |
+| `slice` | `action` set\|remove, `name`, `new_name`, `rect`, `pivot`, `center` |
+| `cel` | `action` link\|unlink\|clear\|set, `frame`, `layer`, `from` (the frame linked to), `opacity`, `z_index` |
+| `palette` | `action` set\|add\|replace\|load, `colors`, `index`, `color`, `asset` (a `.palette`), `remap` keep_indices\|nearest |
+| `canvas` | `action` resize\|crop\|convert, `size` [w, h], `anchor`, `rect`, `mode` indexed\|rgba, `snap` |
+
+A `select` holds for the rest of the batch: pixel ops change only selected pixels unless
+`ignore_selection` is set, and the next call starts with none. `copy` takes the selection when
+`source.rect` is absent and places it anywhere. Transforms act on `rect`, else the selection's
+bounds, else the whole canvas.
+
+`symmetry` mirrors `pixel`, `line`, `rect`, `ellipse`, `polygon`, `fill` seeds, `paste` and `shade`
+points: `x: true` about the canvas centre, `x: 15.5` about an axis in pixels, `diagonal: "xy"`,
+`"x_minus_y"` or `"both"`.
+
+Plain PNG sprites take the pixel ops and `palette` / `canvas`; other structure ops fail with
+`png_structure`, whose fix is `create_sprite {from: <the png>}`.
+
+### Animations
+
+`frame {action: "add"}` copies the previous frame's cels (`link: true` links them, `copy: false`
+leaves it empty). Build a walk with `frame add` + `copy` + small edits, then `tag {action: "set",
+name: "walk", from, to}`. Prefer shading with a ramp (`shade {mode: "ramp"}`) to new colours.
+
+### Lints
+
+`edit_sprite {lint: true}` runs every applicable lint of `jasper://docs/pixel-art` on the touched
+frames; a list of ids runs those. The result lists only what did not pass, and lints never block a
+write.

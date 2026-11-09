@@ -862,4 +862,40 @@ namespace jasperengine::editor::mcp::schema { Json anyOf(const std::string& desc
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+Recorded while implementing (branch `feature/s47-agent-sprite-drawing`):
+
+- **R10, get_sprite's shape.** `aseprite::describe` numbers frames from 0 and is verbose; `get_sprite`
+  builds the shape R10 lists directly from the document, with frames from 1 (D10), compact enough for
+  §6.3. Fields it adds beyond the list are `used_by`, `last_edit`, `revision`.
+- **§6.2 field names over R21/R23/R24 words.** The closed tables are what the handler checks: `copy`
+  takes `source {frame, layer, rect}` (R23 says `from`), `select` takes `select_mode` (R23 `mode`), and
+  `mirror` takes `from_side` (R21 `from`). `cel` also takes `frame` and `layer`, which the table leaves
+  to the paint family.
+- **R5/R24 structure limits.** A `frame add` or `layer add` past 256 fails with `too_many_ops` (the
+  closest listed kind) naming the limit.
+- **S46's lint library** (`editor/pixelart/lint/PixelLint`, `CraftLints`, `EffectLints`) is copied
+  verbatim from `feature/s46-pixel-art-cleanup` (commit `66819890`) so `edit_sprite {lint}` runs against
+  the real API; the batch landing keeps S46's copy. `SpriteDrawLint` is the one call site (R31).
+- **`.png` deviations from R1:** 16-bit PNGs are refused (`unsupported_feature`, their precision would be
+  lost). A PNG re-saves as 8-bit: a palette PNG at 1/2/4 bits becomes 8-bit indexed.
+- **`create_sprite` palettes:** an indexed sprite's index 0 is its transparent index, so a named palette
+  (S43, whose index 0 is a real colour) is written one index up with `#00000000` at 0, unless its entry
+  0 is already clear or its `transparent` is 0. A palette of 256 real colours needs that slot, so it
+  fails with `palette_full`.
+- **`unsupported_feature` also covers** an indexed sprite with palette changes on later frames (S44 reads
+  them, the ops keep one palette for all frames).
+- **Rotation and scale conventions.** Positive angles turn clockwise on screen for every method.
+  Pivots are in pixel-index coordinates (`pixel i`'s centre is `i`, halves allowed), default the
+  target's centre `(w-1)/2`; Pixelorama's rotxel and odd-size pivots are off by half a pixel and were
+  corrected. `AdvMAME3x` is the published rule set: the spec's E8 note was wrong (`E8 = F` is correct);
+  the real Pixelorama bug is its block written one pixel up-left, and `SpriteRotateTest` pins that.
+  OmniScale's "no-AA" corners still average in the shader; here each resolves to one source pixel.
+- **The cleanEdge/OmniScale source map:** rotations return a per-output-pixel source index, so a rotation
+  is exact on palette indices by construction (AC5).
+- **R27 `context`** is a deferred reply (`captureView` renders the frame; the call waits on the main
+  thread's frames), not an `McpJobs` job: it is at most a few frames long.
+- **AC15 measures the JSON of `structuredContent`**, what a client like Claude Code shows the model (its
+  text mirrors the grids): it is the bigger part of a reply.
+- **R38's bench** is `editor/tests/pixelart/SpriteDrawBench.cpp` (`SpriteDrawBench.*`, printed `[bench]`
+  lines, enforced by `JASPER_TEST_PERF_SLACK`), not `tools/perf/sprite_draw_bench`, matching the
+  repository's bench suites.
