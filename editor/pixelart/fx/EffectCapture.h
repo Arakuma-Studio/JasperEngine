@@ -25,6 +25,7 @@
 #include "pixelart/PixelFxPlayer.h"
 #include "pixelart/ScreenTransition.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -115,6 +116,15 @@ namespace jasperengine::editor::pixelart::fx {
     // A .particles asset (assets-relative) on a Particle System of its own at the origin
     std::unique_ptr<CaptureTarget> makeParticlesTarget(Project* project, const std::string& effect, std::string& error);
 
+    // A capture's size limits (R27). Only a transition's art grid times its pixel size is the
+    // caller's to pick (an isolated frame is cropped to maxSide, a scene frame fits sceneMaxWidth),
+    // and 1024 art pixels x pixel size 16 x 64 frames would be 64 GiB of frames.
+    constexpr int kCaptureMaxSide = 4096;
+    constexpr int64_t kCaptureMaxPixels = int64_t(1) << 25;   // 128 MiB of RGBA8, over all a sheet's frames
+
+    // Whether a capture of `frames` frames of `target` fits the limits; false, with what to change, when not
+    bool captureFitsLimits(const CaptureTarget& target, int frames, std::string& error);
+
     struct CaptureSettings {
         CaptureMode mode = CaptureMode::Isolated;
         std::vector<double> times;          // in order, each in [0, duration]
@@ -178,6 +188,10 @@ namespace jasperengine::editor::pixelart::fx {
         const CaptureTarget& getTarget() const { return *target; }
         // called once when the run ends (ok or not), from processFrame
         void setOnFinished(std::function<void()> done) { onFinished = std::move(done); }
+
+        // True while a run has started and not ended. A second capture is refused while one runs: captures
+        // share the capture view and a Play capture holds the game's fixed step and pause.
+        static bool anyRunning();
 
         // The editor calls these from its frame (App::engineRender); true while a run still works
         static bool processFrame();
