@@ -178,7 +178,7 @@ never build or run them.
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | in review |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | implementing |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | in review |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -244,6 +244,8 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S52's lighter gate passed on box A at `9a4f86a54` (editor 153, core 157, 106 MCP
+  tests; red controls for AC1–10). An independent review is running.
 - 2026-11-09: **Batch 2: S49 Pixel Particles merged into `main` and pushed** (branch `9da5e1936`).
   - At landing I added the shader cache v60 for S49's particle shaders: S49 had changed shaders
     without bumping it. S43's pin became "v59 or later", with a new S49 pin.
