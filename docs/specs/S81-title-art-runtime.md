@@ -1490,7 +1490,7 @@ rest of S82 lands in 6B.
     (its alpha-only results, the scale_split's glow and shadow blurs, come from S80's alpha-keyed
     cache) followed by the rest of its stack, the composites above it and the output; the other
     layers are node-cache hits. A live param that changes the stack's reach re-places the inputs in
-    the new region (a clear and a copy). The compose runs whole in its frame before the slices
+    the new region (a clear and a copy). The compose runs whole in its frame before the slices (its first draws too: W3's sampled-state key and W4's one-new-draw-a-frame rule would otherwise spread a param that changes the target shape over many frames; `TitleFirstDraws::SynchronousScope` around its step, so a live param's first compose on a new texture shape stalls instead of a later frame)
     (no cost-model gate), cuts to the new image and does not cache the old one. A live compose keeps
     the render's inputs on the new image and records what it touched (`TitleDisplayImage::liveTouched`):
     an input that a later change would read after an earlier live change altered it (an effect before

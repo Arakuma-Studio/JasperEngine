@@ -574,7 +574,12 @@ bool TitleArtLive::runLive(const TitleScheduleContext& context){
     }
     running.started = true;
     StepReport report;
-    running.job->step(StepBudget{0, 0}, &report);
+    {
+        // the compose draws in its frame (R9): a new sampled texture shape (a live param that
+        // changes the reach) has no later frame to go to, so its first draws go at once
+        TitleFirstDraws::SynchronousScope compose;
+        running.job->step(StepBudget{0, 0}, &report);
+    }
     shadersWaiting = running.job->waiting() && report.steps == 0;
     running.estimatedUs += report.estimatedUs;
     running.cpuMs += report.measuredUs / 1000.0;

@@ -392,9 +392,10 @@ TEST_F(TitleArtIOTest, FieldWritesValidateAndClamp) {
     EXPECT_EQ(typo.nearest, "bevel");
     FieldSetResult readOnly = setTitleArtField(layer, "layer", "id", "00000000");
     EXPECT_EQ(readOnly.code, "read_only");
-    FieldSetResult reserved = setTitleArtField(layer, "layer", "only_languages", Json::array({"ja"}));
+    // (S85's and S87's reservations are their members now: S84's document keys are still reserved)
+    FieldSetResult reserved = setTitleArtField(doc.root, "document", "color_schemes", Json::array());
     EXPECT_EQ(reserved.code, "not_available");
-    EXPECT_NE(reserved.error.find("S87"), std::string::npos);
+    EXPECT_NE(reserved.error.find("S84"), std::string::npos);
     // S85 registered transform.stretch: it writes like any member
     FieldSetResult stretch = setTitleArtField(layer, "layer", "transform.stretch", Json::array({2, 1}));
     EXPECT_TRUE(stretch.ok) << stretch.error;
