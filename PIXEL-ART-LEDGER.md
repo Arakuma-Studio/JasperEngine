@@ -258,6 +258,15 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: `fix/main-shared-green` is done (box C, verified with `WERROR`; the shared-data set
+  is green):
+  - the reviewed Animator IK hash (5 members, none needs a shader variant);
+  - a determinism fix: `vertexCount` is computed from the buffers, not only after the first draw
+    (with a unit test);
+  - the `procmat-baked` goldens, one suite per commit;
+  - fanout 152→147: an unneeded `RenderSystem.h` include removed from 5 units, limit unchanged.
+
+  It joins batch 4 once the current batch-4 run finishes.
 - 2026-11-09: **Batch 3: S51 Pixel Fonts merged into `main` and pushed** (branch `6e0376917`).
   - Verified on main + S51: web, android, Vulkan 98/98, `htmlui-tests` Vulkan.
   - Of the 6 HTML UI failures, 4 also fail on plain `main`. `UIParticleSystemsClippedByAPanel`
