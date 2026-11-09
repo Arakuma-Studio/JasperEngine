@@ -399,7 +399,7 @@ TEST(PixelArtCheck, FontAnalysisMadeWhereTheInputIsBuilt){
         PixelArtFontInfo info;
         info.font = fonts.front();
         info.kind = "bitmap";
-        info.size = size;
+        info.size = size == 0 ? 9 : size;    // a font on its own: its native size, as the default does
         info.nativeSize = 9;
         info.antialiased = false;
         info.partialAlphaShare = 0.0f;

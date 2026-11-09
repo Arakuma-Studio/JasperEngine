@@ -202,6 +202,8 @@ entities:
         receiveShadows: false
         lodEnabled: false
         lodBias: 4.4
+        sortingLayer: 2
+        sortingOrder: -3
         renderInReflectionProbes: false
         shadowsBillboard: true
         staticShadowCaster: true
@@ -225,6 +227,8 @@ entities:
       linerenderer:
         enabled: false
         maxLines: 100
+        sortingLayer: 3
+        sortingOrder: -5
         lines: ~
         blendMode: MULTIPLY
         depthWrite: DISABLED
@@ -323,6 +327,8 @@ entities:
       points:
         enabled: false
         maxPoints: 100
+        sortingLayer: 2
+        sortingOrder: 4
         transparent: true
         autoTransparency: false
         texture:
@@ -1151,6 +1157,8 @@ entities:
         playOnAwake: false
         seed: 0
         playbackSpeed: 2.5
+        sortingLayer: 1
+        sortingOrder: 6
   - type: Entity
     entity: 1034
     name: PolygonComponent
@@ -1331,6 +1339,7 @@ entities:
         pivotPreset: bottom_right
         pixelsPerUnit: 6.6
         pixelRotation: on_grid
+        spriteSortPoint: pivot
   - type: Entity
     entity: 1044
     name: TextComponent
@@ -2367,6 +2376,8 @@ entities:
         widthMultiplier: 7.8
         emitting: false
         autodestruct: true
+        sortingLayer: 4
+        sortingOrder: 7
         widthUnit: pixels
         numCornerVertices: 5
         numCapVertices: 2
@@ -2718,3 +2729,39 @@ entities:
         rotationMode: on_grid
         subpixelSmoothing: true
         letterboxColor: [0.6333333, 0.43333334, 0.5555556, 1]
+  - type: Entity
+    entity: 1096
+    name: SortingGroupComponent
+    components:
+      transform:
+        position: [95, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      sortinggroup:
+        enabled: false
+        sortingLayer: 5
+        sortingOrder: 2
+  - type: Entity
+    entity: 1097
+    name: SpriteBatchComponent
+    components:
+      transform:
+        position: [96, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      spritebatch:
+        enabled: false
+        mode: clear_each_frame
+        space: world
+        capacity: 7
+        sortInstances: true
