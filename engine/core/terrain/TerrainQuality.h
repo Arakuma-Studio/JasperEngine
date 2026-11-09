@@ -11,7 +11,7 @@
 
 #include <cstdint>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     // Stored as ints: append only
     enum class TerrainQuality : int { HIGH, MEDIUM, LOW };

@@ -416,7 +416,7 @@ vec4 getTerrainLayer(float layer){
 #endif
 
 // The layers in a blend map's channels: RGB's m * 3 + c, and with more than 9 layers the alpha's 9 + m,
-// inverted so that an opaque map means weight 0 (terrain::terrainLayerChannel)
+// inverted so that an opaque map means weight 0 (terraincore::terrainLayerChannel)
 #ifdef TERRAIN_EXTENDED_LAYERS
     const int TERRAIN_BLEND_CHANNELS = 4;
     float terrainChannelWeight(TERRAIN_BLEND_TYPE map, int c){

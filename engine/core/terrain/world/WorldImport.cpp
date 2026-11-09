@@ -9,7 +9,7 @@
 #include <limits>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -85,13 +85,13 @@ namespace {
 
 }
 
-int jasperengine::terrain::importTilesAcross(int samples, int tileQuads) {
+int jasperengine::terraincore::importTilesAcross(int samples, int tileQuads) {
     if (samples < 2 || tileQuads <= 0) return 0;
     // a tile needs its last shared sample: (samples - 1) quads, a partial tile repeating the edge
     return (samples - 1 + tileQuads - 1) / tileQuads;
 }
 
-std::vector<TileCoord> jasperengine::terrain::importCoveredTiles(const HeightmapImport& plan, int width, int height) {
+std::vector<TileCoord> jasperengine::terraincore::importCoveredTiles(const HeightmapImport& plan, int width, int height) {
     std::vector<TileCoord> tiles;
     const int n = plan.lattice.tileQuads;
     const int across = importTilesAcross(width, n), down = importTilesAcross(height, n);
@@ -101,7 +101,7 @@ std::vector<TileCoord> jasperengine::terrain::importCoveredTiles(const Heightmap
     return tiles;
 }
 
-std::vector<TileCoord> jasperengine::terrain::importChangedTiles(const HeightmapImport& plan, int width, int height,
+std::vector<TileCoord> jasperengine::terraincore::importChangedTiles(const HeightmapImport& plan, int width, int height,
                                                                  const std::function<bool(TileCoord tile)>& present) {
     std::vector<TileCoord> tiles;
     const int n = plan.lattice.tileQuads;
@@ -116,7 +116,7 @@ std::vector<TileCoord> jasperengine::terrain::importChangedTiles(const Heightmap
     return tiles;
 }
 
-bool jasperengine::terrain::importHeightmap(const HeightmapRows& source, const HeightmapImport& plan, const ImportTarget& target,
+bool jasperengine::terraincore::importHeightmap(const HeightmapRows& source, const HeightmapImport& plan, const ImportTarget& target,
                                             const std::function<bool()>& cancelled, const std::function<void(int done, int total)>& progress,
                                             std::string& error) {
     const WorldLattice& lattice = plan.lattice;
@@ -237,7 +237,7 @@ bool jasperengine::terrain::importHeightmap(const HeightmapRows& source, const H
     return true;
 }
 
-bool jasperengine::terrain::scanRawHeightmap(const std::string& path, int width, int height, const std::function<bool()>& cancelled,
+bool jasperengine::terraincore::scanRawHeightmap(const std::string& path, int width, int height, const std::function<bool()>& cancelled,
                                              RawHeightmapScan& out, std::string& error) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
@@ -287,7 +287,7 @@ bool jasperengine::terrain::scanRawHeightmap(const std::string& path, int width,
     return true;
 }
 
-HeightmapRows jasperengine::terrain::rawHeightmapRows(const RawHeightmapFile& raw) {
+HeightmapRows jasperengine::terraincore::rawHeightmapRows(const RawHeightmapFile& raw) {
     HeightmapRows rows;
     auto file = std::make_shared<std::ifstream>(raw.path, std::ios::binary);
     std::string error;

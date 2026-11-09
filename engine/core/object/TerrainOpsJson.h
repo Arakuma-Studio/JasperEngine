@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     // Terrain-local from the caller's space (DC5): XZ through the inverse model, heights by the Y scale
     struct JASPERENGINE_API OpSpace {

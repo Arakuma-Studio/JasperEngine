@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     enum class ShapeType : uint8_t { All, Circle, Rect, Polyline, Mask, Stroke };
     enum class Falloff : uint8_t { Smooth, Linear, Constant };

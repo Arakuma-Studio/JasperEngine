@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     struct HeightmapRows {
         int width = 0, height = 0;

@@ -9,7 +9,7 @@
 // layers in its RGB, and on a terrain of more than nine layers a fourth by its alpha, inverted, so
 // that an opaque map means weight 0. Nothing else may do this arithmetic or assume nine layers.
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     inline constexpr int TERRAIN_MAX_LAYERS = 12;
     inline constexpr int TERRAIN_LAYERS_IN_RGB = 9;

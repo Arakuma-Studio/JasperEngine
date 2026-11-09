@@ -10,7 +10,7 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 static constexpr int DROPLET_STEPS = 32;
 static constexpr float DROPLET_INERTIA = 0.05f;

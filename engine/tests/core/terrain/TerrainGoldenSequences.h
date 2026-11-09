@@ -20,7 +20,7 @@
 namespace terraingolden {
 
     using namespace jasperengine;
-    using namespace jasperengine::terrain;
+    using namespace jasperengine::terraincore;
 
     inline constexpr int SAMPLES = 65;
     inline constexpr float TERRAIN_SIZE = 65.0f;  // one world unit per texel: the (i * h) lattice lands on the same floats

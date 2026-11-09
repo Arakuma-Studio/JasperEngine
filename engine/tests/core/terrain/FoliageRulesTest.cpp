@@ -155,7 +155,7 @@ TEST(FoliageRules, SlopeHeightLayerRules) {
     }
 }
 
-// T3 R15: a layer past the ninth weighs by a blend map's alpha, inverted (terrain::terrainLayerChannel),
+// T3 R15: a layer past the ninth weighs by a blend map's alpha, inverted (terraincore::terrainLayerChannel),
 // so a rule on layer 10 reads blend map 1's alpha, not a fourth map
 TEST(FoliageRules, LayerPastNineReadsTheAlpha) {
     std::unique_ptr<RawMapStore> store = makeRampStore();

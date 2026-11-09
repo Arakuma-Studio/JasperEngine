@@ -6,9 +6,9 @@
 #include <algorithm>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
-bool jasperengine::terrain::worldSquareOpen(const TileNeighbourhood& near, const WorldLattice& lattice, int sx, int sz) {
+bool jasperengine::terraincore::worldSquareOpen(const TileNeighbourhood& near, const WorldLattice& lattice, int sx, int sz) {
     const int n = lattice.tileQuads;
     const int dx = sx < 0 ? -1 : (sx >= n ? 1 : 0);
     const int dz = sz < 0 ? -1 : (sz >= n ? 1 : 0);
@@ -28,7 +28,7 @@ bool jasperengine::terrain::worldSquareOpen(const TileNeighbourhood& near, const
     return true;
 }
 
-int jasperengine::terrain::worldChunkSamples(const TileNeighbourhood& near, const WorldLattice& lattice, float maxHeight, int chunkQuads, int chunkX,
+int jasperengine::terraincore::worldChunkSamples(const TileNeighbourhood& near, const WorldLattice& lattice, float maxHeight, int chunkQuads, int chunkX,
                                              int chunkZ, std::vector<float>& out) {
     const WorldTile* tile = near.centre();
     const int side = chunkQuads + 1;
@@ -58,7 +58,7 @@ int jasperengine::terrain::worldChunkSamples(const TileNeighbourhood& near, cons
     return open;
 }
 
-bool jasperengine::terrain::worldCoarseSamples(const WorldOverview& overview, float maxHeight, TileCoord tile, std::vector<float>& out) {
+bool jasperengine::terraincore::worldCoarseSamples(const WorldOverview& overview, float maxHeight, TileCoord tile, std::vector<float>& out) {
     if (!overview.covers(tile) || overview.empty()) return false;
     const int side = overview.stride + 1;
     const int originX = (tile.x - overview.low.x) * overview.stride, originZ = (tile.z - overview.low.z) * overview.stride;

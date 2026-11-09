@@ -8,7 +8,7 @@
 #include <limits>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -68,11 +68,11 @@ namespace {
 
 }
 
-float jasperengine::terrain::sampleHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY) {
+float jasperengine::terraincore::sampleHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY) {
     return bilinearHeight(pixels, width, height, channels, bytesPerChannel, texelX, texelY);
 }
 
-float jasperengine::terrain::sampleHeightLocal(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ) {
+float jasperengine::terraincore::sampleHeightLocal(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ) {
     return bilinearHeightLocal(pixels, width, height, channels, bytesPerChannel, terrainSize, localX, localZ);
 }
 
@@ -102,7 +102,7 @@ namespace {
 
 }
 
-SurfaceSample jasperengine::terrain::sampleSurface(const SurfaceView& view, float localX, float localZ) {
+SurfaceSample jasperengine::terraincore::sampleSurface(const SurfaceView& view, float localX, float localZ) {
     SurfaceSample result;
 
     if (view.size > std::numeric_limits<float>::epsilon()) {
@@ -124,14 +124,14 @@ SurfaceSample jasperengine::terrain::sampleSurface(const SurfaceView& view, floa
     return result;
 }
 
-float jasperengine::terrain::sampleHeight(const SurfaceView& view, float localX, float localZ) {
+float jasperengine::terraincore::sampleHeight(const SurfaceView& view, float localX, float localZ) {
     if (!hasMap(view)) {
         return 0.0f;
     }
     return heightAtLocal(view, localX, localZ);
 }
 
-bool jasperengine::terrain::raycastSurface(const SurfaceView& view, const Vector3& origin, const Vector3& direction, float maxT,
+bool jasperengine::terraincore::raycastSurface(const SurfaceView& view, const Vector3& origin, const Vector3& direction, float maxT,
                                            bool skipHoles, Vector3& point, float& t) {
     if (view.size <= std::numeric_limits<float>::epsilon()) {
         return false;

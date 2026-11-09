@@ -13,7 +13,7 @@
 #include <memory>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     class JASPERENGINE_API RawMapStore : public TerrainMapStore {
     public:

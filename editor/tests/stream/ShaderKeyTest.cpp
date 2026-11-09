@@ -515,7 +515,7 @@ TEST(ShaderKey, TerrainHolesBitIsPinned) {
 
 // T3 D2: Medium and Low are Lit defines on MESH, and on a G-buffer, which they do not reach, these bits
 TEST(ShaderKey, TerrainTierBitsArePinned) {
-    using terrain::TerrainQuality;
+    using terraincore::TerrainQuality;
     EXPECT_EQ(ShaderPool::getTerrainTierProperty(TerrainQuality::MEDIUM), shaderPropertyBit(23));
     EXPECT_EQ(ShaderPool::getTerrainTierProperty(TerrainQuality::LOW), shaderPropertyBit(24));
     EXPECT_EQ(ShaderPool::getTerrainTierProperty(TerrainQuality::HIGH), 0u);

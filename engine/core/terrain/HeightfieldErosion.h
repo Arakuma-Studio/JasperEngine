@@ -16,7 +16,7 @@
 
 namespace jasperengine { namespace jobs { class CancelToken; } }
 
-namespace jasperengine { namespace terrain {
+namespace jasperengine { namespace terraincore {
 
     struct HydraulicParams {
         float dropletsPerTexel = 0.25f;

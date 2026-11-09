@@ -69,8 +69,8 @@ namespace {
     }
 
     // The op's own validation and dry-run answer: rendering is the handler's, over frames (T1 R89)
-    bool validateBake(const terrain::TerrainMapStore&, const terrain::Op& op, terrain::OpError& error) {
-        if (const terrain::OpParam* views = op.params.find("views")) {
+    bool validateBake(const terraincore::TerrainMapStore&, const terraincore::Op& op, terraincore::OpError& error) {
+        if (const terraincore::OpParam* views = op.params.find("views")) {
             const int value = static_cast<int>(views->number);
             if (value != 4 && value != 8 && value != 16) {
                 error.field = "views";
@@ -78,7 +78,7 @@ namespace {
                 return false;
             }
         }
-        if (const terrain::OpParam* resolution = op.params.find("resolution")) {
+        if (const terraincore::OpParam* resolution = op.params.find("resolution")) {
             const int value = static_cast<int>(resolution->number);
             if (value != 128 && value != 256 && value != 512) {
                 error.field = "resolution";
@@ -89,7 +89,7 @@ namespace {
         return true;
     }
 
-    void applyBake(terrain::OpContext& context, const terrain::Op&, terrain::OpEntry&) {
+    void applyBake(terraincore::OpContext& context, const terraincore::Op&, terraincore::OpEntry&) {
         if (!context.dryRun()) {
             context.fail("bake_impostors runs over frames: call it through edit_terrain.");
         }
@@ -120,10 +120,10 @@ editor::ImpostorState editor::ImpostorBaker::stateOf(Project* project, const std
 }
 
 void editor::ImpostorBaker::registerOp() {
-    if (terrain::registeredOpExists("bake_impostors")) return;
-    terrain::RegisteredOpTraits traits;
+    if (terraincore::registeredOpExists("bake_impostors")) return;
+    terraincore::RegisteredOpTraits traits;
     traits.spansFrames = true;
-    terrain::registerOp("bake_impostors", validateBake, applyBake, traits);
+    terraincore::registerOp("bake_impostors", validateBake, applyBake, traits);
 }
 
 bool editor::ImpostorBaker::encodePng(const std::vector<uint8_t>& rgba, int width, int height, std::vector<uint8_t>& png) {

@@ -59,17 +59,17 @@ namespace {
         return op;
     }
 
-    terrain::OpSpace runtimeSpace(const Vector3& position, const Vector3& scale) {
+    terraincore::OpSpace runtimeSpace(const Vector3& position, const Vector3& scale) {
         Matrix4 model = Matrix4::translateMatrix(position) * Matrix4::scaleMatrix(scale);
-        return terrain::OpSpace::of(model, position, scale, false, true);
+        return terraincore::OpSpace::of(model, position, scale, false, true);
     }
 
 }
 
 // R68, R75: world numbers become terrain-local ones, and a bad field is named by its path
 TEST(TerrainOpsJson, ReadsWorldSpaceAndNamesTheBadField) {
-    const terrain::OpSpace space = runtimeSpace(Vector3(10.0f, 5.0f, -4.0f), Vector3(2.0f, 4.0f, 2.0f));
-    terrain::OpJsonParser parser(space, {});
+    const terraincore::OpSpace space = runtimeSpace(Vector3(10.0f, 5.0f, -4.0f), Vector3(2.0f, 4.0f, 2.0f));
+    terraincore::OpJsonParser parser(space, {});
     std::vector<Op> ops;
     const json list = json::parse(R"([
         {"op": "raise", "delta": 8, "shape": {"type": "circle", "center": [14, 0], "radius": 6}},
@@ -96,10 +96,10 @@ TEST(TerrainOpsJson, ReadsWorldSpaceAndNamesTheBadField) {
 
 // R75: what a caller does not take is refused before anything runs, saying what to use
 TEST(TerrainOpsJson, RefusesWhatTheCallerDoesNotTake) {
-    const terrain::OpSpace space = runtimeSpace(Vector3(0.0f), Vector3(1.0f));
-    terrain::OpJsonHooks hooks;
+    const terraincore::OpSpace space = runtimeSpace(Vector3(0.0f), Vector3(1.0f));
+    terraincore::OpJsonHooks hooks;
     hooks.refused = {{OpType::RemapLayers, "is for the editor only."}};
-    terrain::OpJsonParser parser(space, hooks);
+    terraincore::OpJsonParser parser(space, hooks);
     std::vector<Op> ops;
     EXPECT_FALSE(parser.parseList(json::parse(R"([{"op": "remap_layers", "order": [1, 0]}])"), ops));
     EXPECT_EQ(parser.error, "ops[0].op: remap_layers is for the editor only.");
@@ -113,13 +113,13 @@ TEST(TerrainOpsJson, RefusesWhatTheCallerDoesNotTake) {
 TEST(TerrainOpsJson, ResultInTheCallersSpace) {
     RawMapStore store(16.0f, 8.0f);
     addFlatHeight(store, 17, 0.25f);
-    const terrain::OpSpace space = runtimeSpace(Vector3(0.0f, 1.0f, 0.0f), Vector3(1.0f, 2.0f, 1.0f));
-    terrain::OpJsonParser parser(space, {});
+    const terraincore::OpSpace space = runtimeSpace(Vector3(0.0f, 1.0f, 0.0f), Vector3(1.0f, 2.0f, 1.0f));
+    terraincore::OpJsonParser parser(space, {});
     std::vector<Op> ops;
     ASSERT_TRUE(parser.parseList(json::parse(R"([{"op": "raise", "delta": 2, "shape": {"type": "circle", "center": [0, 0], "radius": 3}}])"), ops));
     const TerrainOpResult result = applyOps(store, ops);
     ASSERT_TRUE(result.ok) << result.error;
-    const json out = terrain::opResultJson(result, space, ops);
+    const json out = terraincore::opResultJson(result, space, ops);
     ASSERT_EQ(out["changed"].size(), 1u);
     EXPECT_EQ(out["changed"][0]["map"], "height");
     EXPECT_GT(out["changed"][0]["texels"].get<int64_t>(), 0);
@@ -217,7 +217,7 @@ TEST(TerrainRuntimeEdit, HeightRowsConvertToFloats) {
     heights[5] = 65535;
     heights[6] = 32768;
     std::vector<uint8_t> shadow(16 * 4, 0xAB);
-    convertTerrainHeightRect(heights.data(), 4, terrain::TexelRect{1, 1, 2, 1}, TerrainUploadFormat::Float32, shadow.data());
+    convertTerrainHeightRect(heights.data(), 4, terraincore::TexelRect{1, 1, 2, 1}, TerrainUploadFormat::Float32, shadow.data());
     float value = 0.0f;
     std::memcpy(&value, shadow.data() + 5 * 4, 4);
     EXPECT_FLOAT_EQ(value, 1.0f);
@@ -227,7 +227,7 @@ TEST(TerrainRuntimeEdit, HeightRowsConvertToFloats) {
     EXPECT_EQ(shadow[7 * 4], 0xAB);
 
     std::vector<uint8_t> halves(16 * 2, 0);
-    convertTerrainHeightRect(heights.data(), 4, terrain::TexelRect{0, 0, 4, 4}, TerrainUploadFormat::Half, halves.data());
+    convertTerrainHeightRect(heights.data(), 4, terraincore::TexelRect{0, 0, 4, 4}, TerrainUploadFormat::Half, halves.data());
     uint16_t half = 0;
     std::memcpy(&half, halves.data() + 5 * 2, 2);
     EXPECT_EQ(half, 0x3C00) << "1.0 as an IEEE half";

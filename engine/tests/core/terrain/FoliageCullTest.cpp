@@ -12,7 +12,7 @@
 #include <cmath>
 #include <vector>
 
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 

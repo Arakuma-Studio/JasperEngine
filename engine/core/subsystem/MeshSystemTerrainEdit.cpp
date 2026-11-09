@@ -21,7 +21,7 @@
 #include <cstddef>
 
 using namespace jasperengine;
-using jasperengine::terrain::TexelRect;
+using jasperengine::terraincore::TexelRect;
 
 namespace {
 
@@ -82,7 +82,7 @@ namespace {
             upload.shadow.assign(shadowBytes, 0);
             upload.dirty = TexelRect{0, 0, width, height};
         }
-        const TexelRect rect = terrain::intersect(upload.dirty, TexelRect{0, 0, width, height});
+        const TexelRect rect = terraincore::intersect(upload.dirty, TexelRect{0, 0, width, height});
         if (!rect.empty()) {
             convertTerrainHeightRect(static_cast<const uint16_t*>(data.getData()), width, rect, shadowFormat, upload.shadow.data());
             upload.dirty = TexelRect{};
@@ -93,7 +93,7 @@ namespace {
 
 bool MeshSystem::refitTerrainNode(TerrainComponent& terrain, size_t nodeIndex, int rectX, int rectY, int rectW, int rectH, int mapWidth, int mapHeight) {
     TerrainNode& node = terrain.nodes[nodeIndex];
-    if (terrain::intersect(nodeTexels(terrain, node, mapWidth, mapHeight), TexelRect{rectX, rectY, rectW, rectH}).empty()) return false;
+    if (terraincore::intersect(nodeTexels(terrain, node, mapWidth, mapHeight), TexelRect{rectX, rectY, rectW, rectH}).empty()) return false;
 
     if (!node.hasChilds) {
         const float half = terrain.terrainSize * 0.5f;

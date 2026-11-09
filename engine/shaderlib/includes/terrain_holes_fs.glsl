@@ -1,4 +1,4 @@
-// T3 R18-R20, D7: the hole mask of a terrain, the fragment stage's half of terrain::isHole
+// T3 R18-R20, D7: the hole mask of a terrain, the fragment stage's half of terraincore::isHole
 // (engine/core/terrain/TerrainHoles.h): the same texel, min(floor(u * W), W - 1) from the same
 // terrain-local position, by texelFetch with no filter. Morphing moves the vertices, not the hole.
 // The clamp at 0 is for a fragment extrapolated past the terrain's edge, which the query calls off

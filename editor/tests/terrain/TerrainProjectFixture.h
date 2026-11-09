@@ -35,9 +35,9 @@ namespace terrainprojecttest {
     using namespace jasperengine::editor;
     namespace fs = std::filesystem;
 
-    inline constexpr terrain::MapId HEIGHT_MAP{terrain::MapKind::Height, 0};
-    inline constexpr terrain::MapId BLEND_MAP{terrain::MapKind::Blend, 0};
-    inline constexpr terrain::MapId DENSITY_MAP{terrain::MapKind::Density, 0};
+    inline constexpr terraincore::MapId HEIGHT_MAP{terraincore::MapKind::Height, 0};
+    inline constexpr terraincore::MapId BLEND_MAP{terraincore::MapKind::Blend, 0};
+    inline constexpr terraincore::MapId DENSITY_MAP{terraincore::MapKind::Density, 0};
 
     class TerrainProjectFixture : public ::testing::Test {
     protected:
@@ -121,7 +121,7 @@ namespace terrainprojecttest {
             giveFileMap(TerrainMapRef(TerrainMapTarget::HeightMap), size, ColorFormat::RED16, 1, [&](size_t) { return fill; });
         }
 
-        std::vector<unsigned char> bytesOf(terrain::MapId map) {
+        std::vector<unsigned char> bytesOf(terraincore::MapId map) {
             Texture* texture = terrainMapTexture(terrain(), map);
             EXPECT_NE(texture, nullptr);
             EXPECT_TRUE(TerrainMapUtils::hasLoadedData(*texture));
@@ -130,7 +130,7 @@ namespace terrainprojecttest {
             return std::vector<unsigned char>(pixels, pixels + data.getSize());
         }
 
-        fs::path fileOf(terrain::MapId map) {
+        fs::path fileOf(terraincore::MapId map) {
             return project->resolveAssetPath(terrainMapTexture(terrain(), map)->getPath(0));
         }
 
@@ -140,20 +140,20 @@ namespace terrainprojecttest {
         }
     };
 
-    inline terrain::Op raiseOp(float delta) {
-        terrain::Op op;
-        op.type = terrain::OpType::Raise;
+    inline terraincore::Op raiseOp(float delta) {
+        terraincore::Op op;
+        op.type = terraincore::OpType::Raise;
         op.delta = delta;
-        op.shape.type = terrain::ShapeType::Circle;
+        op.shape.type = terraincore::ShapeType::Circle;
         op.shape.center = Vector2(0.0f, 0.0f);
         op.shape.radius = 10.0f;
         return op;
     }
 
-    inline terrain::TerrainOpResult runOn(terrain::TerrainMapStore& store, const terrain::Op& op) {
-        terrain::OpOptions options;
+    inline terraincore::TerrainOpResult runOn(terraincore::TerrainMapStore& store, const terraincore::Op& op) {
+        terraincore::OpOptions options;
         options.inPlace = true;
-        return terrain::applyOps(store, std::span<const terrain::Op>(&op, 1), options);
+        return terraincore::applyOps(store, std::span<const terraincore::Op>(&op, 1), options);
     }
 
 }

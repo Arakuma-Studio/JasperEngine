@@ -305,25 +305,25 @@ namespace jasperengine { namespace noise { namespace golden {
                     height[static_cast<size_t>(z) * 129 + static_cast<size_t>(x)] = (perlin2(static_cast<float>(x) * 0.05f, static_cast<float>(z) * 0.05f, 3u) + 1.0f) * 0.5f;
                 }
             }
-            terrain::ErosionRegion region;
+            terraincore::ErosionRegion region;
             region.startX = 17;
             region.startZ = -9;
             region.width = 129;
             region.depth = 129;
             region.maxHeight = 200.0f;
             region.metresPerTexel = 4.0;
-            terrain::ErosionControl control;
+            terraincore::ErosionControl control;
             control.parallel = false;
             std::vector<float> hydraulic = height, flow(height.size()), sediment(height.size());
-            terrain::HydraulicParams params;
+            terraincore::HydraulicParams params;
             params.seed = 5u;
-            terrain::HeightfieldErosion::hydraulic(params, region, hydraulic.data(), nullptr, flow.data(), sediment.data(), control);
+            terraincore::HeightfieldErosion::hydraulic(params, region, hydraulic.data(), nullptr, flow.data(), sediment.data(), control);
             out.emplace_back("erosion/direct/hydraulic", hashFloats(hydraulic.data(), hydraulic.size()));
             out.emplace_back("erosion/direct/flow", hashFloats(flow.data(), flow.size()));
             out.emplace_back("erosion/direct/sediment", hashFloats(sediment.data(), sediment.size()));
             std::vector<float> thermal = height;
-            terrain::ThermalParams thermalParams;
-            terrain::HeightfieldErosion::thermal(thermalParams, region, thermal.data(), control);
+            terraincore::ThermalParams thermalParams;
+            terraincore::HeightfieldErosion::thermal(thermalParams, region, thermal.data(), control);
             out.emplace_back("erosion/direct/thermal", hashFloats(thermal.data(), thermal.size()));
         }
 

@@ -103,7 +103,7 @@ namespace {
 
 }
 
-void init() {
+JASPERENGINE_INIT void init() {
 #ifdef __EMSCRIPTEN__
     if (noiseBenchRequested()) webBench();
 #endif

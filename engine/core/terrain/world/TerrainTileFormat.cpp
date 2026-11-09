@@ -11,7 +11,7 @@
 #include <cstring>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -125,7 +125,7 @@ namespace {
 
 }
 
-const char* jasperengine::terrain::tileErrorName(TileError error) {
+const char* jasperengine::terraincore::tileErrorName(TileError error) {
     switch (error) {
         case TileError::None: return "none";
         case TileError::Truncated: return "truncated";
@@ -149,7 +149,7 @@ size_t WorldTile::cpuBytes() const {
     return bytes;
 }
 
-void jasperengine::terrain::predictorEncode16(std::span<const uint8_t> samples, int width, int height, std::vector<uint8_t>& out) {
+void jasperengine::terraincore::predictorEncode16(std::span<const uint8_t> samples, int width, int height, std::vector<uint8_t>& out) {
     const size_t count = static_cast<size_t>(width) * height;
     out.assign(count * 2, 0);
     auto at = [&](int x, int y) -> uint32_t {
@@ -168,7 +168,7 @@ void jasperengine::terrain::predictorEncode16(std::span<const uint8_t> samples, 
     }
 }
 
-bool jasperengine::terrain::predictorDecode16(std::span<const uint8_t> filtered, int width, int height, std::vector<uint8_t>& out) {
+bool jasperengine::terraincore::predictorDecode16(std::span<const uint8_t> filtered, int width, int height, std::vector<uint8_t>& out) {
     const size_t count = static_cast<size_t>(width) * height;
     if (filtered.size() != count * 2) return false;
     out.assign(count * 2, 0);
@@ -190,7 +190,7 @@ bool jasperengine::terrain::predictorDecode16(std::span<const uint8_t> filtered,
     return true;
 }
 
-TileError jasperengine::terrain::parseTileHeader(std::span<const uint8_t> file, TileHeader& header) {
+TileError jasperengine::terraincore::parseTileHeader(std::span<const uint8_t> file, TileHeader& header) {
     if (file.size() < TILE_HEADER_BYTES) return TileError::Truncated;
     if (std::memcmp(file.data(), TILE_MAGIC, sizeof(TILE_MAGIC)) != 0) return TileError::BadMagic;
     const uint8_t* at = file.data() + 8;
@@ -234,7 +234,7 @@ TileError jasperengine::terrain::parseTileHeader(std::span<const uint8_t> file, 
     return TileError::None;
 }
 
-TileError jasperengine::terrain::readTileSectionRaw(std::span<const uint8_t> file, const TileHeader& header, size_t sectionIndex, const TileCodec& codec,
+TileError jasperengine::terraincore::readTileSectionRaw(std::span<const uint8_t> file, const TileHeader& header, size_t sectionIndex, const TileCodec& codec,
                                                     std::vector<uint8_t>& raw) {
     if (sectionIndex >= header.sections.size()) return TileError::BadSection;
     const TileSectionEntry& entry = header.sections[sectionIndex];
@@ -266,7 +266,7 @@ TileError jasperengine::terrain::readTileSectionRaw(std::span<const uint8_t> fil
     return TileError::None;
 }
 
-TileError jasperengine::terrain::decodeTileSection(std::span<const uint8_t> file, const TileHeader& header, size_t sectionIndex, const TileCodec& codec,
+TileError jasperengine::terraincore::decodeTileSection(std::span<const uint8_t> file, const TileHeader& header, size_t sectionIndex, const TileCodec& codec,
                                                    WorldTile& data) {
     if (sectionIndex >= header.sections.size()) return TileError::BadSection;
     const TileSectionEntry& entry = header.sections[sectionIndex];
@@ -355,7 +355,7 @@ TileError jasperengine::terrain::decodeTileSection(std::span<const uint8_t> file
     return TileError::None;
 }
 
-TileError jasperengine::terrain::decodeTile(std::span<const uint8_t> file, const TileCodec& codec, WorldTile& data, std::span<const uint32_t> only) {
+TileError jasperengine::terraincore::decodeTile(std::span<const uint8_t> file, const TileCodec& codec, WorldTile& data, std::span<const uint32_t> only) {
     TileHeader header;
     const TileError parsed = parseTileHeader(file, header);
     if (parsed != TileError::None) return parsed;
@@ -377,7 +377,7 @@ TileError jasperengine::terrain::decodeTile(std::span<const uint8_t> file, const
     return TileError::None;
 }
 
-bool jasperengine::terrain::writeTileSections(const TileFileHeader& header, std::vector<TileSectionPayload>& pending, const std::vector<TileRawSection>* unknown,
+bool jasperengine::terraincore::writeTileSections(const TileFileHeader& header, std::vector<TileSectionPayload>& pending, const std::vector<TileRawSection>* unknown,
                                               const TileCodec& codec, int level, std::vector<uint8_t>& out, std::string* error) {
     auto fail = [&](const std::string& message) {
         if (error) *error = message;
@@ -465,7 +465,7 @@ bool jasperengine::terrain::writeTileSections(const TileFileHeader& header, std:
     return true;
 }
 
-bool jasperengine::terrain::encodeTile(const WorldTile& data, const TileCodec& codec, const TileEncodeOptions& options, std::vector<uint8_t>& out,
+bool jasperengine::terraincore::encodeTile(const WorldTile& data, const TileCodec& codec, const TileEncodeOptions& options, std::vector<uint8_t>& out,
                                        std::string* error) {
     auto fail = [&](const std::string& message) {
         if (error) *error = message;
@@ -525,12 +525,12 @@ bool jasperengine::terrain::encodeTile(const WorldTile& data, const TileCodec& c
     return writeTileSections(header, pending, options.keepUnknown ? &data.unknown : nullptr, codec, options.level, out, error);
 }
 
-std::span<const TileMigration> jasperengine::terrain::tileMigrations() {
+std::span<const TileMigration> jasperengine::terraincore::tileMigrations() {
     // version 1 is the first: nothing to upgrade from yet
     return {};
 }
 
-bool jasperengine::terrain::migrateTile(WorldTile& data, uint32_t version, uint32_t target, std::span<const TileMigration> table, std::string* error) {
+bool jasperengine::terraincore::migrateTile(WorldTile& data, uint32_t version, uint32_t target, std::span<const TileMigration> table, std::string* error) {
     for (uint32_t at = version; at < target; at++) {
         const TileMigration* step = nullptr;
         for (const TileMigration& candidate : table) {
@@ -545,7 +545,7 @@ bool jasperengine::terrain::migrateTile(WorldTile& data, uint32_t version, uint3
     return true;
 }
 
-void jasperengine::terrain::initTile(WorldTile& tile, const WorldLattice& lattice, TileCoord coord, uint16_t baseHeight) {
+void jasperengine::terraincore::initTile(WorldTile& tile, const WorldLattice& lattice, TileCoord coord, uint16_t baseHeight) {
     tile = WorldTile();
     tile.coord = coord;
     tile.tileQuads = lattice.tileQuads;
@@ -559,7 +559,7 @@ void jasperengine::terrain::initTile(WorldTile& tile, const WorldLattice& lattic
     buildSkirtDepth(tile, lattice);
 }
 
-void jasperengine::terrain::buildMinMax(WorldTile& tile, const WorldLattice& lattice) {
+void jasperengine::terraincore::buildMinMax(WorldTile& tile, const WorldLattice& lattice) {
     const int n = lattice.tileQuads;
     const int r = lattice.gridResolution;
     const int cells = n / r;
@@ -599,7 +599,7 @@ void jasperengine::terrain::buildMinMax(WorldTile& tile, const WorldLattice& lat
     }
 }
 
-TileMinMax jasperengine::terrain::tileNodeMinMax(const WorldTile& tile, const WorldLattice& lattice, int level, int cellX, int cellZ) {
+TileMinMax jasperengine::terraincore::tileNodeMinMax(const WorldTile& tile, const WorldLattice& lattice, int level, int cellX, int cellZ) {
     const int cells = lattice.tileQuads / lattice.gridResolution;
     size_t offset = 0;
     int side = cells;
@@ -613,7 +613,7 @@ TileMinMax jasperengine::terrain::tileNodeMinMax(const WorldTile& tile, const Wo
     return TileMinMax{tile.minMax[at], tile.minMax[at + 1]};
 }
 
-void jasperengine::terrain::buildOverviewHeight(WorldTile& tile, const WorldLattice& lattice) {
+void jasperengine::terraincore::buildOverviewHeight(WorldTile& tile, const WorldLattice& lattice) {
     const int side = lattice.overviewSide();
     const int step = lattice.overviewStep();
     tile.overviewHeight.resize(static_cast<size_t>(side) * side);
@@ -622,7 +622,7 @@ void jasperengine::terrain::buildOverviewHeight(WorldTile& tile, const WorldLatt
     }
 }
 
-void jasperengine::terrain::buildSkirtDepth(WorldTile& tile, const WorldLattice& lattice) {
+void jasperengine::terraincore::buildSkirtDepth(WorldTile& tile, const WorldLattice& lattice) {
     const int n = lattice.tileQuads;
     std::vector<uint16_t> edge(static_cast<size_t>(n) + 1);
     int worst = 0;
@@ -650,7 +650,7 @@ void jasperengine::terrain::buildSkirtDepth(WorldTile& tile, const WorldLattice&
     tile.skirtDepth = static_cast<float>(worst) / 65535.0f;
 }
 
-void jasperengine::terrain::buildOverviewColour(WorldTile& tile, const WorldLattice& lattice, std::span<const float> colours, int layerCount) {
+void jasperengine::terraincore::buildOverviewColour(WorldTile& tile, const WorldLattice& lattice, std::span<const float> colours, int layerCount) {
     const int side = lattice.overviewSide();
     const int blendQuads = lattice.blendQuadCount();
     tile.overviewColour.assign(static_cast<size_t>(side) * side * 4, 255);
@@ -688,14 +688,14 @@ void jasperengine::terrain::buildOverviewColour(WorldTile& tile, const WorldLatt
     }
 }
 
-void jasperengine::terrain::buildDerived(WorldTile& tile, const WorldLattice& lattice, std::span<const float> colours, int layerCount) {
+void jasperengine::terraincore::buildDerived(WorldTile& tile, const WorldLattice& lattice, std::span<const float> colours, int layerCount) {
     buildMinMax(tile, lattice);
     buildOverviewHeight(tile, lattice);
     buildSkirtDepth(tile, lattice);
     buildOverviewColour(tile, lattice, colours, layerCount);
 }
 
-float jasperengine::terrain::tileHeightAt(const WorldTile& tile, float texelX, float texelZ, float maxHeight) {
+float jasperengine::terraincore::tileHeightAt(const WorldTile& tile, float texelX, float texelZ, float maxHeight) {
     const int last = tile.height.width - 1;
     const float fx0 = std::floor(texelX), fz0 = std::floor(texelZ);
     const int x0 = std::min(std::max(static_cast<int>(fx0), 0), last - 1);
@@ -706,7 +706,7 @@ float jasperengine::terrain::tileHeightAt(const WorldTile& tile, float texelX, f
                          heightOfSample(tile.sample(x0, z0 + 1), maxHeight), heightOfSample(tile.sample(x0 + 1, z0 + 1), maxHeight), fx, fz);
 }
 
-LatticeNormal jasperengine::terrain::tileNormalAt(const WorldTile& tile, int texelX, int texelZ, int deltaSamples, float maxHeight, float spacing) {
+LatticeNormal jasperengine::terraincore::tileNormalAt(const WorldTile& tile, int texelX, int texelZ, int deltaSamples, float maxHeight, float spacing) {
     const int last = tile.height.width - 1;
     const int dx = std::max(1, std::min(deltaSamples, std::min(texelX, last - texelX)));
     const int dz = std::max(1, std::min(deltaSamples, std::min(texelZ, last - texelZ)));

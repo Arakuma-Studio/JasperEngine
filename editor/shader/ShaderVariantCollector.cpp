@@ -418,11 +418,11 @@ namespace {
         // takes each other key once.
         std::vector<MeshShaderEnvironment> tiered;
         for (const MeshShaderEnvironment& environment : environments){
-            for (int tier = 0; tier < terrain::TERRAIN_QUALITY_COUNT; tier++){
+            for (int tier = 0; tier < terraincore::TERRAIN_QUALITY_COUNT; tier++){
                 if (terrainTiers & (1u << tier)){
                     MeshShaderEnvironment withTier = environment;
                     withTier.terrainForced = true;
-                    withTier.terrainForcedTier = static_cast<terrain::TerrainQuality>(tier);
+                    withTier.terrainForcedTier = static_cast<terraincore::TerrainQuality>(tier);
                     tiered.push_back(withTier);
                 }
             }

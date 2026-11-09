@@ -1905,26 +1905,26 @@ LightMode editor::Project::getLightMode() const{
     return lightMode;
 }
 
-void editor::Project::setTerrainQualityTier(int platform, terrain::TerrainQuality tier){
-    if (platform < 0 || platform >= terrain::TerrainQualitySettings::PLATFORM_COUNT)
+void editor::Project::setTerrainQualityTier(int platform, terraincore::TerrainQuality tier){
+    if (platform < 0 || platform >= terraincore::TerrainQualitySettings::PLATFORM_COUNT)
         return;
     terrainQualityTiers[platform] = tier;
     // the editor renders with the tiers at once, as the shadow tiers
-    terrain::TerrainQualitySettings::setPlatformTier(platform, tier);
+    terraincore::TerrainQualitySettings::setPlatformTier(platform, tier);
 }
 
-terrain::TerrainQuality editor::Project::getTerrainQualityTier(int platform) const{
-    if (platform < 0 || platform >= terrain::TerrainQualitySettings::PLATFORM_COUNT)
-        return terrain::TerrainQuality::HIGH;
+terraincore::TerrainQuality editor::Project::getTerrainQualityTier(int platform) const{
+    if (platform < 0 || platform >= terraincore::TerrainQualitySettings::PLATFORM_COUNT)
+        return terraincore::TerrainQuality::HIGH;
     return terrainQualityTiers[platform];
 }
 
 void editor::Project::applyNewProjectTerrainDefaults(){
     // Engine::Platform: MacOS, iOS, Web, Android, Linux, Windows
-    static constexpr terrain::TerrainQuality recommended[terrain::TerrainQualitySettings::PLATFORM_COUNT] = {
-        terrain::TerrainQuality::HIGH, terrain::TerrainQuality::LOW, terrain::TerrainQuality::MEDIUM,
-        terrain::TerrainQuality::LOW, terrain::TerrainQuality::HIGH, terrain::TerrainQuality::HIGH};
-    for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++){
+    static constexpr terraincore::TerrainQuality recommended[terraincore::TerrainQualitySettings::PLATFORM_COUNT] = {
+        terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::LOW, terraincore::TerrainQuality::MEDIUM,
+        terraincore::TerrainQuality::LOW, terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::HIGH};
+    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++){
         setTerrainQualityTier(platform, recommended[platform]);
     }
     terrainQualityWritten = true;
@@ -1933,16 +1933,16 @@ void editor::Project::applyNewProjectTerrainDefaults(){
 
 uint32_t editor::Project::getShippedTerrainTiers() const{
     if (shipAllTerrainTiers || scriptsMention("setTerrainQuality") || scriptsMention("terrainQuality")){
-        return terrain::TERRAIN_ALL_TIERS;
+        return terraincore::TERRAIN_ALL_TIERS;
     }
     uint32_t mask = 0;
     if (terrainExportPlatforms.empty()){
-        for (terrain::TerrainQuality tier : terrainQualityTiers){
-            mask |= terrain::terrainQualityBit(tier);
+        for (terraincore::TerrainQuality tier : terrainQualityTiers){
+            mask |= terraincore::terrainQualityBit(tier);
         }
     }else{
         for (int platform : terrainExportPlatforms){
-            mask |= terrain::terrainQualityBit(getTerrainQualityTier(platform));
+            mask |= terraincore::terrainQualityBit(getTerrainQualityTier(platform));
         }
     }
     for (const SceneProject& sceneProject : scenes){
@@ -1952,9 +1952,9 @@ uint32_t editor::Project::getShippedTerrainTiers() const{
         auto terrains = sceneProject.scene->getComponentArray<TerrainComponent>();
         for (size_t i = 0; i < terrains->size(); i++){
             switch (terrains->getComponentFromIndex(i).quality){
-                case TerrainQualitySetting::HIGH: mask |= terrain::terrainQualityBit(terrain::TerrainQuality::HIGH); break;
-                case TerrainQualitySetting::MEDIUM: mask |= terrain::terrainQualityBit(terrain::TerrainQuality::MEDIUM); break;
-                case TerrainQualitySetting::LOW: mask |= terrain::terrainQualityBit(terrain::TerrainQuality::LOW); break;
+                case TerrainQualitySetting::HIGH: mask |= terraincore::terrainQualityBit(terraincore::TerrainQuality::HIGH); break;
+                case TerrainQualitySetting::MEDIUM: mask |= terraincore::terrainQualityBit(terraincore::TerrainQuality::MEDIUM); break;
+                case TerrainQualitySetting::LOW: mask |= terraincore::terrainQualityBit(terraincore::TerrainQuality::LOW); break;
                 default: break;
             }
         }
@@ -6266,8 +6266,8 @@ void editor::Project::releaseScenes() {
 
 void editor::Project::resetConfigs() {
     // an old project has no terrain tiers: High everywhere (T3 R51), set again as it loads
-    for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
-        setTerrainQualityTier(platform, terrain::TerrainQuality::HIGH);
+    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+        setTerrainQualityTier(platform, terraincore::TerrainQuality::HIGH);
     }
     terrainQualityWritten = false;
     shipAllTerrainTiers = false;

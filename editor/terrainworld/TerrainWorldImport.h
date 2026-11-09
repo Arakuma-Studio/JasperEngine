@@ -36,7 +36,7 @@ namespace jasperengine::editor {
         std::string path;               // in the project, or absolute
         int width = 0, height = 0;      // a raw file's samples a side; 0: from its length (square)
         bool flipVertically = false;    // the file's first row at the world's highest z
-        terrain::TileCoord origin;      // the tile the file's first sample lands on
+        terraincore::TileCoord origin;      // the tile the file's first sample lands on
     };
 
     struct TerrainWorldImportPlan {
@@ -47,9 +47,9 @@ namespace jasperengine::editor {
         bool banded = false;
         int bytesPerSample = 2;
         bool flipVertically = false;
-        terrain::TileCoord origin;
-        std::vector<terrain::TileCoord> covered;    // the tiles the file covers
-        std::vector<terrain::TileCoord> changed;    // those and their present neighbours
+        terraincore::TileCoord origin;
+        std::vector<terraincore::TileCoord> covered;    // the tiles the file covers
+        std::vector<terraincore::TileCoord> changed;    // those and their present neighbours
         int made = 0;                               // covered tiles not in the world yet
     };
 

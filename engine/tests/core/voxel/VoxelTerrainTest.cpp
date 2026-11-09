@@ -160,8 +160,8 @@ namespace {
             TerrainComponent& terrain = scene->getComponent<TerrainComponent>(terrainEntity);
             if (terrain.holeMap.empty()) return 0;
             TerrainComponentStore store(scene.get(), terrainEntity, terrain);
-            const terrain::MapId map{terrain::MapKind::Hole, 0};
-            const terrain::MapFormat format = store.format(map);
+            const terraincore::MapId map{terraincore::MapKind::Hole, 0};
+            const terraincore::MapFormat format = store.format(map);
             std::vector<uint8_t> bytes(static_cast<size_t>(format.bounds.w) * format.bounds.h);
             store.readBytes(map, format.bounds, bytes);
             int count = 0;
@@ -199,9 +199,9 @@ TEST_F(VoxelTerrain, AutoTierFollowsTerrain) {
     EXPECT_EQ(system->resolveTier(volume), VoxelTier::Low);
     ground.quality = TerrainQualitySetting::MEDIUM;
     EXPECT_EQ(system->resolveTier(volume), VoxelTier::Medium);
-    terrain::TerrainQualitySettings::setGlobalOverride(terrain::TerrainQuality::LOW);
+    terraincore::TerrainQualitySettings::setGlobalOverride(terraincore::TerrainQuality::LOW);
     EXPECT_EQ(system->resolveTier(volume), VoxelTier::Low);
-    terrain::TerrainQualitySettings::clearGlobalOverride();
+    terraincore::TerrainQualitySettings::clearGlobalOverride();
     ground.quality = TerrainQualitySetting::HIGH;
     EXPECT_EQ(system->resolveTier(volume), VoxelTier::High);
     volume.quality = VoxelQuality::Low;
@@ -238,11 +238,11 @@ TEST_F(VoxelTerrain, RemovalRestoresExactly) {
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(terrainEntity);
     {
         TerrainComponentStore store(scene.get(), terrainEntity, terrain);
-        terrain::Shape shape;
-        shape.type = terrain::ShapeType::Rect;
+        terraincore::Shape shape;
+        shape.type = terraincore::ShapeType::Rect;
         shape.min = Vector2(-60.0f, -60.0f);
         shape.max = Vector2(-55.0f, -55.0f);
-        terrain::rasterizeRegion(store, shape, terrain::HOLE_VALUE, nullptr);
+        terraincore::rasterizeRegion(store, shape, terraincore::HOLE_VALUE, nullptr);
     }
     const int painted = holeCount();
     ASSERT_GT(painted, 0);

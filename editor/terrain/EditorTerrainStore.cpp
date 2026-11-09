@@ -11,7 +11,7 @@
 #include <cstdlib>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 editor::EditorTerrainStore::EditorTerrainStore(Project* project, uint32_t sceneId, Scene* scene, Entity entity, TerrainComponent& terrain)
     : TerrainComponentStore(scene, entity, terrain), project(project), sceneId(sceneId) {}

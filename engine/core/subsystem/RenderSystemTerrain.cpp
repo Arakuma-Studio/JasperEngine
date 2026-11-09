@@ -31,7 +31,7 @@
 using namespace jasperengine;
 
 // the component's cap and the terrain folder's are one (T3 R15)
-static_assert(MAX_TERRAIN_LAYERS == terrain::TERRAIN_MAX_LAYERS, "TerrainComponent.h and TerrainLayers.h disagree on the layer count");
+static_assert(MAX_TERRAIN_LAYERS == terraincore::TERRAIN_MAX_LAYERS, "TerrainComponent.h and TerrainLayers.h disagree on the layer count");
 
 // T3 R18, R20, R29: a variant with 'Thl' reads the hole map in whichever pass this binds. The loaded
 // variant may outlive the map (the last fill, until its plain variant is built), and a map that fails
@@ -59,14 +59,14 @@ bool RenderSystem::loadTerrainHoleTexture(TerrainComponent& terrain, ObjectRende
             }
             // T3 R30: the Holes view reads the map's classes where the passes read 0 and 255. A terrain with no
             // layer draws its base material alone, views included, so it keeps the map itself
-            if (terrain::TerrainQualitySettings::getDebugView() == terrain::TerrainDebugView::HOLES && !terrain.surfaceLayers.empty()){
+            if (terraincore::TerrainQualitySettings::getDebugView() == terraincore::TerrainDebugView::HOLES && !terrain.surfaceLayers.empty()){
                 TextureData& data = terrain.holeMap.getData();
                 TerrainHoleOverlay& overlay = terrainHoleOverlays[data.getData()];
                 if (!overlay.render.isCreated() || overlay.revision != terrain.holeMapRevision){
-                    const terrain::HoleMapView view{static_cast<const uint8_t*>(data.getData()), data.getWidth(), data.getHeight()};
+                    const terraincore::HoleMapView view{static_cast<const uint8_t*>(data.getData()), data.getWidth(), data.getHeight()};
                     const int samples = terrain.heightMap.hasData() ? std::clamp(std::min(terrain.heightMap.getData().getWidth(), terrain.heightMap.getData().getHeight()), 4, 1025) : 4;
                     auto* classes = new std::vector<uint8_t>();
-                    terrain::holeOverlayClasses(view, samples, samples, *classes);
+                    terraincore::holeOverlayClasses(view, samples, samples, *classes);
                     void* faces[1] = {classes->data()};
                     size_t sizes[1] = {classes->size()};
                     overlay.render.destroyTexture();
@@ -79,7 +79,7 @@ bool RenderSystem::loadTerrainHoleTexture(TerrainComponent& terrain, ObjectRende
                 if (overlay.render.isCreated()){
                     textureRender = &overlay.render;
                 }
-            }else if (terrain::TerrainQualitySettings::getDebugView() != terrain::TerrainDebugView::HOLES && !terrainHoleOverlays.empty()){
+            }else if (terraincore::TerrainQualitySettings::getDebugView() != terraincore::TerrainDebugView::HOLES && !terrainHoleOverlays.empty()){
                 // the view went off: the terrains it drew take their variants again, and their maps with them
                 destroyTerrainHoleOverlays();
             }
@@ -93,20 +93,20 @@ bool RenderSystem::loadTerrainHoleTexture(TerrainComponent& terrain, ObjectRende
     return true;
 }
 
-terrain::TerrainVariantInputs jasperengine::getTerrainVariantInputs(const TerrainComponent& terrainComponent){
-    terrain::TerrainVariantInputs inputs;
+terraincore::TerrainVariantInputs jasperengine::getTerrainVariantInputs(const TerrainComponent& terrainComponent){
+    terraincore::TerrainVariantInputs inputs;
     switch (terrainComponent.quality){
         case TerrainQualitySetting::HIGH:
             inputs.hasComponentQuality = true;
-            inputs.componentQuality = terrain::TerrainQuality::HIGH;
+            inputs.componentQuality = terraincore::TerrainQuality::HIGH;
             break;
         case TerrainQualitySetting::MEDIUM:
             inputs.hasComponentQuality = true;
-            inputs.componentQuality = terrain::TerrainQuality::MEDIUM;
+            inputs.componentQuality = terraincore::TerrainQuality::MEDIUM;
             break;
         case TerrainQualitySetting::LOW:
             inputs.hasComponentQuality = true;
-            inputs.componentQuality = terrain::TerrainQuality::LOW;
+            inputs.componentQuality = terraincore::TerrainQuality::LOW;
             break;
         default:
             break;
@@ -121,20 +121,20 @@ terrain::TerrainVariantInputs jasperengine::getTerrainVariantInputs(const Terrai
     return inputs;
 }
 
-terrain::TerrainQualityResolved RenderSystem::resolveTerrainTier(const MeshShaderEnvironment& environment, const terrain::TerrainVariantInputs& inputs){
-    terrain::TerrainQualityRequest request;
+terraincore::TerrainQualityResolved RenderSystem::resolveTerrainTier(const MeshShaderEnvironment& environment, const terraincore::TerrainVariantInputs& inputs){
+    terraincore::TerrainQualityRequest request;
     request.hasOverride = environment.terrainForced;
     request.globalOverride = environment.terrainForcedTier;
     request.hasComponent = inputs.hasComponentQuality;
     request.component = inputs.componentQuality;
     request.project = environment.terrainTier;
     request.shippedMask = environment.terrainShippedMask;
-    return terrain::resolveTerrainQuality(request);
+    return terraincore::resolveTerrainQuality(request);
 }
 
 // T3 D2: the one rule of the defines a terrain's variant takes. Medium and Low never define the hex or
 // stochastic paths; a feature a tier does not draw has no define there.
-uint64_t RenderSystem::getTerrainDefineBits(const MeshShaderEnvironment& environment, const terrain::TerrainVariantInputs& inputs, bool surfacePath, bool unlit, bool hasNormals){
+uint64_t RenderSystem::getTerrainDefineBits(const MeshShaderEnvironment& environment, const terraincore::TerrainVariantInputs& inputs, bool surfacePath, bool unlit, bool hasNormals){
     // A terrain with no layer has nothing for a tier, the cap, a feature or a Terrain view to act on but Macro
     // Variation's tint of the base colour, so it draws the base material alone (its holes still cut):
     // llvmpipe's GL path (Mesa 23.2.1) dies in its fragment JIT on every tier, feature and view variant of a
@@ -142,19 +142,19 @@ uint64_t RenderSystem::getTerrainDefineBits(const MeshShaderEnvironment& environ
     if (inputs.layerCount == 0){
         return 0;
     }
-    const terrain::TerrainQuality tier = resolveTerrainTier(environment, inputs).quality;
-    const terrain::TerrainTierInfo& info = terrain::terrainTierInfo(tier);
+    const terraincore::TerrainQuality tier = resolveTerrainTier(environment, inputs).quality;
+    const terraincore::TerrainTierInfo& info = terraincore::terrainTierInfo(tier);
     const auto bit = [](const char* define){ return MaterialPbr::getDefineBit(define); };
     uint64_t bits = 0;
 
-    if (tier == terrain::TerrainQuality::MEDIUM) bits |= bit("TERRAIN_QUALITY_MEDIUM");
-    if (tier == terrain::TerrainQuality::LOW) bits |= bit("TERRAIN_QUALITY_LOW");
+    if (tier == terraincore::TerrainQuality::MEDIUM) bits |= bit("TERRAIN_QUALITY_MEDIUM");
+    if (tier == terraincore::TerrainQuality::LOW) bits |= bit("TERRAIN_QUALITY_LOW");
     // A cap that keeps every layer is no cap: the same image without the selection. And llvmpipe's GL path
     // (Mesa 23.2) dies on an illegal instruction in the colour-only High variant with the cap, which every
     // new terrain (no layers, R53's limit on) would draw (spec Deviations)
-    if (tier == terrain::TerrainQuality::HIGH && inputs.limitLayers && inputs.layerCount > info.limitedLayersPerPixel) bits |= bit("TERRAIN_LAYER_LIMIT");
+    if (tier == terraincore::TerrainQuality::HIGH && inputs.limitLayers && inputs.layerCount > info.limitedLayersPerPixel) bits |= bit("TERRAIN_LAYER_LIMIT");
     if (info.trimBlendMaps){
-        const int maps = terrain::terrainBlendMapCount(inputs.layerCount);
+        const int maps = terraincore::terrainBlendMapCount(inputs.layerCount);
         if (maps <= 1) bits |= bit("TERRAIN_BLENDMAPS_1");
         else if (maps == 2) bits |= bit("TERRAIN_BLENDMAPS_2");
     }
@@ -178,7 +178,7 @@ uint64_t RenderSystem::getTerrainDefineBits(const MeshShaderEnvironment& environ
 // Rebuilt when the set of source files changes, when a file of it does (invalidateTerrainDetailArray:
 // the editor's file pick-up), and when the tier changes its largest size.
 RenderSystem::TerrainDetailArray* RenderSystem::getTerrainDetailArray(Entity entity, TerrainComponent& terrainComponent){
-    const terrain::DetailPlan plan = terrain::planDetailArray(terrainComponent);
+    const terraincore::DetailPlan plan = terraincore::planDetailArray(terrainComponent);
     if (!plan.anySource){
         destroyTerrainDetailArray(entity);
         return NULL;
@@ -202,7 +202,7 @@ RenderSystem::TerrainDetailArray* RenderSystem::getTerrainDetailArray(Entity ent
     }
 
     const MeshShaderEnvironment environment = getMeshShaderEnvironment();
-    const int maxSize = terrain::terrainTierInfo(resolveTerrainTier(environment, getTerrainVariantInputs(terrainComponent)).quality).detailArraySize;
+    const int maxSize = terraincore::terrainTierInfo(resolveTerrainTier(environment, getTerrainVariantInputs(terrainComponent)).quality).detailArraySize;
 
     auto it = terrainDetailArrays.find(entity);
     if (it != terrainDetailArrays.end()){
@@ -230,12 +230,12 @@ RenderSystem::TerrainDetailArray* RenderSystem::getTerrainDetailArray(Entity ent
         return entry;
     };
 
-    terrain::DetailBuildOptions options;
+    terraincore::DetailBuildOptions options;
     options.mipmapped = minFilter == TextureFilter::LINEAR_MIPMAP_LINEAR || minFilter == TextureFilter::LINEAR_MIPMAP_NEAREST ||
                         minFilter == TextureFilter::NEAREST_MIPMAP_LINEAR || minFilter == TextureFilter::NEAREST_MIPMAP_NEAREST;
     options.maxSize = maxSize;
-    terrain::DetailPixels pixels;
-    if (!terrain::loadCookedDetailArray(plan, maxSize, pixels) && !terrain::buildDetailPixels(terrainComponent, plan, options, pixels)){
+    terraincore::DetailPixels pixels;
+    if (!terraincore::loadCookedDetailArray(plan, maxSize, pixels) && !terraincore::buildDetailPixels(terrainComponent, plan, options, pixels)){
         remember(true);
         return NULL;
     }
@@ -343,7 +343,7 @@ void RenderSystem::applyTerrainLayersUniform(ObjectRender& render, int slot, Ent
         block[size++] = Vector4(macro != terrainMacroNormals.end() && macro->second.render.isCreated() ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
     }
     if (litDefineBits & MaterialPbr::getDefineBit("TERRAIN_DEBUG_VIEW")){
-        block[size++] = Vector4((float)terrain::TerrainQualitySettings::getDebugView(), 0.0f, 0.0f, 0.0f);
+        block[size++] = Vector4((float)terraincore::TerrainQualitySettings::getDebugView(), 0.0f, 0.0f, 0.0f);
     }
 
     render.applyUniformBlock(slot, sizeof(Vector4) * (size_t)size, block);
@@ -409,18 +409,18 @@ void RenderSystem::updateTerrainMacroNormal(Entity entity, TerrainComponent& ter
         work->source.maxHeight = terrainComponent.maxHeight;
         work->revision = heightRevision;
         work->source.pixels = work->pixels.data();
-        terrain::MacroNormalLevel top;
-        top.width = terrain::macroNormalSize(work->source.width);
-        top.height = terrain::macroNormalSize(work->source.height);
+        terraincore::MacroNormalLevel top;
+        top.width = terraincore::macroNormalSize(work->source.width);
+        top.height = terraincore::macroNormalSize(work->source.height);
         top.rg.resize((size_t)top.width * top.height * 2);
         work->levels.push_back(std::move(top));
         map.work = work;
         if (jobs::hasSystem() && jobs::system().getWorkerCount() > 0){
             TerrainMacroNormalWork* raw = work.get();
             work->task = jobs::submit([raw](){
-                terrain::MacroNormalLevel& level = raw->levels[0];
-                terrain::bakeMacroNormalRows(raw->source, level.width, level.height, 0, level.height, level.rg.data());
-                terrain::buildMacroNormalMips(raw->levels);
+                terraincore::MacroNormalLevel& level = raw->levels[0];
+                terraincore::bakeMacroNormalRows(raw->source, level.width, level.height, 0, level.height, level.rg.data());
+                terraincore::buildMacroNormalMips(raw->levels);
                 raw->done.store(true, std::memory_order_release);
             }, {jobs::Lane::Background, jobs::GateClass::Default, "terrain-macro-normal"});
             work->threaded = true;
@@ -432,14 +432,14 @@ void RenderSystem::updateTerrainMacroNormal(Entity entity, TerrainComponent& ter
         if (!work.threaded){
             // S06's slice: as many rows as 4 ms holds this frame
             const auto start = std::chrono::steady_clock::now();
-            terrain::MacroNormalLevel& level = work.levels[0];
+            terraincore::MacroNormalLevel& level = work.levels[0];
             while (work.nextRow < level.height && std::chrono::steady_clock::now() - start < std::chrono::milliseconds(4)){
                 const int end = std::min(work.nextRow + 16, level.height);
-                terrain::bakeMacroNormalRows(work.source, level.width, level.height, work.nextRow, end, level.rg.data());
+                terraincore::bakeMacroNormalRows(work.source, level.width, level.height, work.nextRow, end, level.rg.data());
                 work.nextRow = end;
             }
             if (work.nextRow >= level.height){
-                terrain::buildMacroNormalMips(work.levels);
+                terraincore::buildMacroNormalMips(work.levels);
                 work.done.store(true, std::memory_order_release);
             }
         }
@@ -457,8 +457,8 @@ void RenderSystem::updateTerrainMacroNormal(Entity entity, TerrainComponent& ter
                                            TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE);
             // sokol copied the levels, or the loading thread's queue reads them when it runs: they live till then
             if (Engine::isAsyncThread()){
-                auto* keep = new std::vector<terrain::MacroNormalLevel>(std::move(work.levels));
-                SystemRender::scheduleCleanup([](void* levels){ delete static_cast<std::vector<terrain::MacroNormalLevel>*>(levels); }, keep);
+                auto* keep = new std::vector<terraincore::MacroNormalLevel>(std::move(work.levels));
+                SystemRender::scheduleCleanup([](void* levels){ delete static_cast<std::vector<terraincore::MacroNormalLevel>*>(levels); }, keep);
             }
             map.bakedRevision = work.revision;
             map.lastUpload = now;
@@ -484,7 +484,7 @@ bool RenderSystem::terrainDrawsOffscreenShadows(const TerrainComponent& terrainC
         default: break;
     }
     const MeshShaderEnvironment environment = getMeshShaderEnvironment();
-    return terrain::terrainTierInfo(resolveTerrainTier(environment, getTerrainVariantInputs(terrainComponent)).quality).offscreenShadowsAuto;
+    return terraincore::terrainTierInfo(resolveTerrainTier(environment, getTerrainVariantInputs(terrainComponent)).quality).offscreenShadowsAuto;
 }
 
 bool RenderSystem::getTerrainDetailInfo(Entity entity, GpuTextureFormat& format, int& slices, uint64_t& bytes) const{

@@ -23,7 +23,7 @@ namespace jasperengine {
     class TerrainWorldRuntime;
 }
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
     struct WorldTile;
 }
 
@@ -36,7 +36,7 @@ namespace jasperengine::editor{
         // The first execute snapshots `tiles`, runs change on the world's runtime and snapshots them
         // again; redo and undo put one snapshot back. verb: "Add Tiles", "Remove Tiles", "Repair Seams"
         using Change = std::function<bool(TerrainWorldRuntime& runtime, std::string& error)>;
-        TerrainWorldTilesCmd(Project* project, uint32_t sceneId, Entity entity, std::string verb, std::vector<terrain::TileCoord> tiles,
+        TerrainWorldTilesCmd(Project* project, uint32_t sceneId, Entity entity, std::string verb, std::vector<terraincore::TileCoord> tiles,
                              Change change);
 
         bool execute() override;
@@ -52,9 +52,9 @@ namespace jasperengine::editor{
 
     private:
         struct Snapshot{
-            terrain::TileCoord tile;
-            std::shared_ptr<const terrain::WorldTile> before;
-            std::shared_ptr<const terrain::WorldTile> after;
+            terraincore::TileCoord tile;
+            std::shared_ptr<const terraincore::WorldTile> before;
+            std::shared_ptr<const terraincore::WorldTile> after;
         };
 
         TerrainWorldRuntime* runtime(std::string& error) const;
@@ -65,7 +65,7 @@ namespace jasperengine::editor{
         Entity entity;
         std::string verb;
         std::string name;
-        std::vector<terrain::TileCoord> tiles;
+        std::vector<terraincore::TileCoord> tiles;
         Change change;
         std::vector<Snapshot> snapshots;
         std::string folder;
@@ -77,12 +77,12 @@ namespace jasperengine::editor{
     // What an Add Tiles or Remove Tiles of these tiles would change, without changing anything: the tiles
     // added (absent ones) or removed (present ones), in the order given, duplicates once. False, with
     // why and its fix, when one is refused (R6's limits, the box, a tile that is not there) or none changes.
-    bool checkTerrainWorldTiles(TerrainWorldRuntime& runtime, const std::vector<terrain::TileCoord>& tiles, bool remove,
-                                std::vector<terrain::TileCoord>& changed, std::string& error);
+    bool checkTerrainWorldTiles(TerrainWorldRuntime& runtime, const std::vector<terraincore::TileCoord>& tiles, bool remove,
+                                std::vector<terraincore::TileCoord>& changed, std::string& error);
 
     // R41, R44: Add Tile or Remove Tile as one undo step "Add Tiles (Name)" / "Remove Tiles (Name)" on the
     // scene's history, after checkTerrainWorldTiles. changed (when given) gets the tiles that changed.
-    bool editTerrainWorldTiles(Project* project, uint32_t sceneId, Entity world, const std::vector<terrain::TileCoord>& tiles, bool remove,
-                               std::string& error, std::vector<terrain::TileCoord>* changed = nullptr);
+    bool editTerrainWorldTiles(Project* project, uint32_t sceneId, Entity world, const std::vector<terraincore::TileCoord>& tiles, bool remove,
+                               std::string& error, std::vector<terraincore::TileCoord>* changed = nullptr);
 
 }

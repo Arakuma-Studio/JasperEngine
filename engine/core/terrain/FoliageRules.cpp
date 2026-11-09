@@ -16,7 +16,7 @@
 #include <unordered_map>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -38,7 +38,7 @@ namespace {
 
 }
 
-float jasperengine::terrain::foliageDistanceToPolyline(std::span<const Vector2> points, float x, float z) {
+float jasperengine::terraincore::foliageDistanceToPolyline(std::span<const Vector2> points, float x, float z) {
     float best = 1e30f;
     if (points.empty()) return best;
     if (points.size() == 1) {
@@ -187,13 +187,13 @@ bool FoliageRuleSurface::passes(const FoliageRuleSet& rules, float localX, float
     return true;
 }
 
-void jasperengine::terrain::foliageSetTreeSurface(TreeRecord& record, float terrainSize, float terrainMaxHeight, float localX, float localZ, float surfaceHeight) {
+void jasperengine::terraincore::foliageSetTreeSurface(TreeRecord& record, float terrainSize, float terrainMaxHeight, float localX, float localZ, float surfaceHeight) {
     record.u = localX / terrainSize + 0.5f;
     record.v = localZ / terrainSize + 0.5f;
     record.height = terrainMaxHeight != 0.0f ? surfaceHeight / terrainMaxHeight : 0.0f;
 }
 
-void jasperengine::terrain::foliageInstanceFromTree(const TreeRecord& record, float terrainSize, float terrainMaxHeight, uint8_t windBend, const float* surfaceNormal, FoliageInstance& out) {
+void jasperengine::terraincore::foliageInstanceFromTree(const TreeRecord& record, float terrainSize, float terrainMaxHeight, uint8_t windBend, const float* surfaceNormal, FoliageInstance& out) {
     out.position[0] = foliageTreeLocalX(record, terrainSize);
     out.position[1] = record.height * terrainMaxHeight + record.yOffset;
     out.position[2] = foliageTreeLocalZ(record, terrainSize);
@@ -234,7 +234,7 @@ void jasperengine::terrain::foliageInstanceFromTree(const TreeRecord& record, fl
     out.densityRank = static_cast<uint8_t>((hash >> 16) & 0xFF);
 }
 
-uint64_t jasperengine::terrain::foliageTreesHash(std::span<const TreeRecord> trees, uint64_t previous) {
+uint64_t jasperengine::terraincore::foliageTreesHash(std::span<const TreeRecord> trees, uint64_t previous) {
     uint64_t hash = previous;
     for (TreeRecord record : trees) {
         record.id = 0;
@@ -243,7 +243,7 @@ uint64_t jasperengine::terrain::foliageTreesHash(std::span<const TreeRecord> tre
     return hash;
 }
 
-FoliageTreeScatterResult jasperengine::terrain::scatterTreesByRules(const TerrainMapStore& store, const FoliageTreeScatter& scatter, std::span<const Vector2> existing, FoliageStopFn stop, void* stopUser) {
+FoliageTreeScatterResult jasperengine::terraincore::scatterTreesByRules(const TerrainMapStore& store, const FoliageTreeScatter& scatter, std::span<const Vector2> existing, FoliageStopFn stop, void* stopUser) {
     FoliageTreeScatterResult result;
     result.hash = foliageTreesHash({});
 
@@ -392,7 +392,7 @@ FoliageTreeScatterResult jasperengine::terrain::scatterTreesByRules(const Terrai
     return result;
 }
 
-FoliageDensityScatterResult jasperengine::terrain::scatterDensityByRules(const TerrainMapStore& store, const FoliageDensityScatter& scatter, FoliageStopFn stop, void* stopUser) {
+FoliageDensityScatterResult jasperengine::terraincore::scatterDensityByRules(const TerrainMapStore& store, const FoliageDensityScatter& scatter, FoliageStopFn stop, void* stopUser) {
     FoliageDensityScatterResult result;
 
     const MapId map{MapKind::Density, scatter.layerIndex};

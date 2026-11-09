@@ -28,7 +28,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 ## Programme decisions (every spec honours these)
 
 **Code and names**
-- D1. Pure terrain algorithms live in `engine/core/terrain/` (namespace `jasperengine::terrain`), with no
+- D1. Pure terrain algorithms live in `engine/core/terrain/` (namespace `jasperengine::terraincore`, renamed from `terrain` so a game's file-scope `Terrain terrain` compiles; T1 D-42), with no
   ECS or render dependencies, so they unit-test without a GPU. Noise lives in `engine/core/noise/`
   (`jasperengine::noise`). Voxels live in `engine/core/voxel/` (`jasperengine::voxel`).
 - D2. New code goes in new files. `RenderSystem.cpp`, `MeshSystem.cpp`, `TerrainEditWindow.cpp`,
@@ -307,3 +307,18 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
     volume, and the noise gate never gets ready.
   - The full MCP suite needs build/fixture-unity, which this host lacks. The CI suite (which holds all 24 of the programme's MCP files)
     runs with the slow flags instead.
+- CI MCP suite with the slow flags on 564f6da51: 2159 passed, 46 failed, 4 skipped. 28 of the failures are test_reflection's codegen
+  goldens: every generated main.cpp now carries T5's foliage quality defaults line. Being fixed on terrain/fix-mcp, which also checks
+  the rest against an origin/main baseline. Android and WERROR linux builds pass. The players build and the compile smoke tests were
+  cut off by the chain's 2-hour limit; they rerun on the fixed tree. The box copy-back now skips build/mcp-compile-home (11 GB).
+- Unit fixes landed (0c50b1319, terrain/fix-unit c4d98c462). The scheduler failures were a test helper missing TerrainWorldSystem. The
+  generated Linux platform list was missing X11Pen.cpp, a real link failure for Play with C++ scripts. The noise and raw-import
+  failures came from SoLoud's mix, which left flush-to-zero on for the whole process: patched to restore the caller's modes (in SoLoud's
+  patch list), with a new test. Whole core binary: 4902 ran, 1 failed (upstream's ParticleExposed). LodFadeGpu's 60 s hang never came
+  back (40 repeats); probably a flake.
+- Web fixes landed (2a91fcc5d, terrain/fix-web 824fb345e). All seven web gates pass: sample, terrain, terrain-edit, terrain-materials,
+  foliage, voxels, noise (simd and scalar). Causes, all ours: the `terrain` namespace clashing with user code (renamed to terraincore,
+  with a guard test); a missing include; the missing override; the voxels project on a non-PBR slot; the noise project's init without
+  JASPERENGINE_INIT (Android too); the foliage project faking a loaded terrain.
+- The box sync now sends only changed files and gives them the current time (rsync --checksum without -t), so a file edited during a
+  build can't look older than its object.

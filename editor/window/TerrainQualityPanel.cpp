@@ -13,18 +13,18 @@
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-std::string editor::terrainCostStripText(const terrain::MaterialCost& cost) {
+std::string editor::terrainCostStripText(const terraincore::MaterialCost& cost) {
     return "Fetches per pixel: Flat " + std::to_string(cost.flat) + " \xC2\xB7 Slope " + std::to_string(cost.slope) + " \xC2\xB7 Worst " +
-           std::to_string(cost.worst) + " \xC2\xB7 Textures " + std::to_string(cost.textureSlots) + "/" + std::to_string(terrain::TERRAIN_TEXTURE_SLOT_LIMIT);
+           std::to_string(cost.worst) + " \xC2\xB7 Textures " + std::to_string(cost.textureSlots) + "/" + std::to_string(terraincore::TERRAIN_TEXTURE_SLOT_LIMIT);
 }
 
-bool editor::terrainCostOverBudget(const terrain::MaterialCost& cost, terrain::TerrainQuality tier, const terrain::TerrainMaterialInputs& inputs, std::string& reason) {
-    if (cost.textureSlots > terrain::TERRAIN_TEXTURE_SLOT_LIMIT) {
+bool editor::terrainCostOverBudget(const terraincore::MaterialCost& cost, terraincore::TerrainQuality tier, const terraincore::TerrainMaterialInputs& inputs, std::string& reason) {
+    if (cost.textureSlots > terraincore::TERRAIN_TEXTURE_SLOT_LIMIT) {
         reason = "More texture slots than the portable 16: leave a lighting feature or a base map out.";
         return true;
     }
-    const int budget = terrain::terrainTierInfo(tier).worstFetches;
-    const int extras = (inputs.holes ? 1 : 0) + (inputs.macroNormal && terrain::terrainTierInfo(tier).macroNormal ? 1 : 0);
+    const int budget = terraincore::terrainTierInfo(tier).worstFetches;
+    const int extras = (inputs.holes ? 1 : 0) + (inputs.macroNormal && terraincore::terrainTierInfo(tier).macroNormal ? 1 : 0);
     if (budget > 0 && cost.worst > budget + extras) {
         reason = "Above this tier's budget of " + std::to_string(budget + extras) + " reads.";
         return true;
@@ -37,10 +37,10 @@ bool editor::terrainCostOverBudget(const terrain::MaterialCost& cost, terrain::T
 }
 
 void editor::drawTerrainCostStrip(const TerrainComponent& terrainComponent, int& shown) {
-    const terrain::TerrainMaterialInputs inputs = mcp::terrainMaterialInputs(terrainComponent, true);
-    const terrain::TerrainQuality effective = mcp::terrainEffectiveTier(terrainComponent).quality;
-    const terrain::TerrainQuality tier = shown < 0 ? effective : static_cast<terrain::TerrainQuality>(shown);
-    const terrain::MaterialCost cost = terrain::materialCost(inputs, tier);
+    const terraincore::TerrainMaterialInputs inputs = mcp::terrainMaterialInputs(terrainComponent, true);
+    const terraincore::TerrainQuality effective = mcp::terrainEffectiveTier(terrainComponent).quality;
+    const terraincore::TerrainQuality tier = shown < 0 ? effective : static_cast<terraincore::TerrainQuality>(shown);
+    const terraincore::MaterialCost cost = terraincore::materialCost(inputs, tier);
 
     std::string reason;
     const bool over = terrainCostOverBudget(cost, tier, inputs, reason);
@@ -49,12 +49,12 @@ void editor::drawTerrainCostStrip(const TerrainComponent& terrainComponent, int&
     if (over) ImGui::PopStyleColor();
     if (over && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", reason.c_str());
 
-    const std::string preview = shown < 0 ? std::string("Effective (") + terrain::terrainQualityName(effective) + ")" : std::string(terrain::terrainQualityName(tier));
+    const std::string preview = shown < 0 ? std::string("Effective (") + terraincore::terrainQualityName(effective) + ")" : std::string(terraincore::terrainQualityName(tier));
     ImGui::SetNextItemWidth(-1.0f);
     if (ImGui::BeginCombo("##TerrainCostTier", preview.c_str())) {
         if (ImGui::Selectable("Effective", shown < 0)) shown = -1;
-        for (int i = 0; i < terrain::TERRAIN_QUALITY_COUNT; i++) {
-            if (ImGui::Selectable(terrain::terrainQualityName(static_cast<terrain::TerrainQuality>(i)), shown == i)) shown = i;
+        for (int i = 0; i < terraincore::TERRAIN_QUALITY_COUNT; i++) {
+            if (ImGui::Selectable(terraincore::terrainQualityName(static_cast<terraincore::TerrainQuality>(i)), shown == i)) shown = i;
         }
         ImGui::EndCombo();
     }
@@ -62,11 +62,11 @@ void editor::drawTerrainCostStrip(const TerrainComponent& terrainComponent, int&
 
 std::vector<std::string> editor::terrainQualityWarnings(const TerrainComponent& terrainComponent, const Material& material) {
     std::vector<std::string> warnings;
-    const terrain::TerrainQuality tier = mcp::terrainEffectiveTier(terrainComponent).quality;
+    const terraincore::TerrainQuality tier = mcp::terrainEffectiveTier(terrainComponent).quality;
     if (!terrainComponent.holeMap.empty() && !material.occlusionTexture.empty()) {
         warnings.push_back("Holes take the base material's Occlusion map's slot: it reads as 1. The layers' own occlusion still applies.");
     }
-    if (terrainComponent.macroNormal && terrain::terrainTierInfo(tier).macroNormal && !material.normalTexture.empty()) {
+    if (terrainComponent.macroNormal && terraincore::terrainTierInfo(tier).macroNormal && !material.normalTexture.empty()) {
         warnings.push_back("The Macro Normal Map replaces the base material's Normal map.");
     }
     if (!terrainComponent.holeMap.empty() && !material.shader.empty()) {
@@ -82,18 +82,18 @@ std::vector<std::string> editor::terrainQualityWarnings(const TerrainComponent& 
     return warnings;
 }
 
-std::string editor::terrainFeatureGreyReason(const char* feature, terrain::TerrainQuality tier) {
-    const terrain::TerrainTierInfo& info = terrain::terrainTierInfo(tier);
+std::string editor::terrainFeatureGreyReason(const char* feature, terraincore::TerrainQuality tier) {
+    const terraincore::TerrainTierInfo& info = terraincore::terrainTierInfo(tier);
     const std::string name(feature);
-    const std::string tierName = terrain::terrainQualityName(tier);
+    const std::string tierName = terraincore::terrainQualityName(tier);
     if (name == "macroNormal" && !info.macroNormal) return "The " + tierName + " tier does not draw a Macro Normal Map.";
     if (name == "resample" && !info.distanceResampling) return "The " + tierName + " tier does not draw Distance Resampling.";
-    if (name == "limit" && tier != terrain::TerrainQuality::HIGH) return "Medium and Low keep a fixed number of layers.";
+    if (name == "limit" && tier != terraincore::TerrainQuality::HIGH) return "Medium and Low keep a fixed number of layers.";
     return std::string();
 }
 
 float editor::terrainLayerCoverage(TerrainComponent& terrainComponent, int layer) {
-    const terrain::LayerChannel channel = terrain::terrainLayerChannel(layer);
+    const terraincore::LayerChannel channel = terraincore::terrainLayerChannel(layer);
     if (channel.map >= static_cast<int>(terrainComponent.blendMaps.size())) return 0.0f;
     Texture& map = terrainComponent.blendMaps[static_cast<size_t>(channel.map)];
     if (map.empty() || map.isFramebuffer() || !map.hasData() || !map.getData().getData()) return 0.0f;
@@ -113,30 +113,30 @@ float editor::terrainLayerCoverage(TerrainComponent& terrainComponent, int layer
 }
 
 void editor::drawTerrainPreviewDropdown(const std::string& popupId) {
-    terrain::TerrainQuality previewTier = terrain::TerrainQuality::HIGH;
-    const bool previewing = terrain::TerrainQualitySettings::getEditorPreview(previewTier);
-    const terrain::TerrainDebugView view = terrain::TerrainQualitySettings::getDebugView();
+    terraincore::TerrainQuality previewTier = terraincore::TerrainQuality::HIGH;
+    const bool previewing = terraincore::TerrainQualitySettings::getEditorPreview(previewTier);
+    const terraincore::TerrainDebugView view = terraincore::TerrainQualitySettings::getDebugView();
     if (ImGui::Button(("Terrain##" + popupId).c_str())) {
         ImGui::OpenPopup(popupId.c_str());
     }
-    if (previewing || view != terrain::TerrainDebugView::SHADED) {
+    if (previewing || view != terraincore::TerrainDebugView::SHADED) {
         ImGui::SameLine();
-        ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "%s", previewing ? terrain::terrainQualityName(previewTier) : "View");
+        ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "%s", previewing ? terraincore::terrainQualityName(previewTier) : "View");
     }
     if (ImGui::BeginPopup(popupId.c_str())) {
         ImGui::TextDisabled("Preview Quality");
-        if (ImGui::MenuItem("As Project", nullptr, !previewing)) terrain::TerrainQualitySettings::clearEditorPreview();
-        for (int i = 0; i < terrain::TERRAIN_QUALITY_COUNT; i++) {
-            const terrain::TerrainQuality tier = static_cast<terrain::TerrainQuality>(i);
+        if (ImGui::MenuItem("As Project", nullptr, !previewing)) terraincore::TerrainQualitySettings::clearEditorPreview();
+        for (int i = 0; i < terraincore::TERRAIN_QUALITY_COUNT; i++) {
+            const terraincore::TerrainQuality tier = static_cast<terraincore::TerrainQuality>(i);
             static const char* const labels[] = {"High", "Medium", "Low"};
-            if (ImGui::MenuItem(labels[i], nullptr, previewing && previewTier == tier)) terrain::TerrainQualitySettings::setEditorPreview(tier);
+            if (ImGui::MenuItem(labels[i], nullptr, previewing && previewTier == tier)) terraincore::TerrainQualitySettings::setEditorPreview(tier);
         }
         ImGui::Separator();
         ImGui::TextDisabled("View");
         static const char* const views[] = {"Shaded", "Layer Count", "Fetch Cost", "Holes"};
         for (int i = 0; i < 4; i++) {
             if (ImGui::MenuItem(views[i], nullptr, static_cast<int>(view) == i)) {
-                terrain::TerrainQualitySettings::setDebugView(static_cast<terrain::TerrainDebugView>(i));
+                terraincore::TerrainQualitySettings::setDebugView(static_cast<terraincore::TerrainDebugView>(i));
             }
         }
         ImGui::EndPopup();
@@ -144,6 +144,6 @@ void editor::drawTerrainPreviewDropdown(const std::string& popupId) {
 }
 
 void editor::clearTerrainPreview() {
-    terrain::TerrainQualitySettings::clearEditorPreview();
-    terrain::TerrainQualitySettings::setDebugView(terrain::TerrainDebugView::SHADED);
+    terraincore::TerrainQualitySettings::clearEditorPreview();
+    terraincore::TerrainQualitySettings::setDebugView(terraincore::TerrainDebugView::SHADED);
 }

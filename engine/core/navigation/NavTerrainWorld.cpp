@@ -27,7 +27,7 @@ using namespace jasperengine::nav;
 namespace {
 
     // the distance from a point to a tile's square, entity-local
-    float navDistanceToTile(float x, float z, terrain::TileCoord tile, float size) {
+    float navDistanceToTile(float x, float z, terraincore::TileCoord tile, float size) {
         const float minX = (float)tile.x * size, minZ = (float)tile.z * size;
         const float dx = x < minX ? minX - x : (x > minX + size ? x - minX - size : 0.0f);
         const float dz = z < minZ ? minZ - z : (z > minZ + size ? z - minZ - size : 0.0f);
@@ -44,9 +44,9 @@ namespace {
 
 bool nav::terrainWorldFocus(const TerrainWorldRuntime& runtime, float& x, float& z) {
     // TerrainWorldSystem's ids: -2 the component's Focus GameObject, -1 the camera; scripts' are positive
-    const std::vector<terrain::StreamFocus>& focuses = runtime.tiles().focuses();
+    const std::vector<terraincore::StreamFocus>& focuses = runtime.tiles().focuses();
     for (int wanted : {-2, -1}) {
-        for (const terrain::StreamFocus& focus : focuses) {
+        for (const terraincore::StreamFocus& focus : focuses) {
             if (focus.id == wanted) {
                 x = focus.x;
                 z = focus.z;
@@ -65,13 +65,13 @@ std::set<uint32_t> nav::followTiles(const TerrainWorldRuntime& runtime, float x,
     std::set<uint32_t> tiles;
     const float size = runtime.lattice().tileSize();
     const float reach = radius + size * 0.5f;
-    const int lowX = std::max(terrain::WORLD_TILE_MIN, (int)std::floor((x - reach) / size));
-    const int highX = std::min(terrain::WORLD_TILE_MAX, (int)std::floor((x + reach) / size));
-    const int lowZ = std::max(terrain::WORLD_TILE_MIN, (int)std::floor((z - reach) / size));
-    const int highZ = std::min(terrain::WORLD_TILE_MAX, (int)std::floor((z + reach) / size));
+    const int lowX = std::max(terraincore::WORLD_TILE_MIN, (int)std::floor((x - reach) / size));
+    const int highX = std::min(terraincore::WORLD_TILE_MAX, (int)std::floor((x + reach) / size));
+    const int lowZ = std::max(terraincore::WORLD_TILE_MIN, (int)std::floor((z - reach) / size));
+    const int highZ = std::min(terraincore::WORLD_TILE_MAX, (int)std::floor((z + reach) / size));
     for (int tz = lowZ; tz <= highZ; tz++) {
         for (int tx = lowX; tx <= highX; tx++) {
-            const terrain::TileCoord tile(tx, tz);
+            const terraincore::TileCoord tile(tx, tz);
             if (!runtime.occupancy().present(tile))
                 continue;
             const float distance = navDistanceToTile(x, z, tile, size);
@@ -124,7 +124,7 @@ void nav::followTerrainWorldFocus(NavigationSystem& system, Scene* scene, Entity
         origin = transform->worldPosition;
     AABB bounds;
     auto add = [&](uint32_t key) {
-        const terrain::TileCoord tile = terrain::TileCoord::fromKey(key);
+        const terraincore::TileCoord tile = terraincore::TileCoord::fromKey(key);
         const float minX = origin.x + (float)tile.x * size, minZ = origin.z + (float)tile.z * size;
         bounds.merge(Vector3(minX, origin.y, minZ));
         bounds.merge(Vector3(minX + size, origin.y + runtime->maxHeight(), minZ + size));

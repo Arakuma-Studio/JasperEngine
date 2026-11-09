@@ -104,7 +104,7 @@ namespace {
     // R18 walks the tiles of the circle's square: past the world's whole span (512 tiles a side)
     // an area would walk millions of them, and there is nothing there
     bool worldLuaAreaInWorld(const char* function, const TerrainWorld& self, const TerrainWorldRuntime& runtime, float x, float z, float radius) {
-        const float span = static_cast<float>(terrain::WORLD_TILES_PER_SIDE) * runtime.lattice().tileSize();
+        const float span = static_cast<float>(terraincore::WORLD_TILES_PER_SIDE) * runtime.lattice().tileSize();
         const Vector3 origin = self.getOrigin();
         if (std::fabs(x - origin.x) <= span && std::fabs(z - origin.z) <= span && radius <= span) return true;
         return worldLuaFail(function, "the area must lie within " + std::to_string(static_cast<long long>(span)) +
@@ -136,7 +136,7 @@ namespace {
         if (!std::isfinite(radiusScale) || radiusScale <= 0.0f) return worldLuaFail("addFocus", "radiusScale must be a finite number > 0");
         id = self->addFocus(position, radiusScale, velocity);
         if (id != 0) return true;
-        return worldLuaFail("addFocus", "a world has at most " + std::to_string(terrain::WORLD_MAX_FOCUSES) +
+        return worldLuaFail("addFocus", "a world has at most " + std::to_string(terraincore::WORLD_MAX_FOCUSES) +
                                         " focuses, the camera's and the component's included; remove one with removeFocus");
     }
 
@@ -171,7 +171,7 @@ namespace {
         table["frozen"] = stats.frozen;
         table["tiles"] = stats.tiles;
         luabridge::LuaRef states = luabridge::newTable(L);
-        for (int i = 0; i < 8; i++) states[terrain::tileStateName(static_cast<terrain::TileState>(i))] = stats.states[i];
+        for (int i = 0; i < 8; i++) states[terraincore::tileStateName(static_cast<terraincore::TileState>(i))] = stats.states[i];
         table["tileStates"] = states;
         table["focuses"] = runtime->focusCount();
         table["gpuBytes"] = static_cast<lua_Integer>(stats.gpuBytes);

@@ -670,6 +670,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/JasperEngineLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/WindowLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/X11Visibility.cpp\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/X11Pen.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/SystemLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/HostServicesLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/LinuxInputRouter.cpp\n";
@@ -2319,7 +2320,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-uint32_t editor::Generator::exportTerrainTiers = terrain::TERRAIN_ALL_TIERS;
+uint32_t editor::Generator::exportTerrainTiers = terraincore::TERRAIN_ALL_TIERS;
 
 void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading, const HtmlUiRenderSettings& htmlUiRender, PbrTier mobilePbrTier, const ShaderCreationProjectSettings& shaderCreation, bool allowInsecureHttp, const std::vector<ShaderGlobalDecl>& shaderGlobals, const PlayerSettings& playerSettings, const AudioSettings& audioSettings, const DebugSettings& debugSettings, uint32_t particleWorldBudget){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
@@ -2653,16 +2654,16 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // T3 R2, R34: the terrain Quality tiers of the platforms and the tiers this build shipped
     {
         static const char* const terrainTierNames[] = {"HIGH", "MEDIUM", "LOW"};
-        for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
-            const terrain::TerrainQuality tier = terrain::TerrainQualitySettings::getPlatformTier(platform);
-            if (tier != terrain::TerrainQuality::HIGH) {
-                mainContent += "    terrain::TerrainQualitySettings::setPlatformTier(" + std::to_string(platform) + ", terrain::TerrainQuality::" +
+        for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+            const terraincore::TerrainQuality tier = terraincore::TerrainQualitySettings::getPlatformTier(platform);
+            if (tier != terraincore::TerrainQuality::HIGH) {
+                mainContent += "    terraincore::TerrainQualitySettings::setPlatformTier(" + std::to_string(platform) + ", terraincore::TerrainQuality::" +
                     terrainTierNames[static_cast<int>(tier)] + ");\n";
             }
         }
         // every tier is the engine's default: a build that ships them all (no terrain, or the default) writes nothing
-        if (exportTerrainTiers != terrain::TERRAIN_ALL_TIERS)
-            mainContent += "    terrain::TerrainQualitySettings::setShippedMask(" + std::to_string(exportTerrainTiers) + "u);\n";
+        if (exportTerrainTiers != terraincore::TERRAIN_ALL_TIERS)
+            mainContent += "    terraincore::TerrainQualitySettings::setShippedMask(" + std::to_string(exportTerrainTiers) + "u);\n";
     }
     // Project Settings > Player > Allow Insecure HTTP: the same policy as the editor's Play
     mainContent += std::string("    Http::setInsecureHttpAllowed(") + (allowInsecureHttp ? "true" : "false") + ");\n";

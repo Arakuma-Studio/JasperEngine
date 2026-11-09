@@ -16,7 +16,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     inline constexpr uint8_t HOLE_VALUE = 0;
     inline constexpr uint8_t SOLID_VALUE = 255;

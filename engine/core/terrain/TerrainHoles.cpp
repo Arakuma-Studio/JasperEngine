@@ -7,7 +7,7 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -60,7 +60,7 @@ namespace {
 
 }
 
-void jasperengine::terrain::openSquares(const HoleMapView& map, int samples, float mirrorX, float mirrorZ, std::vector<uint8_t>& open) {
+void jasperengine::terraincore::openSquares(const HoleMapView& map, int samples, float mirrorX, float mirrorZ, std::vector<uint8_t>& open) {
     const int spans = samples - 1;
     open.assign(spans > 0 ? static_cast<size_t>(spans) * spans : 0, 0);
     if (!map.texels || map.width <= 0 || map.height <= 0 || spans <= 0) return;
@@ -71,7 +71,7 @@ void jasperengine::terrain::openSquares(const HoleMapView& map, int samples, flo
     }
 }
 
-bool jasperengine::terrain::noCollisionSample(const HoleMapView& map, int samples, float mirrorX, float mirrorZ, int x, int y) {
+bool jasperengine::terraincore::noCollisionSample(const HoleMapView& map, int samples, float mirrorX, float mirrorZ, int x, int y) {
     const int spans = samples - 1;
     if (!map.texels || map.width <= 0 || map.height <= 0 || spans <= 0) return false;
     for (int j = std::max(y - 1, 0); j <= std::min(y, spans - 1); j++) {
@@ -82,7 +82,7 @@ bool jasperengine::terrain::noCollisionSample(const HoleMapView& map, int sample
     return true;
 }
 
-int jasperengine::terrain::noCollisionSamples(const std::vector<uint8_t>& open, int samples, std::vector<uint8_t>& out) {
+int jasperengine::terraincore::noCollisionSamples(const std::vector<uint8_t>& open, int samples, std::vector<uint8_t>& out) {
     out.assign(samples > 0 ? static_cast<size_t>(samples) * samples : 0, 0);
     const int spans = samples - 1;
     if (spans <= 0 || open.size() != static_cast<size_t>(spans) * spans) return 0;
@@ -107,7 +107,7 @@ int jasperengine::terrain::noCollisionSamples(const std::vector<uint8_t>& open, 
     return count;
 }
 
-int jasperengine::terrain::navHoleCells(const HoleMapView& map, int samples, std::vector<uint8_t>& cells) {
+int jasperengine::terraincore::navHoleCells(const HoleMapView& map, int samples, std::vector<uint8_t>& cells) {
     const int spans = samples - 1;
     cells.assign(spans > 0 ? static_cast<size_t>(spans) * spans : 0, 0);
     if (!map.texels || map.width <= 0 || map.height <= 0 || spans <= 0) return 0;
@@ -136,7 +136,7 @@ int jasperengine::terrain::navHoleCells(const HoleMapView& map, int samples, std
     return count;
 }
 
-void jasperengine::terrain::holeOverlayClasses(const HoleMapView& map, int collisionSamples, int navSamples, std::vector<uint8_t>& out) {
+void jasperengine::terraincore::holeOverlayClasses(const HoleMapView& map, int collisionSamples, int navSamples, std::vector<uint8_t>& out) {
     out.assign(map.texels && map.width > 0 && map.height > 0 ? static_cast<size_t>(map.width) * map.height : 0, SOLID_VALUE);
     if (out.empty()) return;
     std::vector<uint8_t> open, gaps, cells;
@@ -168,7 +168,7 @@ void jasperengine::terrain::holeOverlayClasses(const HoleMapView& map, int colli
     }
 }
 
-int64_t jasperengine::terrain::countHoleTexels(const HoleMapView& map, int x0, int y0, int x1, int y1) {
+int64_t jasperengine::terraincore::countHoleTexels(const HoleMapView& map, int x0, int y0, int x1, int y1) {
     if (!map.texels || map.width <= 0 || map.height <= 0) return 0;
     x0 = std::max(x0, 0);
     y0 = std::max(y0, 0);
@@ -183,7 +183,7 @@ int64_t jasperengine::terrain::countHoleTexels(const HoleMapView& map, int x0, i
     return count;
 }
 
-int jasperengine::terrain::rasterizeRegion(TerrainMapStore& store, const Shape& region, uint8_t value, TexelRect* changed,
+int jasperengine::terraincore::rasterizeRegion(TerrainMapStore& store, const Shape& region, uint8_t value, TexelRect* changed,
                                            const Filter* filter, HoleRegionResult* detail) {
     const MapId holeId{MapKind::Hole, 0};
     const MapId heightId{MapKind::Height, 0};

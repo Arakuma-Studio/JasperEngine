@@ -24,9 +24,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using terrain::MapId;
-using terrain::MapKind;
-using terrain::TexelRect;
+using terraincore::MapId;
+using terraincore::MapKind;
+using terraincore::TexelRect;
 
 namespace {
 
@@ -143,13 +143,13 @@ std::string TerrainGeneration::displayNameOf(const graph::Graph& graph, const st
     return dot == std::string::npos ? file : file.substr(0, dot);
 }
 
-std::shared_ptr<TerrainGeneration::Prepared> TerrainGeneration::prepare(const terrain::TerrainMapStore& store, const GenerationRequest& request, GenerationResult& result) {
+std::shared_ptr<TerrainGeneration::Prepared> TerrainGeneration::prepare(const terraincore::TerrainMapStore& store, const GenerationRequest& request, GenerationResult& result) {
     auto prepared = std::make_shared<Prepared>();
     prepared->request = request;
     result.dryRun = request.dryRun;
     result.undoName = undoNameOf(request);
 
-    const terrain::MapFormat heightFormat = store.format(kHeightMap);
+    const terraincore::MapFormat heightFormat = store.format(kHeightMap);
     const bool hasHeight = heightFormat.exists && !heightFormat.bounds.empty();
     const int existingWidth = hasHeight ? heightFormat.bounds.w : 0;
     const int existingDepth = hasHeight ? heightFormat.bounds.h : 0;
@@ -221,7 +221,7 @@ std::shared_ptr<TerrainGeneration::Prepared> TerrainGeneration::prepare(const te
         const int top = static_cast<int>(std::floor(texelOf(region.minZ, depth)));
         const int right = static_cast<int>(std::ceil(texelOf(region.maxX, width)));
         const int bottom = static_cast<int>(std::ceil(texelOf(region.maxZ, depth)));
-        rect = terrain::intersect(TexelRect{left, top, right - left, bottom - top}, TexelRect{0, 0, width, depth});
+        rect = terraincore::intersect(TexelRect{left, top, right - left, bottom - top}, TexelRect{0, 0, width, depth});
         if (rect.empty()) {
             addIssue(result, "bad-region", "region is outside the terrain (" + std::to_string(-half) + " to " + std::to_string(half) + " metres).");
             return nullptr;
@@ -394,9 +394,9 @@ bool TerrainGeneration::evaluate(Prepared& prepared, jobs::CancelToken* cancel, 
     return true;
 }
 
-bool TerrainGeneration::stillMatches(const Prepared& prepared, const terrain::TerrainMapStore& store) {
+bool TerrainGeneration::stillMatches(const Prepared& prepared, const terraincore::TerrainMapStore& store) {
     if (!prepared.readsHeight) return true;
-    const terrain::MapFormat format = store.format(kHeightMap);
+    const terraincore::MapFormat format = store.format(kHeightMap);
     if (!format.exists || static_cast<size_t>(format.bounds.area()) != prepared.heightSnapshot.size()) return false;
     std::vector<float> now(prepared.heightSnapshot.size());
     if (!store.read(kHeightMap, format.bounds, now)) return false;
@@ -427,21 +427,21 @@ bool TerrainGeneration::replacesHeightMap(const Prepared& prepared) {
     return prepared.replaces;
 }
 
-bool TerrainGeneration::apply(Prepared& prepared, terrain::TerrainMapStore& store, GenerationResult& result) {
+bool TerrainGeneration::apply(Prepared& prepared, terraincore::TerrainMapStore& store, GenerationResult& result) {
     const double started = nowMs();
     const TexelRect rect = prepared.rect;
-    std::unique_ptr<terrain::OverlayMapStore> dryOverlay;
-    terrain::TerrainMapStore* target = &store;
+    std::unique_ptr<terraincore::OverlayMapStore> dryOverlay;
+    terraincore::TerrainMapStore* target = &store;
     // A dry run goes through the same route onto an overlay it then drops, so changed tells the truth
     // and nothing is written (R63)
     if (prepared.request.dryRun) {
-        dryOverlay = std::make_unique<terrain::OverlayMapStore>(store);
+        dryOverlay = std::make_unique<terraincore::OverlayMapStore>(store);
         target = dryOverlay.get();
     }
     const bool sameLattice = target->format(kHeightMap).exists && target->format(kHeightMap).bounds.w == prepared.mapWidth &&
                              target->format(kHeightMap).bounds.h == prepared.mapDepth;
 
-    terrain::Batch batch(*target);
+    terraincore::Batch batch(*target);
     std::vector<int> layerIndices;
     std::vector<const OutputPlan*> layerPlans;
     for (const OutputPlan& plan : prepared.outputs) {
@@ -465,7 +465,7 @@ bool TerrainGeneration::apply(Prepared& prepared, terrain::TerrainMapStore& stor
             layerPlans.push_back(&plan);
         } else if (plan.kind == noise::OutputKind::Density) {
             const MapId map{MapKind::Density, plan.target};
-            terrain::MapFormat format = target->format(map);
+            terraincore::MapFormat format = target->format(map);
             int mapW = prepared.mapWidth, mapH = prepared.mapDepth;
             if (format.exists) {
                 mapW = format.bounds.w;
@@ -492,7 +492,7 @@ bool TerrainGeneration::apply(Prepared& prepared, terrain::TerrainMapStore& stor
     if (!layerPlans.empty()) {
         // Every blend map shares one lattice: the first's, or the height map's when none exists yet
         int mapW = prepared.mapWidth, mapH = prepared.mapDepth;
-        const terrain::MapFormat blend = target->format(MapId{MapKind::Blend, 0});
+        const terraincore::MapFormat blend = target->format(MapId{MapKind::Blend, 0});
         if (blend.exists) {
             mapW = blend.bounds.w;
             mapH = blend.bounds.h;
@@ -509,9 +509,9 @@ bool TerrainGeneration::apply(Prepared& prepared, terrain::TerrainMapStore& stor
             // Over the old weights of the listed layers, from the snapshot of the blend maps they live in
             const float feather = prepared.featherTexels * static_cast<float>(mapW) / static_cast<float>(prepared.mapWidth);
             for (size_t l = 0; l < layerPlans.size(); l++) {
-                const terrain::LayerChannel where = terrain::terrainLayerChannel(layerIndices[l]);
+                const terraincore::LayerChannel where = terraincore::terrainLayerChannel(layerIndices[l]);
                 const MapId map{MapKind::Blend, where.map};
-                const terrain::MapFormat format = target->format(map);
+                const terraincore::MapFormat format = target->format(map);
                 if (!format.exists) continue;
                 std::vector<float> stored(texels * static_cast<size_t>(format.channels));
                 if (!target->read(map, blendRect, stored)) continue;
@@ -529,10 +529,10 @@ bool TerrainGeneration::apply(Prepared& prepared, terrain::TerrainMapStore& stor
         batch.setLayerWeights(blendRect, layerIndices, interleaved);
     }
 
-    terrain::TerrainOpResult committed = batch.commit();
+    terraincore::TerrainOpResult committed = batch.commit();
     if (dryOverlay) dryOverlay->discard();
     result.applyMs = nowMs() - started;
-    for (const terrain::OpWarning& warning : committed.warnings) {
+    for (const terraincore::OpWarning& warning : committed.warnings) {
         // clipped_low and clipped_high are counts here, not warnings (R31)
         if (warning.code != "clipped_low" && warning.code != "clipped_high") addIssue(result, warning.code.c_str(), warning.message, {}, true);
     }
@@ -569,11 +569,11 @@ namespace {
 
     // The maps a run writes that the terrain lacks, with the size each is made at: the height map when the run
     // replaces it, the blend maps its layers need, the density maps of its foliage layers
-    std::vector<std::pair<MapId, terrain::MapFormat>> mapsToMake(const TerrainGeneration::Prepared& prepared, const terrain::TerrainMapStore& store,
+    std::vector<std::pair<MapId, terraincore::MapFormat>> mapsToMake(const TerrainGeneration::Prepared& prepared, const terraincore::TerrainMapStore& store,
                                                                  int densityResolution) {
-        std::vector<std::pair<MapId, terrain::MapFormat>> out;
+        std::vector<std::pair<MapId, terraincore::MapFormat>> out;
         const auto sized = [](int width, int depth) {
-            terrain::MapFormat format;
+            terraincore::MapFormat format;
             format.bounds = TexelRect{0, 0, width, depth};
             return format;
         };
@@ -581,8 +581,8 @@ namespace {
         if (prepared.replaces && writesHeight) out.emplace_back(kHeightMap, sized(prepared.mapWidth, prepared.mapDepth));
         const std::vector<int> layers = TerrainGeneration::layersOf(prepared);
         if (!layers.empty()) {
-            const int needed = terrain::terrainBlendMapCount(*std::max_element(layers.begin(), layers.end()) + 1);
-            const terrain::MapFormat first = store.format(MapId{MapKind::Blend, 0});
+            const int needed = terraincore::terrainBlendMapCount(*std::max_element(layers.begin(), layers.end()) + 1);
+            const terraincore::MapFormat first = store.format(MapId{MapKind::Blend, 0});
             const int side = first.exists ? first.bounds.w : prepared.mapWidth;
             for (int map = 0; map < needed; map++) {
                 if (!store.format(MapId{MapKind::Blend, map}).exists) out.emplace_back(MapId{MapKind::Blend, map}, sized(side, side));
@@ -723,7 +723,7 @@ std::shared_ptr<TerrainGeneration::Run> TerrainGeneration::start(Project* projec
                     madeIds.push_back(map);
                 }
                 EditorTerrainStore writer(project, sceneId, scene->scene, entity, scene->scene->getComponent<TerrainComponent>(entity));
-                terrain::OverlayMapStore overlay(writer);
+                terraincore::OverlayMapStore overlay(writer);
                 if (!apply(*prepared, overlay, *result)) {
                     fail(result->error.empty() ? "The write failed: nothing changed." : result->error);
                     return;

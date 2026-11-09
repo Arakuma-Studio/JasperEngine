@@ -282,7 +282,7 @@ const float M_PI = 3.141592653589793;
     vec4 terrainDebugOutput(vec4 shaded){
         int view = int(terrainLayers.debugParams.x + 0.5);
         if (view == 3){
-            // the classes of terrain::holeOverlayClasses: 0 a hole, 64 its rim over the collider, 200 a
+            // the classes of terraincore::holeOverlayClasses: 0 a hole, 64 its rim over the collider, 200 a
             // cell the navmesh leaves out, 255 solid ground
             float stripes = mod(floor((gl_FragCoord.x + gl_FragCoord.y) / 6.0), 2.0);
             if (terrainHoleClass < 0.125){
@@ -313,7 +313,7 @@ const float M_PI = 3.141592653589793;
 #ifdef TERRAIN_HOLES
     void terrainFinishHole(){
         #ifdef TERRAIN_DEBUG_VIEW
-            // the Holes view draws them (the bound map holds its classes: terrain::holeOverlayClasses)
+            // the Holes view draws them (the bound map holds its classes: terraincore::holeOverlayClasses)
             if (!terrainDebugHoleView() && terrainHoleClass < 0.5){
                 discard;
             }

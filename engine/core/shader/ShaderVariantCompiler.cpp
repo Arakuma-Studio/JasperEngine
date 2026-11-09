@@ -488,8 +488,8 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if (prop & ShaderPool::getTerrainHolesProperty(ShaderType::GBUFFER)) defs.push_back({"TERRAIN_HOLES", "1"});    // 'Thl'
     if (prop & ShaderPool::getTerrainWorldProperty(ShaderType::GBUFFER)) defs.push_back({"HAS_TERRAIN_WORLD", "1"}); // 'Twd'
     // T3 D2: Lit defines do not reach a G-buffer, so its tier and its twelve layers are bits
-    if (prop & ShaderPool::getTerrainTierProperty(terrain::TerrainQuality::MEDIUM)) defs.push_back({"TERRAIN_QUALITY_MEDIUM", "1"}); // 'Tqm'
-    if (prop & ShaderPool::getTerrainTierProperty(terrain::TerrainQuality::LOW)) defs.push_back({"TERRAIN_QUALITY_LOW", "1"});       // 'Tql'
+    if (prop & ShaderPool::getTerrainTierProperty(terraincore::TerrainQuality::MEDIUM)) defs.push_back({"TERRAIN_QUALITY_MEDIUM", "1"}); // 'Tqm'
+    if (prop & ShaderPool::getTerrainTierProperty(terraincore::TerrainQuality::LOW)) defs.push_back({"TERRAIN_QUALITY_LOW", "1"});       // 'Tql'
     if (prop & ShaderPool::getTerrainExtendedProperty()) defs.push_back({"TERRAIN_EXTENDED_LAYERS", "1"});                            // 'Txl'
     // T5's foliage (ShaderPool::getFoliageProperties): 'Cin', 'Wnd', 'Dth'
     if (prop & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, true, false, false)) defs.push_back({"HAS_COMPACT_INSTANCE", "1"});

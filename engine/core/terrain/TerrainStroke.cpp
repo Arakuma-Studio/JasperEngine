@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 float StrokeResampler::defaultSpacing(float radius, float texelSize) {
     return std::max(0.25f * radius, 0.5f * texelSize);

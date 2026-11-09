@@ -10615,13 +10615,13 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
 // T3 R40: Quality, its features, the cost strip and what they took from the base material
 void editor::InspectorWindow::drawTerrainQualitySection(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities){
     TerrainComponent& terrain = sceneProject->scene->getComponent<TerrainComponent>(entities[0]);
-    const terrain::TerrainQuality tier = mcp::terrainEffectiveTier(terrain).quality;
+    const terraincore::TerrainQuality tier = mcp::terrainEffectiveTier(terrain).quality;
 
     separatorText("Quality");
     RowSettings qualitySettings;
     qualitySettings.enumEntries = enumEntries(reflect::enums::kTerrainQualitySetting);
     static std::string autoLabel;
-    autoLabel = std::string("Auto (Project: ") + terrain::terrainQualityName(terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()))) + ")";
+    autoLabel = std::string("Auto (Project: ") + terraincore::terrainQualityName(terraincore::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()))) + ")";
     if (!qualitySettings.enumEntries->empty()){
         qualitySettings.enumEntries->front().name = autoLabel.c_str();
     }

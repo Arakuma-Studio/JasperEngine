@@ -36,7 +36,7 @@ namespace jasperengine {
 
     // The view over what the component has loaded right now: pointers into its maps, valid until the
     // maps change. size and maxHeight are always filled.
-    JASPERENGINE_API terrain::SurfaceView terrainSurfaceView(TerrainComponent& terrain);
+    JASPERENGINE_API terraincore::SurfaceView terrainSurfaceView(TerrainComponent& terrain);
 
     // T3 R52: makes the hole map what its readers need (kept CPU texels, NEAREST, clamped, no mips) and
     // asks for its pixels. No map is Finished, for one test of a string; main thread.
@@ -55,16 +55,16 @@ namespace jasperengine {
 
     // R14: the one function callers use. Terrain-local; no map loaded gives height 0, up and present
     // false. Read-only: particle collisions call it from workers.
-    JASPERENGINE_API terrain::SurfaceSample querySurface(TerrainComponent& terrain, float localX, float localZ);
+    JASPERENGINE_API terraincore::SurfaceSample querySurface(TerrainComponent& terrain, float localX, float localZ);
 
     // A world ray against the surface, loading the height map if it must. skipHoles: T1 R16
     JASPERENGINE_API bool raycastTerrain(TerrainComponent& terrain, const Transform& transform, const Ray& ray, bool skipHoles, Vector3& worldPoint);
 
     // R93: the abstract form over one component, for whoever takes a TerrainSurfaceQuery
-    class JASPERENGINE_API TerrainComponentQuery final : public terrain::TerrainSurfaceQuery {
+    class JASPERENGINE_API TerrainComponentQuery final : public terraincore::TerrainSurfaceQuery {
     public:
         explicit TerrainComponentQuery(TerrainComponent& terrain): component(&terrain) {}
-        terrain::SurfaceSample sample(float localX, float localZ) const override;
+        terraincore::SurfaceSample sample(float localX, float localZ) const override;
         float heightAt(float localX, float localZ) const override;
         bool raycast(const Vector3& origin, const Vector3& direction, float maxT, bool skipHoles, Vector3& point, float& t) const override;
 
@@ -81,7 +81,7 @@ namespace jasperengine {
 
         std::vector<uint8_t> pixels;
         std::vector<uint8_t> holes;
-        terrain::SurfaceView view;
+        terraincore::SurfaceView view;
     };
     JASPERENGINE_API void snapshotTerrainSurface(TerrainComponent& terrain, TerrainSurfaceSnapshot& out);
 
@@ -99,7 +99,7 @@ namespace jasperengine {
     // kept and nothing allocated. Main thread only.
     class JASPERENGINE_API TerrainEditEvents {
     public:
-        using Handler = std::function<void(Entity terrain, terrain::MapId map, terrain::TexelRect rect)>;
+        using Handler = std::function<void(Entity terrain, terraincore::MapId map, terraincore::TexelRect rect)>;
 
         // Every scene's terrains. Entities number per scene, so a subscriber living in one scene
         // takes the overload below.
@@ -107,7 +107,7 @@ namespace jasperengine {
         [[nodiscard]] static Subscription subscribe(const Scene* scene, Handler handler);
 
         // The stores call this for what they wrote
-        static void publish(const Scene* scene, Entity terrain, terrain::MapId map, terrain::TexelRect rect);
+        static void publish(const Scene* scene, Entity terrain, terraincore::MapId map, terraincore::TexelRect rect);
         // The guard MeshSystem::update reads each frame: one load when nothing was edited
         static bool hasPending();
         // Delivers what this scene's edits left since the last flush
@@ -126,7 +126,7 @@ namespace jasperengine {
         static constexpr double REVISION_SECONDS = 0.25;
 
         // height texels whose nodes wait for new ranges
-        terrain::TexelRect refit;
+        terraincore::TexelRect refit;
         // a height changed since the last revision
         bool surfaceMoved = false;
         double lastRevisionAt = -REVISION_SECONDS;
@@ -139,12 +139,12 @@ namespace jasperengine {
         // DC9: an image goes up at most once a frame, and a map bigger than the frame's budget at
         // most every ceil(bytes / budget) frames; the last edit always goes
         struct Upload {
-            terrain::MapId map;
+            terraincore::MapId map;
             uint64_t lastFrame = 0;
             bool waiting = false;
             // the texels changed since the last upload, and the float copy of a height map where
             // 16-bit heights do not filter (R45: only the changed rows are converted)
-            terrain::TexelRect dirty;
+            terraincore::TexelRect dirty;
             std::vector<uint8_t> shadow;
             // the last upload was refused (R46: the frame's stream staging budget): next frame
             bool retry = false;
@@ -161,7 +161,7 @@ namespace jasperengine {
     // R45: heights as a stream image that cannot filter 16-bit texels takes them
     enum class TerrainUploadFormat { Float32, Half };
     // The rows of rect of a width-wide R16 height map into shadow (width * height texels of format)
-    JASPERENGINE_API void convertTerrainHeightRect(const uint16_t* source, int width, terrain::TexelRect rect, TerrainUploadFormat format, uint8_t* shadow);
+    JASPERENGINE_API void convertTerrainHeightRect(const uint16_t* source, int width, terraincore::TexelRect rect, TerrainUploadFormat format, uint8_t* shadow);
 
     // DC9: the frames between two uploads of a map of this many bytes
     JASPERENGINE_API uint64_t terrainUploadInterval(size_t mapBytes, size_t budget);
@@ -180,12 +180,12 @@ namespace jasperengine {
     JASPERENGINE_API bool detachTerrainMapsForRuntime(TerrainComponent& terrain, Entity entity);
 
     // The map a store's id names on this component; null when the terrain has no such slot
-    JASPERENGINE_API Texture* terrainMapTexture(TerrainComponent& terrain, terrain::MapId map);
+    JASPERENGINE_API Texture* terrainMapTexture(TerrainComponent& terrain, terraincore::MapId map);
 
     // A map's bytes changed under this rectangle, whoever wrote them: the terrain refits instead of
     // rebuilding (R23), its image follows, and subscribers hear of it (R42). For a terrain sharing
     // the file of the one written (R41), this is all it needs.
-    JASPERENGINE_API void noteTerrainMapEdited(const Scene* scene, Entity entity, TerrainComponent& terrain, terrain::MapId map, terrain::TexelRect rect);
+    JASPERENGINE_API void noteTerrainMapEdited(const Scene* scene, Entity entity, TerrainComponent& terrain, terraincore::MapId map, terraincore::TexelRect rect);
 
     // Between these the surface revision is held to its stroke rate, and it always advances after the
     // last end (R23)
@@ -195,7 +195,7 @@ namespace jasperengine {
     // R3: the store over a component's maps. Main thread only: a job takes a snapshot (R69). Writes
     // change the map in memory, mark the terrain for the refresh a map change needs, and publish
     // TerrainEditEvents. EditorTerrainStore (editor/terrain/) adds persistence and sharing.
-    class JASPERENGINE_API TerrainComponentStore : public terrain::TerrainMapStore {
+    class JASPERENGINE_API TerrainComponentStore : public terraincore::TerrainMapStore {
     public:
         TerrainComponentStore(Scene* scene, Entity entity, TerrainComponent& terrain);
 
@@ -204,35 +204,35 @@ namespace jasperengine {
         // across frames)
         void rebind(TerrainComponent& moved) { terrainPtr = &moved; }
 
-        terrain::TerrainFrame frame() const override;
-        terrain::MapFormat format(terrain::MapId map) const override;
-        bool read(terrain::MapId map, terrain::TexelRect rect, std::span<float> out) const override;
-        terrain::WriteResult write(terrain::MapId map, terrain::TexelRect rect, std::span<const float> in) override;
-        bool readBytes(terrain::MapId map, terrain::TexelRect rect, std::span<uint8_t> out) const override;
-        terrain::WriteResult writeBytes(terrain::MapId map, terrain::TexelRect rect, std::span<const uint8_t> in) override;
-        bool canWrite(terrain::MapId map, terrain::TexelRect rect, std::string* why) const override;
-        terrain::WriteResult createMap(terrain::MapId map, terrain::MapFormat format, float fill) override;
-        bool canCreateMap(terrain::MapId map, std::string* why) const override;
-        bool canRemoveMap(terrain::MapId map) const override;
-        terrain::WriteResult removeMap(terrain::MapId map) override;
-        void takeDirty(std::vector<std::pair<terrain::MapId, terrain::TexelRect>>& out) override;
-        Vector2 worldOfTexel(terrain::MapId map, int x, int y) const override;
-        Vector2 texelOfWorld(terrain::MapId map, float localX, float localZ) const override;
-        terrain::TexelRect preferredBlock(terrain::MapId map) const override;
-        std::unique_ptr<terrain::TerrainLargeEdit> beginLarge(terrain::MapId map, terrain::TexelRect rect) override;
-        std::unique_ptr<terrain::TerrainStoreUndoHook> takeUndoHook() override;
+        terraincore::TerrainFrame frame() const override;
+        terraincore::MapFormat format(terraincore::MapId map) const override;
+        bool read(terraincore::MapId map, terraincore::TexelRect rect, std::span<float> out) const override;
+        terraincore::WriteResult write(terraincore::MapId map, terraincore::TexelRect rect, std::span<const float> in) override;
+        bool readBytes(terraincore::MapId map, terraincore::TexelRect rect, std::span<uint8_t> out) const override;
+        terraincore::WriteResult writeBytes(terraincore::MapId map, terraincore::TexelRect rect, std::span<const uint8_t> in) override;
+        bool canWrite(terraincore::MapId map, terraincore::TexelRect rect, std::string* why) const override;
+        terraincore::WriteResult createMap(terraincore::MapId map, terraincore::MapFormat format, float fill) override;
+        bool canCreateMap(terraincore::MapId map, std::string* why) const override;
+        bool canRemoveMap(terraincore::MapId map) const override;
+        terraincore::WriteResult removeMap(terraincore::MapId map) override;
+        void takeDirty(std::vector<std::pair<terraincore::MapId, terraincore::TexelRect>>& out) override;
+        Vector2 worldOfTexel(terraincore::MapId map, int x, int y) const override;
+        Vector2 texelOfWorld(terraincore::MapId map, float localX, float localZ) const override;
+        terraincore::TexelRect preferredBlock(terraincore::MapId map) const override;
+        std::unique_ptr<terraincore::TerrainLargeEdit> beginLarge(terraincore::MapId map, terraincore::TexelRect rect) override;
+        std::unique_ptr<terraincore::TerrainStoreUndoHook> takeUndoHook() override;
 
     private:
         // Points the byte store at the component's current pixels; false when the map has none
-        bool sync(terrain::MapId map) const;
+        bool sync(terraincore::MapId map) const;
         void afterWrite();
 
     protected:
         Scene* scene;
         Entity entity;
         TerrainComponent* terrainPtr;
-        mutable terrain::RawMapStore bytes;
-        std::vector<std::pair<terrain::MapId, terrain::TexelRect>> dirty;
+        mutable terraincore::RawMapStore bytes;
+        std::vector<std::pair<terraincore::MapId, terraincore::TexelRect>> dirty;
     };
 
 }

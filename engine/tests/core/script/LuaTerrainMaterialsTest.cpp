@@ -32,7 +32,7 @@ namespace {
 }
 
 TEST(LuaTerrainMaterials, EveryMemberReadsAndWrites){
-    terrain::TerrainQualitySettings::reset();
+    terraincore::TerrainQualitySettings::reset();
     Scene scene;
     Terrain terrainObject(&scene);
     lua_State* L = LuaBinding::getLuaState();
@@ -78,5 +78,5 @@ TEST(LuaTerrainMaterials, EveryMemberReadsAndWrites){
     TerrainComponent& component = scene.getComponent<TerrainComponent>(terrainObject.getEntity());
     EXPECT_EQ(component.quality, TerrainQualitySetting::LOW);
     EXPECT_TRUE(component.macroNormal);
-    terrain::TerrainQualitySettings::reset();
+    terraincore::TerrainQualitySettings::reset();
 }

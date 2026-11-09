@@ -15,9 +15,9 @@
 namespace jasperengine::editor::mcp {
 
     // The inputs of the cost formula of a terrain, as the readouts and sample_terrain read it
-    terrain::TerrainMaterialInputs terrainMaterialInputs(const TerrainComponent& terrain, bool postColor);
+    terraincore::TerrainMaterialInputs terrainMaterialInputs(const TerrainComponent& terrain, bool postColor);
     // The tier a terrain draws at, and what decided it (R2)
-    terrain::TerrainQualityResolved terrainEffectiveTier(const TerrainComponent& terrain);
+    terraincore::TerrainQualityResolved terrainEffectiveTier(const TerrainComponent& terrain);
 
     // info.material
     Json terrainMaterialJson(Scene* scene, Entity entity);

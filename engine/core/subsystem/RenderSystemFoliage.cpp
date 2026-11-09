@@ -133,7 +133,7 @@ void RenderSystem::uploadFoliageList(FoliageViewList& list) {
         }
     };
 
-    upload(list.buffer, list.capacity, list.stream.data(), list.stream.size() * sizeof(terrain::FoliageInstance));
+    upload(list.buffer, list.capacity, list.stream.data(), list.stream.size() * sizeof(terraincore::FoliageInstance));
     upload(list.expandedBuffer, list.expandedCapacity, list.expanded.data(), list.expanded.size() * sizeof(InstanceRenderData));
 }
 

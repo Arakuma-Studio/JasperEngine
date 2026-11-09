@@ -40,7 +40,7 @@
 
 namespace jasperengine {
 
-    namespace terrain {
+    namespace terraincore {
 
         // F11, the seam for T4: a lone Terrain is one region, a tiled world is one per resident tile
         class FoliageRegion {
@@ -98,7 +98,7 @@ namespace jasperengine {
 
     struct FoliageHit {
         Entity terrain = NULL_ENTITY;
-        terrain::TreeId id = 0;
+        terraincore::TreeId id = 0;
         int prototype = -1;         // index in treePrototypes; -1 for a detail
         int layer = -1;             // detail layer
         float distance = 0.0f;
@@ -106,7 +106,7 @@ namespace jasperengine {
     };
 
     struct FoliageInstanceInfo {
-        terrain::TreeId id = 0;     // 0 for a detail
+        terraincore::TreeId id = 0;     // 0 for a detail
         bool tree = true;
         int prototype = -1;
         int layer = -1;
@@ -116,7 +116,7 @@ namespace jasperengine {
     };
 
     struct TreeHitEvent {
-        terrain::TreeId id = 0;
+        terraincore::TreeId id = 0;
         int prototype = -1;
         Vector3 point;
         Vector3 normal;
@@ -134,7 +134,7 @@ namespace jasperengine {
 
     // What a view draws: its stream and each prototype's draws (T5 F4, F5, F13)
     struct FoliageViewList {
-        std::vector<terrain::FoliageInstance> stream;
+        std::vector<terraincore::FoliageInstance> stream;
         ExternalBuffer buffer;
         size_t capacity = 0;
         // R37: the layers whose vertex program has no compact variant, as 96-byte instances
@@ -157,7 +157,7 @@ namespace jasperengine {
         bool capped = false;
 
         // working memory kept between builds
-        std::vector<terrain::FoliageInstance> scratch;
+        std::vector<terraincore::FoliageInstance> scratch;
         std::vector<uint8_t> scratchLods;
     };
 
@@ -202,7 +202,7 @@ namespace jasperengine {
         std::string getLayerError(Entity terrainEntity, int layer) const;
 
         // F11. A lone Terrain gets its region by itself. T4 adds one per resident tile.
-        void addRegion(Entity owner, std::shared_ptr<terrain::FoliageRegion> region);
+        void addRegion(Entity owner, std::shared_ptr<terraincore::FoliageRegion> region);
         void removeRegion(Entity owner, uint32_t regionKey);
         // A region's maps changed under it: its cells are placed again and its trees re-snap, after the
         // re-snap debounce, as an edit's are (T4 R27: a tile written by an edit)
@@ -210,28 +210,28 @@ namespace jasperengine {
         size_t getRegionCount(Entity owner) const;
         bool hasRegion(Entity owner, uint32_t regionKey) const;
         // The tree stores of a Terrain's regions that have one (a world's resident tiles, T4 R27)
-        void forEachTreeStore(Entity owner, const std::function<void(const terrain::TreeStore& store)>& visit) const;
+        void forEachTreeStore(Entity owner, const std::function<void(const terraincore::TreeStore& store)>& visit) const;
 
         // ---- trees
 
         // A lone Terrain's store. Null while loading, when the file was refused, and on a Terrain World,
         // whose trees are a store per tile (T4 R27): the position form finds the tile's. The store-keeping
         // calls below without a region key are a lone Terrain's too.
-        std::shared_ptr<terrain::TreeStore> getTreeStore(Entity terrainEntity);
-        std::shared_ptr<const terrain::TreeStore> getTreeStore(Entity terrainEntity) const;
+        std::shared_ptr<terraincore::TreeStore> getTreeStore(Entity terrainEntity);
+        std::shared_ptr<const terraincore::TreeStore> getTreeStore(Entity terrainEntity) const;
         // The store under a world position: a World's tile there (null over an absent tile, one not
         // resident, or one whose file is still loading), a lone Terrain's own wherever the point is
-        std::shared_ptr<terrain::TreeStore> getTreeStore(Entity terrainEntity, const Vector3& worldPosition);
-        std::shared_ptr<const terrain::TreeStore> getTreeStore(Entity terrainEntity, const Vector3& worldPosition) const;
+        std::shared_ptr<terraincore::TreeStore> getTreeStore(Entity terrainEntity, const Vector3& worldPosition);
+        std::shared_ptr<const terraincore::TreeStore> getTreeStore(Entity terrainEntity, const Vector3& worldPosition) const;
         // A store the Terrain did not have: a new one for painting, kept until the caller saves it
-        std::shared_ptr<terrain::TreeStore> getOrCreateTreeStore(Entity terrainEntity);
+        std::shared_ptr<terraincore::TreeStore> getOrCreateTreeStore(Entity terrainEntity);
         // T4 R27: one region by its key (a World's tile, TileCoord::key), for the editor's tile edits. The
         // region's store as it is (null while loading or when it has none), a writable one (copied
         // first when the region still shares the one it loaded), and the two notices below.
-        std::shared_ptr<terrain::TreeStore> getRegionTreeStore(Entity owner, uint32_t regionKey) const;
-        std::shared_ptr<terrain::TreeStore> getOrCreateTreeStore(Entity owner, uint32_t regionKey);
-        void treesChanged(Entity owner, uint32_t regionKey, const terrain::TreeDelta& delta);
-        void treeStoreReplaced(Entity owner, uint32_t regionKey, std::shared_ptr<terrain::TreeStore> store);
+        std::shared_ptr<terraincore::TreeStore> getRegionTreeStore(Entity owner, uint32_t regionKey) const;
+        std::shared_ptr<terraincore::TreeStore> getOrCreateTreeStore(Entity owner, uint32_t regionKey);
+        void treesChanged(Entity owner, uint32_t regionKey, const terraincore::TreeDelta& delta);
+        void treeStoreReplaced(Entity owner, uint32_t regionKey, std::shared_ptr<terraincore::TreeStore> store);
         // R22: a bad file: the message, and whether a save would lose what is in it
         bool isTreeStoreRefused(Entity terrainEntity, std::string* error = nullptr) const;
         void allowOverwriteRefusedStore(Entity terrainEntity);
@@ -240,21 +240,21 @@ namespace jasperengine {
         bool isTreeStoreDirty(Entity terrainEntity) const;
         void clearTreeStoreDirty(Entity terrainEntity);
         // Runtime scene clones share the immutable store, each with its own overlay (R62)
-        void shareTreeStore(Entity terrainEntity, std::shared_ptr<terrain::TreeStore> store);
+        void shareTreeStore(Entity terrainEntity, std::shared_ptr<terraincore::TreeStore> store);
 
         // After a write to the store: only those records' cells (R26)
-        void treesChanged(Entity terrainEntity, const terrain::TreeDelta& delta);
+        void treesChanged(Entity terrainEntity, const terraincore::TreeDelta& delta);
         // Everything may have changed; a new store may come with it
-        void treeStoreReplaced(Entity terrainEntity, std::shared_ptr<terrain::TreeStore> store = nullptr);
+        void treeStoreReplaced(Entity terrainEntity, std::shared_ptr<terraincore::TreeStore> store = nullptr);
         // The file now holds the store (a save, by whoever wrote it)
         void treeFileWritten(Entity terrainEntity, const std::string& path);
 
         // ---- runtime overlay (R30, R31)
 
-        std::optional<FoliageInstanceInfo> removeTreeInstance(Entity terrainEntity, terrain::TreeId id, bool updateNavigation = false);
-        bool restoreTreeInstance(Entity terrainEntity, terrain::TreeId id);
+        std::optional<FoliageInstanceInfo> removeTreeInstance(Entity terrainEntity, terraincore::TreeId id, bool updateNavigation = false);
+        bool restoreTreeInstance(Entity terrainEntity, terraincore::TreeId id);
         // World position; 0 when the prototype does not exist
-        terrain::TreeId addTreeInstance(Entity terrainEntity, int prototype, const Vector3& position, float yawDegrees, float scale);
+        terraincore::TreeId addTreeInstance(Entity terrainEntity, int prototype, const Vector3& position, float yawDegrees, float scale);
         void clearDetailsInRadius(Entity terrainEntity, const Vector3& position, float radius, int layer = -1);
         void restoreDetails(Entity terrainEntity);
         // A lone Terrain's is "JEFS1;removed;added;discs". A Terrain World's covers every tile, in key
@@ -266,25 +266,25 @@ namespace jasperengine {
         // Drops the overlay (a reloaded scene starts clean), a World's on every tile
         void clearRuntimeState(Entity terrainEntity);
 
-        Signal<Entity, terrain::TreeId, const FoliageInstanceInfo&> onTreeRemoved;
+        Signal<Entity, terraincore::TreeId, const FoliageInstanceInfo&> onTreeRemoved;
         Signal<Entity, const TreeHitEvent&> onTreeHit;
         // One handler per Terrain, Lua's terrain.onTreeHit and onTreeRemoved; held until the scene goes.
         // A World's handler is the one for all its tiles, those that come into memory later included.
         void setTreeHitHandler(Entity terrainEntity, std::function<void(const TreeHitEvent&)> handler);
-        void setTreeRemovedHandler(Entity terrainEntity, std::function<void(terrain::TreeId, const FoliageInstanceInfo&)> handler);
+        void setTreeRemovedHandler(Entity terrainEntity, std::function<void(terraincore::TreeId, const FoliageInstanceInfo&)> handler);
 
         // ---- queries (R32, R35)
 
         // A hit's body and colliderIndex to its tree (Contact3D.h, RayReturn); false for any other body
-        bool getTreeFromBody(Entity bodyEntity, size_t colliderIndex, Entity& terrainEntity, terrain::TreeId& id) const;
+        bool getTreeFromBody(Entity bodyEntity, size_t colliderIndex, Entity& terrainEntity, terraincore::TreeId& id) const;
         bool isTreeBody(Entity bodyEntity) const;
 
         // Nearest first; kind 0 trees, 1 details, 2 all
         std::vector<FoliageInstanceInfo> getInstancesInRadius(Entity terrainEntity, const Vector3& position, float radius, int kind = 0, size_t maxResults = 256) const;
         // The world pose and record of a tree, stored or added at runtime; false when it is unknown or removed
-        bool getTreePose(Entity terrainEntity, terrain::TreeId id, FoliageInstanceInfo& out) const;
+        bool getTreePose(Entity terrainEntity, terraincore::TreeId id, FoliageInstanceInfo& out) const;
         // A cell walk along the ray: bounding spheres; the caller tests triangles. Each candidate, nearest first
-        void forEachTreeAlongRay(const Ray& ray, float maxDistance, const std::function<bool(Entity terrain, terrain::TreeId id, int prototype, const Matrix4& instanceWorld, float sphereDistance)>& visit) const;
+        void forEachTreeAlongRay(const Ray& ray, float maxDistance, const std::function<bool(Entity terrain, terraincore::TreeId id, int prototype, const Matrix4& instanceWorld, float sphereDistance)>& visit) const;
         void forEachDetailAlongRay(const Ray& ray, float maxDistance, const std::function<bool(Entity terrain, int layer, const Matrix4& instanceWorld, float sphereDistance)>& visit) const;
         // Local bounds of a prototype's LOD0; false until it is loaded
         bool getPrototypeBounds(Entity terrainEntity, int prototype, Vector3& center, float& radius) const;
@@ -296,7 +296,7 @@ namespace jasperengine {
         // The resident tree cells: what collision builds from. A World's are every resident tile's, tile
         // by tile in key order, its instances and cells in the World's own space as a lone Terrain's
         // are in its; ids are record ids within the cell's tile.
-        void forEachResidentCell(Entity terrainEntity, const std::function<void(int cellX, int cellZ, std::span<const terrain::FoliageInstance> instances, std::span<const uint32_t> ids)>& visit) const;
+        void forEachResidentCell(Entity terrainEntity, const std::function<void(int cellX, int cellZ, std::span<const terraincore::FoliageInstance> instances, std::span<const uint32_t> ids)>& visit) const;
 
         // ---- stats
 
@@ -341,7 +341,7 @@ namespace jasperengine {
         bool getPrototypeDraw(Entity prototypeEntity, PrototypeDraw& out) const;
 
     private:
-        void rebuildCellNow(Entity terrainEntity, uint32_t regionKey, const terrain::TreeRecord& record);
+        void rebuildCellNow(Entity terrainEntity, uint32_t regionKey, const terraincore::TreeRecord& record);
         void updateContactSubscription();
         void reportMemory(uint64_t cpuBytes, uint64_t gpuBytes);
         uint64_t reportedCpuBytes = 0;

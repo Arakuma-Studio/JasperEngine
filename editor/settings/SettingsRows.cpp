@@ -123,8 +123,8 @@ const EnumMap<AtmosphereQuality> atmosphereQualities[] = {
     {"off", AtmosphereQuality::OFF}, {"low", AtmosphereQuality::LOW}, {"medium", AtmosphereQuality::MEDIUM}, {"high", AtmosphereQuality::HIGH}};
 const EnumMap<ShadowTier> shadowTiers[] = {
     {"low", ShadowTier::LOW}, {"medium", ShadowTier::MEDIUM}, {"high", ShadowTier::HIGH}, {"ultra", ShadowTier::ULTRA}};
-const EnumMap<terrain::TerrainQuality> terrainQualities[] = {
-    {"high", terrain::TerrainQuality::HIGH}, {"medium", terrain::TerrainQuality::MEDIUM}, {"low", terrain::TerrainQuality::LOW}};
+const EnumMap<terraincore::TerrainQuality> terrainQualities[] = {
+    {"high", terraincore::TerrainQuality::HIGH}, {"medium", terraincore::TerrainQuality::MEDIUM}, {"low", terraincore::TerrainQuality::LOW}};
 const EnumMap<WindowMode> windowModes[] = {
     {"windowed", WindowMode::WINDOWED}, {"maximized", WindowMode::MAXIMIZED}, {"fullscreen", WindowMode::FULLSCREEN}};
 const EnumMap<ScreenOrientation> playerOrientations[] = {
@@ -2201,7 +2201,7 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
         // graphics.terrainQuality.<platform>: the terrain material's tier a terrain of Quality Auto draws with (T3 R51)
-        for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+        for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
             Setting s;
             s.key = std::string("graphics.terrainQuality.") + Project::getShadowTierPlatformName(platform);
             s.type = "enum";
@@ -2211,7 +2211,7 @@ std::vector<Setting> mcpSettingsTable() {
                             "(absent means high; docs/mcp/guide/terrain.md)";
             s.get = [platform](SettingsContext& ctx) { return Json(enumName(terrainQualities, ctx.project()->getTerrainQualityTier(platform))); };
             s.set = [platform](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
-                terrain::TerrainQuality tier;
+                terraincore::TerrainQuality tier;
                 if (!parseEnum(terrainQualities, value, tier, error)) return false;
                 if (apply) {
                     ctx.project()->setTerrainQualityTier(platform, tier);
@@ -2238,8 +2238,8 @@ std::vector<Setting> mcpSettingsTable() {
             s.get = [](SettingsContext& ctx) {
                 const uint32_t mask = ctx.project()->getShippedTerrainTiers();
                 std::string text;
-                for (int tier = 0; tier < terrain::TERRAIN_QUALITY_COUNT; tier++) {
-                    if (mask & (1u << tier)) text += (text.empty() ? "" : ",") + std::string(terrain::terrainQualityName(static_cast<terrain::TerrainQuality>(tier)));
+                for (int tier = 0; tier < terraincore::TERRAIN_QUALITY_COUNT; tier++) {
+                    if (mask & (1u << tier)) text += (text.empty() ? "" : ",") + std::string(terraincore::terrainQualityName(static_cast<terraincore::TerrainQuality>(tier)));
                 }
                 return Json(text);
             };

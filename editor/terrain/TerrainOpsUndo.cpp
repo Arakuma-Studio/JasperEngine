@@ -19,10 +19,10 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using terrain::MapId;
-using terrain::MapKind;
+using terraincore::MapId;
+using terraincore::MapKind;
 
-bool editor::makeTerrainBlankMap(Project* project, SceneProject* scene, Entity entity, MapId map, const terrain::MapFormat& format, TerrainMadeMap& made) {
+bool editor::makeTerrainBlankMap(Project* project, SceneProject* scene, Entity entity, MapId map, const terraincore::MapFormat& format, TerrainMadeMap& made) {
     made.map = map;
     made.ref = TerrainMapUtils::refOfMap(map);
     TerrainComponent& terrain = scene->scene->getComponent<TerrainComponent>(entity);
@@ -50,9 +50,9 @@ bool editor::makeTerrainBlankMap(Project* project, SceneProject* scene, Entity e
 }
 
 bool editor::keepTerrainMadeMap(Project* project, SceneProject* scene, Entity entity, const TerrainMadeMap& made,
-                                const terrain::TerrainMapStore& edited, const std::string& stepName, std::string& error) {
+                                const terraincore::TerrainMapStore& edited, const std::string& stepName, std::string& error) {
     TerrainMapSnapshot after = made.blank;
-    if (!edited.readBytes(made.map, terrain::TexelRect{0, 0, after.width, after.height}, after.pixels)) {
+    if (!edited.readBytes(made.map, terraincore::TexelRect{0, 0, after.width, after.height}, after.pixels)) {
         error = "A new map could not be read back.";
         return false;
     }
@@ -65,17 +65,17 @@ bool editor::keepTerrainMadeMap(Project* project, SceneProject* scene, Entity en
     return true;
 }
 
-terrain::TerrainOpResult editor::previewTerrainOps(Project* project, SceneProject* scene, Entity entity, const std::vector<terrain::Op>& ops,
-                                                   const terrain::OpOptions& options) {
+terraincore::TerrainOpResult editor::previewTerrainOps(Project* project, SceneProject* scene, Entity entity, const std::vector<terraincore::Op>& ops,
+                                                   const terraincore::OpOptions& options) {
     EditorTerrainStore store(project, scene->id, scene->scene, entity, scene->scene->getComponent<TerrainComponent>(entity));
-    terrain::OpOptions dry = options;
+    terraincore::OpOptions dry = options;
     dry.dryRun = true;
-    return terrain::applyOps(store, ops, dry);
+    return terraincore::applyOps(store, ops, dry);
 }
 
-bool editor::applyTerrainOpsWithUndo(Project* project, SceneProject* scene, Entity entity, const std::vector<terrain::Op>& ops,
-                                     const terrain::OpOptions& options, const terrain::TerrainOpResult& preview, const std::string& stepName,
-                                     terrain::TerrainOpResult& reported, std::string& error) {
+bool editor::applyTerrainOpsWithUndo(Project* project, SceneProject* scene, Entity entity, const std::vector<terraincore::Op>& ops,
+                                     const terraincore::OpOptions& options, const terraincore::TerrainOpResult& preview, const std::string& stepName,
+                                     terraincore::TerrainOpResult& reported, std::string& error) {
     CommandHistory* history = CommandHandle::get(scene->id);
     Scene* engineScene = scene->scene;
 
@@ -83,8 +83,8 @@ bool editor::applyTerrainOpsWithUndo(Project* project, SceneProject* scene, Enti
     std::vector<MapId> madeIds;
     for (const MapId& map : preview.createdMaps) {
         EditorTerrainStore store(project, scene->id, engineScene, entity, engineScene->getComponent<TerrainComponent>(entity));
-        terrain::MapFormat format = store.format(MapId{MapKind::Height, 0});
-        if (options.newMapResolution > 0) format.bounds = terrain::TexelRect{0, 0, options.newMapResolution, options.newMapResolution};
+        terraincore::MapFormat format = store.format(MapId{MapKind::Height, 0});
+        if (options.newMapResolution > 0) format.bounds = terraincore::TexelRect{0, 0, options.newMapResolution, options.newMapResolution};
         made.emplace_back();
         if (!makeTerrainBlankMap(project, scene, entity, map, format, made.back())) {
             error = "The " + std::string(map.kind == MapKind::Hole ? "hole" : map.kind == MapKind::Blend ? "blend" : "density") + " map could not be made.";
@@ -97,10 +97,10 @@ bool editor::applyTerrainOpsWithUndo(Project* project, SceneProject* scene, Enti
     const bool removesHoles = std::find(preview.removedMaps.begin(), preview.removedMaps.end(), MapId{MapKind::Hole, 0}) != preview.removedMaps.end();
     EditorTerrainStore writer(project, scene->id, engineScene, entity, engineScene->getComponent<TerrainComponent>(entity));
     writer.setKeepsMaps(true);
-    terrain::OverlayMapStore overlay(writer);
-    terrain::OpOptions inPlace = options;
+    terraincore::OverlayMapStore overlay(writer);
+    terraincore::OpOptions inPlace = options;
     inPlace.inPlace = true;
-    const terrain::TerrainOpResult result = terrain::applyOps(overlay, ops, inPlace);
+    const terraincore::TerrainOpResult result = terraincore::applyOps(overlay, ops, inPlace);
     if (!result.ok) {
         error = result.error;
         return false;
@@ -144,24 +144,24 @@ std::shared_ptr<editor::TerrainOpsSnapshot> editor::snapshotTerrainMaps(Project*
     TerrainComponent& terrain = scene->scene->getComponent<TerrainComponent>(entity);
     EditorTerrainStore live(project, scene->id, scene->scene, entity, terrain);
     auto snapshot = std::make_shared<TerrainOpsSnapshot>();
-    snapshot->store = std::make_unique<terrain::RawMapStore>(terrain.terrainSize, terrain.maxHeight);
+    snapshot->store = std::make_unique<terraincore::RawMapStore>(terrain.terrainSize, terrain.maxHeight);
     std::vector<MapId> maps = {MapId{MapKind::Height, 0}, MapId{MapKind::Hole, 0}};
     for (size_t i = 0; i < terrain.blendMaps.size(); i++) maps.push_back(MapId{MapKind::Blend, static_cast<int>(i)});
     for (size_t i = 0; i < terrain.foliageLayers.size(); i++) maps.push_back(MapId{MapKind::Density, static_cast<int>(i)});
     for (const MapId& map : maps) {
-        const terrain::MapFormat format = live.format(map);
+        const terraincore::MapFormat format = live.format(map);
         if (!format.exists) continue;
-        std::vector<uint8_t> bytes(static_cast<size_t>(format.bounds.area()) * terrain::bytesPerTexel(format));
+        std::vector<uint8_t> bytes(static_cast<size_t>(format.bounds.area()) * terraincore::bytesPerTexel(format));
         if (!live.readBytes(map, format.bounds, bytes)) continue;
         snapshot->store->addMap(map, format.bounds.w, format.bounds.h, format.channels, format.bitsPerChannel, std::move(bytes));
-        snapshot->hashes.emplace_back(map, terrain::mapHash(live, map));
+        snapshot->hashes.emplace_back(map, terraincore::mapHash(live, map));
     }
-    snapshot->overlay = std::make_unique<terrain::OverlayMapStore>(*snapshot->store);
+    snapshot->overlay = std::make_unique<terraincore::OverlayMapStore>(*snapshot->store);
     return snapshot;
 }
 
 bool editor::commitTerrainOpsWithUndo(Project* project, SceneProject* scene, Entity entity, const TerrainOpsSnapshot& snapshot,
-                                      const terrain::TerrainOpResult& result, const std::string& stepName, std::string& error) {
+                                      const terraincore::TerrainOpResult& result, const std::string& stepName, std::string& error) {
     Scene* engineScene = scene && scene->scene ? scene->scene : nullptr;
     if (!engineScene || !engineScene->findComponent<TerrainComponent>(entity)) {
         error = "The terrain was removed while the job ran: nothing was applied.";
@@ -170,7 +170,7 @@ bool editor::commitTerrainOpsWithUndo(Project* project, SceneProject* scene, Ent
     {
         EditorTerrainStore live(project, scene->id, engineScene, entity, engineScene->getComponent<TerrainComponent>(entity));
         for (const auto& [map, hash] : snapshot.hashes) {
-            if (!live.format(map).exists || terrain::mapHash(live, map) != hash) {
+            if (!live.format(map).exists || terraincore::mapHash(live, map) != hash) {
                 error = "The terrain changed while the job ran (" + std::string(map.kind == MapKind::Height ? "height" : map.kind == MapKind::Hole ? "hole" : map.kind == MapKind::Blend ? "blend" : "density") +
                         " map): nothing was applied. Call edit_terrain again.";
                 return false;
@@ -180,7 +180,7 @@ bool editor::commitTerrainOpsWithUndo(Project* project, SceneProject* scene, Ent
     CommandHistory* history = CommandHandle::get(scene->id);
     // a map the ops made is one step holding its final pixels, as applyTerrainOpsWithUndo does
     for (const MapId& map : result.createdMaps) {
-        const terrain::MapFormat format = snapshot.overlay->format(map);
+        const terraincore::MapFormat format = snapshot.overlay->format(map);
         TerrainMadeMap made;
         if (!makeTerrainBlankMap(project, scene, entity, map, format, made)) {
             error = "A new map could not be made.";

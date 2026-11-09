@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 

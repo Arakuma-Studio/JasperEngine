@@ -18,7 +18,7 @@
 #include <span>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     // The layer's fields a placement depends on. Colours are bytes, so the input hashes exactly.
     struct FoliageLayerParams {

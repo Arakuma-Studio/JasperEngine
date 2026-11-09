@@ -38,8 +38,8 @@ namespace jasperengine::editor {
 
     // A World's tree as edit_terrain names it (place_trees' ids, remove_trees): the tile and the record id
     // in one integer below 2^53, which JSON carries exactly
-    uint64_t terrainWorldTreeId(terrain::TileCoord tile, uint32_t record);
-    bool splitTerrainWorldTreeId(uint64_t id, terrain::TileCoord& tile, uint32_t& record);
+    uint64_t terrainWorldTreeId(terraincore::TileCoord tile, uint32_t record);
+    bool splitTerrainWorldTreeId(uint64_t id, terraincore::TileCoord& tile, uint32_t& record);
 
     class TerrainWorldTreeEdit {
     public:
@@ -52,22 +52,22 @@ namespace jasperengine::editor {
         float tileSize() const;
         float maxHeight() const;
         // The tile under an entity-local point (a point on a border is the higher tile's)
-        terrain::TileCoord tileAt(float localX, float localZ) const;
-        bool present(terrain::TileCoord tile) const;
+        terraincore::TileCoord tileAt(float localX, float localZ) const;
+        bool present(terraincore::TileCoord tile) const;
         // The tile's centre, entity-local: the origin of its frame
-        Vector2 centre(terrain::TileCoord tile) const;
+        Vector2 centre(terraincore::TileCoord tile) const;
         // The present tiles a box of entity-local points reaches, in (z, x) order
-        std::vector<terrain::TileCoord> tilesIn(float minX, float minZ, float maxX, float maxZ) const;
+        std::vector<terraincore::TileCoord> tilesIn(float minX, float minZ, float maxX, float maxZ) const;
         // Every present tile, in (z, x) order
-        std::vector<terrain::TileCoord> presentTiles() const;
+        std::vector<terraincore::TileCoord> presentTiles() const;
 
         // The tile's trees as this edit has them; null, with why, over an absent tile or a file that does
         // not read (it is never overwritten)
-        const terrain::TreeStore* trees(terrain::TileCoord tile, std::string* why = nullptr);
+        const terraincore::TreeStore* trees(terraincore::TileCoord tile, std::string* why = nullptr);
         // One change to a tile, records in its frame (id 0 takes the next id); false when the tile is refused
-        bool apply(terrain::TileCoord tile, std::span<const uint32_t> removed, std::span<const terrain::TreeRecord> added, terrain::TreeDelta* delta = nullptr);
+        bool apply(terraincore::TileCoord tile, std::span<const uint32_t> removed, std::span<const terraincore::TreeRecord> added, terraincore::TreeDelta* delta = nullptr);
         // A delta made against what trees() gave for the tile (a job's working copy)
-        bool applyDelta(terrain::TileCoord tile, const terrain::TreeDelta& delta);
+        bool applyDelta(terraincore::TileCoord tile, const terraincore::TreeDelta& delta);
         bool touched() const;
 
         // Writes the changed tiles' files and adds one step named name, already done, to the scene's
@@ -80,14 +80,14 @@ namespace jasperengine::editor {
 
     private:
         struct Tile {
-            terrain::TileCoord coord;
-            std::shared_ptr<terrain::TreeStore> store;
+            terraincore::TileCoord coord;
+            std::shared_ptr<terraincore::TreeStore> store;
             bool region = false;    // the resident region's store: its cells follow each change
             std::optional<std::string> before;
             bool changed = false;
             std::string refused;
         };
-        Tile* tile(terrain::TileCoord coord, std::string* why);
+        Tile* tile(terraincore::TileCoord coord, std::string* why);
 
         Project* project;
         uint32_t sceneId;
@@ -103,7 +103,7 @@ namespace jasperengine::editor {
     class TerrainWorldTreesCmd : public Command {
     public:
         struct TileFiles {
-            terrain::TileCoord tile;
+            terraincore::TileCoord tile;
             std::optional<std::string> before;
             std::optional<std::string> after;
         };

@@ -22,7 +22,7 @@ namespace jasperengine::editor {
     public:
         // After runs after execute and undo in the same step: what a whole tool also changes with the
         // trees (a convert empties its host). strokeId 0 merges with nothing.
-        TreeEditCmd(Project* project, uint32_t sceneId, Entity terrain, std::string name, terrain::TreeDelta delta, uint64_t strokeId = 0);
+        TreeEditCmd(Project* project, uint32_t sceneId, Entity terrain, std::string name, terraincore::TreeDelta delta, uint64_t strokeId = 0);
 
         bool execute() override;
         void undo() override;
@@ -33,7 +33,7 @@ namespace jasperengine::editor {
         const char* typeName() const override { return "TreeEditCmd"; }
         size_t memoryBytes() const override { return sizeof(*this) + name.capacity() + delta.memoryBytes(); }
 
-        const terrain::TreeDelta& getDelta() const { return delta; }
+        const terraincore::TreeDelta& getDelta() const { return delta; }
 
         // Steps with more in them than the delta: called after the delta is applied or undone
         std::function<void(bool undone)> alongside;
@@ -45,7 +45,7 @@ namespace jasperengine::editor {
         uint32_t sceneId;
         Entity terrain;
         std::string name;
-        terrain::TreeDelta delta;
+        terraincore::TreeDelta delta;
         uint64_t strokeId;
         bool firstExecute = true;
     };

@@ -1365,7 +1365,7 @@ void editor::Exporter::resolveShaderKeys() {
         else if (config.mode == ExportMode::Web) platforms = {static_cast<int>(Platform::Web)};
         else if (config.mode == ExportMode::Player) {
             const std::string name = buildPlatformName(config.platform);
-            for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+            for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
                 if (name == Project::getShadowTierPlatformName(platform)) platforms.push_back(platform);
             }
         }

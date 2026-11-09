@@ -955,9 +955,9 @@ namespace jasperengine::editor{
         LightMode lightMode = defaultLightMode;
         // graphics.terrainQuality.<platform> (T3 R51): absent means High on every platform, so an old
         // project keeps its look; new projects write the recommended tiers
-        terrain::TerrainQuality terrainQualityTiers[terrain::TerrainQualitySettings::PLATFORM_COUNT] = {
-            terrain::TerrainQuality::HIGH, terrain::TerrainQuality::HIGH, terrain::TerrainQuality::HIGH,
-            terrain::TerrainQuality::HIGH, terrain::TerrainQuality::HIGH, terrain::TerrainQuality::HIGH};
+        terraincore::TerrainQuality terrainQualityTiers[terraincore::TerrainQualitySettings::PLATFORM_COUNT] = {
+            terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::HIGH,
+            terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::HIGH};
         bool terrainQualityWritten = false;     // the project says: an old one has no key
         bool shipAllTerrainTiers = false;
         bool compressTerrainLayers = false;
@@ -1819,8 +1819,8 @@ namespace jasperengine::editor{
         void setShadowTier(int platform, ShadowTier tier);
         ShadowTier getShadowTier(int platform) const;
         // T3 R51: graphics.terrainQuality.<platform> and the export's terrain switches
-        void setTerrainQualityTier(int platform, terrain::TerrainQuality tier);
-        terrain::TerrainQuality getTerrainQualityTier(int platform) const;
+        void setTerrainQualityTier(int platform, terraincore::TerrainQuality tier);
+        terraincore::TerrainQuality getTerrainQualityTier(int platform) const;
         bool isTerrainQualityWritten() const { return terrainQualityWritten; }
         void setTerrainQualityWritten(bool written) { terrainQualityWritten = written; }
         void setShipAllTerrainTiers(bool ship) { shipAllTerrainTiers = ship; }

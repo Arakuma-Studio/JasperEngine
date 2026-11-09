@@ -107,7 +107,7 @@ namespace jasperengine::player {
         // Project Settings > Quality > Device Tiers, the LOD biases, Thermal Response and the
         // upload budget (spec S56): "device", what differs from the defaults
         DeviceSettings device;
-        // T3 R2, R34: terrain::TerrainQuality by Engine::Platform (absent: High), and the tiers the
+        // T3 R2, R34: terraincore::TerrainQuality by Engine::Platform (absent: High), and the tiers the
         // build ships, which the tier a terrain asks for clamps to
         std::array<int, 6> terrainQualityTiers{};
         uint32_t terrainShippedTiers = 7;

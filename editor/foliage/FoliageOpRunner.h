@@ -34,13 +34,13 @@ namespace jasperengine::editor {
         struct Request {
             uint32_t sceneId = 0;
             Entity terrain = NULL_ENTITY;
-            std::vector<terrain::Op> ops;
+            std::vector<terraincore::Op> ops;
             bool dryRun = false;
             std::string undoName;   // "Scatter Foliage (Island)"
         };
 
         struct Outcome {
-            terrain::TerrainOpResult result;
+            terraincore::TerrainOpResult result;
             int64_t treesBefore = 0;
             int64_t treesAfter = 0;
             bool cancelled = false;
@@ -63,7 +63,7 @@ namespace jasperengine::editor {
         static void updateAll();
 
         // Fills a host: prototypes by mesh stem, detail layers, splines, instanced hosts
-        static void fillHost(Project* project, uint32_t sceneId, Entity terrain, terrain::FoliageOpHost& host);
+        static void fillHost(Project* project, uint32_t sceneId, Entity terrain, terraincore::FoliageOpHost& host);
 
     private:
         struct Work;

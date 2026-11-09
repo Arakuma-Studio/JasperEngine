@@ -52,11 +52,11 @@ namespace {
         }
 
         void cut(int side, int x0, int y0, int x1, int y1){
-            maps.emplace_back(static_cast<size_t>(side) * side, terrain::SOLID_VALUE);
+            maps.emplace_back(static_cast<size_t>(side) * side, terraincore::SOLID_VALUE);
             std::vector<uint8_t>& texels = maps.back();
             for (int y = y0; y < y1; y++){
                 for (int x = x0; x < x1; x++){
-                    texels[static_cast<size_t>(y) * side + x] = terrain::HOLE_VALUE;
+                    texels[static_cast<size_t>(y) * side + x] = terraincore::HOLE_VALUE;
                 }
             }
             scene.getComponent<TerrainComponent>(entity).holeMap.setData(
@@ -142,7 +142,7 @@ TEST_F(HeightfieldHoles, HolesNestInsideDrawn){
     JPH::ShapeRefC shape = build(41);
     ASSERT_TRUE(shape);
 
-    const terrain::HoleMapView view{maps.back().data(), MAP, MAP};
+    const terraincore::HoleMapView view{maps.back().data(), MAP, MAP};
     const float cell = SIZE / 40.0f;
     const float texel = SIZE / MAP;
     const float rim = 2.0f * std::max(cell, texel);
@@ -152,7 +152,7 @@ TEST_F(HeightfieldHoles, HolesNestInsideDrawn){
     for (int i = 0; i < 10000; i++){
         const float x = coordinate(random);
         const float z = coordinate(random);
-        const bool hole = terrain::isHole(view, x / SIZE, z / SIZE);
+        const bool hole = terraincore::isHole(view, x / SIZE, z / SIZE);
         // the shape's offset is -size / 2: its space is the terrain's
         const bool hit = hitAt(shape, x - SIZE * 0.5f, z - SIZE * 0.5f);
         if (!hole){
@@ -163,7 +163,7 @@ TEST_F(HeightfieldHoles, HolesNestInsideDrawn){
         bool deep = true;
         for (float dz = -rim; dz <= rim && deep; dz += texel * 0.5f){
             for (float dx = -rim; dx <= rim; dx += texel * 0.5f){
-                if (!terrain::isHole(view, (x + dx) / SIZE, (z + dz) / SIZE)){
+                if (!terraincore::isHole(view, (x + dx) / SIZE, (z + dz) / SIZE)){
                     deep = false;
                     break;
                 }
@@ -191,8 +191,8 @@ TEST_F(HeightfieldHoles, SamplesOpenMatchJolt){
     ASSERT_TRUE(shape);
     std::vector<uint8_t> open;
     std::vector<uint8_t> gaps;
-    terrain::openSquares(terrain::HoleMapView{maps.back().data(), 32, 32}, 33, 1.0f, 1.0f, open);
-    const int count = terrain::noCollisionSamples(open, 33, gaps);
+    terraincore::openSquares(terraincore::HoleMapView{maps.back().data(), 32, 32}, 33, 1.0f, 1.0f, open);
+    const int count = terraincore::noCollisionSamples(open, 33, gaps);
     int jolt = 0;
     for (unsigned int y = 0; y < 33; y++){
         for (unsigned int x = 0; x < 33; x++){

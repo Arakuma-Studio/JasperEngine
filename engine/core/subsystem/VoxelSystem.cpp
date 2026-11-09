@@ -345,24 +345,24 @@ VoxelTier VoxelSystem::resolveTier(const VoxelVolumeComponent& component) const{
     // the terrain beside it does
     if (component.terrain != NULL_ENTITY && scene->isEntityCreated(component.terrain)){
         if (const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(component.terrain)){
-            terrain::TerrainQualityRequest request;
-            terrain::TerrainQuality forced;
-            if (terrain::TerrainQualitySettings::getEditorPreview(forced)){
+            terraincore::TerrainQualityRequest request;
+            terraincore::TerrainQuality forced;
+            if (terraincore::TerrainQualitySettings::getEditorPreview(forced)){
                 request.hasPreview = true;
                 request.preview = forced;
-            }else if (terrain::TerrainQualitySettings::getGlobalOverride(forced)){
+            }else if (terraincore::TerrainQualitySettings::getGlobalOverride(forced)){
                 request.hasOverride = true;
                 request.globalOverride = forced;
             }
-            const terrain::TerrainVariantInputs variant = getTerrainVariantInputs(*terrain);
+            const terraincore::TerrainVariantInputs variant = getTerrainVariantInputs(*terrain);
             request.hasComponent = variant.hasComponentQuality;
             request.component = variant.componentQuality;
-            request.project = terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
-            request.shippedMask = terrain::TerrainQualitySettings::getShippedMask();
-            switch (terrain::resolveTerrainQuality(request).quality){
-                case terrain::TerrainQuality::HIGH: return VoxelTier::High;
-                case terrain::TerrainQuality::MEDIUM: return VoxelTier::Medium;
-                case terrain::TerrainQuality::LOW: return VoxelTier::Low;
+            request.project = terraincore::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
+            request.shippedMask = terraincore::TerrainQualitySettings::getShippedMask();
+            switch (terraincore::resolveTerrainQuality(request).quality){
+                case terraincore::TerrainQuality::HIGH: return VoxelTier::High;
+                case terraincore::TerrainQuality::MEDIUM: return VoxelTier::Medium;
+                case terraincore::TerrainQuality::LOW: return VoxelTier::Low;
             }
         }
     }

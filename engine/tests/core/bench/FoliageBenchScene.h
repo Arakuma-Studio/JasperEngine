@@ -38,7 +38,7 @@
 namespace foliagebench {
 
     using namespace jasperengine;
-    using namespace jasperengine::terrain;
+    using namespace jasperengine::terraincore;
 
     inline constexpr float WORLD = 1024.0f;
     inline constexpr int HEIGHT_MAP = 1024;

@@ -15,7 +15,7 @@
 #include <utility>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 namespace fs = std::filesystem;
 
 namespace {

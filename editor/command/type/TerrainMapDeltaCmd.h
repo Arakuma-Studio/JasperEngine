@@ -28,12 +28,12 @@ namespace jasperengine::editor{
         // step when it is not a sculpt or a paint ("Apply Spline to Terrain").
         // skipMaps: maps whose bytes another step of the same group carries (a map the edit made,
         // whose structural step holds its final pixels, so its redo needs no map to exist first)
-        TerrainMapDeltaCmd(Project* project, uint32_t sceneId, Entity entity, Entity nameEntity, const terrain::OverlayMapStore& overlay,
-                           bool alreadyApplied, std::string verb = {}, const std::vector<terrain::MapId>& skipMaps = {});
+        TerrainMapDeltaCmd(Project* project, uint32_t sceneId, Entity entity, Entity nameEntity, const terraincore::OverlayMapStore& overlay,
+                           bool alreadyApplied, std::string verb = {}, const std::vector<terraincore::MapId>& skipMaps = {});
 
         // What the store created on write, or a registered op's non-map data, in the same step (R86, R89)
-        void addUndoHook(std::shared_ptr<terrain::TerrainStoreUndoHook> hook);
-        void addLargeEdit(std::shared_ptr<terrain::TerrainLargeEdit> edit);
+        void addUndoHook(std::shared_ptr<terraincore::TerrainStoreUndoHook> hook);
+        void addLargeEdit(std::shared_ptr<terraincore::TerrainLargeEdit> edit);
 
         // Nothing changed: not worth a step
         bool empty() const { return maps.empty() && undoHooks.empty() && largeEdits.empty(); }
@@ -67,10 +67,10 @@ namespace jasperengine::editor{
         };
 
         struct MapDelta{
-            terrain::MapId map;
+            terraincore::MapId map;
             std::string path;
             std::string id;
-            terrain::TexelRect bounds;
+            terraincore::TexelRect bounds;
             int channels = 0;
             ColorFormat colorFormat = ColorFormat::RGBA;
             uint32_t generation = 0;
@@ -86,8 +86,8 @@ namespace jasperengine::editor{
         Entity nameEntity;
         std::string verb;
         std::vector<MapDelta> maps;
-        std::vector<std::shared_ptr<terrain::TerrainStoreUndoHook>> undoHooks;
-        std::vector<std::shared_ptr<terrain::TerrainLargeEdit>> largeEdits;
+        std::vector<std::shared_ptr<terraincore::TerrainStoreUndoHook>> undoHooks;
+        std::vector<std::shared_ptr<terraincore::TerrainLargeEdit>> largeEdits;
         bool applied;
         // executed once: later executes are redos
         bool replayed = false;

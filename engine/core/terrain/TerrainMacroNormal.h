@@ -15,7 +15,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     inline constexpr int TERRAIN_MACRO_NORMAL_MAX_SIZE = 2048;
 
