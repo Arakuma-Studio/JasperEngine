@@ -776,8 +776,10 @@ namespace {
         return {116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz)};
     }
 
-    // calibrated (S84 §6.14.3): a counter survives when it is visibly distinct from the letter
-    constexpr double COUNTER_MIN_DELTA_E = 12.0;
+    // calibrated (S84 §6.14.3): a counter survives when it is visibly distinct from the letter. The
+    // red controls (a rim of the face's colour, a counter flooded by an outline of it) measure at
+    // most 6.5; the library's counters that read as open start above 8
+    constexpr double COUNTER_MIN_DELTA_E = 8.0;
     constexpr double COUNTER_OPEN_DELTA_E = 100.0;      // a transparent counter: the background shows
 
     // how visible a counter is: delta E between the mean colour of the rendered counter and of the

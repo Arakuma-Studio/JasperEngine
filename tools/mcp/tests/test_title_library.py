@@ -130,9 +130,8 @@ async def test_gate(ed: Editor):
             await ed.call("edit_title", path=path, ops=[{"op": "apply_color_scheme", "color_scheme": ref}])
         # the owner's rule: every item passes every check; no item carries an exception
         ed.check(not detail.get("check_allow") and not detail.get("lint_allow"), f"{ref}: no exception lists: {detail.get('check_allow')} {detail.get('lint_allow')}")
-        a = await render_once(ed, path)
-        b = await render_once(ed, path)
-        ed.check_eq(hashlib.sha256(a).hexdigest(), hashlib.sha256(b).hexdigest(), f"{ref} ({text or language}): two renders are identical")
+        # check first, as a fresh render would: the forced RGBA8 path after a same-size render is a
+        # separate open bug (test_fallback_parity_after_a_render, S84 Deviation 23)
         # legibility is judged on the background the item is made for (no `background`: any)
         backgrounds = {"dark": ["black", "checker"], "light": ["white", "checker"]}.get(detail.get("background"), ["black", "white", "checker"])
         report = await ed.call("check_title", path=path, backgrounds=backgrounds, render_scale=0.25)
@@ -143,6 +142,9 @@ async def test_gate(ed: Editor):
             if check["status"] not in ("FAIL",):
                 continue
             ed.check(False, f"{ref} ({text or language}): {cid} {check['status']}: {check.get('message', '')} measured {check.get('measured')}")
+        a = await render_once(ed, path)
+        b = await render_once(ed, path)
+        ed.check_eq(hashlib.sha256(a).hexdigest(), hashlib.sha256(b).hexdigest(), f"{ref} ({text or language}): two renders are identical")
         counts[kind][0] += 1
     print(f"[gate] checked/unavailable per kind: {counts}; unavailable by reason: {reasons}; tier band drops reported: {dropped}")
 
