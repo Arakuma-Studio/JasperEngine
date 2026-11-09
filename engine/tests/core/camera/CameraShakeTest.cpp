@@ -674,7 +674,8 @@ TEST(ShakeFile, LenientValuesAndHardErrors){
 }
 
 TEST(ShakeFile, BuiltinsMatchTheGamesMilkShakeAssets){
-    EXPECT_EQ(builtinShakePresets().size(), 16u);
+    // MilkShake's 13, EZ Camera Shake's 3 and S48's pixel-art pixel_hit, pixel_heavy, pixel_rumble
+    EXPECT_EQ(builtinShakePresets().size(), 19u);
     const ShakePreset* punch = findBuiltinShakePreset("punch");
     ASSERT_TRUE(punch);
     EXPECT_EQ(*punch, preset(ShakeType::OneShot, 0.5f, 2.5f, 0.05f, 1.0f, Vector3(4, 0, 0), Vector3(20, 90, 20)));

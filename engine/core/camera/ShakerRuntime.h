@@ -68,6 +68,11 @@ namespace jasperengine::camera{
         bool warnedCap = false;
         bool warnedBody = false;
 
+        // S48 tickRate: the shake's clock since the last tick and the offset held until the next
+        float tickClock = 0.0f;
+        bool tickHeld = false;
+        ShakeOffset heldRaw;
+
         ShakerRuntime();
 
         // a new id for an instance

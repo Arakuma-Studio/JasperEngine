@@ -209,3 +209,19 @@ void CameraShaker::setTraumaFrequency(float frequency){
 float CameraShaker::getTraumaFrequency() const{
     return getComponent<CameraShakerComponent>().traumaFrequency;
 }
+
+void CameraShaker::setPixelSnap(bool snap){
+    getComponent<CameraShakerComponent>().pixelSnap = snap;
+}
+
+bool CameraShaker::isPixelSnap() const{
+    return getComponent<CameraShakerComponent>().pixelSnap;
+}
+
+void CameraShaker::setTickRate(float hz){
+    getComponent<CameraShakerComponent>().tickRate = std::isfinite(hz) ? std::max(0.0f, hz) : 0.0f;
+}
+
+float CameraShaker::getTickRate() const{
+    return getComponent<CameraShakerComponent>().tickRate;
+}
