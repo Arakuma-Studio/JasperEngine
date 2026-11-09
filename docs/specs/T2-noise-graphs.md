@@ -232,7 +232,7 @@ MPL-2.0 line; the README now says only that copied code keeps its header and get
   indent, unknown keys kept at every level. Nodes and parameters are keyed by name, never by position
   (N3). `metadata.noise.space` is `terrain` (coordinates in terrain widths, the default) or `world`
   (metres). Exposed `variables` are the graph's public knobs.
-- **R13. Identity.** `AssetType::NoiseGraph = 28` (reserved, D19: pixel art holds 24-27; the value is stored in `assetmap.bin`, so it never moves) is a sidecar asset under the assets base, in `editor/asset/AssetTypes.cpp`.
+- **R13. Identity.** `AssetType::NoiseGraph = 33` (pixel art holds 24-27, Sound Event 28, Procedural Material 29, T5, T4 and T6 30-32: Deviations; the value is stored in `assetmap.bin`, so it never moves once shipped) is a sidecar asset under the assets base, in `editor/asset/AssetTypes.cpp`.
   It gets a GUID through S04, moves and renames keep it, and it appears in the Project window with an icon.
 - **R14. Versions.** `formatVersion` follows S23; `kindVersion` starts at 1 with a migrations list. A
   shipped node's parameter defaults and its output are frozen, by a golden of the node-type table and
@@ -916,7 +916,7 @@ labelled unverified, with R72's command, in the report.
   `edit_terrain add_noise`), `noise_graph_edit_loop` (guard; "tune this graph": `edit_graph`, `preview_noise_graph`, then `generate_terrain dry_run`),
   `noise_graph_create` (guard; "start a new graph from alpine": `edit_graph {create}`, no `write_file`), `terrain_generate_error_next` (guard; a graph error's `next` is
   followed). → R65, R74
-- **AC50. Asset type.** `AssetTypes.NoiseGraphValueIs28` pins the value, and `assetTypeFromName`'s bound covers it. → R13
+- **AC50. Asset type.** `AssetTypes.NoiseGraphValueIs33` pins the value, and `assetTypeFromName`'s bound covers it. → R13
 - **AC51. Doriax merge.** Run by whichever lands second: `test_terrain_details.py` and `test_generate_terrain.py::test_layers_and_density` both green on the
   merged tree, with one `docs/mcp/guide/terrain.md`. → R75
 

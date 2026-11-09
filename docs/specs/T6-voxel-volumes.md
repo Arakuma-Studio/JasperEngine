@@ -702,7 +702,7 @@ SSBO, no GPU-driven culling, no render graph. Upstream dropped the README's "Lic
   touches it.
 - **R77 Writes and identity.** All writes through `writeFileAtomic` (S03). Editor save happens with the scene's save and through a Save
   button, with S05's self-write suppression. An external change to the file reloads (S05) and drops the undo stack of that volume with a
-  note. `AssetType::VoxelVolume = 31` (reserved, D19; stored in `assetmap.bin`), row in `AssetTypes.cpp` (sidecar GUID, S04), `AssetRefSchema.cpp` row, dependency edges to graph and mesh assets. `*.voxelvolume`
+  note. `AssetType::VoxelVolume = 32` (after upstream's ProceduralMaterial took 29; stored in `assetmap.bin`), row in `AssetTypes.cpp` (sidecar GUID, S04), `AssetRefSchema.cpp` row, dependency edges to graph and mesh assets. `*.voxelvolume`
   joins S29's LFS pattern list. S03 Auto Save writes dirty volumes beside the scene backup, and `open_scene` recovery restores both.
 - **R78 Cook and export.** The component uses a hand-written runtime codec (`engine/core/serialization/codecs/`, `afterVoxelVolume` hook,
   `RuntimeFields.gen.inc` regenerated) and an editor encoder (`editor/cook/VoxelVolumeCook.{h,cpp}`), for its slots. The asset cook writes
@@ -899,7 +899,7 @@ Suites: CPU under `engine/tests/core/voxel/`, GPU `*Gpu` with goldens in `engine
 | AC52 | R80 | S34's `upgrade-from-main`, `tools/smoke-test.sh`, the test project goldens with no volume unchanged |
 | AC53 | R73 | `VoxelLua.*` for each function; `tools/lua_api/doctest.py` for `docs/voxels.md` and `jasper://docs/voxels` blocks |
 | AC54 | R82, R72 | Cases in `tools/mcp/eval/cases.py`, run as T1 AC74 says (`-k voxel_`; lent accounts, else reported unverified). Red: a surface from before the tool. `voxel_find_docs` (guard; group off, "add a destructible cave": enables `voxels` or reads the doc), `voxel_create_and_dig` (bad; "make a volume and dig a tunnel": one `edit_voxels` with `create` and `ops`, then `sample_voxels connectivity`), `voxel_generate_from_graph` (guard; `generate_voxels` source `noise_graph`, not ops by hand), `voxel_control_hill_is_terrain` (control; "raise a hill": `edit_terrain`, must not call `edit_voxels`), `voxel_cave_mouth_not_holes_only` (guard; "cave entrance": a volume with terrain attachment, not `cut_holes` alone) |
-| AC55 | R83, R84 | `ShaderKey.VoxelBitIsPinned`; `AssetTypes.VoxelVolumeValueIs31`; `python3 tools/ci/check-notices.py` (fails with a missing `engine/notices.json` entry); `python3 tools/check_raw_writes.py` with no new allowlist line; `python3 tools/check_stream_keys.py`. Red: `tools/check_raw_writes.py --self-test`; removing the notices entry fails the first |
+| AC55 | R83, R84 | `ShaderKey.VoxelBitIsPinned`; `AssetTypes.VoxelVolumeValueIs32`; `python3 tools/ci/check-notices.py` (fails with a missing `engine/notices.json` entry); `python3 tools/check_raw_writes.py` with no new allowlist line; `python3 tools/check_stream_keys.py`. Red: `tools/check_raw_writes.py --self-test`; removing the notices entry fails the first |
 | AC56 | §8 | Second-lander checks: with `draw-perf`, voxel Lit keys ship with `Dlo` twins (`VoxelExport.CollectorListsTierVariants` extended); with `ssr-probes`, a voxel G-buffer variant builds with `Occ` off (`VoxelRenderGpu.LodSeamGolden` passes with no sokol validation error); with `mesh-memory`, `VoxelChangeSet.*` and `VoxelRenderGpu.*` green on its containers |
 
 **What this host can verify** (8 cores, software GL, no KVM, no Windows or macOS; the ledger's limits; there is no CI, so nothing else checks a push):
