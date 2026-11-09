@@ -72,8 +72,17 @@ namespace {
         return out;
     }
 
+    // a matrix keeps 6 decimals: 3 would move a gradient by a pixel across a large title
     std::string matrixOf(const Affine& m) {
-        return "matrix(" + fmt(m.a) + " " + fmt(m.b) + " " + fmt(m.c) + " " + fmt(m.d) + " " + fmt(m.e) + " " + fmt(m.f) + ")";
+        const auto fine = [](double v) {
+            char buffer[64];
+            std::snprintf(buffer, sizeof(buffer), "%.6f", std::isfinite(v) ? v : 0.0);
+            std::string s = buffer;
+            while (s.back() == '0') s.pop_back();
+            if (s.back() == '.') s.pop_back();
+            return s == "-0" ? std::string("0") : s;
+        };
+        return "matrix(" + fine(m.a) + " " + fine(m.b) + " " + fine(m.c) + " " + fine(m.d) + " " + fine(m.e) + " " + fine(m.f) + ")";
     }
 
     std::string pathData(const Path& path, const Affine& m) {

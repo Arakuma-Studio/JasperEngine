@@ -42,7 +42,7 @@ async def test_create_from_svg(ed: Editor):
     ed.check_eq(r["import"]["files"], ["assets/titles/badge_assets/badge.svg"], "the copy is the import's one file")
     ed.check((ed.project / "assets/titles/badge_assets/badge.svg").read_text() == LOGO, "the copy is the original's bytes")
     got = await ed.call("get_title", path="assets/titles/badge.titleart", detail="full")
-    ed.check_eq(got["canvas"], [160, 96], "the canvas is the SVG's viewport")
+    ed.check_eq([got["canvas"]["width"], got["canvas"]["height"]], [160, 96], "the canvas is the SVG's viewport")
     ed.check_eq(len(got["layers"]), 1, "one layer")
     bad = await ed.call_raw("edit_title", {"path": "assets/titles/other.titleart", "create": {"from": str(source), "canvas": [64, 64]}})
     ed.check(bad.is_error and "bad_option" in bad.text, f"create.from takes no canvas: {bad.text[:200]}")
