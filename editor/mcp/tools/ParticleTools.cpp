@@ -35,7 +35,6 @@
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleEffectLibrary.h"
 #include "particles/ParticleModules.h"
-#include "pixelart/lint/LintTypes.h"
 #include "pixelart/particles/PixelParticlePresets.h"
 #include "pixelart/particles/PixelPresetCreate.h"
 #include "pixelart/PixelColor.h"
@@ -1143,7 +1142,7 @@ void bakeSheetTool(const CallPtr& call) {
         if (output.size() > 10 && (output.substr(output.size() - 10) == ".particles")) output.resize(output.size() - 10);
         // refused now, not after the run: a path out of the project (a link on the way included)
         fs::path absolute;
-        for (const char* extension : {".png", ".particles"}) {
+        for (const char* extension : {".png", ".particles", ".json"}) {
             if (!McpRefs::resolveProjectWritePath(call->ctx().project(), output + extension, absolute, error, false)) {
                 call->fail("output: " + error);
                 return;
@@ -1151,6 +1150,8 @@ void bakeSheetTool(const CallPtr& call) {
         }
     }
     const bool overwrite = args.value("overwrite", false);
+    // S49: the frames' Aseprite json-hash beside the sheet (a texture's Sprite Mode slices it)
+    const bool aseprite = args.value("aseprite", false);
     ParticlePreviewRequest request = ParticleSheetBake::sheetRequest(base, columns, rows, cellSize);
     bool additive = true;
     bool looping = false;
@@ -1171,10 +1172,12 @@ void bakeSheetTool(const CallPtr& call) {
         const PoseImage sheet = ParticleSheetBake::composeSheet(run.getCells(), columns, rows);
         const Json& report = run.getReport();
         const double seconds = report.value("seconds", 0.0);
-        Json data = {{"columns", columns}, {"rows", rows}, {"cell_size", cellSize}, {"seconds", seconds}, {"frame", report["frame"]},
+        // the pixel view's cells are its base pixels at its scale, not cell_size
+        const int cell = run.getCells().empty() ? cellSize : run.getCells().front().getWidth();
+        Json data = {{"columns", columns}, {"rows", rows}, {"cell_size", cell}, {"seconds", seconds}, {"frame", report["frame"]},
                      {"seeds", report["seeds"]}, {"state_hash", report["state_hash"]}, {"verdict", report["verdict"]}, {"checks", report["checks"]},
                      {"alpha", "straight; additive light without coverage keeps its brightest channel as alpha"}};
-        std::string text = scope + ": " + std::to_string(columns) + "x" + std::to_string(rows) + " frames of " + std::to_string(cellSize) + " px over " +
+        std::string text = scope + ": " + std::to_string(columns) + "x" + std::to_string(rows) + " frames of " + std::to_string(cell) + " px over " +
                            report["seconds"].dump() + " s, straight alpha.";
         ToolResult reply;
         std::vector<uint8_t> png;
@@ -1186,14 +1189,15 @@ void bakeSheetTool(const CallPtr& call) {
             std::vector<std::string> written;
             std::string why;
             if (!ParticleSheetBake::sheetFiles(project, output, sheet, effect, overwrite, items, written, why) ||
+                (aseprite && !ParticleSheetBake::asepriteFile(project, output, columns, rows, cell, cell, seconds, overwrite, items, written, why)) ||
                 !w4::writeFilesUndoable(*ctx, std::move(items), why, {}, "Bake Sprite Sheet")) {
                 return ToolResult::error("Nothing was written: " + why);
             }
             data["written"] = written;
             data["undo"] = {{"scope", "project"}};
             data["next"] = "set_particle_effect plays " + written[1] + " on a Particle System.";
-            text += " Wrote " + written[0] + " and " + written[1] + " (Texture Sheet Animation " + std::to_string(columns) + "x" +
-                    std::to_string(rows) + ") as one undo step \"Bake Sprite Sheet\".";
+            text += " Wrote " + written[0] + " and " + written[1] + (aseprite ? " and " + written[2] : std::string()) + " (Texture Sheet Animation " +
+                    std::to_string(columns) + "x" + std::to_string(rows) + ") as one undo step \"Bake Sprite Sheet\".";
         } else {
             data["next"] = "The same arguments plus output write the sheet and an effect playing it (one undo step).";
             text += " Nothing written (no output).";
@@ -1313,7 +1317,8 @@ void registerParticleTools(McpRegistry& registry) {
         tool.inputSchema = object(withRun({
             {"times", array(number(""), "Seconds, instead of frames.")},
             {"frames", withDefault(integer("", 0, 24), 6)},
-            {"view", withDefault(stringEnum("", {"three_quarter", "front", "side", "top"}), "three_quarter")},
+            {"view", withDefault(stringEnum("pixel: the base-pixel grid, for pixel art.", {"three_quarter", "front", "side", "top", "pixel"}), "three_quarter")},
+            {"scale", integer("pixel view: screen pixels a base pixel.", 1, 8)},
             {"background", withDefault(stringEnum("", {"dark", "light", "checker"}), "dark")},
             {"overdraw_map", withDefault(boolean("Adds a GPU heat row."), false)},
             {"platform", withDefault(stringEnum("", {"mobile", "web", "desktop"}), "mobile")},
@@ -1340,7 +1345,9 @@ void registerParticleTools(McpRegistry& registry) {
             {"columns", withDefault(integer("", 1, 16), 4)},
             {"rows", withDefault(integer("", 1, 16), 4)},
             {"cell_size", withDefault(integer("Pixels.", 16, 1024), 128)},
-            {"view", withDefault(stringEnum("", {"front", "three_quarter", "side", "top"}), "front")},
+            {"view", withDefault(stringEnum("pixel: the base-pixel grid (cells: base pixels x scale).", {"front", "three_quarter", "side", "top", "pixel"}), "front")},
+            {"scale", integer("pixel view: screen pixels a base pixel.", 1, 8)},
+            {"aseprite", withDefault(boolean("Also <output>.json, Aseprite json-hash."), false)},
             {"output", string("Project-relative, no extension: writes .png and .particles.")},
             {"overwrite", withDefault(boolean(""), false)},
             {"wait", withDefault(boolean(""), true)},

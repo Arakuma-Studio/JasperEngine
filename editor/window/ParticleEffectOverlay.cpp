@@ -3,6 +3,7 @@
 
 #include "ParticleEffectOverlay.h"
 
+#include "EditorHost.h"
 #include "Out.h"
 #include "Project.h"
 #include "Theme.h"
@@ -11,7 +12,6 @@
 #include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
 #include "object/Camera.h"
-#include "pixelart/particles/ParticleCapture.h"
 #include "render/SceneRender.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/ParticleSystemState.h"
@@ -30,17 +30,6 @@ namespace {
 
     // a seek spreads its ticks over frames at most this long (S20 R29)
     constexpr double kSeekBudgetMs = 4.0;
-
-    // the Renderer's Bake to Sprite Sheet... asks the overlay of the scene
-    struct BakeRequest {
-        uint32_t sceneId = 0;
-        Entity entity = NULL_ENTITY;
-        bool pending = false;
-    };
-    BakeRequest& bakeRequest() {
-        static BakeRequest request;
-        return request;
-    }
 
     bool editable(const SceneProject* sceneProject) {
         return sceneProject && sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED &&
@@ -73,90 +62,6 @@ std::vector<Entity> ParticleEffectOverlay::targets(Project* project, SceneProjec
         }
     }
     return result;
-}
-
-void ParticleEffectOverlay::requestBake(uint32_t sceneId, Entity entity) {
-    bakeRequest() = BakeRequest{sceneId, entity, true};
-}
-
-void ParticleEffectOverlay::updateBake(Project* project) {
-    if (!bake.running || !bake.capture) return;
-    auto* capture = static_cast<pixelart::ParticleCapture*>(bake.capture.get());
-    if (!capture->step()) return;
-    bake.running = false;
-    if (capture->failed()) {
-        Out::error("Bake to Sprite Sheet: %s", capture->error().c_str());
-        bake.capture.reset();
-        return;
-    }
-    std::filesystem::path png = project->getProjectPath() / FileUtils::pathFromUtf8(bake.path);
-    std::filesystem::path json = png;
-    json.replace_extension(".json");
-    const pixelart::PixelImage strip = pixelart::particleSpriteStrip(capture->frames(), capture->width(), capture->height(), bake.scale, bake.padding);
-    std::vector<WriteFilesCmd::Item> items;
-    items.push_back({png, strip.encodePng()});
-    items.push_back({json, pixelart::particleSpriteStripJson(FileUtils::pathToUtf8(png.filename()), capture->frames(), capture->width(),
-                                                              capture->height(), bake.scale, bake.padding)});
-    std::string error;
-    if (!ProjectFileWrites::writeUndoable(project, items, error, nullptr, nullptr, {}, true, "Bake to Sprite Sheet"))
-        Out::error("Bake to Sprite Sheet: %s", error.c_str());
-    else
-        Out::info("Baked %s and its .json (%d frames): Slice... > From JSON imports it", bake.path, (int)capture->frames().size());
-    bake.capture.reset();
-}
-
-void ParticleEffectOverlay::drawBakeDialog(Project* project, SceneProject* sceneProject) {
-    BakeRequest& request = bakeRequest();
-    if (request.pending && request.sceneId == sceneProject->id) {
-        request.pending = false;
-        bake.sceneId = request.sceneId;
-        bake.entity = request.entity;
-        bake.open = true;
-        // one loop, or the whole one-shot
-        if (const particles::ParticleEffectDocument* d = ParticleSubsystem::getDocument(sceneProject->scene->getComponent<ParticleSystemComponent>(bake.entity))) {
-            float lo = 0.0f, hi = 0.0f;
-            d->main.startLifetime.range(lo, hi);
-            bake.start = 0.0f;
-            bake.end = d->looping ? d->duration : d->duration + hi;
-        }
-        std::snprintf(bake.path, sizeof(bake.path), "%s", (sceneProject->scene->getEntityName(bake.entity) + " sheet.png").c_str());
-    }
-    if (!bake.open || bake.sceneId != sceneProject->id) return;
-    ImGui::SetNextWindowSize(ImVec2(Theme::dpi(320.0f), 0.0f), ImGuiCond_Appearing);
-    if (ImGui::Begin("Bake to Sprite Sheet", &bake.open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::SliderInt("Frames", &bake.frames, 1, 64);
-        ImGui::DragFloat("From (s)", &bake.start, 0.01f, 0.0f, 1.0e4f, "%.2f");
-        ImGui::DragFloat("To (s)", &bake.end, 0.01f, 0.0f, 1.0e4f, "%.2f");
-        ImGui::SliderInt("Scale", &bake.scale, 1, 8);
-        ImGui::SliderInt("Padding", &bake.padding, 0, 16);
-        ImGui::InputText("File (.png)", bake.path, sizeof(bake.path));
-        ImGui::TextDisabled("Transparent background; writes the PNG strip and an Aseprite JSON beside it");
-        ImGui::BeginDisabled(bake.running || bake.end < bake.start || !sceneProject->scene->isEntityCreated(bake.entity));
-        if (ImGui::Button(bake.running ? "Baking..." : "Bake")) {
-            const particles::ParticleEffectDocument* d = ParticleSubsystem::getDocument(sceneProject->scene->getComponent<ParticleSystemComponent>(bake.entity));
-            if (d) {
-                pixelart::ParticleCaptureSettings settings;
-                settings.document = *d;
-                const uint32_t seed = d->seed ? d->seed : sceneProject->scene->getComponent<ParticleSystemComponent>(bake.entity).seed;
-                settings.seed = seed ? seed : 1u;
-                settings.pixelsPerUnit = std::max(project->getPixelsPerUnit(), 1);
-                for (int i = 0; i < bake.frames; i++) {
-                    const double span = d->looping ? (bake.end - bake.start) / bake.frames : (bake.frames > 1 ? (bake.end - bake.start) / (bake.frames - 1) : 0.0);
-                    settings.times.push_back(bake.start + span * i);
-                }
-                auto capture = std::make_shared<pixelart::ParticleCapture>();
-                std::string error;
-                if (capture->begin(settings, error)) {
-                    bake.capture = capture;
-                    bake.running = true;
-                } else {
-                    Out::error("Bake to Sprite Sheet: %s", error.c_str());
-                }
-            }
-        }
-        ImGui::EndDisabled();
-    }
-    ImGui::End();
 }
 
 // R34: the base-pixel grid (1 / PPU) around each previewed emitter, in an orthographic Scene view
@@ -194,7 +99,6 @@ void ParticleEffectOverlay::drawPixelGrid(Project* project, SceneProject* sceneP
 }
 
 void ParticleEffectOverlay::update(Project* project, SceneProject* sceneProject, double dt) {
-    updateBake(project);
     if (!sceneProject || !sceneProject->scene) return;
     State& state = states[sceneProject->id];
     Scene* scene = sceneProject->scene;
@@ -380,12 +284,12 @@ void ParticleEffectOverlay::draw(Project* project, SceneProject* sceneProject, c
         if (gizmoChanged) sceneProject->needUpdateRender = true;
         if (ImGui::Button(ICON_FA_ELLIPSIS "##particle_overlay_more")) ImGui::OpenPopup("##particle_overlay_menu");
         if (ImGui::BeginPopup("##particle_overlay_menu")) {
-            if (ImGui::MenuItem("Bake to Sprite Sheet...", nullptr, false, !now.empty())) requestBake(sceneProject->id, now.front());
+            // the effect's sprite sheet: the Particle Effect window's Record (S91), its Pixel Grid for pixel art
+            if (ImGui::MenuItem("Bake to Sprite Sheet...", nullptr, false, !now.empty())) getEditorHost().openParticleEffectSubtree(sceneProject->id, now.front());
             ImGui::EndPopup();
         }
     }
     ImGui::EndChild();
     ImGui::PopStyleColor();
     drawPixelGrid(project, sceneProject, now, canvasMin, canvasSize);
-    drawBakeDialog(project, sceneProject);
 }

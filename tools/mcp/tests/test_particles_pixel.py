@@ -1,10 +1,10 @@
 """S49 pixel particles through MCP (docs/specs/S49-pixel-particles.md R20, R21, R36-R39, AC11, AC12): every pixel
-preset made with create_particle_effect, played with set_particle_effect and captured as a contact sheet
-(capture_particles frames 8 scale 4 checks true: one sheet of the expected size, every check S49 computes PASS, the
-S48 ones SKIP until S48 lands); the red control of off_grid (Snap to Pixel Grid off); Bake to Sprite Sheet's PNG strip
-and Aseprite JSON, gone again after one undo; the R37 example patches through edit_particle_effect and back through
-get_particle_effect; an Analytic patch with Noise refused with its diagnostic; the stats' S49 fields; the group
-hidden until tool_groups enables it.
+preset made with create_particle_effect, played with set_particle_effect and previewed on the base-pixel grid
+(S91's preview_particle_effect view pixel, 8 frames at scale 4: one filmstrip of the expected size, off_grid PASS on
+drawn pixels, the S48 lints SKIP until S48 lands); the red control of off_grid (Snap to Pixel Grid off); S91's
+bake_particle_sheet on the pixel view with the Aseprite JSON, gone again after one undo; the R37 example patches
+through edit_particle_effect and back through get_particle_effect; an Analytic patch with Noise refused with its
+diagnostic; the stats' S49 fields; a pixel preset one undo step; the group hidden until tool_groups enables it.
 
 Runs in one new empty project; tests run in order and share the editor.
 """
@@ -44,24 +44,32 @@ async def setup(ed: Editor) -> dict:
 
 
 def checks_of(value: dict) -> dict:
-    return {r["id"]: r for r in value["checks"]["results"]}
+    return {r["id"]: r for r in value["checks"]}
+
+
+async def pixel_preview(ed: Editor, s: dict, **args) -> dict:
+    r = await ed.call_raw("preview_particle_effect", {"scene": s["scene"], "entity": s["system"], "view": "pixel", **args})
+    ed.check(not r.is_error, f"preview: {r.text[:400]}")
+    return r
 
 
 async def test_group_hidden_until_enabled(ed: Editor):
-    """capture_particles and create_particle_effect are the particles group's: hidden by default."""
-    ed.require_tools("tool_groups", "create_particle_effect", "capture_particles")
+    """The pixel presets come with create_particle_effect, the pixel view with preview_particle_effect: the particles
+    group's, hidden by default."""
+    ed.require_tools("tool_groups", "create_particle_effect", "preview_particle_effect")
     await ed.call("tool_groups", disable=["particles"])
     default = {t.name for t in await ed.tools(groups=None)}
-    ed.check("capture_particles" not in default and "create_particle_effect" not in default, "hidden by default")
+    ed.check("preview_particle_effect" not in default and "create_particle_effect" not in default, "hidden by default")
     await ed.call("tool_groups", enable=["particles"])
-    listed = {t.name for t in await ed.tools(groups=None)}
-    ed.check({"capture_particles", "create_particle_effect"} <= listed, "listed once enabled")
-    schema = next(t for t in await ed.tools(groups=None) if t.name == "create_particle_effect").input_schema
-    ed.check(set(PRESETS) <= set(schema["properties"]["preset"]["enum"]), "the preset enum has the pixel presets")
+    tools = {t.name: t for t in await ed.tools(groups=None)}
+    ed.check({"preview_particle_effect", "create_particle_effect", "bake_particle_sheet"} <= set(tools), "listed once enabled")
+    ed.check(set(PRESETS) <= set(tools["create_particle_effect"].input_schema["properties"]["preset"]["enum"]), "the pixel presets")
+    for name in ("preview_particle_effect", "bake_particle_sheet"):
+        ed.check_in("pixel", tools[name].input_schema["properties"]["view"]["enum"])
 
 
 async def test_presets_sheets_and_checks(ed: Editor):
-    """Each preset: created, played, captured as 8 frames at 4x with the checks (AC11)."""
+    """Each preset: created, played, previewed on the pixel grid as 8 frames at 4x with the checks (AC11)."""
     s = await setup(ed)
     for name in PRESETS:
         made = await ed.call("create_particle_effect", path=f"assets/fx/pixel/{name}.particles", preset=name)
@@ -71,67 +79,58 @@ async def test_presets_sheets_and_checks(ed: Editor):
             children = made.get("children") or []
             ed.check(len(children) == 1 and children[0].endswith("fx/pixel/pixel_smoke.particles"), f"the fire's smoke beside it: {children}")
         await ed.call("set_particle_effect", scene=s["scene"], entity=s["system"], effect=f"assets/fx/pixel/{name}.particles")
-        r = await ed.call_raw("capture_particles", {"scene": s["scene"], "entity": s["system"], "time": 0.1, "frames": 8, "scale": 4,
-                                                    "checks": True})
-        ed.check(not r.is_error and len(r.images) == 1, f"{name}: {r.text[:300]}")
+        r = await pixel_preview(ed, s, frames=8, scale=4)
         value = r.value
-        width, height, rgba = pngdiff.decode(r.images[0][0])
-        ed.check_eq((width, height), (value["width"], value["height"]), f"{name}: the sheet's size")
-        # what the GPU drew (its sub-emitters' particles too: Debris draws nothing of its own), not
-        # what the simulation counts: pixels other than the key, the separators and the labels
-        frame = {(255, 0, 255), (32, 32, 32), (230, 230, 230)}
-        drawn = sum(1 for i in range(0, len(rgba), 4) if (rgba[i], rgba[i + 1], rgba[i + 2]) not in frame)
-        ed.check(drawn > 0, f"{name}: the sheet shows the effect")
-        cell_w, cell_h = value["cell"]
-        # 8 frames in 3 columns and 3 rows, 1 px between cells, a label band under each
-        ed.check(value["width"] == 3 * cell_w * 4 + 2, f"{name}: width {value['width']} for cells of {cell_w}")
-        ed.check(value["height"] >= 3 * cell_h * 4 + 2, f"{name}: height {value['height']} for cells of {cell_h}")
-        ed.check_eq(len(value["frames"]), 8)
-        ed.check(any(f["particle_count"] > 0 for f in value["frames"]), f"{name}: particles drawn")
+        ed.check(len(r.images) == 1, f"{name}: one filmstrip")
+        width, height, _ = pngdiff.decode(r.images[0][0])
+        cell = value["frame"]["base_pixels"] * 4
+        ed.check_eq(value["frame"]["view"], "pixel")
+        ed.check_eq(width, 8 * cell + 7, f"{name}: eight cells of {cell} px (base pixels x 4) and their separators")
+        ed.check(height >= cell, f"{name}: height {height}")
         checks = checks_of(value)
-        for check, result in checks.items():
-            if check in S48_CHECKS:
-                ed.check_eq(result["status"], "SKIP", f"{name}: {check} is S48's")
-                ed.check_in("needs S48", result["message"])
-            else:
-                ed.check_eq(result["status"], "PASS", f"{name}: {check}: {result}")
-        ed.check({"off_grid", "over_budget"} <= set(checks), f"{name}: S49's checks: {sorted(checks)}")
+        grid = checks["off_grid"]
+        ed.check_eq(grid["status"], "PASS", f"{name}: off_grid: {grid}")
+        # measured on what the GPU drew (its sub-emitters' particles too: Debris draws nothing of its own)
+        ed.check(grid["measured"]["drawn"] > 0, f"{name}: the cells show the effect: {grid}")
+        for check in S48_CHECKS:
+            ed.check_eq(checks[check]["status"], "SKIP", f"{name}: {check} is S48's")
+            ed.check_in("needs S48", checks[check]["limited_by"])
 
 
 async def test_off_grid_red_control(ed: Editor):
-    """Spark with Snap to Pixel Grid off fails off_grid."""
+    """Spark with Snap to Pixel Grid off fails off_grid (its base pixels drawn between grid lines)."""
     s = await setup(ed)
     await ed.call("set_particle_effect", scene=s["scene"], entity=s["system"], effect="assets/fx/pixel/pixel_spark.particles")
     await ed.call("set_particle_effect", scene=s["scene"], entity=s["system"], effect="inline")
     await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch={"modules": {"pixelArt": {"snap": False}}})
-    r = await ed.call("capture_particles", scene=s["scene"], entity=s["system"], time=0.05, frames=4, checks=True)
-    grid = checks_of(r)["off_grid"]
+    grid = checks_of((await pixel_preview(ed, s, frames=4)).value)["off_grid"]
     ed.check_eq(grid["status"], "FAIL", f"off_grid: {grid}")
-    ed.check(grid["count"] > 0 and grid["fix"], f"off_grid names the particles and the fix: {grid}")
+    ed.check(grid["measured"]["off_grid"] > 0 and "Snap to Pixel Grid" in grid["fix_hint"], f"off_grid counts them and names the fix: {grid}")
     await ed.call("undo", scene=s["scene"])
-    r = await ed.call("capture_particles", scene=s["scene"], entity=s["system"], time=0.05, frames=4, checks=True)
-    ed.check_eq(checks_of(r)["off_grid"]["status"], "PASS", "snapped again")
+    ed.check_eq(checks_of((await pixel_preview(ed, s, frames=4)).value)["off_grid"]["status"], "PASS", "snapped again")
 
 
 async def test_bake_and_undo(ed: Editor):
-    """Bake to Sprite Sheet: the strip PNG and its Aseprite json-hash; one undo removes both."""
+    """Bake to Sprite Sheet on the pixel view: the sheet, its effect and the Aseprite json-hash; one undo removes them."""
     s = await setup(ed)
     await ed.call("set_particle_effect", scene=s["scene"], entity=s["system"], effect="assets/fx/pixel/pixel_smoke_loop.particles")
-    r = await ed.call("capture_particles", scene=s["scene"], entity=s["system"], time=0, frames=6, scale=2,
-                      save_path="assets/sheets/smoke.png")
-    png = ed.project / "assets" / "sheets" / "smoke.png"
-    data = ed.project / "assets" / "sheets" / "smoke.json"
-    ed.check(png.is_file() and data.is_file(), f"baked: {r.get('saved')}")
+    r = await ed.call("bake_particle_sheet", scene=s["scene"], entity=s["system"], view="pixel", scale=2, columns=3, rows=2,
+                      aseprite=True, output="assets/sheets/smoke")
+    folder = ed.project / "assets" / "sheets"
+    png, effect, data = folder / "smoke.png", folder / "smoke.particles", folder / "smoke.json"
+    ed.check(png.is_file() and effect.is_file() and data.is_file(), f"baked: {r.get('written')}")
+    cell = r["cell_size"]
+    ed.check_eq(cell, r["frame"]["base_pixels"] * 2, "a cell is the base pixels at scale 2")
     sheet = json.loads(data.read_text())
     ed.check_eq(len(sheet["frames"]), 6)
     first = next(iter(sheet["frames"].values()))
-    ed.check_eq(first["frame"]["w"], r["cell"][0] * 2)
+    ed.check_eq((first["frame"]["w"], first["frame"]["h"]), (cell, cell))
     ed.check(first["duration"] > 0, "a frame's duration")
-    strip_w, strip_h, _ = pngdiff.decode(png.read_bytes())
-    ed.check_eq((strip_w, strip_h), (r["cell"][0] * 2 * 6, r["cell"][1] * 2))
-    ed.check_eq(sheet["meta"]["size"], {"w": strip_w, "h": strip_h})
+    sheet_w, sheet_h, _ = pngdiff.decode(png.read_bytes())
+    ed.check_eq((sheet_w, sheet_h), (3 * cell, 2 * cell))
+    ed.check_eq(sheet["meta"]["size"], {"w": sheet_w, "h": sheet_h})
     await ed.call("undo", scope="project")
-    ed.check(not png.exists() and not data.exists(), "one undo removes the strip and its JSON")
+    ed.check(not png.exists() and not effect.exists() and not data.exists(), "one undo removes the sheet, its effect and its JSON")
 
 
 async def test_patch_paths(ed: Editor):

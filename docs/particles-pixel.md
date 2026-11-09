@@ -136,8 +136,8 @@ every step to the nearest colour of the closest ramp of the project's Default Pa
 | Smoke Loop | Analytic smoke, a seamless 4 s loop of 24 puffs | |
 | Ember Loop | Analytic embers, a seamless 3 s loop of 24 | |
 
-Each preset's contact sheet (`capture_particles {frames: 6, scale: 2}`, made for PPU 1, the key
-colour behind):
+Each preset's filmstrip (`preview_particle_effect {view: "pixel", frames: 6, scale: 2}`, made for
+PPU 1, on the dark background):
 
 | Preset | Sheet |
 |---|---|
@@ -154,12 +154,16 @@ colour behind):
 The Debris recipe extends to burning chunks: give the Chunk effect a Sub Emitter **Collision ->
 Fire** (pixelfx's brands and blazes are not presets).
 
-## Contact sheets and checks
+## Filmstrips, checks and sprite sheets
 
-`capture_particles {entity, time, frames: 8, scale: 4, checks: true}` draws the effect alone at 8
-times on a magenta key and returns one labelled sheet and the checks: `off_grid` (particles drawn
-between pixels), `over_budget` (the peak against a sixteenth of the world budget), and S48's
-`off_palette`, `partial_alpha`, `spill`, `one_shot_end`, `loop_seam`, `determinism` (SKIP until S48
-lands). **Bake to Sprite Sheet...** (the Scene view panel's menu, the Renderer, or `save_path` with
-frames) writes the frames as a PNG strip with a transparent background and an Aseprite JSON beside
-it, which a texture's Sprite Mode slices (Slice... > From JSON).
+The effect preview (the Particle Effect window's Filmstrip and Checks, `preview_particle_effect`)
+has a **Pixel Grid** view (`view: "pixel"`): the run drawn from the front on the project's
+base-pixel grid, each cell its base pixels at an integer **Scale**. Its checks add `off_grid`: each
+base pixel is drawn 4 x 4 times, and one whose screen pixels differ was drawn between grid lines
+(turn on Snap to Pixel Grid). S48's `off_palette`, `partial_alpha`, `spill`, `one_shot_end`,
+`loop_seam`, `determinism` are listed and SKIP until S48 lands.
+
+**Bake to Sprite Sheet...** (the Renderer's button and the Scene view panel's menu open the
+Particle Effect window) records the run with Pixel Grid on as a sheet with straight alpha and an
+effect that plays it; **Aseprite JSON** (`bake_particle_sheet {aseprite: true}`) writes the frames'
+json-hash beside it, which a texture's Sprite Mode slices (Slice... > From JSON).

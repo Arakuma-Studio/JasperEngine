@@ -264,10 +264,9 @@ For pixel-art games (docs/particles-pixel.md has the walkthrough).
   rate, at most 4 bursts, the simple shapes, constant velocity, force and drag, colour and size
   over lifetime, constant rotation speed, a Grid sheet, Pixel Art and the billboard and Pixel
   renderers; anything else is refused as `analytic_unsupported` with its path. No events.
-- `capture_particles {entity, time, frames, time_end, scale, background, checks}`: the effect
-  alone as a labelled contact sheet (frames from time to time_end, default one loop) at an integer
-  scale on a key colour, with `checks` the pixel-art lint results (`off_grid`, `over_budget`;
-  `off_palette`, `partial_alpha`, `spill`, `one_shot_end`, `loop_seam` and `determinism` are
-  S48's and SKIP until it lands). `save_path` with frames bakes a sprite strip PNG and its
-  Aseprite JSON (Bake to Sprite Sheet).
+- `preview_particle_effect {path or entity, view: "pixel", scale}`: the run on the project's
+  base-pixel grid from the front, cells at an integer scale; its checks add `off_grid` (base pixels
+  drawn between grid lines) and S48's `off_palette`, `partial_alpha`, `spill`, `one_shot_end`,
+  `loop_seam`, `determinism` (SKIP until S48 lands). `bake_particle_sheet {view: "pixel", scale,
+  aseprite: true, output}` also writes the frames' Aseprite JSON.
 - `get_particle_stats` adds `simulation_mode`, `pixel` and `analytic_slots`.

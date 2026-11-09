@@ -319,8 +319,9 @@ namespace {
         if (ui.entity != NULL_ENTITY) {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(1);
-            if (ImGui::Button("Bake to Sprite Sheet...")) editor::ParticleEffectOverlay::requestBake(ui.sceneId, ui.entity);
-            ImGui::SetItemTooltip("The effect at N times as a PNG strip and an Aseprite JSON, which a texture's Sprite Mode slices (S45)");
+            // the Particle Effect window's Record (S91 R12): its Pixel Grid for pixel art, and an Aseprite JSON beside
+            if (ImGui::Button("Bake to Sprite Sheet...")) getEditorHost().openParticleEffectSubtree(ui.sceneId, ui.entity);
+            ImGui::SetItemTooltip("Opens the Particle Effect window: its Record writes a sprite sheet (turn on Pixel Grid for pixel art, and Aseprite JSON for a texture's Sprite Mode)");
         }
         if (!pixelActive(edited)) return;
         for (const std::string& feature : edited.renderer.shaderFeatures) {

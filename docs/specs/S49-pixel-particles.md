@@ -943,10 +943,21 @@ Recorded by the S49 implementation (`feature/s49-pixel-particles`).
   min..max as Simulated draws them.
 - **Analytic bounds** are worked out again in `setMotion` under the scene's gravity (not 9.81 times
   the modifier); Scene-view picking of an Analytic system uses the twin's live particles (R19).
-- **Sub-emitters draw** (S20 R10, fixed in S20's renderer by this spec): `ParticleRenderData` holds
-  one render data per child emitter (depth 3), loaded with the system and keyed into its render
-  key; each emitter draws with its own effect's renderer; the system's bounds include its
-  children's, and a system counts as seen when any of its emitters draws.
+- **Sub-emitters draw** through `main`'s renderer (BF23 F1, landed while S49 was in review): S49's own
+  child render data was dropped in the merge for `main`'s, and S49's pixel, Analytic and Hold Frames
+  draw paths were ported onto its emitter-level draw. S49's GPU tests of the sub-emitter draws
+  (`ParticlesPixelGpu.SubEmittersDraw`, `PresetSubEmittersDraw`) stay. Render Mode Ring took 10 on
+  `main`, so Pixel is 11 (stored by name, nothing to migrate).
+- **Contact sheets, checks and the bake are S91's** (`main`'s effect preview, landed while S49 was in
+  review). S49 adds to it instead of shipping its own: a **pixel view** (`view: "pixel"`, `scale`) in
+  `ParticleEffectPreview` (orthographic from the front on the base-pixel grid, each base pixel drawn
+  4 x 4 times; Analytic emitters measured through their twin), S49's `off_grid` and S48's six lints as
+  `ParticleEffectChecks` rows, Pixel Grid, Scale and Aseprite JSON in the Particle Effect window's
+  panel, and `aseprite` on `bake_particle_sheet`. R38's `capture_particles {frames, time_end, scale,
+  background, checks}` and the Scene view's Bake dialog are gone: `preview_particle_effect` and
+  `bake_particle_sheet` replace them. `over_budget` is not repeated: S91's `capacity_hit` and
+  `platform_budget` judge the count. R21's PNG strip is S91's grid sheet with straight alpha and an
+  effect that plays it; the Aseprite json-hash describes the grid.
 - **AC15** is driven with real input in `test_particles_pixel_ui.py` (the Pixel Shape menu's icons,
   Analytic chosen in the Inspector and "Disable unsupported modules" as one undo step, the panel's
   scrub, Pixel Grid, a ramp dragged from the Palette window). Its "identical images" are two
@@ -970,9 +981,8 @@ Recorded by the S49 implementation (`feature/s49-pixel-particles`).
   speed pixelfx's rest threshold gives (Grit 130 px/s in, a quarter out: 32.5; shards 70 x 0.35;
   chunks 70 x 0.3). Grit's 40 % chance of a bounce is not modelled: a fast landing always bounces
   (`PixelPresets.GritAndDebrisBounceAsPixelfx`).
-- **`off_grid` measures the draw.** A capture draws every base pixel 4 x 4 times; a base pixel whose
-  screen pixels are not one colour was drawn between grid lines. Captures draw on transparent black:
-  Bake to Sprite Sheet keys on alpha, the contact sheet composites over its background.
+- **`off_grid` measures the draw**: the pixel view draws every base pixel 4 x 4 times; a base pixel
+  whose screen pixels are not one colour (on black or on white) was drawn between grid lines.
 - **A sub-emitter spawner** (Render Mode None with sub-emitters, the Debris preset) no longer gets
   S20's "None draws only trails" warning.
 - **Presets.** Sub-emitter children (`pixel_smoke` of `pixel_fire`; `pixel_debris_shard` and

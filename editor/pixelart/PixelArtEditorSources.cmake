@@ -102,8 +102,6 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
 list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pixelart/particles/PixelParticlePresets.cpp
     ${EDITOR_DIR}/pixelart/particles/PixelPresetCreate.cpp
-    ${EDITOR_DIR}/pixelart/particles/ParticleCapture.cpp
-    ${EDITOR_DIR}/pixelart/particles/ParticleCaptureChecks.cpp
 )
 
 # the colour decisions give the same bits on every platform, as engine/core/pixelart's

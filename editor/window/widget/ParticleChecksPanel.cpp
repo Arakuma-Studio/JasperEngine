@@ -102,7 +102,11 @@ bool ParticleChecksPanel::buildRequest(Project* project, ParticlePreviewRequest&
         scope = ParticlePreviewSource::subtreeScope(*sceneProject, root);
     }
     // the tool's arguments, as the window sets them, completed by the tool's own code
-    qa::Json args = {{"frames", frames}, {"platform", platform}, {"overdraw_map", overdrawMap}};
+    qa::Json args = {{"frames", frames}, {"platform", platform}, {"overdraw_map", overdrawMap && !pixelView}};
+    if (pixelView){
+        args["view"] = "pixel";
+        args["scale"] = pixelScale;
+    }
     if (seed != 0) args["seed"] = seed;
     return ParticlePreviewSource::complete(project, args, scope, request, error);
 }
@@ -205,6 +209,11 @@ void ParticleChecksPanel::finishRecording(Project* project){
             ParticleSheetBake::sheetEffect(std::string(), columns, rowsCount, done->getReport().value("seconds", 0.0), done->getFrameWorldSize(),
                                            done->getFrameCenter(), looping, additive);
         ok = ParticleSheetBake::sheetFiles(project, recordOutput, sheet, effect, false, items, written, error);
+        if (ok && aseprite && !done->getCells().empty()){
+            const int cell = done->getCells().front().getWidth();
+            ok = ParticleSheetBake::asepriteFile(project, recordOutput, columns, rowsCount, cell, cell, done->getReport().value("seconds", 0.0), false,
+                                                 items, written, error);
+        }
     }else{
         const std::filesystem::path out(recordOutput);
         ok = ParticleSheetBake::sequenceFiles(project, out.parent_path().generic_string(), out.filename().string(), done->getCells(), false, items, written, error);
@@ -263,7 +272,19 @@ void ParticleChecksPanel::draw(Project* project){
     ImGui::SetNextItemWidth(90.0f);
     ImGui::SliderInt("Frames##particleChecks", &frames, 0, ParticleEffectPreview::MAX_FRAMES);
     ImGui::SameLine();
+    ImGui::BeginDisabled(pixelView);
     ImGui::Checkbox("Overdraw##particleChecks", &overdrawMap);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    // pixel art (S49): the base-pixel grid from the front, the cells at an integer scale, off_grid measured
+    ImGui::Checkbox("Pixel Grid##particleChecks", &pixelView);
+    ImGui::SetItemTooltip("Draw on the project's base-pixel grid, from the front (pixel art): the cells are base pixels at Scale, and off_grid measures them");
+    UIProbe::item("particleChecks.pixel");
+    if (pixelView){
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(70.0f);
+        ImGui::SliderInt("Scale##particleChecks", &pixelScale, 1, 8);
+    }
     ImGui::SameLine();
     ImGui::BeginDisabled(isRunning());
     if (ImGui::Button("Preview##particleChecks")){
@@ -343,9 +364,16 @@ void ParticleChecksPanel::draw(Project* project){
         rowsCount = 1;
     }
     ImGui::SameLine();
+    ImGui::BeginDisabled(pixelView);   // the pixel view's cells are its base pixels at Scale
     ImGui::SetNextItemWidth(80.0f);
     ImGui::InputInt("Cell Size##particleRecord", &cellSize, 16);
     cellSize = std::clamp(cellSize, 16, 1024);
+    ImGui::EndDisabled();
+    if (recordKind == 0){
+        ImGui::SameLine();
+        ImGui::Checkbox("Aseprite JSON##particleRecord", &aseprite);
+        ImGui::SetItemTooltip("Also <path>.json, the frames as Aseprite's json-hash (a texture's Sprite Mode slices it: Slice... > From JSON)");
+    }
     if (recordPath[0] == 0) std::snprintf(recordPath, sizeof(recordPath), "%s", defaultRecordPath(project).c_str());
     ImGui::SetNextItemWidth(-90.0f);
     ImGui::InputText("##particleRecordPath", recordPath, sizeof(recordPath));
@@ -356,7 +384,7 @@ void ParticleChecksPanel::draw(Project* project){
         ParticlePreviewRequest base;
         std::string error = recordKind == 0 ? ParticleSheetBake::validate(columns, rowsCount, cellSize) : std::string();
         if (error.empty() && buildRequest(project, base, error)){
-            base.view = "front";
+            if (!base.pixelGrid) base.view = "front";
             ParticlePreviewRequest request = ParticleSheetBake::sheetRequest(base, columns, rowsCount, cellSize);
             error = ParticleEffectPreview::validate(request);
             if (error.empty()){

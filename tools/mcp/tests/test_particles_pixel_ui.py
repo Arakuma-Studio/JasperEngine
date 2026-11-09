@@ -152,12 +152,12 @@ async def test_overlay_scrub_is_exact(ed: Editor):
         stats = (await ed.call("get_particle_stats", scene=S["scene"], entity=S["system"]))["systems"][0]
         seen.append(stats["time"])
     ed.check(len({round(t, 3) for t in seen}) == 4 and all(t > 0 for t in seen), f"each click lands somewhere else: {seen}")
-    first = await ed.call_raw("capture_particles", {"scene": S["scene"], "entity": S["system"], "time": seen[0], "frames": 1})
+    first = await ed.call_raw("capture_particles", {"scene": S["scene"], "entity": S["system"], "time": seen[0], "max_width": 256})
     await ui.click(ui.at(rect, (rect["width"] * 0.7, rect["height"] / 2)))
     await ui_input.frames(ed, 4)
-    again = await ed.call_raw("capture_particles", {"scene": S["scene"], "entity": S["system"], "time": seen[0], "frames": 1})
+    again = await ed.call_raw("capture_particles", {"scene": S["scene"], "entity": S["system"], "time": seen[0], "max_width": 256})
     ed.check(first.images and again.images and first.images[0][0] == again.images[0][0], "the capture at a time does not depend on the scrub")
-    ed.check(first.value["frames"][0]["particle_count"] > 0, f"particles at {seen[0]}: {first.value['frames']}")
+    ed.check(first.value["stats"]["particle_count"] > 0, f"particles at {seen[0]}: {first.value['stats']}")
 
 
 async def test_pixel_grid_toggle(ed: Editor):

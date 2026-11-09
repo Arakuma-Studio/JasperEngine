@@ -55,8 +55,6 @@ namespace jasperengine::editor {
         bool isSeeking(uint32_t sceneId) const;
         // the systems it previews in the scene now
         std::vector<Entity> targets(Project* project, SceneProject* sceneProject);
-        // Bake to Sprite Sheet... (S49 R21): the dialog for a system (the Renderer's button asks)
-        static void requestBake(uint32_t sceneId, Entity entity);
 
     private:
         struct State {
@@ -69,22 +67,6 @@ namespace jasperengine::editor {
         };
         std::map<uint32_t, State> states;
 
-        // Bake to Sprite Sheet: its settings and the capture running over frames
-        struct Bake {
-            uint32_t sceneId = 0;
-            Entity entity = NULL_ENTITY;
-            int frames = 16;
-            float start = 0.0f, end = 1.0f;
-            int scale = 1;
-            int padding = 0;
-            char path[256] = {};
-            bool open = false;
-            bool running = false;
-            std::shared_ptr<void> capture;   // pixelart::ParticleCapture
-        };
-        Bake bake;
-        void drawBakeDialog(Project* project, SceneProject* sceneProject);
-        void updateBake(Project* project);
         void drawPixelGrid(Project* project, SceneProject* sceneProject, const std::vector<Entity>& systems, const ImVec2& canvasMin, const ImVec2& canvasSize);
     };
 
