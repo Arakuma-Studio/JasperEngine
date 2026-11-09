@@ -23,12 +23,20 @@
 
 #ifdef SPRITE_FRAME_RECT
     flat out vec4 v_frameRect; // xy origin, zw size (may be negative for a flipped rect)
+    // S52 'Sfr': the rect per vertex (the identity drawn alone, the sprite's rect in a batch,
+    // whose texture rect uniform is then the whole texture): composed as the instance's
+    #ifdef HAS_FRAME_RECT
+        in vec4 a_frameRect;
+    #endif
 
     vec3 surfaceDisplace(vec3 objectPosition, vec3 objectNormal, vec4 color, vec2 uv){
         vec4 rect = vec4(0.0, 0.0, 1.0, 1.0);
         #ifdef HAS_UV_SET1
             #ifdef HAS_TEXTURERECT
                 rect = spriteParams.textureRect;
+            #endif
+            #ifdef HAS_FRAME_RECT
+                rect = vec4(rect.xy * a_frameRect.zw + a_frameRect.xy, rect.zw * a_frameRect.zw);
             #endif
             #ifdef HAS_INSTANCING
                 rect = vec4(rect.xy * i_textureRect.zw + i_textureRect.xy, rect.zw * i_textureRect.zw);
