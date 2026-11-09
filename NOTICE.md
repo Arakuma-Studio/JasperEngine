@@ -385,6 +385,13 @@ Ported, each function keeping the original notice next to ours:
 |---|---|---|
 | The kick shake (`camera::kickOffset`, `engine/core/camera/ShakeInstance.cpp`) and the held-pose time (`anim::holdPoseTime`, `engine/core/animation/KeyframeSampling.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/core/act.js` (`get shake()`, `poseAt`), which credits Hollow Crown's skills for the freeze, the shake and the 12 fps held poses | MIT, Copyright (c) 2026 Patch; Copyright (c) 2026 rehan-remade (Hollow Crown) |
 
+## Pixel FX contact sheets and effect lints (S48)
+
+| Code | Taken from | Licence |
+|---|---|---|
+| The contact sheet's backdrops (`editor/pixelart/fx/ContactSheet.cpp`: dark, ground, sky, light, black and their colours) and its grid | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `src/core/scene.js` `backdrop`, `tools/lib/fxlib.mjs` `contactSheet` | MIT, Copyright (c) 2026 Patch |
+| The spill, one-shot end, loop seam, determinism and slow-frame rules (`editor/pixelart/lint/EffectLints.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `tools/check.mjs` | MIT, Copyright (c) 2026 Patch |
+
 ## Ideas re-implemented, no code copied
 
 [ozz-animation](https://github.com/guillaumeblanc/ozz-animation) (MIT, 0.17.0 `744eb9d`, (c) Guillaume Blanc): `editor/animation/ClipReduction.*` re-implements the idea of its `AnimationOptimizer` and `decimate.h` (a hierarchical error metric and Ramer-Douglas-Peucker decimation), with the changes of `docs/specs/S77-clip-quality.md` D5. No ozz source ships here.

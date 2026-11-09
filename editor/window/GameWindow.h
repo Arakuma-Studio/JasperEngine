@@ -11,6 +11,7 @@
 #include "window/GameResolutions.h"
 #include "device/Device.h"
 
+#include <memory>
 #include <set>
 
 namespace jasperengine::editor {
@@ -20,10 +21,14 @@ namespace jasperengine::editor {
     // is hidden behind another, and the view forwards game input while it is hovered
     // or focused. When stopped it shows the selected scene through its game camera
     // (a secondary view of the Scene view's frame, see App::engineRender).
+    class ContactSheetWindow;
+
     class GameWindow {
     private:
         Project* project;
         PlayInput* playInput;
+        // the toolbar's Contact Sheet... window (S48 R40)
+        std::unique_ptr<ContactSheetWindow> contactSheet;
 
         bool windowOpen = true;
         bool focusRequested = false;
@@ -116,6 +121,7 @@ namespace jasperengine::editor {
         static constexpr const char* WINDOW_NAME = "Game";
 
         GameWindow(Project* project, PlayInput* playInput);
+        ~GameWindow();
 
         void show();
 

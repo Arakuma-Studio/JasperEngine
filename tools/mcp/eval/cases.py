@@ -3361,4 +3361,63 @@ CASES = [
                    "must_not_call": [{"tool": "configure_game_view", "args": {"resolution": "*"}}]},
         "max_turns": 12,
     },
+    # -- S48 Pixel FX: the "Other areas" entry and capture_contact_sheet's lint and preview-then-write ----------------
+    {
+        "id": "guard_contact_sheet_lint",
+        "kind": "guard",
+        "what_happened": "New area (S48): checking that an effect ends empty and stays in its bounds is capture_contact_sheet "
+                         "with lint in the pixel_art group; without the guide's index entry an agent takes screenshots in Play "
+                         "and judges them by eye.",
+        "text_at_issue": "Guide 'Other areas': 'pixel-fx (capture_contact_sheet)'; capture_contact_sheet: 'lint: effect "
+                         "checks and a verdict'",
+        "source": "S48 R27, R28 (new tool text); no failure on record",
+        "prompt": "The Explosion GameObject in the Main scene is a one-shot pixel-art burst. Check that it ends with nothing "
+                  "left on screen and that nothing flies outside its area, and tell me what you find.",
+        "mocks": [
+            {"tool": "capture_contact_sheet", "args": {"lint": "*"}, "result": ok(
+                "Captured 8 frames of Explosion (isolated) at scale 4: a 803x256 sheet of 100x100 frames. Checks WARN, verdict "
+                "fixable:\nWARN spill: 14.0. 14 px drawn outside the 4x4 bounds + 24 px margin (seed 3, frame 5) keep it inside "
+                "the margin: lower the speed, spread, lifetime or size that throws it out, or move its origin\nPASS "
+                "one_shot_end: 0.0\nFix what each WARN's fix_hint says, then capture again with lint.",
+                {"target": "Explosion", "mode": "isolated", "scale": 4, "cell": [100, 100], "verdict": "fixable",
+                 "check_status": "WARN",
+                 "checks": [{"id": "spill", "kind": "effect", "status": "WARN", "measured": 14, "threshold": 0,
+                             "fix_hint": "keep it inside the margin: lower the speed, spread, lifetime or size that throws it out"},
+                            {"id": "one_shot_end", "kind": "effect", "status": "PASS", "measured": 0, "threshold": 0}],
+                 "next": "Fix what each WARN's fix_hint says, then capture again with lint."})},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 8 frames of Explosion (isolated) at scale 4: a 803x256 sheet of 100x100 frames.",
+                {"target": "Explosion", "mode": "isolated", "scale": 4,
+                 "next": "Preview only: the same arguments plus output: true and path write the PNG (one undo)."})},
+        ],
+        "checks": {"calls": [{"tool": "capture_contact_sheet", "args": {"target": {"entity": "re:(?i)explosion"}, "lint": "*"}}],
+                   "must_not_call": [{"tool": "play", "args": {"action": "start"}}, "record_game"],
+                   "reply_must": [r"(?i)spill|outside"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_contact_sheet_write",
+        "kind": "guard",
+        "what_happened": "New tool (S48): capture_contact_sheet previews by default; asked to save a sheet, an agent must "
+                         "call again with output: true and path, which the description and the result's `next` say.",
+        "text_at_issue": "capture_contact_sheet: 'A preview until output: true writes path (one undo)'; the result's `next`",
+        "source": "S48 R27 (new tool text); no failure on record",
+        "prompt": "Save a contact sheet of the Hero GameObject's walk clip assets/anim/walk.anim to assets/sheets/walk.png.",
+        "mocks": [
+            {"tool": "capture_contact_sheet", "args": {"output": True}, "result": ok(
+                "Captured 8 frames of Hero playing assets/anim/walk.anim (isolated) at scale 6: a 821x350 sheet of 64x64 "
+                "frames. Wrote assets/sheets/walk.png as one undo step (undo with scope project).",
+                {"target": "Hero playing assets/anim/walk.anim", "path": "assets/sheets/walk.png",
+                 "undo": {"id": 7, "name": "Create File walk.png"}})},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 8 frames of Hero playing assets/anim/walk.anim (isolated) at scale 6: a 821x350 sheet of 64x64 "
+                "frames.\nPreview only: the same arguments plus output: true and path write the PNG (one undo).",
+                {"target": "Hero playing assets/anim/walk.anim",
+                 "next": "Preview only: the same arguments plus output: true and path write the PNG (one undo)."})},
+        ],
+        "checks": {"calls": [{"tool": "capture_contact_sheet",
+                              "args": {"target": {"animation": "re:walk\\.anim"}, "output": True, "path": "re:sheets/walk\\.png"}}],
+                   "must_not_call": ["write_file", "screenshot", "record_game"], "shell_must_not": [r"(?i)ffmpeg|magick|montage"]},
+        "max_turns": 10,
+    },
 ]

@@ -22,6 +22,8 @@ namespace jasperengine::editor{
     constexpr uint32_t VAT_PREVIEW_VIEW_ID = 4;
     // ParticleEffectPreview's cells (preview_particle_effect, the Particle Effect window's filmstrip)
     constexpr uint32_t PARTICLE_PREVIEW_VIEW_ID = 5;
+    // EffectCapture's frames (capture_contact_sheet, the Contact Sheet dialog; S48)
+    constexpr uint32_t CONTACT_SHEET_VIEW_ID = 6;
 
     // Ray through (x, y), in pixels of a view of viewWidth x viewHeight that viewProjection
     // covers. An orthographic ray spans the whole near-far range.

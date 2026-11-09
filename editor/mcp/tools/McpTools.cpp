@@ -75,6 +75,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerEditorToolsTools, "Editor tools: recorder, colour sampling, swatches, curves", "editor_tools"},   // S27
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
     {registerPaletteTools, "Pixel art: palettes", "pixel_art"},   // S43
+    {registerPixelFxTools, "Pixel art: effect contact sheets and checks", "pixel_art"},   // S48
     {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25
     {registerNavigationTools, "Navigation: navmeshes, agents, crowds and grids", "navigation"},   // S19
     {registerVcsTools, "Git/SVN status, diffs, commits, locks", "vcs"},   // S29
