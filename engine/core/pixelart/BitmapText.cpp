@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace jasperengine::pixelart {
 
@@ -211,6 +212,22 @@ namespace jasperengine::pixelart {
         const float pageH = fromCache ? (float)BitmapTextCache::get().getPageHeight(cachePage)
                                       : (f.getPages().empty() ? 1.0f : (float)f.getPages()[0].height);
         int vertex = 0;
+        // R20: the buffer is sized once for every quad and each vertex written in place (a
+        // Buffer::add per value was most of a rebuild); a buffer that already holds vertices
+        // takes the adds
+        const size_t quadCount = placed.size() * ((fromCache && styled) ? 2u : 1u);
+        const unsigned int stride = buffer->getStride();
+        const bool direct = quadCount > 0 && atrVertice && atrTexcoord && atrVertice->getCount() == 0 && stride > 0;
+        unsigned char* bytes = nullptr;
+        if (direct){
+            buffer->increase((size_t)stride * quadCount * 4u);
+            bytes = buffer->getData();
+        }
+        indices.reserve(indices.size() + quadCount * 6u);
+        if (glyphInfo) glyphInfo->reserve(quadCount);
+        auto write = [&](const Attribute* attribute, int at, const float* values, size_t count){
+            std::memcpy(bytes + (size_t)at * stride + attribute->getOffset(), values, count * sizeof(float));
+        };
         auto addQuad = [&](int x0, int y0, int w, int h, int u0, int v0, const Vector4& color, const Placed& p, bool back){
             float qy0 = (float)y0 * unit, qy1 = (float)(y0 + h) * unit;
             float t0 = (float)v0 / pageH, t1 = (float)(v0 + h) / pageH;
@@ -222,16 +239,26 @@ namespace jasperengine::pixelart {
             }
             const float qx0 = (float)x0 * unit, qx1 = (float)(x0 + w) * unit;
             const float s0 = (float)u0 / pageW, s1 = (float)(u0 + w) / pageW;
-            buffer->addVector3(atrVertice, Vector3(qx0, qy0, 0));
-            buffer->addVector3(atrVertice, Vector3(qx1, qy0, 0));
-            buffer->addVector3(atrVertice, Vector3(qx1, qy1, 0));
-            buffer->addVector3(atrVertice, Vector3(qx0, qy1, 0));
-            buffer->addVector2(atrTexcoord, Vector2(s0, t0));
-            buffer->addVector2(atrTexcoord, Vector2(s1, t0));
-            buffer->addVector2(atrTexcoord, Vector2(s1, t1));
-            buffer->addVector2(atrTexcoord, Vector2(s0, t1));
-            if (atrColor)
-                for (int c = 0; c < 4; c++) buffer->addVector4(atrColor, color);
+            if (direct){
+                const float corners[4][5] = {{qx0, qy0, 0.0f, s0, t0}, {qx1, qy0, 0.0f, s1, t0}, {qx1, qy1, 0.0f, s1, t1}, {qx0, qy1, 0.0f, s0, t1}};
+                const float rgba[4] = {color.x, color.y, color.z, color.w};
+                for (int c = 0; c < 4; c++){
+                    write(atrVertice, vertex + c, corners[c], 3);
+                    write(atrTexcoord, vertex + c, corners[c] + 3, 2);
+                    if (atrColor) write(atrColor, vertex + c, rgba, 4);
+                }
+            }else{
+                buffer->addVector3(atrVertice, Vector3(qx0, qy0, 0));
+                buffer->addVector3(atrVertice, Vector3(qx1, qy0, 0));
+                buffer->addVector3(atrVertice, Vector3(qx1, qy1, 0));
+                buffer->addVector3(atrVertice, Vector3(qx0, qy1, 0));
+                buffer->addVector2(atrTexcoord, Vector2(s0, t0));
+                buffer->addVector2(atrTexcoord, Vector2(s1, t0));
+                buffer->addVector2(atrTexcoord, Vector2(s1, t1));
+                buffer->addVector2(atrTexcoord, Vector2(s0, t1));
+                if (atrColor)
+                    for (int c = 0; c < 4; c++) buffer->addVector4(atrColor, color);
+            }
             indices.push_back((uint16_t)vertex);
             indices.push_back((uint16_t)(vertex + 1));
             indices.push_back((uint16_t)(vertex + 2));
@@ -285,6 +312,13 @@ namespace jasperengine::pixelart {
                 // so a glyph of another page draws nothing rather than page 0's texels there
                 addQuad(x0, y0, 0, 0, 0, 0, face, p, false);
             }
+        }
+
+        if (direct){
+            atrVertice->setCount((unsigned int)vertex);
+            atrTexcoord->setCount((unsigned int)vertex);
+            if (atrColor) atrColor->setCount((unsigned int)vertex);
+            buffer->setCount(std::max(buffer->getCount(), (unsigned int)vertex));
         }
 
         // an empty text still has geometry (STBText's degenerate triangle)
