@@ -184,6 +184,16 @@ static bool collectTerrainMapDiskReferences(const fs::path& projectPath, std::un
     return true;
 }
 
+// The map a file of the maps folder belongs to: a sidecar ("<map>.meta", which holds the map's GUID,
+// import settings and labels) goes with its map, the rest are maps themselves
+static std::string sidecarOwner(const std::string& filename){
+    static const std::string suffix = ".meta";
+    if (filename.size() > suffix.size() && filename.compare(filename.size() - suffix.size(), suffix.size(), suffix) == 0){
+        return filename.substr(0, filename.size() - suffix.size());
+    }
+    return filename;
+}
+
 bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
     if (!project || project->getProjectPath().empty()){
         return true;
@@ -221,6 +231,10 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
                         activeFiles.insert(fs::path(blendMap.getPath(0)).filename().string());
                     }
                 }
+                // T3 R29: the hole map is a painted map like the others
+                if (!terrain->holeMap.getPath(0).empty() && TerrainMapUtils::isEditableTexturePath(terrain->holeMap.getPath(0))){
+                    activeFiles.insert(fs::path(terrain->holeMap.getPath(0)).filename().string());
+                }
                 // T5 R61: the tree file and the baked atlases are the maps folder's too
                 if (!terrain->treeData.empty()){
                     activeFiles.insert(fs::path(terrain->treeData.str()).filename().string());
@@ -257,7 +271,7 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
     for (const auto& entry : fs::directory_iterator(absoluteBaseDir, ec)){
         if (entry.is_regular_file(ec)){
             const std::string filename = entry.path().filename().string();
-            if (filename.rfind("terrain_edit_", 0) == 0 && activeFiles.find(filename) == activeFiles.end()){
+            if (filename.rfind("terrain_edit_", 0) == 0 && activeFiles.find(sidecarOwner(filename)) == activeFiles.end()){
                 candidates.push_back(entry.path());
             }
         }
@@ -275,7 +289,7 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
     }
 
     for (const fs::path& candidate : candidates){
-        if (activeFiles.find(candidate.filename().string()) == activeFiles.end()){
+        if (activeFiles.find(sidecarOwner(candidate.filename().string())) == activeFiles.end()){
             // the entry itself (in a write scope: beneath its root)
             FileUtils::removePath(candidate, ec);
             Out::info("Garbage collected old terrain map: %s", candidate.filename().string().c_str());
