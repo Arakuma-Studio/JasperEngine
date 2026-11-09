@@ -233,6 +233,9 @@ namespace jasperengine::editor{
         WaterWakeComponent,
         // pixel art (S41): integer scaling, Pixels Per Unit and the pixel-snap rule of a camera
         PixelPerfectCameraComponent,
+        // 2D sorting and bulk sprites (S52): Unity's Sorting Group, and instances of a Sprite
+        SortingGroupComponent,
+        SpriteBatchComponent,
         // T6: a bounded box of smooth voxel terrain
         VoxelVolumeComponent,
         // T4: a Terrain's tiles past one map, streamed round its focuses

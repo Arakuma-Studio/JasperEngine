@@ -93,6 +93,10 @@ namespace jasperengine{
         bool sceneInputsPredicted = false; // see MeshComponent::sceneInputsPredicted
         // its shader's @state priority=, the transparent queue order (points have no sortPriority)
         int sortPriority = 0;
+        // Sorting Layer (a SortingLayers id) and Order in Layer (spec S52 R2): the 2D draw order
+        // and the transparent queue's first keys; 0 and 0 draw as before
+        int32_t sortingLayer = 0;
+        int32_t sortingOrder = 0;   // Order in Layer, -32768..32767
         // added to its camera distance in the transparent queue (a version 2 Particle System's
         // renderer sortingFudge, written by it; runtime): lower draws on top, Unity
         float sortingFudge = 0.0f;

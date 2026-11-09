@@ -3,6 +3,8 @@
 
 #include "Texture.h"
 
+#include "Engine.h"
+
 #include "pixelart/PaletteRampTexture.h"
 #include "render/SystemRender.h"
 
@@ -42,8 +44,9 @@ Texture::Texture(){
     this->releaseDataAfterLoad = true;
     this->needLoad = false;
 
-    this->minFilter = TextureFilter::LINEAR;
-    this->magFilter = TextureFilter::LINEAR;
+    // the project's Default Filter Mode (S42 R3); a saved reference sets its own afterwards
+    this->minFilter = Engine::getDefaultTextureFilter();
+    this->magFilter = Engine::getDefaultTextureFilter();
     this->wrapU = TextureWrap::REPEAT;
     this->wrapV = TextureWrap::REPEAT;
     this->svgScale = 1.0f;

@@ -1087,7 +1087,9 @@ Recorded while implementing (`feature/s43-palettes`).
 - **`paletteRow`** is declared `@property paletteRow int 0` over a `float` member (the
   convention of every `int` property: a GL upload of mixed int and float members is wrong).
   `instance=fx.x` (S52 R22/R23) is not written: the directive is S52's, and S52 adds it to this
-  line when it lands.
+  line when it lands. (S52: added; the spec's `@instanceable` and "S52's `i_fx` stream" are
+  `// @batchable` and the vertex channel `a_spriteFx` / the Sprite Batch's `i_spriteFx`, read as
+  `customParams.paletteRow + spriteFx(x)`, includes/sprite_fx.glsl.)
 - **Palette Cycling's clock** is the scene clock, the custom block's engine-written `sceneTime`
   (`Scene::getSceneTime`, the water's): scaled game seconds that hold while the game, the editor's
   Play or the scene is paused and at time scale 0; a fixed frame delta makes it reproducible and

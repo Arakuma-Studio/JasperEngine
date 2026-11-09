@@ -1,0 +1,71 @@
+formatVersion: 8
+guid: 7c066a8e70ab5650f03a656131652627
+id: 1927398717
+name: Fixed
+scene:
+  backgroundColor: [0.231, 0.298, 0.475, 1]
+  shadowQuality: auto
+  meshLodEnabled: true
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: off
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  litQuality: high
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: true
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_2d
+mainCamera: 1001
+shaderKeys:
+  - type: blit
+  - type: blit
+    properties: 4096
+entities:
+  - type: Entity
+    entity: 1001
+    name: Main Camera
+    components:
+      transform:
+        position: [0, 0, 1]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      camera:
+        enabled: true
+        type: camera_ortho
+        cullingMask: 4294967295
+        target: [0, 0, 0]
+        up: [0, 1, 0]
+        yfov: 0.75
+        nearClip: -10
+        farClip: 10
+        renderToTexture: false
+        transparentSort: false
+        depthTest: false
+        useTarget: false
+        autoResize: true
+        framebufferWidth: 512
+        framebufferHeight: 512
+        framebufferFilter: linear

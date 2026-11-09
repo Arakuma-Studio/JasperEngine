@@ -151,6 +151,16 @@ int ShaderData::getAttrIndex(AttributeType type){
         attrstr = "i_particlePixel";
     }else if (type == AttributeType::PARTICLESLOT){
         attrstr = "i_particleSlot";
+    }else if (type == AttributeType::SPRITEFX){
+        attrstr = "a_spriteFx";
+    }else if (type == AttributeType::FRAMERECT){
+        attrstr = "a_frameRect";
+    }else if (type == AttributeType::SNAPPIVOT){
+        attrstr = "a_snapPivot";
+    }else if (type == AttributeType::INSTANCESPRITEFX){
+        attrstr = "i_spriteFx";
+    }else if (type == AttributeType::INSTANCESNAPPIVOT){
+        attrstr = "i_snapPivot";
     }else if (type >= AttributeType::OBJECTMODEL0 && type <= AttributeType::OBJECTEXTRA){
         static const char* const objectNames[] = {
             "i_objectModel0", "i_objectModel1", "i_objectModel2",

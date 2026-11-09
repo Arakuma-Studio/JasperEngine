@@ -5,6 +5,7 @@
 #include "TerrainRenderInfo.h"
 #include "subsystem/TerrainWorldRender.h"
 #include "FoliageSystem.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/CameraComponent.h"
 #if JASPERENGINE_VOXEL
 #include "subsystem/VoxelSystem.h"
@@ -534,6 +535,7 @@ namespace {
             writeSubmeshCustomUniforms(scene, mesh, mesh.submeshes[i]);
         }
         mesh.needUpdateShaderUniforms = false;
+        mesh.customUniformWrites++;
     }
 
     // both stages of a single-block component, from its values, the globals it binds and its
@@ -4027,7 +4029,10 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     if (terrain){
         inputs.terrainVariant = getTerrainVariantInputs(*terrain);
     }
-    inputs.instanced = instmesh != nullptr;
+    // a Sprite Batch draws its Sprite with the instanced variant (S52 R13)
+    inputs.instanced = instmesh != nullptr || mesh.spriteInstanced;
+    inputs.instancedMesh = instmesh != nullptr;
+    inputs.batchAttributes = mesh.batchAttributes;
     // Opted in per field, not per band, so emptying the band (editor preview) neither
     // rebuilds the shader nor drops the variant from an export.
     inputs.instanceFade = instmesh && instmesh->distanceFade;
@@ -4348,6 +4353,24 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     const bool p_pixelSnap = environment.pixelSnap && inputs.pixelArt && !inputs.terrain;
     if (p_pixelSnap)
         variant.properties |= ShaderPool::getPixelSnapProperty(ShaderType::MESH);
+    // S52: the pixel-art batching inputs, only for a variant whose mesh carries them and reads
+    // them: a @batchable manifest's instance= amounts (per vertex, or a Sprite Batch's per
+    // instance; not an Instanced Mesh's, whose instances have no i_spriteFx), its framerect=
+    // features (not instanced: the instance's rect composes), the snap pivot of a snapped sprite
+    // (per vertex for a batched one, per instance for a Sprite Batch's; an Instanced Mesh's
+    // instance snaps at its matrix's origin)
+    const bool batchableManifest = manifest && manifest->batchable;
+    const bool p_spriteFx = batchableManifest && !inputs.instancedMesh && (inputs.batchAttributes & MeshBatchAttribute_SpriteFx) &&
+                            manifest->usesInstanceSlots(inputs.features);
+    const bool p_frameRect = batchableManifest && !inputs.instanced && (inputs.batchAttributes & MeshBatchAttribute_FrameRect) &&
+                             manifest->usesFrameRect(inputs.features);
+    const bool p_snapPivot = p_pixelSnap && (inputs.instanced ? !inputs.instancedMesh : (inputs.batchAttributes & MeshBatchAttribute_SnapPivot) != 0);
+    if (p_spriteFx)
+        variant.properties |= ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX);
+    if (p_frameRect)
+        variant.properties |= ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT);
+    if (p_snapPivot)
+        variant.properties |= ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::SNAP_PIVOT);
 
     // the built-in Lit's defines beyond the property bits (and a fork's of it, which has no
     // manifest): the material's lobes and hex tiling, the Terrain's hex tiled layers, the High
@@ -4408,6 +4431,8 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         // the depth program snaps as its colour pass does (invariant gl_Position)
         if (p_pixelSnap)
             variant.depthProperties |= ShaderPool::getPixelSnapProperty(ShaderType::DEPTH);
+        if (p_snapPivot)
+            variant.depthProperties |= ShaderPool::getSpriteBatchProperty(ShaderType::DEPTH, ShaderPool::SpriteBatchInput::SNAP_PIVOT);
     }
 
     // the environment specular the colour pass adds, which the SSR composite swaps for its
@@ -6656,6 +6681,20 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
         instmesh->needUpdateBuffer = true;
     }
+    // a Sprite Batch's instances (S52): its buffers at their capacity, the FX stream when the
+    // material reads an instance= amount, the pivots in a snapping scene ('Spv'); bound below as
+    // an instanced mesh's
+    SpriteInstanceBatch* spriteInstances = (!instmesh && mesh.spriteInstanced) ? spriteInstancesOf(entity) : nullptr;
+    if (spriteInstances){
+        if (spriteBatchWantsFx(mesh))
+            spriteInstances->enableFx();
+        spriteInstances->setPivotsEnabled(pixelSnapVariants);
+        if (!spriteInstances->createGpu()){
+            for (BufferRender* created : buffersCreatedThisLoad)
+                created->destroyBuffer();
+            return false;
+        }
+    }
 
     if (terrain){
         for (int v = 0; v < MAX_TERRAIN_VIEWS; v++){
@@ -7090,6 +7129,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[i].customVSParams.resolve(shaderData, "u_vs_customParams");
         mesh.submeshes[i].customFSParams.resolve(shaderData, "u_fs_customParams");
         writeSubmeshCustomUniforms(scene, mesh, mesh.submeshes[i]);
+        mesh.customUniformWrites++;
 
         // what the binding below takes stand-ins for (noteTextureBinding)
         const TextureBindMark bindMark = markTextureBinding();
@@ -7255,6 +7295,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 render.addAttribute(shaderData.getAttrIndex(attr.first), instmesh->buffer.getRender(), attr.second.getElements(), attr.second.getDataType(), instmesh->buffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
             }
             addVatInstanceAttributes(render, shaderData, *instmesh);
+        }
+        if (spriteInstances){
+            addSpriteInstanceAttributes(render, shaderData, *spriteInstances);
         }
 
         if (indexed){
@@ -7433,6 +7476,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 }
                 addVatInstanceAttributes(depthRender, depthShaderData, *instmesh);
             }
+            if (spriteInstances){
+                addSpriteInstanceAttributes(depthRender, depthShaderData, *spriteInstances);
+            }
 
             if (!bindSmoothNormals(depthRender, depthShaderData, mesh, mesh.submeshes[i], buffers)){
                 return false;
@@ -7594,6 +7640,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                     gbufferRender.addAttribute(gbufferShaderData.getAttrIndex(attr.first), instmesh->buffer.getRender(), attr.second.getElements(), attr.second.getDataType(), instmesh->buffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                 }
                 addVatInstanceAttributes(gbufferRender, gbufferShaderData, *instmesh);
+            }
+            if (spriteInstances){
+                addSpriteInstanceAttributes(gbufferRender, gbufferShaderData, *spriteInstances);
             }
             if (!bindUnfedMorphInputs(gbufferRender, gbufferShaderData, mesh, mesh.submeshes[i], buffers)){
                 return false;
@@ -8586,8 +8635,13 @@ SubmeshBatchVariant RenderSystem::getSubmeshBatchVariant(const MeshComponent& me
         return batch;
     // a draw is never both batched and instanced: dynamic batching (the Doriax catch-up's
     // sprite-batching) takes single-submesh meshes of up to 64 vertices drawn by the built-in shader
-    const bool builtinShader = meshShaderSrc.empty() || ShaderReference::isBuiltin(meshShaderSrc);
-    if (builtinShader && mesh.numSubmeshes == 1 && submeshVertexCount(mesh, submesh) <= DYNAMIC_BATCH_MAX_VERTICES)
+    // or a @batchable library shader that can batch (S52: not one reading the frame rect the mesh
+    // does not carry per vertex, meshBatchForm's ineligible_frame_rect)
+    const bool batchableLibrary = inputs.manifest && inputs.manifest->batchable && !inputs.manifest->depth &&
+        (!inputs.manifest->usesFrameRect(inputs.features) ||
+         (variant.properties & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT)));
+    const bool batchedShader = meshShaderSrc.empty() || ShaderReference::isBuiltin(meshShaderSrc) || batchableLibrary;
+    if (batchedShader && mesh.numSubmeshes == 1 && submeshVertexCount(mesh, submesh) <= DYNAMIC_BATCH_MAX_VERTICES)
         return batch;
     // the most vertex inputs it reads (a library shader's a_smoothNormal counted), with the
     // instance's vectors within sokol's 16
@@ -10341,6 +10395,10 @@ void RenderSystem::updateTerrainNodesBuffer(TerrainView& view){
     view.needUpdateNodesBuffer = refused;
 }
 
+void RenderSystem::refreshCustomUniforms(MeshComponent& mesh){
+    writeCustomUniforms(scene, mesh);
+}
+
 bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView, int instanceView, const LodView* lodView){
     if (mesh.loaded && !mesh.needReload){
 
@@ -10351,6 +10409,11 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         // a batch (passBatchGeometry, RenderSystemBatch.cpp) drawn with this object, its first:
         // culled, selected and uploaded by the batcher
         const BatchGeometry* batch = passBatchGeometry;
+        // a Sprite Batch draws its Sprite only through its instances (S52 R10): nothing without any
+        SpriteInstanceBatch* spriteInstances = (!batch && !instmesh && mesh.spriteInstanced) ? spriteInstancesOf(entity) : nullptr;
+        if (spriteInstances && spriteInstances->getCount() == 0){
+            return false;
+        }
         MeshDraw draw;
         if (!batch){
             ensureBatchMVP(entity, transform);
@@ -10692,10 +10755,10 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             if (mesh.submeshes[i].hasTextureRect){
-                // (a batch's UVs have the rect in them)
+                // (a batch's UVs have the rect in them; a Sprite Batch's instances carry theirs)
                 static const Rect fullRect(0.0f, 0.0f, 1.0f, 1.0f);
                 render.applyUniformBlock(mesh.submeshes[i].slotVSSprite, sizeof(float) * 4,
-                                         (void*)(batch ? &fullRect : &mesh.submeshes[i].textureRect));
+                                         (void*)((batch || spriteInstances) ? &fullRect : &mesh.submeshes[i].textureRect));
             }
 
             if (mesh.submeshes[i].hasSkinning){
@@ -10811,9 +10874,17 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
             applyCustomUniforms(render, mesh.submeshes[i].customVSParams, frameTime, frameSceneTime, passResolution);
             applyCustomUniforms(render, mesh.submeshes[i].customFSParams, frameTime, frameSceneTime, passResolution);
+            // a batch whose vertices (a_spriteFx) or a Sprite Batch whose instances (i_spriteFx) carry
+            // the instance= amounts: the uniforms they add to are 0 (S52 R21)
+            if ((batch || spriteInstances) && (mesh.submeshes[i].shaderProperties &
+                    ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX))){
+                applyInstanceSlotsZeroed(render, mesh.submeshes[i]);
+            }
 
             if (batch){
                 drawBatchGeometry(render, mesh.buffer, *batch);
+            }else if (spriteInstances){
+                drawSpriteInstances(render, mesh.submeshes[i], *spriteInstances, mesh.submeshes[i].shader.get(), (int)TextureShaderType::BASECOLOR);
             }else if (tilemap && !tilemapDrawRanges.empty()){
                 if (instmesh){
                     bindInstances(render, *instmesh, instanceView, draw.instanceFirst, draw.vatFirst);
@@ -10865,6 +10936,11 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
 
         // a batch drawn with this object, its first (RenderSystemBatch.cpp)
         const BatchGeometry* batch = passBatchGeometry;
+        // a Sprite Batch's instances, as the colour pass draws them (S52)
+        SpriteInstanceBatch* spriteInstances = (!batch && !instmesh && mesh.spriteInstanced) ? spriteInstancesOf(entity) : nullptr;
+        if (spriteInstances && spriteInstances->getCount() == 0){
+            return false;
+        }
         MeshDraw draw;
         if (!batch){
             // (a visible list culled it already: passPreCulled)
@@ -10982,7 +11058,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 // (a batch's UVs have the rect in them)
                 static const Rect fullRect(0.0f, 0.0f, 1.0f, 1.0f);
                 depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthSprite, sizeof(float) * 4,
-                                              (void*)(batch ? &fullRect : &mesh.submeshes[i].textureRect));
+                                              (void*)((batch || spriteInstances) ? &fullRect : &mesh.submeshes[i].textureRect));
             }
 
             if (mesh.submeshes[i].slotFSDepthMaterial != -1){
@@ -11028,6 +11104,8 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                                       mesh.submeshes[i].slotVSDepthTerrain);
             }else if (batch){
                 drawBatchGeometry(depthRender, mesh.buffer, *batch);
+            }else if (spriteInstances){
+                drawSpriteInstances(depthRender, mesh.submeshes[i], *spriteInstances, mesh.submeshes[i].depthShader.get(), (int)TextureShaderType::DEPTHTEXTURE);
             }else if (tilemap && !tilemapDrawRanges.empty()){
                 if (instmesh){
                     bindInstances(depthRender, *instmesh, instanceView, draw.instanceFirst, draw.vatFirst);
@@ -13216,6 +13294,17 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
             instmesh->buffer.getRender()->destroyBuffer();
             instmesh->vatBuffer.getRender()->destroyBuffer();
         }
+        // a Sprite Batch's buffers go with the bindings that held them (the next load makes them;
+        // an attached batch's too, S52 R17)
+        if (SpriteBatchComponent* spriteBatch = scene->findComponent<SpriteBatchComponent>(entity)){
+            if (spriteBatch->state && spriteBatch->state->batch)
+                spriteBatch->state->batch->destroyGpu();
+        }
+        if (!attachedInstanceBatches.empty()){
+            auto attached = attachedInstanceBatches.find(entity);
+            if (attached != attachedInstanceBatches.end())
+                attached->second->destroyGpu();
+        }
 
         submesh.lodIndices.getRender()->destroyBuffer();
         if (!preserveAssets){
@@ -13529,13 +13618,13 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
                 ui.needReload = true;
             return false;
         }
-        // a batch drawn with this element, its first (RenderSystemBatch.cpp; a 'Pxs' element never
-        // batches: its snap mode is per draw)
+        // a batch drawn with this element, its first (RenderSystemBatch.cpp; a 'Pxs' batch is one
+        // snap mode, its head's: S52 R18)
         const BatchGeometry* batch = passBatchGeometry;
         if (ui.shaderProperties & ShaderPool::getPixelSnapProperty(ShaderType::UI)){
             // the snap of the draw after its matrix (S41, includes/pixel_snap.glsl)
             float block[20];
-            const Matrix4& mvp = objectMVP(transform);
+            const Matrix4& mvp = batch ? batch->objectBlock[2] : objectMVP(transform);
             std::memcpy(block, &mvp, sizeof(float) * 16);
             block[16] = pixelSnapDrawMode(mvp);
             block[17] = 0.0f;
@@ -16447,6 +16536,9 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
                 }
 
                 instanceMatrix = translateMatrix * rotationMatrix * scaleMatrix;
+                // a snapped scene's grid-aligned instances carry exact zeros (S52 D8: they snap every vertex)
+                if (pixelSnapVariants)
+                    pixelart::exactGridZeros(instanceMatrix);
             }
 
             instmesh.renderInstances.push_back({});
@@ -17372,6 +17464,12 @@ void RenderSystem::update(double dt){
     if (paused) {
         return;
     }
+
+    // 2D sorting (S52 R9): one flag, so a scene of default renderers runs the 2D loop as it was
+    updateSortingActive();
+    // Sprite Batches (S52): instances packed and bounded before the meshes load and cull
+    spriteBatchStats = SpriteBatchStats();
+    updateSpriteBatches();
 
     // a GPU texture went stale or was made again since the last update: whoever bound one looks
     const uint32_t rebindEpoch = TexturePool::getRebindEpoch();
@@ -19673,7 +19771,14 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     bool canvasSkipping = false;
     Entity canvasSkipGroup = NULL_ENTITY;
 
-    for (int i = 0; i < transforms->size(); i++){
+    // 2D sorting (S52 R3): a pass without distance sort draws in this frame's gathered order (UI
+    // subtrees in place), each draw with its batcher bucket; with defaults, the hierarchy's
+    const std::vector<SortedDraw>* sortedDraws = (!distanceSort && sortingActive) ? &getSorted2DOrder() : nullptr;
+    const bool sorted2D = sortedDraws && sortedDraws->size() == (size_t)transforms->size();
+    const int hierarchyCount = (int)transforms->size();
+    for (int k = 0; k < hierarchyCount; k++){
+        const int i = sorted2D ? (int)(*sortedDraws)[(size_t)k].index : k;
+        passSortBucket = sorted2D ? (*sortedDraws)[(size_t)k].bucket : 0;
         Transform& transform = transforms->getComponentFromIndex(i);
         Entity entity = transforms->getEntity(i);
         Signature signature = scene->getSignature(entity);
@@ -19842,6 +19947,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                     transform.parent != NULL_ENTITY && isUIParticle(entity)){
                 if (!(canvasSkipped && !passCanvasLayers.count(canvasSkipGroup)))
                     drawParticles(entity, particles, transform, camera, cameraTransform, colorPip);
+            }else if (sorted2D && particles.enabled && particles.state && particles.state->render.loaded && transform.visible &&
+                      isParticleRenderActive(entity, cullingMask)){
+                // a sorted 2D pass: a sort item with its Sorting Layer and Order in Layer (S52 R2)
+                drawParticles(entity, particles, transform, camera, cameraTransform, colorPip);
             }else if (particles.enabled && particles.state && particles.state->render.loaded && transform.visible && isParticleRenderActive(entity, cullingMask)){
                 particles::ParticleSystemState& state = *particles.state;
                 if (state.runtime.childCount() > 0){
@@ -19866,6 +19975,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             hasActiveScissor = false;
         }
     }
+    passSortBucket = 0;
 
     //---------Draw transparent renderers----------
     // layered around the pass's waters (WaterLayering.h): nothing to do without one
@@ -19883,7 +19993,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         for (TransparentRenderData& renderData : transparentRenders)
             renderData.waterSortDistance = renderData.distanceToCamera;
     }
-    std::sort(transparentRenders.begin(), transparentRenders.end(), TransparentRenderComparison());
+    // (S52 R6: Sorting Layers, Order in Layer and Sorting Groups first; nothing without them)
+    if (applyTransparentSortKeys(transparentRenders, cameraTransform.worldPosition))
+        std::sort(transparentRenders.begin(), transparentRenders.end(), TransparentGroupComparison());
+    else
+        std::sort(transparentRenders.begin(), transparentRenders.end(), TransparentRenderComparison());
     // S57: an Order Independent camera's alpha-blended submeshes accumulate in a pass of their
     // own, resolved over the scene; the sorted loop below draws the rest
     if (oitPlanned && colorTarget && hasOitDraws(transparentRenders)){
@@ -19946,7 +20060,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             // a split mesh: its blended submeshes (the opaque ones were drawn in the opaque queue)
             passSubmeshQueue = renderData.mesh->splitQueues ? SubmeshQueue::TRANSPARENT : SubmeshQueue::ALL;
             passPreCulled = true;
+            passSortBucket = renderData.sortBucket;
             submitMesh(renderData.entity, *renderData.mesh, *renderData.transform, camera, cameraTransform, colorPip, renderData.instmesh, renderData.terrain, renderData.tilemap, terrainView, instanceView, lodView);
+            passSortBucket = 0;
             passPreCulled = false;
             passSubmeshQueue = SubmeshQueue::ALL;
         }else if (renderData.type == TransparentRenderType::POINTS){
@@ -21131,6 +21247,8 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
         }else{
             Matrix4 rotationMatrix = instmesh.instancedBillboard ? billboardRotation.getRotationMatrix() : instance.rotation.getRotationMatrix();
             instanceMatrix = Matrix4::translateMatrix(instance.position) * rotationMatrix * Matrix4::scaleMatrix(instance.scale);
+            if (pixelSnapVariants)
+                pixelart::exactGridZeros(instanceMatrix);
         }
 
         InstanceRenderData renderData{};

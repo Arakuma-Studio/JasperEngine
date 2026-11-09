@@ -5,6 +5,9 @@
 // references of loaded documents by GUID, the identity keys written into scenes, prefabs and
 // materials, and the in-memory edges of documents with unsaved edits.
 
+#include "pixelart/PixelArtInput.h"
+#include "pixelart/PixelArtMode.h"
+#include "texture/TextureCookQueue.h"
 #include "Project.h"
 #include "component/MeshComponent.h"
 
@@ -458,5 +461,31 @@ void editor::Project::onAssetFilesChanged(const std::vector<AssetDatabase::Chang
         // references follow their assets' GUIDs: moved ones get the new hints, a file put
         // back resolves again
         refreshAssetHints();
+    }
+    // Pixel Art Mode (S42 R1): an added image is pixel art from its import, drawn or not yet
+    if (pixelArtSettings.enabled) {
+        for (const AssetDatabase::Change& change : changes) {
+            if (change.type != AssetDatabase::Change::Type::Added) continue;
+            const fs::path absolute = getProjectPath() / change.path;
+            if (isInsideAssetsPath(absolute)) writeImportSettingsNow(*this, normalizeToAssetsRelative(absolute).generic_string());
+        }
+    }
+    // what the pixel-art check kept of closed scenes follows the files' stamps; files added, moved
+    // or removed (references resolve by GUID) and prefabs (instances in those scenes) it cannot see
+    if (std::any_of(changes.begin(), changes.end(), [](const AssetDatabase::Change& change) {
+            return change.type != AssetDatabase::Change::Type::Modified || change.path.extension() == ".prefab"; })) {
+        pixelart::forgetInputCache();
+    }
+    // the Pixel Art Check window checks again after imports (S42 R19)
+    pixelart::PixelArtMode::get().notifyAssets();
+    // Pixel Art Mode's Check on Import (S42 R1): registered only while the mode is on
+    if (pixelart::PixelArtMode::get().importHookRegistered()) {
+        std::vector<std::string> textures;
+        for (const AssetDatabase::Change& change : changes) {
+            if (change.type == AssetDatabase::Change::Type::Removed) continue;
+            const std::string relative = change.path.generic_string();
+            if (isTextureSource(relative)) textures.push_back(relative);
+        }
+        if (!textures.empty()) pixelart::PixelArtMode::get().assetsChanged(this, textures);
     }
 }

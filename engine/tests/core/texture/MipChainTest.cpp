@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <random>
@@ -284,4 +285,76 @@ TEST(MipChain, BuildsTheSameBytesTwice){
     ASSERT_EQ(a.size(), b.size());
     for (size_t i = 0; i < a.size(); i++)
         EXPECT_EQ(a[i].pixels, b[i].pixels);
+}
+
+// S42 AC2 (R5): Nearest picks the source texel under each destination texel's centre, with no
+// blending and alpha kept; a 2x downscale keeps the top-left texel of every 2x2 block (a centre
+// on a texel edge takes the lower texel), any other ratio follows floor((i + 0.5) * s / d).
+TEST(MipChain, NearestResize){
+    const int size = 256;
+    MipLevel source;
+    source.width = source.height = size;
+    source.pixels.resize((size_t)size * size * 4);
+    std::mt19937 rng(42);
+    for (size_t i = 0; i < source.pixels.size(); i++)
+        source.pixels[i] = (uint8_t)(rng() & 0xFF);
+    auto texel = [](const MipLevel& level, int x, int y){
+        const uint8_t* p = &level.pixels[((size_t)y * level.width + x) * 4];
+        return std::array<uint8_t, 4>{p[0], p[1], p[2], p[3]};
+    };
+
+    // 256 -> 128: the top-left texel of each block, alpha included
+    std::vector<uint8_t> half((size_t)128 * 128 * 4);
+    nearestResize(source.pixels.data(), size, size, half.data(), 128, 128, 4);
+    MipLevel halfLevel;
+    halfLevel.width = halfLevel.height = 128;
+    halfLevel.pixels = half;
+    for (int y = 0; y < 128; y++)
+        for (int x = 0; x < 128; x++)
+            ASSERT_EQ(texel(halfLevel, x, y), texel(source, 2 * x, 2 * y)) << x << "," << y;
+
+    // 256 -> 100: the texel under the centre
+    std::vector<uint8_t> odd((size_t)100 * 100 * 4);
+    nearestResize(source.pixels.data(), size, size, odd.data(), 100, 100, 4);
+    MipLevel oddLevel;
+    oddLevel.width = oddLevel.height = 100;
+    oddLevel.pixels = odd;
+    int ties = 0;
+    for (int i = 0; i < 100; i++){
+        const double centre = (i + 0.5) * 256.0 / 100.0;
+        const bool tie = std::fabs(centre - std::round(centre)) < 1e-9;
+        const int expected = tie ? (int)std::round(centre) - 1 : (int)std::floor(centre);
+        ties += tie ? 1 : 0;
+        EXPECT_EQ(nearestSourceIndex(i, 256, 100), expected) << i;
+        EXPECT_EQ(texel(oddLevel, i, 37), texel(source, expected, nearestSourceIndex(37, 256, 100)));
+    }
+    EXPECT_EQ(ties, 4) << "i = 12, 37, 62, 87 sit on texel edges";
+
+    // the mip chain with Nearest: each level the top-left texels of the one above
+    std::vector<MipLevel> levels = {source};
+    MipChainOptions options;
+    options.filter = MipFilter::Nearest;
+    options.maxLevels = 3;
+    MipChain::build(levels, options);
+    ASSERT_EQ(levels.size(), 3u);
+    for (int y = 0; y < 64; y++)
+        for (int x = 0; x < 64; x++)
+            ASSERT_EQ(texel(levels[2], x, y), texel(source, 4 * x, 4 * y));
+
+    // red control: Mitchell blends the 2x2 blocks of a checker into a grey no source texel has
+    std::vector<MipLevel> mitchell = {checker(8, 0, 255)};
+    MipChainOptions blended;
+    blended.filter = MipFilter::Mitchell;
+    blended.maxLevels = 2;
+    MipChain::build(mitchell, blended);
+    std::vector<MipLevel> nearest = {checker(8, 0, 255)};
+    MipChainOptions point = blended;
+    point.filter = MipFilter::Nearest;
+    MipChain::build(nearest, point);
+    bool mitchellBlends = false;
+    for (size_t i = 0; i < mitchell[1].pixels.size(); i += 4)
+        mitchellBlends = mitchellBlends || (mitchell[1].pixels[i] != 0 && mitchell[1].pixels[i] != 255);
+    EXPECT_TRUE(mitchellBlends) << "Mitchell gives blended values";
+    for (size_t i = 0; i < nearest[1].pixels.size(); i += 4)
+        EXPECT_TRUE(nearest[1].pixels[i] == 0 || nearest[1].pixels[i] == 255) << "Nearest keeps source values";
 }

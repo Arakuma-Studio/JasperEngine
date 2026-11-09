@@ -522,6 +522,7 @@ parents to the first script that defines it (otherwise the game gets Escape or B
 | `viewRect` | ro | `Rect` |
 | `scalingMode` | rw | `Scaling.*` |
 | `getPixelsPerUnit()` | static fn | the project's Pixels Per Unit (1-256, default 1: a world unit is a pixel); sprites and tilemaps with `pixelsPerUnit` 0 take it |
+| `setDefaultTextureFilter(f)`, `getDefaultTextureFilter()` | static fn | the filter every Texture made from now on starts with (`TextureFilter.NEAREST` or `LINEAR`; the project's Default Filter Mode at start): a `Sprite:setTexture` of pixel art stays crisp; saved references keep theirs |
 | `setAtmosphereQuality(q)`, `getAtmosphereQuality()`, `resetAtmosphereQuality()` | fn | the volumetric fog and clouds tier (`AtmosphereQuality.*`): overrides the project's per-platform one until reset |
 | `textureStrategy` | rw | `TextureStrategy.*` |
 | `setTextureQuality(q)`, `getTextureQuality()` | static fn | 0 (full) to 3 (an eighth): top mips dropped from streamable textures at load (Unity's Global Mipmap Limit); sprites and UI keep theirs. The export sets the platform's from Project Settings > Texture |
@@ -1966,6 +1967,8 @@ Color/texture via Mesh: `Primitive(self.scene, self.entity):setColor(1, 0, 0, 1)
 | `pivotPreset` | rw `PivotPreset.*` |
 | `pixelsPerUnit` | rw: texels per world unit, 0 = the project's (`Engine.getPixelsPerUnit()`); `width`/`height` stay pixels |
 | `pixelRotation` | rw `PixelRotation.*`: under a Pixel Perfect Camera, `CAMERA` (its policy), `STEPS_90` or `ON_GRID` |
+| `sortingLayerId`, `sortingLayerName`, `sortingOrder` | rw: 2D draw order (4.9.3) |
+| `spriteSortPoint` | rw `SpriteSortPoint.CENTER` or `PIVOT`: what Custom Axis sorting measures |
 | `worldSize` | ro `Vector2`: the quad in world units |
 | `enabled` | rw |
 | frames: `addFrame(...)`, `removeFrame(idOrName)`, `setFrame(idOrName)` | methods |
@@ -2394,6 +2397,46 @@ assert(ppc.referenceResolution.x == 320)
 local p = ppc:roundToPixel(Vector3(10.5, 4.25, 0))
 assert(p.x == 11 and p.y == 4)
 assert(Engine.getPixelsPerUnit() >= 1)
+local filter = Engine.getDefaultTextureFilter()
+Engine.setDefaultTextureFilter(TextureFilter.NEAREST)
+assert(Engine.getDefaultTextureFilter() == TextureFilter.NEAREST)
+Engine.setDefaultTextureFilter(filter)
+```
+
+### 4.9.3 SortingLayer, SortingGroup, SpriteBatch
+
+2D draw order and bulk sprites (`jasper://docs/rendering-2d`).
+
+- `SortingLayer` (static, a dot): `layers` (ro, `{id, name, value}` in draw order), `nameToId(name)`
+  (-1 unknown), `idToName(id)` ("" unknown), `getLayerValue(id)` (its place; an unknown id is
+  Default's).
+- rw on `Sprite`, `Mesh`, `ParticleSystem`, `Points`, `LineRenderer`, `TrailRenderer`:
+  `sortingLayerId`, `sortingLayerName` (an unknown layer raises `unknown_sorting_layer`),
+  `sortingOrder` (-32768 to 32767).
+- `SortingGroup(scene, entity)`: the GameObject's group, added when it has none; rw `enabled`,
+  `sortingLayerId`, `sortingLayerName`, `sortingOrder`.
+- `SpriteBatch(scene, entity)` on a Sprite: its Sprite Batch, added when it has none. rw `enabled`,
+  `mode` (`SpriteBatchMode.RETAINED`, `CLEAR_EACH_FRAME`), `space` (`SpriteBatchSpace.LOCAL`,
+  `WORLD`), `capacity`, `sortInstances`; ro `count`, `frameCount`. `frameId(name)`;
+  `setPositions(xy [, stride 2|3])`, `setRotations(radians)`, `setScales(s [, stride 1|2])`,
+  `setFrames(indices or names)`, `setColors(rgba)`, `setFx(slot, amounts)` (slot `"palette"`,
+  `"flash"`, `"fade"`, `"dissolve"`): flat tables, validated once, typed errors (`length`,
+  `frame_range`, `unknown_frame`, `fx_slot`) that change nothing; `add(x, y [, frame])` -> index,
+  `set(i, x, y)`, `setFrame(i, frame)`, `remove(i)` (the last takes its index), `clear()`.
+
+```lua run
+local sprite = Sprite(scene)
+sprite:addFrame("a", 0, 0, 8, 8)
+sprite.sortingOrder = 3
+assert(sprite.sortingLayerName == "Default")
+assert(SortingLayer.getLayerValue(sprite.sortingLayerId) >= 0)
+local batch = SpriteBatch(scene, sprite.entity)
+batch:setPositions({0, 0, 16, 0})
+batch:setFrames({"a", 0})
+assert(batch.count == 2)
+assert(batch:add(32, 0) == 2)
+local group = SortingGroup(scene, sprite.entity)
+group.sortingOrder = 1
 ```
 
 ### 4.9.1 CameraShake, CameraShaker, ShakeInstance, CameraFollow
@@ -3401,6 +3444,9 @@ gate.area = 0 ; gate:remove()
 | `Scaling` | `FITWIDTH`, `FITHEIGHT`, `LETTERBOX`, `CROP`, `STRETCH`, `NATIVE`, `INTEGER`, `INTEGER_EXPAND` |
 | `PixelUpscaleMode` | `INTEGER`, `INTEGER_EXPAND`, `STRETCH_FILL` |
 | `PixelRotation` | `CAMERA`, `STEPS_90`, `ON_GRID` |
+| `SpriteSortPoint` | `CENTER`, `PIVOT` |
+| `SpriteBatchMode` | `RETAINED`, `CLEAR_EACH_FRAME` |
+| `SpriteBatchSpace` | `LOCAL`, `WORLD` |
 | `Platform` | `MacOS`, `iOS`, `Web`, `Android`, `Linux`, `Windows` |
 | `CursorType` | `ARROW`, `IBEAM`, `CROSSHAIR`, `POINTING_HAND`, `RESIZE_EW`, `RESIZE_NS`, `RESIZE_NWSE`, `RESIZE_NESW`, `RESIZE_ALL`, `NOT_ALLOWED`, `WAIT`, `PROGRESS`, `HELP`, `GRAB`, `GRABBING` |
 | `MouseMode` | `NORMAL`, `HIDDEN`, `CAPTURED`, `CONFINED` |

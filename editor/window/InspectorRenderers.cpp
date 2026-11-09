@@ -112,6 +112,7 @@ void editor::InspectorWindow::drawPointsComponent(ComponentType cpType, ScenePro
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "transparent", "Transparent", "autoTransparency", "Auto Transparency", sceneProject, entities, transparencySettings);
 
     propertyRow(RowPropertyType::UInt, cpType, "maxPoints", "Max Points", sceneProject, entities, settingsInt);
+    drawSortingRows(cpType, sceneProject, entities);
     endTable();
 
     drawCustomShaderRow(cpType, ShaderType::POINTS, sceneProject, entities);

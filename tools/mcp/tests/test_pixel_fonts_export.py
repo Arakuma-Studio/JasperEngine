@@ -23,24 +23,26 @@ OUT = REPO / "build" / "test-results" / "pixel-fonts-export"
 
 
 def palette_rows(png: bytes):
-    """an 8-bit palette PNG (ImageMagick's screenshot of the screen) as RGB rows"""
+    """a palette PNG (ImageMagick's screenshot of the screen) as RGB rows: 8 bits an index, or 1, 2 or 4
+    when the screen has few colours (a crisp pixel-art frame has five)"""
     pos, idat, palette = 8, b"", []
     while pos < len(png):
         length, kind = struct.unpack(">I4s", png[pos:pos + 8])
         data = png[pos + 8:pos + 8 + length]
         if kind == b"IHDR":
             w, h, depth, _ = struct.unpack(">IIBB", data[:10])
-            assert depth == 8, f"palette depth {depth}"
+            assert depth in (1, 2, 4, 8), f"palette depth {depth}"
         elif kind == b"PLTE":
             palette = [tuple(data[i:i + 3]) for i in range(0, len(data), 3)]
         elif kind == b"IDAT":
             idat += data
         pos += 12 + length
-    raw, rows, previous, i = zlib.decompress(idat), [], bytearray(w), 0
+    stride, per = (w * depth + 7) // 8, 8 // depth
+    raw, rows, previous, i = zlib.decompress(idat), [], bytearray(stride), 0
     for _ in range(h):
-        kind, line = raw[i], bytearray(raw[i + 1:i + 1 + w])
-        i += 1 + w
-        for x in range(w):
+        kind, line = raw[i], bytearray(raw[i + 1:i + 1 + stride])
+        i += 1 + stride
+        for x in range(stride):
             a = line[x - 1] if x else 0
             b, c = previous[x], previous[x - 1] if x else 0
             if kind == 1: line[x] = (line[x] + a) & 255
@@ -50,7 +52,8 @@ def palette_rows(png: bytes):
                 p = a + b - c
                 pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
                 line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
-        rows.append([palette[v] for v in line])
+        mask = (1 << depth) - 1
+        rows.append([palette[(line[x // per] >> (8 - depth * (x % per + 1))) & mask] for x in range(w)])
         previous = line
     return w, h, rows
 

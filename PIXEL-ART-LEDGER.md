@@ -168,17 +168,17 @@ never build or run them.
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
 | S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | merged and pushed |
-| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | landing (batch 4) |
+| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | merged and pushed |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
-| S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
-| S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
+| S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | implementing |
+| S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | implementing |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
-| S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
+| S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | implementing |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | merged and pushed |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | landing (batch 4) |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | merged and pushed |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -207,8 +207,8 @@ deadline of 2026-11-11 19:0x UTC:
 
 | Box | IP | box_id | Assigned |
 |---|---|---|---|
-| A | 5.161.240.186 | 205d9b263da5 | S51, S52 |
-| B | 5.161.235.8 | 32dda2ca7cd1 | S42, batch-landing verification |
+| A | 5.161.240.186 | 205d9b263da5 | S46, S50 (earlier S51, S52) |
+| B | 5.161.235.8 | 32dda2ca7cd1 | S47, batch landings (earlier S42) |
 | C | 5.161.197.83 | 961a152cfd81 | S49 |
 | D | 5.161.197.6 | dd138a2601b3 | S48 (rented 2026-11-09, deadline 2026-11-12 00:01 UTC) |
 
@@ -244,8 +244,6 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Follow-ups (owned by the coordinator)
 
-- Wire S51's font analyzer into S42's validator (`setFontAnalyzer`; S51 deviation 11 has the
-  mapping) once S42 and S51 are both on `main`.
 - `main` test issues seen during landings, from other programs:
   - `FullPathGoldenTest.UIParticleSystemsClippedByAPanel` reads after 4 frames instead of
     waiting for emitted particles;
@@ -258,6 +256,27 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S46, S47 and S50 stopped on an API weekly limit; the session moved accounts and all
+  four remaining implementers were revived. Heads: S46 `5499a9fc3` (+ uncommitted work), S47 and
+  S50 at the base with work in progress, S48 `55b449e7b` (its final gate on box D).
+- 2026-11-09: The last wave started from `main` `c769e9207`: S46 Pixel Art Cleanup (box A), S47
+  Agent Sprite Drawing (box B) and S50 Grid Tilemap (box A).
+  - S46 owns the craft lints and aligns them with S48's `EffectLints`. S47 uses S46's lint API,
+    with no second lint library.
+  - S48 was told batch 4 has landed, so it does its S52 slot and S42 PIXEL4 wiring (cache v62).
+  - The landed worktrees (S42, S52, the main-green fix, land) were removed, with their box copies.
+- 2026-11-09: **Batch 4 merged into `main` and pushed** (landing tree `be4ba226c`): S42 Pixel Art
+  Mode and validator, S52 Sprite Instancing, the S51→S42 font analyzer wiring, and
+  `fix/main-shared-green`.
+  - Verified on box B: `WERROR` linux; editor 208 and core 172 filtered tests (`PixelArt*` 37/37
+    after a test-stub fix); Vulkan core 172/172; HTML UI Vulkan bitmap-font tests 8/8; 22 MCP
+    files (161 passed, 4 skipped: TappyPlane prefab ×3, `JASPER_SLOW_BUILD`); the `pixel-fonts`
+    smoke compile and export; web; android; tool budget (core 98,983 of 99,000; guide headroom
+    1,503); RuntimeFields, library.md and templates unchanged; `test_grade`; `check_fanout`; lints.
+  - Goldens reviewed: S52's batching variants, plus S51's `outlineNeighbors`. Shader cache v61.
+  - `main`'s shared-data suites are green again.
+  - Now startable: S46 (cleanup), S47 (agent drawing; needs S46's lints), S50 (grid tilemap).
+    S48 does its batch reconciliation with S52 and S42.
 - 2026-11-09: Batch 4's first verification (S42 + S52 on box B): `WERROR` linux pass, core 129/129,
   editor 203 passed.
   - Failures: `main`'s known 4 (fixed by `fix/main-shared-green`), plus 2 new reflection goldens

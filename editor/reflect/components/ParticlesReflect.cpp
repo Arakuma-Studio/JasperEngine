@@ -43,6 +43,9 @@ namespace {
         JE_FIELD(ParticleSystemComponent, playOnAwake),
         JE_FIELD(ParticleSystemComponent, seed, .updateFlags = kParticles, .tooltip = "0: a new random seed at every play."),
         JE_FIELD(ParticleSystemComponent, playbackSpeed),
+        // S52: the 2D draw order and the transparent queue's first keys (a layer id: SortingLayers)
+        JE_FIELD(ParticleSystemComponent, sortingLayer, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
+        JE_FIELD(ParticleSystemComponent, sortingOrder, .flags = OmitIfDefault | CodegenIfChanged, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
         // written only when on: a file from before it reads as it was, byte for byte
         JE_FIELD(ParticleSystemComponent, useUnscaledTime, .flags = OmitIfDefault | CodegenIfChanged, .label = "Unscaled Time",
                  .tooltip = "Ticks with the unscaled frame time: it plays at Engine.timeScale 0 (a pause menu, UI particles), as the effect's own Unscaled Time does."),
@@ -54,7 +57,8 @@ namespace {
     const ComponentCodec kParticleSystemCodec = JE_STREAM_CODEC(ParticleSystemComponent, encodeParticleSystemComponent, decodeParticleSystemComponent);
 
     // the keys its codec reads
-    constexpr const char* kParticleSystemKnownKeys[] = {"collisionPlanes", "effect", "effectGuid", "enabled", "exposedValues", "inlineEffect", "playOnAwake", "playbackSpeed", "seed", "useUnscaledTime"};
+    constexpr const char* kParticleSystemKnownKeys[] = {"collisionPlanes", "effect", "effectGuid", "enabled", "exposedValues", "inlineEffect",
+                                                        "playOnAwake", "playbackSpeed", "seed", "sortingLayer", "sortingOrder", "useUnscaledTime"};
 
     // ---------------------------------------------------------------- Force Field
 

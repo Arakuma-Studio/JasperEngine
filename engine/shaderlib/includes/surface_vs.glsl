@@ -198,6 +198,26 @@ in vec3 a_position;
     #endif
 #endif
 
+// S52: a batchable sprite's per-sprite amounts ('Sfx', zeros drawn alone, the batch's values baked
+// in its vertices; a Sprite Batch's per instance), read in the fragment stage through
+// includes/sprite_fx.glsl as a manifest property's instance=fx.<slot>
+#ifdef HAS_SPRITE_FX
+    #ifdef HAS_INSTANCING
+        in vec4 i_spriteFx;
+    #else
+        in vec4 a_spriteFx;
+    #endif
+    flat out vec4 v_spriteFx;
+#endif
+// S52: the snap pivot of a batchable sprite ('Spv'): the model origin drawn alone, the baked
+// origin in a batch (a POINT-role attribute)
+#if defined(HAS_SNAP_PIVOT) && defined(PIXEL_SNAP) && !defined(HAS_INSTANCING)
+    in vec3 a_snapPivot;
+#endif
+#if defined(HAS_SNAP_PIVOT) && defined(PIXEL_SNAP) && defined(HAS_INSTANCING)
+    in vec2 i_snapPivot;
+#endif
+
 #ifdef SURFACE_POSITION
     out vec3 v_position;
 #endif
@@ -328,6 +348,13 @@ vec2 surfaceUV2(){
 void main() {
     #ifdef HAS_COMPACT_INSTANCE
         compactInstanceSetup();
+    #endif
+    #ifdef HAS_SPRITE_FX
+        #ifdef HAS_INSTANCING
+            v_spriteFx = i_spriteFx;
+        #else
+            v_spriteFx = a_spriteFx;
+        #endif
     #endif
     // the baked vertex animation first (HAS_VAT): it takes the place of morph targets and skinning
     vatEvaluate();
@@ -537,12 +564,22 @@ void main() {
 
     gl_Position = pbrParams.mvpMatrix * pos;
     #ifdef PIXEL_SNAP
-        #ifdef HAS_INSTANCING
+        #if defined(HAS_INSTANCING) && defined(HAS_SNAP_PIVOT)
+            // S52 'Spv' on a Sprite Batch: the instance's own pivot (its matrix's origin carries
+            // its frame's offset)
+            vec4 snapPivot = pbrParams.mvpMatrix * vec4(i_snapPivot, i_matrix_col4.z, 1.0);
+            float snapMode = pixelSnapInstanceMode(pbrParams.pixelSnapDraw.x, i_matrix_col1, i_matrix_col2);
+        #elif defined(HAS_INSTANCING)
             vec4 snapPivot = pbrParams.mvpMatrix * i_matrix_col4;
+            float snapMode = pixelSnapInstanceMode(pbrParams.pixelSnapDraw.x, i_matrix_col1, i_matrix_col2);
+        #elif defined(HAS_SNAP_PIVOT)
+            vec4 snapPivot = pbrParams.mvpMatrix * vec4(a_snapPivot, 1.0);
+            float snapMode = pbrParams.pixelSnapDraw.x;
         #else
             vec4 snapPivot = pbrParams.mvpMatrix[3];
+            float snapMode = pbrParams.pixelSnapDraw.x;
         #endif
-        gl_Position = pixelSnapApply(gl_Position, pbrParams.pixelSnapDraw.x, snapPivot);
+        gl_Position = pixelSnapApply(gl_Position, snapMode, snapPivot);
     #endif
     #ifdef IS_VULKAN
         // GL [-1,1] to Vulkan [0,1] depth range (spirv-cross fixup_clipspace equivalent)

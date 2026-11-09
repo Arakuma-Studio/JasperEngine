@@ -226,6 +226,9 @@ namespace {
         JE_FIELD(MeshComponent, lodEnabled, .updateFlags = kMeshReload, .label = "LOD"),
         JE_FIELD(MeshComponent, lodBias, .min = 0.0f, .label = "LOD Bias"),
         JE_FIELD(MeshComponent, allowGpuInstancing, .updateFlags = kMeshReload, .label = "Allow GPU Instancing"),
+        // S52: the 2D draw order and the transparent queue's first keys (a layer id: SortingLayers)
+        JE_FIELD(MeshComponent, sortingLayer, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
+        JE_FIELD(MeshComponent, sortingOrder, .flags = OmitIfDefault | CodegenIfChanged, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
         // a mesh that may fade loads its fade shaders with the mesh (spec S54 R10)
         JE_FIELD(MeshComponent, lodFadeMode, .enumDesc = &enums::kLodFadeMode, .updateFlags = kMeshReload, .label = "Fade Mode"),
         JE_FIELD(MeshComponent, lodAnimateCrossFading, .label = "Animate Cross-fading"),
@@ -339,6 +342,9 @@ namespace {
     constexpr FieldDesc kPointsFields[] = {
         JE_FIELD(PointsComponent, enabled),
         JE_FIELD(PointsComponent, maxPoints, .min = 1.0f),
+        // S52: the 2D draw order and the transparent queue's first keys (a layer id: SortingLayers)
+        JE_FIELD(PointsComponent, sortingLayer, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
+        JE_FIELD(PointsComponent, sortingOrder, .flags = OmitIfDefault | CodegenIfChanged, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
         JE_FIELD(PointsComponent, transparent),
         JE_FIELD(PointsComponent, autoTransparency),
         JE_FIELD(PointsComponent, texture, .updateFlags = UpdateFlags_Points_Texture),
@@ -359,6 +365,9 @@ namespace {
     constexpr FieldDesc kLineRendererFields[] = {
         JE_FIELD(LineRendererComponent, enabled),
         JE_FIELD(LineRendererComponent, maxLines, .updateFlags = UpdateFlags_Lines_Reload, .min = 1.0f),
+        // S52: the 2D draw order and the transparent queue's first keys (a layer id: SortingLayers)
+        JE_FIELD(LineRendererComponent, sortingLayer, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .label = "Sorting Layer", .drawer = "sortingLayer"),
+        JE_FIELD(LineRendererComponent, sortingOrder, .flags = OmitIfDefault | CodegenIfChanged, .min = -32768.0f, .max = 32767.0f, .label = "Order in Layer"),
         JE_FIELD(LineRendererComponent, customShader, .updateFlags = kShaderReload),
         JE_FIELD(LineRendererComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(LineRendererComponent, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kShaderReload),
@@ -489,6 +498,9 @@ namespace {
         JE_FIELD(SpriteComponent, pixelRotation, .enumDesc = &enums::kPixelRotation, .flags = OmitIfDefault | CodegenIfChanged,
                  .label = "Pixel Rotation",
                  .tooltip = "Under a Pixel Perfect Camera: the camera's rotation policy, 90 Degree Steps or Rotate On Grid."),
+        // S52 R2: what Custom Axis sorting measures
+        JE_FIELD(SpriteComponent, spriteSortPoint, .enumDesc = &enums::kSpriteSortPoint, .flags = OmitIfDefault | CodegenIfChanged,
+                 .label = "Sprite Sort Point"),
         // frame definitions are animation metadata: they do not change the quad
         JE_FIELD(SpriteComponent, numFramesRect),
         JE_FIELD(SpriteComponent, framesRect, .count = JE_COUNT(SpriteComponent, numFramesRect)),
@@ -629,7 +641,13 @@ namespace {
     constexpr const char* kPolygonExtraKeys[] = {"points"};
 
     // the keys its codec reads
-    constexpr const char* kMeshKnownKeys[] = {"mirroredWinding", "aabb", "allowGpuInstancing", "autoTransparency", "bonesMatrix", "buffer", "castShadows", "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices", "lodAnimateCrossFading", "lodBias", "lodCullBelow", "lodEnabled", "lodFadeMode", "lodFadeTransitionWidth", "morphTargetCount", "morphWeights", "normAdjustJoint", "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes", "shaderUniforms", "shadowsBillboard", "staticShadowCaster", "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};
+    constexpr const char* kMeshKnownKeys[] = {"aabb", "allowGpuInstancing", "autoTransparency", "bonesMatrix", "buffer", "castShadows",
+                                              "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices",
+                                              "lodAnimateCrossFading", "lodBias", "lodCullBelow", "lodEnabled", "lodFadeMode",
+                                              "lodFadeTransitionWidth", "mirroredWinding", "morphTargetCount", "morphWeights", "normAdjustJoint",
+                                              "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes",
+                                              "shaderUniforms", "shadowsBillboard", "sortingLayer", "sortingOrder", "staticShadowCaster",
+                                              "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};
 
 }
 
@@ -663,7 +681,9 @@ const ComponentDesc kModelDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kPointsKnownKeys[] = {"autoTransparency", "blendMode", "colorWrite", "customShader", "depthWrite", "enabled", "framesRect", "maxPoints", "points", "shaderFeatures", "shaderGlobalBindings", "shaderTextures", "shaderUniforms", "stencil", "texture", "transparent"};
+    constexpr const char* kPointsKnownKeys[] = {"autoTransparency", "blendMode", "colorWrite", "customShader", "depthWrite", "enabled", "framesRect",
+                                                "maxPoints", "points", "shaderFeatures", "shaderGlobalBindings", "shaderTextures", "shaderUniforms",
+                                                "sortingLayer", "sortingOrder", "stencil", "texture", "transparent"};
 
 }
 
@@ -680,9 +700,11 @@ const ComponentDesc kPointsDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kLineRendererKnownKeys[] = {"alignment", "blendMode", "colorGradient", "colorWrite", "customShader", "depthWrite", "enabled", "lines", "loop",
-        "maxLines", "mode", "numCapVertices", "numCornerVertices", "positions", "shaderFeatures", "shaderGlobalBindings", "shaderTextures", "shaderUniforms",
-        "sortPriority", "stencil", "textureMode", "textureScale", "useWorldSpace", "widthCurve", "widthMultiplier", "widthUnit"};
+    constexpr const char* kLineRendererKnownKeys[] = {"alignment", "blendMode", "colorGradient", "colorWrite", "customShader", "depthWrite",
+                                                      "enabled", "lines", "loop", "maxLines", "mode", "numCapVertices", "numCornerVertices",
+                                                      "positions", "shaderFeatures", "shaderGlobalBindings", "shaderTextures", "shaderUniforms",
+                                                      "sortPriority", "sortingLayer", "sortingOrder", "stencil", "textureMode", "textureScale",
+                                                      "useWorldSpace", "widthCurve", "widthMultiplier", "widthUnit"};
 
 }
 
@@ -753,7 +775,8 @@ namespace {
 
     // the keys its codec reads
     constexpr const char* kSpriteKnownKeys[] = {"automaticFlipY", "drawMode", "enabled", "flipY", "frame", "frameName", "framesRect", "height",
-                                                "pivotPreset", "pixelRotation", "pixelsPerUnit", "sheet", "sheetGuid", "textureScaleFactor", "width"};
+                                                "pivotPreset", "pixelRotation", "pixelsPerUnit", "sheet", "sheetGuid", "spriteSortPoint",
+                                                "textureScaleFactor", "width"};
 
 }
 

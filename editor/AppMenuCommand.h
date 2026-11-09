@@ -166,7 +166,9 @@ namespace jasperengine::editor {
         // S45: Assets > Create > 2D > Sprite Atlas (and from the selection), Assets > Convert Inline Sprite Frames...
         AssetsCreateSpriteAtlas,
         AssetsCreateSpriteAtlasFromSelection,
-        AssetsConvertInlineSpriteFrames
+        AssetsConvertInlineSpriteFrames,
+        // S42: Window > 2D > Pixel Art Check
+        TogglePixelArtCheck
     };
 
 }

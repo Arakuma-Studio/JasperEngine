@@ -94,6 +94,8 @@ SITES = {
     ("window/AsepriteImporterView.cpp", "Extract Clips##aseprite_extract"): "test_aseprite_extract_clips",
     ("pixelart/aseprite/AsepriteEditorHooks.cpp", "Aseprite Not Found##aseprite_open"): "test_aseprite_not_found",
     ("window/dialog/SpriteConversionDialog.cpp", "title"): "test_sprite_conversion_dialog",
+    ("window/PixelArtCheckWindow.cpp", "kPreviewName"): "not driven here: it needs findings; test_pixel_art_check_window.py's test_fix_all_preview_counts_the_plan opens and answers it",
+    ("window/dialog/PixelArtPresetDialog.cpp", "POPUP_NAME"): "not driven here: a button of Project Settings > Pixel Art opens it; test_pixel_art_check_window.py's test_preset_dialog answers it",
     ("window/dialog/CreateTerrainDialog.cpp", "Create Terrain##CreateTerrainModal"): "not driven: from the Hierarchy's create menu and the Terrain window's empty state; create_entity type terrain, then edit_terrain create, does the same for agents (TerrainGenerateSeamTest drives its presets)",
     ("terrainworld/TerrainWorldPanel.cpp", "Create Terrain World##CreateTerrainWorldModal"): "not driven: from the Hierarchy's create menu and the Terrain World panel; edit_terrain_world create does the same for agents (test_terrain_world)",
     ("terrainworld/TerrainWorldPanel.cpp", "Convert to Terrain World##ConvertTerrainWorldModal"): "not driven: from a Terrain's Inspector; edit_terrain_world create.from_terrain does the same for agents (test_terrain_world)",
@@ -189,9 +191,10 @@ async def test_sites_table_is_complete(ed: Editor):
     # window's folder prompt and its three nested boxes became one name dialog (errors inline), and
     # Change Asset Directories came: 71; mobile-shipping's Privacy Manifest Preview: 72; S44's Extract
     # Clips and Aseprite Not Found: 74; S45's Convert Inline Sprite Frames: 75; S77's Reduce Keys: 76;
-    # T1's Create Terrain and its three Terrain Settings dialogs, T4's three Terrain World dialogs, T5's
-    # Remove Tree Prototype and Mass Place Trees, T6's Create Voxel Volume: 86
-    ed.check_eq(sum(found.values()), 86, "the 86 sites")
+    # S42's Fix All and Apply Pixel Art Preset: 78; T1's Create Terrain and its three Terrain Settings
+    # dialogs, T4's three Terrain World dialogs, T5's Remove Tree Prototype and Mass Place Trees, T6's
+    # Create Voxel Volume: 88
+    ed.check_eq(sum(found.values()), 88, "the 88 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):

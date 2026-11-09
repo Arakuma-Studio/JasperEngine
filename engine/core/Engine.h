@@ -358,6 +358,8 @@ namespace jasperengine {
         // S41: the project's Pixels Per Unit, the Pixel Perfect Camera's request, its layout and
         // the Game view's Pixel Scale; the screen pixels the smoothed image is shifted by
         static int pixelsPerUnit;
+        // S42: the filter every runtime-constructed Texture starts with
+        static TextureFilter defaultTextureFilter;
         static PixelPerfectViewRequest pixelPerfectRequest;
         static pixelart::PixelPerfectLayout pixelPerfectLayout;
         static int pixelPerfectForcedScale;
@@ -577,6 +579,12 @@ namespace jasperengine {
         // Perfect Camera's span (docs/pixel-art.md)
         static void setPixelsPerUnit(int pixelsPerUnit);
         static int getPixelsPerUnit();
+
+        // Project Settings > Graphics > Default Filter Mode (S42 R3): the min and mag filter every
+        // Texture constructed from now on starts with (LINEAR, Bilinear, by default; NEAREST,
+        // Point, keeps a Lua Sprite:setTexture of pixel art crisp). Saved references keep their own.
+        static void setDefaultTextureFilter(TextureFilter filter);
+        static TextureFilter getDefaultTextureFilter();
 
         // The layout a Pixel Perfect Camera asks for (S41): on, it replaces the Scaling's canvas
         // (B / PPU, rounded to whole units) and view rect (the integer viewport); a change

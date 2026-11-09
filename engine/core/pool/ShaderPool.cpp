@@ -687,14 +687,29 @@ uint64_t ShaderPool::getPixelSnapProperty(ShaderType shaderType){
     }
 }
 
+// S52: appended after S41's 'Pxs' (MESH 46-48, DEPTH 20), each set only for a variant whose
+// mesh carries the input (RenderSystem::getSubmeshShaderVariant)
+uint64_t ShaderPool::getSpriteBatchProperty(ShaderType shaderType, SpriteBatchInput input){
+    if (shaderType == ShaderType::MESH){
+        switch (input){
+            case SpriteBatchInput::FX:         return shaderPropertyBit(46);
+            case SpriteBatchInput::FRAME_RECT: return shaderPropertyBit(47);
+            case SpriteBatchInput::SNAP_PIVOT: return shaderPropertyBit(48);
+        }
+    }
+    if (shaderType == ShaderType::DEPTH && input == SpriteBatchInput::SNAP_PIVOT)
+        return shaderPropertyBit(20);
+    return 0;
+}
+
 uint64_t ShaderPool::getGBufferVoxelProperty(){
     return shaderPropertyBit(26);
 }
 
 uint64_t ShaderPool::getTerrainWorldProperty(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:    return shaderPropertyBit(50);
-        case ShaderType::DEPTH:   return shaderPropertyBit(24);
+        case ShaderType::MESH:    return shaderPropertyBit(53);
+        case ShaderType::DEPTH:   return shaderPropertyBit(25);
         case ShaderType::GBUFFER: return shaderPropertyBit(27);
         default:                  return 0;
     }
@@ -702,8 +717,8 @@ uint64_t ShaderPool::getTerrainWorldProperty(ShaderType shaderType){
 
 uint64_t ShaderPool::getTerrainHolesProperty(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:    return shaderPropertyBit(49);
-        case ShaderType::DEPTH:   return shaderPropertyBit(23);
+        case ShaderType::MESH:    return shaderPropertyBit(52);
+        case ShaderType::DEPTH:   return shaderPropertyBit(24);
         case ShaderType::GBUFFER: return shaderPropertyBit(22);
         default:                  return 0;
     }
@@ -736,8 +751,8 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 51;
-        case ShaderType::DEPTH:  return 25;
+        case ShaderType::MESH:   return 54;
+        case ShaderType::DEPTH:  return 26;
         case ShaderType::GBUFFER: return 28;
         case ShaderType::UI:     return 6;
         case ShaderType::POINTS: return 5;
@@ -845,14 +860,19 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 44: return shortName ? "Dlo" : "Directional Lights Only";
             // the pixel-snap rule on the vertices (S41, PIXEL_SNAP: includes/pixel_snap.glsl)
             case 45: return shortName ? "Pxs" : "Pixel Snap";
+            // S52's pixel-art batching inputs (getSpriteBatchProperty): a batchable sprite's FX
+            // slots (HAS_SPRITE_FX), its frame rect (HAS_FRAME_RECT) and snap pivot (HAS_SNAP_PIVOT)
+            case 46: return shortName ? "Sfx" : "Sprite FX";
+            case 47: return shortName ? "Sfr" : "Sprite Frame Rect";
+            case 48: return shortName ? "Spv" : "Snap Pivot";
             // foliage (T5 F3, F6, F8): the 32-byte instance, the wind block, the fade by dither
-            case 46: return shortName ? "Cin" : "Compact Instance";
-            case 47: return shortName ? "Wnd" : "Foliage Wind";
-            case 48: return shortName ? "Dth" : "Foliage Dither";
+            case 49: return shortName ? "Cin" : "Compact Instance";
+            case 50: return shortName ? "Wnd" : "Foliage Wind";
+            case 51: return shortName ? "Dth" : "Foliage Dither";
             // T3 R20: a terrain with a hole map (TERRAIN_HOLES, includes/terrain_holes_fs.glsl)
-            case 49: return shortName ? "Thl" : "Terrain Holes";
+            case 52: return shortName ? "Thl" : "Terrain Holes";
             // T4 R58: a Terrain World's pages and overview (HAS_TERRAIN_WORLD, includes/terrain_world_vs.glsl)
-            case 50: return shortName ? "Twd" : "Terrain World";
+            case 53: return shortName ? "Twd" : "Terrain World";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -883,11 +903,13 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 18: return shortName ? "Aui" : "Auto Instancing";
             // as MESH 42: the depth program snaps as its colour pass does (S41)
             case 19: return shortName ? "Pxs" : "Pixel Snap";
-            case 20: return shortName ? "Cin" : "Compact Instance";
-            case 21: return shortName ? "Wnd" : "Foliage Wind";
-            case 22: return shortName ? "Dth" : "Foliage Dither";
-            case 23: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
-            case 24: return shortName ? "Twd" : "Terrain World"; // T4 R58
+            // as MESH 48 (S52)
+            case 20: return shortName ? "Spv" : "Snap Pivot";
+            case 21: return shortName ? "Cin" : "Compact Instance";
+            case 22: return shortName ? "Wnd" : "Foliage Wind";
+            case 23: return shortName ? "Dth" : "Foliage Dither";
+            case 24: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
+            case 25: return shortName ? "Twd" : "Terrain World"; // T4 R58
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -1925,9 +1947,9 @@ uint64_t ShaderPool::getMeshProperties(
 }
 
 uint64_t ShaderPool::getFoliageProperties(ShaderType shaderType, bool compact, bool wind, bool dither){
-    // appended after each type's last bit: MESH 46-48, DEPTH 20-22, GBUFFER 19-21
-    int first = 46;
-    if (shaderType == ShaderType::DEPTH) first = 20;
+    // appended after each type's last bit: MESH 49-51, DEPTH 21-23, GBUFFER 19-21 (S52 took MESH 46-48, DEPTH 20)
+    int first = 49;
+    if (shaderType == ShaderType::DEPTH) first = 21;
     if (shaderType == ShaderType::GBUFFER) first = 19;
     uint64_t prop = 0;
     prop |= compact ? shaderPropertyBit(first) : 0;

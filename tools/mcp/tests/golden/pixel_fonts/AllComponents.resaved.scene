@@ -56,16 +56,7 @@ shaderKeys:
     properties: 2
   - type: lines
     properties: 42
-  - type: mesh
-    properties: 12587096
-  - type: mesh
-    properties: 8602521688
-  - type: mesh
-    properties: 68732063832
-  - type: mesh
-    properties: 77321998424
   - type: sky
-  - type: depth
   - type: ui
     properties: 2
   - type: ui
@@ -113,18 +104,6 @@ shaderKeys:
   - type: particles
     properties: 512
   - type: htmluiprim
-  - type: mesh
-    properties: 12587096
-    customShader: builtin:lit#HAS_VOXEL,VOXEL_TIER_LOW
-  - type: mesh
-    properties: 8602521688
-    customShader: builtin:lit#HAS_VOXEL,VOXEL_TIER_LOW
-  - type: mesh
-    properties: 68732063832
-    customShader: builtin:lit#HAS_VOXEL,VOXEL_TIER_LOW
-  - type: mesh
-    properties: 77321998424
-    customShader: builtin:lit#HAS_VOXEL,VOXEL_TIER_LOW
   - type: particles
     customShader: library:particles#BLEND_ALPHA
   - type: particles
@@ -223,6 +202,8 @@ entities:
         receiveShadows: false
         lodEnabled: false
         lodBias: 4.4
+        sortingLayer: 2
+        sortingOrder: -3
         renderInReflectionProbes: false
         shadowsBillboard: true
         staticShadowCaster: true
@@ -246,6 +227,8 @@ entities:
       linerenderer:
         enabled: false
         maxLines: 100
+        sortingLayer: 3
+        sortingOrder: -5
         lines: ~
         blendMode: MULTIPLY
         depthWrite: DISABLED
@@ -344,6 +327,8 @@ entities:
       points:
         enabled: false
         maxPoints: 100
+        sortingLayer: 2
+        sortingOrder: 4
         transparent: true
         autoTransparency: false
         texture:
@@ -1172,6 +1157,8 @@ entities:
         playOnAwake: false
         seed: 0
         playbackSpeed: 2.5
+        sortingLayer: 1
+        sortingOrder: 6
   - type: Entity
     entity: 1034
     name: PolygonComponent
@@ -1352,6 +1339,7 @@ entities:
         pivotPreset: bottom_right
         pixelsPerUnit: 6.6
         pixelRotation: on_grid
+        spriteSortPoint: pivot
   - type: Entity
     entity: 1044
     name: TextComponent
@@ -2388,6 +2376,8 @@ entities:
         widthMultiplier: 7.8
         emitting: false
         autodestruct: true
+        sortingLayer: 4
+        sortingOrder: 7
         widthUnit: pixels
         numCornerVertices: 5
         numCapVertices: 2
@@ -2741,7 +2731,7 @@ entities:
         letterboxColor: [0.6333333, 0.43333334, 0.5555556, 1]
   - type: Entity
     entity: 1096
-    name: VoxelVolumeComponent
+    name: SortingGroupComponent
     components:
       transform:
         position: [95, 0, 0]
@@ -2752,23 +2742,13 @@ entities:
         billboard: false
         fakeBillboard: false
         cylindricalBillboard: false
-      voxelvolume:
+      sortinggroup:
         enabled: false
-        quality: low
-        lodLevels: 4
-        lodRadius: 6
-        maxDrawDistance: 4.4
-        castShadows: false
-        collision: false
-        collisionRadius: 7
-        rescueBodies: false
-        terrainCut: automatic
-        overlapDepth: 2
-        cutTolerance: 1
-        runtimeGeneration: true
+        sortingLayer: 5
+        sortingOrder: 2
   - type: Entity
     entity: 1097
-    name: TerrainWorldComponent
+    name: SpriteBatchComponent
     components:
       transform:
         position: [96, 0, 0]
@@ -2779,13 +2759,9 @@ entities:
         billboard: false
         fakeBillboard: false
         cylindricalBillboard: false
-      terrainworld:
+      spritebatch:
         enabled: false
-        useCameraFocus: false
-        poolSize: 4
-        lodDistance: 6.9
-        uploadBudget: 8.6
-        collisionRadius: 7.5
-        collisionChunkQuads: 6
-        autoAddTiles: false
-        overviewCastsShadows: true
+        mode: clear_each_frame
+        space: world
+        capacity: 7
+        sortInstances: true

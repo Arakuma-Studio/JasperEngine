@@ -113,6 +113,8 @@ namespace {
         &kWaterExcluderDesc,
         &kWaterWakeDesc,
         &kPixelPerfectCameraDesc,
+        &kSortingGroupDesc,
+        &kSpriteBatchDesc,
         &kVoxelVolumeDesc,
         &kTerrainWorldDesc,
     };
@@ -216,6 +218,8 @@ namespace {
         &kWaterExcluderDesc,
         &kWaterWakeDesc,
         &kPixelPerfectCameraDesc,
+        &kSortingGroupDesc,
+        &kSpriteBatchDesc,
         &kVoxelVolumeDesc,
         &kTerrainWorldDesc,
     };
@@ -317,6 +321,8 @@ namespace {
         &kWaterExcluderDesc,
         &kWaterWakeDesc,
         &kPixelPerfectCameraDesc,
+        &kSortingGroupDesc,
+        &kSpriteBatchDesc,
         &kVoxelVolumeDesc,
         &kTerrainWorldDesc,
     };
@@ -351,6 +357,8 @@ namespace {
         &enums::kVoxelQuality, &enums::kVoxelNavigationUpdate, &enums::kVoxelTerrainCut,
         // pixel art (S41)
         &enums::kPixelUpscaleMode, &enums::kPixelRotation,
+        // 2D sorting and Sprite Batch (S52)
+        &enums::kSpriteSortPoint, &enums::kSpriteBatchMode, &enums::kSpriteBatchSpace,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

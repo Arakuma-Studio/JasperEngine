@@ -15,8 +15,9 @@
 //   disjoint XY bounds are disjoint on screen); GROUP joins any open run with the same key
 //   (depth-only passes, whose result does not depend on order).
 // - Sort buckets (BatchItem::sortKey): the caller submits objects in its draw order; an object never
-//   moves past one of another bucket. 0 for every object today; Sorting Layers / Order in Layer
-//   (pixel-art S52) put (layer rank, order) there and submit sorted by it.
+//   moves past one of another bucket and a run holds one bucket (a change is a SORT_BUCKET break).
+//   0 for every object of a scene that does not sort; Sorting Layers, Order in Layer and Sorting
+//   Groups (pixel-art S52, RenderSystemSorting.cpp) put (layer value, order, group) there.
 // - Breaks: why an object did not join the run before it is counted by reason, the first
 //   MAX_BREAK_LOG of a frame are kept with their entities (MCP get_render_stats batch_breaks).
 // - Not thread-safe: the render thread (main thread) only.
@@ -81,13 +82,19 @@ namespace jasperengine{
         INELIGIBLE_FLUID,
         INELIGIBLE_NOT_READY,
         DISABLED,
+        // pixel-art S52 (appended: the names are stable): key parts, then reasons to draw alone
+        PIXEL_SNAP,
+        CUSTOM_PARAMS,
+        INELIGIBLE_PIXEL_SNAP_PIVOT,
+        INELIGIBLE_FRAME_RECT,
         COUNT
     };
 
     JASPERENGINE_API const char* getBatchBreakName(BatchBreak reason);
     // a reason an object is drawn alone, not a key difference
     inline bool isIneligibleBreak(BatchBreak reason){
-        return reason >= BatchBreak::INELIGIBLE_CUSTOM_SHADER && reason < BatchBreak::COUNT;
+        return (reason >= BatchBreak::INELIGIBLE_CUSTOM_SHADER && reason <= BatchBreak::DISABLED) ||
+               (reason >= BatchBreak::INELIGIBLE_PIXEL_SNAP_PIVOT && reason < BatchBreak::COUNT);
     }
 
     enum class BatchPass : uint8_t {

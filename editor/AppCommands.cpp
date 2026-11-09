@@ -23,6 +23,7 @@
 #include "window/TerrainEditWindow.h"
 #include "window/ApplyPaletteDialog.h"
 #include "window/PaletteWindow.h"
+#include "window/PixelArtCheckWindow.h"
 
 #include "AppMenuCommand.h"
 #include "Backend.h"
@@ -322,7 +323,7 @@ void editor::App::registerCommands(){
     // S41: the Pixel Zoom's 1x and Game (a 2D scene drawn through a Pixel Perfect Camera)
     auto pixelScene = [this]() {
         const SceneProject* scene = project.getSelectedScene();
-        return scene && scene->sceneRender && scene->sceneType == SceneType::SCENE_2D && pixelart::scenePixelPerfect(scene);
+        return scene && scene->sceneRender && scene->sceneType == SceneType::SCENE_2D && pixelart::scenePixelViews(&project, scene);
     };
     bind("sceneView.pixelZoom1x", [this](const CommandArgs&) {
         if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, 1.0f);
@@ -660,6 +661,7 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
     if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
     if (paletteWindow->takesKeys() || applyPaletteDialog->takesKeys()) state.panels.push_back(ShortcutContext::Palette);
+    if (pixelArtCheckWindow->takesKeys()) state.panels.push_back(ShortcutContext::PixelArtCheck);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
     if (spritePreviewWindow->isFocused()) state.panels.push_back(ShortcutContext::SpritePreview);
     return state;
