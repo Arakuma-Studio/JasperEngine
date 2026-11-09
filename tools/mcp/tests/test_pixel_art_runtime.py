@@ -85,6 +85,7 @@ async def test_stop_leaves_edit_data(ed: Editor):
     # Play may add the shader keys it compiled; the samplers are what Stop must not touch
     def samplers(text: str) -> list[str]:
         return [line.strip() for line in text.splitlines() if "Filter" in line or "wrap" in line]
-    ed.check("nearest" not in after, f"no sampler turned NEAREST by Stop: {samplers(after)}")
+    ed.check(not any(("minFilter" in line or "magFilter" in line) and "nearest" in line for line in samplers(after)),
+             f"no sampler turned NEAREST by Stop: {samplers(after)}")
     ed.check_eq(samplers(after), samplers(saved), "the samplers save as before Play")
     await ed.call("set_project_settings", values={"graphics.default_filter_mode": "bilinear"})

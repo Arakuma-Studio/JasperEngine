@@ -79,7 +79,11 @@ namespace {
 
     uint32_t newScene(const std::string& name) {
         Project* p = project();
-        if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
+        // the scene before stays open as it is (an untouched new scene would be replaced, its id reused)
+        if (SceneProject* current = p->getSelectedScene()) {
+            current->isModified = false;
+            current->transientId = false;
+        }
         p->createNewScene(name, SceneType::SCENE_2D);
         return p->getSelectedSceneId();
     }
@@ -234,7 +238,11 @@ TEST(PixelArtFix, AFixPlannedBeforeAnEditIsRefused) {
     px::Scope scope;
     scope.scenes = {"Stale"};
     std::vector<px::PixelProblem> errors;
-    const px::CheckResult checked = px::run(px::inputFromProject(*project(), scope, errors), {"off_grid"});
+    const px::PixelArtCheckInput input = px::inputFromProject(*project(), scope, errors);
+    ASSERT_TRUE(errors.empty()) << errors.front().message;
+    ASSERT_EQ(input.scenes.size(), 1u);
+    ASSERT_TRUE(input.scenes.front().pixelArt);
+    const px::CheckResult checked = px::run(input, {"off_grid"});
     const px::FixPlan plan = px::plan(checked, {"off_grid"});
     ASSERT_EQ(plan.fixes.size(), 1u);
 

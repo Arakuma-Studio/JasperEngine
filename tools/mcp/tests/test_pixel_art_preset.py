@@ -94,8 +94,9 @@ async def test_preset_converts_particle_textures(ed: Editor):
         await p.call("create_particles", scene=scene, name="Sparks", preset="sparks", position=[0, 0, 0], texture="fx/spark.png")
         await p.call("save_scene", scene=scene)
         await cooks_idle(p)
-        await p.call("check_pixel_art", fix=["pixel_art_mode"], output=True)
+        # as Pixel Art Mode sees the project (the preset's view): its 2D scenes are pixel art
+        await p.call("set_project_settings", values={"pixel_art.enabled": True})
         preview = await p.call("check_pixel_art", fix=["all"])
         targets = {(c["target"], c["field"]) for fix in preview.get("fix_plan", []) for c in fix["changes"]}
         p.check(any(target.endswith("fx/spark.png") and field == "import.textureImporter" for target, field in targets),
-                f"the particle texture is converted: {sorted(targets)}")
+                f"the particle texture is converted: {sorted(targets)} {str(preview)[:1500]}")

@@ -589,7 +589,8 @@ TEST(PixelArtCheck, RenderScale){
     PixelArtCheckInput off = input;
     off.project.modeEnabled = false;
     off.project.scaling = Scaling::LETTERBOX;
-    const Finding* mode = findingOf(run(off, {"pixel_art_mode"}), "pixel_art_mode");
+    const CheckResult modeResult = run(off, {"pixel_art_mode"});
+    const Finding* mode = findingOf(modeResult, "pixel_art_mode");
     ASSERT_TRUE(mode);
     size_t caps = 0;
     for (const FixChange& change : mode->options.front().changes)

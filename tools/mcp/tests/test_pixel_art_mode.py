@@ -118,10 +118,12 @@ async def test_mode_on(ed: Editor):
     await import_png(ed, "backgrounds/photo.png", photo())
     text = await meta_text(ed, "backgrounds/photo.png")
     ed.check("pixelArt" not in text, f"a photo-like image keeps the usual import: {text}")
-    # the image the project had, its import settings gone: the cook queue's import is S14's, no pixelArt
+    # the image the project had, its import settings gone and imported again: the cook queue's
+    # import is S14's, no pixelArt
     guid = next(line for line in before.splitlines() if line.startswith("guid:"))
     (ed.project / "art" / "before.png.meta").write_text(guid + "\n")
-    await ed.call("sync_files", paths=["art/before.png.meta", "art/before.png"], full=False)
+    await ed.call("sync_files", paths=["art/before.png.meta"], full=False)
+    await ed.call("reimport_textures", paths=["art/before.png"], wait=True, timeout_s=300)
     text = await meta_text(ed, "art/before.png")
     ed.check("textureImporter" in text and "pixelArt" not in text, f"an image the project had is imported as S14 infers it: {text}")
     await ed.call("set_project_settings", values={"pixel_art.enabled": False})
