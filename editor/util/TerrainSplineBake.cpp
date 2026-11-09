@@ -5,7 +5,9 @@
 // (MIT, see the header and NOTICE.md).
 
 #include "TerrainSplineBake.h"
+#include "Out.h"
 #include "command/type/TreeEditCmd.h"
+#include "terrainworld/TerrainWorldTrees.h"
 #include "subsystem/FoliageSystem.h"
 #include "terrain/FoliageRules.h"
 #include "component/Transform.h"
@@ -508,7 +510,7 @@ static bool clearSplineTrees(editor::Project* project, uint32_t sceneId, Entity 
     }
     FoliageSystem* foliage = scene->getSystem<FoliageSystem>().get();
     std::shared_ptr<terrain::TreeStore> store = foliage->getTreeStore(terrainEntity);
-    if (!store || store->empty()){
+    if (!terrain->world && (!store || store->empty())){
         return false;
     }
     std::shared_ptr<SplineSystem> system = scene->findSystem<SplineSystem>();
@@ -526,6 +528,44 @@ static bool clearSplineTrees(editor::Project* project, uint32_t sceneId, Entity 
         radius = std::max({radius, station.halfWidthLeft, station.halfWidthRight});
     }
     const float reach = radius + spline->terrain.extraWidth + spline->terrain.falloff;
+    if (terrain->world){
+        // T4 R27: the trees of each tile the footprint reaches, each in its tile's frame
+        editor::TerrainWorldTreeEdit edit(project, sceneId, terrainEntity);
+        if (!edit.runtime()){
+            return false;
+        }
+        float minX = line.front().x, maxX = minX, minZ = line.front().y, maxZ = minZ;
+        for (const Vector2& point : line){
+            minX = std::min(minX, point.x);
+            maxX = std::max(maxX, point.x);
+            minZ = std::min(minZ, point.y);
+            maxZ = std::max(maxZ, point.y);
+        }
+        for (const terrain::TileCoord& tile : edit.tilesIn(minX - reach, minZ - reach, maxX + reach, maxZ + reach)){
+            const terrain::TreeStore* trees = edit.trees(tile);
+            if (!trees){
+                continue;
+            }
+            const Vector2 centre = edit.centre(tile);
+            std::vector<Vector2> moved;
+            for (const Vector2& point : line){
+                moved.push_back(Vector2(point.x - centre.x, point.y - centre.y));
+            }
+            const std::vector<uint32_t> ids = editor::TerrainSplineBake::treesInFootprint(*trees, edit.tileSize(), moved, reach);
+            if (!ids.empty()){
+                edit.apply(tile, ids, {});
+            }
+        }
+        if (!edit.touched()){
+            return false;
+        }
+        std::string error;
+        if (!edit.commit("Erase Trees (" + scene->getEntityName(terrainEntity) + ")", &error)){
+            editor::Out::error("%s", error.c_str());
+            return false;
+        }
+        return true;
+    }
     const std::vector<uint32_t> removed = editor::TerrainSplineBake::treesInFootprint(*store, terrain->terrainSize, line, reach);
     if (removed.empty()){
         return false;

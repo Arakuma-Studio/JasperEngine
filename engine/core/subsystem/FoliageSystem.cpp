@@ -34,6 +34,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <iterator>
 #include <map>
 #include <sstream>
 
@@ -320,8 +321,6 @@ namespace {
         bool active = true;
         bool hadBodies = false;
 
-        std::function<void(const TreeHitEvent&)> hitHandler;
-        std::function<void(TreeId, const FoliageInstanceInfo&)> removedHandler;
         Vector3 wind;
         bool windActive = false;
 
@@ -348,6 +347,116 @@ namespace {
         bool impostor = false;
     };
 
+    bool foliageOverlayEmpty(const TreeRuntimeState& runtime) {
+        return runtime.removed.empty() && runtime.added.empty() && runtime.discs.empty();
+    }
+
+    std::vector<std::string> foliageSplit(const std::string& value, char separator) {
+        std::vector<std::string> parts;
+        size_t start = 0;
+        while (true) {
+            const size_t next = value.find(separator, start);
+            if (next == std::string::npos) {
+                parts.push_back(value.substr(start));
+                return parts;
+            }
+            parts.push_back(value.substr(start, next - start));
+            start = next + 1;
+        }
+    }
+
+    // R31's overlay after its tag, "removed;added;discs", in the region's own space
+    std::string writeFoliageOverlay(const TreeRuntimeState& runtime, float size) {
+        std::ostringstream out;
+        std::vector<uint32_t> removed(runtime.removed.begin(), runtime.removed.end());
+        std::sort(removed.begin(), removed.end());
+        for (size_t i = 0; i < removed.size(); i++) out << (i ? "," : "") << removed[i];
+        out << ";";
+        for (size_t i = 0; i < runtime.added.size(); i++) {
+            const TreeRecord& record = runtime.added[i];
+            out << (i ? "," : "") << record.id << ":" << record.prototypeId << ":" << foliageTreeLocalX(record, size) << ":" << foliageTreeLocalZ(record, size)
+                << ":" << record.scale << ":" << record.rotation[1] << ":" << record.rotation[3] << ":" << record.yOffset;
+        }
+        out << ";";
+        for (size_t i = 0; i < runtime.discs.size(); i++) {
+            const TreeRuntimeState::Disc& disc = runtime.discs[i];
+            out << (i ? "," : "") << disc.x << ":" << disc.z << ":" << disc.radius << ":" << disc.layer;
+        }
+        return out.str();
+    }
+
+    // The overlay's fields as written, before a surface places its trees: a World's tile out of memory
+    // is checked with nothing to sample
+    struct ParsedFoliageOverlay {
+        struct Added {
+            uint32_t id = 0;
+            uint16_t prototype = 0;
+            float x = 0.0f, z = 0.0f, scale = 1.0f, yOffset = 0.0f;
+            int16_t rotation1 = 0, rotation3 = 0;
+        };
+        std::vector<uint32_t> removed;
+        std::vector<Added> added;
+        std::vector<TreeRuntimeState::Disc> discs;
+    };
+
+    bool parseFoliageOverlay(const std::string& removed, const std::string& added, const std::string& discs, ParsedFoliageOverlay& out) {
+        try {
+            if (!removed.empty()) {
+                for (const std::string& id : foliageSplit(removed, ',')) out.removed.push_back(static_cast<uint32_t>(std::stoul(id)));
+            }
+            if (!added.empty()) {
+                for (const std::string& item : foliageSplit(added, ',')) {
+                    const std::vector<std::string> fields = foliageSplit(item, ':');
+                    if (fields.size() != 8) return false;
+                    ParsedFoliageOverlay::Added entry;
+                    entry.id = static_cast<uint32_t>(std::stoul(fields[0]));
+                    if (entry.id < TREE_RUNTIME_ID_BASE) return false;
+                    entry.prototype = static_cast<uint16_t>(std::stoul(fields[1]));
+                    entry.x = std::stof(fields[2]);
+                    entry.z = std::stof(fields[3]);
+                    entry.scale = std::stof(fields[4]);
+                    entry.rotation1 = static_cast<int16_t>(std::stoi(fields[5]));
+                    entry.rotation3 = static_cast<int16_t>(std::stoi(fields[6]));
+                    entry.yOffset = std::stof(fields[7]);
+                    out.added.push_back(entry);
+                }
+            }
+            if (!discs.empty()) {
+                for (const std::string& item : foliageSplit(discs, ',')) {
+                    const std::vector<std::string> fields = foliageSplit(item, ':');
+                    if (fields.size() != 4) return false;
+                    out.discs.push_back(TreeRuntimeState::Disc{std::stof(fields[0]), std::stof(fields[1]), std::stof(fields[2]), std::stoi(fields[3])});
+                }
+            }
+        } catch (const std::exception&) {
+            return false;
+        }
+        return true;
+    }
+
+    TreeRuntimeState placeFoliageOverlay(const ParsedFoliageOverlay& parsed, const TerrainSurfaceQuery& surface, float size, float maxHeight) {
+        TreeRuntimeState next;
+        next.removed.insert(parsed.removed.begin(), parsed.removed.end());
+        for (const ParsedFoliageOverlay::Added& entry : parsed.added) {
+            TreeRecord record{};
+            record.id = entry.id;
+            record.prototypeId = entry.prototype;
+            const SurfaceSample sample = surface.sample(entry.x, entry.z);
+            foliageSetTreeSurface(record, size, maxHeight, entry.x, entry.z, sample.height);
+            record.scale = entry.scale;
+            record.rotation[1] = entry.rotation1;
+            record.rotation[3] = entry.rotation3;
+            record.yOffset = entry.yOffset;
+            record.heightRatio = 128;
+            record.flags = TREE_SNAP_TO_TERRAIN;
+            std::memset(record.color, 255, sizeof(record.color));
+            next.added.push_back(record);
+            next.nextAdded = std::max(next.nextAdded, record.id + 1);
+        }
+        next.discs = parsed.discs;
+        return next;
+    }
+
 }
 
 struct FoliageSystem::Impl {
@@ -367,6 +476,14 @@ struct FoliageSystem::Impl {
     std::unordered_map<Entity, BodyCell> bodyCells;
     // T4 R27: a world's regions summed, what getStats gives for it
     std::unordered_map<Entity, FoliageStats> ownerStats;
+    // One pair per Terrain, whatever regions it has now or later: a World's serves every tile
+    struct Handlers {
+        std::function<void(const TreeHitEvent&)> hit;
+        std::function<void(TreeId, const FoliageInstanceInfo&)> removed;
+    };
+    std::unordered_map<Entity, Handlers> handlers;
+    // T4 R27: a World's tile out of memory keeps its overlay as text, until it returns
+    std::map<std::pair<Entity, uint32_t>, std::string> parkedOverlays;
     double clock = 0.0;
     Subscription contactSubscription;
 
@@ -379,6 +496,35 @@ struct FoliageSystem::Impl {
         return nullptr;
     }
 
+    // A lone Terrain's region: a World's tile with key 0 is not one (T4 R27)
+    RegionState* loneRegion(Entity owner) const {
+        RegionState* state = regionOf(owner);
+        return state && !state->tile ? state : nullptr;
+    }
+
+    // Any region of the owner, for what all of a World's tiles share (the prototypes' meshes)
+    RegionState* anyRegion(Entity owner) const {
+        for (const std::unique_ptr<RegionState>& region : regions) {
+            if (region->owner == owner) return region.get();
+        }
+        return nullptr;
+    }
+
+    // The owner's regions in key order: a World's tiles, the same order every time
+    std::vector<RegionState*> regionsByKey(Entity owner) const {
+        std::vector<RegionState*> found;
+        for (const std::unique_ptr<RegionState>& region : regions) {
+            if (region->owner == owner) found.push_back(region.get());
+        }
+        std::sort(found.begin(), found.end(), [](const RegionState* a, const RegionState* b) { return a->region->regionKey() < b->region->regionKey(); });
+        return found;
+    }
+
+    bool isWorld(Entity owner) const {
+        const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(owner);
+        return terrain && terrain->world;
+    }
+
     // T4 R27: a world's tile region holding a world position, else the owner's lone region
     RegionState* regionAt(Entity owner, const Vector3& position) const {
         for (const std::unique_ptr<RegionState>& region : regions) {
@@ -387,7 +533,76 @@ struct FoliageSystem::Impl {
             const float half = region->terrainSize * 0.5f;
             if (local.x >= -half && local.x < half && local.z >= -half && local.z < half) return region.get();
         }
-        return regionOf(owner);
+        return loneRegion(owner);
+    }
+
+    std::shared_ptr<TreeStore> writableStore(RegionState* state) {
+        if (!state) return nullptr;
+        if (state->storeRefused && !state->storeOverwriteAllowed) return nullptr;
+        if (!state->store) {
+            state->store = std::make_shared<TreeStore>();
+            state->indexing = state->store;
+            state->cellsReady = true;
+        }
+        prepareWritableStore(*state);
+        return state->store;
+    }
+
+    void noteTreesChanged(RegionState* state, const TreeDelta& delta) {
+        if (!state) return;
+        state->storeDirty = true;
+        if (!state->cellsReady) return;
+        for (const TreeRecord& record : delta.removed) markTreeCellDirtyForRecord(*state, record, false, true);
+        for (const TreeRecord& record : delta.added) markTreeCellDirtyForRecord(*state, record, true, false);
+        self->residencyRevision++;
+    }
+
+    void replaceStore(RegionState* state, std::shared_ptr<TreeStore> store) {
+        if (!state) return;
+        if (store) {
+            state->store = std::move(store);
+            state->storeShared = false;
+        }
+        state->storeDirty = true;
+        state->cellsReady = false;
+        state->indexing.reset();
+        state->indexTask = jobs::Task<std::shared_ptr<TreeCellMap>>();
+    }
+
+    // The detail rings start again: a disc set or dropped changes what they place
+    void rescanDetails(RegionState& state) {
+        for (DetailLayerState& layer : state.layers) {
+            for (DetailSlot& slot : layer.ring) {
+                cancelSlot(slot);
+                slot.assigned = false;
+            }
+            layer.pending.clear();
+            layer.needScan = true;
+        }
+    }
+
+    void clearOverlay(RegionState& state) {
+        for (uint32_t id : state.runtime.removed) {
+            if (const TreeRecord* record = findRecord(state, id)) markTreeCellDirtyForRecord(state, *record, false, false);
+        }
+        for (const TreeRecord& record : state.runtime.added) markTreeCellDirtyForRecord(state, record, false, true);
+        const bool hadDiscs = !state.runtime.discs.empty();
+        state.runtime = TreeRuntimeState();
+        if (hadDiscs) rescanDetails(state);
+    }
+
+    // An overlay on a region with nothing in its own (cleared first)
+    void applyOverlay(RegionState& state, TreeRuntimeState next) {
+        state.runtime = std::move(next);
+        for (const TreeRecord& record : state.runtime.added) markTreeCellDirtyForRecord(state, record, true, false);
+        for (uint32_t id : state.runtime.removed) {
+            if (const TreeRecord* record = findRecord(state, id)) {
+                markTreeCellDirtyForRecord(state, *record, false, false);
+                self->rebuildCellNow(state.owner, state.region->regionKey(), *record);
+            }
+        }
+        if (!state.runtime.discs.empty()) rescanDetails(state);
+        state.residentDirty = true;
     }
 
     uint32_t takeSlot() {
@@ -1401,6 +1616,13 @@ struct FoliageSystem::Impl {
 
     void rebuildBody(RegionState& state, TreeCell& cell, const TerrainComponent& terrain) {
         cell.bodyDirty = false;
+        // the body sits in the Terrain's frame; a World's tile places its trees in its own, centred on it (T4 R27)
+        Vector3 offset(0.0f, 0.0f, 0.0f);
+        if (state.tile) {
+            int cellX = 0, cellZ = 0;
+            state.region->cellOffset(cellX, cellZ);
+            offset = Vector3(static_cast<float>(cellX) * FOLIAGE_DETAIL_CELL_SIZE, 0.0f, static_cast<float>(cellZ) * FOLIAGE_DETAIL_CELL_SIZE);
+        }
         std::vector<foliagephysics::TreeCapsule> capsules;
         for (const TreeProtoRange& range : cell.ranges) {
             if (range.prototype >= static_cast<int>(terrain.treePrototypes.size())) continue;
@@ -1410,7 +1632,7 @@ struct FoliageSystem::Impl {
                 const FoliageInstance& instance = cell.instances[i];
                 foliagephysics::TreeCapsule capsule;
                 capsule.id = cell.slotIds[i];
-                capsule.base = Vector3(instance.position[0], instance.position[1], instance.position[2]);
+                capsule.base = Vector3(instance.position[0], instance.position[1], instance.position[2]) + offset;
                 capsule.radius = prototype.collisionRadius * instance.scale;
                 capsule.height = prototype.collisionHeight * instance.scale * static_cast<float>(instance.heightRatio) / 128.0f;
                 capsules.push_back(capsule);
@@ -2262,6 +2484,8 @@ void FoliageSystem::destroy() {
     impl->dying.clear();
     impl->prototypeEntities.clear();
     impl->ownerStats.clear();
+    impl->handlers.clear();
+    impl->parkedOverlays.clear();
     drawables = false;
 }
 
@@ -2271,6 +2495,10 @@ void FoliageSystem::draw() {
 void FoliageSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     if (componentId != scene->getComponentId<TerrainComponent>()) return;
     impl->ownerStats.erase(entity);
+    impl->handlers.erase(entity);
+    for (auto it = impl->parkedOverlays.begin(); it != impl->parkedOverlays.end();) {
+        it = it->first.first == entity ? impl->parkedOverlays.erase(it) : std::next(it);
+    }
     for (size_t i = 0; i < impl->regions.size(); i++) {
         if (impl->regions[i]->owner == entity) {
             impl->destroyRegion(*impl->regions[i]);
@@ -2377,9 +2605,10 @@ void FoliageSystem::update(double dt) {
 
 bool FoliageSystem::setPreviewEntity(Entity entity) {
     if (impl->previewEntity == entity) return false;
-    if (RegionState* before = impl->regionOf(impl->previewEntity)) before->refill = true;
+    for (std::unique_ptr<RegionState>& region : impl->regions) {
+        if (region->owner == impl->previewEntity || region->owner == entity) region->refill = true;
+    }
     impl->previewEntity = entity;
-    if (RegionState* after = impl->regionOf(entity)) after->refill = true;
     residencyRevision++;
     return true;
 }
@@ -2473,6 +2702,23 @@ void FoliageSystem::addRegion(Entity owner, std::shared_ptr<FoliageRegion> regio
     created->storeShared = created->store != nullptr;
     FoliageRegion::Frame frame;
     created->tile = created->region->frame(frame);
+    if (created->tile) {
+        // its square from the start, so a position finds it before its first update
+        created->terrainSize = frame.size;
+        created->terrainMaxHeight = frame.maxHeight;
+        created->model = created->region->localToWorld();
+        created->inverseModel = created->model.inverse();
+        // T4 R27: a tile back in memory gets the overlay it left with
+        const auto parked = impl->parkedOverlays.find({owner, created->region->regionKey()});
+        if (parked != impl->parkedOverlays.end()) {
+            const std::vector<std::string> sections = foliageSplit(parked->second, ';');
+            ParsedFoliageOverlay overlay;
+            if (sections.size() == 3 && parseFoliageOverlay(sections[0], sections[1], sections[2], overlay)) {
+                created->runtime = placeFoliageOverlay(overlay, created->region->surface(), frame.size, frame.maxHeight);
+            }
+            impl->parkedOverlays.erase(parked);
+        }
+    }
     impl->regions.push_back(std::move(created));
     residencyRevision++;
 }
@@ -2481,6 +2727,10 @@ void FoliageSystem::removeRegion(Entity owner, uint32_t regionKey) {
     for (size_t i = 0; i < impl->regions.size(); i++) {
         RegionState& region = *impl->regions[i];
         if (region.owner == owner && region.region->regionKey() == regionKey) {
+            // a World's tile keeps what the game removed and added there while it is away (T4 R27)
+            if (region.tile && !foliageOverlayEmpty(region.runtime)) {
+                impl->parkedOverlays[{owner, regionKey}] = writeFoliageOverlay(region.runtime, region.terrainSize);
+            }
             for (DetailLayerState& layer : region.layers) impl->destroyLayer(layer);
             region.layers.clear();
             for (TreePrototypeState& prototype : region.prototypes) impl->destroyPrototype(prototype);
@@ -2513,6 +2763,10 @@ size_t FoliageSystem::getRegionCount(Entity owner) const {
     return count;
 }
 
+bool FoliageSystem::hasRegion(Entity owner, uint32_t regionKey) const {
+    return impl->regionOf(owner, regionKey) != nullptr;
+}
+
 void FoliageSystem::forEachTreeStore(Entity owner, const std::function<void(const TreeStore& store)>& visit) const {
     for (const std::unique_ptr<RegionState>& region : impl->regions) {
         if (region->owner == owner && region->store) visit(*region->store);
@@ -2522,55 +2776,65 @@ void FoliageSystem::forEachTreeStore(Entity owner, const std::function<void(cons
 // ---- trees
 
 std::shared_ptr<TreeStore> FoliageSystem::getTreeStore(Entity terrainEntity) {
-    RegionState* state = impl->regionOf(terrainEntity);
+    RegionState* state = impl->loneRegion(terrainEntity);
     return state ? state->store : nullptr;
 }
 
 std::shared_ptr<const TreeStore> FoliageSystem::getTreeStore(Entity terrainEntity) const {
-    RegionState* state = impl->regionOf(terrainEntity);
+    RegionState* state = impl->loneRegion(terrainEntity);
+    return state ? state->store : nullptr;
+}
+
+std::shared_ptr<TreeStore> FoliageSystem::getTreeStore(Entity terrainEntity, const Vector3& worldPosition) {
+    RegionState* state = impl->regionAt(terrainEntity, worldPosition);
+    return state ? state->store : nullptr;
+}
+
+std::shared_ptr<const TreeStore> FoliageSystem::getTreeStore(Entity terrainEntity, const Vector3& worldPosition) const {
+    RegionState* state = impl->regionAt(terrainEntity, worldPosition);
     return state ? state->store : nullptr;
 }
 
 std::shared_ptr<TreeStore> FoliageSystem::getOrCreateTreeStore(Entity terrainEntity) {
-    RegionState* state = impl->regionOf(terrainEntity);
-    if (!state) return nullptr;
-    if (state->storeRefused && !state->storeOverwriteAllowed) return nullptr;
-    if (!state->store) {
-        state->store = std::make_shared<TreeStore>();
-        state->indexing = state->store;
-        state->cellsReady = true;
-    }
-    impl->prepareWritableStore(*state);
-    return state->store;
+    return impl->writableStore(impl->loneRegion(terrainEntity));
+}
+
+std::shared_ptr<TreeStore> FoliageSystem::getRegionTreeStore(Entity owner, uint32_t regionKey) const {
+    RegionState* state = impl->regionOf(owner, regionKey);
+    return state ? state->store : nullptr;
+}
+
+std::shared_ptr<TreeStore> FoliageSystem::getOrCreateTreeStore(Entity owner, uint32_t regionKey) {
+    return impl->writableStore(impl->regionOf(owner, regionKey));
 }
 
 bool FoliageSystem::isTreeStoreRefused(Entity terrainEntity, std::string* error) const {
-    RegionState* state = impl->regionOf(terrainEntity);
+    RegionState* state = impl->loneRegion(terrainEntity);
     if (!state || !state->storeRefused) return false;
     if (error) *error = state->storeError;
     return !state->storeOverwriteAllowed;
 }
 
 void FoliageSystem::allowOverwriteRefusedStore(Entity terrainEntity) {
-    if (RegionState* state = impl->regionOf(terrainEntity)) state->storeOverwriteAllowed = true;
+    if (RegionState* state = impl->loneRegion(terrainEntity)) state->storeOverwriteAllowed = true;
 }
 
 bool FoliageSystem::isTreeStoreLoading(Entity terrainEntity) const {
-    RegionState* state = impl->regionOf(terrainEntity);
+    RegionState* state = impl->loneRegion(terrainEntity);
     return state && (state->storeLoading || (state->store && !state->cellsReady));
 }
 
 bool FoliageSystem::isTreeStoreDirty(Entity terrainEntity) const {
-    RegionState* state = impl->regionOf(terrainEntity);
+    RegionState* state = impl->loneRegion(terrainEntity);
     return state && state->storeDirty;
 }
 
 void FoliageSystem::clearTreeStoreDirty(Entity terrainEntity) {
-    if (RegionState* state = impl->regionOf(terrainEntity)) state->storeDirty = false;
+    if (RegionState* state = impl->loneRegion(terrainEntity)) state->storeDirty = false;
 }
 
 void FoliageSystem::treeFileWritten(Entity terrainEntity, const std::string& path) {
-    if (RegionState* state = impl->regionOf(terrainEntity)) {
+    if (RegionState* state = impl->loneRegion(terrainEntity)) {
         state->storePath = path;
         state->storeDirty = false;
         state->storeRefused = false;
@@ -2578,7 +2842,9 @@ void FoliageSystem::treeFileWritten(Entity terrainEntity, const std::string& pat
 }
 
 void FoliageSystem::shareTreeStore(Entity terrainEntity, std::shared_ptr<TreeStore> store) {
-    RegionState* state = impl->regionOf(terrainEntity);
+    // a World's tiles each load their own file (T4 R27)
+    if (impl->isWorld(terrainEntity)) return;
+    RegionState* state = impl->loneRegion(terrainEntity);
     if (!state) {
         auto created = std::make_unique<RegionState>();
         created->owner = terrainEntity;
@@ -2596,26 +2862,19 @@ void FoliageSystem::shareTreeStore(Entity terrainEntity, std::shared_ptr<TreeSto
 }
 
 void FoliageSystem::treesChanged(Entity terrainEntity, const TreeDelta& delta) {
-    RegionState* state = impl->regionOf(terrainEntity);
-    if (!state) return;
-    state->storeDirty = true;
-    if (!state->cellsReady) return;
-    for (const TreeRecord& record : delta.removed) impl->markTreeCellDirtyForRecord(*state, record, false, true);
-    for (const TreeRecord& record : delta.added) impl->markTreeCellDirtyForRecord(*state, record, true, false);
-    residencyRevision++;
+    impl->noteTreesChanged(impl->loneRegion(terrainEntity), delta);
+}
+
+void FoliageSystem::treesChanged(Entity owner, uint32_t regionKey, const TreeDelta& delta) {
+    impl->noteTreesChanged(impl->regionOf(owner, regionKey), delta);
 }
 
 void FoliageSystem::treeStoreReplaced(Entity terrainEntity, std::shared_ptr<TreeStore> store) {
-    RegionState* state = impl->regionOf(terrainEntity);
-    if (!state) return;
-    if (store) {
-        state->store = std::move(store);
-        state->storeShared = false;
-    }
-    state->storeDirty = true;
-    state->cellsReady = false;
-    state->indexing.reset();
-    state->indexTask = jobs::Task<std::shared_ptr<TreeCellMap>>();
+    impl->replaceStore(impl->loneRegion(terrainEntity), std::move(store));
+}
+
+void FoliageSystem::treeStoreReplaced(Entity owner, uint32_t regionKey, std::shared_ptr<TreeStore> store) {
+    impl->replaceStore(impl->regionOf(owner, regionKey), std::move(store));
 }
 
 // ---- runtime overlay
@@ -2682,7 +2941,12 @@ std::optional<FoliageInstanceInfo> FoliageSystem::removeTreeInstance(Entity terr
     }
     residencyRevision++;
     onTreeRemoved(terrainEntity, id, pose);
-    if (state->removedHandler) state->removedHandler(id, pose);
+    // a copy: the handler may set another while it runs
+    const auto handlers = impl->handlers.find(terrainEntity);
+    if (handlers != impl->handlers.end() && handlers->second.removed) {
+        const std::function<void(TreeId, const FoliageInstanceInfo&)> handler = handlers->second.removed;
+        handler(id, pose);
+    }
     if (updateNavigation) {
         foliagephysics::updateNavigationAround(*scene, pose.position, 4.0f * std::max(pose.scale, 1.0f));
     }
@@ -2806,130 +3070,88 @@ void FoliageSystem::restoreDetails(Entity terrainEntity) {
 
 // R31's string: readable, and as compact as a text a game keeps with its saves
 std::string FoliageSystem::getRuntimeState(Entity terrainEntity) const {
-    RegionState* state = impl->regionOf(terrainEntity);
-    if (!state) return "JEFS1;;;";
-    std::ostringstream out;
-    out << "JEFS1;";
-    std::vector<uint32_t> removed(state->runtime.removed.begin(), state->runtime.removed.end());
-    std::sort(removed.begin(), removed.end());
-    for (size_t i = 0; i < removed.size(); i++) out << (i ? "," : "") << removed[i];
-    out << ";";
-    const float size = state->terrainSize;
-    for (size_t i = 0; i < state->runtime.added.size(); i++) {
-        const TreeRecord& record = state->runtime.added[i];
-        out << (i ? "," : "") << record.id << ":" << record.prototypeId << ":" << foliageTreeLocalX(record, size) << ":" << foliageTreeLocalZ(record, size)
-            << ":" << record.scale << ":" << record.rotation[1] << ":" << record.rotation[3] << ":" << record.yOffset;
+    if (!impl->isWorld(terrainEntity)) {
+        RegionState* state = impl->loneRegion(terrainEntity);
+        if (!state) return "JEFS1;;;";
+        return "JEFS1;" + writeFoliageOverlay(state->runtime, state->terrainSize);
     }
-    out << ";";
-    for (size_t i = 0; i < state->runtime.discs.size(); i++) {
-        const TreeRuntimeState::Disc& disc = state->runtime.discs[i];
-        out << (i ? "," : "") << disc.x << ":" << disc.z << ":" << disc.radius << ":" << disc.layer;
+    // T4 R27: every tile with an overlay, in memory or parked, in key order
+    std::map<uint32_t, std::string> tiles;
+    for (const auto& [key, text] : impl->parkedOverlays) {
+        if (key.first == terrainEntity) tiles[key.second] = text;
     }
-    return out.str();
+    for (RegionState* state : impl->regionsByKey(terrainEntity)) {
+        if (state->tile && !foliageOverlayEmpty(state->runtime)) tiles[state->region->regionKey()] = writeFoliageOverlay(state->runtime, state->terrainSize);
+    }
+    std::string out = "JEFW1";
+    for (const auto& [key, text] : tiles) out += "|" + std::to_string(key) + ";" + text;
+    return out;
 }
 
 bool FoliageSystem::setRuntimeState(Entity terrainEntity, const std::string& text) {
-    RegionState* state = impl->regionOf(terrainEntity);
-    if (!state) return false;
+    if (!impl->isWorld(terrainEntity)) {
+        RegionState* state = impl->loneRegion(terrainEntity);
+        if (!state) return false;
+        const std::vector<std::string> sections = foliageSplit(text, ';');
+        if (sections.size() != 4 || sections[0] != "JEFS1") return false;
+        ParsedFoliageOverlay parsed;
+        if (!parseFoliageOverlay(sections[1], sections[2], sections[3], parsed)) return false;
+        TreeRuntimeState next = placeFoliageOverlay(parsed, state->region->surface(), state->terrainSize, state->terrainMaxHeight);
+        clearRuntimeState(terrainEntity);
+        impl->applyOverlay(*state, std::move(next));
+        residencyRevision++;
+        return true;
+    }
 
-    const auto split = [](const std::string& value, char separator) {
-        std::vector<std::string> parts;
-        size_t start = 0;
-        while (true) {
-            const size_t next = value.find(separator, start);
-            if (next == std::string::npos) {
-                parts.push_back(value.substr(start));
-                return parts;
-            }
-            parts.push_back(value.substr(start, next - start));
-            start = next + 1;
-        }
+    // T4 R27: all of it is checked before anything changes; a tile out of memory keeps its part
+    const std::vector<std::string> parts = foliageSplit(text, '|');
+    if (parts.empty() || parts[0] != "JEFW1") return false;
+    struct Tile {
+        uint32_t key = 0;
+        std::string body;
+        ParsedFoliageOverlay parsed;
     };
-
-    const std::vector<std::string> sections = split(text, ';');
-    if (sections.size() != 4 || sections[0] != "JEFS1") return false;
-
-    TreeRuntimeState next;
-    try {
-        if (!sections[1].empty()) {
-            for (const std::string& id : split(sections[1], ',')) next.removed.insert(static_cast<uint32_t>(std::stoul(id)));
+    std::vector<Tile> tiles;
+    for (size_t i = 1; i < parts.size(); i++) {
+        const size_t split = parts[i].find(';');
+        if (split == std::string::npos || split == 0 || parts[i].find_first_not_of("0123456789") != split) return false;
+        Tile tile;
+        try {
+            const unsigned long long key = std::stoull(parts[i].substr(0, split));
+            if (key > UINT32_MAX) return false;
+            tile.key = static_cast<uint32_t>(key);
+        } catch (const std::exception&) {
+            return false;
         }
-        if (!sections[2].empty()) {
-            for (const std::string& item : split(sections[2], ',')) {
-                const std::vector<std::string> fields = split(item, ':');
-                if (fields.size() != 8) return false;
-                TreeRecord record{};
-                record.id = static_cast<uint32_t>(std::stoul(fields[0]));
-                if (record.id < TREE_RUNTIME_ID_BASE) return false;
-                record.prototypeId = static_cast<uint16_t>(std::stoul(fields[1]));
-                const float x = std::stof(fields[2]);
-                const float z = std::stof(fields[3]);
-                const SurfaceSample sample = state->region->surface().sample(x, z);
-                foliageSetTreeSurface(record, state->terrainSize, state->terrainMaxHeight, x, z, sample.height);
-                record.scale = std::stof(fields[4]);
-                record.rotation[1] = static_cast<int16_t>(std::stoi(fields[5]));
-                record.rotation[3] = static_cast<int16_t>(std::stoi(fields[6]));
-                record.yOffset = std::stof(fields[7]);
-                record.heightRatio = 128;
-                record.flags = TREE_SNAP_TO_TERRAIN;
-                std::memset(record.color, 255, sizeof(record.color));
-                next.added.push_back(record);
-                next.nextAdded = std::max(next.nextAdded, record.id + 1);
-            }
-        }
-        if (!sections[3].empty()) {
-            for (const std::string& item : split(sections[3], ',')) {
-                const std::vector<std::string> fields = split(item, ':');
-                if (fields.size() != 4) return false;
-                next.discs.push_back(TreeRuntimeState::Disc{std::stof(fields[0]), std::stof(fields[1]), std::stof(fields[2]), std::stoi(fields[3])});
-            }
-        }
-    } catch (const std::exception&) {
-        return false;
+        tile.body = parts[i].substr(split + 1);
+        const std::vector<std::string> sections = foliageSplit(tile.body, ';');
+        if (sections.size() != 3 || !parseFoliageOverlay(sections[0], sections[1], sections[2], tile.parsed)) return false;
+        tiles.push_back(std::move(tile));
     }
-
     clearRuntimeState(terrainEntity);
-    state->runtime = std::move(next);
-    for (const TreeRecord& record : state->runtime.added) impl->markTreeCellDirtyForRecord(*state, record, true, false);
-    for (uint32_t id : state->runtime.removed) {
-        if (const TreeRecord* record = impl->findRecord(*state, id)) {
-            impl->markTreeCellDirtyForRecord(*state, *record, false, false);
-            rebuildCellNow(terrainEntity, 0, *record);
+    for (Tile& tile : tiles) {
+        RegionState* state = impl->regionOf(terrainEntity, tile.key);
+        if (state && state->tile) {
+            impl->applyOverlay(*state, placeFoliageOverlay(tile.parsed, state->region->surface(), state->terrainSize, state->terrainMaxHeight));
+        } else {
+            impl->parkedOverlays[{terrainEntity, tile.key}] = std::move(tile.body);
         }
     }
-    if (!state->runtime.discs.empty()) {
-        for (DetailLayerState& layer : state->layers) {
-            for (DetailSlot& slot : layer.ring) {
-                impl->cancelSlot(slot);
-                slot.assigned = false;
-            }
-            layer.pending.clear();
-            layer.needScan = true;
-        }
-    }
-    state->residentDirty = true;
     residencyRevision++;
     return true;
 }
 
 void FoliageSystem::clearRuntimeState(Entity terrainEntity) {
-    RegionState* state = impl->regionOf(terrainEntity);
-    if (!state) return;
-    for (uint32_t id : state->runtime.removed) {
-        if (const TreeRecord* record = impl->findRecord(*state, id)) impl->markTreeCellDirtyForRecord(*state, *record, false, false);
+    if (!impl->isWorld(terrainEntity)) {
+        RegionState* state = impl->loneRegion(terrainEntity);
+        if (!state) return;
+        impl->clearOverlay(*state);
+        residencyRevision++;
+        return;
     }
-    for (const TreeRecord& record : state->runtime.added) impl->markTreeCellDirtyForRecord(*state, record, false, true);
-    const bool hadDiscs = !state->runtime.discs.empty();
-    state->runtime = TreeRuntimeState();
-    if (hadDiscs) {
-        for (DetailLayerState& layer : state->layers) {
-            for (DetailSlot& slot : layer.ring) {
-                impl->cancelSlot(slot);
-                slot.assigned = false;
-            }
-            layer.pending.clear();
-            layer.needScan = true;
-        }
+    for (RegionState* state : impl->regionsByKey(terrainEntity)) impl->clearOverlay(*state);
+    for (auto it = impl->parkedOverlays.begin(); it != impl->parkedOverlays.end();) {
+        it = it->first.first == terrainEntity ? impl->parkedOverlays.erase(it) : std::next(it);
     }
     residencyRevision++;
 }
@@ -3156,7 +3378,7 @@ void FoliageSystem::forEachDetailAlongRay(const Ray& ray, float maxDistance, con
 }
 
 bool FoliageSystem::getPrototypeBounds(Entity terrainEntity, int prototype, Vector3& center, float& radius) const {
-    RegionState* state = impl->regionOf(terrainEntity);
+    RegionState* state = impl->anyRegion(terrainEntity);
     if (!state || prototype < 0 || prototype >= static_cast<int>(state->prototypes.size())) return false;
     const TreePrototypeState& entry = state->prototypes[prototype];
     if (entry.ready.empty() || !entry.ready[0]) return false;
@@ -3166,14 +3388,14 @@ bool FoliageSystem::getPrototypeBounds(Entity terrainEntity, int prototype, Vect
 }
 
 Entity FoliageSystem::getPrototypeEntity(Entity terrainEntity, int prototype, int lod) const {
-    RegionState* state = impl->regionOf(terrainEntity);
+    RegionState* state = impl->anyRegion(terrainEntity);
     if (!state || prototype < 0 || prototype >= static_cast<int>(state->prototypes.size())) return NULL_ENTITY;
     const TreePrototypeState& entry = state->prototypes[prototype];
     return lod >= 0 && lod < static_cast<int>(entry.lods.size()) ? entry.lods[lod] : NULL_ENTITY;
 }
 
 Entity FoliageSystem::getDetailEntity(Entity terrainEntity, int layer) const {
-    RegionState* state = impl->regionOf(terrainEntity);
+    RegionState* state = impl->anyRegion(terrainEntity);
     if (!state || layer < 0 || layer >= static_cast<int>(state->layers.size())) return NULL_ENTITY;
     return state->layers[layer].entity;
 }
@@ -3208,37 +3430,70 @@ void FoliageSystem::forEachNavObstacle(Entity terrainEntity, const std::function
 }
 
 void FoliageSystem::forEachResidentCell(Entity terrainEntity, const std::function<void(int cellX, int cellZ, std::span<const FoliageInstance> instances, std::span<const uint32_t> ids)>& visit) const {
-    RegionState* state = impl->regionOf(terrainEntity);
-    if (!state) return;
-    for (int64_t key : state->residentOrder) {
-        const auto it = state->cells.find(key);
-        if (it == state->cells.end()) continue;
-        visit(it->second.x, it->second.z, it->second.instances, it->second.slotIds);
+    if (!impl->isWorld(terrainEntity)) {
+        RegionState* state = impl->loneRegion(terrainEntity);
+        if (!state) return;
+        for (int64_t key : state->residentOrder) {
+            const auto it = state->cells.find(key);
+            if (it == state->cells.end()) continue;
+            visit(it->second.x, it->second.z, it->second.instances, it->second.slotIds);
+        }
+        return;
+    }
+    // T4 R27: each tile's cells moved from its frame (centred on it) to the World's
+    std::vector<FoliageInstance> moved;
+    for (RegionState* state : impl->regionsByKey(terrainEntity)) {
+        if (!state->tile) continue;
+        int offsetX = 0, offsetZ = 0;
+        state->region->cellOffset(offsetX, offsetZ);
+        const float centreX = static_cast<float>(offsetX) * FOLIAGE_DETAIL_CELL_SIZE;
+        const float centreZ = static_cast<float>(offsetZ) * FOLIAGE_DETAIL_CELL_SIZE;
+        for (int64_t key : state->residentOrder) {
+            const auto it = state->cells.find(key);
+            if (it == state->cells.end()) continue;
+            const TreeCell& cell = it->second;
+            moved.assign(cell.instances.begin(), cell.instances.end());
+            for (FoliageInstance& instance : moved) {
+                instance.position[0] += centreX;
+                instance.position[2] += centreZ;
+            }
+            const int cellX = static_cast<int>(std::floor((centreX + static_cast<float>(cell.x) * FOLIAGE_TREE_CELL_SIZE) / FOLIAGE_TREE_CELL_SIZE));
+            const int cellZ = static_cast<int>(std::floor((centreZ + static_cast<float>(cell.z) * FOLIAGE_TREE_CELL_SIZE) / FOLIAGE_TREE_CELL_SIZE));
+            visit(cellX, cellZ, moved, cell.slotIds);
+        }
     }
 }
 
 const FoliageStats& FoliageSystem::getStats(Entity terrainEntity) const {
     const auto world = impl->ownerStats.find(terrainEntity);
     if (world != impl->ownerStats.end()) return world->second;
-    if (RegionState* state = impl->regionOf(terrainEntity)) return state->stats;
+    if (RegionState* state = impl->loneRegion(terrainEntity)) return state->stats;
     static const FoliageStats empty;
     return empty;
 }
 
 uint64_t FoliageSystem::getPlacementHash(Entity terrainEntity) const {
-    RegionState* state = impl->regionOf(terrainEntity);
     uint64_t hash = foliageHash({});
-    if (!state) return hash;
-    for (const DetailLayerState& layer : state->layers) {
-        std::vector<const DetailSlot*> slots;
-        slots.reserve(layer.ring.size());
-        for (const DetailSlot& slot : layer.ring) {
-            if (slot.instances) slots.push_back(&slot);
+    const auto mix = [&hash](const RegionState& state) {
+        for (const DetailLayerState& layer : state.layers) {
+            std::vector<const DetailSlot*> slots;
+            slots.reserve(layer.ring.size());
+            for (const DetailSlot& slot : layer.ring) {
+                if (slot.instances) slots.push_back(&slot);
+            }
+            std::sort(slots.begin(), slots.end(), [](const DetailSlot* a, const DetailSlot* b) {
+                return a->z != b->z ? a->z < b->z : a->x < b->x;
+            });
+            for (const DetailSlot* slot : slots) hash = foliageHash(*slot->instances, hash);
         }
-        std::sort(slots.begin(), slots.end(), [](const DetailSlot* a, const DetailSlot* b) {
-            return a->z != b->z ? a->z < b->z : a->x < b->x;
-        });
-        for (const DetailSlot* slot : slots) hash = foliageHash(*slot->instances, hash);
+    };
+    if (!impl->isWorld(terrainEntity)) {
+        if (RegionState* state = impl->loneRegion(terrainEntity)) mix(*state);
+        return hash;
+    }
+    // T4 R27: the resident tiles chained in key order
+    for (RegionState* state : impl->regionsByKey(terrainEntity)) {
+        if (state->tile) mix(*state);
     }
     return hash;
 }
@@ -3414,20 +3669,22 @@ bool FoliageSystem::isTreeBody(Entity bodyEntity) const {
 }
 
 void FoliageSystem::setTreeHitHandler(Entity terrainEntity, std::function<void(const TreeHitEvent&)> handler) {
-    if (RegionState* state = impl->regionOf(terrainEntity)) {
-        state->hitHandler = std::move(handler);
-        updateContactSubscription();
-    }
+    Impl::Handlers& handlers = impl->handlers[terrainEntity];
+    handlers.hit = std::move(handler);
+    if (!handlers.hit && !handlers.removed) impl->handlers.erase(terrainEntity);
+    updateContactSubscription();
 }
 
 void FoliageSystem::setTreeRemovedHandler(Entity terrainEntity, std::function<void(TreeId, const FoliageInstanceInfo&)> handler) {
-    if (RegionState* state = impl->regionOf(terrainEntity)) state->removedHandler = std::move(handler);
+    Impl::Handlers& handlers = impl->handlers[terrainEntity];
+    handlers.removed = std::move(handler);
+    if (!handlers.hit && !handlers.removed) impl->handlers.erase(terrainEntity);
 }
 
 // R33: with no subscriber it adds no work
 void FoliageSystem::updateContactSubscription() {
     bool wanted = !onTreeHit.empty();
-    for (const std::unique_ptr<RegionState>& region : impl->regions) wanted = wanted || static_cast<bool>(region->hitHandler);
+    for (const auto& [entity, handlers] : impl->handlers) wanted = wanted || static_cast<bool>(handlers.hit);
     if (!wanted) {
         impl->contactSubscription = Subscription();
         contactsConnected = false;
@@ -3449,8 +3706,11 @@ void FoliageSystem::updateContactSubscription() {
         event.body = other;
         event.speed = speed;
         self->onTreeHit(terrainEntity, event);
-        if (RegionState* state = self->impl->regionOf(terrainEntity)) {
-            if (state->hitHandler) state->hitHandler(event);
+        // the Terrain's handler, whichever of its regions the tree is in; a copy, as it may set another
+        const auto handlers = self->impl->handlers.find(terrainEntity);
+        if (handlers != self->impl->handlers.end() && handlers->second.hit) {
+            const std::function<void(const TreeHitEvent&)> handler = handlers->second.hit;
+            handler(event);
         }
     });
 }

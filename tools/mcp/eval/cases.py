@@ -3042,6 +3042,25 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "terrain_world_paint_trees",
+        "kind": "guard",
+        "what_happened": "Asked to paint trees with the brush across a Terrain World's tiles, an agent has to use sculpt_terrain's tree brush "
+                         "(T5's tree store, routed per tile), not place_object, which makes GameObjects, nor edit_terrain_world.",
+        "text_at_issue": "sculpt_terrain's description (paint/erase_trees: tree prototypes, a Terrain World across tiles) and its mode enum.",
+        "source": "T4 R27 (tree tools on a World)",
+        "prompt": "With the Paint Trees brush, paint the Terrain's tree prototype pine along Terrain World [7] from world (40, 10) to (90, 10), "
+                  "a brush of 6 m; the line crosses a tile border.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "sculpt_terrain", "args": {"strokes": "*"}, "result": ok(
+                "Applied 1 brush stroke(s) to \"Landscape\" as one undo step.",
+                {"terrain": {"id": 7, "name": "Landscape"}, "strokes": [{"mode": "paint_trees", "points": 6, "placed": 23}], "changed": True})},
+        ],
+        "checks": {"calls": [{"tool": "sculpt_terrain", "args": {"strokes": [{"mode": "paint_trees"}]}}],
+                   "must_not_call": ["edit_terrain_world", {"tool": "sculpt_terrain", "args": {"strokes": [{"mode": "place_object"}]}}]},
+        "max_turns": 10,
+    },
+    {
         "id": "terrain_world_import_heightmap",
         "kind": "guard",
         "what_happened": "Asked to put a heightmap file on a Terrain World, an agent has to use edit_terrain_world's import_heightmap, which makes the tiles, not edit_terrain's.",

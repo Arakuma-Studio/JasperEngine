@@ -176,12 +176,6 @@ namespace {
 void editFoliageFromOps(const CallPtr& call, const TerrainTarget& target, std::vector<Op> ops, const OpSpace& space, bool dryRun) {
     const Json& args = call->args();
     Scene* scene = target.engineScene();
-    // T4 R27: a World's trees are a file per tile, and these ops edit one Terrain's tree data
-    if (scene->getComponent<TerrainComponent>(target.entity).world) {
-        call->fail("Foliage ops do not run on a Terrain World: its trees are a file per tile. Place them on a Terrain, then convert it with "
-                   "edit_terrain_world {create: {from_terrain}}. Nothing was changed.");
-        return;
-    }
     for (size_t i = 0; i < ops.size(); i++) {
         if (!isFoliageOp(ops[i])) {
             call->fail("ops[" + std::to_string(i) + "]: foliage ops (scatter_by_rules, clear_foliage, place_trees, remove_trees, convert_placed_to_trees, "

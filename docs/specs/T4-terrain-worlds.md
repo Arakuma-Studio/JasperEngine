@@ -310,7 +310,16 @@ implementer copies something, in which case the normal rule applies.
   a store over that tile, `surface()` the query, `trees()` T5's `.jetrees` file beside the tile
   (`tiles/x_z.jetrees`; null while loading), `cellOffset` the tile's origin in whole 8-unit cells (S ≥ 16, so
   always whole), `regionKey` the packed coordinate. Ground that is not resident has no foliage and nothing
-  blocks on it. A world without foliage layers makes no regions. T5 owns the rest.
+  blocks on it. A world without foliage layers makes no regions. T5's tree tools (the Paint Trees brush and
+  `sculpt_terrain`'s `paint_trees`/`erase_trees`, Mass Place Trees, `edit_terrain`'s foliage ops, a spline's Clear
+  Trees, Remove Prototype) route each tree to the tile under it through `TerrainWorldTreeEdit`
+  (`editor/terrainworld/TerrainWorldTrees.*`): a resident tile through its region's store, a cold one read from its
+  file there and then (R24: the editor may wait); a tile without a file gets one; one undo step a stroke or op,
+  keeping each file's bytes before and after. FoliageSystem's calls that take no position cover every tile on a
+  World: one hit and removed handler for all tiles (tiles that arrive later too), the runtime state (`JEFW1`, tiles
+  out of memory keep their overlay) and the placement hash in key order, the resident cells in the World's space;
+  `getTreeStore` without a position is a lone Terrain's (null on a World), with a position the tile's there.
+  T5 owns the rest.
 
 ### Functional — editing and data flow
 
@@ -793,7 +802,7 @@ Unit suites: `jasperengine-core-tests` (`engine/tests/core/terrain/`, GPU in `en
 | AC35 | R53, R39 | `TerrainWorldCook.DeterministicPack`, `ContainsTilesAsEntries` (read with `JPak`), `TerrainWorldGpu.PlaysFromPack`; `tools/smoke-test.sh` with the world fixture on glcore, gles3, vulkan images; shader cook collects the variant: `ShaderCook.TerrainWorldVariants`; no fallback drops the bit (`ShaderPool`'s test). |
 | AC36 | R55 | `ModuleUsage.TerrainWorld*`: component and each Lua evidence kind; empty project needs none. `PlayerModules.*` lists it. A build with `-DJASPERENGINE_TERRAIN_WORLD=OFF` links; a player without the module exits 5 on content needing it (`tools/ci/test_player_cli.py`). Sizes for R37 recorded in the spec by `player_sizes.py`. |
 | AC37 | R25 | `TerrainWorldNav.CollectsTiles`, `RefusesUnboundedSurface`, `FollowRebakes` (agents keep a path across a follow step); existing nav suites unchanged. |
-| AC38 | R26, R27 | `TerrainWorldSplines.BakeCrossesBorder`, `ConformWaitsForTile`; `TerrainWorldFoliage.RegionPerResidentTile`: a region added on `Resident`, removed on eviction, none with no foliage layers; a fixture's scatter equal to one map's across a border (T5's hash). |
+| AC38 | R26, R27 | `TerrainWorldSplines.BakeCrossesBorder`, `ConformWaitsForTile`; `TerrainWorldFoliage.RegionPerResidentTile`: a region added on `Resident`, removed on eviction, none with no foliage layers; a fixture's scatter equal to one map's across a border (T5's hash); `RemovedHandlerCoversEveryTile`, `TreeHitHandlerOnAnyTile`, `RuntimeStateCoversEveryTile`, `TreeStoreUnderAPosition`; editor `TerrainWorldTrees.*` (a stroke across a border, a resident tile's new file, Mass Place per tile; undo and redo byte for byte); `test_terrain_world.py::test_trees_across_border_with_undo`. |
 | AC39 | R43-R46 | `test_terrain_world.py`: `edit_terrain_world {create}`, `sample_terrain {world}`, `wait_for` plus `freeze`, then two identical `screenshot` hashes (determinism); all-or-nothing refusal leaves files unchanged; `dry_run` writes nothing; timeout lists missing tiles; the tool hidden until `tool_groups` enables `terrain`; Play refusals by name; `tool_budget.py --check`, `gen_tool_docs.py --check`. |
 | AC40 | R47 | Lua doc test (`python3 -m lua_api doctest`) over the new blocks; `TerrainWorldLua.*`: focus lifetime on destroy, `waitForArea` in a coroutine, `onAreaReady`, errors on bad arguments. |
 | AC41 | R40-R42 | `TerrainWorldPanel.*` (logic: cell states, undo of Add and Remove, dialog defaults); screenshots from an isolated editor (`tools/editor-shot.sh`): panel with minimap mid-stream, overlay in each of its four modes, kept in the evidence directory. |
@@ -901,7 +910,13 @@ Recorded while implementing (`terrain/t4-worlds`). The code is what holds; each 
 - **R26: S18's water fill on a World reads the world's own sample lattice** (samples at `s * spacing`) rather than texel centres, on the spline's
   Background job through a `TerrainWorldHeightReader` (the tiles in memory, the rest read from the source on the job), so the runtime may go
   while it runs. Conform still probes on the main thread as T1's query answers there.
-- **R27: T5's tree tools refuse a World.** Tree paint and erase, Mass Place Trees and `edit_terrain`'s foliage ops edit one Terrain's tree store and its one Tree Data file, while a World's trees are a `.jetrees` per tile; they refuse and say to place the trees on a Terrain and convert it. A tile's foliage starts when the tile draws (Resident, or in memory where nothing uploads, as R18's render readiness). T5's per-Terrain calls that name no position (`getTreeStore`, the runtime overlay's state string, `getPlacementHash`, `forEachResidentCell`, the tree hit handlers) see one tile's region on a World; the radius, ray, pose, add, clear and nav-obstacle queries cover every tile.
+- **R27: edit_terrain's foliage ops run tile by tile on a World.** Each op runs once per tile it reaches, on that
+  tile's own copy of its maps and trees in the tile's frame (so `count` without a shape is shared out over the tiles,
+  and each tile's scatter seed is mixed with its key), because T5's ops work on one centred square and its one tree
+  store. A scatter's spacing therefore reads only its own tile's trees: two trees either side of a border may stand
+  closer than it; the brush, which reads every tile within its spacing, does not. A World's tree ids in MCP
+  (`place_trees`, `remove_trees`, `pick_at`) are the tile and record in one integer under 2^53, as T5's 64-bit
+  TreeId does not fit JSON's numbers for every tile.
 - **R23: Physics Placement builds one static body per fine chunk in its own Jolt world** (`TerrainWorldCollision::chunkSamplesNow`, the
   collider's sampling and bit depth), for the chunks each context region reaches, never the whole World; `JoltShapeBuilder::buildHeightFieldShape`
   still refuses a World.

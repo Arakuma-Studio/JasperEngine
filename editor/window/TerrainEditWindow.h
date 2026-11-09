@@ -92,6 +92,8 @@ namespace jasperengine::editor{
         float placeMaxScale = 1.0f;
         float placeRotationJitter = 1.0f;
         float placeAlignToNormal = 0.0f;
+        // T5's Paint Trees brush: PlaceObject paints, EraseObject erases; placeAssetPath names the prototype by its model
+        bool trees = false;
     };
 
     struct ActiveStroke{

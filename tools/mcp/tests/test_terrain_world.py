@@ -385,11 +385,9 @@ async def test_convert_from_terrain_with_undo(ed: Editor):
     after = [p["height"] for p in (await ed.call("sample_terrain", scene=sid, entity=world, points=points))["samples"]]
     for point, was, now in zip(points, before, after):
         ed.check(abs(was - now) < 0.01, f"the World lies on the Terrain's surface at {point}: {was} then {now}")
-    # T4 R27: foliage on a World reports its tile regions; tree ops are refused with the way round
+    # T4 R27: foliage on a World reports its tile regions
     foliage = (await ed.call("sample_terrain", scene=sid, entity=world, foliage=True, grid=0))["foliage"]
     ed.check("regions" in foliage["totals"], f"a World's foliage counts its tile regions: {foliage['totals']}")
-    message = await ed.check_error("edit_terrain", scene=sid, entity=world, ops=[{"op": "place_trees", "prototype": 0, "points": [[0, 0]]}])
-    ed.check("from_terrain" in message, f"tree ops on a World name the fix: {message}")
 
     # undo: the World goes, the Terrain is back; the folder stays, so the next conversion picks another name
     await ed.call("undo", scene=sid)
@@ -399,6 +397,50 @@ async def test_convert_from_terrain_with_undo(ed: Editor):
     ed.check((folder / "manifest.yaml").is_file(), "an undone conversion leaves its folder")
     dry = await ed.call("edit_terrain_world", scene=sid, create={"from_terrain": terrain}, dry_run=True)
     ed.check_eq(dry["asset_path"].split("/")[-1], "Hills World 1.terrainworld", "the next conversion picks another name")
+
+
+PINE = "v -1 0 0\nv 1 0 0\nv 1 4 0\nv -1 4 0\nvn 0 0 1\nf 1//1 2//1 3//1\nf 1//1 3//1 4//1\n"
+
+
+async def test_trees_across_border_with_undo(ed: Editor):
+    """T4 R27: sculpt_terrain's tree brush on a World puts each tree in the tile under it, across a border, making
+    the tiles' tree files; one undo puts the folder back byte for byte. edit_terrain's place_trees and remove_trees
+    name a World's trees by ids that carry their tile."""
+    sid, world, _ = await new_world(ed, "Orchard")
+    folder = world_folder(ed, "Orchard")
+    (ed.project / "assets").mkdir(parents=True, exist_ok=True)
+    (ed.project / "assets" / "pine.obj").write_text(PINE)
+    await ed.call("set_properties", scene=sid, entity=world, values={"terrain": {"treePrototypes": [{"id": 3, "meshPath": "assets/pine.obj"}]}})
+    before = files(folder)
+
+    # z = 16 lies in tiles (-1, 0) and (0, 0), split by x = 0
+    out = await ed.call("sculpt_terrain", scene=sid, entity=world, strokes=[
+        {"mode": "paint_trees", "points": [[-12, 16], [-8, 16], [-4, 16], [0, 16], [4, 16], [8, 16], [12, 16]], "size": 8, "spacing": 0.5}])
+    ed.check(out["strokes"][0]["placed"] > 0, f"the brush placed trees: {out['strokes']}")
+    painted = files(folder)
+    ed.check({"tiles/-1_0.jetrees", "tiles/0_0.jetrees"} <= set(painted), f"both tiles got a tree file: {sorted(painted)}")
+    ed.check("tiles/0_-1.jetrees" not in painted, "a tile the brush did not reach has none")
+    await ed.call("undo", scene=sid)
+    ed.check_eq(await settled(folder, before), before, "one undo puts both tiles back, byte for byte")
+    await ed.call("redo", scene=sid)
+    ed.check_eq(await settled(folder, painted), painted, "redo writes the stroke's bytes again")
+    await ed.call("undo", scene=sid)
+    ed.check_eq(await settled(folder, before), before, "and undo again")
+
+    message = await ed.check_error("sculpt_terrain", scene=sid, entity=world, strokes=[{"mode": "paint_trees", "points": [[500, 500]], "size": 4}])
+    ed.check("need ground" in message, f"a stroke over no tile says why: {message}")
+
+    placed = await ed.call("edit_terrain", scene=sid, entity=world, space="local", ops=[
+        {"op": "place_trees", "prototype": 0, "points": [[-10, -10], [10, 10]]}])
+    ids = placed["ops"][0]["ids"]
+    ed.check_eq(len(ids), 2, f"one id a tree: {placed['ops'][0]}")
+    ed.check(len(set(ids)) == 2, f"ids of trees in two tiles differ: {ids}")
+    ed.check({"tiles/-1_-1.jetrees", "tiles/0_0.jetrees"} <= set(files(folder)), "each tree in its tile's file")
+    removed = await ed.call("edit_terrain", scene=sid, entity=world, ops=[{"op": "remove_trees", "ids": [ids[0]]}])
+    ed.check_eq(removed["ops"][0]["instances_removed"], 1, f"remove_trees takes a World id: {removed['ops'][0]}")
+    await ed.call("undo", scene=sid)
+    await ed.call("undo", scene=sid)
+    ed.check_eq(await settled(folder, before), before, "both edits undone")
 
 
 async def test_convert_refuses_rotated_terrain(ed: Editor):

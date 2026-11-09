@@ -33,6 +33,9 @@ namespace jasperengine::editor {
     bool removeTileFile(const std::filesystem::path& folder, terrain::TileCoord tile, std::string& error);
     // R32: a tile file's encoded bytes as they are (an import's swap, its undo), atomically
     bool writeTileBytes(const std::filesystem::path& folder, terrain::TileCoord tile, const std::string& bytes, std::string& error);
+    // R27: T5's tree file of a tile (tiles/x_z.jetrees), atomically, or removed
+    bool writeTreeBytes(const std::filesystem::path& folder, terrain::TileCoord tile, const std::string& bytes, std::string& error);
+    bool removeTreeFile(const std::filesystem::path& folder, terrain::TileCoord tile, std::string& error);
 
     // R40, R43: a new world folder: manifest and every listed tile at the base height, with the
     // macro colour of these layer colours (terrainWorldLayerColours) when given, as the runtime

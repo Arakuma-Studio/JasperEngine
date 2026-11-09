@@ -20,6 +20,7 @@
 #include "subsystem/FoliageSystem.h"
 #include "terrain/FoliageRules.h"
 #include "terrain/FoliageScatter.h"
+#include "terrainworld/TerrainWorldTrees.h"
 #include "util/ImpostorBaker.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
@@ -32,6 +33,7 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <map>
 
 using namespace jasperengine;
 using namespace jasperengine::terrain;
@@ -218,7 +220,25 @@ void editor::TerrainFoliagePanel::removePrototype(SceneProject* sceneProject, En
     // one undo step: the records go with their prototype
     CommandHistory* history = CommandHandle::get(sceneProject->id);
     const size_t start = history->mark();
-    if (std::shared_ptr<TreeStore> store = foliage->getTreeStore(entity)) {
+    if (terrain.world) {
+        // T4 R27: every tile's, those out of memory too
+        TerrainWorldTreeEdit edit(project, sceneProject->id, entity);
+        for (const terrain::TileCoord& tile : edit.presentTiles()) {
+            const TreeStore* store = edit.trees(tile);
+            if (!store) continue;
+            std::vector<uint32_t> removed;
+            for (const TreeRecord& record : store->records()) {
+                if (record.prototypeId == id) removed.push_back(record.id);
+            }
+            if (!removed.empty()) edit.apply(tile, removed, {});
+        }
+        std::string error;
+        if (!edit.commit("Erase Trees (" + sceneProject->scene->getEntityName(entity) + ")", &error)) {
+            history->groupSince(start, "Remove Tree Prototype");
+            bakeStatus = error;
+            return;
+        }
+    } else if (std::shared_ptr<TreeStore> store = foliage->getTreeStore(entity)) {
         std::vector<uint32_t> removed;
         for (const TreeRecord& record : store->records()) {
             if (record.prototypeId == id) removed.push_back(record.id);
@@ -289,8 +309,9 @@ void editor::TerrainFoliagePanel::drawPrototypeGrid(SceneProject* sceneProject, 
 
     // removing asks when instances exist
     if (removeIndex >= 0) {
-        uint64_t count = 0;
-        if (removeIndex < static_cast<int>(terrain.treePrototypes.size())) {
+        // a World's trees are in tiles out of memory too: it always asks
+        uint64_t count = terrain.world ? 1 : 0;
+        if (!terrain.world && removeIndex < static_cast<int>(terrain.treePrototypes.size())) {
             if (std::shared_ptr<TreeStore> store = foliage->getTreeStore(entity)) {
                 for (const TreeRecord& record : store->records()) {
                     if (record.prototypeId == terrain.treePrototypes[removeIndex].id) count++;
@@ -305,7 +326,7 @@ void editor::TerrainFoliagePanel::drawPrototypeGrid(SceneProject* sceneProject, 
         }
     }
     if (ImGui::BeginPopupModal("Remove Tree Prototype", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("This prototype has trees on the Terrain. Remove them with it?");
+        ImGui::TextUnformatted("Remove this prototype's trees on the Terrain with it?");
         if (ImGui::Button("Remove")) {
             removePrototype(sceneProject, entity, terrain, removeIndex);
             removeIndex = -1;
@@ -744,13 +765,6 @@ bool editor::TerrainFoliagePanel::drawTrees(SceneProject* sceneProject, Entity e
     update();
     drawPrototypeGrid(sceneProject, entity, terrain);
 
-    // T4 R27: a World draws its prototypes from each tile's own tree file, which these tools do not write
-    if (terrain.world) {
-        ImGui::TextWrapped("Trees can't be painted on a Terrain World: its trees are a file per tile, and these tools edit one Terrain's "
-                           "Tree Data. Place the trees on a Terrain, then Convert to Terrain World.");
-        return false;
-    }
-
     if (ImGui::BeginTable("##tree_rows", 2, ImGuiTableFlags_SizingStretchProp)) {
         rowLabel("Place As", "Tree: stored in the Terrain's tree data, with LODs, impostors and capsules. GameObject: a child of the Terrain, with its components.");
         int placeAs = placeAsTree ? 0 : 1;
@@ -785,6 +799,7 @@ bool editor::TerrainFoliagePanel::drawTrees(SceneProject* sceneProject, Entity e
         ImGui::EndTable();
     }
 
+    if (!strokeStatus.empty()) ImGui::TextWrapped("%s", strokeStatus.c_str());
     if (placeAsTree) {
         drawPrototypeFoldout(sceneProject, entity, terrain);
         drawMassPlace(sceneProject, entity, terrain);
@@ -842,26 +857,61 @@ bool editor::TerrainFoliagePanel::beginStroke(SceneProject* sceneProject, Entity
     strokeEraseSelectedOnly = shift && ctrl;
     random.seed(static_cast<uint32_t>(strokeId) * 2654435761u);
     pendingTrees = 0.0f;
+    strokeChanged = 0;
+    strokeGround = false;
+    strokeOverAbsent = false;
+    strokeStatus.clear();
+    worldStroke.reset();
+    strokeName = std::string(strokeErase ? "Erase Trees (" : "Paint Trees (") + sceneProject->scene->getEntityName(entity) + ")";
+    if (sceneProject->scene->getComponent<TerrainComponent>(entity).world) {
+        worldStroke = std::make_unique<TerrainWorldTreeEdit>(project, sceneProject->id, entity);
+        if (!worldStroke->runtime()) {
+            strokeStatus = worldStroke->error();
+            worldStroke.reset();
+            strokeActive = false;
+            return false;
+        }
+    }
     return stamp(sceneProject, entity, local, brushSize);
 }
 
 void editor::TerrainFoliagePanel::commitStamp(SceneProject* sceneProject, Entity entity, TreeDelta&& delta) {
     if (delta.removed.empty() && delta.added.empty()) return;
-    const std::string terrainName = sceneProject->scene->getEntityName(entity);
-    const std::string name = std::string(strokeErase ? "Erase Trees (" : "Paint Trees (") + terrainName + ")";
-    CommandHandle::get(sceneProject->id)->addCommand(new TreeEditCmd(project, sceneProject->id, entity, name, std::move(delta), strokeId));
+    strokeChanged += static_cast<int>(delta.removed.size() + delta.added.size());
+    CommandHandle::get(sceneProject->id)->addCommand(new TreeEditCmd(project, sceneProject->id, entity, strokeName, std::move(delta), strokeId));
+}
+
+TreeRecord editor::TerrainFoliagePanel::strokeTree(const TerrainTreePrototype& authored) {
+    std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+    TreeRecord record{};
+    const float tall = treeHeight * (1.0f + (unit(random) * 2.0f - 1.0f) * treeHeightRandom);
+    const float wide = lockWidthToHeight ? tall : treeWidth * (1.0f + (unit(random) * 2.0f - 1.0f) * treeWidthRandom);
+    record.scale = std::max(wide, 0.01f);
+    record.heightRatio = static_cast<uint8_t>(std::clamp(tall / record.scale * 128.0f + 0.5f, 1.0f, 255.0f));
+    float rotation[4];
+    const float up[3] = {0.0f, 1.0f, 0.0f};
+    foliageOrientation(randomRotation ? unit(random) : 0.0f, 0.0f, up, rotation);
+    foliageQuantizeRotation(rotation, record.rotation);
+    record.prototypeId = static_cast<uint16_t>(authored.id);
+    record.flags = TREE_SNAP_TO_TERRAIN | treeAlignFlags(normalAlignment);
+    const float tint = 1.0f - unit(random) * colorVariation;
+    const uint8_t shade = static_cast<uint8_t>(std::clamp(tint * 255.0f + 0.5f, 0.0f, 255.0f));
+    record.color[0] = record.color[1] = record.color[2] = shade;
+    record.color[3] = 255;
+    return record;
 }
 
 bool editor::TerrainFoliagePanel::stamp(SceneProject* sceneProject, Entity entity, const Vector3& local, float brushSize) {
     if (!strokeActive) return false;
     Scene* scene = sceneProject->scene;
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
+    if (worldStroke) return stampWorld(terrain, local, brushSize);
     FoliageSystem* foliage = scene->getSystem<FoliageSystem>().get();
     std::shared_ptr<TreeStore> store = foliage->getOrCreateTreeStore(entity);
     if (!store) return false;
     const float size = terrain.terrainSize;
-
     TreeDelta delta;
+
     if (strokeErase) {
         const uint32_t onlyId = (strokeEraseSelectedOnly && isReady(terrain)) ? terrain.treePrototypes[prototype].id : UINT32_MAX;
         const float radiusSquared = brushSize * brushSize;
@@ -880,7 +930,6 @@ bool editor::TerrainFoliagePanel::stamp(SceneProject* sceneProject, Entity entit
 
     if (!isReady(terrain)) return false;
     const TerrainTreePrototype& authored = terrain.treePrototypes[prototype];
-
     std::uniform_real_distribution<float> unit(0.0f, 1.0f);
     const float area = 3.14159265f * brushSize * brushSize;
     pendingTrees += std::max(treeDensity * area * 0.05f, 0.05f);
@@ -897,7 +946,6 @@ bool editor::TerrainFoliagePanel::stamp(SceneProject* sceneProject, Entity entit
         const float x = local.x + std::cos(angle) * radius;
         const float z = local.z + std::sin(angle) * radius;
         if (x < -half || x > half || z < -half || z > half) continue;
-
         bool close = false;
         if (spacing > 0.0f) {
             for (const TreeRecord& other : store->records()) {
@@ -915,27 +963,11 @@ bool editor::TerrainFoliagePanel::stamp(SceneProject* sceneProject, Entity entit
             }
         }
         if (close) continue;
-
         const SurfaceSample sample = querySurface(terrain, x, z);
         // R7: over a hole there is nothing to stand on
         if (sample.hole) continue;
-
-        TreeRecord record{};
+        TreeRecord record = strokeTree(authored);
         foliageSetTreeSurface(record, size, terrain.maxHeight, x, z, sample.height);
-        const float tall = treeHeight * (1.0f + (unit(random) * 2.0f - 1.0f) * treeHeightRandom);
-        const float wide = lockWidthToHeight ? tall : treeWidth * (1.0f + (unit(random) * 2.0f - 1.0f) * treeWidthRandom);
-        record.scale = std::max(wide, 0.01f);
-        record.heightRatio = static_cast<uint8_t>(std::clamp(tall / record.scale * 128.0f + 0.5f, 1.0f, 255.0f));
-        float rotation[4];
-        const float up[3] = {0.0f, 1.0f, 0.0f};
-        foliageOrientation(randomRotation ? unit(random) : 0.0f, 0.0f, up, rotation);
-        foliageQuantizeRotation(rotation, record.rotation);
-        record.prototypeId = static_cast<uint16_t>(authored.id);
-        record.flags = TREE_SNAP_TO_TERRAIN | treeAlignFlags(normalAlignment);
-        const float tint = 1.0f - unit(random) * colorVariation;
-        const uint8_t shade = static_cast<uint8_t>(std::clamp(tint * 255.0f + 0.5f, 0.0f, 255.0f));
-        record.color[0] = record.color[1] = record.color[2] = shade;
-        record.color[3] = 255;
         added.push_back(record);
     }
     if (added.empty()) return false;
@@ -944,30 +976,178 @@ bool editor::TerrainFoliagePanel::stamp(SceneProject* sceneProject, Entity entit
     return true;
 }
 
+// T4 R27: the same brush over a World's tiles, each tree in the tile under it, in that tile's frame
+bool editor::TerrainFoliagePanel::stampWorld(TerrainComponent& terrain, const Vector3& local, float brushSize) {
+    TerrainWorldTreeEdit& edit = *worldStroke;
+    const float size = edit.tileSize();
+    const std::vector<terrain::TileCoord> reached = edit.tilesIn(local.x - brushSize, local.z - brushSize, local.x + brushSize, local.z + brushSize);
+    if (reached.empty()) {
+        strokeOverAbsent = true;
+        return false;
+    }
+    strokeGround = true;
+
+    if (strokeErase) {
+        const uint32_t onlyId = (strokeEraseSelectedOnly && isReady(terrain)) ? terrain.treePrototypes[prototype].id : UINT32_MAX;
+        const float radiusSquared = brushSize * brushSize;
+        bool any = false;
+        for (const terrain::TileCoord& tile : reached) {
+            const TreeStore* store = edit.trees(tile);
+            if (!store) continue;
+            const Vector2 centre = edit.centre(tile);
+            std::vector<uint32_t> removed;
+            for (const TreeRecord& record : store->records()) {
+                if (onlyId != UINT32_MAX && record.prototypeId != onlyId) continue;
+                const float dx = foliageTreeLocalX(record, size) + centre.x - local.x;
+                const float dz = foliageTreeLocalZ(record, size) + centre.y - local.z;
+                if (dx * dx + dz * dz <= radiusSquared) removed.push_back(record.id);
+            }
+            if (!removed.empty() && edit.apply(tile, removed, {})) {
+                strokeChanged += static_cast<int>(removed.size());
+                any = true;
+            }
+        }
+        return any;
+    }
+
+    if (!isReady(terrain)) return false;
+    const TerrainTreePrototype& authored = terrain.treePrototypes[prototype];
+    std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+    const float area = 3.14159265f * brushSize * brushSize;
+    pendingTrees += std::max(treeDensity * area * 0.05f, 0.05f);
+    const int count = static_cast<int>(pendingTrees);
+    pendingTrees -= static_cast<float>(count);
+    if (count == 0) return false;
+
+    const float spacingSquared = spacing * spacing;
+    std::map<uint32_t, std::vector<TreeRecord>> added;
+    std::vector<Vector2> placed;    // this stamp's, entity-local
+    for (int i = 0; i < count; i++) {
+        const float angle = unit(random) * 6.28318530718f;
+        const float radius = std::sqrt(unit(random)) * brushSize;
+        const float x = local.x + std::cos(angle) * radius;
+        const float z = local.z + std::sin(angle) * radius;
+        const terrain::TileCoord tile = edit.tileAt(x, z);
+        // trees need ground: over an absent tile the stamp places nothing
+        if (!edit.present(tile)) {
+            strokeOverAbsent = true;
+            continue;
+        }
+        if (!edit.trees(tile)) continue;
+        bool close = false;
+        if (spacing > 0.0f) {
+            // the trees of every tile within spacing: a border lets no two trees closer
+            for (const terrain::TileCoord& nearby : edit.tilesIn(x - spacing, z - spacing, x + spacing, z + spacing)) {
+                const TreeStore* store = edit.trees(nearby);
+                if (!store) continue;
+                const Vector2 centre = edit.centre(nearby);
+                for (const TreeRecord& other : store->records()) {
+                    const float dx = foliageTreeLocalX(other, size) + centre.x - x;
+                    const float dz = foliageTreeLocalZ(other, size) + centre.y - z;
+                    if (dx * dx + dz * dz < spacingSquared) {
+                        close = true;
+                        break;
+                    }
+                }
+                if (close) break;
+            }
+            for (const Vector2& other : placed) {
+                if ((other.x - x) * (other.x - x) + (other.y - z) * (other.y - z) < spacingSquared) close = true;
+            }
+        }
+        if (close) continue;
+        const SurfaceSample sample = querySurface(terrain, x, z);
+        if (sample.hole || !sample.present) continue;
+        TreeRecord record = strokeTree(authored);
+        const Vector2 centre = edit.centre(tile);
+        foliageSetTreeSurface(record, size, edit.maxHeight(), x - centre.x, z - centre.y, sample.height);
+        added[tile.key()].push_back(record);
+        placed.push_back(Vector2(x, z));
+    }
+    bool any = false;
+    for (const auto& [key, records] : added) {
+        if (edit.apply(terrain::TileCoord::fromKey(key), {}, records)) {
+            strokeChanged += static_cast<int>(records.size());
+            any = true;
+        }
+    }
+    return any;
+}
+
 void editor::TerrainFoliagePanel::endStroke() {
     strokeActive = false;
+    if (!worldStroke) return;
+    std::unique_ptr<TerrainWorldTreeEdit> edit = std::move(worldStroke);
+    if (!strokeGround && strokeOverAbsent) strokeStatus = "Trees need ground: the stroke was over no tile of the Terrain World.";
+    std::string error;
+    if (!edit->commit(strokeName, &error)) strokeStatus = error;
+}
+
+void editor::TerrainFoliagePanel::cancelStroke() {
+    strokeActive = false;
+    if (worldStroke) worldStroke->revert();
+    worldStroke.reset();
+}
+
+bool editor::TerrainFoliagePanel::scriptedStroke(SceneProject* sceneProject, Entity entity, const std::vector<Vector3>& localPoints, float brushSize, bool erase,
+                                                 int prototypeIndex, float strokeSpacing, int& changed, std::string& error) {
+    changed = 0;
+    const TerrainComponent& terrain = sceneProject->scene->getComponent<TerrainComponent>(entity);
+    const bool known = prototypeIndex >= 0 && prototypeIndex < static_cast<int>(terrain.treePrototypes.size());
+    if (!erase && !known) {
+        error = "the Terrain has no such tree prototype to paint: add one with set_properties treePrototypes.";
+        return false;
+    }
+    if (localPoints.empty()) {
+        error = "A stroke needs at least one point.";
+        return false;
+    }
+    const int savedPrototype = prototype;
+    const float savedSpacing = spacing;
+    if (known) prototype = prototypeIndex;
+    spacing = std::max(strokeSpacing, 0.0f);
+    beginStroke(sceneProject, entity, localPoints[0], brushSize, false, erase);
+    for (size_t i = 1; i < localPoints.size(); i++) stamp(sceneProject, entity, localPoints[i], brushSize);
+    endStroke();
+    prototype = savedPrototype;
+    spacing = savedSpacing;
+    changed = strokeChanged;
+    if (!strokeStatus.empty() && changed == 0) {
+        error = strokeStatus;
+        return false;
+    }
+    return true;
 }
 
 bool editor::TerrainFoliagePanel::pickPrototype(SceneProject* sceneProject, Entity entity, const Vector3& local, float radius) {
     Scene* scene = sceneProject->scene;
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
     FoliageSystem* foliage = scene->getSystem<FoliageSystem>().get();
-    std::shared_ptr<TreeStore> store = foliage->getTreeStore(entity);
-    if (!store) return false;
     float best = radius * radius;
     int found = -1;
-    for (const TreeRecord& record : store->records()) {
-        const float dx = foliageTreeLocalX(record, terrain.terrainSize) - local.x;
-        const float dz = foliageTreeLocalZ(record, terrain.terrainSize) - local.z;
-        const float squared = dx * dx + dz * dz;
-        if (squared > best) continue;
-        for (int i = 0; i < static_cast<int>(terrain.treePrototypes.size()); i++) {
-            if (terrain.treePrototypes[i].id == record.prototypeId) {
-                best = squared;
-                found = i;
-                break;
+    const auto consider = [&](const TreeStore& store, float size, float centreX, float centreZ) {
+        for (const TreeRecord& record : store.records()) {
+            const float dx = foliageTreeLocalX(record, size) + centreX - local.x;
+            const float dz = foliageTreeLocalZ(record, size) + centreZ - local.z;
+            const float squared = dx * dx + dz * dz;
+            if (squared > best) continue;
+            for (int i = 0; i < static_cast<int>(terrain.treePrototypes.size()); i++) {
+                if (terrain.treePrototypes[i].id == record.prototypeId) {
+                    best = squared;
+                    found = i;
+                    break;
+                }
             }
         }
+    };
+    if (terrain.world) {
+        // T4 R27: the tiles round the point, each in its own frame
+        TerrainWorldTreeEdit edit(project, sceneProject->id, entity);
+        for (const terrain::TileCoord& tile : edit.tilesIn(local.x - radius, local.z - radius, local.x + radius, local.z + radius)) {
+            if (const TreeStore* store = edit.trees(tile)) consider(*store, edit.tileSize(), edit.centre(tile).x, edit.centre(tile).y);
+        }
+    } else if (std::shared_ptr<TreeStore> store = foliage->getTreeStore(entity)) {
+        consider(*store, terrain.terrainSize, 0.0f, 0.0f);
     }
     if (found < 0) return false;
     prototype = found;

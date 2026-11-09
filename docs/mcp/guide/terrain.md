@@ -115,7 +115,8 @@ instances per square unit, `cast_shadows: false` for grass, a short `draw_distan
 ## Trees
 
 **Trees** are stored one by one in the tree data, with LODs, impostors, capsules and a stable id. Add a
-prototype with `set_properties` on `treePrototypes` (`{id, meshPath}`). Project settings:
+prototype with `set_properties` on `treePrototypes` (`{id, meshPath}`). The Paint Trees brush is `sculpt_terrain`
+`paint_trees` / `erase_trees` (`asset`: the prototype's model, else the first; `size`, `spacing`). Project settings:
 `quality.foliage_quality_*` and `quality.foliage_distance_*` (`desktop`, `mobile`, `web`).
 
 ## The Terrain window
@@ -261,7 +262,9 @@ GameObjects.
   metres a side; `dry_run` gives the tile count and memory first.
 - A Terrain into a World: `edit_terrain_world {create: {from_terrain: <entity>}}`. Tiles and spacing come from the
   Terrain (`tile_quads`, `spacing` override them); the Terrain stays, inactive. `dry_run` shows the plan.
-- Trees on a World: place them on a Terrain first, then convert it; `edit_terrain`'s foliage ops refuse a World.
+- Trees on a World: `sculpt_terrain` `paint_trees` / `erase_trees` and `edit_terrain`'s foliage ops with the World
+  as `entity`; each tree goes to the tile under it, a stroke or op over no tile places nothing (trees need ground).
+  A World's tree `ids` carry their tile: pass them back as `place_trees` and `pick_at` give them.
 - Heights, paint and holes across tiles: `edit_terrain` or `sculpt_terrain` with the World as `entity`. A
   stroke past the last tile makes the tile it reaches; one undo removes it.
 - More land, or less: ops `add_tiles` / `remove_tiles` with `tiles: [[x, z], ...]`.

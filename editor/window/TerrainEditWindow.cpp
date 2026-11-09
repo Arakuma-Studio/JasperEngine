@@ -1276,6 +1276,10 @@ bool editor::TerrainEditWindow::strokeCancelled(){
         }
         sceneProject->isModified = stroke.wasModified;
     }
+    // a World's tree stroke changed its tiles' stores in place, with no command yet (T4 R27)
+    if (stroke.treeStroke){
+        foliagePanel->cancelStroke();
+    }
     stroke = ActiveStroke();
     return true;
 }
@@ -3617,6 +3621,34 @@ bool editor::TerrainEditWindow::scriptedStroke(uint32_t sceneId, Entity entity, 
 
     // A mouse stroke in progress ends first, so its undo step stays its own
     endStroke();
+
+    // T5's tree brush, as Paint Trees with Place As: Tree; on a Terrain World across its tiles (T4 R27)
+    if (brush.trees){
+        const TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
+        int prototypeIndex = terrain.treePrototypes.empty() ? -1 : 0;
+        if (!brush.placeAssetPath.empty()){
+            prototypeIndex = -1;
+            const std::string stem = fs::path(brush.placeAssetPath).stem().string();
+            for (size_t i = 0; i < terrain.treePrototypes.size(); i++){
+                if (fs::path(terrain.treePrototypes[i].meshPath.str()).stem().string() == stem){
+                    prototypeIndex = static_cast<int>(i);
+                }
+            }
+            if (prototypeIndex < 0){
+                error = "This Terrain has no tree prototype \"" + stem + "\": add it with set_properties treePrototypes.";
+                return false;
+            }
+        }
+        float minSize = MIN_BRUSH_SIZE, maxSize = MAX_BRUSH_SIZE;
+        brushSizeLimits(terrain, minSize, maxSize);
+        int changed = 0;
+        const bool ok = foliagePanel->scriptedStroke(sceneProject, entity, localPoints, std::clamp(brush.size, minSize, maxSize),
+                                                     brush.mode == TerrainBrushMode::EraseObject, prototypeIndex, brush.placeSpacing, changed, error);
+        if (placed){
+            *placed = changed;
+        }
+        return ok;
+    }
 
     // The window's state, put back afterwards: a scripted stroke does not change the tool settings
     const uint32_t savedSceneId = selectedSceneId;
