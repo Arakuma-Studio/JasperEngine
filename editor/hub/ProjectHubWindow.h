@@ -102,6 +102,8 @@ namespace jasperengine::editor {
         std::vector<hub::ProjectTemplate> templateList;
         bool templatesLoaded = false;
         std::string selectedTemplate = "3d";
+        int pixelArtBase = 1;   // S42 R21: the Base Resolution of a pixel-art template (320 x 180); past the list: Custom
+        int customBaseWidth = 320, customBaseHeight = 180;
         std::array<char, 128> projectName{};
         std::array<char, 512> location{};
         std::string createMessage;

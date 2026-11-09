@@ -16,7 +16,13 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
-startSceneId: 881594344
+startSceneId: 2321920697
+mesh:
+  animationEntities: auto
+audio:
+  mixer: audio/Main.mixer
+  outputStage: linear
+  iosSessionCategory: ambient
 scenes:
   - filepath: Main.scene
-    filepathGuid: 2b99a72e2e4e04577919276fa9922450
+    filepathGuid: b09eb1eb310c06648080003c5fd5aff4

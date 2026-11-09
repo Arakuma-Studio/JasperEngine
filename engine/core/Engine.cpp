@@ -140,6 +140,7 @@ Rect Engine::viewRect;
 
 Scaling Engine::scalingMode = Scaling::FITWIDTH;
 int Engine::pixelsPerUnit = 1;
+TextureFilter Engine::defaultTextureFilter = TextureFilter::LINEAR;
 PixelPerfectViewRequest Engine::pixelPerfectRequest;
 pixelart::PixelPerfectLayout Engine::pixelPerfectLayout;
 int Engine::pixelPerfectForcedScale = 0;
@@ -605,6 +606,15 @@ void Engine::setPixelsPerUnit(int pixelsPerUnit){
 
 int Engine::getPixelsPerUnit(){
     return pixelsPerUnit;
+}
+
+void Engine::setDefaultTextureFilter(TextureFilter filter){
+    // a mipmap filter as the default would ask every unmipmapped texture for levels it lacks
+    Engine::defaultTextureFilter = filter == TextureFilter::NEAREST ? TextureFilter::NEAREST : TextureFilter::LINEAR;
+}
+
+TextureFilter Engine::getDefaultTextureFilter(){
+    return defaultTextureFilter;
 }
 
 void Engine::setPixelPerfectView(const PixelPerfectViewRequest& request){

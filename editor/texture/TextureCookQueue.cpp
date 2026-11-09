@@ -15,8 +15,11 @@
 #include "texture/CookedTextures.h"
 #include "util/AssetDatabase.h"
 
+#include "stb_image.h"
+
 #include <algorithm>
 #include <cctype>
+#include <unordered_set>
 #include <chrono>
 #include <condition_variable>
 #include <thread>
@@ -127,6 +130,61 @@ bool editor::gatherTextureInputs(Project& project, const std::string& assetPath,
     if (!out.hasSettings)
         out.settings = cookInferredSettings(out.inference);
     return true;
+}
+
+bool editor::looksLikePixelArt(const fs::path& absolute, const std::string& assetPath){
+    static const std::set<std::string> folders = {"sprites", "sprite", "tiles", "tileset", "tilesets", "pixelart", "pixel-art", "pixel_art"};
+    for (const fs::path& part : fs::path(assetPath).parent_path()){
+        std::string name = part.generic_string();
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        if (folders.count(name))
+            return true;
+    }
+    int width = 0, height = 0, channels = 0;
+    if (!stbi_info(absolute.string().c_str(), &width, &height, &channels) || width > 512 || height > 512)
+        return false;
+    unsigned char* pixels = stbi_load(absolute.string().c_str(), &width, &height, &channels, 4);
+    if (!pixels)
+        return false;
+    std::unordered_set<uint32_t> colors;
+    const size_t count = (size_t)width * (size_t)height;
+    bool few = true;
+    for (size_t i = 0; i < count && few; i++){
+        const unsigned char* p = pixels + i * 4;
+        if (p[3] == 0)
+            continue;
+        colors.insert((uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24));
+        few = colors.size() <= 256;
+    }
+    stbi_image_free(pixels);
+    return few;
+}
+
+bool editor::writeImportSettingsNow(Project& project, const std::string& assetPath){
+    if (!isCookableTexture(assetPath))
+        return false;
+    TextureCookInputs inputs;
+    if (!gatherTextureInputs(project, assetPath, inputs) || inputs.hasSettings)
+        return false;
+    std::error_code ec;
+    if (!fs::exists(SetAssetMetaCmd::metaPathOf(inputs.absolute), ec))
+        return false;
+    // Pixel Art Mode (S42 R1), written once with the type: turning the mode off later changes no file
+    const TextureInference& inference = inputs.inference;
+    if (project.getPixelArtSettings().enabled && inference.shape == TextureShape::Tex2D){
+        const bool unreferenced = inference.type == TextureImportType::Default && inference.uses.empty() && !inference.linear;
+        if (inference.type == TextureImportType::Sprite || inference.type == TextureImportType::UI){
+            inputs.settings.pixelArt = true;
+        }else if (unreferenced && looksLikePixelArt(inputs.absolute, assetPath)){
+            inputs.settings.pixelArt = true;
+            inputs.settings.type = TextureImportType::Sprite;
+            inputs.settings.inferredFrom = inference.reason + " (Pixel Art Mode)";
+        }
+    }
+    // not a step of the history: the settings the texture always had, written down (R30)
+    SetAssetMetaCmd command(&project, project.normalizeToProjectRelative(inputs.absolute), TextureImportSettings::metaKey,
+                            inputs.settings.serialize());
+    return command.execute();
 }
 
 TextureCookRequest editor::makeTextureCookRequest(const TextureCookInputs& inputs, const TextureProjectSettings& project, TextureFamily family){

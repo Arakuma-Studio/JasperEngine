@@ -2490,6 +2490,109 @@ std::vector<Setting> mcpSettingsTable() {
         add(pathSetting("palettes.default", "The Default Palette: the .palette used where none is named (apply_palette, Snap to "
                         "Palette, new pixel art).", [](Project& p) -> fs::path& { return p.getDefaultPalette(); }));
 
+        // ---- Project Settings > Pixel Art (S42 §6.2): Pixel Art Mode, its checks and defaults
+        {
+            // a copy edited and set back, so the mode's hooks follow every change
+            auto pixelArtBool = [](const std::string& key, const std::string& description, bool pixelart::PixelArtSettings::*member) {
+                return boolSetting(key, description, [member](Project& p) { return p.getPixelArtSettings().*member; },
+                                   [member](Project& p, bool v) {
+                                       pixelart::PixelArtSettings settings = p.getPixelArtSettings();
+                                       settings.*member = v;
+                                       p.setPixelArtSettings(settings);
+                                   });
+            };
+            add(pixelArtBool("pixel_art.enabled", "Pixel Art Mode: sprite images added while on import as pixel art, new 2D scenes get a Pixel Perfect "
+                             "Camera, the validator runs on import and at Play. Changes no other setting (check_pixel_art's "
+                             "pixel_art_mode fix applies the preset).", &pixelart::PixelArtSettings::enabled));
+            add(pixelArtBool("pixel_art.check_on_import", "With Pixel Art Mode on, the validator runs after textures import and logs one "
+                             "Console line when it finds problems.", &pixelart::PixelArtSettings::checkOnImport));
+            add(pixelArtBool("pixel_art.check_on_play", "With Pixel Art Mode on, the validator runs at Play start and logs one Console line "
+                             "when it finds problems.", &pixelart::PixelArtSettings::checkOnPlay));
+            auto pixelArtList = [](const std::string& key, const std::string& description,
+                                   std::vector<std::string> pixelart::PixelArtSettings::*member,
+                                   std::function<std::string(const std::string&)> valid) {
+                Setting s;
+                s.key = key;
+                s.type = "list";
+                s.description = description;
+                s.get = [member](SettingsContext& ctx) {
+                    Json list = Json::array();
+                    for (const std::string& item : ctx.project()->getPixelArtSettings().*member) list.push_back(item);
+                    return list;
+                };
+                s.set = [member, valid](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    if (!value.is_array()) {
+                        error = "must be a list of strings";
+                        return false;
+                    }
+                    std::vector<std::string> items;
+                    for (const Json& item : value) {
+                        std::string text;
+                        if (!readString(item, text, error, 64)) return false;
+                        const std::string why = valid(text);
+                        if (!why.empty()) {
+                            error = "\"" + text + "\" " + why;
+                            return false;
+                        }
+                        items.push_back(text);
+                    }
+                    if (apply) {
+                        pixelart::PixelArtSettings settings = ctx.project()->getPixelArtSettings();
+                        settings.*member = items;
+                        ctx.project()->setPixelArtSettings(settings);
+                    }
+                    return true;
+                };
+                return s;
+            };
+            add(pixelArtList("pixel_art.check_screens", "The screen sizes the validator lays each scene out on (\"WxH\").",
+                             &pixelart::PixelArtSettings::checkScreens, [](const std::string& text) {
+                                 pixelart::PixelArtScreen screen;
+                                 return pixelart::parsePixelArtScreen(text, screen) ? std::string() : std::string("is not WxH (1...16384 each)");
+                             }));
+            add(pixelArtList("pixel_art.backdrops", "The project's pixel-art backdrops (\"#rrggbb\": the first dark, the second light).",
+                             &pixelart::PixelArtSettings::backdrops, [](const std::string& text) {
+                                 return pixelart::isPixelArtBackdrop(text) ? std::string() : std::string("is not #rrggbb");
+                             }));
+            Setting upscale;
+            upscale.key = "pixel_art.upscale_mode";
+            upscale.type = "enum";
+            upscale.values = {"integer", "integer_expand", "stretch_fill"};
+            upscale.description = "The Upscale Mode a new Pixel Perfect Camera gets (Pixel Art Mode's new 2D scenes, the preset).";
+            upscale.get = [](SettingsContext& ctx) { return Json(pixelart::pixelUpscaleModeName(ctx.project()->getPixelArtSettings().upscaleMode)); };
+            upscale.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                PixelUpscaleMode mode;
+                if (!value.is_string() || !pixelart::pixelUpscaleModeFromName(value.get<std::string>(), mode)) {
+                    error = "must be one of integer, integer_expand, stretch_fill";
+                    return false;
+                }
+                if (apply) {
+                    pixelart::PixelArtSettings settings = ctx.project()->getPixelArtSettings();
+                    settings.upscaleMode = mode;
+                    ctx.project()->setPixelArtSettings(settings);
+                }
+                return true;
+            };
+            add(upscale);
+            Setting filter;
+            filter.key = "graphics.default_filter_mode";
+            filter.type = "enum";
+            filter.values = {"bilinear", "point"};
+            filter.description = "The filter every Texture a game makes at runtime starts with (Lua Sprite:setTexture), and what a "
+                                 "reference starts with when a texture without its own Filter Mode is assigned. Saved references keep theirs.";
+            filter.get = [](SettingsContext& ctx) { return Json(textureFilterModeName(ctx.project()->getDefaultFilterMode())); };
+            filter.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                TextureFilterMode mode;
+                if (!value.is_string() || !textureFilterModeFromName(value.get<std::string>(), mode) || mode == TextureFilterMode::Trilinear) {
+                    error = "must be bilinear or point";
+                    return false;
+                }
+                if (apply) ctx.project()->setDefaultFilterMode(mode);
+                return true;
+            };
+            add(filter);
+        }
+
         // ---- input (S22, and Unity's Input Manager absorbed from the older Project Settings > Input)
         {
             // the asset path; an older editor's list of Input Manager actions (or "defaults") set
@@ -3629,8 +3732,8 @@ const Placement placements[] = {
     {"android.allow_backup", "Player", "Android", "Application Options", "android allow backup"},
     {"android.fullscreen", "Player", "Android", "Screen Options", "android fullscreen"},
     {"sprite_atlas.mode", "2D", "Sprite Atlas", "Mode", "sprite atlas packer pages enabled for builds"},
-    {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution"},
-    {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution"},
+    {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution base resolution pixel art"},
+    {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution base resolution pixel art"},
     {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch integer pixel perfect"},
     {"graphics.pixels_per_unit", "Graphics", "", "Pixels Per Unit", "pixel art ppu sprite tilemap"},
     {"graphics.ui_scale", "Graphics", "", "UI Scale", "canvas scaler ui scaling reference resolution match width height constant pixel physical size dpi"},
@@ -3696,6 +3799,14 @@ const Placement placements[] = {
     {"input.manager_actions", "Input", "Input Manager", "Input Manager", "input manager virtual axes buttons horizontal vertical jump fire gravity sensitivity unity"},
     // Project Settings > Pixel Art (S43 R4b; S42's Pixel Art page joins it)
     {"palettes.default", "Pixel Art", "", "Default Palette", "palette colours colors swatches snap lospec apply palette sweetie pico"},
+    // S42's own rows
+    {"pixel_art.enabled", "Pixel Art", "", "Pixel Art Mode", "pixel art mode crisp point filter nearest lossless"},
+    {"pixel_art.upscale_mode", "Pixel Art", "", "Upscale Mode", "pixel perfect camera integer letterbox expand stretch"},
+    {"graphics.default_filter_mode", "Graphics", "", "Default Filter Mode", "filter point nearest bilinear crisp blurry pixel art"},
+    {"pixel_art.check_on_import", "Pixel Art", "Validation", "Check on Import", "validator check pixel art import"},
+    {"pixel_art.check_on_play", "Pixel Art", "Validation", "Check on Play", "validator check pixel art play"},
+    {"pixel_art.check_screens", "Pixel Art", "Validation", "Check Screens", "screens resolutions integer scale validator"},
+    {"pixel_art.backdrops", "Pixel Art", "", "Backdrops", "backdrop background dark light contact sheet"},
     // Project Settings > Audio
     {"audio.mixer", "Audio", "", "Audio Mixer", "mixer groups master bus sound music"},
     {"audio.default_output_group", "Audio", "", "Default Output Group", "mixer group master output audio source"},
@@ -4086,6 +4197,12 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         [](SettingsContext&) {
             return InputActions::isLoaded() ? Json(InputActions::getOverridesKey()) : Json(nullptr);
         }, "Players' rebinding is kept per asset in the user settings; Reset clears the editor's copy, which Play uses."));
+    // S42 R18: the preset's button (the Pixel Art page shows the Graphics rows a pixel-art project
+    // sets, graphics.canvas_*, pixels_per_unit and default_filter_mode, under their own keys)
+    addOrAbort(registry, uiRow("pixel_art.apply_preset", "Pixel Art", "", "Apply Pixel Art Preset", "preset convert pixel art one click",
+        [](SettingsContext&) { return Json(nullptr); },
+        "Previews and applies the Pixel Art preset: base resolution, integer scaling, Point filtering, Pixel Perfect Cameras and "
+        "lossless textures, as one undo step."));
     addOrAbort(registry, uiRow("mesh.clear_cache", "Mesh", "Cache", "Mesh Cache", "clear cooked models cache size audit",
         [](SettingsContext& ctx) {
             ModelCookQueue& cooks = ModelCookQueue::get();

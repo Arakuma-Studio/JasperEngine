@@ -13,6 +13,9 @@
 #include "imgui_internal.h"
 #include "texture/TextureCookReport.h"
 #include "texture/TextureDecode.h"
+#include "pixelart/PixelArtAssign.h"
+#include "pixelart/PixelArtFix.h"
+#include "Out.h"
 
 #include "stb_image_resize2.h"
 
@@ -88,6 +91,8 @@ namespace {
                 if (c == '_') c = ' ';
             if (!label.empty())
                 label[0] = (char)std::toupper((unsigned char)label[0]);
+            if (name == "nearest")
+                label = "Nearest (Point)";
             labels.push_back(label);
         }
         return labels;
@@ -319,6 +324,58 @@ void TextureImporterView::drawGeneral(const ResolvedTextureSettings& r){
     const std::vector<std::string>& types = textureEnumValues("type");
     comboField("Texture Type", "type", types, importerTypeLabels(), textureImportTypeName(r.type),
                "What the texture is: it picks the format, the colour space and the mip chain.");
+    // S42 R4, R7, R20: Pixel Art and what an assignment copies
+    const TextureImportSettings settings = workingSettings();
+    boolField("Pixel Art", "pixelArt", settings.resolvedPixelArt(),
+              "Point filtering, no mipmaps, lossless on every platform, Nearest resizing and binary alpha (Alpha Clip) for "
+              "the fields left at their defaults.");
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Presets");
+    ImGui::TableSetColumnIndex(1);
+    if (ImGui::SmallButton("Presets##TexturePresets"))
+        ImGui::OpenPopup("##TextureImportPresets");
+    if (ImGui::BeginPopup("##TextureImportPresets")){
+        if (ImGui::MenuItem("Pixel Art")){
+            // the switch on, and the fields that would contradict it cleared (one undo step at Apply)
+            setWorking("pixelArt", YAML::Node(true));
+            for (const char* key : {"mipmaps", "mipFilter", "resizeFilter", "quality", "streamable", "alphaIsTransparency", "alphaClip", "filterMode"})
+                setWorking(key, YAML::Node());
+            for (size_t f = 0; f < kTextureFamilyCount; f++){
+                const std::string prefix = std::string("platforms.") + textureFamilyName((TextureFamily)f) + ".";
+                setWorking(prefix + "format", YAML::Node());
+                setWorking(prefix + "quality", YAML::Node());
+            }
+        }
+        ImGui::EndPopup();
+    }
+    comboField("Filter Mode", "filterMode", textureEnumValues("filterMode"), {"Point (no filter)", "Bilinear", "Trilinear"},
+               textureFilterModeName(settings.resolvedFilterMode(project->getDefaultFilterMode())),
+               "What a reference to this texture starts with when you assign it (the reference keeps its own afterwards).");
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Pixels Per Unit");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("What a Sprite or Tilemap takes when this texture is assigned (the project's: %d).", project->getPixelsPerUnit());
+    ImGui::TableSetColumnIndex(1);
+    ImGui::SetNextItemWidth(-1);
+    int ppu = settings.resolvedPixelsPerUnit(project->getPixelsPerUnit());
+    if (ImGui::InputInt("##pixelsPerUnit", &ppu, 0))
+        setWorking("pixelsPerUnit", YAML::Node(std::clamp(ppu, 1, 256)));
+    boolField("Alpha Clip", "alphaClip", r.alphaClip, "Alpha becomes fully opaque at the cutoff and above, fully transparent below.");
+    if (r.alphaClip && !r.preserveCoverage){
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Alpha Cutoff");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        float cutoff = r.alphaCutoff;
+        if (ImGui::SliderFloat("##alphaClipCutoff", &cutoff, 0.0f, 1.0f, "%.2f"))
+            setWorking("alphaCutoff", YAML::Node(cutoff));
+    }
     comboField("Texture Shape", "shape", textureEnumValues("shape"), {"2D", "Cube"}, textureShapeName(r.shape),
                "Cube: one file with the six faces as a 4:3 or 3:4 cross (skyboxes, reflection probes).");
     boolField("sRGB (Color Texture)", "srgb", r.srgb, "Off for data (masks, roughness, normals): sampled linearly.");
@@ -646,7 +703,10 @@ void TextureImporterView::drawPreview(const TextureCookState* state){
     const float avail = ImGui::GetContentRegionAvail().x;
     if (previewWidth > 0 && previewHeight > 0){
         if (TextureRender* render = previewTexture.getRender()){
-            const float scale = std::min(avail / previewWidth, 256.0f / previewHeight);
+            float scale = std::min(avail / previewWidth, 256.0f / previewHeight);
+            // pixel art (S42 R20): whole-number zoom with nearest sampling, or 1x
+            if (workingSettings().resolvedPixelArt() && scale >= 1.0f)
+                scale = previewOneX ? 1.0f : std::floor(scale);
             const ImVec2 size(previewWidth * scale, previewHeight * scale);
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (avail - size.x) * 0.5f);
             ImGui::Image(Backend::getImGuiTexture(render), size);
@@ -664,6 +724,14 @@ void TextureImporterView::drawPreview(const TextureCookState* state){
         if (ImGui::SmallButton(channelNames[c]))
             showChannel[c] = !showChannel[c];
         if (on) ImGui::PopStyleColor();
+    }
+    if (workingSettings().resolvedPixelArt()){
+        ImGui::SameLine();
+        if (previewOneX) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        if (ImGui::SmallButton("1x"))
+            previewOneX = !previewOneX;
+        if (previewOneX) ImGui::PopStyleColor();
+        ImGui::SetItemTooltip("One texel per screen pixel");
     }
     ImGui::SameLine();
     const int levels = state && state->status == TextureCookStatus::Cooked ? std::max(1, state->record.levels) : 1;
@@ -758,6 +826,7 @@ bool TextureImporterView::draw(const std::vector<fs::path>& selection){
         if (state.status == TextureCookStatus::Failed)
             ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.35f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " %s", state.error.c_str());
     }
+    drawPixelArtNotes(settings);
 
     ImGui::Separator();
     drawPlatformTable();
@@ -776,4 +845,59 @@ bool TextureImporterView::draw(const std::vector<fs::path>& selection){
         apply();
     ImGui::EndDisabled();
     return true;
+}
+
+void TextureImporterView::drawPixelArtNotes(const TextureImportSettings& settings){
+    if (assetPaths.size() != 1)
+        return;
+    const ImVec4 warning(1.0f, 0.75f, 0.3f, 1.0f);
+    if (settings.resolvedPixelArt()){
+        const TextureProjectSettings projectSettings = textureProjectSettingsOf(*project);
+        std::string lossy;
+        for (size_t f = 0; f < kTextureFamilyCount; f++){
+            const ResolvedTextureSettings r = settings.resolve((TextureFamily)f, projectSettings);
+            const bool block = r.quality != TextureCookQuality::None || (!r.format.empty() && r.format != "RGBA8");
+            if (block || r.mipmaps)
+                lossy += std::string(lossy.empty() ? "" : ", ") + textureFamilyLabel((TextureFamily)f);
+        }
+        if (!lossy.empty())
+            ImGui::TextColored(warning, ICON_FA_TRIANGLE_EXCLAMATION " mipmaps_compression: this pixel-art texture is compressed or "
+                               "mipmapped on %s (an override wins over Pixel Art): colours shift and edges smear.", lossy.c_str());
+        if (previewWidth * previewHeight > 2048 * 2048 || (source.width > 2048 && source.height > 2048))
+            ImGui::TextColored(warning, ICON_FA_TRIANGLE_EXCLAMATION " Over 2048x2048 and uncompressed (4 bytes a texel): a sheet this "
+                               "big is better split (a Sprite Atlas packs the parts).");
+    }
+    // only where a Filter Mode is meant: a pixel-art texture, one whose Filter Mode is set, or a
+    // Pixel Art Mode project (elsewhere references choose their own filters)
+    TextureImportSettings stored;
+    TextureImportSettings::load((project->getAssetsPath() / fs::path(assetPaths[0])).string(), stored);
+    if (!stored.resolvedPixelArt() && !stored.filterMode && !project->getPixelArtSettings().enabled){
+        referenceCount = 0;
+        return;
+    }
+    // the open scenes' references, read again twice a second rather than every frame
+    const double now = ImGui::GetTime();
+    if (referenceChangesPath != assetPaths[0] || now - referenceChangesAt > 0.5){
+        referenceCount = pixelart::referenceFilterChanges(*project, assetPaths[0]).size();
+        referenceChangesPath = assetPaths[0];
+        referenceChangesAt = now;
+    }
+    if (referenceCount > 0){
+        const size_t count = referenceCount;
+        const std::string label = "Apply to " + std::to_string(count) + " Reference" + (count == 1 ? "" : "s");
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%zu reference(s) in the open scenes are not filtered as this Filter Mode.", count);
+        ImGui::PopStyleColor();
+        if (ImGui::SmallButton(label.c_str())){
+            // what the references are now, not the cached list
+            const std::vector<pixelart::FixChange> changes = pixelart::referenceFilterChanges(*project, assetPaths[0]);
+            pixelart::FixApplyReport report;
+            std::string error;
+            if (!changes.empty() &&
+                !pixelart::applyChanges(*project, changes, "Apply Filter Mode to " + std::to_string(changes.size()) + " References", report,
+                                        error, nullptr))
+                Out::warning("Apply to References: %s", error.c_str());
+            referenceChangesAt = -1.0;
+        }
+    }
 }

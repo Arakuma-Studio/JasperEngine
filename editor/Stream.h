@@ -290,6 +290,11 @@ namespace jasperengine::editor {
         static bool hasTexturePath(const Texture& texture);
         static YAML::Node encodeTexture(const Texture& texture, bool embedData = true);
         static Texture decodeTexture(const YAML::Node& node);
+        // A new reference as saved data has it: Bilinear whatever the engine's Default Filter Mode,
+        // which is only for the textures a game makes at runtime (S42 R3); decoding, comparing with
+        // defaults and clearing use this, so playing never changes what a scene reads or writes
+        static Texture savedTexture();
+        static Texture savedTexture(const std::string& path);
 
         // shader library textures (by @texture uniform) and features of a material or component
         static YAML::Node encodeShaderTextures(const std::vector<std::pair<std::string, Texture>>& textures, bool embedData);

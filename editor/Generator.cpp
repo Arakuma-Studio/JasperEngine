@@ -2555,6 +2555,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     }
     if (pixelsPerUnit != 1)
         mainContent += "    Engine::setPixelsPerUnit(" + std::to_string(pixelsPerUnit) + ");\n";
+    // Graphics > Default Filter Mode (S42 R3): runtime-made textures of a pixel-art game are crisp
+    if (defaultFilterPoint)
+        mainContent += "    Engine::setDefaultTextureFilter(TextureFilter::NEAREST);\n";
 
     // the Canvas Scaler's project default (absent: Follow Game Canvas, the engine default)
     if (uiScale != CanvasScalerSettings())

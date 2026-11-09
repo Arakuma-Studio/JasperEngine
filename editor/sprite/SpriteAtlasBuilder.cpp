@@ -573,11 +573,13 @@ namespace jasperengine::editor::sprite {
                 const TextureSheetInfo sheetInfo = textureSheetSettings(member.absolute);
                 TextureImportSettings settings;
                 const bool stored = TextureImportSettings::load(member.absolute.string(), settings);
-                member.pixelArt = sheetInfo.isSheet() || (stored && settings.quality && *settings.quality == TextureCookQuality::None);
+                member.pixelArt = sheetInfo.isSheet() || (stored && settings.quality && *settings.quality == TextureCookQuality::None) ||
+                                  (stored && settings.resolvedPixelArt());
             }
             out.members.push_back(std::move(member));
         }
-        bool pixelArt = false;
+        // R16: Auto is lossless in Pixel Art Mode (S42) too
+        bool pixelArt = project.getPixelArtSettings().enabled;
         for (const AtlasMemberInput& m : out.members) pixelArt = pixelArt || m.pixelArt;
         const std::string& compression = doc.settings.compression;
         out.compression = compression == "lossless" || (compression == "auto" && pixelArt) ? "lossless" : "platform_default";

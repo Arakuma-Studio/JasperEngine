@@ -310,6 +310,7 @@ JASPERENGINE_INIT void init() {
     Engine::setCanvasSize(game.canvasWidth, game.canvasHeight);
     Engine::setScalingMode(game.scaling);
     Engine::setPixelsPerUnit(game.pixelsPerUnit);
+    if (game.defaultFilterPoint) Engine::setDefaultTextureFilter(TextureFilter::NEAREST);
     Engine::setTextureStrategy(game.textureStrategy);
     Engine::setAtmosphereQualityDefaults(game.atmosphereQuality[0], game.atmosphereQuality[1], game.atmosphereQuality[2]);
     Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);

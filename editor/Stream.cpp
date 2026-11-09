@@ -1559,9 +1559,23 @@ namespace {
     }
 }
 
+Texture editor::Stream::savedTexture() {
+    Texture texture;
+    texture.setMinFilter(TextureFilter::LINEAR);
+    texture.setMagFilter(TextureFilter::LINEAR);
+    return texture;
+}
+
+Texture editor::Stream::savedTexture(const std::string& path) {
+    Texture texture(path);
+    texture.setMinFilter(TextureFilter::LINEAR);
+    texture.setMagFilter(TextureFilter::LINEAR);
+    return texture;
+}
+
 Texture editor::Stream::decodeTexture(const YAML::Node& node) {
     StreamLoad::checkNestedKeys(node, NestedKind::Texture);
-    Texture texture;
+    Texture texture = savedTexture();
     if (node.IsMap()) { // Check if node has data
         const std::string textureType = node["textureType"] ? node["textureType"].as<std::string>() : std::string();
         const std::string source = node["source"] ? node["source"].as<std::string>() : std::string();
@@ -2662,6 +2676,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         palettes["default"] = project->getDefaultPalette().generic_string();
         root["palettes"] = palettes;
     }
+    // Project Settings > Pixel Art (S42), omitted at its defaults
+    if (const YAML::Node pixelArt = pixelart::encodePixelArtSettings(project->getPixelArtSettings()); pixelArt.size() > 0)
+        root["pixelArt"] = pixelArt;
     // Project Settings > Input, omitted at its defaults
     if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
         YAML::Node input;
@@ -2730,6 +2747,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // graphics.pixelsPerUnit (S41), only away from 1
         if (project->getPixelsPerUnit() != Project::defaultPixelsPerUnit)
             graphics["pixelsPerUnit"] = project->getPixelsPerUnit();
+        // graphics.defaultFilterMode (S42), only when Point
+        if (project->getDefaultFilterMode() != TextureFilterMode::Bilinear)
+            graphics["defaultFilterMode"] = textureFilterModeName(project->getDefaultFilterMode());
         if (graphics.size() > 0)
             root["graphics"] = graphics;
     }
@@ -3465,6 +3485,24 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (graphics && graphics.IsMap() && graphics["pixelsPerUnit"] && graphics["pixelsPerUnit"].IsScalar())
             pixelsPerUnit = YamlNumbers::as<int>(graphics["pixelsPerUnit"]);
         project->setPixelsPerUnit(pixelsPerUnit);
+        // graphics.defaultFilterMode (S42): absent or not point is Bilinear
+        TextureFilterMode filterMode = TextureFilterMode::Bilinear;
+        if (graphics && graphics.IsMap() && graphics["defaultFilterMode"] && graphics["defaultFilterMode"].IsScalar()) {
+            TextureFilterMode parsed;
+            if (textureFilterModeFromName(graphics["defaultFilterMode"].Scalar(), parsed) && parsed != TextureFilterMode::Trilinear)
+                filterMode = parsed;
+            else
+                StreamLoad::unknownEnumValue(graphics["defaultFilterMode"], "DefaultFilterMode", {"bilinear", "point"});
+        }
+        project->setDefaultFilterMode(filterMode);
+    }
+    // Project Settings > Pixel Art (S42): absent is every default
+    {
+        const YAML::Node pixelArt = node["pixelArt"];
+        pixelart::PixelArtSettings settings;
+        if (pixelArt.IsDefined())
+            pixelart::decodePixelArtSettings(pixelArt, settings);
+        project->setPixelArtSettings(settings);
     }
     // graphics.lightMode: absent or unknown is Automatic
     {
@@ -5662,7 +5700,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
 
     // Not merged: encodeMaterial omits an empty texture, so an absent key means none
     auto texture = [&node](const char* name) {
-        return node[name] ? decodeTexture(node[name]) : Texture();
+        return node[name] ? decodeTexture(node[name]) : savedTexture();
     };
     material.baseColorTexture = texture("baseColorTexture");
     material.emissiveTexture = texture("emissiveTexture");

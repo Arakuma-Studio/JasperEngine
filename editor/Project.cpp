@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "pixelart/PixelArtMode.h"
 #include "Project.h"
 #include "util/ScriptPropertyCache.h"
 #include "util/ProjectChecks.h"
@@ -1813,6 +1814,15 @@ void editor::Project::setPixelsPerUnit(int pixelsPerUnit){
 
 int editor::Project::getPixelsPerUnit() const{
     return pixelsPerUnit;
+}
+
+void editor::Project::setPixelArtSettings(const pixelart::PixelArtSettings& settings){
+    pixelArtSettings = settings;
+    pixelart::PixelArtMode::get().projectSettingsChanged(this);
+}
+
+void editor::Project::setDefaultFilterMode(TextureFilterMode mode){
+    defaultFilterMode = mode == TextureFilterMode::Point ? TextureFilterMode::Point : TextureFilterMode::Bilinear;
 }
 
 bool editor::Project::isValidHtmlUiGlyphAtlasMiB(int mib){
@@ -3949,6 +3959,12 @@ uint32_t editor::Project::createNewSceneInternal(std::string sceneName, SceneTyp
     } else if (data.sceneType == SceneType::SCENE_2D) {
         data.scene->setLightState(LightState::OFF);
         data.scene->setBackgroundColor(Vector4(0.231, 0.298, 0.475, 1.0));
+        // Pixel Art Mode (S42 R1): a new 2D scene draws through a Pixel Perfect Camera
+        if (pixelArtSettings.enabled) {
+            pixelart::PixelArtMode::setupNewScene(*this, data.id);
+            clearSelectedEntities(data.id);
+            getScene(data.id)->isModified = false;
+        }
     } else if (data.sceneType == SceneType::SCENE_UI) {
         data.scene->setLightState(LightState::OFF);
         data.scene->setBackgroundColor(Vector4(0.525, 0.525, 0.525, 1.0));
@@ -3976,6 +3992,46 @@ editor::SceneProject* editor::Project::createRuntimeCloneFromSource(const SceneP
 
     YAML::Node sceneNode = DocumentFiles::read(fullPath, DocumentKind::Scene).root;
     return createRuntimeCloneFromNode(source, sceneNode);
+}
+
+editor::SceneProject* editor::Project::loadSceneProbe(uint32_t sceneId) {
+    SceneProject* source = getScene(sceneId);
+    if (!source || source->scene || source->filepath.empty()) {
+        return nullptr;
+    }
+    try {
+        return createRuntimeCloneFromSource(source);
+    } catch (const std::exception& e) {
+        Out::warning("Scene '%s' could not be read: %s", source->name.c_str(), e.what());
+        return nullptr;
+    }
+}
+
+editor::SceneProject* editor::Project::loadSceneFileProbe(const fs::path& file) {
+    SceneProject source;
+    source.filepath = file;
+    source.name = file.stem().string();
+    source.id = allocateSceneId();
+    if (source.id == NULL_PROJECT_SCENE) {
+        return nullptr;
+    }
+    try {
+        return createRuntimeCloneFromSource(&source);
+    } catch (const std::exception& e) {
+        Out::warning("Scene file '%s' could not be read: %s", file.generic_string().c_str(), e.what());
+        return nullptr;
+    }
+}
+
+void editor::Project::releaseSceneProbe(SceneProject* probe) {
+    if (!probe) {
+        return;
+    }
+    const uint32_t sceneId = probe->id;
+    deleteSceneProject(probe);
+    delete probe;
+    // forget the prefab instances the probe registered
+    cleanupPrefabsForScene(sceneId);
 }
 
 editor::SceneProject* editor::Project::createRuntimeCloneFromNode(const SceneProject* source, const YAML::Node& sceneNode) {
@@ -6126,6 +6182,7 @@ void editor::Project::deleteSceneProject(SceneProject* sceneProject){
 
 void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setScalingMode(Scaling::NATIVE);
+    Engine::setDefaultTextureFilter(TextureFilter::LINEAR);
     // edit-mode scenes on the project default resolve it through the Engine
     Engine::setDefaultCanvasScaler(uiScale);
     Engine::setTextureStrategy(textureStrategy);
@@ -6737,6 +6794,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
                                    const std::map<uint32_t, std::set<ShaderKey>>& playShaderKeys) {
     bool saveMainOnStop = false;
     bool keepMainModified = false;
+    // before the snapshots are decoded: textures made from here on are edit-mode ones (S42 R3)
+    Engine::setDefaultTextureFilter(TextureFilter::LINEAR);
 
     for (const auto& entry : runtimeScenes) {
         SceneProject* sceneProject = runtimeOf(entry);
@@ -8176,6 +8235,7 @@ void editor::Project::configureGenerator() {
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
     generator.setPixelsPerUnit(pixelsPerUnit);
+    generator.setDefaultFilterPoint(defaultFilterMode == TextureFilterMode::Point);
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
 }
 
@@ -10374,6 +10434,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
     generator.setPixelsPerUnit(pixelsPerUnit);
+    generator.setDefaultFilterPoint(defaultFilterMode == TextureFilterMode::Point);
     generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
@@ -10583,6 +10644,9 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 Engine::setCanvasSize(canvasWidth, canvasHeight);
                 Engine::setScalingMode(scalingMode);
                 Engine::setPixelsPerUnit(pixelsPerUnit);
+                // runtime-made textures of the game start with the Default Filter Mode (S42 R3);
+                // edit mode keeps Bilinear: assignments copy their filters explicitly (R7)
+                Engine::setDefaultTextureFilter(textureFilterModeEngineFilter(defaultFilterMode));
                 Engine::setDefaultCanvasScaler(uiScale);
                 Engine::setTextureStrategy(textureStrategy);
                 Engine::systemViewChanged();

@@ -1,0 +1,894 @@
+formatVersion: 8
+guid: 4246c0e0ea95b1d90e0bfaa86da216b4
+id: 382528969
+name: Main
+scene:
+  backgroundColor: [0.231, 0.298, 0.475, 1]
+  shadowQuality: auto
+  meshLodEnabled: true
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: off
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  litQuality: high
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+  postProcessing:
+    fxaaEnabled: true
+sceneType: scene_2d
+mainCamera: 1001
+shaderKeys:
+  - type: mesh
+    properties: 3075
+  - type: mesh
+    properties: 35184372091907
+  - type: ui
+    properties: 2
+  - type: ui
+    properties: 8
+  - type: ui
+    properties: 9
+  - type: ui
+    properties: 34
+  - type: ui
+    properties: 40
+  - type: ui
+    properties: 41
+  - type: blit
+  - type: blit
+    properties: 1
+  - type: blit
+    properties: 4096
+  - type: particles
+    properties: 8
+  - type: particles
+    properties: 520
+  - type: particles
+    properties: 2056
+  - type: particles
+    properties: 2568
+  - type: particles
+    properties: 8
+    customShader: library:particles#BLEND_ALPHA
+  - type: particles
+    properties: 520
+    customShader: library:particles#BLEND_ALPHA
+  - type: particles
+    properties: 2056
+    customShader: library:particles#BLEND_ALPHA
+  - type: particles
+    properties: 2568
+    customShader: library:particles#BLEND_ALPHA
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,PALETTE_SWAP
+  - type: mesh
+    properties: 35184372091907
+    customShader: library:sprite#BLEND_ALPHA,PALETTE_SWAP
+entities:
+  - type: Entity
+    entity: 1001
+    name: Main Camera
+    components:
+      transform:
+        position: [0, 0, 1]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      camera:
+        enabled: true
+        type: camera_ortho
+        cullingMask: 4294967295
+        target: [0, 0, 0]
+        up: [0, 1, 0]
+        yfov: 0.75
+        nearClip: -10
+        farClip: 10
+        renderToTexture: false
+        transparentSort: false
+        depthTest: false
+        useTarget: false
+        autoResize: true
+        framebufferWidth: 512
+        framebufferHeight: 512
+        framebufferFilter: linear
+      pixelperfectcamera:
+        enabled: true
+  - type: Entity
+    entity: 1002
+    name: Hero
+    components:
+      transform:
+        position: [2, 2, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: sprites/hero.png
+                guid: e093f6e8ed4c8d7e6a9745d4649ace79
+                minFilter: nearest
+                magFilter: nearest
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            faceCulling: false
+            textureShadow: true
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 16
+        height: 16
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_left
+  - type: Entity
+    entity: 1003
+    name: Bilinear
+    components:
+      transform:
+        position: [4, 2, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: sprites/hero.png
+                guid: e093f6e8ed4c8d7e6a9745d4649ace79
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            faceCulling: false
+            textureShadow: true
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 16
+        height: 16
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_left
+  - type: Entity
+    entity: 1004
+    name: Compressed
+    components:
+      transform:
+        position: [6, 2, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: sprites/lossy.png
+                guid: 76201b97e6846d92abf8f8a045fd6705
+                minFilter: nearest
+                magFilter: nearest
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            faceCulling: false
+            textureShadow: true
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_left
+  - type: Entity
+    entity: 1005
+    name: Scaled
+    components:
+      transform:
+        position: [10, 4, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1.5, 1.5, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: sprites/hero.png
+                guid: e093f6e8ed4c8d7e6a9745d4649ace79
+                minFilter: nearest
+                magFilter: nearest
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            faceCulling: false
+            textureShadow: true
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 16
+        height: 16
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_left
+  - type: Entity
+    entity: 1006
+    name: PPU32
+    components:
+      transform:
+        position: [12, 4, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: sprites/hero.png
+                guid: e093f6e8ed4c8d7e6a9745d4649ace79
+                minFilter: nearest
+                magFilter: nearest
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            faceCulling: false
+            textureShadow: true
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 16
+        height: 16
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_left
+        pixelsPerUnit: 32
+  - type: Entity
+    entity: 1007
+    name: OffGrid
+    components:
+      transform:
+        position: [10.3, 6, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: sprites/hero.png
+                guid: e093f6e8ed4c8d7e6a9745d4649ace79
+                minFilter: nearest
+                magFilter: nearest
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            faceCulling: false
+            textureShadow: true
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 16
+        height: 16
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_left
+  - type: Entity
+    entity: 1008
+    name: Rotated
+    components:
+      transform:
+        position: [14, 6, 0]
+        rotation: [0.94832367, 0, 0, 0.31730464]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: sprites/hero.png
+                guid: e093f6e8ed4c8d7e6a9745d4649ace79
+                minFilter: nearest
+                magFilter: nearest
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            faceCulling: false
+            textureShadow: true
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 16
+        height: 16
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_left
+  - type: Entity
+    entity: 1009
+    name: OffPalette
+    components:
+      transform:
+        position: [16, 6, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: sprites/offpalette.png
+                guid: cd01940abe8586f86c4c35d6b42f11fa
+                minFilter: nearest
+                magFilter: nearest
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            faceCulling: false
+            textureShadow: true
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 16
+        height: 16
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_left
+  - type: Entity
+    entity: 1010
+    name: Swap
+    components:
+      transform:
+        position: [16, 8, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: sprites/swap.png
+                guid: da61f196ccf6cc9887d777196ea3b9e4
+                minFilter: nearest
+                magFilter: nearest
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite
+              shaderFeatures: [PALETTE_SWAP]
+              shaderPalettes:
+                u_palette:
+                  source: palettes/game.palette
+                  sourceGuid: 8ab29e1a7b82feceb89b506ca0b594d7
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            faceCulling: false
+            textureShadow: true
+            overrideFields: 589824
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_left
+  - type: Entity
+    entity: 1011
+    name: Label
+    components:
+      transform:
+        position: [2, 8, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 30
+        aabb:
+          min: [1, 2.333333, 0]
+          max: [41, 13.333333, 0]
+        texture: ~
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: true
+        pointerMoved: false
+        focused: false
+      recttransform:
+        width: 41
+        height: 16
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 2
+        anchorOffsetTop: 8
+        anchorOffsetRight: 43
+        anchorOffsetBottom: 24
+        positionOffset: [0, 0]
+        pivot: [0, 0]
+        anchorPreset: NONE
+        usingAnchors: false
+        panel: 0
+        containerBoxIndex: -1
+        ignoreScissor: false
+        ignoreEvents: false
+      text:
+        font: []
+        text: HELLO
+        fontSize: 16
+        multiline: true
+        maxTextSize: 100
+        fixedWidth: false
+        fixedHeight: false
+        pivotBaseline: false
+        pivotCentered: false
+  - type: Entity
+    entity: 1012
+    name: Sparks
+    components:
+      transform:
+        position: [8, 8, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      particlesystem:
+        enabled: true
+        inlineEffect: "{\n  \"version\": 1,\n  \"duration\": 3.75,\n  \"simulationSpace\": \"world\",\n  \"tickRate\": 60,\n  \"maxParticles\": 300,\n  \"scalingMode\": \"shape\",\n  \"modules\": [\n    {\n      \"type\": \"main\",\n      \"startLifetime\": {\n        \"mode\": \"twoConstants\",\n        \"constant\": 0.3,\n        \"constantMax\": 0.8\n      },\n      \"startSpeed\": 0.0,\n      \"startSize\": {\n        \"mode\": \"twoConstants\",\n        \"constant\": 2.0,\n        \"constantMax\": 4.0\n      }\n    },\n    {\n      \"type\": \"emission\",\n      \"rateOverTime\": 80.0,\n      \"maxPerTick\": 100\n    },\n    {\n      \"type\": \"shape\",\n      \"shape\": \"sphere\",\n      \"radius\": 2.0\n    },\n    {\n      \"type\": \"startVelocity\",\n      \"min\": [\n        -120.0,\n        60.0,\n        0.0\n      ],\n      \"max\": [\n        120.0,\n        200.0,\n        0.0\n      ]\n    },\n    {\n      \"type\": \"forceOverLifetime\",\n      \"y\": -392.0\n    },\n    {\n      \"type\": \"colorOverLifetime\",\n      \"color\": {\n        \"mode\": \"gradient\",\n        \"gradient\": {\n          \"colorKeys\": [\n            [\n              0.0,\n              1.0,\n              1.0,\n              0.8\n            ],\n            [\n              0.5,\n              1.0,\n              0.75,\n              0.2\n            ],\n            [\n              1.0,\n              1.0,\n              0.3,\n              0.05\n            ]\n          ],\n          \"alphaKeys\": []\n        }\n      },\n      \"setMode\": true\n    },\n    {\n      \"type\": \"setOverAge\",\n      \"entries\": [\n        {\n          \"property\": \"alpha\",\n          \"toTime\": 0.8,\n          \"from\": [\n            1.0,\n            0.0,\n            0.0,\n            0.0\n          ]\n        }\n      ]\n    },\n    {\n      \"type\": \"renderer\",\n      \"renderMode\": \"stretchedBillboard\",\n      \"depthWrite\": true,\n      \"sortMode\": \"byDistance\",\n      \"maxScreenSize\": 10.0\n    }\n  ]\n}\n"
+        playOnAwake: true
+        seed: 0
+        playbackSpeed: 1
