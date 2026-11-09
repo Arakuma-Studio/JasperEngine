@@ -276,6 +276,13 @@ void TitleGlyphAtlas::freePage(int index){
 bool TitleGlyphAtlas::allocate(int width, int height, const std::set<std::string>& inUse, int& page, TitleRectI& rect, bool& full,
                                std::string& error){
     full = false;
+    if (width + CELL_GUTTER > pageSide || height + CELL_GUTTER > pageSide){
+        // more pages cannot hold it, so no page is made for it and R29's sentence would mislead
+        error = "a glyph cell of " + std::to_string(width) + " x " + std::to_string(height) + " px does not fit an atlas page of " +
+                std::to_string(pageSide) + ". Raise Atlas Page Size, lower Resolution Scale, or shorten what reaches past the glyphs (glows, shadows).";
+        full = true;
+        return false;
+    }
     for (size_t p = 0; p < pages.size(); p++){
         if (place(pages[p], width, height, rect)){
             page = (int)p;
@@ -285,11 +292,7 @@ bool TitleGlyphAtlas::allocate(int width, int height, const std::set<std::string
     if ((int)pages.size() < pageLimit){
         if (!newPage(error)) return false;
         page = (int)pages.size() - 1;
-        if (place(pages.back(), width, height, rect)) return true;
-        error = "a glyph cell of " + std::to_string(width) + " x " + std::to_string(height) + " px does not fit a page of " +
-                std::to_string(pageSide);
-        full = true;
-        return false;
+        return place(pages.back(), width, height, rect);
     }
     // R29: the least recently used page that no wanted or shown string needs is freed
     int victim = -1;
@@ -1273,8 +1276,9 @@ namespace {
                     }
                     if (full){
                         const std::string name = spec.label.rfind("TitleArt/", 0) == 0 ? spec.label.substr(9) : spec.label;
-                        fail("Title Art '" + name + "': the glyph atlas is full (" + std::to_string(atlas->maxPages()) + " pages of " +
-                             std::to_string(atlas->pageSize()) + "). Raise Max Pages, lower Resolution Scale, or reduce the Characters.");
+                        // `error` when the cell is wider than a page: R29's sentence is about the page count
+                        fail("Title Art '" + name + "': " + (!error.empty() ? error : "the glyph atlas is full (" + std::to_string(atlas->maxPages()) + " pages of " +
+                             std::to_string(atlas->pageSize()) + "). Raise Max Pages, lower Resolution Scale, or reduce the Characters."));
                     }else{
                         fail(error);
                     }

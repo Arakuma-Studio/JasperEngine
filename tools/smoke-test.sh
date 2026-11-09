@@ -30,6 +30,8 @@
 # SMOKE_METHOD=build builds as the editor's Build does with Method Compile (jasperengine-editor build
 # --method compile): only the engine modules the project needs (S34), unlike compile's source export.
 # A smoke-export-expect.txt lists lines that build's generated CMakeLists.txt must hold (build only),
+# a smoke-build-expect.txt lines only that build's game logs (a source export and a prebuilt player
+# keep every module, so the same game does not log them),
 # and a smoke-golden.json ({"image", "tolerance", "max_fraction"}) an image the game's own frame
 # (SMOKE_PLAY=1) must match (tools/ci/smoke_golden.py; tools/fixtures/title3d-fixed: a Realtime 3D
 # title drawn from its cooked mesh in a build without the mesher, against the editor's frame).
@@ -298,6 +300,13 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
                 grep -aqF -- "$line" game.log || { echo "FAIL: the game did not log: $line"; tail -20 game.log; exit 1; }
             done < project/smoke-expect.txt
             echo "ok: the game logged project/smoke-expect.txt"
+        fi
+        if [[ "$SMOKE_METHOD" == build && -f project/smoke-build-expect.txt ]]; then
+            while IFS= read -r line; do
+                [[ -z "$line" || "$line" == "#"* ]] && continue
+                grep -aqF -- "$line" game.log || { echo "FAIL: the game did not log: $line"; tail -20 game.log; exit 1; }
+            done < project/smoke-build-expect.txt
+            echo "ok: the game logged project/smoke-build-expect.txt"
         fi
         # smoke-golden.json: the own frame of the game against an image (tools/ci/smoke_golden.py)
         if [[ -f project/smoke-golden.json ]]; then

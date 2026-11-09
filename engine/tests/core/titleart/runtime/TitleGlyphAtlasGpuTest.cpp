@@ -16,7 +16,9 @@
 //   back renders as Realtime;
 // - per-character scale, rotation and face materials, and a text layer's opacity and multiply
 //   blend, match the merged render;
-// - cells keep only their reach (ten 150 px digits fit one 1,024 page);
+// - cells keep only their reach (ten 150 px digits fit one 1,024 page), and a cell's face only its
+//   ink: a layer's wide glow goes to the back part alone, so a size 220 title with Light Glow's
+//   default 200 px radius fits 1,024 pages; a cell wider than a page says so and how to fix it;
 // - a prebaked atlas (R32: snapshot, files, restore) serves a new title's first value with no
 //   cell render, where the same title without it renders its cells.
 // Tolerance of a glyph-safe look against the merged render (cells render at the string's
@@ -63,7 +65,8 @@ namespace {
     }
 
     // a counter: a text layer the exposed `text` drives, over a plate, under a frame line
-    std::shared_ptr<const TitleArtDoc> counterDoc(double size, double tracking = 0.0, Json extra = Json::object(), bool plates = true) {
+    std::shared_ptr<const TitleArtDoc> counterDoc(double size, double tracking = 0.0, Json extra = Json::object(), bool plates = true,
+                                                  int canvasWidth = 720, int canvasHeight = 220) {
         Json text{{"id", TEXT_LAYER}, {"type", "text"}, {"name", "Score"}, {"text", "1,234,567"}, {"font", fontRef(SOURCE_SANS)},
                   {"size", size}, {"tracking", tracking}, {"align", "start"},
                   {"style", {{"face", solidFace("#ffd040")}, {"rims", Json::array({rimOf("00000101", 6, "#802000")})}}}};
@@ -73,7 +76,7 @@ namespace {
         layers.push_back(text);
         if (plates) layers.push_back(shapeLayer("00000003", "rect", 24, solidFace("#ffffff"), {{"aspect", 20.0}, {"transform", {{"position", {0, -70}}}}}));
         Json root{{"format", TITLE_ART_FORMAT}, {"version", TITLE_ART_VERSION}, {"guid", "0123456789abcdef0123456789abcdef"}};
-        root["canvas"] = canvas(720, 220);
+        root["canvas"] = canvas(canvasWidth, canvasHeight);
         root["layers"] = layers;
         root["exposed"] = Json::array({Json{{"name", "text"}, {"type", "text"}, {"targets", Json::array({Json{{"layer", TEXT_LAYER}, {"field", "text"}}})}}});
         TitleArtParseResult parsed = parseTitleArtJson(std::move(root));
@@ -305,6 +308,68 @@ TEST_F(TitleGlyphAtlasGpu, AtlasGrowsEvictsAndSaysWhenFull) {
                                         "Scale, or reduce the Characters."),
               std::string::npos)
         << full->status().error;
+}
+
+TEST_F(TitleGlyphAtlasGpu, ACellsFaceKeepsItsInkNotTheLayersGlow) {
+    // the Title Designer's reference look: size 220, a rim, Light Glow at its default 200 px radius, a drop shadow
+    const Json effects = Json::array({Json{{"id", "0000d001"}, {"type", "light_glow"}, {"params", Json::object()}},
+                                      Json{{"id", "0000d002"}, {"type", "drop_shadow"}, {"params", Json::object()}}});
+    auto doc = counterDoc(220, 0, {{"effects", effects}}, false, 1920, 1080);
+
+    auto wide = glyphLive(doc);
+    wide->setState(state(2048, 4), stateHash("JACKPOT"), textOverride("JACKPOT"));
+    runFrames(*wide, factory(), 4000);
+    ASSERT_FALSE(wide->status().failed) << wide->status().error;
+    TitleGlyphAtlasSnapshot snapshot;
+    std::string error;
+    ASSERT_TRUE(wide->glyphAtlas()->snapshot(snapshot, error)) << error;
+    int cells = 0;
+    for (const Json& cell : snapshot.manifest["cells"]) {
+        if (cell["blank"].get<bool>()) continue;
+        cells++;
+        const int backWidth = cell["back"][2], backHeight = cell["back"][3], frontWidth = cell["front"][2], frontHeight = cell["front"][3];
+        std::printf("[glyph atlas] cell %s: back %d x %d, front %d x %d, page %d\n", cell["key"].get<std::string>().c_str(), backWidth, backHeight,
+                    frontWidth, frontHeight, cell["page"].get<int>());
+        // the glow's 200 px on each side belong to the back part; the face is its glyph and the rim
+        EXPECT_LE(frontWidth, backWidth - 300) << cell.dump();
+        EXPECT_LE(frontHeight, backHeight - 300) << cell.dump();
+        EXPECT_LE(backWidth + 1 + frontWidth, 1024) << "a cell must fit the default page: " << cell.dump();
+    }
+    EXPECT_EQ(cells, 7);
+
+    // one cell a 1,024 page, seven pages: the default four say R29's sentence, Max Pages 8 is enough
+    auto four = glyphLive(doc);
+    four->setState(state(1024, 4), stateHash("JACKPOT"), textOverride("JACKPOT"));
+    runFrames(*four, factory(), 4000);
+    EXPECT_TRUE(four->status().failed);
+    EXPECT_NE(four->status().error.find("the glyph atlas is full (4 pages of 1024). Raise Max Pages"), std::string::npos) << four->status().error;
+    auto eight = glyphLive(doc);
+    eight->setState(state(1024, 8), stateHash("JACKPOT"), textOverride("JACKPOT"));
+    runFrames(*eight, factory(), 4000);
+    ASSERT_FALSE(eight->status().failed) << eight->status().error;
+    ASSERT_TRUE(eight->front().valid());
+
+    // a cell wider than a page: more pages cannot help, and the error says what can
+    auto small = glyphLive(doc);
+    small->setState(state(512, 8), stateHash("JACKPOT"), textOverride("JACKPOT"));
+    runFrames(*small, factory(), 4000);
+    EXPECT_TRUE(small->status().failed);
+    EXPECT_NE(small->status().error.find("does not fit an atlas page of 512"), std::string::npos) << small->status().error;
+    EXPECT_NE(small->status().error.find("Raise Atlas Page Size"), std::string::npos) << small->status().error;
+    EXPECT_EQ(small->status().error.find("Raise Max Pages"), std::string::npos) << small->status().error;
+    EXPECT_EQ(small->glyphAtlas()->pageCount(), 0) << "no page is made for a cell no page can hold";
+
+    // the face cropped to its ink loses nothing: one glyph (no neighbours to overlap) against Realtime
+    const std::string letter = "A";
+    auto single = glyphLive(doc);
+    single->setState(state(2048, 4), stateHash(letter), textOverride(letter));
+    runFrames(*single, factory(), 4000);
+    ASSERT_TRUE(single->front().valid()) << single->status().error;
+    const Pixels glyph = frontPixels(*single);
+    const Pixels merged = realtimeAt(doc, letter, *single->glyphAtlas(), 220);
+    expectWithin(glyph, merged, "a wide glow, one glyph");
+    // the tolerance above is diluted by this canvas: a face clipped to 87 x 113 px still meets it (measured: max 209, 93 uncut)
+    EXPECT_LT(compare(glyph, merged).max, 150.0) << "the face lost pixels to its crop";
 }
 
 TEST_F(TitleGlyphAtlasGpu, WarpIsSkippedAndFallbacksRenderAsRealtime) {
