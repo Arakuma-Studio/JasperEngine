@@ -127,6 +127,25 @@ Limits (larger files fail with `too_large` instead of exhausting memory): canvas
 65,535 frames, 1 GiB of decoded pixels, 64 MiB of palettes (frame 0's and one per change), groups
 nested 128 deep.
 
+## Agents drawing on your sprites
+
+An agent connected through MCP can draw on the same `.aseprite` file you have open in Aseprite
+(`create_sprite`, `read_sprite_pixels`, `edit_sprite`, `render_sprite`, `diff_sprite`, group
+`sprites`; the agent guide is `jasper://docs/sprites`). There is no painting canvas in the editor:
+Aseprite stays the tool for people.
+
+- Each agent batch is one step of the project's undo history, named after the agent ("Claude Code:
+  Edit Sprite (hero.aseprite: line, fill ×2)"). Ctrl+Z undoes it.
+- **Window > 2D > Sprite Preview** shows every stroke as it lands: the changed pixels are outlined
+  for 3 seconds (**Preferences > Pixel Art > Highlight Agent Edits**), and a line above the canvas
+  says who edited it and when, with **Undo** while that step is the newest.
+- The Aseprite Importer in the Inspector shows "Last edited by ..." while this editor remembers it.
+- **Reopen a file in Aseprite after an agent has edited it.** Aseprite keeps its own copy in memory
+  and does not reload: if you save it there, your save wins and the agent's newer edits are gone
+  from the file. The Console then warns which agent steps were overwritten, those steps can no
+  longer be undone (greyed in the Undo History, with the reason in their tooltip), and the agent's
+  next edit is told to read the file again.
+
 ## What is verified
 
 The codec's tests (`editor/tests/pixelart/`) render every frame of the fixture corpus
