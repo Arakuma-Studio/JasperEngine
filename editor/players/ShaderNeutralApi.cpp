@@ -35,7 +35,7 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"MinMaxGradient", 0xd41b5db4u},
         {"Ease", 0x9897fd4eu},
         {"LayerMask", 0xc0bc567fu},
-        {"Input", 0x42affea3u},
+        {"Input", 0xf69d1bb9u},
         {"InputActionEvent", 0x0f075b4cu},
         {"InputBinding", 0xca780f92u},
         {"InputAction", 0x82b8c81bu},
@@ -82,7 +82,7 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"GridCell", 0xa297eb80u},
         {"NavigationSystem", 0x0b2f5764u},
         {"NavMeshAgent", 0x882d33eau},
-        {"NavMeshSurface", 0x1a7f7cc4u},
+        {"NavMeshSurface", 0x10e29c7fu},
         {"NavAreaOverride", 0x29479b88u},
         {"NavGrid", 0x5911c33cu},
         // (S74's isIKReached, setIKSoften, setIKHingeAxis, setIKTwist, setIKAimOffset reviewed: an IK

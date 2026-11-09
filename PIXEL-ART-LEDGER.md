@@ -244,6 +244,10 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Follow-ups (owned by the coordinator)
 
+- `walkRefFields` (`editor/asset/AssetRefSchema.cpp:715`) dereferences a null `node.guid` when a
+  reflected string field has `.asset` but no `<name>Guid` sibling, and nothing checks for the
+  sibling when the table is built. S50 hit it and removed its own `.asset`; the next field declared
+  that way crashes the same walk. A registry self-check would catch it.
 - `main` test issues seen during landings, from other programs:
   - `FullPathGoldenTest.UIParticleSystemsClippedByAPanel` reads after 4 frames instead of
     waiting for emitted particles;
@@ -255,6 +259,12 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 - Destroy the build boxes A–D when the program ends.
 
 ## Log
+
+- 2026-11-09: S47's review found 9 blockers (crashes on oversized renders and huge coordinates, two
+  file corruptions, linked cels edited twice, a false external-save warning, tests that cannot
+  fail) plus should-fixes; all went back to S47's implementer on box D. S48's fixes run on box B on
+  a tree with `origin/main` merged (shader cache now v64, terrain took v63). S50's last shared
+  build failed on 7 unfinished files; their fixes are in the next round on box C.
 
 - 2026-11-09: S48's review found one blocker (a use-after-free of the transition's centre scene
   across `loadScene`), 12 should-fixes and 3 nits; all went back to S48's implementer. S47 passed
