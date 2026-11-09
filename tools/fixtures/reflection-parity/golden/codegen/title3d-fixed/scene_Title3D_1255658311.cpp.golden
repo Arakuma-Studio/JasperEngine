@@ -87,7 +87,7 @@ void create_scene_Title3D_1255658311(Scene* scene){
         titleArt.atlasPageSize = 1024;
         titleArt.atlasMaxPages = 4;
         titleArt.qualityTier = "auto";
-        titleArt.liveTime = 2.535793f;
+        titleArt.liveTime = 0.057365f;
         titleArt.liveUnscaledTime = false;
         titleArt.sweepEnabled = false;
         titleArt.sweepPosition = 0.000000f;
