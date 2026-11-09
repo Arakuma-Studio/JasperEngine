@@ -10,11 +10,11 @@ precision highp int;
 // steps just inside the cover's edge, and light from the ramp just outside it.
 //
 // The band kinds (iris, blinds, slash, burn away) are a field over art pixel centres, covered
-// where it is below the coverage's level. The rim is exactly `rim` art pixels along the field's
-// dominant axis: a covered pixel is rim at depth s when the pixel s steps toward the uncovered
-// side is uncovered (no derivative instruction anywhere: the gradient is the field's own finite
-// difference at the neighbouring art pixels, as pixelfx's field() in
-// src/fx/transitions/_lib.js, MIT, Copyright (c) 2026 Patch). Pixel Dissolve winks blocks of
+// where it is below the coverage's level. The rim is exactly `rim` art pixels across every row
+// and column it crosses: a covered pixel is rim at depth s when the pixel s steps along a row or
+// column is uncovered. The light outside the edge takes its distance from the field's gradient,
+// a finite difference at the neighbouring art pixels as pixelfx's field() in
+// src/fx/transitions/_lib.js (MIT, Copyright (c) 2026 Patch); no derivative instruction anywhere. Pixel Dissolve winks blocks of
 // 1, 2 and 4 cells in by a clumpy rank, each drawn first as a ramp outline; CRT Off squeezes the
 // picture to a line and a dot; Fade is an 8x8 Bayer dither per art pixel. engine/core/pixelart/
 // ScreenTransition.cpp mirrors this on the CPU (the edge lint, the tests).
@@ -130,35 +130,49 @@ bool trInside(vec2 p){
     return p.x >= 0.0 && p.y >= 0.0 && p.x < tr.art.x && p.y < tr.art.y;
 }
 
+// the most a band kind's field changes from one art pixel to the next along a row or column
+float trLipschitz(){
+    int kind = trKind();
+    if (kind == KIND_SLASH)
+        return max(abs(tr.params0.x), abs(tr.params0.y));
+    return kind == KIND_BURN_AWAY ? 2.2 : 1.0;
+}
+
+bool trUncoveredAt(vec2 q, float level){
+    return trInside(q) && trField(q) >= level;
+}
+
 // light (rgb) and cover (a, with colour) of an art pixel of a band kind
 vec4 trBand(vec2 p, out vec3 light){
     light = vec3(0.0);
     float level = trLevel();
-    float v = trField(p) - level;
-    vec2 g = trGradient(p, v + level);
-    float dominant = max(abs(g.x), abs(g.y));
-    float scale = 1.0 / clamp(dominant, 0.45, 3.0);
+    float f = trField(p);
+    float v = f - level;
     int rimWidth = int(tr.rim.x + 0.5);
     if (v >= 0.0){
-        // uncovered: the light just outside the edge, in four ramp steps
-        float d = v * scale;
-        float reach = 2.0 * float(max(rimWidth, 1)) + 2.0;
-        if (tr.rim.y > 0.0 && d < reach && tr.state.x > 0.0){
-            float q = floor(d / reach * 4.0);
-            light = trHot(int(q)) * tr.rim.y * (1.0 - q * 0.25);
+        // uncovered: the light just outside the edge, in four ramp steps (its distance from the
+        // field's gradient: light needs no exact width)
+        if (tr.rim.y > 0.0 && tr.state.x > 0.0){
+            vec2 g = trGradient(p, f);
+            float d = v / clamp(max(abs(g.x), abs(g.y)), 0.45, 3.0);
+            float reach = 2.0 * float(max(rimWidth, 1)) + 2.0;
+            if (d < reach){
+                float q = floor(d / reach * 4.0);
+                light = trHot(int(q)) * tr.rim.y * (1.0 - q * 0.25);
+            }
         }
         return vec4(0.0);
     }
-    // covered: rim when an uncovered pixel lies within `rim` steps toward the edge
-    if (rimWidth > 0 && -v * scale <= float(rimWidth) + 1.5){
-        vec2 toward = abs(g.x) >= abs(g.y) ? vec2(sign(g.x), 0.0) : vec2(0.0, sign(g.y));
+    // covered: rim at depth s when an uncovered pixel lies s steps along a row or column, so the
+    // band is exactly `rim` art pixels across every row and column it crosses; a pixel deeper
+    // than the field can climb in `rim` steps skips the walk
+    if (rimWidth > 0 && -v <= trLipschitz() * float(rimWidth) + 1e-4){
         for (int s = 1; s <= 8; s++){
             if (s > rimWidth)
                 break;
-            vec2 q = p + toward * float(s);
-            if (!trInside(q))
-                break;
-            if (trField(q) >= level){
+            float fs = float(s);
+            if (trUncoveredAt(p + vec2(fs, 0.0), level) || trUncoveredAt(p - vec2(fs, 0.0), level) ||
+                trUncoveredAt(p + vec2(0.0, fs), level) || trUncoveredAt(p - vec2(0.0, fs), level)){
                 int n = trSteps();
                 return vec4(trHot(int(floor(float(s - 1) * float(n) / float(rimWidth)))), 1.0);
             }

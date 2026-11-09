@@ -136,8 +136,8 @@ namespace jasperengine::pixelart {
         std::vector<Rgba8> colors;          // premultiplied output (a 0: light only, or nothing)
     };
 
-    // The rim's width along the edge (the transition_edges lint): every edge crossing's rim run
-    // measured along the field's dominant axis
+    // The rim's width along the edge (the transition_edges lint): from every edge pixel, the rim
+    // run along the row or column away from its uncovered neighbour
     struct JASPERENGINE_API TransitionRimMeasure {
         int crossings = 0;      // edge pixels measured (0: no edge in this frame)
         int minWidth = 0, maxWidth = 0;

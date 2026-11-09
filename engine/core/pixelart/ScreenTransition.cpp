@@ -165,8 +165,7 @@ namespace jasperengine::pixelart {
             bool reveal() const { return (int)std::lround(u.state.y) == 2; }
             Vector4 hot(int i) const { const int n = steps(); return u.ramp[std::clamp(n - 1 - i, 0, n - 1)]; }
 
-            static float sign(float v){ return v > 0.0f ? 1.0f : (v < 0.0f ? -1.0f : 0.0f); }
-
+            
             float burn(float px, float py) const{
                 const float sizeX = u.art.x, sizeY = u.art.y, scale = u.params0.x;
                 const uint32_t s = seed();
@@ -239,37 +238,44 @@ namespace jasperengine::pixelart {
                 return px >= 0.0f && py >= 0.0f && px < u.art.x && py < u.art.y;
             }
 
+            float lipschitz() const{
+                if (kind() == 2) return std::max(std::fabs(u.params0.x), std::fabs(u.params0.y));
+                return kind() == 5 ? 2.2f : 1.0f;
+            }
+
+            bool uncoveredAt(float qx, float qy, float lv) const{
+                return inside(qx, qy) && field(qx, qy) >= lv;
+            }
+
             // returns the cover (a 0 or 1) and its colour, the light, the cell and the rim depth
             Vector4 band(float px, float py, Vector4& light, uint8_t& cell, uint8_t& depth) const{
                 light = Vector4(0, 0, 0, 0);
                 const float lv = level();
-                const float v = field(px, py) - lv;
-                float gx, gy;
-                gradient(px, py, v + lv, gx, gy);
-                const float dominant = std::max(std::fabs(gx), std::fabs(gy));
-                const float scale = 1.0f / std::clamp(dominant, 0.45f, 3.0f);
+                const float f = field(px, py);
+                const float v = f - lv;
                 const int rimWidth = (int)std::lround(u.rim.x);
                 if (v >= 0.0f){
-                    const float d = v * scale;
-                    const float reach = 2.0f * (float)std::max(rimWidth, 1) + 2.0f;
                     cell = TransitionImage::UNCOVERED;
-                    if (u.rim.y > 0.0f && d < reach && u.state.x > 0.0f){
-                        const float q = std::floor(d / reach * 4.0f);
-                        const Vector4 h = hot((int)q);
-                        const float k = u.rim.y * (1.0f - q * 0.25f);
-                        light = Vector4(h.x * k, h.y * k, h.z * k, 0.0f);
-                        cell = TransitionImage::LIGHT;
+                    if (u.rim.y > 0.0f && u.state.x > 0.0f){
+                        float gx, gy;
+                        gradient(px, py, f, gx, gy);
+                        const float d = v / std::clamp(std::max(std::fabs(gx), std::fabs(gy)), 0.45f, 3.0f);
+                        const float reach = 2.0f * (float)std::max(rimWidth, 1) + 2.0f;
+                        if (d < reach){
+                            const float q = std::floor(d / reach * 4.0f);
+                            const Vector4 h = hot((int)q);
+                            const float k = u.rim.y * (1.0f - q * 0.25f);
+                            light = Vector4(h.x * k, h.y * k, h.z * k, 0.0f);
+                            cell = TransitionImage::LIGHT;
+                        }
                     }
                     return Vector4(0, 0, 0, 0);
                 }
-                if (rimWidth > 0 && -v * scale <= (float)rimWidth + 1.5f){
-                    const float stepX = std::fabs(gx) >= std::fabs(gy) ? sign(gx) : 0.0f;
-                    const float stepY = std::fabs(gx) >= std::fabs(gy) ? 0.0f : sign(gy);
+                if (rimWidth > 0 && -v <= lipschitz() * (float)rimWidth + 1e-4f){
                     for (int s = 1; s <= kTransitionMaxRim; s++){
                         if (s > rimWidth) break;
-                        const float qx = px + stepX * (float)s, qy = py + stepY * (float)s;
-                        if (!inside(qx, qy)) break;
-                        if (field(qx, qy) >= lv){
+                        const float fs = (float)s;
+                        if (uncoveredAt(px + fs, py, lv) || uncoveredAt(px - fs, py, lv) || uncoveredAt(px, py + fs, lv) || uncoveredAt(px, py - fs, lv)){
                             const int n = steps();
                             const Vector4 h = hot((int)std::floor((float)(s - 1) * (float)n / (float)rimWidth));
                             cell = TransitionImage::RIM;
