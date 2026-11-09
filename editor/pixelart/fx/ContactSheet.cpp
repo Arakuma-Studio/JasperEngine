@@ -6,6 +6,7 @@
 
 #include "ContactSheet.h"
 
+#include "pixelart/BitmapFont.h"
 #include "pixelart/BuiltinPixelFont.h"
 
 #include "pixelart/PixelFxKey.h"
@@ -14,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <memory>
 
 namespace jasperengine::editor::pixelart::fx {
 
@@ -33,15 +35,27 @@ namespace jasperengine::editor::pixelart::fx {
 
         // S51's built-in pixel font (builtin:pixel): its 6 x 9 cells, ink rows 0..8, so a strip's
         // text stays hard pixels at any sheet scale
+        // the pen's step after a character, the font's proportional advance (a fixed cell leaves gaps after l, i, t)
+        int pixelTextAdvance(char c) {
+            const std::shared_ptr<jasperengine::pixelart::BitmapFont> font = jasperengine::pixelart::BitmapFont::builtinPixel();
+            return font->advanceOf((unsigned char)c) + font->getSpacing();
+        }
+
         int pixelTextWidth(const std::string& text) {
-            return (int)text.size() * jasperengine::pixelart::kBuiltinCellWidth;
+            int width = 0;
+            for (char c : text) width += pixelTextAdvance(c);
+            return width;
         }
 
         std::string fitPixelText(const std::string& text, int maxWidth) {
             if (pixelTextWidth(text) <= maxWidth) return text;
-            const int chars = maxWidth / jasperengine::pixelart::kBuiltinCellWidth;
-            if (chars <= 2) return std::string((size_t)std::max(chars, 0), '.');
-            return text.substr(0, (size_t)(chars - 2)) + "..";
+            const std::string ellipsis = "..";
+            std::string fitted;
+            for (char c : text) {
+                if (pixelTextWidth(fitted + c + ellipsis) > maxWidth) break;
+                fitted += c;
+            }
+            return fitted + ellipsis;
         }
 
         void drawPixelText(PoseImage& image, int x, int y, const std::string& text, PoseColor color) {
@@ -52,7 +66,7 @@ namespace jasperengine::editor::pixelart::fx {
                         if (rows[row][col] == '#') image.setPixel(x + (int)col, y + (int)row, color);
                     }
                 }
-                x += jasperengine::pixelart::kBuiltinCellWidth;
+                x += pixelTextAdvance(c);
             }
         }
 
