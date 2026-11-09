@@ -128,7 +128,6 @@
       "gradient_kind": "radial",
       "gradient_bend": 0.6,
       "metallic": 1,
-      "roughness": 0.3,
       "env_multiplier": 1.2
     },
     "bands": [

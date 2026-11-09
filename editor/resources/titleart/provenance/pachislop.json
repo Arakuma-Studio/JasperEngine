@@ -596,6 +596,7 @@
       "notes": [
         "mapped: style (camelCase -> snake_case, 5 rims)",
         "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
         "approximated: the 2D reflection map `sky` reads S86's HDRI environment `sky` (the photo of the same place), not Pachislop's own low-resolution panorama",
         "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
         "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
@@ -614,6 +615,7 @@
       "notes": [
         "mapped: style3d through S86's title3DFromPachislop",
         "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
         "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
         "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
         "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
@@ -838,6 +840,7 @@
         "mapped: effects through S83's map (keyline -> outline)",
         "mapped: effects through S83's map (outerGlow -> outer_glow)",
         "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: tuned by overrides.json",
         "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
         "dropped: look.effects[].id (x3): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
         "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
@@ -934,6 +937,7 @@
       "notes": [
         "mapped: style (camelCase -> snake_case, 3 rims)",
         "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
         "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
         "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
         "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
@@ -1049,6 +1053,7 @@
       "notes": [
         "mapped: style (camelCase -> snake_case, 3 rims)",
         "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
         "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
         "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
         "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
@@ -1329,6 +1334,7 @@
       "notes": [
         "mapped: style (camelCase -> snake_case, 4 rims)",
         "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
         "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
         "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
         "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
@@ -1386,6 +1392,7 @@
       "notes": [
         "mapped: style (camelCase -> snake_case, 3 rims)",
         "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
         "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
         "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
         "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
@@ -1405,6 +1412,7 @@
         "mapped: effects through S83's map (keyline -> outline)",
         "mapped: effects through S83's map (outerGlow -> outer_glow)",
         "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: tuned by overrides.json",
         "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
         "dropped: look.effects[].id (x4): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
         "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
@@ -1439,6 +1447,7 @@
       "item": "f-chrome-liquid",
       "notes": [
         "mapped: style (camelCase -> snake_case, 1 rims)",
+        "mapped: tuned by overrides.json",
         "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
         "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
         "dropped: look.group: Pachislop's library section; the families of S84 §6.6 replace it (`family`)",
@@ -1623,6 +1632,7 @@
         "mapped: style (camelCase -> snake_case, 2 rims)",
         "mapped: effects through S83's map (outerGlow -> outer_glow)",
         "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: tuned by overrides.json",
         "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
         "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
         "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
@@ -1680,6 +1690,7 @@
         "mapped: style (camelCase -> snake_case, 2 rims)",
         "mapped: effects through S83's map (outerGlow -> outer_glow)",
         "mapped: effects through S83's map (deepGlow -> light_glow)",
+        "mapped: tuned by overrides.json",
         "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
         "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
         "dropped: look.effects[].id (x2): a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",
@@ -1773,6 +1784,7 @@
       "notes": [
         "mapped: style (camelCase -> snake_case, 2 rims)",
         "mapped: effects through S83's map (outerGlow -> outer_glow)",
+        "mapped: tuned by overrides.json",
         "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
         "dropped: look.builtin: every factory look is built in; the library knows a built-in by where its file lives",
         "dropped: look.effects[].id: a look holds no element ids (rims, bands, effects, lights take fresh ones when applied, S84 §6.1)",

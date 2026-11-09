@@ -142,7 +142,6 @@
       "gradient_bend": 0.4,
       "metallic": 1,
       "roughness": 0.04,
-      "env_multiplier": 1,
       "specular_multiplier": 1.6,
       "clearcoat": 1
     },
@@ -209,8 +208,6 @@
         "depth": 10.6,
         "offset": -11.6,
         "bevel": {
-          "width": 0,
-          "depth": 0,
           "profile": "chamfer"
         },
         "material": {

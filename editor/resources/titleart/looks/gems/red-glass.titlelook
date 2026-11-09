@@ -341,7 +341,12 @@
   "generators": [],
   "group_effects": [],
   "links": {},
-  "lint_allow": [],
+  "lint_allow": [
+    {
+      "rule": "rims_thin",
+      "reason": "just under the 5 % rule as authored; the look is the source's and its rim stack reads as intended"
+    }
+  ],
   "check_allow": [],
   "provenance": {
     "source": "pachislop",

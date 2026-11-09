@@ -156,7 +156,6 @@
       },
       "gradient_bend": 0.6,
       "roughness": 0.25,
-      "env_multiplier": 1,
       "clearcoat": 1,
       "pattern": {
         "kind": "shippo",

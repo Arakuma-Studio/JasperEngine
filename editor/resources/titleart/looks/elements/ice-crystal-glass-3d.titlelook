@@ -419,7 +419,12 @@
     ]
   },
   "links": {},
-  "lint_allow": [],
+  "lint_allow": [
+    {
+      "rule": "contrast",
+      "reason": "clear ice on a pale band: the facets, not lightness, separate them"
+    }
+  ],
   "check_allow": [],
   "provenance": {
     "source": "pachislop",

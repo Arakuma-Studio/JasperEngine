@@ -505,7 +505,12 @@
       "name": "Gold"
     }
   },
-  "lint_allow": [],
+  "lint_allow": [
+    {
+      "rule": "contrast",
+      "reason": "two gold bands read as one frame on purpose"
+    }
+  ],
   "check_allow": [],
   "provenance": {
     "source": "pachislop",
