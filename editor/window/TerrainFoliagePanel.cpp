@@ -1037,10 +1037,10 @@ bool editor::TerrainFoliagePanel::stampWorld(TerrainComponent& terrain, const Ve
         bool close = false;
         if (spacing > 0.0f) {
             // the trees of every tile within spacing: a border lets no two trees closer
-            for (const terrain::TileCoord& near : edit.tilesIn(x - spacing, z - spacing, x + spacing, z + spacing)) {
-                const TreeStore* store = edit.trees(near);
+            for (const terrain::TileCoord& nearby : edit.tilesIn(x - spacing, z - spacing, x + spacing, z + spacing)) {
+                const TreeStore* store = edit.trees(nearby);
                 if (!store) continue;
-                const Vector2 centre = edit.centre(near);
+                const Vector2 centre = edit.centre(nearby);
                 for (const TreeRecord& other : store->records()) {
                     const float dx = foliageTreeLocalX(other, size) + centre.x - x;
                     const float dz = foliageTreeLocalZ(other, size) + centre.y - z;
