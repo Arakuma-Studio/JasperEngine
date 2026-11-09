@@ -23,7 +23,6 @@
 #include "external/IconsFontAwesome6.h"
 #include "render/SceneRender.h"
 #include "shader/ShaderManifest.h"
-#include "subsystem/RenderSystem.h"
 #include "util/FileDialogs.h"
 #include "util/Util.h"
 #include "App.h"

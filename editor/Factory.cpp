@@ -1342,7 +1342,7 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
 
         code << ind << "mesh.submeshes[" << idx << "].primitiveType = " << formatPrimitiveType(mesh.submeshes[s].primitiveType) << ";\n";
         if (!hasGeneratedGeometry)
-            code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(mesh.submeshes[s].vertexCount) << ";\n";
+            code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(MeshSystem::loadedVertexCount(mesh, mesh.submeshes[s])) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].faceCulling = " << formatBool(mesh.submeshes[s].faceCulling) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].textureShadow = " << formatBool(mesh.submeshes[s].textureShadow) << ";\n";
         const SpriteComponent* rectSprite = s == 0 ? scene->findComponent<SpriteComponent>(entity) : nullptr;

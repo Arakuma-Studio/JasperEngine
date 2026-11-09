@@ -17,6 +17,7 @@
 #include "math/Curve.h"
 
 #include <filesystem>
+#include <optional>
 #include <stdexcept>
 #include <set>
 #include <vector>
@@ -202,7 +203,8 @@ namespace jasperengine::editor {
         static YAML::Node encodeExternalBuffer(const ExternalBuffer& buffer);
         static void decodeExternalBuffer(ExternalBuffer& buffer, const YAML::Node& node);
 
-        static YAML::Node encodeSubmesh(const Submesh& submesh, bool embedTextureData = true, bool encodeVertexCount = true);
+        // vertexCount: written when set (MeshSystem::loadedVertexCount, not what the last load left)
+        static YAML::Node encodeSubmesh(const Submesh& submesh, bool embedTextureData, std::optional<unsigned int> vertexCount);
         static Submesh decodeSubmesh(const YAML::Node& node, const Submesh* oldSubmesh = nullptr);
 
         static YAML::Node encodeSpriteFrameData(const SpriteFrameData& frameData);
