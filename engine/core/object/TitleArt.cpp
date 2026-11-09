@@ -6,6 +6,7 @@
 
 #include "Log.h"
 #include "Scene.h"
+#include "System.h"
 #include "subsystem/TitleArtSystem.h"
 
 #include <algorithm>
@@ -312,7 +313,18 @@ std::vector<std::string> TitleArt::getLanguages() const{
 
 bool TitleArt::isLanguageReady() const{
     TitleArtRendererComponent* c = component();
-    return c ? TitleArtSystem::instanceOf(*c).languageReady : false;
+    if (!c) return false;
+    const titleart::TitleArtInstance& instance = TitleArtSystem::instanceOf(*c);
+    // a change made this frame reaches the system at its next update: a script that asks right
+    // after setLanguage must not read the old language's "ready"
+    if (!instance.languages.empty() && (instance.languageGeneration != TitleArtLanguage::generation() || instance.languageAsked != c->language)){
+        const std::string& source = instance.languages.front();
+        std::string picked = TitleArtLanguage::resolve(TitleArtLanguage::candidates(c->language, System::instance().getPreferredLocales(), source),
+                                                       instance.languages);
+        if (picked.empty()) picked = source;
+        if (picked != instance.shownLanguage) return false;
+    }
+    return instance.languageReady;
 }
 
 FunctionSubscribe<void(const std::string&)>& TitleArt::getOnLanguageReady(){

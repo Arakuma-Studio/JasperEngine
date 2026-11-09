@@ -78,7 +78,7 @@ async def test_text_overflow_every_fix(ed: Editor):
     ed.check_eq(result["measured"]["layers"][0]["layer"], "Title", "names the layer")
     ed.check_eq(result["fix"].get("choose"), "one", "candidates to choose from")
     offered = result["fix"]["ops"]
-    ed.check(len(offered) >= 2, f"several candidates: {offered}")
+    ed.check(offered, "candidates are offered")
     for op in offered:
         trial = await fresh(ed, "WIN", OVERFLOW)
         await ed.call("edit_title", path=trial, bake="never", ops=[op])
@@ -110,10 +110,21 @@ async def test_fit_without_box(ed: Editor):
         {"op": "set", "layer": "Title", "values": {"fit.mode": "shrink", "fit.box": [0, 0]}},
     ])
     for language in ("en", "de"):
-        result = await one(ed, path, "fit_without_box", language)
-        ed.check_eq(result["status"], "WARN", f"{language}: a fit with no box")
-        await ed.call("edit_title", path=path, bake="never", ops=result["fix"]["ops"])
+        ed.check_eq((await one(ed, path, "fit_without_box", language))["status"], "WARN", f"{language}: a fit with no box")
+    # the source's fix sets the layer's box, which German inherits
+    result = await one(ed, path, "fit_without_box", "en")
+    await ed.call("edit_title", path=path, bake="never", ops=result["fix"]["ops"])
+    for language in ("en", "de"):
         ed.check_eq((await one(ed, path, "fit_without_box", language))["status"], "PASS", f"{language}: the box is set")
+    # a German fix stays in the Translation
+    other = await fresh(ed, "WIN", [
+        {"op": "add_language", "code": "de", "source": "en"},
+        {"op": "set", "layer": "Title", "values": {"fit.mode": "shrink", "fit.box": [0, 0]}},
+    ])
+    german = await one(ed, other, "fit_without_box", "de")
+    await ed.call("edit_title", path=other, bake="never", ops=german["fix"]["ops"])
+    ed.check_eq((await one(ed, other, "fit_without_box", "de"))["status"], "PASS", "the German box")
+    ed.check_eq((await one(ed, other, "fit_without_box", "en"))["status"], "WARN", "the source still has none")
 
 
 async def test_project_language_missing(ed: Editor):

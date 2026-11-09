@@ -19,7 +19,13 @@ DOC = "assets/titles/art.titleart"
 KTX2_MAGIC = bytes([0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A])
 
 
+S: dict = {}
+
+
 async def setup(ed: Editor) -> None:
+    if S.get("ed") is ed:
+        return
+    S["ed"] = ed
     await ed.call("tool_groups", enable=["title_art"])
     await ed.call("set_project_settings", values={"title_art.auto_bake": False})
     await ed.call("edit_title", path=DOC, create={"text": "WIN", "canvas": [512, 256]}, bake="never", ops=[

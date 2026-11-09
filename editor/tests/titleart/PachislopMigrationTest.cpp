@@ -972,7 +972,9 @@ TEST(PachislopMigrationTest, TakesOverTheLayersPlaceClippingBlendAndOpacityGoToT
             EXPECT_EQ(l["blend"], "normal");
             EXPECT_EQ(l["transform"]["opacity"], 1);
         }
-        if (l["id"] == "g") EXPECT_TRUE(l["effects"].empty());
+        if (l["id"] == "g") {
+            EXPECT_TRUE(l["effects"].empty());
+        }
     }
     EXPECT_EQ((*generatorOf(out, "fire"))["generator"]["params"]["follow"], "g");
 }

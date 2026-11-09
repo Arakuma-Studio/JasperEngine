@@ -41,6 +41,8 @@ namespace {
                   {"source_language", "en"}, {"languages", Json::array({Json{{"code", "de"}}, Json{{"code", "ja"}}})}};
         root["canvas"] = canvas(640, 200);
         root["layers"] = Json::array({text});
+        // what makes a title Glyph Atlas capable (S81 R25)
+        root["exposed"] = Json::array({Json{{"name", "text"}, {"type", "text"}, {"targets", Json::array({Json{{"layer", TEXT_LAYER}, {"field", "text"}}})}}});
         TitleArtParseResult parsed = parseTitleArtJson(std::move(root));
         EXPECT_TRUE(parsed.ok) << parsed.error.toString();
         return std::make_shared<const TitleArtDoc>(std::move(parsed.doc));
@@ -92,7 +94,7 @@ namespace {
     protected:
         void SetUp() override { JASPER_REQUIRE_GPU(); }
 
-        // the one-shot render of a language, placed `snap` px away (Glyph Atlas's pixel snap)
+        // the one-shot render of a language, with `overrides` (Glyph Atlas's pixel snap)
         Pixels oneShot(const std::shared_ptr<const TitleArtDoc>& doc, const std::string& code, std::vector<FieldOverride> overrides = {}) {
             TitleArtRenderer fresh;
             RenderRequest request;
@@ -136,7 +138,9 @@ TEST_F(TitleRealtimeLanguageGpu, RealtimeShowsEachLanguage) {
         live.setState(state(), hashOf(code), {});
         // the render is sliced: while it runs, the last language stays (R17)
         runFrames(live, factory(), 200, 1);
-        if (live.hasWork()) EXPECT_TRUE(identical(frontPixels(live), previous)) << code << ": the previous language shows until the new image is complete";
+        if (live.hasWork()) {
+            EXPECT_TRUE(identical(frontPixels(live), previous)) << code << ": the previous language shows until the new image is complete";
+        }
         runFrames(live, factory());
         ASSERT_TRUE(live.front().valid()) << live.status().error;
         const Pixels shown = frontPixels(live);

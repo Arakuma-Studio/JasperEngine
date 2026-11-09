@@ -45,10 +45,6 @@ namespace {
         return s;
     }
 
-    TitleJson rectJson(const TitleRectI& r) {
-        return TitleJson::array({r.x, r.y, r.width, r.height});
-    }
-
     std::string stemOf(const fs::path& document) {
         std::string name = document.filename().string();
         const std::string ext = ".titleart";
