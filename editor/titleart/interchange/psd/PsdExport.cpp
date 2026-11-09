@@ -482,45 +482,6 @@ bool psd::assemblePsd(const PsdExportPlan& plan, const std::vector<texsynth::Ima
     return assembleNodes(plan, renders, plan.nodes, out.layers, merged.width, merged.height, bps, error);
 }
 
-bool psd::exportTitlePsd(Project* project, const TitleArtDoc& doc, const PsdExportOptions& options, PsdExportResult& out, std::string& error) {
-    if (options.bitDepth != 8 && options.bitDepth != 16) {
-        error = "bit_depth_unsupported: a PSD is 8- or 16-bit";
-        return false;
-    }
-    PsdPlanOptions planOptions;
-    planOptions.splitTitles = options.splitTitles;
-    const PsdExportPlan plan = planPsdExport(doc, planOptions);
-    std::vector<texsynth::Image> renders;
-    renders.reserve(plan.jobs.size());
-    const titleart::TitleRectI frame = options.frame.empty() ? titleart::TitleRectI{0, 0, doc.canvasWidth(), doc.canvasHeight()} : options.frame;
-    for (const PsdRenderJob& job : plan.jobs) {
-        titleart::RenderRequest request;
-        request.doc = job.doc;
-        request.isolateLayer = job.isolateLayer;
-        request.pxScale = (float)options.scale;
-        request.region = frame;
-        request.outputBitDepth = options.bitDepth;
-        request.testFlags = options.testFlags;
-        TitleRenderedImage image;
-        std::string renderError;
-        if (!TitleArtRenderHost::editor().render(project, std::move(request), image, renderError)) {
-            error = renderError.rfind("bit_depth_unsupported", 0) == 0 ? renderError : "render_failed: " + renderError;
-            return false;
-        }
-        renders.push_back(std::move(image.image));
-        out.renders++;
-    }
-    PsdWriteDocument psd;
-    const double dpi = doc.root.value("dpi", 72.0);
-    if (!assemblePsd(plan, renders, options.bitDepth, dpi, psd, error)) return false;
-    renders.clear();
-    if (!writePsd(psd, out.bytes, error)) return false;
-    out.warnings = plan.warnings;
-    out.warnings.push_back("psd_blending: Photoshop blends layers in sRGB and the engine in linear light, so the layers recombined in Photoshop "
-                           "differ where they overlap with partial alpha; the merged image is the true render");
-    return true;
-}
-
 namespace {
 
     struct PsdLanguage {

@@ -14,10 +14,9 @@
 //   its parent, adjusted, with what it covers hidden; `split_titles` turning each 2D title into a
 //   group of its rims alone, its face alone (hidden, their own part effects only) and "fx".
 // - planPsdExport() makes the plan and its render jobs (a document variant each, rendered by S80's
-//   renderer on the shared frame); assemblePsd() turns the rendered jobs into PsdWriter's input.
-//   exportTitlePsd() runs both with the editor's render host, one render after the other, so the
-//   peak memory is the jobs' images (R49: the export framework steps the same jobs).
-// - Thread-safety: plan and assembly are pure; exportTitlePsd runs on the main thread.
+//   renderer on the shared frame); assemblePsd() turns the rendered jobs into PsdWriter's input;
+//   the `psd` format of export_title (TitleExport.h) steps the jobs and writes the file.
+// - Thread-safety: plan and assembly are pure; the format's plan runs on the main thread.
 
 #pragma once
 
@@ -29,10 +28,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-
-namespace jasperengine::editor {
-    class Project;
-}
 
 namespace jasperengine::editor::psd {
 
@@ -80,26 +75,9 @@ namespace jasperengine::editor::psd {
     bool assemblePsd(const PsdExportPlan& plan, const std::vector<texsynth::Image>& renders, int bitDepth, double dpi,
                      PsdWriteDocument& out, std::string& error);
 
-    struct PsdExportOptions {
-        int bitDepth = 8;
-        double scale = 1.0;
-        titleart::TitleRectI frame;     // canvas pixels (image space); empty: the canvas
-        bool splitTitles = false;
-        uint32_t testFlags = 0;
-    };
-    struct PsdExportResult {
-        std::vector<uint8_t> bytes;
-        std::vector<std::string> warnings;
-        int renders = 0;
-    };
     // export_title's `psd` format (R39, R40): one PSD per language on its trimmed frame (or the
     // shared one with `registered`), named `<stem>[.<code>].psd`; options split_titles and the
     // image options (bit_depth 8 or 16; PSD stores straight alpha, so `alpha` must stay straight)
     void registerTitlePsdExport();
-
-    // the PSD of a document through the editor's renderer; false with `error`
-    // (bit_depth_unsupported, psd_too_large, render_failed)
-    bool exportTitlePsd(Project* project, const titleart::TitleArtDoc& doc, const PsdExportOptions& options, PsdExportResult& out,
-                        std::string& error);
 
 }
