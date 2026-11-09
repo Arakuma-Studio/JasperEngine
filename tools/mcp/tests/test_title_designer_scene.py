@@ -40,11 +40,9 @@ async def focus(ed: Editor, **keys) -> dict:
 
 
 async def top_step(ed: Editor) -> str:
-    history = await ed.call("get_undo_history", scope="project", limit=1)
+    # (the Create GameObject is a scene step; the title's own creation is a project step)
+    history = await ed.call("get_undo_history", limit=1)
     steps = history.get("steps") or history.get("entries") or []
-    if not steps:
-        history = await ed.call("get_undo_history", limit=1)
-        steps = history.get("steps") or history.get("entries") or []
     return steps[0].get("name", "") if steps else ""
 
 

@@ -668,7 +668,9 @@ namespace {
         const ta::TitleArtDoc& doc = ctx.state->shown();
         const ta::Json* first = layerById(doc, layers[0]);
         if (!first) return;
-        const ta::Json& style = objectAt(*first, "style_3d");
+        // (copies: a row or a picker's hover can replace the shown document)
+        const std::string mode = str(objectAt(*first, "style_3d"), "mode");
+        const ta::LayerType type = ta::layerTypeOf(*first);
         for (const char* key : {"mode", "depth", "curve_segments", "skew"}) fieldRow(ctx, refs(layers, std::string("style_3d.") + key));
         if (beginSection(ctx, "3d_bevel", "Bevel", std::string(), true)) {
             ctx.stepPrefix = "Bevel ";
@@ -678,13 +680,12 @@ namespace {
             ctx.stepPrefix.clear();
             endSection(ctx);
         }
-        if (str(style, "mode") == "inflate" && beginSection(ctx, "3d_inflate", "Inflate", std::string(), true)) {
+        if (mode == "inflate" && beginSection(ctx, "3d_inflate", "Inflate", std::string(), true)) {
             ctx.stepPrefix = "Inflate ";
             objectRows(ctx, layers, "style_3d.inflate", "inflate_3d");
             ctx.stepPrefix.clear();
             endSection(ctx);
         }
-        const ta::LayerType type = ta::layerTypeOf(*first);
         if (type == ta::LayerType::Image || type == ta::LayerType::Vector) {
             fieldRow(ctx, refs(layers, "style_3d.face_image"), {.label = "Face Image"});
             fieldRow(ctx, refs(layers, "style_3d.edge_image"), {.label = "Edge Image"});
@@ -769,7 +770,6 @@ namespace {
 
     void lightingSection(RowContext& ctx, const std::vector<std::string>& layers, const std::vector<std::string>&) {
         const std::string layerId = layers[0];
-        const ta::TitleArtDoc& doc = ctx.state->shown();
         if (!ctx.collecting()) environmentPicker(ctx, layerId, "style_3d.lighting.environment");
         ctx.stepPrefix = "Environment ";
         objectRows(ctx, layers, "style_3d.lighting.environment", "environment_3d_overrides");
@@ -778,6 +778,8 @@ namespace {
         fieldRow(ctx, refs(layers, "style_3d.lighting.tone_mapping"));
         fieldRow(ctx, refs(layers, "style_3d.lighting.exposure"));
         if (beginSection(ctx, "3d_lights", "Lights", std::string(), false)) {
+            // (after the rows above: they can replace the shown document)
+            const ta::TitleArtDoc& doc = ctx.state->shown();
             const ta::Json* layer = layerById(doc, layerId);
             const ta::Json& lighting = layer ? objectAt(objectAt(*layer, "style_3d"), "lighting") : objectAt(ta::Json(), "");
             if (lighting.contains("lights")) {

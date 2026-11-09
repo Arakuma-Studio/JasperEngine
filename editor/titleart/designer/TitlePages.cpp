@@ -437,7 +437,9 @@ void jasperengine::editor::titledesigner::layerHeaderRows(RowContext& ctx, const
 
 void jasperengine::editor::titledesigner::documentPage(RowContext& ctx) {
     JE_PROFILE_SCOPE("TD documentPage");
-    const ta::TitleArtDoc& doc = ctx.state->shown();
+    // (a snapshot, as layerPage: a section may replace the shown document)
+    const std::shared_ptr<const ta::TitleArtDoc> keep = ctx.collecting() ? nullptr : ctx.state->shownSnapshot();
+    const ta::TitleArtDoc& doc = keep ? *keep : ctx.state->shown();
     const std::vector<std::string> documentTarget = {std::string()};
     ctx.nodeKind = "document";
     ctx.countNoun.clear();
@@ -508,7 +510,10 @@ void jasperengine::editor::titledesigner::documentPage(RowContext& ctx) {
 
 void jasperengine::editor::titledesigner::layerPage(RowContext& ctx, const std::vector<std::string>& layers) {
     JE_PROFILE_SCOPE("TD layerPage");
-    const ta::TitleArtDoc& doc = ctx.state->shown();
+    // drawing, a row, a chip's hover or a button can replace the shown document mid-page: the page
+    // reads a snapshot that lives through it (made once per change, the canvas's own)
+    const std::shared_ptr<const ta::TitleArtDoc> keep = ctx.collecting() ? nullptr : ctx.state->shownSnapshot();
+    const ta::TitleArtDoc& doc = keep ? *keep : ctx.state->shown();
     if (layers.empty()) return;
     const ta::Json* first = layerById(doc, layers[0]);
     if (!first) return;

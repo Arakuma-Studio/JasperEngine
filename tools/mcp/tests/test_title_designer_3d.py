@@ -61,7 +61,7 @@ async def test_rows_parts_and_tiers(ed: Editor):
     ed.check_eq(r["state"]["selection"], ["Title/band#0"], "the band is a part")
     await focus(ed, select="Title/face")
     await ed.call("editor_status")
-    material = await ui.find("##matpick", frames=120)
+    material = await ui.reveal("\uf1b2 Material: Custom \uf0d7##matpick", frames=120)  # above the scroll the Bevel left
     ed.check(material is not None, "the face page has the material picker")
     for mode in ("realtime_high", "realtime_low", "glyph_atlas", "realtime"):
         r = await focus(ed, preview_as=mode)
