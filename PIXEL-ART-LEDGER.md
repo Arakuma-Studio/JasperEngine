@@ -174,7 +174,7 @@ never build or run them.
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
-| S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | spec done |
+| S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | in review |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | in review |
@@ -210,6 +210,7 @@ deadline of 2026-11-11 19:0x UTC:
 | A | 5.161.240.186 | 205d9b263da5 | S51, S52 |
 | B | 5.161.235.8 | 32dda2ca7cd1 | S42, batch-landing verification |
 | C | 5.161.197.83 | 961a152cfd81 | S49 |
+| D | 5.161.197.6 | dd138a2601b3 | S48 (rented 2026-11-09, deadline 2026-11-12 00:01 UTC) |
 
 - `/var/lib/orquester/workspaces/jaspersito/je-remote/rbox <box> '<cmd>' | --img '<cmd>' |
   --fetch <path> <dst>`.
@@ -243,6 +244,9 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S48 Pixel FX started from `main` `de77eef9d` on a fourth box, D. S49's review
+  (blocker: sub-emitters never drawn, to be fixed in S20's renderer; 10 should-fix issues) was sent
+  back.
 - 2026-11-09: **Batch 1: S43 Palettes merged into `main` and pushed** (branch `0762ecd1d`).
   - Verified on the landing tree (`main` `c5e0a2a92` + S43): S43's gate on box B (`WERROR`; core
     584 and editor 389 filtered tests; 152 MCP tests), plus the batch checks on box B: web build,
