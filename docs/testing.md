@@ -114,6 +114,7 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   in the last unfiltered run (`build/test-results/mcp-file-seconds.json`); files with no time yet
   go first. So no long file starts last and alone. Each file has its own process, editor and
   scratch directory, so the order changes nothing a test sees.
+- `SMOKE_METHOD=build SMOKE_PLAY=1 tools/smoke-test.sh tools/fixtures/title3d-fixed`: a Compile build with only the engine modules the project needs (`jasperengine-editor build --method compile`): a fixed-text Realtime 3D title without the mesher, checked against the editor's frame.
 - `tools/smoke-test.sh <project>`: see its header. It also checks that the exported project
   configures as a user's game does: no presets file, no warnings as errors, no sanitizer.
   A hang watchdog report fails it, with one exception: on a project's first editor open, when every
