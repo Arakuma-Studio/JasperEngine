@@ -1782,6 +1782,8 @@ set(JASPERENGINE_SRCS
     core/script/binding/HitStopClassesLua.cpp
     # S48 screen transitions and the scripted glitch
     core/script/binding/TransitionClassesLua.cpp
+    # S48 PixelFX player
+    core/script/binding/PixelFxClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp

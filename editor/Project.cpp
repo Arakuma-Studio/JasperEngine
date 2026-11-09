@@ -151,6 +151,9 @@
 #include "model/ModelCookQueue.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
 #include "pixelart/HitStop.h"
+#include "pixelart/PixelFxPlayer.h"
+#include "pixelart/particles/PixelParticlePresets.h"
+#include "particles/ParticleEffectCodec.h"
 #include "sprite/SpriteAtlasBuilder.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
@@ -2361,6 +2364,20 @@ void editor::Project::openAssetDatabase() {
     });
     assetIndex.open(&assetDatabase, projectPath, getAssetRoots());
     AssetMap::setResolver(&assetResolver);
+    // S48: a PixelFX dissolve's embers may name a Pixel Particles preset ("ember"): its effect,
+    // built for this project's Pixels Per Unit and passed inline (S49's presets live in the editor)
+    jasperengine::pixelart::PixelFxPlayer::setEmberResolver([](const std::string& name) -> std::string {
+        const std::string preset = name.rfind("pixel_", 0) == 0 ? name : "pixel_" + name;
+        if (editor::pixelart::pixelParticlePresetLabel(preset).empty())
+            return std::string();
+        editor::pixelart::PixelPresetBuild build;
+        build.pixelsPerUnit = std::max(1, Engine::getPixelsPerUnit());
+        particles::ParticleEffectDocument document;
+        std::string error;
+        if (!editor::pixelart::buildPixelParticlePreset(preset, build, document, error))
+            return std::string();
+        return particles::ParticleEffectCodec::write(document);
+    });
     // S25: the labels are read again (the assets may have moved roots), the search index
     // follows, and this user's organisation file belongs to the project's root
     assetLabels.open(this);
@@ -6418,6 +6435,7 @@ void editor::Project::resetConfigs() {
     projectPath.clear();
     SoundEventLibrary::clear();
     AssetMap::setResolver(nullptr);
+    jasperengine::pixelart::PixelFxPlayer::setEmberResolver(nullptr);
     waitForAssetScan();
     assetSearchIndex.detach();
     assetLabels.close();
@@ -10331,6 +10349,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         cleanupPlaySession(session);
         // what the scripts that ran started (Coroutine.start, Timer.after)
         ScriptScheduler::clear();
+        // the PixelFX effects of the play and their callbacks (they may hold Lua)
+        jasperengine::pixelart::PixelFxPlayer::reset();
         jasperengine::pixelart::ScreenTransition::reset();
         jasperengine::pixelart::Glitch::stop();
         SceneManager::clearAll();
@@ -11402,6 +11422,8 @@ void editor::Project::stop(uint32_t sceneId) {
             Scheduler::game().clear();
             // every coroutine and timer of the play (unowned ones too), before the scripts go
             ScriptScheduler::clear();
+            // the PixelFX effects of the play and their callbacks (they may hold Lua)
+            jasperengine::pixelart::PixelFxPlayer::reset();
             // a screen transition of the play and its callbacks (they may hold Lua), the scripted glitch
             jasperengine::pixelart::ScreenTransition::reset();
             jasperengine::pixelart::Glitch::stop();

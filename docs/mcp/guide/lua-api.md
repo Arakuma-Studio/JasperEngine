@@ -1145,6 +1145,32 @@ Coroutine.waitFor(handle)
 PixelFX.glitch(0.25, 1.0)   -- a burst of the scene's Glitch post effect (where it is enabled)
 ```
 
+### 2.8.2 PixelFX (static): sprite effects over time
+
+Plays a `library:sprite` effect on a GameObject's own material (`jasper://docs/pixel-fx`): game time
+(a hit-stop holds it; Hit Stop Exempt keeps it running) unless `opts.unscaled`. A feature the material
+lacks is turned on in that GameObject's material (never a `.material` file) and the effect starts once
+its variant draws (`progress` 0 until then; the development build logs it once per material). One
+effect per feature: a new one replaces the running one.
+
+| Member | |
+|---|---|
+| `PixelFX.play(go, effect, duration, opts?)` | `effect`: `flash`, `fade_out`, `fade_in`, `blink`, `dissolve`, `undissolve`, `petrify`, `freeze`, `poison`, `outline_pulse`. Returns a `PixelFXHandle` |
+| `opts` | `ease` (`"linear"`, `"quad_out"`, ...), `unscaled`, `color` (`"#rrggbb"`), `count` (blink, outline_pulse; 3), `ramp` (a strip or `<palette>.palette#ramp:<name>`), `hold` (status looks), `embers` (dissolve: a Pixel Particles preset such as `"ember"`, or a `.particles` path), `emberRate` (40 a second), `onFinished` |
+| `PixelFX.set(go, name, value)` | a channel (`"flash"`, `"fade"`, `"dissolve"`, `"ramp"`) or any `library:sprite` property; stops that feature's effect |
+| `PixelFX.activeCount` | effects still playing |
+| `handle:isDone()`, `handle.progress`, `handle:stop()`, `handle.valid`, `handle.onFinished` | `Coroutine.waitFor(handle)` waits for it; `stop()` puts its value back at 0 |
+
+Every effect ends at its neutral 0 (the sprite as drawn) except `fade_out` and `dissolve`, which end
+gone (1).
+
+```lua
+local enemy = GameObject(self.scene, self.scene:findEntity("Enemy"))
+PixelFX.play(enemy, "flash", 0.15, {color = "#ffffff"})
+local burn = PixelFX.play(enemy, "dissolve", 0.9, {embers = "ember"})
+Coroutine.waitFor(burn)
+```
+
 ### 2.9 Scene (`self.scene`) - methods from EntityRegistry and Scene
 
 Entities are plain integers (`0` = none).

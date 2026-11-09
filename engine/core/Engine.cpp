@@ -79,6 +79,7 @@
 #include "pool/PhysicsMaterialPool.h"
 #include "pixelart/PaletteSwap.h"
 #include "pixelart/HitStop.h"
+#include "pixelart/PixelFxPlayer.h"
 #include "pixelart/Glitch.h"
 #include "pixelart/ScreenTransition.h"
 #include "pool/VertexAnimationPool.h"
@@ -2600,6 +2601,9 @@ void Engine::runFrame(bool draw){
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
         }
+        // the PixelFX effects (S48 R24): after the scenes' update, before the coroutines, so a
+        // Coroutine.waitFor(handle) resumes the frame its effect ends; idle, one empty check
+        pixelart::PixelFxPlayer::update(frameDelta, unscaledDeltatime);
         // the screen transition and the scripted glitch run on unscaled time (S48): a hit-stop or
         // the time scale never slows them; a transition's onCovered runs here, with the scripts
         pixelart::ScreenTransition::update(unscaledDeltatime);
@@ -2872,6 +2876,8 @@ void Engine::systemShutdown(){
 #endif
     Scheduler::game().clear();
     ScriptScheduler::clear();
+    // the PixelFX effects' onFinished callbacks may hold Lua (S48)
+    pixelart::PixelFxPlayer::reset();
     InputActions::unload();
     // the persistent scene's scripts (their onDestroy ran above) are released, and it goes
     SceneManager::destroyPersistentScene();

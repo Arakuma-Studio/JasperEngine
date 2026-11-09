@@ -42,6 +42,11 @@ namespace jasperengine::pixelart {
     // texels as library:sprite does): negative once burnt, [0, edge) in the edge band, [edge, edge +
     // scorch) scorched, above untouched. Progress <= 0 is always untouched, >= 1 always burnt.
     JASPERENGINE_API float pfxDissolveTexel(int x, int y, int frameWidth, int frameHeight, const PfxDissolve& dissolve, float progress);
+    // The front a frame's keys (pfxDissolveKey) burn against at a progress: a texel has burnt
+    // when its key is below it, as library:sprite's fxBurnt. Below every key at progress <= 0,
+    // above every key at progress >= 1. One value per frame and progress (the dissolve embers
+    // compare cached keys with it).
+    JASPERENGINE_API float pfxDissolveBurnFront(int frameWidth, int frameHeight, const PfxDissolve& dissolve, float progress);
 
 }
 

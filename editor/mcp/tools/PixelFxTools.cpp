@@ -23,6 +23,10 @@
 #include "pixelart/fx/ContactSheet.h"
 #include "pixelart/fx/EffectCapture.h"
 #include "pixelart/lint/EffectLints.h"
+#include "animation/AnimationClipIO.h"
+#include "pixelart/PixelFxPlayer.h"
+#include "pixelart/ScreenTransition.h"
+#include "util/Color.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
 #include "util/QaChecks.h"
@@ -109,6 +113,105 @@ bool readInt(const Json& args, const char* key, int lo, int hi, int& out, std::v
     return true;
 }
 
+// "#rrggbb" or "#rrggbbaa" as display sRGB 0..1
+bool parseSheetHex(const Json& value, Vector4& out) {
+    if (!value.is_string()) return false;
+    const std::string text = value.get<std::string>();
+    if (text.size() != 7 && text.size() != 9) return false;
+    if (text[0] != '#') return false;
+    float c[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    for (size_t i = 1, k = 0; i + 1 < text.size(); i += 2, k++) {
+        int v = 0;
+        for (size_t j = i; j < i + 2; j++) {
+            const char ch = text[j];
+            const int d = ch >= '0' && ch <= '9' ? ch - '0' : (ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : (ch >= 'A' && ch <= 'F' ? ch - 'A' + 10 : -1));
+            if (d < 0) return false;
+            v = v * 16 + d;
+        }
+        c[k] = (float)v / 255.0f;
+    }
+    out = Vector4(c[0], c[1], c[2], c[3]);
+    return true;
+}
+
+// target.effect_options: {duration, ease, color, count, ramp, hold}
+bool parseEffectOptions(const Json& options, efx::CaptureEffect& effect, std::vector<Problem>& problems) {
+    if (options.is_null()) return true;
+    if (!options.is_object()) {
+        problems.push_back(problem("bad_value", "target.effect_options", "effect_options must be an object", "give e.g. {\"duration\": 0.6}"));
+        return false;
+    }
+    for (auto it = options.begin(); it != options.end(); ++it) {
+        const std::string& key = it.key();
+        const Json& v = it.value();
+        const std::string field = "target.effect_options." + key;
+        if (key == "duration" && v.is_number() && v.get<double>() > 0.0 && v.get<double>() <= kMaxDuration) {
+            effect.duration = v.get<float>();
+        } else if (key == "ease" && v.is_string() && ::jasperengine::anim::easeFromName(v.get<std::string>(), effect.options.ease)) {
+        } else if (key == "color" && parseSheetHex(v, effect.options.color)) {
+            effect.options.color = Color::sRGBToLinear(effect.options.color);
+            effect.options.hasColor = true;
+        } else if (key == "count" && v.is_number_integer() && v.get<int>() >= 1 && v.get<int>() <= 64) {
+            effect.options.count = v.get<int>();
+        } else if (key == "ramp" && v.is_string()) {
+            effect.options.ramp = v.get<std::string>();
+        } else if (key == "hold" && v.is_number() && v.get<double>() >= 0.0) {
+            effect.options.hold = v.get<float>();
+        } else {
+            problems.push_back(problem("bad_value", field, key + " is not an effect option or its value is out of range",
+                                       "use duration (seconds), ease (linear, quad_out, ...), color (#rrggbb), count (1-64), ramp (a ramp strip), hold (seconds)"));
+            return false;
+        }
+    }
+    return true;
+}
+
+// target.transition_options: Transition.play's options (snake_case), phase, width and height
+bool parseTransitionOptions(const Json& options, jasperengine::pixelart::TransitionOptions& out, efx::CaptureTransitionPhase& phase,
+                            int& width, int& height, std::vector<Problem>& problems) {
+    using namespace jasperengine::pixelart;
+    if (options.is_null()) return true;
+    if (!options.is_object()) {
+        problems.push_back(problem("bad_value", "target.transition_options", "transition_options must be an object", "give e.g. {\"shape\": \"diamond\"}"));
+        return false;
+    }
+    for (auto it = options.begin(); it != options.end(); ++it) {
+        const std::string& key = it.key();
+        const Json& v = it.value();
+        bool ok = true;
+        if (key == "color") ok = parseSheetHex(v, out.ink);
+        else if (key == "palette" && v.is_string()) out.palette = v.get<std::string>();
+        else if (key == "ramp" && v.is_string()) out.ramp = v.get<std::string>();
+        else if (key == "rim" && v.is_number_integer() && v.get<int>() >= 0 && v.get<int>() <= kTransitionMaxRim) out.rim = v.get<int>();
+        else if (key == "glow" && v.is_number() && v.get<double>() >= 0.0 && v.get<double>() <= 1.0) out.glow = v.get<float>();
+        else if (key == "pixel_size" && v.is_number_integer() && v.get<int>() >= 0 && v.get<int>() <= 16) out.pixelSize = v.get<int>();
+        else if (key == "seed" && v.is_number_integer() && v.get<long long>() >= 0) out.seed = (uint32_t)v.get<long long>();
+        else if (key == "ease" && v.is_string()) ok = transitionEaseFromName(v.get<std::string>(), out.ease);
+        else if (key == "hold" && v.is_number() && v.get<double>() >= 0.0) out.hold = v.get<float>();
+        else if (key == "shape" && v.is_string()) ok = irisShapeFromName(v.get<std::string>(), out.shape);
+        else if (key == "center" && v.is_array() && v.size() == 2 && v[0].is_number() && v[1].is_number()) out.center = Vector2(v[0].get<float>(), v[1].get<float>());
+        else if (key == "angle" && v.is_number()) out.angle = v.get<float>();
+        else if (key == "count" && v.is_number_integer() && v.get<int>() >= 1 && v.get<int>() <= 64) out.count = v.get<int>();
+        else if (key == "vertical" && v.is_boolean()) out.vertical = v.get<bool>();
+        else if (key == "cell" && v.is_number_integer() && v.get<int>() >= 1 && v.get<int>() <= 256) out.cell = v.get<int>();
+        else if (key == "through_ramp" && v.is_boolean()) out.throughRamp = v.get<bool>();
+        else if (key == "phase" && v.is_string() && (v == "play" || v == "cover" || v == "reveal")) {
+            phase = v == "cover" ? efx::CaptureTransitionPhase::Cover : (v == "reveal" ? efx::CaptureTransitionPhase::Reveal : efx::CaptureTransitionPhase::Play);
+        }
+        else if (key == "width" && v.is_number_integer() && v.get<int>() >= 8 && v.get<int>() <= 1024) width = v.get<int>();
+        else if (key == "height" && v.is_number_integer() && v.get<int>() >= 8 && v.get<int>() <= 1024) height = v.get<int>();
+        else ok = false;
+        if (!ok) {
+            problems.push_back(problem("bad_value", "target.transition_options." + key, key + " is not a transition option or its value is out of range",
+                                       "use Transition.play's options in snake_case (color #rrggbb, palette, ramp, rim 0-8, glow 0-1, pixel_size, seed, "
+                                       "ease, hold, shape, center [x, y], angle, count, vertical, cell, through_ramp), phase (play, cover, reveal), "
+                                       "width and height (art pixels, 8-1024)"));
+            return false;
+        }
+    }
+    return true;
+}
+
 bool parseArgs(const CallPtr& call, Args& a, std::vector<Problem>& problems) {
     McpContext& ctx = call->ctx();
     Project* project = ctx.project();
@@ -125,20 +228,50 @@ bool parseArgs(const CallPtr& call, Args& a, std::vector<Problem>& problems) {
         return false;
     }
     for (auto it = target.begin(); it != target.end(); ++it) {
-        if (it.key() != "entity" && it.key() != "scene" && it.key() != "animation" && it.key() != "particles") {
+        if (it.key() != "entity" && it.key() != "scene" && it.key() != "animation" && it.key() != "particles" && it.key() != "effect" &&
+            it.key() != "effect_options" && it.key() != "transition" && it.key() != "transition_options") {
             problems.push_back(problem("unknown_key", "target." + it.key(), "target has no key " + it.key(),
-                                       "use entity (with scene and animation) or particles"));
+                                       "use entity (with scene, animation, effect and effect_options), particles, or transition (with transition_options)"));
             return false;
         }
     }
-    const bool hasEntity = target.contains("entity"), hasParticles = target.contains("particles");
-    if (hasEntity == hasParticles) {
-        problems.push_back(problem("bad_target", "target", "target needs exactly one of entity or particles",
-                                   "give target {entity: ...} for a GameObject, or target {particles: \"assets/fx/x.particles\"}"));
+    const bool hasEntity = target.contains("entity"), hasParticles = target.contains("particles"), hasTransition = target.contains("transition");
+    if ((int)hasEntity + (int)hasParticles + (int)hasTransition != 1) {
+        problems.push_back(problem("bad_target", "target", "target needs exactly one of entity, particles or transition",
+                                   "give target {entity: ...} for a GameObject, target {particles: \"assets/fx/x.particles\"}, or target {transition: \"iris\"}"));
+        return false;
+    }
+    if (!hasEntity && (target.contains("effect") || target.contains("effect_options"))) {
+        problems.push_back(problem("bad_target", "target.effect", "an effect plays on a GameObject", "give target {entity: ..., effect: \"dissolve\"}"));
+        return false;
+    }
+    if (!hasTransition && target.contains("transition_options")) {
+        problems.push_back(problem("bad_target", "target.transition_options", "transition_options go with target.transition", "add transition: \"iris\""));
         return false;
     }
     std::string error;
-    if (hasParticles) {
+    if (hasTransition) {
+        if (target.contains("animation") || target.contains("scene")) {
+            problems.push_back(problem("bad_target", "target.transition", "a transition target takes no scene or animation", "drop them"));
+            return false;
+        }
+        jasperengine::pixelart::TransitionKind kind = jasperengine::pixelart::TransitionKind::IRIS;
+        if (!target["transition"].is_string() || !jasperengine::pixelart::transitionKindFromName(target["transition"].get<std::string>(), kind)) {
+            problems.push_back(problem("bad_value", "target.transition", "transition must be a kind",
+                                       "use iris, blinds, slash, pixel_dissolve, crt_off, burn_away or fade"));
+            return false;
+        }
+        jasperengine::pixelart::TransitionOptions options = jasperengine::pixelart::TransitionOptions::fromDefaults();
+        efx::CaptureTransitionPhase phase = efx::CaptureTransitionPhase::Play;
+        int width = 160, height = 90;
+        if (!parseTransitionOptions(target.value("transition_options", Json()), options, phase, width, height, problems)) return false;
+        // no Pixel Perfect Camera draws a capture: pixel size 0 is one screen pixel per art pixel
+        options.pixelSize = std::max(options.pixelSize, 1);
+        const double duration = args.contains("duration") && args["duration"].is_number() ? args["duration"].get<double>()
+                                                                                            : (double)jasperengine::pixelart::ScreenTransition::getDefaults().duration;
+        a.target = efx::makeTransitionTarget(kind, options, phase, duration, width, height);
+        a.scope = std::string("transition:") + jasperengine::pixelart::transitionKindName(kind);
+    } else if (hasParticles) {
         if (target.contains("animation") || target.contains("scene")) {
             problems.push_back(problem("bad_target", "target.particles", "a .particles target takes no scene or animation",
                                        "capture a GameObject (target.entity) to use its scene or a clip"));
@@ -190,8 +323,22 @@ bool parseArgs(const CallPtr& call, Args& a, std::vector<Problem>& problems) {
             }
             clip = fs::relative(absolute, project->getProjectPath()).generic_string();
         }
-        a.target = efx::makeEntityTarget(project, scene, entity, clip, error);
-        a.scope = scene->name + "/" + McpRefs::entityPath(scene, entity) + (clip.empty() ? "" : "#" + clip);
+        efx::CaptureEffect effect;
+        if (target.contains("effect")) {
+            if (!target["effect"].is_string() || !jasperengine::pixelart::pixelFxEffectFromName(target["effect"].get<std::string>(), effect.effect)) {
+                problems.push_back(problem("bad_value", "target.effect", "effect must be a PixelFX effect",
+                                           "use flash, fade_out, fade_in, blink, dissolve, undissolve, petrify, freeze, poison or outline_pulse"));
+                return false;
+            }
+            effect.active = true;
+            if (!parseEffectOptions(target.value("effect_options", Json()), effect, problems)) return false;
+        } else if (target.contains("effect_options")) {
+            problems.push_back(problem("bad_target", "target.effect_options", "effect_options go with target.effect", "add effect: \"dissolve\""));
+            return false;
+        }
+        a.target = efx::makeEntityTarget(project, scene, entity, clip, error, effect);
+        a.scope = scene->name + "/" + McpRefs::entityPath(scene, entity) + (clip.empty() ? "" : "#" + clip) +
+                  (effect.active ? std::string("@") + jasperengine::pixelart::pixelFxEffectName(effect.effect) : std::string());
     }
     if (!a.target) {
         problems.push_back(problem("bad_target", "target", error, "fix the asset, then call again"));
@@ -208,7 +355,8 @@ bool parseArgs(const CallPtr& call, Args& a, std::vector<Problem>& problems) {
     if (a.capture.mode == efx::CaptureMode::Scene) {
         SceneProject* source = a.target->sourceScene();
         if (!source) {
-            problems.push_back(problem("bad_mode", "mode", "a .particles asset has no scene to show", "capture it isolated, or a GameObject playing it in scene mode"));
+            problems.push_back(problem("bad_mode", "mode", "a .particles asset or a transition has no scene to show",
+                                       "capture it isolated, or a GameObject playing it in scene mode"));
             return false;
         }
         if (ctx.isPlaying()) {
@@ -490,12 +638,15 @@ void registerPixelFxTools(McpRegistry& registry) {
     tool.name = "capture_contact_sheet";
     tool.title = "Capture Contact Sheet";
     tool.description =
-        "Draws a GameObject (its animations, particles, material time; animation: an .anim on it) or a .particles asset at N times "
+        "Draws a GameObject (its animations, particles, material time; animation: an .anim on it; effect: a PixelFX effect), a "
+        ".particles asset or a screen transition at N times "
         "into one labelled PNG at an integer scale, a row of frames per backdrop. isolated (default): the target alone, pinned; "
         "scene: through its camera (in Play, steps the paused game). lint: effect checks and a verdict. A preview until output: true "
         "writes path (one undo).";
     tool.inputSchema = object({
-        {"target", object({{"entity", entityRef()}, {"scene", sceneRef()}, {"animation", string("")}, {"particles", string("")}})},
+        {"target", object({{"entity", entityRef()}, {"scene", sceneRef()}, {"animation", string("")}, {"effect", string("")},
+                           {"effect_options", Json{{"type", "object"}}}, {"particles", string("")}, {"transition", string("")},
+                           {"transition_options", Json{{"type", "object"}}}})},
         {"frames", integer("", 1, pixelfxtools::kMaxFrames)},
         {"times", array(number(""), "")},
         {"duration", number("", 0, pixelfxtools::kMaxDuration)},

@@ -26,8 +26,11 @@ namespace jasperengine::editor {
     // Draws `layers` (first the base) into `target` and reads its colour back as RGBA8 rows top
     // first. Wait (with what it waits for) while the view, a scene's loading, the first draw's
     // pipelines (`warmed` keeps that it drew once) or `ready` hold it; call again on a later frame.
+    // `after` draws over the target once the layers are drawn, before the read-back (a screen
+    // transition's overlay); false (with what it waits for) to try again on a later frame.
     OffscreenDraw drawOffscreen(uint32_t viewId, Framebuffer& target, const std::vector<Engine::ViewLayer>& layers, bool& warmed,
                                 std::vector<uint8_t>& rgba, std::string& waitingFor,
-                                const std::function<bool(std::string& waitingFor)>& ready = nullptr);
+                                const std::function<bool(std::string& waitingFor)>& ready = nullptr,
+                                const std::function<bool(std::string& waitingFor)>& after = nullptr);
 
 }

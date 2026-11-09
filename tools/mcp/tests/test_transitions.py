@@ -17,8 +17,14 @@ adds a HUD layer scene (a white bar), a Level and a Loading scene.
                       the same and have no transition pass (AC14; the program is made on first use:
                       engine/tests/core/pixelart/ScreenTransitionGpuTest.cpp)
 
-The images per kind, progress and pixel size (AC12) are ScreenTransitionGpuTest's, against the CPU
-twin; capture_contact_sheet (WP-E) adds the {transition} route.
+  test_contact_sheet_route  AC12 through capture_contact_sheet {transition}: each kind at progress
+                      0.25, 0.5 and 0.9 and pixel size 1 and 3 against a golden (tolerance 0;
+                      JASPER_TRANSITION_UPDATE_GOLDEN=1 writes tools/mcp/tests/golden/transitions/),
+                      every pixel the ink at progress 1, hard art pixels, and the transition_edges
+                      check's rim spread 0 (kinds with no rim: SKIP)
+
+The images per kind, progress and pixel size are also ScreenTransitionGpuTest's, against the CPU
+twin.
 """
 
 from __future__ import annotations
@@ -42,6 +48,10 @@ INK = (255, 0, 255)
 # copies of the screenshots outside the container's scratch (fetched for review)
 EVIDENCE = harness.REPO / "build" / "test-results" / "pixel_fx"
 LINE = re.compile(r"Frame stats \(frame \d+\): .*pass list: (.*)$")
+GOLDEN_DIR = harness.REPO / "tools" / "mcp" / "tests" / "golden" / "transitions"
+UPDATE_GOLDEN = os.environ.get("JASPER_TRANSITION_UPDATE_GOLDEN") == "1"
+KINDS = ("iris", "blinds", "slash", "pixel_dissolve", "crt_off", "burn_away", "fade")
+SHEET_TIMES = [0.25, 0.5, 0.9, 1.0]
 
 # a HUD layer scene (a white bar) made in the running game, held in globals
 HUD = """
@@ -246,3 +256,71 @@ async def test_idle_free(ed: Editor):
         ed.check_eq(after[-1], idle[-1], "the same passes as before any transition")
     finally:
         await stop(ed)
+
+
+def sheet_frame(sheet, index: int, cell: tuple[int, int]):
+    """Frame `index` of a one-band sheet without labels: a 14 px title strip, 1 px separators."""
+    width, height = cell
+    return pngdiff.crop(sheet, index * (width + 1), 14 + 1, width, height)
+
+
+async def test_contact_sheet_route(ed: Editor):
+    await ed.call("tool_groups", enable=["pixel_art"])
+    ink = (0xFF, 0x00, 0xFF, 0xFF)
+    for kind in KINDS:
+        for size in (1, 3):
+            options = {"phase": "cover", "ease": "linear", "pixel_size": size, "width": 64, "height": 36, "color": "#ff00ff",
+                       "rim": 2, "seed": 5}
+            r = await ed.call_raw("capture_contact_sheet", {"target": {"transition": kind, "transition_options": options},
+                                                            "times": SHEET_TIMES, "duration": 1, "scale": 1, "labels": False,
+                                                            "backdrops": ["black"], "lint": ["transition_edges", "one_shot_end"]},
+                                  timeout=300)
+            name = f"{kind}_px{size}"
+            ed.check(not r.is_error and r.images, f"{name}: {r.text[:400]}")
+            value = r.value
+            cell = (64 * size, 36 * size)
+            ed.check_eq(value["cell"], list(cell), f"{name}: the art grid at its pixel size")
+            sheet = pngdiff.decode(r.images[0][0])
+            EVIDENCE.mkdir(parents=True, exist_ok=True)
+            (EVIDENCE / f"sheet_{name}.png").write_bytes(r.images[0][0])
+            path = GOLDEN_DIR / f"{name}.png"
+            if UPDATE_GOLDEN:
+                GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(r.images[0][0])
+                print(f"     [golden] wrote {path.relative_to(harness.REPO)}: look at it")
+            else:
+                ed.check(path.is_file(), f"no golden {path} (JASPER_TRANSITION_UPDATE_GOLDEN=1 writes it)")
+                ok, fraction, _ = pngdiff.compare(sheet, pngdiff.load(path), 0, 0.0)
+                ed.check(ok, f"{name}: {fraction * 100:.3f}% of the pixels differ from the golden")
+            # hard art pixels: every size x size block of a frame is one colour
+            for index in range(3):
+                w, h, rgba = sheet_frame(sheet, index, cell)
+                uneven = 0
+                for by in range(36):
+                    for bx in range(64):
+                        colours = {tuple(rgba[((by * size + dy) * w + bx * size + dx) * 4:((by * size + dy) * w + bx * size + dx) * 4 + 4])
+                                   for dy in range(size) for dx in range(size)}
+                        uneven += len(colours) != 1
+                ed.check_eq(uneven, 0, f"{name} frame {index}: every art pixel is one block")
+            # covered at progress 1: every pixel is the ink (over the black backdrop)
+            w, h, rgba = sheet_frame(sheet, 3, cell)
+            off = sum(tuple(rgba[i:i + 4]) != ink for i in range(0, len(rgba), 4))
+            ed.check_eq(off, 0, f"{name}: progress 1 is all ink")
+            rows = {row["id"]: row for row in value["checks"]}
+            edges = rows["transition_edges"]
+            if kind in ("pixel_dissolve", "fade"):
+                ed.check_in(edges["status"], ("PASS", "SKIP"), f"{name}: no rim to measure: {edges}")
+            else:
+                ed.check_eq(edges["status"], "PASS", f"{name}: the rim is the same width along the edge: {edges}")
+                ed.check_eq(edges["measured"], 0, f"{name}: rim spread 0")
+            # a cover leaves the screen covered: its overlay pixels at the end are what one_shot_end counts
+            ed.check_eq(rows["one_shot_end"]["status"], "WARN", f"{name}: a cover ends covered: {rows['one_shot_end']}")
+    # a played transition (cover, hold, reveal) ends with nothing left
+    r = await ed.call("capture_contact_sheet", target={"transition": "iris", "transition_options": {"pixel_size": 2}}, frames=6,
+                      duration=0.6, lint=["one_shot_end", "transition_edges"])
+    rows = {row["id"]: row for row in r["checks"]}
+    ed.check_eq(rows["one_shot_end"]["status"], "PASS", f"a played transition ends uncovered: {rows['one_shot_end']}")
+    ed.check_eq(rows["transition_edges"]["status"], "PASS", f"its rim: {rows['transition_edges']}")
+    bad = await ed.call_raw("capture_contact_sheet", {"target": {"transition": "swirl"}})
+    ed.check(bad.is_error and "iris" in bad.text, f"an unknown kind names the kinds: {bad.text[:300]}")
+

@@ -966,6 +966,8 @@ void LuaBinding::registerClasses(lua_State *L){
     registerSortingClasses(L);
     registerHitStopClasses(L);
     registerTransitionClasses(L);
+    // after the Transition classes: PixelFX (with glitch) reopened for play and set
+    registerPixelFxClasses(L);
     registerCrashClasses(L);
 #if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);

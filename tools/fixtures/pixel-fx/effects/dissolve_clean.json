@@ -1,0 +1,5 @@
+{
+  "effect": "dissolve",
+  "effect_options": {"duration": 1.0, "ease": "linear"},
+  "note": "the fixed twin: the dissolve reaches progress 1 (every texel gone) at the capture's end"
+}

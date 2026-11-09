@@ -14,6 +14,7 @@
 #include "pool/ShaderPool.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderVariantCompiler.h"
+#include "shader/SpriteTaps.h"
 #include "subsystem/RenderSystem.h"
 
 #include <gtest/gtest.h>
@@ -119,21 +120,8 @@ namespace sprite_variants_test {
         return out.str();
     }
 
-    // texture reads in a SPIR-V module: OpImageSample* (87-94), OpImageFetch (95), OpImageGather (96)
     int countTaps(const ShaderBinSource& bytecode){
-        if (!bytecode.data || bytecode.size < 20)
-            return -1;
-        const uint32_t* words = reinterpret_cast<const uint32_t*>(bytecode.data);
-        const size_t count = bytecode.size / sizeof(uint32_t);
-        int taps = 0;
-        for (size_t i = 5; i < count;){
-            const uint32_t opcode = words[i] & 0xFFFFu;
-            const uint32_t length = words[i] >> 16;
-            if (opcode >= 87 && opcode <= 96)
-                taps++;
-            i += length ? length : 1;
-        }
-        return taps;
+        return editor::countSpirvTextureReads(bytecode);
     }
 
     std::vector<std::string> legacyFeatures(){

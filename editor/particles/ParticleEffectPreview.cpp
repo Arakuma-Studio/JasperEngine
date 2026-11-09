@@ -396,6 +396,7 @@ struct ParticleEffectPreview::Impl {
     float frameWorldSize = 1.0f;     // the view's height at the framed centre
     int drawSize = 192;              // the offscreen target's side (the pixel view: base pixels x PIXEL_PROBE)
     int pixelSide = 0;               // the pixel view's base pixels each way
+    int pixelOriginX = 0, pixelOriginY = 0;   // the emitters' origin in those base pixels
     std::vector<uint64_t> cellTicks;
     std::vector<double> cellTimes;
 
@@ -911,6 +912,9 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
             d.frameCenter = grid;
             d.frameWorldSize = (float)side / ppu;
             d.pixelSide = side;
+            // where the emitters' origin (world 0, 0) falls among the base pixels, rows from the top
+            d.pixelOriginX = side / 2 - cx;
+            d.pixelOriginY = side / 2 + cy;
             d.drawSize = side * PIXEL_PROBE;
             // the cells the filmstrip lays out: the base pixels at the asked scale
             request.cellSize = side * request.pixelScale;
@@ -1005,6 +1009,9 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
                     const int side = d.pixelSide, scale = request.pixelScale;
                     auto same = [](const PoseColor& a, const PoseColor& b){ return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a; };
                     PoseImage pixels(side * scale, side * scale);
+                    // S48's effect lints read the base pixels premultiplied on transparent black:
+                    // the draw on black is the colour, white minus black the transparency
+                    jasperengine::editor::pixelart::PixelImage base(side, side);
                     for (int by = 0; by < side; by++){
                         for (int bx = 0; bx < side; bx++){
                             const int x0 = bx * PIXEL_PROBE, y0 = by * PIXEL_PROBE;
@@ -1017,6 +1024,8 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
                             const PoseColor c = cell.getPixel(x0, y0);
                             const bool drawn = !same(b0, PoseColor(0, 0, 0, 255)) || !same(w0, PoseColor(255, 255, 255, 255));
                             measured.pixelsDrawn += drawn ? 1 : 0;
+                            const int through = std::max({(int)w0.r - (int)b0.r, (int)w0.g - (int)b0.g, (int)w0.b - (int)b0.b, 0});
+                            base.set(bx, by, jasperengine::editor::pixelart::PixelRgba{b0.r, b0.g, b0.b, (uint8_t)std::clamp(255 - through, 0, 255)});
                             if (!even){
                                 measured.offGrid++;
                                 if (measured.offGridAt.size() < (size_t)qa::MAX_AT) measured.offGridAt.push_back({d.cellTimes[d.nextCell], {bx, by}});
@@ -1026,6 +1035,11 @@ bool ParticleEffectPreview::advance(double budgetMs, bool drawing){
                         }
                     }
                     measured.pixelGrid = true;
+                    measured.pixelFrames.push_back(std::move(base));
+                    measured.pixelTimes.push_back(d.cellTimes[d.nextCell]);
+                    measured.pixelOriginX = d.pixelOriginX;
+                    measured.pixelOriginY = d.pixelOriginY;
+                    measured.pixelSeed = d.seeds.empty() ? 1u : d.seeds.front();
                     cell = std::move(pixels);
                 }
                 cells.push_back(std::move(cell));
