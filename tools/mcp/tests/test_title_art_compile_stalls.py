@@ -8,8 +8,9 @@ first render of a title stalled the editor past the hang watchdog's 3 s. Now eac
 with the variant of its material (one compile up to about 1 s) and every Title Art render lets one
 new program draw a frame. A title with every heavy Material member, a 3D title with AO and a glint,
 rendered through render_title and opened in the Title Designer, with Mesa's shader cache off (cold
-compiles, as on a first run): no main-thread stall reaches 3 s. The watchdog reports stalls from
-1 s here so the longest ones show in the log. Red control (by hand, Deviation 58): the same run
+compiles, as on a first run): no main-thread stall reaches 3 s, a wall-clock budget the benchmark
+run enforces (over_budget: next to other jobs the same compiles stall the software GL for seconds
+more). The watchdog reports stalls from 1 s here so the longest ones show in the log. Red control (by hand, Deviation 58): the same run
 with every element on the whole ELEMENT program logged stalls of 10.5, 6.5 and 6.0 s.
 """
 
@@ -17,7 +18,7 @@ import re
 import time
 from pathlib import Path
 
-from harness import Editor
+from harness import Editor, over_budget
 
 CI = True
 # cold compiles: Mesa's disk cache would serve programs an earlier run compiled
@@ -114,5 +115,6 @@ async def test_new_titles_compile_without_a_hang(ed: Editor):
             for frame in Path(m.group(1)).read_text(errors="replace").splitlines():
                 if frame.startswith("#"):
                     print("    " + frame[:160])
-    ed.check(all(s < HANG_MS for s in seen), f"no stall reached the {HANG_MS} ms hang threshold: {seen}")
+    over = over_budget("longest main-thread stall while the titles compiled", {"longest": max(seen, default=0.0)}, HANG_MS, "ms")
+    ed.check(not over, f"no stall reached the {HANG_MS} ms hang threshold: {seen}")
     await ed.call("set_hang_watchdog", enabled=True, threshold_ms=HANG_MS)
