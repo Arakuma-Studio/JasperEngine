@@ -3335,9 +3335,11 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             // a generated normal map, or an image normal maps were made from
             if (normals && Util::isImageFile(name)) normalFiles.push_back(path);
             if (pixelArt) {
+                // assets-relative (the assets directory may be the project's own)
                 const std::string assetsDir = ProjectChecks::assetsRootFromProjectFile(root).lexically_relative(root).generic_string();
-                if (Util::isImageFile(name) && !assetsDir.empty() && name.rfind(assetsDir + "/", 0) == 0)
-                    pixelArtFiles.push_back(name.substr(assetsDir.size() + 1));
+                const bool rootAssets = assetsDir.empty() || assetsDir == ".";
+                if (Util::isImageFile(name) && (rootAssets || name.rfind(assetsDir + "/", 0) == 0))
+                    pixelArtFiles.push_back(rootAssets ? name : name.substr(assetsDir.size() + 1));
                 const std::string extension = rel.extension().string();
                 if (extension == ".scene" || extension == ".prefab" || extension == ".meta" || name == "project.yaml")
                     pixelArtScenes = true;

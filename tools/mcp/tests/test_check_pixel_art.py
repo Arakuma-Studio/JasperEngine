@@ -58,13 +58,13 @@ async def check(ed: Editor, **args) -> dict:
 
 
 async def test_group_is_hidden_until_enabled(ed: Editor):
-    listed = {t["name"] for t in await ed.tools(groups=None)}
+    listed = {t.name for t in await ed.tools(groups=None)}
     ed.check("check_pixel_art" not in listed, "a new session does not list check_pixel_art")
     # callable by name before the group is enabled (hiding is only about context)
     first = await check(ed)
     ed.check(first.get("verdict") in ("fixable", "needs_person"), f"callable without enabling: {first.get('verdict')}")
     await ed.call("tool_groups", enable=["pixel_art"])
-    listed = {t["name"] for t in await ed.tools()}
+    listed = {t.name for t in await ed.tools()}
     ed.check("check_pixel_art" in listed, "listed once pixel_art is enabled")
     S["first"] = first
 
@@ -189,8 +189,8 @@ async def test_fix_all_output_is_one_step(ed: Editor):
     history = await ed.call("get_undo_history", limit=50)
     names = [e["name"] for e in history["entries"] if e.get("applied", True)]
     ed.check(step["name"] in names, f"get_undo_history shows the step: {names[:5]}")
-    # one undo restores every file (the metas, the palette's texture, project.yaml)
-    await ed.call("undo")
+    # one Ctrl+Z restores every file (the metas, the palette's texture, project.yaml)
+    await ed.call("undo", scope="timeline")
     ed.check_eq(hashes(ed.project), S["hashes"], "undo restores every file hash")
     again = await check(ed)
     ed.check(len(again["findings"]) == len(S["first"]["findings"]), "and the findings are back")
@@ -241,8 +241,9 @@ async def test_cost(ed: Editor):
                     "values": {"sprite": {"width": 8, "height": 8},
                                "mesh": {"submeshes[0].material.baseColorTexture": {"path": texture, "min_filter": "nearest",
                                                                                    "mag_filter": "nearest"}}}}})
-            batch = await big.call("batch", calls=calls, timeout=600)
-            big.check_eq(batch.get("failed", 0), 0, f"scene {s}: the sprites were made")
+            for at in range(0, len(calls), 200):   # a batch takes 200 calls
+                batch = await big.call("batch", calls=calls[at:at + 200], timeout=600)
+                big.check_eq(batch.get("failed", 0), 0, f"scene {s}: the sprites were made")
             await big.call("save_scene", scene=sid)
         start = time.perf_counter()
         cold = await big.call_raw("check_pixel_art", {}, timeout=600)

@@ -418,6 +418,14 @@ void editor::Project::onAssetFilesChanged(const std::vector<AssetDatabase::Chang
         // back resolves again
         refreshAssetHints();
     }
+    // Pixel Art Mode (S42 R1): an added image is pixel art from its import, drawn or not yet
+    if (pixelArtSettings.enabled) {
+        for (const AssetDatabase::Change& change : changes) {
+            if (change.type != AssetDatabase::Change::Type::Added) continue;
+            const fs::path absolute = getProjectPath() / change.path;
+            if (isInsideAssetsPath(absolute)) writeImportSettingsNow(*this, normalizeToAssetsRelative(absolute).generic_string());
+        }
+    }
     // the Pixel Art Check window checks again after imports (S42 R19)
     pixelart::PixelArtMode::get().notifyAssets();
     // Pixel Art Mode's Check on Import (S42 R1): registered only while the mode is on

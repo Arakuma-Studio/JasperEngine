@@ -123,7 +123,7 @@ async def build_bad(ed: Editor) -> None:
     hero = await art(ed, "sprites/hero.png", "#ff0000")
     lossy = await art(ed, "sprites/lossy.png", "#3d8fb0", size=64)
     swap = await art(ed, "sprites/swap.png", "#ffffff", size=64)
-    offpalette = await art(ed, "sprites/offpalette.png", "#fe0202", "#010101")
+    offpalette = await art(ed, "sprites/offpalette.png", "#fe0202", "#000000")
     # BC7 with mipmaps: an explicit default type and quality win over Pixel Art
     for path in (lossy, swap):
         await ed.call("set_texture_import_settings", paths=[path],

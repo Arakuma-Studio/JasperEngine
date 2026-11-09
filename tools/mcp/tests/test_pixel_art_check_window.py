@@ -65,7 +65,7 @@ async def test_window_lists_findings(ed: Editor):
     if not shutil.which("xdotool") or not ed._xvfb or not ed._xvfb.display:
         skip("needs xdotool and the harness Xvfb")
     await ed.call("tool_groups", enable=["pixel_art", "editor_ux", "assets_pipeline"])
-    await ed.call("open_scene", path="scenes/Main.scene")
+    await ed.call("open_scene", scene="scenes/Main.scene")
     await ed.call("run_command", id="window.pixelArtCheck")
     for rule in ("filtering", "texel_size", "off_grid", "rotation", "mipmaps_compression"):
         await wait_item(ed, f"###rule_{rule}")

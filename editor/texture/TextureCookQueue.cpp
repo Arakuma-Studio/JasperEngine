@@ -137,6 +137,21 @@ bool editor::gatherTextureInputs(Project& project, const std::string& assetPath,
     return true;
 }
 
+bool editor::writeImportSettingsNow(Project& project, const std::string& assetPath){
+    if (!isCookableTexture(assetPath))
+        return false;
+    TextureCookInputs inputs;
+    if (!gatherTextureInputs(project, assetPath, inputs) || inputs.hasSettings)
+        return false;
+    std::error_code ec;
+    if (!fs::exists(SetAssetMetaCmd::metaPathOf(inputs.absolute), ec))
+        return false;
+    // not a step of the history: the settings the texture always had, written down (R30)
+    SetAssetMetaCmd command(&project, project.normalizeToProjectRelative(inputs.absolute), TextureImportSettings::metaKey,
+                            inputs.settings.serialize());
+    return command.execute();
+}
+
 TextureCookRequest editor::makeTextureCookRequest(const TextureCookInputs& inputs, const TextureProjectSettings& project, TextureFamily family){
     TextureCookRequest request;
     request.source = inputs.absolute;

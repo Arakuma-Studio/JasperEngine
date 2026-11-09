@@ -63,6 +63,7 @@ async def test_preset_through_fixes(ed: Editor):
     clean = await ed.call("check_pixel_art")
     ed.check_eq(clean["verdict"], "clean", f"the check is clean: {[f['key'] for f in clean['findings']]}")
 
-    await ed.call("undo")
-    await ed.call("undo")
+    # Ctrl+Z twice: each fix is one step of the timeline (its histories linked)
+    await ed.call("undo", scope="timeline")
+    await ed.call("undo", scope="timeline")
     ed.check_eq(hashes(ed.project), before, "undo restores the project byte-identically")

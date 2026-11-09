@@ -1,6 +1,7 @@
 # Pixel art
 
 How to make pixel art draw correctly, and prove it, for agents. User docs: `docs/pixel-art.md`.
+Palettes (edit_palette, apply_palette): jasper://docs/palettes.
 
 ## The rules
 

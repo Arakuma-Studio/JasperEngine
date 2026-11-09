@@ -39,7 +39,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"shipping", "Player runtimes, native plugins, build shader overrides, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
         // the pixel-art family's sprites (S44 adds the row; S45 and S47 add their tools)
         {"sprites", "Aseprite import settings, sprite atlases, and agent sprite drawing on .aseprite files (jasper://docs/sprites)."},
-        {"pixel_art", "Pixel art: the validator (jasper://docs/pixel-art), palettes and Apply Palette (jasper://docs/palettes)."},
+        {"pixel_art", "Pixel art: checks and palettes (jasper://docs/pixel-art)."},
     };
     if (selftestGroupMode() > 0) {
         groups.push_back({"selftest", "Test-only group of the MCP tests (JASPER_MCP_SELFTEST_GROUP)."});

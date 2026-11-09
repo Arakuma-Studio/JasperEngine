@@ -85,6 +85,10 @@ namespace jasperengine::editor {
     TextureProjectSettings textureProjectSettingsOf(const Project& project);
     // Every texture source of the project, asset-relative (cookable ones only when asked)
     std::vector<std::string> projectTextureSources(const Project& project, bool cookableOnly);
+    // A newly imported texture's inferred settings written now rather than at its first cook (Pixel
+    // Art Mode, S42 R1: an image nothing draws yet is pixel art from its import). False when it has
+    // settings already, no sidecar yet, or is not cookable. Main thread; not an undo step.
+    bool writeImportSettingsNow(Project& project, const std::string& assetPath);
 
     // One texture × family of a batch
     struct TextureBatchItem {
