@@ -1572,3 +1572,13 @@ rest of S82 lands in 6B.
     the display scale to canvas units). It now multiplies a UI title's resolution by height / canvas height in the game and
     in the export's prebake, so their keys agree; 0, the new default, is the canvas height (R11 said 1080, which would have
     silently re-rendered every project whose canvas is not 1080 at another size); world titles stay at their canvas pixels.
+41. **Implementation: the Title Designer side (W2, `editor/titleart/runtime/TitleArtRuntimeDesigner`).**
+    R62's Characters UI is the Document page's Runtime section (presets as checkboxes, Custom, Custom
+    File, Characters Used by the Document, the count, Check Characters with the subset size of each
+    font of the text layers, the characters the set leaves out with "Add to Custom", R55's missing
+    glyphs) and the Glyph Layer. Preview As Glyph Atlas creates a real Glyph Atlas title
+    (`TitleArtRuntime::create`) on the committed file, run by S81's scheduler like any instance, and
+    makes it again when the file's revision changes; leaving the mode or closing the window drops
+    it. `TitleArtSystem::runRuntimeFrame` is the frame-once entry `renderTitles` used privately, made
+    public so the preview runs the scheduler in the render phase (through S82's `requestEngineFrame`)
+    while no scene draws a title. The preview first stalled at "Glyph Atlas: rendering 35/44" on both renderers: `runRuntimeFrame`'s once-a-frame guard counted commits, and the editor commits only when a view redraws (1,199 of 1,251 calls refused with the count stuck at 52). A frame now ends at a main-loop heartbeat or a commit, as `TitleFirstDraws` counts them, and the Designer keeps drawing while the job runs (`engineFramesWanted`), stopping when the image is done. Behind that stall, the job's compose and page copies ran into S86's one-new-draw-a-frame rule, which skips a pass and expects it to run again: a page copy or compose whose first draw waits now keeps its cell's place, the chain draws again on a later frame (`TitleGpu::deferrals`), and a cell or image goes out only when every pass drew (`allowGroup`, this change's first form, went with S86's `TitleDrawGate`). A title whose cells outgrow the default 4 pages of 1,024 (the reference title: size 220 with Light Glow) fails with R29's sentence, as a placed renderer with those settings would; a smaller one shows its image. The Title Art Renderer's Open in Title Designer opens one instance In Context (S82 R30).

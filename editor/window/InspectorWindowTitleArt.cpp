@@ -49,6 +49,10 @@ namespace {
         static std::function<void(const fs::path&)> open;
         return open;
     }
+    std::function<void(const fs::path&, uint32_t, Entity)>& contextOpener() {
+        static std::function<void(const fs::path&, uint32_t, Entity)> open;
+        return open;
+    }
 
     constexpr TitlePreviewOwner INSPECTOR_OWNER = 0x494e5350;   // "INSP"
 
@@ -135,6 +139,15 @@ void InspectorWindowTitleArt::setOpenInDesigner(std::function<void(const fs::pat
 
 bool InspectorWindowTitleArt::canOpenInDesigner() {
     return static_cast<bool>(designerOpener());
+}
+
+void InspectorWindowTitleArt::setOpenInContext(std::function<void(const fs::path&, uint32_t, Entity)> open) {
+    contextOpener() = std::move(open);
+}
+
+void InspectorWindowTitleArt::openInContext(const fs::path& document, uint32_t sceneId, Entity instance) {
+    if (contextOpener()) contextOpener()(document, sceneId, instance);
+    else openInDesigner(document);
 }
 
 void InspectorWindowTitleArt::openInDesigner(const fs::path& document) {

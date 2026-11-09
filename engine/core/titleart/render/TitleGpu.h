@@ -217,6 +217,10 @@ namespace jasperengine::titleart {
         // lastRunDeferred() says so, and the step runs again on a later frame (TitleFirstDraws)
         bool run(const TitleGpuPass& pass, std::string& error);
         bool lastRunDeferred() const { return deferredRun; }
+        // how many passes went to a later frame so far: a chain of passes that must all draw for
+        // its result to exist (a Glyph Atlas page copy, its compose) compares this across the chain
+        // and draws the whole chain again on a later frame
+        uint64_t deferrals() const { return deferredCount; }
         // a target cleared to a colour (one clear pass)
         bool clear(TitleTarget* target, const float color[4], std::string& error);
 
@@ -232,6 +236,7 @@ namespace jasperengine::titleart {
         CameraRender pass;
         TitleGpuStats counters;
         bool deferredRun = false;
+        uint64_t deferredCount = 0;
 
         bool ensurePlaceholder();
     };

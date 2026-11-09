@@ -27,10 +27,19 @@ namespace jasperengine::editor::titledesigner {
         std::string id;
         std::string title;
         std::string after;                  // the section it follows ("" = the end)
+        // drawn inside S82's own section of this id ("dimension": S86's subsections), after its rows
+        std::string parent;
+        // drawn instead of S82's own section of this id while it applies ("appearance" on a
+        // layer page, "material" on a part page: a Dimension 3D layer's parts are S86's)
+        std::string replaces;
+        bool defaultOpen = false;           // its first open state (then remembered per node kind, R19)
         // draws its rows for the page's layers (empty for the Document page) / parts
         std::function<void(RowContext& ctx, const std::vector<std::string>& layers, const std::vector<std::string>& parts)> draw;
         // shown for this selection (null: always)
         std::function<bool(const TitleDesignerState& state)> applies;
+        // shown on the page of this node (the collect pass visits every node's page, not only the
+        // selection's): used instead of `applies` when set
+        std::function<bool(const TitleDesignerState& state, const NodeRef& node)> appliesTo;
         std::function<std::string(const TitleDesignerState& state)> summary;
     };
     void addSection(SectionDef section);

@@ -19,6 +19,7 @@
 
 #include "titleart/TitleArtBake.h"
 #include "titleart/TitleArtHash.h"
+#include "titleart/designer/TitleAddCatalog.h"
 #include "titleart/designer/TitleDesignerHooks.h"
 #include "titleart/designer/TitleDesignerPrefs.h"
 #include "titleart/designer/TitleDesignerState.h"
@@ -78,6 +79,9 @@ namespace jasperengine::editor {
         float x = 0.0f, y = 0.0f, width = 0.0f, height = 0.0f;
         int screenWidth = 0, screenHeight = 0;
         std::vector<uint8_t> snapshotRgba;          // RGBA8 rows top first, screenWidth x screenHeight
+        // the bake frame (canvas px) the instance's image covers; empty = the whole canvas
+        jasperengine::titleart::TitleRectI frame;
+        bool located = false;                       // the rectangle was found on screen
     };
 
     class TitleDesignerWindow : public titledesigner::PropertyHost {
@@ -115,17 +119,25 @@ namespace jasperengine::editor {
         // ---- the scripted API: every UI entry and MCP call goes through these ----
         bool open(const std::filesystem::path& file, std::string* error = nullptr);
         bool openInContext(const TitleInContext& context, std::string* error = nullptr);
+        // the Title Art Renderer's button: opens its document In Context, snapshots the instance's
+        // scene with and without it (their difference is the instance's screen rectangle)
+        bool openInContextOf(const std::filesystem::path& document, uint32_t sceneId, Entity instance, std::string* error = nullptr);
         bool select(const std::vector<std::string>& paths, std::string* error = nullptr);
         bool runOps(const titledesigner::Json& ops, const std::string& stepName, std::string* error = nullptr);
         void setTool(titledesigner::Tool tool);
         titledesigner::Tool tool() const { return currentTool; }
         bool setPreviewAs(const std::string& mode, std::string* error = nullptr);
+        // the registered Preview As mode shown (null: Realtime or Baked)
+        const titledesigner::PreviewModeDef* activePreviewMode() const;
         bool setBackground(const titledesigner::BackdropChoice& backdrop, std::string* error = nullptr);
         bool setDevice(const titledesigner::DeviceChoice& device, std::string* error = nullptr);
         void setZoom(float zoom);
         void fit();
         void frameSelection();
         void setSearch(const std::string& query);
+        // the Add palette (R17) with `filter` ("", layers, generators, effects) and a query typed in
+        void openAddPalette(const std::string& filter, const std::string& query);
+        void closeAddPalette();
         bool setPanel(const std::string& panel, std::string* error = nullptr);
         bool setLibrary(const std::string& tab, const std::string& family, const std::string& query, std::string* error = nullptr);
         bool previewItem(const titledesigner::PreviewItem& item, std::string* error = nullptr);
@@ -161,6 +173,15 @@ namespace jasperengine::editor {
         const jasperengine::titleart::AssetResolver* assets() override;
         void reportError(const std::string& message) override;
         bool selectedCharacters(std::string& layer, std::vector<int>& indexes) override;
+        bool effectCost(const std::string& layer, const std::string& part, int index, titledesigner::CostBadge& out) override;
+        bool livePreviewOn(const std::string& layer, const std::string& effectId) const override;
+        void setLivePreview(const std::string& layer, const std::string& effectId, bool on) override;
+        ImTextureID previewTile(const std::string& slot, const std::shared_ptr<const jasperengine::titleart::TitleArtDoc>& doc, const std::string& layerId,
+                                const jasperengine::titleart::TitleRect& bounds, uint64_t content, int pixels) override;
+        std::string previewMode() const override;
+        std::vector<std::string> projectFiles(const std::vector<std::string>& extensions) override;
+        std::string importHdriFile(std::string* error) override;
+        void choosePreviewMode(const std::string& mode) override;
 
     private:
         Project* project = nullptr;
@@ -290,7 +311,7 @@ namespace jasperengine::editor {
         std::vector<std::string> forceOpenSections;   // a landing opens the hit's sections
 
         // ---- canvas interaction ----
-        enum class Drag : uint8_t { None, Gizmo, Gizmo3D, Handle, Marquee, Guide, NewGuide, Pan, TextSelect, Letters };
+        enum class Drag : uint8_t { None, Gizmo, Gizmo3D, Handle, Marquee, Guide, NewGuide, Pan, TextSelect, Letters, EnvRotate };
         Drag drag = Drag::None;
         ImVec2 dragStart = ImVec2(0, 0);
         int guideIndex = -1;
@@ -301,6 +322,11 @@ namespace jasperengine::editor {
         double nudgeAt = -1.0;
         std::string nudgeKey;
         std::unique_ptr<titledesigner::Gizmo3DTarget> gizmo3dTarget;
+        titledesigner::Gizmo3DLetters editLetters;     // the selected letters of a 3D layer being edited
+        bool editLetters3D = false;
+        // Alt+drag on a 3D layer scrubs its Environment Rotation (S86 R55)
+        double envDragStart = 0.0;
+        std::string envDragLayer;
 
         // ---- text editing (R36-R39) ----
         std::string renamePromptOld, renamePromptNew;
@@ -309,6 +335,8 @@ namespace jasperengine::editor {
         // ---- Add palette (R17) ----
         bool addOpen = false;
         bool addOpenRequested = false;
+        bool addCloseRequested = false;
+        int addOpenDelay = 0;                       // frames until a scripted open (focus_window's add)
         std::string addFilter;                     // "" | "layers" | "generators" | "effects"
         std::string addQuery;
         std::string addCategory;
@@ -317,6 +345,45 @@ namespace jasperengine::editor {
         std::string addHovered;
         double addHoverSince = 0.0;
         ImVec2 addHoverMouse = ImVec2(0, 0);
+        std::vector<std::pair<std::string, int>> addRail;   // the rail drawn last (state().add)
+        std::vector<std::string> addVisible;                // the entries listed last
+        titledesigner::AddTarget addTarget() const;
+        bool previewAddEntry(const titledesigner::AddEntry& entry);
+        bool addEntry(const titledesigner::AddEntry& entry, std::string* error);
+
+        // ---- S83: cost badges (R41), Preview Live (D10) ----
+        struct CostCache {
+            struct Row {
+                bool valid = false;
+                jasperengine::titleart::CostClass desktop = jasperengine::titleart::CostClass::C0;
+                jasperengine::titleart::CostClass mobile = jasperengine::titleart::CostClass::C0;
+                double desktopMs = 0.0, mobileMs = 0.0;
+            };
+            struct Layer {
+                std::vector<Row> effects;   // the stack's enabled effects, in order
+                Row generator;
+                size_t desktopEffects = 0, mobileEffects = 0;
+                jasperengine::titleart::CostClass total = jasperengine::titleart::CostClass::C0;
+                jasperengine::titleart::CostClass totalMobile = jasperengine::titleart::CostClass::C0;
+                double desktopMs = 0.0, mobileMs = 0.0;
+            };
+            const void* shown = nullptr;
+            uint64_t change = ~0ull;
+            std::map<std::string, Layer> layers;
+        };
+        CostCache costCache;
+        const CostCache& costs();
+        bool documentRealtime();
+        bool realtimeUse = false;
+        double realtimeCheckedAt = -1.0;
+        std::string realtimeCheckedPath;
+        std::set<std::string> followMissing;     // generator layers whose followed layer is gone (S83 R43)
+        const void* followMissingDoc = nullptr;
+        uint64_t followMissingChange = ~0ull;
+        std::set<std::pair<std::string, std::string>> livePreviews;   // (layer, effect id)
+        double liveStart = -1.0;
+        // the overrides that play the live params now; `phaseKey` the time step they show
+        std::vector<jasperengine::titleart::FieldOverride> liveOverrides(double* phaseKey);
 
         // ---- Library (R40-R49) ----
         std::string libraryHover;                  // hovered tile id

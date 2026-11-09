@@ -142,6 +142,9 @@ namespace jasperengine{
         static std::string displayName(EntityRegistry* scene, Entity entity);
 
         // the frame budget scripts set (TitleArt.setFrameBudget), 0.25..16 ms
+        // the Realtime scheduler's steps of this frame, once a frame whoever asks first: a scene
+        // that draws titles, or the Title Designer's Glyph Atlas preview while no scene draws
+        static void runRuntimeFrame(bool editorEditMode);
         static void setFrameBudget(double ms);
         static double getFrameBudget();
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "titleart/runtime/TitleArtCreate.h"
 #include "util/ScriptAttach.h"
 #include "audio/SoundDrop.h"
 #include "util/UIProbe.h"
@@ -3384,7 +3385,7 @@ void editor::HierarchyWindow::show(){
                 while (offset < dataSize) {
                     std::string path(data + offset);
                     if (!path.empty()) {
-                        if (Util::isSceneFile(path) || Util::isPrefabFile(path) || acceptsModelDrop(path)) {
+                        if (Util::isSceneFile(path) || Util::isPrefabFile(path) || acceptsModelDrop(path) || Util::isTitleArtFile(path)) {
                             allowResourceDragDrop = true;
                             break;
                         }
@@ -3413,6 +3414,15 @@ void editor::HierarchyWindow::show(){
 
                 handleSceneFilesDropAsChildScenes(droppedPaths, project->getSelectedSceneId());
                 handleEntityFilesDrop(droppedPaths);
+                // a .titleart (the Project window's, or the Title Designer's document chip): a
+                // GameObject showing it, one step "Create Title Art (logo)" (S81 R6, S82 R61)
+                for (const std::string& path : droppedPaths) {
+                    if (!Util::isTitleArtFile(path)) continue;
+                    std::string error;
+                    if (createTitleArtObject(project, project->getSelectedSceneId(), path, NULL_ENTITY, &error) == NULL_ENTITY) {
+                        Out::warning("Title Art drop: %s", error.c_str());
+                    }
+                }
 
                 if (payload->IsDelivery()) {
                     ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);

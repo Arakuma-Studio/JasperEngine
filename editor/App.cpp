@@ -259,6 +259,10 @@ editor::App::App(){
         std::string error;
         if (!titleDesignerWindow->open(document, &error)) registerAlert("Title Designer", error);
     });
+    InspectorWindowTitleArt::setOpenInContext([this](const std::filesystem::path& document, uint32_t sceneId, Entity instance) {
+        std::string error;
+        if (!titleDesignerWindow->openInContextOf(document, sceneId, instance, &error)) registerAlert("Title Designer", error);
+    });
     spriteNormalsWatcher = new SpriteNormalsWatcher(&project);
     SpriteNormalsWatcher::setActive(spriteNormalsWatcher);
     mcpActivityWindow = new mcp::McpActivityWindow();

@@ -228,15 +228,15 @@ the set draw as nothing and `onMissingCharacters` fires, as in the build.
 The window a person designs in (Window > Title Designer) edits through the same ops. To show a
 person a variant, use `render_title` `try`; to leave it on their screen, `focus_window` with
 `select`.
-- `focus_window {window: "title_designer", title_designer: {...}}` keys: `path` (open it),
-  `select` (`"Title"`, `"Title/rim#1"`, `"Title/fx:outer_glow"`, `""` = document), `panel`
-  (layers, properties, library, history), `search` (types into Find a setting), `library`
-  `{tab, family, query}`, `preview_as` (realtime, baked, or a registered mode), `background`
-  (checker, black, white, gray, color, image, game_scene, in_context), `device`
-  `{profile, orientation, display_height}`, `zoom` (number or `"fit"`). The result's `state`
-  has `path, selection, panel, zoom, preview_as, busy, staged, preview_active, last_render_ms, rect`,
-  `library {provider: starter|registered, shown}` and `notices` (`cjk_font_missing`: the person's
-  editor shows this title's CJK text as boxes; say so).
+- `focus_window {window: "title_designer", title_designer: {...}}` keys: `path`, `select`
+  (`"Title"`, `"Title/rim#1"`, `"Title/band#0"`, `"Title/fx:outer_glow"`, `""` = document), `panel`
+  (layers, properties, library, history), `search`, `library` `{tab, family, query}`, `preview_as`
+  (realtime, baked, glyph_atlas, realtime_high|medium|low), `background` (checker, black, white,
+  gray, color, image, game_scene, in_context), `device` `{profile, orientation, display_height}`,
+  `zoom` (number or `"fit"`), `add` (`{filter, query}` opens the Add palette, `false` closes).
+  Its `state`: `path, selection, panel, zoom, preview_as, busy, staged, preview_active,
+  last_render_ms, rect, library`, `add {rail, entries}`, `gizmo_3d`, `notices`
+  (`cjk_font_missing`: their editor shows CJK as boxes; say so).
 - `screenshot {view: "title_designer"}`: the window as a person sees it.
 - `get_title` adds `designer {selection, staged, preview_active, view}` while it is open.
 ### 3D

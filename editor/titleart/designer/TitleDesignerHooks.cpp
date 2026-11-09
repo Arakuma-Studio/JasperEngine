@@ -83,6 +83,44 @@ const Gizmo3DProvider& jasperengine::editor::titledesigner::gizmo3DProvider() {
     return hooks().gizmo3d;
 }
 
+namespace {
+    std::vector<std::function<void()>>& engineFrameRequests() {
+        static std::vector<std::function<void()>> list;
+        return list;
+    }
+    bool engineFrameRequestsRan = false;
+}
+
+void jasperengine::editor::titledesigner::requestEngineFrame(std::function<void()> work) {
+    if (work) engineFrameRequests().push_back(std::move(work));
+}
+
+void jasperengine::editor::titledesigner::runEngineFrameRequests() {
+    std::vector<std::function<void()>> work;
+    work.swap(engineFrameRequests());
+    engineFrameRequestsRan = !work.empty();
+    for (const std::function<void()>& w : work) w();
+}
+
+bool jasperengine::editor::titledesigner::engineFramesWanted() {
+    return engineFrameRequestsRan || !engineFrameRequests().empty();
+}
+
+namespace {
+    std::map<std::string, jasperengine::editor::titledesigner::CanvasOverlay>& canvasOverlays() {
+        static std::map<std::string, jasperengine::editor::titledesigner::CanvasOverlay> list;
+        return list;
+    }
+}
+
+void jasperengine::editor::titledesigner::addCanvasOverlay(const std::string& id, CanvasOverlay overlay) {
+    canvasOverlays()[id] = std::move(overlay);
+}
+
+void jasperengine::editor::titledesigner::runCanvasOverlays(const TitleDesignerState& state, ImDrawList* drawList, const CanvasXform& xform) {
+    for (const auto& [id, overlay] : canvasOverlays()) overlay(state, drawList, xform);
+}
+
 void jasperengine::editor::titledesigner::addPreviewMode(PreviewModeDef mode) {
     eraseId(hooks().previewModes, mode.id);
     hooks().previewModes.push_back(std::move(mode));

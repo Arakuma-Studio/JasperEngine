@@ -1534,6 +1534,14 @@ FieldLookup titleart::lookupField(Json& object, const SchemaKind& rootKind, cons
     if (path.empty()) return fail(0, "bad_path", "the path is empty", {});
 
     Json* current = &object;
+    // a read (createEntries off) never adds a key: a sparse member a level has not set stays
+    // absent, and reads as null
+    static thread_local Json absent;
+    auto slotOf = [&](const std::string& key) -> Json& {
+        if (createEntries || !current->is_object() || current->contains(key)) return (*current)[key];
+        absent = Json();
+        return absent;
+    };
     const SchemaKind* kind = schema.variantOf(rootKind, object);
     if (!kind) return fail(0, "unknown_type", "the object's type is not one this build knows", {});
     // inside effect / generator params: the definition's params
@@ -1548,7 +1556,7 @@ FieldLookup titleart::lookupField(Json& object, const SchemaKind& rootKind, cons
             for (const ParamDef& p : *params) keys.push_back(p.key);
             if (!param) return fail(i, "bad_path", "'" + s.key + "' is not a parameter here", keys);
             appendKey(s.key, false);
-            Json& slot = (*current)[s.key];
+            Json& slot = slotOf(s.key);
             params = nullptr;
             if (last) {
                 result.ok = true;
@@ -1574,7 +1582,7 @@ FieldLookup titleart::lookupField(Json& object, const SchemaKind& rootKind, cons
             return fail(i, "bad_path", "'" + s.key + "' is not a member of " + kind->label, memberKeys(schema, *kind));
         }
         appendKey(s.key, false);
-        Json& slot = (*current)[s.key];
+        Json& slot = slotOf(s.key);
         if (last) {
             result.ok = true;
             result.value = &slot;

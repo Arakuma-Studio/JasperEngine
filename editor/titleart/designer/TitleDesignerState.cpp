@@ -164,7 +164,20 @@ std::string jasperengine::editor::titledesigner::partLabel(const ta::Json& layer
         }
         return "Rim";
     }
-    if (partKey.rfind("band:", 0) == 0) return "Band";
+    if (partKey.rfind("band:", 0) == 0) {
+        // S86's bands, innermost first: Band 1..N
+        const std::string id = partKey.substr(5);
+        auto style = layer.find("style_3d");
+        if (style != layer.end() && style->is_object()) {
+            auto bands = style->find("bands");
+            if (bands != style->end() && bands->is_array()) {
+                for (size_t i = 0; i < bands->size(); i++) {
+                    if (str((*bands)[i], "id") == id) return "Band " + std::to_string(i + 1);
+                }
+            }
+        }
+        return "Band";
+    }
     return partKey;
 }
 
@@ -231,6 +244,18 @@ std::string jasperengine::editor::titledesigner::nodePath(const TitleArtDoc& doc
                 if (rims != style->end() && rims->is_array()) {
                     for (size_t i = 0; i < rims->size(); i++) {
                         if ("rim:" + str((*rims)[i], "id") == part) return "rim#" + std::to_string(i);
+                    }
+                }
+            }
+        }
+        if (part.rfind("band:", 0) == 0) {
+            // S86's bands as S86 R59 addresses them: band#<n>
+            auto style = layer->find("style_3d");
+            if (style != layer->end() && style->is_object()) {
+                auto bands = style->find("bands");
+                if (bands != style->end() && bands->is_array()) {
+                    for (size_t i = 0; i < bands->size(); i++) {
+                        if ("band:" + str((*bands)[i], "id") == part) return "band#" + std::to_string(i);
                     }
                 }
             }
@@ -339,6 +364,13 @@ bool jasperengine::editor::titledesigner::nodeFromPath(const TitleArtDoc& doc, c
     if (parseIndexed(segment, "rim#", index)) {
         part = rimPartKey(*layer, (size_t)index);
         if (part.empty()) return fail(error, "'" + segment + "': the layer has no rim " + std::to_string(index));
+    } else if (parseIndexed(segment, "band#", index)) {
+        auto style = layer->find("style_3d");
+        const ta::Json* bands = style != layer->end() && style->is_object() && style->contains("bands") ? &(*style)["bands"] : nullptr;
+        if (!bands || !bands->is_array() || (size_t)index >= bands->size()) {
+            return fail(error, "'" + segment + "': the layer has no band " + std::to_string(index));
+        }
+        part = "band:" + str((*bands)[(size_t)index], "id");
     } else if (segment.rfind("rim:", 0) == 0 || segment == "face" || segment == "bevel" || segment == "side" || segment.rfind("band:", 0) == 0) {
         part = segment;
     } else if (parseIndexed(segment, "mask#", index)) {
@@ -723,8 +755,8 @@ void TitleDesignerState::pruneSelection() {
             case NodeKind::Effect: exists = effectOf(*layer, node) != nullptr; break;
             case NodeKind::Mask: exists = maskIndexOf(*layer, node.item) >= 0; break;
             case NodeKind::Part:
-                exists = node.part == "face" || node.part == "bevel" || node.part == "side" || node.part.rfind("band:", 0) == 0 ||
-                         partLabel(*layer, node.part) != "Rim";
+                exists = node.part == "face" || node.part == "bevel" || node.part == "side" ||
+                         (node.part.rfind("band:", 0) == 0 ? partLabel(*layer, node.part) != "Band" : partLabel(*layer, node.part) != "Rim");
                 break;
             default: break;
         }

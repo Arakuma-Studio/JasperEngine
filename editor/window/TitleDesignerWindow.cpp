@@ -70,6 +70,8 @@ namespace {
 
 TitleDesignerWindow::TitleDesignerWindow(Project* project) : project(project), doc(project) {
     settings = TitleDesignerSettings::load();
+    // S81's, S83's and S86's rows, modes and gizmo target (§6.8)
+    registerTitleDesignerExtensions();
     // reopened as it was: its live parts are made by the first show() (R64, R65)
     windowOpen = settings.windowOpen;
 }
@@ -125,6 +127,8 @@ void TitleDesignerWindow::destroyLive() {
     for (const PreviewModeDef& mode : previewModes()) {
         if (mode.close) mode.close();
     }
+    livePreviews.clear();
+    liveStart = -1.0;
     canvas.reset();
     thumbnails.reset();
     libraryTiles.reset();
@@ -249,6 +253,9 @@ bool TitleDesignerWindow::open(const fs::path& file, std::string* error) {
     lintChange = ~0ull;
     searchText.clear();
     findings.clear();
+    livePreviews.clear();
+    liveStart = -1.0;
+    realtimeCheckedAt = -1.0;
     workspace.save();
     if (!windowOpen) setOpen(true);
     focusRequested = true;
@@ -311,7 +318,7 @@ bool TitleDesignerWindow::needsFrames() const {
     const CanvasRenderInfo& info = canvas->info();
     return info.busy || info.rebuilding || now() - lastViewChange < 0.5 || doc.gestureActive() || (thumbnails && thumbnails->pendingCount() > 0) ||
            (libraryTiles && libraryTiles->pendingCount() > 0) ||
-           textEditing() || drag != Drag::None;
+           textEditing() || drag != Drag::None || !livePreviews.empty() || engineFramesWanted();
 }
 
 bool TitleDesignerWindow::typing() const {
@@ -322,13 +329,29 @@ void TitleDesignerWindow::setTool(Tool tool) {
     currentTool = tool;
 }
 
+const PreviewModeDef* TitleDesignerWindow::activePreviewMode() const {
+    const DocumentView* v = viewOrNull();
+    if (!v) return nullptr;
+    for (const PreviewModeDef& mode : previewModes()) {
+        if (mode.id == v->previewAs) return &mode;
+    }
+    return nullptr;
+}
+
 bool TitleDesignerWindow::setPreviewAs(const std::string& mode, std::string* error) {
+    // the mode left frees what it made (S81's Glyph Atlas title)
+    auto leave = [&] {
+        const PreviewModeDef* previous = activePreviewMode();
+        if (previous && previous->id != mode && previous->close) previous->close();
+    };
     if (mode == "realtime" || mode == "baked") {
+        leave();
         view().previewAs = mode;
         return true;
     }
     for (const PreviewModeDef& def : previewModes()) {
         if (def.id == mode) {
+            leave();
             view().previewAs = mode;
             return true;
         }
@@ -541,6 +564,26 @@ ta::Json TitleDesignerWindow::state() const {
                           return units;
                       }()}, {"index_units_frame", indexUnitsLastFrame}};
     out["library"] = {{"provider", libraryProvider() ? "registered" : "starter"}, {"shown", libraryShown}};
+    if (addOpen) {
+        // the Add palette as drawn last: its rail with counts and the listed entries
+        ta::Json rail = ta::Json::array();
+        for (const auto& [category, count] : addRail) rail.push_back({{"category", category}, {"count", count}});
+        out["add"] = {{"query", addQuery}, {"filter", addFilter}, {"rail", rail}, {"entries", addVisible}};
+    }
+    if (inContext) {
+        // In Context (R30): the instance's screen rectangle once found, on its screen
+        out["in_context"] = {{"located", inContext->located}, {"snapshot", !inContext->snapshotRgba.empty()},
+                             {"rect", ta::Json::array({inContext->x, inContext->y, inContext->width, inContext->height})},
+                             {"screen", ta::Json::array({inContext->screenWidth, inContext->screenHeight})}};
+    }
+    if (gizmo3d && gizmo3d->visible()) {
+        // S82 R35's schematic where it is drawn (window coords, as `rect`): its centre and the
+        // free-rotate ring's radius
+        out["gizmo_3d"] = {{"centre", ta::Json::array({gizmo3d->centre().x, gizmo3d->centre().y})}, {"ring", rotation3d::RING_PX}};
+    }
+    ta::Json live = ta::Json::array();
+    for (const auto& [layer, effect] : livePreviews) live.push_back(nodePath(doc.shown(), {NodeKind::Effect, layer, {}, effect}));
+    out["live_previews"] = live;
     ta::Json notices = ta::Json::array();
     if (cjkNoticeShown) notices.push_back("cjk_font_missing");
     out["notices"] = notices;
@@ -570,6 +613,20 @@ void TitleDesignerWindow::openAddPalette(const std::string& filter) {
     addCategory.clear();
     addHighlight = 0;
     addOpenRequested = true;
+}
+
+void TitleDesignerWindow::openAddPalette(const std::string& filter, const std::string& query) {
+    openAddPalette(filter);
+    addQuery = query;
+    // focus_window focuses the window one frame after its keys run, which closes popups: the
+    // palette opens two frames later, over it
+    addOpenRequested = false;
+    addOpenDelay = 3;
+}
+
+void TitleDesignerWindow::closeAddPalette() {
+    addOpenRequested = false;
+    addCloseRequested = addOpen;
 }
 
 void TitleDesignerWindow::exposeField(const FieldRef& target, const std::string& label) {

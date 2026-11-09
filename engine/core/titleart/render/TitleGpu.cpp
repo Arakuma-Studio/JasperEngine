@@ -326,6 +326,7 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     const bool firstDraw = !TitleFirstDraws::drew(drawKey);
     if (!TitleFirstDraws::allow(drawKey)) {
         deferredRun = true;
+        deferredCount++;
         return true;
     }
     const TitleRectI whole{0, 0, key.width, key.height};

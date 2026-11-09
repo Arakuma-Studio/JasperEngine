@@ -1530,16 +1530,16 @@ Json poseWindowState(const CallPtr& call) {
 // focus_window title_designer's object (S82 R78): its keys applied in this order, each through the
 // window's scripted API; an unknown key fails listing the valid ones
 bool focusTitleDesigner(const CallPtr& call, TitleDesignerWindow* designer) {
-    static const std::vector<std::string> keys = {"path", "select", "panel", "search", "library", "preview_as", "background", "device", "zoom"};
+    static const std::vector<std::string> keys = {"path", "select", "panel", "search", "library", "preview_as", "background", "device", "zoom", "add"};
     const Json& args = call->args();
     const Json options = args.value("title_designer", Json::object());
     if (!options.is_object()) {
-        call->fail("title_designer must be an object with any of: path, select, panel, search, library, preview_as, background, device, zoom.");
+        call->fail("title_designer must be an object with any of: path, select, panel, search, library, preview_as, background, device, zoom, add.");
         return false;
     }
     for (auto it = options.begin(); it != options.end(); ++it) {
         if (std::find(keys.begin(), keys.end(), it.key()) == keys.end()) {
-            call->fail("title_designer." + it.key() + " is not a key: valid are path, select, panel, search, library, preview_as, background, device, zoom.");
+            call->fail("title_designer." + it.key() + " is not a key: valid are path, select, panel, search, library, preview_as, background, device, zoom, add.");
             return false;
         }
     }
@@ -1599,6 +1599,13 @@ bool focusTitleDesigner(const CallPtr& call, TitleDesignerWindow* designer) {
             return fail("device must be a profile id or {profile, orientation, display_height}");
         }
         if (!designer->setDevice(device, &error)) return fail(error);
+    }
+    if (options.contains("add")) {
+        // the Add palette (S82 R17): {filter, query} opens it as a person would, false closes it
+        const Json& a = options["add"];
+        if (a.is_boolean() && !a.get<bool>()) designer->closeAddPalette();
+        else if (a.is_object()) designer->openAddPalette(a.value("filter", std::string()), a.value("query", std::string()));
+        else return fail("add must be {filter, query} or false");
     }
     if (options.contains("zoom")) {
         const Json& z = options["zoom"];

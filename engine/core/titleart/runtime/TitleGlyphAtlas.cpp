@@ -256,6 +256,8 @@ bool TitleGlyphAtlas::newPage(std::string& error){
 }
 
 void TitleGlyphAtlas::freePage(int index){
+    if (pendingInsert.page == index) pendingInsert = PendingInsert();
+    else if (pendingInsert.page > index) pendingInsert.page--;
     for (auto it = cells.begin(); it != cells.end();){
         if (it->second.page == index) it = cells.erase(it);
         else{
@@ -305,6 +307,7 @@ bool TitleGlyphAtlas::allocate(int width, int height, const std::set<std::string
         else ++it;
     }
     Page& freed = pages[(size_t)victim];
+    if (pendingInsert.page == victim) pendingInsert = PendingInsert();
     freed.skyline.assign((size_t)pageSide, 0);
     const float transparent[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     if (!gpuLayer.clear(freed.target.get(), transparent, error)) return false;
@@ -351,8 +354,9 @@ bool TitleGlyphAtlas::copyUpload(TitleTarget* target, TextureRender& from, int w
 }
 
 bool TitleGlyphAtlas::insert(const std::string& key, const TitleImage& back, const TitleImage& front, double anchorX, double anchorY,
-                             const std::set<std::string>& inUse, bool& full, std::string& error){
+                             const std::set<std::string>& inUse, bool& full, bool& deferred, std::string& error){
     full = false;
+    deferred = false;
     Cell cell;
     cell.anchorX = anchorX;
     cell.anchorY = anchorY;
@@ -365,6 +369,7 @@ bool TitleGlyphAtlas::insert(const std::string& key, const TitleImage& back, con
     const bool hasBack = back.target && !cell.backPixels.empty();
     const bool hasFront = front.target && !cell.frontPixels.empty();
     if (!hasBack && !hasFront){
+        pendingInsert = PendingInsert();
         insertBlank(key);
         return true;
     }
@@ -373,8 +378,15 @@ bool TitleGlyphAtlas::insert(const std::string& key, const TitleImage& back, con
     const int height = std::max(hasBack ? cell.backPixels.height : 0, hasFront ? cell.frontPixels.height : 0);
     int page = -1;
     TitleRectI rect;
-    if (!allocate(width, height, inUse, page, rect, full, error)) return false;
+    if (pendingInsert.page >= 0 && pendingInsert.key == key){
+        page = pendingInsert.page;
+        rect = pendingInsert.rect;
+    }else{
+        pendingInsert = PendingInsert();
+        if (!allocate(width, height, inUse, page, rect, full, error)) return false;
+    }
     cell.page = page;
+    const uint64_t deferrals = gpuLayer.deferrals();
     if (hasBack){
         cell.back = {rect.x, rect.y, cell.backPixels.width, cell.backPixels.height};
         if (!copyCell(page, back, cell.backPixels, cell.back, error)) return false;
@@ -383,6 +395,13 @@ bool TitleGlyphAtlas::insert(const std::string& key, const TitleImage& back, con
         cell.front = {rect.x + (hasBack ? cell.backPixels.width + CELL_GUTTER : 0), rect.y, cell.frontPixels.width, cell.frontPixels.height};
         if (!copyCell(page, front, cell.frontPixels, cell.front, error)) return false;
     }
+    if (gpuLayer.deferrals() != deferrals){
+        // the cell's pixels are not in the page yet: registering it would be a blank cell forever
+        pendingInsert = {key, page, rect};
+        deferred = true;
+        return false;
+    }
+    pendingInsert = PendingInsert();
     cell.lastUse = ++clock;
     pages[(size_t)page].lastUse = clock;
     cells[key] = cell;
@@ -543,6 +562,18 @@ bool TitleGlyphAtlas::restore(const TitleGlyphAtlasSnapshot& in, std::string& er
         error = programError;
         return false;
     }
+    const uint64_t deferrals = gpuLayer.deferrals();
+    const uint64_t restoredBefore = counters.restoredCells;
+    // a copy that went to a later frame (TitleFirstDraws) would be a blank page or plate: the
+    // caller keeps the snapshot and the whole restore runs again
+    auto deferred = [&]{
+        if (gpuLayer.deferrals() == deferrals) return false;
+        pages.clear();
+        cells.clear();
+        uploads.clear();
+        counters.restoredCells = restoredBefore;
+        return true;
+    };
     const Json& m = in.manifest;
     const int side = m.value("page_size", 0);
     const Json skylines = m.value("skylines", Json::array());
@@ -565,6 +596,7 @@ bool TitleGlyphAtlas::restore(const TitleGlyphAtlasSnapshot& in, std::string& er
             return false;
         }
         if (!copyUpload(pages.back().target.get(), upload->texture(), side, side, error)) return false;
+        if (deferred()) return false;
         uploads.push_back(std::move(upload));
         pages.back().skyline = skylines[i].get<std::vector<int>>();
         if ((int)pages.back().skyline.size() != side) pages.back().skyline.assign((size_t)side, side);
@@ -611,6 +643,7 @@ bool TitleGlyphAtlas::restore(const TitleGlyphAtlasSnapshot& in, std::string& er
             return false;
         }
         if (!copyUpload(image.target.get(), upload->texture(), image.width, image.height, error)) return false;
+        if (deferred()) return false;
         uploads.push_back(std::move(upload));
         image.format = ColorFormat::RGBA;
         image.premultiplied = true;
@@ -787,6 +820,17 @@ namespace {
             StepReport local;
             bool composed = false;
             const auto start = std::chrono::steady_clock::now();
+            // a page copy or compose whose first draw went to a later frame (TitleFirstDraws) did
+            // not finish: its chain draws again once a new first draw can go
+            if (firstDrawWait){
+                if (!TitleFirstDraws::available()){
+                    blocked = true;
+                    if (report) *report = local;
+                    return false;
+                }
+                firstDrawWait = false;
+                blocked = false;
+            }
             if (!prepared){
                 // the prebaked pages and plates, then the state's layout
                 std::string error;
@@ -800,15 +844,16 @@ namespace {
                     prepare();
                 }else{
                     blocked = true;
+                    firstDrawWait = atlas->gpu().lastRunDeferred();
                 }
             }else if (sub){
-                sub->step(StepBudget{1, 0}, &local);
+                if (!sub->done()) sub->step(StepBudget{1, 0}, &local);
                 if (sub->failed()){
                     fail(sub->error());
                 }else if (sub->done()){
                     finishSub();
                 }
-                blocked = sub && sub->waiting() && local.steps == 0;
+                blocked = firstDrawWait || (sub && sub->waiting() && local.steps == 0);
             }else if (!startNext()){
                 // every plate and cell is in: compose (one step)
                 if (compose(local)) finished = true;
@@ -924,6 +969,8 @@ namespace {
             double x = 0, y = 0;        // the string glyph's position, output pixels
         };
         std::vector<Placed> placed;     // the string's glyphs in order
+
+        bool firstDrawWait = false;     // a chain of passes waits for a first draw
 
         // the running sub-render
         SubKind subKind = SubKind::None;
@@ -1190,16 +1237,19 @@ namespace {
         }
 
         void finishSub(){
-            workDone++;
-            passesRun += sub->passesDone();
             if (subKind == SubKind::BackPlate || subKind == SubKind::FrontPlate){
                 atlas->storePlate(subKind == SubKind::BackPlate ? backPlateHash : frontPlateHash, std::move(sub->resultImage()));
             }else if (subKind == SubKind::Cell){
                 const Needed& n = needed[subCell];
                 const TitleSplits& splits = sub->splits();
-                bool full = false;
+                bool full = false, deferred = false;
                 std::string error;
-                if (!atlas->insert(n.key, splits.glyphBack, splits.glyphFront, n.anchorX, n.anchorY, stringKeys, full, error)){
+                if (!atlas->insert(n.key, splits.glyphBack, splits.glyphFront, n.anchorX, n.anchorY, stringKeys, full, deferred, error)){
+                    if (deferred){
+                        // the cell is rendered but not in its page: the sub stays and the copies retry
+                        firstDrawWait = true;
+                        return;
+                    }
                     if (full){
                         const std::string name = spec.label.rfind("TitleArt/", 0) == 0 ? spec.label.substr(9) : spec.label;
                         fail("Title Art '" + name + "': the glyph atlas is full (" + std::to_string(atlas->maxPages()) + " pages of " +
@@ -1209,6 +1259,8 @@ namespace {
                     }
                 }
             }
+            workDone++;
+            passesRun += sub->passesDone();
             sub.reset();
             subKind = SubKind::None;
         }
@@ -1311,6 +1363,7 @@ namespace {
             }
             TitleTarget* acc = accumulator.get();
             uint32_t passes = 0;
+            const uint64_t deferrals = atlas->gpu().deferrals();
             const float transparent[4] = {0.0f, 0.0f, 0.0f, 0.0f};
             if (!atlas->gpu().clear(acc, transparent, error)) return failWith(error);
             if (const TitleImage* back = atlas->plate(backPlateHash))
@@ -1360,6 +1413,13 @@ namespace {
             setMap(out, 3, 1.0f / (float)composeRect.width, 1.0f / (float)composeRect.height, 0.0f, 0.0f);
             passes++;
             if (!atlas->gpu().run(out, error)) return failWith(error);
+            if (atlas->gpu().deferrals() != deferrals){
+                // a pass of the chain did not draw: the image would have a hole. The compose runs
+                // again from the top (the targets are cleared, new keys wait their frames)
+                firstDrawWait = true;
+                blocked = true;
+                return false;
+            }
             accumulator.reset();
             atlas->setShown(std::move(shown));
             passesRun += passes;

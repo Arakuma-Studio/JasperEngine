@@ -102,7 +102,9 @@ void editor::InspectorWindow::drawTitleArtRendererComponent(ComponentType cpType
 
     if (!title->title.path.empty() && InspectorWindowTitleArt::canOpenInDesigner()){
         if (ImGui::Button(ICON_FA_PEN_TO_SQUARE " Open in Title Designer")) {
-            InspectorWindowTitleArt::openInDesigner(project->getProjectPath() / fs::path(title->title.path));
+            // one instance: In Context, over its scene at its place (S82 R1, R30)
+            if (single) InspectorWindowTitleArt::openInContext(project->getProjectPath() / fs::path(title->title.path), sceneProject->id, entity);
+            else InspectorWindowTitleArt::openInDesigner(project->getProjectPath() / fs::path(title->title.path));
         }
     }
     if (single) ImGui::TextColored(Theme::Colors::SubtleText, "%s", costLine(*title, instance).c_str());

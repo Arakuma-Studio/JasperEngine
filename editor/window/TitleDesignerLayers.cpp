@@ -16,6 +16,7 @@
 #include "titleart/TitleArtRenderHost.h"
 #include "titleart/designer/TitleLayerThumbnails.h"
 #include "titleart/designer/TitlePages.h"
+#include "titleart/fx/FxGeneratorChecks.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -232,6 +233,14 @@ void TitleDesignerWindow::drawLayers() {
     DocumentView& v = view();
     const std::shared_ptr<const ta::TitleArtDoc> snapshot = doc.shownSnapshot();
     const ta::TitleArtHashes& hashes = shownHashes();
+    if (followMissingDoc != &shown || followMissingChange != doc.changeCount()) {
+        // following generators whose layer is gone (S83 R43), once per change
+        followMissingDoc = &shown;
+        followMissingChange = doc.changeCount();
+        followMissing.clear();
+        for (const TitleFollowProblem& p : titleFollowProblems(shown)) followMissing.insert(p.layerId);
+        documentPasses++;
+    }
 
     // flatten the tree: top of the list = front (S80 stores bottom first: D17)
     const uint64_t twirls = twirlsKey(v.twirls);
@@ -276,7 +285,25 @@ void TitleDesignerWindow::drawLayers() {
                 face.part = "face";
                 face.depth = depth + 2;
                 rows.push_back(face);
-                const ta::Json& rims = layer.contains("style") && layer["style"].contains("rims") ? layer["style"]["rims"] : ta::Json::array();
+                // a Dimension 3D layer's parts are S86's: Face, Bevel, Side, Band 1..N (R10)
+                const bool threeD = layer.value("dimension", std::string("2d")) == "3d";
+                if (threeD) {
+                    for (const char* key : {"bevel", "side"}) {
+                        Row part = face;
+                        part.part = key;
+                        rows.push_back(part);
+                    }
+                    const auto style3d = layer.find("style_3d");
+                    if (style3d != layer.end() && style3d->is_object() && style3d->contains("bands") && (*style3d)["bands"].is_array()) {
+                        for (const ta::Json& band : (*style3d)["bands"]) {
+                            Row part = face;
+                            part.part = "band:" + str(band, "id");
+                            rows.push_back(part);
+                        }
+                    }
+                }
+                static const ta::Json noRims = ta::Json::array();
+                const ta::Json& rims = !threeD && layer.contains("style") && layer["style"].contains("rims") ? layer["style"]["rims"] : noRims;
                 for (size_t r = 0; r < rims.size(); r++) {
                     Row rim = face;
                     rim.part = "rim:" + str(rims[r], "id");
@@ -571,9 +598,26 @@ void TitleDesignerWindow::drawLayers() {
                     if (exposed) badges += " " ICON_FA_LINK;
                     const ImVec2 badgeSize = ImGui::CalcTextSize(badges.c_str());
                     dl->AddText(ImVec2(start.x + width - badgeSize.x - 6.0f, y), ImGui::GetColorU32(ImGuiCol_TextDisabled), badges.c_str());
+                    // the generator's or the stack's cost class (S83 R41), left of the badges
+                    float warnX = start.x + width - badgeSize.x - 24.0f;
+                    CostBadge cost;
+                    const bool hasEffects = !layer.value("effects", ta::Json::array()).empty();
+                    if ((type == ta::LayerType::Generator || hasEffects) && effectCost(row.layerId, std::string(), -1, cost)) {
+                        const std::string text = cost.amber ? cost.cls + "!" : cost.cls;
+                        const float cw = ImGui::CalcTextSize(text.c_str()).x;
+                        const float cx = start.x + width - badgeSize.x - cw - 12.0f;
+                        dl->AddText(ImVec2(cx, y), ImGui::ColorConvertFloat4ToU32(costBadgeColor(cost)), text.c_str());
+                        if (ImGui::IsMouseHoveringRect(ImVec2(cx, start.y), ImVec2(cx + cw, start.y + rowHeight))) ImGui::SetTooltip("%s", cost.tooltip.c_str());
+                        warnX = cx - 18.0f;
+                    }
                     if (type == ta::LayerType::Unknown) {
-                        dl->AddText(ImVec2(start.x + width - badgeSize.x - 24.0f, y), IM_COL32(240, 170, 50, 255), ICON_FA_TRIANGLE_EXCLAMATION);
+                        dl->AddText(ImVec2(warnX, y), IM_COL32(240, 170, 50, 255), ICON_FA_TRIANGLE_EXCLAMATION);
                         if (hovered) ImGui::SetTooltip("Unknown layer type '%s': kept as it is, not drawn", str(layer, "type").c_str());
+                    }
+                    if (type == ta::LayerType::Generator && followMissing.count(row.layerId)) {
+                        // S83 R43: the row warning; Pick Layer is on its Properties page
+                        dl->AddText(ImVec2(warnX, y), IM_COL32(240, 170, 50, 255), ICON_FA_TRIANGLE_EXCLAMATION);
+                        if (hovered) ImGui::SetTooltip("Follows a deleted layer: it draws nothing. Pick Layer on its Properties page");
                     }
                     if (row.layerId == primary.layer && primary.kind == NodeKind::Layer && pendingScrollRow == "layer:" + row.layerId) {
                         ImGui::SetScrollHereY(0.5f);
@@ -680,7 +724,23 @@ void TitleDesignerWindow::drawLayers() {
                     // colour swatch of a part's fill, link icon
                     float x = x0;
                     const float y = start.y + (rowHeight - ImGui::GetFontSize()) * 0.5f;
-                    if (row.kind == Row::Kind::Part) {
+                    if (row.kind == Row::Kind::Part && row.layer->value("dimension", std::string("2d")) == "3d") {
+                        // the 3D part's material colour (S86)
+                        ta::TitleColor c{0.75f, 0.75f, 0.75f};
+                        const ta::Json style = row.layer->contains("style_3d") && (*row.layer)["style_3d"].is_object() ? (*row.layer)["style_3d"] : ta::Json::object();
+                        ta::Json material = style.value("face", ta::Json::object());
+                        if (row.part == "bevel" && style.contains("bevel_material") && style["bevel_material"].is_object()) material = style["bevel_material"];
+                        if (row.part == "side" && style.contains("side") && style["side"].is_object()) material = style["side"];
+                        if (row.part.rfind("band:", 0) == 0) {
+                            for (const ta::Json& band : style.value("bands", ta::Json::array())) {
+                                if ("band:" + str(band, "id") == row.part) material = band.value("material", ta::Json::object());
+                            }
+                        }
+                        ta::parseTitleColor(material.value("color", ta::Json("#c0c0c0")), c);
+                        const float sw = ImGui::GetFontSize() * 0.8f;
+                        dl->AddRectFilled(ImVec2(x, y + 1), ImVec2(x + sw, y + 1 + sw), ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, 1.0f)), 2.0f);
+                        x += sw + 6.0f;
+                    } else if (row.kind == Row::Kind::Part) {
                         const ta::Json* material = nullptr;
                         if (row.part == "face") {
                             if (row.layer->contains("style") && (*row.layer)["style"].contains("face")) material = &(*row.layer)["style"]["face"];
@@ -714,6 +774,21 @@ void TitleDesignerWindow::drawLayers() {
                         ImGui::PopStyleColor();
                     }
                     dl->AddText(ImVec2(x, y), ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
+                    if (row.kind == Row::Kind::Effect) {
+                        // its cost class (S83 R41)
+                        const ta::Json& stack = row.part.empty() ? (*row.layer)["effects"] : (*row.layer)["part_effects"][row.part];
+                        int index = -1;
+                        for (size_t k = 0; k < stack.size(); k++) {
+                            if (str(stack[k], "id") == row.item) index = (int)k;
+                        }
+                        CostBadge badge;
+                        if (index >= 0 && effectCost(row.layerId, row.part, index, badge)) {
+                            const std::string text = badge.amber ? badge.cls + " Baked on mobile" : badge.cls;
+                            const float bx = start.x + width - ImGui::CalcTextSize(text.c_str()).x - 6.0f;
+                            dl->AddText(ImVec2(bx, y), ImGui::ColorConvertFloat4ToU32(costBadgeColor(badge)), text.c_str());
+                            if (ImGui::IsMouseHoveringRect(ImVec2(bx, start.y), ImVec2(start.x + width, start.y + rowHeight))) ImGui::SetTooltip("%s", badge.tooltip.c_str());
+                        }
+                    }
                 }
                 ImGui::SetCursorScreenPos(ImVec2(start.x, start.y + rowHeight));
             }

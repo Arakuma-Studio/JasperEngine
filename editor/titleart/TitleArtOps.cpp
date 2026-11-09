@@ -277,7 +277,7 @@ namespace {
                 const std::string id = str(layer, "id");
                 titleart::forEachMember(layer, layerKind, [&](const titleart::SchemaMember* m, const titleart::ParamDef* p, Json& value, const std::string& path) {
                     if (m && m->key == "children") return false;
-                    const bool material = (m && m->kind == "material" && m->type == titleart::ValueType::Object) ||
+                    const bool material = (m && (m->kind == "material" || m->kind == "material_3d") && m->type == titleart::ValueType::Object) ||
                                           (p && p->kind == titleart::ParamKind::Material);
                     if (material && value.is_object()) out.push_back({id, path, &value});
                     return true;
@@ -1267,7 +1267,7 @@ namespace {
             if (!material) return ctx.fail("bad_path", error, "material");
             Json probe = *layer;
             titleart::FieldSetResult same = titleart::setTitleArtField(probe, "layer", longPath, *material, true);
-            const bool isMaterial = (same.member && same.member->kind == "material" && !same.pattern.empty() && same.pattern.back() != '*') ||
+            const bool isMaterial = (same.member && (same.member->kind == "material" || same.member->kind == "material_3d") && !same.pattern.empty() && same.pattern.back() != '*') ||
                                     (same.param && same.param->kind == titleart::ParamKind::Material);
             if (!isMaterial || !material->is_object()) return ctx.fail("bad_path", "'" + longPath + "' is not a Material", "material");
             Json& links = doc().root["material_links"];

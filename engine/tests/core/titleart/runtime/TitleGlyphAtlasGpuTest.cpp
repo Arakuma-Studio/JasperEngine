@@ -239,6 +239,20 @@ TEST_F(TitleGlyphAtlasGpu, CounterMatchesRealtimeAndAChangeComposesOnly) {
     expectWithin(frontPixels(*live), realtimeAt(doc, "1,234,567", atlas, 110), "1,234,567 again");
 }
 
+// S86's one-new-draw-a-frame rule skips a pass and expects it to run again; the job's compose and
+// page copies never do. From no draw state known yet, every glyph must still reach the image.
+TEST_F(TitleGlyphAtlasGpu, FirstDrawsOfACleanDeviceLeaveNoHoles) {
+    auto doc = counterDoc(110, 0, {{"features", {{"tnum", 1}}}, {"kerning", false}});
+    TitleFirstDraws::resetForTesting(false);
+    auto live = glyphLive(doc);
+    live->setState(state(), stateHash("1,234,567"), textOverride("1,234,567"));
+    runFrames(*live, factory());
+    ASSERT_TRUE(live->front().valid()) << live->status().error;
+    ASSERT_TRUE(live->glyphAtlas());
+    const Pixels image = frontPixels(*live);
+    expectWithin(image, realtimeAt(doc, "1,234,567", *live->glyphAtlas(), 110), "from a clean device");
+}
+
 TEST_F(TitleGlyphAtlasGpu, RimsStayBehindEveryFace) {
     // tracking pulls the glyphs together: each rim reaches under the next glyph's face
     auto doc = counterDoc(110, -200, {{"style", {{"face", solidFace("#ffd040")}, {"rims", Json::array({rimOf("00000101", 16, "#802000")})}}}},
