@@ -172,11 +172,11 @@ never build or run them.
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
-| S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
-| S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
+| S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | implementing |
+| S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | implementing |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
-| S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
+| S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | implementing |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | merged and pushed |
 | S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | merged and pushed |
 
@@ -207,8 +207,8 @@ deadline of 2026-11-11 19:0x UTC:
 
 | Box | IP | box_id | Assigned |
 |---|---|---|---|
-| A | 5.161.240.186 | 205d9b263da5 | S51, S52 |
-| B | 5.161.235.8 | 32dda2ca7cd1 | S42, batch-landing verification |
+| A | 5.161.240.186 | 205d9b263da5 | S46, S50 (earlier S51, S52) |
+| B | 5.161.235.8 | 32dda2ca7cd1 | S47, batch landings (earlier S42) |
 | C | 5.161.197.83 | 961a152cfd81 | S49 |
 | D | 5.161.197.6 | dd138a2601b3 | S48 (rented 2026-11-09, deadline 2026-11-12 00:01 UTC) |
 
@@ -256,6 +256,12 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: The last wave started from `main` `c769e9207`: S46 Pixel Art Cleanup (box A), S47
+  Agent Sprite Drawing (box B) and S50 Grid Tilemap (box A).
+  - S46 owns the craft lints and aligns them with S48's `EffectLints`. S47 uses S46's lint API,
+    with no second lint library.
+  - S48 was told batch 4 has landed, so it does its S52 slot and S42 PIXEL4 wiring (cache v62).
+  - The landed worktrees (S42, S52, the main-green fix, land) were removed, with their box copies.
 - 2026-11-09: **Batch 4 merged into `main` and pushed** (landing tree `be4ba226c`): S42 Pixel Art
   Mode and validator, S52 Sprite Instancing, the S51→S42 font analyzer wiring, and
   `fix/main-shared-green`.
