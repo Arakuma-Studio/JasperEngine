@@ -13,7 +13,9 @@
 #include "InspectorWindowTitleArt.h"
 
 #include "Project.h"
+#include "Backend.h"
 #include "Theme.h"
+#include "App.h"
 #include "animation/PreviewOwner.h"
 #include "command/CommandHandle.h"
 #include "command/type/AddComponentCmd.h"
@@ -127,6 +129,11 @@ void editor::InspectorWindow::drawTitleArtRendererComponent(ComponentType cpType
     if (single && sceneProject->playState == ScenePlayState::STOPPED && !animationChoices.empty()){
         static PreviewOwner::Token previewToken = 0;
         const bool previewing = TitleArtSystem::isAnimationEditPreviewing(scene, entity);
+        // the editor draws a stopped scene only when asked: the preview's clock needs its frames
+        if (previewing){
+            sceneProject->needUpdateRender = true;
+            Backend::getApp().requestRedraw();
+        }
         if (ImGui::Button(previewing ? ICON_FA_STOP " Stop Preview" : ICON_FA_PLAY " Preview")){
             if (previewing){
                 PreviewOwner::release(previewToken);
