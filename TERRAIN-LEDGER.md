@@ -371,3 +371,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   readout's defect is upstream's (the Master tap joining a running tone), but it fails more often on some runs.
 - Follow-up, unverified: the first Play measured 0.89 s on our tree against 0.53 s upstream in one diagnostic. If real, it breaks "a disabled
   feature costs nothing" for projects without terrain.
+- Batch 4 merged (437cfee07, terrain/upstream-merge 9686c006f, origin/main e1653e9c3). Upstream keeps its shader bits; ours moved: MESH Cin/Wnd/Dth
+  49-51, Thl 52, Twd 53; DEPTH Cin/Wnd/Dth 21-23, Thl 24, Twd 25. Shader cache v63. Terrain's worst GLES3 variant 217 of 224 vectors. Shortcut contexts
+  VoxelBrush 15, TerrainBrush 16. Both agents had fixed the export-tiers bug; kept fix-mcp2's, which is per export and has a test.
+  New upstream failures, proven on origin/main: test_text_atlas_is_not_saved, two Lua API SpriteBatch signature tests.
+- Lighter pre-push checks running on 437cfee07: WERROR linux, filtered unit tests, 26 MCP files by name, the seven web gates.
