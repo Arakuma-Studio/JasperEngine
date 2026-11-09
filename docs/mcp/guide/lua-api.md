@@ -1517,7 +1517,7 @@ audio, the HTML UI clock and anything with an unscaled switch run on.
 
 | `HitStop` | Notes |
 |---|---|
-| `play(seconds [, opts])` | `opts.timeScale` (0 frozen .. 1, default 0), `opts.exclude = {go...}` (they and their children keep running for this hit), `opts.only = {go...}` (only they and their children freeze; the world runs), `opts.shake` = a Shake Preset name or `{amplitude = pixels, seconds = s}` (a kick), shaking through the freeze on unscaled time. Overlapping calls keep the longer remaining time and the lower scale |
+| `play(seconds [, opts])` | from the next frame; `opts.timeScale` (0 frozen .. 1, default 0), `opts.exclude = {go...}` (they and their children keep running for this hit), `opts.only = {go...}` (only they and their children freeze; the world runs), `opts.shake` = a Shake Preset name or `{amplitude = pixels, seconds = s}` (a kick), shaking through the freeze on unscaled time. Overlapping calls keep the longer remaining time and the lower scale |
 | `stop()` | ends it now |
 | `active`, `remaining` | ro: a hit-stop runs; unscaled seconds left |
 | `unfrozenDeltaTime` | ro: this frame's delta without the hit-stop |

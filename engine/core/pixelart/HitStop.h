@@ -56,7 +56,8 @@ namespace jasperengine::pixelart{
             float shakeSeconds = 0.0f;
         };
 
-        // Starts (or extends) a hit-stop of `seconds` of unscaled time. Overlapping calls keep
+        // Starts (or extends) a hit-stop of `seconds` of unscaled time, from the next frame (the
+        // frame that asks for it has its delta already). Overlapping calls keep
         // the longer remaining time and the lower scale; an `only` hit replaces a running world
         // hit's lists (and the other way round), lists of the same kind add up.
         static void play(float seconds);

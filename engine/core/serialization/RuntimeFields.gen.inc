@@ -1960,6 +1960,7 @@ const FieldEntry kBody_PoseAnimatorComponent_fields[] = {
     JE_RF(PoseAnimatorComponent, autoplay, 0x946f3118u, Bool),
     JE_RF(PoseAnimatorComponent, speed, 0x2dbb7bb0u, Float),
     JE_RF(PoseAnimatorComponent, weight, 0xd376cd89u, Float),
+    JE_RF(PoseAnimatorComponent, poseFrameRate, 0xf61c2bc3u, Float),
 };
 const StructTable kBody_PoseAnimatorComponent{"poseanimator", kBody_PoseAnimatorComponent_fields, std::size(kBody_PoseAnimatorComponent_fields)};
 
@@ -1971,6 +1972,7 @@ const FieldEntry kBody_AnimationPlayerComponent_fields[] = {
     JE_RF(AnimationPlayerComponent, playAutomatically, 0x002276c5u, Bool),
     JE_RF(AnimationPlayerComponent, speed, 0xa82cb315u, Float),
     JE_RF(AnimationPlayerComponent, defaultFadeTime, 0x3dc0f0a8u, Float),
+    JE_RF(AnimationPlayerComponent, poseFrameRate, 0xd7dfba9eu, Float),
 };
 const StructTable kBody_AnimationPlayerComponent{"animationplayer", kBody_AnimationPlayerComponent_fields, std::size(kBody_AnimationPlayerComponent_fields)};
 
@@ -2191,6 +2193,7 @@ const FieldEntry kBody_AnimatorComponent_fields[] = {
     JE_RF(AnimatorComponent, enabled, 0x1c48c06bu, Bool),
     JE_RF(AnimatorComponent, controller, 0x84e5044eu, AssetPath),
     JE_RF(AnimatorComponent, speed, 0xe0cb0d91u, Float),
+    JE_RF(AnimatorComponent, poseFrameRate, 0x7900b90au, Float),
     JE_RF(AnimatorComponent, applyRootMotion, 0x48a13828u, Bool),
     JE_RF(AnimatorComponent, rootMotionBone, 0x5625d33eu, String),
     JE_RF(AnimatorComponent, updateMode, 0x6b93e230u, Enum),
@@ -2325,6 +2328,8 @@ const FieldEntry kBody_CameraShakerComponent_fields[] = {
     JE_RF(CameraShakerComponent, traumaMaxOffset, 0x48af230bu, Vector3),
     JE_RF(CameraShakerComponent, traumaMaxAngle, 0x315a2b3bu, Vector3),
     JE_RF(CameraShakerComponent, traumaFrequency, 0x2503ecc8u, Float),
+    JE_RF(CameraShakerComponent, pixelSnap, 0x27b3eafcu, Bool),
+    JE_RF(CameraShakerComponent, tickRate, 0xe77189afu, Float),
 };
 const StructTable kBody_CameraShakerComponent{"camerashaker", kBody_CameraShakerComponent_fields, std::size(kBody_CameraShakerComponent_fields)};
 
@@ -2440,6 +2445,12 @@ const FieldEntry kBody_PixelPerfectCameraComponent_fields[] = {
 };
 const StructTable kBody_PixelPerfectCameraComponent{"pixelperfectcamera", kBody_PixelPerfectCameraComponent_fields, std::size(kBody_PixelPerfectCameraComponent_fields)};
 
+const FieldEntry kBody_HitStopExemptComponent_fields[] = {
+    JE_RF(HitStopExemptComponent, enabled, 0x9da932aau, Bool),
+    JE_RF(HitStopExemptComponent, includeChildren, 0xd531599cu, Bool),
+};
+const StructTable kBody_HitStopExemptComponent{"hitstopexempt", kBody_HitStopExemptComponent_fields, std::size(kBody_HitStopExemptComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2550,6 +2561,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(WaterExcluderComponent, "waterexcluder", 0xf9df46e8u),
     JE_RF_COMPONENT(WaterWakeComponent, "waterwake", 0xbbb4fdc0u),
     JE_RF_COMPONENT(PixelPerfectCameraComponent, "pixelperfectcamera", 0xc6cced7fu),
+    JE_RF_COMPONENT(HitStopExemptComponent, "hitstopexempt", 0xc2813c75u),
     JE_RF_COMPONENTS_END
 };
 

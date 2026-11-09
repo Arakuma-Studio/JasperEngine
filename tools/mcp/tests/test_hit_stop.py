@@ -130,29 +130,34 @@ async def test_exempt(ed: Editor):
                       "for _, pair in ipairs({{'HeroSparks', hero}, {'EnemySparks', enemy}}) do "
                       "  local ps = ParticleSystem(scene) ps.name = pair[1] ps:setParent(pair[2]) ps:play() end")
         await ed.call("wait", frames=3)
+        # a hit-stop asked during a frame freezes from the next one
+        await lua(ed, "HitStop.play(0.2)")
+        await ed.call("wait", frames=1)
         start = await lua(ed, "HSP, HSE = {}, {} local scene = Engine.scene "
                               "local function x(n) return GameObject(scene, scene:findEntity(n)).position.x end "
                               "local function t(n) return ParticleSystem(scene, scene:findEntity(n)).time end "
-                              "HitStop.play(0.2) return x('Hero'), x('Enemy'), t('HeroSparks'), t('EnemySparks')")
-        await ed.call("wait", frames=6)
+                              "return x('Hero'), x('Enemy'), t('HeroSparks'), t('EnemySparks')")
+        await ed.call("wait", frames=5)
         during = await lua(ed, "local scene = Engine.scene "
                                "local function x(n) return GameObject(scene, scene:findEntity(n)).position.x end "
                                "local function t(n) return ParticleSystem(scene, scene:findEntity(n)).time end "
                                "return HSP.Hero or 0, HSP.Cape or 0, HSP.Enemy or 0, HSE.Hero or 0, HSE.Enemy or 0, "
                                "x('Hero'), x('Enemy'), t('HeroSparks'), t('EnemySparks')")
         hero, cape, enemy, heroEngine, enemyEngine = during[:5]
-        ed.check(abs(hero - 6 * DT) < 1e-4, f"the exempt GameObject's Time.deltaTime runs: {during}")
-        ed.check(abs(cape - 6 * DT) < 1e-4, f"its child's too (includeChildren): {during}")
+        ed.check(abs(hero - 5 * DT) < 1e-4, f"the exempt GameObject's Time.deltaTime runs: {during}")
+        ed.check(abs(cape - 5 * DT) < 1e-4, f"its child's too (includeChildren): {during}")
         ed.check_eq(enemy, 0.0, f"another GameObject's script sees 0: {during}")
-        ed.check(abs(heroEngine - 6 * DT) < 1e-4 and enemyEngine == 0.0, f"Engine.deltatime the same: {during}")
+        ed.check(abs(heroEngine - 5 * DT) < 1e-4 and enemyEngine == 0.0, f"Engine.deltatime the same: {during}")
         ed.check(during[5] > start[0] + 1e-3, f"the exempt tween moves: {start[0]} -> {during[5]}")
         ed.check(abs(during[6] - start[1]) < 1e-6, f"the other tween holds: {start[1]} -> {during[6]}")
         ed.check(during[7] > start[2] + 1e-3, f"the exempt particles run: {start[2]} -> {during[7]}")
         ed.check(abs(during[8] - start[3]) < 1e-6, f"the other particles hold: {start[3]} -> {during[8]}")
 
         # includeChildren off: the child freezes with the world (red control of the child case)
-        await lua(ed, "HitStop.stop() HSP = {} local scene = Engine.scene "
+        await lua(ed, "HitStop.stop() local scene = Engine.scene "
                       "HitStopExempt(scene, scene:findEntity('Hero')).includeChildren = false HitStop.play(0.2)")
+        await ed.call("wait", frames=1)
+        await lua(ed, "HSP = {}")
         await ed.call("wait", frames=4)
         values = await lua(ed, "return HSP.Hero or 0, HSP.Cape or 0")
         ed.check(values[0] > 0 and values[1] == 0.0, f"without includeChildren the child freezes: {values}")
@@ -166,8 +171,10 @@ async def test_only(ed: Editor):
     await ed.call("play", action="start", scene=s["scene"], fixed_fps=60, auto_pause=True)
     try:
         await ed.call("wait", frames=3)
-        await lua(ed, "HSP = {} local scene = Engine.scene "
+        await lua(ed, "local scene = Engine.scene "
                       "HitStop.play(0.2, {only = {GameObject(scene, scene:findEntity('Enemy'))}})")
+        await ed.call("wait", frames=1)
+        await lua(ed, "HSP = {}")
         await ed.call("wait", frames=5)
         values = await lua(ed, "return HSP.Enemy or 0, HSP.Hero or 0, Time.deltaTime, HitStop.active")
         ed.check_eq(values[0], 0.0, f"the listed GameObject freezes: {values}")

@@ -33,8 +33,8 @@ namespace {
             data.wrap = ClipWrapMode::Loop;
             data.tracks = {
                 track("Hips", ClipChannel::Position, {key(0, {0, 1, 0}), key(1, {0, 1, 2})}),
-                track("Spine", ClipChannel::Position, {key(0, {0, 0.3f, 0}), key(0.3f, {3, 0.3f, 0}), key(0.7f, {1, 0.3f, 0})}),
-                track("Head", ClipChannel::Position, {key(0, {0, 0.4f, 0}), key(1, {0, 0.4f, 0})}),
+                track("Hips/Spine", ClipChannel::Position, {key(0, {0, 0.3f, 0}), key(0.3f, {3, 0.3f, 0}), key(0.7f, {1, 0.3f, 0})}),
+                track("Hips/Spine/Head", ClipChannel::Position, {key(0, {0, 0.4f, 0}), key(1, {0, 0.4f, 0})}),
             };
             data.events = {event(0.35f, "mid")};
             AnimatorComponent& component = animator(controllerFile("c", controller({}, {state("Walk", clip("walk", data))})));

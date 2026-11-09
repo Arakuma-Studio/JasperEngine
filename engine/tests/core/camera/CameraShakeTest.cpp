@@ -731,7 +731,8 @@ TEST_F(Shake, LuaApi){
         lua_getfield(L, -1, name);
         lua_remove(L, -2);
     };
-    field("names"); EXPECT_EQ(lua_tointeger(L, -1), 16); lua_pop(L, 1);
+    // (16 before S48's pixel_hit, pixel_heavy and pixel_rumble)
+    field("names"); EXPECT_EQ(lua_tointeger(L, -1), 19); lua_pop(L, 1);
     field("valid"); EXPECT_TRUE(lua_toboolean(L, -1)); lua_pop(L, 1);
     field("scale"); EXPECT_FLOAT_EQ((float)lua_tonumber(L, -1), 0.5f); lua_pop(L, 1);
     field("state"); EXPECT_STREQ(lua_tostring(L, -1), "fading_in"); lua_pop(L, 1);

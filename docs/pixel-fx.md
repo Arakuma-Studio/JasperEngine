@@ -18,7 +18,8 @@ HitStop.play(0.12, {only = {self.gameObject, enemy}}) -- only the fighters freez
 HitStop.play(0.1, {exclude = {player}})              -- everyone but the player
 ```
 
-- The countdown runs on unscaled time, so it ends after its seconds even at `Time.timeScale` 0.
+- It starts with the next frame (the frame that asks for it runs on) and counts down on unscaled
+  time, so it ends after its seconds even at `Time.timeScale` 0.
 - It stops what game time drives: `Time.deltaTime` (0), the fixed steps (physics), game timers and
   `Coroutine.wait`, actions and tweens, animations (Animator, Animation Player, Pose Animator,
   Sprite Animation), scaled particles, Camera Follow and scaled shakes.
