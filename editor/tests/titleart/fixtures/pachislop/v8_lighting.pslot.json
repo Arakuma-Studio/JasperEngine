@@ -1,0 +1,364 @@
+{
+ "format": "pslot",
+ "version": 8,
+ "project": {
+  "version": 8,
+  "name": "Lighting",
+  "comp": {
+   "width": 1280,
+   "height": 720,
+   "background": {
+    "transparent": true,
+    "color": "#000000"
+   },
+   "camera": {
+    "fov": 30,
+    "x": 0,
+    "y": 0,
+    "zOffset": 0,
+    "rotX": 0,
+    "rotY": 0,
+    "rotZ": 0
+   },
+   "environment": {
+    "preset": "studio",
+    "intensity": 1,
+    "rotation": 0,
+    "tint": "#ffffff",
+    "contrast": 1,
+    "saturation": 1
+   },
+   "lights": [
+    {
+     "id": "l0000001",
+     "type": "directional",
+     "color": "#ffffff",
+     "intensity": 2,
+     "x": -600,
+     "y": 800,
+     "z": 1000
+    }
+   ],
+   "toneMapping": "neutral",
+   "exposure": 1,
+   "supersample": 3,
+   "globalLight": {
+    "angle": 120,
+    "altitude": 30
+   },
+   "dpi": 72
+  },
+  "layers": [
+   {
+    "id": "0000dd01",
+    "name": "Gold",
+    "visible": true,
+    "solo": false,
+    "locked": false,
+    "guide": false,
+    "blend": "normal",
+    "transform": {
+     "x": 0,
+     "y": 0,
+     "z": 0,
+     "rotX": 0,
+     "rotY": 0,
+     "rotZ": 0,
+     "scale": 1,
+     "opacity": 1
+    },
+    "effects": [],
+    "masks": [],
+    "kind": "title3d",
+    "source": {
+     "kind": "text",
+     "text": "777",
+     "fontId": "dela-gothic-one",
+     "size": 200,
+     "tracking": 0,
+     "lineHeight": 1.1,
+     "align": "center",
+     "vertical": false,
+     "shear": 0,
+     "chars": {
+      "0": {
+       "dx": 0,
+       "dy": 0,
+       "scale": 1,
+       "rotate": 0,
+       "tiltX": 5,
+       "tiltY": 20
+      }
+     },
+     "lines": {},
+     "hScale": 1,
+     "vScale": 1,
+     "tsume": 0,
+     "tateChuYoko": true
+    },
+    "style3d": {
+     "depth": 10,
+     "curveSegments": 8,
+     "skew": {
+      "x": 0,
+      "y": 0
+     },
+     "face": {
+      "preset": "gold",
+      "color": "#ffcc33",
+      "gradientKind": "linear",
+      "gradientAngle": 90,
+      "gradientSpan": "layer",
+      "gradientScale": 1,
+      "gradientOffset": 0,
+      "metalness": 1,
+      "roughness": 0.3,
+      "reflectivity": 1,
+      "specBoost": 1,
+      "clearcoat": 0,
+      "iridescence": 0,
+      "transmission": 0,
+      "ior": 1.5,
+      "dispersion": 0,
+      "flakes": 0,
+      "flakeScale": 0.6,
+      "pattern": {
+       "kind": "none",
+       "color": "#000000",
+       "color2": "#ffffff",
+       "opacity": 1,
+       "scale": 12,
+       "angle": 0,
+       "seed": 1,
+       "shade": 0.6,
+       "relief": 0
+      },
+      "emissive": "#000000",
+      "emissiveIntensity": 0,
+      "opacity": 1
+     },
+     "side": {
+      "preset": "gold",
+      "color": "#ffcc33",
+      "gradientKind": "linear",
+      "gradientAngle": 90,
+      "gradientSpan": "layer",
+      "gradientScale": 1,
+      "gradientOffset": 0,
+      "metalness": 1,
+      "roughness": 0.3,
+      "reflectivity": 1,
+      "specBoost": 1,
+      "clearcoat": 0,
+      "iridescence": 0,
+      "transmission": 0,
+      "ior": 1.5,
+      "dispersion": 0,
+      "flakes": 0,
+      "flakeScale": 0.6,
+      "pattern": {
+       "kind": "none",
+       "color": "#000000",
+       "color2": "#ffffff",
+       "opacity": 1,
+       "scale": 12,
+       "angle": 0,
+       "seed": 1,
+       "shade": 0.6,
+       "relief": 0
+      },
+      "emissive": "#000000",
+      "emissiveIntensity": 0,
+      "opacity": 1
+     },
+     "bands": [
+      {
+       "id": "ring0001",
+       "width": 1.5,
+       "depth": 1.5,
+       "profile": "round",
+       "segments": 6,
+       "curve": 0,
+       "material": {
+        "preset": "gold",
+        "color": "#ffcc33",
+        "gradientKind": "linear",
+        "gradientAngle": 90,
+        "gradientSpan": "layer",
+        "gradientScale": 1,
+        "gradientOffset": 0,
+        "metalness": 1,
+        "roughness": 0.3,
+        "reflectivity": 1,
+        "specBoost": 1,
+        "clearcoat": 0,
+        "iridescence": 0,
+        "transmission": 0,
+        "ior": 1.5,
+        "dispersion": 0,
+        "flakes": 0,
+        "flakeScale": 0.6,
+        "pattern": {
+         "kind": "none",
+         "color": "#000000",
+         "color2": "#ffffff",
+         "opacity": 1,
+         "scale": 12,
+         "angle": 0,
+         "seed": 1,
+         "shade": 0.6,
+         "relief": 0
+        },
+        "emissive": "#000000",
+        "emissiveIntensity": 0,
+        "opacity": 1
+       }
+      },
+      {
+       "id": "ring0002",
+       "width": 0.5,
+       "depth": 0.5,
+       "profile": "chamfer",
+       "segments": 6,
+       "curve": 0,
+       "material": {
+        "preset": "custom",
+        "color": "#3a1000",
+        "gradientKind": "linear",
+        "gradientAngle": 90,
+        "gradientSpan": "layer",
+        "gradientScale": 1,
+        "gradientOffset": 0,
+        "metalness": 1,
+        "roughness": 0.3,
+        "reflectivity": 1,
+        "specBoost": 1,
+        "clearcoat": 0,
+        "iridescence": 0,
+        "transmission": 0,
+        "ior": 1.5,
+        "dispersion": 0,
+        "flakes": 0,
+        "flakeScale": 0.6,
+        "pattern": {
+         "kind": "none",
+         "color": "#000000",
+         "color2": "#ffffff",
+         "opacity": 1,
+         "scale": 12,
+         "angle": 0,
+         "seed": 1,
+         "shade": 0.6,
+         "relief": 0
+        },
+        "emissive": "#000000",
+        "emissiveIntensity": 0,
+        "opacity": 1
+       }
+      }
+     ],
+     "backplates": [
+      {
+       "id": "plate001",
+       "enabled": true,
+       "grow": 4,
+       "join": "round",
+       "fillCounters": true,
+       "plate": {
+        "kind": "box",
+        "close": 0,
+        "corner": 2,
+        "slant": 8
+       },
+       "depth": 7,
+       "zGap": 1.5,
+       "bevel": {
+        "width": 0.8,
+        "depth": 1.2,
+        "profile": "chamfer",
+        "segments": 3,
+        "curve": 0.2
+       },
+       "face": {
+        "preset": "custom",
+        "color": "#101010",
+        "gradientKind": "linear",
+        "gradientAngle": 90,
+        "gradientSpan": "layer",
+        "gradientScale": 1,
+        "gradientOffset": 0,
+        "metalness": 1,
+        "roughness": 0.3,
+        "reflectivity": 1,
+        "specBoost": 1,
+        "clearcoat": 0,
+        "iridescence": 0,
+        "transmission": 0,
+        "ior": 1.5,
+        "dispersion": 0,
+        "flakes": 0,
+        "flakeScale": 0.6,
+        "pattern": {
+         "kind": "none",
+         "color": "#000000",
+         "color2": "#ffffff",
+         "opacity": 1,
+         "scale": 12,
+         "angle": 0,
+         "seed": 1,
+         "shade": 0.6,
+         "relief": 0
+        },
+        "emissive": "#000000",
+        "emissiveIntensity": 0,
+        "opacity": 1
+       }
+      }
+     ],
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 0.5,
+      "softness": 0.5
+     },
+     "glint": {
+      "enabled": false,
+      "threshold": 0.8,
+      "intensity": 1,
+      "radius": 4,
+      "streaks": 4,
+      "length": 1,
+      "angle": 0,
+      "tint": "#ffffff"
+     },
+     "ao": {
+      "enabled": false,
+      "radius": 4,
+      "intensity": 1
+     },
+     "lighting": {
+      "environment": {
+       "preset": "studio",
+       "intensity": 1.5,
+       "blur": 0.2
+      }
+     }
+    },
+    "partEffects": {
+     "face": [
+      {
+       "id": "0000de01",
+       "type": "outerGlow",
+       "enabled": true,
+       "params": {
+        "size": 8
+       }
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "fonts": [],
+ "assets": []
+}
