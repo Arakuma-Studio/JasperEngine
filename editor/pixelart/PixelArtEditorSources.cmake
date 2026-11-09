@@ -135,8 +135,10 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/PixelFxTools.cpp
 )
 jasperengine_skip_unity_build(
-    REASON "S48's capture and tool modules: file-local problem/failCall/target helpers shared in name with the palette and particle tools"
+    REASON "S48's lint, sheet, capture and tool modules: file-local helpers (problem, failCall, hex, drawn, skipped) shared in name with the palette and particle tools"
     SOURCES
+        ${EDITOR_DIR}/pixelart/lint/EffectLints.cpp
+        ${EDITOR_DIR}/pixelart/fx/ContactSheet.cpp
         ${EDITOR_DIR}/pixelart/fx/EffectCapture.cpp
         ${EDITOR_DIR}/mcp/tools/PixelFxTools.cpp
         ${EDITOR_DIR}/window/ContactSheetWindow.cpp

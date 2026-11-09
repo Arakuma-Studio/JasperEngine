@@ -103,7 +103,7 @@ namespace {
 
     // ------------------------------------------------------------------ targets
 
-    class EntityTarget : public CaptureTarget {
+    class CaptureEntityTarget : public CaptureTarget {
     public:
         Project* project = nullptr;
         SceneProject* scene = nullptr;
@@ -147,7 +147,7 @@ namespace {
         }
     };
 
-    class ParticlesTarget : public CaptureTarget {
+    class CaptureParticlesTarget : public CaptureTarget {
     public:
         std::string effect;
         double duration = 1.0;
@@ -161,7 +161,7 @@ namespace {
             (void)error;
             const Entity e = into->createEntity();
             into->setEntityName(e, "Particle System");
-            into->addComponent<Transform>(e, {});
+            into->addComponent<Transform>(e, Transform{});
             ParticleSystemComponent particles;
             particles.effect = AssetRef(effect);
             particles.playOnAwake = true;
@@ -176,7 +176,7 @@ namespace {
     // ------------------------------------------------------------------ passes
 
     // one fresh run of the target from t = 0, its frames read at `times`
-    struct Pass {
+    struct CapturePass {
         uint32_t seed = 1;
         std::vector<double> times;
         std::vector<PixelImage>* out = nullptr;
@@ -185,7 +185,7 @@ namespace {
     };
 
     // the scratch scene of one pass
-    struct Scratch {
+    struct CaptureScratch {
         Scene* scene = nullptr;
         Camera* camera = nullptr;
         Entity cameraEntity = NULL_ENTITY;
@@ -195,10 +195,10 @@ namespace {
         bool warmed = false;
         bool drawPending = false;   // stepped to the next time, not read back yet
 
-        Scratch() = default;
-        Scratch(const Scratch&) = delete;
-        Scratch& operator=(const Scratch&) = delete;
-        ~Scratch() {
+        CaptureScratch() = default;
+        CaptureScratch(const CaptureScratch&) = delete;
+        CaptureScratch& operator=(const CaptureScratch&) = delete;
+        ~CaptureScratch() {
             delete camera;
             delete scene;
         }
@@ -215,10 +215,10 @@ namespace {
 struct EffectCapture::Impl {
     enum class Stage { Setup, Passes, Done };
     Stage stage = Stage::Setup;
-    std::vector<Pass> passes;
+    std::vector<CapturePass> passes;
     size_t pass = 0;
     size_t frame = 0;
-    std::unique_ptr<Scratch> scratch;
+    std::unique_ptr<CaptureScratch> scratch;
     Framebuffer target;
     bool framed = false;
     float centerX = 0.0f, centerY = 0.0f;   // the frame's centre (world, isolated)
@@ -417,29 +417,29 @@ bool EffectCapture::advance(double budgetMs) {
 
     if (d.stage == Impl::Stage::Setup) {
         // the passes: the sheet's frames, then the lints' fresh runs
-        Pass main;
+        CapturePass main;
         main.times = settings.times;
         main.out = &output.frames;
         d.passes.push_back(main);
-        if (settings.lints && !settings.loop && wanted("one_shot_end") && !inPlay &&
+        if (settings.lints && !settings.loop && wanted("one_shot_end") && settings.mode == CaptureMode::Isolated &&
             (settings.times.empty() || settings.times.back() < settings.duration - 1e-9)) {
-            d.passes.push_back(Pass{1, {settings.duration}, &d.lastFrame});
+            d.passes.push_back(CapturePass{1, {settings.duration}, &d.lastFrame});
         }
         if (wanted("spill") && settings.mode == CaptureMode::Isolated) {
             const uint32_t seeds[3] = {2, 3, 7};
-            for (int k = 0; k < 3; k++) d.passes.push_back(Pass{seeds[k], settings.times, &d.spill[k]});
+            for (int k = 0; k < 3; k++) d.passes.push_back(CapturePass{seeds[k], settings.times, &d.spill[k]});
         }
         if (wanted("determinism")) {
             const double t = 0.37 * settings.duration;
-            d.passes.push_back(Pass{1, {t}, &d.determinismA, false, inPlay});
-            d.passes.push_back(Pass{1, {t}, &d.determinismB, false, inPlay});
+            d.passes.push_back(CapturePass{1, {t}, &d.determinismA, false, inPlay});
+            d.passes.push_back(CapturePass{1, {t}, &d.determinismB, false, inPlay});
         }
 #ifdef NDEBUG
         if (wanted("frame_cost") && settings.mode == CaptureMode::Isolated) {
-            d.passes.push_back(Pass{1, {0.37 * settings.duration}, &d.costFrames, true});
+            d.passes.push_back(CapturePass{1, {0.37 * settings.duration}, &d.costFrames, true});
         }
 #endif
-        for (const Pass& p : d.passes) d.totalFrames += p.times.size() + (p.cost ? 18 : 0);
+        for (const CapturePass& p : d.passes) d.totalFrames += p.times.size() + (p.cost ? 18 : 0);
         output.times = settings.times;
         if (inPlay) {
             SceneProject* sp = project ? project->getScene(settings.sceneId) : nullptr;
@@ -472,7 +472,7 @@ bool EffectCapture::advance(double budgetMs) {
             finish("");
             return true;
         }
-        Pass& pass = d.passes[d.pass];
+        CapturePass& pass = d.passes[d.pass];
 
         // ---------------------------------------------------------------- Play: the game itself
         if (inPlay) {
@@ -516,7 +516,7 @@ bool EffectCapture::advance(double budgetMs) {
                 return false;
             }
             std::vector<Engine::ViewLayer> layers;
-            for (Scene* scene : Engine::getScenesSnapshot()) {
+            for (Scene* scene : Engine::getSceneLayers()) {
                 if (!scene || scene->getCamera() == NULL_ENTITY) continue;
                 Engine::ViewLayer layer;
                 layer.scene = scene;
@@ -548,7 +548,7 @@ bool EffectCapture::advance(double budgetMs) {
 
         // ---------------------------------------------------------------- a scratch scene
         if (!d.scratch) {
-            auto s = std::make_unique<Scratch>();
+            auto s = std::make_unique<CaptureScratch>();
             s->scene = new Scene(EntityPool::System);
             std::string failure;
             if (settings.mode == CaptureMode::Isolated) {
@@ -663,7 +663,7 @@ bool EffectCapture::advance(double budgetMs) {
             if (overBudget()) return false;
         }
 
-        Scratch& s = *d.scratch;
+        CaptureScratch& s = *d.scratch;
         Engine::ViewLayer layer;
         layer.scene = s.scene;
         layer.camera = s.cameraEntity;
@@ -760,7 +760,7 @@ std::unique_ptr<CaptureTarget> editor::pixelart::fx::makeEntityTarget(Project* p
         error = "no such GameObject";
         return nullptr;
     }
-    auto target = std::make_unique<EntityTarget>();
+    auto target = std::make_unique<CaptureEntityTarget>();
     target->project = project;
     target->scene = scene;
     target->entity = entity;
@@ -790,7 +790,7 @@ std::unique_ptr<CaptureTarget> editor::pixelart::fx::makeParticlesTarget(Project
         }
         return nullptr;
     }
-    auto target = std::make_unique<ParticlesTarget>();
+    auto target = std::make_unique<CaptureParticlesTarget>();
     target->effect = effect;
     target->looping = asset.document->looping;
     target->duration = std::max(0.05, (double)asset.document->duration);

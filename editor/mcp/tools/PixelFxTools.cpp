@@ -495,15 +495,15 @@ void registerPixelFxTools(McpRegistry& registry) {
         "scene: through its camera (in Play, steps the paused game). lint: effect checks and a verdict. A preview until output: true "
         "writes path (one undo).";
     tool.inputSchema = object({
-        {"target", object({{"entity", Json::object()}, {"scene", Json::object()}, {"animation", string("")}, {"particles", string("")}})},
-        {"frames", integer("", 1, kMaxFrames)},
+        {"target", object({{"entity", entityRef()}, {"scene", sceneRef()}, {"animation", string("")}, {"particles", string("")}})},
+        {"frames", integer("", 1, pixelfxtools::kMaxFrames)},
         {"times", array(number(""), "")},
-        {"duration", number("", 0, kMaxDuration)},
+        {"duration", number("", 0, pixelfxtools::kMaxDuration)},
         {"loop", boolean("")},
         {"mode", stringEnum("", {"isolated", "scene"})},
         {"backdrops", array(stringEnum("", {"checker", "dark", "light", "sky", "ground", "black", "scene"}), "")},
         {"scale", integer("", 0, 16)},
-        {"columns", integer("", 0, kMaxFrames)},
+        {"columns", integer("", 0, pixelfxtools::kMaxFrames)},
         {"labels", boolean("")},
         {"margin", integer("", 0, 256)},
         {"lint", Json{{"type", Json::array({"boolean", "array"})}, {"items", {{"type", "string"}}}}},

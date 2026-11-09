@@ -20,8 +20,7 @@
 #include <cmath>
 #include <filesystem>
 
-using namespace jasperengine;
-using namespace jasperengine::editor;
+namespace jasperengine::editor {
 
 namespace {
 
@@ -34,22 +33,22 @@ namespace {
 
 }
 
-editor::ContactSheetWindow::ContactSheetWindow(Project* project) : project(project) {}
+ContactSheetWindow::ContactSheetWindow(Project* project) : project(project) {}
 
-editor::ContactSheetWindow::~ContactSheetWindow() {
+ContactSheetWindow::~ContactSheetWindow() {
     if (running) running->cancel();
     image.retire(retired);
     for (Texture& old : retired) old.destroy();
 }
 
-void editor::ContactSheetWindow::open(uint32_t scene, Entity target) {
+void ContactSheetWindow::open(uint32_t scene, Entity target) {
     sceneId = scene;
     entity = target;
     windowOpen = true;
     notice.clear();
 }
 
-void editor::ContactSheetWindow::capture() {
+void ContactSheetWindow::capture() {
     SceneProject* scene = project->getScene(sceneId);
     std::string error;
     std::unique_ptr<pixelart::fx::CaptureTarget> target = pixelart::fx::makeEntityTarget(project, scene, entity, "", error);
@@ -77,7 +76,7 @@ void editor::ContactSheetWindow::capture() {
     noticeIsError = false;
 }
 
-void editor::ContactSheetWindow::collect() {
+void ContactSheetWindow::collect() {
     if (!running || !running->isFinished()) return;
     std::shared_ptr<pixelart::fx::EffectCapture> done = std::move(running);
     if (done->isFailed()) {
@@ -108,7 +107,7 @@ void editor::ContactSheetWindow::collect() {
     noticeIsError = false;
 }
 
-void editor::ContactSheetWindow::saveAs() {
+void ContactSheetWindow::saveAs() {
     if (sheet.empty()) return;
     SceneProject* scene = project->getScene(sceneId);
     const std::string name = scene && scene->scene ? scene->scene->getEntityName(entity) : std::string("Contact Sheet");
@@ -127,7 +126,7 @@ void editor::ContactSheetWindow::saveAs() {
     noticeIsError = false;
 }
 
-void editor::ContactSheetWindow::show() {
+void ContactSheetWindow::show() {
     for (Texture& old : retired) old.destroy();
     retired.clear();
     if (!windowOpen) return;
@@ -206,4 +205,6 @@ void editor::ContactSheetWindow::show() {
     }
     ImGui::End();
     if (!keepOpen) windowOpen = false;
+}
+
 }
