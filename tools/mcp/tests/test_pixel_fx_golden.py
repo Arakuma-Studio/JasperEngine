@@ -10,6 +10,7 @@ headless framebuffer at an integer scale, and Vulkan through GRAPHIC_BACKEND).
 
 from __future__ import annotations
 
+import difflib
 import shutil
 
 import harness
@@ -33,7 +34,11 @@ async def test_resave_identical(ed: Editor):
         # Save As onto itself: the editor writes the whole file again
         saved = await ed.call_raw("save_scene", {"scene": name, "path": name})
         ed.check(not saved.is_error, f"{name}: save failed: {saved.text[:300]}")
-        ed.check(path.read_bytes() == before, f"{name} re-saves byte for byte")
+        after = path.read_bytes()
+        if after != before:
+            diff = "".join(difflib.unified_diff(before.decode().splitlines(True), after.decode().splitlines(True),
+                                                f"{name} (fixture)", f"{name} (re-saved)", n=1))
+            ed.fail(f"{name} re-saves byte for byte:\n{diff[:4000]}")
 
     # a .material written again through update_material with a value it already has
     (ed.project / "assets" / "materials").mkdir(parents=True, exist_ok=True)

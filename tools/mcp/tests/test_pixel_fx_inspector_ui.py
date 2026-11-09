@@ -70,7 +70,9 @@ async def material(ed: Editor) -> dict:
 
 
 def param(mat: dict, name: str):
-    return (mat.get("shaderParams") or {}).get(name)
+    """a one-number shader value (the editor gives [x, y, z, w])"""
+    value = (mat.get("shaderParams") or {}).get(name)
+    return value[0] if isinstance(value, list) else value
 
 
 async def scene_state(ed: Editor) -> tuple[bool, int]:
@@ -198,7 +200,7 @@ async def test_presets(ed: Editor):
 
     _, history = await scene_state(ed)
     applied = await ed.call("apply_material_preset", preset="drop_shadow", scene=S["scene"], entity=S["hero"])
-    ed.check("one undo step" in json.dumps(applied), f"one step: {applied}")
+    ed.check(applied.get("undo", {}).get("id") is not None, f"one undo step: {applied}")
     _, after = await scene_state(ed)
     ed.check_eq(after, history + 1, "one scene undo step")
     mat = await material(ed)

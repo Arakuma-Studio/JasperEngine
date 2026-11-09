@@ -293,10 +293,19 @@ namespace {
         return std::abs(int(p[0]) - c.r) <= 1 && std::abs(int(p[1]) - c.g) <= 1 && std::abs(int(p[2]) - c.b) <= 1;
     }
 
-    ::testing::AssertionResult noBlends(const std::vector<uint8_t>& crop, const std::vector<Rgba>& allowed){
+    // the character's half-transparent glass texel (4, 9) in the crop (8 texels of room), whose own
+    // alpha blends it over whatever an effect draws behind it: the art's blend, not the effect's
+    bool glassPixel(size_t pixel){
+        const int x = int(pixel % kCrop) / kScale - 8, y = int(pixel / kCrop) / kScale - 8;
+        return x == 4 && y == 9;
+    }
+
+    ::testing::AssertionResult noBlends(const std::vector<uint8_t>& crop, const std::vector<Rgba>& allowed, bool skipGlass = true){
         int bad = 0;
         std::string first;
         for (size_t i = 0; i < crop.size(); i += 4){
+            if (skipGlass && glassPixel(i / 4))
+                continue;
             bool ok = false;
             for (const Rgba& c : allowed)
                 ok = ok || near(&crop[i], c);
@@ -365,7 +374,7 @@ TEST_F(SpritePixelFxGpu, NewFeatures){
         SCOPED_TRACE(c.name);
         const std::vector<uint8_t> crop = render(c.setup);
         expectGolden(c.name, crop);
-        EXPECT_TRUE(noBlends(crop, allowedColours(c, c.setup.atlas ? atlas : character)));
+        EXPECT_TRUE(noBlends(crop, allowedColours(c, c.setup.atlas ? atlas : character), !c.setup.atlas));
         if (c.blocks)
             EXPECT_TRUE(uniformBlocks(crop));
     }
@@ -403,7 +412,7 @@ TEST_F(SpritePixelFxGpu, IdleEqualsOff){
     EXPECT_FALSE(render({{"DISSOLVE"}, {{"dissolveProgress", v1(0.5f)}}, false, MaterialBlendMode::AUTO, &fireRamp}) == off);
     // and progress 1 is gone, the whole sprite
     const std::vector<uint8_t> gone = render({{"DISSOLVE"}, {{"dissolveProgress", v1(1.0f)}}, false, MaterialBlendMode::AUTO, &fireRamp});
-    EXPECT_TRUE(noBlends(gone, {{0, 0, 0, 255}})) << "progress 1 leaves nothing";
+    EXPECT_TRUE(noBlends(gone, {{0, 0, 0, 255}}, false)) << "progress 1 leaves nothing";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
