@@ -1182,23 +1182,23 @@ void registerSpriteDrawTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "edit_sprite";
         tool.title = "Edit Sprite";
-        tool.description = "An atomic batch of drawing ops on a sprite file (.aseprite, .png), not a Sprite component: one undo step, an echo of what changed. Each op's fields are in jasper://docs/sprites; a wrong field fails with bad_op_field before anything changes.";
+        tool.description = "An atomic batch of drawing ops on a sprite file (.aseprite, .png; not a Sprite component): one undo step, an echo of the change. Op fields: jasper://docs/sprites.";
         tool.inputSchema = object({
             {"sprite", assetPath("")},
             {"ops", [] {
                 Json items = object({{"op", stringEnum("", draw::opNames())}}, {"op"}, true);
-                Json a = array(items, "1-256 ops, run in order.");
+                Json a = array(items, "");
                 a["minItems"] = 1;
                 a["maxItems"] = draw::kMaxOps;
                 return a;
             }()},
-            {"frame", frameArg("Default for ops naming none (default 1, frames from 1).")},
-            {"layer", Json{{"type", Json::array({"integer", "string"})}, {"description", "Default: the topmost visible pixel layer."}}},
+            {"frame", frameArg("Default frame, from 1.")},
+            {"layer", Json{{"type", Json::array({"integer", "string"})}, {"description", "Default layer."}}},
             {"symmetry", object({{"x", any("")}, {"y", any("")}, {"diagonal", stringEnum("", {"xy", "x_minus_y", "both"})}})},
             {"echo", withDefault(stringEnum("", {"dirty", "composite", "none"}), "dirty")},
             {"echo_max", withDefault(integer("", 0, 4096), 1024)},
-            {"image", withDefault(boolean("Also render the touched frames."), false)},
-            {"lint", any("true or a list of lint ids.")},
+            {"image", withDefault(boolean(""), false)},
+            {"lint", any("true or lint ids.")},
             {"expect_revision", string("Fail unless this is the file's revision.")},
         }, {"sprite", "ops"});
         tool.annotations.destructive = true;
