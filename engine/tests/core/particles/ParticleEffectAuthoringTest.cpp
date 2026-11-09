@@ -429,8 +429,9 @@ TEST(ParticleExposed, AnEffectWithoutThemPaysNothing){
     EXPECT_TRUE(effect->exposedSlots.empty());
     EXPECT_TRUE(effect->exposedBindings.empty());
     for (const Op& op : effect->program.spawnOps){
-        if (op.code == OpCode::SpawnStartValues)
+        if (op.code == OpCode::SpawnStartValues){
             EXPECT_EQ(effect->program.param<StartParams>(op.params).lifetime.pad, 0u) << "no slot tags";
+        }
     }
 }
 

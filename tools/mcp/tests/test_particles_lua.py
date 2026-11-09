@@ -15,6 +15,7 @@ EDITOR = {"create": True, "name": "Particles Lua CI"}
 TIMEOUT = 900
 
 S: dict = {}
+SCENES: list = []   # the scene setup made: Play starts it, and stop() forgets S
 
 CAP = 8
 
@@ -34,6 +35,7 @@ async def setup(ed: Editor) -> dict:
     await ed.call("tool_groups", enable=["particles"])
     made = await ed.call("create_scene", name="ParticleLua", type="3D", path="scenes/ParticleLua")
     S["scene"] = made["scene"]["id"]
+    SCENES.append(S["scene"])
     await ed.call("select_scene", scene=S["scene"])
     await ed.call("create_particle_effect", path="assets/fx/burst.particles", preset="sparks")
     rain = await ed.call("create_particles", scene=S["scene"], name="Rain", preset="none", position=[0, 3, 0])
@@ -146,3 +148,65 @@ async def test_deprecated_setters(ed: Editor):
     ed.check_eq(got[1], 300, "maxParticles")
     ed.check_eq(got[2], True, "start() plays it")
     await stop(ed)
+
+
+async def test_pixel_particles_lua(ed: Editor):
+    """S49 R40 (AC12): a Play script makes a system pixel art (Render Mode Pixel, Dither, a Palette Ramp through
+    the live colour's setRamp), switches it to Analytic, and reads the CPU twin of a slot."""
+    ed.require_tools("create_particle_effect", "create_particles", "eval_lua", "play", "tool_groups")
+    await ed.call("tool_groups", enable=["particles"])
+    # a pixel preset brings the project's copy of builtin:pixelfx-effects
+    made = await ed.call("create_particle_effect", path="assets/fx/ember.particles", preset="pixel_ember")
+    ramp = (await ed.call("get_particle_effect", path=made["path"]))["effect"]["modules"]["colorOverLifetime"]["color"]["ramp"]
+    palette = ramp.split("#ramp:")[0]
+    if not SCENES:
+        await setup(ed)
+        await stop(ed)
+    scene = SCENES[-1]   # the scene Play starts
+    await ed.call("select_scene", scene=scene)
+    embers = (await ed.call("create_particles", scene=scene, name="Embers", preset="none", position=[0, 0, 0]))["particle_system"]["id"]
+    # the ember preset as the system's inline effect: Cutout dots on the hot ramp, Simulated
+    await ed.call("set_particle_effect", scene=scene, entity=embers, effect=made["path"])
+    await ed.call("set_particle_effect", scene=scene, entity=embers, effect="inline")
+    await ed.call("play", action="start")
+    await ed.call("wait", frames=5)
+    got = await lua(ed, f"""
+        local ps = object('Embers', 'ParticleSystem')
+        ps.renderer.renderMode = ParticleSystemRenderMode.Pixel
+        ps.renderer.pixelShape = ParticlePixelShape.Disc
+        ps.pixelArt.fade = ParticleFade.Dither
+        ps.colorOverLifetime.enabled = true
+        ps.colorOverLifetime.color:setRamp('{palette}', 'fire', 4)
+        local color = ps.colorOverLifetime.color
+        return {{ps.renderer.renderMode, ps.pixelArt.fade, color.ramp, color.rampSteps, ps.simulationMode, ps.renderer.pixelShape}}
+    """)
+    ed.check_eq(got[0], "pixel")
+    ed.check_eq(got[5], "disc")
+    ed.check_eq(got[1], "dither")
+    ed.check_eq(got[2], palette + "#ramp:fire", "setRamp wrote the system's colour")
+    ed.check_eq(got[3], 4)
+    ed.check_eq(got[4], "simulated")
+    ed.check_eq(await lua(ed, "return object('Embers', 'ParticleSystem'):getAnalyticParticle(0, 1.0)"), None,
+                "a Simulated system has no Analytic twin")
+    got = await lua(ed, """
+        local ps = object('Embers', 'ParticleSystem')
+        ps.simulationMode = ParticleSimulationMode.Analytic
+        local p = ps:getAnalyticParticle(0, 1.0)
+        local alive = 0
+        for s = 0, 199 do local q = ps:getAnalyticParticle(s, 1.0); if q and q.alive then alive = alive + 1 end end
+        return {ps.simulationMode, p ~= nil, p and p.life or -1, alive}
+    """)
+    ed.check_eq(got[0], "analytic", f"Analytic: {got}")
+    ed.check_eq(got[1], True, "the twin answers")
+    ed.check(got[2] > 0 and got[3] > 0, f"live slots at 1 s: {got}")
+    # listening to an Analytic system's events warns once (they never come)
+    await lua(ed, """
+        local ps = object('Embers', 'ParticleSystem')
+        ps:onParticleDeath(function() end)
+        ps:onParticleDeath(function() end)
+        ps:onCollision(function() end)
+        return true
+    """)
+    console = await ed.call_raw("read_console", {"contains": "analytic_no_events"})
+    ed.check_eq(console.text.count("analytic_no_events: Embers"), 1, f"one warning: {console.text[:600]}")
+    await ed.call("play", action="stop")

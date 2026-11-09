@@ -2923,6 +2923,27 @@ ps:onCollision(function(events)
 end)
 ```
 
+Pixel particles (S49): `ps.pixelArt` is the Pixel Art module's view (`snap`, `pixelSizes`,
+`integerSize`, `fade` (`ParticleFade.Dither` / `Cutout` / `Alpha`), `ditherSize`, `holdFrameRate`,
+`secondaryOffset`, `wobbleAmplitude`, `flickerBelow`, ...); `ps.renderer.renderMode =
+ParticleSystemRenderMode.Pixel` with `ps.renderer.pixelShape` (`ParticlePixelShape.Dot` ... `Glow`).
+A module's colour (`ps.colorOverLifetime.color`, `ps.main.startColor`) is a live
+`ParticleSystemGradient`: it reads as a MinMaxGradient, and `:setRamp(palettePath, rampName[,
+steps])` makes it a Palette Ramp of that system (a MinMaxGradient value has `setRamp` too, and rw
+`ramp`, `rampSteps`, `rampReverse`, `rampBias`). rw `ps.simulationMode` (`ParticleSimulationMode.Simulated`
+/ `Analytic`; a change restarts the system); `ps:getAnalyticParticle(slot, time)` is the CPU twin of an
+Analytic particle (`alive`, `index`, `age`, `life`, `position`, `velocity`, `rotation`, `size`,
+`color`, `rampStep`; nil for a Simulated system). An Analytic system raises no `onParticleDeath`,
+`onCollision` or sub-emitter events (adding a listener warns `analytic_no_events`).
+
+```lua
+local ps = ParticleSystem(scene)
+ps.renderer.renderMode = ParticleSystemRenderMode.Pixel
+ps.renderer.pixelShape = ParticlePixelShape.Disc
+ps.pixelArt.fade = ParticleFade.Dither
+ps.colorOverLifetime.color:setRamp("palettes/fx.palette", "fire")
+```
+
 Deprecated (the old Action API, kept for old scripts: they edit the inline effect and warn
 once): rw `maxParticles`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`,
 `emitterShape` (`ParticleEmitterShape.*`), `running`, `target` (the system's own GameObject: it
@@ -3351,7 +3372,7 @@ gate.area = 0 ; gate:remove()
 | `TangentMode` | `Free`, `Auto`, `Linear`, `Constant`, `ClampedAuto` |
 | `GradientMode` | `Blend`, `Fixed` |
 | `MinMaxCurveMode` | `Constant`, `TwoConstants`, `Curve`, `TwoCurves` |
-| `MinMaxGradientMode` | `Color`, `Gradient`, `TwoColors`, `TwoGradients` |
+| `MinMaxGradientMode` | `Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor`, `Ramp` |
 | `ActionState` | `Running`, `Paused`, `Stopped` |
 | `AudioSourceState` | `Playing`, `Paused`, `Stopped` |
 | `AudioSourceAttenuation` | `NO_ATTENUATION`, `INVERSE_DISTANCE`, `LINEAR_DISTANCE`, `EXPONENTIAL_DISTANCE` |

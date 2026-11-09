@@ -175,10 +175,10 @@ never build or run them.
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
-| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | landing (batch 2) |
+| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
-| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | in review |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | implementing |
+| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | accepted; merging main (batch 3) |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | review fixes |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -244,6 +244,41 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: The Doriax and mats-fx sessions have ended, but `main`'s shared-data failures remain
+  (no `procmat-baked` goldens; `procmat-baked` saves `vertexCount` 0 or 3672 depending on whether
+  it was drawn; the Animator IK `ShaderNeutralApi` hash).
+  - A fix agent is working on `fix/main-shared-green` on box C: root-cause the determinism bug,
+    review then update the hash, and generate the goldens. It lands as its own small batch.
+- 2026-11-09: S52's review found 2 blockers and several should-fix issues; all were sent back.
+  - Blockers: an instanced-mesh sprite with FLASH/PALETTE_SWAP reads an unbound `i_spriteFx`
+    (undefined on Vulkan, invalid on Metal/D3D11); deleted Sorting Layer ids are reused.
+  - Should-fix: a non-strict-weak comparator, Sprite Batch reload-per-frame growth, the snap pivot
+    for trimmed rotated frames, duplicate inspector rows, a fake AC3 red control, signed Unity
+    layer ids, missing eval cases.
+  - **Decision: the MCP eval (`tools/mcp/eval/run.py`) runs once for the whole pixel-art family
+    near the end**, on accounts lent with `box_lend_accounts` (owner approval card), not per
+    feature: it uses subscription quota, and the program already hits usage limits. Implementers
+    add the cases.
+- 2026-11-09: S51's review fixes are done at `46ce6ba20`.
+  - Built-in font redrawn, with an originality gtest; `preview_font` tool added; red controls
+    for the font, nearest sampling, `.fnt` reload and render scale.
+  - R20 budgets met (0.016 and 0.036 ms).
+  - **Export blur root-caused:** S56's Low/Medium device tiers cap the render scale (0.5/0.85),
+    then stretch the frame with LINEAR filtering. S51 fixed the UI-camera case (`8f11b53b5`).
+    S42 must keep the render scale at 1 for pixel-art projects, with a validator rule (routed to
+    S42).
+  - S51 deleted `/dev/null` by accident and restored it at once; verified it's a character device
+    1,3 and writable.
+  - The trial merge with `main` conflicts in 13 files, so S51 is merging `main` for batch 3.
+- 2026-11-09: S52's lighter gate passed on box A at `9a4f86a54` (editor 153, core 157, 106 MCP
+  tests; red controls for AC1–10). An independent review is running.
+- 2026-11-09: **Batch 2: S49 Pixel Particles merged into `main` and pushed** (branch `9da5e1936`).
+  - At landing I added the shader cache v60 for S49's particle shaders: S49 had changed shaders
+    without bumping it. S43's pin became "v59 or later", with a new S49 pin.
+  - Verified on box B: S49's gate (above); web, android and Vulkan 97/97 (`Particles*`,
+    `Analytic*`, `Palette*`, `PixelPerfect*`); and after the bump, `WERROR` editor tests plus the
+    pins and `ShaderKey*` (21/21).
+  - S48 (v60 on its branch) and S52 (v59 on its branch) are renumbered when they land.
 - 2026-11-09: S49 merged `main` at `9da5e1936`.
   - `main` had already drawn sub-emitters (BF23 F1), so S49 kept `main`'s renderer and moved its
     pixel, Analytic and Hold Frames draws onto it.

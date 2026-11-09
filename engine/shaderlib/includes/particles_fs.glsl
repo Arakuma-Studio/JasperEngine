@@ -47,7 +47,20 @@ uniform u_fs_particlesParams {
     vec4 blend;           // x the blend of the built-in shader: 0 alpha, 1 premultiplied, 2 additive, 3 multiply; y a soft disc without texture
     vec4 emissionColor;   // rgb the emission colour (linear), w 1 with an emission map
     vec4 sixWay;          // x layout (0 RGBA, 1 top/left/right + bottom/back/front, 2 positive/negative), y contrast
+    #ifdef PARTICLE_PIXEL
+        // pixel particles (S49, includes/particles_pixel.glsl)
+        vec4 pixelFade;       // x fade (0 Dither, 1 Cutout, 2 Alpha), y dither size, z dither space (0 Screen, 1 Particle), w secondary (0 Ramp Offset, 1 Color)
+        vec4 pixelSecondary;  // rgb the secondary colour (sRGB), w the ramp offset (signed, after Reverse)
+        vec4 pixelShape;      // x the shape (-1: a billboard), y Ring Width, z Glow Bands, w flags (1 Rim, 2 Shade Bottom)
+        vec4 pixelStreak;     // x Head Fraction, y Width
+        vec4 pixelInfo;       // x the ramp's colours (0: none)
+        vec4 pixelRamp[32];   // the ramp, sRGB
+    #endif
 } particlesFsParams;
+
+#ifdef PARTICLE_PIXEL
+    #include "includes/particles_pixel.glsl"
+#endif
 
 #ifdef HAS_TEXTURE
     uniform texture2D u_particleTexture;
@@ -134,6 +147,14 @@ float particleSixWayResponse(vec3 positive, vec3 negative, vec3 direction){
 // its emission; its alpha is the coverage (the texture's, six-way: the opacity map's), which
 // the shader multiplies by the particle's alpha (v_color.a) or dissolves by it
 vec4 particleSurfaceColor(){
+    #ifdef PARTICLE_PIXEL
+        // Render Mode Pixel: the shape per base pixel, no texture, unlit (S49 R9)
+        if (particlesFsParams.pixelShape.x > -0.5){
+            vec4 shaped = pixelShapeColor(v_color.rgb);
+            shaped.rgb += particlesFsParams.emissionColor.rgb * v_emissive;
+            return shaped;
+        }
+    #endif
     vec4 texel = particleTexel();
     vec4 color = vec4(texel.rgb * v_color.rgb, texel.a);
     vec3 emission = particlesFsParams.emissionColor.rgb * v_emissive;
@@ -163,6 +184,10 @@ vec4 particleSurfaceColor(){
     #endif
 
     color.rgb += emission;
+    #ifdef PARTICLE_PIXEL
+        // a billboard of the Pixel Art module: its coverage through the dither or the cutout (R4)
+        color = pixelTexelColor(color);
+    #endif
     return color;
 }
 

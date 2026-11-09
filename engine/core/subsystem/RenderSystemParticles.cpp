@@ -17,6 +17,7 @@
 #include "Scene.h"
 #include "jobs/JobSystem.h"
 #include "memory/Arena.h"
+#include "particles/AnalyticParticles.h"
 #include "particles/ParticleMeshes.h"
 #include "particles/ParticleRender.h"
 #include "pool/ShaderPool.h"
@@ -55,6 +56,22 @@ namespace {
         Vector4 blend;
         Vector4 emissionColor;
         Vector4 sixWay;
+        // the 'Pxl' variant's members (includes/particles_fs.glsl, S49)
+        Vector4 pixelFade;
+        Vector4 pixelSecondary;
+        Vector4 pixelShape;
+        Vector4 pixelStreak;
+        Vector4 pixelInfo;
+        Vector4 pixelRamp[kMaxRampColors];
+    };
+    constexpr size_t kFsParticlesBaseSize = 3 * 16;
+    static_assert(sizeof(fs_particles_params_t) == kFsParticlesBaseSize + (5 + kMaxRampColors) * 16, "fs_particles_params_t must match u_fs_particlesParams");
+
+    // the 'Pxl' variant's vertex members, after the lights and the sprite rects
+    struct vs_particles_pixel_t {
+        Vector4 pixel;
+        Vector4 pixelGrid;
+        Vector4 pixelStreak;
     };
 
     MaterialBlendMode materialBlend(ParticleBlend blend){
@@ -122,7 +139,9 @@ namespace {
         const CompiledEffect* effect = emitter.effect();
         if (!effect)
             return;
-        hasParticles = hasParticles || (emitter.count() > 0 && effect->document.renderer.renderMode != RenderMode::None);
+        // an Analytic emitter stores no particles: it draws while any slot can be alive (S49)
+        const bool any = emitter.isAnalytic() ? emitter.isAlive() : emitter.count() > 0;
+        hasParticles = hasParticles || (any && effect->document.renderer.renderMode != RenderMode::None);
         hasTrails = hasTrails || (effect->program.trails.enabled && (root || emitter.isAlive()));
         for (size_t c = 0; c < emitter.childCount(); c++){
             if (const EmitterRuntime* child = emitter.child(c))
@@ -147,12 +166,13 @@ bool RenderSystem::ensureParticleBuffers(){
     ok = particleRotationPlaceholder.createBuffer(sizeof(zeros), (void*)zeros, BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE) && ok;
     ok = particleCustomPlaceholder.createBuffer(sizeof(zeros), (void*)zeros, BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE) && ok;
     ok = particleTrailPlaceholder.createBuffer(sizeof(zeros), (void*)zeros, BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE) && ok;
+    ok = particlePixelPlaceholder.createBuffer(sizeof(zeros), (void*)zeros, BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE) && ok;
     particleStaticBuffers = ok;
     return ok;
 }
 
 void RenderSystem::destroyParticleBuffers(){
-    for (ParticleStream* stream : {&particleInstanceStream, &particleRotationStream, &particleCustomStream, &particleTrailStream}){
+    for (ParticleStream* stream : {&particleInstanceStream, &particleRotationStream, &particleCustomStream, &particleTrailStream, &particlePixelStream}){
         for (auto& page : stream->pages) page->destroyBuffer();
         for (auto& page : stream->retired) page.first->destroyBuffer();
         stream->pages.clear();
@@ -167,8 +187,40 @@ void RenderSystem::destroyParticleBuffers(){
         particleRotationPlaceholder.destroyBuffer();
         particleCustomPlaceholder.destroyBuffer();
         particleTrailPlaceholder.destroyBuffer();
+        particlePixelPlaceholder.destroyBuffer();
         particleStaticBuffers = false;
     }
+    if (particleSlotCapacity > 0){
+        particleSlotBuffer.destroyBuffer();
+        particleSlotCapacity = 0;
+    }
+}
+
+bool RenderSystem::ensureParticleSlots(uint32_t count){
+    if (count <= particleSlotCapacity)
+        return true;
+    // 0, 1, 2, ... as floats, in powers of two up to Analytic's most (256 KB)
+    uint32_t capacity = std::max<uint32_t>(particleSlotCapacity, 256u);
+    while (capacity < count) capacity *= 2;
+    capacity = std::min(capacity, kAnalyticMaxSlots);
+    std::vector<float> slots(capacity);
+    for (uint32_t i = 0; i < capacity; i++) slots[i] = (float)i;
+    if (particleSlotCapacity > 0)
+        particleSlotBuffer.destroyBuffer();
+    JE_GPU_ALLOC_SCOPE(Particles, "Analytic slots");
+    if (!particleSlotBuffer.createBuffer((unsigned int)(capacity * sizeof(float)), slots.data(), BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE)){
+        particleSlotCapacity = 0;
+        return false;
+    }
+    particleSlotCapacity = capacity;
+    // every Analytic system binds the new buffer at its next load
+    auto systems = scene->getComponentArray<ParticleSystemComponent>();
+    for (size_t i = 0; i < systems->size(); i++){
+        ParticleSystemComponent& particles = systems->getComponentFromIndex(i);
+        if (particles.state && particles.state->runtime.isAnalytic())
+            particles.state->render.needReload = true;
+    }
+    return count <= particleSlotCapacity;
 }
 
 bool RenderSystem::appendParticleStream(ParticleStream& stream, const void* data, size_t bytes, BufferRender*& buffer, size_t& offset){
@@ -241,10 +293,15 @@ RenderSystem::ParticleVariantSet RenderSystem::getParticleVariants(const Compile
     flags.customData = rp.customData != 0;
     flags.receiveShadows = r.receiveShadows;
     flags.fog = fog;
+    // S49: pixel boxes, shapes and dither ('Pxl'); each particle from its slot ('Ana')
+    flags.pixel = rp.pixel.active != 0;
+    flags.analytic = effect.program.analytic;
     set.quadProperties = ShaderPool::getParticlesProperties(flags);
     ParticlesShaderFlags meshFlags = flags;
     meshFlags.mesh = true;
     meshFlags.stretch = false;
+    meshFlags.pixel = false;
+    meshFlags.analytic = false;
     set.meshProperties = ShaderPool::getParticlesProperties(meshFlags);
     ParticlesShaderFlags trailFlags;
     trailFlags.trail = true;
@@ -293,6 +350,9 @@ uint64_t RenderSystem::particleRenderKey(const CompiledEffect& effect) const{
     const RenderParams& rp = effect.program.render;
     h = mix(h, (uint64_t)rp.frameBlending);
     h = mix(h, (uint64_t)rp.customData);
+    // S49: the Pixel and Analytic variants, and the slot stream an Analytic draw binds
+    h = mix(h, (uint64_t)rp.pixel.active | ((uint64_t)rp.pixel.shapes << 1) | ((uint64_t)effect.program.analytic << 2));
+    h = mix(h, effect.program.analytic ? (uint64_t)particleSlotCapacity : 0u);
     h = mix(h, (uint64_t)effect.program.trails.enabled);
     h = mix(h, (uint64_t)hasFog);
     h = mix(h, (uint64_t)postColorProperty(ShaderType::PARTICLES));
@@ -415,6 +475,11 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
             texture.setPath(path);
     };
     assign(rd.texture, r.texture);
+    // a pixel-art particle samples its texels whole (S49 R13)
+    if (rp.pixel.active && !rd.texture.empty()){
+        rd.texture.setMinFilter(TextureFilter::NEAREST);
+        rd.texture.setMagFilter(TextureFilter::NEAREST);
+    }
     assign(rd.trailTexture, r.trailTexture.empty() ? r.texture : r.trailTexture);
     assign(rd.sixWayA, r.sixWayMapA);
     assign(rd.sixWayB, r.sixWayMapB);
@@ -507,8 +572,19 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
         return true;
     };
 
-    // per-instance attributes of the 32-byte record, from the stream's placeholder
+    const bool analytic = prog.analytic && runtime.isAnalytic();
+    if (analytic && !ensureParticleSlots(runtime.analytic()->slotCount))
+        return false;
+    // per-instance attributes of the 32-byte record, from the stream's placeholder; Analytic
+    // reads only its slot (S49)
     auto addInstanceAttributes = [&](ObjectRender& render, ShaderData& shaderData, bool perInstance){
+        if (analytic && perInstance){
+            render.addAttribute(shaderData.getAttrIndex(AttributeType::PARTICLESLOT), &particleSlotBuffer, 1, AttributeDataType::FLOAT, sizeof(float), 0, false, true);
+            return;
+        }
+        if (rp.pixel.active && perInstance)
+            render.addAttribute(shaderData.getAttrIndex(AttributeType::PARTICLEPIXEL), &particlePixelPlaceholder, 4, AttributeDataType::UNSIGNED_BYTE,
+                                sizeof(ParticlePixelInstance), 0, true, true);
         const unsigned int stride = sizeof(ParticleInstance);
         BufferRender* source = &particleInstancePlaceholder;
         render.addAttribute(shaderData.getAttrIndex(AttributeType::PARTICLEPOSITION), source, 3, AttributeDataType::FLOAT, stride, 0, false, perInstance);
@@ -659,6 +735,8 @@ bool RenderSystem::loadParticleEmitter(Entity entity, const EmitterRuntime& runt
     rd.loaded = true;
     rd.needReload = false;
     rd.loadedKey = particleRenderKey(effect);
+    // the records held for Hold Frames were packed for the objects this replaces
+    rd.held.clear();
     return true;
 }
 
@@ -811,7 +889,8 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
     const ParticleProgram& prog = effect.program;
     const RenderParams& rp = prog.render;
     const RendererModule& r = d.renderer;
-    const bool hasParticles = runtime.count() > 0 && r.renderMode != RenderMode::None;
+    const bool analytic = prog.analytic && runtime.isAnalytic();
+    const bool hasParticles = (analytic ? runtime.isAlive() : runtime.count() > 0) && r.renderMode != RenderMode::None;
     const bool hasTrails = prog.trails.enabled;
     if ((!hasParticles || !boundsVisible) && !hasTrails)
         return 0;
@@ -854,8 +933,37 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
         view.keep = std::clamp(d.lod.renderThinning.evaluate(t, 0.5f), 0.0f, 1.0f);
     }
 
+    // the grid of a pixel particle (S49 R2): a Pixel Perfect Camera's is in the frame block; an
+    // orthographic camera without one has 1 / PPU world units a base pixel; a perspective one
+    // the screen's pixels at the emitter's depth (Wobble's scale only)
+    const PixelParams& pix = rp.pixel;
+    float worldPerPixel = 1.0f / (float)std::max(Engine::getPixelsPerUnit(), 1);
+    if (pix.active){
+        const float heightUnits = std::fabs(camera.topClip - camera.bottomClip);
+        if (passPixelSnap && passSnapGrid.height > 0.0f && camera.type != CameraType::CAMERA_PERSPECTIVE){
+            worldPerPixel = heightUnits / passSnapGrid.height;
+        }else if (camera.type == CameraType::CAMERA_PERSPECTIVE){
+            const Vector3 centre((state.boundsMin[0] + state.boundsMax[0]) * 0.5f, (state.boundsMin[1] + state.boundsMax[1]) * 0.5f,
+                                 (state.boundsMin[2] + state.boundsMax[2]) * 0.5f);
+            const float depth = std::max((centre - camTransform.worldPosition).length(), 1.0e-3f);
+            worldPerPixel = 2.0f * std::tan(camera.yfov * 0.5f) * depth / std::max(passResolution.y, 1.0f);
+        }
+        if (pix.wobble){
+            const Vector3 right = camTransform.worldRotation * Vector3(1.0f, 0.0f, 0.0f) * worldPerPixel;
+            const Vector3 up = camTransform.worldRotation * Vector3(0.0f, 1.0f, 0.0f) * worldPerPixel;
+            auto toSim = [&](const Vector3& v, float out[3]){
+                out[0] = worldToSim[0][0] * v.x + worldToSim[1][0] * v.y + worldToSim[2][0] * v.z;
+                out[1] = worldToSim[0][1] * v.x + worldToSim[1][1] * v.y + worldToSim[2][1] * v.z;
+                out[2] = worldToSim[0][2] * v.x + worldToSim[1][2] * v.y + worldToSim[2][2] * v.z;
+            };
+            toSim(right, view.pixelRight);
+            toSim(up, view.pixelUp);
+        }
+    }
+
     // the uniform blocks
-    alignas(16) unsigned char vsBlock[sizeof(vs_particles_params_t) + 2 * MAX_PARTICLE_LIGHTS * 16 + kMaxSpriteRects * 16] = {};
+    alignas(16) unsigned char vsBlock[sizeof(vs_particles_params_t) + 2 * MAX_PARTICLE_LIGHTS * 16 + kMaxSpriteRects * 16 +
+                                      sizeof(vs_particles_pixel_t) + sizeof(AnalyticBlock)] = {};
     vs_particles_params_t& vs = *reinterpret_cast<vs_particles_params_t*>(vsBlock);
     vs.modelMatrix = simToWorld;
     const float sheetKind = rp.sheet == SheetKind::Sprites ? 2.0f : (rp.sheet == SheetKind::Grid ? 1.0f : 0.0f);
@@ -920,6 +1028,30 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
     const Vector3 emissionLinear = Color::sRGBToLinear(Vector3(r.emissionColor.x, r.emissionColor.y, r.emissionColor.z));
     fs.emissionColor = Vector4(emissionLinear, rd.emission.empty() ? 0.0f : 1.0f);
     fs.sixWay = Vector4((float)(int)r.sixWayLayout, r.sixWayContrast, 0.0f, 0.0f);
+    vs_particles_pixel_t vsPixel{};
+    if (pix.active){
+        const float shape = pix.shapes ? (float)(int)pix.shape : -1.0f;
+        vsPixel.pixel = Vector4(shape, pix.snap ? 1.0f : 0.0f, pix.pixelSizes ? 1.0f : 0.0f, pix.integerSize ? 1.0f : 0.0f);
+        const bool onGrid = passPixelPerfect && passPixelPerfect->rotation == PixelRotation::ON_GRID;
+        vsPixel.pixelGrid = Vector4(1.0f / (float)std::max(Engine::getPixelsPerUnit(), 1), onGrid ? 1.0f : 0.0f,
+                                    camera.type == CameraType::CAMERA_PERSPECTIVE ? 1.0f : 0.0f, (float)pix.rotationSteps);
+        vsPixel.pixelStreak = Vector4(pix.streakLengthScale, pix.streakMaxLength, (float)pix.streakWidth, 0.0f);
+        fs.pixelFade = Vector4((float)(int)pix.fade, (float)pix.ditherSize, pix.ditherSpace == DitherSpace::Particle ? 1.0f : 0.0f,
+                               pix.secondary == SecondaryColorMode::Color ? 1.0f : 0.0f);
+        // positive offsets move toward the end of the ramp as it is read (after Reverse, R6)
+        const float offset = (float)pix.secondaryOffset * (pix.ramp.rampReverse ? -1.0f : 1.0f);
+        fs.pixelSecondary = Vector4(pix.secondaryColor[0], pix.secondaryColor[1], pix.secondaryColor[2], offset);
+        fs.pixelShape = Vector4(shape, (float)pix.ringWidth, (float)pix.glowBands, (float)((pix.discRim ? 1 : 0) | (pix.dotShadeBottom ? 2 : 0)));
+        fs.pixelStreak = Vector4(pix.streakHeadFraction, (float)pix.streakWidth, 0.0f, 0.0f);
+        const uint32_t rampCount = (pix.rampSource && pix.ramp.kind == GradientParam::Ramp) ? std::min<uint32_t>(pix.ramp.lutSize, kMaxRampColors) : 0u;
+        fs.pixelInfo = Vector4((float)rampCount, 0.0f, 0.0f, 0.0f);
+        const uint32_t* bytes = rampCount ? prog.uints(pix.ramp.lut1) : nullptr;
+        for (uint32_t k = 0; k < rampCount; k++){
+            const uint32_t c = bytes[k];
+            fs.pixelRamp[k] = Vector4((float)(c & 255u) / 255.0f, (float)((c >> 8) & 255u) / 255.0f, (float)((c >> 16) & 255u) / 255.0f,
+                                      (float)(c >> 24) / 255.0f);
+        }
+    }
 
     auto applyBlocks = [&](ObjectRender& render, ParticleRenderData::Slots& slots, uint64_t properties){
         size_t size = sizeof(vs_particles_params_t);
@@ -936,8 +1068,16 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
             }
             size += kMaxSpriteRects * 16;
         }
+        if (properties & (1u << 12)){                     // 'Pxl'
+            std::memcpy(vsBlock + size, &vsPixel, sizeof(vsPixel));
+            size += sizeof(vsPixel);
+        }
+        if (properties & (1u << 13)){                     // 'Ana': this frame's time and forces
+            std::memcpy(vsBlock + size, &runtime.analytic()->block, sizeof(AnalyticBlock));
+            size += sizeof(AnalyticBlock);
+        }
         render.applyUniformBlock(slots.vsParams, (unsigned int)size, vsBlock);
-        render.applyUniformBlock(slots.fsParams, sizeof(fs), &fs);
+        render.applyUniformBlock(slots.fsParams, (properties & (1u << 12)) ? (unsigned int)sizeof(fs) : (unsigned int)kFsParticlesBaseSize, &fs);
         if (slots.fsShadowData != -1){
             render.applyUniformBlock(slots.fsShadowData, sizeof(fs_shadow_data_t), &ps().fs_shadow_data);
             const CameraShadows& shadows = ps();
@@ -952,8 +1092,23 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
     };
 
     uint32_t drawn = 0;
-    if (hasParticles && boundsVisible){
-        const PackResult pack = ParticleRenderPrep::pack(runtime, view, arena, &jobs::system());
+    if (hasParticles && analytic && boundsVisible){
+        // one draw of every slot: the vertex stage computes each particle (S49 R15, R28)
+        ObjectRender& render = rd.quads;
+        if (render.beginDraw(pipType)){
+            applyBlocks(render, rd.quadSlots, rd.properties);
+            render.draw(0, 6, runtime.analytic()->slotCount);
+            drawn++;
+        }
+    }else if (hasParticles && boundsVisible){
+        PackResult pack;
+        if (pix.holdFrameRate > 0.0f && !rp.customData){
+            // Hold Frames (S49 R5): packed only when the emitter's time crosses a step; between
+            // steps the step's records are drawn again (one pack per view)
+            pack = rd.held.of((uint64_t)(uintptr_t)&camera).get(runtime, view, arena, &jobs::system(), pix.holdFrameRate);
+        }else{
+            pack = ParticleRenderPrep::pack(runtime, view, arena, &jobs::system());
+        }
         if (pack.count > 0){
             BufferRender* instanceBuffer = nullptr;
             size_t instanceOffset = 0;
@@ -983,10 +1138,16 @@ uint32_t RenderSystem::drawParticleEmitter(const ParticleSystemState& state, con
                 }
             }else if (streamed){
                 ObjectRender& render = rd.quads;
+                BufferRender* pixelBuffer = nullptr;
+                size_t pixelOffset = 0;
+                if (pack.pixel && !appendParticleStream(particlePixelStream, pack.pixel, sizeof(ParticlePixelInstance) * pack.count, pixelBuffer, pixelOffset))
+                    pixelBuffer = nullptr;
                 if (render.beginDraw(pipType)){
                     render.replaceVertexBuffer(&particleInstancePlaceholder, instanceBuffer, instanceOffset);
                     if (customBuffer)
                         render.replaceVertexBuffer(&particleCustomPlaceholder, customBuffer, customOffset);
+                    if (pixelBuffer)
+                        render.replaceVertexBuffer(&particlePixelPlaceholder, pixelBuffer, pixelOffset);
                     applyBlocks(render, rd.quadSlots, rd.properties);
                     render.draw(0, 6, pack.count);
                     drawn++;

@@ -12,6 +12,7 @@
 // enabled state kept). The rows draw (InspectorParticles.cpp); the document operations are here,
 // without ImGui (ParticleModuleRows.cpp), so tests and tools take the same path.
 
+#include "ecs/Entity.h"
 #include "particles/ParticleEffect.h"
 #include "particles/ParticleModules.h"
 
@@ -40,6 +41,13 @@ namespace jasperengine::editor {
             bool curveOpened = false;
             std::string curveField;
             particles::CurveDriver curveDriver = particles::CurveDriver::NormalizedAge;
+            // S49: the grid a pixel particle draws on here (the Pixel Art module's status line), the
+            // inspected system (Bake to Sprite Sheet), and a project step this edit wrote (a
+            // preset's palette copy: linked to the edit's step)
+            std::string gridStatus;
+            uint32_t sceneId = 0;
+            Entity entity = NULL_ENTITY;
+            bool wroteProjectStep = false;
         };
 
         // The whole effect: Main always open, a foldout per present module, Add Module, the

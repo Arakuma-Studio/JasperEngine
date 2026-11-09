@@ -9,6 +9,8 @@
 
 #include "math/CurveJson.h"
 #include "particles/ParticleModules.h"
+#include "pixelart/PaletteRampTexture.h"
+#include "pixelart/PixelColor.h"
 #include "util/NearestName.h"
 
 #include <cmath>
@@ -36,7 +38,9 @@ namespace {
     // A key the format does not have: a warning here (old files must load), and applyMergePatch
     // refuses it. `known` holds what it may have meant.
     void warnUnknownKey(std::vector<Diagnostic>& out, const std::string& path, const std::string& key, const std::string& message, const std::vector<std::string>& known){
-        out.push_back({Diagnostic::Severity::Warning, path, message + NearestNameSuffix(key, known), true});
+        Diagnostic d{Diagnostic::Severity::Warning, path, message + NearestNameSuffix(key, known)};
+        d.unknownKey = true;
+        out.push_back(std::move(d));
     }
 
     std::string join(const std::string& path, const std::string& key){
@@ -270,7 +274,8 @@ namespace {
     Json gradientValueToJson(const MinMaxGradient& v){
         const MinMaxGradient d;
         if (v.mode == GradientValueMode::Color && v.colorMax == v.color && v.gradient == d.gradient && v.gradientMax == d.gradientMax &&
-                v.driver == d.driver && v.driverMin == d.driverMin && v.driverMax == d.driverMax && v.wrap == d.wrap)
+                v.driver == d.driver && v.driverMin == d.driverMin && v.driverMax == d.driverMax && v.wrap == d.wrap && v.ramp.empty() &&
+                v.rampColors.empty())
             return colorToJson(v.color);
         Json j = Json::object();
         j["mode"] = optionName(ParticleModules::gradientModes(), (uint8_t)v.mode);
@@ -282,6 +287,16 @@ namespace {
         if (v.driverMin != d.driverMin) j["driverMin"] = jf(v.driverMin);
         if (v.driverMax != d.driverMax) j["driverMax"] = jf(v.driverMax);
         if (v.wrap != d.wrap) j["wrap"] = optionName(ParticleModules::curveWraps(), (uint8_t)v.wrap);
+        // the Ramp mode's keys (S49 R12), only when set
+        if (!v.ramp.empty()) j["ramp"] = v.ramp;
+        if (!v.rampColors.empty()){
+            Json colors = Json::array();
+            for (const pixelart::Rgba8& c : v.rampColors) colors.push_back(pixelart::toHex(c));
+            j["rampColors"] = colors;
+        }
+        if (v.rampSteps != d.rampSteps) j["rampSteps"] = v.rampSteps;
+        if (v.rampReverse != d.rampReverse) j["rampReverse"] = v.rampReverse;
+        if (v.rampBias != d.rampBias) j["rampBias"] = jf(v.rampBias);
         return j;
     }
 
@@ -327,13 +342,39 @@ namespace {
                 uint8_t wrap = 0;
                 if (!optionValue(ParticleModules::curveWraps(), *it, wrap)){ error(out, at, "wrap is one of " + optionList(ParticleModules::curveWraps())); ok = false; }
                 v.wrap = (CurveWrap)wrap;
+            }else if (key == "ramp"){
+                if (!it->is_string()){ error(out, at, "a ramp is \"<palette>.palette#ramp:<name>\""); ok = false; continue; }
+                v.ramp = it->get<std::string>();
+            }else if (key == "rampColors"){
+                if (!it->is_array()){ error(out, at, "rampColors is a list of \"#rrggbb\" colours"); ok = false; continue; }
+                v.rampColors.clear();
+                for (size_t i = 0; i < it->size(); i++){
+                    pixelart::Rgba8 c;
+                    if (!(*it)[i].is_string() || !pixelart::parseHex((*it)[i].get<std::string>(), c)){
+                        error(out, indexed(at, i), "a ramp colour is \"#rrggbb\" or \"#rrggbbaa\"");
+                        ok = false;
+                        continue;
+                    }
+                    v.rampColors.push_back(c);
+                }
+            }else if (key == "rampSteps"){
+                if (!it->is_number_integer()){ error(out, at, "rampSteps is a whole number: 0, or 2 to 32"); ok = false; continue; }
+                v.rampSteps = it->get<int>();
+            }else if (key == "rampReverse"){
+                if (!it->is_boolean()){ error(out, at, "rampReverse is true or false"); ok = false; continue; }
+                v.rampReverse = it->get<bool>();
+            }else if (key == "rampBias"){
+                float f = 1.0f;
+                if (!readFloat(*it, f)){ error(out, at, "not a finite number"); ok = false; continue; }
+                v.rampBias = f;
             }else{
                 warnUnknownKey(out, at, key, "unknown colour value key",
                                {"mode", "color", "colorMax", "gradient", "gradientMax", "driver", "driverMin", "driverMax", "wrap"});
             }
         }
         if (!hasMode){
-            v.mode = j.contains("gradientMax") ? GradientValueMode::TwoGradients : j.contains("gradient") ? GradientValueMode::Gradient :
+            v.mode = (j.contains("ramp") || j.contains("rampColors")) ? GradientValueMode::Ramp :
+                     j.contains("gradientMax") ? GradientValueMode::TwoGradients : j.contains("gradient") ? GradientValueMode::Gradient :
                      j.contains("colorMax") ? GradientValueMode::TwoColors : GradientValueMode::Color;
             if (v.mode == GradientValueMode::Color) v.colorMax = v.color;
         }
@@ -623,6 +664,19 @@ namespace {
                     validateGradient(g.gradient, join(path, "gradient"), out);
                     if (g.mode == GradientValueMode::TwoGradients)
                         validateGradient(g.gradientMax, join(path, "gradientMax"), out);
+                }
+                if (g.mode == GradientValueMode::Ramp){
+                    // S49 R12: a palette ramp reference or inline colours, at most 32 steps
+                    if (g.ramp.empty() && g.rampColors.empty())
+                        error(out, join(path, "ramp"), "a Palette Ramp needs a ramp (\"<palette>.palette#ramp:<name>\") or rampColors");
+                    else if (!g.ramp.empty() && !pixelart::parsePaletteRampPath(g.ramp))
+                        error(out, join(path, "ramp"), "a ramp is \"<palette>.palette#ramp:<name>\"");
+                    if (g.rampColors.size() > (size_t)kMaxRampColors)
+                        error(out, join(path, "rampColors"), "at most 32 colours");
+                    if (g.rampSteps != 0 && (g.rampSteps < 2 || g.rampSteps > kMaxRampColors))
+                        error(out, join(path, "rampSteps"), "0 (the ramp as it is) or 2 to 32");
+                    if (!(g.rampBias >= 0.1f && g.rampBias <= 10.0f))
+                        error(out, join(path, "rampBias"), "within 0.1 and 10");
                 }
                 break;
             }
@@ -955,7 +1009,9 @@ bool ParticleEffectCodec::validate(const ParticleEffectDocument& d, std::vector<
             error(out, "renderer.minScreenSize", "Min Particle Size is not above Max Particle Size");
         if (r.shader.empty())
             error(out, "renderer.shader", "a shader (library:particles, or a fork of it)");
-        if (r.renderMode == RenderMode::None && !(d.trails.present && d.trails.enabled))
+        // (a spawner of sub-emitters draws nothing itself: Debris, S49)
+        const bool spawner = d.subEmittersModule.present && d.subEmittersModule.enabled && !d.subEmitters.empty();
+        if (r.renderMode == RenderMode::None && !(d.trails.present && d.trails.enabled) && !spawner)
             warn(out, "renderer.renderMode", "None draws only trails, and Trails is off");
         if (r.renderMode == RenderMode::Ring && r.ringInnerRadius > r.ringOuterRadius)
             error(out, "renderer.ringInnerRadius", "the Inner Radius is not above the Outer Radius");

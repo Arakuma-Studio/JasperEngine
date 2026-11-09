@@ -3,10 +3,13 @@
 
 #include "ParticleSheetBake.h"
 
+#include "json.hpp"
+
 #include "Project.h"
 #include "particles/ParticleEffectCodec.h"
 #include "util/FileUtils.h"
 
+#include <cmath>
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
@@ -119,6 +122,42 @@ bool ParticleSheetBake::sheetFiles(Project* project, const std::string& output, 
     items.push_back({particlesFile, particles::ParticleEffectCodec::write(document)});
     written.push_back(output + ".png");
     written.push_back(output + ".particles");
+    return true;
+}
+
+std::string ParticleSheetBake::asepriteJson(const std::string& imageName, int columns, int rows, int cellWidth, int cellHeight, double seconds){
+    using Ordered = nlohmann::ordered_json;
+    const int n = columns * rows;
+    std::string stem = imageName;
+    const size_t dot = stem.rfind('.');
+    if (dot != std::string::npos) stem.resize(dot);
+    // every frame its equal part of the run (the cells are the middles of those parts)
+    const int duration = std::max(1, (int)std::lround(seconds * 1000.0 / std::max(n, 1)));
+    Ordered list = Ordered::object();
+    for (int f = 0; f < n; f++){
+        Ordered frame = Ordered::object();
+        frame["frame"] = {{"x", (f % columns) * cellWidth}, {"y", (f / columns) * cellHeight}, {"w", cellWidth}, {"h", cellHeight}};
+        frame["rotated"] = false;
+        frame["trimmed"] = false;
+        frame["spriteSourceSize"] = {{"x", 0}, {"y", 0}, {"w", cellWidth}, {"h", cellHeight}};
+        frame["sourceSize"] = {{"w", cellWidth}, {"h", cellHeight}};
+        frame["duration"] = duration;
+        list[stem + " " + std::to_string(f) + ".aseprite"] = frame;
+    }
+    Ordered json = Ordered::object();
+    json["frames"] = list;
+    json["meta"] = {{"app", "JasperEngine (Bake Sprite Sheet)"}, {"version", "1"}, {"image", imageName}, {"format", "RGBA8888"},
+                    {"size", {{"w", columns * cellWidth}, {"h", rows * cellHeight}}}, {"scale", "1"}, {"frameTags", Ordered::array()},
+                    {"layers", Ordered::array()}, {"slices", Ordered::array()}};
+    return json.dump(1, ' ') + "\n";
+}
+
+bool ParticleSheetBake::asepriteFile(Project* project, const std::string& output, int columns, int rows, int cellWidth, int cellHeight, double seconds,
+                                     bool overwrite, std::vector<WriteFilesCmd::Item>& items, std::vector<std::string>& written, std::string& error){
+    fs::path json;
+    if (!sheetTarget(project, output + ".json", overwrite, json, error)) return false;
+    items.push_back({json, asepriteJson(fs::path(output).filename().generic_string() + ".png", columns, rows, cellWidth, cellHeight, seconds)});
+    written.push_back(output + ".json");
     return true;
 }
 
