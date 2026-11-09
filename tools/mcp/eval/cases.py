@@ -3094,12 +3094,12 @@ CASES = [
                    "must_not_call": [{"tool": "configure_game_view", "args": {"resolution": "*"}}]},
         "max_turns": 12,
     },
-    # -- S42 the pixel-art validator: the "Other areas" entry, the description's preview-then-output and `next` -------
+    # -- S42 the pixel-art validator: the pixel_art group's description, the tool's preview-then-output and `next` -------
     {
         "id": "guard_pixel_art_check_route",
         "kind": "guard",
         "what_happened": "New tool (S42): blurry, uneven pixel art is check_pixel_art's to measure and fix (one call to "
-                         "preview, the same with output: true to apply); without the guide's entry and the result's `next` "
+                         "preview, the same with output: true to apply); without the group's description and the result's `next` "
                          "an agent edits import settings and filters by hand, or stops at the preview.",
         "text_at_issue": "tool_groups' pixel_art: 'Pixel art: checks and palettes (jasper://docs/pixel-art)'; check_pixel_art: 'fix previews the changes; "
                          "the same call with output:true applies them as one undo step'; the results' `next`",

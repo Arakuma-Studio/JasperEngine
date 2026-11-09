@@ -121,7 +121,7 @@ The design and its acceptance record are in `docs/specs/S42-pixel-art-mode.md`.
 
 | Setting | What it does |
 |---|---|
-| Pixel Art Mode | New textures import as pixel art, new 2D scenes get a Main Camera with a Pixel Perfect Camera, the Scene view uses Pixel Zoom, and the Pixel Art Check runs after imports and at Play start (one Console line when it finds problems; click it to open the check on that finding). Turning it on changes no other setting. |
+| Pixel Art Mode | Images added while it is on import as pixel art when they are sprites or UI, or when nothing uses them yet and they look like pixel art (in a folder named sprites, tiles or pixelart, or at most 512x512 with 256 colours or fewer; photos and painted backgrounds keep the usual import), new 2D scenes get a Main Camera with a Pixel Perfect Camera, the Scene view uses Pixel Zoom, and the Pixel Art Check runs after imports and at Play start (one Console line when it finds problems; click it to open the check on that finding). Turning it on changes no other setting. |
 | Base Resolution | The project canvas, with the usual pixel-art sizes (256x144 to 640x360). |
 | Upscale Mode | What a new Pixel Perfect Camera gets. |
 | Pixels Per Unit, Default Filter Mode | The Graphics settings a pixel-art project sets, shown here too. Default Filter Mode **Point** makes every texture a game creates at runtime (a Lua `Sprite:setTexture`) start point-filtered. |
@@ -142,7 +142,8 @@ afterwards the reference keeps its own filters, and **Apply to N References** up
 differ. The preview shows pixel art at whole-number zooms, with a 1x toggle.
 
 **Window > 2D > Pixel Art Check** runs the rules on a scope (open scenes, build scenes, the
-selection or the whole project) and lists the findings by rule with what was measured and what was
+selection, or the whole project: every scene file, listed in the build or not, every pixel-art
+texture and every Aseprite sheet) and lists the findings by rule with what was measured and what was
 expected. **Fix** applies a finding's change (its menu offers a second option where there is one),
 **Fix All...** previews every change and applies them as one undo step, and **Copy Report** copies
 the JSON. A finding that no automatic change can fix (a vector font, art drawn at another texel
@@ -154,7 +155,9 @@ The same rules run from the command line on the saved project:
 
 one line per finding (`path[#GameObject]: error|warning: [rule] message (fix: ...) [PIXELART-<RULE>]`),
 exit code 1 when a rule fails. In Pixel Art Mode the check is part of `check`'s default set and of
-its agent `--hook`.
+its agent `--hook`, which reports only what the changed files hold: the changed scenes, the changed
+images that are pixel art, and `project.yaml`. A fix that an edit made since the check overtook is
+refused (`stale`): check again and fix from the new result.
 
 **File > New Project > 2D Pixel Art** starts a project that passes the check: Pixel Art Mode, the
 base resolution you choose, integer scaling, a Pixel Perfect Camera and point-filtered lossless art.

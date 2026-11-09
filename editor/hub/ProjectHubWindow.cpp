@@ -11,6 +11,7 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "hub/HubPaths.h"
+#include "pixelart/PixelArtSettings.h"
 #include "texture/TextureData.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
@@ -452,18 +453,31 @@ void ProjectHubWindow::drawNewProject() {
     const fs::path parent = FileUtils::pathFromUtf8(location.data());
     const std::string problem = createProblem(projectName.data(), parent);
     const hub::ProjectTemplate* chosen = hub::templates::find(templateList, selectedTemplate);
-    // S42 R21: a pixel-art template asks for its base resolution
-    static const int kBases[][2] = {{256, 144}, {320, 180}, {384, 216}, {480, 270}, {640, 360}};
+    // S42 R21: a pixel-art template asks for its base resolution (R2's list, or Custom)
+    const std::vector<pixelart::PixelArtScreen>& bases = pixelart::presetBaseResolutions();
+    const bool customBase = pixelArtBase < 0 || pixelArtBase >= (int)bases.size();
     if (chosen && chosen->pixelArt) {
         ImGui::TextUnformatted("Base Resolution");
         ImGui::SetNextItemWidth(Theme::dpi(160.0f));
-        const std::string current = std::to_string(kBases[pixelArtBase][0]) + "x" + std::to_string(kBases[pixelArtBase][1]);
+        const std::string current = customBase ? std::string("Custom")
+                                               : std::to_string(bases[(size_t)pixelArtBase].width) + "x" + std::to_string(bases[(size_t)pixelArtBase].height);
         if (ImGui::BeginCombo("##hubPixelArtBase", current.c_str())) {
-            for (int i = 0; i < 5; i++) {
-                const std::string label = std::to_string(kBases[i][0]) + "x" + std::to_string(kBases[i][1]);
+            for (int i = 0; i < (int)bases.size(); i++) {
+                const std::string label = std::to_string(bases[(size_t)i].width) + "x" + std::to_string(bases[(size_t)i].height);
                 if (ImGui::Selectable(label.c_str(), i == pixelArtBase)) pixelArtBase = i;
             }
+            if (ImGui::Selectable("Custom", customBase)) pixelArtBase = (int)bases.size();
             ImGui::EndCombo();
+        }
+        if (customBase) {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(Theme::dpi(70.0f));
+            ImGui::InputInt("##hubPixelArtBaseW", &customBaseWidth, 0);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(Theme::dpi(70.0f));
+            ImGui::InputInt("##hubPixelArtBaseH", &customBaseHeight, 0);
+            customBaseWidth = std::clamp(customBaseWidth, 16, 4096);
+            customBaseHeight = std::clamp(customBaseHeight, 16, 4096);
         }
         ImGui::SameLine();
         ImGui::TextDisabled("the art's resolution; the window opens at 4x");
@@ -477,8 +491,8 @@ void ProjectHubWindow::drawNewProject() {
         AppSettings::setHubLastLocation(parent);
         hub::ProjectTemplate info = *chosen;
         if (info.pixelArt) {
-            info.baseWidth = kBases[pixelArtBase][0];
-            info.baseHeight = kBases[pixelArtBase][1];
+            info.baseWidth = customBase ? customBaseWidth : bases[(size_t)pixelArtBase].width;
+            info.baseHeight = customBase ? customBaseHeight : bases[(size_t)pixelArtBase].height;
         }
         actions.createProject(info, projectName.data(), parent);
     }

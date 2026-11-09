@@ -2417,7 +2417,7 @@ std::vector<Setting> mcpSettingsTable() {
                                        p.setPixelArtSettings(settings);
                                    });
             };
-            add(pixelArtBool("pixel_art.enabled", "Pixel Art Mode: new textures import as pixel art, new 2D scenes get a Pixel Perfect "
+            add(pixelArtBool("pixel_art.enabled", "Pixel Art Mode: sprite images added while on import as pixel art, new 2D scenes get a Pixel Perfect "
                              "Camera, the validator runs on import and at Play. Changes no other setting (check_pixel_art's "
                              "pixel_art_mode fix applies the preset).", &pixelart::PixelArtSettings::enabled));
             add(pixelArtBool("pixel_art.check_on_import", "With Pixel Art Mode on, the validator runs after textures import and logs one "
@@ -3648,8 +3648,8 @@ const Placement placements[] = {
     {"android.allow_backup", "Player", "Android", "Application Options", "android allow backup"},
     {"android.fullscreen", "Player", "Android", "Screen Options", "android fullscreen"},
     {"sprite_atlas.mode", "2D", "Sprite Atlas", "Mode", "sprite atlas packer pages enabled for builds"},
-    {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution"},
-    {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution"},
+    {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution base resolution pixel art"},
+    {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution base resolution pixel art"},
     {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch integer pixel perfect"},
     {"graphics.pixels_per_unit", "Graphics", "", "Pixels Per Unit", "pixel art ppu sprite tilemap"},
     {"graphics.ui_scale", "Graphics", "", "UI Scale", "canvas scaler ui scaling reference resolution match width height constant pixel physical size dpi"},
@@ -4092,18 +4092,8 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         [](SettingsContext&) {
             return InputActions::isLoaded() ? Json(InputActions::getOverridesKey()) : Json(nullptr);
         }, "Players' rebinding is kept per asset in the user settings; Reset clears the editor's copy, which Play uses."));
-    // S42 R18: the Graphics rows a pixel-art project sets, shown on the Pixel Art page too, and the
-    // preset's button
-    addOrAbort(registry, uiRow("pixel_art.base_resolution", "Pixel Art", "", "Base Resolution", "canvas resolution 320x180 pixel art base",
-        [](SettingsContext& ctx) {
-            return Json(std::to_string(ctx.project()->getCanvasWidth()) + "x" + std::to_string(ctx.project()->getCanvasHeight()));
-        }, "The project canvas (graphics.canvas_width and canvas_height): the resolution the pixel art is drawn at."));
-    addOrAbort(registry, uiRow("pixel_art.pixels_per_unit", "Pixel Art", "", "Pixels Per Unit", "ppu texels units pixel art",
-        [](SettingsContext& ctx) { return Json(ctx.project()->getPixelsPerUnit()); },
-        "graphics.pixels_per_unit: texels per world unit of the sprites and tilemaps that take the project's."));
-    addOrAbort(registry, uiRow("pixel_art.default_filter_mode", "Pixel Art", "", "Default Filter Mode", "filter point nearest bilinear",
-        [](SettingsContext& ctx) { return Json(textureFilterModeName(ctx.project()->getDefaultFilterMode())); },
-        "graphics.default_filter_mode: what runtime-made textures and new references start with."));
+    // S42 R18: the preset's button (the Pixel Art page shows the Graphics rows a pixel-art project
+    // sets, graphics.canvas_*, pixels_per_unit and default_filter_mode, under their own keys)
     addOrAbort(registry, uiRow("pixel_art.apply_preset", "Pixel Art", "", "Apply Pixel Art Preset", "preset convert pixel art one click",
         [](SettingsContext&) { return Json(nullptr); },
         "Previews and applies the Pixel Art preset: base resolution, integer scaling, Point filtering, Pixel Perfect Cameras and "

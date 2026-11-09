@@ -3171,11 +3171,11 @@ void ProjectSettingsWindow::drawPixelArtSettings() {
             if (settingsui::beginRow("pixel_art.enabled")) {
                 if (projectBeginSettingsRow("Pixel Art Mode", m_pixelArt.enabled)) m_pixelArt.enabled = false;
                 ImGui::Checkbox("##PixelArtMode", &m_pixelArt.enabled);
-                endSettingsRow("New textures import as pixel art (Point, no mipmaps, lossless), new 2D scenes get a Pixel Perfect "
+                endSettingsRow("Sprite images added while on import as pixel art (Point, no mipmaps, lossless), new 2D scenes get a Pixel Perfect "
                     "Camera, the Scene view uses Pixel Zoom, and the Pixel Art Check runs on import and at Play. Changes no other "
                     "setting: Apply Pixel Art Preset converts the project.");
             }
-            if (settingsui::beginRow("pixel_art.base_resolution")) {
+            if (settingsui::beginRow({"graphics.canvas_width", "graphics.canvas_height"})) {
                 const std::vector<pixelart::PixelArtScreen>& sizes = pixelart::presetBaseResolutions();
                 if (projectBeginSettingsRow("Base Resolution", false)) {}
                 std::string current = std::to_string(m_canvasWidth) + "x" + std::to_string(m_canvasHeight);
@@ -3208,13 +3208,13 @@ void ProjectSettingsWindow::drawPixelArtSettings() {
                                  "The Upscale Mode a new Pixel Perfect Camera gets (Pixel Art Mode's new 2D scenes and the preset).");
                 m_pixelArt.upscaleMode = (PixelUpscaleMode)index;
             }
-            if (settingsui::beginRow("pixel_art.pixels_per_unit")) {
+            if (settingsui::beginRow("graphics.pixels_per_unit")) {
                 drawIntSetting("Pixels Per Unit", "##PixelArtPPU", m_pixelsPerUnit, Project::defaultPixelsPerUnit, Project::minPixelsPerUnit,
                                "Graphics > Pixels Per Unit: texels per world unit of the sprites and tilemaps that take the project's. "
                                "Keep 1 unless the game uses tile units.");
                 m_pixelsPerUnit = std::min(m_pixelsPerUnit, Project::maxPixelsPerUnit);
             }
-            if (settingsui::beginRow("pixel_art.default_filter_mode")) {
+            if (settingsui::beginRow("graphics.default_filter_mode")) {
                 static const char* const filterNames[] = {"Bilinear", "Point (no filter)"};
                 drawComboSetting("Default Filter Mode", "##PixelArtDefaultFilter", filterNames, 2, m_defaultFilterIndex, 0,
                                  "Graphics > Default Filter Mode: what runtime-made textures and new references start with.");

@@ -867,17 +867,37 @@ void TextureImporterView::drawPixelArtNotes(const TextureImportSettings& setting
             ImGui::TextColored(warning, ICON_FA_TRIANGLE_EXCLAMATION " Over 2048x2048 and uncompressed (4 bytes a texel): a sheet this "
                                "big is better split (a Sprite Atlas packs the parts).");
     }
-    const std::vector<pixelart::FixChange> changes = pixelart::referenceFilterChanges(*project, assetPaths[0]);
-    if (!changes.empty()){
-        const std::string label = "Apply to " + std::to_string(changes.size()) + " Reference" + (changes.size() == 1 ? "" : "s");
+    // only where a Filter Mode is meant: a pixel-art texture, one whose Filter Mode is set, or a
+    // Pixel Art Mode project (elsewhere references choose their own filters)
+    TextureImportSettings stored;
+    TextureImportSettings::load((project->getAssetsPath() / fs::path(assetPaths[0])).string(), stored);
+    if (!stored.resolvedPixelArt() && !stored.filterMode && !project->getPixelArtSettings().enabled){
+        referenceCount = 0;
+        return;
+    }
+    // the open scenes' references, read again twice a second rather than every frame
+    const double now = ImGui::GetTime();
+    if (referenceChangesPath != assetPaths[0] || now - referenceChangesAt > 0.5){
+        referenceCount = pixelart::referenceFilterChanges(*project, assetPaths[0]).size();
+        referenceChangesPath = assetPaths[0];
+        referenceChangesAt = now;
+    }
+    if (referenceCount > 0){
+        const size_t count = referenceCount;
+        const std::string label = "Apply to " + std::to_string(count) + " Reference" + (count == 1 ? "" : "s");
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        ImGui::TextWrapped("%zu reference(s) in the open scenes are not filtered as this Filter Mode.", changes.size());
+        ImGui::TextWrapped("%zu reference(s) in the open scenes are not filtered as this Filter Mode.", count);
         ImGui::PopStyleColor();
         if (ImGui::SmallButton(label.c_str())){
+            // what the references are now, not the cached list
+            const std::vector<pixelart::FixChange> changes = pixelart::referenceFilterChanges(*project, assetPaths[0]);
             pixelart::FixApplyReport report;
             std::string error;
-            if (!pixelart::applyChanges(*project, changes, "Apply Filter Mode to " + std::to_string(changes.size()) + " References", report, error))
+            if (!changes.empty() &&
+                !pixelart::applyChanges(*project, changes, "Apply Filter Mode to " + std::to_string(changes.size()) + " References", report,
+                                        error, nullptr))
                 Out::warning("Apply to References: %s", error.c_str());
+            referenceChangesAt = -1.0;
         }
     }
 }

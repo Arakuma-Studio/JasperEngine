@@ -26,6 +26,11 @@ std::vector<PixelArtScreen> PixelArtSettings::screens() const{
     return out;
 }
 
+const std::vector<PixelArtScreen>& jasperengine::editor::pixelart::presetBaseResolutions(){
+    static const std::vector<PixelArtScreen> sizes = {{256, 144}, {320, 180}, {384, 216}, {480, 270}, {640, 360}};
+    return sizes;
+}
+
 bool jasperengine::editor::pixelart::parsePixelArtScreen(const std::string& text, PixelArtScreen& out){
     const size_t x = text.find('x');
     if (x == std::string::npos || x == 0 || x + 1 >= text.size())

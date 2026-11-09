@@ -577,6 +577,29 @@ Recorded at implementation (`feature/s42-pixel-art-mode`); the code is what is t
 - **R9, R10: what counts as pixel art.** In Pixel Art Mode every 2D scene is a pixel-art scene (the
   mode declares the project pixel art). `pixel_art_mode`'s "pixel-art content" also counts a 2D scene
   with sprites or tilemaps, so a plain 2D project (the 2d template, AC9) can be converted by its fix.
+- **R9: layer scenes, Sprite Batch.** "A layer scene's camera": a layer (child) scene without a
+  camera of its own is drawn under the main camera of the scene it is a layer of, so it is a
+  pixel-art scene when that camera has an enabled orthographic Pixel Perfect Camera; a layer with
+  its own camera is judged by it. S52 (Sprite Batch) is not in this base: its drawables come in
+  through `pixelart::registerDrawableCollector` (PixelArtInput.h), called for every scene read, as
+  S46's rule comes in through `registerRule`.
+- **R2: fixed-resolution scenes.** The preset gives a fixed-resolution scene's new Pixel Perfect
+  Camera the preset's base resolution as its reference (the scene's own fixed size was the old
+  base); `integer_scale`'s fix on its own keeps R10's "reference = the fixed resolution".
+- **R13: stale fixes.** A plan made from an earlier check (the window's last result, an MCP job's
+  snapshot, the preset dialog's preview) is checked again before it applies (`staleChanges`: the
+  scope is checked again as Pixel Art Mode sees it and every change must still be a fix with the same
+  `from`; project settings are compared with their values). One that no longer holds applies nothing
+  and is the typed error `stale` (MCP) or the window's notice, which checks again.
+- **R16: cost.** What a closed scene's file holds and a texture's meta and header say are kept by
+  file stamp between checks (an asset batch that adds, moves or removes files or changes a prefab
+  forgets them), so a warm check decodes no scene file. `check_pixel_art` runs the rules inline when
+  the project's last check took at most 0.25 s (before the first, at most 2,000 drawables and
+  textures), else on an S06 Background job the call waits a second for. AC14's cold run is a fresh
+  editor on the saved project; the warm run follows it.
+- **R19: Project scope.** Every scene file of the project, whether or not the build lists it
+  (`Project::loadSceneFileProbe`), every pixel-art texture and every Aseprite sheet. Prefabs are
+  checked where their instances are.
 - **R10 `integer_scale`:** a pixel-art scene with integer scaling but no enabled Pixel Perfect Camera
   is a WARN (nothing snaps without one, so `off_grid`'s "drawn snapped" would not hold); its fix adds
   the camera, which is how `fix: ["all"]` does R2's camera row. A scene without a saved camera gets a
@@ -592,9 +615,12 @@ Recorded at implementation (`feature/s42-pixel-art-mode`); the code is what is t
   by its `compression` (S45's Auto is now lossless in Pixel Art Mode too, R16 of S45). Generated pages
   are judged through their source.
 - **R10 `particles_grid`:** particle textures are made at runtime, so their filter is the project's
-  Default Filter Mode (fix: Default Filter Mode point). Render mode, sizes and a perspective camera
-  have no automatic fix (`needs_person` names what to change). The Pixel Art module criteria wait for
-  S49 (not in this base).
+  Default Filter Mode (fix: Default Filter Mode point). No enabled Pixel Perfect Camera is fixed with
+  integer_scale's own change (`rules::cameraFixChanges`; identical changes are applied once), and
+  Pixel Snapping off with the camera's switch. Render mode, sizes and a perspective camera have no
+  automatic fix (`needs_person` names what to change). The Pixel Art module criteria wait for S49
+  (not in this base). A particle renderer's texture is a pixel-art texture of a pixel-art scene
+  (`mipmaps_compression`, so R2's preset converts it).
 - **R10 `font_antialiasing`:** S51 plugs in through `pixelart::setFontAnalyzer`; until then every font
   reads as a vector font (WARN, `needs_person`). The `.bitmapfont` `alpha_cutoff` fix is S51's to add
   (its writer), so that case is `needs_person` meanwhile.
@@ -606,18 +632,28 @@ Recorded at implementation (`feature/s42-pixel-art-mode`); the code is what is t
   `errors[]`. The image is the Game view at Pixel Scale 1× of the first pixel-art scene with
   findings, cropped to the base image, scaled by whole numbers within `max_width` (default 1024).
 - **R24:** the closing call is `jasperengine-editor call --project <p> check_pixel_art '{...}'`
-  (options before the tool name, as `call` takes them). In `--hook`, the category runs when an image,
-  scene, prefab, meta or project.yaml changed.
-- **R1:** in Pixel Art Mode a 2D image nothing references yet (S14 infers `default`, "no
-  references") imports as `type: sprite` with `pixelArt: true` ("no references (Pixel Art Mode)"), so
-  imported art is pixel art before it is placed (AC12). The validator judges a texture with no
-  import settings yet as the mode will import it.
+  (options before the tool name, as `call` takes them). Given files (`--hook`, `--files`), the
+  category checks the changed scenes (`Scope::scenes`) and the changed images that resolve to pixel
+  art (an image's meta counts as the image; `Scope::pixelArtPathsOnly`), and reports only the findings
+  of those files and, when project.yaml changed, the project's; old findings elsewhere neither print
+  nor set the exit code. A changed prefab is checked where its scenes are.
+- **R1:** only an image *added* while the mode is on gets `pixelArt` (written at once with S14's
+  inference, `writeImportSettingsNow`); the cook queue's own first import of an image the project
+  already had is S14's, so turning the mode on (or the preset, undone) leaves no file changed (D2).
+  An added 2D image nothing references yet (S14 infers `default`, "no references") is pixel art
+  only when it looks like it (`looksLikePixelArt`): a folder of its path named sprites, sprite,
+  tiles, tileset(s) or pixelart, or at most 512x512 with 256 colours or fewer among its visible
+  texels; it then imports as `type: sprite` ("no references (Pixel Art Mode)"). Photos and painted
+  backgrounds keep the usual (lossy) import. The colour count decodes images up to 512x512 on the
+  main thread at import (a few ms for the largest). The validator judges a texture with no import
+  settings yet as S14 will import it.
 - **R3:** the editor applies the Default Filter Mode at Play start (and restores Bilinear at stop);
   edit mode keeps Bilinear, since assignments copy their filters explicitly (R7). Lua gets
   `Engine.setDefaultTextureFilter` / `getDefaultTextureFilter`.
 - **R18:** the Upscale Mode default has a key of its own, `pixel_art.upscale_mode`. Base Resolution,
-  Pixels Per Unit and Default Filter Mode are rows of the Pixel Art page bound to the Graphics
-  settings. `edit.projectSettings` takes a page as payload (run_command opens Pixel Art directly).
+  Pixels Per Unit and Default Filter Mode are rows of the Pixel Art page under the Graphics keys
+  (`graphics.canvas_width`/`height`, `graphics.pixels_per_unit`, `graphics.default_filter_mode`: one
+  name per concept; no alias key was ever stored, so nothing migrates). `edit.projectSettings` takes a page as payload (run_command opens Pixel Art directly).
 - **R19:** the Console line is clickable through a small `ConsoleWindow::setMessageAction` (lines that
   start with "Pixel Art Check:"), registered only while Pixel Art Mode's hooks are. The window's
   double-click frames through `edit.frameSelected`.

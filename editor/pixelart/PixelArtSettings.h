@@ -41,6 +41,10 @@ namespace jasperengine::editor::pixelart {
         std::vector<PixelArtScreen> screens() const;
     };
 
+    // the base resolutions R2 offers (the preset dialog's, the settings page's and the hub's list):
+    // 256x144 ... 640x360, each with a Custom choice beside it
+    const std::vector<PixelArtScreen>& presetBaseResolutions();
+
     // "1366x768" (1...16384 each side); false otherwise
     bool parsePixelArtScreen(const std::string& text, PixelArtScreen& out);
     // "#1a1c2c" (six hex digits, any case)

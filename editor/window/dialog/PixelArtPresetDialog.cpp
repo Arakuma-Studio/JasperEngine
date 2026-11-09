@@ -19,7 +19,8 @@ void PixelArtPresetDialog::open(){
     requested = true;
     dirty = true;
     result.clear();
-    pixelsPerUnit = project->getPixelsPerUnit() == 1 ? 1 : project->getPixelsPerUnit();
+    // R2's default; the dialog shows what the project has as the current value
+    pixelsPerUnit = 1;
 }
 
 px::PixelArtPresetOptions PixelArtPresetDialog::options() const{

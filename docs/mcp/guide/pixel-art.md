@@ -30,7 +30,7 @@ Palettes (edit_palette, apply_palette): jasper://docs/palettes.
   settings; the same call with `output: true` applies them. Then `check_pixel_art {fix: ["all"]}`
   converts cameras, textures and references the same way.
 - `set_project_settings {"pixel_art.enabled": true}` alone only changes what new things get (new
-  textures import as pixel art, new 2D scenes get a Pixel Perfect Camera, the check runs on import
+  sprite images import as pixel art, new 2D scenes get a Pixel Perfect Camera, the check runs on import
   and at Play); it changes no other setting.
 - Mark a texture: `set_texture_import_settings {paths, settings: {pixel_art: true}}` (also
   `filter_mode`, `pixels_per_unit`, `alpha_clip`).
