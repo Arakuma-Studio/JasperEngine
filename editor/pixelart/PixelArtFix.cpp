@@ -16,12 +16,15 @@
 #include "mcp/McpUndo.h"
 #include "mcp/McpValues.h"
 #include "pixelart/ApplyPalette.h"
+#include "pixelart/BitmapFont.h"
+#include "pixelart/BitmapFontPool.h"
 #include "pixelart/PaletteAssets.h"
 #include "pixelart/PixelArtInput.h"
 #include "pixelart/PixelArtRules.h"
 #include "pixelart/RgbaImage.h"
 #include "sprite/SpriteAtlasDocument.h"
 #include "util/EntityPath.h"
+#include "util/FileUtils.h"
 #include "util/ParticleEffectEdit.h"
 #include "util/ProjectFileWrites.h"
 #include "particles/ParticleEffectCodec.h"
@@ -322,6 +325,26 @@ namespace {
                 return false;
             report.changed.push_back(change.target);
             report.recooking.push_back(change.target);
+            return true;
+        }
+        if (change.field == "alpha_cutoff"){
+            // font_antialiasing's fix: the .bitmapfont's own setting, as its Inspector writes it
+            Json doc = Json::parse(readFile(absolute), nullptr, false);
+            if (doc.is_discarded() || !doc.is_object()){
+                error = change.target + ": not a .bitmapfont JSON object";
+                return false;
+            }
+            doc["alpha_cutoff"] = change.to;
+            auto reload = [&project](const std::vector<fs::path>& changed){
+                bool any = false;
+                for (const fs::path& path : changed)
+                    any = !::jasperengine::pixelart::BitmapFontPool::invalidate(FileUtils::pathToUtf8(path)).empty() || any;
+                if (any)
+                    for (SceneProject* scene : project.getScenesAndPrefabStages()) scene->needUpdateRender = true;
+            };
+            if (!ProjectFileWrites::writeUndoable(&project, {{absolute, ::jasperengine::pixelart::canonicalBitmapFontJson(doc.dump())}}, error, reload))
+                return false;
+            report.changed.push_back(change.target);
             return true;
         }
         error = change.target + ": cannot apply a change of " + change.field;

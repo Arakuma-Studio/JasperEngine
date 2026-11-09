@@ -14,6 +14,7 @@
 #include "util/Sha256.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -258,6 +259,13 @@ namespace {
     std::string fileName(const std::string& path){
         const size_t slash = path.find_last_of('/');
         return slash == std::string::npos ? path : path.substr(slash + 1);
+    }
+
+    // a .bitmapfont holds the settings a fix writes (alpha_cutoff); a .fnt or .ttf has none
+    bool isBitmapFontSettings(const std::string& path){
+        std::string extension = std::filesystem::path(path).extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        return extension == ".bitmapfont";
     }
 
     // TextureFormatSelector's choice for one family of a resolved texture
@@ -875,9 +883,10 @@ RuleResult jasperengine::editor::pixelart::rules::rotation(const PixelArtCheckIn
 
 RuleResult jasperengine::editor::pixelart::rules::fontAntialiasing(const PixelArtCheckInput& input, std::vector<Finding>& findings){
     RuleResult result;
-    auto check = [&](const std::string& keyTarget, Json target, const std::string& font, unsigned int size, const std::string& where){
+    auto check = [&](const std::string& keyTarget, Json target, const std::vector<std::string>& fonts, unsigned int size, const std::string& where){
         result.checked++;
-        const PixelArtFontInfo info = analyzeFont(input, font, size);
+        const std::string& font = fonts.front();
+        const PixelArtFontInfo info = analyzeFont(input, fonts, size);
         if (isFontDrawn(info))
             return;
         Json measured = {{"font", font.empty() ? Json("default") : Json(font)}, {"kind", info.kind}, {"size", info.size},
@@ -899,8 +908,10 @@ RuleResult jasperengine::editor::pixelart::rules::fontAntialiasing(const PixelAr
             const int multiple = std::max(1, (int)std::lround((double)info.size / info.nativeSize));
             finding.options.push_back(option("default", "Set the font size to " + std::to_string(multiple * info.nativeSize),
                                              {{entityRef(target["scene"].get<std::string>(), target["entity"].get<std::string>()), "text.fontSize", info.size, multiple * info.nativeSize}}));
-        }else if (info.kind == "bitmap" && info.partialAlphaShare > 0.0f && !font.empty()){
+        }else if (info.kind == "bitmap" && info.partialAlphaShare > 0.0f && isBitmapFontSettings(font)){
             finding.options.push_back(option("default", "Cut the bitmap font's alpha at 128", {{font, "alpha_cutoff", nullptr, 128}}));
+        }else if (info.kind == "bitmap" && info.partialAlphaShare > 0.0f){
+            finding.needsPerson = "wrap " + (font.empty() ? std::string("the font") : font) + " in a .bitmapfont with alpha_cutoff 128";
         }else if (info.kind == "vector" && info.pixelGridDetected){
             finding.needsPerson = "create a .bitmapfont with source truetype from " + (font.empty() ? std::string("the font") : font);
         }else{
@@ -912,12 +923,14 @@ RuleResult jasperengine::editor::pixelart::rules::fontAntialiasing(const PixelAr
         for (const PixelArtDrawable& d : scene.drawables){
             if (d.kind != DrawableKind::Text)
                 continue;
-            check(entityRef(d.scene, d.entity), entityTarget(d.scene, d.entity, "text.font"), d.font, d.fontSize,
+            std::vector<std::string> fonts = {d.font};
+            fonts.insert(fonts.end(), d.fallbackFonts.begin(), d.fallbackFonts.end());
+            check(entityRef(d.scene, d.entity), entityTarget(d.scene, d.entity, "text.font"), fonts, d.fontSize,
                   d.entity.substr(d.entity.find_last_of('/') + 1));
         }
     }
     for (const std::string& font : input.fontPaths)
-        check(font, {{"kind", "font"}, {"path", font}}, font, 0, fileName(font));
+        check(font, {{"kind", "font"}, {"path", font}}, {font}, 0, fileName(font));
     return result;
 }
 

@@ -139,6 +139,7 @@ namespace jasperengine::editor::pixelart {
         bool sliced = false;
         // Text
         std::string font;                      // "" the engine's default font
+        std::vector<std::string> fallbackFonts;  // its fallback slots in order, empty ones left out
         unsigned int fontSize = 0;
         // Particles
         std::string particleRenderMode;        // "billboard", "stretched_billboard" ...
@@ -222,8 +223,8 @@ namespace jasperengine::editor::pixelart {
         std::vector<PixelArtRenderScaleCap> renderScaleCaps;
     };
 
-    // A font a Text draws or `paths` names (S51's analyzeFontForPixelArt plugs in through
-    // setFontAnalyzer; before it every font reads as a vector font)
+    // A font a Text draws or `paths` names (S51's analyzeTextForPixelArt by default, see
+    // setFontAnalyzer)
     struct PixelArtFontInfo {
         std::string font;
         std::string kind = "vector";           // "vector", "bitmap"
@@ -243,6 +244,9 @@ namespace jasperengine::editor::pixelart {
         std::vector<PixelArtScene> scenes;
         std::map<std::string, PixelArtTexture> textures;    // by assets-relative path
         std::vector<std::string> fontPaths;    // fonts `paths` names
+        // the fonts analysed where the input is built (analyzeFonts), by fontAnalysisKey: S51's
+        // font pool is main-thread only and the rules may run on a Background worker
+        std::map<std::string, PixelArtFontInfo> fonts;
         std::filesystem::path assetsRoot;      // absolute, to read pixels (palette rule)
         // the palettes the palette rule measures against (the Default Palette, Palette Swap
         // sources), by assets-relative path
@@ -283,9 +287,16 @@ namespace jasperengine::editor::pixelart {
     void registerRule(std::string id, RuleFn rule);
     void unregisterRule(const std::string& id);
 
-    // S51's font analysis (D9: read when present); null: every font is a vector font
-    using FontAnalyzer = std::function<PixelArtFontInfo(const std::filesystem::path& assetsRoot, const std::string& font, unsigned int size)>;
+    // The font analysis (D9): fonts is a Text's font list, the main font first (one font for a
+    // font `paths` names, size 0: judged at its native size). The default maps S51's
+    // analyzeTextForPixelArt (S51 deviation 11); it reads S51's font pool, so call it on the main
+    // thread. A test installs its own; null puts the default back.
+    using FontAnalyzer = std::function<PixelArtFontInfo(const std::filesystem::path& assetsRoot, const std::vector<std::string>& fonts, unsigned int size)>;
     void setFontAnalyzer(FontAnalyzer analyzer);
+    // the key of a font analysis in PixelArtCheckInput::fonts
+    std::string fontAnalysisKey(const std::vector<std::string>& fonts, unsigned int size);
+    // analyses every Text's fonts and every font path into input.fonts (main thread)
+    void analyzeFonts(PixelArtCheckInput& input);
 
     // rules: ids to run (empty: all); unknown ids are skipped (the callers validate them)
     CheckResult run(const PixelArtCheckInput& input, const std::vector<std::string>& rules = {});

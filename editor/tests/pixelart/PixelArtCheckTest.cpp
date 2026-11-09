@@ -318,14 +318,14 @@ TEST(PixelArtCheck, FontAntialiasing){
     const Finding* f = findingOf(result, "font_antialiasing");
     ASSERT_TRUE(f);
     EXPECT_EQ(f->status, RuleStatus::Warn);
-    EXPECT_EQ(f->measured["kind"], "vector") << "before S51 every font is a vector font";
+    EXPECT_EQ(f->measured["kind"], "vector") << "the engine's default font is a vector font";
     EXPECT_TRUE(f->options.empty());
     EXPECT_FALSE(f->needsPerson.empty());
     EXPECT_EQ(result.verdict, Verdict::NeedsPerson);
-    // S51's analysis plugs in: a bitmap font at a whole multiple of its native size passes
-    setFontAnalyzer([](const std::filesystem::path&, const std::string& font, unsigned int size){
+    // an analysis plugs in: a bitmap font at a whole multiple of its native size passes
+    setFontAnalyzer([](const std::filesystem::path&, const std::vector<std::string>& fonts, unsigned int size){
         PixelArtFontInfo info;
-        info.font = font;
+        info.font = fonts.front();
         info.kind = "bitmap";
         info.size = size;
         info.nativeSize = 10;
@@ -340,6 +340,88 @@ TEST(PixelArtCheck, FontAntialiasing){
     EXPECT_EQ(findingOf(off, "font_antialiasing")->options.front().changes.front().to, 20) << "the nearest whole multiple";
     setFontAnalyzer(nullptr);
     EXPECT_EQ(statusOf(cleanInput(), "font_antialiasing"), RuleStatus::Pass);
+}
+
+// S51 deviation 11: the default analysis is S51's, so the font rule judges real bitmap fonts (the
+// red control: with S42's old default every font read as a vector font and these WARN as vector)
+TEST(PixelArtCheck, FontAntialiasingReadsBitmapFonts){
+    setFontAnalyzer(nullptr);
+    PixelArtCheckInput input = cleanInput();
+    PixelArtDrawable text;
+    text.kind = DrawableKind::Text;
+    text.scene = "scenes/Main.scene";
+    text.entity = "/Score";
+    text.font = "builtin:pixel";
+    text.fontSize = 18;
+    text.hasTransform = true;
+    input.scenes.front().drawables.push_back(text);
+    EXPECT_EQ(statusOf(input, "font_antialiasing"), RuleStatus::Pass) << "the built-in pixel font at 2x its native 9";
+
+    input.scenes.front().drawables.back().fontSize = 16;
+    const CheckResult off = run(input, {"font_antialiasing"});
+    const Finding* f = findingOf(off, "font_antialiasing");
+    ASSERT_TRUE(f);
+    EXPECT_EQ(f->status, RuleStatus::Warn);
+    EXPECT_EQ(f->measured["kind"], "bitmap");
+    EXPECT_EQ(f->measured["native_size"], 9);
+    EXPECT_EQ(f->measured["pixel_scale"], 2);
+    ASSERT_EQ(f->options.size(), 1u);
+    EXPECT_EQ(f->options.front().changes.front().field, "text.fontSize");
+    EXPECT_EQ(f->options.front().changes.front().to, 18);
+
+    // a vector fallback in the chain is named and needs a person
+    input.scenes.front().drawables.back().fontSize = 18;
+    input.scenes.front().drawables.back().fallbackFonts = {"fonts/Smooth.ttf"};
+    const CheckResult chained = run(input, {"font_antialiasing"});
+    f = findingOf(chained, "font_antialiasing");
+    ASSERT_TRUE(f);
+    EXPECT_EQ(f->measured["vector_fallbacks"], Json::array({"fonts/Smooth.ttf"}));
+    EXPECT_TRUE(f->options.empty());
+    EXPECT_FALSE(f->needsPerson.empty());
+
+    // a font `paths` names is judged at its native size; a missing .bitmapfont FAILs
+    PixelArtCheckInput paths = cleanInput();
+    paths.fontPaths = {"builtin:pixel"};
+    EXPECT_EQ(statusOf(paths, "font_antialiasing"), RuleStatus::Pass);
+    paths.fontPaths = {"fonts/missing.bitmapfont"};
+    const CheckResult missing = run(paths, {"font_antialiasing"});
+    ASSERT_TRUE(findingOf(missing, "font_antialiasing"));
+    EXPECT_EQ(findingOf(missing, "font_antialiasing")->status, RuleStatus::Fail);
+    EXPECT_FALSE(findingOf(missing, "font_antialiasing")->needsPerson.empty());
+}
+
+// the rules may run on a Background worker and S51's font pool is main-thread only: the input
+// carries the analyses (analyzeFonts, called by inputFromProject) and the rule reads them
+TEST(PixelArtCheck, FontAnalysisMadeWhereTheInputIsBuilt){
+    int calls = 0;
+    setFontAnalyzer([&calls](const std::filesystem::path&, const std::vector<std::string>& fonts, unsigned int size){
+        calls++;
+        PixelArtFontInfo info;
+        info.font = fonts.front();
+        info.kind = "bitmap";
+        info.size = size;
+        info.nativeSize = 9;
+        info.antialiased = false;
+        info.partialAlphaShare = 0.0f;
+        return info;
+    });
+    PixelArtCheckInput input = cleanInput();
+    PixelArtDrawable text;
+    text.kind = DrawableKind::Text;
+    text.scene = "scenes/Main.scene";
+    text.entity = "/Score";
+    text.font = "fonts/hud.bitmapfont";
+    text.fallbackFonts = {"fonts/extra.fnt"};
+    text.fontSize = 27;
+    text.hasTransform = true;
+    input.scenes.front().drawables.push_back(text);
+    input.fontPaths = {"fonts/hud.bitmapfont"};
+    analyzeFonts(input);
+    EXPECT_EQ(calls, 2) << "one Text chain, one font path";
+    EXPECT_EQ(input.fonts.count(fontAnalysisKey({"fonts/hud.bitmapfont", "fonts/extra.fnt"}, 27)), 1u);
+    EXPECT_EQ(statusOf(input, "font_antialiasing"), RuleStatus::Pass);
+    EXPECT_EQ(calls, 2) << "the rule read the input's analyses";
+    setFontAnalyzer(nullptr);
 }
 
 TEST(PixelArtCheck, ParticlesGrid){

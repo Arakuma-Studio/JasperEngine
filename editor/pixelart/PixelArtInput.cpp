@@ -478,6 +478,9 @@ namespace {
             if (const TextComponent* text = scene->findComponent<TextComponent>(entity)){
                 PixelArtDrawable d = base(entity, DrawableKind::Text);
                 d.font = text->font[0].path;
+                for (size_t i = 1; i < text->font.size(); i++)
+                    if (!text->font[i].path.empty())
+                        d.fallbackFonts.push_back(text->font[i].path);
                 d.fontSize = text->fontSize;
                 push(std::move(d), -1);
             }
@@ -820,6 +823,7 @@ PixelArtCheckInput jasperengine::editor::pixelart::inputFromProject(Project& pro
         }
     }
     std::sort(input.fontPaths.begin(), input.fontPaths.end());
+    analyzeFonts(input);
 
     for (auto& [path, texture] : input.textures){
         if (!texture.paletteSwapSource.empty() && !input.palettes.count(texture.paletteSwapSource)){

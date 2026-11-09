@@ -5,6 +5,8 @@
 
 #include "pixelart/PixelArtRules.h"
 
+#include "pixelart/FontPixelReport.h"
+
 #include <algorithm>
 #include <cmath>
 #include <mutex>
@@ -51,8 +53,30 @@ namespace {
         static std::map<std::string, RuleFn> rules;
         return rules;
     }
+    // S51 deviation 11: FontPixelReport and TextPixelReport field for field
+    PixelArtFontInfo bitmapFontAnalysis(const std::filesystem::path&, const std::vector<std::string>& fonts, unsigned int size){
+        namespace fpx = ::jasperengine::pixelart;
+        const fpx::TextPixelReport text = fpx::analyzeTextForPixelArt(fonts, size);
+        const fpx::FontPixelReport& font = text.font;
+        PixelArtFontInfo info;
+        info.font = fonts.empty() ? std::string() : fonts.front();
+        info.kind = font.kind == fpx::FontKind::BITMAP ? "bitmap" : "vector";
+        // a font on its own (no Text) is judged at its native size
+        info.size = size == 0 && font.kind == fpx::FontKind::BITMAP ? (unsigned int)std::max(font.nativeSize, 0) : size;
+        info.nativeSize = font.nativeSize;
+        info.pixelScale = (float)text.pixelScale;
+        info.antialiased = font.antialiased;
+        info.partialAlphaShare = font.kind == fpx::FontKind::BITMAP ? font.partialAlphaShare : -1.0f;
+        info.vectorFallbacks = text.vectorFallbacks;
+        info.pixelGridDetected = font.pixelGridDetected;
+        info.loadError = !font.loads;
+        if (!font.loads && !font.errors.empty())
+            info.error = font.errors.front().message;
+        return info;
+    }
+
     FontAnalyzer& fontAnalyzer(){
-        static FontAnalyzer analyzer;
+        static FontAnalyzer analyzer = bitmapFontAnalysis;
         return analyzer;
     }
 
@@ -166,21 +190,51 @@ void jasperengine::editor::pixelart::unregisterRule(const std::string& id){
 
 void jasperengine::editor::pixelart::setFontAnalyzer(FontAnalyzer analyzer){
     std::lock_guard<std::mutex> lock(registryMutex());
-    fontAnalyzer() = std::move(analyzer);
+    fontAnalyzer() = analyzer ? std::move(analyzer) : FontAnalyzer(bitmapFontAnalysis);
 }
 
-PixelArtFontInfo jasperengine::editor::pixelart::rules::analyzeFont(const PixelArtCheckInput& input, const std::string& font, unsigned int size){
+std::string jasperengine::editor::pixelart::fontAnalysisKey(const std::vector<std::string>& fonts, unsigned int size){
+    std::string key = std::to_string(size);
+    for (const std::string& font : fonts)
+        key += ";" + font;
+    return key;
+}
+
+void jasperengine::editor::pixelart::analyzeFonts(PixelArtCheckInput& input){
     FontAnalyzer analyzer;
     {
         std::lock_guard<std::mutex> lock(registryMutex());
         analyzer = fontAnalyzer();
     }
-    if (analyzer)
-        return analyzer(input.assetsRoot, font, size);
-    PixelArtFontInfo info;
-    info.font = font;
-    info.size = size;
-    return info;
+    auto add = [&](const std::vector<std::string>& fonts, unsigned int size){
+        const std::string key = fontAnalysisKey(fonts, size);
+        if (!input.fonts.count(key))
+            input.fonts[key] = analyzer(input.assetsRoot, fonts, size);
+    };
+    for (const PixelArtScene& scene : input.scenes){
+        for (const PixelArtDrawable& d : scene.drawables){
+            if (d.kind != DrawableKind::Text)
+                continue;
+            std::vector<std::string> fonts = {d.font};
+            fonts.insert(fonts.end(), d.fallbackFonts.begin(), d.fallbackFonts.end());
+            add(fonts, d.fontSize);
+        }
+    }
+    for (const std::string& font : input.fontPaths)
+        add({font}, 0);
+}
+
+PixelArtFontInfo jasperengine::editor::pixelart::rules::analyzeFont(const PixelArtCheckInput& input, const std::vector<std::string>& fonts, unsigned int size){
+    auto it = input.fonts.find(fontAnalysisKey(fonts, size));
+    if (it != input.fonts.end())
+        return it->second;
+    // an input built by hand (the tests): analysed now
+    FontAnalyzer analyzer;
+    {
+        std::lock_guard<std::mutex> lock(registryMutex());
+        analyzer = fontAnalyzer();
+    }
+    return analyzer(input.assetsRoot, fonts, size);
 }
 
 CheckResult jasperengine::editor::pixelart::run(const PixelArtCheckInput& input, const std::vector<std::string>& selected){

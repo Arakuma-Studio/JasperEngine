@@ -636,9 +636,13 @@ Recorded at implementation (`feature/s42-pixel-art-mode`); the code is what is t
   it has one, else the inline effect); with pixel sizes the start sizes are base pixels, and Integer
   Size makes fractional ones whole. A particle renderer's texture is a pixel-art texture of a pixel-art scene
   (`mipmaps_compression`, so R2's preset converts it).
-- **R10 `font_antialiasing`:** S51 plugs in through `pixelart::setFontAnalyzer`; until then every font
-  reads as a vector font (WARN, `needs_person`). The `.bitmapfont` `alpha_cutoff` fix is S51's to add
-  (its writer), so that case is `needs_person` meanwhile.
+- **R10 `font_antialiasing`:** the font analysis is S51's `analyzeTextForPixelArt`, mapped field for
+  field (S51 deviation 11) as `pixelart::setFontAnalyzer`'s default; a Text is judged with its whole
+  font chain (its fallback slots give `vector_fallbacks`), a font `paths` names at its native size.
+  S51's font pool is main-thread only and the rules may run on a Background worker, so
+  `inputFromProject` analyses the fonts into the input (`analyzeFonts`) and the rule reads them.
+  Partial alpha in a `.bitmapfont` is fixed by writing its `alpha_cutoff` 128 (one undoable file
+  write, as its Inspector does); in a `.fnt` or TrueType file used directly it is `needs_person`.
 - **R10 `sprite_variants`:** the collector runs on one GameObject per library:sprite material identity
   (shader features and blend), and `by_material` names those identities.
 - **R10 `cleanup_outputs`:** not listed until S46 registers it (`registerRule`); asking for it before

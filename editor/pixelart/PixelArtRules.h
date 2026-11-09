@@ -29,8 +29,8 @@ namespace jasperengine::editor::pixelart::rules {
     RuleResult renderScale(const PixelArtCheckInput& input, std::vector<Finding>& findings);
     RuleResult spriteVariants(const PixelArtCheckInput& input, std::vector<Finding>& findings);
 
-    // the font analysis setFontAnalyzer installed, or the vector-font reading
-    PixelArtFontInfo analyzeFont(const PixelArtCheckInput& input, const std::string& font, unsigned int size);
+    // the font analysis analyzeFonts made for the input, else setFontAnalyzer's now
+    PixelArtFontInfo analyzeFont(const PixelArtCheckInput& input, const std::vector<std::string>& fonts, unsigned int size);
 
     // the per-screen layouts of a scene's main camera (integer_scale's measurement, the result's camera[])
     nlohmann::json cameraJson(const PixelArtCheckInput& input, const PixelArtScene& scene);
