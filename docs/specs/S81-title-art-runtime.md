@@ -1486,4 +1486,6 @@ rest of S82 lands in 6B.
     makes it again when the file's revision changes; leaving the mode or closing the window drops
     it. `TitleArtSystem::runRuntimeFrame` is the frame-once entry `renderTitles` used privately, made
     public so the preview runs the scheduler in the render phase (through S82's `requestEngineFrame`)
-    while no scene draws a title. The Title Art Renderer's Open in Title Designer opens one instance In Context (S82 R30).
+    while no scene draws a title. **Open:** on the reference title (rim, Light Glow, Drop Shadow, a following Speed
+    Lines) the preview stops at "Glyph Atlas: rendering 35/44": the same count on llvmpipe after 30 s and after 90 s
+    and on the RTX 3080 Ti after 90 s, with no failure reported. The cause is not found; the mode's image has not been seen. The Title Art Renderer's Open in Title Designer opens one instance In Context (S82 R30).

@@ -1555,4 +1555,4 @@ rest of S82 lands in 6B.
     render), and taking where they differ; the title's bake frame is placed on that rectangle. A
     renderer that draws nothing on screen leaves the title centred with a notice. The Hierarchy's
     window drop takes a `.titleart` (S81 R6's create function), which completes the document-chip drag
-    (R61, AC28).
+    (R61, AC28). The Letters' 3D gizmo drag is covered by its target's unit tests and has no end-to-end drag test.
