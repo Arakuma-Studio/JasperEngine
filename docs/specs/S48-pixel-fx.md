@@ -993,13 +993,27 @@ Implementation notes that change what the spec says. Each item names the require
   in Play. Seeds: a Particle System with seed 0 takes the run's seed; spill's runs vary explicit seeds too. Unscaled
   particles run on the capture's one clock.
 - **frame_cost.** The CPU time is the median of 9 frames shown and 9 hidden (isolated, release builds); the static taps
-  are below (R28 frame_cost); GPU time (S15) is not measured by the capture.
+  are below (R28 frame_cost); GPU time (S15) is not measured by the capture. With no time measured (scene mode, a debug
+  build) the taps alone are no PASS: the row is SKIP with the reason, or WARN over R33's taps budget.
 - **transition_edges.** A transition's capture takes the rim's width from its CPU evaluation (`ScreenTransition::measureRim`: the
   run along each row or column away from the uncovered side, the rule the shader draws by, in art pixels at any `pixel_size`),
-  because a colour image cannot tell which axis a rim pixel was measured along. Pixel Dissolve and Fade have no continuous
-  edge and report SKIP. `lintTransitionEdges` on bare images (mean rim run times the cosine of the fitted edge slope, over 7
+  because a colour image cannot tell which axis a rim pixel was measured along; every frame read back is compared with that
+  evaluation pixel by pixel, and a difference WARNs naming the art pixels. Pixel Dissolve and Fade have no continuous
+  edge and report SKIP unless the read-back differs. `lintTransitionEdges` on bare images (mean rim run times the cosine of the fitted edge slope, over 7
   lines) stays for callers with frames only.
-- **Contact Sheet... is a window**, not a modal (no EditorModal needed); Save As... uses the editor's file picker.
+- **Contact Sheet... is a window**, not a modal (no EditorModal needed); Save As... uses the editor's file picker. Its Target
+  combo has R27's four targets: the selected GameObject, an `.anim` clip on it, a `.particles` asset, a transition kind with its
+  options (the Project Settings' defaults, per kind). The toolbar button still needs the one selected GameObject, whatever the
+  target. Clips and effects come from a scan of the assets folder at open and when the target changes.
+- **Capture limits (review).** `capture_contact_sheet` and the window refuse a frame over 4,096 px a side or over 33,554,432
+  px (128 MiB) of frames in all, `capture_too_large` with the fix (only a transition's art grid times its pixel size can get
+  there). The tool and the window refuse a capture while another runs (`capture_running`, `EffectCapture::anyRunning`): captures
+  share the capture view and a Play capture holds the game's fixed step and pause.
+- **Scene-mode lints.** `flicker`, `off_palette` and `partial_alpha` SKIP in scene mode with the reason: the frames are the whole
+  opaque view (the scene behind the target, alpha forced to 255), so they could not measure the target.
+- **Verdict.** `verdict` is not `clean` when every lint skipped: nothing was measured, so it reads `needs_person`.
+- **Annotations.** `capture_contact_sheet` is not read-only or idempotent (determinism in Play reloads the played scene, `output`
+  writes a file); its busy policy stays Read, and the result's `next` says when the scene was reloaded.
 - **Guide.** One "Other areas" entry `pixel-fx (capture_contact_sheet)` (ledger rule, no digest line).
 
 ### PixelFX player and the contact sheet's effect and transition targets (M4, M5)
