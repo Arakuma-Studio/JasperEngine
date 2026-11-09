@@ -15,6 +15,7 @@
 #include "lua.hpp"
 
 #include "LuaBridge.h"
+#include "LuaBridgeAddon.h"
 
 #include "Log.h"
 #include "Scene.h"
@@ -28,6 +29,10 @@
 #include <string>
 
 using namespace jasperengine;
+
+namespace luabridge {
+    template<> struct Stack<jasperengine::pixelart::TransitionKind> : EnumWrapper<jasperengine::pixelart::TransitionKind>{};
+}
 
 namespace jasperengine::pixelart {
 
@@ -310,13 +315,13 @@ void LuaBinding::registerTransitionClasses(lua_State* L){
     // The screen transitions' kinds (Transition.play's first argument; a name works as well)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("TransitionKind")
-        .addVariable("IRIS", (int)TransitionKind::IRIS)
-        .addVariable("BLINDS", (int)TransitionKind::BLINDS)
-        .addVariable("SLASH", (int)TransitionKind::SLASH)
-        .addVariable("PIXEL_DISSOLVE", (int)TransitionKind::PIXEL_DISSOLVE)
-        .addVariable("CRT_OFF", (int)TransitionKind::CRT_OFF)
-        .addVariable("BURN_AWAY", (int)TransitionKind::BURN_AWAY)
-        .addVariable("FADE", (int)TransitionKind::FADE)
+        .addVariable("IRIS", TransitionKind::IRIS)
+        .addVariable("BLINDS", TransitionKind::BLINDS)
+        .addVariable("SLASH", TransitionKind::SLASH)
+        .addVariable("PIXEL_DISSOLVE", TransitionKind::PIXEL_DISSOLVE)
+        .addVariable("CRT_OFF", TransitionKind::CRT_OFF)
+        .addVariable("BURN_AWAY", TransitionKind::BURN_AWAY)
+        .addVariable("FADE", TransitionKind::FADE)
         .endNamespace();
 
     // A running screen transition (Transition.play, cover, reveal, loadScene); Coroutine.waitFor(handle) waits for it

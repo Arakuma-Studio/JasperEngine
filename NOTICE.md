@@ -373,6 +373,7 @@ Ported, each file keeping the original notice next to ours:
 | CIELAB D65, CIEDE2000 and the cached nearest-colour matcher (`engine/core/pixelart/PixelColor.cpp`); Apply Palette's lost-colour groups (`editor/pixelart/ApplyPalette.cpp`) | [ritmo](https://github.com/typeonce-dev/ritmo) `packages/tools/src/pixel/core/color.ts`, `lost.ts` | MIT, Copyright (c) 2026 Sandro Maglione |
 | `fitRamp` and `rampAt` (`engine/core/pixelart/PixelColor.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/core/color.js` `fit` and `at` | MIT, Copyright (c) 2026 Patch |
 | The ordered pair-mix dither (`PaletteMatcher::ditherPair`, Palette Quantize's table) | Joel Yliluoma, "Arbitrary-palette positional dithering algorithm" (the algorithm, no code) | — |
+| S48's screen transitions (`engine/core/pixelart/ScreenTransition.cpp`, `engine/shaderlib/transition.frag`: the cover/hold/reveal structure, the kinds, the field rule for constant-width rims) and their default ember ramp; the Glitch burst structure (`engine/core/pixelart/Glitch.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/fx/transitions/` (`_lib.js` `field`, `iris.js`, `crt-off.js`, `pixel-dissolve.js`, `burn-away.js`), `src/core/color.js` `PAL.ember`, `src/fx/scifi/glitch.js` (the techniques, written fresh; no Sprite Fusion particle code) | MIT, Copyright (c) 2026 Patch |
 
 The CIEDE2000 test pairs (`engine/tests/core/pixelart/PixelColorTest.cpp`) are Sharma, Wu and Dalal's
 published data (2005).

@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 
 import pngdiff
+import harness
 from harness import Editor
 import ui_input
 
@@ -16,6 +17,13 @@ EDITOR = {"xvfb": "harness", "create": True, "name": "Pixel FX Inspector"}
 TIMEOUT = 900
 
 INSPECTOR = "Inspector"
+# copies of the screenshots outside the container's scratch (fetched for review)
+EVIDENCE = harness.REPO / "build" / "test-results" / "pixel_fx"
+
+
+def keep(name: str, png: bytes) -> None:
+    EVIDENCE.mkdir(parents=True, exist_ok=True)
+    (EVIDENCE / name).write_bytes(png)
 GAME = "Game"
 
 
@@ -41,6 +49,7 @@ async def test_glitch_rows(ed: Editor):
         ed.check(await ui.find(row, INSPECTOR, frames=20) is not None, f"its {row} row shows")
     ed.check(await ui.find("Burst now", INSPECTOR, frames=6) is None, "no Burst now while stopped")
     await ed.screenshot("editor", path=str(ed.scratch.root / "glitch-rows.png"), max_width=1600)
+    keep("glitch-rows.png", (ed.scratch.root / "glitch-rows.png").read_bytes())
     await ed.call("undo")
     ed.check(not await glitch_enabled(ed, sid), "one undo step turns it off again")
 
@@ -53,6 +62,7 @@ async def test_glitch_rows(ed: Editor):
         button = await ui.reveal("Burst now", INSPECTOR)
         ed.check(button is not None, "Burst now shows while playing")
         await ed.screenshot("editor", path=str(ed.scratch.root / "glitch-burst-now.png"), max_width=1600)
+        keep("glitch-burst-now.png", (ed.scratch.root / "glitch-burst-now.png").read_bytes())
         await ui.click(ui.centre(button["rect"]))
         await ui.frames()
         ed.check(await glitch_enabled(ed, sid), "the burst leaves the saved settings as they were")
@@ -79,6 +89,7 @@ async def test_game_view_transition_button(ed: Editor):
     ed.check(not shot.is_error and shot.images, f"a Game view screenshot: {shot.text[:200]}")
     png = shot.images[0][0]
     (ed.scratch.root / "transition-preview.png").write_bytes(png)
+    keep("transition-preview.png", png)
     width, height, rgba = pngdiff.decode(png)
     ink = sum(1 for i in range(0, width * height * 4, 4) if rgba[i] > 240 and rgba[i + 1] < 15 and rgba[i + 2] > 240)
     ed.check(ink > width * height // 2, f"the edit-mode Game view shows the transition: {ink} of {width * height} pixels are the ink")

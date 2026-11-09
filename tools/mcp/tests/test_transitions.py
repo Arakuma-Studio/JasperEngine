@@ -27,6 +27,7 @@ import os
 import re
 
 import pngdiff
+import harness
 from harness import Editor
 
 # read at editor start: this file runs in its own process
@@ -38,6 +39,8 @@ CI = True
 TIMEOUT = 1200
 
 INK = (255, 0, 255)
+# copies of the screenshots outside the container's scratch (fetched for review)
+EVIDENCE = harness.REPO / "build" / "test-results" / "pixel_fx"
 LINE = re.compile(r"Frame stats \(frame \d+\): .*pass list: (.*)$")
 
 HUD = """---@class TrHud : ScriptInstance
@@ -82,6 +85,8 @@ async def canvas(ed: Editor, label: str):
     ed.check(not shot.is_error and shot.images, f"{label}: no screenshot: {shot.text[:300]}")
     png = shot.images[0][0]
     (ed.scratch.root / f"{label}.png").write_bytes(png)
+    EVIDENCE.mkdir(parents=True, exist_ok=True)
+    (EVIDENCE / f"transitions_{label}.png").write_bytes(png)
     rect = shot.value["canvas_rect_in_image"]
     return pngdiff.crop(pngdiff.decode(png), round(rect["x"]), round(rect["y"]), round(rect["width"]), round(rect["height"]))
 
