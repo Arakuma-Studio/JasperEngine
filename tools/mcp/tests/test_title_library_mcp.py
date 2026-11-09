@@ -118,9 +118,10 @@ async def test_template_and_font_import(ed: Editor):
     imported = details.get("imported") or []
     fonts = [p for p in imported if p.startswith("TitleArt/Fonts/")]
     ed.check(fonts, f"a pack font imported: {details}")
-    font_dir = (ed.project / "assets" / fonts[0]).parent
-    ed.check((font_dir / "OFL.txt").exists(), "its OFL.txt beside it")
-    meta = (ed.project / "assets" / (fonts[0] + ".meta")).read_text()
+    # the assets directory of a created project is its root or assets/: find the copy
+    copied = next(ed.project.rglob(fonts[0].rsplit("/", 1)[1]))
+    ed.check((copied.parent / "OFL.txt").exists(), "its OFL.txt beside it")
+    meta = copied.with_name(copied.name + ".meta").read_text()
     ed.check("OFL-1.1" in meta and "titleart-pack" in meta, f"the meta's provenance: {meta}")
     again = await ed.call("edit_title", path=fpath, ops=[{"op": "apply_look", "layer": "Title", "look": look["id"], "apply_font": True}])
     ed.check_eq(again.get("details", {}).get("0", {}).get("imported", []), [], "a second apply imports nothing")
@@ -138,7 +139,7 @@ async def test_library_ops(ed: Editor):
     ed.check(file.exists(), f"the project look: {saved}")
     clash = await ed.check_error("edit_title", path=path, ops=[{"op": "save_look", "layer": "Title", "name": "My Look"}])
     ed.check_in("exists", clash, "an id clash is refused")
-    await ed.call("undo")
+    await ed.call("undo", scope="project")
     ed.check(not file.exists(), "undo removes the saved look")
     await ed.call("edit_title", path=path, ops=[{"op": "save_look", "layer": "Title", "name": "My Look"}])
     copied = await ed.call_raw("edit_title", {"ops": [{"op": "copy_library_item", "ref": "project/my-look", "to": "user"}]})
