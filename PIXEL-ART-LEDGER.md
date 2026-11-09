@@ -175,7 +175,7 @@ never build or run them.
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
-| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | review fixed; merging main |
+| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | landing (batch 2) |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | in review |
 | S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | implementing |
@@ -244,6 +244,17 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S49 merged `main` at `9da5e1936`.
+  - `main` had already drawn sub-emitters (BF23 F1), so S49 kept `main`'s renderer and moved its
+    pixel, Analytic and Hold Frames draws onto it.
+  - Its bake, contact sheets and checks now live in S91's preview, bake and checks machinery,
+    with duplicates removed.
+  - Render Mode Pixel is 11 (saved by name). PARTICLES bits 12/13; `.particles` stays v1.
+  - Gate on box C: core 237, editor 201 (2 failures from `main`), 72 particle MCP tests, 98 shared
+    MCP tests (2 failures from `main`: the Animator `ShaderNeutralApi` hash and the
+    `procmat-baked` fixture goldens/determinism).
+  - S49 also fixed two of `main`'s test files that failed `WERROR`.
+  - Batch 2 is S49 alone. Its web, android and Vulkan checks are running on box B.
 - 2026-11-09: S42's lighter gate passed at `08ee95baa` (editor 191, core 85, 165 MCP tests).
   The review found 1 blocker (the stale generated `ui` template breaks `HubTest`) and 8 should-fix
   issues:
