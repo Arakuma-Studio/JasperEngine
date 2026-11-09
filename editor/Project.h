@@ -14,6 +14,7 @@
 #include "Configs.h"
 #include "util/Prefab.h"
 #include "LoadReport.h"
+#include "registry/SortingLayers.h"
 #include "StreamMigrations.h"
 #include "SceneBackup.h"
 #include "io/ScopedFileLock.h"
@@ -39,6 +40,7 @@
 #include "render/LightingTiers.h"
 #include "device/DeviceSettings.h"
 #include "texture/TextureImportSettings.h"
+#include "pixelart/PixelArtSettings.h"
 #include "model/ModelImportSettings.h"
 #include "vcs/VcsTypes.h"
 #include "util/PlatformRules.h"
@@ -906,6 +908,9 @@ namespace jasperengine::editor{
         int htmlUiMsaaSamples;
         // graphics.pixelsPerUnit (S41): texels per world unit of the sprites and tilemaps that take it
         int pixelsPerUnit = 1;
+        // Project Settings > Pixel Art (S42) and graphics.defaultFilterMode (bilinear or point)
+        pixelart::PixelArtSettings pixelArtSettings;
+        TextureFilterMode defaultFilterMode = TextureFilterMode::Bilinear;
         // graphics.bitmapTextCacheMiB (S51 R12): the styled glyph cache's budget, 0 = the platform's
         int bitmapTextCacheMiB = 0;
         HtmlUiRenderSettings htmlUiRender;
@@ -1745,6 +1750,14 @@ namespace jasperengine::editor{
         // Pixels Per Unit (S41, 1-256, clamped): applied to the editor's scenes at once and written into exports
         void setPixelsPerUnit(int pixelsPerUnit);
         int getPixelsPerUnit() const;
+        // Project Settings > Pixel Art (S42 R1, R18): turning Pixel Art Mode on or off changes
+        // nothing else; it registers or removes the mode's import and Play hooks
+        void setPixelArtSettings(const pixelart::PixelArtSettings& settings);
+        const pixelart::PixelArtSettings& getPixelArtSettings() const { return pixelArtSettings; }
+        // Graphics > Default Filter Mode (S42 R3: Bilinear or Point): what references start with
+        // when assigned without import settings, and what the game's runtime-made Textures use
+        void setDefaultFilterMode(TextureFilterMode mode);
+        TextureFilterMode getDefaultFilterMode() const { return defaultFilterMode; }
         // Bitmap Text Cache (S51 R12): MiB of styled bitmap glyphs, 0 = 2 MiB on Android, iOS and
         // HTML5 and 8 MiB on desktop; applied at once and written into exports
         void setBitmapTextCacheMiB(int mib);
@@ -1854,6 +1867,15 @@ namespace jasperengine::editor{
         const std::vector<std::string>& getTags() const;
         // MAX_LAYERS entries, index = layer; empty for built-in and unnamed layers
         const std::vector<std::string>& getLayerNames() const;
+
+        // Project Settings > Tags and Layers > Sorting Layers and Graphics > Transparency Sort Mode /
+        // Axis (spec S52 R1, R4): the engine's SortingLayers holds them (the Inspector, Play and
+        // the render systems read it); setSortingLayers keeps what SortingLayers accepts
+        void setSortingLayers(const std::vector<SortingLayerInfo>& layers);
+        const std::vector<SortingLayerInfo>& getSortingLayers() const;
+        void setTransparencySort(TransparencySortMode mode, const Vector3& axis);
+        TransparencySortMode getTransparencySortMode() const;
+        Vector3 getTransparencySortAxis() const;
 
         // Project Settings > Physics and Physics 2D > Layer Collision Matrix. Kept symmetric
         // (a pair collides only when both rows say so) and applied to the engine's
@@ -2199,6 +2221,13 @@ namespace jasperengine::editor{
         // and was not generated here
         bool writeVersionControlMetadata();
         void deleteSceneProject(SceneProject* sceneProject);
+        // A closed scene read from its file into a scene of its own, neither opened nor drawn (the
+        // pixel-art validator's view of the build list, S42 D3); release it with
+        // releaseSceneProbe. Null when the scene is open, unknown or unreadable.
+        SceneProject* loadSceneProbe(uint32_t sceneId);
+        // the same for a scene file the project does not list (the Pixel Art Check's Project scope)
+        SceneProject* loadSceneFileProbe(const std::filesystem::path& file);
+        void releaseSceneProbe(SceneProject* probe);
         void loadSceneProjectData(SceneProject* sceneProject, const YAML::Node& sceneNode);
         bool saveProject(bool userCalled = false, std::function<void()> callback = nullptr);
         // project.yaml; refused (RefusedDegraded) while its load report has dropped issues

@@ -80,6 +80,9 @@ json PlayerConfig::toJson() const {
     out["canvas"] = {{"width", canvasWidth}, {"height", canvasHeight}, {"scaling", nameOf(kScaling, scaling)},
                      {"textureStrategy", nameOf(kTextureStrategy, textureStrategy)}, {"pixelsPerUnit", pixelsPerUnit},
                      {"bitmapTextCacheMiB", bitmapTextCacheMiB}};
+    // written only when Point, so a bilinear game's config is what it was before S42
+    if (defaultFilterPoint)
+        out["canvas"]["defaultFilterMode"] = "point";
     out["loading"] = {{"scene", loadingScene}, {"delay", loadingDelay}, {"timeout", loadingTimeout}, {"async", asyncLoading}};
     out["threading"] = {{"workers", threading.workers}, {"reservedFrameWorkers", threading.reservedFrameWorkers},
                         {"ioThreads", threading.ioThreads}, {"webPumpBudgetMs", threading.webPumpBudgetMs}};
@@ -120,6 +123,14 @@ json PlayerConfig::toJson() const {
     out["device"] = json::parse(device.toJson());
     out["tags"] = tags;
     out["layers"] = layerNames;
+    if (!sortingLayers.empty()) {
+        json layers = json::array();
+        for (const SortingLayerInfo& layer : sortingLayers) layers.push_back({{"id", layer.id}, {"name", layer.name}});
+        out["sortingLayers"] = layers;
+    }
+    if (transparencySortMode == TransparencySortMode::CUSTOM_AXIS) out["transparencySortMode"] = "custom_axis";
+    if (transparencySortAxis != Vector3(0.0f, 1.0f, 0.0f))
+        out["transparencySortAxis"] = {transparencySortAxis.x, transparencySortAxis.y, transparencySortAxis.z};
     out["collision3D"] = collision3D;
     out["collision2D"] = collision2D;
     out["logging"] = {{"level", logLevel}, {"file", logFile}, {"backtrace", logBacktrace}};
@@ -187,6 +198,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             valueOf(kScaling, canvas->value("scaling", "fitwidth"), config.scaling);
             valueOf(kTextureStrategy, canvas->value("textureStrategy", "none"), config.textureStrategy);
             config.pixelsPerUnit = canvas->value("pixelsPerUnit", 1);
+            config.defaultFilterPoint = canvas->value("defaultFilterMode", std::string("bilinear")) == "point";
             config.bitmapTextCacheMiB = canvas->value("bitmapTextCacheMiB", 0);
         }
         if (const auto loading = in.find("loading"); loading != in.end()) {
@@ -284,6 +296,16 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         }
         config.tags = in.value("tags", std::vector<std::string>{});
         config.layerNames = in.value("layers", std::vector<std::string>{});
+        if (const auto layers = in.find("sortingLayers"); layers != in.end() && layers->is_array()) {
+            for (const json& layer : *layers) {
+                if (layer.is_object() && layer.contains("id") && layer["id"].is_number_integer() && layer.contains("name") && layer["name"].is_string())
+                    config.sortingLayers.push_back({layer["id"].get<int32_t>(), layer["name"].get<std::string>()});
+            }
+        }
+        if (in.value("transparencySortMode", std::string()) == "custom_axis") config.transparencySortMode = TransparencySortMode::CUSTOM_AXIS;
+        if (const auto axis = in.find("transparencySortAxis"); axis != in.end() && axis->is_array() && axis->size() == 3 &&
+                (*axis)[0].is_number() && (*axis)[1].is_number() && (*axis)[2].is_number())
+            config.transparencySortAxis = Vector3((*axis)[0].get<float>(), (*axis)[1].get<float>(), (*axis)[2].get<float>());
         const std::vector<uint32_t> collision3D = in.value("collision3D", std::vector<uint32_t>{});
         const std::vector<uint32_t> collision2D = in.value("collision2D", std::vector<uint32_t>{});
         for (size_t i = 0; i < collision3D.size() && i < config.collision3D.size(); i++) config.collision3D[i] = collision3D[i];

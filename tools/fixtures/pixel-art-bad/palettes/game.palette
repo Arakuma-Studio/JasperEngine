@@ -1,0 +1,10 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "game",
+  "author": "",
+  "description": "",
+  "source": {"kind": "user"},
+  "columns": 8,
+  "colors": ["#000000", "#ffffff", "#ff0000", "#3d8fb0"]
+}

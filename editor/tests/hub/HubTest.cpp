@@ -423,13 +423,25 @@ TEST(ProjectTemplates, CatalogAndSaveAsTemplate) {
     ASSERT_NE(mine, nullptr);
     EXPECT_FALSE(mine->builtIn);
     EXPECT_EQ(mine->thumbnailPng.size(), 4u);
-    // the built-in ones are embedded: empty, 3d, 2d, ui
-    for (const char* builtIn : {"empty", "3d", "2d", "ui"}) {
+    // the built-in ones are embedded: empty, 3d, 2d, 2d-pixel-art (S42 R21), ui
+    for (const char* builtIn : {"empty", "3d", "2d", "2d-pixel-art", "ui"}) {
         const ProjectTemplate* t = templates::find(list, builtIn);
         ASSERT_NE(t, nullptr) << builtIn;
         EXPECT_TRUE(t->builtIn);
         EXPECT_FALSE(t->thumbnailPng.empty()) << builtIn;
+        // only the pixel-art template asks for a base resolution
+        EXPECT_EQ(t->pixelArt, std::string(builtIn) == "2d-pixel-art") << builtIn;
     }
+    // listed after 2D, in the Core category
+    const ProjectTemplate* pixel = templates::find(list, "2d-pixel-art");
+    ASSERT_NE(pixel, nullptr);
+    EXPECT_EQ(pixel->category, "Core");
+    EXPECT_GT(pixel->order, templates::find(list, "2d")->order);
+    EXPECT_LT(pixel->order, templates::find(list, "ui")->order);
+    // template.json's pixelArt round-trips; older editors ignore the key
+    ProjectTemplate parsed;
+    ASSERT_TRUE(templates::parseInfo(templates::infoJson(*pixel), parsed, error)) << error;
+    EXPECT_TRUE(parsed.pixelArt);
     // made into a project: template.json and the thumbnail stay out
     const fs::path made = dir.path() / "New";
     ASSERT_TRUE(templates::materialize(*mine, made, error)) << error;

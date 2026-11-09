@@ -468,3 +468,42 @@ TEST_F(PaletteSwapGpu, PaletteOffAllocatesNothing){
     EXPECT_NO_ENGINE_ERRORS();
 }
 #endif
+
+// S43 AC11 through S52 (R19-R21, AC8): 64 Palette Swap sprites of rows 0 to 3 draw in one run,
+// their rows baked per vertex (fx.x) while the run's uniform row is 0; the image is batching off's
+TEST_F(PaletteSwapGpu, Batched){
+    JASPER_REQUIRE_GPU();
+    struct RestoreBatching {
+        ~RestoreBatching() { Engine::setDynamicBatching(true); }
+    } restore;
+    camera.setOrtho(0.0f, 640.0f, 0.0f, 360.0f, -100.0f, 100.0f);
+    std::vector<std::unique_ptr<Sprite>> sprites;
+    for (int i = 0; i < 64; i++){
+        sprites.push_back(std::make_unique<Sprite>(&scene));
+        Sprite& sprite = addSprite(*sprites.back());
+        sprite.setSize(kTexels * 2, kTexels * 2);
+        sprite.setPosition(24.0f + float(i % 16) * 38.0f, 40.0f + float(i / 16) * 70.0f, 0.0f);
+        usePalette(sprite, {"PALETTE_SWAP"}, float(i % 4));
+    }
+    ASSERT_TRUE(settle());
+    auto capture = [](bool batching, uint32_t& draws){
+        Engine::setDynamicBatching(batching);
+        GpuEnvironment::drawFrames(3);
+        draws = Engine::getFrameStats().drawCalls;
+        Framebuffer& target = GpuEnvironment::target();
+        std::vector<uint8_t> rgba;
+        EXPECT_TRUE(readTexture(target.getRender().getColorTexture(), int(target.getWidth()), int(target.getHeight()), rgba));
+        return rgba;
+    };
+    uint32_t onDraws = 0, offDraws = 0;
+    const std::vector<uint8_t> on = capture(true, onDraws);
+    const std::vector<uint8_t> off = capture(false, offDraws);
+    size_t differing = 0;
+    for (size_t i = 0; i < on.size() && i < off.size(); i++)
+        differing += on[i] != off[i] ? 1 : 0;
+    EXPECT_EQ(on.size(), off.size());
+    EXPECT_EQ(differing, 0u);
+    EXPECT_LE(onDraws, 1u);
+    EXPECT_EQ(offDraws, 64u);
+    EXPECT_NO_ENGINE_ERRORS();
+}

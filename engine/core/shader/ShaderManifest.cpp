@@ -680,6 +680,17 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 std::string key, value;
                 if (splitOption(args[a], key, value) && key == "feature"){
                     property.feature = value;
+                }else if (splitOption(args[a], key, value) && key == "instance"){
+                    // one of the four FX slots, a scalar property only
+                    static const char* const slots[4] = {"fx.x", "fx.y", "fx.z", "fx.w"};
+                    for (int s = 0; s < 4; s++){
+                        if (value == slots[s])
+                            property.instanceSlot = s;
+                    }
+                    if (property.instanceSlot < 0 || kindComponents(property.kind) != 1){
+                        report(lineNumber, true, "@property instance= takes fx.x, fx.y, fx.z or fx.w, on a one-number property");
+                        valid = false;
+                    }
                 }else if (args[a].quoted && property.label.empty()){
                     property.label = args[a].text;
                 }else{
@@ -921,6 +932,26 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 report(lineNumber, true, "@depth takes no argument");
             depth = true;
 
+        }else if (directive == "batchable"){
+            batchable = true;
+            for (const Token& arg : args){
+                std::string key, value;
+                if (!splitOption(arg, key, value) || key != "framerect" || value.empty()){
+                    report(lineNumber, true, "@batchable takes [framerect=A,B] (the features that read the frame rect)");
+                    continue;
+                }
+                size_t start = 0;
+                while (start <= value.size()){
+                    const size_t comma = value.find(',', start);
+                    const std::string define = value.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+                    if (!define.empty())
+                        frameRectFeatures.push_back(define);
+                    if (comma == std::string::npos)
+                        break;
+                    start = comma + 1;
+                }
+            }
+
         }else if (directive == "role"){
             const std::string value = args.size() == 1 && !args[0].quoted ? lower(args[0].text) : std::string();
             if (role != ShaderRole::NONE){
@@ -979,6 +1010,18 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
             report(texture.line, "@texture '" + texture.uniform + "' names undeclared feature '" + texture.feature + "'");
         if (!texture.featureDefaultDefine.empty() && !knownFeature(texture.featureDefaultDefine))
             report(texture.line, "@texture '" + texture.uniform + "' default[" + texture.featureDefaultDefine + "] names undeclared feature");
+    }
+    for (const std::string& feature : frameRectFeatures){
+        if (!knownFeature(feature))
+            report(1, "@batchable framerect= names undeclared feature '" + feature + "'");
+    }
+    for (const ShaderManifestProperty& property : properties){
+        if (property.instanceSlot < 0)
+            continue;
+        for (const ShaderManifestProperty& other : properties){
+            if (&other != &property && other.instanceSlot == property.instanceSlot)
+                report(property.line, "@property '" + property.member + "' and '" + other.member + "' claim the same instance= slot");
+        }
     }
     for (const ShaderManifestPalette& palette : palettes){
         for (const std::string& feature : palette.features){
@@ -1209,6 +1252,26 @@ const ShaderManifestKeywords* ShaderManifest::findKeywordGroup(const std::string
         }
     }
     return nullptr;
+}
+
+bool ShaderManifest::usesInstanceSlots(const std::vector<std::string>& enabledFeatures) const{
+    if (!batchable)
+        return false;
+    for (const ShaderManifestProperty& property : properties){
+        if (property.instanceSlot >= 0 && isRowShown(property.feature, enabledFeatures))
+            return true;
+    }
+    return false;
+}
+
+bool ShaderManifest::usesFrameRect(const std::vector<std::string>& enabledFeatures) const{
+    if (!batchable)
+        return false;
+    for (const std::string& feature : frameRectFeatures){
+        if (std::find(enabledFeatures.begin(), enabledFeatures.end(), feature) != enabledFeatures.end())
+            return true;
+    }
+    return false;
 }
 
 bool ShaderManifest::isRowShown(const std::string& feature, const std::vector<std::string>& enabled){

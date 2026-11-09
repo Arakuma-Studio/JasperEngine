@@ -1170,6 +1170,8 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
     settingsUnscaled.help = "Advance on the unscaled frame time: plays while Engine.timeScale is 0 (a pause menu). "
                             "UI particles usually want it. The effect's own Unscaled Time does the same for every system using it.";
     propertyRow(RowPropertyType::Bool, cpType, "useUnscaledTime", "Unscaled Time", sceneProject, entities, settingsUnscaled);
+    // the Renderer's Sorting Layer and Order in Layer (Unity's Particle System Renderer)
+    drawSortingRows(cpType, sceneProject, entities);
     // particles in a UI (under a RectTransform): drawn in Hierarchy order, clipped by panels, in UI units
     if (entities.size() == 1) {
         bool inUI = false;

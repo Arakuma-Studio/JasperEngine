@@ -92,6 +92,13 @@ namespace jasperengine::editor::pixelart {
                Engine::getPixelPerfectRequest(sceneProject->scene, sceneProject->mainCamera, request);
     }
 
+    bool scenePixelViews(const Project* project, const SceneProject* sceneProject){
+        if (scenePixelPerfect(sceneProject))
+            return true;
+        return project && sceneProject && sceneProject->scene && sceneProject->sceneType == SceneType::SCENE_2D &&
+               project->getPixelArtSettings().enabled;
+    }
+
     float pixelZoomScale(float zoom, int pixelsPerUnit){
         return zoom > 0.0f ? 1.0f / (zoom * (float)std::max(1, pixelsPerUnit)) : 1.0f;
     }

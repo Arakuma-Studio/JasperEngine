@@ -69,6 +69,11 @@ namespace jasperengine::pixelart {
     // relative 1e-4 (0, 90, 180, 270 degrees and flips, any scale): its vertices can snap one by one
     JASPERENGINE_API bool isGridAligned(const Matrix4& mvp, const SnapGrid& grid);
 
+    // S52 D8: an instance matrix whose 2D linear part is a signed permutation up to float rounding
+    // (a 90-degree rotation from a quaternion) gets the near-zero terms written as exact 0, the
+    // pattern the instanced 'Pxs' stage tests (pixelSnapInstanceMode); any other is left as it is
+    JASPERENGINE_API void exactGridZeros(Matrix4& instance);
+
     // R8 (the camera) and the editor's move snap: snap(v * ppu) / ppu on x and y, z kept
     JASPERENGINE_API Vector3 snapWorld(const Vector3& world, int pixelsPerUnit);
     JASPERENGINE_API float snapWorld(float world, int pixelsPerUnit);

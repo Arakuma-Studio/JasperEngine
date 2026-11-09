@@ -12,10 +12,12 @@
 
 #include "support/EditorTestSupport.h"
 #include "util/Prefab.h"
+#include "Factory.h"
 #include "Stream.h"
 #include "StreamMigrations.h"
 #include "component/CameraComponent.h"
 #include "component/LightComponent.h"
+#include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
 
 #include <gtest/gtest.h>
@@ -281,4 +283,32 @@ TEST(Stream, DerivedUiScissorNotWritten) {
     // the layout an author sets is kept
     EXPECT_NE(saved.find("anchorPreset:"), std::string::npos);
     EXPECT_EQ(saved, encodeSceneText(decodeSceneText(saved, "resaved.scene"))) << "a second save is the same";
+}
+
+// A submesh's vertex count is what the mesh's load gives from its buffers (spec S63). The load sets
+// it when a frame draws the mesh, so a primitive saved before its first draw (made in the editor,
+// or a fixture written headless) wrote 0, and its index count once drawn; the generated code too.
+TEST(Stream, SubmeshVertexCountNotTheLastDraws) {
+    const DecodedScene decoded = decodeSceneFile(fixture("scenes/shader-library-export-lit.scene"));
+    Scene* scene = decoded.scene->scene;
+    auto meshes = scene->getComponentArray<MeshComponent>();
+    // as drawn: the fixture was saved after a draw
+    const std::string drawn = encodeSceneText(decoded);
+    ASSERT_NE(drawn.find("vertexCount: 6\n"), std::string::npos);
+    std::vector<std::string> drawnCode;
+    for (size_t i = 0; i < meshes->size(); i++)
+        drawnCode.push_back(Factory::createComponent(0, scene, meshes->getEntity(i), ComponentType::MeshComponent, fs::path(), "scene", "entity"));
+    // never drawn: no count yet on a mesh with its own buffers (a model's mesh keeps what it has)
+    size_t undrawn = 0;
+    for (size_t i = 0; i < meshes->size(); i++) {
+        MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        if (mesh.buffer.getSize() == 0) continue;
+        undrawn++;
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++) mesh.submeshes[s].vertexCount = 0;
+    }
+    ASSERT_GT(undrawn, 0u);
+    EXPECT_EQ(encodeSceneText(decoded), drawn) << "a save depends on whether the meshes were drawn";
+    for (size_t i = 0; i < meshes->size(); i++)
+        EXPECT_EQ(Factory::createComponent(0, scene, meshes->getEntity(i), ComponentType::MeshComponent, fs::path(), "scene", "entity"), drawnCode[i])
+            << "the generated code of entity " << meshes->getEntity(i) << " depends on whether it was drawn";
 }

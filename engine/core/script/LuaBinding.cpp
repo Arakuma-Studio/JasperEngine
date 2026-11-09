@@ -963,6 +963,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerSplineClasses(L);
     // after the GameObject classes: Palette Swap's members on Sprite, Tilemap and MeshPolygon
     registerPixelArtClasses(L);
+    registerSortingClasses(L);
     registerHitStopClasses(L);
     registerTransitionClasses(L);
     registerCrashClasses(L);

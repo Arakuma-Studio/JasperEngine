@@ -1796,7 +1796,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
     // S41 R21 Pixel Move Snap: a 2D scene drawn through a Pixel Perfect Camera moves and sizes
     // on whole art pixels; Ctrl (the snap modifier) drags freely, on-grid being the norm there
     const bool pixelMoveSnap = displaySettings.pixelMoveSnap && !invertRotationSnap && dynamic_cast<SceneRender2D*>(this) &&
-                               pixelart::scenePixelPerfect(project ? project->getScene((uint32_t)sceneId) : nullptr);
+                               pixelart::scenePixelViews(project, project ? project->getScene((uint32_t)sceneId) : nullptr);
     ownerMouseRay = screenToRay(x, y);
     mouseRay = editLayer.active ? gizmoRay(x, y) : ownerMouseRay;
 

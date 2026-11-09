@@ -32,6 +32,14 @@
 #include "subsystem/AudioSystem.h"
 #include "EditorHost.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "command/type/SortingLayersCmd.h"
+#include "component/SortingGroupComponent.h"
+#include "component/MeshComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/PointsComponent.h"
+#include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
+#include "util/UIProbe.h"
 #include "command/type/ApplePrivacySettingsCmd.h"
 #include "util/NativeNeeds.h"
 #include "input/InputActions.h"
@@ -1014,6 +1022,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
         std::sort(m_inputActionsFiles.begin(), m_inputActionsFiles.end());
     }
     m_defaultPalette = FileUtils::pathToGenericUtf8(project->getDefaultPalette());
+    m_pixelArt = project->getPixelArtSettings();
+    m_defaultFilterIndex = project->getDefaultFilterMode() == TextureFilterMode::Point ? 1 : 0;
     m_paletteFiles.clear();
     for (const pixelart::ProjectPalette& entry : pixelart::listProjectPalettes(*project))
         m_paletteFiles.push_back({entry.path, entry.palette.name});
@@ -1944,6 +1954,14 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             m_pixelsPerUnit = std::min(m_pixelsPerUnit, Project::maxPixelsPerUnit);
         }
 
+        // S42 R3: what runtime-made textures and new references start with
+        if (settingsui::beginRow("graphics.default_filter_mode")) {
+            static const char* const filterNames[] = {"Bilinear", "Point (no filter)"};
+            drawComboSetting("Default Filter Mode", "##DefaultFilterMode", filterNames, 2, m_defaultFilterIndex, 0,
+                             "What every texture a game makes at runtime (Lua Sprite:setTexture) and every new reference to a texture "
+                             "without its own Filter Mode starts with. Point keeps pixel art crisp. Saved references keep their own filters.");
+        }
+
         if (settingsui::beginRow("graphics.bitmap_text_cache_mib")) {
             drawIntSetting("Bitmap Text Cache (MiB)", "##BitmapTextCacheMiB", m_bitmapTextCacheMiB, 0, 0,
                            "Memory for pixel-font outlines and shadows. 0: 2 MiB on Android, iOS and HTML5, 8 MiB on desktop.");
@@ -2203,6 +2221,43 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                 "was not batched with the previous one.");
         }
         drawUploadBudgetSettings();
+
+        // 2D sorting (S52 R4): applied at once, each change one undo step of the project
+        {
+            const SortingSettings current = SortingSettings::current();
+            auto applySorting = [this](const SortingSettings& changed) {
+                if (changed == SortingSettings::current()) return;
+                auto* command = new SortingLayersCmd(m_project, changed, "Change Transparency Sort");
+                command->setNoMerge();
+                m_project->getProjectCommandHistory()->addCommand(command);
+            };
+            if (settingsui::beginRow("graphics.transparency_sort_mode")) {
+                SortingSettings changed = current;
+                if (projectBeginSettingsRow("Transparency Sort Mode", current.mode != TransparencySortMode::DEFAULT))
+                    changed.mode = TransparencySortMode::DEFAULT;
+                int mode = current.mode == TransparencySortMode::CUSTOM_AXIS ? 1 : 0;
+                const char* modes[] = {"Default", "Custom Axis"};
+                ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+                if (ImGui::Combo("##TransparencySortMode", &mode, modes, 2))
+                    changed.mode = mode == 1 ? TransparencySortMode::CUSTOM_AXIS : TransparencySortMode::DEFAULT;
+                UIProbe::item("graphics.transparency_sort_mode");
+                endSettingsRow("Custom Axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw along the "
+                               "Transparency Sort Axis, a larger dot(axis, position) first. Default keeps the Hierarchy order.");
+                applySorting(changed);
+            }
+            if (settingsui::beginRow("graphics.transparency_sort_axis")) {
+                SortingSettings changed = current;
+                if (projectBeginSettingsRow("Transparency Sort Axis", current.axis != Vector3(0.0f, 1.0f, 0.0f)))
+                    changed.axis = Vector3(0.0f, 1.0f, 0.0f);
+                float axis[3] = {current.axis.x, current.axis.y, current.axis.z};
+                ImGui::SetNextItemWidth(Theme::dpi(220.0f));
+                ImGui::InputFloat3("##TransparencySortAxis", axis);
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                    changed.axis = Vector3(axis[0], axis[1], axis[2]);
+                endSettingsRow("The Custom Axis. (0, 1, 0): a higher y draws first, so lower sprites cover higher ones (top-down).");
+                applySorting(changed);
+            }
+        }
 
         if (settingsui::beginRow("graphics.runtime_shaders")) {
             if (projectBeginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
@@ -3301,6 +3356,71 @@ void ProjectSettingsWindow::drawNavigationSettings() {
 void ProjectSettingsWindow::drawPixelArtSettings() {
     if (beginSettingsPanel("##PixelArtSettingsPanel")) {
         if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("pixel_art.enabled")) {
+                if (projectBeginSettingsRow("Pixel Art Mode", m_pixelArt.enabled)) m_pixelArt.enabled = false;
+                ImGui::Checkbox("##PixelArtMode", &m_pixelArt.enabled);
+                endSettingsRow("Sprite images added while on import as pixel art (Point, no mipmaps, lossless), new 2D scenes get a Pixel Perfect "
+                    "Camera, the Scene view uses Pixel Zoom, and the Pixel Art Check runs on import and at Play. Changes no other "
+                    "setting: Apply Pixel Art Preset converts the project.");
+            }
+            if (settingsui::beginRow({"graphics.canvas_width", "graphics.canvas_height"})) {
+                const std::vector<pixelart::PixelArtScreen>& sizes = pixelart::presetBaseResolutions();
+                if (projectBeginSettingsRow("Base Resolution", false)) {}
+                std::string current = std::to_string(m_canvasWidth) + "x" + std::to_string(m_canvasHeight);
+                ImGui::SetNextItemWidth(Theme::dpi(110.0f));
+                if (ImGui::BeginCombo("##PixelArtBase", current.c_str())) {
+                    for (const pixelart::PixelArtScreen& size : sizes) {
+                        const std::string label = std::to_string(size.width) + "x" + std::to_string(size.height);
+                        if (ImGui::Selectable(label.c_str(), (int)size.width == m_canvasWidth && (int)size.height == m_canvasHeight)) {
+                            m_canvasWidth = size.width;
+                            m_canvasHeight = size.height;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(Theme::dpi(70.0f));
+                ImGui::InputInt("##PixelArtBaseW", &m_canvasWidth, 0);
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(Theme::dpi(70.0f));
+                ImGui::InputInt("##PixelArtBaseH", &m_canvasHeight, 0);
+                m_canvasWidth = std::max(m_canvasWidth, 1);
+                m_canvasHeight = std::max(m_canvasHeight, 1);
+                endSettingsRow("The project canvas (Graphics > Canvas Width and Height): the resolution the art is drawn at. "
+                    "320x180 divides every common 16:9 screen exactly.");
+            }
+            if (settingsui::beginRow("pixel_art.upscale_mode")) {
+                static const char* const modes[] = {"Integer (Letterbox)", "Integer (Expand)", "Stretch Fill"};
+                int index = (int)m_pixelArt.upscaleMode;
+                drawComboSetting("Upscale Mode", "##PixelArtUpscale", modes, 3, index, 0,
+                                 "The Upscale Mode a new Pixel Perfect Camera gets (Pixel Art Mode's new 2D scenes and the preset).");
+                m_pixelArt.upscaleMode = (PixelUpscaleMode)index;
+            }
+            if (settingsui::beginRow("graphics.pixels_per_unit")) {
+                drawIntSetting("Pixels Per Unit", "##PixelArtPPU", m_pixelsPerUnit, Project::defaultPixelsPerUnit, Project::minPixelsPerUnit,
+                               "Graphics > Pixels Per Unit: texels per world unit of the sprites and tilemaps that take the project's. "
+                               "Keep 1 unless the game uses tile units.");
+                m_pixelsPerUnit = std::min(m_pixelsPerUnit, Project::maxPixelsPerUnit);
+            }
+            if (settingsui::beginRow("graphics.default_filter_mode")) {
+                static const char* const filterNames[] = {"Bilinear", "Point (no filter)"};
+                drawComboSetting("Default Filter Mode", "##PixelArtDefaultFilter", filterNames, 2, m_defaultFilterIndex, 0,
+                                 "Graphics > Default Filter Mode: what runtime-made textures and new references start with.");
+            }
+            if (settingsui::beginRow("pixel_art.backdrops")) {
+                if (projectBeginSettingsRow("Backdrops", m_pixelArt.backdrops != pixelart::PixelArtSettings::defaultBackdrops()))
+                    m_pixelArt.backdrops = pixelart::PixelArtSettings::defaultBackdrops();
+                for (size_t i = 0; i < m_pixelArt.backdrops.size() && i < 2; i++) {
+                    char buffer[16];
+                    snprintf(buffer, sizeof(buffer), "%s", m_pixelArt.backdrops[i].c_str());
+                    if (i > 0) ImGui::SameLine();
+                    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+                    if (ImGui::InputText(i == 0 ? "##BackdropDark" : "##BackdropLight", buffer, sizeof(buffer)) && pixelart::isPixelArtBackdrop(buffer))
+                        m_pixelArt.backdrops[i] = buffer;
+                }
+                endSettingsRow("The project's pixel-art backdrops (#rrggbb): the first dark, the second light. Contact sheets and "
+                    "contrast checks draw art on them.");
+            }
             if (settingsui::beginRow("palettes.default")) {
                 if (projectBeginSettingsRow("Default Palette", !m_defaultPalette.empty())) {
                     m_defaultPalette.clear();
@@ -3334,10 +3454,59 @@ void ProjectSettingsWindow::drawPixelArtSettings() {
                     "Snap to Palette, the Palette window's first open and new pixel art. A built-in is copied into the "
                     "project when you press OK.");
             }
+            if (settingsui::beginRow("pixel_art.check_on_import")) {
+                if (projectBeginSettingsRow("Check on Import", !m_pixelArt.checkOnImport)) m_pixelArt.checkOnImport = true;
+                ImGui::Checkbox("##PixelArtCheckImport", &m_pixelArt.checkOnImport);
+                endSettingsRow("With Pixel Art Mode on, the Pixel Art Check runs after textures import and logs one Console line.");
+            }
+            if (settingsui::beginRow("pixel_art.check_on_play")) {
+                if (projectBeginSettingsRow("Check on Play", !m_pixelArt.checkOnPlay)) m_pixelArt.checkOnPlay = true;
+                ImGui::Checkbox("##PixelArtCheckPlay", &m_pixelArt.checkOnPlay);
+                endSettingsRow("With Pixel Art Mode on, the Pixel Art Check runs at Play start and logs one Console line.");
+            }
+            if (settingsui::beginRow("pixel_art.check_screens")) {
+                if (projectBeginSettingsRow("Check Screens", m_pixelArt.checkScreens != pixelart::PixelArtSettings::defaultCheckScreens()))
+                    m_pixelArt.checkScreens = pixelart::PixelArtSettings::defaultCheckScreens();
+                int removed = -1;
+                for (size_t i = 0; i < m_pixelArt.checkScreens.size(); i++) {
+                    ImGui::TextUnformatted(m_pixelArt.checkScreens[i].c_str());
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton(("x##screen" + std::to_string(i)).c_str())) removed = (int)i;
+                }
+                if (removed >= 0) m_pixelArt.checkScreens.erase(m_pixelArt.checkScreens.begin() + removed);
+                ImGui::SetNextItemWidth(Theme::dpi(100.0f));
+                ImGui::InputTextWithHint("##NewCheckScreen", "1920x1080", m_newCheckScreen, sizeof(m_newCheckScreen));
+                ImGui::SameLine();
+                pixelart::PixelArtScreen parsed;
+                const bool valid = pixelart::parsePixelArtScreen(m_newCheckScreen, parsed);
+                ImGui::BeginDisabled(!valid);
+                if (ImGui::SmallButton("Add##CheckScreen")) {
+                    m_pixelArt.checkScreens.push_back(m_newCheckScreen);
+                    m_newCheckScreen[0] = '\0';
+                }
+                ImGui::EndDisabled();
+                endSettingsRow("The screen sizes the Pixel Art Check lays each scene out on (integer_scale).");
+            }
+            if (settingsui::beginRow("pixel_art.apply_preset")) {
+                projectBeginSettingsRow("Pixel Art Preset", false);
+                if (ImGui::Button("Apply Pixel Art Preset...")) {
+                    if (!m_presetDialog) {
+                        m_presetDialog = std::make_unique<PixelArtPresetDialog>(m_project);
+                    }
+                    m_presetDialog->open();
+                }
+                endSettingsRow("Previews every change that converts the project (base resolution, integer scaling, Point filtering, "
+                    "Pixel Perfect Cameras, lossless textures) and applies them as one undo step.");
+            }
             ImGui::EndTable();
         }
     }
     endSettingsPanel();
+    if (m_presetDialog) {
+        m_presetDialog->draw();
+        // the preset changed the project: the page shows its values again
+        if (m_presetDialog->takeApplied()) open(m_project, nullptr);
+    }
 }
 
 void ProjectSettingsWindow::drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows) {
@@ -3675,8 +3844,188 @@ void ProjectSettingsWindow::drawTagsAndLayersSettings() {
             }
             ImGui::EndTable();
         }
+
+        drawSortingLayersSettings();
     }
     endSettingsPanel();
+}
+
+size_t ProjectSettingsWindow::countSortingLayerUses(int32_t id) const {
+    size_t uses = 0;
+    for (const SceneProject& sceneProject : m_project->getScenes()) {
+        Scene* scene = sceneProject.scene;
+        if (!scene) continue;
+        auto count = [&](auto array) {
+            for (size_t i = 0; i < array->size(); i++) {
+                if (array->getComponentFromIndex(i).sortingLayer == id) uses++;
+            }
+        };
+        count(scene->getComponentArray<MeshComponent>());
+        count(scene->getComponentArray<ParticleSystemComponent>());
+        count(scene->getComponentArray<PointsComponent>());
+        count(scene->getComponentArray<LineRendererComponent>());
+        count(scene->getComponentArray<TrailRendererComponent>());
+        count(scene->getComponentArray<SortingGroupComponent>());
+    }
+    return uses;
+}
+
+// Unity's Sorting Layers list: the draw order (first drawn first), Default locked (its name stays,
+// it cannot be removed), + adds, - removes (a layer in use asks first), rename inline, drag (or the
+// arrows) to reorder. Every edit is one undo step of the project (SortingLayersCmd).
+void ProjectSettingsWindow::drawSortingLayersSettings() {
+    if (!settingsFoldout("Sorting Layers", ImGuiTreeNodeFlags_DefaultOpen) || !beginSettingsTable("##SortingLayersTable"))
+        return;
+    const float buttonWidth = ImGui::GetFrameHeight();
+    const ImVec4 errorColor(1.0f, 0.45f, 0.35f, 1.0f);
+    const std::vector<SortingLayerInfo> layers = SortingLayers::getLayers();
+    auto applyLayers = [this](const std::vector<SortingLayerInfo>& changed, const char* description) {
+        SortingSettings settings = SortingSettings::current();
+        settings.layers = changed;
+        if (settings == SortingSettings::current()) return;
+        auto* command = new SortingLayersCmd(m_project, settings, description);
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
+    };
+    int moveFrom = -1, moveTo = -1;
+    int removeIndex = -1;
+    for (size_t i = 0; i < layers.size(); i++) {
+        const SortingLayerInfo& layer = layers[i];
+        const bool isDefault = layer.id == DEFAULT_SORTING_LAYER_ID;
+        ImGui::PushID(layer.id);
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        // the handle: drag a row onto another to move it there
+        ImGui::Selectable((ICON_FA_GRIP_VERTICAL " Layer " + std::to_string(i)).c_str(), false, ImGuiSelectableFlags_None);
+        {
+            // (a Selectable's rect reaches past its cell by half the item spacing: the probe takes
+            // its inside, which the cell's clip contains)
+            const ImVec2 half(ImGui::GetStyle().ItemSpacing.x * 0.5f, ImGui::GetStyle().ItemSpacing.y * 0.5f);
+            const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+            UIProbe::rect("sorting_layers.row." + std::to_string(i), min.x + half.x, min.y + half.y, max.x - half.x, max.y - half.y);
+        }
+        if (ImGui::BeginDragDropSource()) {
+            const int from = (int)i;
+            ImGui::SetDragDropPayload("JE_SORTING_LAYER", &from, sizeof(from));
+            ImGui::TextUnformatted(layer.name.c_str());
+            ImGui::EndDragDropSource();
+        }
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("JE_SORTING_LAYER")) {
+                moveFrom = *static_cast<const int*>(payload->Data);
+                moveTo = (int)i;
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::TableNextColumn();
+        const float buttons = 3.0f * buttonWidth + 2.0f * ImGui::GetStyle().ItemSpacing.x;
+        if (isDefault) {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("%s", layer.name.c_str());
+            ImGui::SetItemTooltip("Default always exists and keeps its name; move it to change where it draws.");
+        } else {
+            if (m_sortingLayerRenaming != layer.id)
+                snprintf(m_sortingLayerRenameBuffer, sizeof(m_sortingLayerRenameBuffer), "%s", layer.name.c_str());
+            char buffer[128];
+            snprintf(buffer, sizeof(buffer), "%s", m_sortingLayerRenaming == layer.id ? m_sortingLayerRenameBuffer : layer.name.c_str());
+            ImGui::SetNextItemWidth(-buttons - ImGui::GetStyle().ItemSpacing.x);
+            if (ImGui::InputText("##SortingLayerName", buffer, sizeof(buffer))) {
+                m_sortingLayerRenaming = layer.id;
+                snprintf(m_sortingLayerRenameBuffer, sizeof(m_sortingLayerRenameBuffer), "%s", buffer);
+            }
+            UIProbe::item("sorting_layers.name." + std::to_string(i));
+            if (ImGui::IsItemDeactivatedAfterEdit() && m_sortingLayerRenaming == layer.id) {
+                // the id stays: renaming rewrites no scene
+                const std::string name = TagManager::trimName(m_sortingLayerRenameBuffer);
+                const int32_t clash = SortingLayers::nameToId(name);
+                if (!name.empty() && name != "Default" && (clash < 0 || clash == layer.id)) {
+                    std::vector<SortingLayerInfo> changed = layers;
+                    changed[i].name = name;
+                    applyLayers(changed, "Rename Sorting Layer");
+                }
+                m_sortingLayerRenaming = -1;
+            }
+        }
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - buttons));
+        ImGui::BeginDisabled(i == 0);
+        if (ImGui::Button(ICON_FA_ARROW_UP, ImVec2(buttonWidth, 0))) { moveFrom = (int)i; moveTo = (int)i - 1; }
+        ImGui::EndDisabled();
+        UIProbe::item("sorting_layers.up." + std::to_string(i));
+        ImGui::SameLine();
+        ImGui::BeginDisabled(i + 1 == layers.size());
+        if (ImGui::Button(ICON_FA_ARROW_DOWN, ImVec2(buttonWidth, 0))) { moveFrom = (int)i; moveTo = (int)i + 1; }
+        ImGui::EndDisabled();
+        UIProbe::item("sorting_layers.down." + std::to_string(i));
+        ImGui::SameLine();
+        ImGui::BeginDisabled(isDefault);
+        if (ImGui::Button(ICON_FA_MINUS, ImVec2(buttonWidth, 0))) removeIndex = (int)i;
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("%s", isDefault ? "Default cannot be removed" : "Remove this Sorting Layer");
+        UIProbe::item("sorting_layers.remove." + std::to_string(i));
+        // a layer still used in the open scenes asks first: its renderers then draw on Default
+        if (m_sortingLayerRemoving == layer.id) {
+            ImGui::TextColored(errorColor, "%zu renderer(s) in open scenes use \"%s\"; they will draw on Default.", m_sortingLayerRemovingUses,
+                               layer.name.c_str());
+            if (ImGui::Button("Remove")) {
+                std::vector<SortingLayerInfo> changed = layers;
+                changed.erase(changed.begin() + (long)i);
+                applyLayers(changed, "Remove Sorting Layer");
+                m_sortingLayerRemoving = -1;
+            }
+            UIProbe::item("sorting_layers.confirm_remove");
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel")) m_sortingLayerRemoving = -1;
+        }
+        ImGui::PopID();
+    }
+    if (removeIndex >= 0) {
+        const SortingLayerInfo& layer = layers[(size_t)removeIndex];
+        const size_t uses = countSortingLayerUses(layer.id);
+        if (uses > 0) {
+            m_sortingLayerRemoving = layer.id;
+            m_sortingLayerRemovingUses = uses;
+        } else {
+            std::vector<SortingLayerInfo> changed = layers;
+            changed.erase(changed.begin() + removeIndex);
+            applyLayers(changed, "Remove Sorting Layer");
+        }
+    }
+    if (moveFrom >= 0 && moveTo >= 0 && moveFrom != moveTo && moveTo < (int)layers.size()) {
+        std::vector<SortingLayerInfo> changed = layers;
+        const SortingLayerInfo moved = changed[(size_t)moveFrom];
+        changed.erase(changed.begin() + moveFrom);
+        changed.insert(changed.begin() + moveTo, moved);
+        applyLayers(changed, "Reorder Sorting Layers");
+    }
+
+    // + adds the name typed here at the end (drawn last)
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("New Sorting Layer");
+    ImGui::TableNextColumn();
+    const std::string name = TagManager::trimName(m_newSortingLayerBuffer);
+    const std::string addError = name.empty() ? "Type a name" : (SortingLayers::nameToId(name) >= 0 ? "A Sorting Layer has this name" : "");
+    ImGui::SetNextItemWidth(-(buttonWidth + ImGui::GetStyle().ItemSpacing.x));
+    bool add = ImGui::InputTextWithHint("##NewSortingLayerName", "Sorting Layer name", m_newSortingLayerBuffer, sizeof(m_newSortingLayerBuffer),
+                                        ImGuiInputTextFlags_EnterReturnsTrue);
+    UIProbe::item("sorting_layers.new_name");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!addError.empty());
+    add = ImGui::Button(ICON_FA_PLUS "##AddSortingLayer", ImVec2(buttonWidth, 0)) || add;
+    ImGui::EndDisabled();
+    UIProbe::item("sorting_layers.add");
+    ImGui::SetItemTooltip("%s", addError.empty() ? "Add the Sorting Layer (drawn after the others)" : addError.c_str());
+    if (add && addError.empty()) {
+        std::vector<std::string> names;
+        for (const SortingLayerInfo& layer : layers) names.push_back(layer.name);
+        names.push_back(name);
+        applyLayers(SortingLayers::fromNames(names), "Add Sorting Layer");
+        m_newSortingLayerBuffer[0] = '\0';
+    }
+    ImGui::EndTable();
 }
 
 void ProjectSettingsWindow::drawEditorSettings() {
@@ -5499,6 +5848,8 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);
+    m_project->setPixelArtSettings(m_pixelArt);
+    m_project->setDefaultFilterMode(m_defaultFilterIndex == 1 ? TextureFilterMode::Point : TextureFilterMode::Bilinear);
     // a built-in Default Palette is the project's copy of it (S43 R7), made now
     if (m_defaultPalette.rfind(pixelart::kBuiltinPrefix, 0) == 0) {
         pixelart::ResolvedPalette resolved;

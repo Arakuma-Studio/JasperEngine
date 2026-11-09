@@ -16,10 +16,10 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "command/type/ScenePropertyCmd.h"
+#include "component/LightComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "render/shadow/CascadeFit.h"
 #include "render/shadow/ShadowTiers.h"
-#include "subsystem/RenderSystem.h"
 
 #include "imgui.h"
 

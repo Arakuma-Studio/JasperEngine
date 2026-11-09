@@ -32,6 +32,8 @@
 #include "pool/TexturePool.h"
 #include "pool/TextureDataPool.h"
 #include "sprite/SpriteFrameGeometry.h"
+#include "component/SpriteBatchComponent.h"
+#include "shader/ShaderManifest.h"
 #include "sprite/SpriteSheetPool.h"
 #include "sprite/SpriteSheetSources.h"
 #include "thread/ResourceProgress.h"
@@ -758,6 +760,14 @@ void MeshSystem::prepareSpriteMesh(MeshComponent& mesh){
     mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
     mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
     mesh.buffer.addAttribute(AttributeType::COLOR, 4);
+    // S52: the pixel-art batching inputs the sprite's variant reads (fillSpriteBatchAttributes
+    // writes their neutral values once the geometry is in)
+    if (mesh.batchAttributes & MeshBatchAttribute_SpriteFx)
+        mesh.buffer.addAttribute(AttributeType::SPRITEFX, 4);
+    if (mesh.batchAttributes & MeshBatchAttribute_FrameRect)
+        mesh.buffer.addAttribute(AttributeType::FRAMERECT, 4);
+    if (mesh.batchAttributes & MeshBatchAttribute_SnapPivot)
+        mesh.buffer.addAttribute(AttributeType::SNAPPIVOT, 3);
 
     // shared by content (MeshBufferPool): sprites of one shape draw from one GPU buffer, a
     // changed sprite takes the buffer of its new bytes (RenderSystem::refreshImmutableBuffer); one
@@ -765,6 +775,45 @@ void MeshSystem::prepareSpriteMesh(MeshComponent& mesh){
     BufferRender* render = mesh.buffer.getRender();
     if (!(mesh.buffer.getUsage() == BufferUsage::DYNAMIC && render->isCreated() && !render->isShared()))
         mesh.buffer.setUsage(BufferUsage::IMMUTABLE);
+}
+
+void MeshSystem::fillSpriteBatchAttributes(MeshComponent& mesh){
+    const Attribute* position = mesh.buffer.getAttribute(AttributeType::POSITION);
+    if (!position || mesh.batchAttributes == 0)
+        return;
+    const unsigned int count = position->getCount();
+    bool filled = false;
+    // zeros (the FX slots drawn alone), the identity rect, the model origin
+    if (Attribute* fx = mesh.buffer.getAttribute(AttributeType::SPRITEFX)){
+        while (fx->getCount() < count){ mesh.buffer.addVector4(fx, Vector4(0.0f, 0.0f, 0.0f, 0.0f)); filled = true; }
+    }
+    if (Attribute* rect = mesh.buffer.getAttribute(AttributeType::FRAMERECT)){
+        while (rect->getCount() < count){ mesh.buffer.addVector4(rect, Vector4(0.0f, 0.0f, 1.0f, 1.0f)); filled = true; }
+    }
+    if (Attribute* pivot = mesh.buffer.getAttribute(AttributeType::SNAPPIVOT)){
+        while (pivot->getCount() < count){ mesh.buffer.addVector3(pivot, Vector3(0.0f, 0.0f, 0.0f)); filled = true; }
+    }
+    if (filled && mesh.loaded && !mesh.needReload)
+        mesh.needUpdateBuffer = true;
+}
+
+uint8_t MeshSystem::spriteBatchAttributes(const MeshComponent& mesh, bool pixelSnap, const std::string& sceneMeshShader){
+    uint8_t attributes = pixelSnap ? MeshBatchAttribute_SnapPivot : 0;
+    if (mesh.numSubmeshes == 0 && mesh.submeshes.stored() == 0)
+        return attributes;
+    const Submesh& submesh = mesh.submeshes[0];
+    const std::string& shader = RenderSystem::getSubmeshShader(mesh, submesh, sceneMeshShader);
+    if (shader.empty())
+        return attributes;
+    const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+    if (!manifest || !manifest->batchable)
+        return attributes;
+    const std::vector<std::string> features = manifest->resolveFeatures(submesh.material.shaderFeatures);
+    if (manifest->usesInstanceSlots(features))
+        attributes |= MeshBatchAttribute_SpriteFx;
+    if (manifest->usesFrameRect(features))
+        attributes |= MeshBatchAttribute_FrameRect;
+    return attributes;
 }
 
 void MeshSystem::prepareMeshPolygonMesh(MeshComponent& mesh){
@@ -4942,6 +4991,33 @@ void MeshSystem::applyTerrainMapSettings(TerrainComponent& terrain){
     terrain.heightMap.setReleaseDataAfterLoad(false);
 }
 
+unsigned int MeshSystem::loadedVertexCount(const MeshComponent& mesh, const Submesh& submesh){
+    // the buffers loadMesh binds, by the names a submesh's attributes give
+    std::map<std::string, const Buffer*> buffers;
+    if (mesh.buffer.getSize() > 0) buffers["vertices"] = &mesh.buffer;
+    if (mesh.indices.getSize() > 0) buffers["indices"] = &mesh.indices;
+    for (unsigned int i = 0; i < mesh.numExternalBuffers; i++) buffers[mesh.eBuffers[i].getName()] = &mesh.eBuffers[i];
+    if (buffers.empty()) return submesh.vertexCount;
+
+    // an indexed submesh draws its index count even when it is zero (an empty tilemap rect)
+    bool indexed = false;
+    unsigned int indexCount = 0;
+    for (const auto& buf : buffers){
+        if (buf.second->isRenderAttributes() && buf.second->getType() == BufferType::INDEX_BUFFER){
+            indexed = true;
+            indexCount = buf.second->getCount();
+        }
+    }
+    for (const auto& attr : submesh.attributes){
+        if (attr.first == AttributeType::INDEX && buffers.count(attr.second.getBufferName())){
+            indexed = true;
+            indexCount = attr.second.getCount();
+        }
+    }
+    if (indexed) return indexCount;
+    return mesh.vertexCount != 0 ? mesh.vertexCount : mesh.buffer.getCount();
+}
+
 void MeshSystem::updateTerrainAutoRanges(TerrainComponent& terrain){
     if (!terrain.autoSetRanges || !terrain.heightMapLoaded){
         return;
@@ -8309,6 +8385,10 @@ void MeshSystem::update(double dt){
     const bool pixelsPerUnitChanged = Engine::getPixelsPerUnit() != builtPixelsPerUnit;
     builtPixelsPerUnit = Engine::getPixelsPerUnit();
 
+    // S52: a snapping scene's sprites carry their snap pivot; a Sprite Batch draws its Sprite instanced
+    RenderSystem* snapRenderSystem = scene->findSystem<RenderSystem>().get();
+    const bool snapping = snapRenderSystem && snapRenderSystem->hasPixelSnapVariants();
+    const ComponentId spriteBatchId = scene->getComponentId<SpriteBatchComponent>();
     auto sprites = scene->getComponentArray<SpriteComponent>();
     for (int i = 0; i < sprites->size(); i++){
         SpriteComponent& sprite = sprites->getComponentFromIndex(i);
@@ -8332,7 +8412,26 @@ void MeshSystem::update(double dt){
             if (sprite.tagPlaying){
                 stepSpriteTag(sprite, dt);
             }
+            // S52: what its batched and instanced variants read; a change rebuilds the quad
+            // with them (a new layout: the mesh loads again)
+            const SpriteBatchComponent* spriteBatch = signature.test(spriteBatchId) ? &scene->getComponent<SpriteBatchComponent>(entity) : nullptr;
+            const bool instancedMesh = signature.test(scene->getComponentId<InstancedMeshComponent>());
+            const bool instanced = (spriteBatch && spriteBatch->enabled && !instancedMesh) ||
+                                   scene->getSystem<RenderSystem>()->hasAttachedInstanceBatch(entity);
+            uint8_t attributes = spriteBatchAttributes(mesh, snapping, scene->getDefaultCustomShader(ShaderType::MESH));
+            // an Instanced Mesh's instances carry no FX amounts (its variant takes no 'Sfx')
+            if (instancedMesh)
+                attributes &= (uint8_t)~MeshBatchAttribute_SpriteFx;
+            if (attributes != mesh.batchAttributes || instanced != mesh.spriteInstanced){
+                if (attributes != mesh.batchAttributes)
+                    sprite.needUpdateSprite = true;
+                mesh.batchAttributes = attributes;
+                mesh.spriteInstanced = instanced;
+                if (mesh.loaded)
+                    mesh.needReload = true;
+            }
             createOrUpdateSprite(sprite, mesh);
+            fillSpriteBatchAttributes(mesh);
         }
     }
 

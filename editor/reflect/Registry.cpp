@@ -113,6 +113,8 @@ namespace {
         &kWaterExcluderDesc,
         &kWaterWakeDesc,
         &kPixelPerfectCameraDesc,
+        &kSortingGroupDesc,
+        &kSpriteBatchDesc,
         &kHitStopExemptDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
@@ -215,6 +217,8 @@ namespace {
         &kWaterExcluderDesc,
         &kWaterWakeDesc,
         &kPixelPerfectCameraDesc,
+        &kSortingGroupDesc,
+        &kSpriteBatchDesc,
         &kHitStopExemptDesc,
     };
 
@@ -315,6 +319,8 @@ namespace {
         &kWaterExcluderDesc,
         &kWaterWakeDesc,
         &kPixelPerfectCameraDesc,
+        &kSortingGroupDesc,
+        &kSpriteBatchDesc,
         &kHitStopExemptDesc,
     };
 
@@ -346,6 +352,8 @@ namespace {
         &enums::kCapsuleDirection,
         // pixel art (S41)
         &enums::kPixelUpscaleMode, &enums::kPixelRotation,
+        // 2D sorting and Sprite Batch (S52)
+        &enums::kSpriteSortPoint, &enums::kSpriteBatchMode, &enums::kSpriteBatchSpace,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

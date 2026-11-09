@@ -233,6 +233,9 @@ namespace jasperengine::editor{
         WaterWakeComponent,
         // pixel art (S41): integer scaling, Pixels Per Unit and the pixel-snap rule of a camera
         PixelPerfectCameraComponent,
+        // 2D sorting and bulk sprites (S52): Unity's Sorting Group, and instances of a Sprite
+        SortingGroupComponent,
+        SpriteBatchComponent,
         // pixel art (S48): keeps a GameObject running through a hit-stop
         HitStopExemptComponent
     };

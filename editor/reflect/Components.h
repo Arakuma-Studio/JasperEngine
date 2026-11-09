@@ -137,6 +137,9 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kWaterWakeDesc;
     // pixel art (PixelArtReflect.cpp)
     extern const ComponentDesc kPixelPerfectCameraDesc;
+    // 2D sorting and Sprite Batch (SortingReflect.cpp, S52)
+    extern const ComponentDesc kSortingGroupDesc;
+    extern const ComponentDesc kSpriteBatchDesc;
     extern const ComponentDesc kHitStopExemptDesc;
 
 }
