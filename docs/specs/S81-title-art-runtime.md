@@ -1591,7 +1591,7 @@ rest of S82 lands in 6B.
     size 220 with a rim, Light Glow's default 200 px radius and a drop shadow stored a 636-680 x 701-706 px front per glyph
     beside a back of the same size: 1,351 px wide for `A`, wider than a 1,024 page, so Max Pages could not help (measured,
     test `ACellsFaceKeepsItsInkNotTheLayersGlow`). The front is now 188-232 x 253-258 px and a 2,048 page holds four cells instead of
-    two. The back is what is left: one cell a 1,024 page, seven glyphs need seven pages, so the default 4 pages are truly full
-    (R29's sentence; Max Pages 8 fits it, the reference title of deviation 41). A cell wider or taller than a page now fails with
+    two. The back is what is left: its reach alone is 448 px on each axis, so with the ink no two backs share a 1,024 page, seven glyphs
+    need seven pages, and the default 4 pages are truly full (R29's sentence; Max Pages 8 fits it, the reference title of deviation 41). A cell wider or taller than a page now fails with
     its own sentence (Raise Atlas Page Size, lower Resolution Scale, or shorten what reaches past the glyphs), and no empty page is
     made for it.

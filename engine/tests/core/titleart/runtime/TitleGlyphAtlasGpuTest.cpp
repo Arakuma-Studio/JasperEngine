@@ -365,7 +365,11 @@ TEST_F(TitleGlyphAtlasGpu, ACellsFaceKeepsItsInkNotTheLayersGlow) {
     single->setState(state(2048, 4), stateHash(letter), textOverride(letter));
     runFrames(*single, factory(), 4000);
     ASSERT_TRUE(single->front().valid()) << single->status().error;
-    expectWithin(frontPixels(*single), realtimeAt(doc, letter, *single->glyphAtlas(), 220), "a wide glow, one glyph");
+    const Pixels glyph = frontPixels(*single);
+    const Pixels merged = realtimeAt(doc, letter, *single->glyphAtlas(), 220);
+    expectWithin(glyph, merged, "a wide glow, one glyph");
+    // the tolerance above is diluted by this canvas: a face clipped to 87 x 113 px still meets it (measured: max 209, 93 uncut)
+    EXPECT_LT(compare(glyph, merged).max, 150.0) << "the face lost pixels to its crop";
 }
 
 TEST_F(TitleGlyphAtlasGpu, WarpIsSkippedAndFallbacksRenderAsRealtime) {
