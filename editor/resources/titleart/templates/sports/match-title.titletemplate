@@ -60,13 +60,7 @@
     "provenance": {
       "source": "jasperengine"
     },
-    "background": "dark",
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.00 of 2 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      }
-    ]
+    "background": "dark"
   },
   "name": "",
   "canvas": {
@@ -256,7 +250,7 @@
       },
       "text": "FINAL MATCH",
       "font": {
-        "path": "TitleArt/Fonts/archivo-black/ArchivoBlack-Regular.ttf",
+        "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf",
         "guid": ""
       },
       "face_index": 0,
@@ -1078,16 +1072,11 @@
       },
       "text": "2026",
       "font": {
-        "path": "TitleArt/Fonts/archivo-black/ArchivoBlack-Regular.ttf",
+        "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf",
         "guid": ""
       },
       "face_index": 0,
-      "fallback_fonts": [
-        {
-          "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
-          "guid": ""
-        }
-      ],
+      "fallback_fonts": [],
       "variations": {},
       "features": {},
       "language": "",
@@ -1343,7 +1332,7 @@
           {
             "id": "6435e99a",
             "enabled": true,
-            "width": 2,
+            "width": 1.554,
             "join": "miter",
             "fill_counters": false,
             "plate": {
@@ -1555,7 +1544,7 @@
           {
             "id": "da8e5e19",
             "enabled": true,
-            "width": 3,
+            "width": 2.331,
             "join": "miter",
             "fill_counters": false,
             "plate": {
@@ -1767,7 +1756,7 @@
           {
             "id": "23162bf9",
             "enabled": true,
-            "width": 1.5,
+            "width": 1.165,
             "join": "miter",
             "fill_counters": false,
             "plate": {

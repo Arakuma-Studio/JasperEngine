@@ -120,12 +120,15 @@
           "generator": "particles",
           "name": "Confetti",
           "preset": "confetti"
-        }
-      ],
-      "check_allow": [
+        },
         {
-          "check": "counter_survival",
-          "reason": "survival 0.00 of 1 counters on the 'ja' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "font": {
+              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
+            }
+          }
         }
       ]
     },
@@ -318,12 +321,15 @@
           "layer": "Title",
           "look": "cartoon/candy-stripe",
           "apply_font": true
-        }
-      ],
-      "check_allow": [
+        },
         {
-          "check": "counter_survival",
-          "reason": "survival 0.00 of 1 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "font": {
+              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
+            }
+          }
         }
       ]
     }

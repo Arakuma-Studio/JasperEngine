@@ -110,12 +110,7 @@
   "group_effects": [],
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "fallback_parity",
-      "reason": "RGBA8 path differs on the 'digits' sample (class F2): max 120, mean 0.07, 0.08 % of pixels over tolerance"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "jasperengine"
   }

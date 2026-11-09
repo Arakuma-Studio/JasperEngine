@@ -49,17 +49,7 @@
     "canvas_note": "1024 × 512, transparent; the backdrop is a guide layer",
     "provenance": {
       "source": "jasperengine"
-    },
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.67 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      },
-      {
-        "check": "fallback_parity",
-        "reason": "RGBA8 path differs on the 'ja' sample (class F2): max 195, mean 18.85, 52.53 % of pixels over tolerance"
-      }
-    ]
+    }
   },
   "name": "",
   "canvas": {
@@ -214,11 +204,16 @@
           },
           "text": "×999",
           "font": {
-            "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
+            "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf",
             "guid": ""
           },
           "face_index": 0,
-          "fallback_fonts": [],
+          "fallback_fonts": [
+            {
+              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf",
+              "guid": ""
+            }
+          ],
           "variations": {},
           "features": {},
           "language": "",
@@ -495,7 +490,7 @@
               {
                 "id": "c13b15e7",
                 "enabled": true,
-                "width": 1.2,
+                "width": 0.842,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -728,7 +723,7 @@
               {
                 "id": "5b286134",
                 "enabled": true,
-                "width": 1.6,
+                "width": 1.122,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -961,7 +956,7 @@
               {
                 "id": "662d0ef3",
                 "enabled": true,
-                "width": 3,
+                "width": 2.104,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1194,7 +1189,7 @@
               {
                 "id": "6435e99a",
                 "enabled": true,
-                "width": 1.4,
+                "width": 0.982,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1526,7 +1521,7 @@
               "glow": 110,
               "glow_size": 16.8,
               "glow_width": 22.4,
-              "intensity": 105,
+              "intensity": 52.5,
               "jaggedness": 60,
               "length": 238,
               "mode": "outward",

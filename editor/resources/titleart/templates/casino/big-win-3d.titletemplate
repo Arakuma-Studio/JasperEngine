@@ -135,17 +135,7 @@
       "line": 447,
       "item": "t-oatari-3d",
       "license_note": "used with the author's permission"
-    },
-    "check_allow": [
-      {
-        "check": "3d_tier_budget.low",
-        "reason": "4 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
-      },
-      {
-        "check": "fallback_parity",
-        "reason": "RGBA8 path differs on the 'ja' sample (class 3D): max 224, mean 1.33, 1.96 % of pixels over tolerance"
-      }
-    ]
+    }
   },
   "name": "Big Win (3D gold, rays)",
   "canvas": {
@@ -639,7 +629,7 @@
               "inner_softness": 60,
               "length_variation": 0,
               "on_layer": "clip",
-              "opacity": 100,
+              "opacity": 85,
               "rays": 40,
               "rotation": 0,
               "seed": 4,
@@ -709,7 +699,7 @@
                   "params": {
                     "color": "#0a0604",
                     "follow": "layer",
-                    "opacity": 1,
+                    "opacity": 0.85,
                     "softness": 0,
                     "threshold": 0.5,
                     "width": 4.75
@@ -741,10 +731,10 @@
                       ],
                       "interp": "rgb"
                     },
-                    "intensity": 1.4,
+                    "intensity": 1.19,
                     "mode": "behind",
                     "on_face": 0.15,
-                    "opacity": 0.85,
+                    "opacity": 0.722,
                     "size": 22.8,
                     "spread": 0.3,
                     "technique": "softer"
@@ -763,7 +753,7 @@
                     "exposure": 0.5,
                     "falloff": 35,
                     "highlight_shift": 60,
-                    "intensity": 1.2,
+                    "intensity": 1.02,
                     "knee": 0.3,
                     "on_face": 0,
                     "radius": 304,
@@ -1391,155 +1381,6 @@
                     "side": null
                   },
                   {
-                    "id": "6c0e12d7",
-                    "name": "",
-                    "enabled": true,
-                    "grow": 0.3,
-                    "join": "miter",
-                    "fill_counters": false,
-                    "plate": {
-                      "kind": "contour",
-                      "close": 0,
-                      "corner": 4,
-                      "slant": 0
-                    },
-                    "depth": 10,
-                    "offset": -10.6,
-                    "bevel": {
-                      "width": 0.3,
-                      "depth": 0.6,
-                      "profile": "step",
-                      "segments": 6,
-                      "curve": 0,
-                      "custom": {
-                        "points": [
-                          {
-                            "x": 0,
-                            "y": 0,
-                            "corner": false
-                          },
-                          {
-                            "x": 1,
-                            "y": 1,
-                            "corner": false
-                          }
-                        ]
-                      }
-                    },
-                    "material": {
-                      "preset": "custom",
-                      "color": "#3a1000",
-                      "gradient": null,
-                      "gradient_kind": "linear",
-                      "gradient_angle": 90,
-                      "gradient_span": "layer",
-                      "gradient_scale": 1,
-                      "gradient_offset": 0,
-                      "gradient_axis": "xy",
-                      "gradient_bend": 0,
-                      "metallic": 1,
-                      "roughness": 0.35,
-                      "env_multiplier": 0.7,
-                      "specular_multiplier": 1,
-                      "clearcoat": 0,
-                      "clearcoat_roughness": 0.04,
-                      "iridescence": 0,
-                      "iridescence_ior": 1.6,
-                      "iridescence_thickness_nm": [180, 520],
-                      "transmission": 0,
-                      "ior": 1.5,
-                      "dispersion": 0,
-                      "glass_depth": 0,
-                      "flakes": 0,
-                      "flake_scale": 0.6,
-                      "pattern": {
-                        "kind": "none",
-                        "color": "#000000",
-                        "color2": "#ffffff",
-                        "opacity": 1,
-                        "scale": 12,
-                        "angle": 0,
-                        "seed": 1,
-                        "image": null,
-                        "shade": 0.6,
-                        "relief": 0
-                      },
-                      "surface": {
-                        "kind": "none",
-                        "amount": 0.5,
-                        "scale": 20,
-                        "seed": 1
-                      },
-                      "base_texture": {
-                        "texture": null,
-                        "tiling": [1, 1],
-                        "offset": [0, 0],
-                        "projection": "front"
-                      },
-                      "emission": "#000000",
-                      "emission_intensity": 0,
-                      "opacity": 1,
-                      "environment": {},
-                      "link": ""
-                    },
-                    "side": {
-                      "preset": "custom",
-                      "color": "#2a0e00",
-                      "gradient": null,
-                      "gradient_kind": "linear",
-                      "gradient_angle": 90,
-                      "gradient_span": "layer",
-                      "gradient_scale": 1,
-                      "gradient_offset": 0,
-                      "gradient_axis": "xy",
-                      "gradient_bend": 0,
-                      "metallic": 1,
-                      "roughness": 0.3,
-                      "env_multiplier": 0.7,
-                      "specular_multiplier": 1,
-                      "clearcoat": 0,
-                      "clearcoat_roughness": 0.04,
-                      "iridescence": 0,
-                      "iridescence_ior": 1.6,
-                      "iridescence_thickness_nm": [180, 520],
-                      "transmission": 0,
-                      "ior": 1.5,
-                      "dispersion": 0,
-                      "glass_depth": 0,
-                      "flakes": 0,
-                      "flake_scale": 0.6,
-                      "pattern": {
-                        "kind": "none",
-                        "color": "#000000",
-                        "color2": "#ffffff",
-                        "opacity": 1,
-                        "scale": 12,
-                        "angle": 0,
-                        "seed": 1,
-                        "image": null,
-                        "shade": 0.6,
-                        "relief": 0
-                      },
-                      "surface": {
-                        "kind": "none",
-                        "amount": 0.5,
-                        "scale": 20,
-                        "seed": 1
-                      },
-                      "base_texture": {
-                        "texture": null,
-                        "tiling": [1, 1],
-                        "offset": [0, 0],
-                        "projection": "front"
-                      },
-                      "emission": "#000000",
-                      "emission_intensity": 0,
-                      "opacity": 1,
-                      "environment": {},
-                      "link": ""
-                    }
-                  },
-                  {
                     "id": "2a207ef2",
                     "name": "",
                     "enabled": true,
@@ -1724,7 +1565,7 @@
                   "hero_thickness": 100,
                   "hero_width": 90,
                   "inside": true,
-                  "intensity": 140,
+                  "intensity": 119,
                   "jitter": 50,
                   "large": 5,
                   "placement": "hero",

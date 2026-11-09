@@ -104,17 +104,7 @@
       "line": 417,
       "item": "t-gekiatsu-fire",
       "license_note": "used with the author's permission"
-    },
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.33 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      },
-      {
-        "check": "fallback_parity",
-        "reason": "RGBA8 path differs on the 'en' sample (class F2): max 62, mean 1.17, 5.05 % of pixels over tolerance"
-      }
-    ]
+    }
   },
   "name": "Red Hot (fire)",
   "canvas": {
@@ -228,7 +218,7 @@
             "exposure": 0.5,
             "falloff": 25,
             "highlight_shift": 60,
-            "intensity": 2.5,
+            "intensity": 1,
             "knee": 0.3,
             "on_face": 0,
             "radius": 374,
@@ -308,7 +298,7 @@
               },
               "height": 204,
               "inside": 13.6,
-              "intensity": 105,
+              "intensity": 42,
               "over_edge": false,
               "phase": 0,
               "seed": 7,
@@ -348,7 +338,7 @@
           },
           "text": "激アツ",
           "font": {
-            "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
+            "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf",
             "guid": ""
           },
           "face_index": 0,
@@ -629,7 +619,7 @@
               {
                 "id": "103a76fe",
                 "enabled": true,
-                "width": 1.2,
+                "width": 0.819,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -862,7 +852,7 @@
               {
                 "id": "69988519",
                 "enabled": true,
-                "width": 2,
+                "width": 1.365,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1101,7 +1091,7 @@
               {
                 "id": "8db97780",
                 "enabled": true,
-                "width": 2.8,
+                "width": 1.911,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1334,7 +1324,7 @@
               {
                 "id": "05c02513",
                 "enabled": true,
-                "width": 1.4,
+                "width": 0.955,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {

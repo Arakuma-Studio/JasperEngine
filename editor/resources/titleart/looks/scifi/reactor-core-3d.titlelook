@@ -178,12 +178,7 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "3d_tier_budget.medium",
-      "reason": "122106 triangles over 60000; 3413112 mesh bytes over 2097152 on the 'kanji' sample; fit_to_tier reduces it"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "jasperengine"
   }

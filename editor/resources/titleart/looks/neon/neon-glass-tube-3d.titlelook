@@ -114,8 +114,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "dela-gothic-one",
-    "ja": "dela-gothic-one"
+    "latin": "archivo-black",
+    "ja": "mplus1p-black"
   },
   "style_3d": {
     "depth": 8.5,
@@ -161,47 +161,9 @@
     },
     "bands": [
       {
-        "grow": 0.3,
-        "depth": 8,
-        "offset": -8.5,
+        "grow": 1.351,
         "bevel": {
-          "width": 0.3,
-          "depth": 0.5,
-          "profile": "step"
-        },
-        "material": {
-          "color": "#06040c",
-          "metallic": 1,
-          "env_multiplier": 0.7
-        },
-        "side": {
-          "color": "#08060e",
-          "metallic": 1,
-          "env_multiplier": 0.7
-        }
-      },
-      {
-        "grow": 1.1,
-        "join": "round",
-        "depth": 1,
-        "bevel": {
-          "width": 1.1,
-          "depth": 0.55,
-          "profile": "tube",
-          "segments": 12
-        },
-        "material": {
-          "color": "#20e0ff",
-          "roughness": 0.2,
-          "clearcoat": 1,
-          "emission": "#20e0ff",
-          "emission_intensity": 3.5
-        }
-      },
-      {
-        "grow": 2.2,
-        "bevel": {
-          "width": 0.6,
+          "width": 0.368,
           "depth": 0.6
         },
         "material": {
@@ -214,10 +176,10 @@
         }
       },
       {
-        "grow": 0.8,
+        "grow": 0.491,
         "depth": 4,
         "bevel": {
-          "width": 0.5,
+          "width": 0.307,
           "depth": 0.5
         },
         "material": {
@@ -265,7 +227,7 @@
       "type": "outline",
       "params": {
         "color": "#000000",
-        "width": 2.5
+        "width": 1.535
       }
     },
     {
@@ -337,16 +299,7 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "3d_tier_budget.low",
-      "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
-    },
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

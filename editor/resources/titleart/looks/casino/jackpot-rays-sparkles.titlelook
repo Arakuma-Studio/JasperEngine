@@ -427,7 +427,7 @@
       "blend": "normal",
       "opacity": 1,
       "params": {
-        "intensity": 130,
+        "intensity": 65,
         "length": 200,
         "outer_color": "#ff9a10",
         "rays": 40,
@@ -468,12 +468,7 @@
   ],
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "fallback_parity",
-      "reason": "RGBA8 path differs on the 'digits' sample (class F2): max 211, mean 0.67, 2.71 % of pixels over tolerance"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

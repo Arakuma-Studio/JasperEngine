@@ -53,7 +53,7 @@
     },
     "rims": [
       {
-        "width": 0.6,
+        "width": 5.2,
         "material": {
           "fill": {
             "color": "#40ff60"
@@ -83,12 +83,7 @@
   "generators": [],
   "group_effects": [],
   "links": {},
-  "lint_allow": [
-    {
-      "rule": "rims_thin",
-      "reason": "a vector-display hairline is the look: one thin glowing stroke, no fill"
-    }
-  ],
+  "lint_allow": [],
   "check_allow": [],
   "provenance": {
     "source": "jasperengine"

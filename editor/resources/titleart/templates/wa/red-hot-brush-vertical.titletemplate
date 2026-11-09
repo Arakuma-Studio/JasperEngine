@@ -119,13 +119,7 @@
       "line": 704,
       "item": "t-gekinetsu-brush",
       "license_note": "used with the author's permission"
-    },
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.67 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      }
-    ]
+    }
   },
   "name": "Red Hot Brush (vertical)",
   "canvas": {
@@ -295,7 +289,7 @@
               },
               "height": 260,
               "inside": 10,
-              "intensity": 90,
+              "intensity": 38.25,
               "over_edge": false,
               "phase": 0,
               "seed": 12,
@@ -336,7 +330,7 @@
                 "angle": 60,
                 "color": "#000000",
                 "distance": 30,
-                "opacity": 0.7,
+                "opacity": 0.297,
                 "size": 48,
                 "spread": 0.1,
                 "use_global_light": true
@@ -638,7 +632,7 @@
               {
                 "id": "5ce68c76",
                 "enabled": true,
-                "width": 1.2,
+                "width": 1.027,
                 "join": "round",
                 "fill_counters": false,
                 "plate": {
@@ -901,7 +895,7 @@
               {
                 "id": "8c8302f1",
                 "enabled": true,
-                "width": 0.7,
+                "width": 0.599,
                 "join": "round",
                 "fill_counters": false,
                 "plate": {
@@ -1134,7 +1128,7 @@
               {
                 "id": "c4460478",
                 "enabled": true,
-                "width": 2.6,
+                "width": 2.225,
                 "join": "round",
                 "fill_counters": false,
                 "plate": {
@@ -1367,7 +1361,7 @@
               {
                 "id": "b546840b",
                 "enabled": true,
-                "width": 1.4,
+                "width": 1.198,
                 "join": "round",
                 "fill_counters": false,
                 "plate": {

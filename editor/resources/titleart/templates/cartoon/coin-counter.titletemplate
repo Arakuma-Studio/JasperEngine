@@ -49,13 +49,7 @@
     "canvas_note": "1024 × 512, transparent; the backdrop is a guide layer",
     "provenance": {
       "source": "jasperengine"
-    },
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.00 of 1 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      }
-    ]
+    }
   },
   "name": "",
   "canvas": {
@@ -158,16 +152,11 @@
       },
       "text": "×120",
       "font": {
-        "path": "TitleArt/Fonts/titan-one/TitanOne-Regular.ttf",
+        "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf",
         "guid": ""
       },
       "face_index": 0,
-      "fallback_fonts": [
-        {
-          "path": "TitleArt/Fonts/potta-one/PottaOne-Regular.ttf",
-          "guid": ""
-        }
-      ],
+      "fallback_fonts": [],
       "variations": {},
       "features": {},
       "language": "",
@@ -423,7 +412,7 @@
           {
             "id": "c13b15e7",
             "enabled": true,
-            "width": 1,
+            "width": 0.842,
             "join": "miter",
             "fill_counters": false,
             "plate": {
@@ -635,7 +624,7 @@
           {
             "id": "5b286134",
             "enabled": true,
-            "width": 3,
+            "width": 2.525,
             "join": "miter",
             "fill_counters": false,
             "plate": {
@@ -847,7 +836,7 @@
           {
             "id": "662d0ef3",
             "enabled": true,
-            "width": 2,
+            "width": 1.683,
             "join": "miter",
             "fill_counters": false,
             "plate": {

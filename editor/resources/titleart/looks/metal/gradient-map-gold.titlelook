@@ -177,7 +177,7 @@
     },
     "rims": [
       {
-        "width": 1.6,
+        "width": 1.809,
         "material": {
           "fill": {
             "kind": "linear",
@@ -263,7 +263,7 @@
         }
       },
       {
-        "width": 1.6,
+        "width": 1.809,
         "material": {
           "fill": {
             "color": "#140a00",
@@ -313,7 +313,7 @@
         }
       },
       {
-        "width": 1.4,
+        "width": 1.583,
         "offset": [0, -2.2],
         "material": {
           "fill": {
@@ -378,12 +378,7 @@
   "generators": [],
   "group_effects": [],
   "links": {},
-  "lint_allow": [
-    {
-      "rule": "rims_thin",
-      "reason": "just under the 5 % rule as authored; the look is the source's and its rim stack reads as intended"
-    }
-  ],
+  "lint_allow": [],
   "check_allow": [],
   "provenance": {
     "source": "pachislop",

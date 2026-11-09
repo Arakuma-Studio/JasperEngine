@@ -112,13 +112,7 @@
       "line": 408,
       "item": "t-kakutei-rainbow",
       "license_note": "used with the author's permission"
-    },
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.00 of 1 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      }
-    ]
+    }
   },
   "name": "Confirm (rainbow)",
   "canvas": {
@@ -273,10 +267,10 @@
                   ],
                   "interp": "rgb"
                 },
-                "intensity": 0.7,
+                "intensity": 0.35,
                 "mode": "behind",
                 "on_face": 0.15,
-                "opacity": 1,
+                "opacity": 0.5,
                 "size": 52,
                 "spread": 0.05,
                 "technique": "softer"
@@ -620,7 +614,7 @@
               {
                 "id": "8df3ae86",
                 "enabled": true,
-                "width": 1.6,
+                "width": 1.155,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -853,7 +847,7 @@
               {
                 "id": "89dcb901",
                 "enabled": true,
-                "width": 3,
+                "width": 2.166,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1116,7 +1110,7 @@
               {
                 "id": "62320008",
                 "enabled": true,
-                "width": 1.4,
+                "width": 1.011,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1349,7 +1343,7 @@
               {
                 "id": "c8c1559b",
                 "enabled": true,
-                "width": 1.6,
+                "width": 1.155,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1633,7 +1627,7 @@
               "hero_thickness": 100,
               "hero_width": 80,
               "inside": true,
-              "intensity": 140,
+              "intensity": 70,
               "jitter": 50,
               "large": 5,
               "placement": "hero",

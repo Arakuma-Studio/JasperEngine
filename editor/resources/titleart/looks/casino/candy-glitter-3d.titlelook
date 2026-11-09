@@ -138,74 +138,6 @@
     },
     "bands": [
       {
-        "grow": 0.35,
-        "depth": 10.4,
-        "offset": -10.9,
-        "bevel": {
-          "width": 0.35,
-          "depth": 0.5,
-          "profile": "step"
-        },
-        "material": {
-          "preset": "chrome",
-          "gradient": {
-            "stops": [
-              {
-                "color": "#ffffff"
-              },
-              {
-                "pos": 0.22,
-                "color": "#e8eef5"
-              },
-              {
-                "pos": 0.45,
-                "color": "#8a94a3"
-              },
-              {
-                "pos": 0.52,
-                "color": "#2e343d"
-              },
-              {
-                "pos": 0.6,
-                "color": "#7d8794"
-              },
-              {
-                "pos": 0.8,
-                "color": "#dde4ee"
-              },
-              {
-                "pos": 1,
-                "color": "#ffffff"
-              }
-            ]
-          },
-          "metallic": 1,
-          "roughness": 0.04
-        }
-      },
-      {
-        "grow": 0.25,
-        "depth": 10,
-        "offset": -10.4,
-        "bevel": {
-          "width": 0.25,
-          "depth": 0.4,
-          "profile": "step"
-        },
-        "material": {
-          "color": "#2a0008",
-          "metallic": 1,
-          "roughness": 0.35,
-          "env_multiplier": 0.7
-        },
-        "side": {
-          "color": "#4a0010",
-          "metallic": 1,
-          "roughness": 0.35,
-          "env_multiplier": 0.7
-        }
-      },
-      {
         "grow": 4.7,
         "depth": 7,
         "bevel": {
@@ -313,16 +245,7 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "3d_tier_budget.low",
-      "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
-    },
-    {
-      "check": "metal_range",
-      "reason": "its face is metallic in the 3D sense, but lit flat: L* range 15.4 on the 'kanji' sample; not meant to read as a polished metal"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

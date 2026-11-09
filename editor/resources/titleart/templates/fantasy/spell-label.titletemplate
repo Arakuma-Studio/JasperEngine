@@ -49,13 +49,7 @@
     "canvas_note": "1024 × 512, transparent; the backdrop is a guide layer",
     "provenance": {
       "source": "jasperengine"
-    },
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.50 of 2 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      }
-    ]
+    }
   },
   "name": "",
   "canvas": {
@@ -362,13 +356,13 @@
           },
           "text": "FIREBALL",
           "font": {
-            "path": "TitleArt/Fonts/cinzel-decorative-black/CinzelDecorative-Black.ttf",
+            "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf",
             "guid": ""
           },
           "face_index": 0,
           "fallback_fonts": [
             {
-              "path": "TitleArt/Fonts/zen-old-mincho-black/ZenOldMincho-Black.ttf",
+              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf",
               "guid": ""
             }
           ],

@@ -50,13 +50,7 @@
     "provenance": {
       "source": "jasperengine"
     },
-    "background": "dark",
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.00 of 4 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      }
-    ]
+    "background": "dark"
   },
   "name": "",
   "canvas": {
@@ -160,7 +154,7 @@
             "angle": 45,
             "color": "#000000",
             "distance": 1.74,
-            "opacity": 1,
+            "opacity": 0.722,
             "size": 0,
             "spread": 0.1,
             "use_global_light": false
@@ -193,7 +187,7 @@
       },
       "text": "HI-SCORE 123450",
       "font": {
-        "path": "TitleArt/Fonts/press-start-2p/PressStart2P-Regular.ttf",
+        "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf",
         "guid": ""
       },
       "face_index": 0,

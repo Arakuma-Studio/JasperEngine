@@ -41,8 +41,8 @@
   "ref_size": 200,
   "background": "dark",
   "font": {
-    "latin": "mochiy-pop-one",
-    "ja": "mochiy-pop-one"
+    "latin": "zen-kaku-gothic-new-black",
+    "ja": "zen-kaku-gothic-new-black"
   },
   "style": {
     "face": {
@@ -54,7 +54,7 @@
     },
     "rims": [
       {
-        "width": 5.2,
+        "width": 5.05,
         "join": "round",
         "material": {
           "fill": {
@@ -78,12 +78,7 @@
   "group_effects": [],
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "jasperengine"
   }

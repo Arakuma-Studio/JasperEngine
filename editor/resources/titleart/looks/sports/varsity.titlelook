@@ -40,8 +40,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "archivo-black",
-    "ja": "dela-gothic-one"
+    "latin": "zen-kaku-gothic-new-black",
+    "ja": "zen-kaku-gothic-new-black"
   },
   "style": {
     "face": {
@@ -51,9 +51,10 @@
     },
     "rims": [
       {
-        "width": 2
+        "width": 1.554
       },
       {
+        "width": 2.331,
         "material": {
           "fill": {
             "color": "#0a1f44"
@@ -61,7 +62,7 @@
         }
       },
       {
-        "width": 1.5,
+        "width": 1.165,
         "offset": [0, -1.5],
         "material": {
           "fill": {
@@ -77,12 +78,7 @@
   "group_effects": [],
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "jasperengine"
   }

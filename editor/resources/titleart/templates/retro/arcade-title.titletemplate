@@ -59,13 +59,7 @@
     "canvas_note": "1920 × 1080, transparent; the grid backdrop is a guide layer",
     "provenance": {
       "source": "jasperengine"
-    },
-    "check_allow": [
-      {
-        "check": "fallback_parity",
-        "reason": "RGBA8 path differs on the 'ja' sample (class F2): max 255, mean 0.48, 3.84 % of pixels over tolerance"
-      }
-    ]
+    }
   },
   "name": "",
   "canvas": {

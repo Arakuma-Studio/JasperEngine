@@ -136,13 +136,7 @@
       "line": 929,
       "item": "t-gekiatsu-rim-glow",
       "license_note": "used with the author's permission"
-    },
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.50 of 6 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      }
-    ]
+    }
   },
   "name": "Red Hot Rim Glow (part effect, Hue/Saturation)",
   "canvas": {
@@ -280,7 +274,7 @@
                 "angle": 90,
                 "color": "#3a1800",
                 "distance": 9.6,
-                "opacity": 0.6,
+                "opacity": 0.3,
                 "size": 22.4,
                 "spread": 0.1,
                 "use_global_light": true
@@ -295,7 +289,7 @@
           },
           "text": "激アツ",
           "font": {
-            "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
+            "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf",
             "guid": ""
           },
           "face_index": 0,
@@ -1459,7 +1453,7 @@
                 "angle": 90,
                 "color": "#3a1800",
                 "distance": 9.6,
-                "opacity": 0.6,
+                "opacity": 0.3,
                 "size": 22.4,
                 "spread": 0.1,
                 "use_global_light": true
@@ -1474,7 +1468,7 @@
           },
           "text": "激アツ",
           "font": {
-            "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
+            "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf",
             "guid": ""
           },
           "face_index": 0,

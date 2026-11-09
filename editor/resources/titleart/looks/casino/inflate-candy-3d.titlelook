@@ -144,7 +144,7 @@
       {
         "depth": 5,
         "bevel": {
-          "width": 1.4,
+          "width": 1.19,
           "depth": 1.4
         },
         "material": {
@@ -154,10 +154,10 @@
         }
       },
       {
-        "grow": 4.6,
+        "grow": 3.91,
         "depth": 4,
         "bevel": {
-          "width": 0.6,
+          "width": 0.51,
           "depth": 0.6
         },
         "material": {
@@ -184,7 +184,7 @@
     {
       "type": "outline",
       "params": {
-        "width": 2.5
+        "width": 2.125
       }
     },
     {
@@ -247,12 +247,7 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.00 of 2 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

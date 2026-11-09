@@ -40,11 +40,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "orbitron",
-    "ja": "train-one",
-    "variations": {
-      "wght": 700
-    }
+    "latin": "zen-kaku-gothic-new-black",
+    "ja": "zen-kaku-gothic-new-black"
   },
   "style": {
     "face": {
@@ -54,7 +51,7 @@
     },
     "rims": [
       {
-        "width": 4.4,
+        "width": 4.273,
         "material": {
           "fill": {
             "color": "#123a5a"
@@ -62,7 +59,7 @@
         }
       },
       {
-        "width": 0.8,
+        "width": 0.777,
         "material": {
           "fill": {
             "color": "#2ad8ff"
@@ -96,12 +93,7 @@
   "group_effects": [],
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "jasperengine"
   }

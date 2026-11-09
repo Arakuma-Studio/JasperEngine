@@ -134,138 +134,9 @@
     },
     "bands": [
       {
-        "grow": 0,
-        "depth": 1,
-        "offset": -11.3,
-        "bevel": {},
-        "material": {
-          "preset": "blue_metal",
-          "color": "#2a6bff",
-          "gradient": {
-            "stops": [
-              {
-                "color": "#b8d8ff"
-              },
-              {
-                "pos": 0.3,
-                "color": "#4a8cff"
-              },
-              {
-                "pos": 0.46,
-                "color": "#0a40e0"
-              },
-              {
-                "pos": 0.52,
-                "color": "#021060"
-              },
-              {
-                "pos": 0.6,
-                "color": "#1048d8"
-              },
-              {
-                "pos": 0.85,
-                "color": "#60a0ff"
-              },
-              {
-                "pos": 1,
-                "color": "#c8e0ff"
-              }
-            ]
-          },
-          "metallic": 0.9,
-          "roughness": 0.15,
-          "clearcoat": 1
-        }
-      },
-      {
-        "grow": 0.25,
-        "depth": 10.9,
-        "offset": -11.3,
+        "grow": 1.148,
         "bevel": {
-          "width": 0.25,
-          "depth": 0.4,
-          "profile": "step"
-        },
-        "material": {
-          "color": "#020a2a",
-          "metallic": 1,
-          "roughness": 0.35,
-          "env_multiplier": 0.7
-        }
-      },
-      {
-        "grow": 1.3,
-        "depth": 9.6,
-        "offset": -10.9,
-        "bevel": {
-          "width": 1.3,
-          "depth": 1.3,
-          "profile": "chamfer"
-        },
-        "material": {
-          "preset": "chrome",
-          "gradient": {
-            "stops": [
-              {
-                "color": "#ffffff"
-              },
-              {
-                "pos": 0.22,
-                "color": "#e8eef5"
-              },
-              {
-                "pos": 0.45,
-                "color": "#8a94a3"
-              },
-              {
-                "pos": 0.52,
-                "color": "#2e343d"
-              },
-              {
-                "pos": 0.6,
-                "color": "#7d8794"
-              },
-              {
-                "pos": 0.8,
-                "color": "#dde4ee"
-              },
-              {
-                "pos": 1,
-                "color": "#ffffff"
-              }
-            ]
-          },
-          "metallic": 1,
-          "roughness": 0.04,
-          "env_multiplier": 0.9
-        }
-      },
-      {
-        "grow": 0.3,
-        "depth": 9,
-        "offset": -9.6,
-        "bevel": {
-          "width": 0.3,
-          "depth": 0.6,
-          "profile": "step"
-        },
-        "material": {
-          "color": "#020a2a",
-          "metallic": 1,
-          "roughness": 0.35,
-          "env_multiplier": 0.7
-        },
-        "side": {
-          "color": "#0a1430",
-          "metallic": 1,
-          "roughness": 0.25,
-          "env_multiplier": 0.7
-        }
-      },
-      {
-        "grow": 2.2,
-        "bevel": {
-          "width": 1.2,
+          "width": 0.626,
           "depth": 1.2,
           "profile": "chamfer"
         },
@@ -297,56 +168,10 @@
         }
       },
       {
-        "grow": 0.8,
-        "depth": 4,
-        "bevel": {
-          "width": 0.6,
-          "depth": 0.6
-        },
-        "material": {
-          "preset": "silver",
-          "color": "#d8dde6",
-          "gradient": {
-            "stops": [
-              {
-                "color": "#ffffff"
-              },
-              {
-                "pos": 0.22,
-                "color": "#e3e7ee"
-              },
-              {
-                "pos": 0.45,
-                "color": "#a3abb8"
-              },
-              {
-                "pos": 0.52,
-                "color": "#555c68"
-              },
-              {
-                "pos": 0.6,
-                "color": "#9aa2af"
-              },
-              {
-                "pos": 0.8,
-                "color": "#dfe4eb"
-              },
-              {
-                "pos": 1,
-                "color": "#f7f9fc"
-              }
-            ]
-          },
-          "metallic": 1,
-          "roughness": 0.14,
-          "clearcoat": 0.3
-        }
-      },
-      {
-        "grow": 1.6,
+        "grow": 0.835,
         "depth": 5,
         "bevel": {
-          "width": 0.6,
+          "width": 0.313,
           "depth": 0.6
         },
         "material": {
@@ -374,7 +199,7 @@
       "type": "outline",
       "params": {
         "color": "#01030c",
-        "width": 2.5
+        "width": 1.305
       }
     },
     {
@@ -437,20 +262,7 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "3d_tier_budget.low",
-      "reason": "8 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
-    },
-    {
-      "check": "3d_tier_budget.medium",
-      "reason": "8 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
-    },
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.67 of 3 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

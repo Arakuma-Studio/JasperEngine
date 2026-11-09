@@ -175,11 +175,11 @@
     },
     "bands": [
       {
-        "grow": 1.3,
+        "grow": 1.105,
         "depth": 24.6,
         "offset": -25.9,
         "bevel": {
-          "width": 1.3,
+          "width": 1.105,
           "depth": 1.3,
           "profile": "chamfer"
         },
@@ -229,11 +229,11 @@
         }
       },
       {
-        "grow": 0.3,
+        "grow": 0.255,
         "depth": 24,
         "offset": -24.6,
         "bevel": {
-          "width": 0.3,
+          "width": 0.255,
           "depth": 0.6,
           "profile": "step"
         },
@@ -285,7 +285,7 @@
     {
       "type": "outline",
       "params": {
-        "width": 2.5
+        "width": 2.125
       }
     },
     {
@@ -348,12 +348,7 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

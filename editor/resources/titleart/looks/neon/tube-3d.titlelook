@@ -106,12 +106,7 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "3d_tier_budget.medium",
-      "reason": "62998 triangles over 60000 on the 'latin' sample; fit_to_tier reduces it"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "jasperengine"
   }

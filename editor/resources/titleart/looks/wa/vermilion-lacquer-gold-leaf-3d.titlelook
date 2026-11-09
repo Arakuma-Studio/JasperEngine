@@ -222,79 +222,6 @@
         }
       },
       {
-        "grow": 0.3,
-        "depth": 10,
-        "offset": -10.6,
-        "bevel": {
-          "width": 0.3,
-          "depth": 0.6,
-          "profile": "step"
-        },
-        "material": {
-          "color": "#2a0800",
-          "metallic": 1,
-          "roughness": 0.35,
-          "env_multiplier": 0.7
-        },
-        "side": {
-          "color": "#2a0a02",
-          "metallic": 1,
-          "env_multiplier": 0.7
-        }
-      },
-      {
-        "depth": 7,
-        "material": {
-          "preset": "black_gloss",
-          "color": "#080404",
-          "metallic": 0.2,
-          "roughness": 0.08,
-          "env_multiplier": 0.35,
-          "clearcoat": 1,
-          "pattern": {
-            "kind": "seigaiha",
-            "color": "#d8a640",
-            "opacity": 0.55,
-            "scale": 5,
-            "shade": 0.8
-          }
-        }
-      },
-      {
-        "grow": 1,
-        "depth": 4,
-        "bevel": {
-          "width": 0.8,
-          "depth": 0.8
-        },
-        "material": {
-          "preset": "red_metal",
-          "color": "#d02008",
-          "gradient": {
-            "stops": [
-              {
-                "color": "#ff6a40"
-              },
-              {
-                "pos": 0.45,
-                "color": "#c01806"
-              },
-              {
-                "pos": 0.55,
-                "color": "#500600"
-              },
-              {
-                "pos": 1,
-                "color": "#e83a14"
-              }
-            ]
-          },
-          "metallic": 0.9,
-          "roughness": 0.15,
-          "clearcoat": 1
-        }
-      },
-      {
         "grow": 1,
         "depth": 4,
         "bevel": {
@@ -389,20 +316,7 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "3d_tier_budget.low",
-      "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
-    },
-    {
-      "check": "3d_tier_budget.medium",
-      "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
-    },
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.50 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

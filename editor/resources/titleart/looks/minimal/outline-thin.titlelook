@@ -56,7 +56,7 @@
     },
     "rims": [
       {
-        "width": 1
+        "width": 5.2
       }
     ],
     "knockout": true
@@ -66,12 +66,7 @@
   "generators": [],
   "group_effects": [],
   "links": {},
-  "lint_allow": [
-    {
-      "rule": "rims_thin",
-      "reason": "a single hairline outline is the look (a scheme colours it)"
-    }
-  ],
+  "lint_allow": [],
   "check_allow": [],
   "provenance": {
     "source": "jasperengine"

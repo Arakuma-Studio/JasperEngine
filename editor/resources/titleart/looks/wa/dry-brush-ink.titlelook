@@ -165,7 +165,7 @@
     },
     "rims": [
       {
-        "width": 1.4,
+        "width": 2.8,
         "join": "round",
         "material": {
           "fill": {
@@ -215,7 +215,7 @@
         }
       },
       {
-        "width": 1.2,
+        "width": 2.4,
         "offset": [0, -2],
         "material": {
           "fill": {
@@ -286,12 +286,7 @@
   "generators": [],
   "group_effects": [],
   "links": {},
-  "lint_allow": [
-    {
-      "rule": "rims_thin",
-      "reason": "a brush mark has no heavy outline"
-    }
-  ],
+  "lint_allow": [],
   "check_allow": [],
   "provenance": {
     "source": "pachislop",

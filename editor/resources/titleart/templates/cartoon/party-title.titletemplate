@@ -50,13 +50,7 @@
     "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
     "provenance": {
       "source": "jasperengine"
-    },
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.00 of 1 counters on the 'ja' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      }
-    ]
+    }
   },
   "name": "",
   "canvas": {
@@ -1106,13 +1100,13 @@
       },
       "text": "PARTY TIME",
       "font": {
-        "path": "TitleArt/Fonts/titan-one/TitanOne-Regular.ttf",
+        "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf",
         "guid": ""
       },
       "face_index": 0,
       "fallback_fonts": [
         {
-          "path": "TitleArt/Fonts/mochiy-pop-one/MochiyPopOne-Regular.ttf",
+          "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf",
           "guid": ""
         }
       ],

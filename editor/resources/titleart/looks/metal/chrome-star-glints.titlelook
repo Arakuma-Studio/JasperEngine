@@ -408,7 +408,7 @@
       "type": "outer_glow",
       "params": {
         "color": "#d8ecff",
-        "intensity": 0.45,
+        "intensity": 0.225,
         "size": 18,
         "spread": 0.05
       }
@@ -424,7 +424,7 @@
       "opacity": 1,
       "params": {
         "color": "#ffffff",
-        "intensity": 140,
+        "intensity": 70,
         "placement": "peaks",
         "rays": "eight",
         "size": 90,
@@ -646,12 +646,7 @@
   ],
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "fallback_parity",
-      "reason": "RGBA8 path differs on the 'digits' sample (class F2): max 222, mean 0.31, 1.19 % of pixels over tolerance"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

@@ -114,8 +114,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "dela-gothic-one",
-    "ja": "dela-gothic-one"
+    "latin": "archivo-black",
+    "ja": "mplus1p-black"
   },
   "style_3d": {
     "depth": 12.2,
@@ -170,93 +170,6 @@
     },
     "bands": [
       {
-        "grow": 0.6,
-        "depth": 11.6,
-        "offset": -12.2,
-        "bevel": {
-          "width": 0.6,
-          "depth": 0.6,
-          "profile": "step"
-        },
-        "material": {
-          "preset": "punchy_gold",
-          "color": "#ffc000",
-          "gradient": {
-            "stops": [
-              {
-                "color": "#fff4b0"
-              },
-              {
-                "pos": 0.18,
-                "color": "#ffd400"
-              },
-              {
-                "pos": 0.42,
-                "color": "#ff9800"
-              },
-              {
-                "pos": 0.5,
-                "color": "#b83000"
-              },
-              {
-                "pos": 0.58,
-                "color": "#ff7c00"
-              },
-              {
-                "pos": 0.8,
-                "color": "#ffb800"
-              },
-              {
-                "pos": 1,
-                "color": "#ffe070"
-              }
-            ]
-          },
-          "metallic": 1,
-          "roughness": 0.2,
-          "env_multiplier": 2,
-          "specular_multiplier": 2
-        }
-      },
-      {
-        "grow": 0.3,
-        "depth": 11,
-        "offset": -11.6,
-        "bevel": {
-          "width": 0.3,
-          "depth": 0.6,
-          "profile": "step"
-        },
-        "material": {
-          "color": "#2a0400",
-          "metallic": 1,
-          "roughness": 0.35,
-          "env_multiplier": 0.7
-        },
-        "side": {
-          "color": "#c01000",
-          "gradient": {
-            "stops": [
-              {
-                "color": "#ff4a00"
-              },
-              {
-                "pos": 0.4,
-                "color": "#a00800"
-              },
-              {
-                "pos": 1,
-                "color": "#100000"
-              }
-            ]
-          },
-          "gradient_axis": "depth",
-          "metallic": 0.6,
-          "env_multiplier": 0.5,
-          "clearcoat": 0.4
-        }
-      },
-      {
         "grow": 2.2,
         "depth": 7,
         "bevel": {
@@ -269,53 +182,6 @@
           "metallic": 0.2,
           "roughness": 0.08,
           "env_multiplier": 0.35,
-          "clearcoat": 1
-        }
-      },
-      {
-        "grow": 1.6,
-        "depth": 5,
-        "bevel": {
-          "width": 1.1,
-          "depth": 1.1,
-          "profile": "chamfer"
-        },
-        "material": {
-          "preset": "red_metal",
-          "color": "#ff1d2d",
-          "gradient": {
-            "stops": [
-              {
-                "color": "#ff8a8a"
-              },
-              {
-                "pos": 0.22,
-                "color": "#ff3b3b"
-              },
-              {
-                "pos": 0.45,
-                "color": "#d0101c"
-              },
-              {
-                "pos": 0.52,
-                "color": "#5a0008"
-              },
-              {
-                "pos": 0.6,
-                "color": "#b80c18"
-              },
-              {
-                "pos": 0.8,
-                "color": "#ff3030"
-              },
-              {
-                "pos": 1,
-                "color": "#ff9a9a"
-              }
-            ]
-          },
-          "metallic": 0.9,
-          "roughness": 0.15,
           "clearcoat": 1
         }
       },
@@ -350,7 +216,7 @@
     {
       "type": "outline",
       "params": {
-        "width": 2.5
+        "width": 1.25
       }
     },
     {
@@ -423,20 +289,7 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "3d_tier_budget.low",
-      "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
-    },
-    {
-      "check": "3d_tier_budget.medium",
-      "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
-    },
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

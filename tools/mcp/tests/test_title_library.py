@@ -139,8 +139,6 @@ async def test_gate(ed: Editor):
             cid = check["id"]
             if check["status"] not in ("FAIL",):
                 continue
-            if kind == "color_schemes" and cid == "counter_survival":
-                continue     # a scheme only recolours: its counters are the base look's
             ed.check(False, f"{ref} ({text or language}): {cid} {check['status']}: {check.get('message', '')} measured {check.get('measured')}")
         counts[kind][0] += 1
     print(f"[gate] checked/unavailable per kind: {counts}; unavailable by reason: {reasons}")

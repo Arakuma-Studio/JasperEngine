@@ -136,16 +136,24 @@
               "field": "text"
             }
           ]
-        }
-      ],
-      "check_allow": [
-        {
-          "check": "counter_survival",
-          "reason": "survival 0.75 of 4 counters on the 'ja' sample at the look's own rim and band widths (a heavy stack closes small counters)"
         },
         {
-          "check": "fallback_parity",
-          "reason": "RGBA8 path differs on the 'ja' sample (class F2): max 143, mean 0.31, 0.48 % of pixels over tolerance"
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "font": {
+              "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf"
+            }
+          }
+        },
+        {
+          "op": "set",
+          "layer": "Subtitle",
+          "values": {
+            "font": {
+              "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf"
+            }
+          }
         }
       ],
       "background": "dark"
@@ -366,12 +374,15 @@
           "layer": "Title",
           "look": "fantasy/arcane-sigil",
           "apply_font": true
-        }
-      ],
-      "check_allow": [
+        },
         {
-          "check": "counter_survival",
-          "reason": "survival 0.50 of 2 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "font": {
+              "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf"
+            }
+          }
         }
       ]
     }

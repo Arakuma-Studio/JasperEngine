@@ -95,12 +95,7 @@
   "group_effects": [],
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "fallback_parity",
-      "reason": "RGBA8 path differs on the 'kanji' sample (class F1): max 209, mean 0.04, 0.03 % of pixels over tolerance"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "jasperengine"
   }

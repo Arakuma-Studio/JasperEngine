@@ -119,13 +119,7 @@
       "line": 545,
       "item": "t-horyu-orb",
       "license_note": "used with the author's permission"
-    },
-    "check_allow": [
-      {
-        "check": "metal_range",
-        "reason": "its face is metallic in the 3D sense, but lit flat: L* range 8.3 on the 'en' sample; not meant to read as a polished metal"
-      }
-    ]
+    }
   },
   "name": "Reserve Orbs (3D spheres)",
   "canvas": {
@@ -786,7 +780,7 @@
         "lighting": {
           "environment": {
             "preset": "softbox",
-            "intensity": 1,
+            "intensity": 6,
             "rotation": 30,
             "tint": "#ffffff",
             "contrast": 1,
@@ -1398,7 +1392,7 @@
         "lighting": {
           "environment": {
             "preset": "softbox",
-            "intensity": 1,
+            "intensity": 6,
             "rotation": 30,
             "tint": "#ffffff",
             "contrast": 1,
@@ -2010,7 +2004,7 @@
         "lighting": {
           "environment": {
             "preset": "softbox",
-            "intensity": 1,
+            "intensity": 6,
             "rotation": 30,
             "tint": "#ffffff",
             "contrast": 1,
@@ -2622,7 +2616,7 @@
         "lighting": {
           "environment": {
             "preset": "softbox",
-            "intensity": 1,
+            "intensity": 6,
             "rotation": 30,
             "tint": "#ffffff",
             "contrast": 1,
@@ -3234,7 +3228,7 @@
         "lighting": {
           "environment": {
             "preset": "softbox",
-            "intensity": 1,
+            "intensity": 6,
             "rotation": 30,
             "tint": "#ffffff",
             "contrast": 1,
@@ -3870,7 +3864,7 @@
         "lighting": {
           "environment": {
             "preset": "softbox",
-            "intensity": 1,
+            "intensity": 6,
             "rotation": 30,
             "tint": "#ffffff",
             "contrast": 1,
@@ -4482,7 +4476,7 @@
         "lighting": {
           "environment": {
             "preset": "softbox",
-            "intensity": 1,
+            "intensity": 6,
             "rotation": 30,
             "tint": "#ffffff",
             "contrast": 1,

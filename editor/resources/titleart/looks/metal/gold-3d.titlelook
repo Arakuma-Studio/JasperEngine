@@ -159,11 +159,11 @@
     },
     "bands": [
       {
-        "grow": 1.6,
+        "grow": 1.36,
         "depth": 10.6,
         "offset": -12.2,
         "bevel": {
-          "width": 1.6,
+          "width": 1.36,
           "depth": 1.6,
           "profile": "chamfer"
         },
@@ -213,31 +213,10 @@
         }
       },
       {
-        "grow": 0.3,
-        "depth": 10,
-        "offset": -10.6,
-        "bevel": {
-          "width": 0.3,
-          "depth": 0.6,
-          "profile": "step"
-        },
-        "material": {
-          "color": "#3a1000",
-          "metallic": 1,
-          "roughness": 0.35,
-          "env_multiplier": 0.7
-        },
-        "side": {
-          "color": "#2a0e00",
-          "metallic": 1,
-          "env_multiplier": 0.7
-        }
-      },
-      {
-        "grow": 5,
+        "grow": 4.25,
         "depth": 7,
         "bevel": {
-          "width": 0.6,
+          "width": 0.51,
           "depth": 0.6
         },
         "material": {
@@ -255,7 +234,7 @@
     {
       "type": "outline",
       "params": {
-        "width": 2.5
+        "width": 2.125
       }
     },
     {
@@ -318,16 +297,7 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "3d_tier_budget.low",
-      "reason": "4 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
-    },
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.67 of 3 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

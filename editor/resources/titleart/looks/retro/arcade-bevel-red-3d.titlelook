@@ -110,7 +110,7 @@
   "lighting": {
     "environment": {
       "preset": "softbox",
-      "intensity": 1,
+      "intensity": 6,
       "rotation": 25
     },
     "tone_mapping": "punch",
@@ -134,12 +134,7 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "metal_range",
-      "reason": "its face is metallic in the 3D sense, but lit flat: L* range 1.6 on the 'digits' sample; not meant to read as a polished metal"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "jasperengine"
   }

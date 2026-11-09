@@ -134,21 +134,7 @@
       "line": 636,
       "item": "t-kakutei-giraffe-3d",
       "license_note": "used with the author's permission"
-    },
-    "check_allow": [
-      {
-        "check": "3d_tier_budget.low",
-        "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
-      },
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.00 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      },
-      {
-        "check": "fallback_parity",
-        "reason": "RGBA8 path differs on the 'en' sample (class 3D): max 255, mean 2.04, 2.82 % of pixels over tolerance"
-      }
-    ]
+    }
   },
   "name": "Confirm Giraffe (3D glint)",
   "canvas": {
@@ -320,7 +306,7 @@
               "inner_softness": 80,
               "length_variation": 60,
               "on_layer": "clip",
-              "opacity": 18,
+              "opacity": 11.052,
               "rays": 36,
               "rotation": 0,
               "seed": 4,
@@ -365,10 +351,10 @@
           "params": {
             "color": "#0a0604",
             "follow": "layer",
-            "opacity": 1,
+            "opacity": 0.614,
             "softness": 0,
             "threshold": 0.5,
-            "width": 5
+            "width": 3.61
           },
           "from_look": false
         },
@@ -403,10 +389,10 @@
               ],
               "interp": "rgb"
             },
-            "intensity": 1.4,
+            "intensity": 0.86,
             "mode": "behind",
             "on_face": 0.15,
-            "opacity": 0.85,
+            "opacity": 0.522,
             "size": 24,
             "spread": 0.3,
             "technique": "softer"
@@ -425,7 +411,7 @@
             "exposure": 0.5,
             "falloff": 35,
             "highlight_shift": 60,
-            "intensity": 1.2,
+            "intensity": 0.737,
             "knee": 0.3,
             "on_face": 0,
             "radius": 320,
@@ -1008,381 +994,10 @@
         },
         "bands": [
           {
-            "id": "a3149afc",
-            "name": "",
-            "enabled": true,
-            "grow": 1.2,
-            "join": "miter",
-            "fill_counters": false,
-            "plate": {
-              "kind": "contour",
-              "close": 0,
-              "corner": 4,
-              "slant": 0
-            },
-            "depth": 10.6,
-            "offset": -11.8,
-            "bevel": {
-              "width": 1.2,
-              "depth": 1.2,
-              "profile": "round",
-              "segments": 6,
-              "curve": 0,
-              "custom": {
-                "points": [
-                  {
-                    "x": 0,
-                    "y": 0,
-                    "corner": false
-                  },
-                  {
-                    "x": 1,
-                    "y": 1,
-                    "corner": false
-                  }
-                ]
-              }
-            },
-            "material": {
-              "preset": "gold",
-              "color": "#ffc23a",
-              "gradient": {
-                "stops": [
-                  {
-                    "pos": 0,
-                    "color": "#fff8d8",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.06,
-                    "color": "#ffe890",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.16,
-                    "color": "#ffc838",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.3,
-                    "color": "#f0a018",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.4,
-                    "color": "#c06a06",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.47,
-                    "color": "#5a2602",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.51,
-                    "color": "#1a0800",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.55,
-                    "color": "#120500",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.6,
-                    "color": "#5a2804",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.72,
-                    "color": "#c87810",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.84,
-                    "color": "#f8b830",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.94,
-                    "color": "#ffe080",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 1,
-                    "color": "#fff4c8",
-                    "alpha": 1,
-                    "mid": 0.5
-                  }
-                ],
-                "interp": "rgb"
-              },
-              "gradient_kind": "linear",
-              "gradient_angle": 90,
-              "gradient_span": "line",
-              "gradient_scale": 1,
-              "gradient_offset": 0,
-              "gradient_axis": "xy",
-              "gradient_bend": 0.6,
-              "metallic": 1,
-              "roughness": 0.06,
-              "env_multiplier": 0.8,
-              "specular_multiplier": 1,
-              "clearcoat": 0,
-              "clearcoat_roughness": 0.04,
-              "iridescence": 0,
-              "iridescence_ior": 1.6,
-              "iridescence_thickness_nm": [180, 520],
-              "transmission": 0,
-              "ior": 1.5,
-              "dispersion": 0,
-              "glass_depth": 0,
-              "flakes": 0,
-              "flake_scale": 0.6,
-              "pattern": {
-                "kind": "none",
-                "color": "#000000",
-                "color2": "#ffffff",
-                "opacity": 1,
-                "scale": 12,
-                "angle": 0,
-                "seed": 1,
-                "image": null,
-                "shade": 0.6,
-                "relief": 0
-              },
-              "surface": {
-                "kind": "none",
-                "amount": 0.5,
-                "scale": 20,
-                "seed": 1
-              },
-              "base_texture": {
-                "texture": null,
-                "tiling": [1, 1],
-                "offset": [0, 0],
-                "projection": "front"
-              },
-              "emission": "#000000",
-              "emission_intensity": 0,
-              "opacity": 1,
-              "environment": {},
-              "link": ""
-            },
-            "side": null
-          },
-          {
-            "id": "a49eefef",
-            "name": "",
-            "enabled": true,
-            "grow": 0.6,
-            "join": "miter",
-            "fill_counters": false,
-            "plate": {
-              "kind": "contour",
-              "close": 0,
-              "corner": 4,
-              "slant": 0
-            },
-            "depth": 10,
-            "offset": -10.6,
-            "bevel": {
-              "width": 0.6,
-              "depth": 0.6,
-              "profile": "step",
-              "segments": 6,
-              "curve": 0,
-              "custom": {
-                "points": [
-                  {
-                    "x": 0,
-                    "y": 0,
-                    "corner": false
-                  },
-                  {
-                    "x": 1,
-                    "y": 1,
-                    "corner": false
-                  }
-                ]
-              }
-            },
-            "material": {
-              "preset": "custom",
-              "color": "#1a0800",
-              "gradient": null,
-              "gradient_kind": "linear",
-              "gradient_angle": 90,
-              "gradient_span": "layer",
-              "gradient_scale": 1,
-              "gradient_offset": 0,
-              "gradient_axis": "xy",
-              "gradient_bend": 0,
-              "metallic": 1,
-              "roughness": 0.4,
-              "env_multiplier": 0.6,
-              "specular_multiplier": 1,
-              "clearcoat": 0,
-              "clearcoat_roughness": 0.04,
-              "iridescence": 0,
-              "iridescence_ior": 1.6,
-              "iridescence_thickness_nm": [180, 520],
-              "transmission": 0,
-              "ior": 1.5,
-              "dispersion": 0,
-              "glass_depth": 0,
-              "flakes": 0,
-              "flake_scale": 0.6,
-              "pattern": {
-                "kind": "none",
-                "color": "#000000",
-                "color2": "#ffffff",
-                "opacity": 1,
-                "scale": 12,
-                "angle": 0,
-                "seed": 1,
-                "image": null,
-                "shade": 0.6,
-                "relief": 0
-              },
-              "surface": {
-                "kind": "none",
-                "amount": 0.5,
-                "scale": 20,
-                "seed": 1
-              },
-              "base_texture": {
-                "texture": null,
-                "tiling": [1, 1],
-                "offset": [0, 0],
-                "projection": "front"
-              },
-              "emission": "#000000",
-              "emission_intensity": 0,
-              "opacity": 1,
-              "environment": {},
-              "link": ""
-            },
-            "side": {
-              "preset": "copper",
-              "color": "#ff8a52",
-              "gradient": {
-                "stops": [
-                  {
-                    "pos": 0,
-                    "color": "#fff0e0",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.22,
-                    "color": "#ffb48a",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.45,
-                    "color": "#d0652a",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.52,
-                    "color": "#6e2a0c",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.6,
-                    "color": "#c05a24",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 0.8,
-                    "color": "#ffa77a",
-                    "alpha": 1,
-                    "mid": 0.5
-                  },
-                  {
-                    "pos": 1,
-                    "color": "#ffe6d6",
-                    "alpha": 1,
-                    "mid": 0.5
-                  }
-                ],
-                "interp": "rgb"
-              },
-              "gradient_kind": "linear",
-              "gradient_angle": 90,
-              "gradient_span": "line",
-              "gradient_scale": 1,
-              "gradient_offset": 0,
-              "gradient_axis": "xy",
-              "gradient_bend": 0,
-              "metallic": 1,
-              "roughness": 0.12,
-              "env_multiplier": 1,
-              "specular_multiplier": 1,
-              "clearcoat": 0.3,
-              "clearcoat_roughness": 0.04,
-              "iridescence": 0,
-              "iridescence_ior": 1.6,
-              "iridescence_thickness_nm": [180, 520],
-              "transmission": 0,
-              "ior": 1.5,
-              "dispersion": 0,
-              "glass_depth": 0,
-              "flakes": 0,
-              "flake_scale": 0.6,
-              "pattern": {
-                "kind": "none",
-                "color": "#000000",
-                "color2": "#ffffff",
-                "opacity": 1,
-                "scale": 12,
-                "angle": 0,
-                "seed": 1,
-                "image": null,
-                "shade": 0.6,
-                "relief": 0
-              },
-              "surface": {
-                "kind": "none",
-                "amount": 0.5,
-                "scale": 20,
-                "seed": 1
-              },
-              "base_texture": {
-                "texture": null,
-                "tiling": [1, 1],
-                "offset": [0, 0],
-                "projection": "front"
-              },
-              "emission": "#000000",
-              "emission_intensity": 0,
-              "opacity": 1,
-              "environment": {},
-              "link": ""
-            }
-          },
-          {
             "id": "2c65d56a",
             "name": "",
             "enabled": true,
-            "grow": 4.4,
+            "grow": 3.177,
             "join": "miter",
             "fill_counters": false,
             "plate": {
@@ -1394,7 +1009,7 @@
             "depth": 7,
             "offset": 0,
             "bevel": {
-              "width": 0.8,
+              "width": 0.578,
               "depth": 0.8,
               "profile": "round",
               "segments": 6,
@@ -1476,7 +1091,7 @@
             "id": "ef351455",
             "name": "",
             "enabled": true,
-            "grow": 1.8,
+            "grow": 1.3,
             "join": "miter",
             "fill_counters": false,
             "plate": {
@@ -1488,7 +1103,7 @@
             "depth": 5,
             "offset": 0,
             "bevel": {
-              "width": 1.2,
+              "width": 0.866,
               "depth": 1.2,
               "profile": "round",
               "segments": 6,

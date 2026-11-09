@@ -49,13 +49,7 @@
     "canvas_note": "1024 × 512, transparent; the backdrop is a guide layer",
     "provenance": {
       "source": "jasperengine"
-    },
-    "check_allow": [
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.00 of 5 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      }
-    ]
+    }
   },
   "name": "",
   "canvas": {
@@ -197,19 +191,12 @@
       },
       "text": "00:59",
       "font": {
-        "path": "TitleArt/Fonts/orbitron/Orbitron[wght].ttf",
+        "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf",
         "guid": ""
       },
       "face_index": 0,
-      "fallback_fonts": [
-        {
-          "path": "TitleArt/Fonts/train-one/TrainOne-Regular.ttf",
-          "guid": ""
-        }
-      ],
-      "variations": {
-        "wght": 700
-      },
+      "fallback_fonts": [],
+      "variations": {},
       "features": {},
       "language": "",
       "size": 230,
@@ -464,7 +451,7 @@
           {
             "id": "c13b15e7",
             "enabled": true,
-            "width": 4.4,
+            "width": 4.273,
             "join": "miter",
             "fill_counters": false,
             "plate": {
@@ -676,7 +663,7 @@
           {
             "id": "5b286134",
             "enabled": true,
-            "width": 0.8,
+            "width": 0.777,
             "join": "miter",
             "fill_counters": false,
             "plate": {

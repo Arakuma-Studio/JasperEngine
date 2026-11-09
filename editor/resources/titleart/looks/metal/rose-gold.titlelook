@@ -171,7 +171,7 @@
     },
     "rims": [
       {
-        "width": 1.1,
+        "width": 0.935,
         "material": {
           "fill": {
             "color": "#2a0e0a",
@@ -221,7 +221,7 @@
         }
       },
       {
-        "width": 2.2,
+        "width": 1.87,
         "material": {
           "fill": {
             "kind": "linear",
@@ -292,7 +292,7 @@
         }
       },
       {
-        "width": 2,
+        "width": 1.7,
         "material": {
           "fill": {
             "color": "#1a0808",
@@ -342,7 +342,7 @@
         }
       },
       {
-        "width": 1.4,
+        "width": 1.19,
         "offset": [0, -2.4],
         "material": {
           "fill": {
@@ -407,12 +407,7 @@
   "group_effects": [],
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

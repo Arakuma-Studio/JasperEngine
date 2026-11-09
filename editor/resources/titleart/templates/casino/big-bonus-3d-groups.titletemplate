@@ -128,17 +128,7 @@
       "line": 986,
       "item": "t-bigbonus-3d-groups",
       "license_note": "used with the author's permission"
-    },
-    "check_allow": [
-      {
-        "check": "3d_tier_budget.low",
-        "reason": "4 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
-      },
-      {
-        "check": "counter_survival",
-        "reason": "survival 0.60 of 5 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-      }
-    ]
+    }
   },
   "name": "Big Bonus 3D (band glow, nested groups, Photo Filter)",
   "canvas": {
@@ -973,7 +963,7 @@
               {
                 "id": "5505b85c",
                 "enabled": true,
-                "width": 0.8,
+                "width": 0.748,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1206,7 +1196,7 @@
               {
                 "id": "56900d4f",
                 "enabled": true,
-                "width": 2.6,
+                "width": 2.431,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1469,7 +1459,7 @@
               {
                 "id": "b217e1ca",
                 "enabled": true,
-                "width": 1,
+                "width": 0.935,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1702,7 +1692,7 @@
               {
                 "id": "17ab70b5",
                 "enabled": true,
-                "width": 1,
+                "width": 0.935,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -2034,7 +2024,7 @@
                         "opacity": 1,
                         "softness": 0,
                         "threshold": 0.5,
-                        "width": 2.75
+                        "width": 2.337
                       },
                       "from_look": false
                     },
@@ -2608,7 +2598,7 @@
                         "id": "035cec29",
                         "name": "",
                         "enabled": true,
-                        "grow": 1.6,
+                        "grow": 1.36,
                         "join": "miter",
                         "fill_counters": false,
                         "plate": {
@@ -2620,7 +2610,7 @@
                         "depth": 10.6,
                         "offset": -12.2,
                         "bevel": {
-                          "width": 1.6,
+                          "width": 1.36,
                           "depth": 1.6,
                           "profile": "chamfer",
                           "segments": 6,
@@ -2751,159 +2741,10 @@
                         "side": null
                       },
                       {
-                        "id": "cf22be8e",
-                        "name": "",
-                        "enabled": true,
-                        "grow": 0.3,
-                        "join": "miter",
-                        "fill_counters": false,
-                        "plate": {
-                          "kind": "contour",
-                          "close": 0,
-                          "corner": 4,
-                          "slant": 0
-                        },
-                        "depth": 10,
-                        "offset": -10.6,
-                        "bevel": {
-                          "width": 0.3,
-                          "depth": 0.6,
-                          "profile": "step",
-                          "segments": 6,
-                          "curve": 0,
-                          "custom": {
-                            "points": [
-                              {
-                                "x": 0,
-                                "y": 0,
-                                "corner": false
-                              },
-                              {
-                                "x": 1,
-                                "y": 1,
-                                "corner": false
-                              }
-                            ]
-                          }
-                        },
-                        "material": {
-                          "preset": "custom",
-                          "color": "#3a1000",
-                          "gradient": null,
-                          "gradient_kind": "linear",
-                          "gradient_angle": 90,
-                          "gradient_span": "layer",
-                          "gradient_scale": 1,
-                          "gradient_offset": 0,
-                          "gradient_axis": "xy",
-                          "gradient_bend": 0,
-                          "metallic": 1,
-                          "roughness": 0.35,
-                          "env_multiplier": 0.7,
-                          "specular_multiplier": 1,
-                          "clearcoat": 0,
-                          "clearcoat_roughness": 0.04,
-                          "iridescence": 0,
-                          "iridescence_ior": 1.6,
-                          "iridescence_thickness_nm": [180, 520],
-                          "transmission": 0,
-                          "ior": 1.5,
-                          "dispersion": 0,
-                          "glass_depth": 0,
-                          "flakes": 0,
-                          "flake_scale": 0.6,
-                          "pattern": {
-                            "kind": "none",
-                            "color": "#000000",
-                            "color2": "#ffffff",
-                            "opacity": 1,
-                            "scale": 12,
-                            "angle": 0,
-                            "seed": 1,
-                            "image": null,
-                            "shade": 0.6,
-                            "relief": 0
-                          },
-                          "surface": {
-                            "kind": "none",
-                            "amount": 0.5,
-                            "scale": 20,
-                            "seed": 1
-                          },
-                          "base_texture": {
-                            "texture": null,
-                            "tiling": [1, 1],
-                            "offset": [0, 0],
-                            "projection": "front"
-                          },
-                          "emission": "#000000",
-                          "emission_intensity": 0,
-                          "opacity": 1,
-                          "environment": {},
-                          "link": ""
-                        },
-                        "side": {
-                          "preset": "custom",
-                          "color": "#2a0e00",
-                          "gradient": null,
-                          "gradient_kind": "linear",
-                          "gradient_angle": 90,
-                          "gradient_span": "layer",
-                          "gradient_scale": 1,
-                          "gradient_offset": 0,
-                          "gradient_axis": "xy",
-                          "gradient_bend": 0,
-                          "metallic": 1,
-                          "roughness": 0.3,
-                          "env_multiplier": 0.7,
-                          "specular_multiplier": 1,
-                          "clearcoat": 0,
-                          "clearcoat_roughness": 0.04,
-                          "iridescence": 0,
-                          "iridescence_ior": 1.6,
-                          "iridescence_thickness_nm": [180, 520],
-                          "transmission": 0,
-                          "ior": 1.5,
-                          "dispersion": 0,
-                          "glass_depth": 0,
-                          "flakes": 0,
-                          "flake_scale": 0.6,
-                          "pattern": {
-                            "kind": "none",
-                            "color": "#000000",
-                            "color2": "#ffffff",
-                            "opacity": 1,
-                            "scale": 12,
-                            "angle": 0,
-                            "seed": 1,
-                            "image": null,
-                            "shade": 0.6,
-                            "relief": 0
-                          },
-                          "surface": {
-                            "kind": "none",
-                            "amount": 0.5,
-                            "scale": 20,
-                            "seed": 1
-                          },
-                          "base_texture": {
-                            "texture": null,
-                            "tiling": [1, 1],
-                            "offset": [0, 0],
-                            "projection": "front"
-                          },
-                          "emission": "#000000",
-                          "emission_intensity": 0,
-                          "opacity": 1,
-                          "environment": {},
-                          "link": ""
-                        }
-                      },
-                      {
                         "id": "2c701f23",
                         "name": "",
                         "enabled": true,
-                        "grow": 5,
+                        "grow": 4.25,
                         "join": "miter",
                         "fill_counters": false,
                         "plate": {
@@ -2915,7 +2756,7 @@
                         "depth": 7,
                         "offset": 0,
                         "bevel": {
-                          "width": 0.6,
+                          "width": 0.51,
                           "depth": 0.6,
                           "profile": "round",
                           "segments": 6,

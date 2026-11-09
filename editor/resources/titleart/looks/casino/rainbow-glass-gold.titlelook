@@ -285,7 +285,7 @@
     },
     "rims": [
       {
-        "width": 0.6,
+        "width": 0.637,
         "material": {
           "fill": {
             "color": "#808080",
@@ -344,10 +344,9 @@
         }
       },
       {
-        "width": 1.3,
+        "width": 1.38,
         "material": {
           "fill": {
-            "color": "#808080",
             "gradient": {
               "stops": [
                 {
@@ -411,7 +410,7 @@
         }
       },
       {
-        "width": 0.4,
+        "width": 0.424,
         "join": "round",
         "material": {
           "fill": {
@@ -462,7 +461,7 @@
         }
       },
       {
-        "width": 1.6,
+        "width": 1.698,
         "join": "round",
         "material": {
           "fill": {
@@ -530,7 +529,7 @@
         }
       },
       {
-        "width": 1,
+        "width": 1.061,
         "join": "round",
         "material": {
           "fill": {
@@ -623,22 +622,8 @@
   "generators": [],
   "group_effects": [],
   "links": {},
-  "lint_allow": [
-    {
-      "rule": "contrast",
-      "reason": "two gold-toned rims read as one frame on purpose"
-    },
-    {
-      "rule": "rims_thin",
-      "reason": "just under the 5 % rule as authored; the look is the source's and its rim stack reads as intended"
-    }
-  ],
-  "check_allow": [
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "lint_allow": [],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

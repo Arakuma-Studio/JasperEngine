@@ -111,7 +111,7 @@
         "angle": 45,
         "distance": 6,
         "size": 0,
-        "opacity": 1,
+        "opacity": 0.722,
         "use_global_light": false
       }
     },
@@ -126,18 +126,8 @@
   "generators": [],
   "group_effects": [],
   "links": {},
-  "lint_allow": [
-    {
-      "rule": "hard_shadow",
-      "reason": "pixel art has hard shadows"
-    }
-  ],
-  "check_allow": [
-    {
-      "check": "fallback_parity",
-      "reason": "RGBA8 path differs on the 'kanji' sample (class F1): max 255, mean 0.01, 0.00 % of pixels over tolerance"
-    }
-  ],
+  "lint_allow": [],
+  "check_allow": [],
   "provenance": {
     "source": "jasperengine"
   }

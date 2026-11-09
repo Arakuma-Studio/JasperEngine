@@ -99,8 +99,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "dela-gothic-one",
-    "ja": "dela-gothic-one"
+    "latin": "zen-kaku-gothic-new-black",
+    "ja": "zen-kaku-gothic-new-black"
   },
   "style_3d": {
     "depth": 10.6,
@@ -153,50 +153,10 @@
     "bands": [
       {
         "grow": 0.4,
-        "depth": 10,
-        "offset": -10.6,
-        "bevel": {
-          "width": 0.4,
-          "depth": 0.6,
-          "profile": "step"
-        },
-        "material": {
-          "color": "#000000",
-          "metallic": 1,
-          "roughness": 0.4,
-          "env_multiplier": 0.7
-        },
-        "side": {
-          "color": "#041000",
-          "metallic": 1,
-          "roughness": 0.4,
-          "env_multiplier": 0.7
-        }
-      },
-      {
-        "bevel": {
-          "width": 1,
-          "depth": 1,
-          "profile": "chamfer"
-        },
-        "material": {
-          "color": "#0a0c08",
-          "metallic": 0.3,
-          "clearcoat": 0.8,
-          "pattern": {
-            "kind": "hazard",
-            "color": "#0a0c08",
-            "color2": "#8aff00",
-            "scale": 4
-          }
-        }
-      },
-      {
-        "grow": 0.8,
         "join": "round",
         "depth": 1,
         "bevel": {
-          "width": 0.8,
+          "width": 0.4,
           "depth": 0.4,
           "profile": "tube",
           "segments": 12
@@ -210,10 +170,10 @@
         }
       },
       {
-        "grow": 1.4,
+        "grow": 0.7,
         "depth": 4,
         "bevel": {
-          "width": 0.5,
+          "width": 0.25,
           "depth": 0.5
         },
         "material": {
@@ -232,7 +192,7 @@
       "type": "outline",
       "params": {
         "color": "#000000",
-        "width": 2.5
+        "width": 1.25
       }
     },
     {
@@ -311,16 +271,7 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "3d_tier_budget.low",
-      "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
-    },
-    {
-      "check": "counter_survival",
-      "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

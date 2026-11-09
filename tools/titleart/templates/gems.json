@@ -139,20 +139,24 @@
               "field": "text"
             }
           ]
-        }
-      ],
-      "check_allow": [
-        {
-          "check": "3d_tier_budget.low",
-          "reason": "7 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
         },
         {
-          "check": "3d_tier_budget.medium",
-          "reason": "7 stacked solids (letter and bands) over the medium tier's 5 on the 'ja' sample; fit_to_tier reduces it"
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "font": {
+              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
+            }
+          }
         },
         {
-          "check": "counter_survival",
-          "reason": "survival 0.67 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          "op": "set",
+          "layer": "Subtitle",
+          "values": {
+            "font": {
+              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
+            }
+          }
         }
       ]
     },
@@ -267,12 +271,6 @@
           "look": "gems/ruby-faceted-3d",
           "apply_font": true
         }
-      ],
-      "check_allow": [
-        {
-          "check": "3d_tier_budget.low",
-          "reason": "35688 triangles over 30000 on the 'ja' sample; fit_to_tier reduces it"
-        }
       ]
     },
     {
@@ -370,20 +368,15 @@
           "generator": "glints",
           "name": "Glints",
           "follow": "Title"
-        }
-      ],
-      "check_allow": [
-        {
-          "check": "3d_tier_budget.low",
-          "reason": "8 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
         },
         {
-          "check": "3d_tier_budget.medium",
-          "reason": "8 stacked solids (letter and bands) over the medium tier's 5 on the 'ja' sample; fit_to_tier reduces it"
-        },
-        {
-          "check": "fallback_parity",
-          "reason": "RGBA8 path differs on the 'ja' sample (class 3D): max 228, mean 1.41, 2.04 % of pixels over tolerance"
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "font": {
+              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
+            }
+          }
         }
       ]
     }
