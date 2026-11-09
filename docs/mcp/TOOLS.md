@@ -1577,7 +1577,7 @@ Where editor controls with this label are drawn now (window coords, as focus_win
 
 Group: `core`. Hints: idempotent
 
-Open and bring an editor panel to the front, e.g. for a watching human. Not needed for screenshot. console: returns its rows, categories and selection; preferences: opens a page; systems: returns each row's Enabled rect; pose_animation: pose {entity, path, index, play, tab}.
+Open and bring an editor panel to the front for a watching human. Not needed for screenshot. console: returns its rows, categories and selection; preferences: opens a page; systems: returns each row's Enabled rect; pose_animation: pose {entity, path, index, play, tab}.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -5142,7 +5142,7 @@ Pixel-art rules on scenes and textures (filtering, texel size, integer scale, gr
 
 Group: `pixel_art` (listed once `tool_groups` enables it, callable either way)
 
-Cleans AI or loose pixel art: finds the grid, reads each cell, snaps to a palette, slices sheets into clips; verdict clean, fixable or needs_person. Without output it previews (image, nothing written); the same arguments plus output:true write it. Recipe keys: jasper://docs/pixel-art-cleanup. lint_pixel_art only checks.
+Cleans AI or loose pixel art: finds the grid, reads each cell, snaps to a palette, slices sheets into clips; verdict clean, fixable or needs_person. Without output it previews (image, nothing written); the same arguments plus output:true write it; output:{import_step:true} instead makes the fix that texture's import step. Recipe keys: jasper://docs/pixel-art-cleanup. lint_pixel_art only checks.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
