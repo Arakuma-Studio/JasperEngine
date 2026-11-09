@@ -836,8 +836,8 @@
     {
       "id": "casino/about-80-percent-3d",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -860,16 +860,16 @@
     {
       "id": "casino/big-bonus-3d-groups",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
     {
       "id": "casino/big-win-3d",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -908,32 +908,32 @@
     {
       "id": "casino/confirm-rainbow",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
     {
       "id": "casino/confirm-zebra-clip",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
     {
       "id": "casino/cut-in-band",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
     {
       "id": "casino/cut-in-band-fx",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -956,8 +956,8 @@
     {
       "id": "casino/original-depth-fade-3d",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -972,8 +972,8 @@
     {
       "id": "casino/premium-rainbow-fx",
       "kind": "template",
-      "verdict": "differs",
-      "note": "the Shatter generator's pieces are another layout (S83 Deviation 10), so the burst behind the title differs in shape and colour; the title itself matches",
+      "verdict": "tuned",
+      "note": "the Shatter generator's pieces are another layout (S83 Deviation 10), so the burst behind the title differs in shape and colour; the title itself matches Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -1004,24 +1004,24 @@
     {
       "id": "casino/red-hot-fire",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
     {
       "id": "casino/red-hot-plate-fx",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
     {
       "id": "casino/red-hot-rim-glow",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -1036,8 +1036,8 @@
     {
       "id": "casino/reserve-flash-fx",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -1060,16 +1060,16 @@
     {
       "id": "casino/rush-title-fx",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
     {
       "id": "casino/slanted-box-plate",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -1084,16 +1084,16 @@
     {
       "id": "casino/super-red-hot",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
     {
       "id": "metal/liquid-gold-vertical-kicker",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
@@ -1116,16 +1116,16 @@
     {
       "id": "wa/awakening-dry-brush",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
     {
       "id": "wa/red-hot-brush-vertical",
       "kind": "template",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },
