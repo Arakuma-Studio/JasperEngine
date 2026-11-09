@@ -151,6 +151,8 @@ TitlePx TitlePlanner::planGlyphCell() {
     // S81's atlas keeps only the pixels the glyph's content and reach can cover
     auto reach = reachRects.find(node);
     glyphReach = reach != reachRects.end() ? intersectRect(reach->second, rect) : rect;
+    // the face is drawn without the layer's effects: only its ink reaches the cell's front part
+    glyphFrontReach = intersectRect(title2DInkRect(*node), rect);
     // back: the rims with the layer's effects; front: the face alone, drawn over the back
     std::vector<std::string> rims = titleParts(*node->layer);
     rims.pop_back();
@@ -219,8 +221,9 @@ void TitlePlanner::finishOutput(TitlePx acc) {
         return TitleRectI{x0, y0, x1 - x0, y1 - y0};
     };
     const TitleRectI glyphReachRect = glyphReach;
+    const TitleRectI glyphFrontReachRect = glyphFrontReach;
     const std::map<std::string, std::shared_ptr<TitleCacheEntry>> live = liveKeeps;
-    cpu("finish", "", 5, [outSlot, rect, format, premultiplied, kept, problems, canvasRect, glyphReachRect, live](TitleJobState& state, std::string& error) {
+    cpu("finish", "", 5, [outSlot, rect, format, premultiplied, kept, problems, canvasRect, glyphReachRect, glyphFrontReachRect, live](TitleJobState& state, std::string& error) {
         if (!state.alive(error)) return false;
         TitleJobState::Slot& slot = state.slots[(size_t)outSlot];
         TitleImage& image = state.job->resultImage();
@@ -242,7 +245,7 @@ void TitlePlanner::finishOutput(TitlePx acc) {
             split.format = from.key.format;
             split.frame = canvasRect(px.rect);
             split.pixels = px.rect;
-            if (name.rfind("glyph:", 0) == 0) split.reach = glyphReachRect;
+            if (name.rfind("glyph:", 0) == 0) split.reach = name == "glyph:front" ? glyphFrontReachRect : glyphReachRect;
             split.alphaBounds = {0, 0, px.rect.width, px.rect.height};
             split.premultiplied = true;
             if (name == "glyph:back") state.job->resultSplits().glyphBack = std::move(split);

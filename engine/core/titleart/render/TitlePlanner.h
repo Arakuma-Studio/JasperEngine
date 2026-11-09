@@ -278,6 +278,7 @@ namespace jasperengine::titleart {
         std::map<const DrawNode*, TitleRectI> rects;    // node rects (the trees below keep the nodes alive)
         std::map<const DrawNode*, TitleRectI> reachRects;   // the same before the ROI grid: content and reach
         TitleRectI glyphReach;                          // a glyph cell's content and reach (RenderRequest::glyphCell)
+        TitleRectI glyphFrontReach;                     // its face's: the ink alone (the layer's effects go to the back part)
         std::map<std::string, TitleContentPlan> contentPlans;
         std::map<std::string, std::shared_ptr<void>> title3DPlans;     // S86: per layer, its Title3DPlan
         TitleElementFilter elementFilter;               // the glyph cell's, for its layer only
