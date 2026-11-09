@@ -34,6 +34,26 @@ namespace {
     constexpr float ERODE_TALUS = 0.7f;
     // A stamp above this many texels is worth running on the job system (R38)
     constexpr int64_t PARALLEL_TEXELS = 64 * 1024;
+
+    // A float buffer whose growth leaves the values to what fills it whole next: a block's read, its
+    // filter and its output (T1 R47: a radius-512 stamp zeroed 8 MB a call that it then overwrote)
+    class FloatScratch {
+    public:
+        std::span<float> resize(size_t count) {
+            if (count > capacity) {
+                values.reset(new float[count]);
+                capacity = count;
+            }
+            return std::span<float>(values.get(), count);
+        }
+        float* data() { return values.get(); }
+        float& operator[](size_t index) { return values[index]; }
+        const float& operator[](size_t index) const { return values[index]; }
+
+    private:
+        std::unique_ptr<float[]> values;
+        size_t capacity = 0;
+    };
     // T1 R48: a commit's report measures this many tiles or more on the job system's workers
     constexpr size_t PARALLEL_STAT_TILES = 32;
     constexpr int MAX_BLEND_MAPS_SCANNED = 64;
@@ -689,9 +709,9 @@ namespace {
         const int border = std::max(margin, op.filter.active() ? 2 : 0);
         saved.clear();
 
-        std::vector<float> source;
-        std::vector<float> weights;
-        std::vector<float> out;
+        FloatScratch source;
+        FloatScratch weights;
+        FloatScratch out;
 
         for (int cellY = grid.firstY; cellY < rect.bottom() && !failed(); cellY += grid.stepY) {
             if (manyBlocks) forgetBorders(cellY, border);
@@ -707,8 +727,7 @@ namespace {
                 block.source = intersect(grow(blockRect, margin), format.bounds);
                 block.channels = channels;
 
-                source.resize(static_cast<size_t>(block.source.area()) * channels);
-                if (!readPreOp(map, block.source, source)) {
+                if (!readPreOp(map, block.source, source.resize(static_cast<size_t>(block.source.area()) * channels))) {
                     fail("could not read the map");
                     return counters;
                 }
@@ -716,13 +735,12 @@ namespace {
 
                 const bool filtered = op.filter.active();
                 if (filtered) {
-                    weights.resize(static_cast<size_t>(blockRect.area()));
-                    evaluateFilter(target, op.filter, lattice, blockRect, weights, &Run::readPreOpThunk, this);
+                    evaluateFilter(target, op.filter, lattice, blockRect, weights.resize(static_cast<size_t>(blockRect.area())), &Run::readPreOpThunk, this);
                 }
 
                 prepare(block);
 
-                out.resize(static_cast<size_t>(blockRect.area()) * channels);
+                const std::span<float> outValues = out.resize(static_cast<size_t>(blockRect.area()) * channels);
                 const bool heights = map.kind == MapKind::Height;
 
                 std::vector<Counters> rowCounters(static_cast<size_t>(blockRect.h));
@@ -782,7 +800,7 @@ namespace {
                 }
 
                 if (manyBlocks) saveBorders(block, border);
-                writeBlock(block, out);
+                writeBlock(block, outValues);
             }
         }
         saved.clear();
