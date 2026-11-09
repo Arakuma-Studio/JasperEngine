@@ -395,6 +395,8 @@ void TerrainWorldRuntime::refreshOverview(double now) {
     if (!overviewPatchPending || overviewLoading) return;
     if (now < overviewPatchAt) return;
     overviewPatchPending = false;
+    std::map<uint32_t, std::shared_ptr<WorldTile>> settled;
+    settled.swap(overviewPatches);
     TileCoord low, high;
     if (!worldOccupancy.bounds(low, high)) {
         overview = WorldOverview();
@@ -418,6 +420,8 @@ void TerrainWorldRuntime::refreshOverview(double now) {
         }
         overview = std::move(grown);
     }
+    // the pinned copies last: they are the newest
+    for (const auto& [key, data] : settled) setOverviewPatch(overview, *data);
     for (const auto& [key, data] : pinned) setOverviewPatch(overview, *data);
     overviewRev++;
     overviewUnsaved = true;
@@ -613,6 +617,7 @@ void TerrainWorldRuntime::settleEdits() {
         rebuildDerived(tile, *it->second);
         streamer->replace(tile, it->second);
         revisions[key]++;
+        overviewPatches[key] = it->second;
     }
     derivedDirty.clear();
     // R52: the overview follows at most this often
@@ -896,6 +901,8 @@ void TerrainWorldRuntime::fileChanged(TileCoord tile, bool exists) {
     if (pinned.count(tile.key()) && dirtyFiles.count(tile.key())) return;
     // a flushed edit's pin goes with the data it held; the brush's hover keeps its own
     if (pinned.erase(tile.key()) && !hoverPins.count(tile.key())) streamer->pin(tile, false);
+    // the file's data is what the overview takes now, not an earlier edit's
+    overviewPatches.erase(tile.key());
     if (!exists) {
         worldOccupancy.setTile(tile, false);
         streamer->forget(tile);
@@ -1016,6 +1023,7 @@ void TerrainWorldRuntime::remove(TileCoord coord) {
     std::lock_guard<std::recursive_mutex> guard(lock);
     worldOccupancy.setTile(coord, false);
     pinned.erase(coord.key());
+    overviewPatches.erase(coord.key());
     streamer->forget(coord);
     dirtyFiles.erase(coord.key());
     derivedDirty.erase(coord.key());

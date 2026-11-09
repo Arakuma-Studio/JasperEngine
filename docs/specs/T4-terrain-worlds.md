@@ -929,3 +929,8 @@ Recorded while implementing (`terrain/t4-worlds`). The code is what holds; each 
 - **Play in place restarts a World's runtime,** saving the editor's edited tiles first (`Host::released`), so Play's write cap and waits apply (R29, R19).
 - **R29, R30: T1's overlay commits make a World's tiles on the step's first application.** `edit_terrain` writes into an `OverlayMapStore` that `TerrainMapDeltaCmd` applies on its first execute; that application may make tiles and keeps the store's undo hook with the step, and its redos and undos never make one. A brush stroke, which writes in place, keeps the hook as it ends.
 - **R30, AC27: an undo puts a tile's snapshot back as it was, derived sections included** (`TileAccess::restore`), and a new world's tiles carry the macro colour the runtime derives from the new Terrain's layers, so undo and redo write the bytes the files had. Changing the Terrain's layers later changes the colour of the tiles an edit then touches.
+- **R52, AC34: the overview follows an edit that was flushed before its refresh.** The refresh patched the overview from
+  the pinned tiles only, and a flush (a save, the 1 s debounce) unpins a tile before the 0.5 s refresh is due, so a World's
+  far ground kept its old heights until Rebuild Overview. The tiles settled since the last refresh are now held for it.
+  AC34's `TerrainWorldGpu.OverviewRefreshAfterStroke` is the CPU test
+  `TerrainWorldStreaming.OverviewFollowsAnEditFlushedBeforeItsRefresh`: what draws far away is the overview's samples.

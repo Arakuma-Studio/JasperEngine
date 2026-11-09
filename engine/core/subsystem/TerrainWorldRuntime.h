@@ -300,6 +300,9 @@ namespace jasperengine {
         bool overviewUnsaved = false;
         bool overviewPatchPending = false;
         double overviewPatchAt = 0.0;
+        // R52: tiles settled since the overview last followed, held here because a flush in between
+        // unpins them
+        std::map<uint32_t, std::shared_ptr<terraincore::WorldTile>> overviewPatches;
         jobs::Task<std::shared_ptr<terraincore::WorldOverview>> overviewTask;
         bool overviewLoading = false;
 
