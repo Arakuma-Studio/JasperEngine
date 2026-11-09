@@ -16,7 +16,7 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
-startSceneId: 2319053856
+startSceneId: 817273482
 audio:
   mixer: audio/Main.mixer
   outputStage: linear
@@ -27,4 +27,4 @@ titleArt:
     linux: low
 scenes:
   - filepath: scenes/Title3D.scene
-    filepathGuid: 514db6798bf784366cd0ab6460d9cdce
+    filepathGuid: 9ba44126c5a745ac3dab9d1a3bbe109d

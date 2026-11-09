@@ -1,6 +1,6 @@
 formatVersion: 7
-guid: 514db6798bf784366cd0ab6460d9cdce
-id: 2319053856
+guid: 9ba44126c5a745ac3dab9d1a3bbe109d
+id: 817273482
 name: Title3D
 scene:
   backgroundColor: [0.525, 0.525, 0.525, 1]
@@ -112,7 +112,7 @@ entities:
       titleart:
         enabled: true
         title: assets/titles/logo.titleart
-        titleGuid: 274c34afb7663653e4c564e5a7232c2e
+        titleGuid: 52c6afa7a85ab244d48fa6c6d453b730
         renderMode: realtime
         prebakeInitialState: false
-        liveTime: 0.08265182
+        liveTime: 0.044970546
