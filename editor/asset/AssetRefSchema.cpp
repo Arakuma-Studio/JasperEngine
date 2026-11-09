@@ -67,6 +67,9 @@ namespace {
         row("shader", Shape::Shader, AssetType::Shader, Base::Project, Kind::MaterialShader);
         row("extraPass.shader", Shape::Shader, AssetType::Shader, Base::Project, Kind::MaterialShader);
         row("extraPass.shaderTextures{}", Shape::Texture, AssetType::Texture, Base::Assets, Kind::MaterialTexture);
+        // Palette Swap's bindings (S43): the source palette and each target palette
+        row("shaderPalettes{}.source", Shape::Asset, AssetType::Palette, Base::Assets, Kind::Other);
+        row("shaderPalettes{}.targets[].palette", Shape::Asset, AssetType::Palette, Base::Assets, Kind::Other);
         // the linked .material file (in a .material file: the file itself, not a reference)
         row("name", Shape::Asset, AssetType::Material, Base::Project, Kind::MeshMaterialFile);
         return rows;
@@ -115,6 +118,7 @@ namespace {
             case K::NavMesh: return AssetType::NavMesh;
             case K::NavGrid: return AssetType::NavGrid;
             case K::ParticleEffect: return AssetType::ParticleEffect;
+            case K::Palette: return AssetType::Palette;
             case K::TreeData: return AssetType::TreeData;
             case K::TerrainWorld: return AssetType::TerrainWorld;
             case K::None: case K::Any: case K::ModelOrPrefab: break;
@@ -305,6 +309,8 @@ namespace {
         row(Scope::SceneSettings, "postProcess[].shader", Shape::Shader, AssetType::Shader, Base::Project, Kind::SceneSettings);
         row(Scope::SceneSettings, "postProcess[].textures{}", Shape::Texture, AssetType::Texture, Base::Assets, Kind::SceneSettings);
         row(Scope::SceneSettings, "postProcessing.lutTexture", Shape::Asset, AssetType::Texture, Base::Assets, Kind::SceneSettings);
+        // Palette Quantize's palette (S43)
+        row(Scope::SceneSettings, "postProcessing.palette", Shape::Asset, AssetType::Palette, Base::Assets, Kind::SceneSettings);
 
         row(Scope::SceneFile, "prefabs[]", Shape::PrefabRef, AssetType::Prefab, Base::Project, Kind::ScenePrefabList);
         row(Scope::SceneFile, "cppScripts[].path", Shape::Asset, AssetType::Script, Base::Project, Kind::CppScript);
@@ -567,6 +573,17 @@ namespace {
             change.shader |= visit.shader(pass->shader, materialRow("extraPass.shader"), prefix + "extraPass.shader");
             change.texture |= visit.textureMap(pass->shaderTextures, materialRow("extraPass.shaderTextures{}"), prefix + "extraPass.shaderTextures.");
         }
+        // the palette bindings, only on a material that has them; the draw binds a changed one itself
+        if (jasperengine::pixelart::ShaderPalettes* palettes = material.shaderPalettes.editIfSet()) {
+            for (auto& [uniform, binding] : *palettes) {
+                const std::string at = prefix + "shaderPalettes." + uniform + ".";
+                visit.asset(binding.source, materialRow("shaderPalettes{}.source"), at + "source");
+                for (size_t t = 0; t < binding.targets.size(); t++) {
+                    visit.asset(binding.targets[t].palette, materialRow("shaderPalettes{}.targets[].palette"),
+                                at + "targets[" + std::to_string(t) + "].palette");
+                }
+            }
+        }
         if (!prefix.empty()) {
             visit.asset(material.name, materialRow("name"), prefix + "name");
         }
@@ -592,6 +609,7 @@ namespace {
         switch (kind) {
             case particles::ParticleModules::AssetKind::Model: return AssetType::Model;
             case particles::ParticleModules::AssetKind::Effect: return AssetType::ParticleEffect;
+            case particles::ParticleModules::AssetKind::SoundEvent: return AssetType::SoundEvent;
             case particles::ParticleModules::AssetKind::Texture: break;
         }
         return AssetType::Texture;
@@ -1206,6 +1224,11 @@ bool AssetRefSchema::forEachSceneSettingsRef(Scene& scene, const AssetRefVisitor
     if (visit.asset(settings.lutTexture, documentRow(Scope::SceneSettings, "postProcessing.lutTexture"), "postProcessing.lutTexture",
                     AssetPathBase::Project, false, lutExpectedType(settings.lutTexture.path)) ||
         settings.lutTexture != scene.getPostProcessing().lutTexture) {
+        scene.setPostProcessing(settings);
+    }
+    settings = scene.getPostProcessing();
+    if (visit.asset(settings.palette, documentRow(Scope::SceneSettings, "postProcessing.palette"), "postProcessing.palette") ||
+        settings.palette != scene.getPostProcessing().palette) {
         scene.setPostProcessing(settings);
     }
     return visit.changed;

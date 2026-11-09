@@ -24,7 +24,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Crash diagnostics | the crash handler's report folders, sessions, hook and ring, the hang watchdog (`HangWatchdog.*`, `Crash*` in `jasperengine-core-tests`, which start `jasperengine-crash-test`, `engine/tests/crash/CrashTestMain.cpp`), the symbolication tool, the web crash hooks | `tools/build.sh unit-tests`; `python3 -I tools/crash/test_symbolicate.py <jasperengine-crash-test>`; `WEB_PROJECT=crash-diagnostics tools/build.sh web`, then `GATE=crash-diagnostics tools/build.sh web-gate` | as above |
 | Android packaging | what Build makes for Android, run for real: APK and App Bundle from the prebuilt player, the bundletool download (real URL), the debug and release keys, wrong passwords, `publish prepare`, then both installed on the emulator and their screens compared with the golden | `tools/ci/android_packaging.sh` (needs `tools/build.sh linux`, the Android player; KVM: server A) | `build/android-packaging/` |
 | iOS packaging | what Build makes for iOS on a Mac: the Xcode project through `xcodebuild`, installed and launched on a simulator device of its own (no window), a device build as far as signing, the IPA path without a developer account, `publish prepare` | `tools/ci/ios_packaging.sh` (needs the editor on a Mac with Xcode, `tools/players/ios_player.sh`; `IOS_PACKAGING_GOLDEN=1` compares the screen with `tools/fixtures/unified-lighting/golden/ios/screen.png`, from an iPhone 17 simulator) | `build/ios-packaging/` |
-| Tool checks | the shader lint, the CI scripts' own tests, the presets, the HTML UI golden ledger, the exported projects' `jasperengine.py`, C++ scripts linking Box2D and Jolt (run it on Windows and macOS by hand: nothing else checks those), the Android Gradle files | `python3 tools/ci/test_check_shader_lod.py` (with `python3 tools/check_shader_lod.py`: no implicit derivatives in a shader loop with a per-fragment exit or branch), `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_jasperengine_py.py`, `python3 tools/ci/check-script-physics-link.py <editor>`, `python3 tools/ci/test_check_gradle_warnings.py` (and `tools/build.sh android` runs `check_gradle_warnings.py` on its Gradle log: a deprecation in our Gradle files fails the build), `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `python3 tools/check-editor-modals.py` (`--self-test`), `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
+| Tool checks | the shader lint, the CI scripts' own tests, the presets, the HTML UI golden ledger, the exported projects' `jasperengine.py`, C++ scripts linking Box2D and Jolt (run it on Windows and macOS by hand: nothing else checks those), the Android Gradle files | `python3 tools/ci/test_check_shader_lod.py` (with `python3 tools/check_shader_lod.py`: no implicit derivatives in a shader loop with a per-fragment exit or branch), `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_jasperengine_py.py`, `python3 tools/ci/check-script-physics-link.py <editor>`, `python3 tools/ci/test_check_gradle_warnings.py` (and `tools/build.sh android` runs `check_gradle_warnings.py` on its Gradle log: a deprecation in our Gradle files fails the build), `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `python3 tools/check-editor-modals.py` (`--self-test`), `tools/build.sh exec linux tools/ci/check-presets.sh`, `python3 tools/procmat/test_import_mm_nodes.py` (S90's node importer: licences, the deny-list, what is data) | stdout |
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
 worktree of a checkout makes rebuilds cheap.
@@ -74,6 +74,7 @@ recording, nothing when unset (`tools/mcp/tests/test_recorder_integrity.py`).
 `JASPER_MESH_LOAD_HOLD_FILE=<path>` holds the first load (the binding) of the meshes of a scene that
 loaded a model in the background while that file exists, so what else loads the same model meanwhile
 (a Project window thumbnail's preview) comes first (`tools/mcp/tests/test_model_texture_bind.py`).
+`JASPER_TEST_MATERIAL_THUMBNAIL_STUCK=<project-relative file>` keeps a material thumbnail loading while that file exists (`test_material_thumbnail.py`).
 `JASPER_TEST_STAGING_HOLD=<path>` holds a Project Hub import or template copy with part of its files in
 its staging folder while that file exists, after creating `<path>.held`: the tests kill the editor
 there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/test_crash_leftovers.py`).
@@ -554,6 +555,7 @@ Lane files run on one display per chunk, two at a time; a file holding one test 
 | `editor/<area>/X.cpp` | `editor/tests/<area>/XTest.cpp` | `jasperengine-editor-tests` |
 | the HTML UI | `engine/tests/htmlui/` | `jasperengine-htmlui-tests` |
 | `engine/core/<area>/X.cpp` that a test drives through editor scenes (the editor's static `App`, physics worlds, model loads) | `editor/tests/engine/<area>/XTest.cpp` | `jasperengine-editor-tests` |
+| editor code that needs a GPU device (S90's evaluator, `editor/procmat/`) | `engine/tests/core/procmat/*GpuTest.cpp`, the editor sources listed in `engine/tests/core/CMakeLists.txt` | `jasperengine-core-tests` (only that tree has a headless device) |
 | an MCP tool or agent-facing behaviour | `tools/mcp/tests/test_<area>.py`, with `CI = True` | MCP suite |
 
 Both unit-test targets glob `*Test.cpp` under their directory, so a new file needs no CMake
@@ -915,6 +917,20 @@ library without them.
 The Chrome for Testing headless shell in `docker/web.Dockerfile` and `uv` in
 `docker/linux.Dockerfile` are pinned by version and sha256 and bumped by hand, as are the MCP
 harness's packages (`tools/mcp/requirements.txt`).
+
+## Known gaps
+
+What the suites do not cover today, and what closing each gap would take. Each needs money, a
+device or a decision; recorded by BF23 (`docs/specs/BF23-authoring-audit-fixes.md`, section 4).
+
+| Gap | Evidence | What it would take |
+|---|---|---|
+| No native compile check for generated HLSL and MSL | There is no CI, and `tools/check-changed` has no `fxc`, `dxc` or `metal` step | A check someone runs on a Windows and a macOS machine |
+| Nothing runs on Windows or macOS unless a person does | `AGENTS.md`: there is no CI | A machine for each, or accepting it |
+| Particle goldens run on glcore and Vulkan only | `docs/specs/S20-particles.md`, "Goldens" under Deviations | Devices for Metal, D3D11 and GLES3 |
+| Mobile particle performance rows are unmeasured | `docs/perf/particles.md`, "Not measured here" | A person with reference phones |
+| S20's "Web: est. X ms" hint was never built | `docs/specs/S20-particles.md` (Risks), no match in `editor/window/InspectorParticles.cpp` | Delivered by S91's `cost` table |
+| The agent guide has 451 bytes free above its headroom, and S35, S90 and S91 all want some | `tool_budget.py --check`, measured 2026-11-04: 6,241 of 8,192 bytes, 1,951 left, 1,500 required | The second to land moves its own detail out, per `docs/mcp/conventions.md`. Measure with `tool_budget.py --groups all` |
 
 ## Record (S02)
 

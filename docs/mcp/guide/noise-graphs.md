@@ -5,7 +5,7 @@ and edges. The same seed and graph give the same bits on every target.
 
 ## The loop
 
-1. `edit_graph` with `create: {kind: "noise", from_preset: "mountains"}` starts a file; `ops` edit it, one undo step per call. `edit_graph` is in group `scripting`; calls reach every tool whatever the listing shows.
+1. `edit_graph` with `create: {kind: "noise", from_preset: "mountains"}` starts a file; `ops` edit it, one undo step per call. `edit_graph` is in group `graphs`; calls reach every tool whatever the listing shows.
 2. `preview_noise_graph` evaluates without a terrain: per node `range_analytic`, `range_observed`, `hash`, `ms`, `dead`, `folded`. `ops` tries edits without writing.
 3. `generate_terrain` with `dry_run: true` shows statistics and a heightmap image and writes nothing.
 4. `generate_terrain` writes, as one undo step named `Generate Terrain (Mountains, seed 7)`.

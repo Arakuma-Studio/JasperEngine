@@ -3,6 +3,7 @@
 
 #include "Texture.h"
 
+#include "pixelart/PaletteRampTexture.h"
 #include "render/SystemRender.h"
 
 using namespace jasperengine;
@@ -201,6 +202,16 @@ void Texture::setPath(const std::string& path){
     this->needLoad = true;
 
     this->id = buildPathTextureId();
+    // a palette's ramp strip ("hero.palette#ramp:fire", S43 R4a): made from the palette, never
+    // read as a file, and sampled as the colour steps it is
+    if (pixelart::parsePaletteRampPath(newPath)) {
+        this->loadFromPath = false;
+        this->minFilter = TextureFilter::NEAREST;
+        this->magFilter = TextureFilter::NEAREST;
+        this->wrapU = TextureWrap::CLAMP_TO_EDGE;
+        this->wrapV = TextureWrap::CLAMP_TO_EDGE;
+        pixelart::registerPaletteRampTexture(this->id, newPath);
+    }
     this->render = TexturePool::get(getRenderId());
 }
 

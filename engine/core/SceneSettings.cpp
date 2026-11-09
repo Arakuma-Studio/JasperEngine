@@ -14,6 +14,12 @@ namespace{
     const char* const tonemapValues[] = {"NONE", "ACES", "NEUTRAL", "REINHARD", "AGX", nullptr};
     const char* const monochromeNames[] = {"grayscale", "sepia", nullptr};
     const char* const monochromeValues[] = {"GRAYSCALE", "SEPIA", nullptr};
+    const char* const paletteDitherNames[] = {"none", "bayer2", "bayer4", "bayer8", nullptr};
+    const char* const paletteDitherValues[] = {"NONE", "BAYER2", "BAYER4", "BAYER8", nullptr};
+    const char* const paletteDistanceNames[] = {"oklab", "rgb", nullptr};
+    const char* const paletteDistanceValues[] = {"OKLAB", "RGB", nullptr};
+    const char* const palettePrecisionNames[] = {"normal", "high", nullptr};
+    const char* const palettePrecisionValues[] = {"NORMAL", "HIGH", nullptr};
     const char* const filmGrainTypeNames[] = {"classic", "lens", "filmic", nullptr};
     const char* const filmGrainTypeValues[] = {"CLASSIC", "LENS", "FILMIC", nullptr};
     const char* const filmGateMaskNames[] = {"none", "rounded", "academy_137", "widescreen_185", "anamorphic_239", nullptr};
@@ -124,6 +130,16 @@ const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFie
                  "dynamic resolution: in Play and exported games the render scale moves between the min scale and render_scale to hold the target frame rate"),
         PP_FIELD(dynamicResolutionMinScale, "dynamic_resolution_min_scale", T::Float, 0.5f, 1.0f, "lowest render scale dynamic resolution goes to (0.5..1)"),
         PP_FIELD(dynamicResolutionTargetFps, "dynamic_resolution_target_fps", T::Int, 0.0f, 240.0f, "frame rate dynamic resolution holds (0: the display's refresh rate, else 60)"),
+        // Palette Quantize (S43)
+        PP_FIELD(paletteEnabled, "palette_enabled", T::Bool, 0.0f, 1.0f, "Palette Quantize: every pixel of the frame onto the palette (after the grade, before CRT and grain)"),
+        PP_FIELD(palette, "palette", T::Asset, 0.0f, 0.0f, "the .palette Palette Quantize uses (\"\" none: the effect is off)"),
+        PP_ENUM(paletteDither, "palette_dither", paletteDitherNames, "PaletteDither", paletteDitherValues,
+                "ordered dither between a colour's two nearest palette colours, per art pixel: none, bayer2, bayer4, bayer8"),
+        PP_FIELD(paletteDitherStrength, "palette_dither_strength", T::Float, 0.0f, 1.0f, "how far the dither mixes (0 nearest colour only .. 1)"),
+        PP_ENUM(paletteDistance, "palette_distance", paletteDistanceNames, "PaletteDistance", paletteDistanceValues,
+                "how the nearest palette colour is chosen: oklab (perceptual), rgb"),
+        PP_ENUM(palettePrecision, "palette_precision", palettePrecisionNames, "PalettePrecision", palettePrecisionValues,
+                "the colour table's grid: normal (32^3), high (64^3: slower to bake, for many close shades)"),
     };
     return fields;
 }
@@ -177,6 +193,9 @@ void PostProcessingSettings::clamp(){
     if ((int)filmGrainType < 0 || (int)filmGrainType > (int)FilmGrainType::FILMIC) filmGrainType = FilmGrainType::CLASSIC;
     if ((int)filmGateMask < 0 || (int)filmGateMask > (int)FilmGateMask::ANAMORPHIC_239) filmGateMask = FilmGateMask::NONE;
     if ((int)lutInputEncoding < 0 || (int)lutInputEncoding > (int)LutInputEncoding::DAVINCI_INTERMEDIATE) lutInputEncoding = LutInputEncoding::AUTO;
+    if ((int)paletteDither < 0 || (int)paletteDither > (int)PaletteDither::BAYER8) paletteDither = PaletteDither::BAYER4;
+    if ((int)paletteDistance < 0 || (int)paletteDistance > (int)PaletteDistance::RGB) paletteDistance = PaletteDistance::OKLAB;
+    if ((int)palettePrecision < 0 || (int)palettePrecision > (int)PalettePrecision::HIGH) palettePrecision = PalettePrecision::NORMAL;
 }
 
 bool PostProcessPass::setTexture(const std::string& uniform, const std::string& path){

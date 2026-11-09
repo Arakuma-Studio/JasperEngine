@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Water",
+  "author": "pixelfx",
+  "description": "pixelfx's 'water' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "water"},
+  "columns": 8,
+  "colors": ["#081830", "#0e2e5a", "#14508c", "#1c76bc", "#36a2e0", "#78ccf4", "#c4ecff", "#ffffff"],
+  "ramps": [
+    {"name": "water", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}

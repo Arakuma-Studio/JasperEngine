@@ -106,6 +106,7 @@ namespace jasperengine {
 #if JASPERENGINE_TERRAIN_WORLD
         static void registerTerrainWorldClasses(lua_State *L);
 #endif
+        static void registerPixelArtClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);

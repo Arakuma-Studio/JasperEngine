@@ -226,6 +226,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_uiScalePercent = static_cast<int>(std::lround(AppSettings::getUiScale() * 100.0f));
     m_autosaveEnabled = AppSettings::isAutosaveEnabled();
     m_autosaveInterval = AppSettings::getAutosaveIntervalSeconds();
+    m_networkOffline = AppSettings::isNetworkOffline();
     m_htmlUiAutoImport = AppSettings::getHtmlUiAutoImport();
     m_autoRefresh = AppSettings::getAutoRefresh();
     m_fileWatcher = AppSettings::getFileWatcher() == "native" ? 1 : AppSettings::getFileWatcher() == "polling" ? 2 : 0;
@@ -523,6 +524,17 @@ void EditorSettingsWindow::drawGeneralSettings() {
                 openInFileManager(folder);
             }
             ImGui::EndDisabled();
+        }
+
+        sectionRow("Network");
+        if (settingsui::beginRow("preferences.network.offline")) {
+            if (prefsBeginSettingsRow("Offline",
+                                 "No network access from the editor: Import > From Lospec says so before any request (download "
+                                 "the palette's file and import it instead). Games are not affected.",
+                                 m_networkOffline != false)) {
+                m_networkOffline = false;
+            }
+            ImGui::Checkbox("##NetworkOffline", &m_networkOffline);
         }
 
         sectionRow("HTML UI");
@@ -1454,6 +1466,7 @@ bool EditorSettingsWindow::applySettings() {
     AppSettings::setProjectHubAlways(m_projectHubAlways);
     AppSettings::setAutosaveEnabled(m_autosaveEnabled);
     AppSettings::setAutosaveIntervalSeconds(m_autosaveInterval);
+    AppSettings::setNetworkOffline(m_networkOffline);
     AppSettings::setUiScale(m_uiScalePercent / 100.0f);
     const LatticeViewSettings previousLattice = AppSettings::getLatticeViewSettings();
     AppSettings::setLatticeViewSettings(m_lattice);

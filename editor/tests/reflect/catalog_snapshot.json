@@ -958,6 +958,11 @@
      68719476736,
      true
     ],
+    "submeshes[].material.shaderPalettes": [
+     15,
+     0,
+     true
+    ],
     "submeshes[].material.shaderParams": [
      15,
      68719476736,
@@ -26450,6 +26455,11 @@
    "submeshes[N].material.shaderGlobalBindings": [
     15,
     68719476736,
+    true
+   ],
+   "submeshes[N].material.shaderPalettes": [
+    15,
+    0,
     true
    ],
    "submeshes[N].material.shaderParams": [

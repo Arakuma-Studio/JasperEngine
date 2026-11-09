@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Lava",
+  "author": "pixelfx",
+  "description": "pixelfx's 'lava' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "lava"},
+  "columns": 7,
+  "colors": ["#14060a", "#380a10", "#6e1210", "#ac2410", "#e8501a", "#ff8c2a", "#ffd25a"],
+  "ramps": [
+    {"name": "lava", "colors": [0, 1, 2, 3, 4, 5, 6]}
+  ]
+}

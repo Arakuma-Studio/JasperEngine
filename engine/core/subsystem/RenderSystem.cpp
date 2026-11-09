@@ -82,6 +82,8 @@
 #include "render/LineRibbonBuilder.h"
 #include "meshoptimizer.h"
 #include <bit>
+#include "pixelart/PaletteQuantize.h"
+#include "pixelart/PaletteSwap.h"
 #include <cstddef>
 #include <memory>
 #include <algorithm>
@@ -1001,6 +1003,7 @@ void RenderSystem::load(){
 }
 
 void RenderSystem::destroy(){
+    paletteQuantizer.reset();
     // View teardown keeps the scene alive; retain CPU assets for its next load.
     const bool reloadView = !Engine::isViewLoaded();
 
@@ -4485,7 +4488,7 @@ TextureRender* RenderSystem::getDefaultShaderTexture(int fallback, bool cube){
 
 bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, ShaderData& shaderData, ObjectRender& render,
                                              std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest,
-                                             const std::vector<std::string>& enabledFeatures){
+                                             const std::vector<std::string>& enabledFeatures, const pixelart::ShaderPalettes* palettes){
     bindings.clear();
 
     // the frame block, by name; both stages declare the same layout but for the post colour's
@@ -4591,6 +4594,21 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
         for (const auto& texture : textures)
             addTexture(texture.first, static_cast<int>(ShaderTextureDefault::WHITE));
     }
+    // the @palette slots of the variant's features (a feature off makes none: no texture, no work)
+    if (manifest){
+        for (const ShaderManifestPalette& palette : manifest->palettes){
+            if (!palette.isEnabled(enabledFeatures))
+                continue;
+            ShaderPaletteSlot slot;
+            slot.uniform = palette.uniform;
+            slot.cells = shaderData.getTextureIndexByName(palette.cellsTexture());
+            slot.rows = shaderData.getTextureIndexByName(palette.rowsTexture());
+            if (slot.cells.first != -1 && slot.rows.first != -1)
+                bindings.palettes.push_back(slot);
+        }
+        if (!bindings.palettes.empty())
+            bindShaderPalettes(bindings, render, palettes);
+    }
 
     // the global shader values (ShaderGlobals): the globals blocks, and every texture uniform
     // nothing above claims named like a global (engine textures are all u_*, which globals
@@ -4630,6 +4648,46 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     applyGlobalTextures(render, bindings);
 
     return bindShaderTextures(bindings, render, textures);
+}
+
+void RenderSystem::bindShaderPalettes(ShaderLibraryBindings& bindings, ObjectRender& render, const pixelart::ShaderPalettes* palettes){
+    const uint32_t generation = pixelart::PaletteLibrary::generation();
+    for (ShaderPaletteSlot& slot : bindings.palettes){
+        pixelart::PaletteBinding binding;
+        if (palettes){
+            for (const auto& entry : *palettes){
+                if (entry.first == slot.uniform)
+                    binding = entry.second;
+            }
+        }
+        std::vector<pixelart::Diagnostic> diagnostics;
+        slot.textures = binding.empty() ? pixelart::PaletteSwapCache::identity() : pixelart::PaletteSwapCache::acquire(binding, diagnostics);
+        for (const pixelart::Diagnostic& diagnostic : diagnostics){
+            if (diagnostic.severity == pixelart::Diagnostic::Severity::Error)
+                Log::warn("Palette Swap (%s): %s", slot.uniform.c_str(), diagnostic.message.c_str());
+        }
+        slot.bound = binding;
+        slot.generation = generation;
+        render.addTexture(slot.cells, ShaderStageType::FRAGMENT, &slot.textures->cells);
+        render.addTexture(slot.rows, ShaderStageType::FRAGMENT, &slot.textures->rows);
+    }
+}
+
+void RenderSystem::updateShaderPalettes(ShaderLibraryBindings& bindings, ObjectRender& render, const pixelart::ShaderPalettes* palettes){
+    const uint32_t generation = pixelart::PaletteLibrary::generation();
+    for (const ShaderPaletteSlot& slot : bindings.palettes){
+        pixelart::PaletteBinding binding;
+        if (palettes){
+            for (const auto& entry : *palettes){
+                if (entry.first == slot.uniform)
+                    binding = entry.second;
+            }
+        }
+        if (slot.generation != generation || !(slot.bound == binding)){
+            bindShaderPalettes(bindings, render, palettes);
+            return;
+        }
+    }
 }
 
 bool RenderSystem::bindShaderTextures(const ShaderLibraryBindings& bindings, ObjectRender& render, std::vector<std::pair<std::string, Texture>>& textures){
@@ -4734,6 +4792,10 @@ void RenderSystem::updatePassFrame(const CameraComponent& camera, const Transfor
     fillPassPostColor(false, Rect(), 0.0f);
 }
 
+bool RenderSystem::isPaletteQuantizeBaking() const{
+    return paletteQuantizer && paletteQuantizer->baking();
+}
+
 PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSettings& settings){
     // the LUT only matters when it applies (its stage decides curve or grade)
     std::shared_ptr<const CubeLut> lut;
@@ -4775,6 +4837,13 @@ PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSet
             settings.filmScratchAmount > 0.0f || settings.filmDustAmount > 0.0f)) || settings.filmGateWeave > 0.0f ||
             settings.filmGateMask != FilmGateMask::NONE))
         features |= UBER_FILM_DAMAGE;
+    // Palette Quantize, with a palette (none: off, and said so)
+    if (settings.paletteEnabled){
+        if (settings.palette.empty())
+            tiers.paletteMissing = true;
+        else
+            features |= UBER_PALETTE;
+    }
 
     const bool curve = PostColorLut::hasCurve(settings, lut);
     const bool grade = PostColorLut::hasGrade(settings, lut);
@@ -4793,7 +4862,8 @@ PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSet
         // the shaders, which have the unclamped linear colour
         if (grade) features |= UBER_LUT;
         if (vignette) features |= UBER_VIGNETTE;
-        if (dither) features |= UBER_DITHER;
+        // the anti-banding noise would push pixels off the palette: not with Palette Quantize
+        if (dither && !(features & UBER_PALETTE)) features |= UBER_DITHER;
         tiers.tailColor = curve;
         tiers.tailGrade = false;
     }else{
@@ -4866,6 +4936,11 @@ void RenderSystem::applyPostProcessing(){
         destroyUber();
     if (!(tiers.uberFeatures & (UBER_BLOOM | UBER_BLUR | UBER_HALATION)))
         destroyBloomPrograms();
+    // no Palette Quantize: no table, no bake
+    if (!(tiers.uberFeatures & UBER_PALETTE) && paletteQuantizer)
+        paletteQuantizer.reset();
+    if (tiers.paletteMissing)
+        Log::warn("Palette Quantize is on but has no palette: it stays off until post_processing.palette names one");
 
     // the in-shader LUT: exposure, curve and (without the uber pass) the grade
     if (tiers.tailColor){
@@ -5083,6 +5158,8 @@ bool RenderSystem::loadUber(uint32_t features){
     uberSlotBlur = shaderData.getTextureIndexByName("u_blurTexture");
     uberSlotHalation = shaderData.getTextureIndexByName("u_halationTexture");
     uberSlotHalationWide = shaderData.getTextureIndexByName("u_halationWideTexture");
+    uberSlotPaletteCells = shaderData.getTextureIndexByName("u_paletteQuantize");
+    uberSlotPaletteRow = shaderData.getTextureIndexByName("u_paletteQuantizeRow");
     // a pass of the frame: created at once, never skipped (spec S32 §6.4)
     uberRender.setImmediatePipelines(true);
     if (!uberRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW)){
@@ -5112,6 +5189,8 @@ void RenderSystem::destroyUber(){
     uberSlotBlur = {-1, -1};
     uberSlotHalation = {-1, -1};
     uberSlotHalationWide = {-1, -1};
+    uberSlotPaletteCells = {-1, -1};
+    uberSlotPaletteRow = {-1, -1};
 }
 
 bool RenderSystem::ensurePostSceneFramebuffer(unsigned int width, unsigned int height){
@@ -5244,6 +5323,26 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
             uberRender.addTexture(uberSlotHalation, ShaderStageType::FRAGMENT, uberHalationTexture ? uberHalationTexture : &emptyBlack);
         if (uberSlotHalationWide.first != -1)
             uberRender.addTexture(uberSlotHalationWide, ShaderStageType::FRAGMENT, uberHalationWideTexture ? uberHalationWideTexture : &emptyBlack);
+        // Palette Quantize: its table once baked (the previous one meanwhile; none: the pass leaves
+        // the colour as it is, w 0)
+        fs_uber.palette = Vector4(32.0f, 0.0f, 0.0f, 0.0f);
+        if (uberSlotPaletteCells.first != -1 && uberSlotPaletteRow.first != -1){
+            if (!paletteQuantizer)
+                paletteQuantizer = std::make_shared<pixelart::PaletteQuantizer>();
+            pixelart::PaletteQuantizer::Request request;
+            request.palette = settings.palette.path;
+            request.metric = settings.paletteDistance == PaletteDistance::RGB ? pixelart::ColorMetric::Rgb : pixelart::ColorMetric::OkLab;
+            request.ditherSize = settings.paletteDither == PaletteDither::BAYER2 ? 2 :
+                                 settings.paletteDither == PaletteDither::BAYER4 ? 4 :
+                                 settings.paletteDither == PaletteDither::BAYER8 ? 8 : 0;
+            request.strength = settings.paletteDitherStrength;
+            request.cellsPerAxis = settings.palettePrecision == PalettePrecision::HIGH ? 64 : 32;
+            paletteQuantizer->update(request);
+            const bool ready = paletteQuantizer->ready();
+            uberRender.addTexture(uberSlotPaletteCells, ShaderStageType::FRAGMENT, ready ? &paletteQuantizer->cells() : &emptyBlack);
+            uberRender.addTexture(uberSlotPaletteRow, ShaderStageType::FRAGMENT, ready ? &paletteQuantizer->row() : &emptyBlack);
+            fs_uber.palette = Vector4((float)paletteQuantizer->cellsPerAxis(), (float)paletteQuantizer->ditherSize(), 0.0f, ready ? 1.0f : 0.0f);
+        }
 
         const Vector4 flipScaleOffset = flipGL ? Vector4(1.0f, 0.0f, -1.0f, 1.0f) : Vector4(1.0f, 0.0f, 1.0f, 0.0f);
         // the part of the source it reads (a Pixel Perfect Camera's inner image, S41)
@@ -5667,8 +5766,18 @@ bool RenderSystem::ensureSSRIdentityLut(){
 }
 
 void RenderSystem::applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings){
-    if (bindings.slotFSSceneInputs != -1)
-        render.applyUniformBlock(bindings.slotFSSceneInputs, bindings.sceneInputsSize, &passSceneBlock);
+    if (bindings.slotFSSceneInputs != -1){
+        if (bindings.slotSceneColor.first != -1 && !passSceneColor){
+            // no colour copy in this pass: its size reads 0 (scene.glsl), so a shader can draw
+            // without it rather than read black
+            scene_inputs_t block = passSceneBlock;
+            block.colorParams.z = 0.0f;
+            block.colorParams.w = 0.0f;
+            render.applyUniformBlock(bindings.slotFSSceneInputs, bindings.sceneInputsSize, &block);
+        }else{
+            render.applyUniformBlock(bindings.slotFSSceneInputs, bindings.sceneInputsSize, &passSceneBlock);
+        }
+    }
     // the decoded white is past the far plane (scene.glsl clamps it to it): no occluder
     if (bindings.slotSceneDepth.first != -1)
         render.addTexture(bindings.slotSceneDepth, ShaderStageType::FRAGMENT, passSceneDepth ? passSceneDepth : &emptyWhite);
@@ -6980,10 +7089,11 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (!loadPbrExtTextures(mesh.submeshes[i], shaderData, mesh.submeshes[i].render)){
             return false;
         }
-        // shader library: the frame block and the material's custom textures
+        // shader library: the frame block, the material's custom textures and palettes
         if (!loadShaderLibraryBindings(mesh.submeshes[i].libraryBindings, shaderData, mesh.submeshes[i].render,
                                        mesh.submeshes[i].material.shaderTextures, mesh.submeshes[i].manifest.get(),
-                                       ShaderReference::getEnabledFeatures(mesh.submeshes[i].material.shader, mesh.submeshes[i].material.shaderFeatures))){
+                                       ShaderReference::getEnabledFeatures(mesh.submeshes[i].material.shader, mesh.submeshes[i].material.shaderFeatures),
+                                       &mesh.submeshes[i].material.shaderPalettes.get())){
             return false;
         }
         loadShadowTextures(shaderData, mesh.submeshes[i].render, mesh.receiveLights, p_receiveShadows);
@@ -10429,6 +10539,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             const ShaderLibraryBindings& libraryBindings = mesh.submeshes[i].libraryBindings;
+            // Palette Swap: a changed binding or a reloaded palette binds again in this frame
+            if (!libraryBindings.palettes.empty())
+                updateShaderPalettes(mesh.submeshes[i].libraryBindings, render, &mesh.submeshes[i].material.shaderPalettes.get());
             refreshSubmeshTextures(mesh.submeshes[i], mesh.receiveLights, pbrFramebufferOutdated);
             if (oitDraw)
                 render.shareBindings(mesh.submeshes[i].render);
@@ -11284,10 +11397,15 @@ bool RenderSystem::readsSceneColor(const TransparentRenderData& renderData, Came
             if (!renderData.points || !(renderData.points->sceneInputs & ShaderRequire_SceneColor))
                 return false;
             break;
-        case TransparentRenderType::PARTICLES:
-            if (!renderData.particles || !renderData.particles->state || !(renderData.particles->state->render.sceneInputs & ShaderRequire_SceneColor))
+        case TransparentRenderType::PARTICLES:{
+            // each emitter of a tree is its own item (queueParticleTree): its own shader decides
+            if (!renderData.particles || !renderData.particles->state)
+                return false;
+            const uint32_t inputs = renderData.emitterRender ? renderData.emitterRender->sceneInputs : renderData.particles->state->render.sceneInputs;
+            if (!(inputs & ShaderRequire_SceneColor))
                 return false;
             break;
+        }
         default:
             return false;
     }
@@ -11365,6 +11483,25 @@ void RenderSystem::setSceneInputUser(Entity entity, bool points, uint32_t inputs
     sceneInputUsage = usage;
 }
 
+// The scene inputs an emitter and its children will read, for the ones not loaded yet
+static uint32_t predictedParticleInputs(const particles::EmitterRuntime& emitter, const particles::ParticleRenderData* render){
+    // (no effect: a view reload unbound it, and it binds again on its next update)
+    if (!emitter.effect())
+        return 0;
+    uint32_t inputs = 0;
+    if (!render || !render->loaded){
+        const particles::RendererModule& renderer = emitter.effect()->document.renderer;
+        if (std::shared_ptr<const ShaderManifest> manifest = findManifest(renderer.shader))
+            inputs = manifest->resolveRequire(ShaderReference::getEnabledFeatures(renderer.shader, renderer.shaderFeatures)) & ShaderRequire_SceneInputs;
+    }
+    for (size_t c = 0; c < emitter.childCount(); c++){
+        const particles::EmitterRuntime* child = emitter.child(c);
+        if (child && child->effect())
+            inputs |= predictedParticleInputs(*child, render && c < render->children.size() ? render->children[c].get() : nullptr);
+    }
+    return inputs;
+}
+
 void RenderSystem::predictSceneInputUsers(){
     // Registered at load only, the first reader of the scene depth would load after the other
     // meshes, which then lack a depth program for its pre-pass: one frame without them, and
@@ -11408,19 +11545,16 @@ void RenderSystem::predictSceneInputUsers(){
             setSceneInputUser(entity, true, inputs | (found != sceneInputPoints.end() ? found->second : 0));
         }
     }
-    // the particle systems about to load (their effect bound, the render not yet)
+    // the particle systems about to load (their effect bound, the render not yet), and their
+    // children (a child read after the root loaded): with what the loaded part of the tree reads
     auto particleArray = scene->getComponentArray<ParticleSystemComponent>();
     for (size_t i = 0; i < particleArray->size(); i++){
         const ParticleSystemComponent& particles = particleArray->getComponentFromIndex(i);
-        if (!particles.state || !particles.state->effect || particles.state->render.loaded)
+        if (!particles.state || !particles.state->effect)
             continue;
-        const particles::RendererModule& renderer = particles.state->effect->document.renderer;
-        std::shared_ptr<const ShaderManifest> manifest = findManifest(renderer.shader);
-        if (!manifest)
-            continue;
-        const uint32_t inputs = manifest->resolveRequire(ShaderReference::getEnabledFeatures(renderer.shader, renderer.shaderFeatures)) & ShaderRequire_SceneInputs;
+        const uint32_t inputs = predictedParticleInputs(particles.state->runtime, &particles.state->render);
         if (inputs)
-            setParticleSceneInputUser(particleArray->getEntity(i), inputs);
+            setParticleSceneInputUser(particleArray->getEntity(i), inputs | particleSceneInputs(particles.state->render));
     }
 }
 
@@ -11561,7 +11695,7 @@ bool RenderSystem::drawsSceneColorReader(Entity entity, Signature signature, Tra
     if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
         ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
         if (!particles.enabled || !particles.state || !particles.state->render.loaded ||
-                !(particles.state->render.sceneInputs & ShaderRequire_SceneColor) || !transform.visible)
+                !(particleSceneInputs(particles.state->render) & ShaderRequire_SceneColor) || !transform.visible)
             return false;
         return isParticleRenderActive(entity, camera.cullingMask) && particleBoundsVisible(*particles.state, camera);
     }
@@ -16137,7 +16271,7 @@ void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char
     for (size_t i = 0; i < particleArray->size(); i++) {
         const ParticleSystemComponent& particles = particleArray->getComponentFromIndex(i);
         if (particles.enabled && particles.state && particles.state->effect)
-            visit(particles.state->render.loaded, particleArray->getEntity(i), "particles");
+            visit(isParticleTreeLoaded(particles.state->runtime, particles.state->render), particleArray->getEntity(i), "particles");
     }
 
     // Check LineRendererComponents
@@ -18267,6 +18401,10 @@ void RenderSystem::drawFramePasses(){
     frameTime = Engine::getShaderTime();
     frameSceneTime = (float)scene->getSceneTime();
     updateDynamicResolution();
+    // Palette Swap's shared textures no binding holds are freed after 2 s (nothing to do,
+    // and no clock read, while none exists)
+    if (pixelart::PaletteSwapCache::size() > 0)
+        pixelart::PaletteSwapCache::sweep(std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count());
 
 #ifdef JASPERENGINE_EDITOR
     passDrawsOverlays = false;
@@ -19688,14 +19826,18 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 if (!(canvasSkipped && !passCanvasLayers.count(canvasSkipGroup)))
                     drawParticles(entity, particles, transform, camera, cameraTransform, colorPip);
             }else if (particles.enabled && particles.state && particles.state->render.loaded && transform.visible && isParticleRenderActive(entity, cullingMask)){
-                const particles::ParticleSystemState& state = *particles.state;
-                const Vector3 center = state.hasBounds ? Vector3((state.boundsMin[0] + state.boundsMax[0]) * 0.5f, (state.boundsMin[1] + state.boundsMax[1]) * 0.5f,
-                                                                 (state.boundsMin[2] + state.boundsMax[2]) * 0.5f)
-                                                       : transform.worldPosition;
-                TransparentRenderData data{TransparentRenderType::PARTICLES, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
-                                           (center - cameraTransform.worldPosition).length(), state.render.sortPriority, transparentOrder++};
-                data.particles = &particles;
-                transparentRenders.push_back(data);
+                particles::ParticleSystemState& state = *particles.state;
+                if (state.runtime.childCount() > 0){
+                    queueParticleTree(entity, particles, state.runtime, state.render, transform, cameraTransform, true, transparentOrder);
+                }else{
+                    const Vector3 center = state.hasBounds ? Vector3((state.boundsMin[0] + state.boundsMax[0]) * 0.5f, (state.boundsMin[1] + state.boundsMax[1]) * 0.5f,
+                                                                     (state.boundsMin[2] + state.boundsMax[2]) * 0.5f)
+                                                           : transform.worldPosition;
+                    TransparentRenderData data{TransparentRenderType::PARTICLES, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
+                                               (center - cameraTransform.worldPosition).length(), state.render.sortPriority, transparentOrder++};
+                    data.particles = &particles;
+                    transparentRenders.push_back(data);
+                }
             }
         }
 
@@ -19793,7 +19935,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }else if (renderData.type == TransparentRenderType::POINTS){
             drawPoints(renderData.entity, *renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
         }else if (renderData.type == TransparentRenderType::PARTICLES){
-            drawParticles(renderData.entity, *renderData.particles, *renderData.transform, camera, cameraTransform, colorPip);
+            drawParticles(renderData.entity, *renderData.particles, *renderData.transform, camera, cameraTransform, colorPip, renderData.emitter, renderData.emitterRender);
         }else if (renderData.type == TransparentRenderType::LINES){
             drawLines(renderData.entity, *renderData.lines, *renderData.transform, camera, cameraTransform, colorPip);
         }else if (renderData.type == TransparentRenderType::TRAIL){

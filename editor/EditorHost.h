@@ -130,6 +130,10 @@ namespace jasperengine::editor {
         virtual void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe);
         // Window > Audio > Audio Mixer with a .mixer (empty: the project's mixer, made on first use)
         virtual void openAudioMixerWindow(const std::filesystem::path& mixer = {});
+        // Window > Visual Effects > Particle Effect on a .particles (assets-relative), or on a
+        // GameObject's subtree (Open in Particle Effect)
+        virtual void openParticleEffect(const std::string& assetPath);
+        virtual void openParticleEffectSubtree(uint32_t sceneId, uint32_t root);
         // Window > Analysis > Build Report with an export's build-report.json (S53 R21)
         virtual void openBuildReport(const std::filesystem::path& report);
         // Window > Analysis > Mesh Optimization Audit (S53 R20)
@@ -147,6 +151,10 @@ namespace jasperengine::editor {
         // ... with a GameObject's submesh texture as the source and Assign on (the Inspector's
         // wand and "Normal Map..."); now: generate, save and assign without opening it
         virtual void openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now);
+        // Window > 2D > Palette on a palette (project-relative), with a texture's usage shown
+        // (project-relative; empty: none): the material inspector's "Show" of the colours that
+        // will not swap (S43 R33, R35). The base host does nothing.
+        virtual void openPaletteWindow(const std::string& palettePath, const std::string& texturePath);
 
         virtual InspectorWindow* getInspectorWindow() const;
         virtual CodeEditor* getCodeEditor() const;

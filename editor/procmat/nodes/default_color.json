@@ -1,0 +1,44 @@
+{
+ "code": [],
+ "description": "",
+ "format": 1,
+ "functions": [],
+ "id": "default_color",
+ "inputs": [
+  {
+   "default": "$default",
+   "label": "",
+   "name": "in",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Default color",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "$in($uv)",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "a": 1,
+    "b": 1,
+    "g": 1,
+    "r": 1
+   },
+   "label": "",
+   "name": "default",
+   "type": "color"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/default_color.mmg"
+ },
+ "type_version": 1
+}

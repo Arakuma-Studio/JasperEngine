@@ -7,32 +7,50 @@
 // lines. Every edit is a property command on the Catalog paths MCP uses too.
 
 #include "InspectorWindow.h"
+#include "PaletteAssetField.h"
 #include "widget/ColorPickerWindow.h"
 
 #include "App.h"
 #include "Backend.h"
+#include "EditorHost.h"
+#include "Out.h"
 #include "command/CommandHandle.h"
+#include "command/UndoTimeline.h"
 #include "command/type/ForkShaderCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "command/type/SetAssetMetaCmd.h"
 #include "component/PointsComponent.h"
 #include "external/IconsFontAwesome6.h"
+#include "jobs/JobSystem.h"
 #include "material/MaterialChange.h"
 #include "material/MaterialPresets.h"
+#include "pixelart/Palette.h"
+#include "pixelart/PaletteAssets.h"
+#include "pixelart/PaletteMaterial.h"
+#include "pixelart/PaletteSwap.h"
+#include "pixelart/PaletteSwapChecks.h"
+#include "pixelart/PaletteUse.h"
 #include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
+#include "texture/TextureImportSettings.h"
 #include "Theme.h"
 #include "util/Color.h"
 #include "util/FileDialogs.h"
+#include "util/FileUtils.h"
 #include "util/Util.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <optional>
+#include <set>
+#include <system_error>
 
 using namespace jasperengine;
 
@@ -318,6 +336,127 @@ namespace {
     }
 
 }
+
+// Palette Swap rows' state (S43 R35): what workers found about a sprite's texture, Detect, and the
+// caches the rows read every frame. File-local, in a namespace of its own (unity builds).
+namespace jasperengine::editor::inspectorpaletterows {
+namespace {
+
+    namespace pxc = jasperengine::pixelart;
+
+    // a worker's reading of a sprite's texture: its size, the colours the source does not hold
+    // (the rows' analysis) or the project palettes holding all of them (Detect)
+    struct TextureFindings {
+        bool loaded = false;
+        std::string error;
+        int width = 0, height = 0;
+        int64_t offColours = -1;
+        std::vector<std::string> covering;
+    };
+
+    struct PaletteSlotState {
+        std::string analysisKey;
+        jobs::Task<TextureFindings> analysis;
+        TextureFindings found;          // the finished analysis of analysisKey
+        bool analysisReady = false;
+
+        jobs::Task<TextureFindings> detect;
+        bool detecting = false;
+        bool detectAuto = false;        // started by ticking the feature: fills an empty Source only
+        std::string detectTexture;
+        std::string detectStatus;
+        std::vector<std::string> detectChoices;
+
+        std::string checkKey;
+        double checkTime = -1.0;
+        editor::pixelart::PaletteSwapTextureCheck check;
+
+        std::string buildKey;
+        std::vector<pxc::Diagnostic> diagnostics;
+        std::vector<std::string> rowNames;
+    };
+
+    // by scene, GameObject, material and uniform; a selection that moves on leaves its entries,
+    // trimmed when they pile up (a running job finishes unseen)
+    std::map<std::string, PaletteSlotState>& paletteSlotStates() {
+        static std::map<std::string, PaletteSlotState> states;
+        return states;
+    }
+
+    // materials whose Palette Swap was just ticked on: their rows Detect the Source once
+    std::set<std::string>& paletteAutoDetects() {
+        static std::set<std::string> requests;
+        return requests;
+    }
+
+    std::string paletteMaterialKey(uint32_t sceneId, Entity entity, const std::string& materialPrefix) {
+        return std::to_string(sceneId) + "/" + std::to_string((uint64_t)entity) + "/" + materialPrefix;
+    }
+
+    // a file's modification time and size: an edit on disk reruns the analysis
+    std::string paletteFileStamp(const std::filesystem::path& file) {
+        std::error_code error;
+        const auto written = std::filesystem::last_write_time(file, error);
+        const long long time = error ? 0 : (long long)written.time_since_epoch().count();
+        const uintmax_t size = std::filesystem::file_size(file, error);
+        return std::to_string(time) + ":" + std::to_string(error ? uintmax_t(0) : size);
+    }
+
+    std::string paletteBindingKey(const pxc::PaletteBinding& binding) {
+        std::string key = binding.source.path + (binding.useVariants ? "|v" : "|-");
+        for (const pxc::PaletteTarget& target : binding.targets) key += "|" + target.text();
+        return key + "#" + std::to_string(pxc::PaletteLibrary::generation());
+    }
+
+    std::string paletteFileName(const std::string& path) {
+        return FileUtils::pathToUtf8(FileUtils::pathFromUtf8(path).filename());
+    }
+
+    // the materials' palette bindings with one slot's replaced (an empty binding is dropped)
+    pxc::ShaderPalettes withPaletteBinding(const pxc::ShaderPalettes& palettes, const std::string& uniform, const pxc::PaletteBinding& binding) {
+        pxc::ShaderPalettes changed;
+        bool placed = false;
+        for (const auto& entry : palettes) {
+            if (entry.first != uniform) {
+                changed.push_back(entry);
+            } else if (!placed) {
+                placed = true;
+                if (!binding.empty()) changed.push_back({uniform, binding});
+            }
+        }
+        if (!placed && !binding.empty()) changed.push_back({uniform, binding});
+        return changed;
+    }
+
+    // a warning line of the value column, wrapped; its tooltip says more
+    void paletteWarningRow(const ImVec4& color, const std::string& text, const std::string& tooltip) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(1);
+        ImGui::PushStyleColor(ImGuiCol_Text, color);
+        ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " %s", text.c_str());
+        ImGui::PopStyleColor();
+        if (!tooltip.empty() && ImGui::IsItemHovered()) {
+            ImGui::BeginTooltip();
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32.0f);
+            ImGui::TextUnformatted(tooltip.c_str());
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
+    }
+
+    // a finished job's findings (a failed or cancelled one reads as unloaded)
+    TextureFindings takeFindings(jobs::Task<TextureFindings>& task) {
+        TextureFindings found;
+        if (task.status() == jobs::TaskStatus::Completed) found = task.get();
+        else found.error = "the reading was cancelled";
+        task.reset();
+        return found;
+    }
+
+}
+}
+
+using namespace jasperengine::editor::inspectorpaletterows;
 
 void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentShader, ShaderType type,
                                                      const std::function<void(const std::string&)>& setShader,
@@ -621,6 +760,19 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         }
     };
 
+    // a material's Palette Swap rows (S43): "submeshes[N].material." (an extra pass has none)
+    std::string palettePrefix;
+    const std::string materialParamsSuffix = "material.shaderParams";
+    if (!manifest->palettes.empty() && paramsProperty.size() > materialParamsSuffix.size() &&
+        paramsProperty.compare(paramsProperty.size() - materialParamsSuffix.size(), materialParamsSuffix.size(), materialParamsSuffix) == 0)
+        palettePrefix = paramsProperty.substr(0, paramsProperty.size() - std::strlen("shaderParams"));
+    bool paletteSlotOn = false;
+    if (!palettePrefix.empty()) {
+        const std::vector<std::string> enabledDefines = manifest->resolveFeatures(features);
+        for (const ShaderManifestPalette& slot : manifest->palettes)
+            paletteSlotOn = paletteSlotOn || slot.isEnabled(enabledDefines);
+    }
+
     // ---- features and keywords (compile-time: a change builds another variant, off the UI thread)
     for (const ShaderManifestFeature& feature : manifest->features) {
         ImGui::PushID(("feature_" + feature.define).c_str());
@@ -631,6 +783,13 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
             std::vector<std::string> changed = features;
             ShaderLibraryValues::setFeature(changed, shader, feature.define, enabled);
             setFeatures(changed);
+            // ticking Palette Swap on fills an empty Source when one project palette covers the
+            // sprite (R18): the rows start Detect once the slot shows
+            const bool paletteFeature = std::any_of(manifest->palettes.begin(), manifest->palettes.end(), [&](const ShaderManifestPalette& slot) {
+                return std::find(slot.features.begin(), slot.features.end(), feature.define) != slot.features.end();
+            });
+            if (enabled && paletteFeature && !palettePrefix.empty())
+                paletteAutoDetects().insert(paletteMaterialKey(sceneId, entity, palettePrefix));
         }
         bool hovered = ImGui::IsItemHovered();
         const std::string featureTip = feature.define + (feature.defaultOn ? " (on by default)" : "");
@@ -724,6 +883,10 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
     // ---- parameters
     for (const ShaderManifestProperty& property : manifest->properties) {
         if (!featureOn(property.feature))
+            continue;
+        // the Palette Swap rows draw these as Active Palette and Cycling Speed
+        if (paletteSlotOn && (property.member == jasperengine::pixelart::kPaletteRowParam ||
+                              property.member == jasperengine::pixelart::kPaletteCycleSpeedParam))
             continue;
         const bool hasValue = ShaderUniforms::has(params, property.member);
         UniformSource source = UniformSource::ShaderDefault;
@@ -835,6 +998,10 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         }
         ImGui::PopID();
     }
+
+    // ---- palette bindings (S43 Palette Swap)
+    if (paletteSlotOn)
+        drawShaderPaletteRows(cpType, sceneProject, entity, shader, *manifest, palettePrefix, features, params, onValueChanged);
     prefabRowProperty.clear();
 
     // what this variant reads of the scene (phase 3) and the cost: a material's, its extra
@@ -843,6 +1010,478 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
     planarReflectionInfoRow(sceneProject->scene, shader, features);
 
     return true;
+}
+
+void editor::InspectorWindow::drawShaderPaletteRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& shader,
+                                                    const ShaderManifest& manifest, const std::string& materialPrefix,
+                                                    const std::vector<std::string>& features, const ShaderUniformValues& params,
+                                                    const std::function<void()>& onValueChanged){
+    namespace pxc = jasperengine::pixelart;
+    namespace epx = jasperengine::editor::pixelart;
+    Scene* scene = sceneProject->scene;
+    const uint32_t sceneId = sceneProject->id;
+    const Material* material = Catalog::getPropertyRef<Material>(scene, entity, cpType, materialPrefix.substr(0, materialPrefix.size() - 1));
+    if (!material)
+        return;
+    const std::string palettesProperty = materialPrefix + "shaderPalettes";
+    const std::string paramsProperty = materialPrefix + "shaderParams";
+    // copies: a command may change them while the rows are drawn
+    const pxc::ShaderPalettes palettes = material->shaderPalettes.get();
+    const Texture baseTexture = material->baseColorTexture;
+    const std::string texture = baseTexture.isFramebuffer() ? std::string() : baseTexture.getPath();
+    const std::vector<std::string> enabled = manifest.resolveFeatures(features);
+    const ImGuiStyle& style = ImGui::GetStyle();
+
+    auto setPalettes = [&](const pxc::ShaderPalettes& value, bool wroteCopy) {
+        CommandHandle::get(sceneId)->addCommandNoMerge(
+            new PropertyCmd<pxc::ShaderPalettes>(project, sceneId, entity, cpType, palettesProperty, value, onValueChanged));
+        // the built-in's copy and the binding that uses it: one undo step
+        if (wroteCopy)
+            epx::linkPaletteCopy(*project, sceneId);
+    };
+    auto setParams = [&](const ShaderUniformValues& value, bool continuous) {
+        Command* paramsCmd = new PropertyCmd<ShaderUniformValues>(project, sceneId, entity, cpType, paramsProperty, value, onValueChanged);
+        if (continuous) {
+            cmd = paramsCmd;
+            CommandHandle::get(sceneId)->addCommand(paramsCmd);
+        } else {
+            CommandHandle::get(sceneId)->addCommandNoMerge(paramsCmd);
+        }
+    };
+    // a palette field's pick as stored: an assets-relative path ("" for none); a built-in is
+    // copied into the project first
+    auto resolvePick = [&](const std::string& picked, std::string& stored, bool& wroteCopy) {
+        wroteCopy = false;
+        stored.clear();
+        if (picked.empty())
+            return true;
+        epx::ResolvedPalette resolved;
+        std::string error;
+        if (!epx::usePalette(*project, picked, resolved, wroteCopy, error)) {
+            Out::warning("Palette Swap: %s", error.c_str());
+            return false;
+        }
+        stored = resolved.assetPath;
+        return true;
+    };
+
+    std::map<std::string, PaletteSlotState>& states = paletteSlotStates();
+    if (states.size() > 64)
+        states.clear();
+    const std::string materialKey = paletteMaterialKey(sceneId, entity, materialPrefix);
+    bool paramsDrawn = false;
+
+    for (const ShaderManifestPalette& slot : manifest.palettes) {
+        if (!slot.isEnabled(enabled))
+            continue;
+        const std::string& id = slot.uniform;
+        ImGui::PushID(("palette_" + id).c_str());
+        PaletteSlotState& state = states[materialKey + "/" + id];
+        pxc::PaletteBinding binding;
+        for (const auto& entry : palettes) {
+            if (entry.first == id) {
+                binding = entry.second;
+                break;
+            }
+        }
+        const std::string suffix = manifest.palettes.size() > 1 ? " (" + rowLabel(slot.label, id) + ")" : std::string();
+        std::shared_ptr<const pxc::Palette> source = binding.source.empty() ? nullptr : pxc::PaletteLibrary::get(binding.source.path);
+        auto setBinding = [&](const pxc::PaletteBinding& value, bool wroteCopy) {
+            setPalettes(withPaletteBinding(palettes, id, value), wroteCopy);
+        };
+
+        // ---- Detect (R18): a worker reads the texture against every project palette
+        auto startDetect = [&](bool automatic) {
+            if (texture.empty() || state.detecting)
+                return;
+            std::vector<epx::ProjectPalette> candidates = epx::listProjectPalettes(*project);
+            const std::filesystem::path file = project->getAssetsPath() / FileUtils::pathFromUtf8(texture);
+            jobs::SubmitOptions options;
+            options.lane = jobs::Lane::Background;
+            options.name = "palette-detect";
+            state.detect = jobs::submit([file, candidates]() {
+                TextureFindings found;
+                std::optional<epx::RgbaImage> image = epx::loadRgbaImage(file, &found.error);
+                if (!image)
+                    return found;
+                found.loaded = true;
+                found.width = image->width;
+                found.height = image->height;
+                found.covering = epx::palettesCoveringImage(*image, candidates);
+                return found;
+            }, options);
+            state.detecting = true;
+            state.detectAuto = automatic;
+            state.detectTexture = texture;
+            state.detectStatus.clear();
+            state.detectChoices.clear();
+        };
+        if (paletteAutoDetects().erase(materialKey) && binding.source.empty())
+            startDetect(true);
+        if (state.detecting && state.detect.isReady()) {
+            state.detecting = false;
+            const TextureFindings found = takeFindings(state.detect);
+            const std::string name = paletteFileName(state.detectTexture);
+            if (!found.loaded) {
+                state.detectStatus = "Cannot read " + name + (found.error.empty() ? std::string() : ": " + found.error);
+            } else if (found.covering.size() == 1) {
+                state.detectStatus = paletteFileName(found.covering[0]) + " holds every colour of " + name;
+                if (!state.detectAuto || binding.source.empty()) {
+                    pxc::PaletteBinding changed = binding;
+                    changed.source = found.covering[0];
+                    setBinding(changed, false);
+                }
+            } else if (found.covering.empty()) {
+                state.detectStatus = "No project palette holds every colour of " + name + " (Extract Palette in the Project window makes one)";
+            } else {
+                state.detectStatus = std::to_string(found.covering.size()) + " project palettes hold every colour of " + name + ": pick one";
+                state.detectChoices = found.covering;
+            }
+            // an automatic Detect that found nothing to fill stays quiet
+            if (state.detectAuto && found.covering.size() != 1)
+                state.detectStatus.clear();
+        }
+
+        // ---- Source Palette
+        prefabRowProperty = palettesProperty;
+        if (propertyHeader("Source Palette" + suffix, -1, !binding.source.empty())) {
+            pxc::PaletteBinding changed = binding;
+            changed.source.clear();
+            setBinding(changed, false);
+        }
+        const float detectWidth = ImGui::CalcTextSize("Detect").x + style.FramePadding.x * 2.0f;
+        std::string picked;
+        if (paletteAssetField(("##palette_source_" + id).c_str(), *project, binding.source.path, picked, true,
+                              -(detectWidth + style.ItemSpacing.x))) {
+            std::string stored;
+            bool wroteCopy = false;
+            if (resolvePick(picked, stored, wroteCopy)) {
+                pxc::PaletteBinding changed = binding;
+                changed.source = stored;
+                setBinding(changed, wroteCopy);
+            }
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(texture.empty() || state.detecting);
+        if (ImGui::Button(("Detect##palette_detect_" + id).c_str()))
+            startDetect(false);
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("%s", texture.empty() ? "The material has no Base Texture to detect a palette from"
+                                    : "Fill Source with the one project palette that holds every visible colour of the Base Texture");
+        if (state.detecting || !state.detectStatus.empty()) {
+            ImGui::PushTextWrapPos(0.0f);
+            if (state.detecting)
+                ImGui::TextDisabled("Detecting the palette of %s...", paletteFileName(state.detectTexture).c_str());
+            else
+                ImGui::TextDisabled("%s", state.detectStatus.c_str());
+            ImGui::PopTextWrapPos();
+            if (!state.detectChoices.empty() && ImGui::IsItemHovered()) {
+                std::string choices;
+                for (const std::string& choice : state.detectChoices) choices += (choices.empty() ? "" : "\n") + choice;
+                ImGui::SetTooltip("%s", choices.c_str());
+            }
+        }
+
+        // ---- Use Variants
+        bool useVariants = binding.useVariants;
+        const bool resetVariants = propertyHeader("Use Variants" + suffix, -1, !binding.useVariants);
+        if (ImGui::Checkbox(("##palette_use_variants_" + id).c_str(), &useVariants) || resetVariants) {
+            if (resetVariants)
+                useVariants = true;
+            pxc::PaletteBinding changed = binding;
+            changed.useVariants = useVariants;
+            setBinding(changed, false);
+        }
+        const int sourceVariants = source ? (int)source->variants.size() : 0;
+        ImGui::SameLine();
+        ImGui::TextDisabled("%d %s", sourceVariants, sourceVariants == 1 ? "variant" : "variants");
+        ImGui::SetItemTooltip("Rows 1 and on are the Source's variants (team colours, made with Create Variant in the Palette window), "
+                              "then the Extra Targets");
+
+        // ---- Extra Targets: a reorderable list (drag the grip; its context menu moves and removes)
+        const int variantRows = (binding.useVariants && source) ? sourceVariants : 0;
+        const int maxRows = pxc::kSwapTargetRows - 1;
+        if (propertyHeader("Extra Targets" + suffix, -1, !binding.targets.empty())) {
+            pxc::PaletteBinding changed = binding;
+            changed.targets.clear();
+            setBinding(changed, false);
+        }
+        ImGui::BeginDisabled(binding.source.empty() || variantRows + (int)binding.targets.size() >= maxRows);
+        if (ImGui::Button((std::string(ICON_FA_PLUS " Add Target##palette_target_add_") + id).c_str())) {
+            // a new row starts as the source's own colours: pick the palette or variant it shows
+            pxc::PaletteBinding changed = binding;
+            pxc::PaletteTarget target;
+            target.palette = binding.source;
+            changed.targets.push_back(target);
+            setBinding(changed, false);
+        }
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("A row of another palette's colours by index, or one of its variants (%d rows at most, the variants "
+                              "included)", maxRows);
+        int moveFrom = -1, moveTo = -1, removeAt = -1;
+        for (size_t i = 0; i < binding.targets.size(); i++) {
+            const pxc::PaletteTarget& target = binding.targets[i];
+            ImGui::PushID((int)i);
+            propertyHeader("Row " + std::to_string(1 + variantRows + (int)i), -1, false, false, true);
+            ImGui::Button(ICON_FA_GRIP_VERTICAL "##palette_target_grip");
+            if (ImGui::BeginDragDropSource()) {
+                const int from = (int)i;
+                ImGui::SetDragDropPayload("palette_target_row", &from, sizeof(from));
+                ImGui::Text("Row %d: %s", 1 + variantRows + (int)i, target.text().c_str());
+                ImGui::EndDragDropSource();
+            }
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("palette_target_row")) {
+                    moveFrom = *(const int*)payload->Data;
+                    moveTo = (int)i;
+                }
+                ImGui::EndDragDropTarget();
+            }
+            ImGui::SetItemTooltip("Drag to reorder; right-click to move or remove");
+            if (ImGui::BeginPopupContextItem("##palette_target_menu")) {
+                if (ImGui::MenuItem("Move Up", nullptr, false, i > 0)) {
+                    moveFrom = (int)i;
+                    moveTo = (int)i - 1;
+                }
+                if (ImGui::MenuItem("Move Down", nullptr, false, i + 1 < binding.targets.size())) {
+                    moveFrom = (int)i;
+                    moveTo = (int)i + 1;
+                }
+                if (ImGui::MenuItem("Remove"))
+                    removeAt = (int)i;
+                ImGui::EndPopup();
+            }
+            ImGui::SameLine();
+            const float removeWidth = ImGui::CalcTextSize(ICON_FA_XMARK).x + style.FramePadding.x * 2.0f;
+            const float variantWidth = std::max(ImGui::GetFontSize() * 4.0f, (ImGui::GetContentRegionAvail().x - removeWidth) * 0.38f);
+            std::string targetPick;
+            if (paletteAssetField("##palette_target_palette", *project, target.palette.path, targetPick, false,
+                                  -(variantWidth + removeWidth + style.ItemSpacing.x * 2.0f))) {
+                std::string stored;
+                bool wroteCopy = false;
+                if (resolvePick(targetPick, stored, wroteCopy) && !stored.empty()) {
+                    pxc::PaletteBinding changed = binding;
+                    changed.targets[i].palette = stored;
+                    changed.targets[i].variant.clear();
+                    setBinding(changed, wroteCopy);
+                }
+            }
+            ImGui::SameLine();
+            std::shared_ptr<const pxc::Palette> targetPalette = target.palette.empty() ? nullptr : pxc::PaletteLibrary::get(target.palette.path);
+            ImGui::SetNextItemWidth(variantWidth);
+            if (ImGui::BeginCombo("##palette_target_variant", target.variant.empty() ? "By index" : target.variant.c_str())) {
+                auto pickVariant = [&](const std::string& variant) {
+                    pxc::PaletteBinding changed = binding;
+                    changed.targets[i].variant = variant;
+                    setBinding(changed, false);
+                };
+                if (ImGui::Selectable("By index##palette_variant_none", target.variant.empty()) && !target.variant.empty())
+                    pickVariant(std::string());
+                ImGui::SetItemTooltip("The palette's own colours, index by index");
+                if (targetPalette) {
+                    for (const pxc::PaletteVariant& variant : targetPalette->variants) {
+                        if (ImGui::Selectable((variant.name + "##palette_variant_" + variant.name).c_str(), variant.name == target.variant) &&
+                            variant.name != target.variant)
+                            pickVariant(variant.name);
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SetItemTooltip("The colours of the row: the palette's by index, or one of its variants");
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_XMARK "##palette_target_remove"))
+                removeAt = (int)i;
+            ImGui::SetItemTooltip("Remove this row");
+            ImGui::PopID();
+        }
+        if (moveFrom >= 0 && moveTo >= 0 && moveFrom != moveTo && moveFrom < (int)binding.targets.size()) {
+            pxc::PaletteBinding changed = binding;
+            const pxc::PaletteTarget moved = changed.targets[(size_t)moveFrom];
+            changed.targets.erase(changed.targets.begin() + moveFrom);
+            changed.targets.insert(changed.targets.begin() + moveTo, moved);
+            setBinding(changed, false);
+        } else if (removeAt >= 0) {
+            pxc::PaletteBinding changed = binding;
+            changed.targets.erase(changed.targets.begin() + removeAt);
+            setBinding(changed, false);
+        }
+
+        // the swap textures as the renderer builds them, and the rows they name
+        const std::string buildKey = paletteBindingKey(binding);
+        if (buildKey != state.buildKey) {
+            state.buildKey = buildKey;
+            state.diagnostics = epx::paletteSwapDiagnostics(binding);
+            state.rowNames = pxc::paletteRowNames(*material, id);
+        }
+
+        // ---- Active Palette and Cycling Speed: the material's paletteRow and paletteCycleSpeed
+        // (uniform values: the Scene view shows a change at once)
+        if (!paramsDrawn) {
+            paramsDrawn = true;
+            const ShaderManifestProperty* rowProperty = manifest.findProperty(pxc::kPaletteRowParam);
+            if (rowProperty && ShaderManifest::isRowShown(rowProperty->feature, enabled)) {
+                const bool hasRow = ShaderUniforms::has(params, pxc::kPaletteRowParam);
+                const float rowValue = hasRow ? ShaderUniforms::get(params, pxc::kPaletteRowParam).x : rowProperty->defaultValue.x;
+                const int row = std::clamp((int)std::floor(rowValue + 0.5f), 0, pxc::kSwapTargetRows - 1);
+                auto rowName = [&](int index) {
+                    if (index == 0)
+                        return std::string("Original");
+                    if (index < (int)state.rowNames.size())
+                        return state.rowNames[(size_t)index].empty() ? "Row " + std::to_string(index) : state.rowNames[(size_t)index];
+                    return "Row " + std::to_string(index) + " (not defined: shows the last row)";
+                };
+                prefabRowProperty = paramsProperty;
+                if (propertyHeader("Active Palette", -1, hasRow)) {
+                    ShaderUniformValues changed = params;
+                    ShaderUniforms::remove(changed, pxc::kPaletteRowParam);
+                    setParams(changed, false);
+                }
+                ImGui::SetNextItemWidth(-1);
+                if (ImGui::BeginCombo(("##palette_row_" + id).c_str(), rowName(row).c_str())) {
+                    for (int index = 0; index < (int)state.rowNames.size(); index++) {
+                        const std::string label = rowName(index) + "##palette_row_item_" + std::to_string(index);
+                        if (ImGui::Selectable(label.c_str(), index == row) && index != row) {
+                            ShaderUniformValues changed = params;
+                            ShaderUniforms::set(changed, pxc::kPaletteRowParam, Vector4((float)index, 0.0f, 0.0f, 0.0f));
+                            setParams(changed, false);
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::SetItemTooltip("The row the sprite draws with (paletteRow; Lua sprite.palette): Original, the Source's "
+                                      "variants, then the Extra Targets");
+            }
+            const ShaderManifestProperty* speedProperty = manifest.findProperty(pxc::kPaletteCycleSpeedParam);
+            if (speedProperty && ShaderManifest::isRowShown(speedProperty->feature, enabled)) {
+                const bool hasSpeed = ShaderUniforms::has(params, pxc::kPaletteCycleSpeedParam);
+                float speed = hasSpeed ? ShaderUniforms::get(params, pxc::kPaletteCycleSpeedParam).x : speedProperty->defaultValue.x;
+                prefabRowProperty = paramsProperty;
+                if (propertyHeader("Cycling Speed", -1, hasSpeed)) {
+                    ShaderUniformValues changed = params;
+                    ShaderUniforms::remove(changed, pxc::kPaletteCycleSpeedParam);
+                    setParams(changed, false);
+                }
+                ImGui::SetNextItemWidth(-1);
+                if (ImGui::DragFloat(("##palette_cycle_speed_" + id).c_str(), &speed, 0.01f, 0.0f, 0.0f, "%.2f")) {
+                    ShaderUniformValues changed = params;
+                    ShaderUniforms::set(changed, pxc::kPaletteCycleSpeedParam, Vector4(std::isfinite(speed) ? speed : 0.0f, 0.0f, 0.0f, 0.0f));
+                    setParams(changed, true);
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit() && cmd) {
+                    cmd->setNoMerge();
+                    cmd = nullptr;
+                }
+                ImGui::SetItemTooltip("How fast the Source's cycling ramps turn (paletteCycleSpeed): 1 as authored, negative "
+                                      "reverses, 0 freezes");
+            }
+        }
+
+        // ---- warnings: the binding's build errors (R14)
+        for (const pxc::Diagnostic& diagnostic : state.diagnostics) {
+            const bool error = diagnostic.severity == pxc::Diagnostic::Severity::Error;
+            paletteWarningRow(error ? Theme::Colors::ErrorText : Theme::Colors::WarningText, diagnostic.message,
+                              diagnostic.fix.empty() ? diagnostic.kind : diagnostic.kind + ": " + diagnostic.fix);
+        }
+
+        if (!texture.empty()) {
+            // the texture against the source, read on a worker (decoding a large sheet is not a
+            // frame's work); rerun when the image, the binding or the palette's file change
+            const std::filesystem::path file = project->getAssetsPath() / FileUtils::pathFromUtf8(texture);
+            const std::string analysisKey = FileUtils::pathToUtf8(file) + "|" + paletteFileStamp(file) + "|" + binding.source.path + "|" +
+                                            std::to_string(binding.source.empty() ? 0u : pxc::PaletteLibrary::version(binding.source.path));
+            if (analysisKey != state.analysisKey) {
+                state.analysisKey = analysisKey;
+                state.analysisReady = false;
+                state.found = TextureFindings();
+                state.analysis.reset();
+                if (source) {
+                    jobs::SubmitOptions options;
+                    options.lane = jobs::Lane::Background;
+                    options.name = "palette-swap-usage";
+                    state.analysis = jobs::submit([file, source]() {
+                        TextureFindings found;
+                        std::optional<epx::RgbaImage> image = epx::loadRgbaImage(file, &found.error);
+                        if (!image)
+                            return found;
+                        found.loaded = true;
+                        found.width = image->width;
+                        found.height = image->height;
+                        found.offColours = epx::paletteSwapOffPaletteColours(*image, *source);
+                        return found;
+                    }, options);
+                }
+            }
+            if (state.analysis.isValid() && state.analysis.isReady()) {
+                state.found = takeFindings(state.analysis);
+                state.analysisReady = true;
+            }
+
+            // ---- R15: lossy import settings or a filtered sampler, rechecked each second (a
+            // change in the Texture Importer, undo)
+            const std::string checkKey = texture + "|" + std::to_string((int)baseTexture.getMinFilter()) + "|" +
+                                         std::to_string((int)baseTexture.getMagFilter()) + "|" + std::to_string(state.found.width) + "x" +
+                                         std::to_string(state.found.height);
+            const double now = ImGui::GetTime();
+            if (checkKey != state.checkKey || now - state.checkTime > 1.0) {
+                state.checkKey = checkKey;
+                state.checkTime = now;
+                state.check = epx::checkPaletteSwapTexture(*project, *material, shader, state.found.width, state.found.height);
+            }
+            if (state.check.lossy()) {
+                paletteWarningRow(Theme::Colors::WarningText, state.check.message(),
+                                  "Palette Swap matches exact colours: compression, mipmaps, a resize or filtering change them, "
+                                  "and a changed colour draws unswapped.");
+                // the project's Texture Strategy is the one reason a texture's settings cannot remove
+                const bool fixable = state.check.reasons.size() > (state.check.projectResize ? 1u : 0u);
+                ImGui::BeginDisabled(!fixable);
+                epx::PaletteSwapTextureFix fix;
+                if (ImGui::Button(("Fix##palette_lossless_fix_" + id).c_str()) &&
+                    epx::planPaletteSwapTextureFix(*project, *material, state.check, fix)) {
+                    CommandHistory* projectHistory = project->getProjectCommandHistory();
+                    bool importWritten = false;
+                    bool samplerWritten = false;
+                    if (fix.importChanged) {
+                        Command* meta = new SetAssetMetaCmd(project, project->normalizeToProjectRelative(project->getAssetsPath() / FileUtils::pathFromUtf8(fix.texture)),
+                                                            TextureImportSettings::metaKey, fix.importSettings);
+                        meta->setNoMerge();
+                        importWritten = projectHistory->addCommand(meta);
+                    }
+                    if (fix.samplerChanged)
+                        samplerWritten = CommandHandle::get(sceneId)->addCommandNoMerge(
+                            new PropertyCmd<Texture>(project, sceneId, entity, cpType, materialPrefix + "baseColorTexture", fix.sampler, onValueChanged));
+                    // the import settings (project history) and the sampler (the scene's): one undo step
+                    if (importWritten && samplerWritten)
+                        UndoTimeline::link({projectHistory, CommandHandle::get(sceneId)});
+                    state.checkKey.clear();
+                }
+                ImGui::EndDisabled();
+                ImGui::SetItemTooltip("%s", state.check.projectResize
+                    ? "Lossless, no mipmaps, a Max Size that keeps the image and Nearest filtering, in one undo step. The project's "
+                      "Texture Strategy (Project Settings > Graphics) still resizes it."
+                    : "Lossless, no mipmaps, a Max Size that keeps the image and Nearest filtering, in one undo step");
+            }
+
+            // ---- the colours that will not swap
+            if (state.analysisReady && state.found.offColours > 0) {
+                const long long count = (long long)state.found.offColours;
+                paletteWarningRow(Theme::Colors::WarningText,
+                                  count == 1 ? std::string("1 opaque colour of this sprite is not in the source palette (it will not swap)")
+                                             : std::to_string(count) + " opaque colours of this sprite are not in the source palette (they will not swap)",
+                                  "Anti-aliased, off-palette and filtered pixels draw unchanged. Show lists them in the Palette window's Usage.");
+                if (ImGui::Button(("Show##palette_offpalette_show_" + id).c_str())) {
+                    const std::string palettePath = FileUtils::pathToGenericUtf8(
+                        project->normalizeToProjectRelative(project->getAssetsPath() / FileUtils::pathFromUtf8(binding.source.path)));
+                    const std::string texturePath = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file));
+                    getEditorHost().openPaletteWindow(palettePath, texturePath);
+                }
+                ImGui::SetItemTooltip("Open the Source in the Palette window with this texture's usage");
+            } else if (state.analysisReady && !state.found.loaded && !state.found.error.empty()) {
+                paletteWarningRow(Theme::Colors::WarningText, "Cannot read " + paletteFileName(texture) + ": " + state.found.error, std::string());
+            }
+        }
+        ImGui::PopID();
+    }
+    prefabRowProperty.clear();
 }
 
 bool editor::InspectorWindow::drawMaterialShaderRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,

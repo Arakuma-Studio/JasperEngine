@@ -1,0 +1,222 @@
+{
+ "connections": [
+  {
+   "from": "buffer_2",
+   "from_port": 0,
+   "to": "fast_blur_shader",
+   "to_port": 0
+  },
+  {
+   "from": "fast_blur_shader",
+   "from_port": 0,
+   "to": "buffer_3",
+   "to_port": 0
+  },
+  {
+   "from": "buffer_3",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "fast_blur_shader",
+   "from_port": 1,
+   "to": "gen_outputs",
+   "to_port": 1
+  },
+  {
+   "from": "fast_blur_shader",
+   "from_port": 2,
+   "to": "gen_outputs",
+   "to_port": 2
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "ensure_greyscale",
+   "to_port": 0
+  },
+  {
+   "from": "ensure_greyscale",
+   "from_port": 0,
+   "to": "buffer_2",
+   "to_port": 0
+  }
+ ],
+ "description": "Applies an approximated gaussian blur",
+ "format": 1,
+ "id": "fast_blur",
+ "inputs": [
+  {
+   "description": "The input image",
+   "group_size": 0,
+   "label": "Input",
+   "name": "input",
+   "type": "rgba"
+  }
+ ],
+ "kind": "graph",
+ "name": "Fast Blur",
+ "nodes": [
+  {
+   "id": "fast_blur_shader",
+   "parameters": {
+    "quality": 1,
+    "sigma": 100,
+    "strength": 1
+   },
+   "seed": -27696,
+   "type": "fast_blur_shader"
+  },
+  {
+   "id": "buffer_2",
+   "parameters": {
+    "size": 11
+   },
+   "seed": -48026,
+   "type": "buffer",
+   "version": 1
+  },
+  {
+   "id": "buffer_3",
+   "parameters": {
+    "size": 11
+   },
+   "seed": -48026,
+   "type": "buffer",
+   "version": 1
+  },
+  {
+   "id": "ensure_greyscale",
+   "parameters": {},
+   "seed": 0.0,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "vec4(0.0)",
+      "description": "The input grayscale image",
+      "label": "",
+      "name": "input",
+      "short_description": "Input",
+      "type": "rgba"
+     }
+    ],
+    "instance": [],
+    "outputs": [
+     {
+      "description": "The remapped grayscale image",
+      "expr": "$input($uv)",
+      "label": "Output",
+      "type": "rgba"
+     }
+    ],
+    "parameters": []
+   }
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The input image with high frequency details blurred away",
+   "group_size": 0,
+   "label": "Blurred",
+   "name": "Blurred",
+   "type": "rgba"
+  },
+  {
+   "description": "The input image with only high frequency details kept.\nNote that all channels including alpha will be centered at 0, so this will need to be connected to a SwapChannels node to be seen in previews.",
+   "group_size": 0,
+   "label": "High Pass",
+   "name": "High Pass",
+   "type": "rgba"
+  },
+  {
+   "description": "The input image with high frequency details strengthened",
+   "group_size": 0,
+   "label": "Sharpened",
+   "name": "Sharpened",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 11,
+   "description": "The resolution used to sample the input image",
+   "first": 4,
+   "label": "Resolution",
+   "last": 13,
+   "links": [
+    {
+     "node": "buffer_2",
+     "param": "size"
+    },
+    {
+     "node": "buffer_3",
+     "param": "size"
+    }
+   ],
+   "name": "param0",
+   "short_description": "Resolution",
+   "type": "size"
+  },
+  {
+   "default": 100,
+   "description": "The standard deviation of the gaussian distribution",
+   "label": "Sigma",
+   "links": [
+    {
+     "node": "fast_blur_shader",
+     "param": "sigma"
+    }
+   ],
+   "max": 256,
+   "min": 1,
+   "name": "param1",
+   "short_description": "Sigma",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The quality of the effect (increasing quality increases compute time)",
+   "label": "Quality",
+   "links": [
+    {
+     "node": "fast_blur_shader",
+     "param": "quality"
+    }
+   ],
+   "max": 3,
+   "min": 0,
+   "name": "param2",
+   "short_description": "Quality",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "High pass multiplier. Unused for low pass output.",
+   "label": "Strength",
+   "links": [
+    {
+     "node": "fast_blur_shader",
+     "param": "strength"
+    }
+   ],
+   "max": 10,
+   "min": 0,
+   "name": "param3",
+   "short_description": "Strength",
+   "step": 0.1,
+   "type": "float"
+  }
+ ],
+ "short_description": "Fast Blur",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/fast_blur.mmg"
+ },
+ "type_version": 1
+}

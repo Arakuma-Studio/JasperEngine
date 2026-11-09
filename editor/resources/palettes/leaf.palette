@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Leaf",
+  "author": "pixelfx",
+  "description": "pixelfx's 'leaf' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "leaf"},
+  "columns": 8,
+  "colors": ["#0c1a0e", "#163418", "#225224", "#357530", "#4f9a3a", "#7cc048", "#b4e070", "#e4ffb0"],
+  "ramps": [
+    {"name": "leaf", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}

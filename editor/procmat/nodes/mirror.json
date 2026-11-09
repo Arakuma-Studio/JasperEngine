@@ -1,0 +1,75 @@
+{
+ "code": [],
+ "description": "Mirrors its input while applying an offset from the center",
+ "format": 1,
+ "functions": [
+  "uvmirror_h",
+  "uvmirror_v"
+ ],
+ "id": "mirror",
+ "inputs": [
+  {
+   "default": "vec4($uv, 0, 1)",
+   "description": "The input image",
+   "label": "",
+   "name": "i#",
+   "short_description": "Input#",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Mirror",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the mirrored image",
+   "expr": "$i#(uvmirror_$direction($uv, $offset, $flip_sides ? -1.0 : 1.0))",
+   "label": "Output#",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The mirror direction (horizontal or vertical)",
+   "label": "Direction",
+   "name": "direction",
+   "short_description": "Direction",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Horizontal",
+     "value": "h"
+    },
+    {
+     "name": "Vertical",
+     "value": "v"
+    }
+   ]
+  },
+  {
+   "default": 0,
+   "description": "The offset from the center",
+   "label": "Offset",
+   "max": 1,
+   "min": 0,
+   "name": "offset",
+   "short_description": "Offset",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": false,
+   "label": "Flip sides",
+   "name": "flip_sides",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Mirror",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/mirror.mmg"
+ },
+ "type_version": 1
+}

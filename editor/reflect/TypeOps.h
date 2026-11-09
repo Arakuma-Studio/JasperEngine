@@ -219,6 +219,9 @@ namespace jasperengine::editor::reflect {
         bool shaderFeaturesFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
         YAML::Node shaderGlobalBindingsToYaml(const FieldDesc&, const void*, const EncodeContext&);
         bool shaderGlobalBindingsFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
+        YAML::Node shaderPalettesToYaml(const FieldDesc&, const void*, const EncodeContext&);
+        bool shaderPalettesFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
+        bool skipEmptyShaderPalettes(const FieldDesc&, const void*);
         bool skipEmptyShaderGlobalBindings(const FieldDesc&, const void* value);
         std::string charScalar(const FieldDesc&, const void*);
         bool charFromYaml(const FieldDesc&, const YAML::Node&, void*, const DecodeContext&, std::string&);
@@ -424,6 +427,14 @@ namespace jasperengine::editor::reflect {
             &detail::destroy<jasperengine::ShaderGlobalBindings>, &detail::copy<jasperengine::ShaderGlobalBindings>,
             &detail::equalByOperator<jasperengine::ShaderGlobalBindings>, &detail::shaderGlobalBindingsToYaml,
             &detail::shaderGlobalBindingsFromYaml, nullptr, nullptr, &detail::skipEmptyShaderGlobalBindings, false, nullptr,
+            &detail::customSchema};
+
+        // shaderPalettes: {uniform: {source, targets, useVariants}} (S43 Palette Swap), written only when set
+        inline constexpr TypeOps ShaderPalettes{"ShaderPalettes", Kind::Custom, PropertyType::Custom,
+            sizeof(jasperengine::pixelart::ShaderPalettes), &detail::construct<jasperengine::pixelart::ShaderPalettes>,
+            &detail::destroy<jasperengine::pixelart::ShaderPalettes>, &detail::copy<jasperengine::pixelart::ShaderPalettes>,
+            &detail::equalByOperator<jasperengine::pixelart::ShaderPalettes>, &detail::shaderPalettesToYaml,
+            &detail::shaderPalettesFromYaml, nullptr, nullptr, &detail::skipEmptyShaderPalettes, false, nullptr,
             &detail::customSchema};
 
         template<typename E>

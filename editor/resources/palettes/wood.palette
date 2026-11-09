@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Wood",
+  "author": "pixelfx",
+  "description": "pixelfx's 'wood' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "wood"},
+  "columns": 7,
+  "colors": ["#160c06", "#2e1a0c", "#4a2c14", "#6a421e", "#8e5c2c", "#b47c40", "#d8a464"],
+  "ramps": [
+    {"name": "wood", "colors": [0, 1, 2, 3, 4, 5, 6]}
+  ]
+}

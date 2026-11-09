@@ -18,6 +18,10 @@ namespace jasperengine::editor::cli {
     public:
         // argv[0] is the subcommand ("call", "batch", "list-tools" or "editors")
         static int run(int argc, char** argv, const char* executableName);
+        // After run(): the editor it started for --project stopped, or did not open the project within the
+        // spawn timeout, before any tool ran (exit 3 says only "connection"; this is the part of it where no
+        // editor came up at all)
+        static bool spawnFailed();
     };
 
 }

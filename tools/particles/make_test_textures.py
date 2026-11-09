@@ -5,7 +5,8 @@
 # Writes the textures of the particle GPU goldens (engine/tests/core/render/ParticlesGpuTest.cpp)
 # into engine/tests/core/fixtures/particles/textures: a soft spark, a 4 x 4 sprite sheet of numbered
 # colours (frame blending), and the two six-way smoke maps of a lit puff (RGBA layout:
-# A = right, top, back, opacity; B = left, bottom, front, emission). Deterministic: run it again
+# A = right, top, back, opacity; B = left, bottom, front, emission), and a lens distortion map
+# (library:particles DISTORTION: red and green 0.5 shift nothing). Deterministic: run it again
 # and the files are the same.
 #
 #   python3 tools/particles/make_test_textures.py
@@ -82,9 +83,24 @@ def sixway(size=64):
     return (size, size, a), (size, size, b)
 
 
+def distortion(size=64):
+    # outward from the centre, strongest half-way out, nothing at the centre and from the rim
+    rgba = bytearray()
+    for y in range(size):
+        for x in range(size):
+            dx = (x + 0.5) / size * 2 - 1
+            dy = (y + 0.5) / size * 2 - 1
+            r = math.sqrt(dx * dx + dy * dy)
+            amount = math.sin(math.pi * r) if 0.0 < r < 1.0 else 0.0
+            sx = dx / r * amount if r > 0.0 else 0.0
+            sy = dy / r * amount if r > 0.0 else 0.0
+            rgba += bytes((clamp(127.5 + 127.5 * sx), clamp(127.5 + 127.5 * sy), 128, 255))
+    return size, size, rgba
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
-    images = {"spark.png": spark(), "sheet.png": sheet()}
+    images = {"spark.png": spark(), "sheet.png": sheet(), "distortion.png": distortion()}
     images["sixway_a.png"], images["sixway_b.png"] = sixway()
     for name, (w, h, rgba) in images.items():
         with open(os.path.join(OUT, name), "wb") as f:

@@ -646,6 +646,7 @@ void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
     if (fields & SubmeshOverride_ShaderTextures) material.shaderTextures = savedMaterial.shaderTextures;
     if (fields & SubmeshOverride_ShaderFeatures) material.shaderFeatures = savedMaterial.shaderFeatures;
     if (fields & SubmeshOverride_ShaderGlobalBindings) material.shaderGlobalBindings = savedMaterial.shaderGlobalBindings;
+    if (fields & SubmeshOverride_ShaderPalettes) material.shaderPalettes = savedMaterial.shaderPalettes;
     if (fields & SubmeshOverride_BlendMode)      material.blendMode      = savedMaterial.blendMode;
     if (fields & SubmeshOverride_CullMode)       material.cullMode       = savedMaterial.cullMode;
     if (fields & SubmeshOverride_DepthWrite)     material.depthWrite     = savedMaterial.depthWrite;

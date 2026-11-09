@@ -6,6 +6,10 @@
 #include "window/widget/InputTextContextMenu.h"
 #include "window/AnimationWindow.h"
 #include "window/AnimatorWindow.h"
+#include "window/GraphEditorWindow.h"
+#include "graph/GraphEditorHooks.h"
+#include "graph/GraphRegistry.h"
+#include "window/ParticleEffectWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/ProjectWindow.h"
@@ -98,6 +102,32 @@
 namespace fs = std::filesystem;
 
 namespace jasperengine::editor::mcp {
+
+bool w3::isFlatPng(const std::vector<uint8_t>& png, std::string& colour) {
+    // what dithering and a resize leave on a blank render, in levels of 255. The whole image's
+    // range counts: a slow gradient is close between neighbours and far from end to end.
+    constexpr int FLAT_TOLERANCE = 2;
+    int w = 0, h = 0, n = 0;
+    unsigned char* pixels = stbi_load_from_memory(png.data(), static_cast<int>(png.size()), &w, &h, &n, 3);
+    if (!pixels) return false;
+    int low[3] = {255, 255, 255};
+    int high[3] = {0, 0, 0};
+    bool flat = true;
+    for (int i = 0; i < w * h && flat; i++) {
+        for (int c = 0; c < 3; c++) {
+            low[c] = std::min<int>(low[c], pixels[i * 3 + c]);
+            high[c] = std::max<int>(high[c], pixels[i * 3 + c]);
+            if (high[c] - low[c] > FLAT_TOLERANCE) flat = false;
+        }
+    }
+    if (flat && w * h > 0) {
+        char buffer[16];
+        snprintf(buffer, sizeof(buffer), "#%02x%02x%02x", pixels[0], pixels[1], pixels[2]);
+        colour = buffer;
+    }
+    stbi_image_free(pixels);
+    return flat;
+}
 
 namespace {
 
@@ -314,24 +344,6 @@ void captureScene(const CaptureJobPtr& job);
     return stbi_write_png_to_func(append, &png, outWidth, outHeight, 3, rgb.data(), outWidth * 3) != 0;
 }
 
-// True when every pixel of the PNG is the same colour (a blank render)
-bool isFlatPng(const std::vector<uint8_t>& png, std::string& colour) {
-    int w = 0, h = 0, n = 0;
-    unsigned char* pixels = stbi_load_from_memory(png.data(), static_cast<int>(png.size()), &w, &h, &n, 3);
-    if (!pixels) return false;
-    bool flat = true;
-    for (int i = 1; i < w * h && flat; i++) {
-        if (pixels[i * 3] != pixels[0] || pixels[i * 3 + 1] != pixels[1] || pixels[i * 3 + 2] != pixels[2]) flat = false;
-    }
-    if (flat && w * h > 0) {
-        char buffer[16];
-        snprintf(buffer, sizeof(buffer), "#%02x%02x%02x", pixels[0], pixels[1], pixels[2]);
-        colour = buffer;
-    }
-    stbi_image_free(pixels);
-    return flat;
-}
-
 // Fills image + common info, writes save_path, and finishes the job
 void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width, int height, int sourceWidth,
                    int sourceHeight, Json info) {
@@ -345,7 +357,7 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
     info["bytes"] = png.size();
 
     std::string colour;
-    if (isFlatPng(png, colour)) {
+    if (w3::isFlatPng(png, colour)) {
         info["flat_colour"] = colour;
         result.note = "The image is one flat colour (" + colour + "): nothing visible rendered there yet?";
     }
@@ -1506,6 +1518,15 @@ void focusWindowTool(const CallPtr& call) {
     Project* project = ctx.project();
     const std::string window = args.value("window", "");
     std::string imguiName;
+    // refused before any window opens: a failing call leaves the layout as it was
+    if (args.contains("pose") && window != "pose_animation") {
+        call->fail("pose: only for window \"pose_animation\".");
+        return;
+    }
+    if (args.contains("path") && window != "graph_editor") {
+        call->fail("path: only for window \"graph_editor\".");
+        return;
+    }
 
     if (window == "game") {
         ctx.gameWindow()->requestFocus();
@@ -1568,6 +1589,34 @@ void focusWindowTool(const CallPtr& call) {
         // it shows the selected GameObject's controller (or the .controller opened last)
         app.getAnimatorWindow()->setOpen(true);
         imguiName = AnimatorWindow::WINDOW_NAME;
+    } else if (window == "particle_effect") {
+        // it shows the .particles or the subtree opened last
+        app.getParticleEffectWindow()->setOpen(true);
+        imguiName = ParticleEffectWindow::WINDOW_NAME;
+    } else if (window == "graph_editor") {
+        // `path` opens that graph where a double-click on it does (its kind's window: a .procmat's is
+        // Procedural Material, a .noisegraph's Noise Graph); without it, the one open
+        GraphEditorWindow* graphs = app.getGraphEditorWindow();
+        const std::string path = args.value("path", std::string());
+        const auto kind = args.contains("path") ? graph::GraphRegistry::get().kindForFile(path) : nullptr;
+        const auto own = kind ? graphEditorHooks().kindWindows.find(kind->id) : graphEditorHooks().kindWindows.end();
+        if (own != graphEditorHooks().kindWindows.end()) {
+            if (!own->second.open(path)) {
+                call->fail("path: " + path + " is not a file of the project.");
+                return;
+            }
+            imguiName = own->second.windowName;
+        } else {
+            if (args.contains("path")) {
+                if (GraphEditorWindow* kindWindow = GraphEditorWindow::windowFor(path)) graphs = kindWindow;
+                if (!graphs->openGraph(path)) {
+                    call->fail("path: " + graphs->getStatus() + ".");
+                    return;
+                }
+            }
+            graphs->setOpen(true);
+            imguiName = graphs->windowName();
+        }
     } else if (window == "terrain") {
         ctx.terrainEditWindow()->setOpen(true);
         imguiName = TerrainEditWindow::WINDOW_NAME;
@@ -1616,13 +1665,9 @@ void focusWindowTool(const CallPtr& call) {
         app.getSpriteNormalsWindow()->open();
         imguiName = SpriteNormalsWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, mcp, "
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, particle_effect, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
-                   "vertex_animation_baker, sprite_normals.");
-        return;
-    }
-    if (args.contains("pose") && window != "pose_animation") {
-        call->fail("pose: only for window \"pose_animation\".");
+                   "vertex_animation_baker, sprite_normals, graph_editor.");
         return;
     }
     // A window opened just now exists after its next draw.
@@ -1640,6 +1685,13 @@ void focusWindowTool(const CallPtr& call) {
                                 {"width", std::round(w->Size.x)}, {"height", std::round(w->Size.y)}};
             }
             if (window == "console") data["console"] = consoleStateJson(*call->ctx().consoleWindow());
+            if (window == "graph_editor") {
+                const GraphEditorWindow* shownGraphs = GraphEditorWindow::focused();
+                if (!shownGraphs) shownGraphs = call->ctx().app().getGraphEditorWindow();
+                const auto& document = shownGraphs->getDocument();
+                data["graph"] = document ? Json(document->projectPath()) : Json();
+                if (!document) data["next"] = "No graph is open: focus_window {window: \"graph_editor\", path} opens one.";
+            }
             if (window == "preferences") data["page"] = call->ctx().app().getEditorSettingsWindow().pageName();
             if (window == "profiler") {
                 const ProfilerWindow* profiler = call->ctx().app().getProfilerWindow();
@@ -2098,22 +2150,24 @@ void registerViewTools(McpRegistry& registry) {
         // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
         // state. Budget-neutral with the pose_animation window added.
         tool.description =
-            "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
-            "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page; "
-            "systems: returns each row's Enabled checkbox rect; pose_animation: pose {entity, path, index, play, tab}.";
+            "Open and bring an editor panel to the front, e.g. for a watching human. Not needed for "
+            "screenshot. console: returns its rows, categories and selection; preferences: opens a page; "
+            "systems: returns each row's Enabled rect; pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "particle_effect", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
-                                       "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals"})},
+                                       "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals",
+                                       "graph_editor"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
-                {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},
+                {"hidden_categories", array(string(""), "Categories the filter hides.")},
                 {"collapse", boolean("")},
-                {"select", integer("Select the row of this message id (as a click).")}
+                {"select", integer("Click this message id's row.")}
             })},
-            {"page", string("preferences: General, Code Editor, Undo, External Tools, Logging, Shader Cache.")},
+            {"page", string("preferences: a page title.")},
             {"close", boolean("preferences: close it.")},
             {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})},
+            {"path", string("graph_editor: file to open")},
             {"pose", anyObject("")}
         }, {"window"});
         tool.annotations.idempotent = true;

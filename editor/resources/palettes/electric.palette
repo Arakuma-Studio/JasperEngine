@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Electric",
+  "author": "pixelfx",
+  "description": "pixelfx's 'electric' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "electric"},
+  "columns": 7,
+  "colors": ["#0a0f2e", "#172a78", "#2550d0", "#3f8cff", "#7cc8ff", "#c8f0ff", "#ffffff"],
+  "ramps": [
+    {"name": "electric", "colors": [0, 1, 2, 3, 4, 5, 6]}
+  ]
+}

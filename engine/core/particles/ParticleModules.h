@@ -159,6 +159,7 @@ namespace jasperengine { namespace particles {
         static const StructDesc& documentFields();
         static const StructDesc& subEmitterFields();
         static const StructDesc& exposedFields();
+        static const StructDesc& triggerFields();
 
         // Resolves "emission.rateOverTime.constant" (a module key, then field keys; array
         // elements as "bursts[0]") to the field and its storage in `document`
@@ -177,17 +178,22 @@ namespace jasperengine { namespace particles {
         // its multiplier; a MinMaxGradient without a member as its colour. False when the
         // document has no such parameter or its field does not take the value.
         static bool setExposed(ParticleEffectDocument& document, std::string_view name, const Vector4& value);
+        // what setExposed writes into a curve or colour value, by member ("" for the value as above)
+        static bool writeExposedMember(MinMaxCurve& value, const std::string& member, float x);
+        static bool writeExposedMember(MinMaxGradient& value, const std::string& member, const Vector4& color);
 
         // Every asset path the document holds (textures, models, child effects; FieldFlag_AssetPath)
         // with its GUID field, in modules present or not: what an editor resolves, renames and
         // exports. The visitor may change both.
-        enum class AssetKind : uint8_t { Texture, Model, Effect };
+        enum class AssetKind : uint8_t { Texture, Model, Effect, SoundEvent };
         using AssetVisitor = std::function<void(std::string& path, std::string& guid, AssetKind kind, const std::string& field)>;
         static void visitAssets(ParticleEffectDocument& document, const AssetVisitor& visit);
         static bool getExposed(const ParticleEffectDocument& document, std::string_view name, Vector4& value);
 
         // Enum tables shared with the editor (names in JSON and in the UI)
         static const std::vector<EnumOption>& curveModes();
+        // MinMaxCurve's Ease presets (EaseType values)
+        static const std::vector<EnumOption>& easeTypes();
         static const std::vector<EnumOption>& gradientModes();
         static const std::vector<EnumOption>& curveDrivers();
         static const std::vector<EnumOption>& curveWraps();

@@ -720,6 +720,8 @@ void editor::SceneRender::activateGame(Framebuffer* target){
     scene->getSystem<RenderSystem>()->setDrawEditorOverlays(false);
     scene->getSystem<RenderSystem>()->setDisableFaceCulling(false);
     scene->getSystem<RenderSystem>()->setDisableFog(false);
+    // and draws its post-processing: the edit-mode Scene view leaves it off unless it shows it
+    scene->getSystem<RenderSystem>()->setDisablePostProcessing(false);
 
     Engine::removeAllSceneLayers(false);
     engineLayersActive = false;

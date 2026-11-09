@@ -13,6 +13,7 @@ using namespace jasperengine;
 namespace {
 
     editor::CommandHistory* projectHistory = nullptr;
+    editor::CommandHistory* assetEditHistory = nullptr;
 
     bool exists(const editor::CommandHistory* history){
         const std::vector<editor::CommandHistory*>& all = editor::CommandHistory::all();
@@ -140,6 +141,10 @@ void editor::UndoTimeline::setProjectHistory(CommandHistory* history){
     projectHistory = history;
 }
 
+void editor::UndoTimeline::setAssetEditHistory(CommandHistory* history){
+    assetEditHistory = history;
+}
+
 editor::CommandHistory* editor::UndoTimeline::getProjectHistory(){
     return exists(projectHistory) ? projectHistory : nullptr;
 }
@@ -187,7 +192,7 @@ editor::UndoTimeline::EntryView editor::UndoTimeline::nextRedo(uint32_t sceneId)
 
 bool editor::UndoTimeline::canUndo(uint32_t sceneId){
     CommandHistory* scene = sceneHistory(sceneId);
-    return (scene && scene->hasOpenInteractive()) || (bool)nextUndo(sceneId);
+    return (scene && scene->hasOpenInteractive()) || (assetEditHistory && assetEditHistory->hasOpenInteractive()) || (bool)nextUndo(sceneId);
 }
 
 bool editor::UndoTimeline::canRedo(uint32_t sceneId){
@@ -205,6 +210,9 @@ bool editor::UndoTimeline::undo(uint32_t sceneId, std::string* why, std::vector<
     CommandHistory* scene = sceneHistory(sceneId);
     if (scene && scene->hasOpenInteractive()){
         return scene->cancelInteractive();
+    }
+    if (assetEditHistory && assetEditHistory->hasOpenInteractive()){
+        return assetEditHistory->cancelInteractive();
     }
     EntryView next = nextUndo(sceneId);
     if (!next){
@@ -232,6 +240,10 @@ bool editor::UndoTimeline::redo(uint32_t sceneId, std::string* why, std::vector<
     // ... and a redo waits for it
     if (CommandHistory::beforeChange && !CommandHistory::beforeChange(sceneId, CommandHistory::Change::Redo)){
         if (why) *why = "A Physics Placement gesture is running: redo waits until it ends.";
+        return false;
+    }
+    if (assetEditHistory && assetEditHistory->hasOpenInteractive()){
+        if (why) *why = "A material is being edited: redo waits until the edit ends.";
         return false;
     }
     EntryView next = nextRedo(sceneId);

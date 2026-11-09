@@ -9,7 +9,10 @@
 //   click creates states (empty, from a clip, from a new blend tree), sub-state machines and
 //   transitions, sets the default state and deletes; clips dropped from the Project window become
 //   states. The selection (state, transition, layer) shows in the Inspector
-//   (animatorEditorHooks().drawSelection), with the blend tree editor for a tree state.
+//   (animatorEditorHooks().drawSelection), with the blend tree editor for a tree state. A box or
+//   Shift / Ctrl click selects several nodes: they drag and delete as one undo step, and the
+//   Inspector and the node menu act on one of them: the one clicked last, after a box the one
+//   that was shown if it is still selected, else the first state.
 // - It follows the selected GameObject's Animator (or a pinned one, or a controller opened from
 //   the Project window). In play mode it shows the live state (the active state's progress, the
 //   transition's on its arrow, parameter values editable, triggers as buttons, layer weights and
@@ -82,11 +85,16 @@ namespace jasperengine::editor{
         // "state:<name>", "machine:<name>", "transition:<list>:<owner>:<index>" (list: state,
         // any_state, entry, exit), "layer" or "" (nothing selected)
         std::string describeSelection();
+        // the selected nodes by name, the Inspector's first ("Entry", "Any State", "Exit" for the
+        // special nodes)
+        std::vector<std::string> selectedNodes();
         const std::vector<std::string>& getMachinePath() const { return machinePath; }
         uint32_t getSceneId() const { return sceneId; }
         Entity getEntity() const { return entity; }
         // the last refusal or error (shown in the toolbar); empty after a successful edit
         const std::string& getStatus() const { return status; }
+        // the graph's view (a test turns a state's position into screen pixels)
+        const GraphCanvas& getCanvas() const { return canvas; }
 
         // edits the window makes (also the context menus' actions; public for the editor tests)
         bool addState(const std::string& name, const ImVec2& position, const anim::MotionDef& motion);
@@ -147,8 +155,12 @@ namespace jasperengine::editor{
             ListKind list = ListKind::State;
             std::string owner;      // ListKind::State: the state; Exit: the sub-machine
             int index = -1;         // transition index in its list
+            // the other selected nodes of a box or Shift / Ctrl selection, by name (a state's or
+            // sub-machine's, unique in a machine, or a special node's). `name` is the one the
+            // Inspector shows; with only special nodes selected the kind stays None
+            std::vector<std::string> others;
             bool operator==(const Selection& o) const {
-                return kind == o.kind && name == o.name && list == o.list && owner == o.owner && index == o.index;
+                return kind == o.kind && name == o.name && list == o.list && owner == o.owner && index == o.index && others == o.others;
             }
         };
 
@@ -165,6 +177,9 @@ namespace jasperengine::editor{
         std::string layerName;          // the current layer's name: followed across list changes
         std::vector<std::string> machinePath;
         Selection selection;
+        Selection selectionAtPress;     // what Esc during a canvas gesture gives back
+        bool claimAtPress = false;      // and whether the Inspector was the window's
+        bool restoredByEsc = false;     // this frame: the selection's change claims nothing
         // the Inspector shows the selection from a click in the window until the scene selection
         // or the inspected asset changes (the last selection wins, as in Unity)
         bool inspectorClaim = false;
@@ -203,6 +218,7 @@ namespace jasperengine::editor{
         // the document's revision changed: the layer by its name, a stale selection dropped
         void syncToDocument();
         bool selectionExists(const anim::ControllerDef& def);
+        bool isNodeSelected(const std::string& name) const;
         void setCurrentLayer(int index);
         void claimInspector();
         bool claimHolds();

@@ -10,10 +10,14 @@
 // closing it or Enter commits one undo step, Esc cancels it, and opening it on another field
 // commits the previous one first. The callback triad of OpenEngine's ColorPickerCallbacks
 // (onValueChanging / onApply / onCancel) is the phase set, on linear float RGBA and stops.
+// Below the swatch libraries the project's palettes are listed under "Palettes" (S43 R34): a
+// click picks a colour, Add to Palette is an undoable palette write, and Snap to Palette moves
+// every picked or dragged colour to the nearest colour (OKLab) of a chosen palette.
 
 #include "widget/ColorField.h"
 #include "widget/ColorMath.h"
 #include "widget/SwatchLibrary.h"
+#include "pixelart/Palette.h"
 
 #include "imgui.h"
 
@@ -22,6 +26,10 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+
+namespace jasperengine::editor {
+    class Project;
+}
 
 namespace jasperengine::editor::ui {
 
@@ -38,6 +46,8 @@ namespace jasperengine::editor::ui {
         void show();
         // the project whose EditorSettings/Swatches are listed (empty: none)
         void setProjectPath(const std::filesystem::path& projectPath);
+        // the project whose palettes are listed under "Palettes" and snapped to (null: none)
+        void setProject(Project* project);
 
         bool isOpen() const { return target != 0; }
         // the field drawing now is the window's (colorField)
@@ -131,6 +141,32 @@ namespace jasperengine::editor::ui {
         void drawLibraryMenu();
         void applySwatch(const Swatch& swatch);
         void saveActive();
+
+        // ---- the project's palettes (R34): read-only libraries through the SwatchLibrary adapter
+        struct PaletteEntry {
+            std::filesystem::path file;          // absolute
+            std::string path;                    // project-relative
+            jasperengine::pixelart::Palette palette;
+            SwatchLibrary library;
+            std::filesystem::file_time_type time{};
+        };
+        Project* paletteProject = nullptr;
+        std::vector<PaletteEntry> palettes;
+        bool palettesLoaded = false;
+        double palettesCheckedAt = -1.0;
+        size_t activePalette = 0;
+        // Snap to Palette: off by default; the palette is the project's Default Palette unless one is chosen
+        bool snapToPalette = false;
+        std::string snapChoice;                  // project-relative; empty: the Default Palette
+        int snapIndex = -1;
+        void reloadPalettes();
+        void refreshPalette(PaletteEntry& entry);
+        // the palette snapped to (null when there is none)
+        const PaletteEntry* snapTarget();
+        void snapCurrent();
+        void drawSnap();
+        void drawPalettes();
+        void addToPalette(PaletteEntry& entry);
 
         void startSampling();
         void updateSampling();

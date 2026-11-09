@@ -1084,6 +1084,16 @@ const char* sgj_device_name(void) {
     return name;
 }
 
+bool sgj_device_is_cpu(void) {
+    if (!_sg.valid)
+        return false;
+    #if defined(SOKOL_VULKAN)
+        return _sg.vk.dev_props.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU;
+    #else
+        return false;
+    #endif
+}
+
 // the API version the context reports: GL_VERSION ("OpenGL ES 3.2 Mesa ..." on a GLES context,
 // "4.5 (Core Profile) Mesa ..." on a desktop one), Vulkan's apiVersion; "" elsewhere
 const char* sgj_api_version(void) {

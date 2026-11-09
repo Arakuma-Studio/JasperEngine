@@ -1,0 +1,297 @@
+{
+ "connections": [
+  {
+   "from": "colorize_3",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 6
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "colorize_3",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "occlusion",
+   "to_port": 0
+  },
+  {
+   "from": "occlusion",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 5
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 2,
+   "to": "decompose",
+   "to_port": 0
+  },
+  {
+   "from": "decompose",
+   "from_port": 1,
+   "to": "gen_outputs",
+   "to_port": 2
+  },
+  {
+   "from": "decompose",
+   "from_port": 2,
+   "to": "gen_outputs",
+   "to_port": 1
+  },
+  {
+   "from": "blend_2",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 4
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 1,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 3,
+   "to": "gen_outputs",
+   "to_port": 3
+  },
+  {
+   "from": "brightness_contrast",
+   "from_port": 0,
+   "to": "blend_2",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 4,
+   "to": "brightness_contrast",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "normal_map_2",
+   "to_port": 0
+  },
+  {
+   "from": "normal_map_2",
+   "from_port": 0,
+   "to": "blend_2",
+   "to_port": 1
+  }
+ ],
+ "description": "Converts a workflow mapped material (from an Apply Map or a Mix node) for a Material node",
+ "format": 1,
+ "id": "mwf_output",
+ "inputs": [
+  {
+   "description": "",
+   "group_size": 5,
+   "label": "Height",
+   "name": "Height",
+   "type": "f"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Albedo",
+   "name": "Albedo",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "ORM",
+   "name": "ORM",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Emission",
+   "name": "Emission",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Normal",
+   "name": "Normal",
+   "type": "rgb"
+  }
+ ],
+ "kind": "graph",
+ "name": "Output",
+ "nodes": [
+  {
+   "id": "colorize_3",
+   "parameters": {
+    "gradient": {
+     "interpolation": 1,
+     "points": [
+      {
+       "a": 1,
+       "b": 1,
+       "g": 1,
+       "pos": 0,
+       "r": 1
+      },
+      {
+       "a": 1,
+       "b": 0,
+       "g": 0,
+       "pos": 1,
+       "r": 0
+      }
+     ],
+     "type": "Gradient"
+    }
+   },
+   "seed": -9684,
+   "type": "colorize"
+  },
+  {
+   "id": "occlusion",
+   "parameters": {
+    "param0": 10,
+    "param2": 1
+   },
+   "seed": -54608,
+   "type": "occlusion"
+  },
+  {
+   "id": "decompose",
+   "parameters": {},
+   "seed": -20954,
+   "type": "decompose"
+  },
+  {
+   "id": "blend_2",
+   "parameters": {
+    "amount": 1,
+    "blend_type": 4
+   },
+   "seed": -12058,
+   "type": "blend"
+  },
+  {
+   "id": "brightness_contrast",
+   "parameters": {
+    "brightness": 0,
+    "contrast": 1
+   },
+   "seed": -5924,
+   "type": "brightness_contrast"
+  },
+  {
+   "id": "normal_map_2",
+   "parameters": {
+    "param0": 10,
+    "param1": 1.02,
+    "param2": 0,
+    "param4": 1
+   },
+   "seed": -2400,
+   "type": "normal_map"
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "",
+   "group_size": 7,
+   "label": "Albedo",
+   "name": "Albedo",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Metallic",
+   "name": "Metallic",
+   "type": "f"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Roughness",
+   "name": "Roughness",
+   "type": "f"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Emission",
+   "name": "Emission",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Normal",
+   "name": "Normal",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Occlusion",
+   "name": "Occlusion",
+   "type": "f"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Depth",
+   "name": "Depth",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 1,
+   "description": "The strength of the calculated occlusion effect",
+   "label": "Occlusion",
+   "links": [
+    {
+     "node": "occlusion",
+     "param": "param2"
+    }
+   ],
+   "max": 2,
+   "min": 0,
+   "name": "param2",
+   "short_description": "Occlusion",
+   "step": 0.1,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The strength of  normals from the base materials (compared to the normal generated from height information))",
+   "label": "Mat Normal",
+   "links": [
+    {
+     "node": "blend_2",
+     "param": "amount"
+    }
+   ],
+   "max": 1,
+   "min": 0,
+   "name": "param0",
+   "short_description": "MatNormal",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Output",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/mwf_output.mmg"
+ },
+ "type_version": 1
+}

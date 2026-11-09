@@ -1,0 +1,59 @@
+{
+ "code": [],
+ "description": "Translates its input shape described as signed distance function",
+ "format": 1,
+ "functions": [],
+ "id": "sdtranslate",
+ "inputs": [
+  {
+   "default": "0.0",
+   "description": "The input shape, defined as a signed distance function",
+   "label": "",
+   "name": "in#",
+   "short_description": "Input#",
+   "type": "sdf2d"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Translate",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The translated shape",
+   "expr": "$in#($uv-vec2($x, $y))",
+   "label": "Output#",
+   "type": "sdf2d"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The translation along the X axis",
+   "label": "X",
+   "max": 1,
+   "min": -1,
+   "name": "x",
+   "short_description": "Translate.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The translation along the Y axis",
+   "label": "Y",
+   "max": 1,
+   "min": -1,
+   "name": "y",
+   "short_description": "Translate.y",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "sdTranslate",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdtranslate.mmg"
+ },
+ "type_version": 1
+}

@@ -231,3 +231,19 @@ async def test_closed_costs_nothing(ed: Editor):
     # No job: counted by the window's own preview service, not a whole lane other editor work shares, in
     # NoiseGraphDocument.PreviewsAreSkippedWhenClosed (a closed window submits nothing, and closing cancels the
     # running preview); closed, NoiseGraphWindow::show calls update(false) once and nothing that previews after it
+
+
+async def test_focus_window_opens_a_noise_graph_in_its_own_window(ed: Editor):
+    """R50 after S90: focus_window graph_editor with a .noisegraph opens it where a double-click does, the Noise
+    Graph window, and leaves the Graph Editor closed."""
+    write_graph(ed)
+    await ed.call("sync_files")
+    ui = Ui(ed)
+    await ed.call("focus_window", window="graph_editor", path="assets/" + GRAPH)
+    await wait_probe(ed, ui, "noisegraph.node.n1")
+    status = {}
+    for _ in range(3):
+        status = await ed.call("editor_status")
+    opened = status["windows"]["open"]
+    ed.check_eq(opened.get(WINDOW), True, f"the Noise Graph window is open: {opened}")
+    ed.check(opened.get("Graph Editor") is not True, f"the Graph Editor stays closed: {opened}")

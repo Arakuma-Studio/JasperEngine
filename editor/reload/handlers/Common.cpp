@@ -4,6 +4,7 @@
 #include "ReloadHandlers.h"
 
 #include "Project.h"
+#include "graph/GraphRegistry.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -33,6 +34,7 @@ std::string reload::kindOf(const fs::path& path) {
     if (Util::isMaterialFile(text)) return "material";
     if (Util::isParticleEffectFile(text)) return "particles";
     if (ext == ".voxelvolume") return "voxel";
+    if (Util::isPaletteFile(text)) return "palette";
     if (Util::isShaderFile(text)) return "shader";
     if (Util::isAudioFile(text)) return "audio";
     if (Util::isFontFile(text)) return "font";
@@ -46,6 +48,8 @@ std::string reload::kindOf(const fs::path& path) {
     }
     if (Util::isSceneFile(text)) return "scene";
     if (Util::isPrefabFile(text)) return "prefab";
+    // any registered kind's files
+    if (graph::GraphRegistry::get().kindForFile(text)) return "graph";
     if (ext == ".txt" || ext == ".md" || ext == ".yaml" || ext == ".yml" || ext == ".xml" || ext == ".csv" || ext == ".ini" || ext == ".cfg" ||
         ext == ".cmake" || ext == ".hlsl") {
         return "text";

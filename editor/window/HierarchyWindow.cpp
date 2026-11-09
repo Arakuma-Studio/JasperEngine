@@ -43,6 +43,7 @@
 #include "component/CharacterControllerComponent.h"
 #include "component/FogComponent.h"
 #include "component/Joint2DComponent.h"
+#include "EditorHost.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/FluidSimulationComponent.h"
@@ -123,6 +124,21 @@
 using namespace jasperengine;
 
 namespace {
+    // a Particle System at or below the GameObject (Open in Particle Effect)
+    bool subtreeHasParticleSystems(editor::SceneProject* sceneProject, Entity root) {
+        if (!sceneProject || !sceneProject->scene || !sceneProject->scene->isComponentRegistered<ParticleSystemComponent>()) return false;
+        Scene* scene = sceneProject->scene;
+        auto systems = scene->getComponentArray<ParticleSystemComponent>();
+        for (size_t i = 0; i < systems->size(); i++) {
+            for (Entity e = systems->getEntity(i); e != NULL_ENTITY;) {
+                if (e == root) return true;
+                const Transform* transform = scene->findComponent<Transform>(e);
+                e = transform ? transform->parent : NULL_ENTITY;
+            }
+        }
+        return false;
+    }
+
     // A context menu item's shortcut text, from the command catalog (nullptr when unbound)
     const char* shortcutText(const char* commandId) {
         static std::string text;
@@ -2356,6 +2372,12 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                         Out::warning("Bookmarks: %s", error.c_str());
                     }
                 }
+            }
+
+            // the Particle Effect window on the GameObject's subtree (S91): its systems as one effect
+            if (!entityDeleted && !node.isPlayCreated && subtreeHasParticleSystems(project->getScene(sceneId), node.id) &&
+                ImGui::MenuItem(ICON_FA_FIRE "  Open in Particle Effect")) {
+                editor::getEditorHost().openParticleEffectSubtree(sceneId, node.id);
             }
 
             // Play Mode Changes: what scripts change here is offered at Stop too

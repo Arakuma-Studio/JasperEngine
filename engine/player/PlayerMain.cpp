@@ -14,6 +14,7 @@
 #include "io/Data.h"
 #include "io/FileData.h"
 #include "io/ResourcePack.h"
+#include "particles/ParticleWorld.h"
 #include "player/ContentManifest.h"
 #include "player/Launch.h"
 #include "player/PlayerConfig.h"
@@ -373,6 +374,7 @@ JASPERENGINE_INIT void init() {
         });
     }
 
+    if (game.particleWorldBudget != 0) particles::ParticleWorld::setProjectBudget(game.particleWorldBudget);
     if (game.asyncLoading) Engine::setAsyncLoading(true);
     if (game.loadingScene != 0 && game.findScene(game.loadingScene)) SceneManager::setLoadingScene(game.loadingScene);
     if (game.loadingDelay != 0.0f) SceneManager::setLoadingDelay(game.loadingDelay);
