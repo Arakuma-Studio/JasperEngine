@@ -6,11 +6,13 @@
 
 #include "TitleExport.h"
 #include "png/TitlePngExport.h"
+#include "psd/PsdExport.h"
 #include "sheet/TitleSheetExport.h"
 #include "titleart/localisation/TitleStrings.h"
 
 void jasperengine::editor::registerTitleExportFormats() {
     registerTitlePngExport();
+    psd::registerTitlePsdExport();
     registerTitleKtx2Export();
     registerTitleSheetExport();
     registerTitleStringsExport();
