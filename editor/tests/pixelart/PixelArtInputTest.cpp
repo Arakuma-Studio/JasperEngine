@@ -81,8 +81,9 @@ namespace {
     // unsaved one, which a headless project never answers, and replaces an untouched new one)
     uint32_t newScene(const std::string& name) {
         Project* p = project();
-        if (SceneProject* current = p->getSelectedScene(); current && !current->filepath.empty())
+        if (SceneProject* current = p->getSelectedScene(); current && !current->filepath.empty()) {
             EXPECT_TRUE(p->saveSceneToPath(current->id, current->filepath));
+        }
         p->createNewScene(name, SceneType::SCENE_2D);
         const uint32_t id = p->getSelectedSceneId();
         EXPECT_EQ(p->getScene(id)->name, name) << "the new scene is selected";
