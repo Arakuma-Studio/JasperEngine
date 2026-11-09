@@ -69,6 +69,8 @@ namespace {
         TestTempDir textureDir;
 
         void SetUp() override {
+            // the goldens are 640 x 360: a suite before this one may leave another view
+            GpuEnvironment::resetView();
             Engine::setPinnedShaderTime(1.0);
             scene.setBackgroundColor(0.55f, 0.68f, 0.82f, 1.0f);
             camera.setType(CameraType::CAMERA_PERSPECTIVE);
