@@ -289,3 +289,10 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   the reflection fixture missing a Terrain World; VoxelRenderGpu not resetting the view; T2 tests restarting jobs without restarting
   the asset readers. Upstream's procmat-baked fixture lacks its golden, so Stream.DerivedTransformWorldMatricesUnchanged fails (upstream's).
 - origin/main moved 27 more commits (S49 Pixel Particles, shader cache v60), with 5 conflicts; being merged on terrain/upstream-merge.
+- S49 merge landed (90657f26d; shader cache v62, above upstream's v60 and our v61). T1's last budgets landed (6ea5caf07, from
+  0e979814a): every je-bench-terrain budget met on the box. Height query 0.982x (the cause was the two NaN tests, now the clamp);
+  r512 stamp 6.50 ms (it was not noise: a stroke now keeps its 4 MB stamp buffers); 64-tile delta undo was box noise (0.555-0.592 ms
+  alone); runtime setHeights/applyOps 0.124/0.177 ms. origin/main 2b0bc1549 merged (564f6da51).
+- Final gates started on 564f6da51: box 22b24a0ef193 runs the WERROR linux build, full unit tests and the full MCP suite; box
+  e704f0707dc6 runs web plus web gates (sample and six terrain projects), Android, the WERROR linux build, players and compile smoke
+  tests (terrain, voxels); box db9262097667 runs origin/main's full unit tests as the baseline. Logs: terrain-evidence/final-gates/.
