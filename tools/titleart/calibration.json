@@ -301,6 +301,30 @@
       "L": 3.98,
       "L_item": "neon/game-over-neon"
     },
+    "style_lint.contrast": {
+      "library": {
+        "color_schemes": {
+          "n": 1,
+          "min": 8.42,
+          "p5": 8.42,
+          "median": 8.42,
+          "p95": 8.42,
+          "max": 8.42
+        }
+      },
+      "threshold": {
+        "value": 12
+      },
+      "metric": "value",
+      "higher_is_better": true,
+      "L": 8.42,
+      "L_item": "royal",
+      "R": 3.89,
+      "T": 12,
+      "separates": true,
+      "middle_half": false,
+      "suggested_T": 6.155
+    },
     "style_lint.hard_shadow": {
       "library": {
         "templates": {
