@@ -757,7 +757,7 @@ int titlelibrary::runReviewSheetCommand(const std::vector<std::string>& args, co
 }
 
 int titlelibrary::runCalibrateCommand(const std::vector<std::string>& args, const char* executable) {
-    const Args a = parseArgs(args, {"--out", "--red", "--scratch"}, {});
+    const Args a = parseArgs(args, {"--out", "--red", "--scratch", "--samples"}, {});
     if (!a.error.empty()) {
         std::cerr << "title-library calibrate: " << a.error << "\n";
         return USAGE;
@@ -774,7 +774,13 @@ int titlelibrary::runCalibrateCommand(const std::vector<std::string>& args, cons
     std::vector<Planned> plan;
     std::vector<std::string> failures;
     std::vector<std::pair<const LibraryItemInfo*, ThumbnailSample>> work;
-    for (const auto& w : thumbnailWork({})) if (w.first->available) work.push_back(w);
+    // --samples latin: one render per item (HERO, or a template's English sample), for a machine without a GPU
+    const std::string samples = a.values.count("--samples") ? a.values.at("--samples") : std::string("all");
+    for (const auto& w : thumbnailWork({})) {
+        if (!w.first->available) continue;
+        if (samples == "latin" && w.second.key != "latin" && w.second.key != "en") continue;
+        work.push_back(w);
+    }
     planDocuments(work, s, plan, failures);
     // the red controls: every fixture document (bad twins and their fixes)
     std::vector<std::string> redDocs;

@@ -270,7 +270,7 @@ namespace {
          "Render every built-in item's thumbnails in a headless editor (GPU); --check compares recipes only", runBake},
         {"review-sheet", "review-sheet --pachislop <clone> --out <dir> [--only <glob>]",
          "Each ported item rendered beside Pachislop's reference picture (GPU; written outside the repository)", runReview},
-        {"calibrate", "calibrate [--out <json>] [--red <dir>] [--scratch <dir>]",
+        {"calibrate", "calibrate [--out <json>] [--red <dir>] [--scratch <dir>] [--samples all|latin]",
          "Every check_title metric over the library's renders and the red controls (GPU)", runCalibrate},
         {"port-pachislop", "port-pachislop --dump <json> --out <dir> [--repo <dir>] [--check]",
          "Map a Pachislop dump onto library files; --check compares a fresh port with the committed files", runPortPachislop},
