@@ -82,10 +82,13 @@ async def test_pixel_shape_icons(ed: Editor):
     ui = ui_input.for_editor(ed)
     await ui.click_revealed("##renderer.pixelShape", "Inspector")
     rows = []
-    for i in range(9):
-        row = await ui.find("##shape", index=i)
-        ed.check(row is not None, f"shape row {i} is drawn")
-        rows.append(row)
+    for _ in range(30):
+        found = (await ed.call("find_ui_item", label="##shape")).get("items", [])
+        rows = sorted([i for i in found if i.get("visible", True)], key=lambda i: i["rect"]["y"])
+        if len(rows) >= 9:
+            break
+        await ui_input.frames(ed, 2)
+    ed.check(len(rows) >= 9, f"the menu's nine shape rows: {len(rows)}")
     shot = await editor_shot(ed)
     for i, row in enumerate(rows):
         rect = row["rect"]
@@ -161,7 +164,8 @@ async def test_pixel_grid_toggle(ed: Editor):
     """Pixel Grid draws the base-pixel grid on a Scene view zoomed in past 4x."""
     await setup(ed)
     ui = ui_input.for_editor(ed)
-    await ed.call("set_scene_camera", scene=S["scene"], center=[0, 0], ortho_size=12)
+    # a 2D view's zoom is world units a screen pixel: 0.1 is 10 screen pixels a base pixel at PPU 1
+    await ed.call("set_scene_camera", scene=S["scene"], center=[0, 0], zoom=0.1)
     await ui_input.frames(ed, 6)
     view = await ed.call_raw("screenshot", {"view": "scene", "max_width": 8192})
     await ui.click_item("Pixel Grid")
@@ -183,6 +187,9 @@ async def test_palette_ramp_drag(ed: Editor):
     await ed.call("edit_particle_effect", scene=S["scene"], entity=S["system"],
                   patch={"modules": {"colorOverLifetime": {"color": {"mode": "ramp", "ramp": None, "rampColors": ["#ffffff"]}}}})
     await ed.call("focus_window", window="inspector")
+    # Color over Lifetime's section opened, then its ramp bar
+    if await ui.find("##rampBar", "Inspector", frames=6) is None:
+        await ui.click_revealed("##module_colorOverLifetime", "Inspector")
     bar = await ui.reveal("##rampBar", "Inspector")
     await ed.call("run_command", id="window.palette", payload=PALETTE)
     strip = None

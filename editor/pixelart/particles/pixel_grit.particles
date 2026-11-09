@@ -13,7 +13,7 @@
     {"type": "limitVelocity", "dampen": 0, "drag": 0.8, "multiplyBySize": false},
     {"type": "forceOverLifetime", "y": -950, "space": "world"},
     {"type": "collision", "collisionType": "planes", "planes": [{"point": [0, -8, 0], "normal": [0, 1, 0]}],
-     "bounce": 0.5, "dampen": 0.5, "lifetimeLoss": 0.5, "radiusScale": 0, "settleSpeed": 32.5},
+     "bounce": 0.5, "dampen": 0.5, "lifetimeLoss": 0.2, "radiusScale": 0, "settleSpeed": 32.5},
     {"type": "pixelArt", "fade": "cutout", "secondaryOffset": -1},
     {"type": "renderer", "renderMode": "pixel", "pixelShape": "dot", "dotShadeBottom": true}
   ]

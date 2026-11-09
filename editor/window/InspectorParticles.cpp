@@ -895,7 +895,8 @@ namespace {
                 flags |= ImGuiTreeNodeFlags_DefaultOpen;
             }
             const float rightEdge = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
-            const bool open = ImGui::TreeNodeEx("##module", flags, "%s", "");
+            // "##module_<key>": what find_ui_item and the UI tests name a module's header by
+            const bool open = ImGui::TreeNodeEx((std::string("##module_") + module.key).c_str(), flags, "%s", "");
             if (module.tooltip && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", module.tooltip);
             bool remove = false;
             if (!module.alwaysPresent && ImGui::BeginPopupContextItem("##module_menu")) {
