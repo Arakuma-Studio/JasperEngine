@@ -3,11 +3,13 @@
 
 #pragma once
 
-// The Game view's Contact Sheet... window (docs/specs/S48-pixel-fx.md R40): capture_contact_sheet
-// for the selected GameObject with Frames, Duration, Backdrops, Scale, Mode and Lints; it shows the
-// sheet and the checks, and Save As... writes the PNG as one undo step.
+// The Game view's Contact Sheet... window (docs/specs/S48-pixel-fx.md R40, R27): capture_contact_sheet's
+// targets (the selected GameObject, an .anim clip on it, a .particles asset, a transition kind with its
+// options) with Frames, Duration, Backdrops, Scale, Mode and Lints; it shows the sheet and the checks, and
+// Save As... writes the PNG as one undo step.
 
 #include "ecs/Entity.h"
+#include "pixelart/ScreenTransition.h"
 #include "texture/Texture.h"
 #include "window/PaletteWindow.h"
 
@@ -39,14 +41,28 @@ namespace jasperengine::editor {
         bool isOpen() const { return windowOpen; }
 
     private:
+        enum class TargetKind { GameObject, Clip, Particles, Transition };
+
         void capture();
         void collect();
         void saveAs();
+        void scanTargetFiles();
+        void drawTargetRow(bool& canCapture);
+        void drawTransitionOptions();
+        std::string sheetName() const;
 
         Project* project = nullptr;
         bool windowOpen = false;
         uint32_t sceneId = 0;
         Entity entity = NULL_ENTITY;
+        TargetKind targetKind = TargetKind::GameObject;
+        std::vector<std::string> clipFiles;      // project-relative .anim paths
+        std::vector<std::string> particleFiles;  // assets-relative .particles paths
+        std::string clipPath, particlesPath;     // the picked ones
+        jasperengine::pixelart::TransitionOptions transition;
+        jasperengine::pixelart::TransitionKind transitionKind = jasperengine::pixelart::TransitionKind::IRIS;
+        int transitionPhase = 0;                 // Play, Cover, Reveal
+        int artWidth = 160, artHeight = 90;
         int frames = 8;
         float duration = 1.0f;
         bool loop = false;
