@@ -365,3 +365,9 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   stop now. Before the push: WERROR linux build, filtered unit tests, the programme's MCP files plus those of the last merge and fixes
   by name, and the seven web gates. The last full runs were on 42f36ee4a; the pushed tree won't have had one unless the owner asks.
   The pixel-art chat keeps merging to main (the owner chose not to pause it).
+- MCP determinism fix landed (terrain/fix-mcp2 cec9b0ac0): the shipped-tiers mask was set after the saves wrote main.cpp, so each export
+  carried the previous export's mask; now set before the saves and cleared when the export ends. Upstream's, with baseline proof: text
+  atlas sampler reset (S51's UISystem::loadFontAtlas), mesh undo buffer count race (2 of 18 on both sides under load). The loudness
+  readout's defect is upstream's (the Master tap joining a running tone), but it fails more often on some runs.
+- Follow-up, unverified: the first Play measured 0.89 s on our tree against 0.53 s upstream in one diagnostic. If real, it breaks "a disabled
+  feature costs nothing" for projects without terrain.
