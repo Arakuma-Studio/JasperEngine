@@ -16,7 +16,7 @@ from harness import REPO, Editor
 from htmlui_pixels import decode_png
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "pixel-fonts"}
-CI = False
+CI_EXCLUDED = "needs the smoke run first (tools/smoke-test.sh tools/fixtures/pixel-fonts, or SMOKE_GAME_PNG)"
 TIMEOUT = 600
 OUT = REPO / "build" / "test-results" / "pixel-fonts-export"
 
