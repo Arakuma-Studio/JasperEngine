@@ -11,6 +11,8 @@
 // (componentDrawer).
 
 #include "InspectorWindow.h"
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 
 #include "Catalog.h"
 #include "Theme.h"

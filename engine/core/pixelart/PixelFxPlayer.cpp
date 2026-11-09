@@ -567,7 +567,7 @@ namespace jasperengine::pixelart{
                 const double hold = options.hold < 0.0f ? total * 0.5 : std::min((double)options.hold, total);
                 const double ramp = (total - hold) * 0.5;
                 float amount;
-                if (total <= 0.0 || seconds >= total) amount = 0.0f;
+                if (total <= 0.0 || u >= 1.0f) amount = 0.0f;   // u, not seconds: a float duration's end
                 else if (seconds < ramp) amount = anim::applyEase(options.ease, (float)(seconds / ramp));
                 else if (seconds < ramp + hold) amount = 1.0f;
                 else amount = 1.0f - anim::applyEase(options.ease, (float)((seconds - ramp - hold) / std::max(ramp, 1e-9)));

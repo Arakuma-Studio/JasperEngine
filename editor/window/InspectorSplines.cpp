@@ -7,6 +7,7 @@
 // generators' warnings naming the knot they concern.
 
 #include "InspectorWindow.h"
+#include "component/MeshComponent.h"
 #include "object/spline/Spline.h"
 #include "component/Transform.h"
 

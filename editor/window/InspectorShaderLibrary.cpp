@@ -7,6 +7,7 @@
 // lines. Every edit is a property command on the Catalog paths MCP uses too.
 
 #include "InspectorWindow.h"
+#include "component/MeshComponent.h"
 #include "PaletteAssetField.h"
 #include "widget/ColorPickerWindow.h"
 

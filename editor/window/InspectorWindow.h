@@ -45,11 +45,23 @@
 #include "component/TextComponent.h"
 #include "io/watch/FileIdentity.h"
 #include "render/ShaderRender.h"
-#include "subsystem/MeshSystem.h"
+// MeshSystem.h's includes without MeshSystem.h: it would bring MeshComponent.h and TerrainComponent.h to every
+// Inspector unit (tools/check_fanout.py)
+#include "SubSystem.h"
+#include "ecs/ComponentFwd.h"
+#include "jobs/JobSystem.h"
+#include "math/Ray.h"
+#include "math/Rect.h"
+#include "subsystem/GltfNormalize.h"
+#include "texture/Material.h"
+#include "texture/MaterialPbr.h"
+#include "texture/Texture.h"
+#include "texture/TexturePack.h"
 
 namespace jasperengine{
     struct ImageComponent;
     struct MeshComponent;
+    class MeshSystem;
 }
 
 namespace jasperengine::particles {

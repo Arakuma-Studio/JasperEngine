@@ -5,6 +5,8 @@
 // draw them: per-collider-type rows, shape previews, body-picking rows).
 
 #include "InspectorWindow.h"
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 #include "Engine.h"
 #include "object/physics/Joint3D.h"
 #include "reflect/Reflect.h"

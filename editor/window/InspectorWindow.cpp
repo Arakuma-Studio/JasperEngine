@@ -19,6 +19,8 @@
 #include "EditorModal.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 
 #include "audio/SoundDrop.h"
 #include "window/SoundBrowserWindow.h"

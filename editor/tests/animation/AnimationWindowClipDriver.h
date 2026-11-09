@@ -47,6 +47,7 @@
 #include "util/EntityPath.h"
 #include "util/FileUtils.h"
 #include "window/InspectorWindow.h"
+#include "component/MeshComponent.h"
 #include "audio/TimelineAudioPreview.h"
 #include "animation/ClipAudio.h"
 
