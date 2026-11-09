@@ -298,6 +298,6 @@ TEST(LibraryChecksTest, RegisteringTwiceKeepsOneOfEachInTheStyleGroup) {
     ASSERT_TRUE(TitleArtChecks::select({"style"}, selected, error, valid));
     std::vector<std::string> ids;
     for (const CheckDef* d : selected) ids.push_back(d->id);
-    EXPECT_EQ(ids, (std::vector<std::string>{"style_lint", "color_scheme_match", "metal_range"}));
+    EXPECT_EQ(ids, (std::vector<std::string>{"style_lint", "color_scheme_options_empty", "color_scheme_match", "metal_range"}));
     EXPECT_EQ(TitleArtChecks::find("metal_range")->owner, "S84");
 }

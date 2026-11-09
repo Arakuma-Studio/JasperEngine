@@ -9,6 +9,7 @@
 
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
+#include "titleart/TitleArtSchema.h"
 #include "titleart/ColorSchemeApply.h"
 #include "titleart/fx/PachislopFxMap.h"
 #include "titleart/library/TitleLibrary.h"
@@ -162,7 +163,9 @@ namespace {
 
 TEST_F(TitleLibraryBuiltins, CaptureRoundTripsEveryBuiltIn) {
     int checked = 0;
-    for (const LibraryItemInfo& item : TitleLibrary::get().items(LibraryKind::Look)) {
+    // a copy: each pass replaces the built-in set, which invalidates the store's listing
+    const std::vector<LibraryItemInfo> looks = TitleLibrary::get().items(LibraryKind::Look);
+    for (const LibraryItemInfo& item : looks) {
         if (item.scope != LibraryScope::BuiltIn || !item.available) continue;
         SCOPED_TRACE(item.ref);
         const TitleOpsResult applied = applyOps(textDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", item.ref}});
@@ -193,6 +196,21 @@ TEST_F(TitleLibraryBuiltins, CaptureRoundTripsEveryBuiltIn) {
         };
         clearLook(a);
         clearLook(b);
+        // a captured look holds the complete lighting (R13), the source only what it sets: compare both expanded
+        std::function<void(Json&)> fullLighting = [&](Json& v) {
+            if (v.is_object()) {
+                if (v.contains("lighting") && v["lighting"].is_object() && v["lighting"].contains("environment")) {
+                    Json env = titleart::TitleArtSchema::get().defaultObject("environment_3d");
+                    for (auto it = v["lighting"]["environment"].begin(); it != v["lighting"]["environment"].end(); ++it) env[it.key()] = it.value();
+                    v["lighting"]["environment"] = env;
+                }
+                for (auto it = v.begin(); it != v.end(); ++it) fullLighting(it.value());
+            } else if (v.is_array()) {
+                for (Json& e : v) fullLighting(e);
+            }
+        };
+        fullLighting(a);
+        fullLighting(b);
         EXPECT_EQ(titleart::writeTitleArtJson(a), titleart::writeTitleArtJson(b));
         checked++;
     }

@@ -67,10 +67,11 @@ namespace {
                 const SchemaKind* variant = child->discriminator.empty() ? child : schema.variantOf(*child, v);
                 if (!variant) return v;
                 const std::string variantName = child->discriminator.empty() ? std::string() : v.value(child->discriminator, std::string());
-                const Json& base = d.is_object() ? d : defaultOf(m.kind, variantName);
-                Json sub = sparseAgainst(v, *variant, base, dropIds);
-                // an object member whose default is null must stay an object, even an empty one
-                omit = sub.empty() && !d.is_null();
+                // what a missing member of a present object reads as is the KIND's default (normalize),
+                // not the member's own default (only an absent object takes that: style_3d.face, a
+                // band's bevel, a curve's points), so the object is written against the kind's
+                Json sub = sparseAgainst(v, *variant, defaultOf(m.kind, variantName), dropIds);
+                omit = d.is_object() && v == d;
                 return sub;
             }
             case ValueType::ObjectArray: {
