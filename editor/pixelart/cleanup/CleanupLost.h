@@ -22,7 +22,10 @@ namespace jasperengine::editor::pixelart::cleanup {
 
     // The lost colours of `art`, snapped from `samples`, most cells first. Cells marked 1 in `skip`
     // (the background) are left out, and so are colours lost in fewer than `minCells` cells.
+    // `own` (optional): the same cells quantized without a palette, which already hold each cell's
+    // median: a slider re-run then needs no median or OKLab per cell (R39).
     std::vector<LostColor> lostColors(const CellSamples& samples, const PixelArt& art, double threshold,
-                                      const std::vector<uint8_t>* skip = nullptr, int minCells = 2);
+                                      const std::vector<uint8_t>* skip = nullptr, int minCells = 2,
+                                      const PixelArt* own = nullptr);
 
 }

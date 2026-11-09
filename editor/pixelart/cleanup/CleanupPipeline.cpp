@@ -209,7 +209,7 @@ namespace jasperengine::editor::pixelart::cleanup {
             own = quantize(samples, plain);
             std::vector<uint8_t> skip;
             if (recipe.removeBackground) skip = findBackground(own, backgroundColors(own), recipe.background);
-            outcome.lost = lostColors(samples, art, recipe.lostThreshold, recipe.removeBackground ? &skip : nullptr);
+            outcome.lost = lostColors(samples, art, recipe.lostThreshold, recipe.removeBackground ? &skip : nullptr, 2, &own);
         }
 
         // 8: specks

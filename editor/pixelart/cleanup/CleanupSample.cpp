@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cmath>
 #include <cstring>
 #include <unordered_map>
@@ -78,7 +79,21 @@ namespace jasperengine::editor::pixelart::cleanup {
     Rgba8 medianColor(const std::vector<uint32_t>& colors) {
         using namespace fix_ts;
         if (colors.empty()) return Rgba8{0, 0, 0, 255};
-        // A counting sort per channel: a cell's colours are many, the values only 256
+        // The element at n / 2 of the sorted values, as medianColor in fix.ts takes it. A cell of a
+        // few pixels selects it directly (a slider re-run reads every cell's median, R39); a big
+        // cell's values are many and only 256 apart, so it counts them.
+        constexpr size_t kSelected = 64;
+        if (colors.size() <= kSelected) {
+            std::array<uint8_t, kSelected> values{};
+            auto selected = [&](int shift) {
+                for (size_t i = 0; i < colors.size(); i++) values[i] = uint8_t((colors[i] >> shift) & 255u);
+                const auto middle = values.begin() + std::ptrdiff_t(colors.size() / 2);
+                std::nth_element(values.begin(), middle, values.begin() + std::ptrdiff_t(colors.size()));
+                return *middle;
+            };
+            const uint8_t r = selected(16), g = selected(8), b = selected(0);
+            return Rgba8{r, g, b, 255};
+        }
         auto median = [&](int shift) {
             std::array<int, 256> counts{};
             for (uint32_t color : colors) counts[(color >> shift) & 255u]++;
