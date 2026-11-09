@@ -13,7 +13,8 @@ using namespace jasperengine;
 
 editor::OffscreenDraw editor::drawOffscreen(uint32_t viewId, Framebuffer& target, const std::vector<Engine::ViewLayer>& layers, bool& warmed,
                                             std::vector<uint8_t>& rgba, std::string& waitingFor,
-                                            const std::function<bool(std::string&)>& ready){
+                                            const std::function<bool(std::string&)>& ready,
+                                            const std::function<bool(std::string&)>& after){
     if (!Engine::isViewLoaded()){
         waitingFor = "the graphics view";
         return OffscreenDraw::Wait;
@@ -43,6 +44,9 @@ editor::OffscreenDraw editor::drawOffscreen(uint32_t viewId, Framebuffer& target
     Engine::drawView(viewId, &target, layers);
     if (ObjectRender::getWaitingDrawCount() != waitingBefore){
         waitingFor = "pipelines being compiled";
+        return OffscreenDraw::Wait;
+    }
+    if (after && !after(waitingFor)){
         return OffscreenDraw::Wait;
     }
     if (!GraphicUtils::readFramebufferRGBA(&target, rgba)){

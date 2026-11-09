@@ -151,6 +151,8 @@
 #include "pixelart/aseprite/AsepriteImporter.h"
 #include "pixelart/HitStop.h"
 #include "pixelart/PixelFxPlayer.h"
+#include "pixelart/particles/PixelParticlePresets.h"
+#include "particles/ParticleEffectCodec.h"
 #include "sprite/SpriteAtlasBuilder.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
@@ -2331,6 +2333,20 @@ void editor::Project::openAssetDatabase() {
     });
     assetIndex.open(&assetDatabase, projectPath, getAssetRoots());
     AssetMap::setResolver(&assetResolver);
+    // S48: a PixelFX dissolve's embers may name a Pixel Particles preset ("ember"): its effect,
+    // built for this project's Pixels Per Unit and passed inline (S49's presets live in the editor)
+    jasperengine::pixelart::PixelFxPlayer::setEmberResolver([](const std::string& name) -> std::string {
+        const std::string preset = name.rfind("pixel_", 0) == 0 ? name : "pixel_" + name;
+        if (editor::pixelart::pixelParticlePresetLabel(preset).empty())
+            return std::string();
+        editor::pixelart::PixelPresetBuild build;
+        build.pixelsPerUnit = std::max(1, Engine::getPixelsPerUnit());
+        particles::ParticleEffectDocument document;
+        std::string error;
+        if (!editor::pixelart::buildPixelParticlePreset(preset, build, document, error))
+            return std::string();
+        return particles::ParticleEffectCodec::write(document);
+    });
     // S25: the labels are read again (the assets may have moved roots), the search index
     // follows, and this user's organisation file belongs to the project's root
     assetLabels.open(this);
@@ -6340,6 +6356,7 @@ void editor::Project::resetConfigs() {
     projectPath.clear();
     SoundEventLibrary::clear();
     AssetMap::setResolver(nullptr);
+    jasperengine::pixelart::PixelFxPlayer::setEmberResolver(nullptr);
     waitForAssetScan();
     assetSearchIndex.detach();
     assetLabels.close();

@@ -3156,6 +3156,24 @@ OVERRIDES[('Palette', 'getRamp')] = {
 PROPERTY_OVERRIDES[('Palette', 'variants')] = ('string[]', True)
 PROPERTY_OVERRIDES[('Palette', 'ramps')] = ('string[]', True)
 
+# S48 PixelFX player: lua_CFunctions taking a GameObject, an effect name and an options table
+# (PixelFXOptions in engine/core/script/binding/stubs/PixelFX.lua)
+OVERRIDES[('PixelFX', 'play')] = {
+    'doc': ['Plays a sprite effect on the GameObject\'s own library:sprite material for `duration` seconds (game',
+            'time, hit-stop aware, unless `opts.unscaled`), turning the feature it needs on in that material when',
+            'it lacks it. One effect per feature: a running one is replaced. Errors on a GameObject with no',
+            'library:sprite material.',
+            '`local h = PixelFX.play(enemy, "dissolve", 0.9, {embers = "ember"}); Coroutine.waitFor(h)`'],
+    'overloads': [([('go', 'EntityHandle'), ('effect', 'PixelFXEffectName'), ('duration', 'number'),
+                    ('opts?', 'PixelFXOptions')], 'PixelFXHandle')]}
+OVERRIDES[('PixelFX', 'set')] = {
+    'doc': ['Sets a value directly: a channel ("flash", "fade", "dissolve", "ramp", their amounts 0..1) or any',
+            'library:sprite property by name (colours linear). It stops a running effect of that feature and',
+            'turns the feature on when needed.',
+            '`PixelFX.set(player, "fade", 0.5)`'],
+    'overloads': [([('go', 'EntityHandle'), ('name', 'string'), ('value', 'number|Vector2|Vector3|Vector4')], '')]}
+PROPERTY_OVERRIDES[('PixelFXHandle', 'onFinished')] = ('fun()|nil', False)
+
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)
 HTML_UI_CLASS_DOCS = {
     'UIDocument': ['Get it with `UIDocument(self.scene, self.entity)` in a script on the document\'s GameObject.',

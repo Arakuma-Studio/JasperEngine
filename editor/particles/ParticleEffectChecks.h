@@ -5,6 +5,7 @@
 #define PARTICLEEFFECTCHECKS_H
 
 #include "particles/ParticleQaSettings.h"
+#include "pixelart/PixelImage.h"
 #include "util/QaChecks.h"
 
 #include <cstdint>
@@ -95,6 +96,13 @@ namespace jasperengine::editor {
         uint64_t pixelsDrawn = 0;       // base pixels the cells drew
         uint64_t offGrid = 0;           // of them, between grid lines
         std::vector<std::pair<double, std::pair<int, int>>> offGridAt;   // (t, base pixel x, y from the top left)
+        // S48's effect lints (S49 R38) read the pixel view's cells as base pixels: each cell
+        // premultiplied on transparent black (from its draws on black and on white), at its time;
+        // the emitters' origin in those pixels; the first emitter's seed
+        std::vector<pixelart::PixelImage> pixelFrames;
+        std::vector<double> pixelTimes;
+        int pixelOriginX = 0, pixelOriginY = 0;
+        uint32_t pixelSeed = 1;
     };
 
     struct ParticleCheckRequest {

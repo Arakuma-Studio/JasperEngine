@@ -22,6 +22,8 @@
 #include "pixelart/lint/EffectLints.h"
 
 #include "ecs/Entity.h"
+#include "pixelart/PixelFxPlayer.h"
+#include "pixelart/ScreenTransition.h"
 
 #include <functional>
 #include <memory>
@@ -29,6 +31,7 @@
 #include <vector>
 
 namespace jasperengine {
+    class Framebuffer;
     class Scene;
 }
 
@@ -69,12 +72,46 @@ namespace jasperengine::editor::pixelart::fx {
         // The lint inputs only the target knows (a transition: transition and rimColors); the
         // palette of the copies' materials is filled before this
         virtual void describeLints(lint::EffectLintInput& input) const { (void)input; }
+        // A target drawn over an empty scene of its own (a transition): its frame's size in
+        // framebuffer pixels, the whole frame its bounds; false: the frame follows the copies'
+        // bounds
+        virtual bool fixedFrame(int& width, int& height) const {
+            (void)width;
+            (void)height;
+            return false;
+        }
+        // After the scene's draw of the frame at `time`, before the read-back: draws over the
+        // capture's target (a transition's overlay pass). False, with what it waits for, to try
+        // again on a later frame.
+        virtual bool drawOver(Framebuffer& target, double time, std::string& waitingFor) {
+            (void)target;
+            (void)time;
+            (void)waitingFor;
+            return true;
+        }
     };
+
+    // A PixelFX effect a GameObject target plays from t = 0 (its time moved by the capture)
+    struct CaptureEffect {
+        bool active = false;
+        jasperengine::pixelart::PixelFxEffect effect = jasperengine::pixelart::PixelFxEffect::FLASH;
+        float duration = 1.0f;
+        jasperengine::pixelart::PixelFxOptions options;
+    };
+
+    // How a transition target runs over the capture's duration: cover (coverage 0 to 1), reveal
+    // (1 to 0) or play (cover 45 %, hold 10 % or options.hold, reveal 45 %, as Transition.play)
+    enum class CaptureTransitionPhase { Play, Cover, Reveal };
 
     // A GameObject and its children (their animations, particles and materials' time); with
     // `clip` (a project-relative .anim) the copy's root plays that clip on an Animation Player
     std::unique_ptr<CaptureTarget> makeEntityTarget(Project* project, SceneProject* scene, Entity entity, const std::string& clip,
-                                                    std::string& error);
+                                                    std::string& error, const CaptureEffect& effect = CaptureEffect());
+    // A screen transition of `kind` on an art grid of artWidth x artHeight at options.pixelSize
+    // (0: 1) screen pixels per art pixel, over transparent black; `duration` its run's length
+    std::unique_ptr<CaptureTarget> makeTransitionTarget(jasperengine::pixelart::TransitionKind kind,
+                                                        const jasperengine::pixelart::TransitionOptions& options, CaptureTransitionPhase phase,
+                                                        double duration, int artWidth, int artHeight);
     // A .particles asset (assets-relative) on a Particle System of its own at the origin
     std::unique_ptr<CaptureTarget> makeParticlesTarget(Project* project, const std::string& effect, std::string& error);
 

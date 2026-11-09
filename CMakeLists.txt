@@ -1172,6 +1172,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/shader/ShaderListCache.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryMatrix.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryDoc.cpp
+    # S48: library:sprite's texture reads (frame_cost, SpriteVariants.TapBudget)
+    ${EDITOR_DIR}/shader/SpriteTaps.cpp
     ${EDITOR_DIR}/texture/AstcEncoder.cpp
     ${EDITOR_DIR}/texture/BasisEncoder.cpp
     ${EDITOR_DIR}/texture/BC7TransparentEndpointRepair.cpp

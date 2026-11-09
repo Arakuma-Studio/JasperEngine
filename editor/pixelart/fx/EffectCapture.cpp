@@ -11,17 +11,20 @@
 #include "component/AnimatorComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ParticleSystemComponent.h"
+#include "component/SpriteComponent.h"
 #include "component/Transform.h"
 #include "manager/SceneManager.h"
 #include "math/AABB.h"
 #include "object/Camera.h"
 #include "particles/ParticleEffectLibrary.h"
 #include "pixelart/Palette.h"
+#include "pixelart/HitStop.h"
 #include "pixelart/PaletteMaterial.h"
 #include "pool/AnimationClipPool.h"
 #include "registry/EntityCloner.h"
 #include "render/OffscreenDraw.h"
 #include "render/RenderUtil.h"
+#include "shader/SpriteTaps.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/Framebuffer.h"
 
@@ -102,6 +105,24 @@ namespace {
         return false;
     }
 
+    // the most texture reads one copy's library:sprite features add to the base sprite (R33's
+    // static count, as SpriteVariants.TapBudget); -1 when none is a library:sprite or no compiler
+    int spriteTaps(Scene* scene, const std::vector<Entity>& roots) {
+        int most = -1;
+        for (Entity root : roots) {
+            for (Entity e : EntityCloner::collectHierarchy(scene, root)) {
+                const MeshComponent* mesh = scene->findComponent<MeshComponent>(e);
+                if (!mesh) continue;
+                for (unsigned int i = 0; i < mesh->numSubmeshes; i++) {
+                    const Material& material = mesh->submeshes[i].material;
+                    if (material.shader != "library:sprite") continue;
+                    most = std::max(most, librarySpriteExtraTaps(material.shaderFeatures, material.blendMode));
+                }
+            }
+        }
+        return most;
+    }
+
     // ------------------------------------------------------------------ targets
 
     class CaptureEntityTarget : public CaptureTarget {
@@ -112,12 +133,18 @@ namespace {
         std::string clip;
         double clipLength = 0.0;
         bool clipLoops = false;
+        CaptureEffect effect;
 
         std::string label() const override {
             const std::string name = scene->scene->getEntityName(entity);
-            return (name.empty() ? "GameObject " + std::to_string(entity) : name) + (clip.empty() ? "" : " playing " + clip);
+            return (name.empty() ? "GameObject " + std::to_string(entity) : name) + (clip.empty() ? "" : " playing " + clip) +
+                   (effect.active ? std::string(" with ") + jasperengine::pixelart::pixelFxEffectName(effect.effect) : std::string());
         }
-        double defaultDuration() const override { return clip.empty() ? 1.0 : std::max(clipLength, 1.0 / 60.0); }
+        double defaultDuration() const override {
+            double d = clip.empty() ? 1.0 : std::max(clipLength, 1.0 / 60.0);
+            if (effect.active) d = clip.empty() ? std::max((double)effect.duration, 1.0 / 60.0) : std::max(d, (double)effect.duration);
+            return d;
+        }
         bool defaultLoop() const override { return !clip.empty() && clipLoops; }
         SceneProject* sourceScene() const override { return scene; }
 
@@ -144,7 +171,115 @@ namespace {
                 into->addComponent<AnimationPlayerComponent>(copies.front(), player);
             }
             pinCopies(into, made, runSeed);
+            if (effect.active) {
+                // the effect on every copy with a library:sprite material, its time the capture's
+                jasperengine::pixelart::PixelFxOptions options = effect.options;
+                options.manual = true;
+                options.embers.clear();
+                bool played = false;
+                std::string why;
+                for (Entity e : EntityCloner::collectHierarchy(into, copies.front())) {
+                    const MeshComponent* mesh = into->findComponent<MeshComponent>(e);
+                    if (!mesh) continue;
+                    bool sprite = into->findComponent<SpriteComponent>(e) != nullptr;
+                    for (unsigned int i = 0; i < mesh->numSubmeshes && !sprite; i++) sprite = mesh->submeshes[i].material.shader == "library:sprite";
+                    if (!sprite) continue;
+                    played |= jasperengine::pixelart::PixelFxPlayer::play(into, e, effect.effect, effect.duration, options, &why).isValid();
+                }
+                if (!played) {
+                    error = "the effect needs a Sprite or a library:sprite material on the GameObject or its children" +
+                            (why.empty() ? std::string() : " (" + why + ")");
+                    return false;
+                }
+            }
             return true;
+        }
+
+        void seek(Scene* into, const std::vector<Entity>& made, double time) override {
+            if (!effect.active) return;
+            for (Entity root : made) {
+                for (Entity e : EntityCloner::collectHierarchy(into, root)) jasperengine::pixelart::PixelFxPlayer::seek(into, e, time);
+            }
+        }
+    };
+
+    // A screen transition drawn over transparent black at each time (R12-R14 through
+    // ScreenTransition::renderInto, the program the engine's overlay draws with)
+    class CaptureTransitionTarget : public CaptureTarget {
+    public:
+        jasperengine::pixelart::TransitionKind kind = jasperengine::pixelart::TransitionKind::IRIS;
+        jasperengine::pixelart::TransitionOptions options;
+        CaptureTransitionPhase phase = CaptureTransitionPhase::Play;
+        double duration = 1.0;
+        int artWidth = 160, artHeight = 90;
+
+        std::string label() const override {
+            return std::string("transition ") + jasperengine::pixelart::transitionKindName(kind);
+        }
+        double defaultDuration() const override { return duration; }
+
+        bool build(Scene* into, uint32_t runSeed, std::vector<Entity>& made, std::string& error) override {
+            (void)into;
+            (void)runSeed;
+            (void)error;
+            made.clear();
+            return true;
+        }
+
+        bool fixedFrame(int& width, int& height) const override {
+            const int scale = std::max(options.pixelSize, 1);
+            width = artWidth * scale;
+            height = artHeight * scale;
+            return true;
+        }
+
+        // the coverage and phase at `time` of the capture's run
+        void at(double time, float& coverage, jasperengine::pixelart::TransitionPhase& state) const {
+            using jasperengine::pixelart::TransitionPhase;
+            const double d = std::max(duration, 1e-6);
+            auto eased = [&](double u) { return jasperengine::pixelart::applyTransitionEase(options.ease, (float)std::clamp(u, 0.0, 1.0)); };
+            if (phase == CaptureTransitionPhase::Cover) {
+                coverage = eased(time / d);
+                state = TransitionPhase::COVER;
+                return;
+            }
+            if (phase == CaptureTransitionPhase::Reveal) {
+                coverage = eased(1.0 - time / d);
+                state = TransitionPhase::REVEAL;
+                return;
+            }
+            const double hold = options.hold < 0.0f ? 0.1 * d : std::min((double)options.hold, d);
+            const double edge = std::max((d - hold) * 0.5, 1e-6);
+            if (time < edge) {
+                coverage = eased(time / edge);
+                state = TransitionPhase::COVER;
+            } else if (time < edge + hold) {
+                coverage = 1.0f;
+                state = TransitionPhase::HOLD;
+            } else {
+                coverage = eased(1.0 - (time - edge - hold) / edge);
+                state = TransitionPhase::REVEAL;
+            }
+        }
+
+        bool drawOver(Framebuffer& target, double time, std::string& waitingFor) override {
+            float coverage = 0.0f;
+            jasperengine::pixelart::TransitionPhase state = jasperengine::pixelart::TransitionPhase::COVER;
+            at(time, coverage, state);
+            if (!jasperengine::pixelart::ScreenTransition::renderInto(&target, kind, options, coverage, state)) {
+                waitingFor = "the transition's program";
+                return false;
+            }
+            return true;
+        }
+
+        void describeLints(lint::EffectLintInput& input) const override {
+            input.transition = true;
+            input.rimColors = jasperengine::pixelart::ScreenTransition::resolveRamp(options);
+            input.spillApplies = false;
+            input.spillSkipReason = "a transition draws over the whole screen";
+            input.cost = lint::FrameCost();
+            input.cost.skipReason = "a transition's cost is its one pass (R34): measure it with JASPERENGINE_FRAME_STATS or the GPU timers";
         }
     };
 
@@ -242,6 +377,8 @@ struct EffectCapture::Impl {
     bool reloadFailed = false;
     std::shared_ptr<void> advance;
     bool warmedPlay = false;
+    // frame_cost: the texture reads the copies' library:sprite features add (R33)
+    int taps = -1;
 };
 
 EffectCapture::EffectCapture(CaptureSettings s, std::unique_ptr<CaptureTarget> t) : settings(std::move(s)), target(std::move(t)), impl(std::make_unique<Impl>()) {}
@@ -334,9 +471,14 @@ void EffectCapture::finish(const std::string& failure) {
             in.cost.shownMs = median(d.shown);
             in.cost.hiddenMs = median(d.hidden);
         }
-        in.hitStopSkipReason = settings.mode == CaptureMode::Scene && settings.sceneId != 0
-            ? "this build records no hit-stop requests"
-            : "hit-stops are measured in a scene-mode capture of the playing game";
+        if (d.taps >= 0) in.cost.taps = d.taps;
+        if (settings.mode == CaptureMode::Scene && settings.sceneId != 0) {
+            // the longest HitStop.play the game asked for while it was captured (0: none)
+            const jasperengine::pixelart::HitStopStats stats = jasperengine::pixelart::HitStop::getStats();
+            in.hitStopSeconds = stats.requests > 0 ? stats.longestSeconds : 0.0;
+        } else {
+            in.hitStopSkipReason = "hit-stops are measured in a scene-mode capture of the playing game";
+        }
         target->describeLints(in);
     }
     if (onFinished) {
@@ -451,6 +593,8 @@ bool EffectCapture::advance(double budgetMs) {
                 return true;
             }
             d.playing = true;
+            // hit_stop_length: what the game asks for from now on
+            jasperengine::pixelart::HitStop::resetStats();
             d.fixedBefore = Engine::getFixedDeltatime();
             Engine::setFixedDeltatime(kStep);
             if (settings.acquireAdvance) d.advance = settings.acquireAdvance();
@@ -610,7 +754,16 @@ bool EffectCapture::advance(double budgetMs) {
             s->scene->update(0.0);
             s->scene->update(0.0);
             if (!d.framed) {
-                if (settings.mode == CaptureMode::Isolated) {
+                int fixedWidth = 0, fixedHeight = 0;
+                if (settings.mode == CaptureMode::Isolated && target->fixedFrame(fixedWidth, fixedHeight)) {
+                    // a target that draws itself over the frame (a transition): the frame is its screen
+                    output.width = std::max(fixedWidth, 1);
+                    output.height = std::max(fixedHeight, 1);
+                    output.bounds = {0, 0, output.width, output.height};
+                    output.groundY = output.height - 1;
+                    d.centerX = 0.0f;
+                    d.centerY = 0.0f;
+                } else if (settings.mode == CaptureMode::Isolated) {
                     // the target's bounds at t = 0 (meshes; a GameObject without one is a point)
                     AABB box;
                     for (Entity root : s->made) {
@@ -653,6 +806,7 @@ bool EffectCapture::advance(double budgetMs) {
                     output.opaque = true;
                     output.bounds = {0, 0, output.width, output.height};
                 }
+                if (wanted("frame_cost")) d.taps = spriteTaps(s->scene, s->made);
                 std::vector<jasperengine::pixelart::Rgba8> colors;
                 std::string paletteName;
                 if (findPalette(s->scene, s->made, colors, paletteName)) {
@@ -746,7 +900,9 @@ bool EffectCapture::advance(double budgetMs) {
         const double previousPin = Engine::getPinnedShaderTime();
         Engine::setPinnedShaderTime(pass.times[d.frame]);
         std::vector<uint8_t> rgba;
-        const OffscreenDraw drawn = drawOffscreen(CONTACT_SHEET_VIEW_ID, d.target, {layer}, s.warmed, rgba, d.waiting);
+        const double frameTime = pass.times[d.frame];
+        const OffscreenDraw drawn = drawOffscreen(CONTACT_SHEET_VIEW_ID, d.target, {layer}, s.warmed, rgba, d.waiting, nullptr,
+                                                  [&](std::string& waitingFor) { return target->drawOver(d.target, frameTime, waitingFor); });
         Engine::setPinnedShaderTime(previousPin);
         if (drawn == OffscreenDraw::Wait) {
             if (++d.waitFrames > 1200) {
@@ -773,7 +929,7 @@ bool EffectCapture::advance(double budgetMs) {
 }
 
 std::unique_ptr<CaptureTarget> editor::pixelart::fx::makeEntityTarget(Project* project, SceneProject* scene, Entity entity, const std::string& clip,
-                                                                       std::string& error) {
+                                                                       std::string& error, const CaptureEffect& effect) {
     if (!scene || !scene->scene || !scene->scene->isEntityCreated(entity)) {
         error = "no such GameObject";
         return nullptr;
@@ -783,6 +939,7 @@ std::unique_ptr<CaptureTarget> editor::pixelart::fx::makeEntityTarget(Project* p
     target->scene = scene;
     target->entity = entity;
     target->clip = clip;
+    target->effect = effect;
     if (!clip.empty()) {
         std::string why;
         const std::string assetRelative = project->normalizeToAssetsRelative(project->getProjectPath() / std::filesystem::path(clip)).generic_string();
@@ -794,6 +951,19 @@ std::unique_ptr<CaptureTarget> editor::pixelart::fx::makeEntityTarget(Project* p
         target->clipLength = loaded->getLength();
         target->clipLoops = loaded->getWrap() == ClipWrapMode::Loop || loaded->getWrap() == ClipWrapMode::PingPong;
     }
+    return target;
+}
+
+std::unique_ptr<CaptureTarget> editor::pixelart::fx::makeTransitionTarget(jasperengine::pixelart::TransitionKind kind,
+                                                                           const jasperengine::pixelart::TransitionOptions& options,
+                                                                           CaptureTransitionPhase phase, double duration, int artWidth, int artHeight) {
+    auto target = std::make_unique<CaptureTransitionTarget>();
+    target->kind = kind;
+    target->options = options;
+    target->phase = phase;
+    target->duration = std::max(duration, 1.0 / 60.0);
+    target->artWidth = std::clamp(artWidth, 8, 1024);
+    target->artHeight = std::clamp(artHeight, 8, 1024);
     return target;
 }
 

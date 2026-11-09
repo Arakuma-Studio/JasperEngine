@@ -102,6 +102,8 @@ namespace jasperengine {
         static void registerHitStopClasses(lua_State *L);
         // S48: Transition, TransitionHandle, TransitionKind, PixelFX.glitch (TransitionClassesLua.cpp)
         static void registerTransitionClasses(lua_State *L);
+        // S48: PixelFX.play, PixelFX.set and PixelFXHandle (PixelFxClassesLua.cpp)
+        static void registerPixelFxClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);
