@@ -14,7 +14,9 @@ set(JASPERENGINE_PARTICLE_SRCS
     core/particles/ParticleEffectLibrary.cpp
     core/particles/ParticleKernels.cpp
     core/particles/ParticleMeshes.cpp
+    core/particles/AnalyticParticles.cpp
     core/particles/ParticleModules.cpp
+    core/particles/ParticlePixel.cpp
     core/particles/ParticlePreview.cpp
     core/particles/ParticleRender.cpp
     core/particles/ParticleTrails.cpp
@@ -27,6 +29,7 @@ set(JASPERENGINE_PARTICLE_SYSTEM_SRCS
     core/object/ParticleSystem.cpp
     core/subsystem/ParticleSubsystem.cpp
     core/subsystem/RenderSystemParticles.cpp
+    core/particles/PixelParticles.cpp
 )
 
 option(JASPERENGINE_WASM_SIMD "Build the WebAssembly particle kernels with simd128" ON)

@@ -118,7 +118,10 @@ namespace jasperengine::editor{
         // a clip or a Sound Event, and a Mixer Snapshot action
         AUDIO_ACTION,
         SOUND_EVENT_ACTION,
-        MIXER_SNAPSHOT_ACTION
+        MIXER_SNAPSHOT_ACTION,
+        // GameObject › Effects › Pixel › <preset> (S49 R20): a Particle System with a pixel
+        // preset inline; the Hierarchy makes it (a PARTICLE_SYSTEM with the preset's effect)
+        PIXEL_PARTICLE_SYSTEM
     };
 
     class CreateEntityCmd: public Command{

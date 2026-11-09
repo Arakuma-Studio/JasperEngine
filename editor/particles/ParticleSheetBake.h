@@ -41,6 +41,12 @@ namespace jasperengine::editor {
         // <output>.png and <output>.particles (output: project-relative, without an extension)
         static bool sheetFiles(Project* project, const std::string& output, const PoseImage& sheet, const particles::ParticleEffectDocument& effect,
                                bool overwrite, std::vector<WriteFilesCmd::Item>& items, std::vector<std::string>& written, std::string& error);
+        // the sheet's Aseprite json-hash (S49 R21: frame rects row by row and durations, the layout
+        // `aseprite --data` writes), which a texture's Sprite Mode slices (Slice... > From JSON)
+        static std::string asepriteJson(const std::string& imageName, int columns, int rows, int cellWidth, int cellHeight, double seconds);
+        // <output>.json of it (beside sheetFiles' .png)
+        static bool asepriteFile(Project* project, const std::string& output, int columns, int rows, int cellWidth, int cellHeight, double seconds,
+                                 bool overwrite, std::vector<WriteFilesCmd::Item>& items, std::vector<std::string>& written, std::string& error);
         // <folder>/<name>_000.png, ... (folder: project-relative)
         static bool sequenceFiles(Project* project, const std::string& folder, const std::string& name, const std::vector<PoseImage>& frames,
                                   bool overwrite, std::vector<WriteFilesCmd::Item>& items, std::vector<std::string>& written, std::string& error);

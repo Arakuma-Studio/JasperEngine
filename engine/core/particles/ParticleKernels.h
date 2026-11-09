@@ -254,6 +254,21 @@ namespace jasperengine { namespace particles {
             return k(c.c0);
         }
 
+        // A Ramp's step per lane (S49 R12, pixelfx at()): floor(t^bias n), reversed on request
+        static void rampIndex(const GradientParam& g, Lane& L, uint32_t idx[4]){
+            f4 t = wrap(driverValue(g.driver, g.stream, g.scale, g.offset, L), g.wrap);
+            if (g.rampBias != 1.0f)
+                t = pow(t, g.rampBias);
+            const float n = (float)g.lutSize;
+            const f4 step = B::min(B::max(B::floor(B::mul(t, k(n))), B::zero()), k(n - 1.0f));
+            alignas(16) float v[4];
+            B::storeu(v, step);
+            for (int l = 0; l < 4; l++){
+                const uint32_t s = (uint32_t)v[l];
+                idx[l] = g.rampReverse ? g.lutSize - 1u - s : s;
+            }
+        }
+
         static void gradient(const GradientParam& g, Lane& L, f4 out[4]){
             switch (g.kind){
                 case GradientParam::Const:
@@ -267,6 +282,14 @@ namespace jasperengine { namespace particles {
                 case GradientParam::Lut: {
                     const f4 t = wrap(driverValue(g.driver, g.stream, g.scale, g.offset, L), g.wrap);
                     lut4(L.ctx.pool, g.lut0, g.lutSize, t, out);
+                    return;
+                }
+                case GradientParam::Ramp: {
+                    alignas(16) uint32_t idx[4];
+                    rampIndex(g, L, idx);
+                    const float* table = reinterpret_cast<const float*>(L.ctx.pool + g.lut0);
+                    for (int c = 0; c < 4; c++)
+                        out[c] = B::set(table[idx[0] * 4 + c], table[idx[1] * 4 + c], table[idx[2] * 4 + c], table[idx[3] * 4 + c]);
                     return;
                 }
                 case GradientParam::LutRange: {
@@ -685,7 +708,15 @@ namespace jasperengine { namespace particles {
                 }
                 f4 color[4];
                 gradient(p.color, L, color);
-                stu(ctx.ch[ChStartColor], i, packColor(color[0], color[1], color[2], color[3]));
+                if (p.color.kind == GradientParam::Ramp){
+                    // a ramp step's own bytes (S49 R13): no round trip through linear
+                    alignas(16) uint32_t idx[4];
+                    rampIndex(p.color, L, idx);
+                    const uint32_t* bytes = reinterpret_cast<const uint32_t*>(ctx.pool + p.color.lut1);
+                    stu(ctx.ch[ChStartColor], i, B::iset(bytes[idx[0]], bytes[idx[1]], bytes[idx[2]], bytes[idx[3]]));
+                }else{
+                    stu(ctx.ch[ChStartColor], i, packColor(color[0], color[1], color[2], color[3]));
+                }
                 f4 rot = B::zero();
                 if (p.storeRotation || p.initRotation || p.storeQuat){
                     rot = curve(p.rotation, L);
@@ -782,6 +813,8 @@ namespace jasperengine { namespace particles {
                 }
                 if (ctx.ch[ChNoiseSize])
                     st(ctx.ch[ChNoiseSize], i, k(1.0f));
+                if (ctx.ch[ChSettled])
+                    st(ctx.ch[ChSettled], i, B::zero());
                 if (ctx.ch[ChPlaneTick])
                     stu(ctx.ch[ChPlaneTick], i, B::iset1(0u));
                 if (ctx.ch[ChAnimVelX]){
@@ -1357,9 +1390,22 @@ namespace jasperengine { namespace particles {
                     my = B::mul(my, sm);
                     mz = B::mul(mz, sm);
                 }
-                st(ctx.ch[ChPosX], i, B::madd(mx, dt, ld(ctx.ch[ChPosX], i)));
-                st(ctx.ch[ChPosY], i, B::madd(my, dt, ld(ctx.ch[ChPosY], i)));
-                st(ctx.ch[ChPosZ], i, B::madd(mz, dt, ld(ctx.ch[ChPosZ], i)));
+                f4 nx = B::madd(mx, dt, ld(ctx.ch[ChPosX], i));
+                f4 ny = B::madd(my, dt, ld(ctx.ch[ChPosY], i));
+                f4 nz = B::madd(mz, dt, ld(ctx.ch[ChPosZ], i));
+                if (ctx.ch[ChSettled]){
+                    // at rest (S49 R14): no force, gravity or animated velocity moves it
+                    const u4 rest = B::cmpgt(ld(ctx.ch[ChSettled], i), B::zero());
+                    nx = B::select(rest, ld(ctx.ch[ChPosX], i), nx);
+                    ny = B::select(rest, ld(ctx.ch[ChPosY], i), ny);
+                    nz = B::select(rest, ld(ctx.ch[ChPosZ], i), nz);
+                    v1x = B::select(rest, B::zero(), v1x);
+                    v1y = B::select(rest, B::zero(), v1y);
+                    v1z = B::select(rest, B::zero(), v1z);
+                }
+                st(ctx.ch[ChPosX], i, nx);
+                st(ctx.ch[ChPosY], i, ny);
+                st(ctx.ch[ChPosZ], i, nz);
                 st(ctx.ch[ChVelX], i, v1x);
                 st(ctx.ch[ChVelY], i, v1y);
                 st(ctx.ch[ChVelZ], i, v1z);
@@ -1444,6 +1490,8 @@ namespace jasperengine { namespace particles {
                     f4 w = B::zero();
                     if (p.angularVelocity) w = curve(p.angular, L);
                     if (p.rotationBySpeed) w = B::add(w, curve(p.rotationSpeed, L));
+                    if (ctx.ch[ChSettled])
+                        w = B::select(B::cmpgt(ld(ctx.ch[ChSettled], i), B::zero()), B::zero(), w);
                     st(ctx.ch[ChRotation], i, B::madd(w, dt, ld(ctx.ch[ChRotation], i)));
                 }
                 if ((p.angularVelocity3D || p.rotationBySpeed3D) && ctx.ch[ChQuatX]){
@@ -1507,6 +1555,16 @@ namespace jasperengine { namespace particles {
                 age = B::select(hit, B::add(age, loss), age);
             }
             const f4 speed = length3(ox, oy, oz);
+            if (p.settleSpeed > 0.0f && ctx.ch[ChSettled]){
+                // pixelfx's rest: a hit slower than Settle Speed stops it where it landed
+                const u4 settle = B::iand(hit, B::cmplt(speed, k(p.settleSpeed)));
+                if (B::movemask(settle) != 0){
+                    st(ctx.ch[ChVelX], i, B::select(settle, B::zero(), ld(ctx.ch[ChVelX], i)));
+                    st(ctx.ch[ChVelY], i, B::select(settle, B::zero(), ld(ctx.ch[ChVelY], i)));
+                    st(ctx.ch[ChVelZ], i, B::select(settle, B::zero(), ld(ctx.ch[ChVelZ], i)));
+                    st(ctx.ch[ChSettled], i, B::select(settle, k(1.0f), ld(ctx.ch[ChSettled], i)));
+                }
+            }
             u4 kill = B::iand(hit, B::ior(B::cmplt(speed, k(p.minKillSpeed)), B::cmpgt(speed, k(p.maxKillSpeed))));
             if (p.kill) kill = hit;
             // a killed particle reaches the end of its life
@@ -1542,8 +1600,10 @@ namespace jasperengine { namespace particles {
         static void collision(const KernelContext& ctx, const CollisionParams& p, uint32_t begin, uint32_t end){
             for (uint32_t i = begin; i < end; i += 4){
                 Lane L(ctx, i);
-                // dying particles of this tick do not collide
-                const u4 alive = B::cmplt(L.normAge, k(1.0f));
+                // dying particles of this tick do not collide, nor do those at rest
+                u4 alive = B::cmplt(L.normAge, k(1.0f));
+                if (ctx.ch[ChSettled])
+                    alive = B::iandnot(B::cmpgt(ld(ctx.ch[ChSettled], i), B::zero()), alive);
                 if (B::movemask(alive) == 0)
                     continue;
                 const f4 radius = particleRadius(ctx, p, i);
