@@ -47,7 +47,8 @@ TEST(TitleLanguageEditing, OverridablesGoToTheTranslation) {
     const Json& layer = *titleart::findLayer(r.doc.root, "0000000a");
     EXPECT_EQ(layer["text"], "WIN") << "the source text stays";
     EXPECT_DOUBLE_EQ(layer["size"].get<double>(), 100.0) << "and its size";
-    const Json& german = (*titleart::findLayer(titleart::resolveTitleLanguage(r.doc, "de").root, "0000000a"));
+    const titleart::TitleArtDoc resolved = titleart::resolveTitleLanguage(r.doc, "de");
+    const Json& german = *titleart::findLayer(resolved.root, "0000000a");
     EXPECT_DOUBLE_EQ(german["size"].get<double>(), 80.0);
     EXPECT_EQ(german["transform"]["position"], Json::array({15.0, 20.0}));
     // the source language and set_text
