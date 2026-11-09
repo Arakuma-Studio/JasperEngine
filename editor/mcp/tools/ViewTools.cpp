@@ -2286,8 +2286,8 @@ void registerViewTools(McpRegistry& registry) {
         // are in jasper://docs/title-art and an unknown key fails listing them, which pays for its schema;
         // its words were cut again when the wave-2 merges took core 16 characters over its limit.
         tool.description =
-            "Fronts an editor panel for a watching human (screenshot needs none). console: "
-            "its rows, categories, selection; preferences: opens a page; systems: each row's Enabled checkbox rect; "
+            "Fronts a panel (screenshot needs none). console: "
+            "its rows, categories, selection; preferences: opens a page; systems: each row's Enabled rect; "
             "pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "particle_effect", "pose_animation",
@@ -2302,7 +2302,7 @@ void registerViewTools(McpRegistry& registry) {
             })},
             {"page", string("preferences: a page title.")},
             {"close", boolean("preferences: close it.")},
-            {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})},
+            {"profiler", object({{"load", string("A .jetrace.json to load.")}})},
             {"path", string("graph_editor: file to open")},
             {"pose", anyObject("")},
             {"title_designer", anyObject("")}
