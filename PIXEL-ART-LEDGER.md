@@ -244,6 +244,9 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: Every agent (S42, S48 with its four sub-tasks, S49, S51, S52) stopped on a 5-hour
+  API limit that reset at 01:40 UTC. All were revived at 01:41; their work was committed or saved.
+  S48 was told to keep at most 2–3 sub-agents active at once, to limit API load.
 - 2026-11-09: S48 Pixel FX started from `main` `de77eef9d` on a fourth box, D. S49's review
   (blocker: sub-emitters never drawn, to be fixed in S20's renderer; 10 should-fix issues) was sent
   back.
