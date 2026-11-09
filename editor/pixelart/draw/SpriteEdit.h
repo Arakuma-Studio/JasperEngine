@@ -83,6 +83,10 @@ namespace jasperengine::editor::pixelart::draw {
     // and the failing op's index (-1: the request itself).
     bool applyOps(SpriteDoc& working, const EditRequest& request, const EditEnv& env, EditResult& result, PixelProblem& problem, int& opIndex);
 
+    // R3's addressing for the read tools (frames from 0 out): false with no_frame, no_tag, no_layer
+    bool resolveFrames(SpriteDoc& sprite, const nlohmann::json& value, const std::string& field, std::vector<int>& out, PixelProblem& problem);
+    bool resolveLayer(SpriteDoc& sprite, const nlohmann::json& value, const std::string& field, bool pixels, int& out, PixelProblem& problem);
+
     // "Edit Sprite (hero.aseprite: line, fill ×2)"'s op part: "line, fill ×2"
     std::string summarizeOps(const std::vector<std::string>& opKinds);
 

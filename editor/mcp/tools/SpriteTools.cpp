@@ -362,6 +362,8 @@ void registerSpriteTools(McpRegistry& registry) {
     registry.addTool(std::move(tool));
     // S45: edit_sprite_atlas, get_sprite_atlas
     registerSpriteAtlasTools(registry);
+    // S47: create_sprite, get_sprite, read_sprite_pixels, edit_sprite, render_sprite, diff_sprite
+    registerSpriteDrawTools(registry);
 }
 
 }

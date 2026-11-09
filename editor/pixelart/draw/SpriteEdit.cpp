@@ -776,6 +776,40 @@ namespace jasperengine::editor::pixelart::draw {
 
     }
 
+    namespace {
+
+        struct AddressingContext {
+            EditRequest request;
+            EditEnv env;
+            EditResult result;
+            detail::EditState state;
+            explicit AddressingContext(SpriteDoc& sprite) : state(sprite, request, env, result) {}
+        };
+
+    }
+
+    bool resolveFrames(SpriteDoc& sprite, const nlohmann::json& value, const std::string& field, std::vector<int>& out, PixelProblem& problem) {
+        AddressingContext context(sprite);
+        try {
+            out = context.state.parseFrames(value, field);
+            return true;
+        } catch (const detail::OpError& e) {
+            problem = e.problem;
+            return false;
+        }
+    }
+
+    bool resolveLayer(SpriteDoc& sprite, const nlohmann::json& value, const std::string& field, bool pixels, int& out, PixelProblem& problem) {
+        AddressingContext context(sprite);
+        try {
+            out = context.state.parseLayer(value, field, pixels);
+            return true;
+        } catch (const detail::OpError& e) {
+            problem = e.problem;
+            return false;
+        }
+    }
+
     bool applyOps(SpriteDoc& working, const EditRequest& request, const EditEnv& env, EditResult& result, PixelProblem& problem, int& opIndex) {
         using namespace detail;
         result = EditResult();

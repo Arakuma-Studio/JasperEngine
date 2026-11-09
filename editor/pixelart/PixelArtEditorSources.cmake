@@ -182,6 +182,7 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pixelart/draw/SpriteEditPaint.cpp
     ${EDITOR_DIR}/pixelart/draw/SpriteEditTransform.cpp
     ${EDITOR_DIR}/pixelart/draw/SpriteEditStructure.cpp
+    ${EDITOR_DIR}/pixelart/draw/SpriteImportFrames.cpp
     ${EDITOR_DIR}/pixelart/draw/SpriteRender.cpp
     ${EDITOR_DIR}/pixelart/draw/SpriteDiff.cpp
     ${EDITOR_DIR}/pixelart/draw/SpriteEditEvents.cpp
@@ -203,6 +204,7 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/pixelart/draw/SpriteEditPaint.cpp
         ${EDITOR_DIR}/pixelart/draw/SpriteEditTransform.cpp
         ${EDITOR_DIR}/pixelart/draw/SpriteEditStructure.cpp
+        ${EDITOR_DIR}/pixelart/draw/SpriteImportFrames.cpp
         ${EDITOR_DIR}/pixelart/draw/SpriteRender.cpp
         ${EDITOR_DIR}/pixelart/draw/SpriteDiff.cpp
         ${EDITOR_DIR}/pixelart/draw/SpriteEditEvents.cpp
