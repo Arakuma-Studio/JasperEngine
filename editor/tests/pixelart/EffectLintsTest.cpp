@@ -212,6 +212,24 @@ TEST(EffectLints, FrameCostTiers) {
     EXPECT_EQ(lintFrameCost(taps).status, LintStatus::Pass);
 }
 
+TEST(EffectLints, FrameCostWithOnlyTapsIsNotAPass) {
+    FrameCost cost;
+    cost.skipReason = "the frame cost is measured in isolated mode";
+    cost.taps = 3;
+    const LintResult within = lintFrameCost(cost);
+    EXPECT_EQ(within.status, LintStatus::Skip) << "no time was measured";
+    EXPECT_NE(within.message.find("isolated mode"), std::string::npos) << within.message;
+    EXPECT_NE(within.message.find("3 texture taps"), std::string::npos) << within.message;
+    // the taps are SPIR-V call sites: a read in a shader loop counts once (R33's static count)
+    EXPECT_NE(within.message.find("loop"), std::string::npos) << within.message;
+    cost.taps = 30;
+    const LintResult over = lintFrameCost(cost);
+    EXPECT_EQ(over.status, LintStatus::Warn) << "over R33's taps budget even with no time measured";
+    EXPECT_NE(over.message.find("isolated mode"), std::string::npos) << over.message;
+    EXPECT_EQ(over.measured, 30);
+    EXPECT_EQ(over.threshold, 24);
+}
+
 TEST(EffectLints, HitStopPastAThirdOfASecondReadsAsAStall) {
     EXPECT_EQ(lintHitStopLength(-1.0).status, LintStatus::Skip);
     EXPECT_EQ(lintHitStopLength(0.08).status, LintStatus::Pass);
@@ -297,6 +315,14 @@ TEST(EffectLints, ReportAndVerdict) {
     const LintReport some = runEffectLints(input, {"partial_alpha", "spill"});
     ASSERT_EQ(some.results.size(), 2u);
     EXPECT_EQ(some.results[0].id, "spill");
+}
+
+TEST(EffectLints, VerdictIsNotCleanWhenNothingWasMeasured) {
+    LintReport report;
+    report.add(lintLoopSeam({}, false));
+    report.add(lintHitStopLength(-1.0));
+    EXPECT_EQ(report.skip, 2);
+    EXPECT_NE(effectVerdict(report), Verdict::Clean);
 }
 
 // capture_contact_sheet's checks read like preview_particle_effect's (S35 / S91 rows)

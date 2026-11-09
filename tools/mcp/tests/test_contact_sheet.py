@@ -13,11 +13,17 @@ tools/fixtures/pixel-fx copied in:
   where nothing warns (verdict clean); the checks are the verdict tools' rows (S35 / S91 shape);
 - R27's effect target: a PixelFX effect seeked by the capture (fade_out shown, then gone, whole texels); AC23's
   dissolve fixture (tools/fixtures/pixel-fx/effects): a dissolve still burning at the end warns one_shot_end.
-- R36: 16 frames of a 64x64 target at scale 4 within 2 s, with every lint within 5 s (reported, harness.over_budget).
+- R36: 16 frames of a 64x64 target at scale 4 within 2 s, with every lint within 5 s (asserted through
+  harness.over_budget: it fails on those budgets when JASPER_MCP_PERF_SLACK is set);
+- the capture's limits and honesty: an oversized transition is refused with the fix, overlapping captures are refused,
+  scene mode SKIPs the lints that would read the scene behind the target, a verdict is never clean when every check
+  skipped, transition_edges compares the read-back frames with the CPU evaluation, and a determinism capture in Play
+  says it reloaded the scene.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shutil
@@ -88,6 +94,14 @@ async def test_hidden_until_enabled(ed: Editor):
     await ed.call("tool_groups", enable=["pixel_art"])
     listed = {t.name for t in await ed.tools(groups=None)}
     ed.check("capture_contact_sheet" in listed, "listed once tool_groups enables pixel_art")
+
+
+async def test_annotations_are_true(ed: Editor):
+    # a capture in Play reloads the played scene for determinism and output: true writes a file
+    tool = next(t for t in await ed.tools() if t.name == "capture_contact_sheet")
+    ann = tool.annotations
+    ed.check(not getattr(ann, "read_only_hint", False), f"capture_contact_sheet is not read-only: {ann}")
+    ed.check(not getattr(ann, "idempotent_hint", False), f"capture_contact_sheet is not idempotent: {ann}")
 
 
 async def test_setup(ed: Editor):
@@ -194,6 +208,57 @@ async def test_scene_mode_stopped(ed: Editor):
     ed.check_eq(value["mode"], "scene")
     corner = pixel(rgba, width, 0, 15)
     ed.check(abs(corner[0] - 26) <= 3 and abs(corner[2] - 77) <= 3, f"the scene's background colour fills the view: {corner}")
+
+
+async def test_scene_mode_skips_the_lints_that_see_the_scene(ed: Editor):
+    value = (await sheet(ed, target={"entity": S["hero"]}, mode="scene", frames=3, scale=1, labels=False, lint=True))[0]
+    for lint in ("partial_alpha", "off_palette", "flicker"):
+        row = check_of(ed, value, lint)
+        ed.check_eq(row["status"], "SKIP", f"{lint} cannot tell the target from the scene behind it: {row}")
+        ed.check_in("scene", row["limited_by"], f"{lint} says why")
+
+
+async def test_capture_size_is_capped(ed: Editor):
+    transition = {"transition": "iris", "transition_options": {"width": 1024, "height": 576, "pixel_size": 2}}
+    bad = await ed.call_raw("capture_contact_sheet", {"target": transition, "frames": 16, "scale": 1, "labels": False}, timeout=300)
+    ed.check(bad.is_error and "capture_too_large" in bad.text, f"2048x1152 x 16 frames is refused: {bad.text[:400]}")
+    ed.check("pixel_size" in bad.text or "frames" in bad.text, f"the error names the fix: {bad.text[:400]}")
+    errors = bad.structured.get("errors", []) if bad.structured else []
+    ed.check(errors and errors[0]["kind"] == "capture_too_large", f"the family's typed error: {errors}")
+    wide = dict(transition["transition_options"], width=1024, height=1024, pixel_size=16)
+    bad = await ed.call_raw("capture_contact_sheet", {"target": {"transition": "iris", "transition_options": wide}, "frames": 1}, timeout=300)
+    ed.check(bad.is_error and "capture_too_large" in bad.text, f"16384 px a side is refused: {bad.text[:400]}")
+    await sheet(ed, target={"transition": "iris", "transition_options": {"width": 32, "height": 32, "pixel_size": 1}}, frames=2)
+
+
+async def test_overlapping_captures_are_refused(ed: Editor):
+    transition = {"transition": "blinds", "transition_options": {"width": 640, "height": 360, "pixel_size": 1}}
+    first = asyncio.create_task(ed.call_raw("capture_contact_sheet", {"target": transition, "frames": 64, "scale": 1, "lint": True}, timeout=300))
+    await asyncio.sleep(0)
+    second = await ed.call_raw("capture_contact_sheet", {"target": {"entity": S["hero"]}, "frames": 2}, timeout=300)
+    done = await first
+    ed.check(not done.is_error, f"the first capture is untouched: {done.text[:400]}")
+    ed.check(second.is_error and "capture_running" in second.text, f"overlapping captures are refused: {second.text[:400]}")
+    ed.check("get_job" in second.text, f"the error names the fix: {second.text[:400]}")
+
+
+async def test_every_skipped_check_is_not_clean(ed: Editor):
+    value = (await sheet(ed, target={"entity": S["hero"]}, frames=2, lint=["transition_edges"]))[0]
+    ed.check_eq(check_of(ed, value, "transition_edges")["status"], "SKIP")
+    ed.check(value["verdict"] != "clean", f"nothing measured is not clean: {value['verdict']}")
+
+
+async def test_transition_edges_reads_back_the_frames():
+    # JASPER_TEST_TRANSITION_TWIN_SKEW shifts the CPU evaluation's coverage only: the read-back frames then differ
+    async with Editor(create=True, name="Transition Skew", env={"JASPER_TEST_TRANSITION_TWIN_SKEW": "0.15"}) as ed2:
+        await ed2.call("tool_groups", enable=["pixel_art"])
+        options = {"phase": "cover", "ease": "linear", "width": 64, "height": 36, "seed": 5}
+        r = await ed2.call_raw("capture_contact_sheet", {"target": {"transition": "iris", "transition_options": options}, "frames": 4,
+                                                         "duration": 1, "lint": ["transition_edges"]}, timeout=300)
+        ed2.check(not r.is_error, f"capture failed: {r.text[:400]}")
+        row = next(row for row in r.value["checks"] if row["id"] == "transition_edges")
+        ed2.check_eq(row["status"], "WARN", f"a frame that differs from the CPU evaluation is reported: {row}")
+        ed2.check_in("read back", row["limited_by"], f"the message says the frames differ from the CPU evaluation: {row}")
 
 
 # ------------------------------------------------------------------ AC23: the lints and their fixed twins
@@ -304,6 +369,7 @@ async def test_determinism_in_play(ed: Editor):
         ed.check_eq(row["status"], "FAIL", f"an unseeded random start differs between two fresh loads: {row}")
         ed.check_eq(value["verdict"], "needs_person")
         ed.check(value.get("next"), "the guidance comes in next")
+        ed.check_in("reloaded", value["next"].lower(), f"next says the played scene was loaded again: {value['next']}")
         state = await ed.call("get_play_state")
         ed.check(state.get("time", {}).get("held", True), f"the game is still paused after the capture: {state}")
     finally:
