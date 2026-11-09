@@ -242,6 +242,20 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 **Batch landings (owner, 2026-11-08):** finished features are merged together with `origin/main` on one tree. That tree is verified once (each feature's filtered gate plus web, android, the Vulkan/GLES3 GPU sets and a smoke test) and pushed.
 
+## Follow-ups (owned by the coordinator)
+
+- Wire S51's font analyzer into S42's validator (`setFontAnalyzer`; S51 deviation 11 has the
+  mapping) once S42 and S51 are both on `main`.
+- `main` test issues seen during landings, from other programs:
+  - `FullPathGoldenTest.UIParticleSystemsClippedByAPanel` reads after 4 frames instead of
+    waiting for emitted particles;
+  - `DebugOverlayTest` gestures inherit state from an earlier test in the full run;
+  - LatticeRender shadows, SharedMeshBuffers ×2 and TestScriptEvents touch fail on Vulkan
+    `htmlui-tests`;
+  - `PopupCountsTapAndDrag` and `TextFallbackRtl` are flaky on repeat.
+- Run the MCP eval once for every pixel-art case (needs accounts lent with `box_lend_accounts`).
+- Destroy the build boxes A–D when the program ends.
+
 ## Log
 
 - 2026-11-09: **Batch 3: S51 Pixel Fonts merged into `main` and pushed** (branch `6e0376917`).
