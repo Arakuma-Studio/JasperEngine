@@ -1594,3 +1594,9 @@ rest of S82 lands in 6B.
     itself (a mirror ball, a rough gold disc, its panorama), one per frame while the picker is open,
     dropped when it closes. The Status footer measures with `title3DStats` on the main thread once the
     document has been still for 0.5 s while the section is open (the mesher's cost, once per change).
+34. **Implementation: the smoke's mesher line belongs to the Compile build.** `title3d-fixed` listed "this build has no 3D mesher"
+    in `smoke-expect.txt`, which every method checks, so `SMOKE_METHOD=compile` failed it: a source export keeps every module
+    (`Exporter`, S34 R6: its user's code may use any, and deviation 31 of this spec says the same), so its game has the mesher
+    and rightly does not log the line. R38's "compiled out" holds for the Compile build (`SMOKE_METHOD=build`, which keeps the
+    check, now in `smoke-build-expect.txt`, together with `set(JASPERENGINE_TITLE_ART_MESHER OFF)` and the golden); a source
+    export still draws the cooked meshes (`cooked=true`).

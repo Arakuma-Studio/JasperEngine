@@ -9,7 +9,7 @@ only the editor has), as a Realtime Title Art Renderer without a prebaked first 
 JASPERENGINE_TITLE_ART_MESHER off and ships the title's cooked meshes and environment cube; the game
 draws the title itself from them. A Lua script logs its mesh once it is ready.
 
-smoke-expect.txt lists what the game must log, smoke-export-expect.txt what the export's CMake settings
+smoke-expect.txt lists what the game must log (smoke-build-expect.txt: only in the Compile build), smoke-export-expect.txt what the export's CMake settings
 must hold, and smoke-golden.json the image the game's own frame must match: the editor's frame of the
 same scene (record_game, which waits for the Realtime title like the game's "Engine ready" line),
 drawn with the mesher and the HDRI-built cube:
@@ -60,9 +60,12 @@ return Title3DCheck
 """
 
 EXPECT = """# tools/smoke-test.sh: lines the exported game logs (tools/fixtures/make_title3d_fixed_fixture.py)
-its 3D layers draw the meshes the export cooked (this build has no 3D mesher)
 [gate] title3d ready: tier=low cooked=true
 [gate] title3d budget=3.5
+"""
+
+BUILD_EXPECT = """# tools/smoke-test.sh (SMOKE_METHOD=build): lines only a Compile build's game logs (no mesher, S86 R38)
+its 3D layers draw the meshes the export cooked (this build has no 3D mesher)
 """
 
 EXPORT_EXPECT = """# tools/smoke-test.sh (SMOKE_METHOD=build): lines of the Compile build's CMakeLists (S81 R51, S86 R38)
@@ -113,6 +116,7 @@ async def main() -> int:
                                                                   "CLAUDE.md", "CMakeLists.txt", ".gitignore", ".gitattributes"))
         shutil.copyfile(golden[-1], target / "smoke-golden.png")
     (target / "smoke-expect.txt").write_text(EXPECT)
+    (target / "smoke-build-expect.txt").write_text(BUILD_EXPECT)
     (target / "smoke-export-expect.txt").write_text(EXPORT_EXPECT)
     (target / "smoke-golden.json").write_text(json.dumps(
         {"image": "smoke-golden.png", "tolerance": 24, "max_fraction": 0.02,

@@ -1,0 +1,2 @@
+# tools/smoke-test.sh (SMOKE_METHOD=build): lines only a Compile build's game logs (no mesher, S86 R38)
+its 3D layers draw the meshes the export cooked (this build has no 3D mesher)
