@@ -15,6 +15,7 @@
 #include "../support/TitleStandardTitle.h"
 #include "../support/TitleTestAssets.h"
 
+#include "shader/ShaderVariantCompiler.h"
 #include "titleart/TitleArtHash.h"
 #include "titleart/analysis/ReadGrid.h"
 #include "titleart/render/TitleGpu.h"
@@ -336,4 +337,39 @@ TEST_F(TitleFxLiveGpu, OverTheLiveBudgetReRenders) {
     live.setState(stateOf(), hashOf(overrides), overrides);
     EXPECT_FALSE(live.liveWaiting());
     EXPECT_NE(live.status().liveFallback.find("over the title's live budget"), std::string::npos) << live.status().liveFallback;
+}
+
+TEST_F(TitleFxLiveGpu, LightScaleReadsTheGlowsLightAtAQuarter) {
+    // fx_hdr_on_8bit: a Glow output at RenderRequest::lightScale 1/4 holds a quarter of the light
+    auto doc = std::make_shared<const TitleArtDoc>(standardTitleDocument({standardEffect("00000201", "light_glow")}));
+    auto glow = [&](float scale) {
+        RenderRequest r;
+        r.doc = doc;
+        r.pxScale = SCALE;
+        r.assets = &assets;
+        r.content = OutputContent::Glow;
+        r.lightScale = scale;
+        return render(reference, r);
+    };
+    const Pixels full = glow(1.0f), quarter = glow(0.25f);
+    ASSERT_EQ(full.rgba.size(), quarter.rgba.size());
+    double error = 0.0;
+    size_t lit = 0;
+    for (size_t i = 3; i < full.rgba.size(); i += 4) {
+        // alpha is the light's largest channel, unencoded (under 1 it is the light itself)
+        if (full.rgba[i] < 0.2f || full.rgba[i] > 0.9f) continue;
+        error += std::abs(quarter.rgba[i] * 4.0 - full.rgba[i]);
+        lit++;
+    }
+    ASSERT_GT(lit, 100u) << "the glow draws soft light";
+    EXPECT_LT(error / (double)lit, 0.02) << "a quarter of the light";
+}
+
+TEST(TitleFxLiveShaders, TheUiLiveLayersHaveAVertexStage) {
+    // S81 R33: library:title_fx draws an Image's live layers, so a runtime compile (a C++ game, a
+    // player with the runtime compiler) needs its vertex stage (the Android render gate found this)
+    std::string vert, frag, error;
+    EXPECT_TRUE(ShaderVariantCompiler::getLibraryShaderPaths("library:title_fx", ShaderType::UI, vert, frag, &error)) << error;
+    EXPECT_EQ(vert, "library/title_fx.vert");
+    EXPECT_TRUE(ShaderVariantCompiler::getLibraryShaderPaths("library:title_fx_sprite", ShaderType::MESH, vert, frag, &error)) << error;
 }

@@ -157,7 +157,7 @@ async def test_lua_live_effect_params(ed: Editor):
                        {"op": "expose", "name": "glow_radius", "type": "number", "min": 4, "max": 1000,
                         "targets": [{"layer": "Title", "field": "fx:light_glow.radius"}]}])
     await ed.call("export_title", path=FX_DOC)
-    await ed.call("create_ui", scene=s["scene"], root={"type": "image", "name": "Glow", "layout": {"anchor": "top", "size": [400, 200]}})
+    await ed.call("create_ui", scene=s["scene"], root={"type": "image", "name": "Glow", "layout": {"anchor": "top_center", "size": [400, 200]}})
     await ed.call("add_component", scene=s["scene"], entity="Glow", component="titleart")
     await ed.call("set_properties", scene=s["scene"], entity="Glow", values={"titleart": {"title": FX_DOC, "renderMode": "realtime"}})
     checked = await ed.call("check_title", path=FX_DOC, checks=["fx_live_budget"])
@@ -189,10 +189,9 @@ async def test_hdr_on_8bit_reads_the_light(ed: Editor):
     await setup(ed)
     path = "assets/titles/hdr.titleart"
     await ed.call("edit_title", path=path, create={"text": "HOT", "canvas": [600, 300]}, bake="never",
-                  ops=[{"op": "add_effect", "layer": "Title", "type": "light_glow"},
-                       {"op": "set", "layer": "Title", "values": {"fx:light_glow.intensity": 10}}])
+                  ops=[{"op": "add_effect", "layer": "Title", "type": "light_glow", "params": {"intensity": 10}} for _ in range(6)])
     r = await ed.call("check_title", path=path, checks=["fx_hdr_on_8bit"])
     check = r["checks"][0]
     ed.check_eq(check["status"], "PASS", f"info, never a warning: {check}")
-    ed.check(check["measured"]["over_4_fraction"] > 0.005, f"light at intensity 10 is above 4.0 somewhere: {check}")
+    ed.check(check["measured"]["over_4_fraction"] > 0.005, f"six glows at full intensity are above 4.0 somewhere: {check}")
     ed.check_in("info:", check["message"])

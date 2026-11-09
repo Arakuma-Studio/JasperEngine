@@ -312,7 +312,13 @@ void TitleArtScheduler::runFrame(double dt, bool editorEditMode){
         context.budgetUs = budgetUs;
         context.platformFactor = factor;
         context.costs = costs.get();
-        schedule(lives, context);
+        const TitleFrameReport report = schedule(lives, context);
+        if (report.steps > 0){
+            totals.frames++;
+            totals.worstUs = std::max(totals.worstUs, report.spentUs);
+            if (report.steps > 1 && report.spentUs > budgetUs) totals.overBudgetFrames++;
+            totals.lateStarts += report.lateStarts;
+        }
     }
 
     limits.cacheBytes = (size_t)(config.cacheBudgetMiB[(size_t)group] * 1024.0 * 1024.0) / 2;

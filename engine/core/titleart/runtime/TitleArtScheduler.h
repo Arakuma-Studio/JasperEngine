@@ -95,6 +95,17 @@ namespace jasperengine::titleart {
         double liveBudgetMs() const;
         // the runtime's cost model of this device (null before the first frame with work)
         const TitleStepCosts* costModel() const { return costs.get(); }
+        // since the last reset: the frames with steps, the most any one spent (measured or
+        // predicted us), the frames of several steps past the budget, the late starts (tests,
+        // the render gate's emulator figures)
+        struct FrameTotals {
+            uint64_t frames = 0;
+            double worstUs = 0.0;
+            uint64_t overBudgetFrames = 0;
+            uint64_t lateStarts = 0;
+        };
+        const FrameTotals& frameTotals() const { return totals; }
+        void resetFrameTotals() { totals = FrameTotals(); }
 
         // the renderer every live title renders with (made on first use)
         TitleArtRenderer& renderer();
@@ -127,6 +138,7 @@ namespace jasperengine::titleart {
         uint64_t contextId = 0;
         TitleLiveLimits limits;
         std::unique_ptr<TitleStepCosts> costs;
+        FrameTotals totals;
         DevicePlatformGroup costsGroup = DevicePlatformGroup::Desktop;
     };
 
