@@ -41,9 +41,10 @@ TEST(TransformOps, Rotate90OfANonSquareTargetKeepsAllItsRows) {
     draw::SpriteDoc sprite = s47test::makeSprite(5, 4);
     S47_APPLY(sprite, json::array({{{"op", "rect"}, {"rect", {0, 0, 5, 4}}, {"color", 1}, {"fill", true}}}));
     S47_APPLY(sprite, json::array({{{"op", "rotate"}, {"angle", 90}, {"method", "nearest"}}}));
-    int rowsLeft = 0;
-    for (const std::string& row : s47test::canvasRows(sprite)) rowsLeft += row.find('1') != std::string::npos ? 1 : 0;
-    EXPECT_EQ(rowsLeft, 4);
+    // the turned 4 x 5 keeps 4 of its columns in the 5 x 4 frame: 16 pixels, not 12 with a row lost
+    int painted = 0;
+    for (const std::string& row : s47test::canvasRows(sprite)) painted += static_cast<int>(std::count(row.begin(), row.end(), '1'));
+    EXPECT_EQ(painted, 16);
 }
 
 TEST(TransformOps, LinkedCelIsFlippedOnce) {
