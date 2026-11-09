@@ -1404,9 +1404,9 @@ rest of S82 lands in 6B.
     in the tree and AC18's device figures are not recorded: the build host has no KVM (no
     `/dev/kvm`, no vmx or svm CPU flag), so the emulator cannot run, and no phone is attached. The
     first emulator run (`tools/android-emulator-test.sh --scene titleart`, default and with
-    `debug.jasperengine.titleart_rgba8=1`) makes the golden; AC18 stays a manual device run. W1 ran it on
-    the KVM host (server H): it found and fixed `library:title_fx`'s missing vertex stage; the titles
-    then stay `shaders` (Deviation 37), so the golden is still not in the tree.
+    `debug.jasperengine.titleart_rgba8=1`) makes the golden; AC18 stays a manual device run. W1 ran it
+    on the KVM host: `library:title_fx` got its vertex stage, the relaunch bug was fixed (Deviation
+    37), the golden is in the tree and both paths pass.
 23. **Implementation: Glyph Atlas** (`titleart/runtime/TitleGlyphAtlas.*`, R25-R32), complete
     with these choices:
     - Cells are S80's `glyphCell` renders (back: rims and the layer's effects; front: the face) of
@@ -1548,50 +1548,15 @@ rest of S82 lands in 6B.
     player): the build holds the atlas manifest and pages, and the player logs, once per atlas,
     `the glyph atlas showed its first string after N cell renders (M cells from the build's
     prebaked atlas)`; the test reads N = 0.
-37. **Open: Title Art on the Android emulator stays `shaders`.** On the KVM host (emulator API 34,
-    `swangle_indirect`, the `render-gate` APK), the `titleart` scene runs 8 steps (across both titles) and
-    the next step waits: both titles report `shaders` for 15 minutes (48,000 frames), no shader build
-    fails, the game keeps running at about 53 fps, and the runtime cost gate's gate is not what waits (`gpu busy 0`
-    throughout). Not diagnosed further: the program being built is presumably the big ELEMENT
-    variant (S80's, 4.8-5.3 s on llvmpipe), whose compile may not finish under the emulator's
-    ANGLE/SwiftShader translator. No golden was written; AC18's figures are not measured.
-38. **Implementation (S86 wiring, `ta/w3-3d-runtime`): Realtime 3D through the runtime.** The component's `qualityTier`
-    resolves through `TitleArtRuntime::tierFor` into `TitleArtLiveState::tier` (job, state hash and prebake key; 0 and no
-    hash change for 2D documents); Lua `qualityTier` (read/write, refused values raise) and `getMeshStats(layerPath)`;
-    the project setting `title_art.realtime_3d_quality` (S86 deviation 31); the `_3D` / `_MESHER` sub-options follow
-    ModuleUsage's fixed-geometry rule with evidence naming the title and the parameter; the export ships the cooked 3D
-    data (`assets/je-titleart/`) and the player loads it. `Engine::areScenesLoaded` (the "Engine ready" line, the Recorder)
-    now also waits for enabled Realtime and Glyph Atlas titles that render to show their state's image or fail
-    (`TitleArtSystem::areTitlesReady`; `describeNotLoaded` names the title and its `pending`).
-39. **Implementation: the project's settings reach builds.** `TitleArtScheduler::configure` only ran in the editor, so games
-    used the defaults. A build with a Realtime or Glyph Atlas title now ships `assets/je-titleart/settings.json` (Frame Budget,
-    Release Delay, Cache Budget, Reference Height; `parseTitleArtRuntimeSettings`), read at its first such title. Realtime 3D
-    Quality travels in the 3D index (S86 deviation 31). Editor-only by nature: Edit mode's Frame Budget, Simulate Export
-    Characters in Play, Auto Bake, Stale Bakes On Export.
-40. **Implementation: Reference Height works, and its default is the canvas height.** Nothing read it (deviation 13 had moved
-    the display scale to canvas units). It now multiplies a UI title's resolution by height / canvas height in the game and
-    in the export's prebake, so their keys agree; 0, the new default, is the canvas height (R11 said 1080, which would have
-    silently re-rendered every project whose canvas is not 1080 at another size); world titles stay at their canvas pixels.
-41. **Implementation: the Title Designer side (W2, `editor/titleart/runtime/TitleArtRuntimeDesigner`).**
-    R62's Characters UI is the Document page's Runtime section (presets as checkboxes, Custom, Custom
-    File, Characters Used by the Document, the count, Check Characters with the subset size of each
-    font of the text layers, the characters the set leaves out with "Add to Custom", R55's missing
-    glyphs) and the Glyph Layer. Preview As Glyph Atlas creates a real Glyph Atlas title
-    (`TitleArtRuntime::create`) on the committed file, run by S81's scheduler like any instance, and
-    makes it again when the file's revision changes; leaving the mode or closing the window drops
-    it. `TitleArtSystem::runRuntimeFrame` is the frame-once entry `renderTitles` used privately, made
-    public so the preview runs the scheduler in the render phase (through S82's `requestEngineFrame`)
-    while no scene draws a title. The preview first stalled at "Glyph Atlas: rendering 35/44" on both renderers: `runRuntimeFrame`'s once-a-frame guard counted commits, and the editor commits only when a view redraws (1,199 of 1,251 calls refused with the count stuck at 52). A frame now ends at a main-loop heartbeat or a commit, as `TitleFirstDraws` counts them, and the Designer keeps drawing while the job runs (`engineFramesWanted`), stopping when the image is done. Behind that stall, the job's compose and page copies ran into S86's one-new-draw-a-frame rule, which skips a pass and expects it to run again: a page copy or compose whose first draw waits now keeps its cell's place, the chain draws again on a later frame (`TitleGpu::deferrals`), and a cell or image goes out only when every pass drew (`allowGroup`, this change's first form, went with S86's `TitleDrawGate`). A title whose cells outgrow the default 4 pages of 1,024 (the reference title: size 220 with Light Glow) fails with R29's sentence, as a placed renderer with those settings would; a smaller one shows its image. The Title Art Renderer's Open in Title Designer opens one instance In Context (S82 R30).
-42. **Bug fixed at the final merge: Edit mode did not pause `TitleArtSystem`.** `Project::pauseEngineScene`
-    paused every other system but not this one, so `liveTime` (R38 "runs in Play only") advanced in Edit mode and a
-    re-saved scene with a Realtime title changed with the frame rate (found by `test_golden_resave_title3d_fixed`), and
-    the Editor Frame Budget (`editorFrameBudgetMs`) applied to no Edit-mode render. It is now paused with the rest.
-43. **Bug fixed at the final merge: a glyph cell's front part is its ink, not the layer's reach; a cell wider than a page says so.**
-    The front (the face, drawn without layer effects) was cropped to the same reach as the back (rims and effects), so `JACKPOT` at
-    size 220 with a rim, Light Glow's default 200 px radius and a drop shadow stored a 636-680 x 701-706 px front per glyph
-    beside a back of the same size: 1,351 px wide for `A`, wider than a 1,024 page, so Max Pages could not help (measured,
-    test `ACellsFaceKeepsItsInkNotTheLayersGlow`). The front is now 188-232 x 253-258 px and a 2,048 page holds four cells instead of
-    two. The back is what is left: its reach alone is 448 px on each axis, so with the ink no two backs share a 1,024 page, seven glyphs
-    need seven pages, and the default 4 pages are truly full (R29's sentence; Max Pages 8 fits it, the reference title of deviation 41). A cell wider or taller than a page now fails with
-    its own sentence (Raise Atlas Page Size, lower Resolution Scale, or shorten what reaches past the glyphs), and no empty page is
-    made for it.
+37. **Fixed: Title Art on the Android emulator stayed `shaders`.** The runtime compile queue was
+    a process-lifetime strand of the first engine run's job system; a recreated Android activity
+    shuts that system down and starts another, so a push to the queue was cancelled and a variant
+    first asked for after the relaunch stayed Loading for ever (workers idle, no compile error:
+    title programs, unlike the ones the first run had cached on disk, were asked for only then).
+    `compileQueue()` now makes the queue for the current job system
+    (`RuntimeShaderCompilerRelaunch.AVariantFirstAskedAfterAnEngineRelaunchCompiles`). The render
+    gate's `titleart` scene passes on the KVM host (API 34, `swangle_indirect`, 88 frames to Engine
+    ready): `golden/titleart.png`, 0.00 % of pixels over tolerance on the float path and with
+    `debug.jasperengine.titleart_rgba8=1`. AC18's emulator figures (SwiftShader, CPU-rasterized,
+    not a device): the frames with steps worst at 304.8 ms (a shader's first draws), 2 of 37 frames
+    of several steps over budget, 2 late starts. The device row stays manual.
