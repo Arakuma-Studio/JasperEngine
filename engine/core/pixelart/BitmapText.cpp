@@ -279,15 +279,19 @@ namespace jasperengine::pixelart {
         const Vector4 face(options.faceColor.x, options.faceColor.y, options.faceColor.z, 1.0f);
         // the Text's glyphs on its cache page, looked up once
         const std::unordered_map<uint32_t, CachedGlyph>* cached = fromCache ? BitmapTextCache::get().glyphsOf(cachePage, f, options.style) : nullptr;
-        auto cachedGlyph = [cached](uint32_t key) -> const CachedGlyph*{
-            if (!cached) return nullptr;
-            auto it = cached->find(key);
-            return it == cached->end() ? nullptr : &it->second;
+        // each placed glyph's cache entry, found once for both of its quads
+        std::vector<const CachedGlyph*> cachedOf(cached ? placed.size() : 0, nullptr);
+        for (size_t i = 0; i < cachedOf.size(); i++){
+            auto it = cached->find(placed[i].key);
+            if (it != cached->end()) cachedOf[i] = &it->second;
+        }
+        auto cachedGlyph = [&cachedOf, &placed](const Placed& p) -> const CachedGlyph*{
+            return cachedOf.empty() ? nullptr : cachedOf[(size_t)(&p - placed.data())];
         };
         if (fromCache && styled){
             for (const Placed& p : placed){
                 const BitmapGlyph* g = p.glyph;
-                const CachedGlyph* c = cachedGlyph(p.key);
+                const CachedGlyph* c = cachedGlyph(p);
                 const int x0 = p.pen + g->offsetX, y0 = (int)p.line * f.getLineHeight() + g->offsetY - f.getBaseline();
                 if (c && c->backW > 0)
                     addQuad(x0 + c->backOffsetX, y0 + c->backOffsetY, c->backW, c->backH, c->backX, c->backY, white, p, true);
@@ -300,7 +304,7 @@ namespace jasperengine::pixelart {
             const BitmapGlyph* g = p.glyph;
             const int x0 = p.pen + g->offsetX, y0 = (int)p.line * f.getLineHeight() + g->offsetY - f.getBaseline();
             if (fromCache){
-                const CachedGlyph* c = cachedGlyph(p.key);
+                const CachedGlyph* c = cachedGlyph(p);
                 if (c && c->faceW > 0)
                     addQuad(x0, y0, c->faceW, c->faceH, c->faceX, c->faceY, face, p, false);
                 else

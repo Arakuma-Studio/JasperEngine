@@ -736,3 +736,11 @@ Recorded by the implementation (branch `feature/s51-pixel-fonts`).
 18. **HTML UI pages (R15).** A bitmap face's glyphs go to their own glyph pages (`PageKind::PIXEL`
     and `PIXEL_EFFECT`, in the base budget), sampled NEAREST, so a CSS transform magnifies their
     pixels as blocks; vector glyphs keep S16's filtered pages.
+19. **AC22's comparison (open).** `tools/mcp/tests/test_pixel_fonts_export.py` compares the
+    compiled game of `tools/fixtures/pixel-fonts` (`SMOKE_METHOD=compile SMOKE_PLAY=1`, its own
+    1280x720 framebuffer screenshot, GL core) with the editor's Game view at the same size. The
+    cooked fonts ship and the sources do not, but 10,428 of 45,672 text pixels differ: the
+    exported frame is the editor's frame through a 3x3 [1 2 1] blur, everywhere (every pixel
+    within 1 level of that blur), so the glyphs are the same and something after them filters
+    the whole exported frame. That is outside S51's text path and is left to the engine; the test
+    stays strict.
