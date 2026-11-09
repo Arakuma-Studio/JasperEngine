@@ -191,7 +191,7 @@ namespace {
             ScreenLayout layout;
             layout.screen = screen;
             if (mode == "pixel_perfect_camera"){
-                const PixelPerfectCameraComponent& c = scene.camera.component;
+                const PixelArtCameraSettings& c = scene.camera.component;
                 const int refW = c.referenceWidth > 0 ? (int)c.referenceWidth : p.canvasWidth;
                 const int refH = c.referenceHeight > 0 ? (int)c.referenceHeight : p.canvasHeight;
                 const jasperengine::pixelart::PixelPerfectLayout l = jasperengine::pixelart::computePixelPerfectLayout(
@@ -335,7 +335,7 @@ Json jasperengine::editor::pixelart::rules::cameraJson(const PixelArtCheckInput&
         {"layouts", layoutsJson(screenLayouts(input, scene))},
     };
     if (hasCameraComponent(scene)){
-        const PixelPerfectCameraComponent& c = scene.camera.component;
+        const PixelArtCameraSettings& c = scene.camera.component;
         out["reference"] = Json::array({c.referenceWidth > 0 ? (int)c.referenceWidth : p.canvasWidth,
                                         c.referenceHeight > 0 ? (int)c.referenceHeight : p.canvasHeight});
         out["upscale_mode"] = pixelUpscaleModeName(c.upscaleMode);
