@@ -118,6 +118,7 @@
           "type": "generator",
           "generator": "backlight",
           "name": "Stadium Rays",
+          "before": "Title",
           "preset": "god_rays",
           "follow": "Title",
           "values": {
@@ -130,6 +131,7 @@
           "type": "generator",
           "generator": "lens_flare",
           "name": "Lens Flare",
+          "before": "Title",
           "follow": "Title",
           "values": {
             "gen.position": [

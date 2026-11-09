@@ -234,6 +234,7 @@
           "type": "generator",
           "generator": "light_streaks",
           "name": "Light Streaks",
+          "before": "Title",
           "preset": "anamorphic"
         }
       ]

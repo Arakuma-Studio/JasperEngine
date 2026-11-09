@@ -96,7 +96,7 @@ async def test_gate(ed: Editor):
     counts = {"looks": [0, 0, 0], "color_schemes": [0, 0, 0], "templates": [0, 0, 0]}   # checked, unavailable, allowlisted
     reasons: dict = {}
     work = []
-    for kind in ("looks", "color_schemes", "templates"):
+    for kind in [k for k in os.environ.get("JASPER_TITLE_LIBRARY_KINDS", "looks,color_schemes,templates").split(",") if k]:
         for r in await rows(ed, kind):
             if r["id"].startswith(("project/", "user/")):
                 continue
