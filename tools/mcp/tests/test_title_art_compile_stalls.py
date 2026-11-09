@@ -10,7 +10,7 @@ new program draw a frame. A title with every heavy Material member, a 3D title w
 rendered through render_title and opened in the Title Designer, with Mesa's shader cache off (cold
 compiles, as on a first run): no main-thread stall reaches 3 s. The watchdog reports stalls from
 1 s here so the longest ones show in the log. Red control (by hand, Deviation 58): the same run
-with the whole ELEMENT program logs a stall over 4 s.
+with every element on the whole ELEMENT program logged stalls of 10.5, 6.5 and 6.0 s.
 """
 
 import re

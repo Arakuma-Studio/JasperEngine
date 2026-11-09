@@ -2249,21 +2249,28 @@ rest of S82 lands in 6B.
 58. **Implementation: the ELEMENT program draws in variants of what an element's material shades**
     (`render/TitleElementVariant.h`). One program with every pattern kind (27, five calls each with
     relief), every texture kind (12, six calls), glass, reflection, satin and the span seam behind
-    uniforms was llvmpipe's 4.3-5.3 s first-draw compile (S86 Deviation 23: the editor hung on
-    every new title). An element pass now carries property bits above the program number
+    uniforms cost the render thread 8 s in llvmpipe's GLSL front end (`glCompileShader` /
+    `glLinkProgram`) and 4.3-5.4 s in its first-draw JIT (S86 Deviation 23: the editor hung on every
+    new title). An element pass now carries property bits above the program number
     (`ShaderType::TITLE_ART` bits 16-20 the pattern kind, 21 its relief, 22-25 the texture kind, 26
     glass, 27 reflection, 28 satin, 29 spans; bit 30 is the whole program, the tests' red control
-    `TITLE_ART_TEST_ELEMENT_WHOLE`), computed from the block values the shader branches on, and
-    `element.glsl` makes the members off in the variant constants (the code of every other kind
-    folds away). So every variant draws the whole program's pixels: byte for byte on both pixel paths
-    for every Material member (`TitleArtScenesGpu.ElementVariantsDrawTheWholeProgram`), and every
-    golden and parity test passes unchanged. Count: at most 1 + 27 x 2 pattern states x 13 texture
-    states x 2^4 = 11,440 variants; a document plans one per distinct material (a title with rims
-    2-6), S32's shader lists and an exported player hold the ones a project's titles plan
-    (`TitleRenderJob::shaderKeys`), and bits 12-15 stay free for other programs. Measured on
-    llvmpipe (first draw, cold): the whole program 4.3-4.5 s; a plain element 0.14 s; one feature
-    0.18-0.25 s; a pattern kind with relief 0.18-0.55 s; a texture kind 0.19-0.43 s; the heaviest
-    pattern and texture with relief, glass, reflection, satin and spans together 1.1 s (25 % of the
-    whole program). `TitleElementVariantGpu.CompileCostIsBounded` checks the largest variant a heavy
-    title plans against 40 % of the whole program's compile in the same process (red control: the
-    title planned with the whole program).
+    `TITLE_ART_TEST_ELEMENT_WHOLE`), computed from the block values the shader branches on.
+    `element.glsl` makes what is off a constant equal to the block's value and leaves its code out
+    in the preprocessor (`patterns.glsl` compiles one kind under `TA_PATTERN_ONLY`; constants alone
+    left the first draw small but the front end still parsed and optimized everything, 2-4 s on the
+    render thread). So every variant draws the whole program's pixels: byte for byte on both pixel
+    paths for every Material member (`TitleArtScenesGpu.ElementVariantsDrawTheWholeProgram`; red
+    control by hand: without the satin bit the satin case differs by up to 128/255), and every golden
+    and parity test passes unchanged. Count: at most 1 + 27 x 2 pattern states x 13 texture states x
+    2^4 = 11,440 variants; a document plans one per distinct material (a title with rims 2-6), S32's
+    shader lists and an exported player hold the ones a project's titles plan
+    (`TitleRenderJob::shaderKeys`), and bits 12-15 stay free for other programs. Trade: changing a
+    pattern or texture kind in the Designer compiles a new variant, a one-time cost per kind.
+    Measured on llvmpipe (render thread, cold): the whole program 7.9 s created + 4.3-5.4 s first
+    draw; a plain element 0.02 + 0.17-0.21 s; the heaviest title tried (giraffe pattern with
+    relief, liquid texture, glass, reflection, satin, spans together) 0.3-0.4 + 1.2-1.3 s.
+    `TitleElementVariantGpu.CompileCostIsBounded` checks the largest variant a heavy title plans
+    against 40 % of the whole program's cost measured in the same process (red control: the same
+    title planned with the whole program). A synchronous render (`TitleArtRenderHost::render`:
+    `check_title`'s pixel checks, `view_asset`, picking a generator) has no frame to spread over: its
+    stall is the sum of the programs it meets.
