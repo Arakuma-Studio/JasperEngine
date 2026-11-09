@@ -181,7 +181,8 @@ async def test_canvas_shows_edits(ed: Editor):
     path = "assets/designer/canvas.titleart"
     await create(ed, path, text="CANVAS")
     await focus(ed, path=path, zoom="fit", background="black")
-    await ed.call("editor_status")
+    # idle: a canvas render still running (a cold compile on llvmpipe is seconds of passes) is not
+    await settled_state(ed)
     first = await ed.screenshot("title_designer", max_width=600)
     again = await ed.screenshot("title_designer", max_width=600)
     ed.check_eq(first, again, "an idle canvas gives the same image")
