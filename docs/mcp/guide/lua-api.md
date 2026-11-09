@@ -564,6 +564,7 @@ Functions:
 | `Input.getTouchCount()`, `Input.getTouch(i)` | this frame's touches (0-based, nil out of range): the fingers down, then those lifted in the frame: `{pointer, position, phase, delta, startPosition, time, began}` plus Unity's fields (below) |
 | `Input.getTouchDown(pointer)`, `Input.getTouchUp(pointer)` | bool, this frame |
 | `Input.getPointerLockState()` | `Input.POINTER_UNLOCKED` / `POINTER_PENDING` / `POINTER_LOCKED` |
+| `Input.getPenPressure()` | number, the latest pointer input's pressure: 0..1 for a pen or stylus, -1 for a mouse or a finger |
 | `Input.isTouch()` | bool, any touch active |
 | `Input.isMouseEntered()` | bool |
 | `Input.getMousePosition()` | `Vector2` |

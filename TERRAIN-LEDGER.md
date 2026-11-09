@@ -124,7 +124,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | Merge of `origin/main` (pixel art, Doriax specs, lean MCP, no CI) | done | Specs renumbered from S41-S46 to T1-T6 |
 | Spec revision for the upstream changes | done | `terrain` 10 tools, `voxels` 4, no format bump, no new budget exceptions |
 | T1 foundation | done, verification continuing | On integration; writer migration has since moved to `terrain/s53-authoring` |
-| T1 implementation | landed except pen readers and benches | Last batch merged: averaging alternate, Alt Alternates While Painting, Alt+click on release (T5's tree pick aligned), Layer and Noise Size eyedroppers, real-mouse stroke-log test, brush contexts in list_shortcuts. D-27 to D-37 all built. Pen readers and benches land from terrain/t1-benches |
+| T1 implementation | landed; budget work in progress | All of T1 is in integration, including T1b's pen pressure and benches (3dcc6470f). Open: T1's size budget (~312 KiB vs 96 KiB; runtime edit path to become a player module) and 9 of 18 bench budgets, on terrain/t1-perf |
 | T2 implementation | landed | Merged into integration (6af5f3b9d) at 2b280b147: core 133/133, editor 70/70 and 9/9, T2 and T1 MCP files pass, fan-out worst 129, lints. Not run: the test_noise_export player run, je-bench-noise, eval, web, Android, size checks, NDK armv7. Build tree deleted |
 | T3 implementation | landed | Merged into integration (9f3ffd6ba) at 8376cd9c4: core 560/560 (all 207 variants), editor 182/182, terrain MCP 35/35, fan-out worst 127. Driver workarounds recorded (llvmpipe GL path). Not run: web, Android, full Vulkan suite, perf checks |
 | T4 implementation | in progress | `terrain/t4-worlds` at 02f215f48 (integration with T2 merged). Built: tiles, tiled store, streaming, compound-shape collision paging, `Twd` variant, .terrainworld asset and cook, panel, inspector, undo, Lua, module, edit_terrain_world, sample_terrain {world}. Core 565/565, GPU (lavapipe) 418/418, editor 108/108, world MCP 11/11. Sent back to build: foliage on worlds, Convert to Terrain World, navigation, panel import and cancellable import job, streaming overlay, spline water fill, Physics Placement |
@@ -189,6 +189,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   scene, so an editor job's result can sit forever in an idle editor (T2's first Preview hung this way). Editor-side job
   hand-backs use `EditorHost::enqueueMainThreadTask`, which runs every frame and wakes the loop; T1, T5 and T6 are checking theirs.
   T2's fix has red controls for the idle hand-back and for a throwing job. T2 wires its presets into T1's Create Terrain dialog.
+- 2026-11-09: T1 perf, T4 and T1b stopped on the API's 5-hour limit and were resumed at the 01:40 reset. T1b's verification had
+  finished meanwhile (core 96/96, editor 38/38, linux, MCP 4/4, lints, both red controls) and landed (3dcc6470f).
 - origin/main merged into integration (2a414c895, via terrain/upstream-merge a0e90439f): 622 upstream commits plus T3's GLES3 fit,
   T6's CaveMouth fix and a fan-out cut (TerrainSurfaceLayer.h 148 to 87; worst header now MeshComponent.h at 137). Core 819/819,
   editor 431, MCP 139 (both single failures fixed and rerun), VoxelTerrainGpu stable over repeats. This is the new base for T1b,

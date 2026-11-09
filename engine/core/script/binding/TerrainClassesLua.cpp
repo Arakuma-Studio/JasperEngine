@@ -244,8 +244,8 @@ void LuaBinding::registerTerrainClasses(lua_State *L){
         .addFunction("isHoleAt", &terrainLuaIsHoleAt)
         .addFunction("contains", &terrainLuaContains)
         .addFunction("raycast", &terrainLuaRaycast)
-        .addProperty("heightMapWidth", +[](const Terrain* self) { return terrainLuaHeightFormat(const_cast<Terrain*>(self)).bounds.w; })
-        .addProperty("heightMapHeight", +[](const Terrain* self) { return terrainLuaHeightFormat(const_cast<Terrain*>(self)).bounds.h; })
+        .addProperty("heightMapWidth", +[](const Terrain* self) -> int { return terrainLuaHeightFormat(const_cast<Terrain*>(self)).bounds.w; })
+        .addProperty("heightMapHeight", +[](const Terrain* self) -> int { return terrainLuaHeightFormat(const_cast<Terrain*>(self)).bounds.h; })
         .addProperty("allowRuntimeEdits",
             +[](const Terrain* self) { return self->getComponent<TerrainComponent>().allowRuntimeEdits; },
             +[](Terrain* self, bool allow) { self->getComponent<TerrainComponent>().allowRuntimeEdits = allow; })

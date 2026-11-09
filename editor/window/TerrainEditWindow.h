@@ -195,6 +195,9 @@ namespace jasperengine::editor{
         bool filterAllTools = false;
         bool filterInvert = false;
         bool heightFilterInvert = false;
+        // T1 R37: what a pen's pressure scales
+        bool pressureStrength = true;
+        bool pressureSize = false;
         // T1 R63: the next click picks this value from the terrain instead of painting
         TerrainPick pickTarget = TerrainPick::None;
         // Noise Size's eyedropper measures a feature: the first click marks one side, the second the other

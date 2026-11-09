@@ -3876,6 +3876,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getTouchDown", &Input::getTouchDown)
         .addStaticFunction("getTouchUp", &Input::getTouchUp)
         .addStaticFunction("getPointerLockState", &Input::getPointerLockState)
+        // the latest pointer input's pressure: 0..1 for a pen or stylus, -1 for a mouse or a finger
+        .addStaticFunction("getPenPressure", &Input::getPenPressure)
 
         // the Input Manager's actions (an action's flat name, the "Input Manager" map's first,
         // or "Map/Action"): smoothed, -1..1 (0..1 for a button; mouse movement unclamped)

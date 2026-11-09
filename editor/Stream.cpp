@@ -1875,6 +1875,9 @@ YAML::Node editor::Stream::encodeTerrainEditorSettings(const TerrainEditorSettin
     if (ts.filterAllTools) terrainNode["filterAllTools"] = true;
     if (ts.slopeFilterInvert) terrainNode["slopeFilterInvert"] = true;
     if (ts.heightFilterInvert) terrainNode["heightFilterInvert"] = true;
+    // T1 R37: only away from their defaults, so an existing settings file stays as it was
+    if (!ts.pressureStrength) terrainNode["pressureStrength"] = false;
+    if (ts.pressureSize) terrainNode["pressureSize"] = true;
     if (!ts.paintRules.empty()) {
         YAML::Node rules(YAML::NodeType::Sequence);
         for (const TerrainPaintRule& rule : ts.paintRules) {
@@ -1933,6 +1936,8 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
     ts.filterAllTools = tn["filterAllTools"].IsDefined() && YamlNumbers::as<bool>(tn["filterAllTools"]);
     ts.slopeFilterInvert = tn["slopeFilterInvert"].IsDefined() && YamlNumbers::as<bool>(tn["slopeFilterInvert"]);
     ts.heightFilterInvert = tn["heightFilterInvert"].IsDefined() && YamlNumbers::as<bool>(tn["heightFilterInvert"]);
+    ts.pressureStrength = !tn["pressureStrength"].IsDefined() || YamlNumbers::as<bool>(tn["pressureStrength"]);
+    ts.pressureSize = tn["pressureSize"].IsDefined() && YamlNumbers::as<bool>(tn["pressureSize"]);
     ts.paintRules.clear();
     // a missing key is an invalid node in yaml-cpp, which IsSequence() throws on
     if (tn["paintRules"].IsDefined() && tn["paintRules"].IsSequence()) {

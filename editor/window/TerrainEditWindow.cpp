@@ -51,6 +51,7 @@
 #include "terrain/TerrainSurface.h"
 #include "util/NormalMapTilt.h"
 #include "noise/NoiseCompat.h"
+#include "util/UIProbe.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
@@ -1309,6 +1310,8 @@ TerrainStrokeBrush editor::TerrainEditWindow::makeStrokeBrush(TerrainBrushMode m
         brush.invertHeight = heightFilterInvert;
     }
     brush.accumulateRamp = scripted;
+    brush.pressureStrength = pressureStrength;
+    brush.pressureSize = pressureSize;
     return brush;
 }
 
@@ -1368,9 +1371,10 @@ bool editor::TerrainEditWindow::paintMapStroke(SceneProject* sceneProject, const
         stroke.startTime = now;
     }
     const float time = std::chrono::duration<float>(now - stroke.startTime).count();
-    stroke.session->addSample(time, localPoint.x, localPoint.z, 1.0f);
+    const float pressure = Backend::penPressure();
+    stroke.session->addSample(time, localPoint.x, localPoint.z, pressure);
     if (terrainStrokeLogPath()){
-        stroke.logSamples.push_back(terrain::StrokeSample{time, localPoint.x, localPoint.z, 1.0f});
+        stroke.logSamples.push_back(terrain::StrokeSample{time, localPoint.x, localPoint.z, pressure});
     }
     stroke.session->run(STROKE_FRAME_BUDGET_SECONDS);
     return stroke.session->flush();
@@ -2781,6 +2785,13 @@ void editor::TerrainEditWindow::show(){
             ImGui::EndDisabled();
         }
         if (!placementBrush){
+            // T1 R37: a mouse presses fully, so these change nothing without a pen
+            terrainPropertyRow("Pressure Strength", "A pen's pressure scales the brush's strength.");
+            ImGui::Checkbox("##pressure_strength", &pressureStrength);
+            UIProbe::item("terrain.brush.pressure_strength");
+            terrainPropertyRow("Pressure Size", "A pen's pressure scales the brush's size.");
+            ImGui::Checkbox("##pressure_size", &pressureSize);
+            UIProbe::item("terrain.brush.pressure_size");
             drawBrushMask();
             ImGui::BeginDisabled(brushMaskPath.empty());
             terrainPropertyRow("Mask rotation", "Turns the mask under the brush.");
@@ -2844,6 +2855,8 @@ void editor::TerrainEditWindow::show(){
         ts.filterAllTools = filterAllTools;
         ts.slopeFilterInvert = filterInvert;
         ts.heightFilterInvert = heightFilterInvert;
+        ts.pressureStrength = pressureStrength;
+        ts.pressureSize = pressureSize;
         ts.paintMinSlope = paintMinSlope;
         ts.paintMaxSlope = paintMaxSlope;
         ts.paintMinHeight = paintMinHeight;
@@ -2920,6 +2933,8 @@ void editor::TerrainEditWindow::loadSettings(){
     filterAllTools = ts.filterAllTools;
     filterInvert = ts.slopeFilterInvert;
     heightFilterInvert = ts.heightFilterInvert;
+    pressureStrength = ts.pressureStrength;
+    pressureSize = ts.pressureSize;
     paintMinSlope = std::clamp(ts.paintMinSlope, 0.0f, 90.0f);
     paintMaxSlope = std::clamp(ts.paintMaxSlope, paintMinSlope, 90.0f);
     paintMinHeight = std::clamp(ts.paintMinHeight, 0.0f, 1.0f);

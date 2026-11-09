@@ -141,6 +141,7 @@ namespace {
         bool mouseEntered = false;
         int modifiers = 0;
         PointerLockState pointerLock = PointerLockState::UNLOCKED;
+        float penPressure = -1.0f;
 
         PadSlot pads[D_INPUT_MAX_GAMEPADS];
         int padOrder[D_INPUT_MAX_GAMEPADS] = {};   // connected slots, in the order they connected
@@ -650,6 +651,11 @@ void Input::setPointerLockState(PointerLockState lockState){
     state().pointerLock = lockState;
 }
 
+void Input::setPenPressure(float pressure){
+    // NaN fails both comparisons: it is no pen
+    state().penPressure = pressure >= 0.0f ? std::min(pressure, 1.0f) : -1.0f;
+}
+
 void Input::addInputCharacter(uint32_t codepoint){
     // Unity's inputString: backspace is "\b", return "\n"; other control characters are left out
     if (codepoint == '\r')
@@ -685,6 +691,7 @@ void Input::reset(){
     resetFrameState();
     InputState& s = state();
     s.multiTouchEnabled = true;
+    s.penPressure = -1.0f;
     s.inputFrame = 1;
     s.inFrame = false;
     s.inputTime = 0.0;
@@ -1131,6 +1138,10 @@ bool Input::getTouchUp(int pointer){
 
 PointerLockState Input::getPointerLockState(){
     return state().pointerLock;
+}
+
+float Input::getPenPressure(){
+    return state().penPressure;
 }
 
 bool Input::isGamepadConnected(int id){

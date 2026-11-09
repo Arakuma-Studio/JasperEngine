@@ -42,6 +42,7 @@ namespace jasperengine::editor{
         // A person's drag (R33-R35, R38): a sample of the pointer at `time` seconds into the stroke.
         // StrokeResampler turns the samples into stamps, a click into one, each depositing what one
         // 1/60 s click does (R34); they wait in a queue for run(). A ramp re-applies at once (R36).
+        // pressure: the pen's reading, -1 for a mouse (StrokeResampler::samplePressure, R37).
         void addSample(float time, float x, float z, float pressure);
         // Runs queued stamps, in order, until budgetSeconds of wall time have passed (0: all of
         // them). The stroke's bytes do not depend on the budget. True when none wait.

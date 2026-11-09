@@ -5,6 +5,7 @@
 #import "KeyCodesIOS.h"
 
 #include "Engine.h"
+#include "Input.h"
 
 #include <string>
 
@@ -453,11 +454,21 @@ static UITouch* touches[MAX_TOUCHES];
     return -1;
 }
 
+// Input::getPenPressure: an Apple Pencil's force (UITouchTypePencil and force are iOS 9, under the
+// deployment target), -1 for a finger
+-(void)reportPenPressure:(UITouch*)touch{
+    float pressure = -1.0f;
+    if (touch.type == UITouchTypePencil && touch.maximumPossibleForce > 0)
+        pressure = (float)(touch.force / touch.maximumPossibleForce);
+    jasperengine::Input::setPenPressure(pressure);
+}
+
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent*)event{
     [super touchesBegan:touches withEvent:event];
     for (UITouch *touch in touches) {
         const CGPoint point = [self getTouchPoint:touch];
         const int identifier = (int)[self getTouchId:touch andRemove:false];
+        [self reportPenPressure:touch];
         jasperengine::Engine::systemTouchStart(identifier, point.x, point.y);
     }
 }
@@ -467,6 +478,7 @@ static UITouch* touches[MAX_TOUCHES];
     for (UITouch *touch in touches) {
         const CGPoint point = [self getTouchPoint:touch];
         const int identifier = (int)[self getTouchId:touch andRemove:false];
+        [self reportPenPressure:touch];
         jasperengine::Engine::systemTouchMove(identifier, point.x, point.y);
     }
 }
@@ -476,6 +488,7 @@ static UITouch* touches[MAX_TOUCHES];
     for (UITouch *touch in touches) {
         const CGPoint point = [self getTouchPoint:touch];
         const int identifier = (int)[self getTouchId:touch andRemove:true];
+        [self reportPenPressure:touch];
         jasperengine::Engine::systemTouchEnd(identifier, point.x, point.y);
     }
 }
