@@ -157,4 +157,17 @@ namespace jasperengine::pixelart {
         return edge + scorch + 1.0f;
     }
 
+    float pfxDissolveBurnFront(int frameWidth, int frameHeight, const PfxDissolve& dissolve, float progress){
+        if (progress <= 0.0f)
+            return -1e9f;
+        if (progress >= 1.0f)
+            return 1e9f;
+        const float edge = std::floor(std::max(dissolve.edgeWidth, 0.0f) + 0.5f);
+        const float scorch = std::max(dissolve.scorchWidth, 0.0f);
+        // the range and extent are the frame's, the same at every texel
+        const DissolveSmooth s = dissolveSmooth(0.5f, 0.5f, (float)std::max(frameWidth, 1), (float)std::max(frameHeight, 1), dissolve);
+        const float scale = 1.0f / (s.range + std::max(dissolve.jitter, 0.0f));
+        return pfxDissolveFront(progress, (edge + scorch) * scale / s.extent);
+    }
+
 }

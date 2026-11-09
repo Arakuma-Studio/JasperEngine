@@ -148,6 +148,7 @@
 #include "model/ModelCookQueue.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
 #include "pixelart/HitStop.h"
+#include "pixelart/PixelFxPlayer.h"
 #include "sprite/SpriteAtlasBuilder.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
@@ -10233,6 +10234,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         cleanupPlaySession(session);
         // what the scripts that ran started (Coroutine.start, Timer.after)
         ScriptScheduler::clear();
+        // the PixelFX effects of the play and their callbacks (they may hold Lua)
+        jasperengine::pixelart::PixelFxPlayer::reset();
         SceneManager::clearAll();
         PrefabManager::clearAll();
         ObjectManager::clearAll();
@@ -11297,6 +11300,8 @@ void editor::Project::stop(uint32_t sceneId) {
             Scheduler::game().clear();
             // every coroutine and timer of the play (unowned ones too), before the scripts go
             ScriptScheduler::clear();
+            // the PixelFX effects of the play and their callbacks (they may hold Lua)
+            jasperengine::pixelart::PixelFxPlayer::reset();
             // the debug overlay and the console commands of the scripts, before the scripts go
             DebugOverlay::shutdown();
             debugSettingsInPlay = false;

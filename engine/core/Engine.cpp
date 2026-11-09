@@ -79,6 +79,7 @@
 #include "pool/PhysicsMaterialPool.h"
 #include "pixelart/PaletteSwap.h"
 #include "pixelart/HitStop.h"
+#include "pixelart/PixelFxPlayer.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "native/NativeBridge.h"
@@ -2587,6 +2588,9 @@ void Engine::runFrame(bool draw){
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
         }
+        // the PixelFX effects (S48 R24): after the scenes' update, before the coroutines, so a
+        // Coroutine.waitFor(handle) resumes the frame its effect ends; idle, one empty check
+        pixelart::PixelFxPlayer::update(frameDelta, unscaledDeltatime);
         // timers (the Scheduler's, the Lua Timer's among them), then the coroutines waiting
         // seconds, frames, predicates, timers or other work: after the update, before the
         // post-update (Unity's yield null / WaitForSeconds point: after Update, before
@@ -2836,6 +2840,8 @@ void Engine::systemShutdown(){
 #endif
     Scheduler::game().clear();
     ScriptScheduler::clear();
+    // the PixelFX effects' onFinished callbacks may hold Lua (S48)
+    pixelart::PixelFxPlayer::reset();
     InputActions::unload();
     // the persistent scene's scripts (their onDestroy ran above) are released, and it goes
     SceneManager::destroyPersistentScene();
