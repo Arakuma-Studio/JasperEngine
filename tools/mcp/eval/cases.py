@@ -3378,6 +3378,77 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "guard_pixel_font_preview",
+        "kind": "guard",
+        "groups_enabled": ["pixel_art"],
+        "what_happened": "Asked whether a bitmap font covers a string and how it looks, an agent should draw the string with "
+                         "preview_font text at scale (its result lists the missing characters) instead of building a scene, "
+                         "playing and taking screenshots (S51).",
+        "text_at_issue": "preview_font description: '`text` at a whole `scale` ... with the missing characters listed'; its text and scale parameters",
+        "source": "S51 (docs/specs/S51-pixel-fonts.md R26, AC16); no failure on record",
+        "files": {"assets/fonts/hud.bitmapfont": "{\"format\": \"jasperengine.bitmapfont\", \"version\": 1, "
+                                                 "\"source\": {\"type\": \"grid\", \"image\": \"hud@6x9.png\"}}"},
+        "prompt": "Does assets/fonts/hud.bitmapfont have every character of 'SCORE 120 \u00a1Ol\u00e9!'? Show me that "
+                  "string in it, three times its size.",
+        "mocks": [
+            {"tool": "preview_font", "args": {"path": "re:hud\\.bitmapfont"}, "result": ok(
+                "assets/fonts/hud.bitmapfont: the text at x3 (78x10 font pixels), white on a dark checker. Missing (drawn as "
+                "the fallback glyph): \u00a1\u00e9.",
+                {"font": {"kind": "bitmap", "native_size": 9, "line_height": 10, "baseline": 7, "glyphs": 95, "colored": False,
+                          "scale": 3, "width": 242, "height": 38, "missing": ["\u00a1", "\u00e9"]}})},
+            {"tool": "get_asset_info", "args": {"path": "re:hud\\.bitmapfont"}, "result": ok(
+                "assets/fonts/hud.bitmapfont: font, a bitmap font: 95 glyphs, 9 px (line 10, baseline 7).",
+                {"path": "assets/fonts/hud.bitmapfont", "type": "font", "font": {"kind": "bitmap", "glyphs": 95,
+                 "native_size": 9, "missing_ascii": ""}})},
+        ],
+        "checks": {"calls": [{"tool": "preview_font", "args": {"path": "re:hud\\.bitmapfont", "text": "re:SCORE", "scale": 3}}],
+                   "must_not_call": ["play", "create_entity"], "reply_must": [r"(?i)\u00e9|missing|lack"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_bitmap_font_write_report",
+        "kind": "guard",
+        "what_happened": "Making a pixel font from a sheet, an agent should write the .bitmapfont with write_file and read the "
+                         "import report it returns (glyphs, typed errors with the field to fix), not hand-edit a scene's "
+                         "font or guess (S51).",
+        "text_at_issue": "write_file result: a .bitmapfont's import report (font, errors with their field)",
+        "source": "S51 (docs/specs/S51-pixel-fonts.md R28, AC17); no failure on record",
+        "files": {"assets/fonts/hud@6x9.png": "binary placeholder"},
+        "prompt": "Turn assets/fonts/hud@6x9.png (printable ASCII on a 6x9 grid) into a bitmap font and tell me if it imported "
+                  "cleanly.",
+        "mocks": [
+            {"tool": "write_file", "args": {"path": "re:\\.bitmapfont$"}, "result": ok(
+                "Created assets/fonts/hud.bitmapfont (120 bytes; undo with scope project). Bitmap font: 95 glyphs, 9 px, line "
+                "10, baseline 7.",
+                {"path": "assets/fonts/hud.bitmapfont", "created": True, "font": {"glyphs": 95, "native_size": 9,
+                 "missing_ascii": "", "partial_alpha_share": 0.0}})},
+            {"tool": "read_file", "result": ok("# Pixel fonts ...", {})},
+        ],
+        "checks": {"calls": [{"tool": "write_file", "args": {"path": "re:\\.bitmapfont$"}}],
+                   "shell_must_not": [r"python", r"convert\s"], "reply_must": [r"95|clean|glyph"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_font_metrics_info",
+        "kind": "guard",
+        "groups_enabled": ["pixel_art"],
+        "what_happened": "Asked for a pixel font's metrics, an agent should read them from get_asset_info (native size, "
+                         "baseline, kerning, pixel report) instead of opening the sheet or the JSON, or drawing it, and measuring (S51).",
+        "text_at_issue": "preview_font description: 'Metrics, kerning, pixel report: get_asset_info'",
+        "source": "S51 (docs/specs/S51-pixel-fonts.md R27, AC17); no failure on record",
+        "files": {"assets/fonts/hud.fnt": "info face=\"Hud\" size=9\ncommon lineHeight=10 base=7\n"},
+        "prompt": "What is the native pixel size and baseline of assets/fonts/hud.fnt, and does it have antialiased pixels?",
+        "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:hud\\.fnt"}, "result": ok(
+                "assets/fonts/hud.fnt: font, a bitmap font: 95 glyphs, 9 px (line 10, baseline 7).",
+                {"path": "assets/fonts/hud.fnt", "type": "font", "font": {"kind": "bitmap", "native_size": 9, "baseline": 7},
+                 "pixel_report": {"antialiased": False, "partial_alpha_share": 0.0, "native_size": 9}})},
+        ],
+        "checks": {"calls": [{"tool": "get_asset_info", "args": {"path": "re:hud\\.fnt"}}],
+                   "must_not_call": ["read_file", "view_asset", "preview_font"], "reply_must": [r"9", r"7"]},
+        "max_turns": 6,
+    },
+    {
         "id": "guard_game_view_pixel_scale",
         "kind": "guard",
         "what_happened": "Checking pixel art at 1x (one physical pixel per art pixel) is the Game view's Pixel Scale, not its "
@@ -3405,7 +3476,7 @@ CASES = [
         "what_happened": "New tool (S42): blurry, uneven pixel art is check_pixel_art's to measure and fix (one call to "
                          "preview, the same with output: true to apply); without the group's description and the result's `next` "
                          "an agent edits import settings and filters by hand, or stops at the preview.",
-        "text_at_issue": "tool_groups' pixel_art: 'Pixel art: checks and palettes (jasper://docs/pixel-art)'; check_pixel_art: 'fix previews the changes; "
+        "text_at_issue": "tool_groups' pixel_art: 'Pixel art: checks, palettes and font previews (jasper://docs/pixel-art)'; check_pixel_art: 'fix previews the changes; "
                          "the same call with output:true applies them as one undo step'; the results' `next`",
         "source": "S42 R22 (new tool text); no failure on record",
         "prompt": "Our pixel-art game looks blurry and some sprite columns are wider than others on a 1366x768 laptop. "

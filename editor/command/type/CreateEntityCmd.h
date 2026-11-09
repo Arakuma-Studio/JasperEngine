@@ -123,7 +123,9 @@ namespace jasperengine::editor{
         // preset inline; the Hierarchy makes it (a PARTICLE_SYSTEM with the preset's effect)
         PIXEL_PARTICLE_SYSTEM,
         // GameObject > 2D Object > Sprite Batch (S52 R10): a Sprite with a Sprite Batch
-        SPRITE_BATCH
+        SPRITE_BATCH,
+        // a Text in the built-in pixel font at x1 (S51 R25)
+        TEXT_PIXEL
     };
 
     class CreateEntityCmd: public Command{

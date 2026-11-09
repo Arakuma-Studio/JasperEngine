@@ -76,6 +76,8 @@ namespace jasperengine::player {
         int pixelsPerUnit = 1;
         // Project Settings > Graphics > Default Filter Mode is Point (S42 R3)
         bool defaultFilterPoint = false;
+        // Project Settings > Graphics > Bitmap Text Cache (S51), 0 = the platform's default
+        int bitmapTextCacheMiB = 0;
 
         // loading
         uint32_t loadingScene = 0;         // 0: none

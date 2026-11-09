@@ -386,6 +386,9 @@ BatchBreak RenderSystem::uiBatchForm(UIComponent& ui, TextureRender* textureOver
         return BatchBreak::INELIGIBLE_NOT_READY;
     if (ui.customShaderId != 0 || !ui.libraryBindings.textures.empty())
         return BatchBreak::INELIGIBLE_CUSTOM_SHADER;
+    // a bitmap Text's origin is rounded per draw (S51 R8)
+    if (ui.pixelOriginSnap)
+        return BatchBreak::INELIGIBLE_TRANSFORM;
     // the UI shader properties a batch reads as drawn alone (an allowlist, as the meshes': a
     // property added later draws alone until it is checked here)
     // (S52: with S41's Pixel Snap, its mode in the key; a pivot-snapped element has no pivot attribute)

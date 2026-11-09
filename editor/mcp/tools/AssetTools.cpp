@@ -3,6 +3,8 @@
 
 // W4: assets, import, materials, shaders, text files, placeholder art
 #include "SpriteTools.h"
+#include "FontTools.h"
+#include "pixelart/BitmapFont.h"
 #include "sprite/SpriteSheetPool.h"
 #include "asset/AssetOps.h"
 #include "io/watch/LinkedFolders.h"
@@ -923,6 +925,10 @@ void getAssetInfoTool(const CallPtr& call) {
         Json sprite = asepriteAssetInfo(project, file, text);
         for (auto it = sprite.begin(); it != sprite.end(); ++it) data[it.key()] = it.value();
     }
+    if (kind == "font") {
+        Json font = fontAssetInfo(project, file, text);
+        for (auto it = font.begin(); it != font.end(); ++it) data[it.key()] = it.value();
+    }
     // S45: a texture's Sprite Mode, packed_in of a sheet source, an atlas's build
     if (kind == "texture" || kind == "aseprite_sprite" || kind == "sprite_atlas") {
         Json sheet = spriteSheetAssetInfo(project, file, kind, text);
@@ -1164,11 +1170,20 @@ void replyImage(const CallPtr& call, const fs::path& image, const std::string& l
 }
 
 void viewAssetTool(const CallPtr& call) {
+    const int maxSize = std::clamp(call->args().value("max_size", 512), 16, 2048);
+    // fonts are drawn by preview_font (S51 R26, §6.1: the core listing had no room)
+    if (call->args().value("path", std::string()) == ::jasperengine::pixelart::kBuiltinPixelFont) {
+        call->fail(std::string(kFontViewHint));
+        return;
+    }
     fs::path file;
     if (!resolveExisting(call, "path", file)) return;
     Project* project = call->ctx().project();
     const std::string rel = projectRelative(project, file);
-    const int maxSize = std::clamp(call->args().value("max_size", 512), 16, 2048);
+    if (isFontViewPath(rel)) {
+        call->fail(rel + " is a font: " + kFontViewHint);
+        return;
+    }
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
         replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json(),
                    spriteNormalsAssetInfo(project, file, false));
@@ -1503,6 +1518,9 @@ void writeFileTool(const CallPtr& call) {
         text += shakeWarnings.empty() ? std::string(" Valid shake preset.") : " Shake preset loads with " + std::to_string(shakeWarnings.size()) +
                                                                             " warning(s) (bad values repaired):";
         for (size_t i = 0; i < shakeWarnings.size() && i < 8; i++) text += "\n" + shakeWarnings[i];
+    } else if (extensionOf(file) == ".bitmapfont") {
+        Json font = fontWriteReport(project, file, content, text);
+        for (auto it = font.begin(); it != font.end(); ++it) data[it.key()] = it.value();
     } else if (Util::isAnimationClipFile(rel)) {
         data["warnings"] = clipWarnings;
         text += clipWarnings.empty() ? std::string(" Valid clip.") : " Clip loads with " + std::to_string(clipWarnings.size()) + " warning(s) (the bad parts are dropped):";

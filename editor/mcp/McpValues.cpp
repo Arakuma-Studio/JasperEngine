@@ -3,6 +3,7 @@
 
 #include "pixelart/PixelArtAssign.h"
 #include "registry/SortingLayers.h"
+#include "pixelart/BitmapFont.h"
 #include "component/ButtonComponent.h"
 #include "util/ProjectChecks.h"
 #include "component/CanvasGroupComponent.h"
@@ -3305,6 +3306,15 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
             for (size_t i = 0; i < fonts.size(); i++) {
                 if (i >= requested.size()) {
                     if (wholeChain) fonts[i].clear();
+                    continue;
+                }
+                // an engine font has no file (builtin:pixel, S51 R16)
+                if (requested[i].compare(0, 8, "builtin:") == 0) {
+                    if (requested[i] != ::jasperengine::pixelart::kBuiltinPixelFont) {
+                        error = "font \"" + requested[i] + "\" is no built-in font (builtin:pixel is).";
+                        return nullptr;
+                    }
+                    fonts[i] = requested[i];
                     continue;
                 }
                 std::string stored;

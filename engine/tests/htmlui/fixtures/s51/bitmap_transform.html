@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>bitmap fonts under transforms</title>
+<style>
+  /* S51 R15: a bitmap face magnified by a CSS transform keeps its pixels as blocks (nearest), and a
+     sharp CSS text-shadow draws whole pixels in its own colour */
+  @font-face { font-family: "Hud"; src: url("hud.bitmapfont"); }
+  body { margin: 0; background-color: #000000; }
+  .line { position: absolute; left: 10px; color: #ffffff; font-family: "Hud"; white-space: nowrap; }
+  #scaled { top: 10px; font-size: 9px; transform: scale(2.5); transform-origin: 0 0; }
+  #shadow { top: 80px; font-size: 18px; text-shadow: 2px 2px 0px #0000ff; }
+</style>
+</head>
+<body>
+  <div id="scaled" class="line">ABC 123</div>
+  <div id="shadow" class="line">ABC 123</div>
+</body>
+</html>

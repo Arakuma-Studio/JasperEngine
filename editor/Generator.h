@@ -320,6 +320,8 @@ namespace jasperengine::editor {
         int pixelsPerUnit = 1;
         // the project's Default Filter Mode is Point (S42 R3), emitted by configure
         bool defaultFilterPoint = false;
+        // the styled bitmap glyph cache's MiB (S51), emitted when it is not 0
+        int bitmapTextCacheMiB = 0;
 
         static fs::path getGeneratedPath(const fs::path& projectInternalPath);
         static std::string getEditorPluginAbiCheck();
@@ -418,6 +420,7 @@ namespace jasperengine::editor {
         void setUIScale(const CanvasScalerSettings& settings) { uiScale = settings; }
         void setPixelsPerUnit(int value) { pixelsPerUnit = value; }
         void setDefaultFilterPoint(bool point) { defaultFilterPoint = point; }
+        void setBitmapTextCacheMiB(int value) { bitmapTextCacheMiB = value; }
         static std::string inputSettingsInitSource(const std::string& actionsAsset, float deadzone);
         // Project Settings > Graphics > Shader Globals in the generated main.cpp: the declarations
         // (with their defaults) before any scene loads; "" when the project declares none

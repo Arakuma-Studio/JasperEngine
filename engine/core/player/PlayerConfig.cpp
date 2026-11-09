@@ -75,7 +75,8 @@ json PlayerConfig::toJson() const {
     out["window"] = {{"mode", kWindowModes[std::clamp(windowMode, 0, 2)]}, {"width", windowWidth}, {"height", windowHeight},
                      {"resizable", resizable}, {"title", title}, {"vsync", vsync}, {"icon", icon}, {"storageId", storageId}};
     out["canvas"] = {{"width", canvasWidth}, {"height", canvasHeight}, {"scaling", nameOf(kScaling, scaling)},
-                     {"textureStrategy", nameOf(kTextureStrategy, textureStrategy)}, {"pixelsPerUnit", pixelsPerUnit}};
+                     {"textureStrategy", nameOf(kTextureStrategy, textureStrategy)}, {"pixelsPerUnit", pixelsPerUnit},
+                     {"bitmapTextCacheMiB", bitmapTextCacheMiB}};
     // written only when Point, so a bilinear game's config is what it was before S42
     if (defaultFilterPoint)
         out["canvas"]["defaultFilterMode"] = "point";
@@ -188,6 +189,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             valueOf(kTextureStrategy, canvas->value("textureStrategy", "none"), config.textureStrategy);
             config.pixelsPerUnit = canvas->value("pixelsPerUnit", 1);
             config.defaultFilterPoint = canvas->value("defaultFilterMode", std::string("bilinear")) == "point";
+            config.bitmapTextCacheMiB = canvas->value("bitmapTextCacheMiB", 0);
         }
         if (const auto loading = in.find("loading"); loading != in.end()) {
             config.loadingScene = loading->value("scene", 0u);

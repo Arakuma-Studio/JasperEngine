@@ -1771,6 +1771,21 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
         {
+            // S51 R12
+            Setting s;
+            s.key = "graphics.bitmap_text_cache_mib";
+            s.type = "int";
+            s.description = "MiB of styled bitmap glyphs (pixel outlines and shadows); 0: 2 on mobile and web, 8 on desktop.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getBitmapTextCacheMiB()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, 0, Project::maxBitmapTextCacheMiB, v, error)) return false;
+                if (apply) ctx.project()->setBitmapTextCacheMiB(static_cast<int>(v));
+                return true;
+            };
+            add(s);
+        }
+        {
             Setting s;
             s.key = "graphics.ui_scale";
             s.type = "object";

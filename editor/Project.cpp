@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "pixelart/PixelArtMode.h"
+#include "pixelart/BitmapTextCache.h"
 #include "Project.h"
 #include "util/ScriptPropertyCache.h"
 #include "util/ProjectChecks.h"
@@ -14,6 +15,8 @@
 #include "subsystem/AudioSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/ButtonComponent.h"
+#include "component/TextComponent.h"
+#include "pixelart/BitmapFont.h"
 #include "component/MeshPolygonComponent.h"
 #include "io/watch/LinkedFolders.h"
 #include "diag/HangWatchdog.h"
@@ -752,6 +755,14 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
 
     // Animator Controllers (AnimatorAssetPool): the controller, its clips and its layers' masks
     // (read through the engine's file API, as the build will: the pool caches it)
+    // bitmap fonts a Text draws (S51 R19): its font and the bitmap fonts among its fallbacks
+    visitComponents(registry->getComponentArray<TextComponent>(), [&](TextComponent& text) {
+        for (const AssetRef& ref : text.font) {
+            const std::string& font = ref.path;
+            if (!font.empty() && font != ::jasperengine::pixelart::kBuiltinPixelFont && ::jasperengine::pixelart::isBitmapFontPath(font))
+                addFile(resources.bitmapFonts, font);
+        }
+    });
     visitComponents(registry->getComponentArray<AnimatorComponent>(), [&](AnimatorComponent& animator) {
         if (animator.controller.path.empty()) return;
         addFile(resources.controllers, animator.controller.path);
@@ -1823,6 +1834,15 @@ void editor::Project::setPixelArtSettings(const pixelart::PixelArtSettings& sett
 
 void editor::Project::setDefaultFilterMode(TextureFilterMode mode){
     defaultFilterMode = mode == TextureFilterMode::Point ? TextureFilterMode::Point : TextureFilterMode::Bilinear;
+}
+
+void editor::Project::setBitmapTextCacheMiB(int mib){
+    bitmapTextCacheMiB = std::clamp(mib, 0, maxBitmapTextCacheMiB);
+    ::jasperengine::pixelart::BitmapTextCache::get().setBudgetMiB(bitmapTextCacheMiB);
+}
+
+int editor::Project::getBitmapTextCacheMiB() const{
+    return bitmapTextCacheMiB;
 }
 
 bool editor::Project::isValidHtmlUiGlyphAtlasMiB(int mib){
@@ -6291,6 +6311,7 @@ void editor::Project::resetConfigs() {
     spriteAtlasMode = "enabled";
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setPixelsPerUnit(defaultPixelsPerUnit);
+    setBitmapTextCacheMiB(0);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
     setDrawSubmissionSettings(DrawSubmissionSettings());
     setDeviceSettings(DeviceSettings());
@@ -8258,6 +8279,7 @@ void editor::Project::configureGenerator() {
     generator.setUIScale(uiScale);
     generator.setPixelsPerUnit(pixelsPerUnit);
     generator.setDefaultFilterPoint(defaultFilterMode == TextureFilterMode::Point);
+    generator.setBitmapTextCacheMiB(bitmapTextCacheMiB);
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints, getSortingLayers(), getTransparencySortMode(), getTransparencySortAxis()}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
 }
 
@@ -10457,6 +10479,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setUIScale(uiScale);
     generator.setPixelsPerUnit(pixelsPerUnit);
     generator.setDefaultFilterPoint(defaultFilterMode == TextureFilterMode::Point);
+    generator.setBitmapTextCacheMiB(bitmapTextCacheMiB);
     generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints, getSortingLayers(), getTransparencySortMode(), getTransparencySortAxis()}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);

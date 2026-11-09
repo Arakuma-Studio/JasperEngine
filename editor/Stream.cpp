@@ -2757,6 +2757,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // graphics.defaultFilterMode (S42), only when Point
         if (project->getDefaultFilterMode() != TextureFilterMode::Bilinear)
             graphics["defaultFilterMode"] = textureFilterModeName(project->getDefaultFilterMode());
+        // graphics.bitmapTextCacheMiB (S51), only away from 0 (the platform's default)
+        if (project->getBitmapTextCacheMiB() != 0)
+            graphics["bitmapTextCacheMiB"] = project->getBitmapTextCacheMiB();
         if (graphics.size() > 0)
             root["graphics"] = graphics;
     }
@@ -3522,6 +3525,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (graphics && graphics.IsMap() && graphics["pixelsPerUnit"] && graphics["pixelsPerUnit"].IsScalar())
             pixelsPerUnit = YamlNumbers::as<int>(graphics["pixelsPerUnit"]);
         project->setPixelsPerUnit(pixelsPerUnit);
+        // graphics.bitmapTextCacheMiB (S51): absent is 0, the platform's default
+        int bitmapTextCacheMiB = 0;
+        if (graphics && graphics.IsMap() && graphics["bitmapTextCacheMiB"] && graphics["bitmapTextCacheMiB"].IsScalar())
+            bitmapTextCacheMiB = YamlNumbers::as<int>(graphics["bitmapTextCacheMiB"]);
+        project->setBitmapTextCacheMiB(bitmapTextCacheMiB);
         // graphics.defaultFilterMode (S42): absent or not point is Bilinear
         TextureFilterMode filterMode = TextureFilterMode::Bilinear;
         if (graphics && graphics.IsMap() && graphics["defaultFilterMode"] && graphics["defaultFilterMode"].IsScalar()) {

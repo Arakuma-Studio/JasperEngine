@@ -168,7 +168,7 @@ never build or run them.
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
 | S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | merged and pushed |
-| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | ready for batch 4 |
+| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | landing (batch 4) |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
@@ -177,8 +177,8 @@ never build or run them.
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
-| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | landing (batch 3) |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | accepted; merging main |
+| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | merged and pushed |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | landing (batch 4) |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -242,8 +242,57 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 **Batch landings (owner, 2026-11-08):** finished features are merged together with `origin/main` on one tree. That tree is verified once (each feature's filtered gate plus web, android, the Vulkan/GLES3 GPU sets and a smoke test) and pushed.
 
+## Follow-ups (owned by the coordinator)
+
+- Wire S51's font analyzer into S42's validator (`setFontAnalyzer`; S51 deviation 11 has the
+  mapping) once S42 and S51 are both on `main`.
+- `main` test issues seen during landings, from other programs:
+  - `FullPathGoldenTest.UIParticleSystemsClippedByAPanel` reads after 4 frames instead of
+    waiting for emitted particles;
+  - `DebugOverlayTest` gestures inherit state from an earlier test in the full run;
+  - LatticeRender shadows, SharedMeshBuffers ×2 and TestScriptEvents touch fail on Vulkan
+    `htmlui-tests`;
+  - `PopupCountsTapAndDrag` and `TextFallbackRtl` are flaky on repeat.
+- Run the MCP eval once for every pixel-art case (needs accounts lent with `box_lend_accounts`).
+- Destroy the build boxes A–D when the program ends.
+
 ## Log
 
+- 2026-11-09: Batch 4's first verification (S42 + S52 on box B): `WERROR` linux pass, core 129/129,
+  editor 203 passed.
+  - Failures: `main`'s known 4 (fixed by `fix/main-shared-green`), plus 2 new reflection goldens
+    (`pixel_art`, `pixel_art_bad`) because S52's fields enter S42's fixture re-saves.
+  - Merging `main` (now with S51) into the batch gives 18 conflicts, so an integration agent is
+    assembling batch 4: S42 + S52 + S51 (via `main`) + `fix/main-shared-green` + the S51 → S42
+    font-analyzer wiring + the reviewed goldens. Full verification and backends follow on box B.
+- 2026-11-09: `fix/main-shared-green` is done (box C, verified with `WERROR`; the shared-data set
+  is green):
+  - the reviewed Animator IK hash (5 members, none needs a shader variant);
+  - a determinism fix: `vertexCount` is computed from the buffers, not only after the first draw
+    (with a unit test);
+  - the `procmat-baked` goldens, one suite per commit;
+  - fanout 152→147: an unneeded `RenderSystem.h` include removed from 5 units, limit unchanged.
+
+  It joins batch 4 once the current batch-4 run finishes.
+- 2026-11-09: **Batch 3: S51 Pixel Fonts merged into `main` and pushed** (branch `6e0376917`).
+  - Verified on main + S51: web, android, Vulkan 98/98, `htmlui-tests` Vulkan.
+  - Of the 6 HTML UI failures, 4 also fail on plain `main`. `UIParticleSystemsClippedByAPanel`
+    fails on `main` too once its shader is cached: the test reads after 4 frames, before the first
+    fixed tick emits. `DebugOverlay` gestures pass 20/20 alone on S51 and 10/10 on `main`; they
+    fail only through order in the full run.
+  - These are `main` test issues to fix later (wait for the state, not frames; find the test that
+    leaks the gesture state). Also seen flaky on repeat on `main`: `PopupCountsTapAndDrag`,
+    `TextFallbackRtl`.
+- 2026-11-09: Batch 4 assembled on `land/batch3` (the worktree is reused): `main` + S42 (`9c7f0b34b`,
+  clean merge) + S52 (`0bea149af`).
+  - Three conflicts resolved, keeping both sides: `Project.cpp` (S42's default filter beside
+    S52's sorting fields), `McpValues.cpp` includes, and the eval cases (143, no duplicates,
+    `test_grade` OK).
+  - S52: shader cache v61, mesh bits 46–48, depth 20. The `Transform.h` fanout 152 comes from
+    S49's `ParticleEffectPreview.cpp`/`ParticlePreviewSource.cpp` includes (the main-green fix
+    handles it).
+  - Verification running on box B: `WERROR` linux, the filtered editor and core sets with the
+    shared data, 18 MCP files, budget, grader. Then web, android and Vulkan.
 - 2026-11-09: S42 merged `main` at `9c7f0b34b` and wired the S49 `particles_grid` hook.
   - `pixel_art` group: 3 tools, 3,191 characters.
   - Gate on box B: `WERROR`, core 85, editor 205, 168 MCP tests. The failures are `main`'s

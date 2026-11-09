@@ -7,6 +7,8 @@
 
 #include "subsystem/RenderSystem.h"
 #include "pool/ShaderPool.h"
+#include "device/QualityResolver.h"
+#include "device/DeviceSettings.h"
 
 #include <gtest/gtest.h>
 
@@ -144,6 +146,29 @@ TEST(PostProcessingTiers, DynamicResolutionKeepsUber){
     // with an effect the uber pass runs anyway, without the plain upscale bit
     s.vignetteEnabled = true;
     EXPECT_EQ(featuresOf(s), UBER_VIGNETTE);
+}
+
+// S51 R8 / AC22: a Low device tier halves the render scale (QualityResolver), which the uber pass
+// upscales through a linear filter; a UI camera's image (its text and images) keeps the scale its
+// settings give, so an exported UI draws as the editor does
+TEST(PostProcessingTiers, AUiImageKeepsItsScaleOnALowTier){
+    QualityResolver::reset();
+    QualityResolver::setSettings(DeviceSettings());
+    QualityResolver::setPlatformGroup(DevicePlatformGroup::Desktop);
+    QualityResolver::setTier(DeviceTier::Low);
+    const PostProcessingSettings settings;
+    const PostProcessingTiers world = RenderSystem::getPostProcessingTiers(settings, nullptr, true);
+    EXPECT_FLOAT_EQ(world.renderScale, 0.5f);
+    EXPECT_TRUE(world.uber);
+    EXPECT_EQ(world.uberFeatures & UBER_UPSCALE, (uint32_t)UBER_UPSCALE);
+    const PostProcessingTiers ui = RenderSystem::getPostProcessingTiers(settings, nullptr, false);
+    EXPECT_FLOAT_EQ(ui.renderScale, 1.0f);
+    EXPECT_FALSE(ui.uber) << "no upscale pass for the UI's image";
+    // a scale the settings ask for still applies
+    PostProcessingSettings scaled;
+    scaled.renderScale = 0.75f;
+    EXPECT_FLOAT_EQ(RenderSystem::getPostProcessingTiers(scaled, nullptr, false).renderScale, 0.75f);
+    QualityResolver::reset();
 }
 
 // S43 R19, R21, R28, AC12 (e), AC13: Palette Quantize's bit, appended; off without a palette

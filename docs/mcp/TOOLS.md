@@ -61,6 +61,7 @@ Conventions shared by every tool (explained once in the server instructions, not
 - [Navigation: navmeshes, agents, crowds and grids](#navigation-navmeshes-agents-crowds-and-grids) (6): `bake_navigation`, `get_navigation_info`, `paint_nav_grid`, `query_navigation`, `set_navigation_settings`, `visualize_navigation`
 - [Git/SVN status, diffs, commits, locks](#gitsvn-status-diffs-commits-locks) (10): `commit_files`, `diff_file`, `diff_scene`, `get_vcs_log`, `get_vcs_status`, `lock_files`, `revert_files`, `revert_to_baseline`, `sync_remote`, `unlock_files`
 - [Sprites: Aseprite import, atlases, drawing](#sprites-aseprite-import-atlases-drawing) (3): `edit_sprite_atlas`, `get_sprite_atlas`, `set_sprite_import_settings`
+- [Pixel art: font previews](#pixel-art-font-previews) (1): `preview_font`
 
 ## Core
 
@@ -5580,3 +5581,21 @@ Partial update of .aseprite files' import settings (keys: jasper://docs/sprites)
 | `output` | boolean |  |  |
 | `paths` | array of string | yes | Project-relative .aseprite files. |
 | `settings` | object |  |  |
+
+
+## Pixel art: font previews
+
+### `preview_font`
+
+*Preview Font*
+
+Group: `pixel_art` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
+
+Draw a font as PNG: a bitmap font (.bitmapfont, .fnt, builtin:pixel) as its labelled glyph grid, or `text` at a whole `scale` (default: the largest that fits max_size) with the missing characters listed; a TTF/OTF smooth. Metrics, kerning, pixel report: get_asset_info.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `max_size` | integer (16..2048) |  | Longest side, px. Default: `512`. |
+| `path` | string | yes |  |
+| `scale` | integer (1..16) |  | Font pixels per side. |
+| `text` | string |  | At most 256 characters, \n for lines. |
