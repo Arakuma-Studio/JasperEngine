@@ -20,6 +20,16 @@ takes its index or its name (`"outlineColorFrom": "Selective"`). `list_shaders n
 - Presets (`apply_material_preset`): `hit_flash`, `pixel_outline`, `selout_outline`, `drop_shadow`,
   `teleport_fade`, `burn_away`, `petrify`, `frozen`, `poison`, `pixel_enemy`.
 
+## PixelFX player
+
+Runtime Lua in Play (`eval_lua`), checked with `wait {until: "h:isDone()"}`:
+`PixelFX.play(go, effect, duration, opts)` (`flash`, `fade_out`, `fade_in`, `blink`, `dissolve`, `undissolve`,
+`petrify`, `freeze`, `poison`, `outline_pulse`) and `PixelFX.set(go, "flash" | "fade" | "dissolve" | "ramp" | <member>,
+value)`. A missing feature is turned on in that GameObject's material only and logged once; put the feature (or a
+preset) in the material at authoring time to avoid the compile. `opts.embers = "ember"` on a dissolve emits pixel
+particles where the front burns. Effects end at 0, `fade_out` and `dissolve` at 1 (gone). Lua reference:
+`jasper://docs/lua-api` (PixelFX).
+
 ## Screen transitions
 
 One engine overlay covers the screen in an ink colour and reveals it again. It belongs to the engine, so it
@@ -115,6 +125,8 @@ scale, a band of rows per backdrop, each frame labelled `#i t=0.25s`.
 | `target: {entity, scene?}` | a GameObject and its children: animations, particles and material time play from t = 0 |
 | `target: {entity, animation: "<.anim>"}` | the GameObject playing that clip (duration and loop default to the clip's) |
 | `target: {particles: "<.particles>"}` | the effect alone at the origin (duration and loop default to the effect's) |
+| `target: {entity, effect, effect_options?}` | the GameObject playing a PixelFX effect from t = 0 (`effect_options`: `duration`, `ease`, `color`, `count`, `ramp`, `hold`) |
+| `target: {transition, transition_options?}` | a screen transition on its own art grid (`transition_options`: Transition.play's options in snake_case, `phase` `play` / `cover` / `reveal`, `width` x `height` art pixels, 160 x 90) |
 
 - `mode: "isolated"` (default): a copy of the target alone on transparent black, one framebuffer pixel per art
   pixel (1 / pixels per unit), framed on its bounds at t = 0 plus twice `margin` (24). Every random seed and the

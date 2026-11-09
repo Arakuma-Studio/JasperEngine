@@ -3528,6 +3528,56 @@ CASES = [
                    "must_not_call": ["write_file", "screenshot", "record_game"], "shell_must_not": [r"(?i)ffmpeg|magick|montage"]},
         "max_turns": 10,
     },
+    {
+        "id": "guard_contact_sheet_effect_target",
+        "kind": "guard",
+        "what_happened": "New tool text (S48 R27, WP-D): capture_contact_sheet draws a GameObject playing a PixelFX effect "
+                         "(target.effect); asked to check how an enemy burns away, an agent captures that target instead of "
+                         "starting Play and taking screenshots by hand.",
+        "text_at_issue": "capture_contact_sheet: '...; effect: a PixelFX effect), a .particles asset or a screen transition' "
+                         "and the target's effect / effect_options keys",
+        "source": "S48 R27 (new tool text); no failure on record",
+        "prompt": "Show me frames of the Enemy sprite burning away with the PixelFX dissolve effect over 0.9 seconds, so I can "
+                  "check that the burn looks right.",
+        "mocks": [
+            {"tool": "capture_contact_sheet", "args": {"target": {"effect": "dissolve"}}, "result": ok(
+                "Captured 8 frames of Enemy with dissolve (isolated) at scale 6: a 821x350 sheet of 64x64 frames.\nPreview "
+                "only: the same arguments plus output: true and path write the PNG (one undo).",
+                {"target": "Enemy with dissolve", "frames": [{"index": i, "t": round(i * 0.9 / 7, 3)} for i in range(8)],
+                 "next": "Preview only: the same arguments plus output: true and path write the PNG (one undo)."})},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 8 frames of Enemy (isolated) at scale 6: a 821x350 sheet of 64x64 frames.",
+                {"target": "Enemy"})},
+        ],
+        "checks": {"calls": [{"tool": "capture_contact_sheet",
+                              "args": {"target": {"entity": "re:(?i)enemy", "effect": "dissolve"}}}],
+                   "must_not_call": [{"tool": "play", "args": {"action": "start"}}, "record_game", "screenshot"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_contact_sheet_transition_target",
+        "kind": "guard",
+        "what_happened": "New tool text (S48 R27, AC12): capture_contact_sheet draws a screen transition kind by itself "
+                         "(target.transition) and its transition_edges check measures the rim; asked whether the iris rim keeps "
+                         "one width, an agent captures it with that lint instead of playing the game and judging screenshots.",
+        "text_at_issue": "capture_contact_sheet: '... a .particles asset or a screen transition at N times'; target.transition",
+        "source": "S48 R27, R28 (new tool text); no failure on record",
+        "prompt": "Check that the iris screen transition's coloured rim stays the same width all along its edge while it closes.",
+        "mocks": [
+            {"tool": "capture_contact_sheet", "args": {"target": {"transition": "iris"}, "lint": "*"}, "result": ok(
+                "Captured 8 frames of transition iris (isolated) at scale 2: a 1288x356 sheet of 160x90 frames. Checks PASS, "
+                "verdict clean:\nPASS transition_edges: 0.0",
+                {"target": "transition iris", "verdict": "clean", "check_status": "PASS",
+                 "checks": [{"id": "transition_edges", "kind": "effect", "status": "PASS", "measured": 0, "threshold": 0}]})},
+            {"tool": "capture_contact_sheet", "result": ok(
+                "Captured 8 frames of transition iris (isolated) at scale 2: a 1288x356 sheet of 160x90 frames.",
+                {"target": "transition iris"})},
+        ],
+        "checks": {"calls": [{"tool": "capture_contact_sheet", "args": {"target": {"transition": "iris"}, "lint": "*"}}],
+                   "must_not_call": [{"tool": "play", "args": {"action": "start"}}, "record_game", "screenshot"],
+                   "reply_must": [r"(?i)rim|width|edge"]},
+        "max_turns": 10,
+    },
     # ---- S48 Pixel FX: sprite effects (material presets and library:sprite features)
     {
         "id": "guard_pixel_fx_selout_preset",

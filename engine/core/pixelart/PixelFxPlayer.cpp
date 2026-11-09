@@ -257,7 +257,8 @@ namespace jasperengine::pixelart{
 
         // The frame box of a Sprite in object space (the art's corners: its grown quad less the
         // growth) and its texture rect; false when it is not a sprite with a texture
-        bool spriteFrame(Scene* scene, Entity entity, std::string& path, Rect& rect, Vector3& lo, Vector3& hi, int& texW, int& texH){
+        bool spriteFrame(Scene* scene, Entity entity, const Texture*& texturePtr, std::string& path, Rect& rect, Vector3& lo, Vector3& hi,
+                         int& texW, int& texH){
             SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity);
             MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
             if (!sprite || !mesh || mesh->numSubmeshes == 0)
@@ -266,7 +267,10 @@ namespace jasperengine::pixelart{
             const Texture& texture = submesh.material.baseColorTexture;
             if (texture.empty())
                 return false;
+            texturePtr = &texture;
             path = texture.getPath();
+            if (path.empty())
+                path = texture.getId();
             texW = (int)texture.getWidth();
             texH = (int)texture.getHeight();
             rect = submesh.hasTextureRect ? submesh.textureRect : Rect(0.0f, 0.0f, 1.0f, 1.0f);
@@ -287,6 +291,31 @@ namespace jasperengine::pixelart{
             return true;
         }
 
+        // a texture rect's opacity from pixels in memory (8-bit, uncompressed); null otherwise
+        std::shared_ptr<const PixelFxFrameAlpha> alphaOf(TextureData& data, float x, float y, float w, float h){
+            if (data.isCompressed() || !data.getData() || data.getWidth() <= 0 || data.getHeight() <= 0 ||
+                (data.getChannels() != 4 && data.getChannels() != 2) || data.getSize() < (unsigned int)(data.getWidth() * data.getHeight() * data.getChannels()))
+                return nullptr;
+            auto alpha = std::make_shared<PixelFxFrameAlpha>();
+            const int texW = data.getWidth(), texH = data.getHeight(), channels = data.getChannels();
+            const int x0 = (int)std::lround(x * (float)texW), y0 = (int)std::lround(y * (float)texH);
+            alpha->width = std::max((int)std::lround(w * (float)texW), 1);
+            alpha->height = std::max((int)std::lround(h * (float)texH), 1);
+            alpha->opaque.assign((size_t)alpha->width * alpha->height, 0);
+            const uint8_t* pixels = (const uint8_t*)data.getData();
+            for (int row = 0; row < alpha->height; row++){
+                const int ty = y0 + row;
+                for (int col = 0; col < alpha->width; col++){
+                    const int tx = x0 + col;
+                    if (tx < 0 || ty < 0 || tx >= texW || ty >= texH)
+                        continue;
+                    const uint8_t a = pixels[((size_t)ty * texW + tx) * channels + (channels - 1)];
+                    alpha->opaque[(size_t)row * alpha->width + col] = a >= 128 ? 1 : 0;
+                }
+            }
+            return alpha;
+        }
+
         void emitEmbers(PixelFxRun& run, float progress, double dt){
             if (run.options.embers.empty() || run.options.manual)
                 return;
@@ -294,7 +323,8 @@ namespace jasperengine::pixelart{
             Rect rect;
             Vector3 lo, hi;
             int texW = 0, texH = 0;
-            if (!spriteFrame(run.scene, run.entity, path, rect, lo, hi, texW, texH))
+            const Texture* texture = nullptr;
+            if (!spriteFrame(run.scene, run.entity, texture, path, rect, lo, hi, texW, texH))
                 return;
             const int frameW = std::max((int)std::lround(std::fabs(rect.getWidth()) * (float)texW), 1);
             const int frameH = std::max((int)std::lround(std::fabs(rect.getHeight()) * (float)texH), 1);
@@ -309,8 +339,12 @@ namespace jasperengine::pixelart{
                 // a new frame (or values): its alpha once per texture and rect, its keys once
                 run.emberFrameKey = frameKey;
                 run.emberDissolve = dissolve;
-                std::shared_ptr<const PixelFxFrameAlpha> alpha = PixelFxPlayer::frameAlpha(path, rect.getX(), rect.getY(),
-                                                                                           std::fabs(rect.getWidth()), std::fabs(rect.getHeight()));
+                // the texture's own pixels when it keeps them, else its file's (read once, cached)
+                std::shared_ptr<const PixelFxFrameAlpha> alpha;
+                if (texture && texture->hasData())
+                    alpha = alphaOf(texture->getData(0), rect.getX(), rect.getY(), std::fabs(rect.getWidth()), std::fabs(rect.getHeight()));
+                if (!alpha)
+                    alpha = PixelFxPlayer::frameAlpha(path, rect.getX(), rect.getY(), std::fabs(rect.getWidth()), std::fabs(rect.getHeight()));
                 if (alpha && alpha->width == frameW && alpha->height == frameH){
                     run.emberFrame = *alpha;
                 }else{
@@ -725,27 +759,8 @@ namespace jasperengine::pixelart{
             s.alphas.clear();
         std::shared_ptr<const PixelFxFrameAlpha> result;
         TextureData data;
-        if (!texturePath.empty() && data.loadTextureFromFile(texturePath.c_str()) && !data.isCompressed() && data.getData() &&
-            data.getWidth() > 0 && data.getHeight() > 0 && (data.getChannels() == 4 || data.getChannels() == 2)){
-            auto alpha = std::make_shared<PixelFxFrameAlpha>();
-            const int texW = data.getWidth(), texH = data.getHeight(), channels = data.getChannels();
-            const int x0 = (int)std::lround(x * (float)texW), y0 = (int)std::lround(y * (float)texH);
-            alpha->width = std::max((int)std::lround(w * (float)texW), 1);
-            alpha->height = std::max((int)std::lround(h * (float)texH), 1);
-            alpha->opaque.assign((size_t)alpha->width * alpha->height, 0);
-            const uint8_t* pixels = (const uint8_t*)data.getData();
-            for (int row = 0; row < alpha->height; row++){
-                const int ty = y0 + row;
-                for (int col = 0; col < alpha->width; col++){
-                    const int tx = x0 + col;
-                    if (tx < 0 || ty < 0 || tx >= texW || ty >= texH)
-                        continue;
-                    const uint8_t a = pixels[((size_t)ty * texW + tx) * channels + (channels - 1)];
-                    alpha->opaque[(size_t)row * alpha->width + col] = a >= 128 ? 1 : 0;
-                }
-            }
-            result = alpha;
-        }
+        if (!texturePath.empty() && data.loadTextureFromFile(texturePath.c_str()))
+            result = alphaOf(data, x, y, w, h);
         s.alphas[key] = result;
         return result;
     }

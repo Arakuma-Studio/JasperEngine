@@ -49,6 +49,30 @@ palette's ramp makes the project's copy of that palette (`Palettes/<id>.palette`
 `material:setShaderFeature("DISSOLVE", true)` on the material (`getMaterial`, then `setMaterial`) (a feature turned on at runtime builds its variant then: prefer the
 material, or a preset, at authoring time).
 
+## PixelFX player
+
+`PixelFX.play(go, effect, duration, opts)` plays an effect on a GameObject's sprite over time: `flash` (the flash
+amount from 1 to 0 in `opts.color`), `fade_out` and `fade_in` (Dither Fade), `blink` (`opts.count` dithered blinks),
+`dissolve` and `undissolve` (`opts.ramp` for the band colours, `opts.embers` for pixel particles where the front
+burns, at most `opts.emberRate` a second), `petrify`, `freeze` and `poison` (Ramp Recolour in with a bevel, held for
+`opts.hold`, then out) and `outline_pulse` (`opts.count` whole on/off pulses of a pixel outline). It runs on game time,
+so a hit-stop holds it (Hit Stop Exempt keeps it running), or on unscaled time with `opts.unscaled`; `opts.ease` names
+an ease. The handle is yieldable (`Coroutine.waitFor(h)`) and has `isDone()`, `progress`, `stop()` and `onFinished`.
+Each effect ends with its value back at 0, so the material costs nothing again, except `fade_out` and `dissolve`, which
+end at 1 (gone). One effect per feature runs on a GameObject: a new one replaces it. `PixelFX.set(go, name, value)` sets
+a channel (`flash`, `fade`, `dissolve`, `ramp`) or any property directly.
+
+If the material lacks the feature, the player turns it on in that GameObject's own material (a shared `.material` file
+is never written) and the development build logs `PixelFX: "<effect>" turned on <FEATURE> on <material> at runtime;
+add it to the material (or record the warm-up list) to avoid a compile hitch`. The effect starts once the new variant
+draws; its `progress` stays 0 until then. Add the feature in the material or apply a Pixel FX preset to avoid that.
+
+Ramps: `opts.ramp` takes a strip or `<palette>.palette#ramp:<name>`; without it the material's ramp is kept (the
+Petrify, Frozen, Poison and Burn Away presets set theirs), else the grey default. Embers name a Pixel Particles preset
+(`ember`, made for the project's Pixels Per Unit while the editor runs) or a `.particles` path, which is what an
+exported game needs. They come from the texels whose key crossed the dissolve front that frame (the same key the
+shader burns with), only the frame's opaque texels.
+
 ## Screen transitions
 
 A screen transition covers the screen in one ink colour and reveals it again. Use one to hide a scene change, a

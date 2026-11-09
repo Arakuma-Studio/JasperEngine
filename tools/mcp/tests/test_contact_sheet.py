@@ -11,11 +11,14 @@ tools/fixtures/pixel-fx copied in:
   WARN), a burst spilling past the margin (spill WARN with its spans), a loop that jumps (loop_seam WARN), a one-frame
   blink (flicker WARN), an unseeded random script in Play (determinism FAIL, verdict needs_person), and a still sprite
   where nothing warns (verdict clean); the checks are the verdict tools' rows (S35 / S91 shape);
+- R27's effect target: a PixelFX effect seeked by the capture (fade_out shown, then gone, whole texels); AC23's
+  dissolve fixture (tools/fixtures/pixel-fx/effects): a dissolve still burning at the end warns one_shot_end.
 - R36: 16 frames of a 64x64 target at scale 4 within 2 s, with every lint within 5 s (reported, harness.over_budget).
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import time
@@ -214,6 +217,40 @@ async def test_one_shot_end_and_spill(ed: Editor):
     ed.check("spans" in row["limited_by"] and "past the margin" in row["limited_by"], f"the message gives the spans: {row}")
     ed.check(row["spots"] and row["at"], f"spots and times: {row}")
     ed.check_eq([r["id"] for r in spilled["checks"]], ["spill"], "lint names run just those")
+
+
+async def test_effect_target(ed: Editor):
+    """A GameObject with a PixelFX effect: the capture seeks the effect player; fade_out is shown at t = 0 and gone at
+    its end, through whole dithered texels (no partial alpha)."""
+    fx = await sprite(ed, "Fader", HERO_PNG, 8, at=(-6.0, -6.0))
+    await ed.call("set_properties", scene=S["scene"], entity=fx, values={"mesh": {M + "shader": "library:sprite"}})
+    value = (await sheet(ed, "effect_fade_out", target={"entity": fx, "effect": "fade_out", "effect_options": {"duration": 1.0}},
+                         frames=5, scale=4, margin=4, lint=["one_shot_end", "partial_alpha"]))[0]
+    ed.check("fade_out" in value["target"], f"the label names the effect: {value['target']}")
+    ed.check_eq(value["frames"][0]["bbox"], [8, 8, 8, 8], "shown at t = 0")
+    ed.check_eq(value["frames"][-1]["bbox"], None, "gone at the end")
+    ed.check_eq(check_of(ed, value, "partial_alpha")["status"], "PASS", "the dither keeps whole texels")
+    ed.check_eq(check_of(ed, value, "one_shot_end")["status"], "PASS")
+    bad = await ed.call_raw("capture_contact_sheet", {"target": {"particles": "assets/fx/burst_clean.particles", "effect": "flash"}})
+    ed.check(bad.is_error and "GameObject" in bad.text, f"an effect plays on a GameObject: {bad.text[:300]}")
+    bad = await ed.call_raw("capture_contact_sheet", {"target": {"entity": fx, "effect": "melt"}})
+    ed.check(bad.is_error and "dissolve" in bad.text, f"the effects are named: {bad.text[:300]}")
+
+
+async def test_dissolve_one_shot_end(ed: Editor):
+    """AC23: a dissolve still burning when the capture ends leaves texels (one_shot_end WARN); its twin reaches
+    progress 1 and leaves none."""
+    burner = await sprite(ed, "Burner", HERO_PNG, 8, at=(6.0, -6.0))
+    await ed.call("set_properties", scene=S["scene"], entity=burner, values={"mesh": {M + "shader": "library:sprite"}})
+    rows = {}
+    for name in ("dissolve_late", "dissolve_clean"):
+        fixture = json.loads((FIXTURE / "effects" / f"{name}.json").read_text())
+        value = (await sheet(ed, name, target={"entity": burner, "effect": fixture["effect"], "effect_options": fixture["effect_options"]},
+                             frames=6, duration=1.0, lint=["one_shot_end"]))[0]
+        rows[name] = check_of(ed, value, "one_shot_end")
+    ed.check_eq(rows["dissolve_late"]["status"], "WARN", f"texels left at t = duration: {rows['dissolve_late']}")
+    ed.check(rows["dissolve_late"]["measured"] > 0 and rows["dissolve_late"]["fix_hint"], f"measured and its fix: {rows['dissolve_late']}")
+    ed.check_eq(rows["dissolve_clean"]["status"], "PASS", f"the fixed twin: {rows['dissolve_clean']}")
 
 
 async def test_loop_seam(ed: Editor):
