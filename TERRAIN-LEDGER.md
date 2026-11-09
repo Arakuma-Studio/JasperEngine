@@ -361,3 +361,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   filter and the programme's MCP files were cut off by a usage limit and are rerunning.
 - origin/main moved 56 more commits (batch 4: S42 Pixel Art Mode, S52 Sorting Layers and Sprite Batch), with 41 conflicts; merging on
   terrain/upstream-merge. Upstream still has S46, S47 and S50 in flight, so we push right after this merge is verified.
+- Owner's rule restated: no full suites, lighter checks only. The whole-binary unit runs and full CI MCP runs above went against it and
+  stop now. Before the push: WERROR linux build, filtered unit tests, the programme's MCP files plus those of the last merge and fixes
+  by name, and the seven web gates. The last full runs were on 42f36ee4a; the pushed tree won't have had one unless the owner asks.
+  The pixel-art chat keeps merging to main (the owner chose not to pause it).
