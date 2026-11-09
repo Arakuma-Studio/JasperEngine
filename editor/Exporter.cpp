@@ -1166,11 +1166,16 @@ bool editor::Exporter::generateShaders(const ExportConfig& cfg) {
 
 void editor::Exporter::runExport() {
     // The editor's regeneration of .jasperengine/generated (a change picked up meanwhile, a
-    // setting) waits for the whole export, which clears, rewrites and copies that folder
+    // setting) waits for the whole export, which clears, rewrites and copies that folder. The
+    // export's terrain targets (loadAndSaveAllScenes) end with it
     struct GeneratedExportGuard {
         Project* project;
         explicit GeneratedExportGuard(Project* p) : project(p) { if (project) project->beginGeneratedExport(); }
-        ~GeneratedExportGuard() { if (project) project->endGeneratedExport(); }
+        ~GeneratedExportGuard() {
+            if (!project) return;
+            project->endTerrainExport();
+            project->endGeneratedExport();
+        }
     } generatedGuard(project);
 
     if (project && !checkRootsPinned()) return;
@@ -1352,26 +1357,25 @@ void editor::Exporter::runExport() {
     Out::info("Build completed: %s", config.targetDir.string().c_str());
 }
 
+// T3 R34: the platforms this export targets, whose terrain tiers the keys and the game take (none: all)
+std::vector<int> editor::Exporter::terrainExportPlatforms() const {
+    std::vector<int> platforms;
+    if (config.mode == ExportMode::Desktop) platforms = {static_cast<int>(Platform::Linux)};
+    else if (config.mode == ExportMode::Web) platforms = {static_cast<int>(Platform::Web)};
+    else if (config.mode == ExportMode::Player) {
+        const std::string name = buildPlatformName(config.platform);
+        for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+            if (name == Project::getShadowTierPlatformName(platform)) platforms.push_back(platform);
+        }
+    }
+    return platforms;
+}
+
 // Runs after loadAndSaveAllScenes(): saving a scene refreshes its cached keys, so
 // scenes that were closed or outdated have contributed before the overrides apply.
 void editor::Exporter::resolveShaderKeys() {
     if (!project) {
         return;
-    }
-
-    // T3 R34: the tiers of the platforms this export targets, which the keys and the game take
-    {
-        std::vector<int> platforms;
-        if (config.mode == ExportMode::Desktop) platforms = {static_cast<int>(Platform::Linux)};
-        else if (config.mode == ExportMode::Web) platforms = {static_cast<int>(Platform::Web)};
-        else if (config.mode == ExportMode::Player) {
-            const std::string name = buildPlatformName(config.platform);
-            for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
-                if (name == Project::getShadowTierPlatformName(platform)) platforms.push_back(platform);
-            }
-        }
-        project->setTerrainExportPlatforms(platforms);
-        Generator::exportTerrainTiers = project->getShippedTerrainTiers();
     }
 
     std::set<ShaderKey> keys;
@@ -2434,6 +2438,9 @@ bool editor::Exporter::loadAndSaveAllScenes() {
 
     editor::getEditorHost().enqueueMainThreadTask([this, &savePromise, &importError]() {
         try {
+            // before any scene saves: each save writes main.cpp, whose shipped terrain tiers are
+            // this export's (T3 R34), not the last export's
+            project->beginTerrainExport(terrainExportPlatforms());
             std::vector<uint32_t> temporarilyLoaded;
             auto& scenes = project->getScenes();
 

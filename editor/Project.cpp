@@ -1951,17 +1951,40 @@ void editor::Project::applyNewProjectTerrainDefaults(){
     compressTerrainLayers = true;
 }
 
+void editor::Project::beginTerrainExport(const std::vector<int>& platforms){
+    std::lock_guard<std::mutex> lock(terrainExportMutex);
+    terrainExportPlatforms = platforms;
+}
+
+void editor::Project::endTerrainExport(){
+    std::lock_guard<std::mutex> lock(terrainExportMutex);
+    terrainExportPlatforms.reset();
+}
+
+uint32_t editor::Project::getGeneratedTerrainTiers() const{
+    {
+        std::lock_guard<std::mutex> lock(terrainExportMutex);
+        if (!terrainExportPlatforms) return terraincore::TERRAIN_ALL_TIERS;
+    }
+    return getShippedTerrainTiers();
+}
+
 uint32_t editor::Project::getShippedTerrainTiers() const{
     if (shipAllTerrainTiers || scriptsMention("setTerrainQuality") || scriptsMention("terrainQuality")){
         return terraincore::TERRAIN_ALL_TIERS;
     }
+    std::vector<int> platforms;
+    {
+        std::lock_guard<std::mutex> lock(terrainExportMutex);
+        if (terrainExportPlatforms) platforms = *terrainExportPlatforms;
+    }
     uint32_t mask = 0;
-    if (terrainExportPlatforms.empty()){
+    if (platforms.empty()){
         for (terraincore::TerrainQuality tier : terrainQualityTiers){
             mask |= terraincore::terrainQualityBit(tier);
         }
     }else{
-        for (int platform : terrainExportPlatforms){
+        for (int platform : platforms){
             mask |= terraincore::terrainQualityBit(getTerrainQualityTier(platform));
         }
     }
@@ -6292,7 +6315,7 @@ void editor::Project::resetConfigs() {
     terrainQualityWritten = false;
     shipAllTerrainTiers = false;
     compressTerrainLayers = false;
-    terrainExportPlatforms.clear();
+    endTerrainExport();
     // pose animation and clip documents and rigs belong to the project
     PoseAnimationDocument::closeAll();
     AnimationClipDocument::closeAll();
@@ -8339,6 +8362,7 @@ void editor::Project::configureGenerator() {
     generator.setUIScale(uiScale);
     generator.setPixelsPerUnit(pixelsPerUnit);
     generator.setBitmapTextCacheMiB(bitmapTextCacheMiB);
+    generator.setShippedTerrainTiers(getGeneratedTerrainTiers());
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
 }
 
@@ -10542,6 +10566,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setUIScale(uiScale);
     generator.setPixelsPerUnit(pixelsPerUnit);
     generator.setBitmapTextCacheMiB(bitmapTextCacheMiB);
+    generator.setShippedTerrainTiers(terraincore::TERRAIN_ALL_TIERS);
     generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
