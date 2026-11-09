@@ -283,9 +283,23 @@ namespace {
                 titleart::three_d::TitleMesher mesher;
                 const auto mesh = mesher.build(request);
                 // the tier's solid limit counts the layer's stack (the letter and its enabled bands, as
-                // fit_to_tier reduces it), while the mesh stats count every island of every solid
+                // fit_to_tier reduces it, and the mesher builds at most that many at this tier), while
+                // the mesh stats count every island of every solid
                 uint32_t stack = 1;
                 for (const titleart::Band3D& band : request.style.bands) stack += band.enabled ? 1 : 0;
+                const uint32_t authored = stack, tierLimit = titleart::titleTierLimits(tier).maxSolids;
+                if (tierLimit) stack = std::min(stack, tierLimit);
+                if (authored > stack) {
+                    // a layer must not lose bands silently: the look passes, and this says what it loses
+                    TitleCheckResult dropped = result("3d_tier_budget", TitleCheckStatus::Warn,
+                                                      "'" + layer.value("name", std::string()) + "' at " + titleart::titleTierName(tier) + ": the mesher drops " +
+                                                          std::to_string(authored - stack) + " of its bands (the tier builds " + std::to_string(stack) + " solids)");
+                    dropped.id = std::string("3d_tier_budget.") + titleart::titleTierName(tier) + ".bands_dropped";
+                    dropped.measured = Json{{"layer", layer.value("name", std::string())}, {"bands_dropped", authored - stack}, {"authored_stack", authored}};
+                    dropped.threshold = Json{{"bands_dropped", 0}};
+                    dropped.method = "the layer's enabled bands against the tier's solid limit";
+                    out.push_back(std::move(dropped));
+                }
                 titleart::TitleMeshStats stats = mesh->stats;
                 stats.solids = stack;
                 const titleart::TitleTierFit fit = titleart::titleTierFit(stats, mesh->bytes(), tier);

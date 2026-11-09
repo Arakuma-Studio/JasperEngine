@@ -547,6 +547,18 @@ TEST(OrbMesherTest, GridTrianglesAndNormals) {
     EXPECT_TRUE(checkRaw(mesh).closed) << "seam positions are shared";
 }
 
+// the tier's solid budget is met in the mesh: bands past it are not built at that tier, Bake keeps them
+TEST(TitleMeshTest, TierBuildsAtMostItsStackOfSolids) {
+    Json bands = Json::array();
+    for (int i = 0; i < 5; i++) bands.push_back({{"grow", 2}, {"bevel", {{"width", 0}, {"depth", 0}}}});
+    const Title3D style = styleOf({{"depth", 10}, {"bands", bands}});
+    const TitleSource3D source = glyphSource("I");
+    const auto bake = meshOf(source, style, TitleTier::Bake);
+    const auto low = meshOf(source, style, TitleTier::Low);
+    EXPECT_EQ(bake->stats.solids, 6u) << "the letter and five bands";
+    EXPECT_EQ(low->stats.solids, titleTierLimits(TitleTier::Low).maxSolids);
+}
+
 TEST(TitleMeshTest, VertexFormatIndicesDeterminismAndCache) {
     EXPECT_EQ(sizeof(TitleMeshVertex), 24u);
     Json bands = Json::array({{{"grow", 2}, {"bevel", {{"width", 1}, {"depth", 1}, {"profile", "chamfer"}}}},
