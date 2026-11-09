@@ -76,6 +76,8 @@
 #include "spritenormals/SpriteNormalsCheck.h"
 #include "sprite/SpriteMigration.h"
 #include "pixelart/PixelArtCheck.h"
+#include "pixelart/cleanup/CleanupCli.h"
+#include "pixelart/cleanup/CleanupSession.h"
 #include "pixelart/PixelArtInput.h"
 #include "spritenormals/SpriteNormalsCli.h"
 #include "pixelart/aseprite/AsepriteCli.h"
@@ -314,6 +316,8 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " procedural-material bake <file.procmat> [options]  Bake a Procedural Material (exit 0/1/2/3/4).\n"
         << "  " << commandName << " import-unity-particles <file> [options]  Import Unity Particle Systems as engine prefabs.\n"
         << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
+        << "  " << commandName << " fix-pixel-art <in> [options]  Clean AI or loose pixel art (grid, palette, sheets); see --help.\n"
+        << "  " << commandName << " lint-pixel-art <in>... [options]  Craft and rule lints on images and .aseprite files; see --help.\n"
         << "  " << commandName << " aseprite info|render|resave  Describe, render or resave .aseprite files (no project).\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
@@ -3399,6 +3403,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
     // given files (--hook), only the changed scenes and the changed images that are pixel art,
     // and only their findings
     if (pixelArtWanted) {
+        pixelart::cleanup::registerCleanupOutputsRule();
         pixelart::Scope scope;
         if (pixelArtChanged) {
             scope.scenes = pixelArtChanged->scenes;
@@ -4302,6 +4307,16 @@ int CommandLine::runGenerateSpriteNormalsCommand(int argc, char** argv, const ch
 int CommandLine::runAsepriteCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return pixelart::aseprite::runAsepriteCommand(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runFixPixelArtCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return pixelart::cleanup::runFixPixelArt(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runLintPixelArtCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return pixelart::cleanup::runLintPixelArt(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runPlacePhysicsCommand(int argc, char** argv, const char* executableName) {

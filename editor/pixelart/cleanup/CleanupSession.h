@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include "pixelart/Palette.h"
 #include "pixelart/PixelImage.h"
 #include "pixelart/PixelProblem.h"
 #include "pixelart/cleanup/CleanupAnimation.h"
@@ -121,7 +122,7 @@ namespace jasperengine::editor::pixelart::cleanup {
         std::optional<Outcome> outcome;       // single pictures, for overlays
         std::optional<AnimationOutcome> animation;   // sheets and animated sources, for overlays
         Recipe resolved;                      // grid, palette, sheet and source resolved; re-runs alone (R28)
-        std::vector<PixelImage> frames;       // the output frames (a sheet: every exported clip's, one PNG sheet in `frames[0]` only when written as PNG)
+        std::vector<PixelImage> frames;       // what the file will hold: one picture, or per frame of a sheet (one packed sheet in frames[0] for png)
         OutputFormat format = OutputFormat::Png;
         std::vector<std::string> warnings;
         Stale stale;
@@ -228,7 +229,7 @@ namespace jasperengine::editor::pixelart::cleanup {
         bool failOnWarn = false;
         std::optional<Recipe> outputRecipe;    // the source carries a cleanup recipe
         bool forced = false;                   // that recipe records `forced: true` (R30)
-        std::string sheetLayout;               // "sheet" for a file reading as an animation sheet
+        bool asepriteSource = false;           // an .aseprite is pixel art: the verdict comes from its lints alone
     };
 
     struct LintOutcome {

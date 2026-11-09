@@ -29,6 +29,7 @@
 #include "window/MainToolbar.h"
 #include "window/PaletteWindow.h"
 #include "window/PixelArtCheckWindow.h"
+#include "window/PixelArtCleanupWindow.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/PlayInput.h"
 #include "window/PoseAnimationWindow.h"
@@ -123,6 +124,7 @@
 #include "model/ModelCookQueue.h"
 #include "pixelart/aseprite/AsepriteEditorHooks.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
+#include "pixelart/cleanup/CleanupSession.h"
 
 #include "util/CrashHandler.h"
 #include "util/EditorDiagnostics.h"
@@ -263,7 +265,10 @@ editor::App::App(){
     applyPaletteDialog = new ApplyPaletteDialog(&project);
     paletteWindow = new PaletteWindow(&project, projectWindow, applyPaletteDialog);
     pixelArtCheckWindow = new PixelArtCheckWindow(&project, projectWindow);
+    pixelArtCleanupWindow = new PixelArtCleanupWindow(&project);
     // S42 R19, R25: the window checks again after imports; a Console summary opens it on its finding
+    pixelart::cleanup::installEditorJobs();
+    pixelart::cleanup::registerCleanupOutputsRule();
     pixelart::PixelArtMode::get().setAssetsListener([this]() { pixelArtCheckWindow->assetsChanged(); });
     pixelart::PixelArtMode::get().setOpenAction([this](const std::string& key) { pixelArtCheckWindow->focusFinding(key); });
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
@@ -613,6 +618,11 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             if (spriteNormalsWindow->canUndoPaint()) undoLabel = "Undo Paint Stroke";
             if (spriteNormalsWindow->canRedoPaint()) redoLabel = "Redo Paint Stroke";
         }
+        // the Pixel Art Cleanup window's recipe edits come first, until Write
+        if (lastFocusedWindow == LastFocusedWindow::PixelArtCleanup && pixelArtCleanupWindow) {
+            if (pixelArtCleanupWindow->canUndo()) undoLabel = "Undo Cleanup Edit";
+            if (pixelArtCleanupWindow->canRedo()) redoLabel = "Redo Cleanup Edit";
+        }
     }
 
     // Every item below is a catalog command (shortcuts/DefaultCommands.cpp): its shortcut
@@ -817,7 +827,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSubmenu("2D", {
             catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
             catalogItem("window.palette", windowMenuLabel(PaletteWindow::WINDOW_NAME)),
-            catalogItem("window.pixelArtCheck", windowMenuLabel(PixelArtCheckWindow::WINDOW_NAME))
+            catalogItem("window.pixelArtCheck", windowMenuLabel(PixelArtCheckWindow::WINDOW_NAME)),
+            catalogItem("window.pixelArtCleanup", windowMenuLabel(PixelArtCleanupWindow::WINDOW_NAME))
         }),
         menuSubmenu("MCP", {
             catalogItem("window.mcpActivity", windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
@@ -1111,6 +1122,13 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::TogglePixelArtCheck:
             pixelArtCheckWindow->open();
+            break;
+        case AppMenuCommand::TogglePixelArtCleanup:
+            if (command.payload.empty()) {
+                pixelArtCleanupWindow->open();
+            } else {
+                openPixelArtCleanup(FileUtils::pathFromUtf8(command.payload));
+            }
             break;
         case AppMenuCommand::ToggleParticleEffect:
             showEditorWindow(particleEffectWindow);
@@ -1568,6 +1586,7 @@ editor::UndoTimeline::Target editor::App::undoTarget() const{
         case LastFocusedWindow::AnimationClip:
         // its assigns are steps too; its paint strokes are its own (undoRedo takes them first)
         case LastFocusedWindow::SpriteNormals: focused = UndoTimeline::FocusedWindow::Other; break;
+        case LastFocusedWindow::PixelArtCleanup: focused = UndoTimeline::FocusedWindow::Other; break;
     }
     return UndoTimeline::resolveTarget(ImGui::GetIO().WantTextInput, codeEditor->isFocused(), focused);
 }
@@ -1599,6 +1618,15 @@ void editor::App::undoRedo(bool undo){
             else CommandHandle::get(routedScene)->redo();
             return;
         }
+    }
+    // the Pixel Art Cleanup window's recipe edits are its own until Write (S46 R43)
+    if (lastFocusedWindow == LastFocusedWindow::PixelArtCleanup && pixelArtCleanupWindow) {
+        if (undo ? pixelArtCleanupWindow->canUndo() : pixelArtCleanupWindow->canRedo()) {
+            if (undo) pixelArtCleanupWindow->undoEdit();
+            else pixelArtCleanupWindow->redoEdit();
+            return;
+        }
+        if (undo) pixelArtCleanupWindow->dropRedo();
     }
     const bool dragging = CommandHistory::anyInteractiveOpen();
     std::string why;
@@ -2283,6 +2311,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(GraphEditorWindow::WINDOW_NAME, dock_id_middle_top);
     ImGui::DockBuilderDockWindow(ProceduralMaterialWindow::WINDOW_NAME, dock_id_middle_top);
     ImGui::DockBuilderDockWindow(SpritePreviewWindow::WINDOW_NAME, dock_id_middle_top);
+    ImGui::DockBuilderDockWindow(PixelArtCleanupWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2573,6 +2602,7 @@ void editor::App::setup() {
     // the Palette context's commands (a later add takes the user's stored binding too)
     paletteWindow->bindCommands(CommandCatalog::editor());
     pixelArtCheckWindow->bindCommands(CommandCatalog::editor());
+    pixelArtCleanupWindow->bindCommands(CommandCatalog::editor());
     applyPaletteDialog->bindCommands(CommandCatalog::editor());
 
     // Separate from the window scale: the layout keeps the scale it was built at,
@@ -2941,6 +2971,8 @@ void editor::App::show(){
             lastFocusedWindow = LastFocusedWindow::Code;
         } else if (spriteNormalsWindow->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::SpriteNormals;
+        } else if (pixelArtCleanupWindow->isFocused()) {
+            lastFocusedWindow = LastFocusedWindow::PixelArtCleanup;
         } else if (poseAnimationWindow->ownsUndo(sceneWindow->isFocused())) {
             lastFocusedWindow = LastFocusedWindow::PoseAnimation;
         } else if (clipUndoGoesToProject(placementBusy)) {
@@ -3050,6 +3082,7 @@ void editor::App::show(){
     // also the tick of its workers (Lospec, Usage, From Texture) with the window closed
     paletteWindow->show();
     pixelArtCheckWindow->show();
+    pixelArtCleanupWindow->show();
     applyPaletteDialog->show();
     // the Graph Editor and every graph kind's own window
     GraphEditorWindow::showAll();
@@ -5225,6 +5258,7 @@ void editor::App::shutdownBackgroundWork() {
     if (spriteNormalsWatcher) spriteNormalsWatcher->shutdown(1.0);
     // Shift-click generations and Regenerates: cancelled, waited for a moment
     if (spriteNormalsWindow) spriteNormalsWindow->shutdownJobs(2.0);
+    if (pixelArtCleanupWindow) pixelArtCleanupWindow->shutdownJobs(2.0);
     if (!editor::spritenormals::SpriteNormalsRun::cancelAll()) {
         Out::warning("A sprite normal map generation did not stop in time; it is left to finish without effect.");
     }
@@ -5344,6 +5378,7 @@ void editor::App::prepareForProjectSwitch() {
     // a Lospec fetch is cancelled; the palette, its selection and the dialogs are forgotten
     paletteWindow->resetForProjectSwitch();
     pixelArtCheckWindow->resetForProjectSwitch();
+    pixelArtCleanupWindow->resetForProjectSwitch();
     applyPaletteDialog->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
@@ -6011,6 +6046,20 @@ void editor::App::openSpriteNormals(const std::vector<std::filesystem::path>& im
     }
 }
 
+void editor::App::openPixelArtCleanup(const std::filesystem::path& image){
+    std::string error;
+    if (!pixelArtCleanupWindow->open(image, error)) {
+        registerAlert("Pixel Art Cleanup", "Can't open " + FileUtils::pathToUtf8(image.filename()) + ": " + error);
+    }
+}
+
+void editor::App::rerunPixelArtCleanup(const std::filesystem::path& output){
+    std::string error;
+    if (!pixelArtCleanupWindow->startRerun(output, error)) {
+        registerAlert("Pixel Art Cleanup", "Can't re-run " + FileUtils::pathToUtf8(output.filename()) + ": " + error);
+    }
+}
+
 void editor::App::openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now){
     std::string error;
     if (!spriteNormalsWindow->openForEntity(sceneId, static_cast<Entity>(entity), submesh, now, error)) {
@@ -6366,6 +6415,7 @@ void editor::App::applyPanelVisibilitySettings() {
     soundBrowserWindow->setOpen(visibility.soundBrowser);
     graphEditorWindow->setOpen(visibility.graphEditor);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
+    pixelArtCleanupWindow->setOpen(visibility.pixelArtCleanup);
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
     mcpActivityWindow->setOpen(visibility.mcp);
@@ -6389,6 +6439,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.soundBrowser = soundBrowserWindow->isOpen();
     visibility.graphEditor = graphEditorWindow->isOpen();
     visibility.spriteNormals = spriteNormalsWindow->isOpen();
+    visibility.pixelArtCleanup = pixelArtCleanupWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();

@@ -42,7 +42,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         // the pixel-art family's sprites (S44 adds the row; S45 and S47 add their tools)
         {"sprites", "Aseprite import settings, sprite atlases, and agent sprite drawing on .aseprite files (jasper://docs/sprites)."},
         // the pixel-art family's group: S42's check, S43's palettes, S51's font previews (pages named in pixel-art.md)
-        {"pixel_art", "Pixel art: checks, palettes and font previews (jasper://docs/pixel-art)."},
+        {"pixel_art", "Pixel art: checks, palettes, cleanup of AI art, lints and font previews (jasper://docs/pixel-art)."},
     };
     if (selftestGroupMode() > 0) {
         groups.push_back({"selftest", "Test-only group of the MCP tests (JASPER_MCP_SELFTEST_GROUP)."});

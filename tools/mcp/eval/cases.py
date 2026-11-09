@@ -1287,7 +1287,80 @@ CASES = [
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
-    },    # -- S43 palettes: the "Other areas" entry, edit_palette's preview-then-write and apply_palette's check --------
+    },    # -- S46 pixel-art cleanup: fix_pixel_art's preview-then-write, needs_person, lint_pixel_art's route --------
+    {
+        "id": "guard_pixel_cleanup_preview_then_write",
+        "kind": "guard",
+        "what_happened": "New tools (S46): an AI sprite cleaned with fix_pixel_art must be looked at (preview, compare image) before "
+                         "it is written; without the description's 'previews' and 'the same arguments plus output:true' an agent "
+                         "writes straight away or reaches for shell image scripts.",
+        "text_at_issue": "fix_pixel_art: 'Without output it previews (image, nothing written); the same arguments plus output:true write it'; "
+                         "its result's `next`",
+        "source": "S46 R44 (new tool text); no failure on record",
+        "prompt": "assets/art/hero.png is an AI image that only looks like pixel art (fake big pixels, blurred). Clean it into real pixel "
+                  "art and keep the result as a new file next to it.",
+        "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": True}, "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors. Wrote assets/art/hero_clean.png as one undo step.",
+                {"verdict": "fixable", "written": [{"role": "png", "path": "assets/art/hero_clean.png"}],
+                 "undo": {"id": 14, "name": "agent: Pixel Art Cleanup (hero_clean.png)"}})},
+            {"tool": "fix_pixel_art", "result": ok(
+                "fixable: Upscaled pixel art: fixes to 32x32, 16 colors (grid fit 100%, confidence 98%). Preview only: nothing written.",
+                {"verdict": "fixable", "confidence": 0.98, "default_output": "assets/art/hero_clean.png",
+                 "next": "Preview only, nothing written: look at the image, adjust recipe if it is wrong, then the same arguments plus "
+                         "output: true write exactly these pixels."})},
+        ],
+        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png"}},
+                             {"tool": "fix_pixel_art", "args": {"source": "assets/art/hero.png", "output": True}}],
+                   "must_not_call": ["apply_palette", "write_file"], "edits_must_not": [r"\.png$"],
+                   "shell_must_not": [r"(?i)\bPIL\b|from PIL|magick|convert\s"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_pixel_cleanup_needs_person_not_forced",
+        "kind": "guard",
+        "what_happened": "New tool text (S46 R30): a needs_person result is a stop sign. Without the result's `next` an agent passes "
+                         "force: true to get the file written instead of setting the grid or asking the user.",
+        "text_at_issue": "fix_pixel_art's `next`: 'needs_person: look at the guards and the image; set recipe.grid or palette and preview "
+                         "again. output: true is refused without force: true.'; the refusal's Fix naming force as the last option",
+        "source": "S46 R30 (new tool text); no failure on record",
+        "prompt": "Clean up assets/art/photo.jpg into pixel art with the Pixel Art Cleanup tools and write the result. If the tools say "
+                  "it needs a person, stop and tell me what they found.",
+        "mocks": [
+            {"tool": "fix_pixel_art", "args": {"output": True}, "result": err(
+                "needs_person: assets/art/photo.jpg is needs_person (low_fit, low_confidence): Unsure of the grid: look at the preview, "
+                "or set the grid by hand. Nothing was written. Fix: set recipe.grid or recipe.palette and preview again, or pass force: "
+                "true to write it anyway")},
+            {"tool": "fix_pixel_art", "result": ok(
+                "needs_person: Unsure of the grid (fit 41%, confidence 33%): look at the preview, or set the grid by hand. Preview only: nothing written.",
+                {"verdict": "needs_person", "confidence": 0.33, "guards": [{"id": "low_fit", "value": 0.41, "threshold": 0.9}],
+                 "default_output": "assets/art/photo_clean.png",
+                 "next": "needs_person: look at the guards and the image; set recipe.grid or palette and preview again. "
+                         "output: true is refused without force: true."})},
+        ],
+        "checks": {"calls": [{"tool": "fix_pixel_art", "args": {"source": "assets/art/photo.jpg"}}],
+                   "must_not_call": ["write_file"], "max_calls": {"fix_pixel_art": 2},
+                   "reply_must": [r"(?i)needs? (a )?person|low.?(fit|confidence)|guard"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_pixel_lint_route",
+        "kind": "guard",
+        "what_happened": "New tool (S46): checking a sprite's craft (jaggies, palette, flicker) is lint_pixel_art, read-only; an agent "
+                         "that doesn't know it writes its own analysis script or calls fix_pixel_art on art that is meant to stay as it is.",
+        "text_at_issue": "lint_pixel_art: 'Checks an image, .aseprite ... or Sprite: craft lints and rule lints'; the group row "
+                         "'cleanup of AI art, lints'",
+        "source": "S46 R46 (new tool text); no failure on record",
+        "prompt": "Check assets/art/walk.aseprite's walk tag for pixel-art problems (jaggies, flicker, palette use). Don't change the file.",
+        "mocks": [
+            {"tool": "lint_pixel_art", "result": ok(
+                "clean: 0 fail, 1 warn.\nWARN flicker: 0.08 of the lit pixels blink for one frame. Fix: smooth the frame.",
+                {"verdict": "clean", "counts": {"pass": 12, "warn": 1, "fail": 0, "skip": 4}, "frames": 4, "results": []})},
+        ],
+        "checks": {"calls": [{"tool": "lint_pixel_art", "args": {"frames": "walk"}}],
+                   "must_not_call": ["fix_pixel_art", "edit_sprite"], "shell_must_not": [r"(?i)\bPIL\b|from PIL"]},
+        "max_turns": 8,
+    },
     {
         "id": "guard_palette_apply_route",
         "kind": "guard",
