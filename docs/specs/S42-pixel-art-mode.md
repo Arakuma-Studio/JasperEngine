@@ -629,8 +629,12 @@ Recorded at implementation (`feature/s42-pixel-art-mode`); the code is what is t
   Default Filter Mode (fix: Default Filter Mode point). No enabled Pixel Perfect Camera is fixed with
   integer_scale's own change (`rules::cameraFixChanges`; identical changes are applied once), and
   Pixel Snapping off with the camera's switch. Render mode, sizes and a perspective camera have no
-  automatic fix (`needs_person` names what to change). The Pixel Art module criteria wait for S49
-  (not in this base). A particle renderer's texture is a pixel-art texture of a pixel-art scene
+  automatic fix (`needs_person` names what to change). S49's Pixel Art module is read as R10 says
+  (`pixel_art_module: {snap, pixel_sizes, fade}`, null when absent or disabled): no module, snap or
+  pixel sizes off, or an alpha fade is a WARN whose fix sets them (`snap`, `pixelSizes`, `fade:
+  dither`) through the effect's own merge patch (`ParticleEffectEdit`: the `.particles` asset when
+  it has one, else the inline effect); with pixel sizes the start sizes are base pixels, and Integer
+  Size makes fractional ones whole. A particle renderer's texture is a pixel-art texture of a pixel-art scene
   (`mipmaps_compression`, so R2's preset converts it).
 - **R10 `font_antialiasing`:** S51 plugs in through `pixelart::setFontAnalyzer`; until then every font
   reads as a vector font (WARN, `needs_person`). The `.bitmapfont` `alpha_cutoff` fix is S51's to add

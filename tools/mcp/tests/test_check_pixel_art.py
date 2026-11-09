@@ -100,6 +100,7 @@ async def test_seeded_findings(ed: Editor):
     ed.check(f and f["status"] == "WARN" and f["fix"] is None and f["needs_person"], f"font_antialiasing: {f}")
     f = entity_finding(result, "particles_grid", "Sparks")
     ed.check(f and f["status"] == "WARN" and f["measured"]["render_mode"] == "stretched_billboard", f"particles_grid: {f}")
+    ed.check(f and f["measured"].get("pixel_art_module", "missing") is None, f"particles_grid reads S49's Pixel Art module (none here): {f}")
     aa = by_rule(result).get("anti_aliasing", [])
     ed.check(aa and aa[0]["measured"]["fxaa"] is True, f"anti_aliasing FXAA: {aa}")
     rs = [x for x in by_rule(result).get("render_scale", []) if x["target"]["kind"] == "project"]
