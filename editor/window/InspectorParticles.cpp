@@ -320,7 +320,7 @@ namespace {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(1);
             // the Particle Effect window's Record (S91 R12): its Pixel Grid for pixel art, and an Aseprite JSON beside
-            if (ImGui::Button("Bake to Sprite Sheet...")) getEditorHost().openParticleEffectSubtree(ui.sceneId, ui.entity);
+            if (ImGui::Button("Bake to Sprite Sheet...")) editor::getEditorHost().openParticleEffectSubtree(ui.sceneId, ui.entity);
             ImGui::SetItemTooltip("Opens the Particle Effect window: its Record writes a sprite sheet (turn on Pixel Grid for pixel art, and Aseprite JSON for a texture's Sprite Mode)");
         }
         if (!pixelActive(edited)) return;

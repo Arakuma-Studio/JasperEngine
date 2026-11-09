@@ -38,7 +38,9 @@ namespace {
     // A key the format does not have: a warning here (old files must load), and applyMergePatch
     // refuses it. `known` holds what it may have meant.
     void warnUnknownKey(std::vector<Diagnostic>& out, const std::string& path, const std::string& key, const std::string& message, const std::vector<std::string>& known){
-        out.push_back({Diagnostic::Severity::Warning, path, message + NearestNameSuffix(key, known), true});
+        Diagnostic d{Diagnostic::Severity::Warning, path, message + NearestNameSuffix(key, known)};
+        d.unknownKey = true;
+        out.push_back(std::move(d));
     }
 
     std::string join(const std::string& path, const std::string& key){
