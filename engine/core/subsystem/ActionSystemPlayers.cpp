@@ -25,6 +25,7 @@
 #include "pool/AnimationClipPool.h"
 #include "pool/AnimatorAssetPool.h"
 #include "script/LuaBinding.h"
+#include "pixelart/HitStop.h"
 
 #include <algorithm>
 #include <cmath>
@@ -101,6 +102,18 @@ anim::PropertyRest* playerdetail::completePropertyRest(Scene* scene, Entity enti
     }
     property.binding = binding;
     return property.has ? &property : nullptr;
+}
+
+float playerdetail::blendWeightOf(const AnimationPlayerComponent& player, anim::PlayerStateRuntime& state){
+    const float fps = player.poseFrameRate;
+    if (!(fps > 0.0f) || !std::isfinite(fps) || !player.runtime) return state.weight;
+    const int64_t tick = (int64_t)std::floor((double)player.runtime->clock * fps + 1e-6);
+    // a new step, or a state that just came in: the weight now
+    if (tick != state.heldTick || state.heldTick < 0){
+        state.heldTick = tick;
+        state.heldWeight = state.weight;
+    }
+    return state.heldWeight;
 }
 
 // the time a state is sampled at this update, in its clip
@@ -660,7 +673,7 @@ namespace {
 void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings& bindings, float clipTime, float weight,
                                   std::unordered_map<Entity, anim::ChannelRest>& rest,
                                   std::vector<std::pair<Entity, ClipChannel>>* written,
-                                  std::vector<std::pair<Entity, uint32_t>>* writtenProperties){
+                                  std::vector<std::pair<Entity, uint32_t>>* writtenProperties, float stepFps){
     if (!(weight > 0.0f)) return;
     const std::vector<AnimationClip::Track>& tracks = clip.getTracks();
     anim::TrackSample sample;
@@ -681,7 +694,7 @@ void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings&
         }
         anim::ChannelRest& channelRest = *currentRest;
         completeRest(scene, target, channelRest, track.channel);
-        if (!anim::sampleTrack(track, clipTime, sample, &bindings.cursors[i])) continue;
+        if (!anim::sampleTrack(track, clipTime, sample, &bindings.cursors[i], stepFps)) continue;
 
         switch (track.channel){
             case ClipChannel::Position: {
@@ -1236,7 +1249,8 @@ void ActionSystem::samplePlayerStates(Entity entity, AnimationPlayerComponent& p
     if (layered) evaluateLayeredPlayer(entity, player, true);
     for (anim::PlayerStateRuntime& state : runtime.states){
         if (!layered && (state.enabled || state.finishing || state.held) && state.bindings.clip && state.weight > 0.0f){
-            accumulateClip(*state.bindings.clip, state.bindings, sampleTimeOf(player, state), state.weight, runtime.rest, nullptr);
+            accumulateClip(*state.bindings.clip, state.bindings, sampleTimeOf(player, state), playerdetail::blendWeightOf(player, state), runtime.rest, nullptr,
+                           nullptr, player.poseFrameRate);
         }
         if (state.finishing){
             // R1b: an ended state holds its last pose at its weight (not playing, not advancing)
@@ -1282,12 +1296,14 @@ void ActionSystem::updatePlayers(double dt){
     const uint64_t maskPoolRevision = AnimatorAssetPool::revision();
     playerMaskPoolChanged = maskPoolRevision != playerMaskPoolRevision;
     playerMaskPoolRevision = maskPoolRevision;
-    const float step = std::isfinite(dt) ? (float)dt : 0.0f;
+    const float frameStep = std::isfinite(dt) ? (float)dt : 0.0f;
 
     // nothing below adds or removes Animation Players: the array stays put (callbacks run later)
     for (size_t i = 0; i < players->size(); i++){
         AnimationPlayerComponent& player = players->getComponentFromIndex(i);
         const Entity entity = players->getEntity(i);
+        // a hit-stop freezes it, unless its GameObject is Hit Stop Exempt (S48)
+        const float step = (float)pixelart::HitStop::deltaFor(scene, entity, frameStep);
 
         // disabled or inactive: time stops and nothing is written (R25)
         if (!player.enabled || !scene->isEntityActiveInHierarchy(entity)){

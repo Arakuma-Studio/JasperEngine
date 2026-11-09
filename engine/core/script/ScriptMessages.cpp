@@ -11,6 +11,7 @@
 #include "component/ScriptComponent.h"
 
 #include "lua.hpp"
+#include "pixelart/HitStop.h"
 
 #include <algorithm>
 #include <chrono>
@@ -290,6 +291,8 @@ bool ScriptMessages::invoke(Scene* scene, Entity entity, size_t scriptIndex, Scr
     if (!entry.instance) {
         return false;
     }
+    // Time.deltaTime inside a message follows the GameObject's Hit Stop exemption (S48)
+    pixelart::HitStop::ScriptScope owner(scene, entity);
     const char* method = methodName(m);
     if (entry.type == ScriptType::LUA) {
         lua_State* L = LuaBinding::getLuaState();

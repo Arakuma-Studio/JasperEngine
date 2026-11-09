@@ -7,6 +7,7 @@
 #include "component/CharacterControllerComponent.h"
 
 #include "Engine.h"
+#include "pixelart/HitStop.h"
 #include "Log.h"
 #include "Scene.h"
 #include "animation/AnimationClipIO.h"
@@ -798,13 +799,18 @@ void AnimatorSystem::run(double dt, bool fixedPhase){
         assetRevision = assetPool;
         jobs.clear();
         const float scaled = std::isfinite(dt) ? (float)dt : 0.0f;
-        const float timeScale = Engine::getTimeScale();
+        // a hit-stop scales the frame's delta like the time scale (S48); the fixed steps run
+        // with the physics world
+        const float timeScale = Engine::getTimeScale() * (fixedPhase ? 1.0f : (float)pixelart::HitStop::getWorldFactor());
         for (size_t i = 0; i < animators->size(); i++){
             AnimatorComponent& component = animators->getComponentFromIndex(i);
             if ((component.updateMode == AnimatorUpdateMode::AnimatePhysics) != fixedPhase) continue;
             float step = scaled;
             if (component.updateMode == AnimatorUpdateMode::UnscaledTime){
                 step = timeScale > 0.0f ? scaled / timeScale : (float)std::min(Engine::getFramePeriod(), (double)Engine::getMaxDeltatime());
+            }else if (!fixedPhase){
+                // frozen by a hit-stop unless its GameObject is Hit Stop Exempt
+                step = (float)pixelart::HitStop::deltaFor(scene, animators->getEntity(i), scaled);
             }
             Job job;
             if (prepare(animators->getEntity(i), component, step, job)) jobs.push_back(job);

@@ -718,6 +718,9 @@ namespace jasperengine {
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();
+        // getDeltatime() as the script being called sees it: inside a Hit Stop Exempt
+        // GameObject's callbacks the delta without the hit-stop (S48, pixelart/HitStop.h)
+        static float getScriptDeltatime();
         // the last frame's wall-clock period (from the frame before's start to its start) and
         // the CPU time it took from its start to its submission (the update and the draw,
         // without the wait to present), seconds: dynamic resolution's frame law reads them

@@ -1619,6 +1619,7 @@ set(JASPERENGINE_SRCS
     core/object/EntityHandle.cpp
     core/object/Light.cpp
     core/object/PixelPerfectCamera.cpp
+    core/object/HitStopExempt.cpp
     core/object/Light2D.cpp
     core/object/LineRenderer.cpp
     core/object/TrailRenderer.cpp
@@ -1763,6 +1764,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/GameplayClassesLua.cpp
     core/script/binding/SplineClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
+    core/script/binding/HitStopClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp
