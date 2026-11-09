@@ -43,6 +43,8 @@ namespace jasperengine::editor {
         bool m_vsyncEnabled = true;
         // Quality > Atmosphere Quality (desktop, mobile, web) as AtmosphereQuality values
         int m_atmosphereQuality[3] = {3, 1, 1};
+        // Quality > Foliage Quality as FoliageQuality values (T5 R21)
+        int m_foliageQuality[3] = {2, 2, 2};
         // Quality > Foliage Distance (desktop, mobile, web)
         float m_foliageDistanceScale[3] = {1.0f, 1.0f, 1.0f};
         // Texture (S14 R24)
@@ -53,6 +55,11 @@ namespace jasperengine::editor {
         int m_htmlUiMsaaIndex = 2;   // htmlUiMsaaValues: 1, 2, 4, 8
         // the shadow quality tier of each platform (Engine::Platform order), as ShadowTier ints
         int m_shadowTiers[6] = {2, 0, 1, 0, 2, 2};
+        // T3 R40: Project Settings > Graphics > Terrain
+        int m_terrainTiers[6] = {0, 0, 0, 0, 0, 0};
+        bool m_shipAllTerrainTiers = false;
+        bool m_compressTerrainLayers = false;
+        void drawTerrainQualitySettings();
         int m_windowModeIndex = 0;
         int m_windowWidth = 0;
         int m_windowHeight = 0;

@@ -327,3 +327,16 @@ async def test_export_paths_with_special_characters(ed: Editor):
     ed.check_in("scene_scripts.cpp", ninja)
     ed.check_in("meshoptimizer", ninja)
     ed.check(re.search(r"Source/Core/\w+\.cpp", ninja) is not None, "RmlUi's sources are found")
+
+
+async def test_a_map_the_editor_just_wrote_is_not_missing():
+    """A terrain heightmap set_terrain_maps has just written is on disk before any file watcher walk lists it:
+    an export right after takes it as it is, not as a reference to a missing asset (T5's foliage export hit this)"""
+    async with Editor(create=True, name="Fresh Map") as ed:
+        sid = (await ed.call("create_scene", name="Land", type="3d", path="scenes/Land"))["scene"]["id"]
+        terrain = (await ed.call("create_entity", scene=sid, name="Land", type="terrain"))["entity_id"]
+        await ed.call("set_terrain_maps", scene=sid, entity=terrain, heightmap={"generate": "fractal_noise", "resolution": 129, "seed": 3})
+        await ed.call("save_scene", scene=sid)
+        r = await ed.call_raw("build_project", {"mode": "source", "output_dir": str(ed.scratch.root / "fresh-map"), "platform": "linux",
+                                                "backends": ["opengl"], "timeout_seconds": 900})
+        ed.check(not r.is_error, f"the export takes the map just written: {r.text[:1500]}")

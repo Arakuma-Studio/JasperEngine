@@ -24,6 +24,7 @@
 #include <memory>
 #include <mutex>
 #include <system_error>
+#include <vector>
 
 using namespace jasperengine;
 
@@ -67,6 +68,12 @@ struct State {
     std::string cacheDirectory; // empty when the cache is not usable
 
     std::atomic<bool> stopping{false};
+
+    // compileQueue's queue, the job system it was made on, and those of job systems replaced since
+    std::mutex queueMutex;
+    jobs::SerialQueue* queue = nullptr;
+    jobs::JobSystem* queueSystem = nullptr;
+    std::vector<jobs::SerialQueue*> retiredQueues;
 };
 
 // Never destroyed: a compile job may still finish while statics are torn down
@@ -77,9 +84,21 @@ State& state(){
 
 // The compiles off the main thread: one at a time (the compiler's globals are not proven
 // thread-safe), as Background Heavy jobs on the pool's workers, never a thread of their own.
+// A queue stays on the job system it was made on, and once that one is shut down and replaced
+// (an engine restart: jobs::initialize) it cancels every compile pushed to it, which left those
+// variants building forever: a new queue is made on the process job system. The old one is
+// kept, as the job systems it was made on are.
 jobs::SerialQueue& compileQueue(){
-    static jobs::SerialQueue* queue = new jobs::SerialQueue("runtime-shader-compile", jobs::Lane::Background, jobs::GateClass::Heavy);
-    return *queue;
+    State& s = state();
+    jobs::JobSystem& system = jobs::system();
+    std::lock_guard<std::mutex> lock(s.queueMutex);
+    if (s.queueSystem != &system){
+        if (s.queue)
+            s.retiredQueues.push_back(s.queue);
+        s.queue = new jobs::SerialQueue("runtime-shader-compile", jobs::Lane::Background, jobs::GateClass::Heavy, &system);
+        s.queueSystem = &system;
+    }
+    return *s.queue;
 }
 
 std::string getCacheRoot(){

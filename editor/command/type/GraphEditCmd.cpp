@@ -50,8 +50,8 @@ void editor::GraphEditCmd::removeChangeListener(uint64_t id) {
     }
 }
 
-editor::GraphEditCmd::GraphEditCmd(std::filesystem::path file, std::string before, std::string after, std::string label)
-    : file(std::move(file)), before(std::move(before)), after(std::move(after)), label(std::move(label)) {
+editor::GraphEditCmd::GraphEditCmd(std::filesystem::path file, std::string before, std::string after, std::string label, bool createsFile)
+    : file(std::move(file)), before(std::move(before)), after(std::move(after)), label(std::move(label)), creates(createsFile) {
 }
 
 bool editor::GraphEditCmd::write(const std::string& text) const {
@@ -80,5 +80,15 @@ bool editor::GraphEditCmd::execute() {
 }
 
 void editor::GraphEditCmd::undo() {
+    if (creates) {
+        std::error_code ec;
+        std::filesystem::remove(file, ec);
+        if (ec) {
+            Out::error("Could not remove %s: %s", file.generic_string().c_str(), ec.message().c_str());
+            return;
+        }
+        notifyGraphFileChanged(file);
+        return;
+    }
     if (write(before)) notifyGraphFileChanged(file);
 }

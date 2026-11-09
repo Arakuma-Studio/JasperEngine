@@ -34,6 +34,8 @@ extern "C" int __sanitizer_install_malloc_and_free_hooks(void (*mallocHook)(cons
 
 namespace{
     std::atomic<uint64_t> allocations{0};
+    std::atomic<uint64_t> allocatedBytes{0};
+    std::atomic<uint64_t> largestBytes{0};
     // static TLS of the executable: reading it never allocates
     thread_local uint64_t threadCount = 0;
 
@@ -51,8 +53,11 @@ namespace{
         return enabled;
     }
 
-    void count(){
+    void count(std::size_t bytes){
         allocations.fetch_add(1, std::memory_order_relaxed);
+        allocatedBytes.fetch_add(bytes, std::memory_order_relaxed);
+        uint64_t largest = largestBytes.load(std::memory_order_relaxed);
+        while (largest < bytes && !largestBytes.compare_exchange_weak(largest, bytes, std::memory_order_relaxed)) {}
         threadCount++;
         if (openScopes.load(std::memory_order_relaxed) > 0 && !tracing && traceEnabled() && traced.fetch_add(1) < 20){
             tracing = true;
@@ -68,7 +73,7 @@ namespace{
 #if defined(JASPERENGINE_SANITIZE_ADDRESS)
     // every allocation, whatever its entry point, reaches the sanitizer's allocator
     constexpr bool countAtWrappers = false;
-    void onAllocate(const volatile void*, std::size_t){ count(); }
+    void onAllocate(const volatile void*, std::size_t bytes){ count(bytes); }
     void onFree(const volatile void*){}
     [[maybe_unused]] const int hooksInstalled = __sanitizer_install_malloc_and_free_hooks(onAllocate, onFree);
 #else
@@ -76,7 +81,7 @@ namespace{
 #endif
 
     void* alignedCounted(std::size_t bytes, std::size_t alignment){
-        if (countAtWrappers) count();
+        if (countAtWrappers) count(bytes);
         void* memory = nullptr;
         if (posix_memalign(&memory, alignment < sizeof(void*) ? sizeof(void*) : alignment, bytes ? bytes : 1) != 0)
             return nullptr;
@@ -90,22 +95,24 @@ extern "C" {
     void* __real_realloc(void* memory, std::size_t bytes);
 
     void* __wrap_malloc(std::size_t bytes){
-        if (countAtWrappers) count();
+        if (countAtWrappers) count(bytes);
         return __real_malloc(bytes);
     }
 
     void* __wrap_calloc(std::size_t items, std::size_t bytes){
-        if (countAtWrappers) count();
+        if (countAtWrappers) count(items * bytes);
         return __real_calloc(items, bytes);
     }
 
     void* __wrap_realloc(void* memory, std::size_t bytes){
-        if (countAtWrappers) count();
+        if (countAtWrappers) count(bytes);
         return __real_realloc(memory, bytes);
     }
 }
 
-#if !defined(JASPERENGINE_SANITIZE_ADDRESS)
+// JE_TEST_BINARY_HAS_NEW: the binary already replaces the plain new and delete through malloc
+// (the editor tests' ReflectResolveBenchTest counts its own), which the wrapper counts the same
+#if !defined(JASPERENGINE_SANITIZE_ADDRESS) && !defined(JE_TEST_BINARY_HAS_NEW)
 // counted at the malloc wrapper
 void* operator new(std::size_t bytes){
     if (void* memory = std::malloc(bytes ? bytes : 1))
@@ -170,6 +177,18 @@ namespace testsupport {
         return allocations.load(std::memory_order_relaxed);
     }
 
+    uint64_t totalAllocatedBytes(){
+        return allocatedBytes.load(std::memory_order_relaxed);
+    }
+
+    uint64_t largestAllocation(){
+        return largestBytes.load(std::memory_order_relaxed);
+    }
+
+    void resetLargestAllocation(){
+        largestBytes.store(0, std::memory_order_relaxed);
+    }
+
     bool countsAllocations(){
         return true;
     }
@@ -188,6 +207,9 @@ namespace testsupport {
     AllocationCountScope::~AllocationCountScope() = default;
     uint64_t AllocationCountScope::count() const{ return start; }   // 0: nothing is counted
     uint64_t totalAllocations(){ return 0; }
+    uint64_t totalAllocatedBytes(){ return 0; }
+    uint64_t largestAllocation(){ return 0; }
+    void resetLargestAllocation(){}
     bool countsAllocations(){ return false; }
     uint64_t threadAllocations(){ return 0; }
 

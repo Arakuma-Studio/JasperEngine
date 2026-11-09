@@ -58,6 +58,41 @@ TEST(VersionControlMetadata, NewProjectGetsLfsAndLockable) {
     EXPECT_EQ(attributeOf(box, dir, "Main.scene", "lockable"), "unspecified");
 }
 
+// T5 AC39: the tree data is a binary asset, tracked and lockable as a map is
+TEST(VersionControlMetadata, ListsTreeFiles) {
+    VcsSandbox box;
+    const fs::path dir = box.path("Trees");
+    {
+        Project project;
+        project.setSkipProjectLock(true);
+        std::string error;
+        ASSERT_TRUE(project.createProjectAt(dir, "Trees", &error)) << error;
+        ASSERT_TRUE(project.saveProject());
+        release(project);
+    }
+    EXPECT_NE(readFile(dir / ".gitattributes").find("*.jetrees"), std::string::npos);
+    box.gitOk(dir, {"init", "-q"});
+    EXPECT_EQ(attributeOf(box, dir, "terrain/island.jetrees", "filter"), "lfs");
+}
+
+// T4 R50, AC32: a Terrain World's tiles are binaries, tracked and lockable; its manifest stays text
+TEST(VersionControlMetadata, ListsTerrainWorldTiles) {
+    VcsSandbox box;
+    const fs::path dir = box.path("Worlds");
+    {
+        Project project;
+        project.setSkipProjectLock(true);
+        std::string error;
+        ASSERT_TRUE(project.createProjectAt(dir, "Worlds", &error)) << error;
+        ASSERT_TRUE(project.saveProject());
+        release(project);
+    }
+    EXPECT_NE(readFile(dir / ".gitattributes").find("*.jtile"), std::string::npos);
+    box.gitOk(dir, {"init", "-q"});
+    EXPECT_EQ(attributeOf(box, dir, "Island.terrainworld/tiles/0_0.jtile", "filter"), "lfs");
+    EXPECT_NE(attributeOf(box, dir, "Island.terrainworld/manifest.yaml", "filter"), "lfs");
+}
+
 TEST(VersionControlMetadata, ExistingProjectKeepsBinariesOutOfLfs) {
     VcsSandbox box;
     const fs::path dir = box.path("prefab-runtime");

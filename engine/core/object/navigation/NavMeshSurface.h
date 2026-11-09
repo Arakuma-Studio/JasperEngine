@@ -68,6 +68,12 @@ namespace jasperengine{
         Vector3 getSize() const;
         void setRuntimeCarving(bool carving);
         bool isRuntimeCarving() const;
+        // T4 R25: bake round the Terrain World's focus and rebake as it moves (a script's choice
+        // turns it on on single-threaded web too)
+        void setFollowTerrainWorldFocus(bool follow);
+        bool isFollowTerrainWorldFocus() const;
+        void setFollowRadius(float radius);
+        float getFollowRadius() const;
 
         FunctionSubscribe<void(NavMeshSurface)>& getOnBakeCompleted();
     };

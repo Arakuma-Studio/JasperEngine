@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "AnimatorTestUtil.h"
+#include "component/Transform.h"
 
 #include "Engine.h"
 #include "animation/AnimatorIK.h"

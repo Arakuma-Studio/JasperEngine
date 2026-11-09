@@ -15,6 +15,7 @@
 #include "Engine.h"
 #include "Scene.h"
 #include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 #include "object/Camera.h"
 #include "object/Light.h"
 #include "object/Primitive.h"

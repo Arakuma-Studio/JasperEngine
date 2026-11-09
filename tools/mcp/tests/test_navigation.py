@@ -260,6 +260,33 @@ async def test_overlay_golden(ed: Editor):
         ed.check(ok, f"the screenshot differs from {GOLDEN.name} in {fraction:.4f} of the pixels")
 
 
+async def test_tree_obstacle_path_goes_around(ed: Editor):
+    """T5 AC26: a tree with Nav Obstacle is in the bake whatever its LOD: a path goes round it."""
+    # the first call lands after the editor has made its project, so the folder exists from here on
+    await ed.call("tool_groups", enable=["terrain"])
+    (ed.project / "assets").mkdir(exist_ok=True)
+    (ed.project / "assets" / "trunk.obj").write_text(
+        "v -1 0 0\nv 1 0 0\nv 1 6 0\nv -1 6 0\nvn 0 0 1\nf 1//1 2//1 3//1\nf 1//1 3//1 4//1\n")
+    sid = (await ed.call("create_scene", name="NavTrees", type="3D", path="scenes/NavTrees"))["scene"]["id"]
+    terrain = (await ed.call("create_entity", scene=sid, name="Land", type="terrain"))["entity_id"]
+    await ed.call("set_terrain_maps", scene=sid, entity=terrain, heightmap={"generate": "flat", "base_height": 0.0, "resolution": 65})
+    await ed.call("add_component", scene=sid, entity=terrain, component="navmeshsurface")
+    await ed.call("set_properties", scene=sid, entity=terrain, values={"terrain": {"treePrototypes": [
+        {"id": 1, "meshPath": "assets/trunk.obj", "navObstacle": True, "collisionRadius": 3.0, "collisionHeight": 6.0}]}})
+    await ed.call("bake_navigation", scene=sid)
+    open_path = await ed.call("query_navigation", scene=sid, op="path", **{"from": [-12, 0, 0]}, to=[12, 0, 0])
+    ed.check_eq(open_path["status"], "complete", f"{open_path}")
+
+    await ed.call("edit_terrain", scene=sid, entity=terrain, space="local",
+                  ops=[{"op": "place_trees", "prototype": 0, "points": [[0, 0]]}])
+    await ed.call("bake_navigation", scene=sid)
+    around = await ed.call("query_navigation", scene=sid, op="path", **{"from": [-12, 0, 0]}, to=[12, 0, 0])
+    ed.check_eq(around["status"], "complete", f"{around}")
+    ed.check(around["length"] > open_path["length"] + 0.5, f"the path bends round the tree: {open_path} {around}")
+    corners = around["corners"]
+    ed.check(all((corner[0] ** 2 + corner[2] ** 2) ** 0.5 >= 2.5 for corner in corners), f"{corners}")
+
+
 async def test_tool_play_policy(ed: Editor):
     """S74 AC27: in play the server refuses bake_navigation and paint_nav_grid; visualize_navigation
     resolves the running scene (after a scene load too) and its path takes agent_type and area_mask.

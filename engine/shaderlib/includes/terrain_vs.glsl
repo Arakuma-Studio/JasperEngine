@@ -8,6 +8,12 @@ uniform u_vs_terrainParams {
     float resolution;
     float textureBaseTiles; //int
     float textureDetailTiles; //int
+#ifdef HAS_TERRAIN_WORLD
+    // T4: the draw's page or overview (includes/terrain_world_vs.glsl)
+    vec4 worldPage;     // x, z of texel 0 (entity-local), texel spacing, 1 for an overview draw
+    vec4 worldPageSize; // texels along x and z, skirt depth, tile size
+    vec4 worldTile;     // the tile's minimum corner (x, z), its blend quads, 0
+#endif
 } terrain;
 
 // instancing part
@@ -48,6 +54,23 @@ in float i_terrainnode_resolution; //int
     }
 #endif
 
+#ifdef TERRAIN_HOLES
+    // T3 R20: the one UV the hole test reads, in every pass (includes/terrain_holes_fs.glsl)
+    out vec2 v_terrainHoleUV;
+#endif
+
+// T3 R9: at Low the noise of Macro Variation is computed here: one varying, no fragment cost
+#if defined(TERRAIN_MACRO) && defined(TERRAIN_QUALITY_LOW) && defined(TERRAIN_SURFACE_VARYINGS)
+    #define TERRAIN_MACRO_VERTEX
+    #include "includes/terrain_macro.glsl"
+    uniform u_vs_terrainMacro {
+        vec4 params; // x = 1 / scale, y = strength, z = slope fade
+        vec4 tintA;
+        vec4 tintB;
+    } terrainMacroBlock;
+    out vec3 v_terrainMacroTint;
+#endif
+
 float morphFactor;
 
 
@@ -61,9 +84,13 @@ vec2 morphVertex(vec2 gridPos, vec2 worldPos, float morph) {
     return worldPos - fracPart * i_terrainnode_size * morph;
 }
 
+#ifdef HAS_TERRAIN_WORLD
+    #include "includes/terrain_world_vs.glsl"
+#else
 float getHeight(vec3 position) {
     return texture(sampler2D(u_heightMap, u_heightMap_smp), (position.xz + (terrain.size/2.0)) / terrain.size).r * terrain.maxHeight;
 }
+#endif
 
 // must be called BEFORE getTerrainNormal because morphValue
 vec3 getTerrainPosition(vec3 pos, mat4 modelMatrix){
@@ -87,6 +114,21 @@ vec3 getTerrainPosition(vec3 pos, mat4 modelMatrix){
     pos.xz = morphVertex(a_position.xz, pos.xz, morphFactor);
 
     pos = vec3(pos.x, getHeight(pos), pos.z);
+    #ifdef HAS_TERRAIN_WORLD
+        pos = terrainWorldSkirt(pos, a_position);
+    #endif
+
+    #ifdef TERRAIN_HOLES
+        #ifdef HAS_TERRAIN_WORLD
+            v_terrainHoleUV = terrainWorldHoleUV(pos.xz);
+        #else
+            v_terrainHoleUV = (pos.xz + (terrain.size / 2.0)) / terrain.size;
+        #endif
+    #endif
+    #if defined(TERRAIN_MACRO_VERTEX) && !defined(HAS_NORMALS)
+        v_terrainMacroTint = terrainMacroTint(pos.xz + vec2(terrain.size / 2.0), 1.0, terrainMacroBlock.params,
+                                              terrainMacroBlock.tintA.rgb, terrainMacroBlock.tintB.rgb);
+    #endif
 
     return pos;
 }
@@ -95,6 +137,9 @@ vec3 getTerrainNormal(vec3 normal, vec3 position){
     #ifdef HAS_NORMALS
         float delta = (morphFactor + 1.0) * i_terrainnode_size / float(i_terrainnode_resolution);
 
+    #ifdef HAS_TERRAIN_WORLD
+        normal = terrainWorldNormal(position, delta);
+    #else
         vec3 dA = delta * normalize(cross(normal.yzx, normal));
         vec3 dB = delta * normalize(cross(dA, normal));
 
@@ -111,9 +156,14 @@ vec3 getTerrainNormal(vec3 normal, vec3 position){
         pB1 += normal * getHeight(pB1);
 
         normal = normalize(cross(pB1 - pB0, pA1 - pA0));
+    #endif
 
         #ifdef TERRAIN_SURFACE_VARYINGS
             v_terrainNormal = normal;
+        #endif
+        #ifdef TERRAIN_MACRO_VERTEX
+            v_terrainMacroTint = terrainMacroTint(position.xz + vec2(terrain.size / 2.0), abs(normal.y), terrainMacroBlock.params,
+                                                  terrainMacroBlock.tintA.rgb, terrainMacroBlock.tintB.rgb);
         #endif
     #endif
 
@@ -125,12 +175,23 @@ vec3 getTerrainNormal(vec3 normal, vec3 position){
         v_terrainTextureCoords = (position.xz + (terrain.size/2.0)) / terrain.size;
         v_terrainTextureDetailTiled = v_terrainTextureCoords * float(terrain.textureDetailTiles);
         v_terrainDetailHeight = position.y / terrain.size * float(terrain.textureDetailTiles);
-        return v_terrainTextureCoords * float(terrain.textureBaseTiles);
+        #ifdef HAS_TERRAIN_WORLD
+            // detail stays world-absolute (no seam at a border); the blend maps are the tile's
+            vec2 baseUV = v_terrainTextureCoords * float(terrain.textureBaseTiles);
+            if (terrainWorldOverview()) baseUV = terrainWorldOverviewUV(position.xz);
+            v_terrainTextureCoords = terrainWorldBlendUV(position.xz);
+            return baseUV;
+        #else
+            return v_terrainTextureCoords * float(terrain.textureBaseTiles);
+        #endif
     }
 #endif
 
 // the terrain's UV set of a position from getTerrainPosition: its base map coordinates
 // tiled textureBaseTiles times (what Lit's v_uv1 holds), without the surface varyings
 vec2 getTerrainUV(vec3 position){
+    #ifdef HAS_TERRAIN_WORLD
+        if (terrainWorldOverview()) return terrainWorldOverviewUV(position.xz);
+    #endif
     return (position.xz + (terrain.size / 2.0)) / terrain.size * float(terrain.textureBaseTiles);
 }

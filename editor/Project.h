@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "terrain/TerrainQuality.h"
 #include "window/GameResolutions.h"
 #include "Scene.h"
 #include "render/SceneDisplaySettings.h"
@@ -36,6 +37,7 @@
 #include "particles/ParticleQaSettings.h"
 #include "procmat/ProcMatQaSettings.h"
 #include "navigation/NavigationProjectSettings.h"
+#include "voxel/VoxelProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
 #include "render/LightingTiers.h"
 #include "device/DeviceSettings.h"
@@ -74,6 +76,10 @@
 namespace jasperengine{
     struct AnimationPlayerClip;
     struct ScriptEntry;
+}
+
+namespace jasperengine {
+    struct VoxelAsset;
 }
 
 namespace jasperengine::editor{
@@ -240,6 +246,8 @@ namespace jasperengine::editor{
         // CommandHistory::stampSave of its last write (Project::markSceneSaved), 0 = none since it
         // loaded: a capture that restores isModified compares it with the one it saw
         uint64_t savedAt = 0;
+        // Voxel Volumes recovery brought back (T6 R77): dirty, and in nothing else yet
+        std::vector<std::shared_ptr<VoxelAsset>> restoredVoxelAssets;
         // True while the id has never reached disk, so a scene replacing this one
         // can take it over instead of drawing a new one
         bool transientId = false;
@@ -543,6 +551,20 @@ namespace jasperengine::editor{
         size_t totalMissing() const;
     };
 
+    // T1 R67: a Paint by Rules row
+    struct TerrainPaintRule {
+        int layer = 0;                  // -1: the base
+        bool useSlope = false;
+        float slopeMin = 0.0f;          // degrees
+        float slopeMax = 90.0f;
+        bool useHeight = false;
+        float heightMin = 0.0f;         // 0-1 of Terrain Height
+        float heightMax = 1.0f;
+        bool invert = false;
+        float opacity = 1.0f;
+        float noise = 0.0f;
+    };
+
     struct TerrainEditorSettings {
         int brushMode = 0;           // TerrainBrushMode::Raise
         int brushShape = 0;          // TerrainBrushShape::Circle
@@ -562,6 +584,7 @@ namespace jasperengine::editor{
         bool flattenPickOnStroke = true;
         std::string placeAssetPath;
         bool placeInstanced = true;      // one draw per asset instead of one entity per object
+        bool placeAsTree = true;         // T5: Paint Trees' Place As; placeInstanced is what GameObject means
         float placeSpacing = 2.0f;
         float placeMinScale = 1.0f;      // 1.0 keeps the scale the model file authored
         float placeMaxScale = 1.0f;
@@ -569,10 +592,20 @@ namespace jasperengine::editor{
         float placeAlignToNormal = 0.0f;
 
         bool paintUseMask = false;       // restrict texture paint to a slope and height range
+        bool filterAllTools = false;     // T1 R66: the Slope Filter reaches every map tool
+        std::vector<TerrainPaintRule> paintRules;   // T1 R67
+        int paintRulesSeed = 0;
+        bool slopeFilterInvert = false;  // T1 R66: the Slope Filter keeps slopes outside its range
+        bool heightFilterInvert = false; // and heights outside the height range
         float paintMinSlope = 0.0f;      // degrees
         float paintMaxSlope = 90.0f;
         float paintMinHeight = 0.0f;     // normalized against the terrain maxHeight
         float paintMaxHeight = 1.0f;
+        bool pressureStrength = true;    // T1 R37: a pen's pressure scales the brush's strength
+        bool pressureSize = false;       // and its size
+
+        std::string generateGraph;       // the Generate section's graph: "preset:<id>", an assets-relative path, or nothing yet (T2 R60)
+        uint32_t generateSeed = 1;
     };
 
     // Manual picks on top of the shaders every export mode collects from the scenes
@@ -896,6 +929,10 @@ namespace jasperengine::editor{
         bool dynamicBatching = true;
         // Quality > Atmosphere Quality: desktop, mobile, web
         std::array<AtmosphereQuality, 3> atmosphereQuality;
+        // Quality > Foliage Quality and Foliage Distance: desktop, mobile, web (T5 R21, R66). Without
+        // the field an old project is High and uncapped everywhere, so it looks the same (F12).
+        std::array<FoliageQuality, 3> foliageQuality;
+        bool foliageQualityDeclared = false;
         std::array<float, 3> foliageDistanceScale = defaultFoliageDistanceScale;
         PlayerLoggingSettings playerLogging;
         // Input: the actions asset Play and the game start with (project-relative, empty for
@@ -923,6 +960,18 @@ namespace jasperengine::editor{
         ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];
         // graphics.light_mode: how lit meshes find their pixel lights (S57 R1)
         LightMode lightMode = defaultLightMode;
+        // graphics.terrainQuality.<platform> (T3 R51): absent means High on every platform, so an old
+        // project keeps its look; new projects write the recommended tiers
+        terraincore::TerrainQuality terrainQualityTiers[terraincore::TerrainQualitySettings::PLATFORM_COUNT] = {
+            terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::HIGH,
+            terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::HIGH};
+        bool terrainQualityWritten = false;     // the project says: an old one has no key
+        bool shipAllTerrainTiers = false;
+        bool compressTerrainLayers = false;
+        // the platforms the running export collects terrain tiers for (empty: all of them; none: no
+        // export runs), read on the main thread and the export's (beginTerrainExport)
+        std::optional<std::vector<int>> terrainExportPlatforms;
+        mutable std::mutex terrainExportMutex;
         WindowMode windowMode;
         unsigned int windowWidth;
         unsigned int windowHeight;
@@ -1008,6 +1057,7 @@ namespace jasperengine::editor{
         std::vector<std::filesystem::path> inspectedAssets;
         PhysicsPlacementSettings physicsPlacementSettings;
         NavigationProjectSettings navigationSettings;
+        VoxelProjectSettings voxelSettings;
         SpriteNormalsWindowSettings spriteNormalsSettings;
         bool simulateTouch;
         std::vector<GameResolution> customResolutions;
@@ -1040,6 +1090,8 @@ namespace jasperengine::editor{
                 bool writing = false;
             };
             std::shared_ptr<Written> written = std::make_shared<Written>();
+            // the store version of each Voxel Volume's last copy (T6 R77)
+            std::map<std::string, uint64_t> voxelVersions;
         };
         std::unordered_map<uint32_t, AutosaveScene> autosaveScenes;
         float autosaveClock = 0.0f;
@@ -1050,6 +1102,8 @@ namespace jasperengine::editor{
         std::shared_ptr<std::atomic<int>> autosaveWritesInFlight = std::make_shared<std::atomic<int>>(0);
         std::optional<RecoveryChoice> nextRecoveryChoice;
         RecoveryOutcome lastRecovery;
+        // what resolveSceneRecovery restored, until the scene it belongs to holds it (T6 R77)
+        std::vector<std::shared_ptr<VoxelAsset>> restoredVoxelAssets;
 
         // loadProject: false when another live editor holds the project and the host says no
         bool takeProjectLock(const std::filesystem::path& path);
@@ -1578,6 +1632,9 @@ namespace jasperengine::editor{
         static constexpr bool defaultVSyncEnabled = true;
         static constexpr bool defaultDynamicBatching = true;
         static constexpr std::array<AtmosphereQuality, 3> defaultAtmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        // a project without the field; a new project writes High, Low, Low
+        static constexpr std::array<FoliageQuality, 3> defaultFoliageQuality = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
+        static constexpr std::array<FoliageQuality, 3> newProjectFoliageQuality = {FoliageQuality::HIGH, FoliageQuality::LOW, FoliageQuality::LOW};
         static constexpr std::array<float, 3> defaultFoliageDistanceScale = {1.0f, 1.0f, 1.0f};
         static constexpr int defaultHtmlUiMsaaSamples = 4;
         static constexpr int defaultPixelsPerUnit = 1;
@@ -1712,6 +1769,9 @@ namespace jasperengine::editor{
         // games; the editor's views run the desktop one (Engine::setAtmosphereQualityDefaults)
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality);
         const std::array<AtmosphereQuality, 3>& getAtmosphereQuality() const;
+        void setFoliageQuality(const std::array<FoliageQuality, 3>& quality, bool declared = true);
+        const std::array<FoliageQuality, 3>& getFoliageQuality() const;
+        bool isFoliageQualityDeclared() const;
 
         // Quality > Foliage Distance of desktop, mobile and web games: scales every terrain foliage
         // layer's draw distances (Engine::setFoliageDistanceScaleDefaults; the editor's views run
@@ -1781,6 +1841,27 @@ namespace jasperengine::editor{
         // editor's scenes at once and written into exports (docs/rendering/shadows.md)
         void setShadowTier(int platform, ShadowTier tier);
         ShadowTier getShadowTier(int platform) const;
+        // T3 R51: graphics.terrainQuality.<platform> and the export's terrain switches
+        void setTerrainQualityTier(int platform, terraincore::TerrainQuality tier);
+        terraincore::TerrainQuality getTerrainQualityTier(int platform) const;
+        bool isTerrainQualityWritten() const { return terrainQualityWritten; }
+        void setTerrainQualityWritten(bool written) { terrainQualityWritten = written; }
+        void setShipAllTerrainTiers(bool ship) { shipAllTerrainTiers = ship; }
+        bool isShipAllTerrainTiers() const { return shipAllTerrainTiers; }
+        void setCompressTerrainLayers(bool compress) { compressTerrainLayers = compress; }
+        bool isCompressTerrainLayers() const { return compressTerrainLayers; }
+        // the recommended tiers a new project starts with: Windows, Linux, macOS High, Web Medium,
+        // Android and iOS Low, and Compress Terrain Layers on
+        void applyNewProjectTerrainDefaults();
+        // T3 R34: the tiers an export ships: the project's of its target platforms, any component's own,
+        // all three when a script names them or Ship All Terrain Tiers is on. The Exporter names its
+        // platforms before its scenes save and main.cpp is written, for that export only: a save or a
+        // main.cpp written after it does not follow the last export's target
+        void beginTerrainExport(const std::vector<int>& platforms);
+        void endTerrainExport();
+        uint32_t getShippedTerrainTiers() const;
+        // the tiers the generated main.cpp ships: the running export's, else all (Play draws them all)
+        uint32_t getGeneratedTerrainTiers() const;
         // lower-case platform names of the setting: macos, ios, web, android, linux, windows
         static const char* getShadowTierPlatformName(int platform);
         static int findShadowTierPlatform(const std::string& name);
@@ -2181,6 +2262,9 @@ namespace jasperengine::editor{
         // navigation settings too (every scene's systems refresh their filters)
         const NavigationProjectSettings& getNavigationSettings() const;
         void setNavigationSettings(const NavigationProjectSettings& settings);
+        // Project Settings > Voxels (T6 R7)
+        const VoxelProjectSettings& getVoxelSettings() const { return voxelSettings; }
+        void setVoxelSettings(const VoxelProjectSettings& settings);
 
         // The Sprite Normal Map window's last settings, view and light, and the auto-regenerate
         // opt-in, per user (workspace.yaml)

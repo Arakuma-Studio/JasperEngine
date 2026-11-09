@@ -22,6 +22,7 @@ agent drives and checks it with `send_input`, `get_input_state` (group `gameplay
 | `Input.getMouseScrollDelta()` (`Input.mouseScrollDelta`) | the wheel offsets of this frame (y positive up) |
 | `Input.getTouchCount()` (`Input.touchCount`), `Input.getTouch(i)` (0-based, nil out of range), `Input.touches`, `Input.getTouchById(fingerId)`, `getTouchDown(pointer)`, `getTouchUp(pointer)` | this frame's touches with phases |
 | `Input.getPointerLockState()` | `Input.POINTER_UNLOCKED`, `POINTER_PENDING`, `POINTER_LOCKED` |
+| `Input.getPenPressure()` | the latest pointer input's pressure: 0..1 for a pen or stylus, -1 for a mouse or a finger |
 
 The events that arrive between two frames form one *window*. A frame that runs its update
 starts by making the pending window its own, so `getKeyDown` is true for the whole frame

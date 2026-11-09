@@ -6,10 +6,14 @@
 // Limited and contributors, MIT License, as a reference; the code is our own. See NOTICE.md.
 
 #include "NavBakeCollector.h"
+#if JASPERENGINE_VOXEL
+#include "subsystem/VoxelSystem.h"
+#endif
 #include "subsystem/RenderSystem.h"
 
 #include "Scene.h"
 #include "component/InstancedMeshComponent.h"
+#include "subsystem/FoliageSystem.h"
 #include "component/MeshComponent.h"
 #include "component/NavMeshAgentComponent.h"
 #include "component/NavMeshLinkComponent.h"
@@ -17,11 +21,20 @@
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TerrainWorldComponent.h"
+#include "navigation/NavTerrainWorld.h"
+#include "object/TerrainEdit.h"
+#include "terrain/TerrainHoles.h"
 #include "component/Transform.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "texture/TextureData.h"
 #include "util/MeshTriangles.h"
+
+#if JASPERENGINE_TERRAIN_WORLD
+#include "subsystem/TerrainWorldRuntime.h"
+#include "subsystem/TerrainWorldSystem.h"
+#endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "component/CharacterController2DComponent.h"
@@ -30,6 +43,7 @@
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/CharacterControllerComponent.h"
 #include "component/RigidbodyComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #endif
 
 #include <algorithm>
@@ -87,7 +101,6 @@ namespace {
 #endif
 
     // a closed surface of revolution about y: rings from bottom to top (radius, y)
-#ifdef JASPERENGINE_PHYSICS_3D
     void addRevolution(Mesh& mesh, const std::vector<std::pair<float, float>>& profile) {
         const uint32_t base = (uint32_t)mesh.vertices.size();
         const int rings = (int)profile.size();
@@ -121,7 +134,6 @@ namespace {
             mesh.indices.insert(mesh.indices.end(), {top, d, c});
         }
     }
-#endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
     void addSphere(Mesh& mesh, float radius) {
@@ -151,11 +163,9 @@ namespace {
     }
 #endif
 
-#ifdef JASPERENGINE_PHYSICS_3D
     void addCylinder(Mesh& mesh, float halfHeight, float radius) {
         addRevolution(mesh, {{radius, -halfHeight}, {radius, halfHeight}});
     }
-#endif
 
     // ---- a 3D convex hull (QuickHull) of a point cloud, its faces wound outwards
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -401,8 +411,8 @@ namespace {
     class Collector {
     public:
         Collector(Scene* scene, Entity surface, const NavMeshSurfaceComponent& component, NavCollectStats& stats,
-                  const NavCollectOptions& options)
-            : scene(scene), surfaceEntity(surface), surface(component), stats(stats), options(options) {
+                  const NavCollectOptions& options, NavWorldContext& world)
+            : scene(scene), surfaceEntity(surface), surface(component), stats(stats), options(options), worldContext(world) {
 #ifdef JASPERENGINE_EDITOR
             renderSystem = scene->getSystem<RenderSystem>().get();
 #endif
@@ -410,12 +420,21 @@ namespace {
 
         std::shared_ptr<NavBakeInput> run(std::string& error, NavBakeError& code);
 
+        // T4 R25: the Follow region this collection took, for the surface's context once it succeeds
+        Entity followedWorld = NULL_ENTITY;
+        std::set<uint32_t> followRegion;
+        float followX = 0.0f, followZ = 0.0f;
+        bool followCollected = false;
+
     private:
         Scene* scene;
         Entity surfaceEntity;
         const NavMeshSurfaceComponent& surface;
         NavCollectStats& stats;
         const NavCollectOptions& options;
+        NavWorldContext& worldContext;
+        // why the collection waits for a Terrain World's tiles
+        std::string pendingError;
         // the GameObject the triangles, terrains and volumes added now come from (recordSources)
         Entity source = NULL_ENTITY;
         NavFrame frame;
@@ -445,7 +464,10 @@ namespace {
         void addMeshComponent(Entity entity, const Matrix4& worldOf, uint8_t area);
         void collectRenderMeshes();
         void collectTerrains();
+        void collectTrees();
         void addTerrainLattice(TerrainComponent& terrain, const Matrix4& world, uint8_t area, int samplesOverride);
+        bool preflightWorlds(std::string& error);
+        void addWorldTiles(Entity entity, const Matrix4& world, uint8_t area);
         void collectColliders3D();
         void collectColliders2D();
         void collectVolumes();
@@ -641,6 +663,11 @@ namespace {
         std::sort(entities.begin(), entities.end());
         for (Entity entity : entities) {
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+#if JASPERENGINE_VOXEL
+            // a volume's drawn chunks depend on the focus: it adds its level-0 geometry below (T6 R25)
+            if (mesh.voxelOwner != NULL_ENTITY)
+                continue;
+#endif
             // skinned meshes move; terrains and instanced meshes have their own paths
             if (!mesh.enabled || mesh.numSubmeshes == 0 || !mesh.bonesAABB.empty() || scene->findComponent<TerrainComponent>(entity))
                 continue;
@@ -651,6 +678,9 @@ namespace {
             if (!transform)
                 continue;
             if (InstancedMeshComponent* instanced = scene->findComponent<InstancedMeshComponent>(entity)) {
+                // T5 R34: grass and tree prototypes never enter a bake; trees come by collectTrees
+                if (instanced->foliage)
+                    continue;
                 Mesh local;
                 MeshTriangles::appendMeshTriangles(&mesh, Matrix4(), local.vertices, local.indices);
                 for (const InstanceData& instance : instanced->instances) {
@@ -665,6 +695,25 @@ namespace {
             addMeshComponent(entity, transform->modelMatrix, policy.area);
             stats.meshes++;
         }
+#if JASPERENGINE_VOXEL
+        if (std::shared_ptr<VoxelSystem> voxels = scene->findSystem<VoxelSystem>()) {
+            auto volumes = scene->getComponentArray<VoxelVolumeComponent>();
+            for (size_t i = 0; i < volumes->size(); i++) {
+                Policy policy;
+                if (!volumes->getComponentFromIndex(i).enabled || !collectable(volumes->getEntity(i), policy))
+                    continue;
+                Mesh local;
+                std::vector<Vector3> vertices;
+                std::vector<uint32_t> indices;
+                voxels->appendNavTriangles(AABB(-1e7f, -1e7f, -1e7f, 1e7f, 1e7f, 1e7f), vertices, indices);
+                local.vertices = std::move(vertices);
+                local.indices = std::move(indices);
+                addTriangles(local, navFromWorld, policy.area);
+                stats.meshes++;
+                break;
+            }
+        }
+#endif
     }
 
     void Collector::addTerrainLattice(TerrainComponent& terrain, const Matrix4& world, uint8_t area, int samplesOverride) {
@@ -720,6 +769,11 @@ namespace {
                            : 0.0f;
             }
         }
+        if (!terrain.holeMap.empty()) {
+            // T3 R23, R24: the walkable area stays inside the drawn ground
+            if (terraincore::navHoleCells(terrainSurfaceView(terrain).holes, samples, lattice.holeCells) == 0)
+                lattice.holeCells.clear();
+        }
         lattice.computeBounds();
         grow(Vector3(lattice.bmin[0], lattice.bmin[1], lattice.bmin[2]));
         grow(Vector3(lattice.bmax[0], lattice.bmax[1], lattice.bmax[2]));
@@ -746,7 +800,200 @@ namespace {
             Transform* transform = scene->findComponent<Transform>(entity);
             if (!transform)
                 continue;
+            // T4 R25: a World's tiles; it has no heightmap of its own
+            if (scene->findComponent<TerrainWorldComponent>(entity)) {
+                addWorldTiles(entity, transform->modelMatrix, policy.area);
+                continue;
+            }
             addTerrainLattice(terrain, transform->modelMatrix, policy.area, 0);
+        }
+    }
+
+    bool Collector::preflightWorlds(std::string& error) {
+#if JASPERENGINE_TERRAIN_WORLD
+        // T4 R25: a whole World is too much for one navmesh past MAX_UNBOUNDED_WORLD_TILES, refused
+        // before anything is collected or loaded (S19 R6's wording); a Volume or Follow bounds it
+        std::shared_ptr<TerrainWorldSystem> worlds = scene->findSystem<TerrainWorldSystem>();
+        if (surface.collectObjects == NavCollectObjects::VOLUME || !worlds)
+            return true;
+        std::vector<Entity> entities;
+        auto array = scene->getComponentArray<TerrainWorldComponent>();
+        for (size_t i = 0; i < array->size(); i++)
+            entities.push_back(array->getEntity(i));
+        std::sort(entities.begin(), entities.end());
+        for (Entity entity : entities) {
+            const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+            if (entity == followedWorld || !terrain || !terrain->enabled || !inScope(entity) || !policyOf(entity).include)
+                continue;
+            TerrainWorldRuntime* runtime = worlds->ensureRuntime(entity);
+            if (!runtime || !runtime->started())
+                continue;
+            const int tiles = runtime->occupancy().tileCount();
+            if (tiles > MAX_UNBOUNDED_WORLD_TILES) {
+                error = "Surface too large: " + std::to_string(tiles) + " Terrain World tiles without a Volume (" +
+                        std::to_string(MAX_UNBOUNDED_WORLD_TILES) + " at most); set Collect Objects to Volume or turn on Follow Terrain World Focus";
+                return false;
+            }
+        }
+#else
+        (void)error;
+#endif
+        return true;
+    }
+
+    void Collector::addWorldTiles(Entity entity, const Matrix4& world, uint8_t area) {
+#if JASPERENGINE_TERRAIN_WORLD
+        std::shared_ptr<TerrainWorldSystem> worlds = scene->findSystem<TerrainWorldSystem>();
+        std::string why = "no Terrain World system";
+        TerrainWorldRuntime* runtime = worlds ? worlds->ensureRuntime(entity, &why) : nullptr;
+        const std::string name = scene->getEntityName(entity);
+        if (!runtime || !runtime->started()) {
+            stats.warnings.push_back("Terrain World '" + name + "' is not running (" + why + "); it bakes nothing");
+            return;
+        }
+        const terraincore::WorldLattice& lattice = runtime->lattice();
+        const float size = lattice.tileSize();
+        const float maxHeight = runtime->maxHeight();
+        const Matrix4 toNav = navFromWorld * world;
+
+        // the tiles: the Follow region, else those meeting the Volume, else every present tile
+        std::vector<terraincore::TileCoord> tiles;
+        if (entity == followedWorld) {
+            std::set<uint32_t> region;
+            float x = 0.0f, z = 0.0f;
+            if (worldContext.hasTarget && worldContext.world == entity) {
+                region = worldContext.target;
+                x = worldContext.targetX;
+                z = worldContext.targetZ;
+            } else if (terrainWorldFocus(*runtime, x, z)) {
+                const bool same = worldContext.world == entity && worldContext.followed;
+                region = followTiles(*runtime, x, z, surface.followRadius, same ? worldContext.region : std::set<uint32_t>());
+            } else {
+                stats.warnings.push_back("Terrain World '" + name + "' has no focus to follow (set its Focus or Use Camera Focus); it bakes nothing");
+                return;
+            }
+            for (uint32_t key : region)
+                tiles.push_back(terraincore::TileCoord::fromKey(key));
+            followRegion = std::move(region);
+            followX = x;
+            followZ = z;
+            followCollected = true;
+            // the navmesh's pool covers the whole region wherever it goes, with a navmesh tile to spare a side
+            const int side = (int)std::ceil(2.0f * (surface.followRadius + size) / input->config.tileWorldSize()) + 2;
+            input->reserveTiles = std::max(input->reserveTiles, side * side);
+        } else {
+            for (const terraincore::TileCoord& tile : runtime->occupancy().presentTiles()) {
+                if (surface.collectObjects == NavCollectObjects::VOLUME) {
+                    // the tile's box from its min/max in nav space against the volume
+                    const terraincore::TileMinMax heights = runtime->occupancy().minMax(0, tile.x, tile.z);
+                    Vector3 lo(std::numeric_limits<float>::max()), hi(-std::numeric_limits<float>::max());
+                    for (int c = 0; c < 8; c++) {
+                        const Vector3 local((float)tile.x * size + ((c & 1) ? size : 0.0f),
+                                            (float)((c & 2) ? heights.max : heights.min) / 65535.0f * maxHeight,
+                                            (float)tile.z * size + ((c & 4) ? size : 0.0f));
+                        const Vector3 nav = toNav * local;
+                        lo.makeFloor(nav);
+                        hi.makeCeil(nav);
+                    }
+                    if (hi.x < volumeMin.x || lo.x > volumeMax.x || hi.y < volumeMin.y || lo.y > volumeMax.y || hi.z < volumeMin.z ||
+                        lo.z > volumeMax.z)
+                        continue;
+                }
+                tiles.push_back(tile);
+            }
+        }
+
+        // each tile's data by shared reference: what is in memory now or held from an earlier try;
+        // the rest is demanded from the streamer (its jobs read it) and the collection waits
+        std::vector<std::shared_ptr<const terraincore::WorldTile>> data(tiles.size());
+        int pending = 0;
+        for (size_t t = 0; t < tiles.size(); t++) {
+            const terraincore::TileCoord tile = tiles[t];
+            const uint64_t key = ((uint64_t)entity << 32) | tile.key();
+            const uint32_t revision = runtime->tileRevision(tile);
+            auto held = worldContext.held.find(key);
+            if (held != worldContext.held.end() && held->second.revision == revision) {
+                data[t] = held->second.data;
+            } else if (std::shared_ptr<const terraincore::WorldTile> resident = runtime->resident(tile)) {
+                data[t] = resident;
+                worldContext.held[key] = NavWorldHeld{resident, revision};
+            } else if (runtime->tileState(tile) == terraincore::TileState::Error) {
+                stats.warnings.push_back("tile " + std::to_string(tile.x) + "," + std::to_string(tile.z) + " of Terrain World '" + name +
+                                         "' could not be read; it bakes nothing");
+            } else {
+                runtime->tiles().demand(tile, terraincore::TilePriority::High);
+                pending++;
+            }
+        }
+        if (pending > 0) {
+            stats.pendingTiles += pending;
+            pendingError = "waiting for " + std::to_string(stats.pendingTiles) + " Terrain World tile(s) to load";
+            return;
+        }
+
+        // a lattice sample per tile sample, at most one per voxel as addTerrainLattice does; a
+        // power-of-two step keeps every tile's border samples on the ones its neighbour shares
+        int step = 1;
+        while (step < lattice.tileQuads && lattice.spacing * (float)step < input->config.cellSize)
+            step *= 2;
+        for (size_t t = 0; t < tiles.size(); t++) {
+            if (!data[t])
+                continue;
+            const terraincore::WorldTile& tile = *data[t];
+            NavTerrainInput navLattice;
+            navLattice.toNav = toNav;
+            navLattice.halfSize = size * 0.5f;
+            navLattice.centerX = (float)tiles[t].x * size + size * 0.5f;
+            navLattice.centerZ = (float)tiles[t].z * size + size * 0.5f;
+            navLattice.spacing = runtime->lattice().spacing * (float)step;
+            navLattice.samples = runtime->lattice().tileQuads / step + 1;
+            navLattice.recastArea = recastAreaOf(area);
+            navLattice.tileData = data[t];
+            navLattice.tileSamples = tile.height.bytes.data();
+            navLattice.tileRow = tile.height.width;
+            // past the gutter (T4 R3): texel 1 is the tile's corner sample
+            navLattice.tileFirst = 1;
+            navLattice.tileStep = step;
+            navLattice.tileMaxHeight = maxHeight;
+            if (!tile.holes.empty()) {
+                // T3 R23 per tile: the walkable area stays inside the drawn ground
+                const terraincore::HoleMapView holes{tile.holes.bytes.data(), tile.holes.width, tile.holes.height};
+                if (terraincore::navHoleCells(holes, navLattice.samples, navLattice.holeCells) == 0)
+                    navLattice.holeCells.clear();
+            }
+            navLattice.computeBounds();
+            grow(Vector3(navLattice.bmin[0], navLattice.bmin[1], navLattice.bmin[2]));
+            grow(Vector3(navLattice.bmax[0], navLattice.bmax[1], navLattice.bmax[2]));
+            input->terrains.push_back(std::move(navLattice));
+            if (options.recordSources)
+                input->terrainSources.push_back(source);
+            stats.terrains++;
+        }
+#else
+        (void)entity;
+        (void)world;
+        (void)area;
+#endif
+    }
+
+    // T5 R34: a cylinder per visible tree with navObstacle, under every Use Geometry, following the
+    // Terrain's NavMeshModifier policy
+    void Collector::collectTrees() {
+        std::shared_ptr<FoliageSystem> foliage = scene->getSystem<FoliageSystem>();
+        if (!foliage)
+            return;
+        auto terrains = scene->getComponentArray<TerrainComponent>();
+        for (size_t i = 0; i < terrains->size(); i++) {
+            const Entity entity = terrains->getEntity(i);
+            Policy policy;
+            if (!collectable(entity, policy))
+                continue;
+            foliage->forEachNavObstacle(entity, [&](const Vector3& base, float radius, float height) {
+                Mesh mesh;
+                addCylinder(mesh, height * 0.5f, radius);
+                addTriangles(mesh, navFromWorld * Matrix4::translateMatrix(base + Vector3(0.0f, height * 0.5f, 0.0f)), policy.area);
+                stats.instances++;
+            });
         }
     }
 
@@ -837,7 +1084,7 @@ namespace {
                         const Entity terrainEntity = collider.sourceEntity == NULL_ENTITY ? entity : collider.sourceEntity;
                         TerrainComponent* terrain = scene->findComponent<TerrainComponent>(terrainEntity);
                         // the terrain itself is collected already when it is this GameObject's
-                        if (terrain && terrainEntity != entity) {
+                        if (terrain && terrainEntity != entity && !scene->findComponent<TerrainWorldComponent>(terrainEntity)) {
                             addTerrainLattice(*terrain, colliderWorld * Matrix4::scaleMatrix(scale), policy.area,
                                               (int)collider.samplesSize);
                         }
@@ -1116,7 +1363,17 @@ namespace {
             boundsMin.y = -input->config.cellSize;
             boundsMax.y = input->config.cellSize;
         } else {
+            followedWorld = surface.followTerrainWorldFocus ? followedTerrainWorld(scene) : NULL_ENTITY;
+            if (!preflightWorlds(error)) {
+                code = NavBakeError::TooLarge;
+                return nullptr;
+            }
             collectTerrains();
+            if (stats.pendingTiles > 0) {
+                error = pendingError;
+                return nullptr;
+            }
+            collectTrees();
             collectRenderMeshes();
             collectColliders3D();
             collectVolumes();
@@ -1179,7 +1436,7 @@ namespace {
 
         // the 32-bit reference limit, before any tile is bucketed or built (spec R6)
         input->computeTileGrid();
-        const std::string tooLarge = checkPolyRefBits(input->tileCount64(), input->config.maxPolysPerTile);
+        const std::string tooLarge = checkPolyRefBits(std::max(input->tileCount64(), (int64_t)input->reserveTiles), input->config.maxPolysPerTile);
         if (!tooLarge.empty()) {
             error = tooLarge;
             code = NavBakeError::TooLarge;
@@ -1189,6 +1446,31 @@ namespace {
         return input;
     }
 
+}
+
+// T4 R25 (NavTerrainWorld.h): in this unit, which reads Terrains already, to keep the Terrain header's fan-out down
+Entity nav::followedTerrainWorld(Scene* scene) {
+#if JASPERENGINE_TERRAIN_WORLD
+    std::shared_ptr<TerrainWorldSystem> worlds = scene->findSystem<TerrainWorldSystem>();
+    if (!worlds)
+        return NULL_ENTITY;
+    std::vector<Entity> entities;
+    auto array = scene->getComponentArray<TerrainWorldComponent>();
+    for (size_t i = 0; i < array->size(); i++)
+        entities.push_back(array->getEntity(i));
+    std::sort(entities.begin(), entities.end());
+    for (Entity entity : entities) {
+        const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+        if (!scene->getComponent<TerrainWorldComponent>(entity).enabled || !terrain || !terrain->enabled || !scene->isEntityActiveInHierarchy(entity))
+            continue;
+        TerrainWorldRuntime* runtime = worlds->ensureRuntime(entity);
+        if (runtime && runtime->started())
+            return entity;
+    }
+#else
+    (void)scene;
+#endif
+    return NULL_ENTITY;
 }
 
 NavFrame NavBakeCollector::frameOf(Scene* scene, Entity surface) {
@@ -1331,17 +1613,32 @@ void NavBakeCollector::linkConnections(Scene* scene, Entity entity, const NavFra
 }
 
 std::shared_ptr<NavBakeInput> NavBakeCollector::collect(Scene* scene, Entity surface, std::string& error, NavCollectStats* stats,
-                                                       const NavCollectOptions& options, NavBakeError* code) {
+                                                       const NavCollectOptions& options, NavBakeError* code, NavWorldContext* world) {
     NavCollectStats local;
     NavCollectStats& out = stats ? *stats : local;
     out = NavCollectStats();
     NavBakeError why = NavBakeError::None;
     std::shared_ptr<NavBakeInput> input;
     if (const NavMeshSurfaceComponent* component = scene->findComponent<NavMeshSurfaceComponent>(surface)) {
-        Collector collector(scene, surface, *component, out, options);
+        NavWorldContext once;
+        NavWorldContext& context = world ? *world : once;
+        Collector collector(scene, surface, *component, out, options, context);
         input = collector.run(error, why);
         if (input && options.recordSources)
             input->excludedEntities = out.excludedEntities;
+        if (input) {
+            // T4 R25: the input holds the tiles now, and a Follow region is the surface's from here
+            context.held.clear();
+            if (collector.followCollected) {
+                context.world = collector.followedWorld;
+                context.region = std::move(collector.followRegion);
+                context.focusX = collector.followX;
+                context.focusZ = collector.followZ;
+                context.followed = true;
+                context.tried = false;
+                context.hasTarget = false;
+            }
+        }
     } else {
         error = "the GameObject has no NavMeshSurface";
         why = NavBakeError::NoSurface;

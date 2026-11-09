@@ -121,6 +121,10 @@ GraphEditorWindow::GraphEditorWindow(Project* project, std::string windowName, s
     instances().push_back(this);
     graphEditorHooks().drawSelection = [](){ return drawClaimedInspector(); };
     graphEditorHooks().openGraph = [](const std::string& path){
+        if (auto kind = graph::GraphRegistry::get().kindForFile(path)){
+            const auto own = graphEditorHooks().kindWindows.find(kind->id);
+            if (own != graphEditorHooks().kindWindows.end()) return own->second.open(path);
+        }
         GraphEditorWindow* target = windowFor(path);
         if (!target || !target->openGraph(path)) return false;
         target->setOpen(true);

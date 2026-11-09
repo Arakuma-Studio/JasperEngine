@@ -155,7 +155,7 @@ namespace jasperengine {
         friend void detail::ioPublish(AssetIOService* service, detail::IoRequest* request, jobs::detail::TaskState* task);
 
         void readerMain(int index);
-        detail::IoRequest* claimLocked();
+        detail::IoRequest* claimLocked(bool& returnSlot);
         void execute(detail::IoRequest* request, bool holdsSlot);
         // resolves the request's task Failed (or Cancelled) and fires onFailure
         void fail(detail::IoRequest* request, const std::string& error, bool cancelled);

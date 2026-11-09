@@ -6,8 +6,10 @@
 #include "KeyCodesWin.h"
 #include "SystemWin.h"
 #include "WindowWin.h"
+#include "WinPen.h"
 
 #include "Engine.h"
+#include "Input.h"
 
 #include <imm.h>
 #include <windowsx.h> // GET_X_LPARAM / GET_Y_LPARAM
@@ -16,31 +18,14 @@
 #include <cmath>
 #include <string>
 
-// Pointer input is Windows 8 and later, and the headers only declare it for
-// WINVER >= 0x0602, which older MinGW does not default to. The values are
-// fixed by the ABI; GetPointerType is resolved by name below.
-#ifndef WM_POINTERUPDATE
-#define WM_POINTERUPDATE 0x0245
-#endif
-#ifndef WM_POINTERDOWN
-#define WM_POINTERDOWN 0x0246
-#endif
-#ifndef WM_POINTERUP
-#define WM_POINTERUP 0x0247
-#endif
+// Windows 8 and later, like the pointer messages of WinPen.h
 #ifndef WM_POINTERCAPTURECHANGED
 #define WM_POINTERCAPTURECHANGED 0x024C
-#endif
-#ifndef GET_POINTERID_WPARAM
-#define GET_POINTERID_WPARAM(wParam) (LOWORD(wParam))
 #endif
 
 using namespace jasperengine;
 
 namespace {
-
-// PT_TOUCH of POINTER_INPUT_TYPE
-constexpr DWORD POINTER_TYPE_TOUCH = 2;
 
 int mouseButtonFromMessage(UINT message, WPARAM wParam) {
     switch (message) {
@@ -71,22 +56,10 @@ bool isInClientArea(HWND window, LPARAM lParam) {
 
 // Only touch is taken from the pointer messages. Without EnableMouseInPointer
 // the mouse never sends them, and a pen left to DefWindowProc is promoted to
-// WM_MOUSE* as before. Resolved by name so the game still starts on Windows 7,
-// where touch arrives as mouse messages and no pointer message is sent.
+// WM_MOUSE* as before (its pressure is read on the way). On Windows 7 touch
+// arrives as mouse messages and no pointer message is sent.
 bool isTouchPointer(UINT32 pointerId) {
-    using GetPointerTypeFn = BOOL (WINAPI*)(UINT32, DWORD*);
-    static GetPointerTypeFn getPointerType = nullptr;
-    static bool tried = false;
-    if (!tried) {
-        tried = true;
-        if (HMODULE user32 = GetModuleHandleW(L"user32.dll")) {
-            getPointerType = reinterpret_cast<GetPointerTypeFn>(
-                GetProcAddress(user32, "GetPointerType"));
-        }
-    }
-    DWORD type = 0;
-    return getPointerType && getPointerType(pointerId, &type)
-        && type == POINTER_TYPE_TOUCH;
+    return winPointerType(pointerId) == WIN_POINTER_TYPE_TOUCH;
 }
 
 // One of the IME strings (GCS_COMPSTR, GCS_RESULTSTR). The sizes are in bytes.
@@ -256,6 +229,8 @@ bool WinInputRouter::handleMessage(HWND window, UINT message, WPARAM wParam,
         }
 
         case WM_MOUSEMOVE:
+            if (!winIsPointerMouseMessage())
+                Input::setPenPressure(-1.0f);
             // A drag holding the capture keeps reporting moves outside the
             // client area; those are not the pointer coming back.
             if (!mouseInside && isInClientArea(window, lParam))
@@ -292,6 +267,8 @@ bool WinInputRouter::handleMessage(HWND window, UINT message, WPARAM wParam,
 
         case WM_LBUTTONDOWN: case WM_RBUTTONDOWN: case WM_MBUTTONDOWN:
         case WM_XBUTTONDOWN:
+            if (!winIsPointerMouseMessage())
+                Input::setPenPressure(-1.0f);
             if (!isCaptured()) {
                 mousePosX = GET_X_LPARAM(lParam);
                 mousePosY = GET_Y_LPARAM(lParam);
@@ -324,6 +301,8 @@ bool WinInputRouter::handleMessage(HWND window, UINT message, WPARAM wParam,
         case WM_POINTERUPDATE:
         case WM_POINTERUP: {
             const UINT32 pointerId = GET_POINTERID_WPARAM(wParam);
+            // -1 for a finger
+            Input::setPenPressure(winPenPressure(pointerId));
             if (!isTouchPointer(pointerId)) break;
 
             // Screen coordinates, unlike the mouse messages

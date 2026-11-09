@@ -14,7 +14,7 @@
 
 #include "component/ForceFieldComponent.h"
 #include "component/ParticleSystemComponent.h"
-#include "component/TerrainComponent.h"
+#include "ecs/ComponentFwd.h"
 #include "math/Matrix4.h"
 #include "particles/ParticleWorld.h"
 #include "subsystem/ParticleSystemState.h"
@@ -120,6 +120,11 @@ namespace jasperengine{
         // RenderSystem: a camera saw the system's bounds this frame
         void markVisible(Entity entity);
 
+        // the terrain under a world point, as a Terrain collision module reads it (T3 R26: none over a
+        // hole); public for its test, with gatherTerrains making the list it searches
+        void gatherTerrains();
+        static bool sampleTerrain(const void* context, const float point[3], float surface[3], float normal[3]);
+
     private:
         // binds (or rebinds) the component's effect; false when there is none to run
         bool ensureEffect(Entity entity, ParticleSystemComponent& particles);
@@ -133,7 +138,6 @@ namespace jasperengine{
         void prepareInput(Entity entity, ParticleSystemComponent& particles, Transform& transform, particles::EmitterInput& input);
         bool bodyVelocity(Entity entity, Vector3& velocity);
         void gatherFields();
-        void gatherTerrains();
         void dispatchEvents(ParticleSystemComponent& particles);
         // the Sound Events its bursts, sub-emitters and triggers asked for (S91 R13)
         void playSounds(particles::EmitterRuntime& runtime, const Vector3& emitterPosition);
@@ -142,7 +146,6 @@ namespace jasperengine{
 
         static bool castWorldRay(const void* context, const float from[3], const float to[3], float radius, uint32_t layers, particles::CollisionHit& hit);
         static bool castWorldRay2D(const void* context, const float from[3], const float to[3], float radius, uint32_t layers, particles::CollisionHit& hit);
-        static bool sampleTerrain(const void* context, const float point[3], float surface[3], float normal[3]);
 
         // a seed for a play (Auto Random Seed): the scene's own sequence, never 0. Per scene, so
         // what a scene plays does not depend on what other scenes (or tests) played before it

@@ -145,7 +145,7 @@ std::string toolGroupsSection(const McpRegistry& registry) {
     }
     // A client only offers the model the tools it listed (Claude Code's tool search sees no others),
     // so the line says the agent enables a group itself
-    return "\n## Tool groups\nTools outside core are not in your tool list until you call `tool_groups` "
+    return "\n## Tool groups\nTools outside core join your tool list once you call `tool_groups` "
            "{\"enable\": [\"<group>\"]} (no arguments: what each holds)" +
            (names.empty() ? std::string() : ": " + names) + ".\n";
 }

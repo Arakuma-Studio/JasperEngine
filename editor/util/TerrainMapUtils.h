@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Project.h"
+#include "terrain/TerrainMapStore.h"
 
 #include <algorithm>
 #include <string>
@@ -18,7 +19,8 @@ namespace jasperengine::editor{
     enum class TerrainMapTarget{
         HeightMap,
         BlendMap,
-        DensityMap
+        DensityMap,
+        HoleMap
     };
 
     // Names one editable map. "layer" picks the blend map or the foliage layer.
@@ -72,17 +74,20 @@ namespace jasperengine::editor{
         }
     };
 
-    // Undo payload for a stroke: the map rect it changed, kept instead of a whole map copy.
-    // Only applies while the texture still points at this file with this geometry.
-    struct TerrainMapPatch{
+    // A whole map as a structural undo step keeps it (TerrainTextureEditCmd, T1 R28)
+    struct TerrainMapSnapshot{
+        bool empty = true;
         std::string path;
+        std::string id;
+        TextureFilter minFilter = TextureFilter::LINEAR;
+        TextureFilter magFilter = TextureFilter::LINEAR;
+        TextureWrap wrapU = TextureWrap::REPEAT;
+        TextureWrap wrapV = TextureWrap::REPEAT;
         ColorFormat colorFormat = ColorFormat::RGBA;
-        int mapWidth = 0;
-        int mapHeight = 0;
+        int width = 0;
+        int height = 0;
         int channels = 0;
-        TerrainMapRegion region;
-        std::vector<unsigned char> beforePixels;
-        std::vector<unsigned char> afterPixels;
+        std::vector<unsigned char> pixels;
     };
 
     // Terrain map storage shared by the terrain editor and its undo commands: both bind, read,
@@ -103,11 +108,43 @@ namespace jasperengine::editor{
         // to the same file takes the new content, a prefab's other instances included
         static void refreshSharing(Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
 
-        // Copies an inclusive texel rect out of a full map buffer.
-        static std::vector<unsigned char> copyRegion(const unsigned char* pixels, int mapWidth, int bytesPerTexel, const TerrainMapRegion& region);
+        static terraincore::MapId mapOfRef(const TerrainMapRef& ref);
+        static TerrainMapRef refOfMap(terraincore::MapId map);
 
-        // A patch shorter than its own rect writes nothing.
-        static bool writeRegion(unsigned char* pixels, int mapWidth, int bytesPerTexel, const TerrainMapRegion& region, const std::vector<unsigned char>& regionPixels);
+        // ---- the files the engine writes are named terrain_edit_* under terrain_maps/ (T1 R32)
+
+        static std::string makeEditableTextureId(uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
+        static std::string makeEditableTexturePath(Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
+        static bool isEditableTexturePath(const std::string& path);
+        static bool isOwnedEditableTexturePath(const std::string& path, uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
+
+        static bool isScalarTarget(TerrainMapTarget target);
+        static int expectedChannels(TerrainMapTarget target);
+        static ColorFormat expectedFormat(TerrainMapTarget target);
+        static void encodeHeightTexel(unsigned char* pixels, size_t texelIndex, int bytesPerChannel, float value);
+
+        // A disk read of a map: a pending edit reaches the file first (T1 R30)
+        static bool loadTextureDataFromPath(Project* project, const std::string& path, TextureData& data);
+        // The texture bound to the file, with the pixels in the pool: the running editor never
+        // depends on the file being current
+        static bool setFileBackedTextureData(Project* project, Texture& texture, const std::string& relativePath, int width, int height, ColorFormat format, int channels, const std::vector<unsigned char>& pixels);
+        static void setOwnedTextureData(Texture& texture, const std::string& id, int width, int height, ColorFormat format, int channels, const std::vector<unsigned char>& pixels);
+        static std::vector<unsigned char> copyTexturePixels(TextureData& data);
+        static std::vector<unsigned char> convertTexturePixels(TextureData& data, TerrainMapTarget target);
+
+        static TerrainMapSnapshot captureSnapshot(Project* project, Texture& texture, bool forcePixels);
+        static bool snapshotsEqual(const TerrainMapSnapshot& a, const TerrainMapSnapshot& b);
+        static void applySnapshotToTexture(Project* project, Texture& texture, const TerrainMapSnapshot& snapshot);
+
+        // Heightmaps optionally start at the middle, so they can be raised or lowered
+        static std::vector<unsigned char> makeInitialMapPixels(TerrainMapTarget target, int width, int height, bool heightMapStartAtMiddle);
+        // Blend maps past the first only exist once a layer on them is painted
+        static void ensureMapSlot(TerrainComponent& terrain, const TerrainMapRef& ref);
+        // Whether ensureEditableMap would move this map to a file of the terrain's own, or convert it
+        static bool needsEditableCopy(Texture& texture, uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
+        // The map in the format an edit writes, in a file this terrain owns. A generated or authored
+        // file is copied on the first edit (R32), and a missing map is made.
+        static bool ensureEditableMap(Project* project, SceneProject* sceneProject, Entity entity, const TerrainMapRef& ref, int resolution, bool heightMapStartAtMiddle);
     };
 
 }

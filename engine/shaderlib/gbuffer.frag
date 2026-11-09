@@ -70,8 +70,14 @@ uniform u_fs_gbufferMaterial {
 #ifdef HAS_TERRAIN_PBR
     #include "includes/terrain_fs.glsl"
 #endif
+#ifdef HAS_VOXEL
+    #include "includes/voxel_fs.glsl"
+#endif
 #ifdef GBUFFER_STOCHASTIC
     #include "includes/stochastic.glsl"
+#endif
+#ifdef TERRAIN_HOLES
+    #include "includes/terrain_holes_fs.glsl"
 #endif
 
 #ifdef GBUFFER_UV
@@ -109,8 +115,15 @@ uniform u_fs_gbufferMaterial {
         StochasticTiling gbufferStochastic2;
     #endif
 #endif
+#include "includes/foliage_dither.glsl"
 
 void main() {
+    #ifdef USE_FOLIAGE_DITHER
+        foliageDitherDiscard();
+    #endif
+    #ifdef TERRAIN_HOLES
+        terrainDiscardHole();
+    #endif
     #ifdef GBUFFER_STOCHASTIC
         {
             vec4 params = stochasticParams(gbufferMaterial.stochastic.x, gbufferMaterial.stochastic.y,
@@ -188,6 +201,13 @@ void main() {
         metallic = terrainSurface.metallic;
         n = terrainSurface.normal;
         occlusion *= terrainSurface.occlusion;
+    #endif
+    #ifdef HAS_VOXEL
+        VoxelSurface voxelSurface = getVoxelSurface(baseColor, n, roughness, metallic);
+        baseColor = voxelSurface.color;
+        roughness = voxelSurface.roughness;
+        metallic = voxelSurface.metallic;
+        n = voxelSurface.normal;
     #endif
 
     vec2 normalCoarse;

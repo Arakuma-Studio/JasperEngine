@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "animation/ClipReport.h"
+#include "component/Transform.h"
 #include "animation/ClipOptimize.h"
 #include "animation/ClipStatistics.h"
 #include "animation/ModelSubClips.h"
