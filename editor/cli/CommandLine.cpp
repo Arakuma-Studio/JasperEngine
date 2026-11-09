@@ -2180,7 +2180,8 @@ void printCheckUsage(const std::string& commandName) {
         << "      --pixel-art          The pixel-art rules (check_pixel_art's, on the saved project): one line per finding,\n"
         << "                           path[#GameObject]: error|warning: [rule] message (fix: ...) [PIXELART-<RULE>];\n"
         << "                           --format json adds the full result as pixel_art. In the default set and in --hook\n"
-        << "                           when the project's Pixel Art Mode is on.\n"
+        << "                           when the project's Pixel Art Mode is on; given files, only the findings of the\n"
+        << "                           changed scenes, of the changed images that are pixel art and of project.yaml.\n"
         << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps, videos,\n"
         << "                           sprites and pixel art.\n"
         << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos\n"
@@ -2530,6 +2531,14 @@ struct CheckRun {
     bool vatRan = false;
     nlohmann::json pixelArt;                               // --pixel-art: check_pixel_art's result (null: not run)
     size_t pixelArtFixable = 0;
+};
+
+// --hook's changed files for the pixel-art category: project-relative scenes, assets-relative
+// images (an image's meta counts as the image), project.yaml
+struct PixelArtChanged {
+    std::vector<std::string> scenes;
+    std::vector<std::string> images;
+    bool projectFile = false;
 };
 
 // the project's Pixel Art Mode, from project.yaml (pixelArt.enabled), without loading the project
@@ -3048,7 +3057,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
                    bool shadersAll, const std::vector<std::string>& shaderFiles, bool shadersWanted, bool cppWanted,
                    const std::vector<std::string>& textureFiles, bool texturesWanted,
                    const std::vector<fs::path>& vatFiles, bool vatWanted, bool pixelArtWanted,
-                   const std::vector<std::string>& pixelArtPaths) {
+                   const PixelArtChanged* pixelArtChanged) {
     CheckRun run;
     EditorHostOverrideGuard hostOverride(nullptr);
     Out::setConsoleWindow(nullptr);
@@ -3124,13 +3133,37 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.vatRan = true;
     }
 
-    // S42 R24: the validator on the saved project (the same input and rules as check_pixel_art)
+    // S42 R24: the validator on the saved project (the same input and rules as check_pixel_art);
+    // given files (--hook), only the changed scenes and the changed images that are pixel art,
+    // and only their findings
     if (pixelArtWanted) {
         pixelart::Scope scope;
-        scope.paths = pixelArtPaths;
+        if (pixelArtChanged) {
+            scope.scenes = pixelArtChanged->scenes;
+            scope.noScenes = pixelArtChanged->scenes.empty();
+            scope.paths = pixelArtChanged->images;
+            scope.pixelArtPathsOnly = true;
+        }
         std::vector<pixelart::PixelProblem> problems;
         const pixelart::PixelArtCheckInput input = pixelart::inputFromProject(project, scope, problems);
-        const pixelart::CheckResult result = pixelart::run(input);
+        pixelart::CheckResult result = pixelart::run(input);
+        if (pixelArtChanged) {
+            // a changed scene file the project does not list is no build scene: nothing to report
+            problems.erase(std::remove_if(problems.begin(), problems.end(), [](const pixelart::PixelProblem& p) {
+                return p.kind == "not_found" && p.field == "scenes"; }), problems.end());
+            std::vector<pixelart::Finding> kept;
+            for (pixelart::Finding& finding : result.findings) {
+                const std::string kind = finding.target.value("kind", "");
+                const std::string scene = finding.target.value("scene", kind == "scene" ? finding.target.value("path", "") : std::string());
+                const std::string path = finding.target.value("path", "");
+                const bool changedScene = !scene.empty() &&
+                    std::find(pixelArtChanged->scenes.begin(), pixelArtChanged->scenes.end(), scene) != pixelArtChanged->scenes.end();
+                const bool changedImage = kind == "texture" &&
+                    std::find(pixelArtChanged->images.begin(), pixelArtChanged->images.end(), path) != pixelArtChanged->images.end();
+                if (changedScene || changedImage || (kind == "project" && pixelArtChanged->projectFile)) kept.push_back(std::move(finding));
+            }
+            result.findings = std::move(kept);
+        }
         run.pixelArt = result.toJson();
         for (const pixelart::PixelProblem& problem : problems)
             run.findings.push_back({"pixel_art", "", 0, 0, "error", problem.message, "PIXELART-" + problem.kind, problem.fix});
@@ -3292,8 +3325,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> clipFiles;
     std::vector<fs::path> vatGiven;     // .vat, .vat.glb and the other files (sources of bakes)
     std::vector<fs::path> normalFiles;  // images: generated normal maps, or sources of some
-    std::vector<std::string> pixelArtFiles;   // assets-relative images (check_pixel_art's paths)
-    bool pixelArtScenes = false;               // a scene, prefab, meta or project.yaml changed
+    PixelArtChanged pixelArtChanged;           // the scenes, images and project.yaml given
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -3335,14 +3367,18 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             // a generated normal map, or an image normal maps were made from
             if (normals && Util::isImageFile(name)) normalFiles.push_back(path);
             if (pixelArt) {
-                // assets-relative (the assets directory may be the project's own)
+                // assets-relative (the assets directory may be the project's own); an image's meta is the image
                 const std::string assetsDir = ProjectChecks::assetsRootFromProjectFile(root).lexically_relative(root).generic_string();
                 const bool rootAssets = assetsDir.empty() || assetsDir == ".";
-                if (Util::isImageFile(name) && (rootAssets || name.rfind(assetsDir + "/", 0) == 0))
-                    pixelArtFiles.push_back(rootAssets ? name : name.substr(assetsDir.size() + 1));
                 const std::string extension = rel.extension().string();
-                if (extension == ".scene" || extension == ".prefab" || extension == ".meta" || name == "project.yaml")
-                    pixelArtScenes = true;
+                const std::string image = extension == ".meta" ? name.substr(0, name.size() - 5) : name;
+                if (Util::isImageFile(image) && (rootAssets || image.rfind(assetsDir + "/", 0) == 0)) {
+                    const std::string assetPath = rootAssets ? image : image.substr(assetsDir.size() + 1);
+                    if (std::find(pixelArtChanged.images.begin(), pixelArtChanged.images.end(), assetPath) == pixelArtChanged.images.end())
+                        pixelArtChanged.images.push_back(assetPath);
+                }
+                if (extension == ".scene") pixelArtChanged.scenes.push_back(name);
+                if (name == "project.yaml") pixelArtChanged.projectFile = true;
             }
         }
     } else if (lua) {
@@ -3362,7 +3398,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     // the recipes are read without the engine: it starts only when a .vat is concerned
     const std::vector<fs::path> vatFiles = fileMode ? vat::vatAssetsForFiles(root, vatGiven) : std::vector<fs::path>();
     const bool vatWanted = fileMode ? !vatFiles.empty() : vatAssets;
-    const bool pixelArtWanted = fileMode ? pixelArt && (!pixelArtFiles.empty() || pixelArtScenes) : pixelArt;
+    const bool pixelArtWanted = fileMode ? pixelArt && (!pixelArtChanged.images.empty() || !pixelArtChanged.scenes.empty() ||
+                                                        pixelArtChanged.projectFile)
+                                         : pixelArt;
 
     // The UI check is pure parsing (no engine): first, and the engine starts only for the others
     ProjectChecks::UiCheck uiCheck;
@@ -3374,7 +3412,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     if (luaWanted || shadersWanted || cppWanted || texturesWanted || vatWanted || pixelArtWanted) {
         QuietOutput quiet;
         run = runChecks(argc, argv, root, luaFiles, luaWanted, !fileMode, shaderFiles, shadersWanted, cppWanted, textureFiles, texturesWanted,
-                        vatFiles, vatWanted, pixelArtWanted, pixelArtFiles);
+                        vatFiles, vatWanted, pixelArtWanted, fileMode ? &pixelArtChanged : nullptr);
     }
     if (!run.fatal.empty()) {
         std::cerr << commandName << " check: " << run.fatal << "\n";

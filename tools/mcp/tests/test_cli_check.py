@@ -3,11 +3,15 @@ tools/fixtures/pixel-art-bad (exit 1, one line per finding in the
 `path[#GameObject]: error|warning: [rule] message (fix: ...) [PIXELART-<RULE>]` format, ending with the
 call that fixes) and tools/fixtures/pixel-art (exit 0); --format json validates against
 tools/mcp/schemas/pixel_art_check.json; in a Pixel Art Mode project the default set and --hook include
-the pixel-art category, so a Write of a new lossy PNG reports its finding on stderr and exits 2.
+the pixel-art category. --hook reports only what the changed files hold: a Write of a lossy pixel-art
+PNG reports its finding on stderr and exits 2; a Write of an image that is not pixel art (a normal
+map's import) reports nothing, an unrelated clean image in a project full of old FAILs exits 0, and a
+changed scene reports that scene's findings only.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -71,13 +75,44 @@ async def test_pixel_art(ed: Editor):
         # Pixel Art Mode is on in the fixture: the default set has the category, and so has --hook
         default = check(clean)
         ed.check("pixel_art" in default.stderr, f"the default set includes pixel art in Pixel Art Mode: {default.stderr[-400:]}")
-        png = clean / "sprites" / "new.png"
-        shutil.copy2(clean / "sprites" / "hero.png", png)
-        (clean / "sprites" / "new.png.meta").write_text(
-            "guid: 0f0e0d0c0b0a09080706050403020100\nimport:\n  textureImporter:\n    version: 1\n    type: default\n"
-            "    pixelArt: false\n    quality: high\n    mipmaps: true\n")
-        hook = check(clean, "--hook", stdin=json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(png)}}))
+        def write_image(project: Path, name: str, importer: str) -> Path:
+            png = project / "sprites" / name
+            shutil.copy2(project / "sprites" / "hero.png", png)
+            png.touch()
+            guid = hashlib.md5(name.encode()).hexdigest()
+            (project / "sprites" / f"{name}.meta").write_text(f"guid: {guid}\nimport:\n  textureImporter:\n    version: 1\n{importer}")
+            return png
+
+        def hook_write(project: Path, path: Path) -> subprocess.CompletedProcess:
+            return check(project, "--hook", stdin=json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(path)}}))
+
+        # a first --hook run records what the earlier runs left (it reports files changed in the last minutes)
+        for project in (clean, bad):
+            (project / "notes.txt").write_text("hook state\n")
+            hook_write(project, project / "notes.txt")
+
+        # an image that is not pixel art (lossy, mipmapped, a normal map's import): not the pixel-art rules'
+        normal = write_image(clean, "normal.png", "    type: normal\n    quality: high\n    mipmaps: true\n")
+        hook = hook_write(clean, normal)
+        ed.check("PIXELART-" not in hook.stderr, f"a changed image that is not pixel art reports nothing: {hook.stderr[-1500:]}")
+        ed.check_eq(hook.returncode, 0, f"and exits 0: {hook.stderr[-1500:]}")
+        # a pixel-art image with explicit mipmaps: its finding, exit 2
+        lossy = write_image(clean, "lossy.png", "    type: sprite\n    pixelArt: true\n    mipmaps: true\n")
+        hook = hook_write(clean, lossy)
         ed.check_eq(hook.returncode, 2, f"a FAIL finding exits 2 in --hook: {hook.stderr[-1500:]}")
-        ed.check("PIXELART-MIPMAPS_COMPRESSION" in hook.stderr and "new.png" in hook.stderr, f"on stderr: {hook.stderr[-1500:]}")
+        ed.check("PIXELART-MIPMAPS_COMPRESSION" in hook.stderr and "lossy.png" in hook.stderr, f"on stderr: {hook.stderr[-1500:]}")
+
+        # the bad fixture's old FAILs are not the hook's business when a clean pixel-art image changes
+        fresh = write_image(bad, "fresh.png", "    type: sprite\n    pixelArt: true\n")
+        hook = hook_write(bad, fresh)
+        ed.check("PIXELART-" not in hook.stderr, f"only the changed file's findings: {hook.stderr[-1500:]}")
+        ed.check_eq(hook.returncode, 0, f"a clean change exits 0 among old FAILs: {hook.stderr[-1500:]}")
+        # a changed scene: its own findings, no other scene's or texture's
+        scene = bad / "scenes" / "Main.scene"
+        scene.touch()
+        hook = hook_write(bad, scene)
+        lines = [line for line in hook.stderr.splitlines() if "[PIXELART-" in line]
+        ed.check(lines, f"the changed scene's findings: {hook.stderr[-1500:]}")
+        ed.check(all(line.startswith("scenes/Main.scene") for line in lines), f"and only those: {lines}")
     finally:
         shutil.rmtree(root, ignore_errors=True)
