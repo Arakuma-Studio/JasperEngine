@@ -43,7 +43,7 @@ once stays within 8 fragment textures (base, normal map, replace mask, overlay, 
 **Presets** (Inspector › Material › Presets…, or `apply_material_preset`): Hit Flash, Pixel Outline, Sel-Out Outline,
 Drop Shadow, Teleport Fade, Burn Away (fire ramp), Petrify, Frozen and Poison (the stone, ice and poison ramps with a
 bevel), and Enemy (flash, dissolve and a pixel outline). A preset sets only its own fields; one naming a built-in
-palette's ramp makes the project's copy of that palette (`Assets/Palettes/<id>.palette`) in the same undo step.
+palette's ramp makes the project's copy of that palette (`Palettes/<id>.palette` in the assets) in the same undo step.
 
 **Scripts** set the values as any material value: `mesh:setShaderUniform("dissolveProgress", 0.5)` and
 `material:setShaderFeature("DISSOLVE", true)` on the material (`getMaterial`, then `setMaterial`) (a feature turned on at runtime builds its variant then: prefer the

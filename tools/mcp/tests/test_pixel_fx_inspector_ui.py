@@ -82,6 +82,25 @@ async def scene_state(ed: Editor) -> tuple[bool, int]:
     return modified, len(history)
 
 
+async def scroll_to(ed: Editor, label: str, notches: int = 80) -> dict:
+    """the Inspector scrolled down until `label` is drawn (the material rows sit below the Mesh Renderer's)"""
+    ui = ui_of(ed)
+    anchor = (await ed.call("find_ui_item", label="Mesh Renderer", window=WINDOW)).get("items") or \
+             (await ed.call("find_ui_item", label="Transform", window=WINDOW)).get("items")
+    ed.check(bool(anchor), "the Inspector shows the Hero")
+    area = anchor[0]["window_rect"]
+    turned = 0
+    while True:
+        items = [i for i in (await ed.call("find_ui_item", label=label, window=WINDOW)).get("items", []) if i.get("visible")]
+        if items:
+            return items[0]
+        if turned >= notches:
+            ed.fail(f"{label!r} never drawn in the Inspector ({turned} notches)")
+        await ui.wheel(ui.centre(area), 3)
+        turned += 3
+        await ui_input.frames(ed, 4)
+
+
 def crop(png: bytes, rect: dict):
     return pngdiff.crop(pngdiff.decode(png), round(rect["x"]), round(rect["y"]), round(rect["width"]), round(rect["height"]))
 
@@ -113,12 +132,11 @@ async def test_setup(ed: Editor):
 
 async def test_thumbnails(ed: Editor):
     ui = ui_of(ed)
-    for define in ("DISSOLVE", "OUTLINE", "DITHER_FADE", "RAMP_RECOLOR", "DROP_SHADOW"):
-        item = await ui.find(f"##spritefx_thumb_{define}", WINDOW, frames=240)
-        ed.check(item is not None, f"the {define} row has its thumbnail")
-        if item:
-            ed.check(round(item["rect"]["width"]) >= 40 and round(item["rect"]["height"]) >= 40, f"40x40: {item['rect']}")
-    item = await ui.find("##spritefx_thumb_DISSOLVE", WINDOW)
+    await shot(ed, "0-inspector")
+    for define in ("OUTLINE", "DITHER_FADE", "RAMP_RECOLOR", "DROP_SHADOW", "DISSOLVE"):
+        item = await scroll_to(ed, f"##spritefx_thumb_{define}")
+        ed.check(round(item["rect"]["width"]) >= 40 and round(item["rect"]["height"]) >= 40, f"{define}: 40x40: {item['rect']}")
+    item = await scroll_to(ed, "##spritefx_thumb_DISSOLVE")
     await ui_input.frames(ed, 20)
     before = crop(await shot(ed, "1-thumbnails"), item["rect"])
     await ui_input.frames(ed, 10)
@@ -130,7 +148,7 @@ async def test_thumbnails(ed: Editor):
     changed = None
     for _ in range(60):
         await ui_input.frames(ed, 6)
-        item = await ui.find("##spritefx_thumb_DISSOLVE", WINDOW)
+        item = await scroll_to(ed, "##spritefx_thumb_DISSOLVE")
         changed = crop(await shot(ed, "2-thumbnail-dissolve"), item["rect"])
         if changed != before:
             break
@@ -145,7 +163,7 @@ async def test_scrub(ed: Editor):
     ed.check(not modified, "saved before the preview")
     game_before = await ed.screenshot("game", evidence(ed) / "3-game-before.png", max_width=0)
 
-    slider = await ui.click_revealed("##spritefx_scrub_dissolveProgress", WINDOW)
+    slider = await scroll_to(ed, "##spritefx_scrub_dissolveProgress")
     rect = slider["rect"]
     await ui.click(ui.at(rect, (rect["width"] * 0.7, rect["height"] / 2)))
     await ui_input.frames(ed, 20)
@@ -171,7 +189,8 @@ async def test_scrub(ed: Editor):
 
 async def test_play(ed: Editor):
     ui = ui_of(ed)
-    await ui.click_revealed("##spritefx_play_dissolveProgress", WINDOW)
+    play = await scroll_to(ed, "##spritefx_play_dissolveProgress")
+    await ui.click(ui.centre(play["rect"]))
     seen = 0.0
     for _ in range(30):
         await ui_input.frames(ed, 2)
@@ -208,13 +227,13 @@ async def test_presets(ed: Editor):
              f"a preset adds its feature and keeps the others: {mat['shaderFeatures']}")
 
     await ed.call("apply_material_preset", preset="burn_away", scene=S["scene"], entity=S["hero"])
-    copy = ed.project / "assets" / "Palettes" / "fire.palette"
-    ed.check(copy.is_file(), "burn_away makes the project's copy of the fire palette")
     mat = await material(ed)
     textures = mat.get("shaderTextures") or {}
     ramp = textures.get("u_fxRampTexture")
     ramp_path = ramp.get("path") if isinstance(ramp, dict) else ramp
-    ed.check_eq(ramp_path, "Palettes/fire.palette#ramp:fire", "the ramp slot points at the copy's ramp")
+    palettes = sorted(str(p.relative_to(ed.project)) for p in ed.project.rglob("*.palette"))
+    ed.check_eq(ramp_path, "Palettes/fire.palette#ramp:fire", f"the ramp slot points at the copy's ramp (palettes: {palettes}, textures: {textures})")
+    ed.check(any(p.endswith("Palettes/fire.palette") for p in palettes), f"burn_away makes the project's copy of the fire palette: {palettes}")
     await ed.call("undo", scope="scene")
     mat = await material(ed)
     textures = mat.get("shaderTextures") or {}

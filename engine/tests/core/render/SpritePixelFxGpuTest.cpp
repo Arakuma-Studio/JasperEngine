@@ -375,8 +375,9 @@ TEST_F(SpritePixelFxGpu, NewFeatures){
         const std::vector<uint8_t> crop = render(c.setup);
         expectGolden(c.name, crop);
         EXPECT_TRUE(noBlends(crop, allowedColours(c, c.setup.atlas ? atlas : character), !c.setup.atlas));
-        if (c.blocks)
+        if (c.blocks){
             EXPECT_TRUE(uniformBlocks(crop));
+        }
     }
     (void)black;
     EXPECT_NO_ENGINE_ERRORS();
