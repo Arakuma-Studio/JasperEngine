@@ -77,15 +77,17 @@ namespace {
 
     Project* project() { return headless().project.get(); }
 
+    // a new 2D scene, saved at once: the scene before stays open (File > New Scene asks about an
+    // unsaved one, which a headless project never answers, and replaces an untouched new one)
     uint32_t newScene(const std::string& name) {
         Project* p = project();
-        // the scene before stays open as it is (an untouched new scene would be replaced, its id reused)
-        if (SceneProject* current = p->getSelectedScene()) {
-            current->isModified = false;
-            current->transientId = false;
-        }
+        if (SceneProject* current = p->getSelectedScene(); current && !current->filepath.empty())
+            EXPECT_TRUE(p->saveSceneToPath(current->id, current->filepath));
         p->createNewScene(name, SceneType::SCENE_2D);
-        return p->getSelectedSceneId();
+        const uint32_t id = p->getSelectedSceneId();
+        EXPECT_EQ(p->getScene(id)->name, name) << "the new scene is selected";
+        EXPECT_TRUE(p->saveSceneToPath(id, headless().dir / "scenes" / (name + ".scene")));
+        return id;
     }
 
     Entity sprite(uint32_t sceneId, const std::string& name, Vector3 position, TextureFilter filter = TextureFilter::NEAREST) {
@@ -108,7 +110,8 @@ namespace {
         fs::create_directories(path.parent_path());
         EXPECT_TRUE(project()->saveSceneToPath(sceneId, path));
         // the last open scene does not close: another one stays open
-        newScene("Open");
+        static int opened = 0;
+        newScene("Open" + std::to_string(++opened));
         std::string error;
         EXPECT_TRUE(project()->closeSceneNow(sceneId, UnsavedChoice::Discard, &error)) << error;
         return path;
@@ -126,7 +129,7 @@ TEST(PixelArtInput, ClosedScenesAreDecodedOnceWhileUnchanged) {
     ASSERT_TRUE(headless().ready);
     const uint32_t id = newScene("Cached");
     sprite(id, "Hero", Vector3(4, 4, 0));
-    const fs::path file = saveAndClose(id, "Cached.scene");
+    const fs::path file = saveAndClose(id, "Cached.scene");   // where newScene saved it
 
     px::Scope scope;
     scope.scenes = {"scenes/Cached.scene"};
