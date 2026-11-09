@@ -178,6 +178,49 @@
       "follow": "2829115a"
     },
     {
+      "id": "21dab417",
+      "type": "generator",
+      "name": "Lens Flare",
+      "visible": true,
+      "locked": false,
+      "guide": false,
+      "blend": "add",
+      "opacity": 1,
+      "clip": false,
+      "transform": {
+        "position": [0, 0],
+        "rotation": 0,
+        "scale": 1,
+        "flip_x": false,
+        "flip_y": false,
+        "z": 0,
+        "rotation_x": 0,
+        "rotation_y": 0
+      },
+      "masks": [],
+      "effects": [],
+      "look": {
+        "id": "",
+        "color_scheme": "",
+        "owner": ""
+      },
+      "generator": {
+        "type": "lens_flare",
+        "params": {
+          "color": "#7cc4ff",
+          "ghosts": true,
+          "intensity": 100,
+          "position": [-640, 110],
+          "rays": 60,
+          "rotation": 0,
+          "seed": 1,
+          "size": 70,
+          "streak": 700
+        }
+      },
+      "follow": "2829115a"
+    },
+    {
       "id": "2829115a",
       "type": "text",
       "name": "Title",
@@ -998,49 +1041,6 @@
         },
         "camera": null
       }
-    },
-    {
-      "id": "21dab417",
-      "type": "generator",
-      "name": "Lens Flare",
-      "visible": true,
-      "locked": false,
-      "guide": false,
-      "blend": "add",
-      "opacity": 1,
-      "clip": false,
-      "transform": {
-        "position": [0, 0],
-        "rotation": 0,
-        "scale": 1,
-        "flip_x": false,
-        "flip_y": false,
-        "z": 0,
-        "rotation_x": 0,
-        "rotation_y": 0
-      },
-      "masks": [],
-      "effects": [],
-      "look": {
-        "id": "",
-        "color_scheme": "",
-        "owner": ""
-      },
-      "generator": {
-        "type": "lens_flare",
-        "params": {
-          "color": "#7cc4ff",
-          "ghosts": true,
-          "intensity": 100,
-          "position": [-640, 110],
-          "rays": 60,
-          "rotation": 0,
-          "seed": 1,
-          "size": 70,
-          "streak": 700
-        }
-      },
-      "follow": "2829115a"
     },
     {
       "id": "c13b15e7",

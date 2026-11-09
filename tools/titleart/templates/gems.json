@@ -303,7 +303,7 @@
           "op": "set",
           "layer": "Title",
           "values": {
-            "size": 280,
+            "size": 230,
             "transform.position": [
               0,
               0

@@ -930,6 +930,7 @@ void checkTitleTool(const CallPtr& call) {
             for (const Json& b : a["backgrounds"]) if (b.is_string()) context.options.backgrounds.push_back(b.get<std::string>());
         }
         context.options.failOnWarn = a.value("fail_on", std::string("fail")) == "warn";
+        context.options.renderScale = std::clamp(a.value("render_scale", 1.0f), 0.05f, 1.0f);
         const std::string baseline = a.value("baseline", std::string());
         if (baseline.rfind("rev:", 0) == 0) {
             context.options.baseline = revisionRenderPath(project, doc->guid(), std::strtoull(baseline.c_str() + 4, nullptr, 10)).string();

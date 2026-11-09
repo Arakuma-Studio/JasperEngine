@@ -134,7 +134,12 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "metal_range",
+      "reason": "a saturated red bevel lit head-on: it is paint, not a mirror metal"
+    }
+  ],
   "provenance": {
     "source": "jasperengine"
   }

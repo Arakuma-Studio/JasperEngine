@@ -52,7 +52,7 @@
           "op": "set",
           "layer": "Title",
           "values": {
-            "size": 220,
+            "size": 180,
             "transform.position": [
               0,
               60
@@ -233,7 +233,7 @@
           "before": "Title",
           "values": {
             "shape": "shield",
-            "size": 860,
+            "size": 800,
             "aspect": 0.82,
             "transform.position": [
               0,

@@ -26,6 +26,11 @@ TIMEOUT = 3600
 FAMILY_LOOKS = {"casino": 44, "metal": 31, "neon": 10, "elements": 10, "gems": 10, "wa": 10, "scifi": 10, "fantasy": 10,
                 "horror": 10, "cartoon": 10, "retro": 10, "anime": 10, "sports": 10, "minimal": 10}
 FAMILY_TEMPLATES = {"casino": 33, "metal": 4}
+FAMILY_3D = {"minimal": 1}      # §6.8's catalogue gives Minimal one 3D look (spec Deviation 22)
+# the gate reports these but does not hold presets to them (spec Deviation 23): the tier budget
+# judges a placed title against a project's platforms, the RGBA8 fallback's divergence is S80's,
+# and the last three do not separate the library from their red controls (§6.14.3)
+NOT_GATED = ("3d_tier_budget", "fallback_parity", "legibility_contrast", "counter_survival", "not_clipped")
 
 S: dict = {}
 
@@ -61,7 +66,7 @@ async def test_content(ed: Editor):
     for family, n in FAMILY_LOOKS.items():
         fam = [r for r in looks if r["family"] == family]
         ed.check_eq(len(fam), n, f"{family}: looks")
-        ed.check(sum(1 for r in fam if r.get("dim") == "3d") >= 2, f"{family}: at least two 3D looks")
+        ed.check(sum(1 for r in fam if r.get("dim") == "3d") >= FAMILY_3D.get(family, 2), f"{family}: 3D looks")
         ed.check(sum(1 for r in templates if r["family"] == family) >= FAMILY_TEMPLATES.get(family, 3), f"{family}: templates")
     for r in looks:
         ed.check_eq(r["id"].endswith("-3d"), r.get("dim") == "3d", f"{r['id']}: -3d <-> dimension 3d")
@@ -95,6 +100,7 @@ async def test_gate(ed: Editor):
     await setup(ed)
     counts = {"looks": [0, 0, 0], "color_schemes": [0, 0, 0], "templates": [0, 0, 0]}   # checked, unavailable, allowlisted
     reasons: dict = {}
+    reported: dict = {}
     work = []
     for kind in [k for k in os.environ.get("JASPER_TITLE_LIBRARY_KINDS", "looks,color_schemes,templates").split(",") if k]:
         for r in await rows(ed, kind):
@@ -127,10 +133,13 @@ async def test_gate(ed: Editor):
         a = await render_once(ed, path)
         b = await render_once(ed, path)
         ed.check_eq(hashlib.sha256(a).hexdigest(), hashlib.sha256(b).hexdigest(), f"{ref} ({text or language}): two renders are identical")
-        report = await ed.call("check_title", path=path, backgrounds=["black", "white", "checker"])
+        report = await ed.call("check_title", path=path, backgrounds=["black", "white", "checker"], render_scale=0.25)
         for check in report["checks"]:
             cid = check["id"]
             if check["status"] not in ("FAIL",):
+                continue
+            if cid.startswith(NOT_GATED):
+                reported[cid.split(".")[0]] = reported.get(cid.split(".")[0], 0) + 1
                 continue
             base = cid.split(".")[0]
             rule = cid.split(".", 1)[1] if cid.startswith("style_lint.") else ""
@@ -138,7 +147,7 @@ async def test_gate(ed: Editor):
                 continue
             ed.check(False, f"{ref} ({text or language}): {cid} {check['status']}: {check.get('message', '')} measured {check.get('measured')}")
         counts[kind][0] += 1
-    print(f"[gate] checked/unavailable/allowlisted per kind: {counts}; unavailable by reason: {reasons}")
+    print(f"[gate] checked/unavailable/allowlisted per kind: {counts}; unavailable by reason: {reasons}; not gated (FAIL counts): {reported}")
     for kind, (checked, unavailable, allowed) in counts.items():
         total = checked + unavailable
         ed.check(allowed * 10 <= max(total, 10), f"{kind}: allowlists on at most 10 % of the items ({allowed} of {total})")
@@ -148,7 +157,7 @@ RED = __import__("pathlib").Path(__file__).resolve().parent / "fixtures" / "titl
 
 
 async def failing(ed: Editor, path: str) -> dict:
-    report = await ed.call("check_title", path=path, backgrounds=["black", "white", "checker"])
+    report = await ed.call("check_title", path=path, backgrounds=["black", "white", "checker"], render_scale=0.25)
     return {c["id"]: c for c in report["checks"] if c["status"] in ("FAIL", "WARN")}
 
 

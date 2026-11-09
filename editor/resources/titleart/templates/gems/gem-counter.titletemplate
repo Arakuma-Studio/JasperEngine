@@ -155,7 +155,7 @@
             "opacity": 1,
             "softness": 0,
             "threshold": 0.5,
-            "width": 3.5
+            "width": 2.875
           },
           "from_look": false
         },
@@ -188,7 +188,7 @@
             "mode": "behind",
             "on_face": 0.15,
             "opacity": 0.85,
-            "size": 16.8,
+            "size": 13.8,
             "spread": 0.3,
             "technique": "softer"
           },
@@ -209,7 +209,7 @@
             "intensity": 1.5,
             "knee": 0.3,
             "on_face": 0,
-            "radius": 224,
+            "radius": 184,
             "threshold": 0.5,
             "tint_amount": 0.7,
             "tint_inner": "#ffffff",
@@ -233,7 +233,7 @@
       "variations": {},
       "features": {},
       "language": "",
-      "size": 280,
+      "size": 230,
       "tracking": 0,
       "line_height": 1.1,
       "kerning": true,

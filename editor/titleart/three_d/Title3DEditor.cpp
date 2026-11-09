@@ -330,7 +330,7 @@ namespace {
             const titleart::Lighting3D lighting = titleart::resolveLighting(scene, titleart::decodeStyle3D(layer));
             const std::string& preset = lighting.environment.preset;
             const titleart::TitleEnvScene* env = titleart::titleEnvironmentPreset(preset);
-            if (env && env->procedural) return;
+            if (env && (env->procedural || titleart::loadTitleHdri(env->hdri))) return;
             if (preset == "matcap" && !lighting.environment.matcap.empty()) return;
             found = true;
             TitleCheckResult r = result("3d_environment_missing", TitleCheckStatus::Warn,

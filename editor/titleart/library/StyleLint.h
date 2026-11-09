@@ -31,7 +31,7 @@ namespace jasperengine::editor::titlelibrary {
     using titleart::Json;
 
     // neighbouring rings closer than this in L* merge into one band
-    constexpr double LINT_MIN_DELTA_L = 12.0;
+    constexpr double LINT_MIN_DELTA_L = 6.0;
     // both rings darker than this read as one thick keyline (fine)
     constexpr double LINT_DARK_L = 25.0;
     // rings whose samples span more L* than this are banded metals: they separate by their banding

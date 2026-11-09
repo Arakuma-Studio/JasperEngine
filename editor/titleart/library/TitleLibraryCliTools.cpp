@@ -318,6 +318,58 @@ namespace {
         return Json{{"tool", tool}, {"arguments", arguments}}.dump();
     }
 
+    // §6.14.3's numeric metrics: where check_title's measured value sits, which way is better and
+    // the threshold member
+    struct CalibrationMetric {
+        const char* path;
+        bool higherIsBetter;
+        const char* thresholdKey;
+        // the worst of the object's numbers (delta_l per background) or the member itself
+        double value(const Json& measured) const {
+            if (!measured.is_object() || !measured.contains(path)) return std::nan("");
+            const Json& v = measured[path];
+            if (v.is_number()) return v.get<double>();
+            if (v.is_object()) {
+                double out = higherIsBetter ? 1e18 : -1e18;
+                for (auto it = v.begin(); it != v.end(); ++it) {
+                    if (!it->is_number()) continue;
+                    out = higherIsBetter ? std::min(out, it->get<double>()) : std::max(out, it->get<double>());
+                }
+                return out;
+            }
+            return std::nan("");
+        }
+        double threshold(const Json& t) const {
+            return t.is_object() && t.contains(thresholdKey) && t[thresholdKey].is_number() ? t[thresholdKey].get<double>() : std::nan("");
+        }
+    };
+
+    const CalibrationMetric* calibrationMetric(const std::string& id) {
+        static const std::map<std::string, CalibrationMetric> METRICS = {
+            {"legibility_contrast", {"delta_l", true, "delta_l"}},
+            {"counter_survival", {"survival", true, "survival"}},
+            {"metal_range", {"l_range", true, "l_range_min"}},
+            {"not_clipped", {"min_margin_px", true, "margin_px"}},
+            {"clipped_highlights", {"clipped_pct", false, "clipped_pct_max"}},
+            {"halo", {"halo_share", false, "halo_share_max"}},
+            {"fallback_parity", {"fraction_over", false, "fraction_over_8"}},
+            {"rim_spikes", {"spike_to_band", false, "spike_to_band"}},
+            {"style_lint.contrast", {"value", true, "value"}},
+            {"style_lint.rims_thin", {"value", true, "value"}},
+            {"style_lint.rims_thick", {"value", false, "value"}},
+            {"style_lint.spectrum_span", {"value", false, "value"}},
+            {"style_lint.hue_count", {"value", false, "value"}},
+            {"style_lint.hard_shadow", {"value", true, "value"}},
+        };
+        auto it = METRICS.find(id);
+        return it == METRICS.end() ? nullptr : &it->second;
+    }
+
+    std::string replaceDotted(std::string id) {
+        std::replace(id.begin(), id.end(), '.', '-');
+        return id;
+    }
+
     struct Planned {
         const LibraryItemInfo* item;
         ThumbnailSample sample;
@@ -795,34 +847,48 @@ int titlelibrary::runCalibrateCommand(const std::vector<std::string>& args, cons
         }
     }
     std::sort(redDocs.begin(), redDocs.end());
-    for (const Planned& p : plan) s.calls.push_back(callLine("check_title", Json{{"path", "assets/" + p.doc}, {"backgrounds", Json::array({"black", "white", "checker"})}}));
-    for (const std::string& d : redDocs) s.calls.push_back(callLine("check_title", Json{{"path", "assets/" + d}, {"backgrounds", Json::array({"black", "white", "checker"})}}));
+    // the gate's render size (§6.14.2)
+    for (const Planned& p : plan) s.calls.push_back(callLine("check_title", Json{{"path", "assets/" + p.doc}, {"backgrounds", Json::array({"black", "white", "checker"})}, {"render_scale", 0.25}}));
+    for (const std::string& d : redDocs) s.calls.push_back(callLine("check_title", Json{{"path", "assets/" + d}, {"backgrounds", Json::array({"black", "white", "checker"})}, {"render_scale", 0.25}}));
     std::vector<Json> results;
     if (!runBatch(executable, s, results, error)) {
         std::cerr << "title-library calibrate: " << error << "\n";
         return FINDINGS;
     }
-    // per check id: the library's values per kind and the red controls' (bad twins only)
+    // per check id: the library's values per kind (allowlisted items left out, §6.14.3) and the value
+    // of the check's own red control (bad twin)
     std::map<std::string, std::map<std::string, std::vector<double>>> library;
-    std::map<std::string, std::vector<std::pair<double, std::string>>> worst;
+    std::map<std::string, std::pair<double, std::string>> worst;
     std::map<std::string, std::vector<double>> controls;
     std::map<std::string, Json> thresholds;
+    std::map<std::string, std::string> statuses;
     for (size_t i = 0; i < results.size(); i++) {
         const Json& r = results[i];
         const Json structured = r.contains("structured") ? r["structured"] : r.value("result", Json::object());
         if (!structured.contains("checks")) continue;
         const bool isRed = i >= plan.size();
-        const std::string redName = isRed && i - plan.size() < redDocs.size() ? redDocs[i - plan.size()] : std::string();
-        if (isRed && redName.find("bad") == std::string::npos) continue;
+        const std::string redName = isRed && i - plan.size() < redDocs.size() ? redDocs[i - plan.size()].substr(4) : std::string();      // without "red/"
+        if (isRed && redName.find("-bad") == std::string::npos) continue;
+        std::set<std::string> allowed;
+        if (!isRed) {
+            const Json raw = TitleLibrary::get().itemJson(*plan[i].item);
+            const Json& identity = plan[i].item->kind == LibraryKind::Template && raw.contains("template") ? raw["template"] : raw;
+            if (identity.contains("check_allow")) for (const Json& a : identity["check_allow"]) allowed.insert(a.value("check", std::string()));
+            if (identity.contains("lint_allow")) for (const Json& a : identity["lint_allow"]) allowed.insert("style_lint." + a.value("rule", std::string()));
+        }
         for (const Json& c : structured["checks"]) {
-            if (!c.contains("measured") || !c["measured"].is_number()) continue;
             const std::string id = c.value("id", std::string());
+            const CalibrationMetric* metric = calibrationMetric(id);
+            if (!metric || c.value("status", std::string()) == "SKIP" || !c.contains("measured")) continue;
+            const double v = metric->value(c["measured"]);
+            if (std::isnan(v)) continue;
             thresholds[id] = c.value("threshold", Json());
-            const double v = c["measured"].get<double>();
-            if (isRed) controls[id].push_back(v);
-            else {
+            if (isRed) {
+                if (redName.rfind(id + "-bad", 0) == 0 || redName.rfind(replaceDotted(id) + "-bad", 0) == 0) controls[id].push_back(v);
+            } else if (!allowed.count(id) && !allowed.count(id.substr(0, id.find('.')))) {
                 library[id][libraryKindName(plan[i].item->kind)].push_back(v);
-                worst[id].push_back({v, plan[i].item->ref});
+                auto it = worst.find(id);
+                if (it == worst.end() || (metric->higherIsBetter ? v < it->second.first : v > it->second.first)) worst[id] = {v, plan[i].item->ref};
             }
         }
     }
@@ -833,15 +899,29 @@ int titlelibrary::runCalibrateCommand(const std::vector<std::string>& args, cons
     };
     Json checks = Json::object();
     for (const auto& [id, kinds] : library) {
+        const CalibrationMetric* metric = calibrationMetric(id);
         Json k = Json::object();
-        for (const auto& [kind, values] : kinds) k[kind] = stats(values);
-        Json entry = Json{{"library", k}, {"threshold", thresholds[id]}};
-        if (controls.count(id)) entry["red_controls"] = stats(controls[id]);
-        auto& list = worst[id];
-        if (!list.empty()) {
-            std::sort(list.begin(), list.end());
-            entry["library_min_item"] = list.front().second;
-            entry["library_max_item"] = list.back().second;
+        std::vector<double> all;
+        for (const auto& [kind, values] : kinds) {
+            k[kind] = stats(values);
+            all.insert(all.end(), values.begin(), values.end());
+        }
+        Json entry = Json{{"library", k}, {"threshold", thresholds[id]}, {"metric", metric->path}, {"higher_is_better", metric->higherIsBetter}};
+        entry["L"] = worst[id].first;
+        entry["L_item"] = worst[id].second;
+        if (controls.count(id)) {
+            std::vector<double>& red = controls[id];
+            std::sort(red.begin(), red.end());
+            const double R = metric->higherIsBetter ? red.back() : red.front();
+            const double L = worst[id].first;
+            const double T = metric->threshold(thresholds[id]);
+            const bool separates = metric->higherIsBetter ? R < L : R > L;
+            const double lo = std::min(L, R), hi = std::max(L, R), gap = hi - lo;
+            entry["R"] = R;
+            entry["T"] = T;
+            entry["separates"] = separates;
+            entry["middle_half"] = separates && lo + 0.25 * gap <= T && T <= hi - 0.25 * gap;
+            entry["suggested_T"] = (lo + hi) / 2.0;
         }
         checks[id] = entry;
     }

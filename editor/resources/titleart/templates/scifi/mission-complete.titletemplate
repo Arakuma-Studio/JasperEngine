@@ -213,6 +213,58 @@
       "follow": ""
     },
     {
+      "id": "662d0ef3",
+      "type": "generator",
+      "name": "Light Streaks",
+      "visible": true,
+      "locked": false,
+      "guide": false,
+      "blend": "add",
+      "opacity": 1,
+      "clip": false,
+      "transform": {
+        "position": [0, 0],
+        "rotation": 0,
+        "scale": 1,
+        "flip_x": false,
+        "flip_y": false,
+        "z": 0,
+        "rotation_x": 0,
+        "rotation_y": 0
+      },
+      "masks": [],
+      "effects": [],
+      "look": {
+        "id": "",
+        "color_scheme": "",
+        "owner": ""
+      },
+      "generator": {
+        "type": "light_streaks",
+        "params": {
+          "angle": 0,
+          "brightness": 250,
+          "chroma": 0,
+          "core_color": "#ffffff",
+          "core_width": 25,
+          "count": 6,
+          "edge_color": "#3d8bff",
+          "glow": 140,
+          "length": 1600,
+          "length_random": 55,
+          "mode": "anamorphic",
+          "origin": [0, 0],
+          "seed": 1,
+          "spread": 3,
+          "taper_head": 100,
+          "taper_tail": 100,
+          "thickness": 16,
+          "thickness_random": 60
+        }
+      },
+      "follow": ""
+    },
+    {
       "id": "2829115a",
       "type": "text",
       "name": "Title",
@@ -746,58 +798,6 @@
         },
         "camera": null
       }
-    },
-    {
-      "id": "662d0ef3",
-      "type": "generator",
-      "name": "Light Streaks",
-      "visible": true,
-      "locked": false,
-      "guide": false,
-      "blend": "add",
-      "opacity": 1,
-      "clip": false,
-      "transform": {
-        "position": [0, 0],
-        "rotation": 0,
-        "scale": 1,
-        "flip_x": false,
-        "flip_y": false,
-        "z": 0,
-        "rotation_x": 0,
-        "rotation_y": 0
-      },
-      "masks": [],
-      "effects": [],
-      "look": {
-        "id": "",
-        "color_scheme": "",
-        "owner": ""
-      },
-      "generator": {
-        "type": "light_streaks",
-        "params": {
-          "angle": 0,
-          "brightness": 250,
-          "chroma": 0,
-          "core_color": "#ffffff",
-          "core_width": 25,
-          "count": 6,
-          "edge_color": "#3d8bff",
-          "glow": 140,
-          "length": 1600,
-          "length_random": 55,
-          "mode": "anamorphic",
-          "origin": [0, 0],
-          "seed": 1,
-          "spread": 3,
-          "taper_head": 100,
-          "taper_tail": 100,
-          "thickness": 16,
-          "thickness_random": 60
-        }
-      },
-      "follow": ""
     }
   ],
   "exposed": [

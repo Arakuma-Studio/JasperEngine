@@ -55,7 +55,7 @@
           "op": "set",
           "layer": "Title",
           "values": {
-            "size": 520,
+            "size": 270,
             "transform.position": [
               -40,
               140

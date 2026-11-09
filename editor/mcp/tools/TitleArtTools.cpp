@@ -1225,6 +1225,7 @@ void registerTitleArtTools(McpRegistry& registry) {
             {"baseline", string("PNG or rev:<n>.")},
             {"save_baseline", string("PNG path.")},
             {"fail_on", withDefault(stringEnum("", {"fail", "warn"}), "fail")},
+            {"render_scale", withDefault(number("Render size of pixel checks."), 1)},
             {"screenshot", withDefault(stringEnum("", {"on_failure", "always", "never"}), "on_failure")},
             {"wait", withDefault(boolean(""), true)},
             {"timeout_seconds", withDefault(number(""), 120)},

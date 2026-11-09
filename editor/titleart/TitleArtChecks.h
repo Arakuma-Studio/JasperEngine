@@ -52,6 +52,7 @@ namespace jasperengine::editor {
         std::string language;                       // S87: checks run per language
         std::string animation;                      // S85
         bool failOnWarn = false;                    // fail_on: "warn"
+        float renderScale = 1.0f;                   // the pixel checks' render size (the library gate's 0.25)
     };
 
     struct TitleCheckContext {
