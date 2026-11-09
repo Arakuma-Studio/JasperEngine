@@ -13,6 +13,7 @@ say things are drawn now):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import random
@@ -24,7 +25,7 @@ from harness import Editor
 
 CI = True
 TIMEOUT = 900
-EDITOR = {"create": True, "name": "PixelArtCleanupWindow", "xvfb": "harness"}
+EDITOR = {"create": True, "name": "PixelArtCleanupWindow", "xvfb": "harness", "ui_probe": True}
 WINDOW = "Pixel Art Cleanup"
 ART = "assets/art"
 HERO = f"{ART}/hero.png"
@@ -261,3 +262,106 @@ async def test_compare_and_frames_screenshots(ed: Editor):
     await ui.find("###cleanup_play", WINDOW, frames=120)
     await shot(ed, "5-frames-onion-skin")
     ed.check((evidence(ed) / "5-frames-onion-skin.png").exists(), "the Frames screenshot was written")
+
+
+async def project_state(ed: Editor) -> dict:
+    return (await ed.call("editor_status"))["ui"]["project_window"]
+
+
+async def until_project(ed: Editor, predicate, what: str, tries: int = 300) -> dict:
+    state: dict = {}
+    for _ in range(tries):
+        state = await project_state(ed)
+        if predicate(state):
+            return state
+        await ui_input.frames(ed, 2)
+    ed.fail(f"{what}: {state}")
+
+
+def tree_node(state: dict, path: str) -> dict | None:
+    return next((node for node in state["tree"] if node["path"] == path), None)
+
+
+def entry(state: dict, name: str) -> list | None:
+    return next((item["rect"] for item in state["entries"] if item["name"] == name), None)
+
+
+def menu(state: dict, label: str) -> list | None:
+    return next((item["rect"] for item in state["context_menu"] if item["label"] == label), None)
+
+
+async def show_art_folder(ed: Editor, ui: ui_input.Ui) -> dict:
+    await ed.call("focus_window", window="project")
+    state = await until_project(ed, lambda s: s["drawn"] and tree_node(s, "assets"), "the tree shows assets")
+    if not tree_node(state, "assets/art"):
+        x, y = tree_node(state, "assets")["arrow"]
+        await ui.click(ui.at((x, y)))
+        state = await until_project(ed, lambda s: tree_node(s, "assets/art"), "assets opens in the tree")
+    await ui.click(ui.centre(tree_node(state, "assets/art")["rect"]))
+    return await until_project(ed, lambda s: entry(s, "hero_clean.png") and entry(s, "hero.png"), "the art folder lists hero and its output")
+
+
+async def test_project_window_and_inspector_entries(ed: Editor):
+    """R43, R32: an image offers Pixel Art Cleanup..., an output also Re-run; the output's Source changed badge; the
+    Inspector's section: Open in Cleanup Window, Enabled as one project step."""
+    ui = ui_of(ed)
+    state = await show_art_folder(ed, ui)
+
+    await ui.click(ui.centre(entry(state, "hero.png")), button="3")
+    state = await until_project(ed, lambda s: s["context_menu"], "the context menu opens")
+    ed.check(menu(state, "Pixel Art Cleanup...") is not None, f"an image offers Pixel Art Cleanup: {[i['label'] for i in state['context_menu']]}")
+    ed.check(menu(state, "Re-run Pixel Art Cleanup") is None, "a source is not an output")
+    await ui.key("Escape")
+    await ui_input.frames(ed, 4)
+
+    state = await project_state(ed)
+    await ui.click(ui.centre(entry(state, "hero_clean.png")), button="3")
+    state = await until_project(ed, lambda s: s["context_menu"], "the output's menu opens")
+    rerun = menu(state, "Re-run Pixel Art Cleanup")
+    ed.check(rerun is not None, f"an output offers Re-run: {[i['label'] for i in state['context_menu']]}")
+    await ed.console_since("last")
+    await ui.click(ui.centre(rerun))
+    await asyncio.sleep(0)
+    for _ in range(400):
+        lines = await ed.console_since("last")
+        if any("re-ran" in str(line) for line in lines):
+            break
+        await ui_input.frames(ed, 2)
+    else:
+        ed.fail("Re-run Pixel Art Cleanup reported on the Console")
+
+    # the source changes: the output's badge goes stale
+    (ed.project / HERO).write_bytes(upscale(sprite(), seed=99))
+    await ed.call("sync_files", paths=[HERO], full=False)
+    for _ in range(200):
+        if await ed.ui_rect("project.generatedStale.hero_clean.png", timeout=0.5):
+            break
+        await ui_input.frames(ed, 2)
+    else:
+        ed.fail("the output's Source changed badge shows")
+    await shot(ed, "6-source-changed-badge")
+
+    # the Inspector's section for the source
+    await ui.key("Escape")
+    state = await project_state(ed)
+    await ui.click(ui.centre(entry(state, "hero.png")))
+    item = await ui.reveal("Open in Cleanup Window", "Inspector", frames=600)
+    await ui.click(ui.centre(item["rect"]))
+    await until_state(ed, lambda s: s["source"] == HERO, "Open in Cleanup Window opens the source")
+    # Enabled writes import.pixelCleanup as one project step
+    meta = ed.project / f"{HERO}.meta"
+    await ed.call("focus_window", window="inspector")
+    await ui.frames(4)
+    enabled = await ui.reveal("Enabled", "Inspector", frames=300)
+    await ui.click(ui.centre(enabled["rect"]))
+    for _ in range(200):
+        if "pixelCleanup" in meta.read_text():
+            break
+        await ui_input.frames(ed, 2)
+    ed.check("pixelCleanup" in meta.read_text(), "Enabled writes import.pixelCleanup")
+    await ed.call("undo", scope="project")
+    for _ in range(200):
+        if "pixelCleanup" not in meta.read_text():
+            break
+        await ui_input.frames(ed, 2)
+    ed.check("pixelCleanup" not in meta.read_text(), "one project undo takes it back")
