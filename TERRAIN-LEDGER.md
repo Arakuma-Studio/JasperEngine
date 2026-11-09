@@ -331,3 +331,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   hub), bake_vertex_animation no_animation, mesh_update_flags budget, procmat determinism and goldens, a flaky audio ceiling test.
 - origin/main moved 35 more commits (S51 Pixel Fonts), with 6 conflicts; merging on terrain/upstream-merge. Prebuilt players are
   building on box e704f0707dc6.
+- S51 merge landed (db61bced2, from terrain/upstream-merge 0a338a070; origin/main 1b163e4ef), then origin/main c2ba02127 (42f36ee4a,
+  ledger only). Create kinds VOXEL_VOLUME and TERRAIN_WORLD follow upstream's TEXT_PIXEL (in memory only). Shader cache stays v62.
+  test_pixel_fonts' re-save golden gained our two fixture GameObjects. Upstream's test_text_effect is flaky on origin/main too (1 in 5).
+- Final full gates rerun on 42f36ee4a: every unit test (box 22b24a0ef193) and the CI MCP suite with the slow flags (box db9262097667).
+  An end-to-end smoke test of a scratch editor project with terrain, layers, a hole, foliage and a voxel volume runs on box e704f0707dc6.
