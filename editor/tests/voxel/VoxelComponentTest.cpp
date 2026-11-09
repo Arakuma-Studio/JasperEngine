@@ -154,7 +154,7 @@ TEST(AssetTypes, VoxelVolumeValueIs32) {
     EXPECT_EQ(assetTypeFromName("voxel_volume"), AssetType::VoxelVolume);
     // no other number takes the name (the ones before it belong to other streams, D22)
     for (int value = 0; value < 64; value++) {
-        if (value != 31) {
+        if (value != 32) {
             EXPECT_STRNE(assetTypeName(static_cast<AssetType>(value)), "voxel_volume") << value;
         }
     }
