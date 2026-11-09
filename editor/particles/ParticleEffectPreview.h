@@ -62,6 +62,12 @@ namespace jasperengine::editor {
         // a sheet's cells: the straight-alpha colour (Bake Sprite Sheet) instead of a background
         bool transparentCells = false;
         bool labels = true;             // time and count under each cell
+        // the pixel view (S49): orthographic from the front on the project's base-pixel grid, framed
+        // on whole base pixels; a cell is the base pixels at `pixelScale` (Nearest), and off_grid is
+        // measured from each base pixel drawn PIXEL_PROBE x PIXEL_PROBE times. cellSize does not apply
+        bool pixelGrid = false;
+        int pixelsPerUnit = 1;
+        int pixelScale = 4;
         ParticleQaSettings qa;
         std::map<std::string, int> rounds;   // consecutive FAILs before this run, by check id
         PoseImage reference;            // drawn as one more cell, labelled "reference"
@@ -75,6 +81,8 @@ namespace jasperengine::editor {
         static constexpr double RENDER_TIMEOUT_SECONDS = 120.0;
         static constexpr double FRAME_BUDGET_MS = 12.0;
         static constexpr int GRID = 64;
+        static constexpr int PIXEL_PROBE = 4;       // screen pixels a base pixel, each way, in the pixel view
+        static constexpr int MAX_PIXEL_SIDE = 256;  // base pixels each way
 
         explicit ParticleEffectPreview(ParticlePreviewRequest request);
         ~ParticleEffectPreview();

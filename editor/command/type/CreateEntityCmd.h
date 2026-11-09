@@ -119,6 +119,9 @@ namespace jasperengine::editor{
         AUDIO_ACTION,
         SOUND_EVENT_ACTION,
         MIXER_SNAPSHOT_ACTION,
+        // GameObject › Effects › Pixel › <preset> (S49 R20): a Particle System with a pixel
+        // preset inline; the Hierarchy makes it (a PARTICLE_SYSTEM with the preset's effect)
+        PIXEL_PARTICLE_SYSTEM,
         // a Voxel Volume; the Hierarchy's row opens its dialog (T6 R59), which makes it with its file
         VOXEL_VOLUME,
         // a Terrain World: the Hierarchy's row opens Create Terrain World (T4 R40), which makes it with its folder

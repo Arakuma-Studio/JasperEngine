@@ -11,8 +11,11 @@
 
 #include "math/Curve.h"
 #include "math/Vector4.h"
+#include "pixelart/Rgba8.h"
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace jasperengine { namespace particles {
 
@@ -32,8 +35,14 @@ namespace jasperengine { namespace particles {
         Gradient,
         TwoColors,      // Random Between Two Colors
         TwoGradients,   // Random Between Two Gradients
-        RandomColor     // the gradient at a random point per particle (Unity's Random Color)
+        RandomColor,    // the gradient at a random point per particle (Unity's Random Color)
+        // a step of a palette ramp (docs/specs/S49-pixel-particles.md R12): exact sRGB8 colours,
+        // never blended; the driver (a random value in Start Color) picks the step
+        Ramp
     };
+
+    // the most colours a Ramp gradient holds (the Pixel variant's ramp uniform)
+    inline constexpr int kMaxRampColors = 32;
 
     // What a curve or gradient is evaluated at
     enum class CurveDriver : uint8_t {
@@ -113,6 +122,12 @@ namespace jasperengine { namespace particles {
         float driverMin = 0.0f;
         float driverMax = 1.0f;
         CurveWrap wrap = CurveWrap::Clamp;
+        // Ramp: "<palette>.palette#ramp:<name>" (an asset reference), or the inline colours
+        std::string ramp;
+        std::vector<pixelart::Rgba8> rampColors;
+        int rampSteps = 0;          // 0: the ramp as it is; 2-32: resampled (S43 fitRamp)
+        bool rampReverse = false;
+        float rampBias = 1.0f;      // the driver t becomes t^bias
 
         MinMaxGradient() = default;
         explicit MinMaxGradient(const Vector4& c): color(c), colorMax(c) {}
@@ -120,8 +135,13 @@ namespace jasperengine { namespace particles {
         bool usesGradient() const { return mode == GradientValueMode::Gradient || mode == GradientValueMode::TwoGradients || mode == GradientValueMode::RandomColor; }
         bool usesRandom() const { return mode == GradientValueMode::TwoColors || mode == GradientValueMode::TwoGradients; }
         bool isWhite() const;
-        // linear RGBA at `input` with the random pick
+        // linear RGBA at `input` with the random pick (Ramp: the step, through resolveRamp)
         Vector4 evaluate(float input, float random) const;
+        // Ramp: the step index of `input` (after Bias and Reverse) in a ramp of `count` colours
+        int rampStep(float input, int count) const;
+        // Ramp: the colours the ramp resolves to (the palette's ramp fitted to rampSteps, or
+        // rampColors), at most kMaxRampColors; empty when the reference cannot be read
+        std::vector<pixelart::Rgba8> resolveRamp() const;
         float remap(float driverValue) const;
 
         bool operator==(const MinMaxGradient& other) const;

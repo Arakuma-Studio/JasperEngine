@@ -38,6 +38,7 @@ namespace jasperengine::editor::pixelart {
         // a reason the fix cannot remove (the project's Texture Strategy resizes it)
         bool projectResize = false;
         int width = 0, height = 0;      // the image's, 0 when unread
+        std::string subject = "Palette Swap";   // who needs it (message)
 
         bool lossy() const { return !reasons.empty(); }
         // "Palette Swap needs lossless textures: hero.png is compressed, has mipmaps"; "" when lossless
@@ -46,6 +47,8 @@ namespace jasperengine::editor::pixelart {
     // Reads the image's size from its header when width or height is 0
     PaletteSwapTextureCheck checkPaletteSwapTexture(Project& project, const Material& material, const std::string& shader = std::string(),
                                                     int width = 0, int height = 0);
+    // The import settings alone (every shown platform) of any texture: S49's pixel particles
+    PaletteSwapTextureCheck checkLosslessTexture(Project& project, const std::string& texture, int width = 0, int height = 0);
     // The warning palette_swap_lossy_texture (get_entity, check): its text, "" when Palette Swap
     // is off, there is no image texture, or the texture is lossless
     std::string paletteSwapLossyTexture(Project& project, const Material& material, const std::string& shader = std::string());

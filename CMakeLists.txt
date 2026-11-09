@@ -469,6 +469,27 @@ string(APPEND builtin_palettes_header "static const BuiltinPaletteEmbeddedFile b
 file(WRITE "${GENERATED_DIR}/palettes_builtin.h.in" "${builtin_palettes_header}")
 configure_file("${GENERATED_DIR}/palettes_builtin.h.in" "${GENERATED_DIR}/palettes_builtin.h" COPYONLY)
 
+# Pixel particle presets (editor/pixelart/particles/*.particles, S49 R20) embedded in the editor
+# (editor/pixelart/particles/PixelParticlePresets.cpp, the only includer)
+file(GLOB PIXEL_PARTICLE_PRESET_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/pixelart/particles/*.particles")
+list(SORT PIXEL_PARTICLE_PRESET_FILES)
+set(pixel_particle_presets_header "// Generated from editor/pixelart/particles by CMakeLists.txt. Do not edit.\n#pragma once\n\n")
+set(pixel_particle_presets_entries "")
+set(pixel_particle_preset_index 0)
+foreach(pixel_particle_preset IN LISTS PIXEL_PARTICLE_PRESET_FILES)
+    get_filename_component(pixel_particle_preset_name "${pixel_particle_preset}" NAME_WE)
+    file(READ "${pixel_particle_preset}" pixel_particle_preset_hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," pixel_particle_preset_bytes "${pixel_particle_preset_hex}")
+    string(APPEND pixel_particle_presets_header "static const unsigned char pixel_particle_preset_${pixel_particle_preset_index}[] = {${pixel_particle_preset_bytes}0x00};\n")
+    string(APPEND pixel_particle_presets_entries "    { \"${pixel_particle_preset_name}\", pixel_particle_preset_${pixel_particle_preset_index}, sizeof(pixel_particle_preset_${pixel_particle_preset_index}) - 1 },\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${pixel_particle_preset}")
+    math(EXPR pixel_particle_preset_index "${pixel_particle_preset_index} + 1")
+endforeach()
+string(APPEND pixel_particle_presets_header "\nstruct PixelParticlePresetFile { const char* name; const unsigned char* data; unsigned int size; };\n")
+string(APPEND pixel_particle_presets_header "static const PixelParticlePresetFile pixel_particle_preset_files[] = {\n${pixel_particle_presets_entries}    { nullptr, nullptr, 0 }\n};\n")
+file(WRITE "${GENERATED_DIR}/pixel_particle_presets.h.in" "${pixel_particle_presets_header}")
+configure_file("${GENERATED_DIR}/pixel_particle_presets.h.in" "${GENERATED_DIR}/pixel_particle_presets.h" COPYONLY)
+
 # HTML/CSS UI example library (docs/mcp/guide/html-ui-examples/**) embedded in the editor: written
 # into every project's .jasperengine/engine-api/html-ui-examples, served as MCP resources and used
 # as create_ui_document templates (editor/util/HtmlUiExamples.cpp, the only includer)

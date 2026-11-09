@@ -497,7 +497,7 @@ agent guide isn't grown.
   `engine/core/serialization/codecs/` and its editor encoder, `Factory.cpp`, `RenderReflect.cpp`,
   `editor/tests/reflect/catalog_snapshot.json`.
 - **R61. Asset plumbing.**
-  - S04: `.jetrees` is `AssetType::TreeData = 29` (reserved, D19; stored in `assetmap.bin`), name `tree_data`, a row in `editor/asset/AssetTypes` (sidecar, assets base).
+  - S04: `.jetrees` is `AssetType::TreeData = 30` (after upstream's ProceduralMaterial took 29; stored in `assetmap.bin`), name `tree_data`, a row in `editor/asset/AssetTypes` (sidecar, assets base).
   - Maps folder: files are `terrain_edit_trees_<scene>_<entity>_<serial>.jetrees`, so the orphan collector
     (TEW:160, 525-575) handles them; the active-file list gets the tree path; written with
     `writeFileAtomic` and reported through S05's self-write suppression; flushed when maps flush.
@@ -820,7 +820,7 @@ red control: what to break, to see the named test fail, recorded in the commit o
 | AC41 | R67, R65 | Cases in `tools/mcp/eval/cases.py`, run as T1 AC74 says (`-k terrain_foliage`; lent accounts, else reported unverified): `terrain_foliage_add_details` (guard; "add grass on the flats": `edit_terrain_details`, then `scatter_by_rules` with `detail_layer` or `density_map {fill}`, then `sample_terrain` `details[0].drawn`), `terrain_foliage_mass_trees` (bad; "plant a forest": `scatter_by_rules` with `dry_run` first, must not call `create_entity` or `sculpt_terrain place_object`), `terrain_foliage_impostors` (guard; "far trees cost too much": `edit_terrain` op `bake_impostors`) | eval | A surface from before T5's text |
 | AC42 | R65, R55 | `TerrainDetailRulesTest` gains T5's fields; `test_terrain_details.py` green with them; `test_foliage.py::test_drawn_reads_foliage_stats`. Run by whichever of T5 and `agent-authoring` lands second | editor suite; gl | Omit a field from `detailRanges()` |
 | AC43 | R66, R21 | `FoliageSystemCore.WalkingFillsOnlyEnteringCells` (the 4-and-5 column walk of that spec's §4.6: 0 refills in cells that stay), `FoliageCull.MinDrawDistanceFadesAndSkips`, `.ScaleZeroRemovesFoliage`, `FoliageSettings.OneGlobalDistanceScale` (no second multiplier: a tier change leaves distances alone); `test_foliage.py::test_distance_scale_from_lua`. Run by whichever of T5 and `render-correctness` lands second | CPU; gl | Size the ring from the view span |
-| AC44 | R68, R61 | `python3 tools/check_raw_writes.py` with no new allowlist line; `python3 tools/check_stream_keys.py`; `ShaderKey.CompactInstanceBitIsPinned`, `.FoliageWindBitIsPinned`, `.FoliageDitherBitIsPinned`; `AssetTypes.TreeDataValueIs29`; `TerrainSettingsStream.PlaceInstancedKeepsItsMeaning` | CPU, editor suite | `tools/check_raw_writes.py --self-test` |
+| AC44 | R68, R61 | `python3 tools/check_raw_writes.py` with no new allowlist line; `python3 tools/check_stream_keys.py`; `ShaderKey.CompactInstanceBitIsPinned`, `.FoliageWindBitIsPinned`, `.FoliageDitherBitIsPinned`; `AssetTypes.TreeDataValueIs30`; `TerrainSettingsStream.PlaceInstancedKeepsItsMeaning` | CPU, editor suite | `tools/check_raw_writes.py --self-test` |
 
 **Verifiable where.** Decided up front, so no report overstates it. There is no CI: a command below is run by a person, and the row is unverified until then.
 

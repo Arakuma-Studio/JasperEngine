@@ -32,6 +32,7 @@ namespace jasperengine { namespace jobs { class JobSystem; } }
 
 namespace jasperengine { namespace particles {
 
+    struct AnalyticProgram;
     struct ScalarDriver;
 
     inline constexpr uint32_t kMaxTicksPerFrame = 4;
@@ -217,7 +218,15 @@ namespace jasperengine { namespace particles {
         // after the frame's ticks: the interpolation factor
         void endFrame();
 
+        // ---- Analytic simulation (S49 R15-R19): no channels and no ticks; the time and the
+        // program the GPU evaluates (its seed's, its time set every frame and on seek)
+        bool isAnalytic() const;
+        const AnalyticProgram* analytic() const { return analyticProgram.get(); }
+        // the live particles now: O(slots), on demand only (stats, scripts)
+        uint32_t analyticAlive() const;
+
         // ---- results
+        // the live particles of a Simulated emitter (an Analytic one keeps none: analyticAlive)
         uint32_t count() const { return channels.count; }
         uint32_t capacity() const { return channels.capacity(); }
         // the same with its sub-emitter children's, down the tree: what stats and the budget count
@@ -249,7 +258,8 @@ namespace jasperengine { namespace particles {
         void takeSoundEvents() { sounds.clear(); }
         // computed bounds of the live particles in simulation space (min, max), padded by size
         void bounds(float outMin[3], float outMax[3]) const;
-        bool hasBounds() const { return boundsValid; }
+        // (an Analytic program's are its compiled bounds: a clear or a seek keeps them)
+        bool hasBounds() const { return boundsValid || isAnalytic(); }
         // simulation space to world space of the last tick (the emitter transform in Local)
         const float* simToWorld() const { return simWorld; }
         // a particle's colour (linear), size and rotation as the renderer shows it, at its age
@@ -257,6 +267,8 @@ namespace jasperengine { namespace particles {
         // the hash of every live channel, and of the children (determinism)
         uint64_t stateHash() const;
         uint32_t seedValue() const { return seed; }
+        // counts its resets, clears and seeks: what was drawn of it before is not its state now
+        uint64_t generation() const { return resetGeneration; }
         // particles spawned since the last reset, its children's not counted (what the preview's metrics call emitted)
         uint32_t spawnedCount() const { return spawnCounter; }
         uint32_t raysLastTick() const { return lastRays; }
@@ -336,6 +348,7 @@ namespace jasperengine { namespace particles {
 
         PlayState playState = PlayState::Stopped;
         bool emitting = false;
+        uint64_t resetGeneration = 0;
         uint32_t seed = 1;
         uint32_t spawnCounter = 0;
         uint64_t ticks = 0;
@@ -385,6 +398,15 @@ namespace jasperengine { namespace particles {
         // distance (no burst of thousands; origin/main's rule), said once
         static constexpr float kTeleportDistance = 100.0f;
         bool teleportWarned = false;
+
+        // Analytic: the program of this seed, the emitter time emission stopped at (1e30: on)
+        std::unique_ptr<AnalyticProgram> analyticProgram;
+        double analyticEnd = 1.0e30;
+        bool analyticMovedWarned = false;
+        bool analyticHasTransform = false;
+        float analyticLastTransform[16] = {};
+        float analyticGravity[3] = {0.0f, -9.81f, 0.0f};
+        void analyticUpdate(const EmitterInput& input);
 
         // per tick, sized at bind: chunk outputs and their arrays
         std::vector<ChunkOutput> chunkOut;

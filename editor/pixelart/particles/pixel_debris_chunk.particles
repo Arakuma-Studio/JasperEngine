@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "duration": 3,
+  "looping": false,
+  "maxParticles": 64,
+  "modules": [
+    {"type": "main", "startLifetime": {"mode": "twoConstants", "constant": 1.5, "constantMax": 2.5},
+     "startSpeed": {"mode": "twoConstants", "constant": 80, "constantMax": 220},
+     "startSize": {"mode": "twoConstants", "constant": 3, "constantMax": 6},
+     "startRotation": {"mode": "twoConstants", "constant": 0, "constantMax": 360},
+     "startColor": {"mode": "ramp", "ramp": "builtin:pixelfx-effects#ramp:stone"}},
+    {"type": "emission", "rateOverTime": 0},
+    {"type": "shape", "shape": "cone", "angle": 30, "radius": 0.5, "emitFrom": "base"},
+    {"type": "limitVelocity", "dampen": 0, "drag": 0.3, "multiplyBySize": false},
+    {"type": "forceOverLifetime", "y": -950, "space": "world"},
+    {"type": "rotationOverLifetime", "angularVelocity": {"mode": "twoConstants", "constant": -720, "constantMax": 720}},
+    {"type": "collision", "collisionType": "planes", "planes": [{"point": [0, -12, 0], "normal": [0, 1, 0]}],
+     "bounce": 0.428571, "dampen": 0.3, "radiusScale": 0, "settleSpeed": 21},
+    {"type": "pixelArt", "fade": "dither", "ditherSize": 4, "secondary": "rampOffset",
+     "fadeOverLifetime": {"mode": "curve", "curve": [[0, 1, 0, 0], [0.8, 1, 0, -5], [1, 0, -5, -5]]}},
+    {"type": "renderer", "renderMode": "pixel", "pixelShape": "chunk"}
+  ]
+}

@@ -27,6 +27,7 @@
 #include "command/type/ParticleEffectAssetCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "component/ParticleSystemComponent.h"
+#include "particles/AnalyticParticles.h"
 #include "io/watch/FileWatchService.h"
 #include "particles/ParticleEffectPreview.h"
 #include "particles/ParticlePreviewSource.h"
@@ -34,7 +35,15 @@
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleEffectLibrary.h"
 #include "particles/ParticleModules.h"
+#include "pixelart/particles/PixelParticlePresets.h"
+#include "pixelart/particles/PixelPresetCreate.h"
+#include "pixelart/PixelColor.h"
 #include "subsystem/ParticleSubsystem.h"
+#include "subsystem/ParticleSystemState.h"
+#include "subsystem/RenderSystem.h"
+#include "util/Base64.h"
+#include "util/FileUtils.h"
+#include "util/ProjectFileWrites.h"
 #include "texsynth/SynthesisSession.h"
 #include "util/AssetDatabase.h"
 #include "util/Base64.h"
@@ -74,7 +83,11 @@ Ordered toOrdered(const Json& value) {
 Json diagnosticsJson(const std::vector<Diagnostic>& diagnostics) {
     Json out = Json::array();
     for (const Diagnostic& d : diagnostics) {
-        out.push_back({{"severity", d.severity == Diagnostic::Severity::Error ? "error" : "warning"}, {"path", d.path}, {"message", d.message}});
+        Json item = {{"severity", d.severity == Diagnostic::Severity::Error ? "error" : "warning"}, {"path", d.path}, {"message", d.message}};
+        // a typed finding (S49: analytic_unsupported, analytic_capacity, pixel_art_mesh, ramp_missing)
+        if (!d.code.empty()) item["code"] = d.code;
+        if (!d.fix.empty()) item["fix"] = d.fix;
+        out.push_back(item);
     }
     return out;
 }
@@ -167,11 +180,17 @@ bool resolveEffectTarget(const CallPtr& call, EffectTarget& target, bool editing
     return true;
 }
 
+// Analytic's rules (S49 R15) beside the codec's: the modules an Analytic effect cannot run are errors
+void addAnalyticDiagnostics(const ParticleEffectDocument& document, std::vector<Diagnostic>& diagnostics) {
+    if (document.simulationMode == particles::SimulationMode::Analytic) particles::AnalyticParticles::validate(document, diagnostics);
+}
+
 bool readTarget(const EffectTarget& target, ParticleEffectDocument& document, std::vector<Diagnostic>& diagnostics) {
-    if (target.entity != NULL_ENTITY) {
-        return ParticleEffectEdit::read(target.scene->scene->getComponent<ParticleSystemComponent>(target.entity), document, &diagnostics);
-    }
-    return ParticleEffectEdit::readAsset(target.asset, document, &diagnostics);
+    const bool read = target.entity != NULL_ENTITY
+                          ? ParticleEffectEdit::read(target.scene->scene->getComponent<ParticleSystemComponent>(target.entity), document, &diagnostics)
+                          : ParticleEffectEdit::readAsset(target.asset, document, &diagnostics);
+    if (read) addAnalyticDiagnostics(document, diagnostics);
+    return read;
 }
 
 Json targetJson(const EffectTarget& target) {
@@ -306,7 +325,12 @@ bool editTarget(const CallPtr& call, const EffectTarget& target, const Ordered& 
             refused = true;
             return false;
         }
-        return true;
+        const size_t first = diagnostics.size();
+        addAnalyticDiagnostics(document, diagnostics);
+        for (size_t i = first; i < diagnostics.size(); i++) {
+            if (diagnostics[i].severity == Diagnostic::Severity::Error) refused = true;
+        }
+        return !refused;
     };
     Command* command = target.entity != NULL_ENTITY ? ParticleEffectEdit::build(target.project, target.scene->id, {target.entity}, edit)
                                                     : ParticleEffectEdit::buildAsset(target.project, target.asset, edit);
@@ -361,6 +385,11 @@ void createEffectTool(const CallPtr& call) {
 
     ParticleEffectDocument document;
     std::vector<Diagnostic> diagnostics;
+    std::vector<std::string> children;
+    // a pixel preset writes its palette copy and children too: one undo step with the effect
+    CommandHistory* history = project->getProjectCommandHistory();
+    std::unique_ptr<UndoGroupScope> holdGroup;
+    size_t groupMark = 0;
     if (args.contains("effect") && !args["effect"].is_null()) {
         auto effect = toOrdered(args["effect"]);
         // an agent's effect may leave the schema version out: this editor's
@@ -371,7 +400,26 @@ void createEffectTool(const CallPtr& call) {
         }
     } else if (args.contains("preset")) {
         const std::string preset = args.value("preset", std::string());
-        if (!particlePresetEffect(Json::object(), preset, false, document, error)) {
+        const std::vector<std::string>& pixel = pixelart::pixelParticlePresetNames();
+        if (std::find(pixel.begin(), pixel.end(), preset) != pixel.end()) {
+            // S49: on the project's copy of builtin:pixelfx-effects, its children beside it, scaled by the PPU
+            pixelart::ProjectPixelPreset made;
+            const std::string directory = fs::path(path).parent_path().generic_string();
+            if (!pixelart::prepareProjectPixelPreset(*project, preset, directory, made, error)) {
+                call->fail(error);
+                return;
+            }
+            if (!made.writes.empty() && history) {
+                holdGroup = std::make_unique<UndoGroupScope>(history);
+                groupMark = history->mark();
+            }
+            if (!made.writes.empty() && !ProjectFileWrites::writeUndoable(project, made.writes, error)) {
+                call->fail(error);
+                return;
+            }
+            document = made.document;
+            children = made.children;
+        } else if (!particlePresetEffect(Json::object(), preset, false, document, error)) {
             call->fail(error);
             return;
         }
@@ -391,11 +439,16 @@ void createEffectTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
+    if (holdGroup)
+        history->groupSince(groupMark, "Create Particle Effect " + fs::path(path).filename().generic_string());
     diagnostics.clear();
     ParticleEffectCodec::validate(document, diagnostics);
+    addAnalyticDiagnostics(document, diagnostics);
     const Guid guid = project->getAssetDatabase().getAssetGuid(absolute);
-    call->ok("Created the particle effect " + path + " (one undo step of the project).",
-             Json{{"path", path}, {"guid", guid.str()}, {"modules", moduleKeys(document)}, {"diagnostics", diagnosticsJson(diagnostics)}});
+    Json data = Json{{"path", path}, {"guid", guid.str()}, {"modules", moduleKeys(document)}, {"diagnostics", diagnosticsJson(diagnostics)}};
+    if (!children.empty()) data["children"] = children;
+    data["next"] = "set_particle_effect plays it on a Particle System";
+    call->ok("Created the particle effect " + path + " (one undo step of the project).", data);
 }
 
 void getEffectTool(const CallPtr& call) {
@@ -561,7 +614,8 @@ Json statsJson(ParticleSubsystem& particles, Entity entity) {
             {"ticks", s.ticks}, {"tick_count", s.tickCount}, {"time", s.time}, {"dropped_time", s.droppedTime},
             {"simulate_us", s.simulateMicros}, {"render_us", s.renderMicros}, {"culled", s.culled}, {"playing", s.playing},
             {"paused", s.paused}, {"emitting", s.emitting}, {"sorted_views", s.sortedViews}, {"drawn_views", s.drawnViews},
-            {"rays_last_tick", s.raysLastTick}, {"bytes_per_particle", s.bytesPerParticle}};
+            {"rays_last_tick", s.raysLastTick}, {"bytes_per_particle", s.bytesPerParticle},
+            {"simulation_mode", s.analytic ? "analytic" : "simulated"}, {"pixel", s.pixel}, {"analytic_slots", s.analyticSlots}};
 }
 
 void replyControl(const CallPtr& call, const EffectTarget& target, ParticleSubsystem& particles, const std::string& action, bool editMode,
@@ -1088,7 +1142,7 @@ void bakeSheetTool(const CallPtr& call) {
         if (output.size() > 10 && (output.substr(output.size() - 10) == ".particles")) output.resize(output.size() - 10);
         // refused now, not after the run: a path out of the project (a link on the way included)
         fs::path absolute;
-        for (const char* extension : {".png", ".particles"}) {
+        for (const char* extension : {".png", ".particles", ".json"}) {
             if (!McpRefs::resolveProjectWritePath(call->ctx().project(), output + extension, absolute, error, false)) {
                 call->fail("output: " + error);
                 return;
@@ -1096,6 +1150,8 @@ void bakeSheetTool(const CallPtr& call) {
         }
     }
     const bool overwrite = args.value("overwrite", false);
+    // S49: the frames' Aseprite json-hash beside the sheet (a texture's Sprite Mode slices it)
+    const bool aseprite = args.value("aseprite", false);
     ParticlePreviewRequest request = ParticleSheetBake::sheetRequest(base, columns, rows, cellSize);
     bool additive = true;
     bool looping = false;
@@ -1116,10 +1172,12 @@ void bakeSheetTool(const CallPtr& call) {
         const PoseImage sheet = ParticleSheetBake::composeSheet(run.getCells(), columns, rows);
         const Json& report = run.getReport();
         const double seconds = report.value("seconds", 0.0);
-        Json data = {{"columns", columns}, {"rows", rows}, {"cell_size", cellSize}, {"seconds", seconds}, {"frame", report["frame"]},
+        // the pixel view's cells are its base pixels at its scale, not cell_size
+        const int cell = run.getCells().empty() ? cellSize : run.getCells().front().getWidth();
+        Json data = {{"columns", columns}, {"rows", rows}, {"cell_size", cell}, {"seconds", seconds}, {"frame", report["frame"]},
                      {"seeds", report["seeds"]}, {"state_hash", report["state_hash"]}, {"verdict", report["verdict"]}, {"checks", report["checks"]},
                      {"alpha", "straight; additive light without coverage keeps its brightest channel as alpha"}};
-        std::string text = scope + ": " + std::to_string(columns) + "x" + std::to_string(rows) + " frames of " + std::to_string(cellSize) + " px over " +
+        std::string text = scope + ": " + std::to_string(columns) + "x" + std::to_string(rows) + " frames of " + std::to_string(cell) + " px over " +
                            report["seconds"].dump() + " s, straight alpha.";
         ToolResult reply;
         std::vector<uint8_t> png;
@@ -1131,14 +1189,15 @@ void bakeSheetTool(const CallPtr& call) {
             std::vector<std::string> written;
             std::string why;
             if (!ParticleSheetBake::sheetFiles(project, output, sheet, effect, overwrite, items, written, why) ||
+                (aseprite && !ParticleSheetBake::asepriteFile(project, output, columns, rows, cell, cell, seconds, overwrite, items, written, why)) ||
                 !w4::writeFilesUndoable(*ctx, std::move(items), why, {}, "Bake Sprite Sheet")) {
                 return ToolResult::error("Nothing was written: " + why);
             }
             data["written"] = written;
             data["undo"] = {{"scope", "project"}};
             data["next"] = "set_particle_effect plays " + written[1] + " on a Particle System.";
-            text += " Wrote " + written[0] + " and " + written[1] + " (Texture Sheet Animation " + std::to_string(columns) + "x" +
-                    std::to_string(rows) + ") as one undo step \"Bake Sprite Sheet\".";
+            text += " Wrote " + written[0] + " and " + written[1] + (aseprite ? " and " + written[2] : std::string()) + " (Texture Sheet Animation " +
+                    std::to_string(columns) + "x" + std::to_string(rows) + ") as one undo step \"Bake Sprite Sheet\".";
         } else {
             data["next"] = "The same arguments plus output write the sheet and an effect playing it (one undo step).";
             text += " Nothing written (no output).";
@@ -1172,11 +1231,13 @@ void registerParticleTools(McpRegistry& registry) {
         registry.addTool(std::move(tool));
     };
 
+    std::vector<std::string> presetNames = particlePresetNames();
+    for (const std::string& name : pixelart::pixelParticlePresetNames()) presetNames.push_back(name);
     add("create_particle_effect", "Create Particle Effect",
         "A new .particles asset from a create_particles preset or an effect JSON (the keyed form get_particle_effect returns), "
         "one undo step of the project. set_particle_effect plays it on a Particle System.",
         object({{"path", assetPath("The new file (.particles).")},
-                {"preset", stringEnum("", particlePresetNames())},
+                {"preset", stringEnum("", presetNames)},
                 {"effect", anyObject("The whole effect (modules keyed by type).")},
                 {"overwrite", withDefault(boolean(""), false)}}, {"path"}),
         createEffectTool, false);
@@ -1195,7 +1256,7 @@ void registerParticleTools(McpRegistry& registry) {
     add("add_particle_module", "Add Particle Module",
         "Add (or re-enable) a module of an effect, with optional fields: emission, shape, startVelocity, velocityOverLifetime, "
         "limitVelocity, forceOverLifetime, colorOverLifetime, colorBySpeed, sizeOverLifetime, sizeBySpeed, rotationOverLifetime, "
-        "rotationBySpeed, externalForces, noise, orbit, collision, subEmitters, textureSheetAnimation, trails, customData, setOverAge.",
+        "rotationBySpeed, externalForces, noise, orbit, collision, subEmitters, textureSheetAnimation, trails, customData, setOverAge, pixelArt.",
         object(withTarget({{"module", string("")}, {"fields", anyObject("The module's fields.")}}), std::vector<std::string>{"module"}),
         addModuleTool, false);
     add("remove_particle_module", "Remove Particle Module",
@@ -1223,8 +1284,9 @@ void registerParticleTools(McpRegistry& registry) {
         object({{"entity", entityRef()}, {"scene", sceneRef()}}), statsTool, true);
     add("capture_particles", "Capture Particle Effect",
         "Seek a Particle System to time (seconds) and capture the view (camera: scene or game) as an image; the system stays "
-        "paused there.",
-        object({{"entity", entityRef()}, {"scene", sceneRef()}, {"time", number("Seconds.")},
+        "paused there. frames, scale, background or checks draw the effect alone instead: a labelled contact sheet of frames "
+        "times to time_end (default one loop) at an integer scale, with pixel-art lint results.",
+        object({{"entity", entityRef()}, {"path", assetPath("")}, {"scene", sceneRef()}, {"time", number("Seconds.")},
                 {"camera", withDefault(stringEnum("", {"scene", "game"}), "scene")},
                 {"max_width", withDefault(integer("", 0, 4096), 768)}, {"save_path", string("Also write the PNG here.")},
                 {"with_children", withDefault(boolean("Seek the subtree's systems too."), false)}},
@@ -1255,7 +1317,8 @@ void registerParticleTools(McpRegistry& registry) {
         tool.inputSchema = object(withRun({
             {"times", array(number(""), "Seconds, instead of frames.")},
             {"frames", withDefault(integer("", 0, 24), 6)},
-            {"view", withDefault(stringEnum("", {"three_quarter", "front", "side", "top"}), "three_quarter")},
+            {"view", withDefault(stringEnum("", {"three_quarter", "front", "side", "top", "pixel"}), "three_quarter")},
+            {"scale", integer("")},   // the pixel view's, 1 to 8: the handler checks it (the listed schema stays lean)
             {"background", withDefault(stringEnum("", {"dark", "light", "checker"}), "dark")},
             {"overdraw_map", withDefault(boolean("Adds a GPU heat row."), false)},
             {"platform", withDefault(stringEnum("", {"mobile", "web", "desktop"}), "mobile")},
@@ -1282,7 +1345,9 @@ void registerParticleTools(McpRegistry& registry) {
             {"columns", withDefault(integer("", 1, 16), 4)},
             {"rows", withDefault(integer("", 1, 16), 4)},
             {"cell_size", withDefault(integer("Pixels.", 16, 1024), 128)},
-            {"view", withDefault(stringEnum("", {"front", "three_quarter", "side", "top"}), "front")},
+            {"view", withDefault(stringEnum("pixel: the base-pixel grid (cells: base pixels x scale).", {"front", "three_quarter", "side", "top", "pixel"}), "front")},
+            {"scale", integer("pixel view: screen pixels a base pixel.", 1, 8)},
+            {"aseprite", withDefault(boolean("Also <output>.json, Aseprite json-hash."), false)},
             {"output", string("Project-relative, no extension: writes .png and .particles.")},
             {"overwrite", withDefault(boolean(""), false)},
             {"wait", withDefault(boolean(""), true)},

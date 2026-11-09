@@ -7,6 +7,9 @@
 
 #include "ParticleValues.h"
 
+#include "pixelart/Palette.h"
+#include "pixelart/PaletteRampTexture.h"
+#include "pixelart/PixelColor.h"
 #include "util/Color.h"
 
 #include <algorithm>
@@ -162,6 +165,7 @@ bool MinMaxCurve::operator==(const MinMaxCurve& other) const{
 bool MinMaxGradient::isWhite() const{
     const Vector4 white(1.0f, 1.0f, 1.0f, 1.0f);
     switch (mode){
+        case GradientValueMode::Ramp: return false;
         case GradientValueMode::Color: return color == white;
         case GradientValueMode::TwoColors: return color == white && colorMax == white;
         default: break;
@@ -195,8 +199,41 @@ Vector4 MinMaxGradient::evaluate(float input, float random) const{
             const Vector4 b = gradientMax.evaluate(input);
             return a + (b - a) * random;
         }
+        case GradientValueMode::Ramp: {
+            const std::vector<pixelart::Rgba8> colors = resolveRamp();
+            if (colors.empty())
+                return Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+            return pixelart::toEngineLinear(colors[(size_t)rampStep(input, (int)colors.size())]);
+        }
     }
     return Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+}
+
+int MinMaxGradient::rampStep(float input, int count) const{
+    if (count <= 0)
+        return 0;
+    float t = std::isfinite(input) ? std::clamp(input, 0.0f, 1.0f) : 0.0f;
+    if (rampBias != 1.0f && t > 0.0f)
+        t = std::pow(t, std::clamp(rampBias, 0.1f, 10.0f));
+    // pixelfx's at(): floor(t n), the last step for t = 1
+    const int step = std::clamp((int)std::floor(t * (float)count), 0, count - 1);
+    return rampReverse ? count - 1 - step : step;
+}
+
+std::vector<pixelart::Rgba8> MinMaxGradient::resolveRamp() const{
+    std::vector<pixelart::Rgba8> colors;
+    std::string palette, name;
+    if (!ramp.empty() && pixelart::parsePaletteRampPath(ramp, &palette, &name)){
+        if (std::shared_ptr<const pixelart::Palette> p = pixelart::PaletteLibrary::get(palette))
+            colors = p->rampColors(name);
+    }else if (ramp.empty()){
+        colors = rampColors;
+    }
+    if (rampSteps >= 2 && !colors.empty())
+        colors = pixelart::fitRamp(colors, std::min(rampSteps, kMaxRampColors));
+    if ((int)colors.size() > kMaxRampColors)
+        colors.resize((size_t)kMaxRampColors);
+    return colors;
 }
 
 float MinMaxGradient::remap(float driverValue) const{
@@ -206,5 +243,6 @@ float MinMaxGradient::remap(float driverValue) const{
 bool MinMaxGradient::operator==(const MinMaxGradient& other) const{
     return mode == other.mode && color == other.color && colorMax == other.colorMax && gradient == other.gradient &&
            gradientMax == other.gradientMax && driver == other.driver && driverMin == other.driverMin &&
-           driverMax == other.driverMax && wrap == other.wrap;
+           driverMax == other.driverMax && wrap == other.wrap && ramp == other.ramp && rampColors == other.rampColors &&
+           rampSteps == other.rampSteps && rampReverse == other.rampReverse && rampBias == other.rampBias;
 }

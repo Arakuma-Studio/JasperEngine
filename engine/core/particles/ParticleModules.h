@@ -46,7 +46,8 @@ namespace jasperengine { namespace particles {
         CustomData = 20,
         Renderer = 21,
         SetOverAge = 22,
-        Count = 23
+        PixelArt = 23,      // S49
+        Count = 24
     };
 
     enum class FieldType : uint8_t {
@@ -184,8 +185,9 @@ namespace jasperengine { namespace particles {
 
         // Every asset path the document holds (textures, models, child effects; FieldFlag_AssetPath)
         // with its GUID field, in modules present or not: what an editor resolves, renames and
-        // exports. The visitor may change both.
-        enum class AssetKind : uint8_t { Texture, Model, Effect, SoundEvent };
+        // exports. The visitor may change both. A Ramp gradient's palette comes as a Palette with
+        // no GUID (an empty string the visitor may write to, kept nowhere).
+        enum class AssetKind : uint8_t { Texture, Model, Effect, SoundEvent, Palette };
         using AssetVisitor = std::function<void(std::string& path, std::string& guid, AssetKind kind, const std::string& field)>;
         static void visitAssets(ParticleEffectDocument& document, const AssetVisitor& visit);
         static bool getExposed(const ParticleEffectDocument& document, std::string_view name, Vector4& value);

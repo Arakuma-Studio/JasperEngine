@@ -496,16 +496,35 @@ std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* 
             }
             continue;
         }
-        const std::string submenu = entry.submenu;
+        // "Effects/Pixel": a submenu inside "Effects" (S49)
+        const std::string full = entry.submenu;
+        const std::string submenu = full.substr(0, full.find('/'));
         if (std::find(shownSubmenus.begin(), shownSubmenus.end(), submenu) != shownSubmenus.end()) continue;
         shownSubmenus.push_back(submenu);
         if (lastKind == 0) items.push_back(menuSeparator());
         lastKind = 1;
 
         std::vector<editor::PlatformMenuItem> children;
+        std::vector<std::string> nested;
         for (size_t j = i; j < entries.size(); j++) {
             const CreateMenuEntry& child = entries[j];
-            if (!child.submenu || submenu != child.submenu || !offered(child)) continue;
+            if (!child.submenu || !offered(child)) continue;
+            const std::string childMenu = child.submenu;
+            if (childMenu.rfind(submenu + "/", 0) == 0) {
+                const std::string inner = childMenu.substr(submenu.size() + 1);
+                if (std::find(nested.begin(), nested.end(), inner) != nested.end()) continue;
+                nested.push_back(inner);
+                std::vector<editor::PlatformMenuItem> innerItems;
+                for (size_t k = j; k < entries.size(); k++) {
+                    const CreateMenuEntry& item = entries[k];
+                    if (!item.submenu || childMenu != item.submenu || !offered(item)) continue;
+                    if (item.separatorBefore && !innerItems.empty()) innerItems.push_back(menuSeparator());
+                    innerItems.push_back(entryItem(k));
+                }
+                children.push_back(menuSubmenu(inner, std::move(innerItems), canCreate));
+                continue;
+            }
+            if (submenu != childMenu) continue;
             if (child.separatorBefore && !children.empty()) children.push_back(menuSeparator());
             children.push_back(entryItem(j));
         }
@@ -5908,15 +5927,17 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v59: S43's palettes: library:sprite's PALETTE_SWAP and PALETTE_CYCLE (includes/palette.glsl,
     //      the custom block's paletteRow, paletteCycleSpeed and sceneTime), the uber pass's
     //      Palette Quantize (BLIT 'Pal' 19, includes/bayer.glsl).
-    // v61: the terrain programme re-appended after S91 and S43: T5's foliage
+    // v60: S49's pixel particles: library:particles' Pixel render mode (PARTICLES 'Pxl' 12) and
+    //      Analytic simulation (PARTICLES 'Ana' 13, particles_analytic_vs.glsl, its uniform block).
+    // v62: the terrain programme re-appended after S91, S43 and S49: T5's foliage
     //      (MESH 'Cin' 'Wnd' 'Dth' 46-48, DEPTH 20-22, GBUFFER 19-21; library:impostor), T3's holes
     //      and tiers ('Thl': MESH 49, DEPTH 23, GBUFFER 22; GBUFFER 'Tqm' 'Tql' 'Txl' 23-25 and the
     //      terrain's Lit defines), T6's Voxel Volumes (HAS_VOXEL and its tiers as Lit defines,
     //      GBUFFER 'Vox' 26; includes/voxel_vs.glsl and voxel_fs.glsl), T3's u_fs_terrainLayers
     //      packed to three vectors and a component a layer (includes/terrain_fs.glsl) and T4's Terrain
     //      Worlds (HAS_TERRAIN_WORLD, includes/terrain_world_vs.glsl; 'Twd': MESH 50, DEPTH 24, GBUFFER
-    //      27). The programme's own v58-v60 caches held other sources, so v61 is new to both sides.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v61";
+    //      27). The programme's own v58-v61 caches held other sources, so v62 is new to both sides.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v62";
 }
 
 void editor::App::pushTabNotificationStyle(){

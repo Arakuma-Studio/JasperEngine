@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "duration": 5,
+  "looping": true,
+  "tickRate": 60,
+  "maxParticles": 128,
+  "modules": [
+    {"type": "main", "startLifetime": {"mode": "twoConstants", "constant": 0.28, "constantMax": 0.6},
+     "startSpeed": {"mode": "twoConstants", "constant": 12, "constantMax": 30},
+     "startSize": {"mode": "twoConstants", "constant": 2, "constantMax": 5}, "startColor": [1, 1, 1, 1]},
+    {"type": "emission", "rateOverTime": 30},
+    {"type": "shape", "shape": "edge", "radius": 3},
+    {"type": "limitVelocity", "dampen": 0, "drag": 4, "multiplyBySize": false},
+    {"type": "forceOverLifetime", "y": 95, "space": "world"},
+    {"type": "colorOverLifetime", "color": {"mode": "ramp", "ramp": "builtin:pixelfx-effects#ramp:fire_cooling", "rampBias": 0.62}},
+    {"type": "sizeOverLifetime", "size": {"mode": "curve", "curve": [[0, 0.55, 2.59, 2.59], [0.142857, 0.921429, 2.59, -0.55], [1, 0.45, -0.55, -0.55]]}},
+    {"type": "subEmitters"},
+    {"type": "pixelArt", "fade": "dither", "ditherSize": 4, "secondaryOffset": 2, "wobbleAmplitude": [2, 0], "wobbleFrequency": [2.7, 2.7]},
+    {"type": "renderer", "renderMode": "pixel", "pixelShape": "disc", "discRim": true}
+  ],
+  "subEmitters": [
+    {"trigger": "death", "effect": "preset:pixel_smoke", "probability": 0.35, "inheritVelocity": true, "inheritSize": true, "inheritFactor": 0.65}
+  ]
+}
