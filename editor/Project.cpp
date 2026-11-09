@@ -12,6 +12,7 @@
 #include "component/MirrorComponent.h"
 #include "script/LuaBinding.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/TilemapSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/ButtonComponent.h"
@@ -6493,6 +6494,9 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<CameraControlSystem>()->setPaused(pause);
     // the wakes hold with the game (a hull dragged in edit mode leaves none)
     if (auto water = scene->findSystem<WaterInteractionSystem>()) water->setPaused(pause);
+    // only the tile animation clock (S50 R73): the layers keep drawing; a stopped scene's moves
+    // while the Scene view's Animate water is on (updateSceneRender)
+    if (auto tilemaps = scene->findSystem<TilemapSystem>()) tilemaps->setPaused(pause);
 }
 
 void editor::Project::stopCameraShakePreviews() {
@@ -8987,6 +8991,10 @@ void editor::Project::updateSceneRender(uint32_t sceneId){
             ? std::clamp(std::chrono::duration<double>(now - sceneProject->editClockLast).count(), 0.0, 0.25) : 0.0;
         sceneProject->editClockLast = now;
         sceneProject->editClockValid = true;
+        // tile animations follow the same switch (R73): the scene clock is the option, not water alone
+        if (sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
+            if (auto tilemaps = sceneProject->scene->findSystem<TilemapSystem>()) tilemaps->setPaused(!sceneProject->displaySettings.animateWater);
+        }
         if (sceneProject->playState == ScenePlayState::STOPPED && sceneProject->displaySettings.animateWater && delta > 0.0){
             if (sceneProject->scene)
                 sceneProject->scene->advanceSceneTime(delta, true);

@@ -85,6 +85,10 @@ namespace jasperengine::editor{
     class ApplyPaletteDialog;
     class PaletteWindow;
     class PixelArtCheckWindow;
+    namespace tilemap {
+        class TilePaletteWindow;
+        class TilesetEditorWindow;
+    }
     class VertexAnimationBakerWindow;
     class PhysicsPlacementWindow;
     class SystemsWindow;
@@ -269,6 +273,8 @@ namespace jasperengine::editor{
         // S43: Window > 2D > Palette and the Apply Palette / Reduce Colours dialog
         PaletteWindow* paletteWindow = nullptr;
         PixelArtCheckWindow* pixelArtCheckWindow = nullptr;
+        tilemap::TilePaletteWindow* tilePaletteWindow = nullptr;
+        tilemap::TilesetEditorWindow* tilesetEditorWindow = nullptr;
         ApplyPaletteDialog* applyPaletteDialog = nullptr;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
@@ -744,6 +750,8 @@ namespace jasperengine::editor{
         void openPaletteWindow(const std::string& palettePath, const std::string& texturePath) override;
         PaletteWindow* getPaletteWindow() const { return paletteWindow; }
         PixelArtCheckWindow* getPixelArtCheckWindow() const { return pixelArtCheckWindow; }
+        tilemap::TilePaletteWindow* getTilePaletteWindow() const { return tilePaletteWindow; }
+        tilemap::TilesetEditorWindow* getTilesetEditorWindow() const { return tilesetEditorWindow; }
         ApplyPaletteDialog* getApplyPaletteDialog() const { return applyPaletteDialog; }
         void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it

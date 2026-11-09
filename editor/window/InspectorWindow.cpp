@@ -10181,6 +10181,9 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
     endTable();
 
     if (entities.size() == 1) {
+        // S50 R72: the conversion's check result and button, before the rects
+        drawTilemapConvertSection(sceneProject, entities[0]);
+
         TilemapComponent& tilemap = sceneProject->scene->getComponent<TilemapComponent>(entities[0]);
         MeshComponent* meshComp = sceneProject->scene->findComponent<MeshComponent>(entities[0]);
 

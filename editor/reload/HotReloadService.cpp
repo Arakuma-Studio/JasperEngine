@@ -14,6 +14,7 @@
 #include "Project.h"
 #include "model/ModelCookQueue.h"
 #include "texture/TextureCookQueue.h"
+#include "tilemap/import/TilemapImportApply.h"
 #include "log/Logger.h"
 
 #include <algorithm>
@@ -70,6 +71,7 @@ namespace {
         else if (kind == "ui") noun = "UI file";
         else if (kind == "particles") noun = "particle effect";
         else if (kind == "palette") noun = "palette";
+        else if (kind == "tileset") noun = "tileset";
         return std::to_string(count) + " " + noun + (count == 1 ? "" : "s");
     }
 
@@ -408,7 +410,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             // and its load problems are the call's)
             // (a palette the Palette window or edit_palette wrote: the swaps drawn with it update; an
             // .aseprite an editor tool wrote: imported again like another program's save, S44 R23)
-            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "palette" || kind == "graph" ||
+            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "palette" || kind == "tileset" || kind == "graph" ||
                 kind == "aseprite" || kind == "font")
                 editorWritten[kind].push_back(change.path);
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) editorWritten["ui"].push_back(change.path);
@@ -480,8 +482,22 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         for (const FileChange& change : changes) paths.push_back(change.path);
         project->audioFilesChanged(paths);
     }
+    if (!playing) {
+        // S50 R47: linked tile maps, after this pass: they write .tileset files
+        std::vector<fs::path> paths;
+        for (const FileChange& change : changes) {
+            if (change.kind != FileChangeKind::Removed && !change.directory) paths.push_back(change.path);
+        }
+        if (!paths.empty()) {
+            Project* target = project;
+            getEditorHost().enqueueMainThreadTask([target, paths]() {
+                if (HotReloadService::get().getProject() == target) tilemapimport::linkedSourcesChanged(*target, paths);
+            });
+        }
+    }
     reload::reloadParticleEffects(ctx, files(external, "particles"));
     reload::reloadPalettes(ctx, both("palette"));
+    reload::reloadTilesets(ctx, both("tileset"));
     {
         std::vector<fs::path> graphDocuments = files(editorWritten, "graph");
         graphDocuments.insert(graphDocuments.end(), graphsGone.begin(), graphsGone.end());

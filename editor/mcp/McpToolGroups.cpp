@@ -40,6 +40,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
         {"shipping", "Player runtimes, native plugins, build shader overrides, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
         // the pixel-art family's sprites (S44 adds the row; S45 and S47 add their tools)
+        {"tilemaps", "Tilesets (tiles, collision, terrains, animation, properties) and Tiled/LDtk map import (jasper://docs/tilemaps)."},
         {"sprites", "Aseprite import settings, sprite atlases, and agent sprite drawing on .aseprite files (jasper://docs/sprites)."},
         // the pixel-art family's group: S42's check, S43's palettes, S51's font previews (pages named in pixel-art.md)
         {"pixel_art", "Pixel art: checks, palettes and font previews (jasper://docs/pixel-art)."},

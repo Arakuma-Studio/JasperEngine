@@ -981,6 +981,10 @@ namespace jasperengine::editor{
         std::string legacyConvertError;
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // grid tilemaps (InspectorTilemap.cpp, S50)
+        void drawGridComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTilemapLayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawTilemapConvertSection(SceneProject* sceneProject, Entity entity);
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLightComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the light's Shadows section (InspectorShadows.cpp), and its pieces

@@ -26,6 +26,13 @@ namespace jasperengine::editor::mcp {
     // and the next step to text (DocsTools.cpp). The searches agents look in call it.
     void addUnlistedTools(const std::shared_ptr<McpCall>& call, const std::string& query, std::string& text, Json& data);
 
+    // Grid tilemaps in edit_tilemap and get_tilemap (S50, TilemapGridTools.cpp): true when the call
+    // was a Grid, a Tilemap Layer or a new grid tilemap and has been answered
+    namespace tilemapgridtools {
+        bool editTilemapGrid(const std::shared_ptr<McpCall>& call);
+        bool getTilemapGrid(const std::shared_ptr<McpCall>& call);
+    }
+
     // Every tool, resource and prompt of the editor, in tools/list order (McpTools.cpp).
     // Side-effect free: needs no App and does no I/O, so the CLI builds the same registry
     // offline (`jasperengine-editor call --help`, list-tools) as the server does at start.
@@ -148,6 +155,7 @@ namespace jasperengine::editor::mcp {
     void registerOrganisationTools(McpRegistry& registry);
     void registerNavigationTools(McpRegistry& registry);
     void registerVcsTools(McpRegistry& registry);   // S29 (VcsTools.cpp)
+    void registerTilesetTools(McpRegistry& registry);   // S50 (TilesetTools.cpp): edit_tileset, import_tilemap
     void registerPaletteTools(McpRegistry& registry);   // S43 (PaletteTools.cpp): edit_palette, apply_palette
     void registerPixelArtTools(McpRegistry& registry);   // S42 (PixelArtTools.cpp): check_pixel_art
 

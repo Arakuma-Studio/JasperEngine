@@ -838,4 +838,9 @@ print(layer.cellCount, grid.cellSize, grid.layout)
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **R82, §6.1 (MCP guide).** No `## Pixel art` line: per the ledger's upstream rule change the area is one "Other
+  areas" entry (`tilemaps (edit_tilemap)`, `jasper://docs/tilemaps`). The guide's room came from moving the Unity-names
+  sentence on Build Settings and Scenes in Build to `docs/unity-glossary.md` (already there) and the Code section.
+- **R75 `create`.** `create` makes a Grid + Tilemap Layer, except with `rects`, `replace_rects` or `origin`, which keep
+  making a Free Tilemap (arbitrary pixel rects have no `.tileset` source). `create_entity` `tilemap` is a Grid + layer;
+  the Free Tilemap is `free_tilemap`. The result's `grid` holds the Grid's GameObject fields and the ASCII view together.

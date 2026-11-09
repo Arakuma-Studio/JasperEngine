@@ -187,8 +187,9 @@ async def test_tilemap_past_old_capacity(ed: Editor):
     texture = "assets/big-grid.png"
     image_file(ed, texture)
     grid = "\n".join(["a" * 70] * 30)
+    # rects on a create make a Free Tilemap (S50 R75: a Grid has no tile limit, and this checks the legacy one)
     made = await ed.call("edit_tilemap", scene=sid, create={"name": "Big"}, texture=texture,
-                         tileset={"columns": 2, "rows": 1, "names": ["grass", "stone"]}, cell_size=[4, 4],
+                         rects=[{"name": "grass", "rect": [0, 0, 4, 4]}, {"name": "stone", "rect": [4, 0, 4, 4]}], cell_size=[4, 4],
                          ops=[{"op": "paint", "grid": grid, "legend": {"a": "grass"}}])
     tilemap = made["tilemap"]["id"]
     actual = await ed.call("get_tilemap", scene=sid, entity=tilemap)

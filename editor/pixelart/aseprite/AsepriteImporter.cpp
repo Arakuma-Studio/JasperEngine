@@ -17,6 +17,7 @@
 #include "sprite/SpriteSheetIO.h"
 #include "sprite/SpriteSheetPool.h"
 #include "texture/Texture.h"
+#include "tilemap/TilesetPool.h"
 #include "util/Sha256.h"
 
 #include <algorithm>
@@ -424,6 +425,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             records[r.assetPath] = swap.record;
         }
         SpriteSheetPool::invalidate(r.assetPath);
+        TilesetPool::asepriteSourceChanged(r.assetPath);
         AnimationClipPool::invalidateModel(r.assetPath);
         // an idle Scene view updates its systems only when flagged: the sprites showing the file
         // pick the new sheet up on the next frame (R22)

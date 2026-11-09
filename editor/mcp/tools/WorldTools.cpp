@@ -2815,6 +2815,8 @@ Json tileRectsJson(const TilemapComponent& tilemap) {
 }
 
 void editTilemapTool(const CallPtr& call) {
+    // a Grid, a Tilemap Layer or a new grid tilemap; the rest of this function is the Free Tilemap's
+    if (tilemapgridtools::editTilemapGrid(call)) return;
     Target target;
     if (!resolveSceneArg(call, target) || !sceneStopped(call, target)) return;
     const Json& args = call->args();
@@ -3137,6 +3139,7 @@ void editTilemapTool(const CallPtr& call) {
 }
 
 void getTilemapTool(const CallPtr& call) {
+    if (tilemapgridtools::getTilemapGrid(call)) return;
     Target target;
     if (!resolveEntityArg(call, target)) return;
     const Json& args = call->args();
@@ -6591,28 +6594,34 @@ void registerWorldTools(McpRegistry& registry) {
     group.clear();
 
     // ---------------------------------------------------------------- tilemap
+    // S50 R75: the op vocabulary lives in jasper://docs/tilemaps; legacy Free Tilemaps keep the
+    // old fields (rects, replace_rects, origin make a create one of them).
     add("edit_tilemap", "Edit Tilemap",
-        "Build or edit a Tilemap: texture, tile rects (tileset slice or rects), then ops in order. Cells (col, "
-        "row) of cell_size (default: first rect's) from origin; row 0 = bottom. paint {grid, legend, at, blank}: "
-        "grid = multi-line string or lines, TOP line = highest row, bottom line at row at[1]; legend: char -> "
-        "rect name/index (null erases); '.' and ' ' are empty (blank: skip|erase). fill {tile, from, to} "
-        "(inclusive), erase {from, to}, set {cells: [[col, row, tile]]}, clear.",
+        "Edits a Grid tilemap in one undo step, rolled back whole on any failing op (preview writes "
+        "nothing). entity: a Grid or Tilemap Layer (layer picks one; default first); create makes Grid + Tilemap "
+        "Layer. tileset: a .tileset path or a slice object (writes <texture>.tileset). ops run in order: "
+        "jasper://docs/tilemaps lists them. Read back with get_tilemap.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"create", createSpec},
+            {"layer", {{"type", {"string", "integer"}}}},
+            {"layout", stringEnum("With create.", {"rectangle", "isometric", "isometric_staggered", "hexagon"})},
             {"texture", assetPath("")},
-            {"tileset", object({
-                {"tile_size", vec2("Pixels.")},
-                {"columns", integer("")},
-                {"rows", integer("")},
-                {"offset", vec2("")},
-                {"padding", vec2("")},
-                {"count", integer("")},
-                {"names", array(string(""), "Row-major.")},
-                {"prefix", withDefault(string(""), "tile_")},
-                {"sheet_size", vec2("If unreadable.")}
-            })},
+            {"tileset", {{"anyOf", Json::array({
+                {{"type", "string"}},
+                object({
+                    {"tile_size", vec2("Pixels.")},
+                    {"columns", integer("")},
+                    {"rows", integer("")},
+                    {"offset", vec2("")},
+                    {"padding", vec2("")},
+                    {"count", integer("")},
+                    {"names", array(string(""), "Row-major.")},
+                    {"prefix", withDefault(string(""), "tile_")},
+                    {"sheet_size", vec2("If unreadable.")}
+                })
+            })}}},
             {"rects", array(object({{"name", string("Replaces same name.")},
                                     {"rect", vec4("[x, y, w, h] px, top-left origin.")},
                                     {"submesh", integer("")}}, {"rect"}), "")},
@@ -6620,20 +6629,29 @@ void registerWorldTools(McpRegistry& registry) {
             {"cell_size", vec2("")},
             {"origin", vec2(">= 0.")},
             {"ops", array(anyObject("{op, ...}"), "")},
+            {"preview", boolean("")},
+            {"image", boolean("")},
+            {"scale", integer("", 1, 8)},
             {"return_grid", withDefault(boolean(""), true)},
             {"max_cells", withDefault(integer("Largest grid as lines."), 6000)}
         }),
         editTilemapTool, false, false);
 
     add("get_tilemap", "Get Tilemap",
-        "A Tilemap: texture, rects (index, name, pixel rect), tile count, cell size, col/row ranges, an ASCII "
-        "view (grid.lines, top = highest row; grid.legend). Off-grid tiles are only counted.",
+        "A Grid, Tilemap Layer or Free Tilemap: layout, layers, an ASCII grid of the region (grid.lines, top = highest "
+        "row; legend), include_terrain, missing_tiles, include_tiles (cells), image at scale. Read after painting.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
+            {"layer", {{"type", {"string", "integer"}}}},
+            {"region", array(integer(""), "[x0, y0, x1, y1].")},
             {"cell_size", vec2("")},
             {"origin", vec2("")},
             {"include_tiles", boolean("")},
+            {"include_terrain", boolean("")},
+            {"missing_tiles", boolean("")},
+            {"image", boolean("")},
+            {"scale", integer("", 1, 8)},
             {"limit", withDefault(integer(""), 200)},
             {"max_cells", withDefault(integer("Largest grid as lines."), 6000)}
         }, {"entity"}),

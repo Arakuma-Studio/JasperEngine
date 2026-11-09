@@ -61,7 +61,8 @@ namespace jasperengine::editor {
         ANIMATOR_ASSET,     // .controller (the Animator window), .mask, .montage (the Inspector)
         VERTEX_ANIMATION,   // .vat (the Inspector's asset view / the baker; an icon, no thumbnail)
         PHYSICS_MATERIAL,   // .physicsmaterial (the Inspector's asset view; an icon)
-        PALETTE             // .palette (the Palette window; a thumbnail of its swatches)
+        PALETTE,            // .palette (the Palette window; a thumbnail of its swatches)
+        TILESET             // .tileset (the Tileset Editor; a thumbnail of its tiles)
     };
 
     struct FileEntry {
@@ -183,6 +184,8 @@ namespace jasperengine::editor {
         // .palette files until their swatch thumbnail is made (S43 R37)
         Texture paletteIcon;
         std::vector<uint8_t> paletteIconPixels;
+        Texture tilesetIcon;
+        std::vector<uint8_t> tilesetIconPixels;
         std::vector<uint8_t> animationClipIconPixels;
         // and a crowd of three figures for .vat files (vertex animation spec 5.3)
         Texture vertexAnimationIcon;
@@ -624,6 +627,7 @@ namespace jasperengine::editor {
         // Create > Palette: "New Palette.palette" (black and white) in `directory`, one project undo
         // step, then renamed in place (S43 R37)
         void assetsCreatePalette(const fs::path& directory);
+        void assetsCreateTileset(const fs::path& directory);
         void assetsShowInFileManager();
         // The files selected in the folder view (absolute), for editor-script menu items
         std::vector<fs::path> getSelectedFiles() const;

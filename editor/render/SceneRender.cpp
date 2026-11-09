@@ -5,6 +5,7 @@
 #include "pixelart/PixelPerfectEditor.h"
 #include "pixelart/PixelSnap.h"
 #include "SceneRender.h"
+#include "scenetool/SceneTool.h"
 #include "LayerViewCamera.h"
 #include "component/AudioSourceComponent.h"
 #include "component/MeshPolygonComponent.h"
@@ -1142,7 +1143,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
     // the terrain and Paint Dye brushes take the left button: no gizmo to grab
     bool terrainEditing = isTerrainEditing();
-    bool fluidPainting = isFluidPainting();
+    bool fluidPainting = isFluidPainting() || SceneTools::activeOn(scene);
 
     totalSelBB.setHalfExtents(totalSelBB.getHalfExtents() + Vector3(selectionOffset));
 
@@ -2924,7 +2925,7 @@ bool editor::SceneRender::worldToScreen(const Vector3& world, Vector2& screen) c
 
 bool editor::SceneRender::hasHoverFeedback() const{
     // the Paint Dye brush's circle follows the pointer like the terrain brush's
-    return gizmoTools().isGizmoVisible() || isTerrainEditing() || isFluidPainting();
+    return gizmoTools().isGizmoVisible() || isTerrainEditing() || isFluidPainting() || SceneTools::activeOn(scene);
 }
 
 float editor::SceneRender::snapRotationAngle(float angle, bool invertRotationSnap) const{

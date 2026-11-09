@@ -22,6 +22,8 @@
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/TilemapComponent.h"
+#include "component/TilemapLayerComponent.h"
+#include "tilemap/TilesetPool.h"
 #include "external/IconsFontAwesome6.h"
 #include "navigation/NavigationEditor.h"
 #include "navigation/NavTypes.h"
@@ -747,15 +749,25 @@ void editor::InspectorWindow::drawNavGridComponent(ComponentType cpType, ScenePr
     if (grid.source == NavGridSource::TILEMAP) {
         const Entity tilemapEntity = grid.sourceEntity != NULL_ENTITY ? grid.sourceEntity : entity;
         const TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(tilemapEntity);
-        if (!tilemap) {
+        const TilemapLayerComponent* tileLayer = scene->findComponent<TilemapLayerComponent>(tilemapEntity);
+        // the rects of a legacy Tilemap, the tiles of a Tilemap Layer's Tileset (S50 R51)
+        std::vector<std::string> tileNames;
+        if (tilemap) {
+            for (unsigned int r = 0; r < tilemap->numTilesRect; r++) tileNames.push_back(tilemap->tilesRect[r].name);
+        } else if (tileLayer && !tileLayer->tileset.empty()) {
+            if (std::shared_ptr<const TilesetRuntime> tileset = TilesetPool::get(tileLayer->tileset.path)) {
+                for (const TileDef& tile : tileset->data->tiles) tileNames.push_back(tileset->data->tileName(tile));
+            }
+        }
+        if (!tilemap && !tileLayer) {
             warningLine("No Tilemap on the source object.");
         } else if (ImGui::BeginTable("##navtileareas", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
             ImGui::TableSetupColumn("Tile Rect");
             ImGui::TableSetupColumn("Area");
             ImGui::TableHeadersRow();
             DynamicEntries& areas = areaEntries();
-            for (unsigned int r = 0; r < tilemap->numTilesRect; r++) {
-                const std::string& rectName = tilemap->tilesRect[r].name;
+            for (size_t r = 0; r < tileNames.size(); r++) {
+                const std::string& rectName = tileNames[r];
                 if (rectName.empty()) continue;
                 int area = nav::AREA_WALKABLE;
                 for (const NavGridTileArea& entry : grid.tileAreas) {
