@@ -501,6 +501,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["vertexAnimationBaker"]) panelVisibility.vertexAnimationBaker = panelsNode["vertexAnimationBaker"].as<bool>();
                 if (panelsNode["physicsPlacement"]) panelVisibility.physicsPlacement = panelsNode["physicsPlacement"].as<bool>();
                 if (panelsNode["spriteNormals"]) panelVisibility.spriteNormals = panelsNode["spriteNormals"].as<bool>();
+                if (panelsNode["pixelArtCleanup"]) panelVisibility.pixelArtCleanup = panelsNode["pixelArtCleanup"].as<bool>();
                 if (panelsNode["mcp"]) panelVisibility.mcp = panelsNode["mcp"].as<bool>();
                 if (panelsNode["game"]) panelVisibility.game = panelsNode["game"].as<bool>();
                 if (panelsNode["undo_history"]) panelVisibility.undoHistory = panelsNode["undo_history"].as<bool>();
@@ -829,6 +830,7 @@ bool AppSettings::saveSettings() {
         panelsNode["vertexAnimationBaker"] = panelVisibility.vertexAnimationBaker;
         panelsNode["physicsPlacement"] = panelVisibility.physicsPlacement;
         panelsNode["spriteNormals"] = panelVisibility.spriteNormals;
+        panelsNode["pixelArtCleanup"] = panelVisibility.pixelArtCleanup;
         panelsNode["mcp"] = panelVisibility.mcp;
         panelsNode["game"] = panelVisibility.game;
         panelsNode["undo_history"] = panelVisibility.undoHistory;

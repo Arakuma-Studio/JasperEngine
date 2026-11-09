@@ -17,12 +17,31 @@
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace jasperengine {
     class TextureData;
 }
 
 namespace jasperengine::editor {
+
+    // A step run on a 2D source's decoded pixels before they are prepared (S46 R33, the pixel-art
+    // cleanup of import.pixelCleanup). The cooker only knows this shape: what the step does is
+    // the hook's, so no code linked here depends on it. A request without a key runs no step and
+    // cooks exactly as it did.
+    struct TextureCookStep {
+        // the step's identity in the cache key ("" no step): whatever changes its output
+        std::string key;
+        struct Outcome {
+            bool applied = false;           // `rgba` holds the output, else the source is cooked as it is
+            int width = 0, height = 0;
+            std::vector<uint8_t> rgba;      // straight RGBA8, rows top first, when applied
+            std::string guard;              // not applied: why a person must look (a guard's id)
+            std::string error;              // not applied: the step could not run (a broken recipe)
+        };
+        // the source's straight RGBA8 pixels, rows top first, and its file's SHA-256
+        std::function<Outcome(const uint8_t* rgba, int width, int height, const std::string& sourceSha256)> run;
+    };
 
     struct TextureCookRequest {
         std::filesystem::path source;       // absolute
@@ -34,6 +53,8 @@ namespace jasperengine::editor {
         // post-processing LUTs, spot light masks
         bool cpuReadable = false;
         std::string cpuReason;
+        // optional (S46 R33)
+        TextureCookStep step;
     };
 
     struct TextureCookPlan {

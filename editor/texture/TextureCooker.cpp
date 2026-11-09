@@ -8,6 +8,8 @@
 #include "texture/TextureDecode.h"
 #include "texture/TextureFallback.h"
 
+#include "htmlui/compat/Hash.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -63,6 +65,46 @@ namespace {
         if (!Ktx2::write(desc, out, error, 9, zstdCompress))
             out.clear();
         return out;
+    }
+
+    // what the sources table remembers a step's analysis under (the key can be long)
+    std::string stepVariant(const TextureCookStep& step){
+        return htmlui::compat::sha256Hex(step.key);
+    }
+
+    // Runs a request's step on a decoded 2D source: `image` is replaced by the step's output when
+    // it applies. `analysis` (when given) notes how it ended.
+    void runCookStep(const TextureCookStep& step, TextureData& image, const std::string& sourceSha256, TextureSourceAnalysis* analysis,
+                     std::vector<std::string>& warnings){
+        std::vector<uint8_t> rgba;
+        const uint8_t* pixels = nullptr;
+        if (image.getColorFormat() == ColorFormat::RGBA && image.getChannels() == 4){
+            pixels = (const uint8_t*)image.getData();
+        }else if (image.toRgba8(rgba)){
+            pixels = rgba.data();
+        }
+        TextureCookStep::Outcome outcome;
+        if (!pixels){
+            outcome.error = "its pixels cannot be read as RGBA8";
+        }else if (step.run){
+            outcome = step.run(pixels, image.getWidth(), image.getHeight(), sourceSha256);
+        }
+        if (outcome.applied){
+            void* copy = malloc(outcome.rgba.size());
+            std::memcpy(copy, outcome.rgba.data(), outcome.rgba.size());
+            TextureData fixed(outcome.width, outcome.height, (unsigned int)outcome.rgba.size(), ColorFormat::RGBA, 4, copy);
+            image.releaseImageData();
+            image = fixed;
+            image.setDataOwned(true);
+        }
+        if (analysis){
+            analysis->stepState = outcome.applied ? "applied" : outcome.guard.empty() ? "failed" : "guarded";
+            analysis->stepGuard = outcome.applied ? std::string() : outcome.guard.empty() ? outcome.error : outcome.guard;
+        }
+        if (!outcome.applied){
+            const std::string why = outcome.guard.empty() ? outcome.error : "needs a person (" + outcome.guard + ")";
+            warnings.push_back("Pixel Art Cleanup did not run: " + why + ". The source is cooked as it is.");
+        }
     }
 
 }
@@ -172,16 +214,25 @@ bool TextureCooker::plan(TextureCookCache& cache, const TextureCookRequest& requ
     out.resolved.cpuReadable = request.cpuReadable || out.resolved.readable;
     out.resolved.cpuReason = request.cpuReadable ? request.cpuReason : (out.resolved.readable ? "Read/Write" : "");
     const bool cube = out.resolved.shape == TextureShape::Cube;
+    // a step of a 2D source: its output's analysis is what gets selected for (S46 R33)
+    const bool step = !request.step.key.empty() && !cube;
     if (!cache.sourceHash(request.source, out.sourceSha256, out.analysis, [&](TextureSourceAnalysis& analysis){
             std::array<TextureData, 6> faces;
             const int count = decodeSource(request.source, cube, faces, error);
             if (count == 0)
                 return false;
+            TextureSourceAnalysis stepResult;
+            if (step){
+                std::vector<std::string> ignored;
+                runCookStep(request.step, faces[0], out.sourceSha256, &stepResult, ignored);
+            }
             analyze(faces, count, analysis);
+            analysis.stepState = stepResult.stepState;
+            analysis.stepGuard = stepResult.stepGuard;
             for (TextureData& face : faces)
                 face.releaseImageData();
             return true;
-        })){
+        }, step ? stepVariant(request.step) : std::string())){
         if (error.empty())
             error = "cannot read " + request.assetPath;
         return false;
@@ -192,6 +243,7 @@ bool TextureCooker::plan(TextureCookCache& cache, const TextureCookRequest& requ
         const int count = decodeSource(request.source, cube, faces, error);
         if (count == 0)
             return false;
+        // (cube was just requested: no step reaches here, a step's plan is never a cube's)
         analyze(faces, count, out.analysis);
         for (TextureData& face : faces)
             face.releaseImageData();
@@ -212,7 +264,11 @@ bool TextureCooker::plan(TextureCookCache& cache, const TextureCookRequest& requ
     if (request.settings.maxSize && std::max(out.analysis.width, out.analysis.height) > out.resolved.maxSize)
         out.choice.warnings.push_back(std::to_string(out.analysis.width) + "x" + std::to_string(out.analysis.height) +
                                       " is clamped to " + std::to_string(width) + "x" + std::to_string(height) + " by Max Size");
-    out.key = TextureCookCache::key(out.sourceSha256, out.resolved, request.family, out.choice);
+    if (step && out.analysis.stepState != "applied"){
+        const std::string why = out.analysis.stepState == "guarded" ? "needs a person (" + out.analysis.stepGuard + ")" : out.analysis.stepGuard;
+        out.choice.warnings.push_back("Pixel Art Cleanup did not run: " + why + ". The source is cooked as it is.");
+    }
+    out.key = TextureCookCache::key(out.sourceSha256, out.resolved, request.family, out.choice, step ? request.step.key : std::string());
     return true;
 }
 
@@ -233,6 +289,10 @@ TextureCookResult TextureCooker::cook(TextureCookCache& cache, const TextureCook
     const int count = decodeSource(request.source, cube, faces, result.error);
     if (count == 0)
         return result;
+    if (!request.step.key.empty() && !cube){
+        std::vector<std::string> warnings;
+        runCookStep(request.step, faces[0], plan.sourceSha256, nullptr, warnings);
+    }
     TextureProcessing processing = plan.resolved.processing();
     processing.sizeMultiple = plan.choice.sizeMultiple;
     std::vector<const TextureData*> pointers;

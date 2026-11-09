@@ -75,6 +75,8 @@ namespace jasperengine::editor {
         TextureImportSettings settings;
         bool hasSettings = false;       // false: the settings were inferred now (to be written)
         TextureInference inference;
+        // import.pixelCleanup's canonical recipe text ("" off, or .aseprite): S46 R33
+        std::string pixelCleanupRecipe;
     };
 
     // What a cook of one texture reads: its sidecar settings (inferred when it has none) and its
@@ -212,6 +214,7 @@ namespace jasperengine::editor {
         std::deque<std::pair<std::string, std::string>> metaWrites;   // assetPath, YAML of inferred settings
         std::vector<std::string> cpuRequests;   // found cooked GPU-only by a CPU reader, for update()
         std::set<std::string> cpuRecooks;       // their next cook goes CPU-readable
+        std::set<std::string> cleanupWarned;    // "<asset>|<guard>": said on the Console (S46 R33)
         uint64_t sequence = 0;              // request order among equal priorities
         int progressDone = 0;
         int progressTotal = 0;

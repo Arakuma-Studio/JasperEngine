@@ -64,9 +64,20 @@ bool TextureSourceAnalysis::hasAlpha(TextureAlphaSource source) const{
     }
 }
 
+namespace {
+void addStepFields(const TextureSourceAnalysis& analysis, Json& json){
+    if (!analysis.stepState.empty())
+        json["stepState"] = analysis.stepState;
+    if (!analysis.stepGuard.empty())
+        json["stepGuard"] = analysis.stepGuard;
+}
+}
+
 Json TextureSourceAnalysis::toJson() const{
-    return {{"width", width}, {"height", height}, {"faces", faces}, {"inputAlpha", inputAlpha}, {"grayAlpha", grayAlpha},
-            {"float", floatSource}, {"sixteenBit", sixteenBit}, {"singleChannel", singleChannel}, {"bytes", bytes}};
+    Json json = {{"width", width}, {"height", height}, {"faces", faces}, {"inputAlpha", inputAlpha}, {"grayAlpha", grayAlpha},
+                 {"float", floatSource}, {"sixteenBit", sixteenBit}, {"singleChannel", singleChannel}, {"bytes", bytes}};
+    addStepFields(*this, json);
+    return json;
 }
 
 bool TextureSourceAnalysis::fromJson(const Json& json, TextureSourceAnalysis& out){
@@ -80,6 +91,8 @@ bool TextureSourceAnalysis::fromJson(const Json& json, TextureSourceAnalysis& ou
     out.floatSource = json.value("float", false);
     out.sixteenBit = json.value("sixteenBit", false);
     out.singleChannel = json.value("singleChannel", false);
+    out.stepState = json.value("stepState", std::string());
+    out.stepGuard = json.value("stepGuard", std::string());
     out.bytes = json.value("bytes", (uint64_t)0);
     return out.width > 0 && out.height > 0;
 }
@@ -166,13 +179,15 @@ bool TextureCookCache::isOpen() const{
 }
 
 bool TextureCookCache::sourceHash(const fs::path& absolute, std::string& sha256, TextureSourceAnalysis& analysis,
-                                  const std::function<bool(TextureSourceAnalysis&)>& analyze){
+                                  const std::function<bool(TextureSourceAnalysis&)>& analyze, const std::string& variant){
     std::error_code ec;
     const uint64_t size = (uint64_t)fs::file_size(absolute, ec);
     if (ec)
         return false;
     const int64_t mtime = fileTime(absolute);
-    const std::string key = absolute.lexically_normal().generic_string();
+    std::string key = absolute.lexically_normal().generic_string();
+    if (!variant.empty())
+        key += "#" + variant;
     {
         std::lock_guard<std::mutex> lock(mutex);
         auto it = sources.find(key);
@@ -216,7 +231,7 @@ void TextureCookCache::saveSources(){
 }
 
 std::string TextureCookCache::key(const std::string& sourceSha256, const ResolvedTextureSettings& settings, TextureFamily family,
-                                  const TextureFormatChoice& choice){
+                                  const TextureFormatChoice& choice, const std::string& stepKey){
     const ITextureEncoder& encoder = textureEncoderFor(choice);
     std::ostringstream text;
     text.imbue(std::locale::classic());
@@ -231,6 +246,8 @@ std::string TextureCookCache::key(const std::string& sourceSha256, const Resolve
          << "encoder " << encoder.name() << " " << encoder.version() << "\n";
     if (!encoder.isaInvariant())
         text << "isa " << textureEncoderIsa() << "\n";
+    if (!stepKey.empty())
+        text << "step " << stepKey << "\n";
     return htmlui::compat::sha256Hex(text.str());
 }
 

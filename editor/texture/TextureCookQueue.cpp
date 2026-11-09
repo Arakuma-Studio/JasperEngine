@@ -9,6 +9,7 @@
 #include "Scene.h"
 #include "component/TerrainComponent.h"
 #include "command/type/SetAssetMetaCmd.h"
+#include "pixelart/cleanup/CleanupImportCook.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
@@ -19,6 +20,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <set>
 #include <unordered_set>
 #include <chrono>
 #include <condition_variable>
@@ -29,6 +31,19 @@ using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
 namespace {
+
+    // The Console line of a Pixel Art Cleanup step that did not apply (S46 R33), once per
+    // texture and guard
+    void warnPixelCleanupStep(const std::string& assetPath, const TextureSourceAnalysis& analysis, std::set<std::string>& warned){
+        if (analysis.stepState != "guarded" && analysis.stepState != "failed")
+            return;
+        if (!warned.insert(assetPath + "|" + analysis.stepGuard).second)
+            return;
+        if (analysis.stepState == "guarded")
+            Out::warning("Pixel Art Cleanup of %s needs a person (guard %s): the raw source was cooked.", assetPath.c_str(), analysis.stepGuard.c_str());
+        else
+            Out::warning("Pixel Art Cleanup of %s did not run (%s): the raw source was cooked.", assetPath.c_str(), analysis.stepGuard.c_str());
+    }
 
     std::string cookLowerExtension(const std::string& path){
         std::string extension = fs::path(path).extension().string();
@@ -129,6 +144,7 @@ bool editor::gatherTextureInputs(Project& project, const std::string& assetPath,
     out.inference = TextureTypeInference::infer(project, out.projectRelative);
     if (!out.hasSettings)
         out.settings = cookInferredSettings(out.inference);
+    out.pixelCleanupRecipe = pixelart::cleanup::importStepRecipeText(out.absolute);
     return true;
 }
 
@@ -196,6 +212,7 @@ TextureCookRequest editor::makeTextureCookRequest(const TextureCookInputs& input
     request.family = family;
     request.cpuReadable = inputs.inference.cpuReadable;
     request.cpuReason = inputs.inference.cpuReason;
+    request.step = pixelart::cleanup::importCookStep(inputs.pixelCleanupRecipe);
     return request;
 }
 
@@ -278,7 +295,13 @@ void TextureCookQueue::attach(Project* newProject){
         if (writer != project || key.rfind("import", 0) != 0)
             return;
         const std::string assetPath = assetPathOf(writer->getProjectPath() / asset);
-        if (!assetPath.empty())
+        if (assetPath.empty())
+            return;
+        // the Pixel Art Cleanup step (S46 R33) is not part of the importer's settings: its
+        // edit always cooks again
+        if (key.rfind("import.pixelCleanup", 0) == 0 && isCookableTexture(assetPath))
+            invalidate(assetPath);
+        else
             settingsChanged(assetPath);
     });
 }
@@ -482,6 +505,8 @@ void TextureCookQueue::invalidate(const std::string& assetPath){
     {
         std::lock_guard<std::mutex> lock(mutex);
         settingsMemo.erase(assetPath);
+        for (auto it = cleanupWarned.lower_bound(assetPath + "|"); it != cleanupWarned.end() && it->rfind(assetPath + "|", 0) == 0;)
+            it = cleanupWarned.erase(it);
         for (auto& [key, entry] : entries){
             if (key.first != assetPath)
                 continue;
@@ -754,6 +779,7 @@ void TextureCookQueue::startJobs(){
                 inputs.settings = cookInferredSettings(inputs.inference);
                 job->inferred = true;
             }
+            inputs.pixelCleanupRecipe = pixelart::cleanup::importStepRecipeText(inputs.absolute);
             if (inputs.inference.sourceOnly){
                 job->sourceOnly = true;
                 job->result.ok = true;
@@ -882,6 +908,9 @@ void TextureCookQueue::collectJobs(){
         if (job->result.ok && !job->sourceOnly && !job->result.cacheHit)
             Out::info("Cooked %s for %s: %s, %.0f ms", job->assetPath.c_str(), textureFamilyName(job->family),
                       job->result.record.label.c_str(), job->result.record.cookMs);
+        // S46 R33: a Pixel Art Cleanup step that did not apply is said once per texture until it changes
+        if (job->result.ok && !job->sourceOnly)
+            warnPixelCleanupStep(job->assetPath, job->result.plan.analysis, cleanupWarned);
         else if (!job->result.ok && !job->result.cancelled && !job->cancel && !gone)
             Out::error("Texture cook of %s for %s failed: %s", job->assetPath.c_str(), textureFamilyName(job->family),
                        job->result.error.c_str());
@@ -1169,4 +1198,10 @@ void TextureBatchCook::run(TextureCookCache& cache, const TextureProjectSettings
     for (std::thread& thread : pool)
         thread.join();
     cache.saveSources();
+    // S46 R33: every family says the same, so one line per texture
+    std::set<std::string> warned;
+    for (const TextureBatchItem& item : items){
+        if (item.result.ok && !item.sourceOnly)
+            warnPixelCleanupStep(item.assetPath, item.result.plan.analysis, warned);
+    }
 }

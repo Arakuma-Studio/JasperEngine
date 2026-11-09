@@ -201,6 +201,20 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pixelart/cleanup/CleanupSheetOutput.cpp
     ${EDITOR_DIR}/pixelart/cleanup/CleanupRecipe.cpp
     ${EDITOR_DIR}/pixelart/cleanup/CleanupReport.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSession.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupCli.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupImportCook.cpp
+    ${EDITOR_DIR}/window/PixelArtCleanupWindow.cpp
+    ${EDITOR_DIR}/mcp/tools/PixelArtCleanupTools.cpp
+)
+jasperengine_skip_unity_build(
+    REASON "S46's session, CLI and MCP tools: file-local helpers (problemJson, lowerExtension, scaled) shared in name with the palette and sprite tools"
+    SOURCES
+        ${EDITOR_DIR}/pixelart/cleanup/CleanupSession.cpp
+        ${EDITOR_DIR}/pixelart/cleanup/CleanupCli.cpp
+        ${EDITOR_DIR}/pixelart/cleanup/CleanupImportCook.cpp
+        ${EDITOR_DIR}/window/PixelArtCleanupWindow.cpp
+        ${EDITOR_DIR}/mcp/tools/PixelArtCleanupTools.cpp
 )
 # the cleanup and the lints decide on doubles and S43's colours: the same bits on every platform
 set_source_files_properties(
