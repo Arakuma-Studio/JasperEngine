@@ -963,8 +963,10 @@ namespace jasperengine::editor{
         bool terrainQualityWritten = false;     // the project says: an old one has no key
         bool shipAllTerrainTiers = false;
         bool compressTerrainLayers = false;
-        // the platforms an export collects terrain tiers for (empty: all of them)
-        std::vector<int> terrainExportPlatforms;
+        // the platforms the running export collects terrain tiers for (empty: all of them; none: no
+        // export runs), read on the main thread and the export's (beginTerrainExport)
+        std::optional<std::vector<int>> terrainExportPlatforms;
+        mutable std::mutex terrainExportMutex;
         WindowMode windowMode;
         unsigned int windowWidth;
         unsigned int windowHeight;
@@ -1839,9 +1841,14 @@ namespace jasperengine::editor{
         // Android and iOS Low, and Compress Terrain Layers on
         void applyNewProjectTerrainDefaults();
         // T3 R34: the tiers an export ships: the project's of its target platforms, any component's own,
-        // all three when a script names them or Ship All Terrain Tiers is on
-        void setTerrainExportPlatforms(const std::vector<int>& platforms) { terrainExportPlatforms = platforms; }
+        // all three when a script names them or Ship All Terrain Tiers is on. The Exporter names its
+        // platforms before its scenes save and main.cpp is written, for that export only: a save or a
+        // main.cpp written after it does not follow the last export's target
+        void beginTerrainExport(const std::vector<int>& platforms);
+        void endTerrainExport();
         uint32_t getShippedTerrainTiers() const;
+        // the tiers the generated main.cpp ships: the running export's, else all (Play draws them all)
+        uint32_t getGeneratedTerrainTiers() const;
         // lower-case platform names of the setting: macos, ios, web, android, linux, windows
         static const char* getShadowTierPlatformName(int platform);
         static int findShadowTierPlatform(const std::string& name);

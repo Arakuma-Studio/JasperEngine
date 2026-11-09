@@ -119,3 +119,28 @@ async def test_ui_readout(ed):
     assert after["limit_layers_per_pixel"] is flipped
     await ed.call("undo")
     assert (await material(ed, scene, entity))["limit_layers_per_pixel"] == before["limit_layers_per_pixel"]
+
+
+async def source_main_cpp(ed, name):
+    out = ed.scratch.root / name
+    made = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", backends=["opengl"], allow_missing_assets=True,
+                         overwrite=True, timeout_seconds=900)
+    assert made["status"] == "succeeded", str(made)[:2000]
+    return (out / "project" / "main.cpp").read_text()
+
+
+async def test_main_cpp_ships_the_tiers_of_each_export(ed):
+    """R34: a source export's main.cpp ships the tiers of every platform, from the first export the
+    editor makes, and the next export follows a changed tier, not the mask of the one before"""
+    await ed.call("save_project", untitled_scene_dir="scenes")
+    await ed.call("set_project_settings", values={"graphics.terrainQuality.ios": "high", "graphics.terrainQuality.web": "high",
+                                                  "graphics.terrainQuality.android": "low"})
+    first = await source_main_cpp(ed, "tiers-1")
+    assert "terraincore::TerrainQualitySettings::setShippedMask(5u);" in first, [l for l in first.splitlines() if "Terrain" in l]
+    await ed.call("set_project_settings", values={"graphics.terrainQuality.android": "medium"})
+    second = await source_main_cpp(ed, "tiers-2")
+    assert "terraincore::TerrainQualitySettings::setShippedMask(3u);" in second, [l for l in second.splitlines() if "Terrain" in l]
+    # every tier shipped is the engine's default: no line
+    await ed.call("set_project_settings", values={"graphics.terrainQuality.android": "low", "graphics.terrainQuality.web": "medium"})
+    third = await source_main_cpp(ed, "tiers-3")
+    assert "setShippedMask" not in third, [l for l in third.splitlines() if "Terrain" in l]

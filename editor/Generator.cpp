@@ -2320,8 +2320,6 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-uint32_t editor::Generator::exportTerrainTiers = terraincore::TERRAIN_ALL_TIERS;
-
 void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading, const HtmlUiRenderSettings& htmlUiRender, PbrTier mobilePbrTier, const ShaderCreationProjectSettings& shaderCreation, bool allowInsecureHttp, const std::vector<ShaderGlobalDecl>& shaderGlobals, const PlayerSettings& playerSettings, const AudioSettings& audioSettings, const DebugSettings& debugSettings, uint32_t particleWorldBudget){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
     // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
@@ -2666,8 +2664,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
             }
         }
         // every tier is the engine's default: a build that ships them all (no terrain, or the default) writes nothing
-        if (exportTerrainTiers != terraincore::TERRAIN_ALL_TIERS)
-            mainContent += "    terraincore::TerrainQualitySettings::setShippedMask(" + std::to_string(exportTerrainTiers) + "u);\n";
+        if (shippedTerrainTiers != terraincore::TERRAIN_ALL_TIERS)
+            mainContent += "    terraincore::TerrainQualitySettings::setShippedMask(" + std::to_string(shippedTerrainTiers) + "u);\n";
     }
     // Project Settings > Player > Allow Insecure HTTP: the same policy as the editor's Play
     mainContent += std::string("    Http::setInsecureHttpAllowed(") + (allowInsecureHttp ? "true" : "false") + ");\n";
