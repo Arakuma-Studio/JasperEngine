@@ -13,6 +13,7 @@
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
 
+#include "miniz.h"
 #include "stb_image.h"
 
 #include <algorithm>
@@ -126,19 +127,6 @@ namespace {
         out += (char)v;
     }
 
-    // `png` with a tEXt chunk after IHDR
-    std::string withTextChunk(const std::vector<uint8_t>& png, const std::string& key, const std::string& value) {
-        std::string bytes(png.begin(), png.end());
-        const size_t ihdrEnd = 8 + 12 + 13;
-        if (bytes.size() < ihdrEnd) return bytes;
-        const std::string body = std::string("tEXt") + key + std::string(1, '\0') + value;
-        std::string chunk;
-        be32(chunk, (uint32_t)(body.size() - 4));
-        chunk += body;
-        be32(chunk, crc32Of(body));
-        return bytes.substr(0, ihdrEnd) + chunk + bytes.substr(ihdrEnd);
-    }
-
     // a full render cropped to its alpha bounds plus a margin and fitted into the thumbnail size
     texsynth::Image frameThumbnail(const unsigned char* rgba, int w, int h) {
         int x0 = w, y0 = h, x1 = -1, y1 = -1;
@@ -190,6 +178,73 @@ namespace {
             }
         }
         return out;
+    }
+
+    // R41: the thumbnails live in 16 MiB: posterized a little (invisible at tile size), filtered per
+    // row and deflated at miniz's best level, with the recipe chunk
+    std::string encodeThumbnail(const texsynth::Image& image, const std::string& recipe) {
+        std::vector<uint8_t> data = image.data;
+        for (size_t i = 0; i + 3 < data.size(); i += 4) {
+            if (data[i + 3] == 0) {
+                data[i] = data[i + 1] = data[i + 2] = 0;
+                continue;
+            }
+            for (int c = 0; c < 3; c++) data[i + c] = (uint8_t)((data[i + c] & 0xF8) | (data[i + c] >> 5));
+            if (data[i + 3] != 255) data[i + 3] = (uint8_t)((data[i + 3] & 0xFC) | (data[i + 3] >> 6));
+        }
+        const int stride = image.width * 4;
+        std::vector<uint8_t> filtered;
+        filtered.reserve((size_t)(stride + 1) * image.height);
+        std::vector<uint8_t> prev((size_t)stride, 0), row((size_t)stride), attempt((size_t)stride);
+        for (int y = 0; y < image.height; y++) {
+            std::copy(data.begin() + (long)y * stride, data.begin() + (long)(y + 1) * stride, row.begin());
+            int bestType = 0;
+            long bestScore = -1;
+            std::vector<uint8_t> best;
+            for (int type : {0, 1, 2, 4}) {
+                long score = 0;
+                for (int x = 0; x < stride; x++) {
+                    const int a = x >= 4 ? row[x - 4] : 0, b = prev[x], c = x >= 4 ? prev[x - 4] : 0;
+                    int predicted = 0;
+                    if (type == 1) predicted = a;
+                    else if (type == 2) predicted = b;
+                    else if (type == 4) {
+                        const int pa = std::abs(b - c), pb = std::abs(a - c), pc = std::abs(a + b - 2 * c);
+                        predicted = pa <= pb && pa <= pc ? a : (pb <= pc ? b : c);
+                    }
+                    const uint8_t value = (uint8_t)(row[x] - predicted);
+                    attempt[x] = value;
+                    score += std::min<int>(value, 256 - value);
+                }
+                if (bestScore < 0 || score < bestScore) {
+                    bestScore = score;
+                    bestType = type;
+                    best = attempt;
+                }
+            }
+            filtered.push_back((uint8_t)bestType);
+            filtered.insert(filtered.end(), best.begin(), best.end());
+            prev = row;
+        }
+        mz_ulong compressedSize = mz_compressBound((mz_ulong)filtered.size());
+        std::string compressed(compressedSize, '\0');
+        if (mz_compress2((unsigned char*)compressed.data(), &compressedSize, filtered.data(), (mz_ulong)filtered.size(), MZ_BEST_COMPRESSION) != MZ_OK) return {};
+        compressed.resize(compressedSize);
+        auto chunk = [](std::string& out, const std::string& type, const std::string& body) {
+            be32(out, (uint32_t)body.size());
+            out += type + body;
+            be32(out, crc32Of(type + body));
+        };
+        std::string png("\x89PNG\r\n\x1a\n", 8);
+        std::string header;
+        be32(header, (uint32_t)image.width);
+        be32(header, (uint32_t)image.height);
+        header += std::string("\x08\x06\x00\x00\x00", 5);
+        chunk(png, "IHDR", header);
+        chunk(png, "tEXt", std::string(THUMBNAIL_TEXT_KEY) + std::string(1, '\0') + recipe);
+        chunk(png, "IDAT", compressed);
+        chunk(png, "IEND", {});
+        return png;
     }
 
     // ---- the one-shot headless editor on a scratch project ----
@@ -579,9 +634,7 @@ int titlelibrary::runBakeThumbnailsCommand(const std::vector<std::string>& args,
         }
         const texsynth::Image thumb = frameThumbnail(rgba, w, h);
         stbi_image_free(rgba);
-        std::vector<uint8_t> encoded;
-        texsynth::encodePng(thumb, encoded);
-        const std::string file = withTextChunk(encoded, THUMBNAIL_TEXT_KEY, thumbnailRecipe(*p.item, p.sample));
+        const std::string file = encodeThumbnail(thumb, thumbnailRecipe(*p.item, p.sample));
         bytes += file.size();
         if (!writeBytes(out / libraryKindName(p.item->kind) / thumbName(*p.item, p.sample.key), file)) {
             failures.push_back(p.item->ref + ": cannot write");
