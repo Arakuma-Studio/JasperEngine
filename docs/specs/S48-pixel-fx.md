@@ -939,9 +939,9 @@ Implementation notes that change what the spec says. Each item names the require
   scripted bursts (PixelFX.glitch) only. The corruption of each frame (split, interlace, up to 8 tears)
   is picked on the CPU (engine/core/pixelart/Glitch.cpp, a pure function of floor(time·glitchFps) and
   the seed) and uploaded as 3 vec4 appended to u_fs_uberParams. Interlace darkens odd source rows by 0.7.
-- AC12: the images per kind × progress × pixel size are compared on the GPU against the CPU twin
-  (ScreenTransition::evaluate; ScreenTransitionGpu.MatchesTheCpuTwinWithHardPixels, glcore), not
-  stored PNG goldens.
+- AC12: the GPU images per kind × progress × pixel size are compared against the CPU twin (ScreenTransition::evaluate;
+  ScreenTransitionGpu.MatchesTheCpuTwinWithHardPixels, glcore and Vulkan). The stored PNG goldens are the contact-sheet route
+  (`tools/mcp/tests/golden/transitions/`, `test_transitions.py::test_contact_sheet_route`).
 - R40: in edit mode the Engine's own transition draw is off (the Scene view must not show it). The
   Game view's preview draws inside Engine::drawView for the view ScreenTransition::setViewDrawId names
   (GAME_VIEW_ID), and through the Engine frame of the Game view pass. Cover UI does not apply to the
@@ -994,8 +994,11 @@ Implementation notes that change what the spec says. Each item names the require
   particles run on the capture's one clock.
 - **frame_cost.** The CPU time is the median of 9 frames shown and 9 hidden (isolated, release builds); the static taps
   are below (R28 frame_cost); GPU time (S15) is not measured by the capture.
-- **transition_edges** measures the rim width across the edge (mean rim run times the cosine of the fitted edge slope,
-  over 7 lines), so slanted and curved rims of constant width pass.
+- **transition_edges.** A transition's capture takes the rim's width from its CPU evaluation (`ScreenTransition::measureRim`: the
+  run along each row or column away from the uncovered side, the rule the shader draws by, in art pixels at any `pixel_size`),
+  because a colour image cannot tell which axis a rim pixel was measured along. Pixel Dissolve and Fade have no continuous
+  edge and report SKIP. `lintTransitionEdges` on bare images (mean rim run times the cosine of the fitted edge slope, over 7
+  lines) stays for callers with frames only.
 - **Contact Sheet... is a window**, not a modal (no EditorModal needed); Save As... uses the editor's file picker.
 - **Guide.** One "Other areas" entry `pixel-fx (capture_contact_sheet)` (ledger rule, no digest line).
 
