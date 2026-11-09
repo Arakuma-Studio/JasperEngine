@@ -1497,6 +1497,15 @@ set(JASPERENGINE_SRCS
     core/pixelart/PixelRotation.cpp
     core/pixelart/PixelsPerUnit.cpp
     core/pixelart/PixelSnap.cpp
+    # pixel fonts (S51: bitmap fonts, their layout, the styled glyph cache, the built-in font)
+    core/pixelart/BitmapFont.cpp
+    core/pixelart/BitmapFontParsers.cpp
+    core/pixelart/BitmapFontPool.cpp
+    core/pixelart/BitmapText.cpp
+    core/pixelart/BitmapTextCache.cpp
+    core/pixelart/BitmapTextRaster.cpp
+    core/pixelart/BuiltinPixelFont.cpp
+    core/pixelart/FontPixelReport.cpp
     core/picking/BinnedSah.cpp
     core/picking/MeshBvh.cpp
     core/picking/MeshBvhSimd_avx2.cpp
@@ -1517,6 +1526,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlFile.cpp
     core/htmlui/RmlFontEffects.cpp
     core/htmlui/RmlFontEngine.cpp
+    core/htmlui/RmlFontEngineBitmap.cpp
     core/htmlui/RmlFontMsdf.cpp
     core/htmlui/RmlRenderer.cpp
     core/htmlui/RmlRendererBatch.cpp
@@ -1849,6 +1859,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
     core/subsystem/UISystemNavigation.cpp
+    core/subsystem/UISystemBitmapText.cpp
     core/subsystem/UIDocumentSystem.cpp
     core/subsystem/UIDocumentSystemRender.cpp
     core/subsystem/UIDocumentSystemInput.cpp

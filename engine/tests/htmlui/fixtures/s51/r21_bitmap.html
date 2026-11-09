@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>S51 R21: bitmap text at three sizes</title>
+<style>
+  @font-face { font-family: "Face"; src: url("hud.bitmapfont"); }
+  body { margin: 0; background-color: #000000; }
+  .line { position: absolute; left: 10px; color: #ffffff; font-family: "Face"; white-space: nowrap; }
+  #a { top: 10px; font-size: 9px; }
+  #b { top: 30px; font-size: 18px; }
+  #c { top: 60px; font-size: 27px; }
+</style>
+</head>
+<body>
+  <div id="a" class="line">SCORE 120 HP 99</div>
+  <div id="b" class="line">SCORE 120 HP 99</div>
+  <div id="c" class="line">SCORE 120 HP 99</div>
+</body>
+</html>

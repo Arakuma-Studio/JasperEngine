@@ -2477,6 +2477,19 @@ OVERRIDES.update({
         'overloads': [([('interval', 'number'), ('fn', 'fun(timer: Timer): boolean?'), ('opts?', 'TimerOptions')], 'Timer')]},
 })
 
+# pixel fonts (GameObjectClassesLua.cpp, docs/specs/S51-pixel-fonts.md R29): load returns the font or
+# nil and the reason; measure returns two integers
+OVERRIDES.update({
+    ('BitmapFont', 'load'): {
+        'doc': ['A bitmap font (.bitmapfont, .fnt or "builtin:pixel") and its metrics, in whole font pixels;',
+                '`nil, error` when it does not load.'],
+        'overloads': [([('path', 'string')], 'BitmapFont?, string?')]},
+    ('BitmapFont', 'measure'): {
+        'doc': ['The width and height of the text (newlines split lines) in whole pixels at `scale` (default 1):',
+                'the layout a Text draws.'],
+        'overloads': [([('text', 'string'), ('scale?', 'integer')], 'integer, integer')]},
+})
+
 # audio-mixer (ECSClassesLua.cpp, GameObjectClassesLua.cpp): option tables ({unscaled = true}),
 # `nil` results and table results; AudioTimeOptions / AudioFadeOutOptions are in
 # engine/core/script/binding/stubs/Audio.lua

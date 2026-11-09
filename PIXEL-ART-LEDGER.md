@@ -168,7 +168,7 @@ never build or run them.
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
 | S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | merged and pushed |
-| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | review fixes |
+| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | landing (batch 4) |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
@@ -177,8 +177,8 @@ never build or run them.
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
-| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | landing (batch 3) |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | review fixes |
+| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | merged and pushed |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | landing (batch 4) |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -242,8 +242,75 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 **Batch landings (owner, 2026-11-08):** finished features are merged together with `origin/main` on one tree. That tree is verified once (each feature's filtered gate plus web, android, the Vulkan/GLES3 GPU sets and a smoke test) and pushed.
 
+## Follow-ups (owned by the coordinator)
+
+- Wire S51's font analyzer into S42's validator (`setFontAnalyzer`; S51 deviation 11 has the
+  mapping) once S42 and S51 are both on `main`.
+- `main` test issues seen during landings, from other programs:
+  - `FullPathGoldenTest.UIParticleSystemsClippedByAPanel` reads after 4 frames instead of
+    waiting for emitted particles;
+  - `DebugOverlayTest` gestures inherit state from an earlier test in the full run;
+  - LatticeRender shadows, SharedMeshBuffers ×2 and TestScriptEvents touch fail on Vulkan
+    `htmlui-tests`;
+  - `PopupCountsTapAndDrag` and `TextFallbackRtl` are flaky on repeat.
+- Run the MCP eval once for every pixel-art case (needs accounts lent with `box_lend_accounts`).
+- Destroy the build boxes A–D when the program ends.
+
 ## Log
 
+- 2026-11-09: **Batch 3: S51 Pixel Fonts merged into `main` and pushed** (branch `6e0376917`).
+  - Verified on main + S51: web, android, Vulkan 98/98, `htmlui-tests` Vulkan.
+  - Of the 6 HTML UI failures, 4 also fail on plain `main`. `UIParticleSystemsClippedByAPanel`
+    fails on `main` too once its shader is cached: the test reads after 4 frames, before the first
+    fixed tick emits. `DebugOverlay` gestures pass 20/20 alone on S51 and 10/10 on `main`; they
+    fail only through order in the full run.
+  - These are `main` test issues to fix later (wait for the state, not frames; find the test that
+    leaks the gesture state). Also seen flaky on repeat on `main`: `PopupCountsTapAndDrag`,
+    `TextFallbackRtl`.
+- 2026-11-09: Batch 4 assembled on `land/batch3` (the worktree is reused): `main` + S42 (`9c7f0b34b`,
+  clean merge) + S52 (`0bea149af`).
+  - Three conflicts resolved, keeping both sides: `Project.cpp` (S42's default filter beside
+    S52's sorting fields), `McpValues.cpp` includes, and the eval cases (143, no duplicates,
+    `test_grade` OK).
+  - S52: shader cache v61, mesh bits 46–48, depth 20. The `Transform.h` fanout 152 comes from
+    S49's `ParticleEffectPreview.cpp`/`ParticlePreviewSource.cpp` includes (the main-green fix
+    handles it).
+  - Verification running on box B: `WERROR` linux, the filtered editor and core sets with the
+    shared data, 18 MCP files, budget, grader. Then web, android and Vulkan.
+- 2026-11-09: S42 merged `main` at `9c7f0b34b` and wired the S49 `particles_grid` hook.
+  - `pixel_art` group: 3 tools, 3,191 characters.
+  - Gate on box B: `WERROR`, core 85, editor 205, 168 MCP tests. The failures are `main`'s
+    (Animator hash, `procmat-baked`), plus `check_fanout`: `Transform.h` rebuilds 152 units
+    against 150, apparently on `main`, now added to the main-green fix.
+  - S42 is ready for batch 4 with S52 (merging) and the main-green fix.
+- 2026-11-09: Box D deadlocked for ~1h40m. An S48 sub-task started a detached job from inside a
+  box job, so it inherited the box lock's file descriptor and then waited on the same lock. S48
+  cleared it. `rbox` now runs `flock -o`, so no child can hold the lock, and the brief forbids
+  nested box jobs.
+- 2026-11-09: S52's review fixes are done at `8243584e2`.
+  - Gate on box A: editor 154, core 165, Vulkan 74, 107 MCP tests; red controls for the fixes.
+  - The 10k pack+upload takes 1.26 ms against 0.5 ms (shared box, software rendering), accepted
+    through `perfSlack` as needing a bench machine.
+  - S52 is merging `main` for the next batch, taking shader cache v61.
+- 2026-11-09: S42's review fixes are done at `16ca3d6af`.
+  - Includes the new `render_scale` rule; the preset raises the Low/Medium tier render scale
+    to 1.
+  - Gate on box B: editor 205, core 85, 168 MCP tests.
+  - The cold check takes 3.77 s against 3 s on the shared box, accepted as a measurement through
+    the harness slack.
+  - The trial merge with `main` has 7 conflicts, so S42 is merging `main` for the next batch.
+- 2026-11-09: The batch-3 `htmlui-tests` Vulkan baseline on `main`: 4 of the 6 fail there too
+  (LatticeRender shadows, SharedMeshBuffers ×2, TestScriptEvents touch). Two fail only with S51
+  (`FullPathGoldenTest.UIParticleSystemsClippedByAPanel`,
+  `DebugOverlayTest.GesturesResetOnFocusLossPauseAndCancel`) and were sent back to S51 to
+  root-cause before landing.
+- 2026-11-09: Batch 3 (S51) checks on box B: web pass, android pass, Vulkan font/palette/pixel
+  98/98.
+  - `htmlui-tests` Vulkan: 3,394 passed, 6 failed (SharedMeshBuffers ×2, LatticeRender shadows,
+    the UIParticleSystems clipping golden, DebugOverlay gestures, TestScriptEvents touch).
+  - The six are being re-run on plain `main` to check they're pre-existing before S51 lands.
+  - Every agent stopped on the 5-hour limit again (reset 06:40 UTC); S42, S52, S48 (with its
+    sub-tasks) and the main-green fix were revived at 06:42.
 - 2026-11-09: S51 merged `main` at `6e0376917` (13 conflicts resolved).
   - Gate on box A: `WERROR`, core 74, HTML UI GL 8/8, 39 MCP tests. The `pixel_art` group is 3
     tools and 2,850 characters; core 98,983 of 99,000; guide headroom 1,503.

@@ -126,6 +126,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `output` | rewritten | written as span |  |
 | `p` | native | UA display and spacing |  |
 | `param` | unsupported | dropped (HTMLUI-HTML-0002) | remove it |
+| `particle-system` | emulated | UIParticleSystemElement: plays a prefab's Particle System and draws it in document order (src = the prefab, autoplay, loop, time, scale) |  |
 | `picture` | rewritten | replaced by its img with the source chosen at load |  |
 | `plaintext` | native | UA display and spacing |  |
 | `portal` | unsupported | placeholder div.htmlui-unsupported (Warning) (HTMLUI-HTML-0002) | load the page as its own UIDocument |
@@ -208,7 +209,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 
 `*` = every element; `data-*`, `aria-*` and `on*` are patterns.
 
-### Attributes: a-g
+### Attributes: a-e
 
 | Attribute | Element | Support | Notes | Instead |
 |---|---|---|---|---|
@@ -231,6 +232,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `autoplay` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `autoplay` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `autoplay` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
+| `autoplay` | `particle-system` | emulated | plays once the prefab is made |  |
 | `autoplay` | `video` | native | starts once it can play; no autoplay policy (sound allowed) |  |
 | `axes` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `background` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
@@ -278,16 +280,16 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `estimated-height` | `list-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `table-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `tree-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
+
+### Attributes: f-l
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `face` | `font` | rewritten | legacy presentational attribute |  |
 | `fetchpriority` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `for` | `*` | native | kept |  |
 | `form` | `*` | emulated | honored by button and submit controls |  |
 | `gap` | `grid-view` | emulated | the space between cells in px (S17) |  |
-
-### Attributes: h-n
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `handle-range` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `height` | `canvas` | native | intrinsic size hint (below author CSS) |  |
 | `height` | `embed` | native | intrinsic size hint (below author CSS) |  |
@@ -338,8 +340,14 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `loop` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `loop` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `loop` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
+| `loop` | `particle-system` | emulated | loop="false" plays once; absent: the prefab's own |  |
 | `loop` | `video` | native | seamless (seeking, seeked at the wrap) |  |
 | `low` | `meter` | unsupported | dropped (Info) (HTMLUI-HTML-0004) | color the progress fill with a class |
+
+### Attributes: m-r
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `marker` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `marker` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `marker` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -361,11 +369,6 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `name` | `*` | native | kept |  |
 | `nonce` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `novalidate` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
-
-### Attributes: o-s
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `on*` | `*` | unsupported | JavaScript event handlers are not run; dropped (HTMLUI-HTML-0005) | use element:addEventListener('click', fn) in Lua, or data-event-click |
 | `open` | `*` | native | kept |  |
 | `optimum` | `meter` | unsupported | dropped (Info) (HTMLUI-HTML-0004) | color the progress fill with a class |
@@ -395,6 +398,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `role` | `*` | native | kept |  |
 | `rows` | `*` | native | kept |  |
 | `rowspan` | `*` | native | kept |  |
+
+### Attributes: s-v
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
+| `scale` | `particle-system` | emulated | CSS px per prefab unit (default 1) |  |
 | `segment` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `segment` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `segment` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -421,6 +430,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `src` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `src` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `src` | `markdown` | emulated | the Markdown file (asset path rules; a reload dependency) (S17) |  |
+| `src` | `particle-system` | emulated | the prefab (name or path) whose Particle System it plays |  |
 | `src` | `source` | native | video: a candidate, tried in order at run time |  |
 | `src` | `video` | native | WebM with AV1 video and Opus audio (other formats HTMLUI-HTML-0027) |  |
 | `srcset` | `img` | rewritten | candidate chosen at load by the dp ratio (Info) |  |
@@ -431,16 +441,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `state-machine-id` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `step` | `*` | native | kept |  |
 | `style` | `*` | rewritten | rewritten by the CSS stage, positions preserved |  |
-
-### Attributes: t-w
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `tabindex` | `*` | rewritten | -1 -> tab-index: none; focus: auto; 0 -> tab-index: auto; positive order ignored |  |
 | `target` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `theme-id` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `theme-id` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `theme-id` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `time` | `particle-system` | emulated | ui (unscaled, default) or game (scaled time) |  |
 | `title` | `*` | emulated | emulated: a tooltip after the hover or focus delay (S17) |  |
 | `tooltip` | `*` | emulated | rich tooltip: #id of an element or <template> of the document, cloned on show (S17) |  |
 | `tooltip-delay` | `*` | emulated | the element's tooltip delay in ms (S17) |  |
@@ -456,6 +462,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `visibility` | `onscreen-button` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `visibility` | `onscreen-stick` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `visibility` | `touch-area` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
+
+### Attributes: w
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `width` | `canvas` | native | intrinsic size hint (below author CSS) |  |
 | `width` | `embed` | native | intrinsic size hint (below author CSS) |  |
 | `width` | `iframe` | native | intrinsic size hint (below author CSS) |  |
@@ -1281,7 +1292,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `stroke-size` | unsupported | CSS Fill and Stroke 3 (draft) is not supported (Info) (HTMLUI-CSS-0002) | use fill and stroke on the svg root, or attributes inside the SVG file |
 | `stroke-width` | emulated | applied on the svg root |  |
 
-### Properties: tab-index to text-shadow
+### Properties: tab-index to text-overflow
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
@@ -1309,6 +1320,9 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-decoration-skip-spaces` | unsupported | decoration details are not supported (Info) (HTMLUI-CSS-0002) | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
 | `text-decoration-style` | native | decoration details are not supported (Info); native with the fork, wavy drawn solid (Info) | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
 | `text-decoration-thickness` | native | decoration details are not supported (Info); native with the fork | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
+| `text-effect` | emulated | engine extension: per-character animation of the text (wave, bounce, shake, pulse, typewriter, fade-in, grow, unfold, rainbow, gradient), the native Text Effect's formulas |  |
+| `text-effect-iteration` | emulated | engine extension: how many times the one-shot text effects run (infinite or an integer); texteffectend after the last |  |
+| `text-effect-time` | emulated | engine extension: the clock of the text effects: ui (unscaled, runs at Engine.timeScale 0) or game (scaled game time) |  |
 | `text-emphasis` | unsupported | emphasis marks are not supported (Info) (HTMLUI-CSS-0002) | mark the characters with a span carrying the emphasis glyph |
 | `text-emphasis-color` | unsupported | emphasis marks are not supported (Info) (HTMLUI-CSS-0002) | mark the characters with a span carrying the emphasis glyph |
 | `text-emphasis-position` | unsupported | emphasis marks are not supported (Info) (HTMLUI-CSS-0002) | mark the characters with a span carrying the emphasis glyph |
@@ -1319,13 +1333,13 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-justify` | native | where justified lines take their space; native with the fork (Justify): auto (spaces, and around CJK characters), none, inter-word, inter-character, distribute (computes to inter-character); ignored without it |  |
 | `text-orientation` | unsupported | vertical text is not supported (Warning) (HTMLUI-CSS-0002) | rotate the element with transform: rotate(90deg), or stack the characters in a column |
 | `text-overflow` | native | ellipsis, clip and strings native |  |
-| `text-rendering` | native | native (fork S16-F3): optimizeSpeed keeps text a bitmap at the document's scale (stretched under a transform); auto and optimizeLegibility rasterize it at its on-screen scale, from distance fields while that scale animates; geometricPrecision always draws it from distance fields |  |
-| `text-shadow` | native | blur -> glow; a missing color -> the rule color or white (approximated); native with the fork (TextShadow) |  |
 
-### Properties: text-size-adjust to translate
+### Properties: text-rendering to translate
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
+| `text-rendering` | native | native (fork S16-F3): optimizeSpeed keeps text a bitmap at the document's scale (stretched under a transform); auto and optimizeLegibility rasterize it at its on-screen scale, from distance fields while that scale animates; geometricPrecision always draws it from distance fields |  |
+| `text-shadow` | native | blur -> glow; a missing color -> the rule color or white (approximated); native with the fork (TextShadow) |  |
 | `text-size-adjust` | ignored | mobile text inflation control; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `text-spacing` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `text-spacing-trim` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
@@ -2289,8 +2303,9 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-CSS-0019` | info | **Easing approximated** (`easing-approximated`): The easing function was replaced by the nearest built-in tween; the message names it and the largest error. |
 | `HTMLUI-CSS-0020` | warning | **steps() approximated** (`steps-approximated`): steps(), step-start and step-end are replaced by a linear easing until the layout library supports them. |
 | `HTMLUI-CSS-0021` | by case (warning) | **Animation approximated** (`animation-approximated`): Part of an animation is approximated: per-keyframe easing dropped, a fractional iteration count rounded, the backwards fill mode not applied during the delay, ... |
-| `HTMLUI-CSS-0022` | by case (warning) | **Font source** (`font-source`): An @font-face source was skipped (WOFF/WOFF2/SVG/EOT, local(): Info), or the rule has no TrueType/OpenType source and was dropped (Warning). Convert the font to TTF or OTF; remote fonts are imported as TTF by the editor. |
+| `HTMLUI-CSS-0022` | by case (warning) | **Font source** (`font-source`): An @font-face source was skipped (WOFF/WOFF2/SVG/EOT, local(): Info), or the rule has no TrueType/OpenType or bitmap font (.bitmapfont, .fnt) source and was dropped (Warning). Convert the font to TTF or OTF; remote fonts are imported as TTF by the editor. |
 | `HTMLUI-CSS-0023` | info | **Unknown font family** (`unknown-font-family`): No @font-face declares the family and the engine does not know it; the text uses the next family of the list or the engine's fallback font. |
+| `HTMLUI-CSS-0024` | warning | **Blurred effect on a bitmap font** (`bitmap-font-effect`): A rule with a bitmap font family (.bitmapfont or .fnt @font-face) has a glow, a blur or a blurred text-shadow: a pixel font draws only pixel outlines and sharp shadows, so the effect is dropped. Use font-effect: outline(1px <colour>) or a text-shadow without blur. |
 
 ### FX
 
@@ -2363,6 +2378,7 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-HTML-0030` | error | **Virtual view template** (`virtual-view-template`): A <list-view>, <grid-view>, <tree-view> or <table-view> needs exactly one <template> child: the markup of a row (a table-view's cells come from its <table-column> children instead, each with an optional <template>). The view shows no rows without one, and only the first of several. |
 | `HTMLUI-HTML-0031` | info | **Large data-for** (`large-data-for`): A data-for made more than 500 elements: every one of them is laid out and drawn. A <list-view items="..."> (or grid-view, table-view) makes only the rows on screen and keeps a 10,000-row list fast on mobile. |
 | `HTMLUI-HTML-0032` | info | **HTML in Markdown** (`markdown-raw-html`): The Markdown of a <markdown> element holds HTML markup. Markdown is rendered without HTML passthrough: the markup shows as its text (text from servers or players is safe this way). Write Markdown, or put the HTML outside the <markdown> element. |
+| `HTMLUI-HTML-0033` | warning | **Particle system source missing** (`particle-system-source`): A <particle-system src="..."> names no prefab of the build, or a prefab whose GameObjects have no Particle System (with an Action): the element draws nothing. Name a .prefab of the project that has one (MCP create_particles then create_prefab, or the Hierarchy's Particle System saved as a prefab); prefabs exist in Play and in exported games, not in edit mode. |
 
 ### IMP
 

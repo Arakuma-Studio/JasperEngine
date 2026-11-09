@@ -651,3 +651,98 @@ Deviations.
 
 ## Deviations
 
+
+Recorded by the implementation (branch `feature/s51-pixel-fonts`).
+
+1. **The cooked file's name (R34).** A shipped font is cooked to `<file>.jfont` next to it
+   (`fonts/hud.bitmapfont.jfont`, `fonts/hud.fnt.jfont`), not `<name>.jfont`: a `.bitmapfont`
+   wrapping a `.fnt` of the same name (the usual pair) would otherwise cook both to one file. The
+   cooked font replaces its source in the build: the `.bitmapfont` / `.fnt`, its sheet, pages and
+   TrueType file are not shipped unless an asset references them (a sheet also drawn as a sprite
+   ships as that texture). The runtime's `BitmapFont::load(path)` reads `path + ".jfont"` first.
+2. **The built-in font (R16).** Its design is the engine's own: square corners and bowls with
+   one-pixel strokes, 5x7 glyphs in 6x9 cells (the glyph source is
+   `engine/core/pixelart/BuiltinPixelFont.cpp`). `BitmapFont.BuiltInIsOriginal` holds the classic
+   5x7 character-LCD table as the reference it must not copy and requires three quarters of the 94
+   printable ASCII glyphs to differ from it by 3 pixels or more (82 % do; the old rounded design,
+   30 %, fails it). The accented letters are composed from the base letter and five marks (grave,
+   acute, circumflex, tilde, diaeresis): a capital keeps rows 0, 2, 3, 4 and 6 of its 7 and stands
+   under the mark; a lowercase letter loses what it has above row 2 (the dot of i). The 15 letters no
+   mark makes (Å å Æ æ Ç ç Ð ð × ÷ Ø ø Þ þ ß) are drawn as glyphs of their own.
+3. **The agent guide line (R30).** The guide has no `## Pixel art` section and no byte left (S41
+   deviation 26 cut its "Other areas" line): S51 adds the page `docs/mcp/guide/pixel-fonts.md`
+   (`jasper://docs/pixel-fonts`, listed in the guide README) and its tools' text, and no guide line.
+4. **Fallback fonts (R14).** A `.bitmapfont`'s `fallback_fonts` join its own atlas at load, and a
+   Text's same-size bitmap fallbacks are merged with its font into one chain font (pooled by the
+   chain's paths): a Text always draws from one texture.
+5. **Several atlas pages (R11).** A font whose glyphs need more than one 2048² page draws through the
+   styled glyph cache (its face layer only), so a Text still binds one texture.
+6. **The styled glyph cache's pages (R12).** Pages start at 128² RGBA8 and grow to the size one
+   Text's glyphs need (up to 2048²); a page holds several styles. Past the budget, when every page
+   was drawn in this frame or the last, a page is made anyway (no glyph goes missing) and the
+   diagnostic is logged once.
+7. **CPU origin snap (R8).** Without a Pixel Perfect Camera's snap, a bitmap Text's draw rounds its
+   origin onto the pass target's pixel (`pixelart::snapCenterDelta` on its MVP), so bitmap Texts are
+   not batched by the dynamic batcher (`ineligible_transform`), as S41's snapped draws are not.
+8. **Text Inspector (R22).** The bitmap rows (Font Size stepper with Snap, Outline Width 0/1/2,
+   Neighbors, a whole-pixel Shadow Offset, the note) are a "Pixel Font" section after the Text's own
+   rows; with a bitmap font the vector Font Size, Outline Width, Shadow Offset, Softness and Dilate
+   rows are hidden.
+9. **Bitmap Font Inspector (R23).** The glyph grid, its cell editing, advance and baseline drags
+   apply to grid sources; a BMFont or TrueType source lists its glyphs, and a selected one takes the
+   same advance and offset overrides. The Inspector also opens for a `.ttf`/`.otf`, where R24's
+   "Pixel font detected" button lives.
+10. **HTML UI (R15).** `font-effect: outline(Npx ...)` reads N as font pixels (1 or 2) and a
+    `font-effect: shadow` offset as font pixels; a CSS `text-shadow` keeps its offset in CSS pixels
+    (RmlUi applies it before the font engine sees the text), drawn sharp; HTML text effects
+    (`HtmlTextEffects`) do not move bitmap faces. `check --ui` reports
+    `HTMLUI-CSS-0024 bitmap-font-effect` for a rule that sets a bitmap family and a glow, a blur or
+    a blurred `text-shadow` in the same block (compat reads no cascade).
+11. **S42's command (R31).** `check --pixel-art` and its rule registry belong to S42, which is
+    not merged: S42's `editor/pixelart/PixelArtCheck.h` (its worktree) reads fonts through
+    `setFontAnalyzer(FontAnalyzer)`, returning its `PixelArtFontInfo`. S51 provides the data
+    (`pixelart::analyzeFontForPixelArt`, `analyzeTextForPixelArt`, `get_asset_info`'s
+    `pixel_report`); when both land, the editor registers an analyzer mapping `FontPixelReport` to
+    `PixelArtFontInfo` field for field (kind, nativeSize, antialiased, partialAlphaShare,
+    pixelGridDetected, loads = !loadError with its first error; `TextPixelReport` gives
+    pixelScale and vectorFallbacks).
+12. **TrueType metrics (R4, R6).** The native size of a TrueType source is its ascender plus
+    descender at the detected size (8 for an 8 px font of ascender 7, descender 1), its baseline the
+    ascender and its line height the native size + 1 (as a grid's) unless the font has a line gap.
+13. **World text and Pixels Per Unit (R8).** A Text drawn by a non-UI camera with a project Pixels
+    Per Unit above 1 takes k / PPU units per font pixel: its `fontSize` stays in pixels.
+14. **`preview_font` (R26-R28, §6.1's fallback).** The core listing had one character of room, so
+    font previews are the `preview_font` tool in the `pixel_art` group (its row added here; S42 and
+    S43 add their tools to it), with R26's parameters (`text`, `scale`, `max_size`), and
+    `view_asset`, `get_asset_info` and `write_file` keep main's text: `view_asset` on a font answers
+    with an error naming `preview_font`, `get_asset_info` and `write_file` return the font report
+    with no description change. A preview never exceeds `max_size`: an explicit `scale` that does
+    fails naming the largest that fits, and the glyph grid shows the glyphs that fit (it says how
+    many). The guide's "Unity names -> engine names" heading is "Unity names" (the guide's headroom
+    for the group's name).
+15. **R20's budgets are measured, gated by `JASPER_TEST_PERF_SLACK`.** A rebuild sizes the
+    buffer once and writes its vertices in place, keeps its scratch lists between rebuilds, looks
+    glyphs up through an ASCII table, lays each line out in one pass, and an unchanged styled
+    text skips the cache acquire. `BitmapFontBench` reports both budgets through `perfSlack()`
+    (gated only on the benchmark run, AGENTS). On box A, shared vCPUs: a 200-character rebuild
+    takes 0.016 ms and a styled one with a cache hit 0.036 ms (budget 0.05 each).
+16. **BMFont channels (R3).** `chnl=0` reads as all channels, as `chnl=15`: libGDX Hiero writes 0
+    (fixture `engine/tests/core/fixtures/fonts/bm_hiero.fnt`).
+17. **Scene preload (R19).** A compiled game's scene resources list its Texts' bitmap fonts
+    (`SceneResources::bitmapFonts`), and `preloadScene` loads them into `BitmapFontPool` on its
+    main-thread step, one per frame when loading is synchronous (a cooked `.jfont` reads in about
+    0.01 ms; a font has no I/O-lane loader). The cooked scene's resource list (the prebuilt player)
+    is a shared format S51 does not bump: there a font loads at its first use.
+18. **HTML UI pages (R15).** A bitmap face's glyphs go to their own glyph pages (`PageKind::PIXEL`
+    and `PIXEL_EFFECT`, in the base budget), sampled NEAREST, so a CSS transform magnifies their
+    pixels as blocks; vector glyphs keep S16's filtered pages.
+19. **AC22 and the device tier's render scale (R8).** The exported game logged "tier Low ... uber
+    pass on (features Scl, render scale 0.50)": S56's Low tier caps the render scale at 0.5
+    (Medium 0.85), and the uber pass upscales the half-size image through a linear filter, which
+    on edges at whole source pixels is exactly a 3x3 [1 2 1] blur of the editor's frame. The editor
+    applies no tier. A UI camera's image (a UI scene's text and images) no longer takes the tier's
+    render-scale cap (`RenderSystem::getPostProcessingTiers`, `deviceRenderScale`); a scale its
+    post-processing settings give still applies. Scenes under S41's Pixel Perfect Camera use its
+    fixed resolution and never took it. Pixel-art scenes without that camera still take the
+    tier's cap: S42's Pixel Art preset and mode should set the Low and Medium tiers' Render Scale
+    cells to 1 (or the mode should skip the cap), so an exported pixel-art game draws as the editor.

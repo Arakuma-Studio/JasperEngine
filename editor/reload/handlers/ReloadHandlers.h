@@ -67,6 +67,9 @@ namespace jasperengine::editor::reload {
     void reloadAudio(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Fonts: a new pool entry; the texts using it rebuild their atlas
     void reloadFonts(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // bitmap fonts (S51 AC23): a changed .bitmapfont, .fnt or page PNG drops the pooled fonts that
+    // read it; the Texts using them load again on their next update
+    void reloadBitmapFonts(Context& ctx, const std::vector<std::filesystem::path>& files);
     // .poseanim, .humanoid, .anim and .vat files (and models, for their sub-clips and a .vat's
     // mesh): the open pose, clip and Vertex Animation documents reload, the clip and Vertex
     // Animation pools drop what the players and Vertex Animators use; the load errors and warnings

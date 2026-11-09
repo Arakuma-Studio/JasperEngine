@@ -3,6 +3,8 @@
 
 #include "TerrainQualityPanel.h"
 #include "component/TerrainComponent.h"
+#include "pixelart/BitmapFontPool.h"
+#include "pixelart/FontPixelReport.h"
 #include "SceneWindow.h"
 #if JASPERENGINE_TERRAIN_WORLD
 #include "terrainworld/TerrainWorldOverlay.h"
@@ -762,8 +764,21 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         if (insideAssets) {
                                             FontArray newFonts = originalFont;
                                             newFonts[0] = droppedAssetPath;
-                                            PropertyCmd<FontArray>* cmd = new PropertyCmd<FontArray>(project, sceneProject->id, selEntity, ComponentType::TextComponent, propName, newFonts);
-                                            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(cmd);
+                                            // a bitmap font: its size snaps to the nearest multiple of the
+                                            // native size in the same undo step (S51 R25)
+                                            std::shared_ptr<::jasperengine::pixelart::BitmapFont> bitmap =
+                                                ::jasperengine::pixelart::isBitmapFontPath(droppedAssetPath) ? ::jasperengine::pixelart::BitmapFontPool::get(droppedAssetPath) : nullptr;
+                                            if (bitmap) {
+                                                const int k = ::jasperengine::pixelart::pixelScaleFor(text->fontSize, bitmap->getNativeSize());
+                                                auto multi = new MultiPropertyCmd();
+                                                multi->addPropertyCmd<FontArray>(project, sceneProject->id, selEntity, ComponentType::TextComponent, propName, newFonts);
+                                                multi->addPropertyCmd<unsigned int>(project, sceneProject->id, selEntity, ComponentType::TextComponent, "fontSize",
+                                                                                    (unsigned int)(k * bitmap->getNativeSize()));
+                                                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(multi);
+                                            } else {
+                                                PropertyCmd<FontArray>* cmd = new PropertyCmd<FontArray>(project, sceneProject->id, selEntity, ComponentType::TextComponent, propName, newFonts);
+                                                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(cmd);
+                                            }
                                         } else {
                                             Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
                                         }

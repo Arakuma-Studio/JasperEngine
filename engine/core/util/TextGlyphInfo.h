@@ -13,6 +13,9 @@ namespace jasperengine {
     struct TextGlyphInfo {
         uint32_t cluster = 0;
         uint32_t line = 0;
+        // a styled bitmap glyph's back layer (outline and shadow, S51): drawn first, coloured in
+        // its texture, and moved with the face quad of the same character
+        bool back = false;
     };
 
 }

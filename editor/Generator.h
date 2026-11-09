@@ -316,6 +316,8 @@ namespace jasperengine::editor {
         CanvasScalerSettings uiScale;
         // the project's Pixels Per Unit (S41), emitted by configure when it is not 1
         int pixelsPerUnit = 1;
+        // the styled bitmap glyph cache's MiB (S51), emitted when it is not 0
+        int bitmapTextCacheMiB = 0;
 
         static fs::path getGeneratedPath(const fs::path& projectInternalPath);
         static std::string getEditorPluginAbiCheck();
@@ -416,6 +418,7 @@ namespace jasperengine::editor {
         // the Canvas Scaler project default the next configure() writes into the generated main
         void setUIScale(const CanvasScalerSettings& settings) { uiScale = settings; }
         void setPixelsPerUnit(int value) { pixelsPerUnit = value; }
+        void setBitmapTextCacheMiB(int value) { bitmapTextCacheMiB = value; }
         static std::string inputSettingsInitSource(const std::string& actionsAsset, float deadzone);
         // Project Settings > Graphics > Shader Globals in the generated main.cpp: the declarations
         // (with their defaults) before any scene loads; "" when the project declares none
