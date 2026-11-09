@@ -78,7 +78,7 @@ async def test_console_warns_of_overwritten_agent_edits(ed: Editor):
     await ok(ed, "create_sprite", path=path, size=[16, 16], palette=["#ff0000", "#00ff00"])
     await ok(ed, "edit_sprite", sprite=path, ops=[{"op": "pixel", "points": [[0, 0]], "color": 1}])
     await ok(ed, "edit_sprite", sprite=path, ops=[{"op": "fill", "at": [8, 8], "color": 2}])
-    cursor = (await ed.call("read_console", limit=1)).get("cursor", 0)
+    cursor = (await ed.call("read_console", limit=1)).get("next_cursor", 0)
     other = await ok(ed, "create_sprite", path="assets/sprites/other.aseprite", size=[16, 16], palette=["#ff0000", "#00ff00"])
     await ok(ed, "edit_sprite", sprite="assets/sprites/other.aseprite", ops=[{"op": "pixel", "points": [[1, 2]], "color": 2}])
     target = ed.project / path

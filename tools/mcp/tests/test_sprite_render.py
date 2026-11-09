@@ -101,7 +101,7 @@ async def test_grid_lines_and_labels(ed: Editor):
 async def test_context_returns_the_view_around_the_game_object(ed: Editor):
     scenes = await ed.call("list_scenes")
     main = scenes["selected_scene_id"]
-    created = await ed.call("set_sprite_frames", scene=main, create={"name": "Hero"}, sheet=PATH, frame=0, position=[0, 0])
+    created = await ed.call("set_sprite_frames", scene=main, create={"name": "Hero"}, sheet=PATH, frame=0)
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
         info = await ed.call("get_asset_info", path=PATH)
