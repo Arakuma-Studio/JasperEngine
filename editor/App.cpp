@@ -5861,7 +5861,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v59: S43's palettes: library:sprite's PALETTE_SWAP and PALETTE_CYCLE (includes/palette.glsl,
     //      the custom block's paletteRow, paletteCycleSpeed and sceneTime), the uber pass's
     //      Palette Quantize (BLIT 'Pal' 19, includes/bayer.glsl).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v59";
+    // v60: S49's pixel particles: library:particles' Pixel render mode (PARTICLES 'Pxl' 12) and
+    //      Analytic simulation (PARTICLES 'Ana' 13, particles_analytic_vs.glsl, its uniform block).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v60";
 }
 
 void editor::App::pushTabNotificationStyle(){
