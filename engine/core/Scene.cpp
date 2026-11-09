@@ -35,6 +35,9 @@
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/NavigationSystem.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "subsystem/TerrainWorldSystem.h"
+#endif
 #include "picking/SceneBvh.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/SplineSystem.h"
@@ -76,6 +79,10 @@ void Scene::init(){
     registerSystem<MeshSystem>();
     // after the meshes' model loads, before the lattices and Render read what it places (T5 F1)
     registerSystem<FoliageSystem>();
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4: after the meshes, before Render selects over the tiles it pumped in
+    registerSystem<TerrainWorldSystem>();
+#endif
     registerSystem<LatticeSystem>();
     // after the lattices, before Render reads the GPU state it writes (vertex animation spec 3.4)
     registerSystem<VertexAnimatorSystem>();

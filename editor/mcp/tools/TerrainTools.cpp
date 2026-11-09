@@ -10,6 +10,7 @@
 #include "TerrainToolsSupport.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpRefs.h"
@@ -33,6 +34,10 @@
 #include "render/SceneRender.h"
 #include "sceneview/SceneViewController.h"
 #include "terrain/TerrainOverlay.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "subsystem/TerrainWorldRuntime.h"
+#include "terrainworld/TerrainWorldOverlay.h"
+#endif
 #include "window/SceneWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "subsystem/FoliageSystem.h"
@@ -585,7 +590,7 @@ double percentile(std::vector<float>& values, double share) {
 
 bool sampleTerrainAsksExtras(const Json& args) {
     using terrain_tools::hasKey;
-    return hasKey(args, "stats") || hasKey(args, "issues") || hasKey(args, "hash") || hasKey(args, "region");
+    return hasKey(args, "stats") || hasKey(args, "issues") || hasKey(args, "hash") || hasKey(args, "region") || hasKey(args, "world");
 }
 
 bool sampleTerrainExtras(const CallPtr& call, Project* project, SceneProject* sceneProject, Entity entity, bool world, Json& data) {
@@ -782,6 +787,17 @@ void editTerrainTool(const CallPtr& call) {
     if (const std::string escape = McpRefs::writeEscape(target.project, target.project->getTerrainMapsDir()); !escape.empty()) {
         call->fail(escape);
         return;
+    }
+
+    // T4 R32: a World's heightmap makes tiles; one map's import would cover its whole addressable lattice
+    if (scene->getComponent<TerrainComponent>(target.entity).world && hasKey(args, "ops") && args["ops"].is_array()) {
+        for (size_t i = 0; i < args["ops"].size(); i++) {
+            const Json& item = args["ops"][i];
+            if (!item.is_object() || !hasKey(item, "op") || item["op"] != "import_heightmap") continue;
+            call->fail("ops[" + std::to_string(i) + "]: on a Terrain World import_heightmap is edit_terrain_world's op, which makes the tiles the "
+                       "file covers: edit_terrain_world {ops: [{op: \"import_heightmap\", path, origin}]}. Nothing was changed.");
+            return;
+        }
     }
 
     const TerrainWorldPlacement transform = terrainWorldPlacement(scene, target.entity);
@@ -1053,14 +1069,25 @@ void visualizeTerrainTool(const CallPtr& call) {
         return;
     }
     TerrainOverlaySettings settings = target.scene->displaySettings.terrainOverlay;
+    const bool isWorld = target.scene->scene->findComponent<TerrainWorldComponent>(target.entity) != nullptr;
     if (hasKey(args, "overlay")) {
         const std::string name = args["overlay"].is_string() ? args["overlay"].get<std::string>() : "";
+        bool worldOverlay = false;
+#if JASPERENGINE_TERRAIN_WORLD
+        TerrainWorldOverlayMode mode;
+        worldOverlay = terrainWorldOverlayMode(name, mode);
+#endif
         if (name == "none") {
             settings.source.clear();
-        } else if (!TerrainOverlay::hasSource(name)) {
+        } else if (worldOverlay != isWorld && (worldOverlay || TerrainOverlay::hasSource(name))) {
+            // T4 R46: a Terrain World draws its tiles' overlays, a Terrain its maps'
+            call->fail(isWorld ? "overlay: \"" + name + "\" draws one Terrain's maps; on a Terrain World use tiles, tile_state, lod or collision."
+                               : "overlay: \"" + name + "\" is for a Terrain World; on a Terrain use height, slope, contours or layer_weights.");
+            return;
+        } else if (!worldOverlay && !TerrainOverlay::hasSource(name)) {
             std::string names;
             for (const std::string& source : TerrainOverlay::sourceNames()) names += ", " + source;
-            call->fail("overlay: \"" + name + "\" is not an overlay. Overlays: none" + names + ".");
+            call->fail("overlay: \"" + name + "\" is not an overlay. Overlays: none" + names + "; on a Terrain World tiles, tile_state, lod, collision.");
             return;
         } else {
             settings.source = name;
@@ -1080,6 +1107,11 @@ void visualizeTerrainTool(const CallPtr& call) {
     if (hasKey(args, "opacity")) settings.opacity = std::clamp(args["opacity"].get<float>(), 0.0f, 1.0f);
     target.scene->displaySettings.terrainOverlay = settings;
     target.scene->needUpdateRender = true;
+    // T4 R42: in Play the running copy's Scene view shows it too
+    if (SceneProject* running = McpRefs::runtimeScene(target.project, target.scene); running != target.scene) {
+        running->displaySettings.terrainOverlay = settings;
+        running->needUpdateRender = true;
+    }
     target.project->saveWorkspaceFile();
 
     // the box to frame: the terrain, or region in the call's space
@@ -1089,6 +1121,19 @@ void visualizeTerrainTool(const CallPtr& call) {
     const terrain::OpSpace space = spaceOf(transform, !(hasKey(args, "space") && args["space"] == "local"));
     const float half = terrain.terrainSize * 0.5f;
     float minX = -half, minZ = -half, maxX = half, maxZ = half;
+    float boxHeight = terrain.maxHeight;
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R4: a World's box is its tiles'
+    jasperengine::terrain::TileCoord low, high;
+    if (isWorld && terrain.world && terrain.world->started() && terrain.world->occupancy().bounds(low, high)) {
+        const float size = terrain.world->lattice().tileSize();
+        minX = static_cast<float>(low.x) * size;
+        minZ = static_cast<float>(low.z) * size;
+        maxX = static_cast<float>(high.x + 1) * size;
+        maxZ = static_cast<float>(high.z + 1) * size;
+        boxHeight = terrain.world->maxHeight();
+    }
+#endif
     if (hasKey(args, "region")) {
         const Json& region = args["region"];
         if (!region.is_object() || !hasKey(region, "min") || !hasKey(region, "max") || !region["min"].is_array() || !region["max"].is_array() ||
@@ -1105,7 +1150,7 @@ void visualizeTerrainTool(const CallPtr& call) {
     }
     AABB box;
     for (int corner = 0; corner < 8; corner++) {
-        box.merge(transform.model * Vector3((corner & 1) ? maxX : minX, (corner & 2) ? terrain.maxHeight : 0.0f, (corner & 4) ? maxZ : minZ));
+        box.merge(transform.model * Vector3((corner & 1) ? maxX : minX, (corner & 2) ? boxHeight : 0.0f, (corner & 4) ? maxZ : minZ));
     }
     const std::string framing = hasKey(args, "framing") && args["framing"].is_string() ? args["framing"].get<std::string>() : "fit";
     if (framing != "keep" && framing != "fit" && framing != "top" && framing != "orbit") {
@@ -1160,8 +1205,11 @@ void visualizeTerrainTool(const CallPtr& call) {
                 call->fail("The scene closed.");
                 return;
             }
+            // in Play the legend is the running copy's, whose state the overlay shows
+            SceneProject* running = McpRefs::runtimeScene(call->ctx().project(), shown);
+            SceneRender* legendRender = running && running->sceneRender ? running->sceneRender : shown->sceneRender;
             Json legend = Json::array();
-            for (const TerrainOverlayLegendStop& stop : shown->sceneRender->getTerrainOverlayLegend()) {
+            for (const TerrainOverlayLegendStop& stop : legendRender->getTerrainOverlayLegend()) {
                 legend.push_back({{"label", stop.label}, {"color", {stop.color.x, stop.color.y, stop.color.z}}});
             }
             Json data = {{"overlay", overlayName}, {"legend", legend}, {"camera", w3::sceneViewCameraJson(shown)},
@@ -1248,7 +1296,8 @@ void registerTerrainTools(McpRegistry& registry) {
     visualize.name = "visualize_terrain";
     visualize.title = "Visualize Terrain";
     visualize.group = "terrain";
-    visualize.allowedWhilePlaying = false;
+    // T4 R42: the Scene view overlay shows a running World too (its tiles, its cut, its collider)
+    visualize.allowedWhilePlaying = true;
     visualize.annotations.readOnly = true;
     visualize.description =
         "Show a terrain overlay in the Scene view (none hides it), frame the terrain and return a Scene view PNG with the "
@@ -1271,6 +1320,8 @@ void registerTerrainTools(McpRegistry& registry) {
     });
     visualize.handler = terrain_tools::visualizeTerrainTool;
     registry.addTool(std::move(visualize));
+
+    registerTerrainWorldTools(registry);
 }
 
 }

@@ -77,6 +77,7 @@
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "component/TextComponent.h"
 #include "component/TextEffectComponent.h"
 #include "component/TilemapComponent.h"
@@ -154,6 +155,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<ScaleTracksComponent>(ComponentOrder::Insertion, "ScaleTracksComponent");
     registerComponent<ScriptComponent>(ComponentOrder::Insertion, "ScriptComponent");
     registerComponent<TerrainComponent>(ComponentOrder::Insertion, "TerrainComponent");
+    registerComponent<TerrainWorldComponent>(ComponentOrder::Insertion, "TerrainWorldComponent");
     registerComponent<AudioSourceComponent>(ComponentOrder::Hierarchy, "AudioSourceComponent");
     registerComponent<TilemapComponent>(ComponentOrder::Insertion, "TilemapComponent");
 #ifdef JASPERENGINE_PHYSICS_2D

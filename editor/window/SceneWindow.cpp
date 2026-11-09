@@ -4,6 +4,9 @@
 #include "TerrainQualityPanel.h"
 #include "component/TerrainComponent.h"
 #include "SceneWindow.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "terrainworld/TerrainWorldOverlay.h"
+#endif
 #include "window/TerrainEditWindow.h"
 #include "audio/SoundDrop.h"
 #include "component/TextComponent.h"
@@ -2760,7 +2763,13 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::TextUnformatted(ICON_FA_MOUNTAIN " Overlay");
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::BeginCombo("##terrainoverlay", overlay.source.empty() ? "None" : overlay.source.c_str())) {
+#if JASPERENGINE_TERRAIN_WORLD
+        const std::string worldLabel = terrainWorldOverlayLabel(overlay.source);
+#else
+        const std::string worldLabel;
+#endif
+        const char* preview = overlay.source.empty() ? "None" : (!worldLabel.empty() ? worldLabel.c_str() : overlay.source.c_str());
+        if (ImGui::BeginCombo("##terrainoverlay", preview)) {
             if (ImGui::Selectable("None", overlay.source.empty())) {
                 overlay.source.clear();
                 sceneProject.needUpdateRender = true;
@@ -2773,6 +2782,17 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
                     project->saveWorkspaceFile();
                 }
             }
+#if JASPERENGINE_TERRAIN_WORLD
+            // T4 R42: a Terrain World's own overlay, in Play too
+            ImGui::SeparatorText("Terrain World");
+            for (const std::string& name : terrainWorldOverlaySources()) {
+                if (ImGui::Selectable(terrainWorldOverlayLabel(name), overlay.source == name)) {
+                    overlay.source = name;
+                    sceneProject.needUpdateRender = true;
+                    project->saveWorkspaceFile();
+                }
+            }
+#endif
             ImGui::EndCombo();
         }
         ImGui::TableNextRow();

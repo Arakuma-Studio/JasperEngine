@@ -8,6 +8,9 @@
 #include "pool/TextureDataPool.h"
 #include "util/SafeWrite.h"
 #include "util/TerrainMapFileWriter.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "terrainworld/TerrainWorldFiles.h"
+#endif
 
 #include <chrono>
 #include <utility>
@@ -102,8 +105,14 @@ void editor::TerrainMapPersistence::handOverAll(){
 }
 
 bool editor::TerrainMapPersistence::flushAll(){
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R31: a Terrain World's edited tiles reach their files at the same points
+    const bool worldsOk = TerrainWorldFiles::flushAll();
+#else
+    const bool worldsOk = true;
+#endif
     handOverAll();
-    return TerrainMapFileWriter::get().flushAll();
+    return TerrainMapFileWriter::get().flushAll() && worldsOk;
 }
 
 size_t editor::TerrainMapPersistence::pendingCount() const{

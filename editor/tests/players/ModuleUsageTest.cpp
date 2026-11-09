@@ -30,6 +30,7 @@
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "component/VoxelVolumeComponent.h"
+#include "component/TerrainWorldComponent.h"
 
 #include <gtest/gtest.h>
 
@@ -241,6 +242,64 @@ TEST(ModuleUsage, TerrainWritesInLuaNeedTerrainEdits) {
     EXPECT_FALSE(withLua("local y = terrain:getHeightAt(0, 0)\nlocal hit = terrain:raycast(o, d, 100)").needs("terrainedit"));
 }
 
+// T4 R55, AC36: each kind of evidence for terrainworld, and what is not evidence
+TEST(ModuleUsage, TerrainWorldComponentNeedsTheModule) {
+    OneEntity one;
+    one.scene.addComponent<TerrainWorldComponent>(one.entity, {});
+    const ModuleUsage usage = one.usage();
+    EXPECT_EQ(modules(usage), "terrainworld");
+    EXPECT_EQ(usage.firstEvidence("terrainworld"), "scene Main: Terrain World on Thing");
+}
+
+TEST(ModuleUsage, TerrainWorldNotNeededByAnEmptyProjectOrAPlainTerrain) {
+    EXPECT_FALSE(ModuleUsageDetector::analyze(empty()).needs("terrainworld"));
+    OneEntity one;
+    one.scene.addComponent<TerrainComponent>(one.entity, {});
+    EXPECT_FALSE(one.usage().needs("terrainworld"));
+    // a script using the plain Terrain, and the words in a string or a comment
+    EXPECT_FALSE(withLua("local t = Terrain(self.scene, self.entity)\nlocal h = t:getHeightAt(1, 2)").needs("terrainworld"));
+    EXPECT_FALSE(withLua("print('TerrainWorld')\n-- go:getTerrainWorld()\nlocal x = 1").needs("terrainworld"));
+}
+
+TEST(ModuleUsage, TerrainWorldLuaNamesNeedTheModule) {
+    // its class
+    const ModuleUsage byClass = withLua("local w = TerrainWorld(self.scene, self.entity)");
+    EXPECT_TRUE(byClass.needs("terrainworld"));
+    EXPECT_EQ(byClass.firstEvidence("terrainworld"), "lua/test.lua:1: TerrainWorld");
+    // its member on GameObject, after : and in a string
+    const ModuleUsage byMember = withLua("local go = GameObject(self.scene, self.entity)\nlocal w = go:getTerrainWorld()");
+    EXPECT_TRUE(byMember.needs("terrainworld"));
+    EXPECT_EQ(byMember.firstEvidence("terrainworld"), "lua/test.lua:2: getTerrainWorld");
+    EXPECT_TRUE(withLua("local go = GameObject(self.scene, self.entity)\nlocal w = go['getTerrainWorld'](go)").needs("terrainworld"));
+    // dynamic access and C++ code reach anything
+    EXPECT_TRUE(withLua("local t = _G[name]").needs("terrainworld"));
+    ModuleScan cpp = empty();
+    cpp.cppScripts.push_back("scripts/Player.cpp");
+    EXPECT_TRUE(ModuleUsageDetector::analyze(cpp).needs("terrainworld"));
+    // the names come from the binding's condition (R47)
+    const auto entry = ModuleUsageDetector::moduleEntryPoints(LuaApiData::json());
+    ASSERT_TRUE(entry.count("terrainworld"));
+    EXPECT_TRUE(entry.at("terrainworld").count("TerrainWorld"));
+    EXPECT_TRUE(entry.at("terrainworld").count("getTerrainWorld"));
+}
+
+TEST(ModuleUsage, TerrainWorldScriptPropertyNeedsTheModule) {
+    OneEntity one;
+    ScriptComponent scripts;
+    ScriptEntry entry;
+    entry.type = ScriptType::LUA;
+    entry.className = "Streamer";
+    ScriptProperty property;
+    property.name = "world";
+    property.ptrTypeName = "TerrainWorld*";
+    entry.properties.push_back(property);
+    scripts.scripts.push_back(entry);
+    one.scene.addComponent<ScriptComponent>(one.entity, scripts);
+    const ModuleUsage usage = one.usage();
+    EXPECT_TRUE(usage.needs("terrainworld"));
+    EXPECT_NE(usage.firstEvidence("terrainworld").find("script property world (TerrainWorld)"), std::string::npos) << usage.firstEvidence("terrainworld");
+}
+
 TEST(ModuleUsage, ScriptPropertyTypesNeedTheirModules) {
     OneEntity one;
     ScriptComponent scripts;
@@ -297,7 +356,7 @@ TEST(ModuleUsage, LuaNamesNeedTheirModules) {
 }
 
 TEST(ModuleUsage, DynamicAccessNeedsEveryModule) {
-    const std::string every = "htmlui video runtimeshaders physics3d physics2d noise voxel terrainedit";
+    const std::string every = "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit";
     for (const char* code : {"local f = _G[name]", "local f = _ENV[name]", "local chunk = load(text)", "local s = loadstring(text)",
                              "dofile(path)", "local r = debug.getregistry()", "local g = package.loaded", "local m = require(name)",
                              "local g = require('_G')"}) {
@@ -313,7 +372,7 @@ TEST(ModuleUsage, CppScriptsNeedEveryModule) {
     ModuleScan scan = empty();
     scan.cppScripts.push_back("scripts/Player.cpp");
     const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
-    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel terrainedit");
+    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit");
     EXPECT_NE(usage.firstEvidence("htmlui").find("scripts/Player.cpp"), std::string::npos);
 }
 
@@ -549,6 +608,19 @@ TEST(PlayerVariants, TheSmallestVariantHoldingTheModules) {
     EXPECT_EQ(PlayerRuntimes::smallestWith({lite}, {"htmlui"}), nullptr);
     EXPECT_EQ(PlayerRuntimes::runtimeId("linux", "x64", "glcore", false, "lite3d"), "linux-x64-glcore-release-lite3d");
     EXPECT_EQ(PlayerRuntimes::runtimeId("linux", "x64", "glcore", false), "linux-x64-glcore-release");
+}
+
+// T2 R43, AC34: each kind of evidence for noise, and what is not evidence
+// T4 R55: full, ui and core hold Terrain Worlds, the lite ones do not
+TEST(PlayerVariants, TerrainWorldInFullUiAndCore) {
+    EXPECT_EQ(PlayerRuntimes::variantFor({"terrainworld"}).name, "core");
+    EXPECT_EQ(PlayerRuntimes::variantFor({"physics3d", "terrainworld"}).name, "core");
+    EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "terrainworld"}).name, "ui");
+    EXPECT_EQ(PlayerRuntimes::variantFor({"htmlui", "video", "terrainworld"}).name, "full");
+    for (const PlayerVariant& variant : PlayerRuntimes::variants()) {
+        const bool has = std::find(variant.modules.begin(), variant.modules.end(), "terrainworld") != variant.modules.end();
+        EXPECT_EQ(has, variant.name != "lite3d" && variant.name != "lite2d") << variant.name;
+    }
 }
 
 // T2 R43, AC34: each kind of evidence for noise, and what is not evidence

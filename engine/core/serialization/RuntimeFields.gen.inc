@@ -2079,6 +2079,8 @@ const FieldEntry kBody_NavMeshSurfaceComponent_fields[] = {
     JE_RF(NavMeshSurfaceComponent, plane, 0x6ffdbefau, Enum),
     JE_RF(NavMeshSurfaceComponent, runtimeCarving, 0x69e7e4fcu, Bool),
     JE_RF(NavMeshSurfaceComponent, maxCarvingObstacles, 0x5e682c4cu, Int),
+    JE_RF(NavMeshSurfaceComponent, followTerrainWorldFocus, 0xed13cc96u, Bool),
+    JE_RF(NavMeshSurfaceComponent, followRadius, 0x2c8cc853u, Float),
     JE_RF(NavMeshSurfaceComponent, navMeshData, 0x1e9815acu, AssetPath),
 };
 const StructTable kBody_NavMeshSurfaceComponent{"navmeshsurface", kBody_NavMeshSurfaceComponent_fields, std::size(kBody_NavMeshSurfaceComponent_fields)};
@@ -2550,6 +2552,21 @@ const FieldEntry kBody_VoxelVolumeComponent_fields[] = {
 };
 const StructTable kBody_VoxelVolumeComponent{"voxelvolume", kBody_VoxelVolumeComponent_fields, std::size(kBody_VoxelVolumeComponent_fields)};
 
+const FieldEntry kBody_TerrainWorldComponent_fields[] = {
+    JE_RF(TerrainWorldComponent, enabled, 0x063283c5u, Bool),
+    JE_RF(TerrainWorldComponent, worldData, 0x83f3b4e8u, AssetPath),
+    JE_RF(TerrainWorldComponent, useCameraFocus, 0xd03b7078u, Bool),
+    JE_RF_ENTITY(TerrainWorldComponent, focus, 0xdbb5e70cu, Entity),
+    JE_RF(TerrainWorldComponent, poolSize, 0xecc46d63u, Int),
+    JE_RF(TerrainWorldComponent, lodDistance, 0x7d55019cu, Float),
+    JE_RF(TerrainWorldComponent, uploadBudget, 0x2aa1ca68u, Float),
+    JE_RF(TerrainWorldComponent, collisionRadius, 0x37062de2u, Float),
+    JE_RF(TerrainWorldComponent, collisionChunkQuads, 0xacf16ecbu, Int),
+    JE_RF(TerrainWorldComponent, autoAddTiles, 0x34740403u, Bool),
+    JE_RF(TerrainWorldComponent, overviewCastsShadows, 0x84e22b42u, Bool),
+};
+const StructTable kBody_TerrainWorldComponent{"terrainworld", kBody_TerrainWorldComponent_fields, std::size(kBody_TerrainWorldComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2661,6 +2678,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(WaterWakeComponent, "waterwake", 0xbbb4fdc0u),
     JE_RF_COMPONENT(PixelPerfectCameraComponent, "pixelperfectcamera", 0xc6cced7fu),
     JE_RF_COMPONENT(VoxelVolumeComponent, "voxelvolume", 0x973a2f61u),
+    JE_RF_COMPONENT(TerrainWorldComponent, "terrainworld", 0x98e87442u),
     JE_RF_COMPONENTS_END
 };
 

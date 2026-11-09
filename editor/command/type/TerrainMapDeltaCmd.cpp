@@ -10,9 +10,12 @@
 #include "pool/TextureDataPool.h"
 #include "terrain/EditorTerrainStore.h"
 #include "terrain/TerrainBytes.h"
+#include "terrainworld/TerrainWorldEditor.h"
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
+#include <optional>
 #include <utility>
 
 using namespace jasperengine;
@@ -79,6 +82,8 @@ void editor::TerrainMapDeltaCmd::addLargeEdit(std::shared_ptr<TerrainLargeEdit> 
 std::string editor::TerrainMapDeltaCmd::refusal() const {
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     TerrainComponent* terrain = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<TerrainComponent>(entity) : nullptr;
+    // T4 R30: a World's maps are its tiles, which only this history writes in the editor
+    if (terrain && terrain->world) return std::string();
     for (const MapDelta& delta : maps) {
         Texture* texture = terrain ? terrainMapTexture(*terrain, delta.map) : nullptr;
         const std::string name = delta.path.empty() ? delta.id : delta.path;
@@ -105,16 +110,22 @@ std::string editor::TerrainMapDeltaCmd::redoRefusal() const {
     return why.empty() ? refusal() : why;
 }
 
-void editor::TerrainMapDeltaCmd::applyXor() {
+void editor::TerrainMapDeltaCmd::applyXor(bool makesTiles) {
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     TerrainComponent* terrain = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<TerrainComponent>(entity) : nullptr;
     if (!terrain) return;
 
     EditorTerrainStore store(project, sceneId, sceneProject->scene, entity, *terrain);
+    // T4 R29, R30: the first application of an overlay's bytes makes the World's tiles it reaches;
+    // replaying them never does, as the store's hook puts back the ones it made
+    std::optional<TerrainWorldAutoAddPause> pause;
+    if (!makesTiles) pause.emplace(*terrain);
     std::vector<uint8_t> xored;
     std::vector<uint8_t> current;
     for (const MapDelta& delta : maps) {
-        const int stride = delta.channels * TextureData::getBytesPerChannel(delta.colorFormat);
+        // (a World's maps have no texture: their stored texels say it)
+        const int stride = terrain->world ? bytesPerTexel(store.format(delta.map))
+                                          : delta.channels * TextureData::getBytesPerChannel(delta.colorFormat);
         for (const Tile& tile : delta.tiles) {
             const TexelRect rect = deltaTileRect(tile.x, tile.y, delta.bounds);
             const size_t bytes = static_cast<size_t>(rect.area()) * stride;
@@ -126,6 +137,9 @@ void editor::TerrainMapDeltaCmd::applyXor() {
             }
             store.writeBytes(delta.map, rect, current);
         }
+    }
+    if (makesTiles) {
+        if (std::unique_ptr<terrain::TerrainStoreUndoHook> hook = store.takeUndoHook()) undoHooks.push_back(std::move(hook));
     }
 }
 
@@ -140,11 +154,14 @@ bool editor::TerrainMapDeltaCmd::execute() {
         for (const auto& edit : largeEdits) {
             edit->redo();
         }
-        applyXor();
-        for (const auto& hook : undoHooks) {
+        // the hooks of this step so far: one the first application adds has nothing to redo yet
+        const std::vector<std::shared_ptr<terrain::TerrainStoreUndoHook>> hooks = undoHooks;
+        applyXor(!replayed);
+        for (const auto& hook : hooks) {
             hook->redo();
         }
     }
+    replayed = true;
     // Painting writes the map's file, an asset like Unity's TerrainData: no override, and every
     // terrain on that file follows (R41)
     sceneProject->isModified = true;
@@ -157,7 +174,7 @@ void editor::TerrainMapDeltaCmd::undo() {
     for (auto it = undoHooks.rbegin(); it != undoHooks.rend(); ++it) {
         (*it)->undo();
     }
-    applyXor();
+    applyXor(false);
     for (auto it = largeEdits.rbegin(); it != largeEdits.rend(); ++it) {
         (*it)->undo();
     }

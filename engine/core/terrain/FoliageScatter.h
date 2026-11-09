@@ -65,6 +65,9 @@ namespace jasperengine::terrain {
         int cellX = 0, cellZ = 0;
         int regionOffsetX = 0, regionOffsetZ = 0;   // whole cells, 0 for one Terrain (T5 F2, F11)
         float terrainSize = 0.0f;
+        // The span of the height map when its samples reach past the region's square (a world tile's
+        // gutter, T4 R27); 0: terrainSize
+        float heightMapSize = 0.0f;
         float terrainMaxHeight = 0.0f;
         FoliageMapPatch heightMap;
         FoliageMapPatch densityMap;

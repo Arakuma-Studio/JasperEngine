@@ -40,6 +40,8 @@ YAML::Node editor::Stream::encodeNavMeshSurfaceComponent(const NavMeshSurfaceCom
     node["plane"] = StreamSchema::navPlane().toString(surface.plane);
     node["runtimeCarving"] = surface.runtimeCarving;
     node["maxCarvingObstacles"] = surface.maxCarvingObstacles;
+    node["followTerrainWorldFocus"] = surface.followTerrainWorldFocus;
+    node["followRadius"] = surface.followRadius;
     encodeAssetRef(node, "navMeshData", surface.navMeshData);
     return node;
 }
@@ -66,6 +68,8 @@ NavMeshSurfaceComponent editor::Stream::decodeNavMeshSurfaceComponent(const YAML
     // (S74: missing in S19-era scenes, which keep the default 128)
     if (node["maxCarvingObstacles"])
         surface.maxCarvingObstacles = std::clamp(YamlNumbers::as<int>(node["maxCarvingObstacles"]), 1, 4096);
+    if (node["followTerrainWorldFocus"]) surface.followTerrainWorldFocus = YamlNumbers::as<bool>(node["followTerrainWorldFocus"]);
+    if (node["followRadius"]) surface.followRadius = YamlNumbers::as<float>(node["followRadius"]);
     if (node["navMeshData"]) surface.navMeshData = decodeAssetRef(node, "navMeshData");
     return surface;
 }

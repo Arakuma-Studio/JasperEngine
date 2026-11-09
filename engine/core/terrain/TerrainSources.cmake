@@ -21,3 +21,22 @@ set(JASPERENGINE_TERRAIN_SRCS
     core/terrain/TerrainSurface.cpp
     core/terrain/TreeStore.cpp
 )
+# T4, the module terrainworld (JASPERENGINE_TERRAIN_WORLD): its pure code, under the same flags as the
+# rest of this folder, then its runtime, streaming and collision
+set(JASPERENGINE_TERRAIN_WORLD_PURE_SRCS
+    core/terrain/world/TerrainTileFormat.cpp
+    core/terrain/world/TerrainWorldData.cpp
+    core/terrain/world/TerrainWorldSelect.cpp
+    core/terrain/world/TiledMapStore.cpp
+    core/terrain/world/TileStreamer.cpp
+    core/terrain/world/WorldChunkSamples.cpp
+    core/terrain/world/WorldImport.cpp
+)
+set(JASPERENGINE_TERRAIN_WORLD_SRCS
+    ${JASPERENGINE_TERRAIN_WORLD_PURE_SRCS}
+    core/object/TerrainWorld.cpp
+    core/physics/TerrainWorldCollision.cpp
+    core/script/binding/TerrainWorldClassesLua.cpp
+    core/subsystem/TerrainWorldRuntime.cpp
+    core/subsystem/TerrainWorldSystem.cpp
+)

@@ -6,7 +6,8 @@
 // The Scene view's terrain overlays (T1 R65, R90, DC8): a sheet over each terrain, an editor-only
 // mesh like the AI Navigation overlay's (never in a game or camera image), with a generated RGBA8
 // image baked by a source. T1 registers height, slope, contours and layer_weights; later specs
-// add theirs through registerSource, and visualize_terrain takes any registered name.
+// add theirs through registerSource, and visualize_terrain takes any registered name. A Terrain
+// World draws T4's own overlays instead (tiles, tile_state, lod, collision; R42), over its tiles.
 
 #include "Scene.h"
 #include "math/Vector4.h"
@@ -115,6 +116,9 @@ namespace jasperengine::editor {
             std::string textureId;
             int imageWidth = 0;
             int imageHeight = 0;
+            // T4 R42: a Terrain World's sheet follows its runtime: what the image and the grid show
+            uint64_t worldImage = 0;
+            uint64_t worldGeometry = 0;
         };
 
         Scene* scene;
@@ -122,10 +126,17 @@ namespace jasperengine::editor {
         TerrainOverlaySettings drawn;
         std::vector<TerrainOverlayLegendStop> legend;
         double lastBake = -1.0;
+        // T4 R42: a World's LOD Level that render has not recorded a cut for yet: the next frame bakes again
+        bool worldPending = false;
         uint64_t previewsBaked = 0;
         Subscription edits;
 
         void refresh(Entity entity, Sheet& sheet, const TerrainOverlaySettings& settings);
+        // T4 R42: a Terrain World's overlay (editor/terrainworld/TerrainWorldOverlay.h)
+        void refreshWorld(Entity entity, Sheet& sheet, const TerrainOverlaySettings& settings, bool changed);
+        void releaseWorld(Entity entity);
+        void ensureMesh(Sheet& sheet);
+        void setImage(Sheet& sheet, const std::vector<uint8_t>& rgba, int width, int height);
     };
 
 }

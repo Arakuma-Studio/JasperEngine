@@ -297,6 +297,11 @@ JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(Scene* scene, TerrainComp
         setError(error, "Cannot create heightfield shape for a terrain without size");
         return NULL;
     }
+    // T4 R23: a World's collision is paged round what moves (TerrainWorldCollision), never one field
+    if (terrain.world){
+        setError(error, "A Terrain World pages its collision itself: give its GameObject a Rigidbody with no Height Field collider");
+        return NULL;
+    }
     if (samplesSize == 0){
         samplesSize = defaultHeightFieldSamples(terrain);
     }

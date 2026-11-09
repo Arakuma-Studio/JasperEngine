@@ -234,12 +234,14 @@ namespace jasperengine::editor{
         // pixel art (S41): integer scaling, Pixels Per Unit and the pixel-snap rule of a camera
         PixelPerfectCameraComponent,
         // T6: a bounded box of smooth voxel terrain
-        VoxelVolumeComponent
+        VoxelVolumeComponent,
+        // T4: a Terrain's tiles past one map, streamed round its focuses
+        TerrainWorldComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::VoxelVolumeComponent;
+    constexpr ComponentType LastComponentType = ComponentType::TerrainWorldComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

@@ -957,6 +957,10 @@ void LuaBinding::registerClasses(lua_State *L){
 #if JASPERENGINE_VOXEL
     registerVoxelClasses(L);
 #endif
+#if JASPERENGINE_TERRAIN_WORLD
+    // after the GameObject classes, which it reopens for getTerrainWorld
+    registerTerrainWorldClasses(L);
+#endif
     registerCrashClasses(L);
 #if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);

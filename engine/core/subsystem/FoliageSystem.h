@@ -52,6 +52,21 @@ namespace jasperengine {
             virtual std::shared_ptr<TreeStore> trees() = 0;             // may be null while loading
             virtual void cellOffset(int& x, int& z) const = 0;          // whole 8-unit cells from the world origin
             virtual Matrix4 localToWorld() const = 0;
+
+            // A region with a frame of its own (a world's tile, T4 R27): a square of size units centred on
+            // localToWorld's origin, heights over maxHeight, a height map spanning heightMapSize (its
+            // samples may reach past the square), trees from trees() alone. False: the owner Terrain's
+            // component holds them, as a lone Terrain's does.
+            struct Frame {
+                float size = 0.0f;
+                float heightMapSize = 0.0f;
+                float maxHeight = 0.0f;
+                bool treesLoading = false;
+            };
+            virtual bool frame(Frame& out) const {
+                (void)out;
+                return false;
+            }
         };
 
     }
@@ -189,6 +204,12 @@ namespace jasperengine {
         // F11. A lone Terrain gets its region by itself. T4 adds one per resident tile.
         void addRegion(Entity owner, std::shared_ptr<terrain::FoliageRegion> region);
         void removeRegion(Entity owner, uint32_t regionKey);
+        // A region's maps changed under it: its cells are placed again and its trees re-snap, after the
+        // re-snap debounce, as an edit's are (T4 R27: a tile written by an edit)
+        void regionChanged(Entity owner, uint32_t regionKey);
+        size_t getRegionCount(Entity owner) const;
+        // The tree stores of a Terrain's regions that have one (a world's resident tiles, T4 R27)
+        void forEachTreeStore(Entity owner, const std::function<void(const terrain::TreeStore& store)>& visit) const;
 
         // ---- trees
 
@@ -298,7 +319,7 @@ namespace jasperengine {
         bool getPrototypeDraw(Entity prototypeEntity, PrototypeDraw& out) const;
 
     private:
-        void rebuildCellNow(Entity terrainEntity, const terrain::TreeRecord& record);
+        void rebuildCellNow(Entity terrainEntity, uint32_t regionKey, const terrain::TreeRecord& record);
         void updateContactSubscription();
         void reportMemory(uint64_t cpuBytes, uint64_t gpuBytes);
         uint64_t reportedCpuBytes = 0;

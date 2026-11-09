@@ -40,6 +40,9 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "subsystem/TerrainWorldSystem.h"
+#endif
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIClock.h"
 #if JASPERENGINE_HTMLUI
@@ -2475,6 +2478,10 @@ void Engine::runFrame(bool draw){
             jobSystem.pump(threadingSettingsStorage().webPumpBudgetMs);
         jobSystem.sampleFrame();
     }
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 D9: the Terrain Worlds' pump, after the job pump and on paused frames too
+    TerrainWorldSystem::pumpAll();
+#endif
 
     {
         JE_PROFILE_SCOPE("SokolCmdQueue execute");

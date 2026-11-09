@@ -6,6 +6,8 @@
 #include "Project.h"
 #include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TerrainWorldComponent.h"
+#include "component/Transform.h"
 #include "object/Mesh.h"
 #include "object/TerrainEdit.h"
 #include "subsystem/MeshSystem.h"
@@ -14,6 +16,10 @@
 #include "texture/TextureData.h"
 #include "util/Angle.h"
 #include "util/ScopedDefaultEntityPool.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "subsystem/TerrainWorldRuntime.h"
+#include "terrainworld/TerrainWorldOverlay.h"
+#endif
 
 #include <algorithm>
 #include <map>
@@ -391,28 +397,44 @@ TerrainOverlay::~TerrainOverlay() {
 }
 
 void TerrainOverlay::hide() {
-    for (auto& [entity, sheet] : sheets) delete sheet.mesh;
+    for (auto& [entity, sheet] : sheets) {
+        releaseWorld(entity);
+        delete sheet.mesh;
+    }
     sheets.clear();
     legend.clear();
     drawn = TerrainOverlaySettings();
 }
 
 void TerrainOverlay::update(SceneProject& sceneProject, const TerrainOverlaySettings& settings, double nowSeconds) {
-    if (settings.source.empty() || !hasSource(settings.source)) {
+    bool worldSource = false;
+#if JASPERENGINE_TERRAIN_WORLD
+    TerrainWorldOverlayMode worldMode;
+    worldSource = terrainWorldOverlayMode(settings.source, worldMode);
+#endif
+    if (settings.source.empty() || (!worldSource && !hasSource(settings.source))) {
         if (!sheets.empty()) hide();
         return;
     }
     const bool changed = settings != drawn || previewsBaked != overlayPreviews().serial;
     previewsBaked = overlayPreviews().serial;
-    if (!changed && nowSeconds - lastBake < MIN_SECONDS) return;
+    if (!changed && !worldPending && nowSeconds - lastBake < MIN_SECONDS) return;
+    worldPending = false;
 
     std::set<Entity> present;
     auto terrains = scene->getComponentArray<TerrainComponent>();
     for (size_t i = 0; i < terrains->size(); i++) {
         const Entity entity = terrains->getEntity(i);
         if (std::find(sceneProject.entities.begin(), sceneProject.entities.end(), entity) == sceneProject.entities.end()) continue;
+        // a Terrain World draws T4's overlays, a Terrain T1's
+        const bool world = scene->findComponent<TerrainWorldComponent>(entity) != nullptr;
+        if (world != worldSource) continue;
         present.insert(entity);
         Sheet& sheet = sheets[entity];
+        if (world) {
+            refreshWorld(entity, sheet, settings, changed);
+            continue;
+        }
         const TerrainComponent& terrain = terrains->getComponentFromIndex(i);
         if (changed || sheet.dirty || !sheet.mesh || sheet.revision != terrain.surfaceRevision) refresh(entity, sheet, settings);
     }
@@ -421,6 +443,7 @@ void TerrainOverlay::update(SceneProject& sceneProject, const TerrainOverlaySett
             ++it;
             continue;
         }
+        releaseWorld(it->first);
         delete it->second.mesh;
         it = sheets.erase(it);
     }
@@ -440,16 +463,7 @@ void TerrainOverlay::refresh(Entity entity, Sheet& sheet, const TerrainOverlaySe
     overlayImageSize(store, width, height);
     if (!bake(scene, entity, settings, width, height, rgba, legend, error)) return;
 
-    if (!sheet.mesh) {
-        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
-        sheet.mesh = new Mesh(scene);
-        scene->getSystem<RenderSystem>()->setEditorOverlay(sheet.mesh->getEntity(), true);
-        sheet.mesh->setTransparent(true);
-        sheet.mesh->setReceiveLights(false);
-        sheet.mesh->setCastShadows(false);
-        sheet.mesh->setReceiveShadows(false);
-        sheet.mesh->setFaceCulling(false);
-    }
+    ensureMesh(sheet);
 
     // DC8: a grid over the terrain, each vertex at the highest texel of its footprint plus the lift
     const terrain::SurfaceView view = terrainSurfaceView(terrain);
@@ -506,6 +520,25 @@ void TerrainOverlay::refresh(Entity entity, Sheet& sheet, const TerrainOverlaySe
     scene->getSystem<MeshSystem>()->calculateMeshAABB(mesh);
     if (mesh.loaded) mesh.needReload = true;
 
+    setImage(sheet, rgba, width, height);
+    sheet.revision = terrain.surfaceRevision;
+    sheet.dirty = false;
+}
+
+void TerrainOverlay::ensureMesh(Sheet& sheet) {
+    if (sheet.mesh) return;
+    ScopedDefaultEntityPool sys(*scene, EntityPool::System);
+    sheet.mesh = new Mesh(scene);
+    scene->getSystem<RenderSystem>()->setEditorOverlay(sheet.mesh->getEntity(), true);
+    sheet.mesh->setTransparent(true);
+    sheet.mesh->setReceiveLights(false);
+    sheet.mesh->setCastShadows(false);
+    sheet.mesh->setReceiveShadows(false);
+    sheet.mesh->setFaceCulling(false);
+}
+
+void TerrainOverlay::setImage(Sheet& sheet, const std::vector<uint8_t>& rgba, int width, int height) {
+    MeshComponent& mesh = sheet.mesh->getComponent<MeshComponent>();
     // the image: replaced when its size changes, else written in place
     Texture& image = mesh.submeshes[0].material.baseColorTexture;
     if (sheet.textureId.empty() || sheet.imageWidth != width || sheet.imageHeight != height || !image.hasData()) {
@@ -531,6 +564,111 @@ void TerrainOverlay::refresh(Entity entity, Sheet& sheet, const TerrainOverlaySe
         image.invalidateRender();
         mesh.submeshes[0].needUpdateTexture = true;
     }
-    sheet.revision = terrain.surfaceRevision;
+}
+
+void TerrainOverlay::releaseWorld(Entity entity) {
+#if JASPERENGINE_TERRAIN_WORLD
+    // R37: render keeps the drawn nodes only while an overlay shows them
+    TerrainComponent* terrain = scene->isEntityCreated(entity) ? scene->findComponent<TerrainComponent>(entity) : nullptr;
+    if (terrain && terrain->world) terrain->world->recordDrawnNodes(false);
+#else
+    (void)entity;
+#endif
+}
+
+void TerrainOverlay::refreshWorld(Entity entity, Sheet& sheet, const TerrainOverlaySettings& settings, bool changed) {
+#if JASPERENGINE_TERRAIN_WORLD
+    TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
+    TerrainWorldRuntime* runtime = terrain.world;
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    TerrainWorldOverlayMode mode;
+    if (!runtime || !runtime->started() || !transform || !terrainWorldOverlayMode(settings.source, mode)) return;
+    runtime->recordDrawnNodes(mode == TerrainWorldOverlayMode::LodLevel);
+    const TerrainWorldOverlayState state = captureTerrainWorldOverlay(*runtime, mode);
+    if (!state.valid) return;
+    // recording starts with this bake: the cut render keeps from the next frame on
+    if (mode == TerrainWorldOverlayMode::LodLevel && state.rects.empty()) worldPending = true;
+    // the grid follows the box, the overview and which tiles are exact; the image what it shows
+    int exact = 0;
+    for (uint8_t tileState : state.states) exact += tileState >= static_cast<uint8_t>(jasperengine::terrain::TileState::CpuReady) && tileState <= static_cast<uint8_t>(jasperengine::terrain::TileState::Resident);
+    const uint64_t geometry = (static_cast<uint64_t>(static_cast<uint16_t>(state.low.x)) << 48) ^ (static_cast<uint64_t>(static_cast<uint16_t>(state.low.z)) << 32) ^
+                              (static_cast<uint64_t>(static_cast<uint16_t>(state.high.x)) << 16) ^ static_cast<uint64_t>(static_cast<uint16_t>(state.high.z)) ^
+                              (static_cast<uint64_t>(runtime->overviewRevision()) * 0x9E3779B97F4A7C15ull) ^ (static_cast<uint64_t>(exact) << 24);
+    const uint64_t image = terrainWorldOverlaySignature(state);
+    const bool newGeometry = !sheet.mesh || sheet.dirty || geometry != sheet.worldGeometry;
+    legend = terrainWorldOverlayLegend(state);
+    if (!newGeometry && !changed && image == sheet.worldImage) return;
+
+    std::vector<uint8_t> rgba;
+    int width = 0, height = 0;
+    bakeTerrainWorldOverlay(state, rgba, width, height);
+    ensureMesh(sheet);
+    MeshComponent& mesh = sheet.mesh->getComponent<MeshComponent>();
+    if (newGeometry || changed) {
+        // a grid over the box, each vertex at the highest of the surface round it (overview or exact,
+        // never waiting) plus a lift; a World only translates (R4)
+        const int cellsX = std::clamp(state.columns() * 8, 1, 128), cellsZ = std::clamp(state.rows() * 8, 1, 128);
+        const float minX = static_cast<float>(state.low.x) * state.tileSize, minZ = static_cast<float>(state.low.z) * state.tileSize;
+        const float stepX = static_cast<float>(state.columns()) * state.tileSize / static_cast<float>(cellsX);
+        const float stepZ = static_cast<float>(state.rows()) * state.tileSize / static_cast<float>(cellsZ);
+        const float lift = std::max(0.05f, 0.005f * runtime->maxHeight());
+        const Vector3 origin = transform->worldPosition;
+        mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
+        mesh.numSubmeshes = 1;
+        mesh.buffer.clear();
+        mesh.buffer.addAttribute(AttributeType::POSITION, 3);
+        mesh.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
+        mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
+        mesh.buffer.addAttribute(AttributeType::COLOR, 4);
+        Attribute* position = mesh.buffer.getAttribute(AttributeType::POSITION);
+        Attribute* texcoord = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
+        Attribute* normal = mesh.buffer.getAttribute(AttributeType::NORMAL);
+        Attribute* color = mesh.buffer.getAttribute(AttributeType::COLOR);
+        const Vector4 tint(1.0f, 1.0f, 1.0f, std::clamp(settings.opacity, 0.0f, 1.0f));
+        for (int z = 0; z <= cellsZ; z++) {
+            for (int x = 0; x <= cellsX; x++) {
+                const float lx = minX + static_cast<float>(x) * stepX, lz = minZ + static_cast<float>(z) * stepZ;
+                float top = 0.0f;
+                bool any = false;
+                for (int dz = -1; dz <= 1; dz++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        const jasperengine::terrain::SurfaceSample sample = runtime->query(lx + 0.5f * stepX * static_cast<float>(dx), lz + 0.5f * stepZ * static_cast<float>(dz), false);
+                        if (!sample.present) continue;
+                        top = any ? std::max(top, sample.height) : sample.height;
+                        any = true;
+                    }
+                }
+                mesh.buffer.addVector3(position, origin + Vector3(lx, top + lift, lz));
+                mesh.buffer.addVector2(texcoord, Vector2(static_cast<float>(x) / static_cast<float>(cellsX), static_cast<float>(z) / static_cast<float>(cellsZ)));
+                mesh.buffer.addVector3(normal, Vector3(0.0f, 1.0f, 0.0f));
+                mesh.buffer.addVector4(color, tint);
+            }
+        }
+        std::vector<uint16_t> indices;
+        indices.reserve(static_cast<size_t>(cellsX) * cellsZ * 6);
+        const int row = cellsX + 1;
+        for (int z = 0; z < cellsZ; z++) {
+            for (int x = 0; x < cellsX; x++) {
+                const uint16_t a = static_cast<uint16_t>(z * row + x);
+                const uint16_t b = static_cast<uint16_t>(a + 1);
+                const uint16_t c = static_cast<uint16_t>(a + row);
+                const uint16_t d = static_cast<uint16_t>(c + 1);
+                indices.insert(indices.end(), {a, c, b, b, c, d});
+            }
+        }
+        mesh.indices.clear();
+        mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), indices.size(), reinterpret_cast<char*>(indices.data()), sizeof(uint16_t));
+        scene->getSystem<MeshSystem>()->calculateMeshAABB(mesh);
+        if (mesh.loaded) mesh.needReload = true;
+        sheet.worldGeometry = geometry;
+    }
+    setImage(sheet, rgba, width, height);
+    sheet.worldImage = image;
     sheet.dirty = false;
+#else
+    (void)entity;
+    (void)sheet;
+    (void)settings;
+    (void)changed;
+#endif
 }

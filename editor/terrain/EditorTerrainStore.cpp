@@ -135,7 +135,8 @@ void editor::EditorTerrainStore::takeDirty(std::vector<std::pair<MapId, TexelRec
 
 WriteResult editor::EditorTerrainStore::createMap(MapId map, MapFormat newFormat, float fill){
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
-    if (!sceneProject || project->getProjectPath().empty()){
+    // T4: a World's maps are its tiles' sections, made by its store with no file of their own
+    if (!sceneProject || project->getProjectPath().empty() || component().world){
         return TerrainComponentStore::createMap(map, newFormat, fill);
     }
     std::string why;

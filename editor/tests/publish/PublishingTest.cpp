@@ -157,6 +157,10 @@ TEST(PayloadValidator, RefusesContentNeedingAModuleTheVariantLeavesOut) {
     const std::vector<std::string> voxelFindings = withModules("linux-x64-glcore-release-lite3d", {"physics3d", "voxel"});
     EXPECT_TRUE(hasFinding(voxelFindings, "needs Voxel Volumes (voxel), which the player linux-x64-glcore-release-lite3d leaves out")) << join(voxelFindings);
     EXPECT_TRUE(withModules("linux-x64-glcore-release", {"voxel"}).empty());
+    // T4 R55: lite3d leaves Terrain Worlds out, the full player has them
+    const std::vector<std::string> worldFindings = withModules("linux-x64-glcore-release-lite3d", {"physics3d", "terrainworld"});
+    EXPECT_TRUE(hasFinding(worldFindings, "needs Terrain World (terrainworld), which the player linux-x64-glcore-release-lite3d leaves out")) << join(worldFindings);
+    EXPECT_TRUE(withModules("linux-x64-glcore-release", {"terrainworld"}).empty());
 }
 
 TEST(PayloadValidator, RefusesCaseCollisionsAndEscapingSymlinks) {

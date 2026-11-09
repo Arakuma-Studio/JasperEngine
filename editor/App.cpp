@@ -4,6 +4,10 @@
 #include "App.h"
 #include "util/ImpostorBaker.h"
 #include "terrain/TerrainMapPersistence.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "terrainworld/TerrainWorldEditor.h"
+#include "terrainworld/TerrainWorldPanel.h"
+#endif
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
 #include "component/CameraShakerComponent.h"
@@ -3006,6 +3010,13 @@ void editor::App::show(){
     voxelEditWindow->show();
     voxelSliceView->show();
     VoxelCreateDialog::instance().draw();
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4 R40, R41: drawn here, so they show whichever tab opened them
+    CreateTerrainWorldDialog::instance().show();
+    ConvertTerrainWorldDialog::instance().show();
+    ImportHeightmapDialog::instance().show();
+    TerrainWorldPanel::instance().show();
+#endif
     textureSynthesisWindow->show();
     audioMixerWindow->show();
     soundBrowserWindow->show();
@@ -4024,6 +4035,17 @@ void editor::App::engineRender(){
         || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());
     // an edited terrain map reaches its file a second after the last edit (T1 R29)
     TerrainMapPersistence::get().update();
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4: the worlds' pump (an idle editor runs no engine frame) and their tiles' debounce (R31)
+    {
+        static bool hostInstalled = false;
+        if (!hostInstalled) {
+            installTerrainWorldHost(&project);
+            hostInstalled = true;
+        }
+        updateTerrainWorlds(TerrainMapPersistence::clockSeconds());
+    }
+#endif
     // the title says when the scene shown did not load completely (its tab does too)
     {
         const SceneProject* shown = project.getSelectedScene();
@@ -5810,7 +5832,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v59: T3's u_fs_terrainLayers packed to three vectors and a component a layer (12-bit factor
     //      pairs, the slices and flags in one exact integer, Flat Only among them), so 12 layers fit
     //      GLES3's 224 fragment vectors (includes/terrain_fs.glsl)
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v59";
+    // v60: T4's Terrain Worlds re-appended after them (HAS_TERRAIN_WORLD in includes/terrain_vs.glsl and
+    //      terrain_world_vs.glsl; 'Twd': MESH 50, DEPTH 24, GBUFFER 27); T4's own v58 cache held other numbers.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v60";
 }
 
 void editor::App::pushTabNotificationStyle(){
