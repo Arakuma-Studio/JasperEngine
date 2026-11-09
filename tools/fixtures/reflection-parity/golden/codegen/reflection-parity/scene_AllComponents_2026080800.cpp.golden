@@ -103,7 +103,9 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1093);
     scene->recreateEntity(1094);
     scene->recreateEntity(1095);
-    scene->setLastEntity(1095);
+    scene->recreateEntity(1096);
+    scene->recreateEntity(1097);
+    scene->setLastEntity(1097);
 
     {
         // Entity 1001 (Transform)
@@ -3191,6 +3193,70 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         pixelPerfectCamera.letterboxColor = Vector4(0.633333f, 0.433333f, 0.555556f, 1.000000f);
         pixelPerfectCamera.enabled = false;
         scene->addComponent<PixelPerfectCameraComponent>(1095, pixelPerfectCamera);
+    }
+
+    {
+        // Entity 1096 (VoxelVolumeComponent)
+        scene->setEntityName(1096, "VoxelVolumeComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(95.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1096, transform);
+
+        VoxelVolumeComponent voxelVolume;
+        voxelVolume.enabled = false;
+        voxelVolume.quality = VoxelQuality::Low;
+        voxelVolume.lodLevels = 4;
+        voxelVolume.lodRadius = 6;
+        voxelVolume.maxDrawDistance = 4.400000f;
+        voxelVolume.castShadows = false;
+        voxelVolume.collision = false;
+        voxelVolume.collisionRadius = 7;
+        voxelVolume.rescueBodies = false;
+        voxelVolume.terrainCut = VoxelTerrainCut::Automatic;
+        voxelVolume.overlapDepth = 2.000000f;
+        voxelVolume.cutTolerance = 1.000000f;
+        voxelVolume.runtimeGeneration = true;
+        scene->addComponent<VoxelVolumeComponent>(1096, voxelVolume);
+    }
+
+    {
+        // Entity 1097 (TerrainWorldComponent)
+        scene->setEntityName(1097, "TerrainWorldComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(96.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1097, transform);
+
+        TerrainWorldComponent terrainWorld;
+        terrainWorld.enabled = false;
+        terrainWorld.useCameraFocus = false;
+        terrainWorld.poolSize = 4;
+        terrainWorld.lodDistance = 6.900000f;
+        terrainWorld.uploadBudget = 8.600000f;
+        terrainWorld.collisionRadius = 7.500000f;
+        terrainWorld.collisionChunkQuads = 6;
+        terrainWorld.autoAddTiles = false;
+        terrainWorld.overviewCastsShadows = true;
+        scene->addComponent<TerrainWorldComponent>(1097, terrainWorld);
     }
 
     // Default Camera 1
