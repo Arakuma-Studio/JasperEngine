@@ -78,7 +78,17 @@ State& state(){
 // The compiles off the main thread: one at a time (the compiler's globals are not proven
 // thread-safe), as Background Heavy jobs on the pool's workers, never a thread of their own.
 jobs::SerialQueue& compileQueue(){
-    static jobs::SerialQueue* queue = new jobs::SerialQueue("runtime-shader-compile", jobs::Lane::Background, jobs::GateClass::Heavy);
+    // a queue is its job system's: a new engine run in the process (a recreated Android
+    // activity) has another, and a push to the old one is cancelled, so a variant first asked for
+    // after the relaunch would stay Loading for ever (the old queue points at the retired system,
+    // which is kept: it stays)
+    static jobs::SerialQueue* queue = nullptr;
+    static jobs::JobSystem* owner = nullptr;
+    jobs::JobSystem* current = &jobs::system();
+    if (!queue || owner != current){
+        queue = new jobs::SerialQueue("runtime-shader-compile", jobs::Lane::Background, jobs::GateClass::Heavy, current);
+        owner = current;
+    }
     return *queue;
 }
 
