@@ -154,3 +154,19 @@ async def test_library_ops(ed: Editor):
     await ed.call("edit_title", path=tpath, ops=[{"op": "unexpose", "name": "text"}])
     msg = await ed.check_error("edit_title", path=tpath, ops=[{"op": "save_template", "name": "No Placeholder"}])
     ed.check_in("placeholder", msg, "a template needs a placeholder")
+
+
+async def test_listing_latency(ed: Editor):
+    """AC21 (R40): the catalogue and rows in at most 30 ms. The time includes MCP's round trip, so
+    it is an upper bound; the shared build box gets three times the budget."""
+    await ed.call("tool_groups", enable=["title_art"])
+    await ed.call("list_title_library")
+    for label, args in (("catalogue", {}), ("rows", {"kind": "looks", "limit": 40})):
+        samples = []
+        for _ in range(9):
+            start = time.monotonic()
+            await ed.call("list_title_library", **args)
+            samples.append((time.monotonic() - start) * 1000.0)
+        median = sorted(samples)[len(samples) // 2]
+        print(f"[AC21] list_title_library {label}: {median:.1f} ms (R40 30, MCP round trip included)")
+        ed.check(median <= 90.0, f"{label} within three times the budget: {median:.1f} ms")

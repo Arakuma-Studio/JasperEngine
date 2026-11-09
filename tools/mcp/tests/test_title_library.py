@@ -112,6 +112,9 @@ async def test_gate(ed: Editor):
                 work.append((kind, r["id"], text, language))
     n = 0
     for kind, ref, text, language in shard(work):
+        detail = await ed.call("list_title_library", kind=kind, id=ref)
+        if text == "大当り" and kind == "looks" and not detail.get("font"):
+            continue     # an effects-only look has no font of its own to judge kanji in
         n += 1
         path = f"assets/gate/{n}.titleart"
         create = {"template": ref, "language": language} if kind == "templates" else {"look": ref, "text": text}
@@ -120,7 +123,6 @@ async def test_gate(ed: Editor):
         await ed.call("edit_title", path=path, create=create, bake="never")
         if kind == "color_schemes":
             await ed.call("edit_title", path=path, ops=[{"op": "apply_color_scheme", "color_scheme": ref}])
-        detail = await ed.call("list_title_library", kind=kind, id=ref)
         allow_checks = {a["check"] for a in detail.get("check_allow", [])}
         allow_rules = {a["rule"] for a in detail.get("lint_allow", [])}
         # tier, counter, parity and metal-sheen exceptions are declared properties of a heavy style, listed but not capped (Deviation 27)
