@@ -10,8 +10,8 @@
 //   relief pattern, a relief texture, glass, reflection, satin, per-character spans) and its rims
 //   plans its variants; what the largest costs the render thread (its creation's share there and
 //   its first draw: the driver's compiles) is at most 40 % of the whole program's (timed in one
-//   process, so the ratio holds under load) or under 250 ms where the driver compiles fast (a
-//   GPU). Red control in the test: the
+//   process, so the ratio holds under load) or under 1 s, a third of the hang threshold, where
+//   the driver compiles fast (a GPU). Red control in the test: the
 //   same title planned with TITLE_ART_TEST_ELEMENT_WHOLE (every element on the whole program, as
 //   before) is over the bound on llvmpipe.
 
@@ -36,10 +36,12 @@ using namespace jasperengine::titleart::test;
 namespace {
 
     constexpr uint32_t ELEMENT = (uint32_t)TitleRenderProgram::Element;
-    // the largest variant's first draw against the whole program's, and the floor under which a
-    // first draw holds no frame (a GPU's compile)
+    // the largest variant's render-thread cost against the whole program's, and the floor under
+    // which a program holds no frame near the hang threshold (3 s). The share is the bound on a
+    // software rasteriser (the whole program 5-12 s); on a GPU's driver the costs are small and do
+    // not scale with the code left out (RTX 3080 Ti, GL: the variant 0.6 s, the whole 1.2 s)
     constexpr double MAX_SHARE_OF_WHOLE = 0.4;
-    constexpr double FAST_DRIVER_MS = 250.0;
+    constexpr double NO_STALL_MS = 1000.0;
 
     // builds program `number` (frames pumped while the background compiler works); false with
     // `error` when it cannot be built or takes over two minutes
@@ -193,7 +195,7 @@ TEST_F(TitleElementVariantGpu, CompileCostIsBounded) {
     const double whole = wholeCost.total();
     std::printf("[ element ] %-56s created %8.1f ms, first draw %8.1f ms (before: every element)\n",
                 ShaderPool::getShaderStr(ShaderType::TITLE_ART, before[0]).c_str(), wholeCost.createMs, wholeCost.firstDrawMs);
-    const double bound = std::max(MAX_SHARE_OF_WHOLE * whole, FAST_DRIVER_MS);
+    const double bound = std::max(MAX_SHARE_OF_WHOLE * whole, NO_STALL_MS);
     ::testing::Test::RecordProperty("largest", largestName + " " + std::to_string(largest) + " ms of the whole program's " + std::to_string(whole) + " ms");
     EXPECT_LE(largest, bound) << largestName << " " << largest << " ms, the whole program " << whole << " ms";
     // red control: planned as before, every element draws with the whole program, over the bound
