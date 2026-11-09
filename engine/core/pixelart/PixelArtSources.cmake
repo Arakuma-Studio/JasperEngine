@@ -10,6 +10,8 @@ set(JASPERENGINE_PIXELART_SRCS
     core/pixelart/PaletteRampTexture.cpp
     core/pixelart/PaletteSwap.cpp
     core/pixelart/PixelColor.cpp
+    # S48 Pixel FX
+    core/pixelart/PixelFxKey.cpp
 )
 
 if(MSVC)
