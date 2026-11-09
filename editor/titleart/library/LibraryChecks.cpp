@@ -529,6 +529,42 @@ TitleCheckStatus titlelibrary::styleLintStatus(const StyleLintFinding& finding) 
     return TitleCheckStatus::Warn;
 }
 
+namespace {
+
+    // R12: an exposed color_scheme parameter with empty `options` means every scheme: the document
+    // carries them all (about 100 KB); naming the used ones keeps it small
+    void colorSchemeOptions(TitleCheckContext& context, Out& out) {
+        const Json& root = context.doc.root;
+        TitleCheckResult r;
+        r.id = "color_scheme_options_empty";
+        r.kind = TitleCheckKind::Document;
+        r.status = TitleCheckStatus::Pass;
+        r.method = "exposed color_scheme parameters without options";
+        if (root.contains("exposed")) {
+            for (const Json& e : root["exposed"]) {
+                if (e.value("type", std::string()) != "color_scheme") continue;
+                if (e.contains("options") && !e["options"].empty()) continue;
+                const size_t bytes = root.contains("color_schemes") ? root["color_schemes"].dump().size() : 0;
+                r.status = TitleCheckStatus::Warn;
+                r.measured = bytes;
+                r.message = "'" + e.value("name", std::string()) + "' offers every Color Scheme: the document carries " + std::to_string(bytes) +
+                            " bytes of scheme data. List the ones the game uses in `options`.";
+                Json used = Json::array();
+                titleart::forEachLayer(root, [&](const Json& l, const Json*, int) {
+                    const std::string scheme = l.contains("look") ? l["look"].value("color_scheme", std::string()) : std::string();
+                    if (!scheme.empty() && std::find(used.begin(), used.end(), Json(scheme)) == used.end()) used.push_back(scheme);
+                    return true;
+                });
+                r.fix = Json{{"ops", Json::array({Json{{"op", "unexpose"}, {"name", e.value("name", std::string())}},
+                                                  Json{{"op", "expose"}, {"name", e.value("name", std::string())}, {"type", "color_scheme"}, {"options", used}}})}};
+                break;
+            }
+        }
+        out.push_back(std::move(r));
+    }
+
+}
+
 void titlelibrary::registerLibraryChecks() {
     struct Row {
         const char* id;
@@ -539,6 +575,7 @@ void titlelibrary::registerLibraryChecks() {
     const Row rows[] = {
         {"style_lint", TitleCheckKind::Document, "Lettering practice: ring contrast, hue count, rim totals, hard shadows, rainbow span, switches that do nothing",
          styleLint},
+        {"color_scheme_options_empty", TitleCheckKind::Document, "An exposed Color Scheme parameter with no options carries every scheme", colorSchemeOptions},
         {"color_scheme_match", TitleCheckKind::Pixels, "A face recoloured by a Color Scheme still shows the scheme's hue and chroma", colorSchemeMatch},
         {"metal_range", TitleCheckKind::Pixels, "A metal face (finish, bevel or 3D metallic) spans enough lightness to read as metal", metalRange},
     };
