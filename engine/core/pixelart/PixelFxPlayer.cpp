@@ -38,6 +38,9 @@ namespace jasperengine::pixelart{
         // turned OUTLINE on itself (outline_pulse ends hidden then)
         bool enabledOutline = false;
         Vector4 outlineColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+        // the look's own values (a status look's bevel and pulse, the flash colour) the effect
+        // writes for itself: the material's come back when it ends
+        std::vector<PixelFxValue> saved;
         // embers: the frame the keys were made for, the keys of its opaque texels, the last
         // progress they burnt to and the budget carried over
         std::string emberEffect;
@@ -209,19 +212,25 @@ namespace jasperengine::pixelart{
 
         // the effect's end: its run's values at the end, or every animated value at 0 (stop)
         std::vector<PixelFxValue> endValues(const PixelFxRun& run, bool stopped){
-            if (stopped){
-                if (run.effect == PixelFxEffect::OUTLINE_PULSE){
-                    Vector4 color = run.outlineColor;
-                    if (run.enabledOutline) color.w = 0.0f;
-                    return {{"outlineColor", color}};
-                }
-                return {{channelMember(kEffects[(int)run.effect].feature), Vector4(0.0f, 0.0f, 0.0f, 0.0f)}};
-            }
-            std::vector<PixelFxValue> values = PixelFxPlayer::sample(run.effect, run.duration, run.options, run.duration);
+            std::vector<PixelFxValue> values;
             if (run.effect == PixelFxEffect::OUTLINE_PULSE){
                 Vector4 color = run.outlineColor;
                 if (run.enabledOutline) color.w = 0.0f;
                 values = {{"outlineColor", color}};
+            }else if (stopped){
+                values = {{channelMember(kEffects[(int)run.effect].feature), Vector4(0.0f, 0.0f, 0.0f, 0.0f)}};
+            }else{
+                values = PixelFxPlayer::sample(run.effect, run.duration, run.options, run.duration);
+            }
+            for (const PixelFxValue& value : run.saved){
+                bool replaced = false;
+                for (PixelFxValue& v : values){
+                    if (std::string(v.member) == value.member){
+                        v.value = value.value;
+                        replaced = true;
+                    }
+                }
+                if (!replaced) values.push_back(value);
             }
             return values;
         }
@@ -433,8 +442,6 @@ namespace jasperengine::pixelart{
                     had = had || ShaderLibraryValues::isFeatureEnabled(submesh.material.shaderFeatures, kSprite, "OUTLINE");
                 });
                 run.outlineColor = had ? firstParam(run.scene, run.entity, "outlineColor") : Vector4(0.0f, 0.0f, 0.0f, 1.0f);
-                if (run.options.hasColor)
-                    run.outlineColor = run.options.color;
                 ensureFeature(&run, run.scene, run.entity, feature, "OUTLINE_STYLE_PIXEL4", kEffects[(int)run.effect].name);
             }else{
                 ensureFeature(&run, run.scene, run.entity, feature, nullptr, kEffects[(int)run.effect].name);
@@ -444,6 +451,12 @@ namespace jasperengine::pixelart{
                 setRamp(run.scene, run.entity, run.options.ramp);
             }
             std::vector<PixelFxValue> values = runValues(run);
+            if (run.effect == PixelFxEffect::FLASH && run.options.hasColor)
+                run.saved.push_back({"flashColor", firstParam(run.scene, run.entity, "flashColor")});
+            if (run.effect == PixelFxEffect::PETRIFY || run.effect == PixelFxEffect::FREEZE || run.effect == PixelFxEffect::POISON){
+                run.saved.push_back({"rampBevel", firstParam(run.scene, run.entity, "rampBevel")});
+                run.saved.push_back({"rampPulse", firstParam(run.scene, run.entity, "rampPulse")});
+            }
             // the status looks' bevel and pulse, as the Petrify, Frozen and Poison presets
             if (run.effect == PixelFxEffect::PETRIFY || run.effect == PixelFxEffect::FREEZE){
                 values.push_back({"rampBevel", Vector4(1.0f, 0.0f, 0.0f, 0.0f)});
