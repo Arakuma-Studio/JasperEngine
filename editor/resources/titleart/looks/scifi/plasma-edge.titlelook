@@ -1,0 +1,105 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "scifi/plasma-edge",
+  "revision": 1,
+  "name": {
+    "en": "Plasma Edge",
+    "ja": "プラズマエッジ"
+  },
+  "description": {
+    "en": "Near-black face inside a deep blue band and an electric blue line, a blue glow behind and lightning crawling along the edges.",
+    "ja": "深い青の帯と電光の青い線の内側の黒に近い面、背後の青いグロー、縁を這う稲妻。"
+  },
+  "family": "scifi",
+  "tags": [
+    "plasma",
+    "electric",
+    "blue",
+    "lightning",
+    "dark",
+    "energy"
+  ],
+  "synonyms": {
+    "en": [
+      "electrified",
+      "arc",
+      "tesla",
+      "charged"
+    ],
+    "ja": [
+      "プラズマ",
+      "電撃",
+      "稲妻",
+      "放電",
+      "purazuma",
+      "inazuma"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "orbitron",
+    "ja": "train-one",
+    "variations": {
+      "wght": 900
+    }
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#0a0f1e"
+      }
+    },
+    "rims": [
+      {
+        "width": 4,
+        "material": {
+          "fill": {
+            "color": "#14306a"
+          }
+        }
+      },
+      {
+        "width": 1.2,
+        "material": {
+          "fill": {
+            "color": "#50a0ff"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#3a80ff",
+        "size": 18
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "lightning",
+      "preset": "electrify",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {
+        "color": "#50a0ff"
+      },
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

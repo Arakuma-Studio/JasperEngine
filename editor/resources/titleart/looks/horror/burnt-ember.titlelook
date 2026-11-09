@@ -1,0 +1,93 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "horror/burnt-ember",
+  "revision": 1,
+  "name": {
+    "en": "Burnt Ember",
+    "ja": "燃えさし"
+  },
+  "description": {
+    "en": "Charred black face with a grunge texture and a noisy orange inner glow like embers in cracks, a tight red glow and rising embers.",
+    "ja": "グランジの質感と、ひびの中の残り火のようなノイズのあるオレンジの内側の光を持つ焦げた黒い面、締まった赤いグロー、舞い上がる火の粉。"
+  },
+  "family": "horror",
+  "tags": [
+    "ember",
+    "burnt",
+    "charcoal",
+    "fire",
+    "horror",
+    "dark"
+  ],
+  "synonyms": {
+    "en": [
+      "smouldering",
+      "ashes",
+      "scorched",
+      "cinders"
+    ],
+    "ja": [
+      "燃えさし",
+      "火の粉",
+      "焦げ",
+      "炭",
+      "moesashi",
+      "hinoko"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "creepster",
+    "ja": "yuji-syuku"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#1a1410"
+      },
+      "texture": {
+        "kind": "grunge",
+        "amount": 0.6
+      },
+      "inner_glow": {
+        "enabled": true,
+        "color": "#ff5010",
+        "size": 3,
+        "opacity": 0.8,
+        "noise": 0.6
+      }
+    }
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff3000",
+        "size": 12
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "particles",
+      "preset": "embers",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

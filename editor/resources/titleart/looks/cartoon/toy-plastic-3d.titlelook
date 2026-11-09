@@ -1,0 +1,101 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "cartoon/toy-plastic-3d",
+  "revision": 1,
+  "name": {
+    "en": "Toy Plastic 3D",
+    "ja": "おもちゃのプラスチック 3D"
+  },
+  "description": {
+    "en": "Deep round-bevelled extrusion in yellow plastic with orange plastic sides and ambient occlusion, in a softbox studio.",
+    "ja": "黄色いプラスチックで深く丸ベベルの押し出し、オレンジのプラスチックの側面、アンビエントオクルージョン、ソフトボックスのスタジオ光。"
+  },
+  "family": "cartoon",
+  "tags": [
+    "plastic",
+    "toy",
+    "yellow",
+    "orange",
+    "cartoon",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "toy blocks",
+      "vinyl",
+      "playful",
+      "kids"
+    ],
+    "ja": [
+      "おもちゃ",
+      "プラスチック",
+      "黄色",
+      "ポップ",
+      "omocha",
+      "purasuchikku"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "titan-one",
+    "ja": "potta-one"
+  },
+  "style_3d": {
+    "depth": 18,
+    "bevel": {
+      "width": 2,
+      "depth": 2
+    },
+    "face": {
+      "preset": "plastic",
+      "color": "#ffcc00",
+      "roughness": 0.35,
+      "clearcoat": 0.8
+    },
+    "side": {
+      "preset": "plastic",
+      "color": "#ff6a00",
+      "roughness": 0.35,
+      "clearcoat": 0.8
+    },
+    "ao": {
+      "enabled": true
+    }
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "softbox",
+      "intensity": 1,
+      "rotation": 25
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

@@ -1,0 +1,111 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "neon/tube-3d",
+  "revision": 1,
+  "name": {
+    "en": "Neon Tube 3D",
+    "ja": "ネオン管 3D"
+  },
+  "description": {
+    "en": "Inflated letters glowing pink from within, sheathed by a thin clear glass band, reflecting a night city, with glints.",
+    "ja": "内側からピンクに光る膨らんだ文字、薄く透明なガラスの帯で包み、夜の街を映し、グリント付き。"
+  },
+  "family": "neon",
+  "tags": [
+    "neon",
+    "pink",
+    "glass",
+    "inflate",
+    "glow",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "glowing tube",
+      "neon glass",
+      "night sign",
+      "puffy neon"
+    ],
+    "ja": [
+      "ネオン管",
+      "ガラス",
+      "光る",
+      "ぷっくり",
+      "neonkan",
+      "garasu"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "tilt-neon",
+    "ja": "rocknroll-one"
+  },
+  "style_3d": {
+    "mode": "inflate",
+    "depth": 4,
+    "inflate": {
+      "height": 20
+    },
+    "face": {
+      "preset": "emissive",
+      "color": "#000000",
+      "roughness": 0.5,
+      "emission": "#ff40c0",
+      "emission_intensity": 2
+    },
+    "bands": [
+      {
+        "grow": 1,
+        "depth": 2.4,
+        "offset": -4,
+        "material": {
+          "preset": "glass",
+          "color": "#d4f2ff",
+          "roughness": 0.02,
+          "clearcoat": 1,
+          "transmission": 1,
+          "opacity": 0.22
+        }
+      }
+    ],
+    "glint": {
+      "enabled": true
+    }
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "night_city",
+      "intensity": 1,
+      "rotation": 25
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

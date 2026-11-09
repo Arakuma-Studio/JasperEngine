@@ -1,0 +1,89 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "minimal/clean-gradient",
+  "revision": 1,
+  "name": {
+    "en": "Clean Gradient",
+    "ja": "クリーングラデーション"
+  },
+  "description": {
+    "en": "White to pale grey gradient face with a faint gloss band and a light, soft shadow.",
+    "ja": "かすかな光沢の帯を持つ白から淡い灰色のグラデーションの面、軽く柔らかい影。"
+  },
+  "family": "minimal",
+  "tags": [
+    "gradient",
+    "clean",
+    "white",
+    "minimal",
+    "soft",
+    "modern"
+  ],
+  "synonyms": {
+    "en": [
+      "subtle gradient",
+      "corporate",
+      "neutral",
+      "light"
+    ],
+    "ja": [
+      "グラデーション",
+      "クリーン",
+      "白",
+      "上品",
+      "guradēshon",
+      "jōhin"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "inter",
+    "ja": "zen-kaku-gothic-new-black",
+    "variations": {
+      "wght": 800
+    }
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 1,
+              "color": "#d0d6e0"
+            }
+          ]
+        }
+      },
+      "gloss": {
+        "enabled": true,
+        "opacity": 0.2
+      }
+    }
+  },
+  "effects": [
+    {
+      "type": "drop_shadow",
+      "params": {
+        "size": 12,
+        "opacity": 0.2
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "minimal/duotone",
+  "revision": 1,
+  "name": {
+    "en": "Duotone",
+    "ja": "デュオトーン"
+  },
+  "description": {
+    "en": "Coral to violet gradient face running across each line, nothing else.",
+    "ja": "行ごとに流れるコーラルから紫のグラデーションの面だけ。"
+  },
+  "family": "minimal",
+  "tags": [
+    "duotone",
+    "gradient",
+    "coral",
+    "violet",
+    "minimal",
+    "modern"
+  ],
+  "synonyms": {
+    "en": [
+      "two tone",
+      "colour fade",
+      "modern gradient",
+      "app style"
+    ],
+    "ja": [
+      "デュオトーン",
+      "グラデーション",
+      "二色",
+      "モダン",
+      "dyuotōn",
+      "guradēshon"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "inter",
+    "ja": "mplus1p-black",
+    "variations": {
+      "wght": 900
+    }
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ff6a5a"
+            },
+            {
+              "pos": 1,
+              "color": "#7a5aff"
+            }
+          ]
+        },
+        "span": "line"
+      }
+    }
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

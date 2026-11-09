@@ -1,0 +1,111 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "anime/impact-burst",
+  "revision": 1,
+  "name": {
+    "en": "Impact Burst",
+    "ja": "インパクトバースト"
+  },
+  "description": {
+    "en": "White to yellow face in a black line, a wide red band and a black outline, over focus speed lines.",
+    "ja": "黒い線、太い赤の帯、黒い外縁の中の白から黄色の面、背後の集中線。"
+  },
+  "family": "anime",
+  "tags": [
+    "impact",
+    "speed-lines",
+    "red",
+    "yellow",
+    "anime",
+    "manga"
+  ],
+  "synonyms": {
+    "en": [
+      "action",
+      "dramatic",
+      "focus lines",
+      "shout"
+    ],
+    "ja": [
+      "集中線",
+      "迫力",
+      "効果線",
+      "ドーン",
+      "shūchūsen",
+      "hakuryoku"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 1,
+              "color": "#ffe040"
+            }
+          ]
+        }
+      }
+    },
+    "rims": [
+      {
+        "width": 1.5,
+        "material": {
+          "fill": {
+            "color": "#000000"
+          }
+        }
+      },
+      {
+        "width": 4,
+        "material": {
+          "fill": {
+            "color": "#ff2a2a"
+          }
+        }
+      },
+      {
+        "width": 1,
+        "material": {
+          "fill": {
+            "color": "#000000"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "speed_lines",
+      "preset": "focus",
+      "place": "below",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

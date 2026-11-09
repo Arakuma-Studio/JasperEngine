@@ -1,0 +1,139 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "retro/16bit-gradient",
+  "revision": 1,
+  "name": {
+    "en": "16-bit Gradient",
+    "ja": "16ビットグラデーション"
+  },
+  "description": {
+    "en": "Face in four hard bands from white through yellow and orange to red, a black line, a white band and a black outline, a hard drop shadow and a fine pixelation.",
+    "ja": "白から黄、オレンジ、赤への四段のくっきりした帯の面、黒い線、白い帯、黒い外縁、硬いドロップシャドウ、細かいピクセル化。"
+  },
+  "family": "retro",
+  "tags": [
+    "16bit",
+    "pixel",
+    "retro",
+    "game",
+    "banded",
+    "arcade"
+  ],
+  "synonyms": {
+    "en": [
+      "16 bit",
+      "super console",
+      "sprite",
+      "pixel art"
+    ],
+    "ja": [
+      "16ビット",
+      "ドット絵",
+      "16ビット機",
+      "レトロゲーム",
+      "jūroku bitto",
+      "dottoe"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "press-start-2p",
+    "ja": "rampart-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.25,
+              "color": "#ffffff"
+            },
+            {
+              "pos": 0.25,
+              "color": "#ffe040"
+            },
+            {
+              "pos": 0.5,
+              "color": "#ffe040"
+            },
+            {
+              "pos": 0.5,
+              "color": "#ff9a00"
+            },
+            {
+              "pos": 0.75,
+              "color": "#ff9a00"
+            },
+            {
+              "pos": 0.75,
+              "color": "#c03000"
+            },
+            {
+              "pos": 1,
+              "color": "#c03000"
+            }
+          ]
+        }
+      }
+    },
+    "rims": [
+      {
+        "width": 1,
+        "material": {
+          "fill": {
+            "color": "#000000"
+          }
+        }
+      },
+      {},
+      {
+        "width": 1,
+        "material": {
+          "fill": {
+            "color": "#000000"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "drop_shadow",
+      "params": {
+        "angle": 45,
+        "distance": 6,
+        "size": 0,
+        "opacity": 1,
+        "use_global_light": false
+      }
+    },
+    {
+      "type": "pixelate",
+      "params": {
+        "size": 2
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [
+    {
+      "rule": "hard_shadow",
+      "reason": "pixel art has hard shadows"
+    }
+  ],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

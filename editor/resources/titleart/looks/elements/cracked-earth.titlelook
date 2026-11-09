@@ -1,0 +1,129 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "elements/cracked-earth",
+  "revision": 1,
+  "name": {
+    "en": "Cracked Earth",
+    "ja": "ひび割れた大地"
+  },
+  "description": {
+    "en": "Clay gradient face with a crumpled surface worn by grunge and a chamfer bevel, a dark brown keyline and a dark base below, an inner shadow and a long perspective shadow.",
+    "ja": "しわ加工の表面をグランジで摩耗させ面取りした粘土色グラデーションの面、焦げ茶の縁、下にずらした暗い台、内側の影、遠近の長い影。"
+  },
+  "family": "elements",
+  "tags": [
+    "earth",
+    "cracked",
+    "clay",
+    "rock",
+    "grunge",
+    "desert"
+  ],
+  "synonyms": {
+    "en": [
+      "dry ground",
+      "drought",
+      "stone",
+      "mud crack"
+    ],
+    "ja": [
+      "大地",
+      "ひび割れ",
+      "土",
+      "岩",
+      "daichi",
+      "hibiware"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#c8a070"
+            },
+            {
+              "pos": 1,
+              "color": "#6a4020"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "profile": "chamfer",
+        "size": 2,
+        "depth": 4
+      },
+      "texture": {
+        "kind": "crumple",
+        "amount": 0.6,
+        "target": "surface"
+      }
+    },
+    "rims": [
+      {
+        "width": 2,
+        "material": {
+          "fill": {
+            "color": "#2a1608"
+          }
+        }
+      },
+      {
+        "width": 3.2,
+        "offset": [0, -3.2],
+        "material": {
+          "fill": {
+            "color": "#140a04"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "inner_shadow",
+      "params": {
+        "distance": 4,
+        "size": 4
+      }
+    },
+    {
+      "type": "perspective_shadow",
+      "params": {
+        "length": 60
+      }
+    }
+  ],
+  "part_effects": {
+    "face": [
+      {
+        "type": "distress",
+        "params": {
+          "amount": 0.3,
+          "edge": 0,
+          "scale": 30
+        }
+      }
+    ]
+  },
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

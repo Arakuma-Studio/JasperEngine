@@ -1,0 +1,200 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "casino/lucky-clover",
+  "revision": 1,
+  "name": {
+    "en": "Lucky Clover",
+    "ja": "ラッキークローバー"
+  },
+  "description": {
+    "en": "Green gradient face through a green metal finish, a bevelled white line, a gold metal frame and a dark green base dropped below, with star glints.",
+    "ja": "緑のメタル仕上げを通した緑グラデーションの面、ベベルの白い線、金属調の金枠、下にずらした濃い緑の台、星のキラキラ。"
+  },
+  "family": "casino",
+  "tags": [
+    "green",
+    "gold",
+    "lucky",
+    "clover",
+    "metal",
+    "bevel"
+  ],
+  "synonyms": {
+    "en": [
+      "shamrock",
+      "four leaf",
+      "good luck",
+      "irish"
+    ],
+    "ja": [
+      "クローバー",
+      "四つ葉",
+      "幸運",
+      "ラッキー",
+      "midori",
+      "kurōbā"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "titan-one",
+    "ja": "dela-gothic-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#d8ffd0"
+            },
+            {
+              "pos": 0.5,
+              "color": "#20c040"
+            },
+            {
+              "pos": 1,
+              "color": "#005a20"
+            }
+          ]
+        }
+      },
+      "bevel": {
+        "enabled": true,
+        "size": 2,
+        "depth": 4
+      },
+      "finish": {
+        "enabled": true,
+        "gradient": {
+          "stops": [
+            {
+              "color": "#002a10"
+            },
+            {
+              "pos": 0.35,
+              "color": "#007a30"
+            },
+            {
+              "pos": 0.65,
+              "color": "#30d060"
+            },
+            {
+              "pos": 0.9,
+              "color": "#b0ffb0"
+            },
+            {
+              "pos": 1,
+              "color": "#f0fff0"
+            }
+          ]
+        },
+        "amount": 0.6
+      }
+    },
+    "rims": [
+      {
+        "width": 1.5,
+        "material": {
+          "bevel": {
+            "enabled": true,
+            "size": 1
+          }
+        }
+      },
+      {
+        "width": 4,
+        "material": {
+          "fill": {
+            "kind": "linear",
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#fff0a0"
+                },
+                {
+                  "pos": 0.4,
+                  "color": "#ffc830"
+                },
+                {
+                  "pos": 0.7,
+                  "color": "#a86000"
+                },
+                {
+                  "pos": 1,
+                  "color": "#ffe080"
+                }
+              ]
+            }
+          },
+          "bevel": {
+            "enabled": true,
+            "size": 1.2,
+            "depth": 4
+          },
+          "finish": {
+            "enabled": true,
+            "gradient": {
+              "stops": [
+                {
+                  "color": "#3a0c00"
+                },
+                {
+                  "pos": 0.25,
+                  "color": "#a83800"
+                },
+                {
+                  "pos": 0.5,
+                  "color": "#f08c00"
+                },
+                {
+                  "pos": 0.75,
+                  "color": "#ffd23a"
+                },
+                {
+                  "pos": 1,
+                  "color": "#fff8d6"
+                }
+              ]
+            },
+            "amount": 0.8
+          }
+        }
+      },
+      {
+        "width": 2,
+        "offset": [0, -2],
+        "material": {
+          "fill": {
+            "color": "#002a10"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "glints",
+      "preset": "stars",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "retro/pixel-block-3d",
+  "revision": 1,
+  "name": {
+    "en": "Pixel Block 3D",
+    "ja": "ピクセルブロック 3D"
+  },
+  "description": {
+    "en": "Deep extrusion without a bevel, yellow plastic faces on orange plastic sides, in a softbox studio.",
+    "ja": "ベベルなしの深い押し出し、黄色いプラスチックの前面とオレンジのプラスチックの側面、ソフトボックスのスタジオ光。"
+  },
+  "family": "retro",
+  "tags": [
+    "pixel",
+    "block",
+    "yellow",
+    "plastic",
+    "retro",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "voxel",
+      "block letters",
+      "toy bricks",
+      "8 bit 3d"
+    ],
+    "ja": [
+      "ブロック",
+      "ドット",
+      "立体",
+      "黄色",
+      "burokku",
+      "rittai"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "press-start-2p",
+    "ja": "dela-gothic-one"
+  },
+  "style_3d": {
+    "depth": 25,
+    "face": {
+      "preset": "plastic",
+      "color": "#ffd000",
+      "roughness": 0.35,
+      "clearcoat": 0.8
+    },
+    "side": {
+      "preset": "plastic",
+      "color": "#ff6a00",
+      "roughness": 0.35,
+      "clearcoat": 0.8
+    }
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "softbox",
+      "intensity": 1,
+      "rotation": 25
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

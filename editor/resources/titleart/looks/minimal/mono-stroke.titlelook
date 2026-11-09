@@ -1,0 +1,76 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "minimal/mono-stroke",
+  "revision": 1,
+  "name": {
+    "en": "Mono Stroke",
+    "ja": "モノストローク"
+  },
+  "description": {
+    "en": "Near-black face, a wide white band and a near-black outline: a double stroke in two tones.",
+    "ja": "黒に近い面、太い白の帯、黒に近い外縁による二色の二重縁取り。"
+  },
+  "family": "minimal",
+  "tags": [
+    "mono",
+    "stroke",
+    "black",
+    "white",
+    "minimal",
+    "outline"
+  ],
+  "synonyms": {
+    "en": [
+      "double stroke",
+      "monochrome",
+      "black and white",
+      "sticker outline"
+    ],
+    "ja": [
+      "モノクロ",
+      "二重縁",
+      "白黒",
+      "縁取り",
+      "monokuro",
+      "fuchidori"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "archivo-black",
+    "ja": "mplus1p-black"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#111111"
+      }
+    },
+    "rims": [
+      {
+        "width": 3.4
+      },
+      {
+        "width": 1.8,
+        "material": {
+          "fill": {
+            "color": "#111111"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

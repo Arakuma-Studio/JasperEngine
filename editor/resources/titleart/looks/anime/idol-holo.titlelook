@@ -1,0 +1,89 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "anime/idol-holo",
+  "revision": 1,
+  "name": {
+    "en": "Idol Hologram",
+    "ja": "アイドルホログラム"
+  },
+  "description": {
+    "en": "White face shimmering with holographic glitter foil, a pink line and a wide white border, with highlight glints.",
+    "ja": "ホログラムのグリッター箔がきらめく白い面、ピンクの線、太い白ふち、ハイライトのキラキラ。"
+  },
+  "family": "anime",
+  "tags": [
+    "idol",
+    "holographic",
+    "foil",
+    "pink",
+    "anime",
+    "sparkle"
+  ],
+  "synonyms": {
+    "en": [
+      "pop idol",
+      "rainbow foil",
+      "stage",
+      "live concert"
+    ],
+    "ja": [
+      "アイドル",
+      "ホログラム",
+      "ラメ",
+      "ステージ",
+      "aidoru",
+      "horoguramu"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "mochiy-pop-one",
+    "ja": "mplus1p-black"
+  },
+  "style": {
+    "rims": [
+      {
+        "width": 2.1,
+        "material": {
+          "fill": {
+            "color": "#ff5ac8"
+          }
+        }
+      },
+      {
+        "width": 3.1
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {
+    "face": [
+      {
+        "type": "holographic",
+        "params": {}
+      }
+    ]
+  },
+  "generators": [
+    {
+      "type": "glints",
+      "preset": "highlights",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

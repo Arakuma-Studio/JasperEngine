@@ -1,0 +1,95 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "neon/outline-lime",
+  "revision": 1,
+  "name": {
+    "en": "Lime Outline Neon",
+    "ja": "ライムのアウトラインネオン"
+  },
+  "description": {
+    "en": "Translucent green face with a pale inner glow, a dark mount band, and an outer lime line that carries an added lime glow.",
+    "ja": "淡い内側の光を持つ半透明の緑の面、暗い台座の帯、加算のライムのグローをまとう外側のライムの線。"
+  },
+  "family": "neon",
+  "tags": [
+    "neon",
+    "lime",
+    "green",
+    "outline",
+    "glow",
+    "acid"
+  ],
+  "synonyms": {
+    "en": [
+      "acid green",
+      "lime neon",
+      "electric green",
+      "toxic neon"
+    ],
+    "ja": [
+      "ライム",
+      "黄緑",
+      "ネオン",
+      "蛍光",
+      "raimu",
+      "keikō"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "tilt-neon",
+    "ja": "rocknroll-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#4a7a00"
+      },
+      "opacity": 0.25,
+      "inner_glow": {
+        "enabled": true,
+        "color": "#e8ff9a"
+      }
+    },
+    "rims": [
+      {
+        "width": 3.8,
+        "material": {
+          "fill": {
+            "color": "#0a1400"
+          }
+        }
+      },
+      {
+        "width": 1.4,
+        "material": {
+          "fill": {
+            "color": "#c8ff3a"
+          }
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#a0ff20",
+        "size": 28,
+        "mode": "add"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

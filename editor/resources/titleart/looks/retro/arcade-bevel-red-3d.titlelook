@@ -1,0 +1,139 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "retro/arcade-bevel-red-3d",
+  "revision": 1,
+  "name": {
+    "en": "Arcade Red 3D",
+    "ja": "アーケードレッド 3D"
+  },
+  "description": {
+    "en": "Extruded red candy metal with dark red sides, ringed by a chrome band, in a softbox studio.",
+    "ja": "暗い赤の側面を持つ赤いキャンディメタルの押し出し、クロームの帯で囲み、ソフトボックスのスタジオ光。"
+  },
+  "family": "retro",
+  "tags": [
+    "red",
+    "candy",
+    "chrome",
+    "arcade",
+    "retro",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "arcade cabinet",
+      "game logo",
+      "candy apple",
+      "cherry red"
+    ],
+    "ja": [
+      "アーケード",
+      "赤",
+      "クローム",
+      "ゲームロゴ",
+      "ākēdo",
+      "aka"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "bungee",
+    "ja": "dela-gothic-one"
+  },
+  "style_3d": {
+    "face": {
+      "preset": "candy",
+      "color": "#e0102a",
+      "metallic": 0.85,
+      "roughness": 0.35,
+      "env_multiplier": 1.4,
+      "specular_multiplier": 1.5,
+      "clearcoat": 1,
+      "flakes": 0.8,
+      "flake_scale": 0.8
+    },
+    "side": {
+      "color": "#5a0008",
+      "metallic": 0.3
+    },
+    "bands": [
+      {
+        "grow": 2,
+        "depth": 12.4,
+        "offset": -14,
+        "material": {
+          "preset": "chrome",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "softbox",
+      "intensity": 1,
+      "rotation": 25
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

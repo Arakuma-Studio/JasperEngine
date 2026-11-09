@@ -1,0 +1,102 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "horror/rotting-green",
+  "revision": 1,
+  "name": {
+    "en": "Rotting Green",
+    "ja": "腐敗グリーン"
+  },
+  "description": {
+    "en": "Sickly green gradient face with a grunge surface, eroded edges and a faint acid inner glow, with green smoke behind.",
+    "ja": "グランジの表面、欠けた縁、かすかな酸性の内側の光を持つ病的な緑のグラデーションの面、背後の緑の煙。"
+  },
+  "family": "horror",
+  "tags": [
+    "green",
+    "rotten",
+    "zombie",
+    "horror",
+    "eroded",
+    "smoke"
+  ],
+  "synonyms": {
+    "en": [
+      "decay",
+      "putrid",
+      "undead",
+      "toxic"
+    ],
+    "ja": [
+      "腐敗",
+      "ゾンビ",
+      "緑",
+      "毒",
+      "fuhai",
+      "zonbi"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "creepster",
+    "ja": "yuji-syuku"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "kind": "linear",
+        "gradient": {
+          "stops": [
+            {
+              "color": "#8aa040"
+            },
+            {
+              "pos": 1,
+              "color": "#2a3a10"
+            }
+          ]
+        }
+      },
+      "texture": {
+        "kind": "grunge",
+        "amount": 0.7,
+        "target": "surface"
+      },
+      "inner_glow": {
+        "enabled": true,
+        "color": "#c0ff60",
+        "opacity": 0.3
+      }
+    },
+    "erode": {
+      "enabled": true,
+      "amount": 0.4
+    }
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "smoke",
+      "preset": "grey",
+      "place": "below",
+      "scope": "layer",
+      "blend": "normal",
+      "opacity": 0.75,
+      "params": {
+        "color": "#8aa060",
+        "shadow_color": "#2a3a18"
+      },
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

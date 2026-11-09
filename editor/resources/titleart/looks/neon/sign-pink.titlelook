@@ -1,0 +1,100 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "neon/sign-pink",
+  "revision": 1,
+  "name": {
+    "en": "Pink Neon Sign",
+    "ja": "ピンクのネオンサイン"
+  },
+  "description": {
+    "en": "Hollow letters drawn as a pink neon tube, a pale core line inside a hot pink tube, with an added pink glow and a pink-tinted light glow.",
+    "ja": "中抜きの文字をピンクのネオン管で描き、淡い芯の線と鮮やかなピンクの管、加算のピンクのグロー、ピンクに色付いたライトグロー。"
+  },
+  "family": "neon",
+  "tags": [
+    "neon",
+    "pink",
+    "tube",
+    "hollow",
+    "glow",
+    "sign"
+  ],
+  "synonyms": {
+    "en": [
+      "neon sign",
+      "bar sign",
+      "night club",
+      "magenta neon"
+    ],
+    "ja": [
+      "ネオン",
+      "ネオンサイン",
+      "ピンク",
+      "ネオン管",
+      "neon",
+      "pinku"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "tilt-neon",
+    "ja": "rocknroll-one"
+  },
+  "style": {
+    "face": {
+      "fill": {
+        "color": "#000000"
+      },
+      "opacity": 0
+    },
+    "rims": [
+      {
+        "width": 1.6,
+        "material": {
+          "fill": {
+            "color": "#ffe0f4"
+          }
+        }
+      },
+      {
+        "width": 3.6,
+        "material": {
+          "fill": {
+            "color": "#ff2a9a"
+          }
+        }
+      }
+    ],
+    "knockout": true
+  },
+  "effects": [
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff2a9a",
+        "mode": "add"
+      }
+    },
+    {
+      "type": "light_glow",
+      "params": {
+        "intensity": 1.2,
+        "tint_amount": 0.7,
+        "tint_inner": "#ffe0f4",
+        "tint_outer": "#ff2a9a"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

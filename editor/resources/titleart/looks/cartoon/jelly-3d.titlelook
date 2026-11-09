@@ -1,0 +1,101 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "cartoon/jelly-3d",
+  "revision": 1,
+  "name": {
+    "en": "Jelly 3D",
+    "ja": "ゼリー 3D"
+  },
+  "description": {
+    "en": "Inflated pink candy jelly, half clear with metal flakes, in a softbox studio, with glints.",
+    "ja": "半ば透けてメタルフレークを含む膨らんだピンクのキャンディゼリー、ソフトボックスのスタジオ光、グリント付き。"
+  },
+  "family": "cartoon",
+  "tags": [
+    "jelly",
+    "pink",
+    "candy",
+    "inflate",
+    "glossy",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "gummy",
+      "jelly bean",
+      "gelatin",
+      "sweet"
+    ],
+    "ja": [
+      "ゼリー",
+      "グミ",
+      "ピンク",
+      "ぷるぷる",
+      "zerī",
+      "gumi"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "potta-one",
+    "ja": "potta-one"
+  },
+  "style_3d": {
+    "mode": "inflate",
+    "depth": 4,
+    "inflate": {
+      "height": 22
+    },
+    "face": {
+      "preset": "candy",
+      "color": "#ff4aa0",
+      "metallic": 0.85,
+      "roughness": 0.35,
+      "env_multiplier": 1.4,
+      "specular_multiplier": 1.5,
+      "clearcoat": 1,
+      "transmission": 0.6,
+      "flakes": 0.8,
+      "flake_scale": 0.8
+    },
+    "glint": {
+      "enabled": true
+    }
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "softbox",
+      "intensity": 1,
+      "rotation": 25
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

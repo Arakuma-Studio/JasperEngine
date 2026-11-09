@@ -1,0 +1,180 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "gems/ruby-faceted-3d",
+  "revision": 1,
+  "name": {
+    "en": "Faceted Ruby 3D",
+    "ja": "カットルビー 3D"
+  },
+  "description": {
+    "en": "Ruby glass extrusion with a wide chamfer that reads as facets, ringed by a gold band, in a softbox studio, with star glints.",
+    "ja": "ファセットに見える広い面取りのルビーガラスの押し出し、金の帯で囲み、ソフトボックスのスタジオ光、星のキラキラ。"
+  },
+  "family": "gems",
+  "tags": [
+    "ruby",
+    "gem",
+    "red",
+    "faceted",
+    "gold",
+    "3d"
+  ],
+  "synonyms": {
+    "en": [
+      "jewel",
+      "gemstone",
+      "red crystal",
+      "precious stone"
+    ],
+    "ja": [
+      "ルビー",
+      "宝石",
+      "赤",
+      "カット",
+      "rubī",
+      "hōseki"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "font": {
+    "latin": "playfair-black-italic",
+    "ja": "zen-old-mincho-black"
+  },
+  "style_3d": {
+    "depth": 10,
+    "bevel": {
+      "width": 4,
+      "depth": 4,
+      "profile": "chamfer",
+      "segments": 1
+    },
+    "face": {
+      "preset": "ruby",
+      "color": "#ff1030",
+      "roughness": 0.03,
+      "env_multiplier": 1.5,
+      "specular_multiplier": 2,
+      "transmission": 1,
+      "ior": 1.77,
+      "dispersion": 0.3
+    },
+    "bands": [
+      {
+        "grow": 2,
+        "depth": 8.4,
+        "offset": -10,
+        "material": {
+          "preset": "gold",
+          "color": "#ffc23a",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#fff8d8"
+              },
+              {
+                "pos": 0.06,
+                "color": "#ffe890"
+              },
+              {
+                "pos": 0.16,
+                "color": "#ffc838"
+              },
+              {
+                "pos": 0.3,
+                "color": "#f0a018"
+              },
+              {
+                "pos": 0.4,
+                "color": "#c06a06"
+              },
+              {
+                "pos": 0.47,
+                "color": "#5a2602"
+              },
+              {
+                "pos": 0.51,
+                "color": "#1a0800"
+              },
+              {
+                "pos": 0.55,
+                "color": "#120500"
+              },
+              {
+                "pos": 0.6,
+                "color": "#5a2804"
+              },
+              {
+                "pos": 0.72,
+                "color": "#c87810"
+              },
+              {
+                "pos": 0.84,
+                "color": "#f8b830"
+              },
+              {
+                "pos": 0.94,
+                "color": "#ffe080"
+              },
+              {
+                "pos": 1,
+                "color": "#fff4c8"
+              }
+            ]
+          },
+          "gradient_span": "line",
+          "gradient_bend": 0.6,
+          "metallic": 1,
+          "roughness": 0.06
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [
+    {
+      "type": "glints",
+      "preset": "stars",
+      "place": "above",
+      "scope": "layer",
+      "blend": "add",
+      "opacity": 1,
+      "params": {},
+      "effects": []
+    }
+  ],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "softbox",
+      "intensity": 1,
+      "rotation": 25,
+      "contrast": 1.2
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}

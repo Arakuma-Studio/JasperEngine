@@ -1,0 +1,60 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "minimal/soft-shadow",
+  "revision": 1,
+  "name": {
+    "en": "Soft Shadow",
+    "ja": "ソフトシャドウ"
+  },
+  "description": {
+    "en": "Only a wide soft drop shadow, added to any layer's own style.",
+    "ja": "広く柔らかいドロップシャドウだけを、どのレイヤーの元のスタイルにも加える。"
+  },
+  "family": "minimal",
+  "tags": [
+    "shadow",
+    "soft",
+    "minimal",
+    "subtle",
+    "clean"
+  ],
+  "synonyms": {
+    "en": [
+      "drop shadow",
+      "lift",
+      "depth",
+      "elevation"
+    ],
+    "ja": [
+      "影",
+      "ドロップシャドウ",
+      "ふんわり",
+      "立体感",
+      "kage",
+      "doroppu shadō"
+    ]
+  },
+  "dimension": "2d",
+  "applies": "effects",
+  "ref_size": 200,
+  "effects": [
+    {
+      "type": "drop_shadow",
+      "params": {
+        "distance": 8,
+        "size": 24,
+        "opacity": 0.35
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}
