@@ -22515,6 +22515,145 @@
    "type": 95,
    "type_of_key": 95,
    "type_of_name": 95
+  },
+  {
+   "display_name": "Terrain World",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef89b9",
+   "key": "terrainworld",
+   "known_keys": [
+    "autoAddTiles",
+    "collisionChunkQuads",
+    "collisionRadius",
+    "enabled",
+    "focus",
+    "lodDistance",
+    "overviewCastsShadows",
+    "poolSize",
+    "uploadBudget",
+    "useCameraFocus",
+    "worldData"
+   ],
+   "name": "TerrainWorldComponent",
+   "properties_of_default": {
+    "autoAddTiles": [
+     0,
+     0,
+     true
+    ],
+    "collisionChunkQuads": [
+     8,
+     0,
+     true
+    ],
+    "collisionRadius": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "focus": [
+     16,
+     0,
+     true
+    ],
+    "lodDistance": [
+     2,
+     0,
+     true
+    ],
+    "overviewCastsShadows": [
+     0,
+     0,
+     true
+    ],
+    "poolSize": [
+     8,
+     0,
+     true
+    ],
+    "uploadBudget": [
+     2,
+     0,
+     true
+    ],
+    "useCameraFocus": [
+     0,
+     0,
+     true
+    ],
+    "worldData": [
+     18,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "autoAddTiles": [
+     0,
+     0,
+     true
+    ],
+    "collisionChunkQuads": [
+     8,
+     0,
+     true
+    ],
+    "collisionRadius": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "focus": [
+     16,
+     0,
+     true
+    ],
+    "lodDistance": [
+     2,
+     0,
+     true
+    ],
+    "overviewCastsShadows": [
+     0,
+     0,
+     true
+    ],
+    "poolSize": [
+     8,
+     0,
+     true
+    ],
+    "uploadBudget": [
+     2,
+     0,
+     true
+    ],
+    "useCameraFocus": [
+     0,
+     0,
+     true
+    ],
+    "worldData": [
+     18,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 96,
+   "type_of_key": 96,
+   "type_of_name": 96
   }
  ],
  "ease_options": [
