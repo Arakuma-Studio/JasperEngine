@@ -183,7 +183,10 @@ namespace jasperengine{
         HTMLUI_PRIM,          // HTML UI instanced primitives (S16): quads, SDF boxes, borders and box shadows
         // S57's fullscreen passes: the contact shadows' mask (contact_shadows.frag), 'Oir' the OIT
         // resolve (oit_resolve.frag)
-        LIGHTING_PASS
+        LIGHTING_PASS,
+        // S48's screen transition (transition.frag): one premultiplied fullscreen triangle over
+        // the finished frame (pixelart::ScreenTransition)
+        TRANSITION
     };
 
     enum class AttributeType{

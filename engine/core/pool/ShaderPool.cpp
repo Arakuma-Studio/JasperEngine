@@ -192,6 +192,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::LIGHTING_PASS;
         return true;
     }
+    if (typeToken == "transition") {
+        shaderType = ShaderType::TRANSITION;
+        return true;
+    }
 
     return false;
 }
@@ -614,6 +618,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::PARTICLES: return lowerCase ? "particles" : "Particles";
         case ShaderType::HTMLUI_PRIM: return lowerCase ? "htmluiprim" : "HTML UI Primitives";
         case ShaderType::LIGHTING_PASS: return lowerCase ? "lightingpass" : "Lighting Pass";
+        case ShaderType::TRANSITION: return lowerCase ? "transition" : "Screen Transition";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -734,6 +739,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::HTMLUI_PRIM: return 0;
         // 'Oir': the OIT resolve, else the contact shadows' mask
         case ShaderType::LIGHTING_PASS: return 1;
+        // one program: the kind is a uniform
+        case ShaderType::TRANSITION: return 0;
         default:                 return 0;
     }
 }

@@ -422,6 +422,14 @@ void SceneManager::releaseLoading() {
     if (loadingHolds > 0) loadingHolds--;
 }
 
+bool SceneManager::isLoadingSceneShown() {
+    return loadingSceneShown;
+}
+
+bool SceneManager::isLoadComplete() {
+    return !pendingId && (loadingState == LoadingState::Loaded || loadingState == LoadingState::None);
+}
+
 bool SceneManager::isCoveredByLoading(Scene* scene) {
     if (!loadingSceneShown) return false;
 

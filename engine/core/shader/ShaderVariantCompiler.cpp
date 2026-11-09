@@ -698,6 +698,9 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     }else if (shaderType == ShaderType::LIGHTING_PASS){
         args.vert_file = "fullscreen.vert";
         args.frag_file = (properties & (1 << 0)) ? "oit_resolve.frag" : "contact_shadows.frag";   // 'Oir'
+    }else if (shaderType == ShaderType::TRANSITION){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "transition.frag";
     }else if (shaderType == ShaderType::PASS_PREVIEW){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "pass_preview.frag";

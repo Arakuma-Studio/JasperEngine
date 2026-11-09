@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "pixelart/Glitch.h"
+#include "pixelart/ScreenTransition.h"
 #include "util/ScriptPropertyCache.h"
 #include "util/ProjectChecks.h"
 #include "asset/ModelSubAssets.h"
@@ -4395,6 +4397,9 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     // a fluid a script makes (FluidSimulation in Lua or C++) needs its programs too
     if (scriptsMention("FluidSimulation"))
         ShaderVariantCollector::addFluidKeys(keys);
+    // S48's screen transition: a script playing one (Transition in Lua or ScreenTransition in C++)
+    if (scriptsMention("Transition"))
+        keys.insert(ShaderPool::getShaderKey(ShaderType::TRANSITION, 0));
 }
 
 bool editor::Project::scriptsMention(const char* text) const {
@@ -10208,6 +10213,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         cleanupPlaySession(session);
         // what the scripts that ran started (Coroutine.start, Timer.after)
         ScriptScheduler::clear();
+        jasperengine::pixelart::ScreenTransition::reset();
+        jasperengine::pixelart::Glitch::stop();
         SceneManager::clearAll();
         PrefabManager::clearAll();
         ObjectManager::clearAll();
@@ -11271,6 +11278,9 @@ void editor::Project::stop(uint32_t sceneId) {
             Scheduler::game().clear();
             // every coroutine and timer of the play (unowned ones too), before the scripts go
             ScriptScheduler::clear();
+            // a screen transition of the play and its callbacks (they may hold Lua), the scripted glitch
+            jasperengine::pixelart::ScreenTransition::reset();
+            jasperengine::pixelart::Glitch::stop();
             // the debug overlay and the console commands of the scripts, before the scripts go
             DebugOverlay::shutdown();
             debugSettingsInPlay = false;
