@@ -685,6 +685,8 @@ namespace jasperengine{
         // Batch draws it instanced
         uint8_t batchAttributes = 0;
         bool spriteInstanced = false;
+        // a Tilemap Layer draws it: its instances clamp their UVs inside their frames (S50, 'Tcl')
+        bool tileLayer = false;
         float lodError[MAX_MESH_LODS] = {}; // largest error of any submesh at each level
         unsigned int numLods = 1;
         // how a level change shows (spec S54 R9, Unity's LOD Group): Fade Mode; Animate

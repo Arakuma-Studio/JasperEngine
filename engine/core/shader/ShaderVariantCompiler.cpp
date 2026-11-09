@@ -427,6 +427,7 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     // S52: a batchable sprite's FX slots, frame rect and snap pivot
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX)) defs.push_back({"HAS_SPRITE_FX", "1"});         // 'Sfx'
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT)) defs.push_back({"HAS_FRAME_RECT", "1"}); // 'Sfr'
+    if (prop & ShaderPool::getTileClampProperty()) defs.push_back({"TILE_CLAMP_FRAME", "1"}); // 'Tcl'
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::SNAP_PIVOT)) defs.push_back({"HAS_SNAP_PIVOT", "1"}); // 'Spv'
 }
 

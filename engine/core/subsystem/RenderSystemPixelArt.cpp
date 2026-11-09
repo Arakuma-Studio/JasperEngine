@@ -8,6 +8,7 @@
 // without the component but one size test per frame.
 
 #include "RenderSystem.h"
+#include "component/TilemapLayerComponent.h"
 
 #include "Engine.h"
 #include "Scene.h"
@@ -297,7 +298,8 @@ Matrix4 RenderSystem::pixelArtModel(Entity entity, const Matrix4& model, const P
         const PixelRotation own = scene->getComponent<SpriteComponent>(entity).pixelRotation;
         if (own != PixelRotation::CAMERA)
             rotation = own;
-    }else if (!signature.test(scene->getComponentId<TilemapComponent>()) && !signature.test(scene->getComponentId<UIComponent>())){
+    }else if (!signature.test(scene->getComponentId<TilemapComponent>()) && !signature.test(scene->getComponentId<TilemapLayerComponent>()) &&
+              !signature.test(scene->getComponentId<UIComponent>())){
         return model;
     }
     return rotation == PixelRotation::STEPS_90 ? pixelart::roundRotation90(model) : model;

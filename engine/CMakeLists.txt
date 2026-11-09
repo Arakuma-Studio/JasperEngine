@@ -1632,6 +1632,8 @@ set(JASPERENGINE_SRCS
     core/object/Light.cpp
     core/object/PixelPerfectCamera.cpp
     core/object/SortingGroup.cpp
+    core/object/tilemap/Grid.cpp
+    core/object/tilemap/TilemapLayer.cpp
     core/object/SpriteBatch.cpp
     core/object/Light2D.cpp
     core/object/LineRenderer.cpp
@@ -1779,6 +1781,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/SplineClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/SortingClassesLua.cpp
+    core/script/binding/TilemapClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp

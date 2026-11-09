@@ -27,6 +27,7 @@
 #include "texture/Texture.h"
 
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <vector>
 
@@ -125,6 +126,31 @@ namespace jasperengine{
         bool gpuPivots = false;
         uint64_t uploadedRevision = 0;
         uint64_t uploadFrame = 0;
+    };
+
+    // One piece of a chunked producer's instances (S50's tilemap chunks): its own batch and GPU
+    // buffers, culled on its own. `batch` is not touched until the piece is in view: while
+    // needsBuild the list's build() fills it first (the renderer calls it from a visible draw)
+    struct SpriteInstanceChunk{
+        SpriteInstanceBatch* batch = nullptr;
+        AABB bounds;                     // in the GameObject's space, overhang included
+        uint64_t lastDrawn = 0;          // the frame (SokolSystem commit) it was last drawn
+        bool needsBuild = false;
+    };
+
+    // Several batches drawn as the instances of one GameObject: one sort item, each piece culled,
+    // built and uploaded on its own. `lead` holds the bindings the mesh loads with (count 1, never
+    // drawn), every piece's buffers are swapped in for its draw, so pieces come and go, grow and
+    // release their GPU buffers without reloading the mesh. Drawn in `chunks` order.
+    struct JASPERENGINE_API SpriteInstanceChunkList{
+        SpriteInstanceChunkList(){ lead.reserve(1); lead.setCount(1); }
+
+        SpriteInstanceBatch lead;
+        std::vector<SpriteInstanceChunk> chunks;
+        // the union of the pieces' bounds; bump `revision` with a change of it
+        AABB bounds;
+        uint64_t revision = 1;
+        std::function<void(SpriteInstanceChunk&)> build;
     };
 
 }

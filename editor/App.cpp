@@ -5889,7 +5889,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (instance=fx.x/fx.y read through includes/sprite_fx.glsl, a_frameRect), MESH 'Sfx' 46,
     //      'Sfr' 47, 'Spv' 48, DEPTH 'Spv' 20, the instanced snap's per-instance mode
     //      (pixelSnapInstanceMode).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v61";
+    // v62: S50's tilemap tiles: MESH 'Tcl' 49 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
+    //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v62";
 }
 
 void editor::App::pushTabNotificationStyle(){

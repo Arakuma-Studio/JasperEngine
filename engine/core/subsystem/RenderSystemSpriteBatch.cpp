@@ -15,6 +15,7 @@
 #include "Scene.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/Transform.h"
 #include "pixelart/PixelRotation.h"
 #include "registry/SortingLayers.h"
 #include "render/sprite/SpriteInstanceBatch.h"
@@ -67,7 +68,16 @@ namespace{
 
 }
 
+SpriteInstanceChunkList* RenderSystem::spriteInstanceChunksOf(Entity entity){
+    if (attachedInstanceChunks.empty())
+        return nullptr;
+    auto attached = attachedInstanceChunks.find(entity);
+    return attached != attachedInstanceChunks.end() ? attached->second : nullptr;
+}
+
 SpriteInstanceBatch* RenderSystem::spriteInstancesOf(Entity entity){
+    if (SpriteInstanceChunkList* chunks = spriteInstanceChunksOf(entity))
+        return &chunks->lead;
     if (!attachedInstanceBatches.empty()){
         auto attached = attachedInstanceBatches.find(entity);
         if (attached != attachedInstanceBatches.end())
@@ -136,7 +146,63 @@ void RenderSystem::detachInstanceBatch(Entity entity){
     }
 }
 
+void RenderSystem::attachInstanceChunks(Entity entity, SpriteInstanceChunkList* list){
+    if (!list)
+        return detachInstanceChunks(entity);
+    attachedInstanceChunks[entity] = list;
+    attachedBoundsRevision.erase(entity);
+    if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+        mesh->spriteInstanced = true;
+        mesh->needReload = true;
+    }
+}
+
+void RenderSystem::detachInstanceChunks(Entity entity){
+    auto attached = attachedInstanceChunks.find(entity);
+    if (attached == attachedInstanceChunks.end())
+        return;
+    attached->second->lead.destroyGpu();
+    for (SpriteInstanceChunk& chunk : attached->second->chunks)
+        chunk.batch->destroyGpu();
+    attachedInstanceChunks.erase(attached);
+    attachedBoundsRevision.erase(entity);
+    if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+        mesh->spriteInstanced = false;
+        mesh->needReload = true;
+    }
+}
+
 void RenderSystem::updateAttachedInstanceBatches(){
+    for (auto it = attachedInstanceChunks.begin(); it != attachedInstanceChunks.end();){
+        const Entity entity = it->first;
+        SpriteInstanceChunkList* list = it->second;
+        if (!scene->isEntityCreated(entity)){
+            list->lead.destroyGpu();
+            attachedBoundsRevision.erase(entity);
+            it = attachedInstanceChunks.erase(it);
+            continue;
+        }
+        ++it;
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!mesh)
+            continue;
+        if (!mesh->spriteInstanced){
+            mesh->spriteInstanced = true;
+            mesh->needReload = true;
+        }
+        list->lead.setPivotsEnabled(pixelSnapVariants);
+        if (mesh->loaded && list->lead.isGpuCreated() && list->lead.hasPivots() != list->lead.gpuHasPivots())
+            mesh->needReload = true;
+        uint64_t& seen = attachedBoundsRevision[entity];
+        if (seen != list->revision){
+            seen = list->revision;
+            const AABB bounds = list->chunks.empty() ? AABB::ZERO : list->bounds;
+            if (mesh->aabb != bounds){
+                mesh->aabb = bounds;
+                mesh->needUpdateAABB = true;
+            }
+        }
+    }
     for (auto it = attachedInstanceBatches.begin(); it != attachedInstanceBatches.end();){
         const Entity entity = it->first;
         SpriteInstanceBatch* batch = it->second;
@@ -442,7 +508,35 @@ void RenderSystem::packSpriteBatch(Entity entity, SpriteBatchComponent& componen
     batch.markChanged(bx0, by0, bx1, by1);
 }
 
-bool RenderSystem::drawSpriteInstances(ObjectRender& render, Submesh& submesh, SpriteInstanceBatch& batch, ShaderRender* shader, int baseColorSlotType){
+bool RenderSystem::drawSpriteChunks(ObjectRender& render, Submesh& submesh, SpriteInstanceChunkList& list, ShaderRender* shader, int baseColorSlotType,
+                                    const Transform& transform, float cameraFar, const Plane frustumPlanes[6]){
+    const uint64_t commit = SokolSystem::getCommitCount();
+    bool drawn = false;
+    for (SpriteInstanceChunk& chunk : list.chunks){
+        if (!isInsideCamera(cameraFar, frustumPlanes, transform.modelMatrix * chunk.bounds))
+            continue;
+        chunk.lastDrawn = commit;
+        if (chunk.needsBuild && list.build)
+            list.build(chunk);
+        SpriteInstanceBatch& batch = *chunk.batch;
+        if (batch.getCount() == 0)
+            continue;
+        // the streams and size the draw needs: the mesh loaded with the lead's streams
+        if (list.lead.hasFx())
+            batch.enableFx();
+        batch.setPivotsEnabled(list.lead.hasPivots());
+        if (!batch.isGpuCreated() || batch.getCapacity() > batch.getGpuCapacity() || batch.hasFx() != batch.gpuHasFx() ||
+            batch.hasPivots() != batch.gpuHasPivots()){
+            if (!batch.createGpu())
+                continue;
+        }
+        drawn = drawSpriteInstances(render, submesh, batch, shader, baseColorSlotType, &list.lead) || drawn;
+    }
+    return drawn;
+}
+
+bool RenderSystem::drawSpriteInstances(ObjectRender& render, Submesh& submesh, SpriteInstanceBatch& batch, ShaderRender* shader, int baseColorSlotType,
+                                       SpriteInstanceBatch* bound){
     if (batch.getCount() == 0 || !batch.isGpuCreated() || batch.getCount() > batch.getGpuCapacity())
         return false;
     const uint64_t commit = SokolSystem::getCommitCount();
@@ -454,6 +548,11 @@ bool RenderSystem::drawSpriteInstances(ObjectRender& render, Submesh& submesh, S
     ExternalBuffer& instances = batch.getInstanceBuffer();
     ExternalBuffer& fx = batch.getFxBuffer();
     ExternalBuffer& pivots = batch.getPivotBuffer();
+    // what the render's vertex bindings were made from (a chunk list's lead; else this batch)
+    SpriteInstanceBatch& owner = bound ? *bound : batch;
+    BufferRender* boundInstances = owner.getInstanceBuffer().getRender();
+    BufferRender* boundFx = owner.getFxBuffer().getRender();
+    BufferRender* boundPivots = owner.getPivotBuffer().getRender();
     // a run on another page than the material's binds that page's texture for its draw
     std::pair<int, int> slot = {-1, -1};
     if (batch.getPageCount() > 0 && baseColorSlotType >= 0 && shader)
@@ -477,20 +576,20 @@ bool RenderSystem::drawSpriteInstances(ObjectRender& render, Submesh& submesh, S
                 lent = false;
             }
         }
-        render.replaceVertexBuffer(instances.getRender(), instances.getRender(), (size_t)run.first * instances.getStride());
+        render.replaceVertexBuffer(boundInstances, instances.getRender(), (size_t)run.first * instances.getStride());
         if (batch.gpuHasFx())
-            render.replaceVertexBuffer(fx.getRender(), fx.getRender(), (size_t)run.first * fx.getStride());
+            render.replaceVertexBuffer(boundFx, fx.getRender(), (size_t)run.first * fx.getStride());
         if (batch.gpuHasPivots())
-            render.replaceVertexBuffer(pivots.getRender(), pivots.getRender(), (size_t)run.first * pivots.getStride());
+            render.replaceVertexBuffer(boundPivots, pivots.getRender(), (size_t)run.first * pivots.getStride());
         render.draw(0, submesh.vertexCount, run.count);
         spriteBatchStats.draws++;
         spriteBatchStats.instances += run.count;
     }
-    render.replaceVertexBuffer(instances.getRender(), instances.getRender(), 0);
+    render.replaceVertexBuffer(boundInstances, boundInstances, 0);
     if (batch.gpuHasFx())
-        render.replaceVertexBuffer(fx.getRender(), fx.getRender(), 0);
+        render.replaceVertexBuffer(boundFx, boundFx, 0);
     if (batch.gpuHasPivots())
-        render.replaceVertexBuffer(pivots.getRender(), pivots.getRender(), 0);
+        render.replaceVertexBuffer(boundPivots, boundPivots, 0);
     if (lent && materialTexture)
         render.addTexture(slot, ShaderStageType::FRAGMENT, materialTexture);
     return true;

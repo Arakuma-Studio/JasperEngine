@@ -33,6 +33,7 @@
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/NavigationSystem.h"
+#include "subsystem/TilemapSystem.h"
 #include "picking/SceneBvh.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/SplineSystem.h"
@@ -85,6 +86,8 @@ void Scene::init(){
     registerSystem<WaterInteractionSystem>();
     // before physics: agents set their bodies' velocities before the world steps (S19 D2)
     registerSystem<NavigationSystem>();
+    // after Render's transforms, before physics: a Tilemap Collider 2D's chunks rebuild before the step
+    registerSystem<TilemapSystem>();
     registerSystem<PhysicsSystem>();
     // after physics (world collisions query it, never while it steps) and the transforms
     registerSystem<ParticleSubsystem>();

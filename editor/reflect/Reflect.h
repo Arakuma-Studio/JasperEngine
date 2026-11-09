@@ -50,7 +50,8 @@ namespace jasperengine::editor::reflect {
         None, Texture, Cubemap, Font, Material, Model, Audio, Script, Prefab, Shader, UIDocument, Scene, Any,
         PoseAnimation, AnimationClip, AnimatorController, VertexAnimation, AvatarMask, SoundEvent, NavMesh, NavGrid, ParticleEffect,
         ModelOrPrefab,  // by the path's extension (a spline pool's entry)
-        Palette         // a .palette (S43)
+        Palette,        // a .palette (S43)
+        Tileset         // a .tileset (S50)
     };
 
     // How a field holds an asset reference (editor/asset/AssetRefSchema generates its table from the

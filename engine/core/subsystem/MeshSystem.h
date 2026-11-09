@@ -251,6 +251,9 @@ namespace jasperengine{
         // settings and the vertex attributes. The editor reads the shader variants of a
         // generated mesh off them, without generating it.
         static void prepareSpriteMesh(MeshComponent& mesh);
+        // a Tilemap Layer's quad (S50): positions (0, 0)..(1, 1), UV (qx, 1 - qy), the instances'
+        // matrices place it
+        static void prepareTileLayerMesh(MeshComponent& mesh);
         // S52: a sprite's pixel-art batching inputs (MeshComponent::batchAttributes) its shader
         // (the scene's default when the mesh names none) reads, and their neutral values after the
         // geometry the builders made. The export's shader list takes the same (ShaderVariantCollector)

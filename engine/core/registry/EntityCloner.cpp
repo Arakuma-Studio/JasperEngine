@@ -54,6 +54,9 @@
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
+#include "component/GridComponent.h"
+#include "component/TilemapLayerComponent.h"
+#include "component/TilemapCollider2DComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -938,6 +941,22 @@ void prepare<SpriteBatchComponent>(SpriteBatchComponent& batch, Entity, CloneCon
 }
 
 template<>
+void prepare<TilemapLayerComponent>(TilemapLayerComponent& layer, Entity, CloneContext&) {
+    // the cells are shared until one of the copies writes (TileCellsRef); chunks and GPU buffers
+    // are the copy's own
+    layer.state.reset();
+    layer.needUpdate = true;
+}
+
+template<>
+void prepare<TilemapCollider2DComponent>(TilemapCollider2DComponent& collider, Entity, CloneContext&) {
+    collider.state.reset();
+    collider.generatedChains = 0;
+    collider.generatedPolygons = 0;
+    collider.needUpdate = true;
+}
+
+template<>
 void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, CloneContext& ctx) {
     layout.panel = ctx.remap(layout.panel);
     layout.needUpdateSizes = true;
@@ -1319,6 +1338,9 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<PixelPerfectCameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SortingGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteBatchComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<GridComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<TilemapLayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<TilemapCollider2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LightComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<Light2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ShadowCaster2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

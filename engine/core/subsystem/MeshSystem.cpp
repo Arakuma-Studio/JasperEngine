@@ -719,6 +719,32 @@ void MeshSystem::prepareSpriteMesh(MeshComponent& mesh){
         mesh.buffer.setUsage(BufferUsage::IMMUTABLE);
 }
 
+void MeshSystem::prepareTileLayerMesh(MeshComponent& mesh){
+    prepareSpriteMesh(mesh);
+    Attribute* positions = mesh.buffer.getAttribute(AttributeType::POSITION);
+    Attribute* uvs = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
+    Attribute* normals = mesh.buffer.getAttribute(AttributeType::NORMAL);
+    Attribute* tangents = mesh.buffer.getAttribute(AttributeType::TANGENT);
+    Attribute* colors = mesh.buffer.getAttribute(AttributeType::COLOR);
+    const float qx[4] = {0.0f, 1.0f, 1.0f, 0.0f};
+    const float qy[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+    for (int i = 0; i < 4; i++){
+        mesh.buffer.addVector3(positions, Vector3(qx[i], qy[i], 0.0f));
+        mesh.buffer.addVector2(uvs, Vector2(qx[i], 1.0f - qy[i]));
+        mesh.buffer.addVector3(normals, Vector3(0.0f, 0.0f, 1.0f));
+        mesh.buffer.addVector4(tangents, Vector4(1.0f, 0.0f, 0.0f, flatTangentHandedness(true)));
+        mesh.buffer.addVector4(colors, Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+    static const uint16_t indices[] = {0, 1, 2, 0, 2, 3};
+    mesh.indices.clear();
+    mesh.indices.setValues(0, mesh.indices.getAttribute(AttributeType::INDEX), 6, (char*)&indices[0], sizeof(uint16_t));
+    mesh.submeshes[0].vertexCount = 6;
+    mesh.submeshes[0].hasTextureRect = false;
+    const AABB unitQuad(Vector3(0.0f, 0.0f, 0.0f), Vector3(1.0f, 1.0f, 0.0f));
+    mesh.verticesAABB = unitQuad;
+    mesh.aabb = unitQuad;
+}
+
 void MeshSystem::fillSpriteBatchAttributes(MeshComponent& mesh){
     const Attribute* position = mesh.buffer.getAttribute(AttributeType::POSITION);
     if (!position || mesh.batchAttributes == 0)

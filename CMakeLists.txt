@@ -846,6 +846,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/UpstreamMediaReflect.cpp
     ${EDITOR_DIR}/reflect/components/PixelArtReflect.cpp
     ${EDITOR_DIR}/reflect/components/SortingReflect.cpp
+    ${EDITOR_DIR}/reflect/components/TilemapReflect.cpp
     # pixel art (S41: the editor's side of the Pixel Perfect Camera)
     ${EDITOR_DIR}/pixelart/PixelPerfectEditor.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp

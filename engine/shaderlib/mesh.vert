@@ -135,6 +135,10 @@ in vec3 a_position;
     #endif
 #endif
 
+#if defined(TILE_CLAMP_FRAME) && defined(HAS_INSTANCING) && defined(HAS_UV_SET1)
+    flat out vec4 v_tileFrame;
+#endif
+
 #define LOD_FADE_VS
 #include "includes/lod_fade.glsl"
 #include "includes/skinning.glsl"
@@ -305,6 +309,9 @@ void main() {
             #endif
             #ifdef HAS_INSTANCING
                 v_uv1 = v_uv1 * i_textureRect.zw + i_textureRect.xy;
+                #ifdef TILE_CLAMP_FRAME
+                    v_tileFrame = i_textureRect;
+                #endif
             #endif
         #else
             v_uv1 = getTerrainTiledTexture(pos.xyz);

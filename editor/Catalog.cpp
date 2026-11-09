@@ -3,6 +3,9 @@
 
 #include "Catalog.h"
 #include "component/ButtonComponent.h"
+#include "component/GridComponent.h"
+#include "component/TilemapLayerComponent.h"
+#include "component/TilemapCollider2DComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/CameraComponent.h"
@@ -1204,6 +1207,17 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     if (updateFlags & UpdateFlags_Model){
         if (ModelComponent* model = registry->findComponent<ModelComponent>(entity)){
             model->needUpdateModel = true;
+        }
+    }
+    if (updateFlags & UpdateFlags_TileLayer){
+        if (GridComponent* grid = registry->findComponent<GridComponent>(entity)){
+            grid->revision++;
+        }
+        if (TilemapLayerComponent* layer = registry->findComponent<TilemapLayerComponent>(entity)){
+            layer->needUpdate = true;
+        }
+        if (TilemapCollider2DComponent* collider = registry->findComponent<TilemapCollider2DComponent>(entity)){
+            collider->needUpdate = true;
         }
     }
     if (updateFlags & UpdateFlags_Tilemap){

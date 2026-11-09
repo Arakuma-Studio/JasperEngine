@@ -140,6 +140,10 @@ namespace jasperengine::editor::reflect {
     // 2D sorting and Sprite Batch (SortingReflect.cpp, S52)
     extern const ComponentDesc kSortingGroupDesc;
     extern const ComponentDesc kSpriteBatchDesc;
+    // grid tilemaps (TilemapReflect.cpp, S50)
+    extern const ComponentDesc kGridDesc;
+    extern const ComponentDesc kTilemapLayerDesc;
+    extern const ComponentDesc kTilemapCollider2DDesc;
 
 }
 

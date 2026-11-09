@@ -67,7 +67,7 @@ namespace {
     // instancing ('Aui'), bits 42-43, water-boats' excluders and wakes ('Wex', 'Wwk'), bit 44,
     // draw-perf's directional-only Lit ('Dlo'), bit 45, S41's Pixel Snap ('Pxs'), and bits 46-48,
     // S52's pixel-art batching inputs ('Sfx', 'Sfr', 'Spv')
-    const uint64_t meshValidMask = 0x1FFFFFFFFFFFFULL;
+    const uint64_t meshValidMask = 0x3FFFFFFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
 
@@ -441,7 +441,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::DEPTH, shaderPropertyBit(19) | shaderPropertyBit(20), "depth_PxsSpv"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiWexWwkDloPxsSfxSfrSpv"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiWexWwkDloPxsSfxSfrSpvTcl"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
         {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},

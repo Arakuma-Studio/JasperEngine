@@ -40,7 +40,7 @@ namespace jasperengine{
         std::string material;
         uint16_t categoryBits = 1;
         uint16_t maskBits = 0xFFFF;
-        int16_t groupIndex = 0;
+        int32_t groupIndex = 0;
         bool contactEvents = true;
         bool sensorEvents = false;
         bool enableHitEvents = false;

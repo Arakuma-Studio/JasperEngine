@@ -702,6 +702,11 @@ uint64_t ShaderPool::getSpriteBatchProperty(ShaderType shaderType, SpriteBatchIn
     return 0;
 }
 
+// S50: appended after S52's (MESH 49): a Tilemap Layer's tiles clamp their UVs inside their frame
+uint64_t ShaderPool::getTileClampProperty(){
+    return shaderPropertyBit(49);
+}
+
 uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return shaderPropertyBit(31);
@@ -831,6 +836,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 46: return shortName ? "Sfx" : "Sprite FX";
             case 47: return shortName ? "Sfr" : "Sprite Frame Rect";
             case 48: return shortName ? "Spv" : "Snap Pivot";
+            // a Tilemap Layer's tiles sample inside their frame (S50 R35, TILE_CLAMP_FRAME)
+            case 49: return shortName ? "Tcl" : "Tile Clamp Frame";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {

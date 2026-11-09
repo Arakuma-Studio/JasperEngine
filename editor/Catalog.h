@@ -112,6 +112,8 @@ namespace jasperengine::editor{
         // a Button field (ui-components): it redraws (needUpdateButton) from any edit path, the
         // Inspector, MCP or undo
         UpdateFlags_Button              = (uint64_t)1 << 56,
+        // a Grid, Tilemap Layer or Tilemap Collider 2D field (S50): their chunks rebuild
+        UpdateFlags_TileLayer           = (uint64_t)1 << 57,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -235,12 +237,16 @@ namespace jasperengine::editor{
         PixelPerfectCameraComponent,
         // 2D sorting and bulk sprites (S52): Unity's Sorting Group, and instances of a Sprite
         SortingGroupComponent,
-        SpriteBatchComponent
+        SpriteBatchComponent,
+        // grid tilemaps (S50): the cell layout, a layer of cells, its colliders
+        GridComponent,
+        TilemapLayerComponent,
+        TilemapCollider2DComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::SpriteBatchComponent;
+    constexpr ComponentType LastComponentType = ComponentType::TilemapCollider2DComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
