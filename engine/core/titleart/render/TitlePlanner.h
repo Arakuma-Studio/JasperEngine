@@ -155,8 +155,9 @@ namespace jasperengine::titleart {
         };
         // inputAlpha: what `input`'s alpha is a function of (0: not known), the key the effects'
         // alpha-only results are kept under (EffectContext::inputAlphaKey)
+        // liveStack: a layer's own stack (unit()), whose inputs S81's live compose keeps and starts from
         Effects applyEffects(const std::string& stackId, const Json& effects, TitlePx input, bool keepInput, TitlePx inputInk,
-                             bool wantInk, const Json* layer, uint64_t inputAlpha = 0);
+                             bool wantInk, const Json* layer, uint64_t inputAlpha = 0, bool liveStack = false);
         bool holdsLight(const DrawNode& node);
         bool contentLight(const DrawNode& node);
 
@@ -223,6 +224,18 @@ namespace jasperengine::titleart {
         // ---- generators ----
         TitlePx generator(const DrawNode& node);
 
+        // ---- S81's live compose (RenderRequest::keepLive, liveInputs; Compositor.cpp) ----
+        // the layer is one a live input names, or an ancestor of one: planned, never a node cache hit
+        bool livePlanned(const std::string& layerId) const { return liveLayers.count(layerId) > 0; }
+        bool wantsLive(const std::string& name) const;
+        // keeps a copy of `px` as the live input `name` (TitleSplits::live)
+        void keepLive(const std::string& name, TitlePx px, const std::string& layerId);
+        // the request's live input `name` placed in `rect` (invalid when the request has none)
+        TitlePx liveInput(const std::string& name, const TitleRectI& rect);
+        // the layer a live input belongs to ("fx:<id>@<n>", "content:<id>", "follow:<id>"...)
+        static std::string layerOfLive(const std::string& name);
+        uint32_t liveInputsUsed = 0;
+
         // ---- the effect context's helpers (FieldPasses.cpp) ----
         // the signed distance of `src`'s alpha / red coverage (frames: y-up element masks)
         TitlePx distanceField(TitlePx src, bool alphaSource, float threshold, float reachPx, const std::string& layerId,
@@ -257,6 +270,8 @@ namespace jasperengine::titleart {
         TitleElementFilter elementFilter;               // the glyph cell's, for its layer only
         std::string filteredLayer;
         std::vector<std::unique_ptr<std::vector<DrawNode>>> trees;
+        std::set<std::string> liveLayers;               // livePlanned()
+        std::map<std::string, std::shared_ptr<TitleCacheEntry>> liveKeeps;     // filled by their keep steps
         // the node being planned: set when one of its effects or its generator says it read canvas
         // positions (TitleEffectContext.h), so its cached pixels are not moved with the layer
         std::shared_ptr<bool> canvasReads;

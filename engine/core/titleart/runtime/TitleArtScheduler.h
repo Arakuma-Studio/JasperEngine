@@ -10,7 +10,14 @@
 // - Budgets come from S56's platform group (QualityResolver::getPlatformGroup: Desktop, Mobile,
 //   Web) with the project's Title Art settings (title_art.frame_budget_ms, release_delay_s,
 //   cache_budget_mib); the editor's Edit mode has its own frame budget. Estimates are S80's (pixels
-//   x costWeight, the desktop reference) times a platform factor: mobile 6, web 4, desktop 1.
+//   x costWeight, the desktop reference); what the scheduler packs and splits steps by is S80's
+//   measured cost model (TitleStepCosts, Deviation 54: one model of the device per engine, the
+//   editor's previews have their own with their 4 ms), whose prior is the platform factor (mobile
+//   6, web 4, desktop 1): the first measurements replace it, so slicing follows the device, not
+//   desktop figures. A step after the frame's first starts only while the frame's measured time
+//   plus its prediction fits; a model is made again when the platform group or the device changes.
+// - Live composes (R9) run first, whole, for every title that has one, outside the frame budget
+//   (each is held to its own live budget when it is decided, TitleLiveCompose.h).
 // - Memory (R20): the renderer's target pool is trimmed after the Release Delay without a render;
 //   shown-before images of every title stay within the Cache Budget (oldest evicted first).
 // - Thread-safety: main thread.
@@ -30,6 +37,7 @@ namespace jasperengine::titleart {
 
     class TitleArtRenderer;
     class AssetResolver;
+    class TitleStepCosts;
 
     // Project Settings > Title Art (R58): per platform group, the editor's Edit mode apart
     struct JASPERENGINE_API TitleArtRuntimeSettings {
@@ -54,6 +62,10 @@ namespace jasperengine::titleart {
         uint32_t steps = 0;
         double spentUs = 0.0;
         uint32_t overBudgetSteps = 0;
+        // steps after the frame's first that took it over the budget: they started on a
+        // prediction that was too low (what trusting desktop estimates does on a slow device)
+        uint32_t lateStarts = 0;
+        uint32_t liveComposes = 0;      // R9: live composes that completed this frame
         std::vector<const TitleArtLive*> order;     // the titles that got steps, in the order they ran
     };
 
@@ -70,6 +82,7 @@ namespace jasperengine::titleart {
         // one frame's steps over `entries` with this factory and budget (tests drive it directly)
         static TitleFrameReport schedule(const std::vector<TitleArtLive*>& entries, const TitleJobFactory& factory, uint32_t budgetUs,
                                          double platformFactor);
+        static TitleFrameReport schedule(const std::vector<TitleArtLive*>& entries, const TitleScheduleContext& context);
 
         // the frame budget now (ms): a script's (setFrameBudget), else the settings' for the
         // platform group or the editor's Edit mode
@@ -78,6 +91,21 @@ namespace jasperengine::titleart {
         void configure(const TitleArtRuntimeSettings& settings);
         const TitleArtRuntimeSettings& settings() const { return config; }
         DevicePlatformGroup platformGroup() const;
+        // R9: one title's live budget now (the platform group's)
+        double liveBudgetMs() const;
+        // the runtime's cost model of this device (null before the first frame with work)
+        const TitleStepCosts* costModel() const { return costs.get(); }
+        // since the last reset: the frames with steps, the most any one spent (measured or
+        // predicted us), the frames of several steps past the budget, the late starts (tests,
+        // the render gate's emulator figures)
+        struct FrameTotals {
+            uint64_t frames = 0;
+            double worstUs = 0.0;
+            uint64_t overBudgetFrames = 0;
+            uint64_t lateStarts = 0;
+        };
+        const FrameTotals& frameTotals() const { return totals; }
+        void resetFrameTotals() { totals = FrameTotals(); }
 
         // the renderer every live title renders with (made on first use)
         TitleArtRenderer& renderer();
@@ -109,6 +137,9 @@ namespace jasperengine::titleart {
         double idleSeconds = 0.0;
         uint64_t contextId = 0;
         TitleLiveLimits limits;
+        std::unique_ptr<TitleStepCosts> costs;
+        FrameTotals totals;
+        DevicePlatformGroup costsGroup = DevicePlatformGroup::Desktop;
     };
 
 }

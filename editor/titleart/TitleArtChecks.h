@@ -66,6 +66,10 @@ namespace jasperengine::editor {
         std::vector<titleart::TitleWarning> loadWarnings;
         std::string versionError;
         TitleCheckOptions options;
+        // the project's Title Art Renderers that show the document in Realtime or Glyph Atlas
+        // ("scene Main: Logo (realtime)"), when the caller read the project (check_title, check
+        // --titles); unset when it did not: S83's runtime checks then take it as a runtime title
+        std::optional<std::vector<std::string>> runtimeInstances;
         // renders a request through the caller's renderer and reads it back; null for checks run
         // without a GPU (their pixel checks report SKIP)
         std::function<bool(const titleart::RenderRequest& request, TitleCheckImage& out, std::string& error)> render;

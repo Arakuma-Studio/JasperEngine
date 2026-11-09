@@ -3,6 +3,7 @@
 
 #include "TitleArtBuiltinChecks.h"
 #include "fx/FxGeneratorChecks.h"
+#include "fx/FxRuntimeChecks.h"
 #include "titleart/runtime/TitleArtRuntimeChecks.h"
 
 #include "TitleArtBake.h"
@@ -1065,8 +1066,9 @@ void editor::registerBuiltinTitleChecks() {
         def.run = [run](TitleCheckContext& context, std::vector<TitleCheckResult>& out) { run(context, out); };
         TitleArtChecks::registerCheck(std::move(def));
     }
-    // S83's generator checks
+    // S83's generator checks, and what effects cost a Realtime title on a device
     registerTitleGeneratorChecks();
+    registerTitleFxRuntimeChecks();
     // the later specs' checks, so every surface that runs the checks has them (S81: glyph_atlas, characters R55)
     registerTitleArtRuntimeChecks();
     registerTitleCharactersCheck();

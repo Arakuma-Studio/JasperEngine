@@ -1404,7 +1404,9 @@ rest of S82 lands in 6B.
     in the tree and AC18's device figures are not recorded: the build host has no KVM (no
     `/dev/kvm`, no vmx or svm CPU flag), so the emulator cannot run, and no phone is attached. The
     first emulator run (`tools/android-emulator-test.sh --scene titleart`, default and with
-    `debug.jasperengine.titleart_rgba8=1`) makes the golden; AC18 stays a manual device run.
+    `debug.jasperengine.titleart_rgba8=1`) makes the golden; AC18 stays a manual device run. W1 ran it on
+    the KVM host (server H): it found and fixed `library:title_fx`'s missing vertex stage; the titles
+    then stay `shaders` (Deviation 37), so the golden is still not in the tree.
 23. **Implementation: Glyph Atlas** (`titleart/runtime/TitleGlyphAtlas.*`, R25-R32), complete
     with these choices:
     - Cells are S80's `glyphCell` renders (back: rims and the layer's effects; front: the face) of
@@ -1477,3 +1479,77 @@ rest of S82 lands in 6B.
     51.7 ms; a Realtime render sliced at a 4 ms budget took 3 frames, the largest multi-step frame
     measuring 81.3 ms (the estimates are desktop-GPU figures; llvmpipe runs the passes on the CPU).
     These are host measurements, not device figures (AC18 is open, Deviation 22).
+29. **Implementation (W1 wiring): the live compose** (R9, `titleart/runtime/TitleLiveCompose.*`,
+    `TitleArtLive::runLive`). A full render of a Realtime document with Exposed parameters whose
+    every target is an L param of a live variant keeps, per affected layer, a copy of its content and
+    of the stack input of the live effect (`RenderRequest::keepLive`, `TitleSplits::live`), and per
+    following generator the cut of its followed layer; those layers and their ancestors are always
+    planned, never node-cache hits. A later state whose only difference is such values (nothing else
+    of the render: resolution, region, path, tiers, flags) plans the same request with
+    `RenderRequest::liveInputs`: the stack starts at the live effect, which runs its passes again
+    (its alpha-only results, the scale_split's glow and shadow blurs, come from S80's alpha-keyed
+    cache) followed by the rest of its stack, the composites above it and the output; the other
+    layers are node-cache hits. A live param that changes the stack's reach re-places the inputs in
+    the new region (a clear and a copy). The compose runs whole in its frame before the slices
+    (no cost-model gate), cuts to the new image and does not cache the old one. A live compose keeps
+    the render's inputs on the new image and records what it touched (`TitleDisplayImage::liveTouched`):
+    an input that a later change would read after an earlier live change altered it (an effect before
+    it, a layer inside it, the layer a generator follows) re-renders, which keeps fresh ones. The first
+    enabled effect of a stack reads the kept content itself, so its alpha-keyed results stay valid
+    (a colour-like change runs no blur or distance field). The live budget is
+    predicted with S83's §6.4 model on the device's tier (a scale_split one full-resolution
+    equivalent, a kernel its estimate), the same function check_title's `fx_live_budget` uses, so
+    the decision is the same on every device; the scheduler's measured costs (Deviation 30) apply to
+    the sliced renders. A live effect followed by an enabled effect without a live variant
+    re-renders (S83 §6.12's suffix rule) and `get_title`'s `live.fallback` gives the reason; so does
+    a change over the budget. Glyph Atlas titles, titles with a glow output (Glow Pulse) and part
+    effect stacks re-render. The kernels are the bake programs themselves: S83's `TFX_LIVE` is
+    defined but no pass family's source tests it, so a 'Liv' variant would be the same program
+    compiled twice (S83 Deviation 39).
+30. **Implementation: one scheduler, measured costs** (R15, S80 Deviation 54). The runtime scheduler
+    keeps one `TitleStepCosts` per engine whose prior is the platform factor (desktop 1, web 4,
+    mobile 6): its first measurements replace the factor, so steps are packed and split
+    (`resplit`, once a frame) by what this device measures; on a software GPU steps wait for the GPU
+    fence as the editor's previews do. A new platform group (the Game view's simulation) or device
+    starts a new model. The editor's previews keep their own model and 4 ms budget; the runtime keeps
+    R15's budgets. `TitleFrameReport::lateStarts` counts steps after a frame's first that took the
+    frame over its budget. `TitleArtSchedulerTest.MeasuredCostsKeepASlowDevicesFramesWithinBudget`
+    (a fake clock: a device 3-40x slower than the estimates per kind of step) has 0 late starts and
+    converging predictions; the estimate-trusting packing over the same steps starts late (its control).
+31. **Implementation: device tiers** (S83 D11, D12, §6.7; S86 R37; S56). `TitleArtRuntime::setState`
+    resolves both tiers into the state: S83's `FxTier::Mobile` on S56's Mobile and Web platform
+    groups and on a device of S56's Low tier, else Desktop; S86's tier through `resolveTitleTier`
+    (the component's Quality Tier, else S56's device tier, else the project tier, GLES3/WebGL2
+    clamping High to Medium). The tree has no `title_art.realtime_3d_quality` setting, so the project
+    tier is S86's per-platform default (the simulated group's: desktop High, mobile and web Low).
+    Both are in the state hash (a new tier renders again), not in the prebake key (either tier shows
+    the export's image). Glyph Atlas cells are keyed by style without the tier.
+32. **Tests: AC17's pass count.** `TitleFxLiveGpu.EveryLiveParamComposesLikeARerender` checks each live
+    frame against a re-render at the value (F0 / F1), no re-render, no readback, composed in its
+    frame, and that it runs fewer passes than the re-render (the content and the effects before the
+    live one, or the followed layer, do not run; a generator that follows nothing runs no more than
+    a re-render): the frame also composites the layers above the effect, so its count is the
+    kernel's plus those, not the kernel's alone.
+33. **Tests: AC27 is an MCP test** (`test_title_runtime.py::test_lua_live_effect_params`, AC20's
+    harness) rather than a `TitleArtLuaFxTest` binary: Lua's `setParameter` in Play reaches the live
+    compose through the component, the system and the scheduler, which a unit test would stub.
+34. **Bug fixed on the way: the node cache ignored a generator's params.** `LayerHashes::content`,
+    the node cache's key, did not include a generator layer's `generator` member (its params hash in
+    the node scope with the placement), so a new param value hit the old pixels in any renderer that
+    had drawn the layer. `content` now chains the member (`TitleArtHashTest.AGeneratorsParamsChangeItsNodeCacheKey`);
+    the document's hash, and so bake freshness, is unchanged.
+35. **Bug fixed on the way: prebuilt exports skipped the Title Art export steps.** Only the Compile
+    path ran `prepareTitleArt` and `writeTitleArtRuntime`, so a prebuilt build (the default for most
+    games) shipped no `.titleart` of its Realtime and Glyph Atlas titles and no prebaked state. Both
+    paths run them now (`ExporterPrebuilt.cpp`).
+36. **Tests: R32's export path** is `test_title_export.py` (JASPER_SLOW_BUILD=1, the prebuilt glcore
+    player): the build holds the atlas manifest and pages, and the player logs, once per atlas,
+    `the glyph atlas showed its first string after N cell renders (M cells from the build's
+    prebaked atlas)`; the test reads N = 0.
+37. **Open: Title Art on the Android emulator stays `shaders`.** On the KVM host (emulator API 34,
+    `swangle_indirect`, the `render-gate` APK), the `titleart` scene runs 8 steps (across both titles) and
+    the next step waits: both titles report `shaders` for 15 minutes (48,000 frames), no shader build
+    fails, the game keeps running at about 53 fps, and the runtime cost gate's gate is not what waits (`gpu busy 0`
+    throughout). Not diagnosed further: the program being built is presumably the big ELEMENT
+    variant (S80's, 4.8-5.3 s on llvmpipe), whose compile may not finish under the emulator's
+    ANGLE/SwiftShader translator. No golden was written; AC18's figures are not measured.

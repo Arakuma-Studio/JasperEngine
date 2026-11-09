@@ -130,6 +130,17 @@ namespace jasperengine::titleart::tfx {
         return b.cost;
     }
 
+    // §6.4's predicted milliseconds of one full-resolution equivalent and of one instance per
+    // tier: the desktop constant is TitleFxBench.Calibrate's on the RTX 3080 Ti server, the mobile
+    // one an estimate until a device measures it (AC22). The editor's readout and S81's live
+    // budget (R9) predict with them
+    constexpr double DESKTOP_MS_PER_FRE = 0.012;
+    constexpr double MOBILE_MS_PER_FRE = 0.35;
+    constexpr double DESKTOP_MS_PER_INSTANCE = 0.0004;
+    constexpr double MOBILE_MS_PER_INSTANCE = 0.002;
+    inline double msPerFre(FxTier tier) { return tier == FxTier::Mobile ? MOBILE_MS_PER_FRE : DESKTOP_MS_PER_FRE; }
+    inline double msPerInstance(FxTier tier) { return tier == FxTier::Mobile ? MOBILE_MS_PER_INSTANCE : DESKTOP_MS_PER_INSTANCE; }
+
     // the class a definition's own cost falls in (§5 Performance's static limits); needing the
     // CPU analysis makes it C3 at least, the shared distance field is its own row
     inline CostClass costClassOf(const FxCost& c) {

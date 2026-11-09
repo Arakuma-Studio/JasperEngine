@@ -170,6 +170,59 @@ TitlePlanner::TitlePlanner(TitleRenderServices& services, const RenderRequest& r
         parents[layer.value("id", std::string())] = parent;
         return true;
     });
+    // S81's live compose: the layers its inputs belong to, and their ancestors, are always
+    // planned (a node cache hit would skip the stack whose input it keeps or starts from)
+    auto planned = [this](std::string id) {
+        while (!id.empty() && liveLayers.insert(id).second) {
+            auto it = parents.find(id);
+            id = it != parents.end() && it->second ? it->second->value("id", std::string()) : std::string();
+        }
+    };
+    for (const std::string& name : req.keepLive) planned(layerOfLive(name));
+    for (const auto& input : req.liveInputs) planned(layerOfLive(input.first));
+}
+
+std::string TitlePlanner::layerOfLive(const std::string& name) {
+    const size_t colon = name.find(':');
+    std::string id = colon == std::string::npos ? std::string() : name.substr(colon + 1);
+    const size_t at = id.find('@');
+    if (at != std::string::npos) id.resize(at);
+    return id;
+}
+
+bool TitlePlanner::wantsLive(const std::string& name) const {
+    return std::find(req.keepLive.begin(), req.keepLive.end(), name) != req.keepLive.end();
+}
+
+void TitlePlanner::keepLive(const std::string& name, TitlePx px, const std::string& layerId) {
+    if (!px.valid() || liveKeeps.count(name)) return;
+    // a copy of its own: the source slot stays the stack's (released, cached or written as before)
+    TitlePx copy = copyOf(px, layerId);
+    auto entry = std::make_shared<TitleCacheEntry>();
+    entry->rect = copy.rect;
+    liveKeeps[name] = entry;
+    const int slot = copy.slot;
+    cpu("live keep", layerId, 1, [entry, slot](TitleJobState& state, std::string& error) {
+        if (!state.alive(error)) return false;
+        TitleJobState::Slot& s = state.slots[(size_t)slot];
+        entry->target = std::move(s.ref);
+        entry->bytes = entry->target ? targetBytes(entry->target.key()) : 0;
+        s.entry = entry;
+        return true;
+    });
+}
+
+TitlePx TitlePlanner::liveInput(const std::string& name, const TitleRectI& rect) {
+    auto it = req.liveInputs.find(name);
+    if (it == req.liveInputs.end() || !it->second || !it->second->target) return {};
+    liveInputsUsed++;
+    TitlePx kept{entrySlot(it->second), it->second->rect};
+    if (kept.rect == rect) return kept;
+    // a live param that changes the stack's reach moves its region of interest: what was drawn
+    // before the live effect lies inside its own reach, so it is the same pixels in the new region
+    TitlePx placed = clearedLike(rect, layerOfLive(name));
+    blendOnto(placed, kept, 1.0f, (int)TitleBlend::Normal, nullptr, layerOfLive(name));
+    return placed;
 }
 
 int TitlePlanner::newSlot(const TargetKey& key) {
@@ -786,7 +839,7 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
             // a clip group shows its clipped layers as they are now
             for (const DrawNode& c : node.clipped) key = hashCombine(key, layerHash(c.layerId, &LayerHashes::node));
         }
-        if (auto hit = svc.cache.find(key)) {
+        if (auto hit = livePlanned(node.layerId) ? nullptr : svc.cache.find(key)) {
             const bool moves = leaf2D && !clip;
             const TitleRectI placed = moves ? TitleRectI{hit->rect.x + ax, hit->rect.y + ay, hit->rect.width, hit->rect.height} : hit->rect;
             // a moved node's pixels serve only where they are whole (position-free, unclipped)
@@ -799,11 +852,23 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
         }
     }
 
-    Content content = unitContent(node, clip, contentInk);
+    // S81's live compose: the content an earlier render of this state's layer kept (its stack
+    // then starts at the live effect), else the content as always
+    const bool liveStack = !clip && !contentInk && !wantInk && !contentOnly;
+    const std::string liveContent = titleLiveContentKey(node.layerId);
+    Content content;
+    if (TitlePx kept = liveStack ? liveInput(liveContent, rect) : TitlePx{}; kept.valid()) {
+        content.px = kept;
+        content.mask = kept;
+    } else {
+        content = unitContent(node, clip, contentInk);
+        if (liveStack && content.px.valid() && wantsLive(liveContent)) keepLive(liveContent, content.px, node.layerId);
+    }
     if (!content.px.valid()) return {};
     const bool maskIsPx = content.mask.slot == content.px.slot;
     Effects post = contentOnly ? Effects{content.px, content.ink}
-                               : applyEffects(node.layerId, effectsOf(layer), content.px, clip && maskIsPx, content.ink, wantInk, &layer, contentAlpha);
+                               : applyEffects(node.layerId, effectsOf(layer), content.px, clip && maskIsPx, content.ink, wantInk, &layer, contentAlpha,
+                                              liveStack);
     Unit out;
     bool positionFree = leaf2D && !clip;
     if (!clip) {
@@ -1009,15 +1074,18 @@ TitlePx TitlePlanner::adjustOnto(TitlePx acc, const DrawNode& node, const TitleP
 }
 
 TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, const Json& effects, TitlePx input, bool keepInput,
-                                                 TitlePx inputInk, bool wantInk, const Json* layer, uint64_t inputAlpha) {
+                                                 TitlePx inputInk, bool wantInk, const Json* layer, uint64_t inputAlpha, bool liveStack) {
     struct Run {
         const EffectDef* def;
         Json params;
         Json effect;
+        int index;          // in `effects` (S81's live inputs name it)
     };
     std::vector<Run> run;
     int lastOutline = -1;
+    int rawIndex = -1;
     for (const Json& fx : effects) {
+        rawIndex++;
         if (!fx.value("enabled", true)) continue;
         const std::string type = fx.value("type", std::string());
         const EffectDef* def = findEffect(type);
@@ -1034,10 +1102,27 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
         // the ink output leaves light out
         if (inkOnly && effectAddsLight(*def, values)) continue;
         if (def->outline) lastOutline = (int)run.size();
-        run.push_back({def, fx.value("params", Json::object()), fx});
+        run.push_back({def, fx.value("params", Json::object()), fx, rawIndex});
     }
     const int inkUntil = wantInk ? (int)run.size() : lastOutline;
     TitlePx cur = input;
+    // S81's live compose: a stack input kept by an earlier render starts the stack at its effect
+    // (one whose ink a skipped effect would have traced is not taken)
+    int startRun = 0;
+    bool injected = false;
+    const bool live = liveStack && !wantInk && !inputInk.valid();
+    if (live) {
+        for (int i = 0; i < (int)run.size(); i++) {
+            const std::string name = titleLiveStackKey(stackId, run[(size_t)i].index);
+            if (!req.liveInputs.count(name) || (i > 0 && inkUntil > 0)) continue;
+            if (TitlePx kept = liveInput(name, input.rect); kept.valid()) {
+                startRun = i;
+                cur = kept;
+                injected = true;
+            }
+            break;
+        }
+    }
     TitlePx ink = inputInk;
     auto drop = [&](TitlePx rt) {
         if (rt.valid() && rt.slot != input.slot && rt.slot != cur.slot && rt.slot != ink.slot) release(rt.slot);
@@ -1114,6 +1199,19 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
     uint64_t curAlpha = inputAlpha;
     for (int i = 0; i < (int)run.size(); i++) {
         const Run& r = run[(size_t)i];
+        if (i < startRun) {
+            // drawn by the render that kept the input: only what its alpha is a function of
+            if (curAlpha && r.def->alphaFromAlpha) {
+                curAlpha = hashCombine(hashCombine(curAlpha, fnv1a64(writeTitleArtJson(r.effect))), fnv1a64(writeTitleArtJson(light)));
+            } else {
+                curAlpha = 0;
+            }
+            continue;
+        }
+        if (live && !injected && (i == 0 || inkUntil <= 0)) {
+            const std::string name = titleLiveStackKey(stackId, r.index);
+            if (wantsLive(name)) keepLive(name, cur, stackId);
+        }
         const TitlePx inputInkPx = r.def->outline && ink.valid() ? ink : cur;
         TitlePx out = apply(r, cur, input, inputInk.valid() ? inputInk : input, inputInkPx, stackId, curAlpha);
         if (curAlpha && r.def->alphaFromAlpha) {

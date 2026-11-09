@@ -126,13 +126,14 @@ void main() {
 // 1 straight sRGB (16-bit), 2 premultiplied sRGB (displays), 3 the alpha as opaque grey (mask
 // outputs), 4 light (glow outputs: the colour's largest channel as alpha, so the image drawn
 // additively gives the light back), dithered like 0; p[2].yz the output pixel of this target's
-// (0, 0), so the noise is the whole render's whatever the region
+// (0, 0), so the noise is the whole render's whatever the region; p[2].w scales mode 4's light
+// (RenderRequest::lightScale: check_title reads light above 1 / scale as full codes)
 float taIgn(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
 void main() {
     vec4 c = texture(TA_TEX0, taMapUv(ta.p[3]));
     int mode = int(ta.p[2].x + 0.5);
     if (mode == 4) {
-        c.rgb = max(c.rgb, vec3(0.0));
+        c.rgb = max(c.rgb, vec3(0.0)) * (ta.p[2].w > 0.0 ? ta.p[2].w : 1.0);
         c.a = max(c.r, max(c.g, c.b));
         mode = 0;
     }

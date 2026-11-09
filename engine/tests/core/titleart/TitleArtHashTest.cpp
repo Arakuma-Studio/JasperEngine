@@ -125,3 +125,14 @@ TEST_F(TitleArtHashTest, ReadersFollowTheirSourcesAndAssets) {
     const TitleArtHashes v2 = hashTitleArt(copy, [](const TitleAssetRef&) { return uint64_t(2); });
     EXPECT_NE(v1.layers.at(id).geometry, v2.layers.at(id).geometry) << "an edited font reaches every hash that names it";
 }
+
+TEST_F(TitleArtHashTest, AGeneratorsParamsChangeItsNodeCacheKey) {
+    // the node cache keys by `content`: a new param value must not hit the old pixels
+    const TitleArtParseResult parsed = parseTitleArt(R"({"format": "jasperengine.titleart", "version": 1, "layers": [
+        {"id": "00000001", "type": "generator", "generator": {"type": "pattern_fill", "params": {"rotation": 10}}}]})");
+    ASSERT_TRUE(parsed.ok);
+    TitleArtDoc changed = parsed.doc;
+    Json* layer = findLayer(changed.root, "00000001");
+    ASSERT_TRUE(setTitleArtField(*layer, "layer", "gen.rotation", Json(20)).ok);
+    EXPECT_NE(hashTitleArt(changed).layers.at("00000001").content, hashTitleArt(parsed.doc).layers.at("00000001").content);
+}

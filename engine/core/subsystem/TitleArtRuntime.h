@@ -71,6 +71,10 @@ namespace jasperengine{
             uint32_t testFlags = 0;         // the instance's test state (setDisabledFeaturesForTesting)
             bool glowOutput = false;        // Glow Pulse is on: render the glow output too (R35)
             std::string characters;         // R55: the characters the title may show ("" = no limit)
+            // the device's tiers the render uses, resolved by the module from S56's platform group
+            // and tier (TitleArtRuntime::setState): S83's FxTier and S86's TitleTier
+            int fxTier = 0;
+            int renderTier = 0;
         };
 
         // what a title's live state reports (R18, R19, R69)
@@ -102,6 +106,12 @@ namespace jasperengine{
             std::vector<std::string> glyphUnsafe, glyphApproximate;
             std::string glyphFallback;      // "" or the glyph_atlas_unsupported reason
             uint32_t atlasPages = 0;
+            // R9: full renders and live composes swapped in since the instance was made, and why
+            // the last change of a live parameter re-rendered ("" when it composed live)
+            uint64_t renders = 0;
+            uint64_t liveComposes = 0;
+            std::string liveFallback;
+            size_t liveBytes = 0;           // the inputs kept for the live compose
         };
 
         class JASPERENGINE_API TitleArtRuntime{
