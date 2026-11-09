@@ -28732,6 +28732,238 @@
     false
    ]
   },
+  "TitleArtRendererComponent": {
+   "additionalCharacters": [
+    1,
+    0,
+    true
+   ],
+   "animationSpeed": [
+    2,
+    0,
+    true
+   ],
+   "animationTime": [
+    2,
+    0,
+    true
+   ],
+   "animationUnscaledTime": [
+    0,
+    0,
+    true
+   ],
+   "atlasMaxPages": [
+    8,
+    0,
+    true
+   ],
+   "atlasPageSize": [
+    8,
+    0,
+    true
+   ],
+   "defaultAnimation": [
+    1,
+    0,
+    true
+   ],
+   "driveAnimation": [
+    1,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "glintAmount": [
+    2,
+    0,
+    true
+   ],
+   "glintColor": [
+    6,
+    0,
+    true
+   ],
+   "glintRate": [
+    2,
+    0,
+    true
+   ],
+   "glintSeed": [
+    9,
+    0,
+    true
+   ],
+   "glintSize": [
+    2,
+    0,
+    true
+   ],
+   "glintsEnabled": [
+    0,
+    0,
+    true
+   ],
+   "glowColor": [
+    6,
+    0,
+    true
+   ],
+   "glowEnabled": [
+    0,
+    0,
+    true
+   ],
+   "glowPulse": [
+    2,
+    0,
+    true
+   ],
+   "language": [
+    1,
+    0,
+    true
+   ],
+   "liveTime": [
+    2,
+    0,
+    true
+   ],
+   "liveUnscaledTime": [
+    0,
+    0,
+    true
+   ],
+   "pivotFromTitle": [
+    0,
+    0,
+    true
+   ],
+   "pixelsPerUnit": [
+    2,
+    0,
+    true
+   ],
+   "playAutomatically": [
+    0,
+    0,
+    true
+   ],
+   "prebakeInitialState": [
+    0,
+    0,
+    true
+   ],
+   "priority": [
+    8,
+    0,
+    true
+   ],
+   "qualityTier": [
+    1,
+    0,
+    true
+   ],
+   "renderMode": [
+    13,
+    0,
+    true
+   ],
+   "renderWhenHidden": [
+    0,
+    0,
+    true
+   ],
+   "resolutionScale": [
+    2,
+    0,
+    true
+   ],
+   "sweepAngle": [
+    2,
+    0,
+    true
+   ],
+   "sweepAuto": [
+    0,
+    0,
+    true
+   ],
+   "sweepColor": [
+    6,
+    0,
+    true
+   ],
+   "sweepEnabled": [
+    0,
+    0,
+    true
+   ],
+   "sweepInterval": [
+    2,
+    0,
+    true
+   ],
+   "sweepPosition": [
+    2,
+    0,
+    true
+   ],
+   "sweepSoftness": [
+    2,
+    0,
+    true
+   ],
+   "sweepSpeed": [
+    2,
+    0,
+    true
+   ],
+   "sweepWidth": [
+    2,
+    0,
+    true
+   ],
+   "tintAmount": [
+    2,
+    0,
+    true
+   ],
+   "tintColor": [
+    6,
+    0,
+    true
+   ],
+   "tintEnabled": [
+    0,
+    0,
+    true
+   ],
+   "title": [
+    18,
+    0,
+    true
+   ],
+   "transition": [
+    13,
+    0,
+    true
+   ],
+   "transitionDuration": [
+    2,
+    0,
+    true
+   ],
+   "uiScale": [
+    2,
+    0,
+    true
+   ]
+  },
   "TouchAreaComponent": {
    "enabled": [
     0,

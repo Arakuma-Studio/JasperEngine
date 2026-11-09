@@ -126,8 +126,12 @@ namespace {
                 spoolAll(l.children, bitDepth, spool);
                 continue;
             }
-            if (l.adjustmentKey.empty()) ASSERT_TRUE(psdSpoolPixels(l, bitDepth, spool, error)) << error;
-            if (l.hasMask) ASSERT_TRUE(psdSpoolMask(l, bitDepth, spool, error)) << error;
+            if (l.adjustmentKey.empty()) {
+                ASSERT_TRUE(psdSpoolPixels(l, bitDepth, spool, error)) << error;
+            }
+            if (l.hasMask) {
+                ASSERT_TRUE(psdSpoolMask(l, bitDepth, spool, error)) << error;
+            }
         }
     }
 
@@ -283,9 +287,13 @@ TEST(PsdWriter, NativeAdjustmentsRoundTrip) {
         ASSERT_TRUE(psdAdjustmentToTitle(key, data, back, error)) << error;
         EXPECT_EQ(back["type"], c["type"]);
         for (const char* k : {"hue", "saturation", "lightness", "brightness", "contrast", "levels", "level"}) {
-            if (c.contains(k)) EXPECT_DOUBLE_EQ(back[k].get<double>(), c[k].get<double>()) << k;
+            if (c.contains(k)) {
+                EXPECT_DOUBLE_EQ(back[k].get<double>(), c[k].get<double>()) << k;
+            }
         }
-        if (c["type"] == "curves") EXPECT_NEAR(back["channels"]["rgb"]["points"][1]["y"].get<double>(), 0.75, 1.0 / 255);
+        if (c["type"] == "curves") {
+            EXPECT_NEAR(back["channels"]["rgb"]["points"][1]["y"].get<double>(), 0.75, 1.0 / 255);
+        }
     }
     std::string key;
     std::vector<uint8_t> data;

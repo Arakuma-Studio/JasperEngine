@@ -286,6 +286,8 @@ TEST(PsStyleConvert, TruncatedFilesFail) {
         PsStyleFile f;
         std::string error;
         const bool ok = readPsStyles(bytes.data(), cut, f, error);
-        if (!ok) EXPECT_FALSE(error.empty()) << cut;
+        if (!ok) {
+            EXPECT_FALSE(error.empty()) << cut;
+        }
     }
 }

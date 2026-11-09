@@ -51,13 +51,6 @@ namespace {
         return LunaSVGRuntime::rasterize(svg.data(), svg.size(), 1.0f, true, pixels, w, h);
     }
 
-    std::string readText(const fs::path& p) {
-        std::ifstream in(p, std::ios::binary);
-        std::ostringstream s;
-        s << in.rdbuf();
-        return s.str();
-    }
-
     void writeText(const fs::path& p, const std::string& text) {
         fs::create_directories(p.parent_path());
         std::ofstream out(p, std::ios::binary);

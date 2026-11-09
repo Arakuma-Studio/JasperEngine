@@ -125,14 +125,18 @@ TEST(InterchangeFuzz, PhotoshopReadersNeverCrash) {
         for (const std::string& input : mutations(fixture(name), 300)) {
             PsdFile file;
             std::string error;
-            if (!readPsd(reinterpret_cast<const uint8_t*>(input.data()), input.size(), file, error)) EXPECT_FALSE(error.empty()) << name;
+            if (!readPsd(reinterpret_cast<const uint8_t*>(input.data()), input.size(), file, error)) {
+                EXPECT_FALSE(error.empty()) << name;
+            }
             runs++;
         }
     }
     for (const std::string& input : mutations(fixture("psd/styles.asl"), 300)) {
         AslFile file;
         std::string error;
-        if (!readAsl(reinterpret_cast<const uint8_t*>(input.data()), input.size(), file, error)) EXPECT_FALSE(error.empty());
+        if (!readAsl(reinterpret_cast<const uint8_t*>(input.data()), input.size(), file, error)) {
+            EXPECT_FALSE(error.empty());
+        }
         runs++;
     }
     EXPECT_EQ(runs, 1500u);

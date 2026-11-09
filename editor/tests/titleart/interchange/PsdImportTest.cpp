@@ -304,5 +304,7 @@ TEST_F(PsdImportTest, MalformedFilesFail) {
     mutated[60] ^= 0x7f;
     psd::PsdFile file;
     std::string error;
-    if (!psd::readPsd(mutated.data(), mutated.size(), file, error)) EXPECT_NE(error.find("offset"), std::string::npos) << error;
+    if (!psd::readPsd(mutated.data(), mutated.size(), file, error)) {
+        EXPECT_NE(error.find("offset"), std::string::npos) << error;
+    }
 }
