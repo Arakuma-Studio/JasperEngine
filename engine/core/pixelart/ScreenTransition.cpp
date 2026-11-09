@@ -62,6 +62,17 @@ namespace jasperengine::pixelart {
             int framesAfterLoad = 0;
         };
 
+        // the last point the iris's GameObject had: the scene it lives in is replaced (and
+        // deleted) by Transition.loadScene while the iris still closes or opens on it
+        struct IrisLatch {
+            Scene* scene = nullptr;
+            Entity object = NULL_ENTITY;
+            std::weak_ptr<char> life;       // the next scene may take over the old address
+            bool valid = false;
+            float x = 0.0f, y = 0.0f;       // normalized over the screen
+        };
+        IrisLatch irisLatch;
+
         Run run;
         uint32_t nextId = 1;
         TransitionDefaults defaults;
@@ -446,6 +457,14 @@ namespace jasperengine::pixelart {
             y = options.center.y * grid.artHeight;
             if (!options.centerScene || options.centerObject == NULL_ENTITY)
                 return;
+            const bool latched = irisLatch.valid && irisLatch.scene == options.centerScene && irisLatch.object == options.centerObject;
+            if ((latched && irisLatch.life.expired()) || !Engine::isSceneRunning(options.centerScene)){
+                if (latched){
+                    x = irisLatch.x * grid.artWidth;
+                    y = irisLatch.y * grid.artHeight;
+                }
+                return;
+            }
             Scene* scene = options.centerScene;
             const Transform* transform = scene->findComponent<Transform>(options.centerObject);
             const Entity cameraEntity = scene->getCamera();
@@ -457,6 +476,14 @@ namespace jasperengine::pixelart {
                 return;
             x = (clip.x / clip.w * 0.5f + 0.5f) * grid.artWidth;
             y = (0.5f - clip.y / clip.w * 0.5f) * grid.artHeight;
+            if (!latched){
+                irisLatch.scene = scene;
+                irisLatch.object = options.centerObject;
+                irisLatch.life = scene->getLifetime();
+                irisLatch.valid = true;
+            }
+            irisLatch.x = grid.artWidth > 0.0f ? x / grid.artWidth : 0.5f;
+            irisLatch.y = grid.artHeight > 0.0f ? y / grid.artHeight : 0.5f;
         }
 
         bool ensureProgram(){
@@ -1090,6 +1117,7 @@ namespace jasperengine::pixelart {
         stop();
         run.onCovered = nullptr;
         preview = Preview();
+        irisLatch = IrisLatch();
     }
 
     void ScreenTransition::releaseGpu(){
