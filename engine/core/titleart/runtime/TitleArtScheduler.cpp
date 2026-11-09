@@ -171,6 +171,26 @@ void TitleArtScheduler::setFrameBudgetOverride(double ms){
     budgetOverrideMs = ms <= 0.0 ? 0.0 : std::min(16.0, std::max(0.25, ms));
 }
 
+bool jasperengine::titleart::parseTitleArtRuntimeSettings(const std::string& text, TitleArtRuntimeSettings& settings){
+    const Json root = Json::parse(text, nullptr, false);
+    if (!root.is_object() || root.value("version", 0) != 1) return false;
+    auto group = [&root](const char* key, double* values, double lo, double hi){
+        auto it = root.find(key);
+        if (it == root.end() || !it->is_object()) return;
+        static const char* const names[DEVICE_PLATFORM_GROUP_COUNT] = {"desktop", "mobile", "web"};
+        for (size_t g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++){
+            auto value = it->find(names[g]);
+            if (value != it->end() && value->is_number()) values[g] = std::min(hi, std::max(lo, value->get<double>()));
+        }
+    };
+    group("frame_budget_ms", settings.frameBudgetMs, 0.25, 16.0);
+    group("release_delay_s", settings.releaseDelaySeconds, 0.0, 600.0);
+    group("cache_budget_mib", settings.cacheBudgetMiB, 1.0, 4096.0);
+    auto height = root.find("reference_height");
+    if (height != root.end() && height->is_number_integer()) settings.referenceHeight = std::max(0, height->get<int>());
+    return true;
+}
+
 void TitleArtScheduler::configure(const TitleArtRuntimeSettings& settings){
     config = settings;
     if (playerResolver) resolver.reset();

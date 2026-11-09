@@ -139,6 +139,9 @@ namespace jasperengine{
             static Framebuffer* glowFramebuffer(TitleArtLive& live);
             // re-render now (Lua refresh(), render_title {rerender})
             static void invalidate(TitleArtLive& live);
+            // R11: how many output pixels per canvas pixel a UI title renders at for the project's
+            // Reference Height (height / canvas height; 1 without one or without the module)
+            static float referenceScale();
             // S86 R37: the tier a title renders at for its component's Quality Tier ("auto", "high",
             // "medium", "low"): a named tier, else the device's S56 tier where one applies, else the
             // project's Realtime 3D Quality for this platform; High draws as Medium on GLES3/WebGL2.

@@ -18,6 +18,7 @@
 #include "component/TitleArtRendererComponent.h"
 #include "subsystem/TitleArtRuntime.h"
 #include "titleart/TitleArtDoc.h"
+#include "titleart/TitleArtSettings.h"
 #include "util/TitleArtBakeInfo.h"
 
 #include <cstdint>
@@ -55,6 +56,13 @@ namespace jasperengine::editor {
 
     // the shipped titles of a project (its scenes and prefabs)
     TitleArtExportPlan planTitleArtExport(Project* project);
+
+    // the project's settings a build needs (TITLE_ART_RUNTIME_SETTINGS_PATH's text): Frame Budget,
+    // Release Delay, Cache Budget and Reference Height. The editor-only ones stay out (Edit mode's
+    // budget, Simulate Export Characters, Auto Bake, Stale Bakes On Export)
+    std::string titleArtRuntimeSettingsText(const TitleArtProjectSettings& settings);
+    // writes it into the build's assets when a Realtime or Glyph Atlas title ships; false with `error`
+    bool writeTitleArtRuntimeSettings(Project* project, const TitleArtExportPlan& plan, const std::filesystem::path& assetsDst, std::string& error);
 
     struct TitleArtPrebakeResult {
         bool ok = true;

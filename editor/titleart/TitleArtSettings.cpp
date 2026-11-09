@@ -132,8 +132,8 @@ TitleArtProjectSettings TitleArtProjectSettings::decode(const YAML::Node& node, 
     groups("cacheBudgetMiB", out.cacheBudgetMiB, 1.0, 4096.0, nullptr);
     if (node["referenceHeight"]) {
         double height = out.referenceHeight;
-        number(node["referenceHeight"], height, 120.0, 8192.0, "referenceHeight");
-        out.referenceHeight = (int)height;
+        number(node["referenceHeight"], height, 0.0, 8192.0, "referenceHeight");
+        out.referenceHeight = height > 0.0 && height < 120.0 ? 120 : (int)height;
     }
     try {
         if (node["simulateExportCharacters"]) out.simulateExportCharacters = node["simulateExportCharacters"].as<bool>();

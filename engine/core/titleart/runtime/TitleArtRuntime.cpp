@@ -139,7 +139,25 @@ bool TitleArtRuntime::isBuilt(){
     return true;
 }
 
+namespace {
+
+    // a build's copy of the project's settings, once, before anything reads them; the editor has
+    // no such file (syncTitleArtRuntime configures the scheduler from the project)
+    void applyExportedSettings(){
+        static bool applied = false;
+        if (applied) return;
+        applied = true;
+        std::string text;
+        if (!readText(TITLE_ART_RUNTIME_SETTINGS_PATH, text)) return;
+        TitleArtRuntimeSettings settings = TitleArtScheduler::get().settings();
+        if (parseTitleArtRuntimeSettings(text, settings)) TitleArtScheduler::get().configure(settings);
+        else Log::error("Title Art: %s is not a version 1 settings file: the default budgets apply", TITLE_ART_RUNTIME_SETTINGS_PATH);
+    }
+
+}
+
 std::shared_ptr<TitleArtLive> TitleArtRuntime::create(const std::string& titlePath, TitleArtRenderMode mode, std::string* error){
+    applyExportedSettings();
     std::shared_ptr<const TitleArtDoc> doc = loadDocument(titlePath, error);
     if (!doc) return nullptr;
     const uint64_t hash = hashTitleArt(*doc).document;
@@ -280,6 +298,12 @@ Framebuffer* TitleArtRuntime::glowFramebuffer(TitleArtLive& live){
 
 void TitleArtRuntime::invalidate(TitleArtLive& live){
     live.invalidate();
+}
+
+float TitleArtRuntime::referenceScale(){
+    const int height = TitleArtScheduler::get().settings().referenceHeight;
+    const unsigned int canvas = Engine::getCanvasHeight();
+    return height > 0 && canvas > 0 ? (float)height / (float)canvas : 1.0f;
 }
 
 int TitleArtRuntime::tierFor(const TitleArtLive& live, const std::string& qualityTier){

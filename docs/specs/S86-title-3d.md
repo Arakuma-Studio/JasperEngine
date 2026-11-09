@@ -1530,9 +1530,8 @@ rest of S82 lands in 6B.
       (the §6.7 mesh limits keep the three under 8 MB a layer). They are built at the largest resolution the title's
       instances show it (bevel segments and inflate steps follow the output scale). Environment cubes are written per
       texture family at the best tier any shipped title asks of that family; a cube serves every tier (the roughness-to-level
-      mapping does not depend on the face). The Realtime 3D Quality reaches players through the index: before this, no
-      Title Art project setting reached a player (S81's frame budget, release delay and cache budget still do not; their
-      defaults apply there).
+      mapping does not depend on the face). The Realtime 3D Quality reaches players through the index (S81's other settings
+      through `je-titleart/settings.json`, S81 deviation 30).
     - **Fixed geometry** (`titleArt3DFixedGeometry`, shared by ModuleUsage's `_MESHER` switch and the cook): R38 says "no
       exposed text parameter, no Lua text write". Lua and clip events change text only through Exposed parameters, so the
       Exposed targets decide; and not only text: any target that changes geometry (text, font, size, `style_3d.depth`,

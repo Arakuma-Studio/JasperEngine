@@ -37,7 +37,9 @@ namespace jasperengine::titleart {
         double editorFrameBudgetMs = 8.0;
         double releaseDelaySeconds[DEVICE_PLATFORM_GROUP_COUNT] = {10.0, 3.0, 3.0};
         double cacheBudgetMiB[DEVICE_PLATFORM_GROUP_COUNT] = {64.0, 16.0, 16.0};
-        int referenceHeight = 1080;
+        // the display height UI titles render for (R11; 0: the canvas height, one output pixel per
+        // canvas pixel): a Realtime UI title's resolution and its prebake x height / canvas height
+        int referenceHeight = 0;
         bool simulateExportCharacters = true;
         // the project's assets directory, project-relative ("assets/"): a document's asset
         // references are relative to it
@@ -47,6 +49,13 @@ namespace jasperengine::titleart {
         // Linux, Windows). A build reads its export's (je-titleart/index.json)
         int realtime3DTier[6] = {1, 2, 3, 3, 1, 1};
     };
+
+    // A build's copy of the project's settings (written by the export, read at its first Realtime or
+    // Glyph Atlas title): {"version": 1, "frame_budget_ms": {desktop, mobile, web},
+    // "release_delay_s": {...}, "cache_budget_mib": {...}, "reference_height": n}. Absent members keep
+    // `settings`'; false for text that is not a version 1 object
+    constexpr const char* TITLE_ART_RUNTIME_SETTINGS_PATH = "je-titleart/settings.json";
+    JASPERENGINE_API bool parseTitleArtRuntimeSettings(const std::string& text, TitleArtRuntimeSettings& settings);
 
     // §6.3: estimates are the desktop reference's; a slower platform's steps cost more
     JASPERENGINE_API double titlePlatformFactor(DevicePlatformGroup group);

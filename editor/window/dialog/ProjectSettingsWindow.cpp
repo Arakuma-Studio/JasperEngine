@@ -3165,8 +3165,8 @@ void ProjectSettingsWindow::drawTitleArtSettings() {
                 }
                 ImGui::SetNextItemWidth(-helpMarkerWidth());
                 ImGui::InputInt("##TitleArtReferenceHeight", &m_titleArt.referenceHeight);
-                m_titleArt.referenceHeight = std::clamp(m_titleArt.referenceHeight, 120, 8192);
-                endSettingsRow("The display height the export prebakes Realtime titles' first images for.");
+                m_titleArt.referenceHeight = m_titleArt.referenceHeight <= 0 ? 0 : std::clamp(m_titleArt.referenceHeight, 120, 8192);
+                endSettingsRow("The display height Realtime UI titles and their prebaked first images render for. 0: the canvas height.");
             }
             if (settingsui::beginRow("title_art.simulate_export_characters")) {
                 if (projectBeginSettingsRow("Simulate Export Characters in Play", m_titleArt.simulateExportCharacters != defaults.simulateExportCharacters)) {

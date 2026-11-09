@@ -100,6 +100,10 @@ Framebuffer* TitleArtRuntime::glowFramebuffer(TitleArtLive&){
 void TitleArtRuntime::invalidate(TitleArtLive&){
 }
 
+float TitleArtRuntime::referenceScale(){
+    return 1.0f;
+}
+
 int TitleArtRuntime::tierFor(const TitleArtLive&, const std::string&){
     return 0;
 }

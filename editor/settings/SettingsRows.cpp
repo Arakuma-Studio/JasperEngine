@@ -2254,11 +2254,15 @@ std::vector<Setting> mcpSettingsTable() {
                                     return readGroup(value, t.cacheBudgetMiB, 1.0, 4096.0, error);
                                 }));
             add(titleArtSetting("title_art.reference_height", "int",
-                                "The display height (px) the export prebakes Realtime titles' initial states for (default 1080).", {},
+                                "The display height (px) Realtime UI titles and their prebaked first images render for; 0 (default) is the canvas height.", {},
                                 [](const TitleArtProjectSettings& t) { return Json(t.referenceHeight); },
                                 [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
                                     long long height = 0;
-                                    if (!readInt(value, 120, 8192, height, error)) return false;
+                                    if (!readInt(value, 0, 8192, height, error)) return false;
+                                    if (height > 0 && height < 120) {
+                                        error = "must be 0 (the canvas height) or 120..8192";
+                                        return false;
+                                    }
                                     t.referenceHeight = (int)height;
                                     return true;
                                 }));

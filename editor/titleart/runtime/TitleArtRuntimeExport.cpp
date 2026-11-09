@@ -48,6 +48,21 @@ namespace {
 
 }
 
+std::string editor::titleArtRuntimeSettingsText(const TitleArtProjectSettings& settings){
+    auto group = [](const TitleArtGroupValues& v){ return titleart::Json{{"desktop", v.desktop}, {"mobile", v.mobile}, {"web", v.web}}; };
+    const titleart::Json root = {{"version", 1}, {"frame_budget_ms", group(settings.frameBudgetMs)}, {"release_delay_s", group(settings.releaseDelaySeconds)},
+                                 {"cache_budget_mib", group(settings.cacheBudgetMiB)}, {"reference_height", settings.referenceHeight}};
+    return root.dump(1);
+}
+
+bool editor::writeTitleArtRuntimeSettings(Project* project, const TitleArtExportPlan& plan, const fs::path& assetsDst, std::string& error){
+    if (!project || plan.runtimeTitles.empty()) return true;
+    const fs::path target = assetsDst / titleart::TITLE_ART_RUNTIME_SETTINGS_PATH;
+    std::error_code ec;
+    fs::create_directories(target.parent_path(), ec);
+    return assetio::writeFile(target, titleArtRuntimeSettingsText(project->getTitleArtSettings()), assetio::Durability::Cache, &error);
+}
+
 TitleArtExportPlan editor::planTitleArtExport(Project* project){
     TitleArtExportPlan plan;
     if (!project) return plan;
@@ -81,7 +96,10 @@ TitleArtExportPlan editor::planTitleArtExport(Project* project){
             if (TitleArtBakeInfo::load(titleArtSidecarPath(title->title.path), bake, error)) instance.region = bake.frame;
             const bool ui = TitleArtSystem::spaceOf(registry, entity) == titleart::TitleArtSpace::UI;
             const RectTransformComponent* rect = ui ? registry->findComponent<RectTransformComponent>(entity) : nullptr;
-            instance.resolution = TitleArtSystem::resolutionFor(bake, ui, rect ? rect->width : 0u, title->uiScale, title->resolutionScale);
+            // R11: as the game computes it, from the project's Reference Height and canvas
+            const int referenceHeight = project->getTitleArtSettings().referenceHeight;
+            const float referenceScale = referenceHeight > 0 && project->getCanvasHeight() > 0 ? (float)referenceHeight / (float)project->getCanvasHeight() : 1.0f;
+            instance.resolution = TitleArtSystem::resolutionFor(bake, ui, rect ? rect->width : 0u, title->uiScale, title->resolutionScale, referenceScale);
             if (title->renderMode != TitleArtRenderMode::BAKED) runtime.insert(title->title.path);
             plan.instances.push_back(std::move(instance));
         }

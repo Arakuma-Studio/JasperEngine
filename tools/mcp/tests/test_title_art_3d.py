@@ -185,7 +185,13 @@ async def test_export_cooks_realtime_3d(ed: Editor):
         ed.check(not r.is_error and (r.structured or {}).get("status") == "succeeded", f"the export: {r.text[:400]}")
         return out
 
+    await ed.call("set_project_settings", values={"title_art.frame_budget_ms": {"desktop": 3.5}, "title_art.reference_height": 1440})
     out = await export("export-cooked3d")
+    # S81 R58: the project's settings reach the build
+    written = json.loads(next(out.rglob("je-titleart/settings.json")).read_text())
+    ed.check_eq(written["frame_budget_ms"]["desktop"], 3.5)
+    ed.check_eq(written["reference_height"], 1440)
+    await ed.call("set_project_settings", values={"title_art.reference_height": 0})
     indexes = list(out.rglob("je-titleart/index.json"))
     ed.check_eq(len(indexes), 1, f"one index: {indexes}")
     index = json.loads(indexes[0].read_text())

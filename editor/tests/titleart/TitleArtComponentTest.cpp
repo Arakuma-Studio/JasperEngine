@@ -262,6 +262,14 @@ TEST(TitleArtComponent, OverridesAreOnePropertyPerName) {
     EXPECT_EQ(*static_cast<std::string*>(property.ref), "WIN");
     EXPECT_TRUE(Catalog::findEntityProperties(scene, a, ComponentType::TitleArtRendererComponent).count("overrides.text"));
 
+    // Runtime Environments (S86 R26) copy as one list, through a prefab override and undo's route
+    scene->getComponent<TitleArtRendererComponent>(a).runtimeEnvironments = {"softbox", "neon"};
+    const PropertyData environments = Catalog::findProperty(scene, a, ComponentType::TitleArtRendererComponent, "runtimeEnvironments");
+    ASSERT_TRUE(environments.ref);
+    EXPECT_EQ(static_cast<std::vector<std::string>*>(environments.ref)->size(), 2u);
+    Catalog::copyPropertyValue(scene, a, scene, b, ComponentType::TitleArtRendererComponent, "runtimeEnvironments");
+    EXPECT_EQ(scene->getComponent<TitleArtRendererComponent>(b).runtimeEnvironments, std::vector<std::string>({"softbox", "neon"}));
+
     // a prefab override copies one entry by name, making it where the target has none (AC2)
     Catalog::copyPropertyValue(scene, a, scene, b, ComponentType::TitleArtRendererComponent, "overrides.text");
     ASSERT_EQ(scene->getComponent<TitleArtRendererComponent>(b).overrides.size(), 1u);

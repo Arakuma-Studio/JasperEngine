@@ -25,6 +25,7 @@
 #include "titleart/TitleArtBaker.h"
 #include "titleart/runtime/TitleArtOverrides.h"
 #include "titleart/runtime/TitleParticlePresets.h"
+#include "titleart/three_d/Title3DSchema.h"
 #include "util/Color.h"
 #include "util/TitleArtBakeInfo.h"
 #include "imgui.h"
@@ -278,9 +279,23 @@ void editor::InspectorWindow::drawTitleArtRendererComponent(ComponentType cpType
         transition.enumEntries = &transitions;
         propertyRow(RowPropertyType::Enum, cpType, "transition", "Transition", sceneProject, entities, transition);
         propertyRow(RowPropertyType::FloatPositive, cpType, "transitionDuration", "Transition Duration", sceneProject, entities);
+        // S86 R37, R26: the tier a 3D title renders at; the environments an export cooks besides its own
+        static const std::vector<std::pair<std::string, std::string>> qualityTiers = {{"auto", "Auto"}, {"high", "High"}, {"medium", "Medium"}, {"low", "Low"}};
         RowSettings qualityTier;
-        qualityTier.help = "A 3D title's tier: auto (the device's tier, else Project Settings > Title Art > Realtime 3D Quality), high, medium or low.";
+        qualityTier.stringChoices = &qualityTiers;
+        qualityTier.help = "A 3D title's tier. Auto: the device's tier, else Project Settings > Title Art > Realtime 3D Quality.";
         propertyRow(RowPropertyType::String, cpType, "qualityTier", "Quality Tier", sceneProject, entities, qualityTier);
+        static const std::vector<std::pair<std::string, std::string>> environments = [](){
+            std::vector<std::pair<std::string, std::string>> out;
+            for (const std::string& name : titleart::title3DEnvironmentNames()){
+                if (name != "custom" && name != "matcap") out.push_back({name, name});
+            }
+            return out;
+        }();
+        RowSettings runtimeEnvironments;
+        runtimeEnvironments.stringChoices = &environments;
+        runtimeEnvironments.help = "Environments a build cooks for this title besides those it lights with: the ones an Exposed parameter can switch to.";
+        propertyRow(RowPropertyType::StringSet, cpType, "runtimeEnvironments", "Runtime Environments", sceneProject, entities, runtimeEnvironments);
         if (title->renderMode == TitleArtRenderMode::GLYPH_ATLAS){
             static std::vector<int> pageSizes = {512, 1024, 2048};
             RowSettings pages;

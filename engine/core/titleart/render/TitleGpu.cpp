@@ -276,8 +276,21 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     Program& p = *programs[number];
     const TargetKey& key = t->key();
     // the first draw in this state compiles the driver's variant: one a frame
-    const uint64_t drawKey = ((uint64_t)number << 32) ^ ((uint64_t)key.format << 24) ^ ((uint64_t)key.samples << 16) ^ ((uint64_t)key.depth << 8) ^
-                             (uint64_t)desc.blend;
+    uint64_t drawKey = ((uint64_t)number << 32) ^ ((uint64_t)key.format << 24) ^ ((uint64_t)key.samples << 16) ^ ((uint64_t)key.depth << 8) ^
+                       (uint64_t)desc.blend;
+    // ... and with the textures it samples: llvmpipe compiles a fragment variant per sampled format,
+    // sampler state and power-of-two shape, so the same program with other textures is a new
+    // compile of seconds (two of them in one frame before the key held this)
+    const auto sampled = [&drawKey, this](const TextureRender* texture) {
+        drawKey = (drawKey ^ (texture ? texture->getSamplingKey() : placeholder.getSamplingKey())) * 0x100000001b3ull;
+    };
+    for (int i = 0; i < TITLE_TEXTURE_SLOTS; i++) {
+        if (p.tex[i].first >= 0) sampled(desc.tex[i]);
+    }
+    for (int i = 0; i < TITLE_RAW_SLOTS; i++) {
+        if (p.raw[i].first >= 0) sampled(desc.raw[i]);
+    }
+    if (p.vertexData.first >= 0) sampled(desc.vertexData);
     const bool firstDraw = !TitleFirstDraws::drew(drawKey);
     if (!TitleFirstDraws::allow(drawKey)) {
         deferredRun = true;

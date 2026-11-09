@@ -2929,18 +2929,22 @@ bool editor::Exporter::writeTitleArtRuntime() {
     TitleArtFontShipResult fonts;
     Title3DCookResult cooked3D;
     Title3DCookPending cook3D;
+    std::string settingsError;
+    bool settingsFailed = false;
     std::promise<void> done;
     auto doneFuture = done.get_future();
     const fs::path assetsDst = getExportProjectRoot() / "assets";
     const std::vector<std::string> platforms = exportPlatformNames();
     const std::vector<TextureFamily> families = TextureCookQueue::familiesForExport(platforms, project->getTextureSettings().androidEtc2Fallback);
-    editor::getEditorHost().enqueueMainThreadTask([this, &prebaked, &fonts, &cooked3D, &cook3D, &done, assetsDst, &platforms, &families]() {
+    editor::getEditorHost().enqueueMainThreadTask([this, &prebaked, &fonts, &cooked3D, &cook3D, &settingsError, &settingsFailed, &done, assetsDst, &platforms, &families]() {
         const TitleArtExportPlan plan = planTitleArtExport(project);
         // the fonts first: the prebakes are keyed by the documents the player reads (relinked to the subsets)
         fonts = shipTitleArtFonts(project, plan, assetsDst);
         if (fonts.ok) prebaked = writeTitleArtPrebakes(project, plan, assetsDst, platforms);
         // S86 R26, R38: the Realtime 3D titles' cooked meshes and environment cubes
         if (fonts.ok && prebaked.ok) cook3D = beginTitleArt3DCook(project, plan, assetsDst, platforms, families, cooked3D);
+        // after the cook, which clears je-titleart/: the project's settings for the game (S81 R58)
+        if (fonts.ok && prebaked.ok && !writeTitleArtRuntimeSettings(project, plan, assetsDst, settingsError)) settingsFailed = true;
         done.set_value();
     });
     doneFuture.get();
@@ -2956,6 +2960,10 @@ bool editor::Exporter::writeTitleArtRuntime() {
     for (const std::string& line : prebaked.warnings) Out::warning("%s", line.c_str());
     if (!prebaked.ok) {
         setError(prebaked.error);
+        return false;
+    }
+    if (settingsFailed) {
+        setError("The Title Art settings of the build: " + settingsError);
         return false;
     }
     if (cooked3D.meshes || cooked3D.environments) {

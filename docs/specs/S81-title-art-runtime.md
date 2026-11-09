@@ -1484,6 +1484,13 @@ rest of S82 lands in 6B.
     ModuleUsage's fixed-geometry rule with evidence naming the title and the parameter; the export ships the cooked 3D
     data (`assets/je-titleart/`) and the player loads it. `Engine::areScenesLoaded` (the "Engine ready" line, the Recorder)
     now also waits for enabled Realtime and Glyph Atlas titles that render to show their state's image or fail
-    (`TitleArtSystem::areTitlesReady`; `describeNotLoaded` names the title and its `pending`). Found while wiring: no Title
-    Art project setting reaches an exported player (`TitleArtScheduler::configure` runs only in the editor), so builds use
-    the defaults of Frame Budget, Release Delay and Cache Budget; only Realtime 3D Quality travels (in the 3D index).
+    (`TitleArtSystem::areTitlesReady`; `describeNotLoaded` names the title and its `pending`).
+30. **Implementation: the project's settings reach builds.** `TitleArtScheduler::configure` only ran in the editor, so games
+    used the defaults. A build with a Realtime or Glyph Atlas title now ships `assets/je-titleart/settings.json` (Frame Budget,
+    Release Delay, Cache Budget, Reference Height; `parseTitleArtRuntimeSettings`), read at its first such title. Realtime 3D
+    Quality travels in the 3D index (S86 deviation 31). Editor-only by nature: Edit mode's Frame Budget, Simulate Export
+    Characters in Play, Auto Bake, Stale Bakes On Export.
+31. **Implementation: Reference Height works, and its default is the canvas height.** Nothing read it (deviation 13 had moved
+    the display scale to canvas units). It now multiplies a UI title's resolution by height / canvas height in the game and
+    in the export's prebake, so their keys agree; 0, the new default, is the canvas height (R11 said 1080, which would have
+    silently re-rendered every project whose canvas is not 1080 at another size); world titles stay at their canvas pixels.

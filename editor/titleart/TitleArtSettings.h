@@ -61,7 +61,7 @@ namespace jasperengine::editor {
         double editorFrameBudgetMs = 8.0;
         TitleArtGroupValues releaseDelaySeconds{10.0, 3.0, 3.0};
         TitleArtGroupValues cacheBudgetMiB{64.0, 16.0, 16.0};
-        int referenceHeight = 1080;
+        int referenceHeight = 0;    // 0: the canvas height (one output pixel per canvas pixel)
         bool simulateExportCharacters = true;
         TitleArtPlatformTiers realtime3DQuality;
 

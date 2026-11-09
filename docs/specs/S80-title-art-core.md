@@ -2245,3 +2245,7 @@ rest of S82 lands in 6B.
 57. **Open: AC40's red control was not run.** The `make_title_logo` eval case exists and
     `tool_budget.py --check` passes with the guide's entry; running the case with and without the
     entry needs lent Claude accounts (`tools/mcp/eval/README.md`), which the program did not have.
+58. **Implementation: the first-draw key holds the sampled textures' state** (`TitleGpu::run`, `TextureRender::getSamplingKey`: pixel
+    format, image type, filters, wraps, power-of-two sides, mipmaps). llvmpipe compiles a fragment variant per that state, so a
+    program "drawn before" with other textures compiled again and two compiles of seconds shared a frame
+    (`TitleFirstDrawGpu.NewProgramsDrawOneAFrame` failed there: 6.4-8.5 s against a 4.9-5.7 s bound; slowest pass "drawn before").

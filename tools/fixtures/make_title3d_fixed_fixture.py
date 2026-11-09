@@ -53,6 +53,7 @@ function Title3DCheck:onUpdate()
         return
     end
     Log.print("[gate] title3d ready: tier=" .. stats.tier .. " cooked=" .. tostring(stats.cooked) .. " triangles=" .. stats.triangles)
+    Log.print("[gate] title3d budget=" .. TitleArt.getFrameBudget())
 end
 
 return Title3DCheck
@@ -61,6 +62,7 @@ return Title3DCheck
 EXPECT = """# tools/smoke-test.sh: lines the exported game logs (tools/fixtures/make_title3d_fixed_fixture.py)
 its 3D layers draw the meshes the export cooked (this build has no 3D mesher)
 [gate] title3d ready: tier=low cooked=true
+[gate] title3d budget=3.5
 """
 
 EXPORT_EXPECT = """# tools/smoke-test.sh (SMOKE_METHOD=build): lines of the Compile build's CMakeLists (S81 R51, S86 R38)
@@ -77,6 +79,7 @@ async def main() -> int:
         await ed.call("set_project_settings", values={
             "title_art.auto_bake": False,
             "title_art.realtime_3d_quality": {"linux": "low"},
+            "title_art.frame_budget_ms": {"desktop": 3.5},
             "graphics.canvas_width": WIDTH, "graphics.canvas_height": HEIGHT,
             "player.window_width": WIDTH, "player.window_height": HEIGHT})
         await ed.call("edit_title", path=DOC, create={"text": "3D", "canvas": [400, 200]}, bake="never", ops=[

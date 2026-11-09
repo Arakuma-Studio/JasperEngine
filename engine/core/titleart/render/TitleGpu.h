@@ -130,7 +130,7 @@ namespace jasperengine::titleart {
         // the longest pass (its draw holds the driver's compile of a new variant) and its program
         double slowestPassMs = 0.0;
         uint32_t slowestProgram = 0;
-        bool slowestWasFirstDraw = false;   // its (program, state) key drew for the first time
+        bool slowestWasFirstDraw = false;   // its (program, state, sampled textures) key drew for the first time
     };
 
     // The first draw of a program in a pipeline state makes the driver compile that variant on the

@@ -107,6 +107,28 @@ TEST(TitleFirstDraws, ASynchronousRenderIsNotSpread) {
     TitleFirstDraws::resetForTesting(false);
 }
 
+// llvmpipe compiles a fragment variant per sampled format, sampler state and power-of-two shape, so
+// the first-draw key must tell those apart (a program drawn "before" with other textures compiled
+// again: two compiles of seconds in one frame, NewProgramsDrawOneAFrame on llvmpipe)
+TEST_F(TitleFirstDrawGpu, TheKeyTellsTheSampledTextureStatesApart) {
+    const auto make = [](TextureRender& t, int width, ColorFormat format, TextureFilter filter) {
+        std::vector<uint8_t> pixels((size_t)width * 4 * 4, 255);
+        void* data[1] = {pixels.data()};
+        size_t size[1] = {pixels.size()};
+        return t.createTexture("key test", width, 4, format, TextureType::TEXTURE_2D, 1, data, size, filter, filter, TextureWrap::CLAMP_TO_EDGE,
+                               TextureWrap::CLAMP_TO_EDGE);
+    };
+    TextureRender a, sameAsA, otherFilter, npot;
+    ASSERT_TRUE(make(a, 4, ColorFormat::RGBA, TextureFilter::NEAREST));
+    ASSERT_TRUE(make(sameAsA, 4, ColorFormat::RGBA, TextureFilter::NEAREST));
+    ASSERT_TRUE(make(otherFilter, 4, ColorFormat::RGBA, TextureFilter::LINEAR));
+    ASSERT_TRUE(make(npot, 3, ColorFormat::RGBA, TextureFilter::NEAREST));
+    EXPECT_NE(a.getSamplingKey(), 0u);
+    EXPECT_EQ(a.getSamplingKey(), sameAsA.getSamplingKey()) << "another texture of the same state compiles nothing";
+    EXPECT_NE(a.getSamplingKey(), otherFilter.getSamplingKey());
+    EXPECT_NE(a.getSamplingKey(), npot.getSamplingKey());
+}
+
 TEST_F(TitleFirstDrawGpu, NewProgramsDrawOneAFrame) {
     TitleFirstDraws::resetForTesting(false);
     const TimedRender spread = renderWithEffects();
