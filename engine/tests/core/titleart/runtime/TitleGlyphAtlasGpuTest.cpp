@@ -42,6 +42,7 @@
 
 #include "ImageCompare.h"
 
+#include <limits>
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -105,7 +106,9 @@ namespace {
         return out;
     }
 
-    int runFrames(TitleArtLive& live, const TitleJobFactory& factory, int maxFrames = 100000) {
+    // frames are not the limit: a hardware device builds its programs on a worker for far longer
+    // than a hundred thousand empty frames last (the job only waits); the wall clock below is
+    int runFrames(TitleArtLive& live, const TitleJobFactory& factory, int maxFrames = std::numeric_limits<int>::max()) {
         TitleLiveLimits limits;
         double clock = 0.0;
         const auto start = std::chrono::steady_clock::now();
@@ -514,6 +517,8 @@ TEST(TitleGlyphAtlasPrebake, StringsCoverEveryDigitPlace) {
 }
 
 TEST_F(TitleGlyphAtlasGpu, APrebakedAtlasServesTheFirstValue) {
+    // the export prebakes in one call on a device that has drawn nothing: no frame will come
+    TitleFirstDraws::resetForTesting(false);
     auto doc = counterDoc(110, 0, {{"features", {{"tnum", 1}}}, {"kerning", false}});
     // the export's side (R32): the initial value and every digit at its digit places, read back and
     // written as files

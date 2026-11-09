@@ -765,6 +765,9 @@ std::vector<std::string> jasperengine::titleart::titleGlyphPrebakeStrings(const 
 bool jasperengine::titleart::prebakeTitleGlyphAtlas(TitleArtLive& live, const TitleJobFactory& factory, const TitleArtLiveState& state,
                                                     const std::vector<FieldOverride>& overrides, const std::string& textLayer,
                                                     const std::vector<std::string>& strings, size_t maxCells, std::string& error){
+    // this call steps the jobs itself and no frame commits meanwhile: spreading the first draws
+    // (TitleFirstDraws) would wait for a frame that never comes
+    TitleFirstDraws::SynchronousScope synchronous;
     TitleLiveLimits limits;
     double clock = 0.0;
     for (const std::string& text : strings){

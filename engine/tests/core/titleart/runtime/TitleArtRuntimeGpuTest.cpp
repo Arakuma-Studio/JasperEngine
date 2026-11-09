@@ -15,6 +15,7 @@
 #include "titleart/runtime/TitleArtLive.h"
 #include "titleart/runtime/TitleArtScheduler.h"
 
+#include <limits>
 #include <chrono>
 
 using namespace jasperengine;
@@ -47,7 +48,7 @@ namespace {
     }
 
     // frames of the scheduler over one live until it has no work; the frames it took
-    int runFrames(TitleArtLive& live, const TitleJobFactory& factory, uint32_t budgetUs, int maxFrames = 100000){
+    int runFrames(TitleArtLive& live, const TitleJobFactory& factory, uint32_t budgetUs, int maxFrames = std::numeric_limits<int>::max()){
         TitleLiveLimits limits;
         double clock = 0.0;
         const auto start = std::chrono::steady_clock::now();

@@ -23,6 +23,7 @@
 #include "titleart/runtime/TitleArtScheduler.h"
 #include "titleart/runtime/TitleLiveCompose.h"
 
+#include <limits>
 #include <chrono>
 #include <cstdio>
 
@@ -131,7 +132,7 @@ namespace {
     }
 
     // frames of the scheduler until the live has no work (programs compile on the way)
-    int frames(TitleArtLive& live, const TitleJobFactory& factory, int maxFrames = 100000) {
+    int frames(TitleArtLive& live, const TitleJobFactory& factory, int maxFrames = std::numeric_limits<int>::max()) {
         TitleLiveLimits limits;
         static double clock = 0.0;
         TitleScheduleContext context;
