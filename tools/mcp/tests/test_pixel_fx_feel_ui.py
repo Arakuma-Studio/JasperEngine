@@ -45,6 +45,10 @@ async def test_shaker_rows(ed: Editor):
     await ed.call("select_entities", scene=S["scene"], entities=[S["cam"]])
     await ed.call("focus_window", window="inspector")
     await ui.frames(30)
+    # the rows sit low in the component: scrolled into view, so the screenshot shows them
+    await ui.reveal("Tick Rate", "Inspector")
+    await ui.reveal("Pixel Snap", "Inspector")
+    await ui.frames(10)
     await keep_shot(ed, "s48-camera-shaker-pixel-rows")
 
 
