@@ -28,17 +28,12 @@ namespace {
     }
 
     // one language's frames: the posed documents, their trimmed frames and pixels
-    struct Frames {
-        std::string language;
-        TitleAnimInfo info;
-        double fps = 30.0;
-        std::vector<double> times;
+    struct Frames : TitleSheetFrames {
         std::vector<std::shared_ptr<titleart::TitleArtDoc>> posed;
         std::vector<TitleRectI> trimmed;
         TitleRectI frame;
         double scale = 1.0;
         int width = 0, height = 0;
-        std::vector<texsynth::Image> pixels;
     };
 
     // an image's pixels with alpha >= threshold, image px
@@ -90,7 +85,7 @@ namespace {
         return stem + "_" + buffer;
     }
 
-    Json meta(const std::string& image, int w, int h, const Frames& f) {
+    Json meta(const std::string& image, int w, int h, const TitleSheetFrames& f) {
         return Json{{"app", "JasperEngine"}, {"version", JASPERENGINE_EDITOR_VERSION}, {"image", image}, {"format", "RGBA8888"},
                     {"size", Json{{"w", w}, {"h", h}}}, {"scale", "1"},
                     {"frameTags", Json::array({Json{{"name", f.info.name}, {"from", 0}, {"to", (int)f.times.size() - 1}, {"direction", "forward"}}})}};
@@ -98,7 +93,7 @@ namespace {
 
     // ---- the three writers ----
 
-    bool writeSheet(TitleExportContext& c, Frames& f) {
+    bool writeSheet(TitleExportContext& c, const TitleSheetFrames& f) {
         const size_t n = f.pixels.size();
         const int columns = c.request.options.contains("columns") ? std::clamp(c.request.options["columns"].get<int>(), 1, (int)n)
                                                                   : (int)std::ceil(std::sqrt((double)n));
@@ -130,7 +125,7 @@ namespace {
         return c.write(c.fileName("", code, "sheet.json"), j.dump(2) + "\n");
     }
 
-    bool writeSequence(TitleExportContext& c, Frames& f) {
+    bool writeSequence(TitleExportContext& c, const TitleSheetFrames& f) {
         for (size_t i = 0; i < f.pixels.size(); i++) {
             char part[16];
             std::snprintf(part, sizeof(part), "%04zu", i);
@@ -140,7 +135,7 @@ namespace {
         return true;
     }
 
-    bool writeAtlas(TitleExportContext& c, Frames& f) {
+    bool writeAtlas(TitleExportContext& c, const TitleSheetFrames& f) {
         const int maxAtlas = std::clamp(c.request.options.value("max_atlas", 4096), 64, 16384);
         // 2 px between frames, 1 px of it the frames' extruded edge
         const int padding = 2;
@@ -286,9 +281,7 @@ namespace {
                 }
                 c->then([c, f, format] {
                     c->result.extra["frame_count"] = f->pixels.size();
-                    if (format == "sheet") return writeSheet(*c, *f);
-                    if (format == "atlas") return writeAtlas(*c, *f);
-                    return writeSequence(*c, *f);
+                    return writeTitleSheetFrames(*c, format, *f);
                 });
                 return true;
             });
@@ -296,6 +289,12 @@ namespace {
         return true;
     }
 
+}
+
+bool editor::writeTitleSheetFrames(TitleExportContext& ctx, const std::string& format, const TitleSheetFrames& frames) {
+    if (format == "sheet") return writeSheet(ctx, frames);
+    if (format == "atlas") return writeAtlas(ctx, frames);
+    return writeSequence(ctx, frames);
 }
 
 void editor::registerTitleAnimFrameSource(TitleAnimFrameSource s) {

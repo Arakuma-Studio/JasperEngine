@@ -191,9 +191,11 @@ namespace {
                 if (s >= 0.4) tryFit(Json{{"mode", "shrink"}, {"min_scale", s}});
             }
         }
-        // a box widened to the extent (the last resort: it changes the layout)
-        if (current.extent.x > 0 && current.extent.y > 0) {
-            ops.push_back(fitOp(ctx, code, path, Json{{"box", Json::array({std::ceil(std::max(current.extent.x, box.x)), std::ceil(std::max(current.extent.y, box.y))})}}));
+        // a box widened to the extent (the last resort: it changes the layout): the extent at
+        // the floor for an overflow, the full text for a shrink that is merely low
+        const titleart::TitleVec2 extent = lowerMinScale ? current.extent : titleart::measureTitleTextExtent(layer, doc, ctx.assets);
+        if (extent.x > 0 && extent.y > 0) {
+            ops.push_back(fitOp(ctx, code, path, Json{{"box", Json::array({std::ceil(std::max(extent.x, box.x)), std::ceil(std::max(extent.y, box.y))})}}));
         }
         return ops;
     }
