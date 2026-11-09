@@ -20,6 +20,7 @@
 #pragma once
 
 #include "titleart/TitleArtDoc.h"
+#include "titleart/interchange/TitleExport.h"
 
 #include <functional>
 #include <string>
@@ -49,6 +50,18 @@ namespace jasperengine::editor {
     // the frame times of an animation: `frames` a count, [from, to] indexes, or null (every frame);
     // at most 1,024
     bool titleAnimFrameTimes(const TitleAnimInfo& info, double fps, const titleart::Json& frames, std::vector<double>& times, std::string& error);
+
+    // the rendered frames of one language (one size, the shared frame), as the writers take them
+    struct TitleSheetFrames {
+        std::string language;
+        TitleAnimInfo info;
+        double fps = 30.0;
+        std::vector<double> times;
+        std::vector<texsynth::Image> pixels;
+    };
+
+    // writes `format` (sheet, atlas or sequence) of the frames; false after ctx.fail()
+    bool writeTitleSheetFrames(TitleExportContext& ctx, const std::string& format, const TitleSheetFrames& frames);
 
     void registerTitleSheetExport();
 
