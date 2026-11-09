@@ -1404,7 +1404,9 @@ rest of S82 lands in 6B.
     in the tree and AC18's device figures are not recorded: the build host has no KVM (no
     `/dev/kvm`, no vmx or svm CPU flag), so the emulator cannot run, and no phone is attached. The
     first emulator run (`tools/android-emulator-test.sh --scene titleart`, default and with
-    `debug.jasperengine.titleart_rgba8=1`) makes the golden; AC18 stays a manual device run.
+    `debug.jasperengine.titleart_rgba8=1`) makes the golden; AC18 stays a manual device run. W1 ran it on
+    the KVM host (server H): it found and fixed `library:title_fx`'s missing vertex stage; the titles
+    then stay `shaders` (Deviation 37), so the golden is still not in the tree.
 23. **Implementation: Glyph Atlas** (`titleart/runtime/TitleGlyphAtlas.*`, R25-R32), complete
     with these choices:
     - Cells are S80's `glyphCell` renders (back: rims and the layer's effects; front: the face) of
@@ -1536,7 +1538,18 @@ rest of S82 lands in 6B.
     the node scope with the placement), so a new param value hit the old pixels in any renderer that
     had drawn the layer. `content` now chains the member (`TitleArtHashTest.AGeneratorsParamsChangeItsNodeCacheKey`);
     the document's hash, and so bake freshness, is unchanged.
-35. **Tests: R32's export path** is `test_title_export.py` (JASPER_SLOW_BUILD=1, the prebuilt glcore
+35. **Bug fixed on the way: prebuilt exports skipped the Title Art export steps.** Only the Compile
+    path ran `prepareTitleArt` and `writeTitleArtRuntime`, so a prebuilt build (the default for most
+    games) shipped no `.titleart` of its Realtime and Glyph Atlas titles and no prebaked state. Both
+    paths run them now (`ExporterPrebuilt.cpp`).
+36. **Tests: R32's export path** is `test_title_export.py` (JASPER_SLOW_BUILD=1, the prebuilt glcore
     player): the build holds the atlas manifest and pages, and the player logs, once per atlas,
     `the glyph atlas showed its first string after N cell renders (M cells from the build's
     prebaked atlas)`; the test reads N = 0.
+37. **Open: Title Art on the Android emulator stays `shaders`.** On the KVM host (emulator API 34,
+    `swangle_indirect`, the `render-gate` APK), the `titleart` scene runs 8 steps (across both titles) and
+    the next step waits: both titles report `shaders` for 15 minutes (48,000 frames), no shader build
+    fails, the game keeps running at about 53 fps, and the runtime cost gate's gate is not what waits (`gpu busy 0`
+    throughout). Not diagnosed further: the program being built is presumably the big ELEMENT
+    variant (S80's, 4.8-5.3 s on llvmpipe), whose compile may not finish under the emulator's
+    ANGLE/SwiftShader translator. No golden was written; AC18's figures are not measured.

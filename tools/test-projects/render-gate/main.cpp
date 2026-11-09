@@ -16,7 +16,6 @@
 // docs/testing.md, "Android emulator").
 
 #include "JasperEngine.h"
-#include "titleart/render/TitleStepCosts.h"
 #include "titleart/runtime/TitleArtScheduler.h"
 
 #include <cstdlib>
@@ -146,17 +145,7 @@ namespace {
         });
     }
 
-    void titleProgress(){
-        static int frames = 0;
-        if (++frames % 120) return;
-        const titleart::TitleStepCosts* costs = titleart::TitleArtScheduler::get().costModel();
-        Log::print("[render-gate] title progress frame %d: realtime '%s', atlas '%s', gpu busy %d, steps measured %llu", frames,
-                   TitleArt(&titleartScene, realtimeTitle.getEntity()).getPending().c_str(), TitleArt(&titleartScene, atlasTitle.getEntity()).getPending().c_str(),
-                   costs && costs->gpuBusy() ? 1 : 0, costs ? (unsigned long long)costs->observations() : 0ull);
-    }
-
     void setupTitleart(){
-        Engine::onUpdate.add("gate", titleProgress);
         titleartScene.setBackgroundColor(0.1f, 0.11f, 0.14f);
         addTitle(realtimeTitle, TitleArtRenderMode::REALTIME, -300.0f);
         addTitle(atlasTitle, TitleArtRenderMode::GLYPH_ATLAS, 300.0f);

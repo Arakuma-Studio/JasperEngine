@@ -18,6 +18,7 @@
 #include "titleart/TitleEffectRegistry.h"
 #include "titleart/effects/TfxCommon.h"
 #include "titleart/fx/FxCost.h"
+#include "titleart/render/TitleArtRenderer.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
