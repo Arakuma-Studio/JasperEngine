@@ -46,7 +46,9 @@ namespace jasperengine{
         HDRCOLOR, // like COLOR, components may exceed 1
         VECTOR2,
         VECTOR3,
-        VECTOR4
+        VECTOR4,
+        // a pick from a named list (`choice("A", "B", ...)`, S48 D3), uploaded as its float index
+        CHOICE
     };
 
     // the engine texture an unset @texture binds
@@ -57,7 +59,9 @@ namespace jasperengine{
         NORMAL, // flat tangent-space normal (0.5, 0.5, 1)
         RIPPLES, // a seamless ripple normal map (library:water's, Water::makeRipplesTexture)
         NOISE,   // seamless grey value noise (Water::makeNoiseTexture)
-        PARTICLE // a white soft disc fading to transparent (particles::makeParticleTexture)
+        PARTICLE, // a white soft disc fading to transparent (particles::makeParticleTexture)
+        // an 8 x 1 strip from black to white, Nearest (S48 R9: a Pixel FX ramp left unset)
+        RAMP_GREY
     };
 
     // vertex inputs of @require: forced on when the mesh has them, and the varyings
@@ -123,7 +127,10 @@ namespace jasperengine{
         float min = 0.0f; // range only
         float max = 1.0f;
         std::string label;
-        std::string feature; // shown only while this feature is on ("!<DEFINE>": while it is off)
+        // shown only while this feature is on ("!<DEFINE>": while it is off; "A,B": while one of
+        // them is on)
+        std::string feature;
+        std::vector<std::string> choices; // CHOICE: the names, index 0 first
         int line = 0;
     };
 
@@ -167,12 +174,36 @@ namespace jasperengine{
         int line = 0;
     };
 
-    // an exclusive choice: the chosen value defines <group>_<value>; the first is the default
+    // an exclusive choice: the chosen value defines <group>_<value>; the first is the default.
+    // With feature=<DEFINE> (S48 D3) the group applies only while that feature is on: off, it
+    // defines nothing; on, its first value is the feature's own behaviour and defines nothing
+    // either (so the variants of materials made before the group keep their names and source),
+    // and another value defines <group>_<value>.
     struct JASPERENGINE_API ShaderManifestKeywords{
         std::string group;
         std::string label;
         std::vector<std::string> values;
+        std::string feature;
         int line = 0;
+    };
+
+    // `@expand <member|texels> feature=A,B` (S48 D6): while one of the features is on, a sprite's
+    // quad grows by that many texels (rounded up; whole texels) so what the shader draws around the
+    // art is not cut at the frame edge: a number or a one-component member grows every side, a
+    // vector2 member (an offset in texels, y up) the sides it points to.
+    struct JASPERENGINE_API ShaderManifestExpand{
+        std::string member;      // empty: texels
+        float texels = 0.0f;
+        std::vector<std::string> features;
+        int line = 0;
+    };
+
+    // the texels a sprite's quad grows by on each side
+    struct JASPERENGINE_API ShaderExpand{
+        int left = 0, bottom = 0, right = 0, top = 0;
+        bool isZero() const { return left == 0 && bottom == 0 && right == 0 && top == 0; }
+        bool operator==(const ShaderExpand& o) const { return left == o.left && bottom == o.bottom && right == o.right && top == o.top; }
+        bool operator!=(const ShaderExpand& o) const { return !(*this == o); }
     };
 
     // Whether the object casts shadows (manifest @state shadows=on|off). AUTO and ON leave it
@@ -267,6 +298,7 @@ namespace jasperengine{
         std::vector<ShaderManifestPalette> palettes;
         std::vector<ShaderManifestFeature> features;
         std::vector<ShaderManifestKeywords> keywords;
+        std::vector<ShaderManifestExpand> expands;
         bool depth = false;      // has its own depth program
         ShaderRole role = ShaderRole::NONE; // @role
         // A fork's .frag defines LIT_STOCHASTIC_PARAMS (definesLitStochasticParams): a fork of
@@ -298,9 +330,16 @@ namespace jasperengine{
         // @keywords group (the first of the list in that group, else the group's first
         // value). Entries the manifest does not declare are ignored.
         std::vector<std::string> resolveFeatures(const std::vector<std::string>& list) const;
-        // whether a row with feature= (a property's or texture's: "<DEFINE>", "!<DEFINE>" or
-        // empty) applies to a variant with these enabled defines (resolveFeatures)
+        // whether a row with feature= (a property's or texture's: "<DEFINE>", "!<DEFINE>", a
+        // list "A,B" (one of them on) or empty) applies to a variant with these enabled defines
+        // (resolveFeatures)
         static bool isRowShown(const std::string& feature, const std::vector<std::string>& enabled);
+        // the value of a keyword group a shaderFeatures list picks ("<group>_<value>"), its first
+        // value when the list picks none; empty for a feature-scoped group whose feature is off
+        std::string getKeywordChoice(const ShaderManifestKeywords& group, const std::vector<std::string>& list) const;
+        // how far a sprite's quad grows for these enabled defines and values (@expand); zero
+        // without a rule that applies
+        ShaderExpand resolveExpand(const std::vector<std::string>& enabled, const ShaderUniformValues& values) const;
         // the default value of a member (manifest default), false when not declared
         bool getDefault(const std::string& member, Vector4& value) const;
 

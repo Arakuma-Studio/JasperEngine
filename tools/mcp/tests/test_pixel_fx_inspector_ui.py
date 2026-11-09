@@ -1,128 +1,255 @@
-"""S48 AC24 (docs/specs/S48-pixel-fx.md R37-R40): the Pixel FX editor UI, driven like a person (xdotool in the
-harness's Xvfb, aimed where find_ui_item says a control is drawn now).
+"""The sprite material Inspector's Pixel FX rows (docs/specs/S48-pixel-fx.md R37, R38, AC24), in the harness's
+Xvfb with real input aimed where find_ui_item says a control is drawn now:
 
-Contact Sheet (R40): the Game view's Contact Sheet... button is greyed until one GameObject of the shown scene is
-selected; it opens the Contact Sheet window, whose Capture draws the sheet and its checks; Save As... answers a file
-picker and writes the PNG as one project undo step.
-
-Screenshots of each step go to $JE_EVIDENCE_DIR (else the scratch directory).
+  test_setup              a 2D scene with a 16x16 sprite drawn with library:sprite, Dissolve and a Pixel4 outline on
+  test_thumbnails         each feature row has its 40x40 thumbnail; a value change draws it again (its pixels in an
+                          editor screenshot change), an unchanged value does not
+  test_scrub              the Preview slider shows the dissolve in the Game view without a command: the scene is not
+                          modified, the undo history is unchanged, and another selection puts the material's value back
+  test_play               the play button plays the effect once and the value comes back by itself
+  test_presets            Pixel FX presets apply as one undo step; Burn Away makes the project's copy of the fire palette
+                          and points the ramp slot at its ramp; the presets list names them
+Screenshots: <scratch>/pixel-fx-inspector/ (JE_EVIDENCE_DIR to keep them).
 """
 
 from __future__ import annotations
 
-import asyncio
+import json
 import os
 from pathlib import Path
 
 import pngdiff
-import ui_input
 from harness import Editor
+import ui_input
 
-EDITOR = {"xvfb": "harness", "create": True, "name": "Pixel FX UI"}
+EDITOR = {"xvfb": "harness", "create": True, "name": "Pixel FX Inspector"}
 CI = True
 TIMEOUT = 900
 
-HERO_PNG = "assets/sprites/hero.png"
+TEXTURE = "assets/textures/hero16.png"
 M = "submeshes[0].material."
-STATE: dict = {}
+WINDOW = "Inspector"
+S: dict = {}
 
 
 def evidence(ed: Editor) -> Path:
-    folder = Path(os.environ.get("JE_EVIDENCE_DIR") or ed.scratch.root) / "pixel-fx-ui"
+    folder = Path(os.environ.get("JE_EVIDENCE_DIR") or ed.scratch.root) / "pixel-fx-inspector"
     folder.mkdir(parents=True, exist_ok=True)
     return folder
 
 
-async def shot(ed: Editor, name: str) -> None:
-    await ed.screenshot("editor", evidence(ed) / f"{name}.png", focus=False, max_width=0)
+async def shot(ed: Editor, name: str) -> bytes:
+    return await ed.screenshot("editor", evidence(ed) / f"{name}.png", focus=False, max_width=0)
 
 
 def ui_of(ed: Editor) -> ui_input.Ui:
-    if "ui" not in STATE:
-        STATE["ui"] = ui_input.for_editor(ed)
-    return STATE["ui"]
+    if "ui" not in S:
+        S["ui"] = ui_input.for_editor(ed)
+    return S["ui"]
 
 
-async def test_contact_sheet_setup(ed: Editor):
-    await ed.call("get_project_summary")
-    (ed.project / "assets" / "sprites").mkdir(parents=True, exist_ok=True)
-    await ed.call("set_project_settings", values={"editor.assets_dir": "assets", "graphics.pixels_per_unit": 16})
-    rgba = b"".join(bytes((200, 40, 40, 255)) if (x + y) % 3 else bytes((40, 180, 60, 255)) for y in range(8) for x in range(8))
-    (ed.project / HERO_PNG).write_bytes(pngdiff.encode(8, 8, rgba))
-    await ed.call("sync_files")
-    scene = (await ed.call("create_scene", name="Sheet UI", type="2D"))["scene"]["id"]
-    made = await ed.call("create_entity", scene=scene, type="sprite", name="Hero", position=[0, 0, 0],
-                         values={"mesh": {M + "baseColorTexture": {"path": HERO_PNG, "min_filter": "nearest", "mag_filter": "nearest"}},
-                                 "sprite": {"pivotPreset": "center", "width": 8, "height": 8}})
-    STATE["scene"], STATE["hero"] = scene, made["entity_id"]
-    await ed.call("select_scene", scene=scene)
-    await ed.call("select_entities", scene=scene, entities=[])
-    await ed.call("focus_window", window="game")
-    await ui_of(ed).frames(4)
+def hero_png() -> bytes:
+    """16x16: a transparent 3-texel margin around a body, a face and boots"""
+    pixels = []
+    for y in range(16):
+        for x in range(16):
+            c = (0, 0, 0, 0)
+            if 3 <= x < 13 and 3 <= y < 13:
+                c = (58, 68, 102, 255)
+                if 4 <= y < 8 and 5 <= x < 11:
+                    c = (232, 183, 150, 255)
+                if y >= 11:
+                    c = (139, 69, 19, 255)
+            pixels.extend(c)
+    return pngdiff.encode(16, 16, bytes(pixels))
 
 
-async def test_contact_sheet_button_needs_a_selection(ed: Editor):
+async def material(ed: Editor) -> dict:
+    got = await ed.call("get_entity", scene=S["scene"], entity=S["hero"], components=["mesh"])
+    return got["components"]["mesh"]["submeshes[0].material"]
+
+
+def param(mat: dict, name: str):
+    """a one-number shader value (the editor gives [x, y, z, w])"""
+    value = (mat.get("shaderParams") or {}).get(name)
+    return value[0] if isinstance(value, list) else value
+
+
+async def scene_state(ed: Editor) -> tuple[bool, int]:
+    scenes = (await ed.call("list_scenes"))["scenes"]
+    modified = next(s for s in scenes if s["id"] == S["scene"]).get("modified")
+    history = (await ed.call("get_undo_history", scene=S["scene"], limit=500))["entries"]
+    return modified, len(history)
+
+
+async def scroll_to(ed: Editor, label: str, notches: int = 80) -> dict:
+    """the Inspector scrolled down until `label` is drawn (the material rows sit below the Mesh Renderer's)"""
     ui = ui_of(ed)
-    button = await ui.find("Contact Sheet...##GameContactSheet", "Game")
-    ed.check(button is not None, "the Game view's toolbar draws Contact Sheet...")
-    ed.check(button.get("enabled") is False, f"greyed without a selection: {button}")
-    await ed.call("select_entities", scene=STATE["scene"], entities=[STATE["hero"]])
-    for _ in range(60):
-        button = await ui.find("Contact Sheet...##GameContactSheet", "Game", frames=4)
-        if button and button.get("enabled", True):
+    area = None
+    for known in ("Shader", "Position", "Tag", "Geometry"):
+        anchor = [i for i in (await ed.call("find_ui_item", label=known, window=WINDOW)).get("items", []) if i.get("window_rect")]
+        if anchor:
+            area = anchor[0]["window_rect"]
             break
-    ed.check(button and button.get("enabled", True), f"enabled with one GameObject selected: {button}")
-
-
-async def test_contact_sheet_capture_and_save(ed: Editor):
-    ui = ui_of(ed)
-    await ui.click_item("Contact Sheet...##GameContactSheet", "Game")
-    capture = await ui.find("Capture##cs_capture", "Contact Sheet")
-    ed.check(capture is not None, "the Contact Sheet window opens with its Capture button")
-    for name in ("Frames##cs_frames", "Duration##cs_duration", "Scale##cs_scale", "Lints##cs_lints", "Scene Mode##cs_scene"):
-        ed.check(await ui.find(name, "Contact Sheet") is not None, f"the window has {name.split('##')[0]}")
-    await shot(ed, "1-contact-sheet-window")
-    await ui.click_item("Capture##cs_capture", "Contact Sheet")
-    image = None
-    for _ in range(300):
-        image = await ui.find("##cs_image", "Contact Sheet", frames=4)
-        if image:
-            break
-    ed.check(image is not None, "the sheet is drawn in the window")
-    # the checks table's header row (Check, Status, Measured, Threshold, Message)
-    ed.check(await ui.find("Status", "Contact Sheet") is not None, "with the checks table")
-    await shot(ed, "2-contact-sheet-captured")
-
-    before = {e["id"] for e in (await ed.call("get_undo_history", scope="project", limit=500))["entries"]}
-    save = await ui.find("Save As...##cs_save", "Contact Sheet")
-    ed.check(save is not None, "its Save As... button")
-    x, y = ui.centre(save["rect"])
-    ui.xdo("mousemove", str(x), str(y))
-    await ui.frames(4)
-    # not ui.click: its frame pacer is refused once the picker holds the editor
-    ui.xdo("mousedown", "1")
-    await ui.frames(2)
-    ui.xdo("mouseup", "1")
-    picker = None
-    for _ in range(80):
-        r = await ed.call_raw("editor_status", {})
-        picker = (r.structured or {}).get("dialog")
-        if picker and picker["kind"] == "file_picker":
-            break
-        await asyncio.sleep(0.25)
-    ed.check(picker and picker["kind"] == "file_picker", f"Save As... asks where: {picker}")
-    target = ed.project / "assets" / "sheets" / "hero_sheet.png"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    await ed.call("respond_dialog", values={"path": str(target)})
-    for _ in range(120):
-        if target.exists():
-            break
+    if area is None:
+        focused = await ed.call("focus_window", window="inspector")
+        area = focused.get("rect")
+    ed.check(bool(area), "the Inspector's rectangle")
+    turned = 0
+    while True:
+        items = [i for i in (await ed.call("find_ui_item", label=label, window=WINDOW)).get("items", []) if i.get("visible")]
+        if items:
+            return items[0]
+        if turned >= notches:
+            await shot(ed, "scroll-fail-" + label.strip("#"))
+            rows = (await ed.call("find_ui_item", label="Dissolve", window=WINDOW)).get("items", [])
+            material = (await ed.call("find_ui_item", label="Material", window=WINDOW)).get("items", [])
+            ed.fail(f"{label!r} never drawn in the Inspector ({turned} notches; Dissolve rows {[i['label'] for i in rows]}, "
+                    f"Material items {[(i['label'], i.get('visible')) for i in material][:6]}, area {area})")
+        await ui.wheel(ui.centre(area), 3)
+        turned += 3
         await ui_input.frames(ed, 4)
-    ed.check(target.exists(), "Save As... writes the PNG")
-    width, height, _ = pngdiff.decode(target.read_bytes())
-    ed.check(width > 24 and height > 24, f"a sheet, not a frame: {width}x{height}")
-    added = [e for e in (await ed.call("get_undo_history", scope="project", limit=500))["entries"] if e["id"] not in before]
-    ed.check_eq(len(added), 1, f"one undo step: {[e['name'] for e in added]}")
-    await ed.call("undo", scope="project")
-    ed.check(not target.exists(), "undo removes it")
-    await shot(ed, "3-contact-sheet-saved")
+
+
+def crop(png: bytes, rect: dict):
+    return pngdiff.crop(pngdiff.decode(png), round(rect["x"]), round(rect["y"]), round(rect["width"]), round(rect["height"]))
+
+
+async def test_setup(ed: Editor):
+    (ed.project / TEXTURE).parent.mkdir(parents=True, exist_ok=True)
+    (ed.project / TEXTURE).write_bytes(hero_png())
+    await ed.call("tool_groups", enable=["editor_ux"])
+    scene = (await ed.call("create_scene", name="PixelFx", type="2D"))["scene"]["id"]
+    S["scene"] = scene
+    made = await ed.call("create_entity", scene=scene, type="sprite", name="Hero", position=[0, 0, 0],
+                         values={"mesh": {M + "baseColorTexture": {"path": TEXTURE, "min_filter": "nearest", "mag_filter": "nearest"}},
+                                 "sprite": {"pivotPreset": "center", "width": 64, "height": 64}})
+    S["hero"] = made["entity_id"]
+    other = await ed.call("create_entity", scene=scene, type="sprite", name="Other", position=[120, 0, 0],
+                          values={"sprite": {"pivotPreset": "center", "width": 32, "height": 32}})
+    S["other"] = other["entity_id"]
+    await ed.call("set_properties", scene=scene, entity=S["hero"], values={"mesh": {M + "shader": "library:sprite"}})
+    await ed.call("set_properties", scene=scene, entity=S["hero"], values={"mesh": {
+        M + "shaderFeatures": ["DISSOLVE", "OUTLINE", "OUTLINE_STYLE_PIXEL4"],
+        M + "shaderParams": {"dissolveProgress": 0.0, "outlineColorFrom": "Ramp darkest"}}})
+    mat = await material(ed)
+    ed.check_eq(param(mat, "outlineColorFrom"), 1, "a choice set by its name stores its index")
+    await ed.call("select_scene", scene=scene)
+    await ed.call("save_scene", scene=scene, path="assets/PixelFx.scene")
+    await ed.call("select_entities", scene=scene, entities=[S["hero"]])
+    await ui_input.frames(ed, 30)
+
+
+async def test_thumbnails(ed: Editor):
+    ui = ui_of(ed)
+    # the submesh's material rows open from its arrow (closed by default)
+    toggle = await scroll_to(ed, "##toggle_mesh")
+    await ui.click(ui.centre(toggle["rect"]))
+    await ui_input.frames(ed, 10)
+    await shot(ed, "0-inspector")
+    for define in ("OUTLINE", "DITHER_FADE", "RAMP_RECOLOR", "DROP_SHADOW", "DISSOLVE"):
+        item = await scroll_to(ed, f"##spritefx_thumb_{define}")
+        ed.check(round(item["rect"]["width"]) >= 40 and round(item["rect"]["height"]) >= 40, f"{define}: 40x40: {item['rect']}")
+    item = await scroll_to(ed, "##spritefx_thumb_DISSOLVE")
+    await ui_input.frames(ed, 20)
+    before = crop(await shot(ed, "1-thumbnails"), item["rect"])
+    await ui_input.frames(ed, 10)
+    again = crop(await shot(ed, "1b-thumbnails-again"), item["rect"])
+    ed.check(again == before, "an unchanged value draws the same thumbnail")
+
+    # the dissolve's thumbnail follows its progress: half burnt, it shows less of the sprite
+    await ed.call("set_properties", scene=S["scene"], entity=S["hero"], values={"mesh": {M + "shaderParams.dissolveProgress": 0.6}})
+    changed = None
+    for _ in range(60):
+        await ui_input.frames(ed, 6)
+        item = await scroll_to(ed, "##spritefx_thumb_DISSOLVE")
+        changed = crop(await shot(ed, "2-thumbnail-dissolve"), item["rect"])
+        if changed != before:
+            break
+    ed.check(changed != before, "the thumbnail is drawn again when its value changes")
+    await ed.call("set_properties", scene=S["scene"], entity=S["hero"], values={"mesh": {M + "shaderParams.dissolveProgress": 0.0}})
+
+
+async def test_scrub(ed: Editor):
+    ui = ui_of(ed)
+    await ed.call("save_scene", scene=S["scene"])
+    modified, history = await scene_state(ed)
+    ed.check(not modified, "saved before the preview")
+    game_before = await ed.screenshot("game", evidence(ed) / "3-game-before.png", max_width=0)
+
+    slider = await scroll_to(ed, "##spritefx_scrub_dissolveProgress")
+    rect = slider["rect"]
+    await ui.click(ui.at(rect, (rect["width"] * 0.7, rect["height"] / 2)))
+    await ui_input.frames(ed, 20)
+    mat = await material(ed)
+    ed.check(param(mat, "dissolveProgress") and param(mat, "dissolveProgress") > 0.3,
+             f"the preview shows in the scene's material: {param(mat, 'dissolveProgress')}")
+    game = await ed.screenshot("game", evidence(ed) / "4-game-preview.png", max_width=0)
+    ed.check(game != game_before, "the Game view shows the dissolve")
+    modified, history_now = await scene_state(ed)
+    ed.check(not modified, "the preview does not modify the scene")
+    ed.check_eq(history_now, history, "the preview makes no undo step")
+    await shot(ed, "5-scrubbed")
+
+    # another selection puts the material's value back
+    await ed.call("select_entities", scene=S["scene"], entities=[S["other"]])
+    await ui_input.frames(ed, 10)
+    ed.check_eq(param(await material(ed), "dissolveProgress"), 0, "the value is back after the selection changed")
+    modified, _ = await scene_state(ed)
+    ed.check(not modified, "still not modified")
+    await ed.call("select_entities", scene=S["scene"], entities=[S["hero"]])
+    await ui_input.frames(ed, 10)
+
+
+async def test_play(ed: Editor):
+    ui = ui_of(ed)
+    play = await scroll_to(ed, "##spritefx_play_dissolveProgress")
+    await ui.click(ui.centre(play["rect"]))
+    seen = 0.0
+    for _ in range(30):
+        await ui_input.frames(ed, 2)
+        value = param(await material(ed), "dissolveProgress") or 0.0
+        seen = max(seen, value)
+        if seen > 0.0 and value == 0:
+            break
+    ed.check(seen > 0.0, "the play button animates the value")
+    back = None
+    for _ in range(120):
+        await ui_input.frames(ed, 4)
+        back = param(await material(ed), "dissolveProgress")
+        if back == 0:
+            break
+    ed.check_eq(back, 0, "the value comes back at the end")
+    modified, _ = await scene_state(ed)
+    ed.check(not modified, "playing the preview does not modify the scene")
+
+
+async def test_presets(ed: Editor):
+    listed = await ed.call("list_material_presets")
+    ids = {p["id"] for p in listed["presets"]}
+    for preset in ("hit_flash", "pixel_outline", "selout_outline", "drop_shadow", "teleport_fade", "burn_away",
+                   "petrify", "frozen", "poison", "pixel_enemy"):
+        ed.check(preset in ids, f"list_material_presets names {preset}")
+
+    _, history = await scene_state(ed)
+    applied = await ed.call("apply_material_preset", preset="drop_shadow", scene=S["scene"], entity=S["hero"])
+    ed.check(applied.get("undo", {}).get("id") is not None, f"one undo step: {applied}")
+    _, after = await scene_state(ed)
+    ed.check_eq(after, history + 1, "one scene undo step")
+    mat = await material(ed)
+    ed.check("DROP_SHADOW" in mat["shaderFeatures"] and "DISSOLVE" in mat["shaderFeatures"],
+             f"a preset adds its feature and keeps the others: {mat['shaderFeatures']}")
+
+    await ed.call("apply_material_preset", preset="burn_away", scene=S["scene"], entity=S["hero"])
+    mat = await material(ed)
+    textures = mat.get("shaderTextures") or {}
+    ramp = textures.get("u_fxRampTexture")
+    ramp_path = ramp.get("path") if isinstance(ramp, dict) else ramp
+    palettes = sorted(str(p.relative_to(ed.project)) for p in ed.project.rglob("*.palette"))
+    ed.check_eq(ramp_path, "Palettes/fire.palette#ramp:fire", f"the ramp slot points at the copy's ramp (palettes: {palettes}, textures: {textures})")
+    ed.check(any(p.endswith("Palettes/fire.palette") for p in palettes), f"burn_away makes the project's copy of the fire palette: {palettes}")
+    await ed.call("undo", scope="scene")
+    mat = await material(ed)
+    textures = mat.get("shaderTextures") or {}
+    ed.check("u_fxRampTexture" not in textures, f"one undo takes the preset back: {textures}")
+    await shot(ed, "6-presets")

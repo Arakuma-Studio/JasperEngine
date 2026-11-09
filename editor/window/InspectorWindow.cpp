@@ -889,10 +889,13 @@ void editor::InspectorWindow::stopTransientPreviews() {
     FluidEditorTools::stopAll(project);
     // the Vertex Animator preview (InspectorWindowVat.cpp)
     stopVertexAnimatorPreview();
+    // a sprite material's Pixel FX Preview (InspectorSpriteFx.cpp)
+    stopSpriteFxPreview();
 }
 
 void editor::InspectorWindow::clearSceneState(uint32_t sceneId) {
     FluidEditorTools::forgetScene(sceneId);
+    forgetSpriteFxScene(sceneId);
     // a Vertex Animator previewing in the closed scene: nothing to put back (its scene is gone)
     clearVertexAnimatorPreviewScene(sceneId);
 
@@ -13377,6 +13380,7 @@ void editor::InspectorWindow::show(){
         stopVertexAnimatorPreview();
         // a .shake's Test preview belongs to the inspected asset
         syncCameraShakePreview(project->getSelectedScene(), {});
+        syncSpriteFxPreview(project->getSelectedScene(), {});
         ImGui::End();
         return;
     }
@@ -13426,6 +13430,8 @@ void editor::InspectorWindow::show(){
     syncVertexAnimatorPreview(sceneProject, entities);
     // and the Camera Shaker's Test preview
     syncCameraShakePreview(sceneProject, entities);
+    // and a sprite material's Pixel FX Preview (S48 R37)
+    syncSpriteFxPreview(sceneProject, entities);
     if (actionPreviewing && !previewSelectionMatches) {
         stopActionPreviewIfActive();
     }

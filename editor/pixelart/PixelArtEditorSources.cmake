@@ -143,3 +143,9 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/mcp/tools/PixelFxTools.cpp
         ${EDITOR_DIR}/window/ContactSheetWindow.cpp
 )
+
+# S48 (Pixel FX): the sprite material Inspector's feature thumbnails and Preview scrub
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/SpriteFxPreview.cpp
+    ${EDITOR_DIR}/window/InspectorSpriteFx.cpp
+)
