@@ -322,3 +322,12 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   JASPERENGINE_INIT (Android too); the foliage project faking a loaded terrain.
 - The box sync now sends only changed files and gives them the current time (rsync --checksum without -t), so a file edited during a
   build can't look older than its object.
+- MCP fixes landed (39fd247a7, terrain/fix-mcp 6db2babc0). Generated code and saved scenes write the programme's settings only when
+  not default (T5 Foliage Quality, T3 shipped tiers, T5 Terrain Settings, T4 Nav Surface follow fields), so projects not using them keep
+  byte-identical output. Reflection goldens gained Voxel Volume and Terrain World. Foliage and voxel colours use ui::colorField, three
+  dialogs use EditorModal, and the modal table lists all ten terrain dialogs. The export's missing-asset check refreshes the asset
+  database first; this was upstream's bug, exposed by T5's export test. Upstream's, with origin/main proof: AudioSystem::playFree link
+  error in compile builds without the sound layer (test_build, audio_module_compile, compile_without_modules, html_ui_effects_export,
+  hub), bake_vertex_animation no_animation, mesh_update_flags budget, procmat determinism and goldens, a flaky audio ceiling test.
+- origin/main moved 35 more commits (S51 Pixel Fonts), with 6 conflicts; merging on terrain/upstream-merge. Prebuilt players are
+  building on box e704f0707dc6.
