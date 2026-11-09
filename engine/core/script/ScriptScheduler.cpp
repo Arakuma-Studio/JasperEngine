@@ -18,6 +18,7 @@
 #include "htmlui/anim/AnimTimer.h"
 #include "util/FunctionSubscribe.h"
 #include "util/CrashHook.h"
+#include "pixelart/HitStop.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -27,6 +28,7 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 
 using namespace jasperengine;
@@ -853,6 +855,34 @@ namespace {
 
     // Resumes the coroutine `id` with `nargs` values on its thread's stack, and handles what it
     // did: waits again, finished, failed, or was stopped meanwhile
+    // Time.deltaTime inside a coroutine or timer callback follows its owner GameObject's Hit Stop
+    // exemption (S48); an unowned one keeps the scope that called it (its first segment)
+    void enterOwnerScope(std::optional<pixelart::HitStop::ScriptScope>& scope, Scene* scene, const std::weak_ptr<char>& life, Entity entity){
+        if (Scene* owner = liveScene(scene, life))
+            scope.emplace(owner, entity);
+    }
+
+    // A hit-stop this frame: the Game clock is everyone's frame delta (frozen for the world), but
+    // an exempt owner's seconds (and an `only` hit's frozen ones) pass differently, so its due
+    // times move by the difference (S48). Idle, beginFrame does not come here.
+    void applyHitStopToClocks(double scaledDelta){
+        State& s = S();
+        for (CoRecord& rec : s.coroutines){
+            if (rec.ended() || rec.unscaled) continue;
+            Scene* scene = liveScene(rec.scene, rec.sceneLife);
+            if (!scene) continue;
+            const double difference = pixelart::HitStop::deltaFor(scene, rec.entity, scaledDelta) - scaledDelta;
+            rec.due -= difference;
+            rec.waitStart -= difference;
+        }
+        for (TimerRecord& timer : s.timers){
+            if (timer.ended || timer.unscaled) continue;
+            Scene* scene = liveScene(timer.scene, timer.sceneLife);
+            if (!scene) continue;
+            timer.due -= pixelart::HitStop::deltaFor(scene, timer.entity, scaledDelta) - scaledDelta;
+        }
+    }
+
     void resumeCoroutine(TaskId id, lua_State* from, int nargs){
         State& s = S();
         for (;;){
@@ -884,7 +914,12 @@ namespace {
             int nres = 0;
             s.depth++;
             s.runningStack.push_back(id);
-            const bool survived = guardedResume(co, from, nargs, status, nres, origin);
+            bool survived;
+            {
+                std::optional<pixelart::HitStop::ScriptScope> ownerScope;
+                enterOwnerScope(ownerScope, rec->scene, rec->sceneLife, rec->entity);
+                survived = guardedResume(co, from, nargs, status, nres, origin);
+            }
             s.runningStack.pop_back();
             s.depth--;
             rec = findCo(id);
@@ -1038,6 +1073,8 @@ namespace {
     void fireTimer(TaskId id){
         TimerRecord* timer = findTimer(id);
         if (!timer || timer->ended) return;
+        std::optional<pixelart::HitStop::ScriptScope> ownerScope;
+        enterOwnerScope(ownerScope, timer->scene, timer->sceneLife, timer->entity);
         const double now = clockOf(timer->unscaled);
         // the schedule moves on before the callback (it may cancel the timer or start others)
         bool last = false;
@@ -1670,6 +1707,8 @@ void ScriptScheduler::beginFrame(double scaledDelta, double unscaledDelta){
     s.scaledClock += scaledDelta;
     s.unscaledClock += unscaledDelta;
     s.frameActive = true;
+    if (pixelart::HitStop::isFrameActive())
+        applyHitStopToClocks(scaledDelta);
 }
 
 void ScriptScheduler::beginFixedStep(){
@@ -1743,6 +1782,8 @@ void ScriptScheduler::updatePhase(){
             case Wait::While: {
                 const bool until = rec.wait == Wait::Until;
                 if (stopIfInactive(id)) break;
+                std::optional<pixelart::HitStop::ScriptScope> ownerScope;
+                enterOwnerScope(ownerScope, s.coroutines[i].scene, s.coroutines[i].sceneLife, s.coroutines[i].entity);
                 lua_State* L = mainState();
                 lua_rawgeti(L, LUA_REGISTRYINDEX, s.coroutines[i].predicateRef);
                 if (LuaBinding::pcallWithTraceback(L, 0, 1) != LUA_OK){
