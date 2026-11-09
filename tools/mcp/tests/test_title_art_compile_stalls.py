@@ -15,6 +15,7 @@ with the whole ELEMENT program logs a stall over 4 s.
 
 import re
 import time
+from pathlib import Path
 
 from harness import Editor
 
@@ -103,13 +104,15 @@ async def test_new_titles_compile_without_a_hang(ed: Editor):
     log = ed.stderr_text()[start:]
     seen = stalls(log)
     print(f"main-thread stalls over 1 s while the titles compiled: {[round(s) for s in seen]} ms")
+    # where the main thread was in each stall: the engine's frames of its report's stack
     for line in log.splitlines():
-        if line.startswith("JASPERENGINE HANG:"):
-            print(line)
-    if seen:
-        # where the main thread was (the newest report's stacks)
-        reports = (await ed.call("get_crash_reports", limit=1, include_text=True)).get("reports", [])
-        if reports:
-            print((reports[0].get("text") or "")[:6000])
+        if not line.startswith("JASPERENGINE HANG:"):
+            continue
+        print(line)
+        m = re.search(r"report=(\S+)", line)
+        if m and Path(m.group(1)).exists():
+            for frame in Path(m.group(1)).read_text(errors="replace").splitlines():
+                if frame.startswith("#") and "jasperengine::" in frame:
+                    print("    " + frame[:200])
     ed.check(all(s < HANG_MS for s in seen), f"no stall reached the {HANG_MS} ms hang threshold: {seen}")
     await ed.call("set_hang_watchdog", enabled=True, threshold_ms=HANG_MS)
