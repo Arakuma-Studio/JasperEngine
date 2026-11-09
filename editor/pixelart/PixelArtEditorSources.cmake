@@ -123,3 +123,9 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ApplyPaletteDialog.cpp
     ${EDITOR_DIR}/widget/PaletteSwatchAdapter.cpp
 )
+
+# S48 (Pixel FX): the sprite material Inspector's feature thumbnails and Preview scrub
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/SpriteFxPreview.cpp
+    ${EDITOR_DIR}/window/InspectorSpriteFx.cpp
+)

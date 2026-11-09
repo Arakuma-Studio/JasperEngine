@@ -1224,7 +1224,8 @@ anim::PropertyBinding anim::bindProperty(EntityRegistry* scene, Entity entity, c
                     case ShaderPropertyKind::FLOAT:
                     case ShaderPropertyKind::RANGE:
                     case ShaderPropertyKind::TOGGLE: binding.kind = PropertyKind::Float; break;
-                    case ShaderPropertyKind::INT: binding.kind = PropertyKind::Float; break;
+                    case ShaderPropertyKind::INT:
+                    case ShaderPropertyKind::CHOICE: binding.kind = PropertyKind::Float; break;
                     case ShaderPropertyKind::COLOR:
                     case ShaderPropertyKind::HDRCOLOR:
                         binding.kind = PropertyKind::Color4;

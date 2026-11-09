@@ -5,6 +5,7 @@
 
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderUniforms.h"
+#include "util/Color.h"
 
 #include <algorithm>
 
@@ -307,6 +308,140 @@ namespace {
             pass.stencil = masked;
     }
 
+    // S48 R38: the sprite material the Pixel FX presets build on: library:sprite, keeping its
+    // features and values when it already draws with it (a preset changes only what it sets)
+    constexpr const char* PIXEL_FX_SHADER = "library:sprite";
+
+    void usePixelFxShader(Material& material){
+        if (material.shader.path != PIXEL_FX_SHADER){
+            material.shader = PIXEL_FX_SHADER;
+            // another shader's features mean nothing to the sprite's
+            material.shaderFeatures.clear();
+        }
+    }
+
+    void setPixelFxFeature(Material& material, const char* define){
+        ShaderLibraryValues::setFeature(material.shaderFeatures, PIXEL_FX_SHADER, define, true);
+    }
+
+    void setPixelFxParam(Material& material, const char* member, const Vector4& value){
+        for (auto& entry : material.shaderParams){
+            if (entry.first == member){
+                entry.second = value;
+                return;
+            }
+        }
+        material.shaderParams.push_back({member, value});
+    }
+
+    Vector4 pixelFxNumber(float value){
+        return Vector4(value, 0.0f, 0.0f, 0.0f);
+    }
+
+    // a built-in palette's ramp (S43): the editor writes the project's copy of the palette when
+    // the preset is applied and points the slot at it (resolvePresetPalettes)
+    void setPixelFxRamp(Material& material, const char* builtinRamp){
+        ShaderLibraryValues::setTexture(material.shaderTextures, PIXEL_FX_RAMP_UNIFORM, builtinRamp);
+    }
+
+    void setPixelFxOutline(Material& material, bool selective){
+        setPixelFxFeature(material, "OUTLINE");
+        ShaderLibraryValues::setFeature(material.shaderFeatures, PIXEL_FX_SHADER, "OUTLINE_STYLE_PIXEL4", true);
+        setPixelFxParam(material, "outlineWidth", pixelFxNumber(1.0f));
+        setPixelFxParam(material, "outlineColorFrom", pixelFxNumber(selective ? 2.0f : 1.0f));
+        if (selective)
+            setPixelFxParam(material, "outlineRampSteps", pixelFxNumber(1.0f));
+    }
+
+    void setPixelFxRecolor(Material& material, const char* builtinRamp, float bevel, float pulse){
+        usePixelFxShader(material);
+        setPixelFxFeature(material, "RAMP_RECOLOR");
+        setPixelFxParam(material, "rampAmount", pixelFxNumber(1.0f));
+        setPixelFxParam(material, "rampBevel", pixelFxNumber(bevel));
+        setPixelFxParam(material, "rampPulse", pixelFxNumber(pulse));
+        setPixelFxRamp(material, builtinRamp);
+    }
+
+    void addPixelFxPresets(std::vector<MaterialPreset>& presets){
+        presets.push_back({"hit_flash", "Hit Flash",
+            "library:sprite with Hit flash at amount 0, white: PixelFX.play(go, \"flash\") or the flashAmount value flashes it.",
+            [](Material& material, const std::string&){
+                usePixelFxShader(material);
+                setPixelFxFeature(material, "FLASH");
+                setPixelFxParam(material, "flashColor", Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+                setPixelFxParam(material, "flashAmount", pixelFxNumber(0.0f));
+            }});
+        presets.push_back({"pixel_outline", "Pixel Outline",
+            "library:sprite with a one-texel outline on the 4 neighbours (Outline style PIXEL4) in the ramp's darkest colour; "
+            "the quad grows so it is never cut at the frame edge.",
+            [](Material& material, const std::string&){
+                usePixelFxShader(material);
+                setPixelFxOutline(material, false);
+            }});
+        presets.push_back({"selout_outline", "Sel-Out Outline",
+            "library:sprite with a one-texel selective outline (sel-out): each outline texel takes the colour of the art it "
+            "touches, one ramp step darker.",
+            [](Material& material, const std::string&){
+                usePixelFxShader(material);
+                setPixelFxOutline(material, true);
+            }});
+        presets.push_back({"drop_shadow", "Drop Shadow",
+            "library:sprite with a drop shadow one texel right and down, half-transparent black, behind the sprite and its outline.",
+            [](Material& material, const std::string&){
+                usePixelFxShader(material);
+                setPixelFxFeature(material, "DROP_SHADOW");
+                setPixelFxParam(material, "shadowOffset", Vector4(1.0f, -1.0f, 0.0f, 0.0f));
+                setPixelFxParam(material, "shadowColor", Color::sRGBToLinear(Vector4(0.0f, 0.0f, 0.0f, 0.5f)));
+            }});
+        presets.push_back({"teleport_fade", "Teleport Fade",
+            "library:sprite with Dither Fade at 0 (shown): PixelFX fade_out, fade_in and blink, or ditherFadeAmount, fade it "
+            "out through a Bayer 4x4 pattern without partial alpha.",
+            [](Material& material, const std::string&){
+                usePixelFxShader(material);
+                setPixelFxFeature(material, "DITHER_FADE");
+                setPixelFxParam(material, "ditherFadeAmount", pixelFxNumber(0.0f));
+            }});
+        presets.push_back({"burn_away", "Burn Away",
+            "library:sprite with Dissolve at 0 on the fire ramp (S43's built-in fire palette): PixelFX dissolve or "
+            "dissolveProgress burns it from the feet up along a glowing edge.",
+            [](Material& material, const std::string&){
+                usePixelFxShader(material);
+                setPixelFxFeature(material, "DISSOLVE");
+                setPixelFxParam(material, "dissolveProgress", pixelFxNumber(0.0f));
+                setPixelFxParam(material, "dissolveEdgeGlow", Vector4(1.5f, 0.6f, 0.1f, 1.0f));
+                setPixelFxRamp(material, "builtin:fire#ramp:fire");
+            }});
+        presets.push_back({"petrify", "Petrify",
+            "library:sprite with Ramp Recolour on the stone ramp and a bevel: the art turns to stone, its brightness kept "
+            "as ramp steps.",
+            [](Material& material, const std::string&){
+                setPixelFxRecolor(material, "builtin:stone#ramp:stone", 1.0f, 0.0f);
+            }});
+        presets.push_back({"frozen", "Frozen",
+            "library:sprite with Ramp Recolour on the ice ramp and a bevel: the frozen status look.",
+            [](Material& material, const std::string&){
+                setPixelFxRecolor(material, "builtin:ice#ramp:ice", 1.0f, 0.0f);
+            }});
+        presets.push_back({"poison", "Poison",
+            "library:sprite with Ramp Recolour on the poison ramp, half the bevel and a pulse of 2 steps a second.",
+            [](Material& material, const std::string&){
+                setPixelFxRecolor(material, "builtin:poison#ramp:poison", 0.5f, 2.0f);
+            }});
+        presets.push_back({"pixel_enemy", "Enemy",
+            "library:sprite for an enemy: Hit flash at 0, Dissolve at 0 on the fire ramp and a one-texel PIXEL4 outline in the "
+            "ramp's darkest colour.",
+            [](Material& material, const std::string&){
+                usePixelFxShader(material);
+                setPixelFxFeature(material, "FLASH");
+                setPixelFxFeature(material, "DISSOLVE");
+                setPixelFxParam(material, "flashColor", Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+                setPixelFxParam(material, "flashAmount", pixelFxNumber(0.0f));
+                setPixelFxParam(material, "dissolveProgress", pixelFxNumber(0.0f));
+                setPixelFxOutline(material, false);
+                setPixelFxRamp(material, "builtin:fire#ramp:fire");
+            }});
+    }
+
     std::vector<MaterialPreset> makeMaterialPresets(){
         std::vector<MaterialPreset> presets;
 
@@ -480,6 +615,9 @@ namespace {
                 pbr.hex.rotation = 1.0f;
                 pbr.hex.contrast = 0.6f;
             }});
+
+        // S48 R38: the Pixel FX presets on library:sprite, in a block of their own
+        addPixelFxPresets(presets);
 
         // every preset leaves the extra pass masked as the material's stencil says
         for (MaterialPreset& preset : presets){

@@ -19,6 +19,7 @@
 #include <algorithm>
 
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <type_traits>
 
@@ -41,6 +42,7 @@ const char* propertyKindName(ShaderPropertyKind kind) {
         case ShaderPropertyKind::VECTOR2: return "vector2";
         case ShaderPropertyKind::VECTOR3: return "vector3";
         case ShaderPropertyKind::VECTOR4: return "vector4";
+        case ShaderPropertyKind::CHOICE: return "choice";
     }
     return "float";
 }
@@ -70,6 +72,7 @@ const char* textureDefaultName(ShaderTextureDefault value) {
         case ShaderTextureDefault::RIPPLES: return "ripples";
         case ShaderTextureDefault::NOISE: return "noise";
         case ShaderTextureDefault::PARTICLE: return "particle";
+        case ShaderTextureDefault::RAMP_GREY: return "ramp_grey";
     }
     return "white";
 }
@@ -316,6 +319,8 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
             entry["min"] = number(property.min);
             entry["max"] = number(property.max);
         }
+        // a choice: its names, the value is the index
+        if (property.kind == ShaderPropertyKind::CHOICE) entry["choices"] = property.choices;
         if (!property.feature.empty()) entry["feature"] = property.feature;
         properties.push_back(entry);
     }
@@ -352,6 +357,8 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
             if (const uint32_t inputs = Catalog::getFeatureSceneInputs(manifest, group.group + "_" + value)) valueInputs[value] = sceneInputsToJson(inputs);
         }
         Json entry = {{"group", group.group}, {"label", group.label}, {"values", group.values}, {"defines", defines}};
+        // scoped: only while that feature is on
+        if (!group.feature.empty()) entry["feature"] = group.feature;
         if (!valueInputs.empty()) entry["scene_inputs"] = valueInputs;
         keywords.push_back(entry);
     }
@@ -368,6 +375,20 @@ Json McpValues::shaderParamsToJson(const ShaderUniformValues& values) {
 
 bool McpValues::shaderParamFromJson(const ShaderManifestProperty* property, const std::string& member, const Json& value,
                                     Vector4& out, std::string& error) {
+    if (value.is_string() && property && property->kind == ShaderPropertyKind::CHOICE) {
+        // a choice by its name: the index is the value
+        const std::string name = value.get<std::string>();
+        for (size_t i = 0; i < property->choices.size(); i++) {
+            if (property->choices[i] == name) {
+                out = Vector4((float)i, 0.0f, 0.0f, 0.0f);
+                return true;
+            }
+        }
+        std::string names;
+        for (const std::string& choice : property->choices) names += (names.empty() ? "\"" : ", \"") + choice + "\"";
+        error = "\"" + member + "\" takes one of " + names + " (or its index from 0).";
+        return false;
+    }
     if (value.is_string()) {
         if (!property || !isColorKind(property->kind) || !parseHex(value.get<std::string>(), out)) {
             error = "\"" + member + "\" takes a number or up to 4 numbers" +
@@ -397,6 +418,11 @@ bool McpValues::shaderParamFromJson(const ShaderManifestProperty* property, cons
     } else {
         error = "\"" + member + "\" must be a number or up to 4 numbers" +
                 std::string(property && isColorKind(property->kind) ? " ([r,g,b,a] linear), or \"#RRGGBB[AA]\" (sRGB)" : "") + ".";
+        return false;
+    }
+    if (property && property->kind == ShaderPropertyKind::CHOICE &&
+        (v[0] != std::floor(v[0]) || v[0] < 0.0f || v[0] >= (float)property->choices.size())) {
+        error = "\"" + member + "\" is a choice: an index from 0 to " + std::to_string(property->choices.size() - 1) + ", or a name.";
         return false;
     }
     out = Vector4(v[0], v[1], v[2], v[3]);

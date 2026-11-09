@@ -839,6 +839,7 @@ TextureRender RenderSystem::defaultRipples;
 TextureRender RenderSystem::defaultNoise;
 uint32_t RenderSystem::pixelsParticle[DEFAULT_PARTICLE_SIZE * DEFAULT_PARTICLE_SIZE];
 TextureRender RenderSystem::defaultParticle;
+TextureRender RenderSystem::defaultRampGrey;
 TextureRender RenderSystem::emptyCubeGray;
 std::vector<RenderSystem::ZeroVertexBuffer> RenderSystem::zeroVertexBuffers;
 std::mutex RenderSystem::zeroVertexBuffersMutex;
@@ -1371,7 +1372,8 @@ void RenderSystem::createEmptyTextures(){
 void RenderSystem::destroyEmptyTextures(){
     TextureRender* textures[] = {
         &emptyWhite, &emptyArrayWhite, &emptyBlack, &emptyCubeBlack, &emptyCubeWhite, &emptyNormal,
-        &emptyShadowDepth, &emptyGray, &emptyFlatNormal, &defaultRipples, &defaultNoise, &defaultParticle, &emptyCubeGray, &emptyTransparent
+        &emptyShadowDepth, &emptyGray, &emptyFlatNormal, &defaultRipples, &defaultNoise, &defaultParticle, &emptyCubeGray, &emptyTransparent,
+        &defaultRampGrey
     };
     // (destroyTexture skips handles that are already gone and clears them)
     for (TextureRender* texture : textures){
@@ -4398,6 +4400,23 @@ TextureRender* RenderSystem::getDefaultShaderTexture(int fallback, bool cube){
         case ShaderTextureDefault::RIPPLES: return cube ? &emptyCubeGray : &defaultRipples;
         case ShaderTextureDefault::NOISE:  return cube ? &emptyCubeGray : &defaultNoise;
         case ShaderTextureDefault::PARTICLE: return cube ? &emptyCubeWhite : &defaultParticle;
+        case ShaderTextureDefault::RAMP_GREY:{
+            if (cube)
+                return &emptyCubeGray;
+            if (!defaultRampGrey.isCreated()){
+                // the step i of 8 is i / 7 grey (sRGB bytes)
+                static uint32_t pixels[8];
+                for (int i = 0; i < 8; i++){
+                    const uint32_t v = (uint32_t)((i * 255 + 3) / 7);
+                    pixels[i] = 0xFF000000u | (v << 16) | (v << 8) | v;
+                }
+                void* data[6] = {(void*)pixels};
+                size_t sizes[6] = {sizeof(pixels)};
+                defaultRampGrey.createTexture("default|ramp_grey", 8, 1, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data, sizes,
+                                              TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE);
+            }
+            return &defaultRampGrey;
+        }
         default:                           return cube ? &emptyCubeWhite : &emptyWhite;
     }
 }

@@ -3361,4 +3361,39 @@ CASES = [
                    "must_not_call": [{"tool": "configure_game_view", "args": {"resolution": "*"}}]},
         "max_turns": 12,
     },
+    # ---- S48 Pixel FX: sprite effects (material presets and library:sprite features)
+    {
+        "id": "guard_pixel_fx_selout_preset",
+        "kind": "guard",
+        "what_happened": "New text (S48 R38): list_material_presets names the Pixel FX presets; an agent asked for a sel-out "
+                         "outline on a sprite applies selout_outline instead of hand-writing a shader or an outline pass.",
+        "text_at_issue": "list_material_presets: 'selout_outline (Sel-Out Outline): library:sprite with a one-texel selective "
+                         "outline (sel-out) ...'",
+        "source": "S48 R38 (new result text); no failure on record",
+        "prompt": "Give the Hero sprite a pixel-art sel-out outline.",
+        "mocks": [
+            {"tool": "list_material_presets", "result": ok(
+                "12 material preset(s); apply_material_preset applies one:\noutline_hull (Outline (hull)): Outline as an extra "
+                "pass ...\npixel_outline (Pixel Outline): library:sprite with a one-texel outline on the 4 neighbours (Outline "
+                "style PIXEL4) in the ramp's darkest colour; the quad grows so it is never cut at the frame edge.\n"
+                "selout_outline (Sel-Out Outline): library:sprite with a one-texel selective outline (sel-out): each outline "
+                "texel takes the colour of the art it touches, one ramp step darker.\ndrop_shadow (Drop Shadow): library:sprite "
+                "with a drop shadow one texel right and down ...",
+                {"presets": [{"id": "outline_hull", "name": "Outline (hull)"}, {"id": "pixel_outline", "name": "Pixel Outline"},
+                             {"id": "selout_outline", "name": "Sel-Out Outline"}, {"id": "drop_shadow", "name": "Drop Shadow"}]})},
+            {"tool": "apply_material_preset", "result": ok(
+                "Applied preset selout_outline to 1 submesh(es) (one undo step).",
+                {"preset": "selout_outline", "applied": [{"entity": {"id": 7, "name": "Hero"}, "submesh": 0}]})},
+            {"tool": "find_entities", "result": ok("1 GameObject: 7 Hero (sprite)", {"entities": [{"id": 7, "path": "Hero"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 7 \"Hero\": transform, sprite, mesh (submeshes[0] material, shader "
+                                               "library:sprite).", {"id": 7})},
+            {"tool": "list_shaders", "result": ok("Library shaders (mesh): library:lit, library:sprite (outline, ...) ...",
+                                                 {"shaders": [{"name": "library:sprite", "type": "mesh"}]})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 7 \"Hero\".", {"entity": {"id": 7}})},
+            {"tool": "update_material", "result": ok("Updated the material.", {"entity": {"id": 7}})},
+        ],
+        "checks": {"calls": [{"tool": "apply_material_preset", "args": {"preset": "selout_outline"}}],
+                   "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
+        "max_turns": 12,
+    },
 ]

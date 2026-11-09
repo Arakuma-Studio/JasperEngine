@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <map>
 #include <mutex>
@@ -197,6 +198,34 @@ namespace {
         if (name == "alphatest")   { queue = ShaderQueue::ALPHATEST; return true; }
         if (name == "transparent") { queue = ShaderQueue::TRANSPARENT; return true; }
         return false;
+    }
+
+    // choice("A", "B", ...): the names, quoted, comma separated
+    bool parseChoices(const std::string& token, std::vector<std::string>& choices){
+        if (lower(token.substr(0, 7)) != "choice(" || token.back() != ')')
+            return false;
+        const std::string inner = token.substr(7, token.size() - 8);
+        choices.clear();
+        size_t i = 0;
+        while (i < inner.size()){
+            while (i < inner.size() && (inner[i] == ' ' || inner[i] == '\t'))
+                i++;
+            if (i >= inner.size() || inner[i] != '"')
+                return false;
+            const size_t close = inner.find('"', i + 1);
+            if (close == std::string::npos || close == i + 1)
+                return false;
+            choices.push_back(inner.substr(i + 1, close - i - 1));
+            i = close + 1;
+            while (i < inner.size() && (inner[i] == ' ' || inner[i] == '\t'))
+                i++;
+            if (i < inner.size()){
+                if (inner[i] != ',')
+                    return false;
+                i++;
+            }
+        }
+        return choices.size() >= 2;
     }
 
     bool parsePropertyKind(const std::string& token, ShaderPropertyKind& kind, float& min, float& max){
@@ -600,9 +629,17 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 report(lineNumber, true, "@property '" + property.member + "' declared twice");
                 continue;
             }
-            if (!parsePropertyKind(args[1].text, property.kind, property.min, property.max)){
+            if (lower(args[1].text.substr(0, 6)) == "choice"){
+                if (!parseChoices(args[1].text, property.choices)){
+                    report(lineNumber, true, "@property '" + property.member + "' choice needs two or more quoted names: choice(\"A\", \"B\")");
+                    continue;
+                }
+                property.kind = ShaderPropertyKind::CHOICE;
+                property.min = 0.0f;
+                property.max = (float)(property.choices.size() - 1);
+            }else if (!parsePropertyKind(args[1].text, property.kind, property.min, property.max)){
                 report(lineNumber, true, "unknown @property kind '" + args[1].text +
-                    "' (float, range(min, max), int, toggle, color, hdrcolor, vector2, vector3, vector4)");
+                    "' (float, range(min, max), int, toggle, color, hdrcolor, vector2, vector3, vector4, choice(\"A\", \"B\"))");
                 continue;
             }
             std::vector<float> values;
@@ -627,6 +664,13 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 property.defaultValue.x = property.defaultValue.x != 0.0f ? 1.0f : 0.0f;
             if (property.kind == ShaderPropertyKind::RANGE && property.min > property.max)
                 report(lineNumber, true, "@property '" + property.member + "' range minimum is above its maximum");
+            if (property.kind == ShaderPropertyKind::CHOICE &&
+                    (property.defaultValue.x != std::floor(property.defaultValue.x) || property.defaultValue.x < 0.0f ||
+                     property.defaultValue.x > property.max)){
+                report(lineNumber, true, "@property '" + property.member + "' choice default must be an index from 0 to " +
+                    std::to_string(property.choices.size() - 1));
+                continue;
+            }
             // colours are written as edited (sRGB), stored linear
             if (isColorKind(property.kind))
                 property.defaultValue = Color::sRGBToLinear(property.defaultValue);
@@ -660,6 +704,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 else if (def == "ripples") value = ShaderTextureDefault::RIPPLES;
                 else if (def == "noise") value = ShaderTextureDefault::NOISE;
                 else if (def == "particle") value = ShaderTextureDefault::PARTICLE;
+                else if (def == "ramp_grey" || def == "ramp_gray") value = ShaderTextureDefault::RAMP_GREY;
                 else return false;
                 return true;
             };
@@ -675,7 +720,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 continue;
             }
             if (!parseDefault(args[1].text, texture.defaultTexture)){
-                report(lineNumber, true, "unknown @texture default '" + args[1].text + "' (white, black, gray, normal, ripples, noise, particle)");
+                report(lineNumber, true, "unknown @texture default '" + args[1].text + "' (white, black, gray, normal, ripples, noise, particle, ramp_grey)");
                 continue;
             }
             bool valid = true;
@@ -687,7 +732,7 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 if (!args[a].quoted && lower(text.substr(0, 8)) == "default[" && close != std::string::npos && close > 8){
                     texture.featureDefaultDefine = text.substr(8, close - 8);
                     if (!parseDefault(text.substr(close + 2), texture.featureDefaultTexture)){
-                        report(lineNumber, true, "unknown @texture default '" + text.substr(close + 2) + "' (white, black, gray, normal, ripples, noise, particle)");
+                        report(lineNumber, true, "unknown @texture default '" + text.substr(close + 2) + "' (white, black, gray, normal, ripples, noise, particle, ramp_grey)");
                         valid = false;
                     }
                 }else if (splitOption(args[a], key, value) && key == "feature"){
@@ -780,6 +825,16 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
             group.group = args[0].text;
             bool valid = true;
             for (size_t a = 1; a < args.size(); a++){
+                std::string key, value;
+                if (splitOption(args[a], key, value)){
+                    if (key == "feature" && ShaderReference::isValidDefine(value) && group.feature.empty()){
+                        group.feature = value;
+                    }else{
+                        report(lineNumber, true, "unexpected @keywords argument '" + args[a].text + "' (feature=<DEFINE> scopes the group)");
+                        valid = false;
+                    }
+                    continue;
+                }
                 if (args[a].quoted){
                     if (group.label.empty() && group.values.empty()){
                         group.label = args[a].text;
@@ -810,6 +865,56 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
             }
             if (valid)
                 keywords.push_back(group);
+
+        }else if (directive == "expand"){
+            ShaderManifestExpand expand;
+            expand.line = lineNumber;
+            bool valid = !args.empty() && !args[0].quoted;
+            if (valid){
+                float texels = 0.0f;
+                if (parseNumber(args[0].text, texels)){
+                    if (texels < 0.0f || texels > 64.0f){
+                        report(lineNumber, true, "@expand texels must be from 0 to 64");
+                        valid = false;
+                    }
+                    expand.texels = texels;
+                }else if (isIdentifier(args[0].text)){
+                    expand.member = args[0].text;
+                }else{
+                    report(lineNumber, true, "@expand takes <member|texels> feature=<DEFINE>[,<DEFINE>]");
+                    valid = false;
+                }
+            }else{
+                report(lineNumber, true, "@expand takes <member|texels> feature=<DEFINE>[,<DEFINE>]");
+            }
+            for (size_t a = 1; valid && a < args.size(); a++){
+                std::string key, value;
+                if (splitOption(args[a], key, value) && key == "feature" && expand.features.empty()){
+                    size_t start = 0;
+                    while (start <= value.size()){
+                        size_t comma = value.find(',', start);
+                        if (comma == std::string::npos)
+                            comma = value.size();
+                        const std::string define = trim(value.substr(start, comma - start));
+                        if (!ShaderReference::isValidDefine(define)){
+                            report(lineNumber, true, "invalid @expand feature '" + define + "'");
+                            valid = false;
+                            break;
+                        }
+                        expand.features.push_back(define);
+                        start = comma + 1;
+                    }
+                }else{
+                    report(lineNumber, true, "unexpected @expand argument '" + args[a].text + "'");
+                    valid = false;
+                }
+            }
+            if (valid && expand.features.empty()){
+                report(lineNumber, true, "@expand needs feature=<DEFINE>[,<DEFINE>]: a quad grows only for the features that draw around the art");
+                valid = false;
+            }
+            if (valid)
+                expands.push_back(expand);
 
         }else if (directive == "depth"){
             if (!args.empty())
@@ -847,9 +952,23 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
     }
 
     // feature= on rows must name a declared feature (or a keyword define)
-    auto knownFeature = [this](const std::string& condition){
-        const std::string define = (!condition.empty() && condition[0] == '!') ? condition.substr(1) : condition;
+    auto knownDefine = [this](const std::string& define){
         return findFeature(define) || findKeywordGroup(define);
+    };
+    auto knownFeature = [&](const std::string& condition){
+        if (!condition.empty() && condition[0] == '!')
+            return knownDefine(condition.substr(1));
+        // "A,B": each must be declared
+        size_t start = 0;
+        while (start <= condition.size()){
+            size_t comma = condition.find(',', start);
+            if (comma == std::string::npos)
+                comma = condition.size();
+            if (!knownDefine(condition.substr(start, comma - start)))
+                return false;
+            start = comma + 1;
+        }
+        return true;
     };
     for (const ShaderManifestProperty& property : properties){
         if (!property.feature.empty() && !knownFeature(property.feature))
@@ -884,6 +1003,23 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
         for (const std::string& value : group.values){
             if (ShaderReference::isBlendDefine(group.group + "_" + value))
                 report(group.line, "keyword '" + group.group + "_" + value + "' is reserved: the engine defines it from the blend mode");
+        }
+        // a group scoped by a feature: by a @feature (not another group's value)
+        if (!group.feature.empty() && !findFeature(group.feature))
+            report(group.line, "@keywords '" + group.group + "' feature=" + group.feature + " names undeclared feature '" + group.feature + "'");
+    }
+    for (const ShaderManifestExpand& expand : expands){
+        for (const std::string& define : expand.features){
+            if (!knownDefine(define))
+                report(expand.line, "@expand feature=" + define + " names undeclared feature '" + define + "'");
+        }
+        if (!expand.member.empty()){
+            const ShaderManifestProperty* property = findProperty(expand.member);
+            if (!property){
+                report(expand.line, "@expand names undeclared @property '" + expand.member + "'");
+            }else if (kindComponents(property->kind) != 1 && property->kind != ShaderPropertyKind::VECTOR2){
+                report(expand.line, "@expand '" + expand.member + "' must be a one-number or vector2 @property");
+            }
         }
     }
     if (!lighting.empty() && hasType && type != ShaderType::MESH){
@@ -1079,9 +1215,82 @@ bool ShaderManifest::isRowShown(const std::string& feature, const std::vector<st
     if (feature.empty())
         return true;
     const bool negate = feature[0] == '!';
+    if (!negate && feature.find(',') != std::string::npos){
+        // "A,B": one of them on
+        size_t start = 0;
+        while (start <= feature.size()){
+            size_t comma = feature.find(',', start);
+            if (comma == std::string::npos)
+                comma = feature.size();
+            if (std::find(enabled.begin(), enabled.end(), feature.substr(start, comma - start)) != enabled.end())
+                return true;
+            start = comma + 1;
+        }
+        return false;
+    }
     const std::string define = negate ? feature.substr(1) : feature;
     const bool on = std::find(enabled.begin(), enabled.end(), define) != enabled.end();
     return negate ? !on : on;
+}
+
+std::string ShaderManifest::getKeywordChoice(const ShaderManifestKeywords& group, const std::vector<std::string>& list) const{
+    if (!group.feature.empty()){
+        // the scoping feature, from the same list
+        const std::vector<std::string> enabled = resolveFeatures(list);
+        if (std::find(enabled.begin(), enabled.end(), group.feature) == enabled.end())
+            return "";
+    }
+    for (const std::string& entry : list){
+        if (findKeywordGroup(entry) == &group)
+            return entry;
+    }
+    return group.group + "_" + group.values.front();
+}
+
+ShaderExpand ShaderManifest::resolveExpand(const std::vector<std::string>& enabled, const ShaderUniformValues& values) const{
+    ShaderExpand out;
+    for (const ShaderManifestExpand& expand : expands){
+        bool on = false;
+        for (const std::string& define : expand.features)
+            on = on || std::find(enabled.begin(), enabled.end(), define) != enabled.end();
+        if (!on)
+            continue;
+        auto texels = [](float value){
+            // whole texels, rounded up, at most 64
+            return (int)std::ceil(std::min(std::max(value, 0.0f), 64.0f) - 1e-4f);
+        };
+        if (expand.member.empty()){
+            const int t = texels(expand.texels);
+            out.left = std::max(out.left, t);
+            out.right = std::max(out.right, t);
+            out.bottom = std::max(out.bottom, t);
+            out.top = std::max(out.top, t);
+            continue;
+        }
+        const ShaderManifestProperty* property = findProperty(expand.member);
+        if (!property)
+            continue;
+        Vector4 value = property->defaultValue;
+        for (const auto& entry : values){
+            if (entry.first == expand.member){
+                value = entry.second;
+                break;
+            }
+        }
+        if (property->kind == ShaderPropertyKind::VECTOR2){
+            out.right = std::max(out.right, texels(value.x));
+            out.left = std::max(out.left, texels(-value.x));
+            out.top = std::max(out.top, texels(value.y));
+            out.bottom = std::max(out.bottom, texels(-value.y));
+        }else{
+            const int t = texels(value.x);
+            out.left = std::max(out.left, t);
+            out.right = std::max(out.right, t);
+            out.bottom = std::max(out.bottom, t);
+            out.top = std::max(out.top, t);
+        }
+    }
+    return out;
 }
 
 std::vector<std::string> ShaderManifest::resolveFeatures(const std::vector<std::string>& list) const{
@@ -1103,6 +1312,7 @@ std::vector<std::string> ShaderManifest::resolveFeatures(const std::vector<std::
             defines.push_back(feature.define);
     }
 
+    const std::vector<std::string> featureDefines = defines;
     for (const ShaderManifestKeywords& group : keywords){
         std::string chosen = group.group + "_" + group.values.front();
         for (const std::string& entry : list){
@@ -1110,6 +1320,13 @@ std::vector<std::string> ShaderManifest::resolveFeatures(const std::vector<std::
                 chosen = entry;
                 break;
             }
+        }
+        if (!group.feature.empty()){
+            // scoped (S48 D3): nothing while its feature is off, nothing for its first value
+            if (std::find(featureDefines.begin(), featureDefines.end(), group.feature) == featureDefines.end())
+                continue;
+            if (chosen == group.group + "_" + group.values.front())
+                continue;
         }
         defines.push_back(chosen);
     }

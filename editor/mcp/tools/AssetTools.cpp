@@ -2713,6 +2713,12 @@ void applyMaterialPresetTool(const CallPtr& call) {
             return;
         }
         material = applyMaterialPreset(*preset, material);
+        // a Pixel FX preset's built-in ramp: the project's copy of its palette (written if missing)
+        bool wroteCopy = false;
+        if (!resolvePresetPalettes(*project, material, wroteCopy, error)) {
+            call->fail(error);
+            return;
+        }
         material.name = rel;
         if (!materialWriteAllowed(call, file, rel)) return;
         if (!writeFilesUndoable(call->ctx(), {{file, materialFileContent(call->ctx().project(), file, material)}}, error)) {
@@ -2769,7 +2775,14 @@ void applyMaterialPresetTool(const CallPtr& call) {
                 unlinked.push_back(McpRefs::entityPath(sceneProject, entity) + " submesh " + std::to_string(s) + " (" + linked + ")");
             }
             // judged by the shader the submesh draws with (the mesh's or the scene's when it names none)
-            const Material to = applyMaterialPreset(*preset, from, meshShaderFor(sceneProject->scene, entity));
+            Material to = applyMaterialPreset(*preset, from, meshShaderFor(sceneProject->scene, entity));
+            // a Pixel FX preset's built-in ramp: the project's copy of its palette (written if missing)
+            bool wroteCopy = false;
+            if (!resolvePresetPalettes(*project, to, wroteCopy, error)) {
+                delete multi;
+                call->fail(error);
+                return;
+            }
             addMaterialChangeCommands(*multi, project, sceneProject->id, entity, s, from, to);
             applied.push_back({{"entity", McpRefs::entityJson(sceneProject, entity)}, {"submesh", s}, {"unlinked", !linked.empty()}});
         }

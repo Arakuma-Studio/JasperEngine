@@ -323,7 +323,12 @@ TextureInference TextureTypeInference::fromEdges(const Project& project, const s
                 if (texture.uniform != uniform)
                     continue;
                 cube = texture.cube;
-                return texture.defaultTexture == ShaderTextureDefault::NORMAL ? TextureSlot::Normal : TextureSlot::Color;
+                if (texture.defaultTexture == ShaderTextureDefault::NORMAL)
+                    return TextureSlot::Normal;
+                // a Pixel FX ramp strip (S48 R9): exact texels, as a sprite's (Nearest, no mips, never compressed)
+                if (texture.defaultTexture == ShaderTextureDefault::RAMP_GREY)
+                    return TextureSlot::Sprite;
+                return TextureSlot::Color;
             }
         }
         return TextureSlot::Color;

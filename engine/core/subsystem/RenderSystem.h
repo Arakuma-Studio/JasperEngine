@@ -921,6 +921,9 @@ namespace jasperengine{
 		static constexpr int DEFAULT_PARTICLE_SIZE = 64;
 		static uint32_t pixelsParticle[DEFAULT_PARTICLE_SIZE * DEFAULT_PARTICLE_SIZE];
 		static TextureRender defaultParticle;
+		// @texture default "ramp_grey" (S48 R9, a Pixel FX ramp left unset): 8 steps black to
+		// white, Nearest; made the first time a draw binds it
+		static TextureRender defaultRampGrey;
 		static TextureRender emptyCubeGray;
 		// zeros for the morph inputs a mesh's shader declares and the mesh has none of
 		// (bindUnfedMorphInputs): one vertex buffer per size asked for, shared by every
