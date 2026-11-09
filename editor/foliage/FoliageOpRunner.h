@@ -77,6 +77,10 @@ namespace jasperengine::editor {
         uint64_t storeRevision = 0;
 
         void commit();
+        void commitWorld(Outcome& outcome);
+        // the maps and trees a list reads: one Terrain's, or each tile's of a World (T4 R27)
+        void planTerrain(Work& work);
+        void planWorld(Work& work);
     };
 
 }

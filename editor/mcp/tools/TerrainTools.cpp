@@ -36,6 +36,7 @@
 #include "terrain/TerrainOverlay.h"
 #if JASPERENGINE_TERRAIN_WORLD
 #include "subsystem/TerrainWorldRuntime.h"
+#include "terrainworld/TerrainWorldTrees.h"
 #include "terrainworld/TerrainWorldOverlay.h"
 #endif
 #include "window/SceneWindow.h"
@@ -410,13 +411,22 @@ void editObjectsFromOps(const CallPtr& call, const TerrainCallTarget& target, st
     }
 
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
-    std::vector<std::vector<uint32_t>> treeIds(ops.size());
+    // a World's trees by their World ids (T4 R27), a Terrain's by record id
+    std::vector<std::vector<uint64_t>> treeIds(ops.size());
     std::vector<std::string> prototypes(ops.size());
     std::shared_ptr<terrain::TreeStore> store;
+    std::unique_ptr<TerrainWorldTreeEdit> worldTrees;
     std::vector<std::pair<Entity, Vector2>> placed;
     if (trees) {
         FoliageSystem* foliage = scene->getSystem<FoliageSystem>().get();
         store = foliage ? foliage->getTreeStore(entity) : nullptr;
+        if (terrain.world) {
+            worldTrees = std::make_unique<TerrainWorldTreeEdit>(project, sceneProject->id, entity);
+            if (!worldTrees->runtime()) {
+                call->fail(worldTrees->error());
+                return;
+            }
+        }
         for (size_t i = 0; i < ops.size(); i++) {
             int prototypeId = -1;
             if (!assets[i].empty()) {
@@ -429,6 +439,28 @@ void editObjectsFromOps(const CallPtr& call, const TerrainCallTarget& target, st
                                "\": add it with set_properties treePrototypes, or place GameObjects with instanced false.");
                     return;
                 }
+            }
+            if (worldTrees) {
+                // the tiles the op's region reaches, each tree where its tile puts it
+                terrain::LocalBounds bounds;
+                const std::vector<terrain::TileCoord> reached = terrain::ShapeEvaluator(ops[i].shape).bounds(bounds)
+                    ? worldTrees->tilesIn(bounds.min.x, bounds.min.y, bounds.max.x, bounds.max.y) : worldTrees->presentTiles();
+                for (const terrain::TileCoord& tile : reached) {
+                    std::string why;
+                    const terrain::TreeStore* tileTrees = worldTrees->trees(tile, &why);
+                    if (!tileTrees) {
+                        call->fail(why + "; nothing was changed.");
+                        return;
+                    }
+                    const Vector2 centre = worldTrees->centre(tile);
+                    for (const terrain::TreeRecord& record : tileTrees->records()) {
+                        if (prototypeId >= 0 && record.prototypeId != static_cast<uint16_t>(prototypeId)) continue;
+                        ops[i].existingObjects.push_back(Vector2(terrain::foliageTreeLocalX(record, worldTrees->tileSize()) + centre.x,
+                                                                 terrain::foliageTreeLocalZ(record, worldTrees->tileSize()) + centre.y));
+                        treeIds[i].push_back(terrainWorldTreeId(tile, record.id));
+                    }
+                }
+                continue;
             }
             if (!store) continue;
             for (const terrain::TreeRecord& record : store->records()) {
@@ -477,7 +509,7 @@ void editObjectsFromOps(const CallPtr& call, const TerrainCallTarget& target, st
                 op.registeredName = "place_trees";
                 op.params.fields = {{"prototype", prototype}, {"points", items}, {"align_to_normal", number(aligns[i])}};
             } else {
-                for (int index : result.ops[i].erasedObjects) items.items.push_back(number(treeIds[i][static_cast<size_t>(index)]));
+                for (int index : result.ops[i].erasedObjects) items.items.push_back(number(static_cast<double>(treeIds[i][static_cast<size_t>(index)])));
                 if (items.items.empty()) continue;
                 op.registeredName = "remove_trees";
                 op.params.fields = {{"ids", items}};

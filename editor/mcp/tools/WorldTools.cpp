@@ -602,7 +602,12 @@ void sculptTerrainTool(const CallPtr& call) {
         const std::string where = "strokes[" + std::to_string(s) + "]";
         std::string error;
         TerrainScriptedBrush brush;
-        if (!item.is_object() || !pickName(brushModes(), stringOr(item, "mode", "raise"), brush.mode, where + ".mode", error)) {
+        // T5's Paint Trees brush, its own two modes over the object brush's
+        const std::string modeName = item.is_object() ? stringOr(item, "mode", "raise") : std::string();
+        brush.trees = modeName == "paint_trees" || modeName == "erase_trees";
+        if (brush.trees) {
+            brush.mode = modeName == "paint_trees" ? TerrainBrushMode::PlaceObject : TerrainBrushMode::EraseObject;
+        } else if (!item.is_object() || !pickName(brushModes(), modeName, brush.mode, where + ".mode", error)) {
             step.fail(call, error.empty() ? where + " must be an object." : error);
             return;
         }
@@ -671,7 +676,7 @@ void sculptTerrainTool(const CallPtr& call) {
             step.fail(call, where + ": " + error);
             return;
         }
-        Json result = {{"mode", nameOf(brushModes(), brush.mode)}, {"points", points.size()}};
+        Json result = {{"mode", brush.trees ? modeName : nameOf(brushModes(), brush.mode)}, {"points", points.size()}};
         if (sizeClamped) {
             result["warnings"] = Json::array({{{"code", "size_clamped"},
                                                {"message", "size " + std::to_string(brush.size) + " is outside this terrain's " + std::to_string(minSize) +
@@ -6423,7 +6428,8 @@ void registerWorldTools(McpRegistry& registry) {
         "Terrain-window brush strokes (a mouse drag): the brush moves along each stroke's points, "
         "seconds_per_point at each. Heights are 0-1 of max_height; raise/lower move "
         "~strength*1.5*seconds_per_point per point (repeat points for big hills). ramp: first to last point; "
-        "stamp needs mask; place/erase_object: asset, one per point within size. Missing maps are created. "
+        "stamp needs mask; place/erase_object: asset, one per point within size. paint/erase_trees: tree prototypes "
+        "(asset picks one), a Terrain World across tiles. Missing maps are created. "
         "Returns heights after each stroke. Whole maps: set_terrain_maps.",
         object({
             {"scene", sceneRef()},
@@ -6433,7 +6439,8 @@ void registerWorldTools(McpRegistry& registry) {
             {"strokes", Json{{"type", "array"}, {"minItems", 1},
                 {"items", object({
                     {"mode", stringEnum("", {"raise", "lower", "smooth", "flatten", "sharpen", "noise", "terrace", "stamp", "erode", "ramp",
-                                             "paint_base", "paint_layer", "paint_density", "erase_density", "place_object", "erase_object"})},
+                                             "paint_base", "paint_layer", "paint_density", "erase_density", "place_object", "erase_object",
+                                             "paint_trees", "erase_trees"})},
                     {"points", array(array(numberItem, ""), "[x, z] or [x, y, z] points.")},
                     {"size", withDefault(number("Radius, world units.", 0.01, 100000), 4)},
                     {"strength", withDefault(number("", 0.01, 1), 0.5)},

@@ -10,6 +10,9 @@
 
 #include "component/MeshComponent.h"
 #include "component/TerrainWorldComponent.h"
+#ifdef JASPERENGINE_PHYSICS_3D
+#include "component/RigidbodyComponent.h"
+#endif
 #include "jobs/JobSystem.h"
 #include "subsystem/TerrainWorldRuntime.h"
 #include "subsystem/TerrainWorldSystem.h"
@@ -41,6 +44,7 @@ using jasperengine::TerrainWorldRuntime;
 using jasperengine::TerrainWorldSystem;
 using jasperengine::Transform;
 using jasperengine::Vector3;
+using jasperengine::terrain::TreeId;
 
 namespace {
 
@@ -371,6 +375,155 @@ TEST(TerrainWorldFoliage, TreeFilePerTile) {
         where.insert({static_cast<int>(std::lround(tree.position.x)), static_cast<int>(std::lround(tree.position.z))});
     }
     EXPECT_EQ(where, (std::set<std::pair<int, int>>{{22, 37}, {44, 12}, {32, 32}}));
+}
+
+TEST(TerrainWorldFoliage, RemovedHandlerCoversEveryTile) {
+    // trees in two tiles, neither of them tile (0, 0) (key 0), and the handler set before any tile is
+    // in memory: one handler for the World serves every tile, those that arrive later too
+    const std::map<uint32_t, std::vector<std::pair<int, int>>> trees = {{TileCoord(-1, -1).key(), {{-40, -30}}},
+                                                                        {TileCoord(0, -1).key(), {{20, -20}, {40, -50}}}};
+    GroveWorld world(-1, 0, false, false, trees);
+    ASSERT_TRUE(world.runtime);
+    world.scene->getComponent<TerrainComponent>(world.entity).treeDistance = 500.0f;
+    std::vector<TreeId> heard;
+    world.foliage->setTreeRemovedHandler(world.entity, [&](TreeId id, const FoliageInstanceInfo&) { heard.push_back(id); });
+    world.setCamera(0.0f, 0.0f);
+    world.runtime->addFocus(0.0f, 0.0f);
+    ASSERT_TRUE(world.settle([&] { return world.readyTiles(-1, 0).size() == 4 && world.trees().size() == 3; }));
+
+    std::set<TreeId> removed;
+    std::set<uint32_t> tiles;
+    for (const FoliageInstanceInfo& tree : world.trees()) {
+        ASSERT_TRUE(world.foliage->removeTreeInstance(world.entity, tree.id).has_value());
+        removed.insert(tree.id);
+        tiles.insert(jasperengine::terrain::treeIdRegion(tree.id));
+    }
+    EXPECT_EQ(tiles, (std::set<uint32_t>{TileCoord(-1, -1).key(), TileCoord(0, -1).key()}));
+    EXPECT_EQ(std::set<TreeId>(heard.begin(), heard.end()), removed);
+    EXPECT_EQ(heard.size(), 3u);
+}
+
+#ifdef JASPERENGINE_PHYSICS_3D
+TEST(TerrainWorldFoliage, TreeHitHandlerOnAnyTile) {
+    // a capsule tree in tile (-1, -1), struck by a ball: the World's handler hears it, and the capsule
+    // stands where the tree is drawn (the tile's frame moved to the World's)
+    const std::map<uint32_t, std::vector<std::pair<int, int>>> trees = {{TileCoord(-1, -1).key(), {{-32, -32}}}};
+    GroveWorld world(-1, 0, false, false, trees);
+    ASSERT_TRUE(world.runtime);
+    TerrainComponent& terrain = world.scene->getComponent<TerrainComponent>(world.entity);
+    terrain.treeDistance = 500.0f;
+    terrain.treePrototypes[0].collision = jasperengine::TerrainTreeCollision::Capsule;
+    terrain.treePrototypes[0].collisionRadius = 1.0f;
+    terrain.treePrototypes[0].collisionHeight = 6.0f;
+    int hits = 0;
+    jasperengine::TreeHitEvent seen;
+    world.foliage->setTreeHitHandler(world.entity, [&](const jasperengine::TreeHitEvent& hit) {
+        hits++;
+        seen = hit;
+    });
+    world.setCamera(0.0f, 0.0f);
+    world.runtime->addFocus(0.0f, 0.0f);
+    ASSERT_TRUE(world.settle([&] { return world.readyTiles(-1, 0).size() == 4 && world.trees().size() == 1; }));
+    for (int i = 0; i < 4; i++) world.frame();
+
+    const float ground = world.runtime->query(-32.0f, -32.0f, false).height;
+    const Entity ball = world.scene->createEntity();
+    Transform transform;
+    transform.position = Vector3(-36.0f, ground + 3.0f, -32.0f);
+    transform.worldPosition = transform.position;
+    world.scene->addComponent<Transform>(ball, transform);
+    jasperengine::RigidbodyComponent body;
+    body.type = jasperengine::BodyType::DYNAMIC;
+    body.gravityFactor = 0.0f;
+    jasperengine::Collider3D collider;
+    collider.type = jasperengine::Collider3DType::SPHERE;
+    collider.radius = 0.5f;
+    body.colliders.push_back(collider);
+    body.hasPendingVelocity = true;
+    body.pendingLinearVelocity = Vector3(3.0f, 0.0f, 0.0f);
+    body.pendingAwake = true;
+    world.scene->addComponent<jasperengine::RigidbodyComponent>(ball, body);
+    for (int i = 0; i < 120; i++) world.scene->fixedUpdate(1.0f / 60.0f);
+
+    EXPECT_EQ(hits, 1);
+    EXPECT_EQ(jasperengine::terrain::treeIdRegion(seen.id), TileCoord(-1, -1).key());
+    EXPECT_EQ(seen.body, ball);
+    EXPECT_LT(world.scene->getComponent<Transform>(ball).worldPosition.x, -32.0f) << "the capsule stops it at the drawn tree";
+}
+#endif
+
+TEST(TerrainWorldFoliage, RuntimeStateCoversEveryTile) {
+    // 6 x 6 tiles; trees in (-3, -3) and (-2, -3). The state string lists every tile with an overlay in
+    // key order, survives a tile leaving memory and coming back, and sets back what it read
+    const std::map<uint32_t, std::vector<std::pair<int, int>>> trees = {{TileCoord(-3, -3).key(), {{-170, -170}, {-150, -180}}},
+                                                                        {TileCoord(-2, -3).key(), {{-100, -170}}}};
+    GroveWorld world(-3, 2, false, false, trees);
+    ASSERT_TRUE(world.runtime);
+    world.scene->getComponent<TerrainComponent>(world.entity).treeDistance = 2000.0f;
+    world.setCamera(-160.0f, -160.0f);
+    const int focus = world.runtime->addFocus(-160.0f, -160.0f);
+    ASSERT_TRUE(world.settle([&] { return world.foliage->getRegionCount(world.entity) > 0 && world.trees().size() == 3; }));
+
+    for (const FoliageInstanceInfo& tree : world.trees()) {
+        if (std::lround(tree.position.x) != -150) ASSERT_TRUE(world.foliage->removeTreeInstance(world.entity, tree.id).has_value());
+    }
+    ASSERT_NE(world.foliage->addTreeInstance(world.entity, 0, Vector3(-130.0f, 0.0f, -130.0f), 30.0f, 1.5f), 0u);
+    const std::string state = world.foliage->getRuntimeState(world.entity);
+    ASSERT_EQ(state.rfind("JEFW1|", 0), 0u) << state;
+    // (-3, -3), (-2, -3) and (-3, -2), in key order
+    std::vector<uint32_t> keys;
+    for (size_t at = state.find('|'); at != std::string::npos; at = state.find('|', at + 1)) keys.push_back(static_cast<uint32_t>(std::stoul(state.substr(at + 1))));
+    EXPECT_EQ(keys, (std::vector<uint32_t>{TileCoord(-3, -3).key(), TileCoord(-3, -2).key(), TileCoord(-2, -3).key()}));
+    EXPECT_FALSE(world.foliage->setRuntimeState(world.entity, "JEFS1;;;")) << "a lone Terrain's string on a World";
+
+    // the focus leaves: the tiles go, their overlays wait, the string stays the same
+    world.runtime->tiles().budgets().cpuCapBytes = 1;
+    world.setCamera(96.0f, 96.0f);
+    ASSERT_TRUE(world.runtime->setFocus(focus, 96.0f, 96.0f));
+    ASSERT_TRUE(world.settle([&] { return !world.foliage->hasRegion(world.entity, TileCoord(-3, -3).key()); }));
+    EXPECT_EQ(world.foliage->getRuntimeState(world.entity), state);
+
+    // and back: the removed trees stay removed, the added one is there
+    world.setCamera(-160.0f, -160.0f);
+    ASSERT_TRUE(world.runtime->setFocus(focus, -160.0f, -160.0f));
+    ASSERT_TRUE(world.settle([&] { return world.foliage->hasRegion(world.entity, TileCoord(-3, -3).key()) && world.trees().size() == 2; }));
+    EXPECT_EQ(world.foliage->getRuntimeState(world.entity), state);
+
+    // cleared, then set back from the string
+    world.foliage->clearRuntimeState(world.entity);
+    ASSERT_TRUE(world.settle([&] { return world.trees().size() == 3; }));
+    EXPECT_EQ(world.foliage->getRuntimeState(world.entity), "JEFW1");
+    ASSERT_TRUE(world.foliage->setRuntimeState(world.entity, state));
+    ASSERT_TRUE(world.settle([&] { return world.trees().size() == 2; }));
+    EXPECT_EQ(world.foliage->getRuntimeState(world.entity), state);
+    EXPECT_FALSE(world.foliage->setRuntimeState(world.entity, "JEFW1|x;;;")) << "a bad tile key";
+    EXPECT_EQ(world.foliage->getRuntimeState(world.entity), state) << "a refused string changes nothing";
+}
+
+TEST(TerrainWorldFoliage, TreeStoreUnderAPosition) {
+    const std::map<uint32_t, std::vector<std::pair<int, int>>> trees = {{TileCoord(0, 0).key(), {{22, 37}, {44, 12}, {32, 32}}},
+                                                                        {TileCoord(-1, -1).key(), {{-30, -30}}}};
+    GroveWorld world(-1, 0, false, false, trees);
+    ASSERT_TRUE(world.runtime);
+    world.scene->getComponent<TerrainComponent>(world.entity).treeDistance = 500.0f;
+    world.setCamera(0.0f, 0.0f);
+    world.runtime->addFocus(0.0f, 0.0f);
+    ASSERT_TRUE(world.settle([&] { return world.readyTiles(-1, 0).size() == 4 && world.trees().size() == 4; }));
+
+    const auto ownTile = world.foliage->getTreeStore(world.entity, Vector3(30.0f, 0.0f, 30.0f));
+    ASSERT_NE(ownTile, nullptr);
+    EXPECT_EQ(ownTile->size(), 3u);
+    EXPECT_EQ(ownTile, world.foliage->getRegionTreeStore(world.entity, TileCoord(0, 0).key()));
+    const auto other = world.foliage->getTreeStore(world.entity, Vector3(-0.5f, 0.0f, -63.5f));
+    ASSERT_NE(other, nullptr);
+    EXPECT_EQ(other->size(), 1u);
+    // a border point is the higher tile's
+    EXPECT_EQ(world.foliage->getTreeStore(world.entity, Vector3(0.0f, 0.0f, 0.0f)), ownTile);
+    EXPECT_EQ(world.foliage->getTreeStore(world.entity, Vector3(-30.0f, 0.0f, 30.0f)), nullptr) << "a tile with no tree file";
+    EXPECT_EQ(world.foliage->getTreeStore(world.entity, Vector3(500.0f, 0.0f, 500.0f)), nullptr) << "no tile there";
+    // without a position a World names no store: tile (0, 0)'s key is the lone Terrain's
+    EXPECT_EQ(world.foliage->getTreeStore(world.entity), nullptr);
+    EXPECT_EQ(world.foliage->getOrCreateTreeStore(world.entity), nullptr);
 }
 
 TEST(TerrainWorldData, WorldBinCarriesTreeTiles) {

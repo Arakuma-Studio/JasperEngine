@@ -219,6 +219,23 @@ bool jasperengine::editor::writeTileBytes(const fs::path& folder, TileCoord tile
     return writeAtomic(folder / terrainWorldTileName(tile), bytes, io::Durability::Document, error);
 }
 
+bool jasperengine::editor::writeTreeBytes(const fs::path& folder, TileCoord tile, const std::string& bytes, std::string& error) {
+    return writeAtomic(folder / terrainWorldTreeName(tile), bytes, io::Durability::Document, error);
+}
+
+bool jasperengine::editor::removeTreeFile(const fs::path& folder, TileCoord tile, std::string& error) {
+    const fs::path path = folder / terrainWorldTreeName(tile);
+    ScopedExpectedWrite expected(path);
+    std::error_code ec;
+    fs::remove(path, ec);
+    if (ec) {
+        error = "could not remove " + path.string() + ": " + ec.message();
+        return false;
+    }
+    expected.reportedRemoved(path);
+    return true;
+}
+
 bool jasperengine::editor::removeTileFile(const fs::path& folder, TileCoord tile, std::string& error) {
     const fs::path path = folder / terrainWorldTileName(tile);
     ScopedExpectedWrite expected(path);

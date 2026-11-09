@@ -208,16 +208,30 @@ namespace jasperengine {
         // re-snap debounce, as an edit's are (T4 R27: a tile written by an edit)
         void regionChanged(Entity owner, uint32_t regionKey);
         size_t getRegionCount(Entity owner) const;
+        bool hasRegion(Entity owner, uint32_t regionKey) const;
         // The tree stores of a Terrain's regions that have one (a world's resident tiles, T4 R27)
         void forEachTreeStore(Entity owner, const std::function<void(const terrain::TreeStore& store)>& visit) const;
 
         // ---- trees
 
-        // Null while loading, or when the file was refused
+        // A lone Terrain's store. Null while loading, when the file was refused, and on a Terrain World,
+        // whose trees are a store per tile (T4 R27): the position form finds the tile's. The store-keeping
+        // calls below without a region key are a lone Terrain's too.
         std::shared_ptr<terrain::TreeStore> getTreeStore(Entity terrainEntity);
         std::shared_ptr<const terrain::TreeStore> getTreeStore(Entity terrainEntity) const;
+        // The store under a world position: a World's tile there (null over an absent tile, one not
+        // resident, or one whose file is still loading), a lone Terrain's own wherever the point is
+        std::shared_ptr<terrain::TreeStore> getTreeStore(Entity terrainEntity, const Vector3& worldPosition);
+        std::shared_ptr<const terrain::TreeStore> getTreeStore(Entity terrainEntity, const Vector3& worldPosition) const;
         // A store the Terrain did not have: a new one for painting, kept until the caller saves it
         std::shared_ptr<terrain::TreeStore> getOrCreateTreeStore(Entity terrainEntity);
+        // T4 R27: one region by its key (a World's tile, TileCoord::key), for the editor's tile edits. The
+        // region's store as it is (null while loading or when it has none), a writable one (copied
+        // first when the region still shares the one it loaded), and the two notices below.
+        std::shared_ptr<terrain::TreeStore> getRegionTreeStore(Entity owner, uint32_t regionKey) const;
+        std::shared_ptr<terrain::TreeStore> getOrCreateTreeStore(Entity owner, uint32_t regionKey);
+        void treesChanged(Entity owner, uint32_t regionKey, const terrain::TreeDelta& delta);
+        void treeStoreReplaced(Entity owner, uint32_t regionKey, std::shared_ptr<terrain::TreeStore> store);
         // R22: a bad file: the message, and whether a save would lose what is in it
         bool isTreeStoreRefused(Entity terrainEntity, std::string* error = nullptr) const;
         void allowOverwriteRefusedStore(Entity terrainEntity);
@@ -243,14 +257,19 @@ namespace jasperengine {
         terrain::TreeId addTreeInstance(Entity terrainEntity, int prototype, const Vector3& position, float yawDegrees, float scale);
         void clearDetailsInRadius(Entity terrainEntity, const Vector3& position, float radius, int layer = -1);
         void restoreDetails(Entity terrainEntity);
+        // A lone Terrain's is "JEFS1;removed;added;discs". A Terrain World's covers every tile, in key
+        // order: "JEFW1" then "|key;removed;added;discs" for each tile with something in its overlay,
+        // tile-local. A tile keeps its overlay while it is out of memory and gets it back when it
+        // returns (T4 R27), so the string holds those tiles too, and setting it reaches them.
         std::string getRuntimeState(Entity terrainEntity) const;
         bool setRuntimeState(Entity terrainEntity, const std::string& state);
-        // Drops the overlay (a reloaded scene starts clean)
+        // Drops the overlay (a reloaded scene starts clean), a World's on every tile
         void clearRuntimeState(Entity terrainEntity);
 
         Signal<Entity, terrain::TreeId, const FoliageInstanceInfo&> onTreeRemoved;
         Signal<Entity, const TreeHitEvent&> onTreeHit;
-        // One handler per Terrain, Lua's terrain.onTreeHit and onTreeRemoved; held until the scene goes
+        // One handler per Terrain, Lua's terrain.onTreeHit and onTreeRemoved; held until the scene goes.
+        // A World's handler is the one for all its tiles, those that come into memory later included.
         void setTreeHitHandler(Entity terrainEntity, std::function<void(const TreeHitEvent&)> handler);
         void setTreeRemovedHandler(Entity terrainEntity, std::function<void(terrain::TreeId, const FoliageInstanceInfo&)> handler);
 
@@ -274,13 +293,16 @@ namespace jasperengine {
 
         // Every visible tree of the prototypes that have navObstacle: world position and radius, height
         void forEachNavObstacle(Entity terrainEntity, const std::function<void(const Vector3& base, float radius, float height)>& visit) const;
-        // The resident tree cells: what collision builds from
+        // The resident tree cells: what collision builds from. A World's are every resident tile's, tile
+        // by tile in key order, its instances and cells in the World's own space as a lone Terrain's
+        // are in its; ids are record ids within the cell's tile.
         void forEachResidentCell(Entity terrainEntity, const std::function<void(int cellX, int cellZ, std::span<const terrain::FoliageInstance> instances, std::span<const uint32_t> ids)>& visit) const;
 
         // ---- stats
 
         const FoliageStats& getStats(Entity terrainEntity) const;
-        // R2's canonical hash over the resident cells (layer, cell Z, cell X, attempt)
+        // R2's canonical hash over the resident cells (layer, cell Z, cell X, attempt); a World's chains
+        // its resident tiles' in key order
         uint64_t getPlacementHash(Entity terrainEntity) const;
         // What any view's lists depend on, beyond the camera: a cached shadow reads it, too (R17)
         uint32_t getRevision() const { return residencyRevision; }
