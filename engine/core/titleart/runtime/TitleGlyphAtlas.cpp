@@ -788,6 +788,18 @@ namespace {
             if (!failure.empty() || finished) return finished;
             StepReport local;
             const auto start = std::chrono::steady_clock::now();
+            // a compose or a page copy that S86's one-new-draw-a-frame rule skipped would leave a
+            // hole in the image or a blank cell in the atlas, and neither runs again: every draw
+            // state of this job is asked for at once, before the first of them
+            if (!firstDrawsGranted){
+                if (!TitleFirstDraws::allowGroup(firstDrawKeys())){
+                    blocked = true;
+                    if (report) *report = local;
+                    return false;
+                }
+                firstDrawsGranted = true;
+                blocked = false;
+            }
             if (!prepared){
                 // the prebaked pages and plates, then the state's layout
                 std::string error;
@@ -917,6 +929,8 @@ namespace {
             double move[6] = {1, 0, 0, 0, 1, 0};
         };
         std::vector<Placed> placed;     // the string's glyphs in order
+
+        bool firstDrawsGranted = false;
 
         // the running sub-render
         SubKind subKind = SubKind::None;
@@ -1230,6 +1244,22 @@ namespace {
             }
             sub.reset();
             subKind = SubKind::None;
+        }
+
+        // every state a page copy, a plate copy, the compose and the output pass draw in
+        std::vector<uint64_t> firstDrawKeys() const{
+            TargetKey rgba;
+            rgba.format = ColorFormat::RGBA;
+            TargetKey acc;
+            acc.format = caps.format(TitleBuffer::Accumulator).format;
+            auto key = [](TitleRenderProgram p, const TargetKey& t, BlendMode b){ return TitleGpu::firstDrawKey((uint32_t)p, t, b); };
+            return {key(TitleRenderProgram::Copy, rgba, BlendMode::NONE),
+                    key(TitleRenderProgram::Copy, acc, BlendMode::PREMULTIPLIED),
+                    key(TitleRenderProgram::Copy, acc, BlendMode::NONE),
+                    key(TitleRenderProgram::GlyphCompose, acc, BlendMode::PREMULTIPLIED),
+                    key(TitleRenderProgram::GlyphComposeAnim, acc, BlendMode::PREMULTIPLIED),
+                    key(TitleRenderProgram::Blend, acc, BlendMode::NONE),
+                    key(TitleRenderProgram::Output, rgba, BlendMode::NONE)};
         }
 
         bool ensure(TitleRenderProgram program){

@@ -304,6 +304,16 @@ TEST(TitleAnimPresetsTest, NoDeniedTermsInBuiltinIds){
 }
 
 TEST(TitleFlipbookTest, FrameTimes){
+    {
+        // a float duration just over a whole number of frames adds no frame (0.2f x 10 = 2.00000003)
+        ta::TitleAnimation a;
+        a.name = "Tenth";
+        a.duration = 0.2f;
+        a.flipbook.fps = 10.0f;
+        ta::CompiledTitleAnimation c;
+        ta::compileTitleOnly(a, c, nullptr);
+        EXPECT_EQ(titleFlipbookFrameTimes(c).size(), 3u);
+    }
     ta::CompiledTitleAnimation a;
     a.duration = 0.5;
     a.flipbookSettings.fps = 10;

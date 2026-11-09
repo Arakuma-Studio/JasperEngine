@@ -21,6 +21,7 @@
 #include "texture/Texture.h"
 #include "texture/TextureData.h"
 #include "titleart/TitleArtChecks.h"
+#include "titleart/TitleArtRenderHost.h"
 #include "titleart/TitleArtDocument.h"
 #include "titleart/anim/TitleAnimIO.h"
 #include "titleart/anim/TitleAnimPlan.h"
@@ -81,6 +82,7 @@ namespace {
         std::vector<std::string> trackLabels;
         std::unique_ptr<TitleAnimRenderer> renderer;
 
+        double renderUs = -1.0;     // the document's static render estimate (-1: not planned yet)
         std::string animation;
         double time = 0.0, duration = 1.0, viewStart = 0.0, secondsPerPixel = 0.01;
         bool playing = false, previewing = false, loopPreview = true, frames = false, curves = false, record = false, onion = false,
@@ -157,6 +159,7 @@ namespace {
             p.change = state.changeCount();
             p.set = tt::readAnimationSet(state.shown());
             p.renderer.reset();
+            p.renderUs = -1.0;
             p.poses.clear();
             if (findTitleAnimation(p.set, p.animation) < 0){
                 p.animation = p.set.defaultName.empty() ? (p.set.animations.empty() ? std::string() : p.set.animations.front().name) : p.set.defaultName;
@@ -383,7 +386,7 @@ namespace {
 
     void addKeyAt(Panel& p, TitleDesignerState& state, const ta::TitleTrack& t){
         tt::Json op = opBase("set_key", p.animation);
-        op["layer"] = t.layer;
+        op["layer"] = titleLayerRef(t.layer);
         op["field"] = t.field;
         op["time"] = p.time;
         tt::Json ops = tt::Json::array();
@@ -417,7 +420,7 @@ namespace {
         const ta::TitleTrack& t = a.tracks[(size_t)track];
         auto trackOp = [&](const char* name){
             tt::Json op = opBase(name, a.name);
-            op["layer"] = t.layer;
+            op["layer"] = titleLayerRef(t.layer);
             op["field"] = t.field;
             return op;
         };
@@ -548,7 +551,7 @@ namespace {
                     keys.push_back(key);
                 }
                 tt::Json op = opBase("set_track", a.name);
-                op["layer"] = t.layer;
+                op["layer"] = titleLayerRef(t.layer);
                 op["field"] = t.field;
                 tt::Json array = tt::Json::array();
                 for (const ta::TitleKey& k : keys) array.push_back(ta::encodeKey(k));
@@ -648,7 +651,7 @@ namespace {
             ImGui::PushID(track);
             if (ImGui::SmallButton(t.mute ? ICON_FA_VOLUME_XMARK : ICON_FA_VOLUME_HIGH)){
                 tt::Json op = opBase("set_track", a.name);
-                op["layer"] = t.layer;
+                op["layer"] = titleLayerRef(t.layer);
                 op["field"] = t.field;
                 op["mute"] = !t.mute;
                 commit(p, state, tt::Json::array({op}), "Mute Track");
@@ -717,7 +720,7 @@ namespace {
             const int track = (int)((mouse.y - rowsOrigin.y) / rowH);
             if (track >= 0 && track < (int)a.tracks.size()){
                 tt::Json op = opBase("set_key", a.name);
-                op["layer"] = a.tracks[(size_t)track].layer;
+                op["layer"] = titleLayerRef(a.tracks[(size_t)track].layer);
                 op["field"] = a.tracks[(size_t)track].field;
                 op["time"] = snapTitleKeyTime(std::max(0.0, timeAt(p, mouse.x, timelineX)), fps);
                 commit(p, state, tt::Json::array({op}), "Add Key");
@@ -954,6 +957,12 @@ namespace {
         }
     }
 
+    // the next item beside the last, or on a new row when `width` does not fit (a narrow window)
+    void flow(float width){
+        ImGui::SameLine();
+        if (ImGui::GetContentRegionAvail().x < width) ImGui::NewLine();
+    }
+
     void drawToolbar(Panel& p, TitleDesignerState& state, const ta::TitleAnimation* a){
         drawAnimationSelector(p, state, a);
         ImGui::SameLine();
@@ -1003,7 +1012,7 @@ namespace {
         ImGui::Checkbox("Onion", &p.onion);
         ImGui::SameLine();
         ImGui::Checkbox("Curves", &p.curves);
-        ImGui::SameLine();
+        flow(150.0f);
         ImGui::SetNextItemWidth(110.0f);
         static const char* const modes[] = {"Exact", "Baked", "Realtime", "Glyph Atlas"};
         static const char* const ids[] = {"exact", "baked", "realtime", "glyph_atlas"};
@@ -1018,11 +1027,15 @@ namespace {
             TitleAnimRenderer* renderer = rendererOf(p, state);
             const tt::AnimationPlan* plan = renderer->plan(mode).find(p.animation);
             const ta::CompiledTitleAnimation* compiled = renderer->library().find(p.animation);
-            ImGui::SameLine();
             if (plan && compiled){
                 TitleAnimCostInputs inputs;
-                inputs.renderUs = 0.0;
+                // what one re-render costs, planned once per document change
+                if (mode == TitleArtRenderMode::REALTIME && plan->rerender){
+                    if (p.renderUs < 0.0) p.renderUs = titleRenderEstimateUs(TitleArtRenderHost::editor().resolver(state.project()), state.shown(), 1.0f, tt::TitleRectI());
+                    inputs.renderUs = p.renderUs;
+                }
                 const std::string summary = estimateAnimCost(state.shown(), *compiled, *plan, inputs).summary();
+                flow(ImGui::CalcTextSize(summary.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f);
                 const ImVec4 color = plan->tracks.empty() ? ImVec4(0.45f, 0.75f, 0.45f, 1.0f) : ImVec4(0.8f, 0.7f, 0.3f, 1.0f);
                 ImGui::PushStyleColor(ImGuiCol_Text, color);
                 if (ImGui::SmallButton(summary.c_str())) p.status = "Run check_title with checks=[\"anim\"] for details";
@@ -1076,15 +1089,15 @@ namespace {
         float speed = a.speed;
         ImGui::SetNextItemWidth(50.0f);
         if (ImGui::InputFloat("Speed", &speed, 0.0f, 0.0f, "%.2f") && ImGui::IsItemDeactivatedAfterEdit()) setValue("speed", speed, "Speed");
-        ImGui::SameLine();
+        flow(120.0f);
         ImGui::SetNextItemWidth(50.0f);
         float flipFps = a.flipbook.fps;
         if (ImGui::InputFloat("Flip FPS", &flipFps, 0.0f, 0.0f, "%.0f") && ImGui::IsItemDeactivatedAfterEdit()) setValue("flipbook.fps", flipFps, "Flipbook FPS");
-        ImGui::SameLine();
+        flow(130.0f);
         ImGui::SetNextItemWidth(50.0f);
         float flipScale = a.flipbook.scale;
         if (ImGui::InputFloat("Flip Scale", &flipScale, 0.0f, 0.0f, "%.2f") && ImGui::IsItemDeactivatedAfterEdit()) setValue("flipbook.scale", flipScale, "Flipbook Scale");
-        ImGui::SameLine();
+        flow(110.0f);
         bool prerender = a.rerender == ta::RerenderPolicy::Prerender;
         if (ImGui::Checkbox("Prerender", &prerender)) setValue("rerender", prerender ? "prerender" : "live", "Realtime Policy");
     }
@@ -1174,6 +1187,30 @@ void jasperengine::editor::titledesigner::registerTitleAnimationPanel(){
     });
 }
 
+bool jasperengine::editor::titledesigner::previewTitleAnimation(const std::string& name, double time, std::string* error){
+    Panel& p = panel();
+    if (time < 0.0){
+        stopPreview(p);
+        return true;
+    }
+    if (!p.state || !p.state->isOpen()){
+        if (error) *error = "the Animation panel has not drawn yet: open the document and open the panel first";
+        return false;
+    }
+    refresh(p, *p.state);
+    if (findTitleAnimation(p.set, name) < 0){
+        std::string names;
+        for (const ta::TitleAnimation& a : p.set.animations) names += (names.empty() ? "" : ", ") + a.name;
+        if (error) *error = "no animation '" + name + "' (it has: " + names + ")";
+        return false;
+    }
+    p.animation = name;
+    p.time = time;
+    p.playing = false;
+    p.previewing = true;
+    return true;
+}
+
 bool jasperengine::editor::titledesigner::titleAnimationPanelFocused(){
     return panel().focused;
 }
@@ -1224,7 +1261,7 @@ bool jasperengine::editor::titledesigner::runTitleAnimationCommand(const std::st
         tt::Json ops = tt::Json::array();
         for (int track : tracks){
             tt::Json op = opBase("set_key", a->name);
-            op["layer"] = a->tracks[(size_t)track].layer;
+            op["layer"] = titleLayerRef(a->tracks[(size_t)track].layer);
             op["field"] = a->tracks[(size_t)track].field;
             op["time"] = p.time;
             ops.push_back(op);

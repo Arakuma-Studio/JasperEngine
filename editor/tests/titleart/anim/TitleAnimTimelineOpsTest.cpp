@@ -60,6 +60,9 @@ TEST(TitleAnimTimelineOpsTest, SnapAndMove){
     const Json ops = titleMoveKeysOps(a, {{0, 1}}, 0.42, 30);
     ASSERT_EQ(ops.size(), 1u);
     EXPECT_EQ(ops[0]["field"], "opacity");
+    // ops name a layer as edit_title resolves it: a bare id is "no layer"
+    const ta::TitleAnimation onLayer = animationWith({track("opacity", {{0.0f, 0.0f}, {1.0f, 1.0f}}, "00000001")});
+    EXPECT_EQ(titleMoveKeysOps(onLayer, {{0, 1}}, 0.5, 30)[0]["layer"], "id:00000001");
     EXPECT_NEAR(keyTime(ops[0], 1), 43.0 / 30.0, 1e-4) << "1.42 s is frame 42.6: the nearest frame";
     // a move onto another key's time replaces it (Unity's rule); the moved value wins
     const Json merged = titleMoveKeysOps(a, {{0, 0}}, 1.0, 30);
@@ -130,13 +133,14 @@ TEST(TitleAnimTimelineOpsTest, RecordKeysAtThePlayheadFromRest){
     ta::TitleAnimation a;
     a.name = "A";
 
-    const Json ops = Json::array({Json{{"op", "set"}, {"layer", "00000001"}, {"values", {{"opacity", 0.25}, {"name", "Back"}}}}});
+    const Json ops = Json::array({Json{{"op", "set"}, {"layer", "id:00000001"}, {"values", {{"opacity", 0.25}, {"name", "Back"}}}}});
     const TitleRecordResult r = titleRecordRewrite(doc, a, 0.5, ops);
     // 3 ops: the key at 0 with the rest value, the key at the playhead, and the unkeyed rest
     ASSERT_EQ(r.ops.size(), 3u) << r.ops.dump();
     EXPECT_EQ(r.ops[0]["op"], "set_key");
     EXPECT_DOUBLE_EQ(r.ops[0]["time"].get<double>(), 0.0);
     EXPECT_DOUBLE_EQ(r.ops[0]["value"].get<double>(), 0.5);
+    EXPECT_EQ(r.ops[0]["layer"], "id:00000001");
     EXPECT_EQ(r.ops[1]["op"], "set_key");
     EXPECT_DOUBLE_EQ(r.ops[1]["time"].get<double>(), 0.5);
     EXPECT_DOUBLE_EQ(r.ops[1]["value"].get<double>(), 0.25);
@@ -145,8 +149,18 @@ TEST(TitleAnimTimelineOpsTest, RecordKeysAtThePlayheadFromRest){
     ASSERT_EQ(r.notKeyed.size(), 1u);
     EXPECT_NE(r.stepName.find("Record Key"), std::string::npos);
 
+    // the rewritten batch is what edit_title accepts (the keys, then the rest of the edit)
+    Json add = Json::array({Json{{"op", "add_animation"}, {"name", "A"}, {"duration", 1}}});
+    const TitleOpsResult added = TitleArtOps::apply(doc, add);
+    ASSERT_TRUE(added.ok) << added.error();
+    const TitleOpsResult keyed = TitleArtOps::apply(added.doc, r.ops);
+    ASSERT_TRUE(keyed.ok) << keyed.error();
+    const ta::TitleAnimationSet stored = tt::readAnimationSet(keyed.doc);
+    ASSERT_EQ(stored.find("A")->tracks.size(), 1u);
+    EXPECT_EQ(stored.find("A")->tracks[0].keys.size(), 2u);
+
     // with a track already, no zero key
     ta::TitleAnimation b = animationWith({track("opacity", {{0.0f, 1.0f}}, "00000001")});
-    const TitleRecordResult second = titleRecordRewrite(doc, b, 0.5, Json::array({Json{{"op", "set"}, {"layer", "00000001"}, {"values", {{"opacity", 0.25}}}}}));
+    const TitleRecordResult second = titleRecordRewrite(doc, b, 0.5, Json::array({Json{{"op", "set"}, {"layer", "id:00000001"}, {"values", {{"opacity", 0.25}}}}}));
     EXPECT_EQ(second.ops.size(), 1u);
 }

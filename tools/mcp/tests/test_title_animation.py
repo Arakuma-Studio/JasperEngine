@@ -81,13 +81,13 @@ async def test_ops_undo_dry_run_and_all_or_nothing(ed: Editor):
     # not_animatable lists the layer's animatable fields
     r = await ed.call_raw("edit_title", {"path": path, "bake": "never", "ops": [
         {"op": "set_key", "animation": "Intro", "layer": "Title", "field": "name", "time": 0, "value": "x"}]})
-    ed.check(r.is_error and "not_animatable" in r.text, r.text[:400])
+    ed.check(r.is_error and "is not animatable" in r.text and "opacity" in r.text, r.text[:400])
 
     # one undo step per batch
-    await ed.call("undo")
+    await ed.call("undo", scope="project")
     got = await ed.call("get_title", path=path)
     ed.check(got["animations"][0]["tracks"] == 1, "undo took the effect's step")
-    await ed.call("undo")
+    await ed.call("undo", scope="project")
     got = await ed.call("get_title", path=path)
     ed.check("animations" not in got, str(got.get("animations")))
 
@@ -169,7 +169,9 @@ async def test_checks_seeded_failures_beside_their_fixes(ed: Editor):
     await ed.call("edit_title", path=path, bake="never", ops=vis["fix"]["ops"])
     ed.check((await run("Visible", "anim_end_state"))["status"] == "PASS", "ends hidden")
 
-    # a 10 Hz strobe FAILs; retimed to about 2 Hz it PASSes
+    # a 10 Hz strobe FAILs; retimed to about 2 Hz it PASSes (flash adds light, so the ink is dark:
+    # on white ink it could not change the luminance at all)
+    await ed.call("edit_title", path=path, bake="never", ops=[{"op": "set", "layer": "Title", "values": {"face.fill.color": "#303030"}}])
     strobe = await run("Strobe", "anim_flash")
     ed.check(strobe["status"] == "FAIL", str(strobe))
     ed.check("not a certification" in strobe["message"], strobe["message"])

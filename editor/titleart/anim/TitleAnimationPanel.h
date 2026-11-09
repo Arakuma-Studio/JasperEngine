@@ -23,6 +23,9 @@ namespace jasperengine::editor::titledesigner {
 
     // the catalog's titleAnimation.* commands (§6.10); false when nothing happened
     bool runTitleAnimationCommand(const std::string& command);
+    // shows `name` at `time` on the canvas, as a scrub does (time < 0 stops the preview); false with
+    // `error` before the panel has drawn, or for an unknown name
+    bool previewTitleAnimation(const std::string& name, double time, std::string* error);
     // the panel has the keyboard focus (AppCommands' ShortcutContext::TitleAnimation)
     bool titleAnimationPanelFocused();
 

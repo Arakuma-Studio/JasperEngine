@@ -45,6 +45,9 @@ namespace jasperengine::editor {
                                     const std::string& field, double time);
     // a key from an op's value: numbers checked against the field's width, colours as "#rrggbb"
     bool titleKeyFromValue(const TitleJson& value, int width, bool stepped, bool color, titleanim::TitleKey& out, std::string& error);
+    // how an op names layer `id` ("id:<id>"; "" stays the title), and back
+    std::string titleLayerRef(const std::string& id);
+    std::string titleLayerIdOf(const std::string& ref);
     // "Intro" -> "Intro 2" when taken
     std::string uniqueTitleAnimationName(const titleanim::TitleAnimationSet& set, const std::string& name);
 

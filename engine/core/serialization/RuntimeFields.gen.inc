@@ -2474,6 +2474,11 @@ const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
     JE_RF(TitleArtRendererComponent, glintRate, 0x6466fd06u, Float),
     JE_RF(TitleArtRendererComponent, glintSeed, 0x871c3b41u, UInt),
     JE_RF(TitleArtRendererComponent, glintColor, 0xbeee64bbu, Vector4),
+    JE_RF(TitleArtRendererComponent, playAutomatically, 0xac579117u, Bool),
+    JE_RF(TitleArtRendererComponent, defaultAnimation, 0x0fdb5e95u, String),
+    JE_RF(TitleArtRendererComponent, animationSpeed, 0x7c0a3fa1u, Float),
+    JE_RF(TitleArtRendererComponent, animationUnscaledTime, 0x134a2c36u, Bool),
+    JE_RF(TitleArtRendererComponent, driveAnimation, 0xb93fb9c6u, String),
 };
 const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
 

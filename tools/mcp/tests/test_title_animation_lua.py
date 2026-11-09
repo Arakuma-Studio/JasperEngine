@@ -21,10 +21,10 @@ async def setup(ed: Editor) -> dict:
     await ed.call("tool_groups", enable=["title_art"])
     await ed.call("set_project_settings", values={"title_art.auto_bake": False})
     ops = [
-        {"op": "add_animation", "name": "Intro", "duration": 0.4, "next": "Idle"},
-        {"op": "set_track", "animation": "Intro", "field": "transform.opacity", "keys": [[0.0, 0.0], [0.4, 1.0]]},
-        {"op": "set_marker", "animation": "Intro", "name": "hit", "time": 0.2, "args": [1, "x"]},
         {"op": "add_animation", "name": "Idle", "duration": 0.5, "wrap": "loop"},
+        {"op": "add_animation", "name": "Intro", "duration": 0.4, "next": "Idle"},
+        {"op": "set_track", "animation": "Intro", "field": "opacity", "keys": [[0.0, 0.0], [0.4, 1.0]]},
+        {"op": "set_marker", "animation": "Intro", "name": "hit", "time": 0.2, "args": [1, "x"]},
         {"op": "set_track", "animation": "Idle", "field": "transform.rotation", "keys": [[0.0, 0.0], [0.5, 10.0]]},
         {"op": "add_animation", "name": "Over", "duration": 0.3, "overlay": True},
         {"op": "set_track", "animation": "Over", "field": "flash.amount", "keys": [[0.0, 1.0], [0.3, 0.0]]},

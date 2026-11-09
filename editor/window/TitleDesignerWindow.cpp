@@ -506,6 +506,9 @@ ta::Json TitleDesignerWindow::state() const {
     out["zoom"] = v && v->fit ? ta::Json("fit") : ta::Json(v ? v->zoom : 1.0f);
     out["zoom_value"] = xform.zoom;
     out["preview_as"] = v ? v->previewAs : std::string("realtime");
+    ta::Json openPanels = ta::Json::object();
+    for (const PanelDef& panel : panels()) openPanels[panel.id] = panelOpen(panel);
+    out["panels"] = openPanels;
     out["background"] = v ? v->backdrop.kind : std::string("checker");
     out["device"] = v && !v->device.profile.empty() ? ta::Json{{"profile", v->device.profile}, {"orientation", v->device.orientation},
                                                            {"display_height", v->device.displayHeight}}
@@ -1252,9 +1255,11 @@ void TitleDesignerWindow::drawPanels(float height) {
     ImGui::BeginChild("##titledesignerpanels", ImVec2(0.0f, height), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     for (const PanelDef& panel : panels()) {
         if (panel.region != PanelDef::Region::Bottom || !panel.draw) continue;
-        ImGui::SetNextItemOpen(panelOpen(panel), ImGuiCond_Always);
+        const bool wasOpen = panelOpen(panel);
+        ImGui::SetNextItemOpen(wasOpen, ImGuiCond_Always);
         const bool open = ImGui::CollapsingHeader((panel.title + "###panel_" + panel.id).c_str());
-        panelOpenStates[panel.id] = open;
+        // only a click pins it: until then it follows visibleByDefault (a document's first animation opens it)
+        if (open != wasOpen) panelOpenStates[panel.id] = open;
         if (open) panel.draw(doc);
     }
     ImGui::EndChild();

@@ -28,7 +28,7 @@ namespace {
         TitleAnimJson op;
         op["op"] = "set_track";
         op["animation"] = a.name;
-        op["layer"] = t.layer;
+        op["layer"] = titleLayerRef(t.layer);
         op["field"] = t.field;
         TitleAnimJson array = TitleAnimJson::array();
         for (const ta::TitleKey& k : keys) array.push_back(ta::encodeKey(k));
@@ -122,7 +122,7 @@ TitleAnimJson jasperengine::editor::titleDeleteKeysOps(const ta::TitleAnimation&
             TitleAnimJson op;
             op["op"] = "remove_track";
             op["animation"] = a.name;
-            op["layer"] = t.layer;
+            op["layer"] = titleLayerRef(t.layer);
             op["field"] = t.field;
             ops.push_back(op);
             continue;
@@ -278,7 +278,8 @@ TitleRecordResult jasperengine::editor::titleRecordRewrite(const tt::TitleArtDoc
             out.ops.push_back(op);
             continue;
         }
-        const std::string layer = op.value("layer", std::string());
+        // the Designer names a layer "id:<id>"; tracks and fields hold the bare id
+        const std::string layer = titleLayerIdOf(op.value("layer", std::string()));
         TitleAnimJson rest = op;
         rest["values"] = TitleAnimJson::object();
         for (auto it = op["values"].begin(); it != op["values"].end(); ++it){
@@ -293,7 +294,7 @@ TitleRecordResult jasperengine::editor::titleRecordRewrite(const tt::TitleArtDoc
                 TitleAnimJson zero;
                 zero["op"] = "set_key";
                 zero["animation"] = a.name;
-                zero["layer"] = layer;
+                zero["layer"] = titleLayerRef(layer);
                 zero["field"] = info.longPath;
                 zero["time"] = 0.0;
                 zero["value"] = sampleTitleTrackValue(doc, a, layer, info.longPath, 0.0);
@@ -302,12 +303,12 @@ TitleRecordResult jasperengine::editor::titleRecordRewrite(const tt::TitleArtDoc
             TitleAnimJson key;
             key["op"] = "set_key";
             key["animation"] = a.name;
-            key["layer"] = layer;
+            key["layer"] = titleLayerRef(layer);
             key["field"] = info.longPath;
             key["time"] = time;
             key["value"] = it.value();
             out.ops.push_back(key);
-            const std::string owner = layer.empty() ? std::string("Title") : layer;
+            const std::string owner = layer.empty() ? std::string("Title") : info.layer ? info.layer->value("name", layer) : layer;
             out.stepName = "Record Key: " + owner + "/" + (info.label.empty() ? info.longPath : info.label);
         }
         if (!rest["values"].empty()) out.ops.push_back(rest);

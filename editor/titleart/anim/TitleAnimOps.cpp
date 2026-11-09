@@ -32,6 +32,16 @@ namespace {
         return out;
     }
 
+    // the alternatives in the message itself: an agent reads the text first (R50)
+    std::string animatableList(const std::vector<std::string>& fields){
+        if (fields.empty()) return std::string();
+        std::string out = " (animatable here: ";
+        const size_t shown = std::min<size_t>(fields.size(), 16);
+        for (size_t i = 0; i < shown; i++) out += (i ? ", " : "") + fields[i];
+        if (shown < fields.size()) out += ", ... " + std::to_string(fields.size() - shown) + " more";
+        return out + ")";
+    }
+
     TitleJson trackJson(const ta::TitleTrack& t){
         return ta::encodeTrack(t);
     }
@@ -67,7 +77,7 @@ namespace {
         if (!ctx.requireString(op, "field", field)) return false;
         info = tt::resolveTrackField(ctx.doc, layerId, field);
         if (!info.ok){
-            ctx.fail(info.code.empty() ? "bad_path" : info.code, info.error + (info.validHere.empty() ? "" : " (animatable here: listed)"), "field",
+            ctx.fail(info.code.empty() ? "bad_path" : info.code, info.error + animatableList(info.validHere), "field",
                      info.validHere, info.nearest);
             return false;
         }
@@ -550,6 +560,19 @@ namespace {
 
     // a track an op names (layer?, field), with its index; fails listing the animation's tracks
     int namedTrack(TitleOpContext& ctx, const ta::TitleAnimation& a, const TitleJson& op, std::string& layerId){
+        // a track whose layer is gone (anim_orphans' fix) can only be named by the id it stored
+        if (auto ref = op.find("layer"); ref != op.end() && ref->is_string() && ref->get<std::string>().rfind("id:", 0) == 0){
+            const std::string stored = titleLayerIdOf(ref->get<std::string>());
+            if (!tt::findLayer(ctx.doc.root, stored)){
+                std::string field;
+                if (!ctx.requireString(op, "field", field)) return -1;
+                const int index = findTitleTrack(a, stored, field);
+                if (index >= 0){
+                    layerId = stored;
+                    return index;
+                }
+            }
+        }
         if (!trackLayer(ctx, op, layerId)) return -1;
         std::string field;
         if (!ctx.requireString(op, "field", field)) return -1;
@@ -790,6 +813,14 @@ namespace {
 }
 
 // ==================================================================== helpers
+
+std::string jasperengine::editor::titleLayerRef(const std::string& id){
+    return id.empty() ? std::string() : "id:" + id;
+}
+
+std::string jasperengine::editor::titleLayerIdOf(const std::string& ref){
+    return ref.rfind("id:", 0) == 0 ? ref.substr(3) : ref;
+}
 
 int editor::findTitleAnimation(const ta::TitleAnimationSet& set, const std::string& ref){
     const bool byId = ref.rfind("id:", 0) == 0;

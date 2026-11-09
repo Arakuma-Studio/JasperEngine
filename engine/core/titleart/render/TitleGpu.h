@@ -191,6 +191,9 @@ namespace jasperengine::titleart {
         // lastRunDeferred() says so, and the step runs again on a later frame (TitleFirstDraws)
         bool run(const TitleGpuPass& pass, std::string& error);
         bool lastRunDeferred() const { return deferredRun; }
+        // the key TitleFirstDraws knows a pass by: a job that cannot run a pass again later (a
+        // copy that fills a cache) asks for its keys together first (allowGroup)
+        static uint64_t firstDrawKey(uint32_t programNumber, const TargetKey& target, BlendMode blend);
         // a target cleared to a colour (one clear pass)
         bool clear(TitleTarget* target, const float color[4], std::string& error);
 

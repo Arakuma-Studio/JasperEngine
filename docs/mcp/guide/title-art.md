@@ -243,7 +243,7 @@ person a variant, use `render_title` `try`; to leave it on their screen, `focus_
 - `focus_window {window: "title_designer", title_designer: {...}}` keys: `path` (open it),
   `select` (`"Title"`, `"Title/rim#1"`, `"Title/fx:outer_glow"`, `""` = document), `panel`
   (layers, properties, library, history), `search` (types into Find a setting), `library`
-  `{tab, family, query}`, `preview_as` (realtime, baked, or a registered mode), `background`
+  `{tab, family, query}`, `animation` (`{name, time}` shows that pose on the canvas as a scrub does, `null` stops), `preview_as` (realtime, baked, or a registered mode), `background`
   (checker, black, white, gray, color, image, game_scene, in_context), `device`
   `{profile, orientation, display_height}`, `zoom` (number or `"fit"`). The result's `state`
   has `path, selection, panel, zoom, preview_as, busy, staged, preview_active, last_render_ms, rect`,

@@ -167,12 +167,12 @@ namespace {
                 if (worst > 1e-4 * std::max(1.0, range)){
                     seams.push_back({{"layer", t.layer}, {"field", t.field}, {"start", p0.values[t.poseOffset]}, {"end", p1.values[t.poseOffset]}});
                     if (t.source == ta::TrackSource::Drive && t.cycles <= 0.0f){
-                        ops.push_back({{"op", "set_track"}, {"animation", a->name}, {"layer", t.layer}, {"field", t.field},
+                        ops.push_back({{"op", "set_track"}, {"animation", a->name}, {"layer", titleLayerRef(t.layer)}, {"field", t.field},
                                        {"drive", {{"from", t.driveFrom.size() == 1 ? Json(t.driveFrom[0]) : Json(t.driveFrom)},
                                                   {"to", t.driveTo.size() == 1 ? Json(t.driveTo[0]) : Json(t.driveTo)}, {"cycles", 1}, {"wrap", t.driveWrap}}}});
                     }else if (t.source == ta::TrackSource::Keys && t.unitDelays.empty()){
                         const TitleJson startValue = sampleTitleTrackValue(ctx.doc, *c.set.find(a->name), t.layer, t.field, start);
-                        ops.push_back({{"op", "set_key"}, {"animation", a->name}, {"layer", t.layer}, {"field", t.field}, {"time", a->duration},
+                        ops.push_back({{"op", "set_key"}, {"animation", a->name}, {"layer", titleLayerRef(t.layer)}, {"field", t.field}, {"time", a->duration},
                                        {"value", startValue}});
                     }
                 }
@@ -321,7 +321,7 @@ namespace {
                         Json rest = info.rest;
                         if (t.combine != ta::TrackCombine::Replace)
                             rest = t.combine == ta::TrackCombine::Multiply ? Json(info.width == 2 ? Json::array({1, 1}) : Json(1)) : Json(info.width == 2 ? Json::array({0, 0}) : Json(0));
-                        ops.push_back({{"op", "set_key"}, {"animation", a->name}, {"layer", t.layer}, {"field", t.field}, {"time", a->duration}, {"value", rest}});
+                        ops.push_back({{"op", "set_key"}, {"animation", a->name}, {"layer", titleLayerRef(t.layer)}, {"field", t.field}, {"time", a->duration}, {"value", rest}});
                     }
                     r.fix = fixOps(ops);
                 }else{
@@ -715,7 +715,7 @@ namespace {
                     const Json row = {{"layer", t.layer}, {"field", t.field}, {"how", t.how}, {"code", t.code}, {"reason", t.reason}};
                     if (t.play == tt::TrackPlay::NotPlayed){
                         notPlayed.push_back(row);
-                        ops.push_back({{"op", "remove_track"}, {"animation", a->name}, {"layer", t.layer}, {"field", t.field}});
+                        ops.push_back({{"op", "remove_track"}, {"animation", a->name}, {"layer", titleLayerRef(t.layer)}, {"field", t.field}});
                     }else if (t.play == tt::TrackPlay::FallsBack){
                         fallbacks.push_back(row);
                     }
@@ -830,7 +830,7 @@ namespace {
             for (const ta::TitleTrack& t : a.tracks){
                 if (!t.orphan) continue;
                 found.push_back({{"animation", a.name}, {"layer", t.layer}, {"field", t.field}});
-                ops.push_back({{"op", "remove_track"}, {"animation", a.name}, {"layer", t.layer}, {"field", t.field}});
+                ops.push_back({{"op", "remove_track"}, {"animation", a.name}, {"layer", titleLayerRef(t.layer)}, {"field", t.field}});
             }
         }
         TitleCheckResult r = result(id, TitleCheckKind::Document, found.empty() ? TitleCheckStatus::Pass : TitleCheckStatus::Warn,

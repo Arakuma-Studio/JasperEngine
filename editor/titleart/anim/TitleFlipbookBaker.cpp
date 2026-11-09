@@ -138,12 +138,14 @@ std::vector<double> editor::titleFlipbookFrameTimes(const ta::CompiledTitleAnima
     const double fps = titleFlipbookFps(animation);
     const double d = animation.duration;
     std::vector<double> times;
+    // the duration is a float: 0.2 s at 10 fps is 2.00000003 frames, and two frames are meant
+    const double frames = d * fps - 1e-4;
     if (animation.wrap == ta::AnimWrap::Once){
-        const int last = (int)std::ceil(d * fps - 1e-9);
+        const int last = (int)std::ceil(frames);
         for (int k = 0; k <= last && times.size() < ta::TITLE_ANIM_MAX_FLIPBOOK_FRAMES; k++) times.push_back(std::min(d, k / fps));
     }else{
         // [0, D): the loop section wraps with no duplicate frame
-        const int count = std::max(1, (int)std::ceil(d * fps - 1e-9));
+        const int count = std::max(1, (int)std::ceil(frames));
         for (int k = 0; k < count && times.size() < ta::TITLE_ANIM_MAX_FLIPBOOK_FRAMES; k++) times.push_back(k / fps);
     }
     return times;
