@@ -1851,3 +1851,16 @@ rest of S82 lands in 6B.
 17. **Binary content lands in two commits** (R50 said one): the fonts and HDRIs first, the thumbnails
     with the finished library, because the thumbnails need every item and the commits must be safe
     against interruptions. Squash on landing if the one-commit rule still matters.
+18. **Implementation: rows of `list_title_library` are up to about 300 characters** (§6.15 said 120): the
+    row's own members (`id`, `name`, `family`, `dim`, four `tags`, `cost`, `available`, `use` repeating the
+    id) cannot fit 120. AC22's test holds them to 300.
+19. **Implementation: sparse reading follows normalize.** A missing member of a present object takes the
+    kind's default, so a sparse object is written against the kind's defaults; only an absent object takes a
+    member-level default (`style_3d.face`, a band's bevel). The first writer diffed against the
+    member default and normalize then changed ten ported 3D looks.
+20. **Implementation: `apply_color_scheme` stays idempotent with material links.** When rings a link made
+    equal cannot be explained by one count of accents, each keeps the kind of paint that produced it and
+    the link sync settles the colours (a look with linked bands on a scheme whose accents are dark).
+21. **Not measured here:** AC21's benches and sizes on lane machine H (the R40 budgets) and AC25's UI test; the
+    baker's and the gate's run times are the build box's llvmpipe. AC20's `TitleLibraryPreviewsTest` is
+    replaced as Deviation 13 says.
