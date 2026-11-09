@@ -170,6 +170,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
     b.menu("assets.createPalette", "Create Palette", AppMenuCommand::AssetsCreatePalette).description =
         "A new palette (black and white): edit it in Window > 2D > Palette";
+    b.menu("assets.createProceduralMaterial", "Create Procedural Material", AppMenuCommand::AssetsCreateProceduralMaterial).description =
+        "A .procmat graph (a noise on a Material Output), opened in the Procedural Material window";
     // S45
     b.menu("assets.createSpriteAtlas", "Create Sprite Atlas", AppMenuCommand::AssetsCreateSpriteAtlas);
     b.menu("assets.createSpriteAtlasFromSelection", "Create Sprite Atlas from Selection", AppMenuCommand::AssetsCreateSpriteAtlasFromSelection);
@@ -250,8 +252,11 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
     b.menu("window.soundBrowser", "Sound Browser", AppMenuCommand::ToggleSoundBrowser);
+    b.menu("window.graphEditor", "Graph Editor", AppMenuCommand::ToggleGraphEditor);
     b.menu("window.audioCaptures", "Audio Captures", AppMenuCommand::ToggleAudioCaptures);
     b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
+    b.menu("window.particleEffect", "Particle Effect", AppMenuCommand::ToggleParticleEffect).description =
+        "An effect as a whole: outline, timing, a preview stage and its modules";
     b.menu("audioMixer.resetLoudness", "Reset Integrated Loudness", AppMenuCommand::ResetLoudness).description =
         "Start the Audio Mixer's integrated loudness and true-peak hold over";
     b.menu("window.palette", "Palette", AppMenuCommand::TogglePalette).description =
@@ -273,6 +278,7 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.jobsMemory", "Jobs & Memory", AppMenuCommand::ToggleJobsMemory);
     b.menu("window.meshAudit", "Mesh Optimization Audit", AppMenuCommand::ToggleMeshAudit);
     b.menu("window.buildReport", "Build Report", AppMenuCommand::ToggleBuildReport);
+    b.menu("window.animationStatistics", "Animation Statistics", AppMenuCommand::ToggleAnimationStatistics);
     b.menu("window.mcpActivity", "MCP Server", AppMenuCommand::ToggleMcpActivity);
     b.menu("window.vcs.commit", "Commit", AppMenuCommand::ToggleVcsCommit);
     b.menu("window.vcs.history", "History", AppMenuCommand::ToggleVcsHistory);

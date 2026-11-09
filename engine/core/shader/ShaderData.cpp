@@ -147,6 +147,10 @@ int ShaderData::getAttrIndex(AttributeType type){
         attrstr = "a_tangentOut";
     }else if (type == AttributeType::LINEPARAMS){
         attrstr = "a_lineParams";
+    }else if (type == AttributeType::PARTICLEPIXEL){
+        attrstr = "i_particlePixel";
+    }else if (type == AttributeType::PARTICLESLOT){
+        attrstr = "i_particleSlot";
     }else if (type >= AttributeType::OBJECTMODEL0 && type <= AttributeType::OBJECTEXTRA){
         static const char* const objectNames[] = {
             "i_objectModel0", "i_objectModel1", "i_objectModel2",

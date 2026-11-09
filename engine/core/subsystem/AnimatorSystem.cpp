@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <unordered_set>
 
 using namespace jasperengine;
 
@@ -111,6 +112,7 @@ void AnimatorSystem::setParallel(bool value){
 }
 
 void AnimatorSystem::release(Entity entity, anim::AnimatorInstance& instance){
+    propertyRowsChanged = true;
     setSkinsDriven(instance, false);
     for (auto it = owners.begin(); it != owners.end();){
         if (it->second == entity) it = owners.erase(it);
@@ -195,7 +197,7 @@ bool AnimatorSystem::loadController(Entity entity, AnimatorComponent& component,
     return true;
 }
 
-void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool& rebind){
+void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool animInCall, bool& rebind, bool& loadingAny){
     for (size_t i = 0; i < instance.clips.size(); i++){
         anim::AnimatorClipSlot& slot = instance.clips[i];
         if (slot.path.empty()) continue;
@@ -205,7 +207,8 @@ void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim
         if (!fetch) continue;
         bool loading = false;
         std::string error;
-        std::shared_ptr<const AnimationClip> clip = AnimationClipPool::pollOrLoad(slot.path, loading, &error);
+        std::shared_ptr<const AnimationClip> clip = AnimationClipPool::pollOrLoad(slot.path, loading, &error, animInCall);
+        loadingAny = loadingAny || loading;
         if (clip){
             const bool changed = clip != slot.clip;
             slot.clip = clip;
@@ -240,7 +243,7 @@ void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim
     }
 }
 
-bool AnimatorSystem::ensureBound(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance){
+bool AnimatorSystem::ensureBound(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool animInCall){
     if (!instance.controller) return false;
     // a failed bind (another Animator owned an entity) is tried again once a second
     bool rebind = !instance.bound && (!instance.bindFailed || instance.clock >= instance.rebindRetry);
@@ -254,7 +257,11 @@ bool AnimatorSystem::ensureBound(Entity entity, AnimatorComponent& component, an
         if (model->needUpdateModel) return false;
         if (model->loadedFilename != entry.second) rebind = true;
     }
-    pollClips(entity, component, instance, rebind);
+    bool clipsLoading = false;
+    pollClips(entity, component, instance, animInCall, rebind, clipsLoading);
+    // a first bind waits for the clips on the thread pool: the states' time starts with all of
+    // them, as when they load here (a bound Animator plays on, its new clips bind when they come)
+    if (!instance.bound && clipsLoading) return false;
     if (instance.bound && scene->hierarchyRevision() != instance.hierarchyRevision){
         if (!instance.rig.stillValid(scene)){
             rebind = true;
@@ -361,10 +368,12 @@ void AnimatorSystem::ikInputs(AnimatorComponent& component, anim::AnimatorInstan
         if (c.type == AnimatorIKType::FootIK){
             run.hit = false;
 #ifdef JASPERENGINE_PHYSICS_3D
-            if (run.hasFoot && c.enabled){
+            // culled (Cull Update Transforms): no pose, so no IK reads the ground
+            if (run.hasFoot && c.enabled && context.sample){
                 const Vector3 up = context.rootWorldRotation * Vector3(0, 1, 0);
                 const Vector3 origin = run.footWorld + up * c.rayStart;
                 RayReturn hit = Physics::raycast(scene, origin, up * -1.0f, c.rayStart + c.rayLength, c.layerMask);
+                stats.footRaycasts++;
                 if (hit.hit){
                     run.hit = true;
                     run.hitPoint = context.rootWorldInverse * hit.point;
@@ -379,7 +388,10 @@ void AnimatorSystem::ikInputs(AnimatorComponent& component, anim::AnimatorInstan
 }
 
 bool AnimatorSystem::prepare(Entity entity, AnimatorComponent& component, float dt, Job& job){
-    if (!component.enabled || !scene->isEntityActiveInHierarchy(entity)) return false;
+    if (!component.enabled || !scene->isEntityActiveInHierarchy(entity)){
+        if (component.runtime) component.runtime->clearIKResults();
+        return false;
+    }
     if (!component.runtime) component.runtime = std::make_shared<anim::AnimatorInstance>();
     anim::AnimatorInstance& instance = *component.runtime;
     if (component.needsLoad || component.controller.path != instance.controllerPath || (revisionChanged && instance.controller &&
@@ -408,6 +420,7 @@ bool AnimatorSystem::prepare(Entity entity, AnimatorComponent& component, float 
     job.context.dt = dt;
     job.context.sample = true;
     if (component.cullingMode != AnimatorCullingMode::AlwaysAnimate && !visible(instance)){
+        instance.clearIKResults();
         if (component.cullingMode == AnimatorCullingMode::CullCompletely){
             stats.culled++;
             return false;
@@ -422,6 +435,65 @@ bool AnimatorSystem::prepare(Entity entity, AnimatorComponent& component, float 
     }
     ikInputs(component, instance, job.context);
     return true;
+}
+
+// S77 R8: a row stays in the wave when its functions reach only its entity and no other Animator
+// writes that entity (its bones, channels, skins, property rows, or the Animator component the
+// wave reads). `owners` does not say that: it claims bones only, property rows bind freely. Every
+// rebind passes through release(), so this runs on the frames a bind changed
+void AnimatorSystem::classifyPropertyRows(){
+    propertyRowsChanged = false;
+    auto animators = scene->getComponentArray<AnimatorComponent>();
+    auto rigOf = [&](size_t i) -> anim::AnimatorRig* {
+        AnimatorComponent& component = animators->getComponentFromIndex(i);
+        return component.runtime && component.runtime->bound ? &component.runtime->rig : nullptr;
+    };
+    bool anyRows = false;
+    for (size_t i = 0; i < animators->size() && !anyRows; i++){
+        const anim::AnimatorRig* rig = rigOf(i);
+        anyRows = rig && !rig->properties.empty();
+    }
+    if (!anyRows) return;
+
+    std::unordered_map<Entity, Entity> writers;
+    std::unordered_set<Entity> shared;
+    for (size_t i = 0; i < animators->size(); i++){
+        const anim::AnimatorRig* rig = rigOf(i);
+        if (!rig) continue;
+        const Entity animator = animators->getEntity(i);
+        auto writes = [&](Entity entity){
+            const auto inserted = writers.emplace(entity, animator);
+            if (!inserted.second && inserted.first->second != animator) shared.insert(entity);
+        };
+        writes(animator);
+        for (const anim::RigBone& bone : rig->bones) writes(bone.entity);
+        for (const anim::RigChannel& channel : rig->channels) writes(channel.entity);
+        for (const anim::RigSkin& skin : rig->skins) writes(skin.mesh);
+    }
+    for (size_t i = 0; i < animators->size(); i++){
+        anim::AnimatorRig* rig = rigOf(i);
+        if (!rig) continue;
+        for (anim::RigProperty& property : rig->properties){
+            property.inWave = anim::propertyWorkerSafe(property.binding) && !shared.count(property.entity);
+        }
+    }
+}
+
+void AnimatorSystem::applyWaitingProperties(anim::AnimatorInstance& instance, bool callbackRows){
+    // propertiesPending again each time: a bind in a callback drops the values (they were of its
+    // old rig), and rows are not held across a write
+    for (size_t p = 0; instance.propertiesPending && p < instance.rig.properties.size(); p++){
+        const anim::RigProperty& property = instance.rig.properties[p];
+        if (property.inWave || property.binding.deferred != callbackRows) continue;
+        const size_t width = property.binding.width;
+        if (width == 0 || width > 16 || !scene->isEntityCreated(property.entity)) continue;
+        if (anim::scriptBindingStale(scene, property.entity, property.binding)) continue;
+        const float* values = instance.deferredProperties.data() + property.firstChannel;
+        float current[16];
+        if (anim::readPropertyKeySpace(scene, property.entity, property.binding, current) &&
+            std::equal(values, values + width, current)) continue;
+        anim::writePropertyKeySpace(scene, property.entity, property.binding, values);
+    }
 }
 
 void AnimatorSystem::writePose(const AnimatorComponent& component, anim::AnimatorInstance& instance){
@@ -464,24 +536,26 @@ void AnimatorSystem::writePose(const AnimatorComponent& component, anim::Animato
         }
     }
     // properties (anim-properties): the blended key-space values, a discrete one rounded (the
-    // heavier side of a two-way blend), written when they changed; deferred rows (GameObject
-    // active, a script's enabled: user callbacks) after every other write
-    for (int pass = 0; pass < 2; pass++){
-        for (const anim::RigProperty& property : rig.properties){
-            if (property.binding.deferred != (pass == 1)) continue;
-            const size_t width = property.binding.width;
-            if (width == 0 || width > 16 || !scene->isEntityCreated(property.entity)) continue;
-            if (anim::scriptBindingStale(scene, property.entity, property.binding)) continue;
-            float values[16];
-            float current[16];
-            for (size_t k = 0; k < width; k++){
-                const float value = channels[(size_t)property.firstChannel + k];
-                values[k] = property.binding.discrete ? std::floor(value + 0.5f) : value;
-            }
-            if (anim::readPropertyKeySpace(scene, property.entity, property.binding, current) &&
-                std::equal(values, values + width, current)) continue;
-            anim::writePropertyKeySpace(scene, property.entity, property.binding, values);
+    // heavier side of a two-way blend). A row that stays in the wave is written when it changed;
+    // the others wait for the main thread, which compares and writes (S77 R8)
+    for (const anim::RigProperty& property : rig.properties){
+        const size_t width = property.binding.width;
+        if (width == 0 || width > 16) continue;
+        float values[16];
+        for (size_t k = 0; k < width; k++){
+            const float value = channels[(size_t)property.firstChannel + k];
+            values[k] = property.binding.discrete ? std::floor(value + 0.5f) : value;
         }
+        if (!property.inWave){
+            std::copy(values, values + width, instance.deferredProperties.data() + property.firstChannel);
+            instance.propertiesPending = true;
+            continue;
+        }
+        if (!scene->isEntityCreated(property.entity)) continue;
+        float current[16];
+        if (anim::readPropertyKeySpace(scene, property.entity, property.binding, current) &&
+            std::equal(values, values + width, current)) continue;
+        anim::writePropertyKeySpace(scene, property.entity, property.binding, values);
     }
     // skin matrices: inv(mesh in rig space) * joint in rig space * inverse bind (D7)
     const std::vector<anim::Affine>& world = instance.rigWorld();
@@ -711,6 +785,8 @@ void AnimatorSystem::finalize(Job& job, float dt){
 void AnimatorSystem::run(double dt, bool fixedPhase){
     auto animators = scene->getComponentArray<AnimatorComponent>();
     if (animators->size() == 0) return;
+    // the profiler's Animation band: this time is not the Scripts or Physics of Update and FixedUpdate
+    JE_PROFILE_SCOPE("Animation");
     stats = Stats();
     const double start = nowMs();
     {
@@ -734,8 +810,10 @@ void AnimatorSystem::run(double dt, bool fixedPhase){
             if (prepare(animators->getEntity(i), component, step, job)) jobs.push_back(job);
         }
         stats.animators = jobs.size();
+        if (propertyRowsChanged) classifyPropertyRows();
     }
     const double prepared = nowMs();
+    bool propertiesWaiting = false;
     {
         JE_PROFILE_SCOPE("Anim.Wave");
         auto work = [this](size_t chunk){
@@ -753,24 +831,61 @@ void AnimatorSystem::run(double dt, bool fixedPhase){
         }else{
             for (size_t c = 0; c < chunks; c++) work(c);
         }
-        for (const Job& job : jobs) stats.sampled += job.instance->output.sampled ? 1 : 0;
+        for (const Job& job : jobs){
+            stats.sampled += job.instance->output.sampled ? 1 : 0;
+            propertiesWaiting = propertiesWaiting || job.instance->propertiesPending;
+        }
     }
     const double waved = nowMs();
     {
         JE_PROFILE_SCOPE("Anim.Finalize");
         const float frameDt = std::isfinite(dt) ? (float)dt : 0.0f;
-        for (Job& job : jobs){
-            // an earlier callback may have removed this Animator
-            if (!scene->isEntityCreated(job.entity)) continue;
+        // an earlier callback may have removed an Animator, or moved it in its array (a removal
+        // or an addition): looked up by its entity, the runtime says it is the same one
+        auto current = [this](Job& job) -> AnimatorComponent* {
+            if (!scene->isEntityCreated(job.entity)) return nullptr;
             AnimatorComponent* component = scene->findComponent<AnimatorComponent>(job.entity);
-            if (!component || component != job.component || !component->runtime) continue;
-            finalize(job, frameDt);
+            if (!component || !component->runtime || component->runtime.get() != job.instance) return nullptr;
+            job.component = component;
+            return component;
+        };
+        // every value before any callback (the Player's flush keeps the same order)
+        if (propertiesWaiting){
+            for (const bool callbackRows : {false, true}){
+                for (Job& job : jobs){
+                    AnimatorComponent* component = current(job);
+                    if (!component || !component->runtime->propertiesPending) continue;
+                    const std::shared_ptr<anim::AnimatorInstance> runtime = component->runtime;
+                    applyWaitingProperties(*runtime, callbackRows);
+                    if (callbackRows) runtime->propertiesPending = false;
+                }
+            }
+        }
+        for (Job& job : jobs){
+            if (current(job)) finalize(job, frameDt);
         }
     }
     const double finished = nowMs();
     stats.prepareMs = prepared - start;
     stats.waveMs = waved - prepared;
     stats.finalizeMs = finished - waved;
+
+    // a frame may take several fixed steps: their time adds up, their counts do not
+    Stats& phase = fixedPhase ? fixedStats : updateStats;
+    phase.prepareMs += stats.prepareMs;
+    phase.waveMs += stats.waveMs;
+    phase.finalizeMs += stats.finalizeMs;
+    phase.animators = std::max(phase.animators, stats.animators);
+    phase.sampled = std::max(phase.sampled, stats.sampled);
+    phase.culled = std::max(phase.culled, stats.culled);
+}
+
+AnimatorSystem::Stats AnimatorSystem::takeFrameStats(){
+    Stats frame = updateStats;
+    frame += fixedStats;
+    updateStats = Stats();
+    fixedStats = Stats();
+    return frame;
 }
 
 void AnimatorSystem::update(double dt){
@@ -799,7 +914,8 @@ bool AnimatorSystem::preview(Entity entity, float dt, std::string* error){
         return false;
     }
     revisionChanged = AnimationClipPool::revision() != clipRevision || AnimatorAssetPool::revision() != assetRevision;
-    if (!ensureBound(entity, *component, instance)){
+    // the caller reads the pose when this returns
+    if (!ensureBound(entity, *component, instance, true)){
         if (error) *error = instance.bindFailed ? "another Animator animates its bones" : "loading (models or clips)";
         return false;
     }
@@ -816,6 +932,10 @@ bool AnimatorSystem::preview(Entity entity, float dt, std::string* error){
     ikInputs(*component, instance, job.context);
     instance.update(*component, job.context);
     if (instance.output.sampled) writePose(*component, instance);
+    // no wave here: what waits for the main thread goes now
+    applyWaitingProperties(instance, false);
+    applyWaitingProperties(instance, true);
+    instance.propertiesPending = false;
     // edit mode: no callbacks, no root motion; notes and ended montages are dropped
     instance.output.states.clear();
     instance.output.montages.clear();

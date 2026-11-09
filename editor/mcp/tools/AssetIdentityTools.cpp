@@ -130,7 +130,8 @@ void resolveAssetTool(const CallPtr& call) {
         call->fail("asset must be a project-relative path or a 32-hex-digit GUID.");
         return;
     }
-    const AssetDatabase::Resolution found = resolveArg(project, asset, hint, expected);
+    // a file on disk the database has not seen yet is not missing
+    const AssetDatabase::Resolution found = project->resolveAsset(asset, hint, expected);
     Json data{{"resolved_by", resolvedByName(found.by)}, {"exists", found.found()}};
     data["guid"] = found.found() ? Json(found.guid.str()) : (Guid::isValidText(asset) ? Json(asset) : Json(nullptr));
     data["path"] = found.found() ? found.path : (Guid::isValidText(asset) ? hint : asset);

@@ -205,3 +205,97 @@ TEST(ParticleEffectCodec, ResolvesFieldPaths){
     EXPECT_EQ(ParticleModules::resolve(doc, "emission.bursts[9].time").field, nullptr);
     EXPECT_EQ(ParticleModules::resolve(doc, "nothing.here").field, nullptr);
 }
+
+TEST(ParticleEffectCodec, MergePatchRefusesAnUnknownField){
+    ParticleEffectDocument doc;
+    doc.emission.rateOverTime = MinMaxCurve(7.0f);
+    const std::string before = ParticleEffectCodec::write(doc);
+    auto refused = [&](const char* patch, const char* path, const char* name){
+        std::vector<Diagnostic> diagnostics;
+        EXPECT_FALSE(ParticleEffectCodec::applyMergePatch(doc, nlohmann::ordered_json::parse(patch), diagnostics)) << patch;
+        EXPECT_EQ(ParticleEffectCodec::write(doc), before) << "the document stays as it was: " << patch;
+        bool found = false;
+        for (const Diagnostic& d : diagnostics){
+            if (d.path != path) continue;
+            found = true;
+            EXPECT_EQ(d.severity, Diagnostic::Severity::Error) << patch;
+            EXPECT_NE(d.message.find(std::string("did you mean '") + name + "'"), std::string::npos) << d.message;
+        }
+        EXPECT_TRUE(found) << patch << ": " << ParticleEffectCodec::format(diagnostics);
+    };
+    refused(R"({"duratoin": 3})", "duratoin", "duration");
+    refused(R"({"modules": {"emission": {"rateOverTim": 20}}})", "emission.rateOverTim", "rateOverTime");
+    refused(R"({"modules": {"emission": {"rateOverTime": {"mode": "twoConstants", "constant": 1, "constantMxa": 2}}}})", "emission.rateOverTime.constantMxa", "constantMax");
+    refused(R"({"modules": {"emision": {"rateOverTime": 20}}})", "modules.emision", "emission");
+    refused(R"({"modules": {"emission": {"bursts": [{"tiem": 1, "count": 2}]}}})", "emission.bursts[0].tiem", "time");
+    refused(R"({"modules": {"sizeOverLifetime": {"size": {"mode": "curve", "curve": {"keys": [[0, 1], [1, 0]], "preWrapMod": "loop"}}}}})", "sizeOverLifetime.size.curve.preWrapMod", "preWrapMode");
+    refused(R"({"modules": {"colorOverLifetime": {"color": {"mode": "gradient", "gradient": {"colorKyes": []}}}}})", "colorOverLifetime.color.gradient.colorKyes", "colorKeys");
+}
+
+TEST(ParticleEffectCodec, ReadingAnOldFileKeepsWarning){
+    // the same unknown field in a file: it loads, the field is read past, and the warning says what it meant
+    ParticleEffectDocument doc;
+    std::vector<Diagnostic> diagnostics;
+    ASSERT_TRUE(ParticleEffectCodec::read(R"({"version": 1, "duratoin": 3})", doc, diagnostics)) << ParticleEffectCodec::format(diagnostics);
+    ASSERT_EQ(diagnostics.size(), 1u);
+    EXPECT_EQ(diagnostics[0].severity, Diagnostic::Severity::Warning);
+    EXPECT_NE(diagnostics[0].message.find("did you mean 'duration'"), std::string::npos) << diagnostics[0].message;
+}
+
+TEST(ParticleEffectCodec, MergePatchKeepsItsWarnings){
+    ParticleEffectDocument doc;
+    std::vector<Diagnostic> diagnostics;
+    ASSERT_TRUE(ParticleEffectCodec::applyMergePatch(doc, nlohmann::ordered_json::parse(R"({"modules": {"renderer": {"renderMode": "none"}}})"), diagnostics))
+        << ParticleEffectCodec::format(diagnostics);
+    bool found = false;
+    for (const Diagnostic& d : diagnostics) found = found || (d.path == "renderer.renderMode" && d.severity == Diagnostic::Severity::Warning);
+    EXPECT_TRUE(found) << ParticleEffectCodec::format(diagnostics);
+}
+
+TEST(ParticleEffectCodec, AnEmptyPatchPassesEveryModule){
+    // what the keyed form itself writes is never "unknown": an old effect stays editable
+    ParticleEffectDocument doc = everyModule();
+    std::vector<Diagnostic> diagnostics;
+    ASSERT_TRUE(ParticleEffectCodec::applyMergePatch(doc, nlohmann::ordered_json::object(), diagnostics)) << ParticleEffectCodec::format(diagnostics);
+}
+
+TEST(ParticleEffectCodec, MergePatchTakesTheOtherGradientForm){
+    // the keyed form writes colorKeys and alphaKeys; {colors, alphas} is the other form of a gradient, replacing them
+    ParticleEffectDocument doc;
+    std::vector<Diagnostic> diagnostics;
+    ASSERT_TRUE(ParticleEffectCodec::applyMergePatch(doc, nlohmann::ordered_json::parse(R"({"modules": {"colorOverLifetime": {"color":
+        {"mode": "gradient", "gradient": {"colorKeys": [[0, 1, 1, 1], [1, 0, 0, 0]], "alphaKeys": [[0, 1], [1, 1]]}}}}})"), diagnostics))
+        << ParticleEffectCodec::format(diagnostics);
+    ASSERT_EQ(doc.colorOverLifetime.color.gradient.colorKeys.size(), 2u);
+
+    diagnostics.clear();
+    ASSERT_TRUE(ParticleEffectCodec::applyMergePatch(doc, nlohmann::ordered_json::parse(R"({"modules": {"colorOverLifetime": {"color":
+        {"gradient": {"colors": [[0, "#ff0000"], [0.5, "#00ff00"], [1, "#0000ff"]], "alphas": [[0, 1], [1, 0]]}}}}})"), diagnostics))
+        << ParticleEffectCodec::format(diagnostics);
+    EXPECT_EQ(doc.colorOverLifetime.color.gradient.colorKeys.size(), 3u);
+    EXPECT_EQ(doc.colorOverLifetime.color.gradient.alphaKeys.back().alpha, 0.0f);
+
+    // a misspelled key of that form is still the patch's
+    const std::string before = ParticleEffectCodec::write(doc);
+    diagnostics.clear();
+    EXPECT_FALSE(ParticleEffectCodec::applyMergePatch(doc, nlohmann::ordered_json::parse(R"({"modules": {"colorOverLifetime": {"color":
+        {"gradient": {"colors": [[0, "#ff0000"], [1, "#0000ff"]], "alphsa": [[0, 1]]}}}}})"), diagnostics));
+    EXPECT_EQ(ParticleEffectCodec::write(doc), before);
+}
+
+TEST(ParticleEffectCodec, GenerateLightingDataLoadsButIsNotShown){
+    // BF23 F4: nothing reads it, so the Inspector does not offer it (InspectorParticles shows no
+    // hidden field); a file that has it still loads clean and keeps it
+    const ModuleDesc* trails = ParticleModules::find("trails");
+    ASSERT_NE(trails, nullptr);
+    const FieldDesc* field = trails->fields.find("generateLightingData");
+    ASSERT_NE(field, nullptr) << "unknown keys are not read: the key stays for old files";
+    EXPECT_TRUE(field->flags & FieldFlag_Hidden);
+
+    ParticleEffectDocument document;
+    std::vector<Diagnostic> diagnostics;
+    ASSERT_TRUE(ParticleEffectCodec::read(R"({"version": 1, "modules": [{"type": "trails", "generateLightingData": true}]})", document, diagnostics));
+    EXPECT_TRUE(diagnostics.empty()) << ParticleEffectCodec::format(diagnostics);
+    EXPECT_TRUE(document.trails.generateLightingData);
+    EXPECT_NE(ParticleEffectCodec::write(document).find("generateLightingData"), std::string::npos);
+}

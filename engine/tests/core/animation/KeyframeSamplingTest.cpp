@@ -142,7 +142,25 @@ namespace {
                 value = (interpolation < 0.5f) ? previousRotation : values[index];
             }
         }else{
-            value = Quaternion::slerp(interpolation, previousRotation, values[index]);
+            // the tiers of S77 R12 written out, Quaternion::slerp beyond them
+            const Quaternion& next = values[index];
+            const float d = previousRotation.w * next.w + previousRotation.x * next.x + previousRotation.y * next.y + previousRotation.z * next.z;
+            const float absDot = std::fabs(d);
+            if (absDot >= 0.9659f && interpolation > 0.0f && interpolation < 1.0f){
+                const float x = 1.0f - absDot;
+                const float u = absDot >= 0.999f ? interpolation
+                    : interpolation + (2.0f / 3.0f) * x * (1.0f + x / 6.0f) * interpolation * (interpolation - 0.5f) * (interpolation - 1.0f);
+                const float from = 1.0f - u;
+                const float to = (d < 0.0f ? -1.0f : 1.0f) * u;
+                const float w = from * previousRotation.w + to * next.w;
+                const float qx = from * previousRotation.x + to * next.x;
+                const float qy = from * previousRotation.y + to * next.y;
+                const float qz = from * previousRotation.z + to * next.z;
+                const float inverse = 1.0f / std::sqrt(w * w + qx * qx + qy * qy + qz * qz);
+                value = Quaternion(w * inverse, qx * inverse, qy * inverse, qz * inverse);
+            }else{
+                value = Quaternion::slerp(interpolation, previousRotation, next);
+            }
         }
         return value;
     }
@@ -563,6 +581,127 @@ TEST(KeyframeSampling, ValueSamplersMatchTheFormerActionSystemExpressions){
         ASSERT_EQ(offset.y, vr.y);
         ASSERT_EQ(offset.z, vr.z);
     }
+}
+
+namespace {
+
+    struct TrueQuaternion{
+        double w, x, y, z;
+    };
+
+    TrueQuaternion normalizedTrue(double w, double x, double y, double z){
+        const double n = std::sqrt(w * w + x * x + y * y + z * z);
+        return {w / n, x / n, y / n, z / n};
+    }
+
+    // slerp in double, on the shortest arc
+    TrueQuaternion trueSlerp(double t, const Quaternion& a, const Quaternion& b){
+        double d = (double)a.w * b.w + (double)a.x * b.x + (double)a.y * b.y + (double)a.z * b.z;
+        const double side = d < 0.0 ? -1.0 : 1.0;
+        d = std::min(1.0, std::fabs(d));
+        const double th = std::acos(d);
+        const double s = std::sin(th);
+        const double m1 = s > 1e-12 ? std::sin((1.0 - t) * th) / s : 1.0 - t;
+        const double m2 = (s > 1e-12 ? std::sin(t * th) / s : t) * side;
+        return normalizedTrue(m1 * a.w + m2 * b.w, m1 * a.x + m2 * b.x, m1 * a.y + m2 * b.y, m1 * a.z + m2 * b.z);
+    }
+
+    // the rotation between two quaternions as the arc at 1 m radius, in mm
+    double rotationErrorMm(const Quaternion& q, const TrueQuaternion& truth){
+        const TrueQuaternion n = normalizedTrue(q.w, q.x, q.y, q.z);
+        const double d = std::fabs(n.w * truth.w + n.x * truth.x + n.y * truth.y + n.z * truth.z);
+        return 2.0 * std::atan2(std::sqrt(std::max(0.0, 1.0 - d * d)), d) * 1000.0;
+    }
+
+    Quaternion sampledAt(float t, const Quaternion& a, const Quaternion& b){
+        const Quaternion values[2] = {a, b};
+        anim::KeyLocation at;
+        at.index = 1;
+        at.interpolation = t;
+        return anim::sampleQuaternion(at, values, nullptr, nullptr);
+    }
+
+    bool sameBits(const Quaternion& a, const Quaternion& b){
+        return a.w == b.w && a.x == b.x && a.y == b.y && a.z == b.z;
+    }
+
+    // keys `degrees` apart about a random axis; b on the far side of the hypersphere when `flip`
+    std::pair<Quaternion, Quaternion> keysApart(std::mt19937& random, double degrees, bool flip){
+        std::normal_distribution<double> gauss;
+        const TrueQuaternion a = normalizedTrue(gauss(random), gauss(random), gauss(random), gauss(random));
+        const TrueQuaternion axis = normalizedTrue(0.0, gauss(random), gauss(random), gauss(random));
+        const double half = 0.5 * degrees * 3.14159265358979323846 / 180.0;
+        const double c = std::cos(half), s = std::sin(half);
+        const TrueQuaternion b = normalizedTrue(
+            a.w * c - s * (a.x * axis.x + a.y * axis.y + a.z * axis.z),
+            a.x * c + s * (a.w * axis.x + a.y * axis.z - a.z * axis.y),
+            a.y * c + s * (a.w * axis.y + a.z * axis.x - a.x * axis.z),
+            a.z * c + s * (a.w * axis.z + a.x * axis.y - a.y * axis.x));
+        const float side = flip ? -1.0f : 1.0f;
+        return {Quaternion((float)a.w, (float)a.x, (float)a.y, (float)a.z),
+                Quaternion(side * (float)b.w, side * (float)b.x, side * (float)b.y, side * (float)b.z)};
+    }
+
+}
+
+// S77 R12, R13, AC5: the tiered slerp against true slerp: the bound per segment angle, the tier
+// boundaries, the end keys, the shortest arc, and the exact path where the tiers do not apply
+TEST(KeyframeSampling, TieredSlerpMatchesSlerp){
+    std::mt19937 random(7);
+    const double boundMm = 0.01;
+    // both sides of |d| = 0.999 (5.126 degrees between keys) and |d| = 0.9659 (30.01 degrees)
+    for (double degrees : {0.1, 0.5, 1.0, 2.0, 4.0, 5.1, 5.13, 5.2, 10.0, 15.0, 20.0, 25.0, 29.0, 30.0}){
+        double worst = 0.0;
+        for (int pair = 0; pair < 300; pair++){
+            const std::pair<Quaternion, Quaternion> keys = keysApart(random, degrees, pair % 2 == 1);
+            for (int i = 1; i < 40; i++){
+                const float t = (float)i / 40.0f;
+                const Quaternion q = sampledAt(t, keys.first, keys.second);
+                worst = std::max(worst, rotationErrorMm(q, trueSlerp(t, keys.first, keys.second)));
+                ASSERT_NEAR(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z, 1.0f, 1e-5f) << degrees << " degrees";
+                // the shortest arc: never on the far side of the first key
+                ASSERT_GE(q.dot(keys.first), 0.0f) << degrees << " degrees, t " << t;
+            }
+        }
+        EXPECT_LE(worst, boundMm) << degrees << " degrees between keys";
+    }
+
+    // the fast tiers are taken: not slerp's bits inside them, slerp's bits beyond them
+    for (double degrees : {4.0, 20.0}){
+        int differing = 0;
+        for (int pair = 0; pair < 50; pair++){
+            const std::pair<Quaternion, Quaternion> keys = keysApart(random, degrees, false);
+            differing += sameBits(sampledAt(0.3f, keys.first, keys.second), Quaternion::slerp(0.3f, keys.first, keys.second)) ? 0 : 1;
+        }
+        EXPECT_GT(differing, 25) << degrees << " degrees between keys";
+    }
+    for (double degrees : {31.0, 45.0, 60.0, 90.0, 120.0, 170.0}){
+        for (int pair = 0; pair < 100; pair++){
+            const std::pair<Quaternion, Quaternion> keys = keysApart(random, degrees, pair % 2 == 1);
+            const float t = (float)(pair + 1) / 101.0f;
+            ASSERT_TRUE(sameBits(sampledAt(t, keys.first, keys.second), Quaternion::slerp(t, keys.first, keys.second))) << degrees << " degrees";
+        }
+    }
+
+    // the end keys, exactly: b on a's side of the hypersphere, as slerp gives it
+    for (double degrees : {1.0, 4.0, 20.0, 30.0, 60.0}){
+        const std::pair<Quaternion, Quaternion> keys = keysApart(random, degrees, false);
+        EXPECT_TRUE(sameBits(sampledAt(0.0f, keys.first, keys.second), keys.first)) << degrees;
+        EXPECT_TRUE(sameBits(sampledAt(1.0f, keys.first, keys.second), keys.second)) << degrees;
+        const Quaternion opposite = -keys.second;
+        EXPECT_TRUE(sameBits(sampledAt(0.0f, keys.first, opposite), keys.first)) << degrees;
+        EXPECT_TRUE(sameBits(sampledAt(1.0f, keys.first, opposite), keys.second)) << degrees << " the shortest arc ends on a's side";
+    }
+
+    // an ease past the segment (Back, Elastic) extrapolates as slerp does; so do NaN and zero keys
+    const std::pair<Quaternion, Quaternion> near = keysApart(random, 10.0, false);
+    for (float t : {-0.2f, 1.3f}){
+        EXPECT_TRUE(sameBits(sampledAt(t, near.first, near.second), Quaternion::slerp(t, near.first, near.second))) << t;
+    }
+    const Quaternion zero(0, 0, 0, 0);
+    EXPECT_TRUE(sameBits(sampledAt(0.5f, near.first, zero), Quaternion::slerp(0.5f, near.first, zero)));
+    const Quaternion poisoned(NAN, 0, 0, 1);
+    EXPECT_TRUE(std::isnan(sampledAt(0.5f, poisoned, near.second).w));
 }
 
 TEST(KeyframeSampling, NaNTimesAndBinarySearch){

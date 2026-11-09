@@ -6013,7 +6013,11 @@ Json modelInfoJson(const Target& target, Entity entity) {
     }
     Json bones = Json::array();
     for (const auto& item : model.bonesNameMapping) {
-        if (item.second != NULL_ENTITY && scene->isEntityCreated(item.second)) bones.push_back({{"name", item.first}, {"id", item.second}});
+        if (item.second == NULL_ENTITY || !scene->isEntityCreated(item.second)) continue;
+        // its parent bone's name; null for a root, whatever non-bone node it sits under
+        const Transform* transform = scene->findComponent<Transform>(item.second);
+        const bool parented = transform && transform->parent != NULL_ENTITY && scene->findComponent<BoneComponent>(transform->parent);
+        bones.push_back({{"name", item.first}, {"id", item.second}, {"parent", parented ? Json(scene->getEntityName(transform->parent)) : Json(nullptr)}});
     }
     Json animations = Json::array();
     ActionSystem* actions = scene->getSystem<ActionSystem>().get();
@@ -6662,10 +6666,10 @@ void registerWorldTools(McpRegistry& registry) {
     // a key takes the channel-specific keys too (in/out tangents...): free-form, said so (S31)
     openKeyItem["additionalProperties"] = true;
     add("edit_animation", "Edit Animation",
-        "Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from the root whose "
-        "Animation Player plays it; create {from?, humanoid {model?}}; one project undo step. No clip: an entity "
+        "Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from its player's root; "
+        "create {from?, humanoid {model?}}; one project undo step. No clip: an entity "
         "Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; "
-        "property: component + property; humanoid: bone. audio: sound cues (no clip: audio actions).",
+        "audio: sound cues (no clip: audio actions).",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},
@@ -6693,6 +6697,7 @@ void registerWorldTools(McpRegistry& registry) {
             // the cue's other keys (path, spatial, volume_db, stop, duration...) are the guide's; the handler checks them
             {"audio", array(object({{"time", number("")}, {"sound", any("")}, {"source", string("")}, {"snapshot", string("")}}, {"time"}, true), "")},
             {"wrap", stringEnum("", {"once", "loop", "ping_pong", "clamp_forever"})},
+            {"root_motion", any("")},
             {"frame_rate", number("")},
             {"length", number("")},
             {"tweens", array(object({
@@ -6722,7 +6727,7 @@ void registerWorldTools(McpRegistry& registry) {
         "entity: an Animation's timeline (loop, duration, autoplay, target, actions with kind, keys/tween "
         "values), or for a GameObject the animations on it or below (model clips too) and "
         "its Animation Player (states, layers, mask coverage, bindings; live in play). clip (.anim or "
-        "\"model.gltf#Walk\"): settings, tracks, events, users; times: sampled values; root: bindings (humanoid: "
+        "\"model.gltf#Walk\"): settings, tracks, events, users, stats; times: sampled values; root: bindings (humanoid: "
         "retarget_report, realised); "
         "root + list_properties (a path): its animatable properties. "
         "mask (.mask; root: coverage) or controller (.controller summary).",

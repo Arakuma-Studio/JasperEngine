@@ -1,5 +1,12 @@
 # 01 — Rendering: JasperEngine (OURS) vs OpenEngine (THEIRS)
 
+> **Note (2026-11-04, BF23 F28).** This report is historical and stays as written; decisions taken since:
+> imgui-node-editor in the shader graph recommendation was rejected by `docs/specs/S21-animation.md` D14,
+> and the fragment `SURFACE_*` hooks that recommendation maps a body to do not exist: the hooks are
+> vertex-stage (`includes/surface_vs.glsl`), and in a fragment shader `SURFACE_*` only names the inputs a
+> variant requires. Procedural materials bake to textures and a `.material` instead
+> (`docs/specs/S90-procedural-material.md`).
+
 Paths: THEIRS relative to `external/OpenEngine/`, OURS relative to repo root. All claims below come from reading code, not just file names. "RG" = render graph.
 
 ---

@@ -1,0 +1,224 @@
+{
+ "code": [
+  "vec4 $(name_uv)_rect = oldbricks_$pattern($uv, vec2($columns, $rows), $repeat, $row_offset);",
+  "vec4 $(name_uv) = oldbrick($uv, $(name_uv)_rect.xy, $(name_uv)_rect.zw, $mortar*$mortar_map($uv), $round*$round_map($uv), max(0.001, $bevel*$bevel_map($uv)));",
+  ""
+ ],
+ "description": "Generates different bricks patterns, with many useful outputs.",
+ "format": 1,
+ "functions": [
+  "oldbrick",
+  "oldbrick_corner_uv",
+  "oldbrick_random_color",
+  "oldbrick_uv",
+  "oldbricks_bw",
+  "oldbricks_hb",
+  "oldbricks_rb",
+  "oldbricks_rb2",
+  "oldbricks_sb"
+ ],
+ "id": "bricks",
+ "inputs": [
+  {
+   "default": "1.0",
+   "description": "A map that affects the Mortar parameter",
+   "label": "6:",
+   "name": "mortar_map",
+   "short_description": "Mortar map",
+   "type": "f"
+  },
+  {
+   "default": "1.0",
+   "description": "A map that affects the Bevel parameter",
+   "label": "",
+   "name": "bevel_map",
+   "short_description": "Bevel map",
+   "type": "f"
+  },
+  {
+   "default": "1.0",
+   "description": "A map that affects the Round parameter",
+   "label": "",
+   "name": "round_map",
+   "short_description": "Round map",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Bricks",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "A grayscale image that shows the bricks pattern",
+   "expr": "$(name_uv).x",
+   "label": "Bricks pattern",
+   "type": "f"
+  },
+  {
+   "description": "A random color for each brick",
+   "expr": "oldbrick_random_color($(name_uv)_rect.xy, $(name_uv)_rect.zw, float($seed))",
+   "label": "Random color",
+   "type": "rgb"
+  },
+  {
+   "description": "The position of each brick along the X axis",
+   "expr": "$(name_uv).y",
+   "label": "Position.x",
+   "type": "f"
+  },
+  {
+   "description": "The position of each brick along the Y axis",
+   "expr": "$(name_uv).z",
+   "label": "Position.y",
+   "type": "f"
+  },
+  {
+   "description": "An UV map output for each brick, to be connected to the Map input of a CustomUV node",
+   "expr": "oldbrick_uv($uv, $(name_uv)_rect.xy, $(name_uv)_rect.zw, float($seed))",
+   "label": "Brick UV",
+   "type": "rgb"
+  },
+  {
+   "description": "An UV map output for each brick corner, to be connected to the Map input of a CustomUV node",
+   "expr": "oldbrick_corner_uv($uv, $(name_uv)_rect.xy, $(name_uv)_rect.zw, $mortar*$mortar_map($uv), $corner, float($seed))",
+   "label": "Corner UV",
+   "type": "rgb"
+  },
+  {
+   "description": "The direction of each brick (white: horizontal, black: vertical)",
+   "expr": "(abs($(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y) < 1e-4 ? 0.5 : step(0.0, $(name_uv)_rect.z-$(name_uv)_rect.x-$(name_uv)_rect.w+$(name_uv)_rect.y))",
+   "label": "Direction",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The type of brick pattern",
+   "label": "",
+   "name": "pattern",
+   "short_description": "Pattern",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Running Bond",
+     "value": "rb"
+    },
+    {
+     "name": "Running Bond 2",
+     "value": "rb2"
+    },
+    {
+     "name": "Herringbone",
+     "value": "hb"
+    },
+    {
+     "name": "Basket Weave",
+     "value": "bw"
+    },
+    {
+     "name": "Spanish Bond",
+     "value": "sb"
+    }
+   ]
+  },
+  {
+   "default": 1,
+   "description": "The number of repetitions of the whole pattern",
+   "label": "Repeat",
+   "max": 8,
+   "min": 1,
+   "name": "repeat",
+   "short_description": "Repeat",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 6,
+   "description": "The number of rows of a pattern",
+   "label": "Rows",
+   "max": 64,
+   "min": 1,
+   "name": "rows",
+   "short_description": "Rows",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 3,
+   "description": "The number of columns of a pattern",
+   "label": "Columns",
+   "max": 64,
+   "min": 1,
+   "name": "columns",
+   "short_description": "Columns",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "description": "The offset of the pattern (not useful for all patterns)",
+   "label": "Offset",
+   "max": 1,
+   "min": 0,
+   "name": "row_offset",
+   "short_description": "Offset",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "The width of the space between bricks",
+   "label": "Mortar",
+   "max": 0.5,
+   "min": 0,
+   "name": "mortar",
+   "short_description": "Mortar",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "The width of the edge of each brick",
+   "label": "Bevel",
+   "max": 0.5,
+   "min": 0,
+   "name": "bevel",
+   "short_description": "Bevel",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The radius of the round corners of bricks",
+   "label": "Round",
+   "max": 0.5,
+   "min": 0,
+   "name": "round",
+   "short_description": "Round",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "The size of the corner part of each brick (only used by the Corner UV output)",
+   "label": "Corner",
+   "max": 0.5,
+   "min": 0,
+   "name": "corner",
+   "short_description": "Corner",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Simple bricks patterns",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/bricks.mmg"
+ },
+ "type_version": 1
+}

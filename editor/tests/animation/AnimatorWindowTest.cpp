@@ -219,6 +219,9 @@ namespace {
         }
         void frame(AnimatorWindow& window, const std::function<void()>& extra = nullptr) {
             ImGui::NewFrame();
+            // the whole display: a test's points are on the canvas wherever its nodes are
+            ImGui::SetNextWindowPos(ImVec2(0, 0));
+            ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
             window.show();
             ImGui::Begin("Inspector");
             window.drawSelectionInspector();
@@ -572,6 +575,233 @@ TEST(AnimatorWindow, ShortcutsNeedTheWindowFocused) {
     ASSERT_TRUE(window.removeSelection());
     EXPECT_EQ(machine(doc).states.size(), 1u);
     EXPECT_FALSE(window.canDelete()) << "nothing selected";
+}
+
+// the mouse, a frame per step (ImGui's queue gives a press and a move their own frames)
+namespace {
+
+    struct Mouse {
+        Frames& frames;
+        AnimatorWindow& window;
+        void moveTo(const ImVec2& at) {
+            ImGui::GetIO().AddMousePosEvent(at.x, at.y);
+            frames.frame(window);
+            frames.frame(window);
+        }
+        void button(bool down) {
+            ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, down);
+            frames.frame(window);
+        }
+        void drag(const ImVec2& from, const ImVec2& to) {
+            moveTo(from);
+            button(true);
+            moveTo(ImVec2((from.x + to.x) * 0.5f, (from.y + to.y) * 0.5f));
+            moveTo(to);
+            button(false);
+            frames.frame(window);
+        }
+    };
+
+    Vector2 statePosition(const std::shared_ptr<AnimatorAssetDocument>& doc, const std::string& name) {
+        for (const anim::StateDef& state : machine(doc).states) {
+            if (state.name == name) return state.position;
+        }
+        ADD_FAILURE() << "no state " << name;
+        return Vector2();
+    }
+
+}
+
+// BF23 F18: the canvas' box select reaches the window's selection, whose Delete and drag then
+// act on every state in it as one undo step
+TEST(AnimatorWindow, BoxSelectedStatesDragAndDeleteAsOneStep) {
+    ASSERT_TRUE(headless().ready);
+    AnimatorWindow window(project(), nullptr);
+    std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "boxselect");
+    ASSERT_TRUE(doc);
+    ASSERT_TRUE(window.addState("A", ImVec2(300, 300), anim::MotionDef()));
+    ASSERT_TRUE(window.addState("B", ImVec2(600, 300), anim::MotionDef()));
+    ASSERT_TRUE(window.addState("C", ImVec2(300, 500), anim::MotionDef()));
+    Frames frames;
+    window.setOpen(true);
+    window.requestFocus();
+    for (int i = 0; i < 3; i++) frames.frame(window);
+    Mouse mouse{frames, window};
+    const GraphCanvas& canvas = window.getCanvas();
+
+    // from the empty corner right of B and above it, down and left over A's and B's boxes
+    mouse.drag(canvas.toScreen(ImVec2(820, 280)), canvas.toScreen(ImVec2(280, 360)));
+    frames.frame(window);
+    EXPECT_EQ(window.selectedNodes(), (std::vector<std::string>{"A", "B"}));
+
+    // a drag of one of them moves both, as one step
+    const size_t beforeDrag = history()->position();
+    const Vector2 a0 = statePosition(doc, "A"), b0 = statePosition(doc, "B"), c0 = statePosition(doc, "C");
+    mouse.drag(canvas.toScreen(ImVec2(a0.x + 90, a0.y + 23)), canvas.toScreen(ImVec2(a0.x + 90 + 40, a0.y + 23 + 60)));
+    EXPECT_EQ(statePosition(doc, "A").x, a0.x + 40);
+    EXPECT_EQ(statePosition(doc, "B").x, b0.x + 40) << "B is selected with A";
+    EXPECT_EQ(statePosition(doc, "B").y, b0.y + 60);
+    EXPECT_EQ(statePosition(doc, "C").x, c0.x) << "C is not";
+    ASSERT_EQ(history()->position(), beforeDrag + 1) << "a multi-drag is one step";
+    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(statePosition(doc, "A").x, a0.x);
+    EXPECT_EQ(statePosition(doc, "B").x, b0.x);
+    ASSERT_TRUE(history()->redo());
+    frames.frame(window);
+
+    // Delete removes them all as one step
+    const size_t beforeDelete = history()->position();
+    ASSERT_TRUE(window.canDelete());
+    ASSERT_TRUE(window.removeSelection());
+    ASSERT_EQ(machine(doc).states.size(), 1u);
+    EXPECT_EQ(machine(doc).states[0].name, "C");
+    EXPECT_EQ(machine(doc).defaultState, "C") << "the default followed";
+    EXPECT_EQ(history()->position(), beforeDelete + 1) << "one step";
+    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(machine(doc).states.size(), 3u);
+}
+
+// BF23 F18: the selection follows a rename, drops what is gone, and a plain click on one of its
+// states leaves that one
+TEST(AnimatorWindow, MultiSelectionFollowsTheDocument) {
+    ASSERT_TRUE(headless().ready);
+    AnimatorWindow window(project(), nullptr);
+    std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "multiselect");
+    ASSERT_TRUE(doc);
+    ASSERT_TRUE(window.addState("A", ImVec2(300, 300), anim::MotionDef()));
+    ASSERT_TRUE(window.addState("B", ImVec2(600, 300), anim::MotionDef()));
+    ASSERT_TRUE(window.addState("C", ImVec2(900, 300), anim::MotionDef()));
+    Frames frames;
+    window.setOpen(true);
+    window.requestFocus();
+    for (int i = 0; i < 3; i++) frames.frame(window);
+    Mouse mouse{frames, window};
+    const GraphCanvas& canvas = window.getCanvas();
+    mouse.drag(canvas.toScreen(ImVec2(1100, 280)), canvas.toScreen(ImVec2(280, 360)));
+    frames.frame(window);
+    ASSERT_EQ(window.selectedNodes(), (std::vector<std::string>{"A", "B", "C"}));
+
+    ASSERT_TRUE(window.renameState("B", "Beta"));
+    EXPECT_EQ(window.selectedNodes(), (std::vector<std::string>{"A", "Beta", "C"}));
+
+    anim::ControllerDef edited = doc->controller();
+    auto& states = edited.layers[0].machine.states;
+    states.erase(states.begin() + 2);
+    std::string error;
+    ASSERT_TRUE(doc->commit(edited, "Remove C", "", &error)) << error;
+    EXPECT_EQ(window.selectedNodes(), (std::vector<std::string>{"A", "Beta"}));
+
+    const ImVec2 onBeta = canvas.toScreen(ImVec2(690, 323));
+    mouse.moveTo(onBeta);
+    mouse.button(true);
+    mouse.button(false);
+    frames.frame(window);
+    EXPECT_EQ(window.selectedNodes(), (std::vector<std::string>{"Beta"}));
+}
+
+// the special nodes can be in a selection, but Delete has nothing of theirs to remove: a
+// transition to Exit is not a transition into a deleted node
+TEST(AnimatorWindow, DeletingASelectionWithExitKeepsTransitionsToExit) {
+    ASSERT_TRUE(headless().ready);
+    AnimatorWindow window(project(), nullptr);
+    std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "deleteexit");
+    ASSERT_TRUE(doc);
+    ASSERT_TRUE(window.addState("A", ImVec2(600, 120), anim::MotionDef()));
+    ASSERT_TRUE(window.addState("B", ImVec2(300, 400), anim::MotionDef()));
+    ASSERT_TRUE(window.addTransition("B", "Exit", false, false));
+    Frames frames;
+    window.setOpen(true);
+    window.requestFocus();
+    for (int i = 0; i < 3; i++) frames.frame(window);
+    Mouse mouse{frames, window};
+    const GraphCanvas& canvas = window.getCanvas();
+    mouse.drag(canvas.toScreen(ImVec2(940, 100)), canvas.toScreen(ImVec2(590, 176)));
+    frames.frame(window);
+    ASSERT_EQ(window.selectedNodes(), (std::vector<std::string>{"A", "Exit"}));
+
+    ASSERT_TRUE(window.removeSelection());
+    ASSERT_EQ(machine(doc).states.size(), 1u);
+    EXPECT_EQ(machine(doc).states[0].name, "B");
+    ASSERT_EQ(machine(doc).states[0].transitions.size(), 1u) << "B's transition to Exit stays";
+    EXPECT_EQ(machine(doc).states[0].transitions[0].to, "Exit");
+}
+
+// Esc gives everything back: several moved nodes, the selection, and the Inspector, which a press
+// on a state took
+TEST(AnimatorWindow, EscPutsSeveralNodesAndTheInspectorBack) {
+    ASSERT_TRUE(headless().ready);
+    AnimatorWindow window(project(), nullptr);
+    std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "escmulti");
+    ASSERT_TRUE(doc);
+    ASSERT_TRUE(window.addState("A", ImVec2(300, 300), anim::MotionDef()));
+    ASSERT_TRUE(window.addState("B", ImVec2(600, 300), anim::MotionDef()));
+    Frames frames;
+    window.setOpen(true);
+    window.requestFocus();
+    for (int i = 0; i < 3; i++) frames.frame(window);
+    Mouse mouse{frames, window};
+    const GraphCanvas& canvas = window.getCanvas();
+    // (drawn inside a frame, as the Inspector draws it)
+    auto inspectorShowsIt = [&](){
+        bool shown = false;
+        frames.frame(window, [&](){
+            ImGui::Begin("Inspector");
+            shown = window.drawSelectionInspector();
+            ImGui::End();
+        });
+        return shown;
+    };
+    // nothing claimed the Inspector: the states were made by calls, not by clicks in the window
+    ASSERT_FALSE(inspectorShowsIt());
+    const size_t before = history()->position();
+    const ImVec2 onA = canvas.toScreen(ImVec2(390, 323));
+    mouse.moveTo(onA);
+    mouse.button(true);
+    mouse.moveTo(canvas.toScreen(ImVec2(450, 400)));
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, true);
+    frames.frame(window);
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, false);
+    frames.frame(window);
+    mouse.button(false);
+    frames.frame(window);
+    EXPECT_EQ(history()->position(), before);
+    EXPECT_EQ(statePosition(doc, "A").x, 300.0f);
+    EXPECT_EQ(window.selectedNodes(), (std::vector<std::string>{"B"}));
+    EXPECT_FALSE(inspectorShowsIt()) << "the press took the Inspector; Esc gives it back";
+}
+
+// BF23 F19: Esc during a state's drag puts it back and adds no undo step
+TEST(AnimatorWindow, EscCancelsAStateDrag) {
+    ASSERT_TRUE(headless().ready);
+    AnimatorWindow window(project(), nullptr);
+    std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "dragesc");
+    ASSERT_TRUE(doc);
+    ASSERT_TRUE(window.addState("A", ImVec2(300, 300), anim::MotionDef()));
+    ASSERT_TRUE(window.addState("B", ImVec2(600, 300), anim::MotionDef()));
+    Frames frames;
+    window.setOpen(true);
+    window.requestFocus();
+    for (int i = 0; i < 3; i++) frames.frame(window);
+    Mouse mouse{frames, window};
+    const GraphCanvas& canvas = window.getCanvas();
+    const size_t before = history()->position();
+    const fs::path file = assets() / "animator/dragesc.controller";
+    const std::string text = readAll(file);
+
+    mouse.moveTo(canvas.toScreen(ImVec2(390, 323)));
+    mouse.button(true);
+    mouse.moveTo(canvas.toScreen(ImVec2(500, 400)));
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, true);
+    frames.frame(window);
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, false);
+    frames.frame(window);
+    mouse.moveTo(canvas.toScreen(ImVec2(600, 500)));
+    mouse.button(false);
+    frames.frame(window);
+
+    EXPECT_EQ(history()->position(), before) << "no undo step";
+    EXPECT_EQ(readAll(file), text) << "the file is untouched";
+    EXPECT_EQ(window.selectedNodes(), (std::vector<std::string>{"B"})) << "the selection as it was before the press on A";
 }
 
 // a layer list change (remove, move, their undo and redo) keeps the current layer by name and

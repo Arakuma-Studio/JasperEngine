@@ -1150,10 +1150,10 @@ Point-sprite particles: texture (sprite-sheet rect per point) times the particle
 <a id="libraryparticles"></a>
 ### Particles (`library:particles`)
 
-The particle system shader: the particle texture (sprite-sheet frame, blended into the next with Frame Blending) times the particle colour, lit as the Renderer asks (unlit, per-vertex lit or six-way smoke lighting), plus its emission; with alpha-as-light glow, noise erosion over the particle's life, soft intersections and a camera near fade. Draws in the Renderer's blend mode; no depth write. Soft particles read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees them (none when SSAO or SSR already made one).
+The particle system shader: the particle texture (sprite-sheet frame, blended into the next with Frame Blending) times the particle colour, lit as the Renderer asks (unlit, per-vertex lit or six-way smoke lighting), plus its emission; with alpha-as-light glow, noise erosion over the particle's life, soft intersections, a camera near fade and distortion. Draws in the Renderer's blend mode; no depth write. Soft particles read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees them (none when SSAO or SSR already made one). Distortion reads the scene colour, which holds the opaque objects and the sky only (transparent objects behind a distorting particle are hidden where it is whole): on mobile a copy of the screen and a split of the render pass. Where a camera has no scene colour (a reflection probe's faces) a distorting particle draws as it would without the feature.
 
 - **Type**: particles; category Particles.
-- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one) and the scene colour (a copy of the opaque scene, at the scene's Scene Color Scale), in the camera passes that draw it.
 - **Default state**: depth write off.
 
 | Property | Kind | Default | Description |
@@ -1167,10 +1167,12 @@ The particle system shader: the particle texture (sprite-sheet frame, blended in
 | `softness` | float | 0.5 | Softness (world units) (with `SOFT`) |
 | `nearFadeStart` | float | 0.3 | Near fade: invisible at (world units from the camera) (with `NEAR_FADE`) |
 | `nearFadeEnd` | float | 1.5 | Near fade: whole from (world units from the camera) (with `NEAR_FADE`) |
+| `distortionStrength` | range 0 to 0.2 | 0.03 | Distortion (screen UV) (with `DISTORTION`) |
 
 | Texture | Default | Description |
 |---|---|---|
 | `u_erosionTexture` | gray | Erosion noise (red channel) (with `EROSION`) |
+| `u_distortionTexture` | gray | Distortion map (red: x, green: y; 0.5 shifts nothing) (with `DISTORTION`) |
 
 | Feature | Default | Description |
 |---|---|---|
@@ -1178,6 +1180,7 @@ The particle system shader: the particle texture (sprite-sheet frame, blended in
 | `EROSION` | off | Erosion (the particle's alpha dissolves it through a noise texture) |
 | `SOFT` | off | Soft particles (fade where they meet geometry; reads the scene depth) |
 | `NEAR_FADE` | off | Camera near fade |
+| `DISTORTION` | off | Distortion (bends the scene behind the particle through a distortion map; reads the scene colour) |
 
 ## Sky
 

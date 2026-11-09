@@ -117,6 +117,9 @@ namespace jasperengine::editor {
         char m_newCheckScreen[32] = "";
         std::unique_ptr<PixelArtPresetDialog> m_presetDialog;
         Physics3DWorldSettings m_physics3DWorld;
+        int m_particleWorldBudget = 0;
+        ParticleQaSettings m_particleQa;
+        procmat::ProcMatQaSettings m_procMatQa;
         bool m_runtimeShadersEnabled = true;
         bool m_dynamicBatching = true;
         int m_mobilePbrTierIndex = 1;
@@ -285,6 +288,7 @@ namespace jasperengine::editor {
         void drawNavigationSettings();
         void drawMeshSettings();
         void draw2DSettings();
+        void drawAnimationSettings();
         void drawPixelArtSettings();
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)

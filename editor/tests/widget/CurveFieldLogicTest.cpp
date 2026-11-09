@@ -11,10 +11,13 @@
 
 #include <gtest/gtest.h>
 
+#include "imgui.h"
+
 #include "util/Color.h"
 #include "widget/CurveEditorOps.h"
 #include "widget/CurvePresets.h"
 #include "widget/GradientEditorOps.h"
+#include "widget/GradientField.h"
 #include "widget/SwatchLibrary.h"
 
 #include <cmath>
@@ -579,4 +582,50 @@ TEST(GradientFieldLogicTest, Presets){
         EXPECT_EQ(g, copy) << p.name << ": already valid";
         EXPECT_EQ(g.mode, GradientMode::Blend);
     }
+}
+
+TEST(GradientFieldLogicTest, APresetOverTheFieldsKeyLimitIsRefused){
+    // F2: a ramp saved from a Procedural Material (32 keys) applied to a particle gradient (8)
+    // would write a file the particle codec refuses
+    ImGuiContext* previous = ImGui::GetCurrentContext();
+    ImGuiContext* context = ImGui::CreateContext();
+    ImGui::SetCurrentContext(context);
+    Gradient ramp;
+    for (int i = 0; i < 32; i++) ramp.colorKeys.push_back({(float)i / 31.0f, Vector3((float)i / 31.0f, 0.5f, 0.2f)});
+    ramp.alphaKeys = {{0.0f, 1.0f}, {1.0f, 0.0f}};
+    const Gradient field = Gradient::twoColors(Vector3(0, 0, 0), Vector3(1, 1, 1));
+    ui::GradientWindow& window = ui::GradientWindow::get();
+
+    ui::GradientFieldOptions particle;
+    const ImGuiID particleId = 101;
+    window.open(particleId, field, particle);
+    EXPECT_FALSE(window.applyPreset(ramp));
+    EXPECT_NE(window.getWarning().find("32 colour keys"), std::string::npos) << window.getWarning();
+    EXPECT_NE(window.getWarning().find("at most 8"), std::string::npos) << window.getWarning();
+    Gradient value = field;
+    EXPECT_EQ(window.consume(particleId, value), ui::EditPhase::None);
+    EXPECT_EQ(value.colorKeys.size(), 2u) << "the field keeps its gradient";
+    // within the limit it applies
+    Gradient eight = ramp;
+    eight.colorKeys.resize(8);
+    EXPECT_TRUE(window.applyPreset(eight));
+    EXPECT_EQ(window.consume(particleId, value), ui::EditPhase::Changing);
+    EXPECT_EQ(value.colorKeys.size(), 8u);
+    window.close();
+    window.consume(particleId, value);
+
+    // a graph's ramp holds 32: the same preset applies whole
+    ui::GradientFieldOptions graph;
+    graph.maxKeys = 32;
+    const ImGuiID graphId = 102;
+    window.open(graphId, field, graph);
+    EXPECT_TRUE(window.applyPreset(ramp));
+    value = field;
+    EXPECT_EQ(window.consume(graphId, value), ui::EditPhase::Changing);
+    EXPECT_EQ(value.colorKeys.size(), 32u);
+    window.close();
+    window.consume(graphId, value);
+
+    ImGui::DestroyContext(context);
+    ImGui::SetCurrentContext(previous);
 }

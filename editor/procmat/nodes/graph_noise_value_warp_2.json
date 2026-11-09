@@ -1,0 +1,206 @@
+{
+ "connections": [
+  {
+   "from": "perlin",
+   "from_port": 0.0,
+   "to": "transform",
+   "to_port": 1.0
+  },
+  {
+   "from": "transform_2",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 0.0
+  },
+  {
+   "from": "perlin",
+   "from_port": 0.0,
+   "to": "transform",
+   "to_port": 2.0
+  },
+  {
+   "from": "perlin",
+   "from_port": 0.0,
+   "to": "transform_2",
+   "to_port": 0.0
+  },
+  {
+   "from": "transform",
+   "from_port": 0.0,
+   "to": "transform_2",
+   "to_port": 1.0
+  },
+  {
+   "from": "transform",
+   "from_port": 0.0,
+   "to": "transform_2",
+   "to_port": 2.0
+  },
+  {
+   "from": "perlin",
+   "from_port": 0.0,
+   "to": "transform",
+   "to_port": 0.0
+  }
+ ],
+ "description": "",
+ "format": 1,
+ "id": "graph_noise_value_warp_2",
+ "inputs": [],
+ "kind": "graph",
+ "name": "Warp 2",
+ "nodes": [
+  {
+   "id": "transform",
+   "parameters": {
+    "repeat": true,
+    "rotate": 0.0,
+    "scale_x": 1.0,
+    "scale_y": 1.0,
+    "translate_x": 0.5,
+    "translate_y": 0.5
+   },
+   "type": "transform"
+  },
+  {
+   "id": "perlin",
+   "parameters": {
+    "iterations": 3.0,
+    "persistence": 0.5,
+    "scale_x": 4.0,
+    "scale_y": 4.0
+   },
+   "type": "perlin"
+  },
+  {
+   "id": "transform_2",
+   "parameters": {
+    "repeat": true,
+    "rotate": 0.0,
+    "scale_x": 1.0,
+    "scale_y": 1.0,
+    "translate_x": 0.5,
+    "translate_y": 0.5
+   },
+   "type": "transform"
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "port0",
+   "name": "port0",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 4.0,
+   "label": "Scale X",
+   "links": [
+    {
+     "node": "perlin",
+     "param": "scale_x"
+    }
+   ],
+   "max": 32,
+   "min": 1,
+   "name": "param0",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 4.0,
+   "label": "Scale Y",
+   "links": [
+    {
+     "node": "perlin",
+     "param": "scale_y"
+    }
+   ],
+   "max": 32,
+   "min": 1,
+   "name": "param1",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 3.0,
+   "label": "Iterations",
+   "links": [
+    {
+     "node": "perlin",
+     "param": "iterations"
+    }
+   ],
+   "max": 10,
+   "min": 1,
+   "name": "param2",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "label": "Persistance",
+   "links": [
+    {
+     "node": "perlin",
+     "param": "persistence"
+    }
+   ],
+   "max": 1,
+   "min": 0,
+   "name": "param3",
+   "step": 0.05,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "label": "Warp X",
+   "links": [
+    {
+     "node": "transform",
+     "param": "translate_x"
+    },
+    {
+     "node": "transform_2",
+     "param": "translate_x"
+    }
+   ],
+   "max": 1,
+   "min": -1,
+   "name": "param4",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "label": "Warp Y",
+   "links": [
+    {
+     "node": "transform",
+     "param": "translate_y"
+    },
+    {
+     "node": "transform_2",
+     "param": "translate_y"
+    }
+   ],
+   "max": 1,
+   "min": -1,
+   "name": "param5",
+   "step": 0.005,
+   "type": "float"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "material_maker/library/base.json"
+ },
+ "type_version": 1
+}

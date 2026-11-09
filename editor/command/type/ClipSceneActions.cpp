@@ -544,6 +544,37 @@ bool ClipSceneActions::extractSubClip(Project* project, uint32_t sceneId, Entity
     return true;
 }
 
+bool ClipSceneActions::writeOptimizedClips(Project* project, uint32_t sceneId, Entity player, const std::vector<OptimizedClip>& clips,
+                                           ClipActionResult& result, std::string& error){
+    result = ClipActionResult();
+    Scene* scene = editableScene(project, sceneId, error);
+    if (!scene) return false;
+    const AnimationPlayerComponent* component = isEntity(scene, player) ? scene->findComponent<AnimationPlayerComponent>(player) : nullptr;
+    if (!component) return fail(error, "root has no Animation Player to switch: leave root out to write the files alone");
+    stopPreviewsFor(sceneId, {player});
+    std::vector<AnimationPlayerClip> list = component->clips;
+    std::vector<std::pair<std::string, std::string>> files;
+    for (const OptimizedClip& clip : clips){
+        const AnimationPlayerClip file = fileEntry(project, clip.file, clip.text);
+        for (const ClipUser& user : findClipUsers(project, clip.source)){
+            if (user.prefabAsset || user.sceneId != sceneId || user.entity != player || user.entry >= list.size()) continue;
+            const std::string name = stateName(list[user.entry]);
+            list[user.entry].clip = file.clip;
+            list[user.entry].guid = file.guid;
+            if (stateName(list[user.entry]) != name) list[user.entry].name = name;
+            result.entries.push_back(user.entry);
+        }
+        files.push_back({editor::FileUtils::pathToGenericUtf8(clip.file), clip.text});
+    }
+    std::vector<Command*> commands;
+    if (!result.entries.empty()){
+        commands.push_back(new PropertyCmd<std::vector<AnimationPlayerClip>>(project, sceneId, player, ComponentType::AnimationPlayerComponent,
+                                                                             "clips", list));
+    }
+    result.player = player;
+    return runStep(project, sceneId, files, std::move(commands), player, result, error);
+}
+
 std::string ClipSceneActions::humanoidClipPath(Project* project, const std::string& source){
     anim::SubClipReference parsed;
     std::string directory;

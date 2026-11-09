@@ -1,0 +1,119 @@
+{
+ "code": [],
+ "description": "",
+ "format": 1,
+ "functions": [
+  "ssd_multi"
+ ],
+ "id": "seven_segment2",
+ "inputs": [
+  {
+   "default": "1.0",
+   "description": "Map that affects the nnumber parameter",
+   "label": "3:",
+   "name": "number_map",
+   "short_description": "Number Map",
+   "type": "f"
+  },
+  {
+   "default": "1.0",
+   "description": "Map that affects the bevel parameter",
+   "label": "6:",
+   "name": "bevel_map",
+   "short_description": "Bevel Map",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Seven Segment Display",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "ssd_multi($uv, $s, $st, $sl, $bevel*$bevel_map($uv), int($n*$number_map($uv)), int($digits), $spacing)",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.3,
+   "label": "Thickness",
+   "max": 1,
+   "min": 0,
+   "name": "st",
+   "short_description": "Segments thickness",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.9,
+   "label": "Length",
+   "max": 1,
+   "min": 0,
+   "name": "sl",
+   "short_description": "Segments length",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 8,
+   "label": "Number",
+   "max": 100,
+   "min": 0,
+   "name": "n",
+   "short_description": "Number for the display",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "Minimum number of digits of the display",
+   "label": "Digits",
+   "max": 9,
+   "min": 1,
+   "name": "digits",
+   "short_description": "Digits",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "Scale of the display",
+   "label": "Scale",
+   "max": 1,
+   "min": 0,
+   "name": "s",
+   "short_description": "Scale",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "label": "Bevel",
+   "max": 1,
+   "min": 0,
+   "name": "bevel",
+   "short_description": "Width of the edge of each segment",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "Space between digits",
+   "label": "Spacing",
+   "max": 0.5,
+   "min": 0,
+   "name": "spacing",
+   "short_description": "Spacing",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Simple 7-seg number display",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/seven_segment2.mmg"
+ },
+ "type_version": 1
+}

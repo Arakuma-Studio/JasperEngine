@@ -111,7 +111,7 @@ bool paletteSwapEnabled(const Material& material, const std::string& shader) {
 
 std::string PaletteSwapTextureCheck::message() const {
     if (reasons.empty()) return std::string();
-    std::string text = "Palette Swap needs lossless textures: " + FileUtils::pathToUtf8(FileUtils::pathFromUtf8(texture).filename()) + " ";
+    std::string text = subject + " needs lossless textures: " + FileUtils::pathToUtf8(FileUtils::pathFromUtf8(texture).filename()) + " ";
     for (size_t i = 0; i < reasons.size(); i++) text += (i ? ", " : "") + reasons[i];
     return text;
 }
@@ -120,11 +120,15 @@ PaletteSwapTextureCheck checkPaletteSwapTexture(Project& project, const Material
     PaletteSwapTextureCheck check;
     if (!paletteSwapEnabled(material, shader)) return check;
     const Texture& texture = material.baseColorTexture;
-    check.texture = texture.getPath();
-    if (check.texture.empty() || texture.isFramebuffer()) {
-        check.texture.clear();
-        return check;
-    }
+    if (texture.getPath().empty() || texture.isFramebuffer()) return check;
+    check = checkLosslessTexture(project, texture.getPath(), width, height);
+    if (filteredSampler(texture)) check.reasons.push_back("is filtered (set its Filter to Nearest)");
+    return check;
+}
+
+PaletteSwapTextureCheck checkLosslessTexture(Project& project, const std::string& texture, int width, int height) {
+    PaletteSwapTextureCheck check;
+    check.texture = texture;
     if (width <= 0 || height <= 0) {
         int channels = 0;
         const fs::path absolute = project.getAssetsPath() / FileUtils::pathFromUtf8(check.texture);
@@ -160,7 +164,6 @@ PaletteSwapTextureCheck checkPaletteSwapTexture(Project& project, const Material
         check.projectResize = true;
         check.reasons.push_back("is resized to a power of two (Project Settings > Graphics > Texture Strategy)");
     }
-    if (filteredSampler(texture)) check.reasons.push_back("is filtered (set its Filter to Nearest)");
     return check;
 }
 

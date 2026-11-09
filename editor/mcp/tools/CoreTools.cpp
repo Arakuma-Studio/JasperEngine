@@ -39,6 +39,7 @@
 #include "util/SystemFonts.h"
 #include "AppSettings.h"
 #include "window/CodeEditor.h"
+#include "window/ParticleEffectWindow.h"
 #include "window/ProjectWindow.h"
 #include "window/AssetPanels.h"
 
@@ -715,6 +716,15 @@ void reportEditorStatus(const CallPtr& call) {
     if (SearchPalette* palette = app.getSearchPalette()) {
         const SearchPalette::UiState state = palette->uiState();
         ui["search_palette"] = {{"open", state.open}, {"query", state.query}, {"results", state.results}, {"selected", state.selected}};
+    }
+    if (ParticleEffectWindow* particleEffect = app.getParticleEffectWindow()) {
+        const ParticleEffectWindow::UiState state = particleEffect->uiState();
+        char stateHash[17];
+        std::snprintf(stateHash, sizeof(stateHash), "%016llx", static_cast<unsigned long long>(state.stateHash));
+        ui["particle_effect"] = {{"open", state.open}, {"focused", state.focused}, {"effect", state.effect}, {"subtree_root", state.subtreeRoot},
+                                 {"time", state.time}, {"seed", state.seed}, {"playing", state.playing}, {"speed", state.speed},
+                                 {"resimulating", state.resimulating}, {"nodes", state.nodes}, {"hidden", state.hidden},
+                                 {"selected", state.selected}, {"live", state.live}, {"state_hash", stateHash}};
     }
     {
         const ui::CurveWindow::UiState state = ui::CurveWindow::get().uiState();

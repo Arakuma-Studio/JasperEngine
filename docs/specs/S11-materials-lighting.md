@@ -70,6 +70,8 @@ it is unused, so existing scenes, forks and exported games stay byte-for-byte as
   assigned (`ShaderVariantCompiler.cpp:362-395`, `ShaderPool::getShaderPropertyName`). Bit 5
   is the only free bit ("reserved, was USE_SHADOWS_PCF"). `ShaderKey = customId<<48 |
   type<<32 | properties` (`ShaderPool.cpp:702-704`).
+  (Note, 2026-11-04, BF23 F26: no longer so. Commit d20c7ee61 widened the properties to 64 bits
+  for every shader type, and `ShaderKey` is a struct of properties, type and customId.)
   - Features of library shaders and forks travel in the **customId** reference
     `"<base>#DEF1,DEF2"` (`ShaderReference`, `ShaderManifest.cpp:1256-1357`). It is resolved
     to defines in `ShaderVariantCompiler::resolveCustomShaderSources` (`:803-845`).

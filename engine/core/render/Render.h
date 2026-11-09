@@ -262,7 +262,11 @@ namespace jasperengine{
         OBJECTMVP1,
         OBJECTMVP2,
         OBJECTMVP3,
-        OBJECTEXTRA
+        OBJECTEXTRA,
+        // pixel particles (S49): the Pixel render mode's per-instance stream (i_particlePixel,
+        // particles/ParticleRender.h), and Analytic's shared slot index (i_particleSlot)
+        PARTICLEPIXEL,
+        PARTICLESLOT
     };
 
     enum class AttributeDataType{

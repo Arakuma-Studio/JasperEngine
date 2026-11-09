@@ -1408,8 +1408,16 @@ void editor::PaletteWindow::drawRamps() {
         if (ImGui::Selectable((title + "###palette_ramp_" + std::to_string(r)).c_str(), selectedRamp == r, 0, ImVec2(nameWidth, size))) {
             selectedRamp = selectedRamp == r ? -1 : r;
         }
-        ImGui::SetItemTooltip("%s: %d steps%s. Click to highlight its swatches; drop swatches here to append them.", ramp.name.c_str(),
-                              (int)ramp.colors.size(), ramp.cycle != 0.0f ? ", colour cycling" : "");
+        ImGui::SetItemTooltip("%s: %d steps%s. Click to highlight its swatches; drop swatches here to append them; drag it onto a "
+                              "Palette Ramp colour field.", ramp.name.c_str(), (int)ramp.colors.size(), ramp.cycle != 0.0f ? ", colour cycling" : "");
+        // the ramp as a reference a particle colour field takes (S49 R32)
+        if (!file.empty() && ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+            std::error_code ec;
+            const std::string reference = std::filesystem::relative(file, project->getAssetsPath(), ec).generic_string() + "#ramp:" + ramp.name;
+            ImGui::SetDragDropPayload("PALETTE_RAMP", reference.data(), reference.size());
+            ImGui::Text("%s", reference.c_str());
+            ImGui::EndDragDropSource();
+        }
         if (canEdit && ImGui::BeginDragDropTarget()) {
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(pwh::kSwatchPayload)) appendTo(r, pwh::payloadIndices(payload));
             ImGui::EndDragDropTarget();

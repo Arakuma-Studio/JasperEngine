@@ -1,0 +1,54 @@
+{
+ "code": [],
+ "description": "This node generates a grid of random I Ching hexagrams.",
+ "format": 1,
+ "functions": [
+  "IChing"
+ ],
+ "id": "iching",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "I Ching",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "A grayscale image showing random I Ching hexagrams.",
+   "expr": "IChing(vec2($columns, $rows)*$uv, float($seed))",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The number of columns of the grid",
+   "label": "Size X",
+   "max": 32,
+   "min": 2,
+   "name": "columns",
+   "short_description": "Size.x",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The number of rows of the grid",
+   "label": "Size Y",
+   "max": 32,
+   "min": 2,
+   "name": "rows",
+   "short_description": "Size.y",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  }
+ ],
+ "short_description": "I Ching hexagrams generator",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/iching.mmg"
+ },
+ "type_version": 1
+}

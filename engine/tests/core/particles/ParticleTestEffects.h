@@ -268,6 +268,7 @@ namespace particletest {
         d.collision.planes = {plane};
         d.collision.dampen = MinMaxCurve(0.2f);
         d.collision.bounce = MinMaxCurve(0.6f);
+        d.collision.settleSpeed = 0.5f;
         d.collision.lifetimeLoss = MinMaxCurve(0.1f);
         d.collision.minKillSpeed = 0.01f;
         d.collision.maxKillSpeed = 500.0f;
@@ -305,6 +306,22 @@ namespace particletest {
         d.customData.data[1] = MinMaxCurve::fromCurve(Curve::linear(0.0f, 1.0f));
         d.customData.data[2] = MinMaxCurve::twoConstants(2.0f, 3.0f);
         d.customData.data[3] = twoCurves;
+
+        // S49's Pixel Art module (a warning beside the Mesh renderer, still valid)
+        d.pixelArt.present = true;
+        d.pixelArt.snap = false;
+        d.pixelArt.integerSize = false;
+        d.pixelArt.fade = PixelFade::Cutout;
+        d.pixelArt.ditherSize = 8;
+        d.pixelArt.ditherSpace = DitherSpace::Particle;
+        d.pixelArt.fadeOverLifetime = MinMaxCurve::fromCurve(Curve::linear(1.0f, 0.0f));
+        d.pixelArt.holdFrameRate = 12.0f;
+        d.pixelArt.secondary = SecondaryColorMode::Color;
+        d.pixelArt.secondaryOffset = -2;
+        d.pixelArt.secondaryColor = Vector4(0.5f, 0.25f, 1.0f, 1.0f);
+        d.pixelArt.wobbleAmplitude = Vector2(2.0f, 1.0f);
+        d.pixelArt.wobbleFrequency = Vector2(0.5f, 0.75f);
+        d.pixelArt.flickerBelow = 0.25f;
 
         d.renderer.renderMode = RenderMode::Mesh;
         d.renderer.cameraScale = 0.5f;

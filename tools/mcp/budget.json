@@ -67,10 +67,21 @@
             "tools": 13,
             "spec": "S23's 12 (hot reload, script status and settings, editor menus, expressions, the graph tools) and upstream's user_settings (PlayerPrefs, the scripts' saved data: no group fits it better; SYNC#4)"
         },
+        "animation": {
+            "chars": 16000,
+            "tools": 13,
+            "spec": "S21's Animator tools, upstream's pose, Vertex Animation and lattice tools, and S77's check_animation and optimize_animation (R55): one tool more than the default count, so an agent reading clip quality need not enable two groups"
+        },
         "editor_ux": {
             "chars": 24000,
             "tools": 21,
             "spec": "S24's 4 tools, BF1's find_ui_item, S25's 8 (search, commands, shortcuts, layouts, labels, saved searches, bookmarks), S26's 5 Scene view tools (pick_at, bookmarks, layout, measures, filters), upstream's place_with_physics and S08's get_inspector_layout (the Inspector's drawn rows; it reads the editor UI as find_ui_item does, so it stays in this group), and SYNC#4's configure_game_view (upstream ui-scaling-text and safe-area made the Game view toolbar's editor preferences a tool; out of core so the default listing fits, its options in jasper://docs/ui)"
+        },
+        "particles": {
+            "chars": 15000,
+            "tools": 13,
+            "spec": "S20's 10 tools, upstream's import_unity_particles, and S91's preview_particle_effect and bake_particle_sheet (the bake follows bake_vertex_animation as a tool of its own: a preview's writes stay its save_path); the default 15,000 characters still apply",
+            "reason": "R12's Bake Sprite Sheet writes two files as one undo step and runs as a job, as bake_vertex_animation does; folding it into preview_particle_effect would make that read-only tool write, so the 13th tool is the bake"
         }
     },
     "exceptions": {
@@ -91,8 +102,8 @@
             "reason": "upstream (Texture Synthesis), predates its merge into oe-port: 3519 with S31's schema conventions until upstream round 3 moved its per-argument texts to jasper://docs/texture-synthesis (2341 measured, nested objects still say additionalProperties)"
         },
         "edit_animation": {
-            "limit": 3606,
-            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it), 3606 with its free-form key items saying so (S31 conventions)"
+            "limit": 3566,
+            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it), 3606 with its free-form key items saying so (S31 conventions); 3566 with S77's root_motion (a free-form object; the guide names its members) paid for by a shorter clip sentence (the core listing had 3 characters left)"
         },
         "sculpt_terrain": {
             "limit": 2699,

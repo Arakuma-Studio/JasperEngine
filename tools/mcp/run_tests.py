@@ -398,6 +398,8 @@ def main() -> int:
             wanted = {Path(f).resolve() for f in args.files}
             files = [f for f in files if f.resolve() in wanted]
             excluded = [(name, why) for name, why in excluded if (args.tests_dir / name).resolve() in wanted]
+            # (every problem names its file first: another file's says nothing about this run)
+            problems = [p for p in problems if (args.tests_dir / p.split(":", 1)[0]).resolve() in wanted]
         for problem in problems:
             print(f"run_tests: {problem}", file=sys.stderr)
         if problems:

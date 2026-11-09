@@ -75,8 +75,24 @@ namespace jasperengine { namespace particles {
         return c.c0;
     }
 
+    // a Ramp's step (the kernels' rampIndex for one particle; std::pow where they take their own)
+    inline uint32_t rampIndexScalar(const GradientParam& g, const ScalarDriver& d){
+        float t = wrapScalar(driverScalar(g.driver, g.stream, g.scale, g.offset, d), g.wrap);
+        if (g.rampBias != 1.0f)
+            t = t > 1.0e-10f ? std::pow(t, g.rampBias) : 0.0f;
+        const float n = (float)g.lutSize;
+        const uint32_t step = (uint32_t)std::min(std::max(std::floor(t * n), 0.0f), n - 1.0f);
+        return g.rampReverse ? g.lutSize - 1u - step : step;
+    }
+
     inline void gradientScalar(const ParticleProgram& prog, const GradientParam& g, const ScalarDriver& d, float out[4]){
         switch (g.kind){
+            case GradientParam::Ramp: {
+                const float* table = prog.floats(g.lut0);
+                const uint32_t i = rampIndexScalar(g, d);
+                for (int c = 0; c < 4; c++) out[c] = table[i * 4 + c];
+                return;
+            }
             case GradientParam::Const:
                 for (int c = 0; c < 4; c++) out[c] = g.c0[c];
                 return;

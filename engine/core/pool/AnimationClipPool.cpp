@@ -12,10 +12,13 @@
 #include "pose/ModelRig.h"
 #include "Engine.h"
 #include "io/Data.h"
+#include "io/File.h"
 #include "io/FileData.h"
+#include "io/ResourcePack.h"
 #include "sprite/AsepriteClips.h"
 #include "subsystem/MeshSystem.h"
 #include "jobs/JobSystem.h"
+#include "memory/MemoryStats.h"
 
 #include <map>
 #include <mutex>
@@ -45,6 +48,10 @@ namespace{
         uint64_t clearEpoch = 0;
         std::map<std::string, ModelAliases> models;   // by model key
         uint64_t revision = 0;
+        // the entries' memoryBytes(): every insert and erase of `entries` keeps it current. A
+        // clip dropped while a player holds it leaves here at once and the heap at the player's
+        // next rebind
+        memory::TrackedBytes loadedBytes{"Animation.Clips", memory::Residency::Cpu};
 #ifdef JASPERENGINE_ANIM_TEST_HOOKS
         AnimationClipPoolTestHooks hooks;
 #endif
@@ -138,6 +145,12 @@ namespace{
                (stamp.aliasKey.empty() || epochLocked(pool, stamp.aliasKey) == stamp.aliasEpoch);
     }
 
+    std::map<std::string, std::shared_ptr<const AnimationClip>>::iterator
+    eraseEntryLocked(PoolState& pool, std::map<std::string, std::shared_ptr<const AnimationClip>>::iterator entry){
+        pool.loadedBytes.subtract(entry->second->memoryBytes());
+        return pool.entries.erase(entry);
+    }
+
     // Caches `clip` under `key` unless something it was loaded from was invalidated (or the pool
     // cleared) since the load started; a clip cached meanwhile by another load wins.
     std::shared_ptr<const AnimationClip> insert(PoolState& pool, const std::string& key, const LoadStamp& stamp,
@@ -156,6 +169,7 @@ namespace{
         if (existing != pool.entries.end()) return existing->second;
         if (!stampValidLocked(pool, key, stamp)) return clip;
         pool.entries[key] = clip;
+        pool.loadedBytes.add(clip->memoryBytes());
         pool.generations[key] = ++pool.generationCounter;
         pool.revision++;
         return clip;
@@ -165,7 +179,7 @@ namespace{
         std::string prefix = aliasEpochKey(modelKey);
         for (auto it = pool.entries.lower_bound(prefix); it != pool.entries.end() && it->first.compare(0, prefix.size(), prefix) == 0;){
             bumpLocked(pool, it->first);
-            it = pool.entries.erase(it);
+            it = eraseEntryLocked(pool, it);
         }
         // in-flight sub-clip loads of this model that have no entry yet
         for (auto it = pool.epochs.lower_bound(prefix); it != pool.epochs.end() && it->first.compare(0, prefix.size(), prefix) == 0; ++it){
@@ -213,6 +227,13 @@ namespace{
     AsyncLoads& asyncLoads(){
         static AsyncLoads* loads = new AsyncLoads();
         return *loads;
+    }
+
+    // forgets the build of one key: one not asked for again must not keep its clip alive
+    void forgetAsyncLoad(const std::string& key){
+        AsyncLoads& loads = asyncLoads();
+        std::lock_guard<std::mutex> lock(loads.mutex);
+        loads.pending.erase(key);
     }
 
     // forgets the builds in flight of a model ("<model key>#" prefix), every one when empty
@@ -407,14 +428,62 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
     return cached;
 }
 
-std::shared_ptr<const AnimationClip> AnimationClipPool::pollOrLoad(const std::string& path, bool& loading, std::string* error){
-    loading = false;
-    if (path.empty() || !Engine::isAsyncLoading() || !anim::isSubClipReference(path)){
-        return getOrLoad(path, error);
+namespace{
+
+    // Under this a .anim parses in the call: at about 50 ms per MB it takes a few milliseconds at
+    // most, and a job would start it at least a frame late, moving the clip against the rest of
+    // the game's timeline for nothing (tools/test-projects/upgrade-from-main plays frame for frame)
+    constexpr uint64_t kAnimInCallBytes = 64 * 1024;
+
+    // a file that cannot be opened counts as small: its error comes from the call
+    bool smallAnim(const std::string& path){
+        uint64_t packed = 0;
+        if (ResourcePack::size(path, packed)) return packed < kAnimInCallBytes;
+        File file;
+        return file.open(path.c_str()) != 0 || file.length() < kAnimInCallBytes;
     }
-    if (std::shared_ptr<const AnimationClip> cached = get(path)) return cached;
+
+    bool hasAsyncLoad(const std::string& key){
+        AsyncLoads& loads = asyncLoads();
+        std::lock_guard<std::mutex> lock(loads.mutex);
+        return loads.pending.count(key) != 0;
+    }
+
+    bool noThreads(){
+#ifdef JASPERENGINE_ANIM_TEST_HOOKS
+        std::function<bool()> singleThreaded;
+        {
+            PoolState& pool = state();
+            std::lock_guard<std::mutex> lock(pool.mutex);
+            singleThreaded = pool.hooks.singleThreaded;
+        }
+        if (singleThreaded) return singleThreaded();
+#endif
+        return jobs::system().isSingleThreaded();
+    }
+
+}
+
+std::shared_ptr<const AnimationClip> AnimationClipPool::pollOrLoad(const std::string& path, bool& loading, std::string* error, bool animInCall){
+    loading = false;
+    if (path.empty() || !Engine::isAsyncLoading()) return getOrLoad(path, error);
+    // a .anim takes no lock another thread holds: without threads it needs no frames to wait for
+    // the pump (a sub-clip's builder may wait for a loading model, so it keeps its job)
+    if (!anim::isSubClipReference(path) && (animInCall || noThreads())){
+        std::shared_ptr<const AnimationClip> clip = getOrLoad(path, error);
+        // a job of an earlier poll is not asked for again
+        if (clip) forgetAsyncLoad(getKey(path));
+        return clip;
+    }
 
     const std::string key = getKey(path);
+    if (std::shared_ptr<const AnimationClip> cached = get(path)){
+        // its job's handle holds the clip too: clearUnused would never free it
+        forgetAsyncLoad(key);
+        return cached;
+    }
+    if (!anim::isSubClipReference(path) && !hasAsyncLoad(key) && smallAnim(path)) return getOrLoad(path, error);
+
     AsyncLoads& loads = asyncLoads();
     jobs::Task<AsyncLoad> build;
     {
@@ -472,12 +541,14 @@ void AnimationClipPool::invalidate(const std::string& path){
     }
     Reference ref = reference(path);
     if (ref.subClip) forgetAsyncLoads(ref.key);
+    else forgetAsyncLoad(ref.key);
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
     std::string key = entryKeyLocked(pool, ref);
     if (key.empty()) return;
     bumpLocked(pool, key);
-    pool.entries.erase(key);
+    auto entry = pool.entries.find(key);
+    if (entry != pool.entries.end()) eraseEntryLocked(pool, entry);
     pool.revision++;
 }
 
@@ -504,7 +575,7 @@ void AnimationClipPool::clear(){
         auto generation = pool.generations.find(entry.first);
         if (generation != pool.generations.end()) generation->second = ++pool.generationCounter;
     }
-    pool.entries.clear();
+    for (auto it = pool.entries.begin(); it != pool.entries.end();) it = eraseEntryLocked(pool, it);
     pool.models.clear();
     pool.epochs.clear();
     pool.clearEpoch++;
@@ -518,7 +589,7 @@ void AnimationClipPool::clearUnused(){
     bool changed = false;
     for (auto it = pool.entries.begin(); it != pool.entries.end();){
         if (it->second.use_count() <= 1){
-            it = pool.entries.erase(it);
+            it = eraseEntryLocked(pool, it);
             changed = true;
         }else{
             ++it;
@@ -546,7 +617,7 @@ void AnimationClipPool::releaseUnused(const std::string& path){
     std::string key = entryKeyLocked(pool, ref);
     auto it = key.empty() ? pool.entries.end() : pool.entries.find(key);
     if (it != pool.entries.end() && it->second.use_count() <= 1){
-        pool.entries.erase(it);
+        eraseEntryLocked(pool, it);
         pool.revision++;
     }
 }
@@ -555,4 +626,8 @@ size_t AnimationClipPool::size(){
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
     return pool.entries.size();
+}
+
+uint64_t AnimationClipPool::loadedBytes(){
+    return state().loadedBytes.current();
 }

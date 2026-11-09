@@ -40,6 +40,7 @@ SITES = {
     ("layout/LayoutManager.cpp", "exportPopup"): "test_layout_save_to_file_opens_a_picker",
     ("window/GameWindow.cpp", "Add Game View Resolution"): "test_add_game_resolution",
     ("window/HumanoidConvertDialog.cpp", "Convert to Humanoid Clip###HumanoidConvert"): "not driven: needs a clip of a skinned model; convert_animation_clip does the same for agents",
+    ("window/ReduceKeysDialog.cpp", "Reduce Keys###ReduceKeys"): "not driven: test_animation_quality_ui.py drives it (a clip with a rig); optimize_animation does the same for agents",
     ("window/dialog/ShaderForkDialog.cpp", "popupName"): "test_shader_fork",
     ("window/dialog/ExportWindowShipping.cpp", "Keystore Passwords##ExportKeystore"): "not driven: needs a signing keystore and the Android SDK",
     ("window/dialog/ExportWindowShipping.cpp", "Upload to Steam##PublishUpload"): "not driven: needs a release folder and SteamCMD",
@@ -179,8 +180,9 @@ async def test_sites_table_is_complete(ed: Editor):
     # the spec's 71 sites, S36's Placeholder Sound and the Model Import prompt (73); the project
     # window's folder prompt and its three nested boxes became one name dialog (errors inline), and
     # Change Asset Directories came: 71; mobile-shipping's Privacy Manifest Preview: 72; S44's Extract
-    # Clips and Aseprite Not Found: 74; S45's Convert Inline Sprite Frames: 75; S42's Fix All and Apply Pixel Art Preset: 77
-    ed.check_eq(sum(found.values()), 77, "the 77 sites")
+    # Clips and Aseprite Not Found: 74; S45's Convert Inline Sprite Frames: 75; S77's Reduce Keys: 76;
+    # S42's Fix All and Apply Pixel Art Preset: 78
+    ed.check_eq(sum(found.values()), 78, "the 78 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):

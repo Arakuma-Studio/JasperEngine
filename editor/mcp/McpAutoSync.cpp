@@ -10,6 +10,8 @@
 
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
+#include "graph/GraphDocument.h"
+#include "graph/GraphRegistry.h"
 #include "vat/VatDocument.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
@@ -216,14 +218,17 @@ bool McpAutoSync::isTrackedFile(const std::string& path) {
     if (Util::isScriptFile(path) || Util::isShaderFile(path) || Util::isMaterialFile(path) || Util::isColorLutFile(path)) return true;
     if (isUiCodeFile(path) || isAssetFile(path)) return true;
     const std::string ext = lowerExtension(path);
-    // pose animations and humanoid sidecars: their open documents reload (editor/pose); clips:
-    // their documents reload, AnimationClipPool drops them and their players reload
-    if (ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid" || Util::isAnimationClipFile(path)) return true;
+    // pose animations and humanoid sidecars: their open documents reload (editor/pose); clips and
+    // a model's .clips sidecar: their documents reload, AnimationClipPool drops them and their
+    // players reload
+    if (ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid" || ext == ".clips" || Util::isAnimationClipFile(path)) return true;
     // Avatar Masks and Animator Controllers: their documents reload, their pools drop them and
     // their players reload (AnimationClipDocument::filesChanged reaches them)
     if (Util::isAvatarMaskFile(path) || Util::isAnimatorControllerFile(path)) return true;
     // Vertex Animations: their documents reload, VertexAnimationPool drops them, animators reload
     if (Util::isVertexAnimationFile(path)) return true;
+    // particle effects and the files of any graph kind: their problems are reported, what uses them reloads
+    if (Util::isParticleEffectFile(path) || graph::GraphRegistry::get().kindForFile(path)) return true;
     // models and glTF buffers: the clips made from their animations reload (picked up, not reported)
     return isModelSourceFile(path);
 }
@@ -406,6 +411,10 @@ void McpAutoSync::prepare(McpContext& ctx) {
         });
         // and .vat documents' (Inspector edits of a Vertex Animation)
         VatDocument::setFilesWrittenHook([target](const std::vector<fs::path>& changed) {
+            w4::syncFiles(*target, changed, false);
+        });
+        // and graph files' (the Graph Editor's steps, their undo and redo)
+        GraphDocument::setFilesWrittenHook([target](const std::vector<fs::path>& changed) {
             w4::syncFiles(*target, changed, false);
         });
     }

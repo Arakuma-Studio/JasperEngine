@@ -1,0 +1,74 @@
+{
+ "code": [],
+ "description": "",
+ "format": 1,
+ "functions": [],
+ "id": "radial_gradient",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Radial Gradient",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "An image showing the gradient",
+   "expr": "$gradient($mirror ? 2.0*(0.5-abs(fract(1.41421356237*length(fract($uv)-vec2(0.5, 0.5))*$repeat)-0.5)) : fract($repeat*1.41421356237*length(fract($uv)-vec2(0.5, 0.5))) )",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 1.0,
+   "description": "Number of repetitions of the gradient",
+   "label": "Repeat",
+   "max": 32.0,
+   "min": 1.0,
+   "name": "repeat",
+   "short_description": "Repeat",
+   "step": 1.0,
+   "type": "float"
+  },
+  {
+   "default": false,
+   "description": "Mirrors the gradient",
+   "label": "Mirror",
+   "name": "mirror",
+   "short_description": "Mirror",
+   "type": "boolean"
+  },
+  {
+   "default": {
+    "interpolation": 1,
+    "points": [
+     {
+      "a": 1.0,
+      "b": 0.0,
+      "g": 0.0,
+      "pos": 0.0,
+      "r": 0.0
+     },
+     {
+      "a": 1.0,
+      "b": 1.0,
+      "g": 1.0,
+      "pos": 1.0,
+      "r": 1.0
+     }
+    ],
+    "type": "Gradient"
+   },
+   "description": "Gradient to be spread on the image",
+   "label": "",
+   "name": "gradient",
+   "short_description": "Gradient",
+   "type": "gradient"
+  }
+ ],
+ "short_description": "Radial Gradient",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/radial_gradient.mmg"
+ },
+ "type_version": 1
+}

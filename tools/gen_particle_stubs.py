@@ -28,17 +28,21 @@ PROXIES = [
     ("sizeOverLifetime", "sizeOverLifetime"), ("sizeBySpeed", "sizeBySpeed"), ("rotationOverLifetime", "rotationOverLifetime"),
     ("rotationBySpeed", "rotationBySpeed"), ("textureSheetAnimation", "textureSheetAnimation"), ("collision", "collision"),
     ("trails", "trails"), ("customData", "customData"), ("externalForces", "externalForces"), ("renderer", "renderer"),
+    ("pixelArt", "pixelArt"),
 ]
 
 TYPES = {
     "Bool": "boolean", "Int": "integer", "UInt": "integer", "Mask": "integer", "Float": "number", "Enum": "string",
     "Vector2": "Vector2", "Vector3": "Vector3", "Vector4": "Vector4", "Color": "Vector4", "String": "string",
-    "MinMaxCurve": "MinMaxCurve|number|{min: number, max: number}", "MinMaxGradient": "MinMaxGradient|Vector4|Gradient",
+    "MinMaxCurve": "MinMaxCurve|number|{min: number, max: number}", "MinMaxGradient": "ParticleSystemGradient|MinMaxGradient|Vector4|Gradient",
 }
 
 # the effect's own fields Unity puts in Main (ParticleClassesLua.cpp pathOf)
 MAIN_EFFECT_FIELDS = ["duration", "looping", "prewarm", "startDelay", "maxParticles", "simulationSpace", "simulationSpeed",
                       "scalingMode", "useUnscaledTime", "stopAction", "emitterVelocityMode"]
+
+# fields kept only so old files load, which nothing reads: not offered to scripts' authors
+NOT_LISTED = {("trails", "generateLightingData")}
 
 # Unity's names a field also answers to: (proxy, alias, field)
 ALIASES = [
@@ -101,7 +105,7 @@ def main() -> int:
         if proxy == "inheritVelocity":
             fields = [("curve", "MinMaxCurve"), ("mode", "Enum")]
         else:
-            fields = [f for f in modules.get(key, []) if f[1] != "Array"]
+            fields = [f for f in modules.get(key, []) if f[1] != "Array" and (key, f[0]) not in NOT_LISTED]
             if key != "main" and key != "renderer":
                 lines.append("---@field enabled boolean")
         if proxy == "main":

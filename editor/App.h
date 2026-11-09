@@ -77,7 +77,10 @@ namespace jasperengine::editor{
     class TerrainEditWindow;
     class TextureSynthesisWindow;
     class AudioMixerWindow;
+    class ParticleEffectWindow;
     class SoundBrowserWindow;
+    class GraphEditorWindow;
+    class ProceduralMaterialWindow;
     class AudioCapturesWindow;
     class ApplyPaletteDialog;
     class PaletteWindow;
@@ -98,6 +101,7 @@ namespace jasperengine::editor{
     class JobsMemoryWindow;
     class MeshAuditWindow;
     class BuildReportWindow;
+    class AnimationStatisticsWindow;
     class ProfilerWindow;
     class FrameDebuggerWindow;
     class UndoHistoryWindow;
@@ -257,7 +261,10 @@ namespace jasperengine::editor{
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
+        ParticleEffectWindow* particleEffectWindow;
         SoundBrowserWindow* soundBrowserWindow;
+        GraphEditorWindow* graphEditorWindow;
+        ProceduralMaterialWindow* proceduralMaterialWindow;
         AudioCapturesWindow* audioCapturesWindow;
         // S43: Window > 2D > Palette and the Apply Palette / Reduce Colours dialog
         PaletteWindow* paletteWindow = nullptr;
@@ -276,6 +283,7 @@ namespace jasperengine::editor{
         JobsMemoryWindow* jobsMemoryWindow;
         MeshAuditWindow* meshAuditWindow;
         BuildReportWindow* buildReportWindow;
+        AnimationStatisticsWindow* animationStatisticsWindow;
         ProfilerWindow* profilerWindow;
         FrameDebuggerWindow* frameDebuggerWindow;
         UndoHistoryWindow* undoHistoryWindow;
@@ -702,6 +710,9 @@ namespace jasperengine::editor{
         AnimationWindow* getAnimationWindow() const;
         PoseAnimationWindow* getPoseAnimationWindow() const;
         AnimatorWindow* getAnimatorWindow() const { return animatorWindow; }
+        ParticleEffectWindow* getParticleEffectWindow() const { return particleEffectWindow; }
+        GraphEditorWindow* getGraphEditorWindow() const { return graphEditorWindow; }
+        ProceduralMaterialWindow* getProceduralMaterialWindow() const { return proceduralMaterialWindow; }
         AvatarWindow* getAvatarWindow() const;
         // the Avatar Configuration window on the Model of `entity` (anim-retarget 9)
         void openAvatarWindow(uint32_t sceneId, Entity entity);
@@ -725,6 +736,8 @@ namespace jasperengine::editor{
         MainToolbar* getMainToolbar() const;
         void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
         void openAudioMixerWindow(const std::filesystem::path& mixer = {}) override;
+        void openParticleEffect(const std::string& assetPath) override;
+        void openParticleEffectSubtree(uint32_t sceneId, uint32_t root) override;
         void openBuildReport(const std::filesystem::path& report) override;
         void openMeshAudit() override;
         void openConsole() override;

@@ -82,6 +82,8 @@ json PlayerConfig::toJson() const {
     out["loading"] = {{"scene", loadingScene}, {"delay", loadingDelay}, {"timeout", loadingTimeout}, {"async", asyncLoading}};
     out["threading"] = {{"workers", threading.workers}, {"reservedFrameWorkers", threading.reservedFrameWorkers},
                         {"ioThreads", threading.ioThreads}, {"webPumpBudgetMs", threading.webPumpBudgetMs}};
+    if (particleWorldBudget != 0)
+        out["particleWorldBudget"] = particleWorldBudget;
     out["atmosphereQuality"] = {nameOf(kAtmosphere, atmosphereQuality[0]), nameOf(kAtmosphere, atmosphereQuality[1]),
                                 nameOf(kAtmosphere, atmosphereQuality[2])};
     out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
@@ -185,6 +187,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.loadingTimeout = loading->value("timeout", config.loadingTimeout);
             config.asyncLoading = loading->value("async", config.asyncLoading);
         }
+        config.particleWorldBudget = in.value("particleWorldBudget", config.particleWorldBudget);
         if (const auto threading = in.find("threading"); threading != in.end()) {
             config.threading.workers = threading->value("workers", config.threading.workers);
             config.threading.reservedFrameWorkers = threading->value("reservedFrameWorkers", config.threading.reservedFrameWorkers);

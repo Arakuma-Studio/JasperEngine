@@ -920,14 +920,20 @@ void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths
         }
     }
     // a changed .humanoid sidecar (the model's Avatar, anim-retarget 7.4): the model's clips and its
-    // humanoid rig are built again (a humanoid model's clips, clips retargeted from it)
+    // humanoid rig are built again (a humanoid model's clips, clips retargeted from it). A changed
+    // .clips sidecar (the clips' Wrap Mode and Root Motion, S77 R29) too, and the model's clip
+    // documents and players reload as for the model itself, without dropping its parse
+    std::vector<fs::path> settingsModels;
     for (const fs::path& path : paths){
         const fs::path normal = path.lexically_normal();
-        if (normal.extension() != ".humanoid") continue;
+        if (normal.extension() != ".humanoid" && normal.extension() != ".clips") continue;
         fs::path model = normal;
         model.replace_extension();
-        if (Util::isModelFile(model.string())) AnimationClipPool::invalidateModel(model.generic_string());
+        if (!Util::isModelFile(model.string())) continue;
+        AnimationClipPool::invalidateModel(model.generic_string());
+        if (normal.extension() == ".clips") settingsModels.push_back(model);
     }
+    paths.insert(paths.end(), settingsModels.begin(), settingsModels.end());
 
     std::vector<std::shared_ptr<AnimationClipDocument>> changed;
     for (const auto& entry : reg.documents){

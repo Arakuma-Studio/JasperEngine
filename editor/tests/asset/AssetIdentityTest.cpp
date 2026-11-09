@@ -289,7 +289,38 @@ TEST(AssetTypes, TableDecidesTracking) {
     EXPECT_EQ(AssetTypes::assetPathForMeta("a/hero.png.meta"), fs::path("a/hero.png"));
 }
 
+// BF23 F24: every file the texture cook takes has an identity
+TEST(AssetTypes, ExrIsATexture) {
+    const AssetTypeInfo* exr = AssetTypes::find("assets/env.exr", "assets");
+    ASSERT_NE(exr, nullptr);
+    EXPECT_EQ(exr->type, AssetType::Texture);
+    EXPECT_EQ(exr->identity, AssetIdentity::Sidecar);
+    EXPECT_NE(AssetTypes::find("assets/env.EXR", "assets"), nullptr);
+}
+
 // ==================================================================== AssetDatabase
+
+// BF23 F24: an .exr of an existing project, one its database did not track, gains its sidecar on
+// the next scan and answers to the path old references hold
+TEST(AssetDatabase, ExistingExrGainsASidecar) {
+    AssetTestDir dir;
+    write(dir.path / "assets/a.png", "png content");
+    {
+        AssetDatabase database;
+        database.open(dir.path, "assets");
+        database.waitForBackgroundWork();
+    }
+    write(dir.path / "assets/env.exr", "exr content");
+    AssetDatabase database;
+    database.open(dir.path, "assets");
+    database.waitForBackgroundWork();
+    const Guid guid = database.getAssetGuid("assets/env.exr");
+    EXPECT_FALSE(guid.isNull());
+    EXPECT_TRUE(fs::exists(dir.path / "assets/env.exr.meta"));
+    const AssetDatabase::Resolution reference = database.lookupPath("assets/env.exr");
+    EXPECT_TRUE(reference.found()) << "a reference by path resolves";
+    EXPECT_EQ(reference.guid, guid);
+}
 
 // AC1: two machines upgrading the same commit write the same identities
 TEST(AssetIdentity, UpgradeIsDeterministic) {
