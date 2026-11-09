@@ -113,13 +113,9 @@ namespace {
             world = createTerrainWorld(project.get(), scene->id, NULL_ENTITY, settings, error);
             ASSERT_NE(world, NULL_ENTITY) << error;
             folder = project->resolveAssetPath(FileUtils::pathFromUtf8(scene->scene->getComponent<TerrainWorldComponent>(world).worldData.path));
-            {
-                std::ofstream mesh(project->getAssetsPath() / "pine.obj");
-                mesh << "v -1 0 0\nv 1 0 0\nv 1 4 0\nv -1 4 0\nvn 0 0 1\nf 1//1 2//1 3//1\nf 1//1 3//1 4//1\n";
-            }
+            // the data path only: a prototype with no mesh loads nothing
             TerrainTreePrototype prototype;
             prototype.id = 7;
-            prototype.meshPath = AssetRef("pine.obj");
             scene->scene->getComponent<TerrainComponent>(world).treePrototypes.push_back(prototype);
             ASSERT_NE(runtime(), nullptr);
             panel = std::make_unique<TerrainFoliagePanel>(project.get(), nullptr);
@@ -316,7 +312,7 @@ TEST_F(TerrainWorldTreesTest, MassPlaceDistributesPerTile) {
     size_t total = 0;
     expectInsideTiles(after, total);
     EXPECT_EQ(static_cast<int64_t>(total), outcome.treesAfter);
-    EXPECT_LE(total, 400u);
+    EXPECT_NEAR(static_cast<double>(total), 400.0, 40.0) << "about the count asked for, over the whole World";
     // every tile its own pattern: no two tiles hold the same positions
     EXPECT_NE(treesOfFile(after, TileCoord(-1, -1)).records()[0].u, treesOfFile(after, TileCoord(0, 0)).records()[0].u);
 

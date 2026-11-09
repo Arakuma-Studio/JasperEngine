@@ -465,7 +465,9 @@ TEST(TerrainWorldFoliage, RuntimeStateCoversEveryTile) {
     ASSERT_TRUE(world.settle([&] { return world.foliage->hasRegion(world.entity, TileCoord(-3, -2).key()) && world.trees().size() == 3; }));
 
     for (const FoliageInstanceInfo& tree : world.trees()) {
-        if (std::lround(tree.position.x) != -150) ASSERT_TRUE(world.foliage->removeTreeInstance(world.entity, tree.id).has_value());
+        if (std::lround(tree.position.x) != -150) {
+            ASSERT_TRUE(world.foliage->removeTreeInstance(world.entity, tree.id).has_value());
+        }
     }
     ASSERT_NE(world.foliage->addTreeInstance(world.entity, 0, Vector3(-130.0f, 0.0f, -100.0f), 30.0f, 1.5f), 0u);
     const std::string state = world.foliage->getRuntimeState(world.entity);

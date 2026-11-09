@@ -582,10 +582,13 @@ void editor::FoliageOpRunner::planWorld(Work& work) {
             const std::vector<TileCoord> reached = shapeTiles(op);
             for (const TileCoord& tile : reached) {
                 Op part = op;
-                // Mass Place's count is the World's: spread over the tiles when the op has no shape
+                // Mass Place's count is the World's: with no shape, the density that attempts it over every tile
                 const OpParam* count = op.params.find("count");
                 if (count && op.shape.type == ShapeType::All && !reached.empty()) {
-                    setWorldParam(part.params, "count", worldNumberParam(count->number / static_cast<double>(reached.size())));
+                    const double area = static_cast<double>(reached.size()) * edit.tileSize() * edit.tileSize();
+                    part.params.fields.erase(std::remove_if(part.params.fields.begin(), part.params.fields.end(),
+                                                            [](const auto& field) { return field.first == "count"; }), part.params.fields.end());
+                    setWorldParam(part.params, "density", worldNumberParam(count->number / area));
                 }
                 // every tile its own pattern, the same on every run
                 if (op.registeredName == "scatter_by_rules") {
