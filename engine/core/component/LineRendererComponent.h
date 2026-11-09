@@ -113,6 +113,10 @@ namespace jasperengine{
         Vector2 textureScale = Vector2(1.0f, 1.0f);
         // transparent queue order (Unity's sorting order), lower first
         int sortPriority = 0;
+        // Sorting Layer (a SortingLayers id) and Order in Layer (spec S52 R2): the 2D draw order
+        // and the transparent queue's first keys; 0 and 0 draw as before
+        int32_t sortingLayer = 0;
+        int32_t sortingOrder = 0;   // Order in Layer, -32768..32767
 
         // runtime: the variant loaded (ribbon or hairline), the ribbon, the hairline segments
         // built from a width-0 polyline, invalid points warned about once

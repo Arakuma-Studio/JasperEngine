@@ -83,7 +83,12 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     // past the count, what the generator will start from (the first slot exists before it ran)
     static const Submesh unbuilt{};
     for(unsigned int i = 0; i < std::max(mesh.numSubmeshes, numSubmeshes); i++) {
-        submeshesNode.push_back(encodeSubmesh(i == 0 || i < mesh.numSubmeshes ? mesh.submeshes[i] : unbuilt, embedTextureData, encodeGeneratedValues));
+        const bool built = i == 0 || i < mesh.numSubmeshes;
+        const Submesh& submesh = built ? mesh.submeshes[i] : unbuilt;
+        // the count the mesh's load gives, so a save does not depend on whether a frame loaded it
+        std::optional<unsigned int> vertexCount;
+        if (encodeGeneratedValues) vertexCount = built ? MeshSystem::loadedVertexCount(mesh, submesh) : submesh.vertexCount;
+        submeshesNode.push_back(encodeSubmesh(submesh, embedTextureData, vertexCount));
     }
     node["submeshes"] = submeshesNode;
 
@@ -137,6 +142,7 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["receiveShadows"] = YamlNumbers::text(mesh.receiveShadows);
     node["lodEnabled"] = YamlNumbers::text(mesh.lodEnabled);
     node["lodBias"] = YamlNumbers::text(mesh.lodBias);
+    encodeSortingFields(node, mesh.sortingLayer, mesh.sortingOrder);
     // the fade settings (spec S54 R9) only away from their defaults (MeshComponent's), so a
     // scene saved before them re-saves byte for byte
     if (mesh.lodFadeMode != LodFadeMode::CROSS_FADE)
@@ -261,6 +267,7 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["receiveShadows"]) mesh.receiveShadows = YamlNumbers::as<bool>(node["receiveShadows"]);
     if (node["lodEnabled"]) mesh.lodEnabled = YamlNumbers::as<bool>(node["lodEnabled"]);
     mesh.lodBias = decodeFinite(node["lodBias"], mesh.lodBias);
+    decodeSortingFields(node, mesh.sortingLayer, mesh.sortingOrder);
     // (omitted when at their defaults)
     mesh.lodFadeMode = node["lodFadeMode"] ? decodeEnum(node, "lodFadeMode", StreamSchema::lodFadeMode()) : LodFadeMode::CROSS_FADE;
     mesh.lodAnimateCrossFading = node["lodAnimateCrossFading"] ? YamlNumbers::as<bool>(node["lodAnimateCrossFading"]) : true;
@@ -291,7 +298,7 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
 
 YAML::Node editor::Stream::encodeAtlasSampler(const Texture& texture) {
     YAML::Node node;
-    const Texture defaults;
+    const Texture defaults = savedTexture();
     const bool samplerSet = texture.getMinFilter() != defaults.getMinFilter() || texture.getMagFilter() != defaults.getMagFilter() ||
         texture.getWrapU() != defaults.getWrapU() || texture.getWrapV() != defaults.getWrapV() ||
         texture.getAlphaBorder() != defaults.getAlphaBorder();
@@ -308,7 +315,7 @@ YAML::Node editor::Stream::encodeAtlasSampler(const Texture& texture) {
 
 void editor::Stream::decodeAtlasSampler(const YAML::Node& node, Texture& texture) {
     // a key left out (or a null node) is a new texture's value
-    const Texture defaults;
+    const Texture defaults = savedTexture();
     const bool map = node.IsMap();
     texture.setMinFilter(map && node["minFilter"] ? stringToTextureFilter(node["minFilter"].as<std::string>()) : defaults.getMinFilter());
     texture.setMagFilter(map && node["magFilter"] ? stringToTextureFilter(node["magFilter"].as<std::string>()) : defaults.getMagFilter());
@@ -407,6 +414,16 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
     return ui;
 }
 
+void editor::Stream::encodeSortingFields(YAML::Node& node, int32_t sortingLayer, int32_t sortingOrder) {
+    if (sortingLayer != 0) node["sortingLayer"] = sortingLayer;
+    if (sortingOrder != 0) node["sortingOrder"] = sortingOrder;
+}
+
+void editor::Stream::decodeSortingFields(const YAML::Node& node, int32_t& sortingLayer, int32_t& sortingOrder) {
+    sortingLayer = node["sortingLayer"] ? std::max(0, YamlNumbers::as<int32_t>(node["sortingLayer"])) : 0;
+    sortingOrder = node["sortingOrder"] ? std::clamp(YamlNumbers::as<int32_t>(node["sortingOrder"]), -32768, 32767) : 0;
+}
+
 YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) {
     YAML::Node node;
     node["enabled"] = YamlNumbers::text(sprite.enabled);
@@ -423,6 +440,9 @@ YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) 
         node["pixelsPerUnit"] = YamlNumbers::text(sprite.pixelsPerUnit);
     if (sprite.pixelRotation != PixelRotation::CAMERA)
         node["pixelRotation"] = sprite.pixelRotation == PixelRotation::STEPS_90 ? "steps_90" : "on_grid";
+    // S52: Center is the default (Unity's)
+    if (sprite.spriteSortPoint != SpriteSortPoint::CENTER)
+        node["spriteSortPoint"] = "pivot";
 
     // a sheet sprite (S44 R48): the sheet decides its frames; the inline ones are not saved
     if (!sprite.sheet.empty()) {
@@ -491,6 +511,8 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
         const std::string rotation = node["pixelRotation"].IsScalar() ? node["pixelRotation"].Scalar() : std::string();
         sprite.pixelRotation = rotation == "steps_90" ? PixelRotation::STEPS_90 : (rotation == "on_grid" ? PixelRotation::ON_GRID : PixelRotation::CAMERA);
     }
+    sprite.spriteSortPoint = (node["spriteSortPoint"] && node["spriteSortPoint"].IsScalar() && node["spriteSortPoint"].Scalar() == "pivot")
+        ? SpriteSortPoint::PIVOT : SpriteSortPoint::CENTER;
 
     if (node["framesRect"]) {
         const YAML::Node& framesNode = node["framesRect"];
@@ -1843,6 +1865,7 @@ YAML::Node editor::Stream::encodeParticleSystemComponent(const ParticleSystemCom
     node["playOnAwake"] = particles.playOnAwake;
     node["seed"] = particles.seed;
     node["playbackSpeed"] = particles.playbackSpeed;
+    encodeSortingFields(node, particles.sortingLayer, particles.sortingOrder);
     // written only when on, so a file from before it stays as it was
     if (particles.useUnscaledTime) node["useUnscaledTime"] = true;
     if (!particles.exposedValues.empty()){
@@ -1884,6 +1907,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     if (node["playOnAwake"]) particles.playOnAwake = YamlNumbers::as<bool>(node["playOnAwake"]);
     if (node["seed"]) particles.seed = YamlNumbers::as<uint32_t>(node["seed"]);
     if (node["playbackSpeed"]) particles.playbackSpeed = YamlNumbers::as<float>(node["playbackSpeed"]);
+    decodeSortingFields(node, particles.sortingLayer, particles.sortingOrder);
     // absent: off, over an old component too (it is written only when on)
     particles.useUnscaledTime = node["useUnscaledTime"] ? YamlNumbers::as<bool>(node["useUnscaledTime"]) : false;
     // written only when not empty: absent is none (over an old component too)
@@ -2360,6 +2384,7 @@ YAML::Node editor::Stream::encodePointsComponent(const PointsComponent& points) 
     node["enabled"] = points.enabled;
 
     node["maxPoints"] = points.maxPoints;
+    encodeSortingFields(node, points.sortingLayer, points.sortingOrder);
     node["transparent"] = points.transparent;
     node["autoTransparency"] = points.autoTransparency;
     node["texture"] = encodeTexture(points.texture);
@@ -2402,6 +2427,7 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
     if (oldPoints) { points = *oldPoints; }
 
     if (node["maxPoints"]) points.maxPoints = YamlNumbers::as<unsigned int>(node["maxPoints"]);
+    decodeSortingFields(node, points.sortingLayer, points.sortingOrder);
     if (node["transparent"]) points.transparent = YamlNumbers::as<bool>(node["transparent"]);
     if (node["autoTransparency"]) points.autoTransparency = YamlNumbers::as<bool>(node["autoTransparency"]);
     if (node["texture"]) points.texture = decodeTexture(node["texture"]);
@@ -2460,6 +2486,7 @@ YAML::Node editor::Stream::encodeLineRendererComponent(const LineRendererCompone
     node["enabled"] = lines.enabled;
 
     node["maxLines"] = lines.maxLines;
+    encodeSortingFields(node, lines.sortingLayer, lines.sortingOrder);
 
     YAML::Node linesNode;
     for (const LineData& line : lines.lines) {
@@ -2493,6 +2520,7 @@ LineRendererComponent editor::Stream::decodeLineRendererComponent(const YAML::No
     if (oldLines) { lines = *oldLines; }
 
     if (node["maxLines"]) lines.maxLines = YamlNumbers::as<unsigned int>(node["maxLines"]);
+    decodeSortingFields(node, lines.sortingLayer, lines.sortingOrder);
 
     if (node["lines"]) {
         lines.lines.clear();

@@ -242,11 +242,20 @@ namespace jasperengine{
         // What a Terrain needs of its height and blend maps, whatever a file said: a save and the
         // generated code hold them too (the editor applies them on load and before a save)
         static void applyTerrainMapSettings(TerrainComponent& terrain);
+        // The vertex count RenderSystem::loadMesh gives a submesh from the mesh's buffers (its index
+        // count when indexed, else the mesh's vertices): a save and the generated code hold it, so
+        // they do not depend on whether a frame loaded the mesh. Without a buffer, the submesh's own.
+        static unsigned int loadedVertexCount(const MeshComponent& mesh, const Submesh& submesh);
 
         // What each generator makes of its mesh before filling the geometry: the submesh
         // settings and the vertex attributes. The editor reads the shader variants of a
         // generated mesh off them, without generating it.
         static void prepareSpriteMesh(MeshComponent& mesh);
+        // S52: a sprite's pixel-art batching inputs (MeshComponent::batchAttributes) its shader
+        // (the scene's default when the mesh names none) reads, and their neutral values after the
+        // geometry the builders made. The export's shader list takes the same (ShaderVariantCollector)
+        static uint8_t spriteBatchAttributes(const MeshComponent& mesh, bool pixelSnap, const std::string& sceneMeshShader);
+        static void fillSpriteBatchAttributes(MeshComponent& mesh);
         // How many joints the skinned vertices name: their largest bone id plus one (0 without
         // skinned vertices). A palette shorter than that is read past its end
         static size_t skinJointCount(MeshComponent& mesh);

@@ -46,6 +46,9 @@ namespace jasperengine {
         int mipLimit = 0;                   // the most levels kept, 0 = the full chain
         bool preserveCoverage = false;
         float alphaCutoff = 0.5f;
+        // binary alpha (S42 R6): after the alpha source and before any resize, alpha becomes 255
+        // at alphaCutoff and above and 0 below (RGBA8)
+        bool alphaClip = false;
         bool flipGreen = false;
         TextureChannel channel = TextureChannel::R;
         // keep the decoded layout (R16, R8 or RGBA8, no type conversion): CPU-readable textures

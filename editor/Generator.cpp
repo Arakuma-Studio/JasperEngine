@@ -2557,6 +2557,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     }
     if (pixelsPerUnit != 1)
         mainContent += "    Engine::setPixelsPerUnit(" + std::to_string(pixelsPerUnit) + ");\n";
+    // Graphics > Default Filter Mode (S42 R3): runtime-made textures of a pixel-art game are crisp
+    if (defaultFilterPoint)
+        mainContent += "    Engine::setDefaultTextureFilter(TextureFilter::NEAREST);\n";
     if (bitmapTextCacheMiB != 0)
         mainContent += "    jasperengine::pixelart::BitmapTextCache::get().setBudgetMiB(" + std::to_string(bitmapTextCacheMiB) + ");\n";
 
@@ -2710,6 +2713,22 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     for (size_t layer = 0; layer < tagsAndLayers.layerNames.size(); layer++) {
         if (tagsAndLayers.layerNames[layer].empty()) continue;
         mainContent += "    TagManager::setLayerName(" + std::to_string(layer) + ", " + Factory::formatString(tagsAndLayers.layerNames[layer]) + ");\n";
+    }
+
+    // Sorting Layers and the Transparency Sort settings (S52 R40), what differs from the defaults
+    if (tagsAndLayers.sortingLayers.size() > 1) {
+        mainContent += "    SortingLayers::setLayers({";
+        for (size_t i = 0; i < tagsAndLayers.sortingLayers.size(); i++) {
+            if (i > 0) mainContent += ", ";
+            mainContent += "{" + std::to_string(tagsAndLayers.sortingLayers[i].id) + ", " + Factory::formatString(tagsAndLayers.sortingLayers[i].name) + "}";
+        }
+        mainContent += "});\n";
+    }
+    if (tagsAndLayers.transparencySortMode == TransparencySortMode::CUSTOM_AXIS)
+        mainContent += "    SortingLayers::setTransparencySortMode(TransparencySortMode::CUSTOM_AXIS);\n";
+    if (tagsAndLayers.transparencySortAxis != Vector3(0.0f, 1.0f, 0.0f)) {
+        mainContent += "    SortingLayers::setTransparencySortAxis(Vector3(" + Factory::formatFloat(tagsAndLayers.transparencySortAxis.x) + ", " +
+                       Factory::formatFloat(tagsAndLayers.transparencySortAxis.y) + ", " + Factory::formatFloat(tagsAndLayers.transparencySortAxis.z) + "));\n";
     }
 
     // Layer Collision Matrices: only the rows that do not collide with every layer

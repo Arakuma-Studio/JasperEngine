@@ -22,6 +22,11 @@ namespace {
 
     // The project-relative path a "[Hot Reload] Reloaded <path> (<kind>, <ms> ms)" or a
     // "[Hot Reload] <path>: <error> (kept the previous version)" line names ("" for others)
+    std::map<std::string, std::function<void(const std::string&)>>& messageActions() {
+        static std::map<std::string, std::function<void(const std::string&)>> actions;
+        return actions;
+    }
+
     std::string hotReloadAsset(const std::string& message) {
         // "[HTML UI] Patched ui/menu.html: ..." / "[HTML UI] Rebuilt ui/menu.html (2.0 ms)..." (S17 R37)
         static const std::string htmlPrefix = "[HTML UI] ";
@@ -824,6 +829,13 @@ void ConsoleWindow::showList(float height) {
         if (!asset.empty() && Backend::getApp().getProjectWindow()) {
             Backend::getApp().getProjectWindow()->revealAsset(Backend::getApp().getProject()->getProjectPath() / asset);
         }
+        const std::string& message = logs[rows[clickedRow].logIndex].message;
+        for (const auto& [prefix, action] : messageActions()) {
+            if (message.rfind(prefix, 0) == 0) {
+                action(message);
+                break;
+            }
+        }
     }
     if (doubleClickedRow >= 0 && rows[doubleClickedRow].logIndex < logs.size()) {
         openFirstLocation(logs[rows[doubleClickedRow].logIndex], false);
@@ -1023,4 +1035,9 @@ bool ConsoleWindow::hasSelectedMessage() const {
 
 void ConsoleWindow::copySelectedMessage() {
     if (const LogData* log = selectedLog()) ImGui::SetClipboardText(log->message.c_str());
+}
+
+void ConsoleWindow::setMessageAction(const std::string& prefix, std::function<void(const std::string& message)> action) {
+    if (action) messageActions()[prefix] = std::move(action);
+    else messageActions().erase(prefix);
 }

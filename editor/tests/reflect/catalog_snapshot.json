@@ -202,6 +202,8 @@
     "renderInReflectionProbes",
     "shaderUniforms",
     "shadowsBillboard",
+    "sortingLayer",
+    "sortingOrder",
     "staticShadowCaster",
     "submeshes",
     "transparent",
@@ -346,6 +348,16 @@
      68719476736,
      true
     ],
+    "sortingLayer": [
+     8,
+     0,
+     true
+    ],
+    "sortingOrder": [
+     8,
+     0,
+     true
+    ],
     "staticShadowCaster": [
      0,
      0,
@@ -456,6 +468,16 @@
     "shaderUniforms": [
      15,
      68719476736,
+     true
+    ],
+    "sortingLayer": [
+     8,
+     0,
+     true
+    ],
+    "sortingOrder": [
+     8,
+     0,
      true
     ],
     "staticShadowCaster": [
@@ -1381,6 +1403,8 @@
     "shaderTextures",
     "shaderUniforms",
     "sortPriority",
+    "sortingLayer",
+    "sortingOrder",
     "stencil",
     "textureMode",
     "textureScale",
@@ -1482,6 +1506,16 @@
      true
     ],
     "sortPriority": [
+     8,
+     0,
+     true
+    ],
+    "sortingLayer": [
+     8,
+     0,
+     true
+    ],
+    "sortingOrder": [
      8,
      0,
      true
@@ -1649,6 +1683,16 @@
      true
     ],
     "sortPriority": [
+     8,
+     0,
+     true
+    ],
+    "sortingLayer": [
+     8,
+     0,
+     true
+    ],
+    "sortingOrder": [
      8,
      0,
      true
@@ -2841,6 +2885,8 @@
     "shaderGlobalBindings",
     "shaderTextures",
     "shaderUniforms",
+    "sortingLayer",
+    "sortingOrder",
     "stencil",
     "texture",
     "transparent"
@@ -2910,6 +2956,16 @@
     "shaderUniforms": [
      15,
      68719476736,
+     true
+    ],
+    "sortingLayer": [
+     8,
+     0,
+     true
+    ],
+    "sortingOrder": [
+     8,
+     0,
      true
     ],
     "stencil": [
@@ -3022,6 +3078,16 @@
     "shaderUniforms": [
      15,
      68719476736,
+     true
+    ],
+    "sortingLayer": [
+     8,
+     0,
+     true
+    ],
+    "sortingOrder": [
+     8,
+     0,
      true
     ],
     "stencil": [
@@ -9063,6 +9129,8 @@
     "playOnAwake",
     "playbackSpeed",
     "seed",
+    "sortingLayer",
+    "sortingOrder",
     "useUnscaledTime"
    ],
    "name": "ParticleSystemComponent",
@@ -9105,6 +9173,16 @@
     "seed": [
      9,
      2199023255552,
+     true
+    ],
+    "sortingLayer": [
+     8,
+     0,
+     true
+    ],
+    "sortingOrder": [
+     8,
+     0,
      true
     ],
     "useUnscaledTime": [
@@ -9152,6 +9230,16 @@
     "seed": [
      9,
      2199023255552,
+     true
+    ],
+    "sortingLayer": [
+     8,
+     0,
+     true
+    ],
+    "sortingOrder": [
+     8,
+     0,
      true
     ],
     "useUnscaledTime": [
@@ -9861,6 +9949,18 @@
       "on_grid",
       "Rotate On Grid"
      ]
+    ],
+    "spriteSortPoint": [
+     [
+      0,
+      "center",
+      "Center"
+     ],
+     [
+      1,
+      "pivot",
+      "Pivot"
+     ]
     ]
    },
    "has_enabled": true,
@@ -9880,6 +9980,7 @@
     "pixelsPerUnit",
     "sheet",
     "sheetGuid",
+    "spriteSortPoint",
     "textureScaleFactor",
     "width"
    ],
@@ -9943,6 +10044,11 @@
     "sheet": [
      18,
      1024,
+     true
+    ],
+    "spriteSortPoint": [
+     13,
+     0,
      true
     ],
     "textureScaleFactor": [
@@ -10015,6 +10121,11 @@
     "sheet": [
      18,
      1024,
+     true
+    ],
+    "spriteSortPoint": [
+     13,
+     0,
      true
     ],
     "textureScaleFactor": [
@@ -18357,6 +18468,8 @@
     "shaderTextures",
     "shaderUniforms",
     "sortPriority",
+    "sortingLayer",
+    "sortingOrder",
     "stencil",
     "textureMode",
     "textureScale",
@@ -18450,6 +18563,16 @@
     "sortPriority": [
      8,
      1125899906842624,
+     true
+    ],
+    "sortingLayer": [
+     8,
+     0,
+     true
+    ],
+    "sortingOrder": [
+     8,
+     0,
      true
     ],
     "stencil": [
@@ -18607,6 +18730,16 @@
     "sortPriority": [
      8,
      1125899906842624,
+     true
+    ],
+    "sortingLayer": [
+     8,
+     0,
+     true
+    ],
+    "sortingOrder": [
+     8,
+     0,
      true
     ],
     "stencil": [
@@ -21590,6 +21723,165 @@
    "type": 94,
    "type_of_key": 94,
    "type_of_name": 94
+  },
+  {
+   "display_name": "Sorting Group",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef97bd",
+   "key": "sortinggroup",
+   "known_keys": [
+    "enabled",
+    "sortingLayer",
+    "sortingOrder"
+   ],
+   "name": "SortingGroupComponent",
+   "properties_of_default": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "sortingLayer": [
+     8,
+     0,
+     true
+    ],
+    "sortingOrder": [
+     8,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "sortingLayer": [
+     8,
+     0,
+     true
+    ],
+    "sortingOrder": [
+     8,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 95,
+   "type_of_key": 95,
+   "type_of_name": 95
+  },
+  {
+   "display_name": "Sprite Batch",
+   "enum_options": {
+    "mode": [
+     [
+      0,
+      "retained",
+      "Retained"
+     ],
+     [
+      1,
+      "clear_each_frame",
+      "Clear Each Frame"
+     ]
+    ],
+    "space": [
+     [
+      0,
+      "local",
+      "Local"
+     ],
+     [
+      1,
+      "world",
+      "World"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef8089",
+   "key": "spritebatch",
+   "known_keys": [
+    "capacity",
+    "enabled",
+    "mode",
+    "sortInstances",
+    "space"
+   ],
+   "name": "SpriteBatchComponent",
+   "properties_of_default": {
+    "capacity": [
+     9,
+     0,
+     true
+    ],
+    "count": [
+     9,
+     0,
+     false
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "sortInstances": [
+     0,
+     0,
+     true
+    ],
+    "space": [
+     13,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "capacity": [
+     9,
+     0,
+     true
+    ],
+    "count": [
+     9,
+     0,
+     false
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "sortInstances": [
+     0,
+     0,
+     true
+    ],
+    "space": [
+     13,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 96,
+   "type_of_key": 96,
+   "type_of_name": 96
   }
  ],
  "ease_options": [
@@ -24669,6 +24961,16 @@
     0,
     true
    ],
+   "sortingLayer": [
+    8,
+    0,
+    true
+   ],
+   "sortingOrder": [
+    8,
+    0,
+    true
+   ],
    "stencil": [
     15,
     2147483648,
@@ -24886,6 +25188,16 @@
    "shaderUniforms": [
     15,
     68719476736,
+    true
+   ],
+   "sortingLayer": [
+    8,
+    0,
+    true
+   ],
+   "sortingOrder": [
+    8,
+    0,
     true
    ],
    "staticShadowCaster": [
@@ -26586,6 +26898,16 @@
     2199023255552,
     true
    ],
+   "sortingLayer": [
+    8,
+    0,
+    true
+   ],
+   "sortingOrder": [
+    8,
+    0,
+    true
+   ],
    "useUnscaledTime": [
     0,
     0,
@@ -26778,6 +27100,16 @@
    "shaderUniforms": [
     15,
     68719476736,
+    true
+   ],
+   "sortingLayer": [
+    8,
+    0,
+    true
+   ],
+   "sortingOrder": [
+    8,
+    0,
     true
    ],
    "stencil": [
@@ -27624,6 +27956,23 @@
     true
    ]
   },
+  "SortingGroupComponent": {
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "sortingLayer": [
+    8,
+    0,
+    true
+   ],
+   "sortingOrder": [
+    8,
+    0,
+    true
+   ]
+  },
   "SplineAnimateComponent": {
    "alignment": [
     13,
@@ -28214,6 +28563,38 @@
     false
    ]
   },
+  "SpriteBatchComponent": {
+   "capacity": [
+    9,
+    0,
+    true
+   ],
+   "count": [
+    9,
+    0,
+    false
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "mode": [
+    13,
+    0,
+    true
+   ],
+   "sortInstances": [
+    0,
+    0,
+    true
+   ],
+   "space": [
+    13,
+    0,
+    true
+   ]
+  },
   "SpriteComponent": {
    "automaticFlipY": [
     0,
@@ -28273,6 +28654,11 @@
    "sheet": [
     18,
     1024,
+    true
+   ],
+   "spriteSortPoint": [
+    13,
+    0,
     true
    ],
    "textureScaleFactor": [
@@ -28845,6 +29231,16 @@
    "sortPriority": [
     8,
     1125899906842624,
+    true
+   ],
+   "sortingLayer": [
+    8,
+    0,
+    true
+   ],
+   "sortingOrder": [
+    8,
+    0,
     true
    ],
    "stencil": [

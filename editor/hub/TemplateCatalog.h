@@ -32,6 +32,11 @@ namespace jasperengine::editor::hub {
         std::string accentColor = "#5A67A7";
         std::string thumbnail = "thumbnail.png";
         std::string startScene = "Main";
+        // a pixel-art template (S42 R21): the New Project form asks for its base resolution
+        bool pixelArt = false;
+        // the New Project form's Base Resolution for a pixel-art template (0: the template's own),
+        // written into the canvas and the window (4x) before the first open; never saved
+        int baseWidth = 0, baseHeight = 0;
         bool builtIn = false;
         std::filesystem::path directory;   // a user template's folder
         std::vector<uint8_t> thumbnailPng;

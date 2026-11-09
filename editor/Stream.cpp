@@ -5,6 +5,13 @@
 
 #include <unordered_map>
 #include <unordered_set>
+#include "component/MeshComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/PointsComponent.h"
+#include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
+#include "component/SortingGroupComponent.h"
+#include "registry/SortingLayers.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/ImageComponent.h"
@@ -1559,9 +1566,23 @@ namespace {
     }
 }
 
+Texture editor::Stream::savedTexture() {
+    Texture texture;
+    texture.setMinFilter(TextureFilter::LINEAR);
+    texture.setMagFilter(TextureFilter::LINEAR);
+    return texture;
+}
+
+Texture editor::Stream::savedTexture(const std::string& path) {
+    Texture texture(path);
+    texture.setMinFilter(TextureFilter::LINEAR);
+    texture.setMagFilter(TextureFilter::LINEAR);
+    return texture;
+}
+
 Texture editor::Stream::decodeTexture(const YAML::Node& node) {
     StreamLoad::checkNestedKeys(node, NestedKind::Texture);
-    Texture texture;
+    Texture texture = savedTexture();
     if (node.IsMap()) { // Check if node has data
         const std::string textureType = node["textureType"] ? node["textureType"].as<std::string>() : std::string();
         const std::string source = node["source"] ? node["source"].as<std::string>() : std::string();
@@ -1762,14 +1783,14 @@ void editor::Stream::decodeExternalBuffer(ExternalBuffer& buffer, const YAML::No
     buffer.setName(node["name"].as<std::string>()); // Set ExternalBuffer specific property
 }
 
-YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextureData, bool encodeVertexCount) {
+YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextureData, std::optional<unsigned int> vertexCount) {
     YAML::Node node;
 
     node["material"] = encodeMaterial(submesh.material, embedTextureData);
     node["textureRect"] = encodeRect(submesh.textureRect);
     node["primitiveType"] = primitiveTypeToString(submesh.primitiveType);
-    if (encodeVertexCount) {
-        node["vertexCount"] = YamlNumbers::integerText(submesh.vertexCount);
+    if (vertexCount) {
+        node["vertexCount"] = YamlNumbers::integerText(*vertexCount);
     }
     node["faceCulling"] = YamlNumbers::text(submesh.faceCulling);
     node["textureShadow"] = YamlNumbers::text(submesh.textureShadow);
@@ -2662,6 +2683,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         palettes["default"] = project->getDefaultPalette().generic_string();
         root["palettes"] = palettes;
     }
+    // Project Settings > Pixel Art (S42), omitted at its defaults
+    if (const YAML::Node pixelArt = pixelart::encodePixelArtSettings(project->getPixelArtSettings()); pixelArt.size() > 0)
+        root["pixelArt"] = pixelArt;
     // Project Settings > Input, omitted at its defaults
     if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
         YAML::Node input;
@@ -2730,6 +2754,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // graphics.pixelsPerUnit (S41), only away from 1
         if (project->getPixelsPerUnit() != Project::defaultPixelsPerUnit)
             graphics["pixelsPerUnit"] = project->getPixelsPerUnit();
+        // graphics.defaultFilterMode (S42), only when Point
+        if (project->getDefaultFilterMode() != TextureFilterMode::Bilinear)
+            graphics["defaultFilterMode"] = textureFilterModeName(project->getDefaultFilterMode());
         // graphics.bitmapTextCacheMiB (S51), only away from 0 (the platform's default)
         if (project->getBitmapTextCacheMiB() != 0)
             graphics["bitmapTextCacheMiB"] = project->getBitmapTextCacheMiB();
@@ -2809,6 +2836,36 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
         if (layersNode.size() != 0) {
             root["layers"] = layersNode;
+        }
+    }
+    {
+        // Sorting Layers in draw order, written only past Default alone (S52 R39)
+        const std::vector<SortingLayerInfo>& sortingLayers = project->getSortingLayers();
+        if (sortingLayers.size() > 1) {
+            YAML::Node layersNode;
+            for (const SortingLayerInfo& layer : sortingLayers) {
+                YAML::Node entry;
+                entry["id"] = layer.id;
+                entry["name"] = layer.name;
+                layersNode.push_back(entry);
+            }
+            root["sortingLayers"] = layersNode;
+        }
+        // past the ids listed once a layer was removed: a later layer never takes a removed id
+        int32_t maxId = 0;
+        for (const SortingLayerInfo& layer : sortingLayers) maxId = std::max(maxId, layer.id);
+        if (SortingLayers::getNextId() > maxId + 1)
+            root["sortingLayerNextId"] = SortingLayers::getNextId();
+        if (project->getTransparencySortMode() == TransparencySortMode::CUSTOM_AXIS)
+            root["transparencySortMode"] = "custom_axis";
+        const Vector3 axis = project->getTransparencySortAxis();
+        if (axis != Vector3(0.0f, 1.0f, 0.0f)) {
+            YAML::Node axisNode(YAML::NodeType::Sequence);
+            axisNode.push_back(editor::YamlNumbers::text(axis.x));
+            axisNode.push_back(editor::YamlNumbers::text(axis.y));
+            axisNode.push_back(editor::YamlNumbers::text(axis.z));
+            axisNode.SetStyle(YAML::EmitterStyle::Flow);
+            root["transparencySortAxis"] = axisNode;
         }
     }
     {
@@ -3473,6 +3530,24 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (graphics && graphics.IsMap() && graphics["bitmapTextCacheMiB"] && graphics["bitmapTextCacheMiB"].IsScalar())
             bitmapTextCacheMiB = YamlNumbers::as<int>(graphics["bitmapTextCacheMiB"]);
         project->setBitmapTextCacheMiB(bitmapTextCacheMiB);
+        // graphics.defaultFilterMode (S42): absent or not point is Bilinear
+        TextureFilterMode filterMode = TextureFilterMode::Bilinear;
+        if (graphics && graphics.IsMap() && graphics["defaultFilterMode"] && graphics["defaultFilterMode"].IsScalar()) {
+            TextureFilterMode parsed;
+            if (textureFilterModeFromName(graphics["defaultFilterMode"].Scalar(), parsed) && parsed != TextureFilterMode::Trilinear)
+                filterMode = parsed;
+            else
+                StreamLoad::unknownEnumValue(graphics["defaultFilterMode"], "DefaultFilterMode", {"bilinear", "point"});
+        }
+        project->setDefaultFilterMode(filterMode);
+    }
+    // Project Settings > Pixel Art (S42): absent is every default
+    {
+        const YAML::Node pixelArt = node["pixelArt"];
+        pixelart::PixelArtSettings settings;
+        if (pixelArt.IsDefined())
+            pixelart::decodePixelArtSettings(pixelArt, settings);
+        project->setPixelArtSettings(settings);
     }
     // graphics.lightMode: absent or unknown is Automatic
     {
@@ -3631,6 +3706,39 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setTagsAndLayers(tags, layerNames);
+    }
+
+    {
+        // Sorting Layers (S52 R39): [{id, name}] in draw order, absent = Default alone; the
+        // Transparency Sort settings (absent = Default, (0, 1, 0))
+        std::vector<SortingLayerInfo> sortingLayers;
+        if (node["sortingLayers"] && node["sortingLayers"].IsSequence()) {
+            for (const auto& layerNode : node["sortingLayers"]) {
+                int id = -1;
+                if (!layerNode.IsMap() || !layerNode["id"] || !layerNode["name"] ||
+                        !YAML::convert<int>::decode(layerNode["id"], id) || !layerNode["name"].IsScalar()) {
+                    Out::warning("Ignoring a sortingLayers entry in project settings: it needs an id and a name");
+                    continue;
+                }
+                sortingLayers.push_back({(int32_t)id, layerNode["name"].as<std::string>()});
+            }
+        }
+        project->setSortingLayers(sortingLayers);
+        int nextId = 0;
+        if (node["sortingLayerNextId"] && YAML::convert<int>::decode(node["sortingLayerNextId"], nextId))
+            SortingLayers::setNextId(nextId);
+        TransparencySortMode mode = TransparencySortMode::DEFAULT;
+        if (node["transparencySortMode"] && node["transparencySortMode"].IsScalar()) {
+            const std::string name = node["transparencySortMode"].as<std::string>();
+            if (name == "custom_axis") mode = TransparencySortMode::CUSTOM_AXIS;
+            else if (name != "default") Out::warning("Ignoring transparencySortMode \"%s\" in project settings (default or custom_axis)", name.c_str());
+        }
+        Vector3 axis(0.0f, 1.0f, 0.0f);
+        if (node["transparencySortAxis"] && node["transparencySortAxis"].IsSequence() && node["transparencySortAxis"].size() == 3) {
+            axis = Vector3(editor::YamlNumbers::as<float>(node["transparencySortAxis"][0]), editor::YamlNumbers::as<float>(node["transparencySortAxis"][1]),
+                           editor::YamlNumbers::as<float>(node["transparencySortAxis"][2]));
+        }
+        project->setTransparencySort(mode, axis);
     }
 
     {
@@ -4617,6 +4725,33 @@ void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* 
     sceneProject->reservedEntityIds.clear();
 
     CameraTextureLink::resolve(sceneProject->scene);
+    reportUnknownSortingLayers(sceneProject->scene);
+}
+
+void editor::Stream::reportUnknownSortingLayers(Scene* scene){
+    // S52 R39: a renderer naming a Sorting Layer the project does not have draws on Default; one
+    // line per scene says how many (the ids stay, so restoring the layer restores the order)
+    size_t unknown = 0;
+    auto count = [&unknown](auto array){
+        for (size_t i = 0; i < array->size(); i++){
+            if (!SortingLayers::isValid(array->getComponentFromIndex(i).sortingLayer)) unknown++;
+        }
+    };
+    count(scene->getComponentArray<MeshComponent>());
+    count(scene->getComponentArray<ParticleSystemComponent>());
+    count(scene->getComponentArray<PointsComponent>());
+    count(scene->getComponentArray<LineRendererComponent>());
+    count(scene->getComponentArray<TrailRendererComponent>());
+    count(scene->getComponentArray<SortingGroupComponent>());
+    if (unknown == 0)
+        return;
+    LoadIssue issue;
+    issue.kind = LoadIssueKind::Fallback;
+    issue.fate = LoadIssueFate::Info;
+    issue.field = "sortingLayer";
+    issue.message = std::to_string(unknown) + " renderer(s) name a Sorting Layer the project does not have: they draw on Default "
+                    "(tags_and_layers.sorting_layers)";
+    recordLoadIssue(issue);
 }
 
 YAML::Node editor::Stream::encodeEditorCamera(Camera* camera, float zoom, float walkSpeedOffset) {
@@ -5670,7 +5805,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
 
     // Not merged: encodeMaterial omits an empty texture, so an absent key means none
     auto texture = [&node](const char* name) {
-        return node[name] ? decodeTexture(node[name]) : Texture();
+        return node[name] ? decodeTexture(node[name]) : savedTexture();
     };
     material.baseColorTexture = texture("baseColorTexture");
     material.emissiveTexture = texture("emissiveTexture");

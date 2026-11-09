@@ -44,7 +44,6 @@
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
 #include "script/LuaBinding.h"
-#include "subsystem/RenderSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Material.h"
 #include "texture/Texture.h"

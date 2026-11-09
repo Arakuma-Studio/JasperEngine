@@ -619,6 +619,7 @@ bool editor::Exporter::writeGameConfig() {
     game.canvasHeight = project->getCanvasHeight();
     game.scaling = project->getScalingMode();
     game.pixelsPerUnit = project->getPixelsPerUnit();
+    game.defaultFilterPoint = project->getDefaultFilterMode() == TextureFilterMode::Point;
     game.bitmapTextCacheMiB = project->getBitmapTextCacheMiB();
     game.textureStrategy = project->getTextureStrategy();
     const LoadingSettings& loading = project->getLoadingSettings();
@@ -651,6 +652,9 @@ bool editor::Exporter::writeGameConfig() {
     game.device = project->getDeviceSettings();
     game.tags = project->getTags();
     game.layerNames = project->getLayerNames();
+    if (project->getSortingLayers().size() > 1) game.sortingLayers = project->getSortingLayers();
+    game.transparencySortMode = project->getTransparencySortMode();
+    game.transparencySortAxis = project->getTransparencySortAxis();
     for (int layer = 0; layer < MAX_LAYERS; layer++) {
         game.collision3D[layer] = project->getLayerCollisionMatrix3D()[layer];
         game.collision2D[layer] = project->getLayerCollisionMatrix2D()[layer];

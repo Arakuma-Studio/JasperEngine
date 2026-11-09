@@ -5,12 +5,14 @@
 
 #include "Project.h"
 #include "NativePluginDialog.h"
+#include "PixelArtPresetDialog.h"
 #include "imgui.h"
 #include "util/ShaderGlobalsEdit.h"
 #include "util/ShaderGlobalsUsage.h"
 
 #include <string>
 #include <filesystem>
+#include <memory>
 #include <set>
 #include <unordered_map>
 
@@ -109,6 +111,12 @@ namespace jasperengine::editor {
         // into the project), and the project's palettes as the picker lists them (path, name)
         std::string m_defaultPalette;
         std::vector<std::pair<std::string, std::string>> m_paletteFiles;
+        // Pixel Art (S42 R18): Pixel Art Mode and its checks, Graphics' Default Filter Mode (0
+        // Bilinear, 1 Point), a screen being added to Check Screens, and the preset's dialog
+        pixelart::PixelArtSettings m_pixelArt;
+        int m_defaultFilterIndex = 0;
+        char m_newCheckScreen[32] = "";
+        std::unique_ptr<PixelArtPresetDialog> m_presetDialog;
         Physics3DWorldSettings m_physics3DWorld;
         int m_particleWorldBudget = 0;
         ParticleQaSettings m_particleQa;
@@ -214,6 +222,12 @@ namespace jasperengine::editor {
         std::vector<std::string> m_tags;
         std::vector<std::string> m_layerNames;
         char m_newTagBuffer[128] = {0};
+        // Sorting Layers (S52 R30): applied at once, each edit one SortingLayersCmd
+        char m_newSortingLayerBuffer[128] = {0};
+        int32_t m_sortingLayerRenaming = -1;          // the layer whose name field is being edited
+        char m_sortingLayerRenameBuffer[128] = {0};
+        int32_t m_sortingLayerRemoving = -1;           // a used layer whose removal waits for confirmation
+        size_t m_sortingLayerRemovingUses = 0;
 
         // Layer Collision Matrices being edited (Physics and Physics 2D)
         LayerCollisionRows m_layerCollision3D = allLayersCollide();
@@ -305,6 +319,9 @@ namespace jasperengine::editor {
         // Debug: the on-device console and stats overlay, the log
         void drawDebugSettings();
         void drawTagsAndLayersSettings();
+        void drawSortingLayersSettings();
+        // the renderers and Sorting Groups of the open scenes on a layer
+        size_t countSortingLayerUses(int32_t id) const;
         // Why the New Tag Name field cannot be added ("" when it can)
         std::string newTagError() const;
         // Layer that already has the name (built-in or user, other than 'layer'), -1 when none

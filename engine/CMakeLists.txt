@@ -1571,6 +1571,7 @@ set(JASPERENGINE_SRCS
     core/sprite/SpriteSheetIO.cpp
     core/sprite/SpriteSheetPool.cpp
     core/sprite/SpriteFrameGeometry.cpp
+    core/render/sprite/SpriteInstanceBatch.cpp
     core/sprite/AsepriteClips.cpp
     # S45: texture sheets, name@WxH, .spriteatlas and the atlas remap
     core/sprite/SpriteSheetSources.cpp
@@ -1629,6 +1630,8 @@ set(JASPERENGINE_SRCS
     core/object/EntityHandle.cpp
     core/object/Light.cpp
     core/object/PixelPerfectCamera.cpp
+    core/object/SortingGroup.cpp
+    core/object/SpriteBatch.cpp
     core/object/Light2D.cpp
     core/object/LineRenderer.cpp
     core/object/TrailRenderer.cpp
@@ -1704,6 +1707,7 @@ set(JASPERENGINE_SRCS
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp
+    core/registry/SortingLayers.cpp
     core/physics/ContactTracker.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
@@ -1773,6 +1777,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/GameplayClassesLua.cpp
     core/script/binding/SplineClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
+    core/script/binding/SortingClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp
@@ -1825,6 +1830,8 @@ set(JASPERENGINE_SRCS
     core/subsystem/RenderSystemBatch.cpp
     core/subsystem/RenderSystemLighting.cpp
     core/subsystem/RenderSystemPixelArt.cpp
+    core/subsystem/RenderSystemSorting.cpp
+    core/subsystem/RenderSystemSpriteBatch.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
     core/subsystem/UISystemNavigation.cpp

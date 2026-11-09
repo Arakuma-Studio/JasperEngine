@@ -103,7 +103,9 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1093);
     scene->recreateEntity(1094);
     scene->recreateEntity(1095);
-    scene->setLastEntity(1095);
+    scene->recreateEntity(1096);
+    scene->recreateEntity(1097);
+    scene->setLastEntity(1097);
 
     {
         // Entity 1001 (Transform)
@@ -159,6 +161,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         mesh.staticShadowCaster = true;
         mesh.lodEnabled = false;
         mesh.lodBias = 4.400000f;
+        mesh.sortingLayer = 2;
+        mesh.sortingOrder = -3;
         mesh.renderInReflectionProbes = false;
         mesh.transparent = true;
         mesh.autoTransparency = false;
@@ -193,6 +197,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         // Entity components initialization
         LineRendererComponent linescomp;
         linescomp.maxLines = 100;
+        linescomp.sortingLayer = 3;
+        linescomp.sortingOrder = -5;
         linescomp.blendMode = MaterialBlendMode::MULTIPLY;
         linescomp.depthWrite = MaterialDepthWrite::DISABLED;
         linescomp.enabled = false;
@@ -311,6 +317,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         // Entity components initialization
         PointsComponent pointscomp;
         pointscomp.maxPoints = 100;
+        pointscomp.sortingLayer = 2;
+        pointscomp.sortingOrder = 4;
         pointscomp.transparent = true;
         pointscomp.autoTransparency = false;
         pointscomp.blendMode = MaterialBlendMode::MULTIPLY;
@@ -1222,6 +1230,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         }
         particles.playOnAwake = false;
         particles.playbackSpeed = 2.500000f;
+        particles.sortingLayer = 1;
+        particles.sortingOrder = 6;
         particles.enabled = false;
         scene->addComponent<ParticleSystemComponent>(1033, particles);
 
@@ -1472,6 +1482,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         sprite.textureScaleFactor = 8.600000f;
         sprite.pixelsPerUnit = 6.600000f;
         sprite.pixelRotation = PixelRotation::ON_GRID;
+        sprite.spriteSortPoint = SpriteSortPoint::PIVOT;
         sprite.enabled = false;
         scene->addComponent<SpriteComponent>(1043, sprite);
 
@@ -2740,6 +2751,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         trailcomp.minVertexDistance = 7.900000f;
         trailcomp.emitting = false;
         trailcomp.autodestruct = true;
+        trailcomp.sortingLayer = 4;
+        trailcomp.sortingOrder = 7;
         trailcomp.widthMultiplier = 7.800000f;
         trailcomp.widthUnit = LineWidthUnit::Pixels;
         trailcomp.numCornerVertices = 5;
@@ -3192,6 +3205,56 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         pixelPerfectCamera.letterboxColor = Vector4(0.633333f, 0.433333f, 0.555556f, 1.000000f);
         pixelPerfectCamera.enabled = false;
         scene->addComponent<PixelPerfectCameraComponent>(1095, pixelPerfectCamera);
+    }
+
+    {
+        // Entity 1096 (SortingGroupComponent)
+        scene->setEntityName(1096, "SortingGroupComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(95.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1096, transform);
+
+        SortingGroupComponent sortingGroup;
+        sortingGroup.sortingLayer = 5;
+        sortingGroup.sortingOrder = 2;
+        sortingGroup.enabled = false;
+        scene->addComponent<SortingGroupComponent>(1096, sortingGroup);
+    }
+
+    {
+        // Entity 1097 (SpriteBatchComponent)
+        scene->setEntityName(1097, "SpriteBatchComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(96.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1097, transform);
+
+        SpriteBatchComponent spriteBatch;
+        spriteBatch.mode = SpriteBatchMode::CLEAR_EACH_FRAME;
+        spriteBatch.space = SpriteBatchSpace::WORLD;
+        spriteBatch.capacity = 7;
+        spriteBatch.sortInstances = true;
+        spriteBatch.enabled = false;
+        scene->addComponent<SpriteBatchComponent>(1097, spriteBatch);
     }
 
     // Default Camera 1

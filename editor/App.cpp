@@ -8,6 +8,7 @@
 #include "pool/ShaderPool.h"
 #include "render/SceneRender.h"
 #include "spritenormals/SpriteNormalsWatcher.h"
+#include "pixelart/PixelArtMode.h"
 #include "window/AnimationWindow.h"
 #include "window/AnimatorWindow.h"
 #include "window/AssetPanels.h"
@@ -27,6 +28,7 @@
 #include "window/LoadingWindow.h"
 #include "window/MainToolbar.h"
 #include "window/PaletteWindow.h"
+#include "window/PixelArtCheckWindow.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/PlayInput.h"
 #include "window/PoseAnimationWindow.h"
@@ -260,6 +262,10 @@ editor::App::App(){
     audioCapturesWindow = new AudioCapturesWindow(&project);
     applyPaletteDialog = new ApplyPaletteDialog(&project);
     paletteWindow = new PaletteWindow(&project, projectWindow, applyPaletteDialog);
+    pixelArtCheckWindow = new PixelArtCheckWindow(&project, projectWindow);
+    // S42 R19, R25: the window checks again after imports; a Console summary opens it on its finding
+    pixelart::PixelArtMode::get().setAssetsListener([this]() { pixelArtCheckWindow->assetsChanged(); });
+    pixelart::PixelArtMode::get().setOpenAction([this](const std::string& key) { pixelArtCheckWindow->focusFinding(key); });
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
@@ -810,7 +816,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("2D", {
             catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
-            catalogItem("window.palette", windowMenuLabel(PaletteWindow::WINDOW_NAME))
+            catalogItem("window.palette", windowMenuLabel(PaletteWindow::WINDOW_NAME)),
+            catalogItem("window.pixelArtCheck", windowMenuLabel(PixelArtCheckWindow::WINDOW_NAME))
         }),
         menuSubmenu("MCP", {
             catalogItem("window.mcpActivity", windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
@@ -1102,6 +1109,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::TogglePalette:
             paletteWindow->open(FileUtils::pathFromUtf8(command.payload));
             break;
+        case AppMenuCommand::TogglePixelArtCheck:
+            pixelArtCheckWindow->open();
+            break;
         case AppMenuCommand::ToggleParticleEffect:
             showEditorWindow(particleEffectWindow);
             break;
@@ -1163,7 +1173,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             layouts.requestSwitch(LayoutPresets::DEFAULT_NAME);
             break;
         case AppMenuCommand::ProjectSettings:
-            projectSettingsWindow.open(&project);
+            // the payload names a page ("Pixel Art"): run_command opens it there
+            projectSettingsWindow.open(&project, command.payload.empty() ? nullptr : command.payload.c_str());
             break;
         case AppMenuCommand::EditorSettings:
             editorSettingsWindow.open(&project);
@@ -2561,6 +2572,7 @@ void editor::App::setup() {
     registerCommands();
     // the Palette context's commands (a later add takes the user's stored binding too)
     paletteWindow->bindCommands(CommandCatalog::editor());
+    pixelArtCheckWindow->bindCommands(CommandCatalog::editor());
     applyPaletteDialog->bindCommands(CommandCatalog::editor());
 
     // Separate from the window scale: the layout keeps the scale it was built at,
@@ -3037,6 +3049,7 @@ void editor::App::show(){
     audioCapturesWindow->show();
     // also the tick of its workers (Lospec, Usage, From Texture) with the window closed
     paletteWindow->show();
+    pixelArtCheckWindow->show();
     applyPaletteDialog->show();
     // the Graph Editor and every graph kind's own window
     GraphEditorWindow::showAll();
@@ -3514,6 +3527,7 @@ void editor::App::toggleRecording() {
 
 void editor::App::playStarting(uint32_t) {
     recorder::RecorderSession::get().onPlayStarting(recorderWindow.settings());
+    if (pixelart::PixelArtMode::get().playHookRegistered()) pixelart::PixelArtMode::get().playStarting(&project);
 }
 
 void editor::App::setupRecorder() {
@@ -3686,6 +3700,11 @@ void editor::App::updateHubCreation() {
             // the template's project, renamed, saved, with the VCS files (R18; loadProject copied
             // the engine API in)
             project.setName(done.name);
+            // S42 R21: the New Project form's Base Resolution of a pixel-art template
+            if (done.info.pixelArt && done.info.baseWidth > 0 && done.info.baseHeight > 0) {
+                project.setCanvasSize(done.info.baseWidth, done.info.baseHeight);
+                project.setWindowSize(done.info.baseWidth * 4, done.info.baseHeight * 4);
+            }
             VcsProjectSettings vcs = project.getVcsProjectSettings();
             vcs.lfs = true;   // S29 R21: a new project's binaries are LFS objects
             project.setVcsProjectSettings(vcs, false);
@@ -4038,6 +4057,8 @@ void editor::App::engineRender(){
     NavigationEditor::get().update(&project);
     // generated normal maps whose sources changed (badges, the opt-in auto-regenerate)
     spriteNormalsWatcher->tick();
+    // Pixel Art Mode's checks on import and at Play (S42 R1, R25): nothing while the mode is off
+    pixelart::PixelArtMode::get().tick(&project);
     project.updateGeneratedSources();
     // clip previews (the Animation window's clip mode, MCP preview_animation) advance every frame
     if (animationClipAppHooks().frame) {
@@ -5322,6 +5343,7 @@ void editor::App::prepareForProjectSwitch() {
     audioCapturesWindow->resetForProjectSwitch();
     // a Lospec fetch is cancelled; the palette, its selection and the dialogs are forgotten
     paletteWindow->resetForProjectSwitch();
+    pixelArtCheckWindow->resetForProjectSwitch();
     applyPaletteDialog->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
@@ -5863,7 +5885,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      Palette Quantize (BLIT 'Pal' 19, includes/bayer.glsl).
     // v60: S49's pixel particles: library:particles' Pixel render mode (PARTICLES 'Pxl' 12) and
     //      Analytic simulation (PARTICLES 'Ana' 13, particles_analytic_vs.glsl, its uniform block).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v60";
+    // v61: S52's pixel-art batching (after S49's v60): library:sprite @batchable
+    //      (instance=fx.x/fx.y read through includes/sprite_fx.glsl, a_frameRect), MESH 'Sfx' 46,
+    //      'Sfr' 47, 'Spv' 48, DEPTH 'Spv' 20, the instanced snap's per-instance mode
+    //      (pixelSnapInstanceMode).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v61";
 }
 
 void editor::App::pushTabNotificationStyle(){

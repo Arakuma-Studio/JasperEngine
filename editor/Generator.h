@@ -5,6 +5,7 @@
 
 #include "audio/AudioQaSettings.h"
 #include "render/GpuCreation.h"
+#include "registry/SortingLayers.h"
 #include <array>
 #include <functional>
 #include <string>
@@ -232,6 +233,10 @@ namespace jasperengine::editor {
         unsigned int maxBodies3D = 8192;
         unsigned int maxBodyPairs3D = 8192;
         unsigned int maxContactConstraints3D = 8192;
+        // Sorting Layers and Graphics > Transparency Sort (spec S52 R40)
+        std::vector<SortingLayerInfo> sortingLayers;
+        TransparencySortMode transparencySortMode = TransparencySortMode::DEFAULT;
+        Vector3 transparencySortAxis = Vector3(0.0f, 1.0f, 0.0f);
     };
 
     // A script build's state, published by every Generator (Play, compile_scripts, C++ reload,
@@ -313,6 +318,8 @@ namespace jasperengine::editor {
         CanvasScalerSettings uiScale;
         // the project's Pixels Per Unit (S41), emitted by configure when it is not 1
         int pixelsPerUnit = 1;
+        // the project's Default Filter Mode is Point (S42 R3), emitted by configure
+        bool defaultFilterPoint = false;
         // the styled bitmap glyph cache's MiB (S51), emitted when it is not 0
         int bitmapTextCacheMiB = 0;
 
@@ -412,6 +419,7 @@ namespace jasperengine::editor {
         // the Canvas Scaler project default the next configure() writes into the generated main
         void setUIScale(const CanvasScalerSettings& settings) { uiScale = settings; }
         void setPixelsPerUnit(int value) { pixelsPerUnit = value; }
+        void setDefaultFilterPoint(bool point) { defaultFilterPoint = point; }
         void setBitmapTextCacheMiB(int value) { bitmapTextCacheMiB = value; }
         static std::string inputSettingsInitSource(const std::string& actionsAsset, float deadzone);
         // Project Settings > Graphics > Shader Globals in the generated main.cpp: the declarations

@@ -1,6 +1,6 @@
-formatVersion: 7
-guid: b73f6195570b4e639ccc124bb7144dcd
-id: 3491316517
+formatVersion: 8
+guid: e913d1baa5dcde46ad259b53e5c8a48a
+id: 1976552284
 name: Main
 scene:
   backgroundColor: [0.525, 0.525, 0.525, 1]
@@ -36,6 +36,8 @@ sceneType: scene_ui
 mainCamera: 0
 shaderKeys:
   - type: blit
+  - type: blit
+    properties: 4096
   - type: htmlui
   - type: htmlui
     properties: 1

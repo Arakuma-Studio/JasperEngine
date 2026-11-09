@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "animation/BoneOverlay.h"
+#include "pixelart/PixelArtAssign.h"
 #include "window/BitmapFontInspector.h"
 #include "pixelart/PixelPerfectEditor.h"
 #include "animation/AnimatorEditorHooks.h"
@@ -10,6 +11,8 @@
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/TextEffectComponent.h"
@@ -1342,6 +1345,31 @@ void editor::InspectorWindow::drawFontFallbacksPopup(const char* popupId, Compon
 }
 
 
+
+namespace {
+
+using namespace jasperengine::editor;
+
+// S42 R7: an image assigned in the Inspector starts with its import's Filter Mode, and a Sprite or
+// Tilemap takes the import's Pixels Per Unit in the same undo step
+editor::Command* textureAssignmentCmd(editor::Project* project, editor::SceneProject* sceneProject, Entity entity, ComponentType cpType,
+                              const std::string& id, Texture texture, std::function<void()> onValueChanged = nullptr) {
+    editor::pixelart::applyAssignmentFilters(*project, texture);
+    const editor::pixelart::AssignmentDefaults defaults = editor::pixelart::assignmentDefaults(*project, texture.getPath());
+    const bool spriteTexture = cpType == ComponentType::MeshComponent && id == "submeshes[0].material.baseColorTexture";
+    const bool sprite = spriteTexture && sceneProject->scene->findComponent<SpriteComponent>(entity);
+    const bool tilemap = spriteTexture && sceneProject->scene->findComponent<TilemapComponent>(entity);
+    if (!defaults.pixelsPerUnit || (!sprite && !tilemap))
+        return new editor::PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, onValueChanged);
+    auto* multi = new editor::MultiPropertyCmd();
+    multi->addPropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, onValueChanged);
+    multi->addPropertyCmd<float>(project, sceneProject->id, entity, sprite ? ComponentType::SpriteComponent : ComponentType::TilemapComponent,
+                                 "pixelsPerUnit", (float)*defaults.pixelsPerUnit);
+    return multi;
+}
+
+}
+
 void editor::InspectorWindow::applyCameraTexture(Entity cameraEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
     Scene* scene = sceneProject->scene;
     CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
@@ -1434,7 +1462,7 @@ void editor::InspectorWindow::drawTextureSettingsPopup(const char* popupId, Comp
         ImGui::EndPopup();
         return;
     }
-    const Texture defaults = textureProp.def ? *static_cast<Texture*>(textureProp.def) : Texture();
+    const Texture defaults = textureProp.def ? *static_cast<Texture*>(textureProp.def) : Stream::savedTexture();
 
     // SVG rasterization scale is only relevant for vector sources.
     bool isSvg = TextureData::hasSvgExtension(current->getPath().c_str());
@@ -1571,7 +1599,7 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
                                 markTextureUpdate(sceneProject->scene, entity, cpType, id);
                                 continue;
                             }
-                            cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture);
+                            cmd = textureAssignmentCmd(project, sceneProject, entity, cpType, id, texture);
                             CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
                                 finishProperty = true;
@@ -4650,7 +4678,29 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
         if (dif)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-        if (ImGui::Combo(("##combo_" + id).c_str(), &item_current, names.data(), static_cast<int>(names.size()))) {
+        bool chosen = false;
+        if (settings.enumExtraLabel) {
+            // a value not among the entries (a removed Sorting Layer) shows as its number
+            const bool known = !enumEntries->empty() && (*enumEntries)[(size_t)item_current].value == *value;
+            const std::string preview = known ? std::string(names[(size_t)item_current]) : std::to_string(*value);
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::BeginCombo(("##combo_" + id).c_str(), preview.c_str())) {
+                for (size_t i = 0; i < names.size(); i++) {
+                    const bool selected = known && (int)i == item_current;
+                    if (ImGui::Selectable(names[i], selected) && !selected) {
+                        item_current = (int)i;
+                        chosen = true;
+                    }
+                }
+                ImGui::Separator();
+                if (ImGui::Selectable(settings.enumExtraLabel) && settings.enumExtraAction)
+                    settings.enumExtraAction();
+                ImGui::EndCombo();
+            }
+        } else {
+            chosen = ImGui::Combo(("##combo_" + id).c_str(), &item_current, names.data(), static_cast<int>(names.size()));
+        }
+        if (chosen) {
             int newValue = (*enumEntries)[item_current].value;
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
@@ -4967,7 +5017,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 }else{
                     Texture texture(FileUtils::pathToGenericUtf8(relative));
                     for (Entity& entity : entities){
-                        cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
+                        cmd = textureAssignmentCmd(project, sceneProject, entity, cpType, id, texture, settings.onValueChanged);
                         submitRowCommand(sceneProject, cpType, id);
                         finishProperty = true;
                     }
@@ -8163,6 +8213,7 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
     instancingSettings.help = "Let this mesh draw in one instanced draw with the opaque meshes of the same mesh, material and shader "
                               "while Project Settings > Graphics > GPU Instancing is on (the image stays the same). Turn off to draw it alone.";
     propertyRow(RowPropertyType::Bool, cpType, "allowGpuInstancing", "Allow GPU Instancing", sceneProject, entities, instancingSettings);
+    drawSortingRows(cpType, sceneProject, entities);
 
     RowSettings reflectionProbeSettings;
     reflectionProbeSettings.help = "Draw this mesh into Reflection Probe captures. Turn off to keep a GameObject out of its own reflection.";
@@ -9271,6 +9322,12 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
     propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
     propertyRow(RowPropertyType::Enum, cpType, "pixelRotation", "Pixel Rotation", sceneProject, entities, settingsPixelRotation);
+    // S52: the point Custom Axis sorting measures (Sorting Layer and Order in Layer are the Mesh
+    // Renderer's rows, drawn with it)
+    RowSettings settingsSortPoint;
+    settingsSortPoint.enumEntries = enumEntries(reflect::enums::kSpriteSortPoint);
+    settingsSortPoint.help = "What Transparency Sort Mode Custom Axis measures: the sprite's bounds' centre or its pivot.";
+    propertyRow(RowPropertyType::Enum, cpType, "spriteSortPoint", "Sprite Sort Point", sceneProject, entities, settingsSortPoint);
 
     endTable();
 
