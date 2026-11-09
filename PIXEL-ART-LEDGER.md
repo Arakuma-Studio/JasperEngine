@@ -244,6 +244,10 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Follow-ups (owned by the coordinator)
 
+- `walkRefFields` (`editor/asset/AssetRefSchema.cpp:715`) dereferences a null `node.guid` when a
+  reflected string field has `.asset` but no `<name>Guid` sibling, and nothing checks for the
+  sibling when the table is built. S50 hit it and removed its own `.asset`; the next field declared
+  that way crashes the same walk. A registry self-check would catch it.
 - `main` test issues seen during landings, from other programs:
   - `FullPathGoldenTest.UIParticleSystemsClippedByAPanel` reads after 4 frames instead of
     waiting for emitted particles;
