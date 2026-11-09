@@ -7,6 +7,7 @@
 #include "TitleLibraryApply.h"
 #include "TitleLibraryCliTools.h"
 #include "TitleLibraryFormats.h"
+#include "io/AtomicFile.h"
 
 #include <algorithm>
 #include <chrono>
@@ -75,15 +76,10 @@ namespace {
     }
 
     bool writeText(const fs::path& path, const std::string& text, std::string& error) {
-        std::error_code ec;
-        fs::create_directories(path.parent_path(), ec);
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
-        if (!out) {
-            error = path.string() + ": cannot be written";
-            return false;
-        }
-        out << text;
-        return (bool)out;
+        const io::WriteResult written = io::writeFileAtomic(path, text);
+        if (written.ok()) return true;
+        error = path.string() + ": cannot be written: " + io::describeWriteError(written);
+        return false;
     }
 
     // every .titlelook / .titletemplate under `dir`, sorted

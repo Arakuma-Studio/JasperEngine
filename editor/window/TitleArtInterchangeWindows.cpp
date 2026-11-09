@@ -14,6 +14,7 @@
 
 #include "Backend.h"
 #include "App.h"
+#include "Log.h"
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"
 #include "titleart/TitleArtBaker.h"
@@ -232,7 +233,8 @@ namespace {
         all[key] = value;
         std::error_code ec;
         fs::create_directories(optionsFile(project).parent_path(), ec);
-        std::ofstream(optionsFile(project)) << all.dump(2);
+        if (!FileUtils::writeFileReplacing(optionsFile(project), all.dump(2)))
+            Log::warn("Could not save the title interchange options to %s", optionsFile(project).string().c_str());
     }
 
     void option(ta::Json& o, const char* key, bool def, const char* label) {

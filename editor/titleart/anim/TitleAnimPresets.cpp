@@ -5,6 +5,7 @@
 
 #include "AppSettings.h"
 #include "Log.h"
+#include "io/AtomicFile.h"
 #include "titleanim/TitleAnimDataIO.h"
 #include "titleanim/TitleAnimSampling.h"
 #include "titleart/TitleArtIO.h"
@@ -967,13 +968,11 @@ bool editor::saveTitleAnimPreset(const TitleJson& preset, const std::string& sco
         return false;
     }
     path = (fs::path(dir) / (preset.value("id", std::string("preset")) + ".json")).string();
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out){
-        error = "cannot write " + path;
+    const io::WriteResult written = io::writeFileAtomic(path, preset.dump(2) + "\n");
+    if (!written.ok()){
+        error = "cannot write " + path + ": " + io::describeWriteError(written);
         return false;
     }
-    out << preset.dump(2) << "\n";
-    out.close();
     TitleAnimPresets::reload();
     return true;
 }

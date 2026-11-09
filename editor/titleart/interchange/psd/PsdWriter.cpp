@@ -16,9 +16,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <functional>
 #include <limits>
 
+using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::psd;
 
@@ -307,16 +309,16 @@ namespace {
 
     class FileSink : public Sink {
     public:
-        FileSink(std::ostream& out, PsdChannelSpool& spool, std::string& error) : out(out), spool(spool), error(error) {}
+        FileSink(io::AtomicFileWriter& out, PsdChannelSpool& spool, std::string& error) : out(out), spool(spool), error(error) {}
         bool put(const std::vector<uint8_t>& bytes) override {
-            out.write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
-            if (!out) error = "write_failed: the disk refused the PSD";
-            return (bool)out;
+            if (out.write(bytes.data(), bytes.size())) return true;
+            error = "write_failed: the disk refused the PSD: " + io::describeWriteError(out.result());
+            return false;
         }
         bool channel(const Channel& c) override { return c.spooled ? spool.copy(c.offset, c.length, out, error) : put(c.data); }
 
     private:
-        std::ostream& out;
+        io::AtomicFileWriter& out;
         PsdChannelSpool& spool;
         std::string& error;
     };
@@ -476,16 +478,18 @@ bool psd::writePsd(const PsdWriteDocument& doc, std::vector<uint8_t>& out, std::
 }
 
 bool psd::writePsdFile(const PsdWriteDocument& doc, PsdChannelSpool& spool, const std::filesystem::path& output, std::string& error) {
-    std::ofstream file(output, std::ios::binary | std::ios::trunc);
-    if (!file) {
-        error = "write_failed: cannot write " + output.generic_string();
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    io::AtomicFileWriter file;
+    if (!file.open(output, options)) {
+        error = "write_failed: cannot write " + output.generic_string() + ": " + io::describeWriteError(file.result());
         return false;
     }
     FileSink sink(file, spool, error);
     if (!writeDocument(doc, sink, error)) return false;
-    file.flush();
-    if (!file) {
-        error = "write_failed: the disk refused " + output.generic_string();
+    const io::WriteResult published = file.commit();
+    if (!published.ok()) {
+        error = "write_failed: the disk refused " + output.generic_string() + ": " + io::describeWriteError(published);
         return false;
     }
     return true;
@@ -532,21 +536,14 @@ bool psd::psdSpoolMerged(PsdWriteDocument& doc, PsdChannelSpool& spool, std::str
 
 // ---- the spool ----
 
-PsdChannelSpool::~PsdChannelSpool() {
-    if (file.is_open()) file.close();
-    if (!path.empty()) {
-        std::error_code ec;
-        std::filesystem::remove(path, ec);
-    }
-}
+PsdChannelSpool::~PsdChannelSpool() = default;
 
 bool PsdChannelSpool::open(const std::filesystem::path& where, std::string& error) {
-    path = where;
     size = 0;
-    file.open(path, std::ios::in | std::ios::out | std::ios::binary | std::ios::trunc);
-    if (!file) {
-        error = "write_failed: cannot write " + path.generic_string();
-        path.clear();
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    if (!working.open(where, options)) {
+        error = "write_failed: cannot write " + where.generic_string() + ": " + io::describeWriteError(working.result());
         return false;
     }
     return true;
@@ -554,26 +551,23 @@ bool PsdChannelSpool::open(const std::filesystem::path& where, std::string& erro
 
 bool PsdChannelSpool::append(const std::vector<uint8_t>& data, uint64_t& offset, std::string& error) {
     offset = size;
-    file.seekp((std::streamoff)size);
-    file.write(reinterpret_cast<const char*>(data.data()), (std::streamsize)data.size());
-    if (!file) {
-        error = "write_failed: the disk refused the PSD's working file " + path.generic_string();
+    if (!working.write(data.data(), data.size())) {
+        error = "write_failed: the disk refused the PSD's working file: " + io::describeWriteError(working.result());
         return false;
     }
     size += data.size();
     return true;
 }
 
-bool PsdChannelSpool::copy(uint64_t offset, uint64_t length, std::ostream& to, std::string& error) {
-    file.flush();
+bool PsdChannelSpool::copy(uint64_t offset, uint64_t length, io::AtomicFileWriter& to, std::string& error) {
+    std::ifstream file(working.temporaryPath(), std::ios::binary);
     file.seekg((std::streamoff)offset);
     std::vector<char> buffer(1 << 20);
     for (uint64_t left = length; left > 0;) {
         const size_t n = (size_t)std::min<uint64_t>(left, buffer.size());
         file.read(buffer.data(), (std::streamsize)n);
-        to.write(buffer.data(), (std::streamsize)n);
-        if (!file || !to) {
-            error = "write_failed: copying the PSD's channels from " + path.generic_string();
+        if (!file || !to.write(buffer.data(), n)) {
+            error = "write_failed: copying the PSD's channels from " + working.temporaryPath().generic_string();
             return false;
         }
         left -= n;

@@ -22,10 +22,10 @@
 
 #pragma once
 
+#include "io/AtomicFile.h"
+
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
-#include <iosfwd>
 #include <string>
 #include <vector>
 
@@ -40,7 +40,7 @@ namespace jasperengine::editor::psd {
         uint64_t length = 0;
     };
 
-    // the channels waiting to go into the file; the file is removed with the object
+    // the channels waiting to go into the file; the working file is removed with the object
     class PsdChannelSpool {
     public:
         PsdChannelSpool() = default;
@@ -50,11 +50,10 @@ namespace jasperengine::editor::psd {
 
         bool open(const std::filesystem::path& path, std::string& error);
         bool append(const std::vector<uint8_t>& data, uint64_t& offset, std::string& error);
-        bool copy(uint64_t offset, uint64_t length, std::ostream& to, std::string& error);
+        bool copy(uint64_t offset, uint64_t length, io::AtomicFileWriter& to, std::string& error);
 
     private:
-        std::filesystem::path path;
-        std::fstream file;
+        io::AtomicFileWriter working;   // never committed: the temporary is the working file
         uint64_t size = 0;
     };
 

@@ -9,9 +9,11 @@
 #include "TitleLibraryImports.h"
 #include "TitleLibraryProvider.h"
 #include "TitleLibraryVerify.h"
+#include "io/AtomicFile.h"
 #include "texsynth/SynthImage.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
+#include "util/FileUtils.h"
 
 #include "miniz.h"
 #include "stb_image.h"
@@ -47,11 +49,7 @@ namespace {
     }
 
     bool writeBytes(const fs::path& path, const std::string& bytes) {
-        std::error_code ec;
-        if (!path.parent_path().empty()) fs::create_directories(path.parent_path(), ec);
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
-        out << bytes;
-        return (bool)out;
+        return io::writeFileAtomic(path, bytes).ok();
     }
 
     // `--name value` options and positional arguments
@@ -268,7 +266,7 @@ namespace {
         for (const PackFont& f : packFonts()) {
             for (const std::string& file : f.files) {
                 fs::create_directories(dir / "assets" / TITLE_FONTS_ASSET_DIR / f.id, ec);
-                fs::copy_file(pack / "fonts" / f.id / file, dir / "assets" / TITLE_FONTS_ASSET_DIR / f.id / file, fs::copy_options::overwrite_existing, ec);
+                FileUtils::copyFileAtomic(pack / "fonts" / f.id / file, dir / "assets" / TITLE_FONTS_ASSET_DIR / f.id / file, ec);
             }
         }
         std::string manifest;
@@ -278,7 +276,7 @@ namespace {
             if (m.is_object() && m.contains("environments")) {
                 for (auto it = m["environments"].begin(); it != m["environments"].end(); ++it) {
                     const std::string file = it.value().value("file", std::string());
-                    fs::copy_file(pack / "hdri" / file, dir / "assets" / TITLE_ENVIRONMENTS_ASSET_DIR / file, fs::copy_options::overwrite_existing, ec);
+                    FileUtils::copyFileAtomic(pack / "hdri" / file, dir / "assets" / TITLE_ENVIRONMENTS_ASSET_DIR / file, ec);
                 }
             }
         }
@@ -842,7 +840,7 @@ int titlelibrary::runCalibrateCommand(const std::vector<std::string>& args, cons
             if (e.path().extension() != ".titleart") continue;
             const std::string name = "red/" + e.path().filename().string();
             fs::create_directories(s.dir / "assets" / "red", ec);
-            fs::copy_file(e.path(), s.dir / "assets" / name, fs::copy_options::overwrite_existing, ec);
+            FileUtils::copyFileAtomic(e.path(), s.dir / "assets" / name, ec);
             redDocs.push_back(name);
         }
     }
