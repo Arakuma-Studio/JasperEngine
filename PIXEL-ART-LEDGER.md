@@ -168,7 +168,7 @@ never build or run them.
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
 | S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | merged and pushed |
-| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | review fixes |
+| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | accepted; merging main |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
@@ -244,6 +244,13 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S42's review fixes are done at `16ca3d6af`.
+  - Includes the new `render_scale` rule; the preset raises the Low/Medium tier render scale
+    to 1.
+  - Gate on box B: editor 205, core 85, 168 MCP tests.
+  - The cold check takes 3.77 s against 3 s on the shared box, accepted as a measurement through
+    the harness slack.
+  - The trial merge with `main` has 7 conflicts, so S42 is merging `main` for the next batch.
 - 2026-11-09: The batch-3 `htmlui-tests` Vulkan baseline on `main`: 4 of the 6 fail there too
   (LatticeRender shadows, SharedMeshBuffers ×2, TestScriptEvents touch). Two fail only with S51
   (`FullPathGoldenTest.UIParticleSystemsClippedByAPanel`,
