@@ -1,0 +1,82 @@
+{
+ "code": [],
+ "description": "A filter that samples sub-pixel details to make them visible",
+ "format": 1,
+ "functions": [],
+ "id": "supersample",
+ "inputs": [
+  {
+   "default": "vec4(1.0, 1.0, 1.0, 1.0)",
+   "description": "The input image",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgba"
+  }
+ ],
+ "instance": [
+  "vec4 supersample_$(name)(vec2 uv, float size, int count, float width, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tvec4 rv = vec4(0.0);",
+  "\tvec2 step_size = vec2(width)/size/float(count);",
+  "\tuv -= vec2(0.5)/size;",
+  "\tfor (int x = 0; x < count; ++x) {",
+  "\t\tfor (int y = 0; y < count; ++y) {",
+  "\t\t\trv += $in(uv+(vec2(float(x), float(y))+vec2(0.5))*step_size);",
+  "\t\t}",
+  "\t}",
+  "\treturn rv/float(count*count);",
+  "}"
+ ],
+ "kind": "shader",
+ "name": "Supersample",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the supersampled image. Due to the performance cost of this node, it is recommended to connect a buffer directly to this output.",
+   "expr": "supersample_$(name)($uv, $size, int($count), $width, _seed_variation_, _controlled_variation_)",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 10,
+   "description": "The resolution of the output",
+   "first": 4,
+   "label": "Size",
+   "last": 12,
+   "name": "size",
+   "short_description": "Size",
+   "type": "size"
+  },
+  {
+   "default": 2,
+   "description": "The number of samples on each axis. High values will badly impact performances.",
+   "label": "Count",
+   "max": 5,
+   "min": 2,
+   "name": "count",
+   "short_description": "Count",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The width of the sampled area. Setting this value higher than 1 will sample neighbouring pixels and antialias the result.",
+   "label": "Width",
+   "max": 2,
+   "min": 1,
+   "name": "width",
+   "short_description": "Width",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Supersample",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/supersample.mmg"
+ },
+ "type_version": 1
+}

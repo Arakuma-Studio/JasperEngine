@@ -175,13 +175,15 @@ vec3 getTerrainNormal(vec3 normal, vec3 position){
         v_terrainTextureCoords = (position.xz + (terrain.size/2.0)) / terrain.size;
         v_terrainTextureDetailTiled = v_terrainTextureCoords * float(terrain.textureDetailTiles);
         v_terrainDetailHeight = position.y / terrain.size * float(terrain.textureDetailTiles);
-        vec2 baseUV = v_terrainTextureCoords * float(terrain.textureBaseTiles);
         #ifdef HAS_TERRAIN_WORLD
             // detail stays world-absolute (no seam at a border); the blend maps are the tile's
+            vec2 baseUV = v_terrainTextureCoords * float(terrain.textureBaseTiles);
             if (terrainWorldOverview()) baseUV = terrainWorldOverviewUV(position.xz);
             v_terrainTextureCoords = terrainWorldBlendUV(position.xz);
+            return baseUV;
+        #else
+            return v_terrainTextureCoords * float(terrain.textureBaseTiles);
         #endif
-        return baseUV;
     }
 #endif
 

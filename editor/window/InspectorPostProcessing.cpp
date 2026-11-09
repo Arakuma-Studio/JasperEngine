@@ -9,18 +9,22 @@
 // SceneSettings.cpp shows up here without code.
 
 #include "InspectorWindow.h"
+#include "PaletteAssetField.h"
 #include "widget/ColorPickerWindow.h"
 #include "log/LogFormatCheck.h"
 
 #include "App.h"
 #include "Backend.h"
 #include "Catalog.h"
+#include "Out.h"
 #include "PostProcessingPresets.h"
 #include "Theme.h"
 #include "imgui_internal.h"
 #include "command/CommandHandle.h"
 #include "command/type/ScenePropertyCmd.h"
 #include "external/IconsFontAwesome6.h"
+#include "pixelart/Palette.h"
+#include "pixelart/PaletteUse.h"
 #include "subsystem/RenderSystem.h"
 #include "shader/ShaderManifest.h"
 #include "util/FileDialogs.h"
@@ -167,6 +171,16 @@ namespace {
                  "and its frame (Academy 1.37, widescreen 1.85, anamorphic 2.39 or rounded corners).",
                  [](PostProcessingSettings& s) { s.filmDamageEnabled = true; }, nullptr},
             }},
+            {"Palette Quantize", {
+                {"Palette Quantize", "palette_enabled",
+                 {{"palette", "Palette"}, {"palette_dither", "Dither"}, {"palette_dither_strength", "Dither Strength"},
+                  {"palette_distance", "Distance"}, {"palette_precision", "Precision"}},
+                 "Every pixel of the frame onto a palette's colours (after the grade, edge and vignette, before CRT, film "
+                 "damage and grain), with an ordered dither between a colour's two nearest palette colours per art pixel. "
+                 "A colour already in the palette stays exactly as it is. The colour table is baked on the CPU in the "
+                 "background whenever the palette or a value changes; the UI drawn after the scene is not quantized.",
+                 [](PostProcessingSettings& s) { s.paletteEnabled = true; s.palette = "palette.palette"; }, nullptr},
+            }},
             {"Bloom", {
                 {"Bloom", "bloom_enabled",
                  {{"bloom_threshold", "Threshold"}, {"bloom_knee", "Knee"}, {"bloom_intensity", "Intensity"},
@@ -298,6 +312,16 @@ namespace {
             if (name == "anamorphic_239") return "Anamorphic (2.39)";
         } else if (std::strcmp(f.enumType, "FilmGrainType") == 0) {
             if (name == "filmic") return "Filmic (desktop / high-end)";
+        } else if (std::strcmp(f.enumType, "PaletteDither") == 0) {
+            if (name == "bayer2") return "Bayer 2\xC3\x97" "2";
+            if (name == "bayer4") return "Bayer 4\xC3\x97" "4";
+            if (name == "bayer8") return "Bayer 8\xC3\x97" "8";
+        } else if (std::strcmp(f.enumType, "PaletteDistance") == 0) {
+            if (name == "oklab") return "OKLab";
+            if (name == "rgb") return "RGB";
+        } else if (std::strcmp(f.enumType, "PalettePrecision") == 0) {
+            if (name == "normal") return "Normal (32\xC2\xB3)";
+            if (name == "high") return "High (64\xC2\xB3)";
         }
         std::string label = name;
         if (!label.empty()) label[0] = (char)std::toupper((unsigned char)label[0]);
@@ -459,6 +483,8 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
                 }
                 ImGui::EndCombo();
             }
+            if (std::strcmp(f.name, "palettePrecision") == 0 && settings.palettePrecision == PalettePrecision::HIGH)
+                ImGui::TextDisabled("Slower to bake: for palettes of many close shades");
             if (std::strcmp(f.name, "lutInputEncoding") == 0) {
                 // what the .cube's encoding resolves to (Auto: the proposal from its title and range)
                 const std::shared_ptr<const CubeLut> lut = getCachedColorLut(settings.lutTexture);
@@ -471,6 +497,10 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
         }
         case FT::String:
         case FT::Asset: {
+            if (std::strcmp(f.name, "palette") == 0) {
+                drawPostProcessingPaletteField(sceneProject, settings);
+                break;
+            }
             // a project image (the LUT strip): drop one, pick one, or clear. An Asset field is set
             // by its path (ScenePropertyCmd<std::string>), which drops a GUID it no longer names
             const std::string current = f.type == FT::Asset ? fieldValue<AssetRef>(settings, f).path
@@ -528,6 +558,59 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
         cmd = nullptr;
     }
     ImGui::PopID();
+}
+
+void editor::InspectorWindow::applyPostProcessingPreset(SceneProject* sceneProject, const PostProcessingPreset& preset){
+    const uint32_t sceneId = sceneProject->id;
+    PostProcessingSettings settings;
+    bool wroteCopy = false;
+    std::string error;
+    if (!resolvePostProcessingPreset(*project, preset, settings, wroteCopy, error)) {
+        Out::warning("The %s preset's palette: %s", preset.name.c_str(), error.c_str());
+        return;
+    }
+    CommandHandle::get(sceneId)->addCommandNoMerge(makePostProcessingCommand(project, sceneId, settings, "Apply " + preset.name + " Preset"));
+    // the built-in palette's copy and the preset: one undo step
+    if (wroteCopy)
+        editor::pixelart::linkPaletteCopy(*project, sceneId);
+}
+
+void editor::InspectorWindow::drawPostProcessingPaletteField(SceneProject* sceneProject, const PostProcessingSettings& settings){
+    const uint32_t sceneId = sceneProject->id;
+    const std::string current = settings.palette.path;
+    std::string picked;
+    if (paletteAssetField("##pp_palette", *project, current, picked, true)) {
+        editor::pixelart::ResolvedPalette resolved;
+        bool wroteCopy = false;
+        std::string error;
+        if (picked.empty()) {
+            CommandHandle::get(sceneId)->addCommandNoMerge(
+                new ScenePropertyCmd<std::string>(project, sceneId, "post_processing.palette", std::string()));
+        } else if (editor::pixelart::usePalette(*project, picked, resolved, wroteCopy, error)) {
+            // set by its path (ScenePropertyCmd<std::string>), which drops a GUID it no longer names
+            CommandHandle::get(sceneId)->addCommandNoMerge(
+                new ScenePropertyCmd<std::string>(project, sceneId, "post_processing.palette", resolved.assetPath));
+            if (wroteCopy)
+                editor::pixelart::linkPaletteCopy(*project, sceneId);
+        } else {
+            Out::warning("Palette Quantize: %s", error.c_str());
+        }
+    }
+
+    ImGui::PushTextWrapPos(0.0f);
+    if (current.empty()) {
+        if (settings.paletteEnabled)
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " No palette: Palette Quantize stays off until one is set");
+    } else if (std::shared_ptr<const jasperengine::pixelart::Palette> palette = jasperengine::pixelart::PaletteLibrary::get(current)) {
+        paletteSwatchStrip("##pp_palette_swatches", palette->colors, -1.0f, ImGui::GetFontSize() * 0.8f, 64);
+        // the renderer bakes the colour table in the background; the previous one draws meanwhile
+        std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>();
+        if (render && render->isPaletteQuantizeBaking())
+            ImGui::TextDisabled(ICON_FA_SPINNER " Baking...");
+    } else {
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " %s is not a readable palette", current.c_str());
+    }
+    ImGui::PopTextWrapPos();
 }
 
 void editor::InspectorWindow::drawPostProcessingCost(SceneProject* sceneProject, const PostProcessingSettings& settings){
@@ -627,7 +710,7 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
 
     // ---- presets: the whole struct in one step
     {
-        const PostProcessingPreset* matched = matchPostProcessingPreset(settings);
+        const PostProcessingPreset* matched = matchPostProcessingPreset(settings, project);
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Preset");
         ImGui::SameLine();
@@ -635,7 +718,7 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
         if (ImGui::BeginCombo("##pp_preset", matched ? matched->name.c_str() : "Custom")) {
             for (const PostProcessingPreset& preset : getPostProcessingPresets()) {
                 if (ImGui::Selectable(preset.name.c_str(), matched == &preset) && matched != &preset)
-                    setAll(preset.settings, "Apply " + preset.name + " Preset");
+                    applyPostProcessingPreset(sceneProject, preset);
                 if (ImGui::IsItemHovered()) {
                     const PostProcessingCost cost = estimatePostProcessingCost(preset.settings, {}, false);
                     postProcessingWrappedTooltip(preset.description + "\n\nEstimate: " + std::to_string(cost.engine.passCount) + " passes, " +

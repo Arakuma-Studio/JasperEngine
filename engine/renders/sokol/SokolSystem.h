@@ -141,6 +141,7 @@ namespace jasperengine{
         static BackendFrameCounters getBackendFrameCounters();
         static const char* getBackendName();
         static std::string getDeviceName();
+        static bool isCpuDevice();
         // the context's API version ("OpenGL ES 3.2 Mesa ...", "Vulkan 1.3.255")
         static std::string getApiVersion();
         static void setDrawListEnabled(bool enabled);

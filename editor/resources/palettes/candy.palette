@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Candy",
+  "author": "pixelfx",
+  "description": "pixelfx's 'candy' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "candy"},
+  "columns": 7,
+  "colors": ["#ff4a5a", "#ff9a2a", "#ffe03c", "#5ad84a", "#3cc8ff", "#7a6cff", "#f53cd1"],
+  "ramps": [
+    {"name": "candy", "colors": [0, 1, 2, 3, 4, 5, 6]}
+  ]
+}

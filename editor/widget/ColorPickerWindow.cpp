@@ -9,12 +9,19 @@
 
 #include "AppSettings.h"
 #include "Platform.h"
+#include "Project.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
+#include "pixelart/PaletteAssets.h"
+#include "pixelart/PaletteEdit.h"
+#include "pixelart/PixelColor.h"
 #include "platform/ScreenColor.h"
 #include "shortcuts/CommandCatalog.h"
 #include "texture/Framebuffer.h"
+#include "util/FileUtils.h"
 #include "util/GraphicUtils.h"
+#include "widget/PaletteSwatchAdapter.h"
+#include "window/PaletteWindow.h"
 
 #include "imgui_internal.h"
 #include "window/EditorModal.h"
@@ -23,6 +30,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -173,6 +182,15 @@ void ColorPickerWindow::setProjectPath(const std::filesystem::path& path) {
     librariesLoaded = false;
 }
 
+void ColorPickerWindow::setProject(Project* project) {
+    if (project == paletteProject) return;
+    paletteProject = project;
+    palettes.clear();
+    palettesLoaded = false;
+    activePalette = 0;
+    snapChoice.clear();
+}
+
 std::filesystem::path ColorPickerWindow::userLibraryDirectory() const {
     return swatches::userDirectory(AppSettings::getConfigDirectory());
 }
@@ -214,6 +232,8 @@ void ColorPickerWindow::open(ImGuiID id, const Vector4& stored, const ColorField
     warning.clear();
     hexEditing = false;
     if (!librariesLoaded) reloadLibraries();
+    // palettes change behind the window's back (the Palette window, agents): listed again
+    palettesLoaded = false;
 }
 
 EditPhase ColorPickerWindow::consume(ImGuiID id, Vector4& value) {
@@ -236,6 +256,7 @@ EditPhase ColorPickerWindow::consume(ImGuiID id, Vector4& value) {
 void ColorPickerWindow::markChanged() {
     changed = true;
     hexEditing = false;
+    if (snapToPalette) snapCurrent();
 }
 
 void ColorPickerWindow::close(EditPhase how) {
@@ -326,6 +347,7 @@ void ColorPickerWindow::show() {
         drawPicker();
         drawSliders();
         drawHexAlphaIntensity();
+        drawSnap();
         if (!warning.empty()) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.3f, 1.0f));
             ImGui::TextWrapped("%s", warning.c_str());
@@ -333,6 +355,7 @@ void ColorPickerWindow::show() {
         }
         ImGui::Separator();
         drawSwatches();
+        drawPalettes();
         if (sampling) drawLoupe(ImVec2(), true);
 
         if (focused && !ImGui::IsAnyItemActive() && !sampling && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup)) {
@@ -699,6 +722,184 @@ void ColorPickerWindow::drawSwatches() {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
+    }
+}
+
+// ---- the project's palettes (S43 R34)
+
+void ColorPickerWindow::reloadPalettes() {
+    const std::string activePath = activePalette < palettes.size() ? palettes[activePalette].path : std::string();
+    palettes.clear();
+    activePalette = 0;
+    palettesLoaded = true;
+    palettesCheckedAt = ImGui::GetTime();
+    if (!paletteProject) return;
+    for (pixelart::ProjectPalette& listed : pixelart::listProjectPalettes(*paletteProject)) {
+        PaletteEntry entry;
+        entry.file = paletteProject->getProjectPath() / FileUtils::pathFromUtf8(listed.path);
+        entry.path = listed.path;
+        entry.palette = std::move(listed.palette);
+        entry.library = paletteSwatchLibrary(entry.palette, entry.file);
+        std::error_code ec;
+        entry.time = std::filesystem::last_write_time(entry.file, ec);
+        palettes.push_back(std::move(entry));
+    }
+    for (size_t i = 0; i < palettes.size(); i++) {
+        if (palettes[i].path == activePath) activePalette = i;
+    }
+}
+
+void ColorPickerWindow::refreshPalette(PaletteEntry& entry) {
+    std::error_code ec;
+    const std::filesystem::file_time_type time = std::filesystem::last_write_time(entry.file, ec);
+    if (ec || time == entry.time) return;
+    entry.time = time;
+    std::ifstream in(entry.file, std::ios::binary);
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    jasperengine::pixelart::Palette next;
+    std::vector<jasperengine::pixelart::Diagnostic> diagnostics;
+    if (!jasperengine::pixelart::PaletteCodec::read(text, next, diagnostics)) return;
+    entry.palette = std::move(next);
+    entry.library = paletteSwatchLibrary(entry.palette, entry.file);
+}
+
+const ColorPickerWindow::PaletteEntry* ColorPickerWindow::snapTarget() {
+    if (!paletteProject) return nullptr;
+    if (!palettesLoaded) reloadPalettes();
+    std::string wanted = snapChoice.empty() ? pixelart::defaultPalettePath(*paletteProject) : snapChoice;
+    for (PaletteEntry& entry : palettes) {
+        if (!wanted.empty() && entry.path == wanted) {
+            refreshPalette(entry);
+            return &entry;
+        }
+    }
+    // no Default Palette: the palette shown under Palettes
+    if (activePalette < palettes.size()) {
+        refreshPalette(palettes[activePalette]);
+        return &palettes[activePalette];
+    }
+    return nullptr;
+}
+
+void ColorPickerWindow::snapCurrent() {
+    const PaletteEntry* target = snapTarget();
+    snapIndex = -1;
+    if (!target || target->palette.colors.empty()) return;
+    const Vector4 shown = current.shown();
+    const jasperengine::pixelart::Rgba8 color{colormath::toByte(shown.x), colormath::toByte(shown.y), colormath::toByte(shown.z), 255};
+    const int index = target->palette.nearest(color, jasperengine::pixelart::ColorMetric::OkLab);
+    if (index < 0) return;
+    const jasperengine::pixelart::Rgba8 snapped = target->palette.colors[index];
+    current.setShownRgb(Vector3(colormath::fromByte(snapped.r), colormath::fromByte(snapped.g), colormath::fromByte(snapped.b)));
+    snapIndex = index;
+}
+
+void ColorPickerWindow::drawSnap() {
+    if (!paletteProject) return;
+    // turning it on snaps the colour shown now
+    if (ImGui::Checkbox("Snap to Palette", &snapToPalette) && snapToPalette) markChanged();
+    ImGui::SetItemTooltip("Picked and dragged colours move to the nearest colour (OKLab) of the palette: pixel-art tints stay on the palette");
+    if (!snapToPalette) return;
+    ImGui::SameLine();
+    const PaletteEntry* target = snapTarget();
+    const std::string preview = target ? (target->palette.name.empty() ? target->path : target->palette.name) : std::string("(no palette)");
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+    if (ImGui::BeginCombo("##snap_palette", preview.c_str())) {
+        if (ImGui::IsWindowAppearing()) reloadPalettes();
+        const std::string defaultPath = pixelart::defaultPalettePath(*paletteProject);
+        const std::string defaultLabel = "Default Palette" + (defaultPath.empty() ? std::string(" (none set)") : " (" + defaultPath + ")") + "##snap_default";
+        if (ImGui::Selectable(defaultLabel.c_str(), snapChoice.empty())) snapChoice.clear();
+        for (size_t i = 0; i < palettes.size(); i++) {
+            const std::string label = (palettes[i].palette.name.empty() ? palettes[i].path : palettes[i].palette.name) + "##snap_" + std::to_string(i);
+            if (ImGui::Selectable(label.c_str(), snapChoice == palettes[i].path)) snapChoice = palettes[i].path;
+        }
+        ImGui::EndCombo();
+    }
+    // what the colour snapped to (a disabled row, so tests and agents can read it too)
+    target = snapTarget();
+    std::string result = "Snapped: none";
+    if (target && snapIndex >= 0 && target->palette.validIndex(snapIndex)) {
+        result = "Snapped: index " + std::to_string(snapIndex) + " " + jasperengine::pixelart::toHex(target->palette.colors[snapIndex]);
+    }
+    ImGui::Selectable((result + "###snap_result").c_str(), false, ImGuiSelectableFlags_Disabled);
+}
+
+void ColorPickerWindow::addToPalette(PaletteEntry& entry) {
+    if (!paletteProject) return;
+    const Vector4 shown = current.shown();
+    const jasperengine::pixelart::Rgba8 color{colormath::toByte(shown.x), colormath::toByte(shown.y), colormath::toByte(shown.z),
+                                              options.alpha ? colormath::toByte(shown.w) : (uint8_t)255};
+    jasperengine::pixelart::Palette next = entry.palette;
+    const nlohmann::json ops = nlohmann::json::array({{{"op", "insert"}, {"color", jasperengine::pixelart::toHex(color)}}});
+    const pixelart::PaletteEditResult edited = pixelart::applyPaletteOps(next, ops);
+    if (!edited.ok) {
+        warning = edited.errors.front().message + ".";
+        return;
+    }
+    std::string error;
+    if (!PaletteWindow::writeFiles(paletteProject, {{entry.file, jasperengine::pixelart::PaletteCodec::write(next)}},
+                                   "Add to Palette (" + FileUtils::pathToUtf8(entry.file.filename()) + ")", "", error)) {
+        warning = error;
+        return;
+    }
+    entry.palette = std::move(next);
+    entry.library = paletteSwatchLibrary(entry.palette, entry.file);
+    std::error_code ec;
+    entry.time = std::filesystem::last_write_time(entry.file, ec);
+}
+
+void ColorPickerWindow::drawPalettes() {
+    if (!paletteProject) return;
+    ImGui::Separator();
+    ImGui::TextUnformatted("Palettes");
+    if (!palettesLoaded) reloadPalettes();
+    if (palettes.empty()) {
+        ImGui::TextDisabled("No palettes in this project (Window > 2D > Palette makes one).");
+        return;
+    }
+    if (activePalette >= palettes.size()) activePalette = 0;
+    // the palette shown follows its file (an undo, the Palette window)
+    if (ImGui::GetTime() - palettesCheckedAt > 0.5) {
+        palettesCheckedAt = ImGui::GetTime();
+        refreshPalette(palettes[activePalette]);
+    }
+    PaletteEntry& entry = palettes[activePalette];
+    const float addWidth = ImGui::CalcTextSize("Add to Palette").x + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetStyle().ItemSpacing.x;
+    ImGui::SetNextItemWidth(std::max(ImGui::GetFrameHeight() * 4.0f, ImGui::GetContentRegionAvail().x - addWidth));
+    if (ImGui::BeginCombo("##palette_library", entry.library.name.c_str())) {
+        for (size_t i = 0; i < palettes.size(); i++) {
+            const std::string label = palettes[i].library.name + "  (" + palettes[i].path + ")##palette_library_" + std::to_string(i);
+            if (ImGui::Selectable(label.c_str(), i == activePalette)) activePalette = i;
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    const bool canAdd = !entry.palette.readOnly && entry.palette.count() < jasperengine::pixelart::Palette::kMaxColors;
+    ImGui::BeginDisabled(!canAdd);
+    if (ImGui::Button("Add to Palette")) addToPalette(palettes[activePalette]);
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Append the current colour to this palette (one undo step)");
+
+    PaletteEntry& shown = palettes[activePalette];
+    const float spacing = 2.0f;
+    const float cell = std::floor((ImGui::GetContentRegionAvail().x - spacing * (SwatchLibrary::kRowLength - 1)) / SwatchLibrary::kRowLength);
+    const float size = std::max(cell, 6.0f);
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    for (size_t i = 0; i < shown.library.swatches.size(); i++) {
+        if (i % SwatchLibrary::kRowLength != 0) ImGui::SameLine(0.0f, spacing);
+        ImGui::PushID((int)i);
+        const ImVec2 min = ImGui::GetCursorScreenPos();
+        const ImVec2 max(min.x + size, min.y + size);
+        const Swatch& swatch = shown.library.swatches[i];
+        ImGui::InvisibleButton("##palette_swatch", ImVec2(size, size));
+        const jasperengine::pixelart::Rgba8 color = shown.palette.colors[i];
+        drawColorSwatch(drawList, min, max, Vector4(colormath::fromByte(color.r), colormath::fromByte(color.g), colormath::fromByte(color.b),
+                                                    colormath::fromByte(color.a)), true, false, false);
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("#%d %s%s%s", (int)i, swatch.name.c_str(), swatch.name.empty() ? "" : " ", jasperengine::pixelart::toHex(color).c_str());
+        }
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) applySwatch(swatch);
+        ImGui::PopID();
     }
 }
 

@@ -7,6 +7,7 @@
 #include "Project.h"
 #include "component/TerrainComponent.h"
 #include "external/IconsFontAwesome6.h"
+#include "graph/GraphEditorHooks.h"
 #include "graph/GraphRegistry.h"
 #include "noise/NoiseGraphRuntime.h"
 #include "memory/MemoryStats.h"
@@ -39,7 +40,7 @@ namespace {
     const ImU32 kNodeText = IM_COL32(230, 230, 230, 255);
     const ImU32 kDeadText = IM_COL32(140, 140, 140, 255);
     const int kPreviewSizes[] = {64, 128, 256, 512};
-    const float kThumbnail = 64.0f;
+    const float kThumbnailMinZoom = 0.5f;
 
     ImU32 colorOf(uint32_t rgba) {
         return IM_COL32((rgba >> 24) & 0xFF, (rgba >> 16) & 0xFF, (rgba >> 8) & 0xFF, rgba & 0xFF);
@@ -53,10 +54,36 @@ namespace {
 }
 
 NoiseGraphWindow::NoiseGraphWindow(Project* project) : project(project), document(project) {
-    canvas.canConnect = [this](uint64_t from, uint64_t to) { return document.canConnectPins(from, to); };
+    canvas.canConnect = [this](const GraphCanvas::PortRef& output, const GraphCanvas::PortRef& input) {
+        return document.canConnectPins(pinOf(output), pinOf(input));
+    };
+    // R56: a node's image, at zoom 0.5 or above
+    canvas.drawThumbnail = [this](ImDrawList* list, uint64_t id, ImVec2 min, ImVec2 max) {
+        if (canvas.getZoom() < kThumbnailMinZoom) return;
+        auto thumbnail = thumbnails.find(document.nodeOfId(id));
+        if (thumbnail == thumbnails.end() || thumbnail->second.empty()) return;
+        TextureRender* render = thumbnail->second.getRender();
+        if (render && render->isCreated()) list->AddImage(ImTextureRef(Backend::getImGuiTexture(render)), min, max);
+    };
+    // a .noisegraph opens here wherever a graph file is opened (the Graph Editor's routes)
+    graphEditorHooks().kindWindows[noise::kNoiseKindId] = {WINDOW_NAME, [this](const std::string& path) {
+        const fs::path given(path);
+        std::error_code ec;
+        fs::path file = given.is_absolute() ? given : this->project->getProjectPath() / given;
+        if (!given.is_absolute() && !fs::exists(file, ec)) file = this->project->resolveAssetPath(given);
+        if (file.empty() || !fs::exists(file, ec)) return false;
+        openGraph(file);
+        return true;
+    }};
 }
 
-NoiseGraphWindow::~NoiseGraphWindow() = default;
+uint64_t NoiseGraphWindow::pinOf(const GraphCanvas::PortRef& port) const {
+    return document.pinOf(document.nodeOfId(port.node), port.port);
+}
+
+NoiseGraphWindow::~NoiseGraphWindow() {
+    graphEditorHooks().kindWindows.erase(noise::kNoiseKindId);
+}
 
 void NoiseGraphWindow::setOpen(bool open) {
     windowOpen = open;
@@ -369,22 +396,20 @@ void NoiseGraphWindow::drawCanvas() {
         GraphCanvas::Node node;
         node.id = view.id;
         node.position = ImVec2(static_cast<float>(view.position.x), static_cast<float>(view.position.y));
-        node.size = ImVec2(180.0f, 40.0f);
+        node.size = ImVec2(GraphCanvas::MIN_WIDTH, 0.0f);
         node.label = view.title;
-        node.subtitle = view.folded ? "folded" : (view.dead ? "unused" : "");
         node.fill = view.dead ? kDeadFill : kNodeFill;
         node.text = view.dead ? kDeadText : kNodeText;
         node.selected = view.selected;
-        for (const NoiseGraphPinView& pin : view.inputs) node.inputs.push_back({pin.id, pin.name, colorOf(pin.color), pin.connected, pin.error});
-        for (const NoiseGraphPinView& pin : view.outputs) node.outputs.push_back({pin.id, pin.name, colorOf(pin.color), pin.connected, pin.error});
-        node.thumbnailSize = ImVec2(kThumbnail, kThumbnail);
-        auto thumbnail = thumbnails.find(view.nodeId);
-        if (thumbnail != thumbnails.end() && !thumbnail->second.empty()) {
-            if (TextureRender* render = thumbnail->second.getRender()) {
-                if (render->isCreated()) node.thumbnail = Backend::getImGuiTexture(render);
-            }
-        }
-        node.footer = view.footer;
+        for (const NoiseGraphPinView& pin : view.inputs) node.inputs.push_back({pin.port, pin.name, colorOf(pin.color), pin.connected, pin.error});
+        for (const NoiseGraphPinView& pin : view.outputs) node.outputs.push_back({pin.port, pin.name, colorOf(pin.color), pin.connected, pin.error});
+        // the slot keeps its place while the texture is not there yet
+        node.thumbnail = true;
+        node.cost = view.cost;
+        // a dataflow node's header holds its label and cost: the state is its first dim line
+        if (view.folded || view.dead) node.footer.push_back(view.folded ? "folded" : "unused");
+        node.footer.insert(node.footer.end(), view.footer.begin(), view.footer.end());
+        node.error = !view.errorText.empty();
         node.errorText = view.errorText;
         nodes.push_back(std::move(node));
     }
@@ -393,8 +418,8 @@ void NoiseGraphWindow::drawCanvas() {
         link.id = wire.id;
         link.from = wire.fromNode;
         link.to = wire.toNode;
-        link.fromPin = wire.fromPin;
-        link.toPin = wire.toPin;
+        link.fromPort = wire.fromPort;
+        link.toPort = wire.toPort;
         link.color = colorOf(wire.color);
         link.selected = wire.selected;
         links.push_back(link);
@@ -415,16 +440,14 @@ void NoiseGraphWindow::drawCanvas() {
             const ImVec2 b = canvas.toScreen(ImVec2(nodes[i].position.x + nodes[i].size.x, nodes[i].position.y + nodes[i].size.y));
             UIProbe::rect("noisegraph.node." + views[i].nodeId, a.x, a.y, b.x, b.y);
             if (!views[i].errorText.empty()) UIProbe::rect("noisegraph.error." + views[i].nodeId + ": " + views[i].errorText, a.x, a.y, b.x, b.y);
-            const float pinTop = a.y + 24.0f * (b.y - a.y) / nodes[i].size.y;
-            const float rowHeight = 18.0f * (b.y - a.y) / nodes[i].size.y;
-            const auto probePins = [&](const std::vector<NoiseGraphPinView>& pins, float x) {
-                for (size_t row = 0; row < pins.size(); row++) {
-                    const float y = pinTop + rowHeight * (static_cast<float>(row) + 0.5f);
-                    UIProbe::rect("noisegraph.pin." + views[i].nodeId + "." + pins[row].port, x - 4.0f, y - 4.0f, x + 4.0f, y + 4.0f);
+            const auto probePins = [&](const std::vector<NoiseGraphPinView>& pins, bool output) {
+                for (const NoiseGraphPinView& pin : pins) {
+                    const ImVec2 at = canvas.toScreen(GraphCanvas::portPosition(nodes[i], pin.port, output));
+                    UIProbe::rect("noisegraph.pin." + views[i].nodeId + "." + pin.port, at.x - 4.0f, at.y - 4.0f, at.x + 4.0f, at.y + 4.0f);
                 }
             };
-            probePins(views[i].inputs, a.x);
-            probePins(views[i].outputs, b.x);
+            probePins(views[i].inputs, false);
+            probePins(views[i].outputs, true);
         }
     }
 
@@ -445,11 +468,11 @@ void NoiseGraphWindow::drawCanvas() {
         for (const auto& [id, position] : result.moved) positions.push_back({document.nodeOfId(id), graph::Vec2{position.x, position.y}});
         document.moveNodes(positions);
     }
-    if (result.wireFrom != 0 && result.wireTo != 0) document.connectPins(result.wireFrom, result.wireTo);
-    if (result.wireDroppedFrom != 0) {
+    if (result.connectFrom.node != 0 && result.connectTo.node != 0) document.connectPins(pinOf(result.connectFrom), pinOf(result.connectTo));
+    if (result.wireDropped) {
         searchRequest = true;
-        searchPosition = result.wireDropPosition;
-        searchPin = result.wireDroppedFrom;
+        searchPosition = result.wireDropCanvas;
+        searchPin = pinOf(result.wireSource);
     }
     // R59: right click and Tab open the same popup
     if (result.contextRequested && result.contextNode == 0 && result.contextLink == 0) {

@@ -75,6 +75,7 @@ namespace jasperengine::editor {
         ImTextureID makeTexture(Texture& texture, const std::string& id, const std::vector<uint8_t>& rgba, int size);
         void releaseTextures();
         void releaseRetired();
+        uint64_t pinOf(const GraphCanvas::PortRef& port) const;
 
         Project* project = nullptr;
         NoiseGraphDocument document;

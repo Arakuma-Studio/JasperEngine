@@ -12,7 +12,7 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
   `std::span`, designated initializers, `<bit>`, ranges where they compile on all our toolchains:
   GCC 11 (the Ubuntu 22.04 container), Clang/Xcode, MSVC, Android NDK, Emscripten).
 - **Platforms are non-negotiable.** Everything that runs in a game must work on all our graphics
-  backends (GL 3.3 core, GLES3/WebGL2, Metal, D3D11, Vulkan via sokol-gfx) and all export targets
+  backends (GL 4.1 core, GLES3/WebGL2, Metal, D3D11, Vulkan via sokol-gfx) and all export targets
   (Windows, Linux, macOS, Android, iOS, HTML5). No feature may *require* compute shaders, SSBOs,
   bindless, indirect draws or 64-bit atomics. A desktop-only fast path is allowed only with a
   working fallback that produces equivalent results.
@@ -135,6 +135,9 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S75 | Navigation diagnostics: path failure reasons, islands and coverage, locate, walkability probe, one findings list (window, CLI, export, MCP), bake report, Path Tester, diagnostic overlays | 5 (navigation) |
 | S76 | Navigation gameplay API: random points, wall distance, move along surface, path cost and area crossings, per-query and per-agent area costs, runtime area overrides (doors, bridges), link activated/occupied, agent path/root-motion/stuck API, Lua handles for obstacles, links and modifiers | 5 (navigation) |
 | S77 | Clip quality: clip memory and stats, Animator property-write race, tiered slerp, key reduction with a measured bound, `check_animation` and `optimize_animation`, model clip settings, IK accuracy and debug (ideas after ozz-animation, nothing vendored) | follow-ups |
+| BF23 | Fixes from the authoring audit: sub-emitter drawing, silent agent failures in the graph and particle tools, Animator window bugs, doc drift; lands before S90 and S91 | Authoring (fixes first) |
+| S90 | Procedural Material: `.procmat` node graphs baked in the editor to 8-bit textures and a `.material`, evaluated on GPU, then software renderer, then a CPU SPIR-V interpreter; node library ported as data from Material Maker behind a licence deny-list | Authoring (spec-first) |
+| S91 | Effect authoring on S20: Particle Effect window, timing bars, `preview_particle_effect` filmstrip and checks, sub-emitter drawing, distortion, ring renderer, triggers, dynamic parameters, sprite-sheet bake; ideas only from Effekseer | Authoring (spec-first) |
 | T1 | Terrain operations and authoring: one operation engine and surface query behind brushes, MCP, Lua and bakes; delta undo, spaced stamps; Create Terrain, overlays, Raw import/export; `edit_terrain`, `visualize_terrain`, richer `sample_terrain`; Lua height queries and runtime edits | 5 (terrain; spec-first) |
 | T2 | Noise graphs and terrain generation: deterministic noise library (`engine/core/noise`, golden hashes on every target), `.noisegraph` (first real graph kind), compiler with ranges and profile, erosion, `generate_terrain`, `preview_noise_graph`, presets, GraphCanvas pins, Noise Graph window, Lua `Noise`/`NoiseGraph`, player module `JASPERENGINE_NOISE` | 5 (terrain; spec-first) |
 | T3 | Terrain materials and holes: Quality tiers (High, Medium, Low with a hard fetch budget), top-N layer cap, macro variation, distance resampling, cliff projection, macro normal map, 12 layers, compressed layer arrays, off-screen shadow casters; holes that agree across rendering, collision, navmesh, picking, foliage and splines | 5 (terrain; spec-first) |

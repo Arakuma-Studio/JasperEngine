@@ -49,7 +49,8 @@ namespace jasperengine::editor {
         graph::Vec2 position;
         std::vector<NoiseGraphPinView> inputs;
         std::vector<NoiseGraphPinView> outputs;
-        std::vector<std::string> footer;    // R56: the range readout and the time
+        std::vector<std::string> footer;    // R56: the range readout
+        std::string cost;                   // R56: the time ("0.31 ms"), the canvas header's corner
         std::string errorText;
         bool selected = false;
         bool dead = false;
@@ -61,6 +62,7 @@ namespace jasperengine::editor {
         std::string edgeId;
         uint64_t fromNode = 0, toNode = 0;
         uint64_t fromPin = 0, toPin = 0;
+        std::string fromPort, toPort;
         uint32_t color = 0xffffffffu;
         bool selected = false;
     };

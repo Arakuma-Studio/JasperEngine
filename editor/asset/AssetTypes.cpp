@@ -26,7 +26,7 @@ namespace {
             {{AssetType::Scene, AssetIdentity::InFile, AssetPathBase::Project, false, false}, {".scene"}},
             {{AssetType::Material, AssetIdentity::InFile, AssetPathBase::Project, false, false}, {".material"}},
             {{AssetType::Texture, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false},
-                {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".psd", ".pic", ".pnm", ".svg"}},
+                {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".exr", ".psd", ".pic", ".pnm", ".svg"}},
             {{AssetType::Model, AssetIdentity::Sidecar, AssetPathBase::Assets, true, false}, {".gltf", ".glb", ".obj", ".fbx"}},
             {{AssetType::Audio, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".wav", ".ogg", ".mp3", ".flac"}},
             {{AssetType::Font, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".ttf", ".otf"}},
@@ -54,12 +54,17 @@ namespace {
             {{AssetType::AvatarMask, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".mask"}},
             {{AssetType::TreeData, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".jetrees"}},
             {{AssetType::AnimationMontage, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".montage"}},
+            // the pixel-art family's assets (PIXEL-ART-LEDGER.md)
+            // its ramps are sub-assets ("<file>.palette#ramp:<name>", a texture strip)
+            {{AssetType::Palette, AssetIdentity::Sidecar, AssetPathBase::Assets, true, false}, {".palette"}},
             // Aseprite files (S44): a meta beside them, their outputs are sub-assets
             {{AssetType::AsepriteSprite, AssetIdentity::Sidecar, AssetPathBase::Assets, true, false}, {".aseprite", ".ase"}},
             // Sprite Atlases (S45): their GUID in their JSON, as clips; pages have derived GUIDs, no sub-assets
             {{AssetType::SpriteAtlas, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".spriteatlas"}},
             // Sound Events (S37): the file holds no GUID, its .meta does
             {{AssetType::SoundEvent, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".soundevent"}},
+            // a Procedural Material's node graph (S90): the GUID in its JSON, baked in the editor, never shipped
+            {{AssetType::ProceduralMaterial, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".procmat"}},
             // T4 R48: a folder, one asset; its GUID is in its manifest.yaml and the scan does not enter it
             {{AssetType::TerrainWorld, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".terrainworld"}},
         };

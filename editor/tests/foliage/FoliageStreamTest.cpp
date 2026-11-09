@@ -142,8 +142,8 @@ TEST(StreamTerrainFoliage, FactoryEmitsTheNewFields) {
     EXPECT_NE(code.find("windBend"), std::string::npos);
 }
 
-TEST(AssetTypes, TreeDataValueIs29) {
-    EXPECT_EQ(static_cast<int>(AssetType::TreeData), 29);
+TEST(AssetTypes, TreeDataValueIs30) {
+    EXPECT_EQ(static_cast<int>(AssetType::TreeData), 30);
 }
 
 // R61: the old flag still means Instanced, and Place As is a key of its own

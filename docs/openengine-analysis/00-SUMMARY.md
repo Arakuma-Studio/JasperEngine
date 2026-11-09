@@ -1,5 +1,9 @@
 # OpenEngine vs JasperEngine — consolidated findings
 
+> **Note (2026-11-04, BF23 F28).** This report is historical and stays as written; decisions taken since:
+> the imnodes node editor in the "Shader graph" line was rejected by `docs/specs/S21-animation.md` D14:
+> node graphs draw on our own `editor/window/widget/GraphCanvas`.
+
 Source: 10 domain reports in this folder (01–10), produced by reading both trees. Nothing from
 OpenEngine was built or run. OpenEngine is MIT: anything copied keeps their copyright notice
 and gets a NOTICE.md entry. Exceptions are flagged in the "Licences" section.

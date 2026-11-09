@@ -68,9 +68,9 @@ namespace {
 
 }
 
-TEST(TerrainWorldAsset, AssetTypeValueIs30) {
+TEST(TerrainWorldAsset, AssetTypeValueIs31) {
     // stored in assetmap.bin: a file format (programme D22)
-    EXPECT_EQ(static_cast<int>(AssetType::TerrainWorld), 30);
+    EXPECT_EQ(static_cast<int>(AssetType::TerrainWorld), 31);
     EXPECT_STREQ(assetTypeName(AssetType::TerrainWorld), "terrain_world");
     EXPECT_EQ(assetTypeFromName("terrain_world"), AssetType::TerrainWorld);
     EXPECT_EQ(assetTypeFromName("tree_data"), AssetType::TreeData);

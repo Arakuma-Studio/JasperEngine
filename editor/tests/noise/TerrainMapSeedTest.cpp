@@ -14,6 +14,7 @@
 #include "Project.h"
 #include "Scene.h"
 #include "component/TerrainComponent.h"
+#include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "mcp/TerrainMaps.h"
 #include "object/TerrainEdit.h"
@@ -57,20 +58,25 @@ namespace {
         return h;
     }
 
-    // Async loading with nothing to run its jobs, for one test
+    // Async loading with nothing to run its jobs, for one test. The asset readers take the job system at
+    // start(), so they stop and start with it: left on the old pool, a later test's reads end cancelled
     class PendingLoads {
     public:
         PendingLoads(): wasAsync(Engine::isAsyncLoading()) {
+            AssetIOService::instance().stop();
             jobs::shutdown();
             jobs::Config config;
             config.workers = 0;
             jobs::initialize(config);
+            AssetIOService::instance().start();
             Engine::setAsyncLoading(true);
         }
         ~PendingLoads() {
             Engine::setAsyncLoading(wasAsync);
+            AssetIOService::instance().stop();
             jobs::shutdown();
             jobs::initialize(jobs::Config{});
+            AssetIOService::instance().start();
         }
     private:
         bool wasAsync;

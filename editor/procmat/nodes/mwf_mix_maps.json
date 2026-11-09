@@ -1,0 +1,44 @@
+{
+ "code": [
+  "vec3 $(name_uv)_out = vec3(-1.0);",
+  "#for",
+  "vec3 $(name_uv)_in# = $in#($uv);",
+  "if ($(name_uv)_in#.x > $(name_uv)_out.x) {",
+  "\t$(name_uv)_out = $(name_uv)_in#;",
+  "}",
+  "#end"
+ ],
+ "description": "Mixes several workflow maps, to be used with the same base material",
+ "format": 1,
+ "functions": [],
+ "id": "mwf_mix_maps",
+ "inputs": [
+  {
+   "default": "vec3(0.0)",
+   "description": "An input map",
+   "label": "",
+   "name": "in#",
+   "short_description": "Input#",
+   "type": "rgb"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Mix Maps",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Generates a merged workflow map",
+   "expr": "$(name_uv)_out",
+   "label": "Output",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [],
+ "short_description": "Mix Maps",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/mwf_mix_maps.mmg"
+ },
+ "type_version": 1
+}

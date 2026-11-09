@@ -16,6 +16,7 @@
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/UndoTimeline.h"
+#include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "io/AtomicFile.h"
 #include "noise/NoiseGraphDocument.h"
@@ -543,10 +544,13 @@ TEST(NoiseGraphDocument, CtrlZUndoesTheLastGraphEdit) {
 TEST(NoiseGraphDocument, ABurstOfPreviewsRunsOnlyTheNewest) {
     NoiseDocumentFixture f;
     ASSERT_TRUE(f.opened) << f.document->loadError();
+    // the asset readers stop and start with the job system they took (a later test's reads would end cancelled)
+    AssetIOService::instance().stop();
     jobs::shutdown();
     jobs::Config single;
     single.workers = 0;
     jobs::initialize(single);
+    AssetIOService::instance().start();
     {
         NoisePreviewService service;
         for (uint64_t revision = 1; revision <= 20; revision++) {
@@ -567,6 +571,8 @@ TEST(NoiseGraphDocument, ABurstOfPreviewsRunsOnlyTheNewest) {
         EXPECT_EQ(stats.lanes[static_cast<size_t>(jobs::Lane::Normal)].queued, 0u) << "no backlog on Normal";
         EXPECT_EQ(stats.lanes[static_cast<size_t>(jobs::Lane::Normal)].running, 0u);
     }
+    AssetIOService::instance().stop();
     jobs::shutdown();
     jobs::initialize(jobs::Config{});
+    AssetIOService::instance().start();
 }

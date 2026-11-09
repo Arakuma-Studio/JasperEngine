@@ -108,6 +108,24 @@ namespace jasperengine{
         FILMIC      // a 5x5 lattice of grain particles (desktop / high-end)
     };
 
+    // Palette Quantize (S43 R19, PostProcessingSettings::palette*): the ordered dither of the
+    // pick between a cell's two palette colours, the distance the table is baked by, and its
+    // grid (32^3 cells, or 64^3: slower to bake, for palettes of many close shades)
+    enum class PaletteDither : int {
+        NONE,
+        BAYER2,
+        BAYER4,
+        BAYER8
+    };
+    enum class PaletteDistance : int {
+        OKLAB,
+        RGB
+    };
+    enum class PalettePrecision : int {
+        NORMAL,     // 32^3 cells
+        HIGH        // 64^3 cells
+    };
+
     // The frame of the film gate (PostProcessingSettings::filmGateMask): the image's aspect
     // ratio inside the output, black outside it, with a feathered edge
     enum class FilmGateMask : int {
@@ -292,6 +310,16 @@ namespace jasperengine{
         bool dynamicResolutionEnabled = false;
         float dynamicResolutionMinScale = 0.6f;     // 0.5..1
         int dynamicResolutionTargetFps = 0;         // 0..240
+
+        // Palette Quantize (S43 R19-R21): the frame forced onto a palette in the uber pass, after
+        // the grade, edges and vignette and before the display emulations (CRT, film, grain);
+        // the dither is per art pixel (the source texel, or the pixelate block)
+        bool paletteEnabled = false;
+        AssetRef palette;                           // a .palette asset
+        PaletteDither paletteDither = PaletteDither::BAYER4;
+        float paletteDitherStrength = 1.0f;         // 0..1
+        PaletteDistance paletteDistance = PaletteDistance::OKLAB;
+        PalettePrecision palettePrecision = PalettePrecision::NORMAL;
 
         bool operator==(const PostProcessingSettings& o) const;
         bool operator!=(const PostProcessingSettings& o) const { return !(*this == o); }

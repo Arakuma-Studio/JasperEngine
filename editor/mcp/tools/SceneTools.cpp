@@ -1760,7 +1760,7 @@ void listPostProcessingPresetsTool(const CallPtr& call) {
         text += "\n" + preset.id + " (" + preset.name + "): " + preset.description + " [" + costText(cost) + "]";
     }
     const PostProcessingSettings settings = scene->scene->getPostProcessing();
-    const PostProcessingPreset* matched = matchPostProcessingPreset(settings);
+    const PostProcessingPreset* matched = matchPostProcessingPreset(settings, project);
     const PostProcessingCost cost = sceneCost(scene->scene, settings);
     Json current = {{"scene_id", scene->id}, {"preset", matched ? Json(matched->id) : Json(nullptr)},
                     {"settings", postProcessingToJson(settings, project)}, {"cost", postProcessingCostToJson(cost)}};
@@ -1792,7 +1792,15 @@ void applyPostProcessingPresetTool(const CallPtr& call) {
     }
     const uint32_t sceneId = scene->id;
     std::string error;
-    if (!runSceneCommand(sceneId, makePostProcessingCommand(project, sceneId, preset->settings, "Apply " + preset->name + " Preset"), error)) {
+    // a built-in palette the preset names is copied into the project first (S43 R7): the call's
+    // steps fold into one undo step
+    PostProcessingSettings settings;
+    bool wroteCopy = false;
+    if (!resolvePostProcessingPreset(*project, *preset, settings, wroteCopy, error)) {
+        call->fail("The " + preset->name + " preset's palette: " + error);
+        return;
+    }
+    if (!runSceneCommand(sceneId, makePostProcessingCommand(project, sceneId, settings, "Apply " + preset->name + " Preset"), error)) {
         call->fail(error);
         return;
     }

@@ -13,16 +13,30 @@
 
 #include "imgui_internal.h"
 
+#include "Backend.h"
+#include "DocumentFile.h"
+#include "EditorHost.h"
+#include "Out.h"
 #include "Catalog.h"
 #include "Project.h"
+#include "Stream.h"
+#include "Theme.h"
+#include "Widgets.h"
 #include "command/CommandHandle.h"
+#include "command/UndoTimeline.h"
 #include "command/type/MultiPropertyCmd.h"
+#include "command/type/WriteFilesCmd.h"
+#include "external/IconsFontAwesome6.h"
+#include "util/ProjectFileWrites.h"
+#include "util/UIProbe.h"
+#include "window/CodeEditor.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/MaterialPbr.h"
 #include "util/Util.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -77,6 +91,189 @@ namespace {
         return hooks;
     }
 
+}
+
+namespace {
+
+    // one project undo step, through what update_material writes
+    bool writeMaterialStep(editor::Project* project, const std::filesystem::path& file, const Material& material) {
+        std::vector<editor::WriteFilesCmd::Item> items = {{file, project->materialFileText(file, material)}};
+        auto failure = std::make_shared<std::string>();
+        auto* command = new editor::WriteFilesCmd(std::move(items), [project](const std::vector<std::filesystem::path>& changed) {
+            editor::ProjectFileWrites::filesWritten(project, changed);
+        });
+        command->setName("Edit Material " + file.stem().string());
+        command->reportFailureTo(failure);
+        if (project->getProjectCommandHistory()->addCommandNoMerge(command)) return true;
+        editor::Out::error("Writing the material failed: %s", failure->c_str());
+        return false;
+    }
+
+}
+
+editor::InspectorWindow::MaterialAssetView::~MaterialAssetView(){
+    UndoTimeline::setAssetEditHistory(nullptr);
+    project->setMaterialAssetScene(nullptr);
+    CommandHandle::remove(host.id);
+    delete host.scene;
+}
+
+bool editor::InspectorWindow::showsProjectAsset() const{
+    return std::max(materialAssetFrame, particleAssetFrame) >= ImGui::GetFrameCount() - 1;
+}
+
+void editor::InspectorWindow::resetMaterialAsset(){
+    if (materialAsset && !materialAsset->path.empty()) leaveMaterialAsset();
+    materialAsset.reset();
+}
+
+void editor::InspectorWindow::leaveMaterialAsset(){
+    MaterialAssetView& view = *materialAsset;
+    if (view.host.scene->getComponent<MeshComponent>(view.entity).submeshes[0].material != view.inFile) writeMaterialAsset();
+    CommandHandle::get(view.host.id)->clear();
+    view.path.clear();
+}
+
+void editor::InspectorWindow::readMaterialAsset(const std::filesystem::path& asset){
+    MaterialAssetView& view = *materialAsset;
+    std::error_code ec;
+    view.path = asset;
+    view.time = std::filesystem::last_write_time(asset, ec);
+    view.size = std::filesystem::file_size(asset, ec);
+    view.error.clear();
+    try {
+        Material material = Stream::decodeMaterial(DocumentFiles::read(asset, DocumentKind::Material).root);
+        material.name = project->normalizeToProjectRelative(asset).generic_string();
+        view.host.scene->getComponent<MeshComponent>(view.entity).submeshes[0].material = material;
+        view.inFile = material;
+        view.inLinked = material;
+    } catch (const std::exception& e) {
+        view.error = e.what();
+    }
+}
+
+void editor::InspectorWindow::writeMaterialAsset(){
+    MaterialAssetView& view = *materialAsset;
+    Material& edited = view.host.scene->getComponent<MeshComponent>(view.entity).submeshes[0].material;
+    const Material material = edited;
+    // what cannot be written shows as the file has it, and the linked submeshes go back to that
+    auto keepFile = [this, &view, &edited]() {
+        edited = view.inFile;
+        project->applyLinkedMaterialFile(view.inFile.name, view.inFile);
+        view.inLinked = view.inFile;
+    };
+    // the file changed or went while this edit was held: what it has now wins, and the edit says so
+    {
+        std::error_code timeError, sizeError;
+        const std::filesystem::file_time_type time = std::filesystem::last_write_time(view.path, timeError);
+        const std::uintmax_t size = std::filesystem::file_size(view.path, sizeError);
+        if (timeError || sizeError || time != view.time || size != view.size) {
+            editor::Out::warning("%s changed on disk during this edit: the edit was not written", view.path.filename().string().c_str());
+            keepFile();
+            return;
+        }
+    }
+    // a file that did not read completely: the editor's lossy-save modal decides (S03)
+    const LoadReport report = DocumentFiles::materialFileReport(view.path);
+    if (report.dropped() > 0) {
+        keepFile();
+        DegradedSaveRequest request;
+        request.documentName = view.path.filename().string();
+        request.path = view.inFile.name;
+        for (const LoadIssue& issue : report.issues) {
+            if (issue.fate == LoadIssueFate::Dropped) request.dropped.push_back(issue);
+        }
+        Project* owner = project;
+        const std::filesystem::path file = view.path;
+        request.saveAnyway = [owner, file, material]() { writeMaterialStep(owner, file, material); };
+        editor::getEditorHost().confirmDegradedSave(request);
+        return;
+    }
+    if (writeMaterialStep(project, view.path, material)) {
+        view.inFile = material;
+        std::error_code ec;
+        view.time = std::filesystem::last_write_time(view.path, ec);
+        view.size = std::filesystem::file_size(view.path, ec);
+    } else {
+        keepFile();
+    }
+}
+
+void editor::InspectorWindow::drawMaterialAsset(const std::filesystem::path& asset){
+    drawAssetHeader(ICON_FA_PALETTE, asset, "Material");
+    ImGui::Separator();
+    materialAssetFrame = ImGui::GetFrameCount();
+
+    if (!materialAsset) {
+        materialAsset = std::make_unique<MaterialAssetView>();
+        MaterialAssetView& created = *materialAsset;
+        created.project = project;
+        created.host.id = project->allocateSceneId();
+        created.host.name = "Material";
+        created.host.sceneType = SceneType::SCENE_3D;
+        created.host.scene = new Scene(EntityPool::System);
+        created.entity = created.host.scene->createSystemEntity();
+        created.host.scene->addComponent<MeshComponent>(created.entity, {});
+        created.host.scene->getComponent<MeshComponent>(created.entity).numSubmeshes = 1;
+        created.host.entities.push_back(created.entity);
+        project->setMaterialAssetScene(&created.host);
+        UndoTimeline::setAssetEditHistory(CommandHandle::get(created.host.id));
+    }
+    MaterialAssetView& view = *materialAsset;
+    auto edited = [&view]() -> Material& { return view.host.scene->getComponent<MeshComponent>(view.entity).submeshes[0].material; };
+
+    // a selection change ends an edit: it goes to the file it was made on
+    // (a Color window's session stays open across the items it activates: it is one gesture)
+    CommandHistory* rowHistory = CommandHandle::get(view.host.id);
+    auto gestureOpen = [rowHistory]() { return ImGui::IsAnyItemActive() || rowHistory->hasOpenInteractive(); };
+    const bool pending = !view.path.empty() && edited() != view.inFile;
+    if (view.path != asset) {
+        if (!view.path.empty()) leaveMaterialAsset();
+        readMaterialAsset(asset);
+    } else if (!pending && !gestureOpen()) {
+        // an undo, an agent or another program changed the file: the rows follow it
+        std::error_code ec;
+        const std::filesystem::file_time_type time = std::filesystem::last_write_time(asset, ec);
+        if (time != view.time || std::filesystem::file_size(asset, ec) != view.size) readMaterialAsset(asset);
+    }
+    if (!view.error.empty()) {
+        ImGui::TextColored(Theme::Colors::WarningText, "Cannot read this material: %s", view.error.c_str());
+    } else {
+        const float previewSize = ImGui::GetFrameHeight() * 6;
+        Texture preview = getMaterialPreview(edited(), "asset:" + asset.generic_string(), true, std::string());
+        Widgets::image(Backend::getImGuiTexture(preview.getRender()), ImVec2(previewSize, previewSize));
+        UIProbe::item("asset.material.preview");
+    }
+    if (ImGui::Button(ICON_FA_FILE_CODE " Open as Text")) {
+        Backend::getApp().getCodeEditor()->openFile(asset.string(), true);
+    }
+    if (!view.error.empty()) return;
+
+    const bool locked = drawVcsLockBanner({asset});
+    if (locked) ImGui::BeginDisabled(true);
+    {
+        // their commands only keep the rows' own state: the undo step is the file's
+        CommandHandle::Redirect rowCommands(project->getSelectedSceneId(), view.host.id);
+        drawSubmeshMaterialRows(ComponentType::MeshComponent, &view.host, {view.entity}, 0, nullptr);
+    }
+    if (locked) ImGui::EndDisabled();
+
+    // as Unity's: what uses it follows while the value is dragged; the file takes it at the release
+    if (edited() != view.inLinked) {
+        if (view.inLinked == view.inFile) {
+            view.scenesModified.clear();
+            for (const SceneProject* scene : project->getScenesAndPrefabStages()) view.scenesModified[scene->id] = scene->isModified;
+        }
+        project->applyLinkedMaterialFile(view.inFile.name, edited());
+        view.inLinked = edited();
+        // back to what the file has (Esc, a drag back): nothing changed, so no scene did (docs/undo.md)
+        if (view.inLinked == view.inFile) {
+            for (const auto& [sceneId, modified] : view.scenesModified) {
+                if (SceneProject* scene = project->getScene(sceneId)) scene->isModified = modified;
+            }
+        }
+    }
+    if (!gestureOpen() && edited() != view.inFile) writeMaterialAsset();
 }
 
 // The value and map rows of one lobe (its enabled flag is its header's, or the Shading Model's)

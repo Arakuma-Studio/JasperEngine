@@ -147,14 +147,14 @@ TEST(VoxelSystem, ChunksNotSavedNotInHierarchy) {
     EXPECT_EQ(encodeSceneText(decoded), before);
 }
 
-TEST(AssetTypes, VoxelVolumeValueIs31) {
+TEST(AssetTypes, VoxelVolumeValueIs32) {
     // a file format (assetmap.bin): the number and the name stay, whichever stream lands first
-    EXPECT_EQ(static_cast<int>(AssetType::VoxelVolume), 31);
+    EXPECT_EQ(static_cast<int>(AssetType::VoxelVolume), 32);
     EXPECT_STREQ(assetTypeName(AssetType::VoxelVolume), "voxel_volume");
     EXPECT_EQ(assetTypeFromName("voxel_volume"), AssetType::VoxelVolume);
     // no other number takes the name (the ones before it belong to other streams, D22)
     for (int value = 0; value < 64; value++) {
-        if (value != 31) {
+        if (value != 32) {
             EXPECT_STRNE(assetTypeName(static_cast<AssetType>(value)), "voxel_volume") << value;
         }
     }

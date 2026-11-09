@@ -1,0 +1,101 @@
+{
+ "code": [
+  "vec2 $(name_uv)_slope = $(name)_slope($uv, $eps, _seed_variation_, _controlled_variation_);",
+  "vec2 $(name_uv)_warp = $mode;"
+ ],
+ "description": "Warps its input according to a heightmap",
+ "format": 1,
+ "functions": [],
+ "id": "warp",
+ "inputs": [
+  {
+   "default": "vec4(sin($uv.x*20.0)*0.5+0.5, sin($uv.y*20.0)*0.5+0.5, 0, 1)",
+   "description": "The input image to be warped",
+   "label": "",
+   "name": "in#",
+   "short_description": "Input#",
+   "type": "rgba"
+  },
+  {
+   "default": "0.0",
+   "description": "The height map whose slopes are used to deform the input",
+   "function": true,
+   "label": "",
+   "name": "d",
+   "short_description": "Height map",
+   "type": "f"
+  },
+  {
+   "default": "1.0",
+   "description": "Map that affects the strength parameter",
+   "label": "",
+   "name": "strength_map",
+   "short_description": "Strength map",
+   "type": "f"
+  }
+ ],
+ "instance": [
+  "vec2 $(name)_slope(vec2 uv, float epsilon, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\treturn vec2($d(fract(uv+vec2(epsilon, 0.0)))-$d(fract(uv-vec2(epsilon, 0.0))), $d(fract(uv+vec2(0.0, epsilon)))-$d(fract(uv-vec2(0.0, epsilon))));",
+  "}"
+ ],
+ "kind": "shader",
+ "name": "Warp",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the warped image",
+   "expr": "$in#($uv+$amount*$strength_map($uv)*$(name_uv)_warp)",
+   "label": "Output#",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "Both warp modes extract their direction from the height map slopes:\n- Slope warp intensity only depends on the slope\n- Distance to top warp intensity depends on the slope and the distance to the top, and can be used to create mosaic-like patterns\n\nA Transform node with translate maps can produce effects similar to Slope Warp and is generally faster.",
+   "label": "Mode",
+   "name": "mode",
+   "short_description": "Mode",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Slope",
+     "value": "$(name_uv)_slope"
+    },
+    {
+     "name": "Distance to top",
+     "value": "$(name_uv)_slope*(1.0-$d($uv))"
+    }
+   ]
+  },
+  {
+   "default": 0,
+   "description": "The strength of the warp effect",
+   "label": "Amount",
+   "max": 1,
+   "min": 0,
+   "name": "amount",
+   "short_description": "Strength",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The offset used to measure slopes",
+   "label": "Epsilon",
+   "max": 0.2,
+   "min": 0.005,
+   "name": "eps",
+   "short_description": "Epsilon",
+   "step": 0.005,
+   "type": "float"
+  }
+ ],
+ "short_description": "Warp",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/warp.mmg"
+ },
+ "type_version": 1
+}

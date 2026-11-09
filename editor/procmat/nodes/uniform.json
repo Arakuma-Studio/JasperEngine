@@ -1,0 +1,41 @@
+{
+ "code": [],
+ "description": "Draws a uniform image",
+ "format": 1,
+ "functions": [],
+ "id": "uniform",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Uniform",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "A uniform image of the selected color",
+   "expr": "$(color)",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "a": 1,
+    "b": 1,
+    "g": 1,
+    "r": 1
+   },
+   "description": "Color of the uniform image",
+   "label": "",
+   "name": "color",
+   "short_description": "Color",
+   "type": "color"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/uniform.mmg"
+ },
+ "type_version": 1
+}

@@ -2007,6 +2007,25 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("FILMIC", FilmGrainType::FILMIC)
         .endNamespace();
 
+    // Palette Quantize (S43)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PaletteDither")
+        .addVariable("NONE", PaletteDither::NONE)
+        .addVariable("BAYER2", PaletteDither::BAYER2)
+        .addVariable("BAYER4", PaletteDither::BAYER4)
+        .addVariable("BAYER8", PaletteDither::BAYER8)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PaletteDistance")
+        .addVariable("OKLAB", PaletteDistance::OKLAB)
+        .addVariable("RGB", PaletteDistance::RGB)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PalettePrecision")
+        .addVariable("NORMAL", PalettePrecision::NORMAL)
+        .addVariable("HIGH", PalettePrecision::HIGH)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("FilmGateMask")
         .addVariable("NONE", FilmGateMask::NONE)
@@ -2542,6 +2561,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("dynamicResolutionEnabled", &PostProcessingSettings::dynamicResolutionEnabled, &PostProcessingSettings::dynamicResolutionEnabled)
         .addProperty("dynamicResolutionMinScale", &PostProcessingSettings::dynamicResolutionMinScale, &PostProcessingSettings::dynamicResolutionMinScale)
         .addProperty("dynamicResolutionTargetFps", &PostProcessingSettings::dynamicResolutionTargetFps, &PostProcessingSettings::dynamicResolutionTargetFps)
+        // Palette Quantize (S43)
+        .addProperty("paletteEnabled", &PostProcessingSettings::paletteEnabled, &PostProcessingSettings::paletteEnabled)
+        .addProperty("palette", &PostProcessingSettings::palette, &PostProcessingSettings::palette)
+        .addProperty("paletteDither", &PostProcessingSettings::paletteDither, &PostProcessingSettings::paletteDither)
+        .addProperty("paletteDitherStrength", &PostProcessingSettings::paletteDitherStrength, &PostProcessingSettings::paletteDitherStrength)
+        .addProperty("paletteDistance", &PostProcessingSettings::paletteDistance, &PostProcessingSettings::paletteDistance)
+        .addProperty("palettePrecision", &PostProcessingSettings::palettePrecision, &PostProcessingSettings::palettePrecision)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

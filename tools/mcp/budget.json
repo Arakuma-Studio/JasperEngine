@@ -86,6 +86,12 @@
             "chars": 16000,
             "tools": 10,
             "spec": "The one limit for T1-T5 (programme decision D17, T1 R74), lowered to the measured total plus 5 % when T4 lands: sculpt_terrain, set_terrain_maps, sample_terrain, T1's edit_terrain, visualize_terrain and export_terrain_heightmap, T2's generate_terrain and preview_noise_graph, T4's edit_terrain_world, and agent-authoring's edit_terrain_details"
+        },
+        "particles": {
+            "chars": 15000,
+            "tools": 13,
+            "spec": "S20's 10 tools, upstream's import_unity_particles, and S91's preview_particle_effect and bake_particle_sheet (the bake follows bake_vertex_animation as a tool of its own: a preview's writes stay its save_path); the default 15,000 characters still apply",
+            "reason": "R12's Bake Sprite Sheet writes two files as one undo step and runs as a job, as bake_vertex_animation does; folding it into preview_particle_effect would make that read-only tool write, so the 13th tool is the bake"
         }
     },
     "exceptions": {

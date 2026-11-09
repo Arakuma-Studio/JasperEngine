@@ -145,6 +145,7 @@ namespace jasperengine::editor {
         AssetsReanalyzeAudio,          // S36: the Project selection's cached measurements dropped
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
+        AssetsCreateProceduralMaterial,
         AddCameraShakerToMainCamera,  // GameObject > Add Camera Shaker to Main Camera
         // T2 R55, R62
         ToggleNoiseGraph,             // Window > Terrain > Noise Graph
@@ -156,7 +157,12 @@ namespace jasperengine::editor {
         AssetsCreatePhysicsMaterial2D,
         AssetsDuplicate,
         ToggleMaximizeOnPlay,
+        ToggleParticleEffect,         // Window > Visual Effects > Particle Effect (S91)
+        ToggleGraphEditor,            // Window > Assets > Graph Editor (S90)
         ToggleSpritePreview,          // Window > 2D > Sprite Preview (S44)
+        // S43: Window > 2D > Palette (payload: a .palette to open), Assets > Create > Palette
+        TogglePalette,
+        AssetsCreatePalette,
         // S45: Assets > Create > 2D > Sprite Atlas (and from the selection), Assets > Convert Inline Sprite Frames...
         AssetsCreateSpriteAtlas,
         AssetsCreateSpriteAtlasFromSelection,

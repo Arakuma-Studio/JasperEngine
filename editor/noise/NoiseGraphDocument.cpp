@@ -681,7 +681,7 @@ void NoiseGraphDocument::rebuildViews() {
             view.footer.push_back(rangeText(preview->observed, preview->analytic));
             char time[32];
             std::snprintf(time, sizeof(time), "%.2f ms", preview->ms);
-            view.footer.push_back(time);
+            view.cost = time;
         }
         nodes.push_back(std::move(view));
     }
@@ -693,6 +693,8 @@ void NoiseGraphDocument::rebuildViews() {
         wire.toNode = idOf("node", edge.to.node);
         wire.fromPin = idOf("pin", edge.from.node, edge.from.port);
         wire.toPin = idOf("pin", edge.to.node, edge.to.port);
+        wire.fromPort = edge.from.port;
+        wire.toPort = edge.to.port;
         auto from = pins.find(wire.fromPin);
         wire.color = from != pins.end() ? colorOf(from->second.type) : 0xc8c8c8ffu;
         wire.selected = wireSelection.count(edge.id) > 0;

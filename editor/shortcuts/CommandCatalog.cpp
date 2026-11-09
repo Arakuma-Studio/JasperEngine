@@ -43,6 +43,7 @@ const char* jasperengine::editor::shortcutContextName(ShortcutContext context) {
         case ShortcutContext::SoundBrowser: return "Sound Browser";
         case ShortcutContext::AudioCaptures: return "Audio Captures";
         case ShortcutContext::SpritePreview: return "Sprite Preview";
+        case ShortcutContext::Palette: return "Palette";
         case ShortcutContext::VoxelBrush: return "Voxel Brush";
         case ShortcutContext::TerrainBrush: return "Terrain Brush";
     }
@@ -64,6 +65,7 @@ const char* jasperengine::editor::shortcutContextKey(ShortcutContext context) {
         case ShortcutContext::SoundBrowser: return "sound_browser";
         case ShortcutContext::AudioCaptures: return "audio_captures";
         case ShortcutContext::SpritePreview: return "sprite_preview";
+        case ShortcutContext::Palette: return "palette";
         case ShortcutContext::VoxelBrush: return "voxel_brush";
         case ShortcutContext::TerrainBrush: return "terrain_brush";
     }

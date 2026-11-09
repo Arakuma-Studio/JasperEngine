@@ -1617,6 +1617,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawPhysicsMaterialAsset(asset);
         return true;
     }
+    // a .material: the rows of a submesh's material (InspectorMaterialPbr.cpp)
+    if (Util::isMaterialFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawMaterialAsset(asset);
+        return true;
+    }
     // a generated normal map or its source image: their own view; any other image keeps the scene selection
     if (Util::isImageFile(file)) return drawSpriteNormalsAsset(asset);
     const bool clip = Util::isAnimationClipFile(file);

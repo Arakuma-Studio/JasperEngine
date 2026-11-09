@@ -72,7 +72,8 @@ namespace {
         return ICON_FA_TERMINAL;
     }
 
-    // The dockable windows: their name and the catalog command that opens and focuses them
+    // The dockable windows: their name and the catalog command that opens and focuses them. Kept
+    // by hand: test_palette_lists_every_window compares it with the catalog's window.* commands
     struct PanelEntry {
         const char* name;
         const char* command;
@@ -80,11 +81,18 @@ namespace {
     const PanelEntry panels[] = {
         {"Scene", "window.scene"}, {"Game", "window.game"}, {"Inspector", "window.inspector"}, {"Hierarchy", "window.hierarchy"},
         {"Project", "window.project"}, {"Console", "window.console"}, {"Animation", "window.animation"},
-        {"Terrain", "window.terrain"}, {"Noise Graph", "window.noiseGraph"}, {"Input Actions", "window.inputActions"}, {"MCP Server", "window.mcpActivity"}, {"Bookmarks", "window.bookmarks"},
+        {"Pose Animation", "window.poseAnimation"}, {"Animator", "window.animator"}, {"Vertex Animation Baker", "window.vertexAnimationBaker"},
+        {"Audio Mixer", "window.audioMixer"}, {"Particle Effect", "window.particleEffect"}, {"Sound Browser", "window.soundBrowser"}, {"Audio Captures", "window.audioCaptures"},
+        {"Color Picker", "window.colorPicker"},
+        {"Terrain", "window.terrain"}, {"Noise Graph", "window.noiseGraph"}, {"Voxel Volume", "window.voxelVolume"}, {"Voxel Slice", "window.voxelSlice"},
+        {"Input Actions", "window.inputActions"}, {"Navigation", "window.navigation"},
+        {"Texture Synthesis", "window.textureSynthesis"}, {"Sprite Normal Map", "window.spriteNormals"}, {"Physics Placement", "window.physicsPlacement"},
+        {"MCP Server", "window.mcpActivity"}, {"Bookmarks", "window.bookmarks"},
         {"Undo History", "window.undoHistory"}, {"Play Mode Changes", "window.playModeChanges"},
-        {"Missing Assets", "window.missingAssets"}, {"References", "window.assetReferences"}, {"Profiler", "window.profiler"},
+        {"Missing Assets", "window.missingAssets"}, {"Graph Editor", "window.graphEditor"}, {"References", "window.assetReferences"}, {"Profiler", "window.profiler"},
         {"Frame Debugger", "window.frameDebugger"}, {"Systems", "window.systems"}, {"Jobs & Memory", "window.jobsMemory"},
-        {"Animation Statistics", "window.animationStatistics"},
+        {"Mesh Optimization Audit", "window.meshAudit"}, {"Build Report", "window.buildReport"}, {"Animation Statistics", "window.animationStatistics"},
+        {"Sprite Preview", "window.spritePreview"}, {"Palette", "window.palette"},
     };
 
     // A label drawn with the matched ranges highlighted

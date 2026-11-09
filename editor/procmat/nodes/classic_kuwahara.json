@@ -1,0 +1,249 @@
+{
+ "connections": [
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "buffer_2",
+   "to_port": 0
+  },
+  {
+   "from": "buffer_2",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 1
+  },
+  {
+   "from": "switch",
+   "from_port": 0,
+   "to": "shader_1",
+   "to_port": 0
+  },
+  {
+   "from": "shader_1",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  }
+ ],
+ "description": "Simple edge-preserving smoothing filter",
+ "format": 1,
+ "id": "classic_kuwahara",
+ "inputs": [
+  {
+   "description": "Input image",
+   "group_size": 0,
+   "label": "Input",
+   "name": "in",
+   "type": "rgb"
+  }
+ ],
+ "kind": "graph",
+ "name": "Classic Kuwahara",
+ "nodes": [
+  {
+   "id": "switch",
+   "parameters": {
+    "choices": 2,
+    "outputs": 1,
+    "source": 0
+   },
+   "seed": -53264,
+   "type": "switch"
+  },
+  {
+   "id": "shader_1",
+   "parameters": {
+    "s": 10,
+    "size": 6
+   },
+   "seed": 0.0,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "vec3(0.0)",
+      "function": true,
+      "label": "",
+      "name": "in",
+      "type": "rgb"
+     }
+    ],
+    "instance": [
+     "// The MIT License, Copyright (c) 2022 Garrett Gunnell",
+     "// Adapated based on https://github.com/GarrettGunnell/Post-Processing/blob/871a7ffcc44174f237b4c0127db51026c438d7a4/Assets/Kuwahara%20Filter/Kuwahara.shader",
+     "",
+     "// Returns avg color in .rgb, std in .a",
+     "vec4 $(name)_SampleQuadrant(vec2 uv, int x1, int x2, int y1, int y2, float n, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tfloat luminance_sum = 0.0;",
+     "\tfloat luminance_sum2 = 0.0;",
+     "\tvec3 col_sum = vec3(0.0);",
+     "",
+     "\tfor (int x = x1; x <= x2; ++x) {",
+     "\t\tfor (int y = y1; y <= y2; ++y) {",
+     "\t\t\tvec3 _sample = $in(uv + vec2(float(x), float(y)) / $s);",
+     "\t\t\tfloat l = dot(_sample, vec3(0.299, 0.587, 0.114));",
+     "\t\t\tluminance_sum += l;",
+     "\t\t\tluminance_sum2 += l * l;",
+     "\t\t\tcol_sum += clamp(_sample, vec3(0.0), vec3(1.0));",
+     "\t\t}",
+     "\t}",
+     "",
+     "\tfloat mean = luminance_sum / n;",
+     "\tfloat std = abs(luminance_sum2 / n - mean * mean);",
+     "",
+     "\treturn vec4(col_sum / n, std);",
+     "}",
+     "",
+     "vec3 $(name)_classic_kuwahara(vec2 uv, int radius, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tfloat windowSize = 2.0 * float(radius + 1);",
+     "\tint quadrantSize = int(ceil(windowSize / 2.0));",
+     "\tfloat numSamples = float(quadrantSize * quadrantSize);",
+     "",
+     "\tvec4 q1 = $(name)_SampleQuadrant(uv, -radius, 0, -radius, 0, numSamples, _seed_variation_, _controlled_variation_);",
+     "\tvec4 q2 = $(name)_SampleQuadrant(uv, 0, radius, -radius, 0, numSamples, _seed_variation_, _controlled_variation_);",
+     "\tvec4 q3 = $(name)_SampleQuadrant(uv, 0, radius, 0, radius, numSamples, _seed_variation_, _controlled_variation_);",
+     "\tvec4 q4 = $(name)_SampleQuadrant(uv, -radius, 0, 0, radius, numSamples, _seed_variation_, _controlled_variation_);",
+     "",
+     "\tfloat minstd = min(q1.a, min(q2.a, min(q3.a, q4.a)));",
+     "\tvec4 q = vec4(float(q1.a == minstd), float(q2.a == minstd), float(q3.a == minstd), float(q4.a == minstd));",
+     "",
+     "\tif (dot(q, vec4(1.0)) > 1.0)",
+     "\t\treturn clamp((q1.rgb + q2.rgb + q3.rgb + q4.rgb) / 4.0, vec3(0.0), vec3(1.0));",
+     "\telse",
+     "\t\treturn clamp(q1.rgb * q.x + q2.rgb * q.y + q3.rgb * q.z + q4.rgb * q.w, vec3(0.0), vec3(1.0));",
+     "}"
+    ],
+    "outputs": [
+     {
+      "expr": "$(name)_classic_kuwahara($uv, int(max($size,0.0)), _seed_variation_, _controlled_variation_)",
+      "type": "rgb"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 10,
+      "first": 4,
+      "label": "",
+      "last": 13,
+      "name": "s",
+      "type": "size"
+     },
+     {
+      "default": 6,
+      "description": "Size of the filter",
+      "label": "Size",
+      "max": 100,
+      "min": 1,
+      "name": "size",
+      "short_description": "Size",
+      "step": 1,
+      "type": "float"
+     }
+    ]
+   }
+  },
+  {
+   "id": "buffer_2",
+   "parameters": {
+    "size": 10
+   },
+   "seed": 0.0,
+   "type": "buffer",
+   "version": 1
+  }
+ ],
+ "notices": [
+  {
+   "holder": "Garrett Gunnell",
+   "license": "MIT",
+   "node": "classic_kuwahara",
+   "url": "https://github.com/GarrettGunnell/Post-Processing/",
+   "year": "2022"
+  }
+ ],
+ "outputs": [
+  {
+   "description": "Filtered Image",
+   "group_size": 0,
+   "label": "Output",
+   "name": "out",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 10,
+   "description": "Resolution used to sample the input",
+   "first": 4,
+   "label": "",
+   "last": 13,
+   "links": [
+    {
+     "node": "buffer_2",
+     "param": "size"
+    },
+    {
+     "node": "shader_1",
+     "param": "s"
+    }
+   ],
+   "name": "resolution",
+   "short_description": "Resolution",
+   "type": "size"
+  },
+  {
+   "default": 6,
+   "description": "Size of the filter",
+   "label": "Size",
+   "links": [
+    {
+     "node": "shader_1",
+     "param": "size"
+    }
+   ],
+   "max": 100,
+   "min": 1,
+   "name": "size",
+   "short_description": "Size",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "configurations": {
+    "False": [
+     {
+      "node": "switch",
+      "param": "source",
+      "value": 0
+     }
+    ],
+    "True": [
+     {
+      "node": "switch",
+      "param": "source",
+      "value": 1
+     }
+    ]
+   },
+   "default": 0,
+   "description": "When set, a buffer is used to sample the input before the kuwahara filter",
+   "label": "Buffer",
+   "name": "buffer",
+   "short_description": "Buffer",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Classic Kuwahara Filter",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/classic_kuwahara.mmg"
+ },
+ "type_version": 1
+}

@@ -6,7 +6,7 @@
 // The cooked encodings of the values whose S08 field is Custom (a codec of its own in the
 // editor's reflection tables, editor/reflect/components/*): scripts and their properties, a
 // particle system's exposed values and inline effect, lattice poses, nav-grid tile areas,
-// curves, gradients, and the OutOfLineValue wrapper. One file for the writer (the editor's SceneCooker) and
+// curves, gradients, Palette Swap bindings, and the OutOfLineValue wrapper. One file for the writer (the editor's SceneCooker) and
 // the reader (the player), so the two never disagree (docs/specs/S30-shipping.md R4).
 
 #include "serialization/CookCodecs.h"
@@ -18,6 +18,7 @@
 #include "manager/PrefabAsset.h"
 #include "math/Curve.h"
 #include "particles/ParticleEffectCodec.h"
+#include "pixelart/PaletteBinding.h"
 #include "util/OutOfLineValue.h"
 
 #include <variant>
@@ -46,6 +47,33 @@ namespace jasperengine::cook {
     struct TextureVisit<OutOfLineValue<T>> {
         static void visit(OutOfLineValue<T>& v, const TextureVisitor& f) {
             if (T* set = v.editIfSet()) TextureVisit<T>::visit(*set, f);
+        }
+    };
+
+    // a Palette Swap binding (S43, Material::shaderPalettes): its palettes by path and GUID
+    template<>
+    struct Codec<pixelart::PaletteTarget> {
+        static void write(Writer& w, const pixelart::PaletteTarget& t) {
+            Codec<AssetRef>::write(w, t.palette);
+            w.string(t.variant);
+        }
+        static void read(Reader& r, pixelart::PaletteTarget& t) {
+            Codec<AssetRef>::read(r, t.palette);
+            t.variant = r.string();
+        }
+    };
+
+    template<>
+    struct Codec<pixelart::PaletteBinding> {
+        static void write(Writer& w, const pixelart::PaletteBinding& b) {
+            Codec<AssetRef>::write(w, b.source);
+            Codec<std::vector<pixelart::PaletteTarget>>::write(w, b.targets);
+            w.boolean(b.useVariants);
+        }
+        static void read(Reader& r, pixelart::PaletteBinding& b) {
+            Codec<AssetRef>::read(r, b.source);
+            Codec<std::vector<pixelart::PaletteTarget>>::read(r, b.targets);
+            b.useVariants = r.boolean();
         }
     };
 

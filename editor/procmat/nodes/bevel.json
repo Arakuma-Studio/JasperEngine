@@ -1,0 +1,216 @@
+{
+ "connections": [
+  {
+   "from": "tonality",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "1536",
+   "to_port": 0
+  },
+  {
+   "from": "1536",
+   "from_port": 0,
+   "to": "dilate",
+   "to_port": 0
+  },
+  {
+   "from": "dilate",
+   "from_port": 0,
+   "to": "1536_2",
+   "to_port": 0
+  },
+  {
+   "from": "1536_2",
+   "from_port": 0,
+   "to": "tonality",
+   "to_port": 0
+  }
+ ],
+ "description": "Adds an edge bevel to the input mask based on a customizable curve",
+ "format": 1,
+ "id": "bevel",
+ "inputs": [
+  {
+   "description": "The input mask whose white areas will be beveled",
+   "group_size": 0,
+   "label": "Mask",
+   "name": "port0",
+   "type": "f"
+  }
+ ],
+ "kind": "graph",
+ "name": "Bevel",
+ "nodes": [
+  {
+   "id": "dilate",
+   "parameters": {
+    "param0": 10,
+    "param1": 0.1,
+    "param2": 0,
+    "param3": 0
+   },
+   "seed": 0.0,
+   "type": "dilate"
+  },
+  {
+   "id": "tonality",
+   "parameters": {
+    "curve": {
+     "points": [
+      {
+       "ls": 0,
+       "rs": 1,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "ls": 1,
+       "rs": 0,
+       "x": 1,
+       "y": 1
+      }
+     ],
+     "type": "Curve"
+    }
+   },
+   "seed": 0.0,
+   "type": "tonality"
+  },
+  {
+   "id": "1536",
+   "parameters": {},
+   "seed": 0.0,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "0.0",
+      "label": "",
+      "name": "in",
+      "type": "f"
+     }
+    ],
+    "instance": [],
+    "outputs": [
+     {
+      "expr": "1.0 - $in($uv)",
+      "type": "f"
+     }
+    ],
+    "parameters": []
+   }
+  },
+  {
+   "id": "1536_2",
+   "parameters": {},
+   "seed": 0.0,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "0.0",
+      "label": "",
+      "name": "in",
+      "type": "f"
+     }
+    ],
+    "instance": [],
+    "outputs": [
+     {
+      "expr": "1.0 - $in($uv)",
+      "type": "f"
+     }
+    ],
+    "parameters": []
+   }
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the beveled image",
+   "group_size": 0,
+   "label": "Output",
+   "name": "out",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 10,
+   "description": "The resolution of the generated texture",
+   "first": 4,
+   "label": "",
+   "last": 13,
+   "links": [
+    {
+     "node": "dilate",
+     "param": "param0"
+    }
+   ],
+   "name": "size",
+   "short_description": "Resolution",
+   "type": "size"
+  },
+  {
+   "default": 0.1,
+   "description": "The distance of the bevel effect",
+   "label": "",
+   "links": [
+    {
+     "node": "dilate",
+     "param": "param1"
+    }
+   ],
+   "max": 1,
+   "min": 0,
+   "name": "distance",
+   "short_description": "Distance",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": {
+    "points": [
+     {
+      "ls": 0,
+      "rs": 1,
+      "x": 0,
+      "y": 0
+     },
+     {
+      "ls": 1,
+      "rs": 0,
+      "x": 1,
+      "y": 1
+     }
+    ],
+    "type": "Curve"
+   },
+   "description": "The profile of the bevel",
+   "label": "",
+   "links": [
+    {
+     "node": "tonality",
+     "param": "curve"
+    }
+   ],
+   "name": "bevel",
+   "short_description": "Bevel",
+   "type": "curve"
+  }
+ ],
+ "short_description": "Bevel",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/bevel.mmg"
+ },
+ "type_version": 1
+}

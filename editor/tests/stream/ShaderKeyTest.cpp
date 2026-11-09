@@ -452,6 +452,8 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::BLIT, 0, "blit"},
         {ShaderType::BLIT, 0x1FFF, "blit_FxaCabPixCrtEdgGrnShpLutVigDthBlmBlrScl"},
         {ShaderType::BLIT, 0x3E000, "blit_VhsHalFdmGlnGfm"},
+        // S41's Stretch Fill (18) and S43's Palette Quantize (19)
+        {ShaderType::BLIT, 0xC0000, "blit_PsbPal"},
         {ShaderType::BLOOM, 0x3, "bloom_PreThr"},
         {ShaderType::POSTPROCESS, 0, "postprocess"},
         {ShaderType::HTMLUI, 1, "htmlui_Tex"},

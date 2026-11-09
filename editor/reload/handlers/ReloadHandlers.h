@@ -54,6 +54,15 @@ namespace jasperengine::editor::reload {
     void reloadParticleEffects(Context& ctx, const std::vector<std::filesystem::path>& files);
     // .voxelvolume files another program changed: the volumes read them again (T6 R77)
     void reloadVoxelVolumes(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // What a .particles file says wrong as it is now: errors and unknown fields
+    void addParticleEffectFileProblems(Project& project, const std::filesystem::path& path, Json& problems);
+    // graph files: another program's checked (their problems reported); open documents (the Graph
+    // Editor's) reload for those and for `documents` (the editor's own writes: write_file; removed
+    // files, whoever removed them); a full reload has every open document look at its file
+    void reloadGraphs(Context& ctx, const std::vector<std::filesystem::path>& external, const std::vector<std::filesystem::path>& documents);
+    void addGraphFileProblems(Project& project, const std::filesystem::path& path, Json& problems);
+    // .palette files (S43 R3): Palette Swap, Palette Quantize and the ramp strips made from them
+    void reloadPalettes(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Audio: a new sample for the next plays
     void reloadAudio(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Fonts: a new pool entry; the texts using it rebuild their atlas

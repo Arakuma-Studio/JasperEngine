@@ -29,6 +29,7 @@
 #include "component/ScaleTweenComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/TranslateTracksComponent.h"
+#include "component/Transform.h"
 #include "component/TweenComponent.h"
 #include "io/FileData.h"
 #include "subsystem/ActionSystem.h"

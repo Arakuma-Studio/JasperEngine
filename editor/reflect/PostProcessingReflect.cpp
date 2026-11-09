@@ -97,7 +97,9 @@ namespace {
                 field.kind = field.ops->kind;
                 // written only away from its default: older scenes re-save unchanged
                 field.flags = OmitIfDefault;
-                if (source.type == PostProcessingSettings::FieldType::Asset) field.asset = AssetKind::Texture;
+                // the asset fields: the LUT's texture, Palette Quantize's palette
+                if (source.type == PostProcessingSettings::FieldType::Asset)
+                    field.asset = std::string(source.name) == "palette" ? AssetKind::Palette : AssetKind::Texture;
                 if (source.minValue < source.maxValue &&
                         (source.type == PostProcessingSettings::FieldType::Int || source.type == PostProcessingSettings::FieldType::Float ||
                          source.type == PostProcessingSettings::FieldType::Vector3)) {

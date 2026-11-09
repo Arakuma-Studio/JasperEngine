@@ -750,7 +750,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::SSR_BLUR: return 0;
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
-        case ShaderType::BLIT:   return 19;
+        case ShaderType::BLIT:   return 20;  // RenderSystem::UBER_FEATURE_COUNT (PostProcessingTiers.S13Bits checks it)
         case ShaderType::BLOOM:  return 4;
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
@@ -1035,6 +1035,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 17: return shortName ? "Gfm" : "Film Grain Filmic";
             // the Pixel Perfect Camera's Stretch Fill (S41 R11, UBER_SHARP_BILINEAR)
             case 18: return shortName ? "Psb" : "Pixel Sharp Bilinear";
+            // Palette Quantize (S43 R19, UBER_PALETTE)
+            case 19: return shortName ? "Pal" : "Palette Quantize";
         }
     } else if (shaderType == ShaderType::BLOOM) {
         // the pass of the bloom and blur chain (bloom.frag); 0 is the dual-filter downsample

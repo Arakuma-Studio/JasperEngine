@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Bone",
+  "author": "pixelfx",
+  "description": "pixelfx's 'bone' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "bone"},
+  "columns": 7,
+  "colors": ["#1a1814", "#3a352c", "#5e5648", "#8a806c", "#b8ad96", "#e4dcc8", "#fffaf0"],
+  "ramps": [
+    {"name": "bone", "colors": [0, 1, 2, 3, 4, 5, 6]}
+  ]
+}

@@ -1051,8 +1051,17 @@ Recorded by the implementer. Each names what changed and why; the spec text abov
 - **Hand-picked Simplex radius (R1).** 3D Simplex uses radius 0.5 rather than the paper's 0.6, which keeps the field continuous; the result is clamped to -1..1.
 - **`NoisePresetData.h` (R41).** The test project's build has no hook to embed files, so the presets are a generated, committed header (`tools/noise/gen_test_project_presets.py`, `--check`).
 - **The Android image gains cross compilers too (section 6, D22).** Besides `qemu-user-static`, `gcc-aarch64-linux-gnu` and `gcc-arm-linux-gnueabihf` are in the image, for section 9's fallback when a static bionic binary will not start under qemu-user.
-- **`AssetType::NoiseGraph` is 32, not 28 (R13, AC50; coordinator's decision, ledger D22 updated).** Upstream's Sound Event took 28 before
-  T2 landed, and the value is stored in `assetmap.bin`, so ours moved. 29-31 stay T5's, T4's and T6's. `AssetTypes.NoiseGraphValueIs32` pins it.
+- **`AssetType::NoiseGraph` is 33, not 28 (R13, AC50; coordinator's decisions).** Upstream's Sound Event took 28 before T2 landed,
+  and S90's Procedural Material took 29 before the programme reached main; the value is stored in `assetmap.bin` and ours had never
+  shipped, so the programme's types follow upstream's: TreeData 30, TerrainWorld 31, VoxelVolume 32, NoiseGraph 33.
+  `AssetTypes.NoiseGraphValueIs33` pins it.
+- **The canvas' ports are S90's, not a Pin API of T2's own (R53, N16).** Upstream's S90 gave GraphCanvas dataflow ports first
+  (string port ids, `PortRef`, `canConnect` and `drawThumbnail` callbacks, a header cost). At the merge T2's parallel uint64 pins
+  went; the Noise Graph window draws through S90's ports, and the canvas gained what it lacked: footer lines (the range readout, R56),
+  the error's wrapped message and a port's error ring (R58). A node's time is its header cost; folded and unused are its first
+  footer line; the zoom-0.5 rule for thumbnails (R56) is the window's `drawThumbnail`. Nodes are S90's 170-unit width with a 112-unit
+  thumbnail slot. A `.noisegraph` opened through the Graph Editor's routes (`focus_window graph_editor`, a graph link) opens in the
+  Noise Graph window (`GraphEditorHooks::kindWindows`).
 - **"Connect FBm → Remap", not `graph::describe`'s text (R57).** `describe` names a connection's source by its port, and nearly every
   noise port is called Out ("Connect Out → Remap"). The window names it by the two nodes' display names instead.
 - **Previews run on `Lane::Normal`, not R28's Background + Heavy (coordinator's decision).** The reason is the gate's arithmetic,

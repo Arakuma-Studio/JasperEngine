@@ -1,0 +1,143 @@
+{
+ "code": [],
+ "description": "Multi-point curve with image mapping",
+ "format": 1,
+ "functions": [
+  "solve_cubic"
+ ],
+ "id": "polycurve",
+ "inputs": [
+  {
+   "default": "vec4(vec3(step(abs($uv.y-0.5), 0.4999)), 1.0)",
+   "description": "Input pattern to be drawn along the curve",
+   "label": "",
+   "name": "in",
+   "short_description": "Pattern",
+   "type": "rgba"
+  },
+  {
+   "default": "1.0",
+   "description": "A map that describes the width along the curve (use a Tonality node)",
+   "function": true,
+   "label": "",
+   "name": "width_map",
+   "short_description": "Width map",
+   "type": "f"
+  }
+ ],
+ "instance": [
+  "vec2 bezier_uv_$name(vec2 uv, bool ends, float _seed_variation_, vec4 _controlled_variation_) {\t",
+  "\tvec2 v[] = $curve;",
+  "\tint l = v.length();",
+  "\tvec2 best_bezier;",
+  "\tif (ends) {",
+  "\t\tbest_bezier = solve_cubic(uv, v[0], v[0], v[1], v[2]);",
+  "\t} else {",
+  "\t\tbest_bezier = vec2(0.0, 10000.0);",
+  "\t}",
+  "\tfloat offset = 0.0;",
+  "\tfor (int i = 0; i < l-3; i++) {",
+  "\t\tvec2 bezier = solve_cubic(uv, v[i], v[i+1], v[i+2], v[i+3]);",
+  "\t\tif (abs(bezier.y) < abs(best_bezier).y) {",
+  "\t\t\tbest_bezier = bezier;",
+  "\t\t\toffset = float(i)+1.0;",
+  "\t\t}",
+  "\t}",
+  "\tfloat width;",
+  "\tfloat offset_min;",
+  "\tfloat offset_max;",
+  "\tif (ends) {",
+  "\t\tvec2 bezier = solve_cubic(uv, v[l-3], v[l-2], v[l-1], v[l-1]);",
+  "\t\tif (abs(bezier.y) < abs(best_bezier).y) {",
+  "\t\t\tbest_bezier = bezier;",
+  "\t\t\toffset = float(l-2);",
+  "\t\t}",
+  "\t\twidth = $width*$width_map(vec2((best_bezier.x+offset)/float(l-1), 0.0));",
+  "\t\toffset_min = 0.0;",
+  "\t\toffset_max = float(l-2);",
+  "\t} else {",
+  "\t\twidth = $width*$width_map(vec2((best_bezier.x+offset-1.0)/float(l-3), 0.0));",
+  "\t\toffset_min = 1.0;",
+  "\t\toffset_max = float(l-3);",
+  "\t}",
+  "\tvec2 local_uv = vec2(best_bezier.x, best_bezier.y/width+0.5);",
+  "\tvec2 uvtest = vec2(0.0);",
+  "\tif (offset <= offset_min && local_uv.x <= 0.0 || offset >= offset_max && local_uv.x >= 1.0) {",
+  "\t\tuvtest = step(vec2(0.5), abs(local_uv-vec2(0.5)));",
+  "\t}",
+  "\treturn mix(vec2(fract($repeat*local_uv.x), local_uv.y), vec2(0.0), max(uvtest.x, uvtest.y));",
+  "}",
+  ""
+ ],
+ "kind": "shader",
+ "name": "Poly Curve",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "An image showing the specified curve",
+   "expr": "$in(bezier_uv_$name($uv, $ends, _seed_variation_, _controlled_variation_))",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "points": [
+     {
+      "x": 0.200000002980232,
+      "y": 0.200000002980232
+     },
+     {
+      "x": 0.699999988079071,
+      "y": 0.400000005960464
+     },
+     {
+      "x": 0.400000005960464,
+      "y": 0.699999988079071
+     }
+    ],
+    "type": "Polygon"
+   },
+   "label": "",
+   "name": "curve",
+   "type": "polyline"
+  },
+  {
+   "default": 0.1,
+   "description": "Width of the curve pattern",
+   "label": "Width",
+   "max": 0.5,
+   "min": 0,
+   "name": "width",
+   "short_description": "Width",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "Number of repetitions of the input pattern",
+   "label": "Repeat",
+   "max": 16,
+   "min": 1,
+   "name": "repeat",
+   "short_description": "Repeat",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": false,
+   "description": "If unset, end vertices of the curve are used only for orientation",
+   "label": "Ends",
+   "name": "ends",
+   "short_description": "Ends",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Poly Curve",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/polycurve.mmg"
+ },
+ "type_version": 1
+}

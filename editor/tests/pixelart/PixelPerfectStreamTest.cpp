@@ -230,8 +230,18 @@ TEST(PixelPerfectStream, FixturesResaveWithoutS41Keys){
 }
 
 // S41's shader sources ('Pxs', pixel_snap.glsl, the frame block's last members) are cached under
-// v57 and later (v58: the terrain programme's bits re-appended after them; v59: T3's packed
-// terrain layer block): a cache of an older version holds programs without them
+// v57 or later: a cache of an older version holds programs without them
 TEST(PixelPerfectStream, ShaderCacheVersionCoversThePixelSnap){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v59");
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 57) << name;
+}
+
+// S43's palette sources (library:sprite's PALETTE_SWAP and PALETTE_CYCLE, the uber pass's 'Pal'
+// bit 19) are cached under v59 (after S91 took v58) and later (v61: the terrain programme's bits merged
+// with them): a cache of an older version holds programs without them
+TEST(PaletteShaders, ShaderCacheVersionCoversThePalettes){
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 59) << name;
 }

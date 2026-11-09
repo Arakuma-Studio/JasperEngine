@@ -154,8 +154,28 @@ else()
     list(FILTER CORE_TEST_SOURCES EXCLUDE REGEX "/noise/|/terrain/HeightfieldErosion")
 endif()
 
+# S90: the Procedural Material evaluator is the editor's, but its GPU suites need the headless device
+# only this tree has (procmat/*GpuTest.cpp). It uses the engine's render layer and nothing of the editor.
+set(CORE_TEST_PROCMAT_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/NodeLibrary.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProcMatExpander.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralMaterialKind.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/PassPlanner.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralGpuEvaluator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralCpuEvaluator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralTieredEvaluator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProcMatThumbnails.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralDevice.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/SpirvInterpreter.cpp)
+jasperengine_skip_unity_build(
+    REASON "the editor's own sources: its unity units do not hold them"
+    SOURCES ${CORE_TEST_PROCMAT_SOURCES})
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/SpirvInterpreter.cpp PROPERTIES
+    INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/../../libs/shadercompiler/libs/glslang)
+
 jasperengine_add_test_target(jasperengine-core-tests
-    SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER} ${CORE_TEST_NOISE_SOURCES}
+    SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER} ${CORE_TEST_NOISE_SOURCES} ${CORE_TEST_PROCMAT_SOURCES}
         # the animation clip tests' asset root (a temporary directory around each of them)
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimTestEnvironment.cpp
         # the vertex animation tests' asset root, and their asset and GLB fixtures
@@ -244,6 +264,19 @@ set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/util/WaterWavesTest.cpp 
 jasperengine_skip_unity_build(
     REASON "ProfilerCompileOutTest compiles the profiling macros with the profiler off"
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/profiler/ProfilerCompileOutTest.cpp)
+
+# PixelColorDeterminism.UnoptimisedBuildMatches (S43 AC5): the pixel-art colour maths built a
+# second time without optimisation, in a namespace of its own, against the engine's optimised copy
+set(PIXELART_O0_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/pixelart/PixelColorO0.cpp)
+target_sources(jasperengine-core-tests PRIVATE ${PIXELART_O0_SOURCE})
+if(MSVC)
+    set_source_files_properties(${PIXELART_O0_SOURCE} PROPERTIES COMPILE_OPTIONS "/Od;/fp:precise")
+else()
+    set_source_files_properties(${PIXELART_O0_SOURCE} PROPERTIES COMPILE_OPTIONS "-O0;-ffp-contract=off")
+endif()
+jasperengine_skip_unity_build(
+    REASON "PixelColorO0.cpp compiles engine/core/pixelart/PixelColor.cpp again in a renamed namespace"
+    SOURCES ${PIXELART_O0_SOURCE})
 
 # the logger's backtraces name the test functions (LoggerTest.ErrorCarriesBacktrace): dladdr
 # sees the executable's symbols

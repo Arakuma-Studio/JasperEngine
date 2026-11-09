@@ -958,6 +958,11 @@
      68719476736,
      true
     ],
+    "submeshes[].material.shaderPalettes": [
+     15,
+     0,
+     true
+    ],
     "submeshes[].material.shaderParams": [
      15,
      68719476736,
@@ -26452,6 +26457,11 @@
     68719476736,
     true
    ],
+   "submeshes[N].material.shaderPalettes": [
+    15,
+    0,
+    true
+   ],
    "submeshes[N].material.shaderParams": [
     15,
     68719476736,
@@ -29698,6 +29708,63 @@
    ],
    "windSpeed": [
     2,
+    0,
+    true
+   ]
+  },
+  "TerrainWorldComponent": {
+   "autoAddTiles": [
+    0,
+    0,
+    true
+   ],
+   "collisionChunkQuads": [
+    8,
+    0,
+    true
+   ],
+   "collisionRadius": [
+    2,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "focus": [
+    16,
+    0,
+    true
+   ],
+   "lodDistance": [
+    2,
+    0,
+    true
+   ],
+   "overviewCastsShadows": [
+    0,
+    0,
+    true
+   ],
+   "poolSize": [
+    8,
+    0,
+    true
+   ],
+   "uploadBudget": [
+    2,
+    0,
+    true
+   ],
+   "useCameraFocus": [
+    0,
+    0,
+    true
+   ],
+   "worldData": [
+    18,
     0,
     true
    ]

@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Heal",
+  "author": "pixelfx",
+  "description": "pixelfx's 'heal' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "heal"},
+  "columns": 8,
+  "colors": ["#08201a", "#0f3f2c", "#17663e", "#24924e", "#3ec466", "#7ee88a", "#c8ffc4", "#ffffff"],
+  "ramps": [
+    {"name": "heal", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}

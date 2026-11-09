@@ -448,6 +448,27 @@ configure_file("${GENERATED_DIR}/pose_templates.h.in" "${GENERATED_DIR}/pose_tem
 include(tools/noise/golden/EmbedPresets.cmake)
 jasperengine_embed_noise_presets("${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/noisegraphs" "${GENERATED_DIR}/noise_presets.gen.h")
 
+# Built-in palettes (editor/resources/palettes/*.palette, S43 R9) embedded in the editor
+# (editor/pixelart/BuiltinPalettes.cpp, the only includer)
+file(GLOB BUILTIN_PALETTE_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/palettes/*.palette")
+list(SORT BUILTIN_PALETTE_FILES)
+set(builtin_palettes_header "// Generated from editor/resources/palettes by CMakeLists.txt. Do not edit.\n#pragma once\n\n")
+set(builtin_palettes_entries "")
+set(builtin_palette_index 0)
+foreach(builtin_palette IN LISTS BUILTIN_PALETTE_FILES)
+    get_filename_component(builtin_palette_name "${builtin_palette}" NAME)
+    file(READ "${builtin_palette}" builtin_palette_hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," builtin_palette_bytes "${builtin_palette_hex}")
+    string(APPEND builtin_palettes_header "static const unsigned char builtin_palette_${builtin_palette_index}[] = {${builtin_palette_bytes}0x00};\n")
+    string(APPEND builtin_palettes_entries "    { \"${builtin_palette_name}\", builtin_palette_${builtin_palette_index}, sizeof(builtin_palette_${builtin_palette_index}) - 1 },\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${builtin_palette}")
+    math(EXPR builtin_palette_index "${builtin_palette_index} + 1")
+endforeach()
+string(APPEND builtin_palettes_header "\nstruct BuiltinPaletteEmbeddedFile { const char* name; const unsigned char* data; unsigned int size; };\n")
+string(APPEND builtin_palettes_header "static const BuiltinPaletteEmbeddedFile builtin_palette_embedded_files[] = {\n${builtin_palettes_entries}    { nullptr, nullptr, 0 }\n};\n")
+file(WRITE "${GENERATED_DIR}/palettes_builtin.h.in" "${builtin_palettes_header}")
+configure_file("${GENERATED_DIR}/palettes_builtin.h.in" "${GENERATED_DIR}/palettes_builtin.h" COPYONLY)
+
 # HTML/CSS UI example library (docs/mcp/guide/html-ui-examples/**) embedded in the editor: written
 # into every project's .jasperengine/engine-api/html-ui-examples, served as MCP resources and used
 # as create_ui_document templates (editor/util/HtmlUiExamples.cpp, the only includer)
@@ -750,6 +771,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/SchemaArgs.cpp
     ${EDITOR_DIR}/cli/McpClient.cpp
     ${EDITOR_DIR}/cli/CallCommand.cpp
+    ${EDITOR_DIR}/cli/ProceduralMaterialCommand.cpp
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
@@ -922,6 +944,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/noise/TerrainGeneration.cpp
     ${EDITOR_DIR}/noise/TerrainPresets.cpp
     ${EDITOR_DIR}/mcp/tools/ParticleTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ProceduralMaterialTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
     ${EDITOR_DIR}/mcp/tools/MeshTools.cpp
     ${EDITOR_DIR}/mcp/tools/MaterialsLightingTools.cpp
@@ -952,6 +975,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/AnimationQualityTools.cpp
     ${EDITOR_DIR}/mcp/tools/VcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SpriteNormalsTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PaletteTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -982,8 +1006,10 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Audio.cpp
     ${EDITOR_DIR}/reload/handlers/Particles.cpp
     ${EDITOR_DIR}/reload/handlers/Voxel.cpp
+    ${EDITOR_DIR}/reload/handlers/Palettes.cpp
     ${EDITOR_DIR}/reload/handlers/Common.cpp
     ${EDITOR_DIR}/reload/handlers/Fonts.cpp
+    ${EDITOR_DIR}/reload/handlers/Graphs.cpp
     ${EDITOR_DIR}/reload/handlers/HtmlUi.cpp
     ${EDITOR_DIR}/reload/handlers/Materials.cpp
     ${EDITOR_DIR}/reload/handlers/Models.cpp
@@ -1012,6 +1038,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/TerrainDetailRules.cpp
     ${EDITOR_DIR}/util/SplineBakeObjects.cpp
     ${EDITOR_DIR}/util/ParticleEffectEdit.cpp
+    ${EDITOR_DIR}/util/ParticleEffectTiming.cpp
     ${EDITOR_DIR}/util/ParticleMigrationReport.cpp
     ${EDITOR_DIR}/util/LatticeTrackKeys.cpp
     ${EDITOR_DIR}/util/EditorFingerprint.cpp
@@ -1237,6 +1264,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/BookmarksWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
     ${EDITOR_DIR}/window/ParticleEffectOverlay.cpp
+    ${EDITOR_DIR}/window/ParticleEffectWindow.cpp
+    ${EDITOR_DIR}/window/ParticleModuleRows.cpp
     ${EDITOR_DIR}/window/PrefabStageBar.cpp
     ${EDITOR_DIR}/window/ExternalChangeBar.cpp
     ${EDITOR_DIR}/window/DeviceProfiles.cpp
@@ -1348,10 +1377,15 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/widget/CustomTextEditor.cpp
     ${EDITOR_DIR}/window/widget/CustomTextEditorDiff.cpp
     ${EDITOR_DIR}/window/widget/GraphCanvas.cpp
+    ${EDITOR_DIR}/window/GraphEditorWindow.cpp
+    ${EDITOR_DIR}/window/ProceduralMaterialWindow.cpp
+    ${EDITOR_DIR}/graph/GraphDocument.cpp
+    ${EDITOR_DIR}/graph/GraphParamValues.cpp
     ${EDITOR_DIR}/window/widget/HtmlCssLexer.cpp
     ${EDITOR_DIR}/window/widget/InputTextContextMenu.cpp
     ${EDITOR_DIR}/window/widget/SemanticSuggestions.cpp
     ${EDITOR_DIR}/window/widget/SelectableTextView.cpp
+    ${EDITOR_DIR}/window/widget/ParticleChecksPanel.cpp
 
     ${EDITOR_DIR}/render/ToolsLayer.cpp
     ${EDITOR_DIR}/render/UILayer.cpp
@@ -1439,6 +1473,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundSearch.cpp
     ${EDITOR_DIR}/audio/AudioBaseline.cpp
     ${EDITOR_DIR}/audio/AudioQa.cpp
+    ${EDITOR_DIR}/util/QaChecks.cpp
+    ${EDITOR_DIR}/particles/ParticleQaSettings.cpp
+    ${EDITOR_DIR}/particles/ParticleEffectChecks.cpp
+    ${EDITOR_DIR}/particles/ParticleEffectPreview.cpp
+    ${EDITOR_DIR}/particles/ParticlePreviewSource.cpp
+    ${EDITOR_DIR}/particles/ParticleSheetBake.cpp
     ${EDITOR_DIR}/audio/AudioQaSettings.cpp
     ${EDITOR_DIR}/audio/AudioSessionReader.cpp
     ${EDITOR_DIR}/audio/AudioTimelineImage.cpp
@@ -1520,6 +1560,9 @@ include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
 include(${EDITOR_DIR}/voxel/VoxelEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
+include(${EDITOR_DIR}/procmat/ProcMatSources.cmake)
+# the pixel-art family (S43...): palettes, Apply Palette, the Palette window, the pixel_art tools
+include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)
 
 # the pixel-art family (S41-S52): PixelImage, the .aseprite codec, the importer and its windows
 include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)

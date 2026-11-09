@@ -4,6 +4,7 @@
 #include "CurveJson.h"
 
 #include "util/Color.h"
+#include "util/NearestName.h"
 
 #include <cmath>
 #include <cstdio>
@@ -101,6 +102,10 @@ namespace {
 
     void warn(std::vector<Issue>& issues, const std::string& path, const std::string& message){
         issues.push_back({false, path, message});
+    }
+
+    void warnUnknownCurveKey(std::vector<Issue>& issues, const std::string& at, const std::string& key, const char* what, const std::vector<std::string>& known){
+        issues.push_back({false, at, std::string("unknown ") + what + " key" + NearestNameSuffix(key, known), true});
     }
 
     bool readKeys(const Json& j, Curve& curve, const std::string& path, std::vector<Issue>& issues){
@@ -326,7 +331,7 @@ bool curvejson::curveFromJson(const Json& j, Curve& curve, std::vector<Issue>& i
         }else if (key == "post"){
             readUpstreamWrap(*it, curve.postWrapMode, ".post", issues);
         }else{
-            warn(issues, "." + key, "unknown curve key");
+            warnUnknownCurveKey(issues, "." + key, key, "curve", {"keys", "preWrapMode", "postWrapMode", "pre", "post"});
         }
     }
     if (!haveKeys){
@@ -471,7 +476,7 @@ namespace {
                     g.alphaKeys.push_back({v[0], v[1]});
                 }
             }else{
-                warn(issues, at, "unknown gradient key");
+                warnUnknownCurveKey(issues, at, key, "gradient", {"mode", "colors", "alphas"});
             }
         }
         if (g.colorKeys.size() > Gradient::kMaxKeys || g.alphaKeys.size() > Gradient::kMaxKeys)
@@ -526,7 +531,7 @@ bool curvejson::gradientFromJson(const Json& j, Gradient& g, std::vector<Issue>&
             if (!it->is_boolean()){ fail(issues, at, "linear is true or false"); ok = false; continue; }
             g.linear = it->get<bool>();
         }else{
-            warn(issues, at, "unknown gradient key");
+            warnUnknownCurveKey(issues, at, key, "gradient", {"colorKeys", "alphaKeys", "mode", "linear"});
         }
     }
     return ok;

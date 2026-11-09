@@ -3,6 +3,7 @@
 
 #include "Graph.h"
 #include "GraphRegistry.h"
+#include "util/NearestName.h"
 
 #include <algorithm>
 #include <cctype>
@@ -201,6 +202,17 @@ namespace {
         return ref.port;
     }
 
+    std::string didYouMean(const std::string& name, const std::vector<std::string>& candidates){
+        const std::string nearest = jasperengine::NearestName(name, candidates);
+        return nearest.empty() ? std::string() : "did you mean '" + nearest + "'?";
+    }
+
+    std::string listOf(const std::vector<std::string>& names){
+        std::string list;
+        for (const std::string& name : names) list += (list.empty() ? "" : ", ") + name;
+        return list;
+    }
+
 }
 
 // ------------------------------------------------------------------ model
@@ -259,7 +271,7 @@ Json jasperengine::graph::toJson(const Node& node){
     Json out = Json::object();
     out["id"] = node.id;
     out["type"] = node.type;
-    out["position"] = vec2Json(node.position);
+    if (node.placed) out["position"] = vec2Json(node.position);
     if (node.size) out["size"] = vec2Json(*node.size);
     out["params"] = node.params.is_object() ? node.params : Json::object();
     if (node.dynamicPorts) {
@@ -276,7 +288,8 @@ Node jasperengine::graph::nodeFromJson(const Json& json){
     if (!json.is_object()) return node;
     node.id = stringOf(json, "id");
     node.type = stringOf(json, "type");
-    if (auto it = json.find("position"); it != json.end()) node.position = vec2From(*it);
+    if (auto it = json.find("position"); it != json.end() && !it->is_null()) node.position = vec2From(*it);
+    else node.placed = false;
     if (auto it = json.find("size"); it != json.end() && !it->is_null()) node.size = vec2From(*it);
     if (auto it = json.find("params"); it != json.end() && it->is_object()) node.params = *it;
     if (auto it = json.find("ports"); it != json.end() && it->is_array()) {
@@ -423,6 +436,12 @@ Graph jasperengine::graph::fromJson(const Json& input, LoadReport& report){
     }
 
     graph.nextId = json.value("nextId", static_cast<uint64_t>(1));
+    for (const char* key : {"nodes", "edges", "variables", "groups"}) {
+        if (auto it = json.find(key); it != json.end() && !it->is_array()) report.malformed.push_back(std::string("'") + key + "' is not a list");
+    }
+    for (const char* key : {"viewport", "metadata"}) {
+        if (auto it = json.find(key); it != json.end() && !it->is_object()) report.malformed.push_back(std::string("'") + key + "' is not an object");
+    }
     std::set<std::string> unknownTypes;
     if (auto it = json.find("nodes"); it != json.end() && it->is_array()) {
         for (const Json& item : *it) {
@@ -448,6 +467,11 @@ Graph jasperengine::graph::fromJson(const Json& input, LoadReport& report){
             noteId(graph, group.id);
             graph.groups.push_back(std::move(group));
         }
+    }
+    // a hand-written edge may leave its id out: past every id of the file, in file order, so two
+    // loads of the file agree
+    for (Edge& edge : graph.edges) {
+        if (edge.id.empty()) edge.id = graph.allocateId("e");
     }
     if (auto it = json.find("viewport"); it != json.end() && it->is_object()) {
         if (auto offset = it->find("offset"); offset != it->end()) graph.viewport.offset = vec2From(*offset);
@@ -480,6 +504,20 @@ Graph jasperengine::graph::load(std::string_view text, LoadReport& report){
     return fromJson(json, report);
 }
 
+std::string jasperengine::graph::fileProblem(std::string_view path, const Graph& graph, const LoadReport& report){
+    if (!report.ok) return report.error;
+    if (!report.malformed.empty()) return report.malformed.front();
+    const std::shared_ptr<const GraphKindDesc> owner = GraphRegistry::get().kindForFile(path);
+    if (!owner || owner->id == graph.kind) return {};
+    const std::string expected = "these files have kind '" + owner->id + "'";
+    return graph.kind.empty() ? "it names no kind: " + expected : "its kind is '" + graph.kind + "': " + expected;
+}
+
+std::vector<std::string> jasperengine::graph::fileWarnings(const LoadReport& report){
+    // (fromJson adds those about unknown node types last, one each)
+    return {report.warnings.begin(), report.warnings.end() - static_cast<std::ptrdiff_t>(report.unknownNodeTypes.size())};
+}
+
 std::string jasperengine::graph::save(const Graph& graph){
     std::string text = toJson(graph).dump(2, ' ', false, Json::error_handler_t::replace);
     text += '\n';
@@ -501,15 +539,18 @@ Json jasperengine::graph::toJson(const Issue& issue){
     if (!issue.nodeId.empty()) out["node"] = issue.nodeId;
     if (!issue.portId.empty()) out["port"] = issue.portId;
     if (!issue.edgeId.empty()) out["edge"] = issue.edgeId;
+    if (!issue.suggestion.empty()) out["suggestion"] = issue.suggestion;
     return out;
 }
 
 std::vector<Issue> jasperengine::graph::validate(const Graph& graph){
     std::vector<Issue> issues;
-    auto add = [&](Severity severity, const char* code, std::string message, std::string node = {}, std::string port = {}, std::string edge = {}) {
-        issues.push_back({severity, code, std::move(node), std::move(port), std::move(edge), std::move(message)});
+    auto add = [&](Severity severity, const char* code, std::string message, std::string node = {}, std::string port = {}, std::string edge = {},
+                   std::string suggestion = {}) {
+        issues.push_back({severity, code, std::move(node), std::move(port), std::move(edge), std::move(message), std::move(suggestion)});
     };
     std::shared_ptr<const GraphKindDesc> kind = GraphRegistry::get().kind(graph.kind);
+    const Severity paramSeverity = kind && kind->strictParams ? Severity::Error : Severity::Warning;
 
     // ids
     std::unordered_set<std::string> seen;
@@ -534,7 +575,10 @@ std::vector<Issue> jasperengine::graph::validate(const Graph& graph){
     for (const Node& node : graph.nodes) {
         const NodeTypeDesc* type = kind ? GraphRegistry::nodeType(*kind, node.type) : nullptr;
         if (kind && !type) {
-            add(Severity::Warning, "unknown-node-type", "node type '" + node.type + "' is unknown to '" + graph.kind + "': the node is kept as it is", node.id);
+            std::vector<std::string> typeIds;
+            for (const NodeTypeDesc& candidate : kind->nodeTypes) typeIds.push_back(candidate.id);
+            add(paramSeverity, "unknown-node-type", "node type '" + node.type + "' is unknown to '" + graph.kind + "': the node is kept as it is", node.id, {}, {},
+                didYouMean(node.type, typeIds));
         }
         ports[node.id] = portsOf(graph, node);
         if (!type) continue;
@@ -546,12 +590,25 @@ std::vector<Issue> jasperengine::graph::validate(const Graph& graph){
                 if ((param.min && value < *param.min) || (param.max && value > *param.max)) {
                     std::string range = "[" + (param.min ? Json(*param.min).dump() : std::string("-inf")) + ", " +
                                         (param.max ? Json(*param.max).dump() : std::string("inf")) + "]";
-                    add(Severity::Warning, "param-range", "'" + param.name + "' = " + it->dump() + " is outside " + range, node.id);
+                    add(paramSeverity, "param-range", "'" + param.name + "' = " + it->dump() + " is outside " + range, node.id);
                 }
             } else if (param.kind == "enum" && it->is_string() && !param.enumValues.empty() &&
                        std::find(param.enumValues.begin(), param.enumValues.end(), it->get<std::string>()) == param.enumValues.end()) {
-                add(Severity::Warning, "param-range", "'" + param.name + "' = " + it->dump() + " is not one of its values", node.id);
+                std::string suggestion = didYouMean(it->get<std::string>(), param.enumValues);
+                if (suggestion.empty()) suggestion = "one of " + listOf(param.enumValues);
+                add(paramSeverity, "param-range", "'" + param.name + "' = " + it->dump() + " is not one of its values", node.id, {}, {}, std::move(suggestion));
             }
+        }
+        if (!kind->strictParams) continue;
+        for (auto it = node.params.begin(); it != node.params.end(); ++it) {
+            const std::string& name = it.key();
+            const auto declared = [&](const ParamDesc& param) { return param.name == name; };
+            if (std::any_of(type->params.begin(), type->params.end(), declared)) continue;
+            std::vector<std::string> names;
+            for (const ParamDesc& param : type->params) names.push_back(param.name);
+            std::string suggestion = didYouMean(name, names);
+            if (suggestion.empty()) suggestion = names.empty() ? "this node type has no parameters" : "its parameters: " + listOf(names);
+            add(Severity::Error, "unknown-param", "'" + name + "' is not a parameter of '" + node.type + "'", node.id, {}, {}, std::move(suggestion));
         }
     }
 
@@ -677,6 +734,111 @@ Json jasperengine::graph::toJson(const GraphOp& op){
     return out;
 }
 
+namespace {
+
+    // moves (nullopt: no position); returns what they were, as moveNodes' positions
+    Json placeNodes(const std::vector<std::pair<Node*, std::optional<Vec2>>>& moves){
+        Json old = Json::object();
+        for (const auto& [node, position] : moves) {
+            old[node->id] = node->placed ? vec2Json(node->position) : Json();
+            node->placed = position.has_value();
+            node->position = position.value_or(Vec2());
+        }
+        return old;
+    }
+
+}
+
+std::vector<std::string> jasperengine::graph::unplacedNodes(const Graph& graph){
+    std::vector<std::string> ids;
+    for (const Node& node : graph.nodes) {
+        if (!node.placed) ids.push_back(node.id);
+    }
+    return ids;
+}
+
+std::vector<std::pair<std::string, Vec2>> jasperengine::graph::layoutPositions(const Graph& graph, const std::vector<std::string>& ids){
+    std::vector<std::string> order = ids;
+    std::sort(order.begin(), order.end(), [](const std::string& a, const std::string& b) { return idLess(a, b); });
+    order.erase(std::unique(order.begin(), order.end()), order.end());
+    std::map<std::string, size_t> index;
+    for (size_t i = 0; i < order.size(); i++) index[order[i]] = i;
+
+    // a column per step of the longest path from a source among them (Kahn's order; what a cycle
+    // leaves behind stays in the column it reached)
+    std::vector<std::vector<size_t>> feeds(order.size());
+    std::vector<size_t> incoming(order.size(), 0);
+    for (const Edge& edge : graph.edges) {
+        auto from = index.find(edge.from.node);
+        auto to = index.find(edge.to.node);
+        if (from == index.end() || to == index.end() || from->second == to->second) continue;
+        feeds[from->second].push_back(to->second);
+        incoming[to->second]++;
+    }
+    std::vector<size_t> column(order.size(), 0);
+    std::vector<size_t> ready;
+    for (size_t i = 0; i < order.size(); i++) {
+        if (incoming[i] == 0) ready.push_back(i);
+    }
+    for (size_t next = 0; next < ready.size(); next++) {
+        const size_t node = ready[next];
+        for (size_t target : feeds[node]) {
+            column[target] = std::max(column[target], column[node] + 1);
+            if (--incoming[target] == 0) ready.push_back(target);
+        }
+    }
+
+    // beside the placed nodes that stay, to their right
+    Vec2 origin;
+    bool anyFixed = false;
+    double right = 0.0, top = 0.0;
+    for (const Node& node : graph.nodes) {
+        if (!node.placed || index.count(node.id)) continue;
+        const double width = node.size ? node.size->x : 0.0;
+        right = anyFixed ? std::max(right, node.position.x + width) : node.position.x + width;
+        top = anyFixed ? std::min(top, node.position.y) : node.position.y;
+        anyFixed = true;
+    }
+    if (anyFixed) origin = {right + LAYOUT_COLUMN, top};
+
+    // each column in the order of the rows feeding it (their mean), then file order
+    size_t columns = 0;
+    for (size_t c : column) columns = std::max(columns, c + 1);
+    std::vector<double> row(order.size(), 0.0);
+    std::vector<std::vector<size_t>> feeders(order.size());
+    for (size_t from = 0; from < order.size(); from++) {
+        for (size_t to : feeds[from]) feeders[to].push_back(from);
+    }
+    std::vector<std::pair<std::string, Vec2>> out;
+    for (size_t c = 0; c < columns; c++) {
+        std::vector<std::pair<double, size_t>> members;
+        for (size_t i = 0; i < order.size(); i++) {
+            if (column[i] != c) continue;
+            double sum = 0.0;
+            size_t count = 0;
+            for (size_t from : feeders[i]) {
+                if (column[from] >= c) continue;
+                sum += row[from];
+                count++;
+            }
+            members.push_back({count ? sum / (double)count : (double)members.size(), i});
+        }
+        std::stable_sort(members.begin(), members.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        double y = origin.y;
+        for (size_t r = 0; r < members.size(); r++) {
+            row[members[r].second] = (double)r;
+            const Node* node = graph.findNode(order[members[r].second]);
+            size_t inputs = 0, outputs = 0;
+            if (node) {
+                for (const Port& port : portsOf(graph, *node)) (port.direction == PortDirection::In ? inputs : outputs)++;
+            }
+            out.push_back({order[members[r].second], {origin.x + LAYOUT_COLUMN * (double)c, y}});
+            y += LAYOUT_ROW + LAYOUT_PORT_ROW * (double)std::max(inputs, outputs);
+        }
+    }
+    return out;
+}
+
 GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
     const uint64_t nextIdBefore = graph.nextId;
 
@@ -690,22 +852,20 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
         for (const Edge& edge : edges) {
             if (edge.id.empty() || graph.findEdge(edge.id)) throw GraphOpError("addNode: edge ids must be new");
         }
-        const bool fresh = node.id.empty();
-        if (fresh) {
+        if (node.id.empty()) {
             node.id = graph.allocateId("n");
         } else if (graph.findNode(node.id)) {
             throw GraphOpError("addNode: a node '" + node.id + "' exists");
         }
         // a new node gets its type's parameter defaults, and stores its ports when the type's
-        // ports are dynamic (a node put back by an undo is restored exactly as it was)
-        if (fresh && !node.dynamicPorts) {
+        // ports are dynamic; a node put back by an undo (restore) comes back exactly as it was
+        if (!op.args.value("restore", false)) {
             if (auto kind = GraphRegistry::get().kind(graph.kind)) {
-                const NodeTypeDesc* type = GraphRegistry::nodeType(*kind, node.type);
-                if (type && type->dynamicPorts) node.dynamicPorts = type->dynamicPorts(node.params);
-                if (type) {
+                if (const NodeTypeDesc* type = GraphRegistry::nodeType(*kind, node.type)) {
                     for (const ParamDesc& param : type->params) {
                         if (!node.params.contains(param.name) && !param.defaultValue.is_null()) node.params[param.name] = param.defaultValue;
                     }
+                    if (type->dynamicPorts && !node.dynamicPorts) node.dynamicPorts = type->dynamicPorts(node.params);
                 }
             }
         }
@@ -731,7 +891,7 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
         const std::string id = requireString(op, "id");
         auto it = lowerById(graph.nodes, id);
         if (it == graph.nodes.end() || it->id != id) throw GraphOpError("removeNode: no node '" + id + "'");
-        Json inverse = {{"node", toJson(*it)}};
+        Json inverse = {{"node", toJson(*it)}, {"restore", true}};
         Json edges = Json::array();
         graph.edges.erase(std::remove_if(graph.edges.begin(), graph.edges.end(), [&](const Edge& edge) {
             if (edge.from.node != id && edge.to.node != id) return false;
@@ -753,12 +913,13 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
     }
 
     if (op.op == "moveNodes") {
-        std::vector<std::pair<Node*, Vec2>> moves;
+        // (a null position takes the node's away: the inverse of placing one that had none)
+        std::vector<std::pair<Node*, std::optional<Vec2>>> moves;
         if (auto positions = op.args.find("positions"); positions != op.args.end() && positions->is_object()) {
             for (auto it = positions->begin(); it != positions->end(); ++it) {
                 Node* node = graph.findNode(it.key());
                 if (!node) throw GraphOpError("moveNodes: no node '" + it.key() + "'");
-                moves.push_back({node, vec2From(it.value())});
+                moves.push_back({node, it.value().is_null() ? std::nullopt : std::optional<Vec2>(vec2From(it.value()))});
             }
         } else {
             const Json& ids = requireArg(op, "ids");
@@ -767,15 +928,26 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
             for (const Json& id : ids) {
                 Node* node = id.is_string() ? graph.findNode(id.get<std::string>()) : nullptr;
                 if (!node) throw GraphOpError("moveNodes: no node " + id.dump());
-                moves.push_back({node, {node->position.x + delta.x, node->position.y + delta.y}});
+                moves.push_back({node, Vec2{node->position.x + delta.x, node->position.y + delta.y}});
             }
         }
-        Json old = Json::object();
-        for (auto& [node, position] : moves) {
-            old[node->id] = vec2Json(node->position);
-            node->position = position;
+        return {"moveNodes", {{"positions", placeNodes(moves)}}};
+    }
+
+    if (op.op == "layout") {
+        std::vector<std::string> ids;
+        if (auto given = op.args.find("ids"); given != op.args.end()) {
+            if (!given->is_array()) throw GraphOpError("layout: 'ids' is a list of node ids");
+            for (const Json& id : *given) {
+                if (!id.is_string() || !graph.findNode(id.get<std::string>())) throw GraphOpError("layout: no node " + id.dump());
+                ids.push_back(id.get<std::string>());
+            }
+        } else {
+            ids = unplacedNodes(graph);
         }
-        return {"moveNodes", {{"positions", std::move(old)}}};
+        std::vector<std::pair<Node*, std::optional<Vec2>>> moves;
+        for (const auto& [id, position] : layoutPositions(graph, ids)) moves.push_back({graph.findNode(id), position});
+        return {"moveNodes", {{"positions", placeNodes(moves)}}};
     }
 
     if (op.op == "setParam") {
@@ -933,8 +1105,42 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
         return inverse;
     }
 
-    throw GraphOpError("unknown op '" + op.op + "' (addNode, removeNode, moveNodes, setParam, connect, disconnect, addVariable, "
-                       "removeVariable, renameVariable, setVariable, group, ungroup)");
+    if (op.op == "setMetadata") {
+        // a kind's window keeps what is the graph's own (a Procedural Material's seed, exposed values) here
+        const std::string key = requireString(op, "key");
+        if (!graph.metadata.is_object()) graph.metadata = Json::object();
+        Json previous;
+        size_t at = 0;
+        for (auto it = graph.metadata.begin(); it != graph.metadata.end(); ++it, at++) {
+            if (it.key() == key) {
+                previous = *it;
+                break;
+            }
+        }
+        auto value = op.args.find("value");
+        if (value == op.args.end() || value->is_null()) {
+            graph.metadata.erase(key);
+            // its undo puts it back where it was, so the file comes back byte for byte
+            return {"setMetadata", {{"key", key}, {"value", previous}, {"at", at}}};
+        }
+        if (previous.is_null() && op.args.contains("at") && op.args["at"].is_number_unsigned()) {
+            Json placed = Json::object();
+            size_t index = 0;
+            const size_t wanted = op.args["at"].get<size_t>();
+            for (auto it = graph.metadata.begin(); it != graph.metadata.end(); ++it, index++) {
+                if (index == wanted) placed[key] = *value;
+                placed[it.key()] = *it;
+            }
+            if (!placed.contains(key)) placed[key] = *value;
+            graph.metadata = std::move(placed);
+        } else {
+            graph.metadata[key] = *value;
+        }
+        return {"setMetadata", {{"key", key}, {"value", previous}}};
+    }
+
+    throw GraphOpError("unknown op '" + op.op + "' (addNode, removeNode, moveNodes, layout, setParam, connect, disconnect, addVariable, "
+                       "removeVariable, renameVariable, setVariable, group, ungroup, setMetadata)");
 }
 
 std::string jasperengine::graph::describe(const Graph& graph, const GraphOp& op){
@@ -951,6 +1157,7 @@ std::string jasperengine::graph::describe(const Graph& graph, const GraphOp& op)
         size_t count = op.args.contains("positions") ? op.args["positions"].size() : op.args.value("ids", Json::array()).size();
         return count == 1 ? "Move Node" : "Move " + std::to_string(count) + " Nodes";
     }
+    if (op.op == "layout") return "Arrange Nodes";
     if (op.op == "setParam") return "Set " + op.args.value("name", std::string("Parameter"));
     if (op.op == "connect") {
         PortRef from, to;
@@ -971,5 +1178,6 @@ std::string jasperengine::graph::describe(const Graph& graph, const GraphOp& op)
     if (op.op == "setVariable") return "Set Variable " + op.args.value("name", std::string());
     if (op.op == "group") return "Group Nodes";
     if (op.op == "ungroup") return "Ungroup";
+    if (op.op == "setMetadata") return "Set " + op.args.value("key", std::string("Metadata"));
     return "Edit Graph";
 }

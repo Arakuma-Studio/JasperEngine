@@ -300,6 +300,45 @@ Curve curveops::normalise(const Curve& curve, const CurveRange& range) {
     return out;
 }
 
+void curveops::alignKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>& selection) {
+    float sum = 0.0f;
+    int count = 0;
+    for (const KeyRef& ref : selection) {
+        if (ref.curve < 0 || (size_t)ref.curve >= curves.size() || ref.key < 0 || (size_t)ref.key >= curves[(size_t)ref.curve]->keys.size()) continue;
+        sum += curves[(size_t)ref.curve]->keys[(size_t)ref.key].value;
+        count++;
+    }
+    if (count == 0) return;
+    const float mean = sum / (float)count;
+    for (const KeyRef& ref : selection) {
+        if (ref.curve < 0 || (size_t)ref.curve >= curves.size() || ref.key < 0 || (size_t)ref.key >= curves[(size_t)ref.curve]->keys.size()) continue;
+        curves[(size_t)ref.curve]->keys[(size_t)ref.key].value = mean;
+    }
+    // the modes set the tangents again around the keys that moved
+    for (const KeyRef& ref : selection) {
+        if (ref.curve < 0 || (size_t)ref.curve >= curves.size() || ref.key < 0 || (size_t)ref.key >= curves[(size_t)ref.curve]->keys.size()) continue;
+        curves[(size_t)ref.curve]->updateTangents((size_t)ref.key);
+    }
+}
+
+void curveops::smoothKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>& selection) {
+    for (const KeyRef& ref : selection) {
+        if (ref.curve < 0 || (size_t)ref.curve >= curves.size() || ref.key < 0 || (size_t)ref.key >= curves[(size_t)ref.curve]->keys.size()) continue;
+        Curve& curve = *curves[(size_t)ref.curve];
+        CurveKey& key = curve.keys[(size_t)ref.key];
+        key.setBothModes(CurveTangentMode::Free);
+        key.setBroken(false);
+        curve.smoothTangents((size_t)ref.key, 0.0f);
+    }
+}
+
+void curveops::sharpenKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>& selection) {
+    for (const KeyRef& ref : selection) {
+        if (ref.curve < 0 || (size_t)ref.curve >= curves.size() || ref.key < 0 || (size_t)ref.key >= curves[(size_t)ref.curve]->keys.size()) continue;
+        setTangentMode(*curves[(size_t)ref.curve], (size_t)ref.key, Side::Both, CurveTangentMode::Linear);
+    }
+}
+
 std::vector<CurveKey> curveops::copyKeys(const Curve& curve, const std::vector<KeyRef>& selection, int curveIndex) {
     std::vector<CurveKey> keys;
     for (size_t k = 0; k < curve.keys.size(); k++) {
