@@ -242,6 +242,10 @@ namespace jasperengine{
         // What a Terrain needs of its height and blend maps, whatever a file said: a save and the
         // generated code hold them too (the editor applies them on load and before a save)
         static void applyTerrainMapSettings(TerrainComponent& terrain);
+        // The vertex count RenderSystem::loadMesh gives a submesh from the mesh's buffers (its index
+        // count when indexed, else the mesh's vertices): a save and the generated code hold it, so
+        // they do not depend on whether a frame loaded the mesh. Without a buffer, the submesh's own.
+        static unsigned int loadedVertexCount(const MeshComponent& mesh, const Submesh& submesh);
 
         // What each generator makes of its mesh before filling the geometry: the submesh
         // settings and the vertex attributes. The editor reads the shader variants of a

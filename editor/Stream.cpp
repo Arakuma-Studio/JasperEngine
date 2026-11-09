@@ -1762,14 +1762,14 @@ void editor::Stream::decodeExternalBuffer(ExternalBuffer& buffer, const YAML::No
     buffer.setName(node["name"].as<std::string>()); // Set ExternalBuffer specific property
 }
 
-YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextureData, bool encodeVertexCount) {
+YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextureData, std::optional<unsigned int> vertexCount) {
     YAML::Node node;
 
     node["material"] = encodeMaterial(submesh.material, embedTextureData);
     node["textureRect"] = encodeRect(submesh.textureRect);
     node["primitiveType"] = primitiveTypeToString(submesh.primitiveType);
-    if (encodeVertexCount) {
-        node["vertexCount"] = YamlNumbers::integerText(submesh.vertexCount);
+    if (vertexCount) {
+        node["vertexCount"] = YamlNumbers::integerText(*vertexCount);
     }
     node["faceCulling"] = YamlNumbers::text(submesh.faceCulling);
     node["textureShadow"] = YamlNumbers::text(submesh.textureShadow);

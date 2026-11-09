@@ -83,7 +83,12 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     // past the count, what the generator will start from (the first slot exists before it ran)
     static const Submesh unbuilt{};
     for(unsigned int i = 0; i < std::max(mesh.numSubmeshes, numSubmeshes); i++) {
-        submeshesNode.push_back(encodeSubmesh(i == 0 || i < mesh.numSubmeshes ? mesh.submeshes[i] : unbuilt, embedTextureData, encodeGeneratedValues));
+        const bool built = i == 0 || i < mesh.numSubmeshes;
+        const Submesh& submesh = built ? mesh.submeshes[i] : unbuilt;
+        // the count the mesh's load gives, so a save does not depend on whether a frame loaded it
+        std::optional<unsigned int> vertexCount;
+        if (encodeGeneratedValues) vertexCount = built ? MeshSystem::loadedVertexCount(mesh, submesh) : submesh.vertexCount;
+        submeshesNode.push_back(encodeSubmesh(submesh, embedTextureData, vertexCount));
     }
     node["submeshes"] = submeshesNode;
 

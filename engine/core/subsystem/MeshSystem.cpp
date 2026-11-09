@@ -4844,6 +4844,33 @@ void MeshSystem::applyTerrainMapSettings(TerrainComponent& terrain){
     terrain.heightMap.setReleaseDataAfterLoad(false);
 }
 
+unsigned int MeshSystem::loadedVertexCount(const MeshComponent& mesh, const Submesh& submesh){
+    // the buffers loadMesh binds, by the names a submesh's attributes give
+    std::map<std::string, const Buffer*> buffers;
+    if (mesh.buffer.getSize() > 0) buffers["vertices"] = &mesh.buffer;
+    if (mesh.indices.getSize() > 0) buffers["indices"] = &mesh.indices;
+    for (unsigned int i = 0; i < mesh.numExternalBuffers; i++) buffers[mesh.eBuffers[i].getName()] = &mesh.eBuffers[i];
+    if (buffers.empty()) return submesh.vertexCount;
+
+    // an indexed submesh draws its index count even when it is zero (an empty tilemap rect)
+    bool indexed = false;
+    unsigned int indexCount = 0;
+    for (const auto& buf : buffers){
+        if (buf.second->isRenderAttributes() && buf.second->getType() == BufferType::INDEX_BUFFER){
+            indexed = true;
+            indexCount = buf.second->getCount();
+        }
+    }
+    for (const auto& attr : submesh.attributes){
+        if (attr.first == AttributeType::INDEX && buffers.count(attr.second.getBufferName())){
+            indexed = true;
+            indexCount = attr.second.getCount();
+        }
+    }
+    if (indexed) return indexCount;
+    return mesh.vertexCount != 0 ? mesh.vertexCount : mesh.buffer.getCount();
+}
+
 void MeshSystem::updateTerrainAutoRanges(TerrainComponent& terrain){
     if (!terrain.autoSetRanges || !terrain.heightMapLoaded){
         return;
