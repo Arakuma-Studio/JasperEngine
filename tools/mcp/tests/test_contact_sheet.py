@@ -248,7 +248,7 @@ async def test_every_skipped_check_is_not_clean(ed: Editor):
     ed.check(value["verdict"] != "clean", f"nothing measured is not clean: {value['verdict']}")
 
 
-async def test_transition_edges_reads_back_the_frames():
+async def test_transition_edges_reads_back_the_frames(ed: Editor):
     # JASPER_TEST_TRANSITION_TWIN_SKEW shifts the CPU evaluation's coverage only: the read-back frames then differ
     async with Editor(create=True, name="Transition Skew", env={"JASPER_TEST_TRANSITION_TWIN_SKEW": "0.15"}) as ed2:
         await ed2.call("tool_groups", enable=["pixel_art"])
