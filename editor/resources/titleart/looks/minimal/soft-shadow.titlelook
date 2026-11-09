@@ -38,6 +38,7 @@
   "dimension": "2d",
   "applies": "effects",
   "ref_size": 200,
+  "font": {"latin": "inter", "ja": "zen-kaku-gothic-new-black", "variations": {"wght": 800}},
   "effects": [
     {
       "type": "drop_shadow",

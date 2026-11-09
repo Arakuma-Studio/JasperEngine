@@ -16,16 +16,8 @@ from harness import Editor
 CI = True
 REPO = Path(__file__).resolve().parents[3]
 FIXTURES = REPO / "editor" / "tests" / "titleart" / "fixtures" / "pachislop"
-FONTS = REPO / "engine" / "tests" / "core" / "titleart" / "fonts"
 
-# S84's font pack as the editor finds it (JASPERENGINE_TITLEART_LIBRARY_DIR): Pachislop's default
-# builtin font, dela-gothic-one, with its OFL text
-LIBRARY = Path(tempfile.mkdtemp(prefix="je_title_import_library_"))
-(LIBRARY / "fonts" / "dela-gothic-one").mkdir(parents=True)
-shutil.copy(FONTS / "DelaGothicOne-Regular.ttf", LIBRARY / "fonts" / "dela-gothic-one" / "DelaGothicOne-Regular.ttf")
-shutil.copy(FONTS / "DelaGothicOne-OFL.txt", LIBRARY / "fonts" / "dela-gothic-one" / "OFL.txt")
-
-EDITOR = {"create": True, "name": "Title Import", "env": {"JASPERENGINE_TITLEART_LIBRARY_DIR": str(LIBRARY)}}
+EDITOR = {"create": True, "name": "Title Import"}
 TIMEOUT = 900
 
 FIXTURE_NAMES = ["v4_text_rims", "v4_text_rims_v11", "v6_groups_masks_clip", "v7_content_effects", "v8_lighting", "v10_rings", "v11_all_kinds"]
