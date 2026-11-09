@@ -20,6 +20,23 @@ namespace jasperengine::editor::pixelart::cleanup {
 
     using jasperengine::pixelart::Lab;
 
+    // named, not anonymous: unity builds merge this file with CleanupBackground.cpp, whose
+    // background.ts constants have the same names
+    namespace sheet_ts {
+        // Border colours closer than this (OKLab) count as one; JPEG noise would split a flat colour (sheet.ts)
+        constexpr double SAME_COLOR = 0.06;
+        // A border colour is background when it covers at least this share of the border (sheet.ts)
+        constexpr double COMMON_ENOUGH = 0.03;
+        // A row (or column) is a painted line when the line's colour covers this share of it (sheet.ts)
+        constexpr double LINE_SHARE = 0.25;
+        // How far past a line its two sides are looked at, for blurred line edges (sheet.ts)
+        constexpr int LINE_SIDE = 2;
+        // A band shorter than this share of the tallest is a row of labels (sheet.ts)
+        constexpr double LABEL_BAND = 0.4;
+        // How many times a box is cut into rows again (sheet.ts)
+        constexpr int DEPTH = 3;
+    }
+
     namespace {
 
         // sheet.ts sameRow: middles at about one height and heights alike
@@ -62,19 +79,6 @@ namespace jasperengine::editor::pixelart::cleanup {
             while (taken.count(name + "-" + std::to_string(n))) n++;
             return name + "-" + std::to_string(n);
         }
-
-        // Border colours closer than this (OKLab) count as one; JPEG noise would split a flat colour (sheet.ts)
-        constexpr double SAME_COLOR = 0.06;
-        // A border colour is background when it covers at least this share of the border (sheet.ts)
-        constexpr double COMMON_ENOUGH = 0.03;
-        // A row (or column) is a painted line when the line's colour covers this share of it (sheet.ts)
-        constexpr double LINE_SHARE = 0.25;
-        // How far past a line its two sides are looked at, for blurred line edges (sheet.ts)
-        constexpr int LINE_SIDE = 2;
-        // A band shorter than this share of the tallest is a row of labels (sheet.ts)
-        constexpr double LABEL_BAND = 0.4;
-        // How many times a box is cut into rows again (sheet.ts)
-        constexpr int DEPTH = 3;
 
         Rgba8 sheetPixel(const RgbaImage& image, int p) {
             const uint8_t* d = image.pixels().data() + static_cast<size_t>(p) * 4;
@@ -143,7 +147,7 @@ namespace jasperengine::editor::pixelart::cleanup {
             int tallest = 0;
             for (const SheetRun& band : out.bands) tallest = std::max(tallest, band.to - band.from);
             for (const SheetRun& band : out.bands) {
-                if (band.to - band.from >= LABEL_BAND * tallest) out.kept.push_back(band);
+                if (band.to - band.from >= sheet_ts::LABEL_BAND * tallest) out.kept.push_back(band);
             }
             return out;
         }
@@ -536,7 +540,7 @@ namespace jasperengine::editor::pixelart::cleanup {
             const Rgba8 color = sheetPixel(image, p);
             const Lab lab = oklabOf(color);
             for (Group& other : groups) {
-                if (labDistance(other.lab, lab) <= SAME_COLOR) {
+                if (labDistance(other.lab, lab) <= sheet_ts::SAME_COLOR) {
                     other.n++;
                     return;
                 }
@@ -558,7 +562,7 @@ namespace jasperengine::editor::pixelart::cleanup {
         }
         std::vector<Group> common;
         for (const Group& group : groups) {
-            if (group.n >= COMMON_ENOUGH * total) common.push_back(group);
+            if (group.n >= sheet_ts::COMMON_ENOUGH * total) common.push_back(group);
         }
         std::stable_sort(common.begin(), common.end(), [](const Group& a, const Group& b) { return b.n < a.n; });
         std::vector<Rgba8> out;
@@ -574,7 +578,7 @@ namespace jasperengine::editor::pixelart::cleanup {
             const int p = y * width + x;
             if (sheetAlpha(image, p) < 128) return;
             const double d = labDistance(oklabOf(sheetPixel(image, p)), target);
-            if (d <= SAME_COLOR) found.push_back(d);
+            if (d <= sheet_ts::SAME_COLOR) found.push_back(d);
         };
         for (int x = 0; x < width; x++) {
             look(x, 0);
@@ -584,7 +588,7 @@ namespace jasperengine::editor::pixelart::cleanup {
             look(0, y);
             look(width - 1, y);
         }
-        if (found.empty()) return SAME_COLOR;
+        if (found.empty()) return sheet_ts::SAME_COLOR;
         std::sort(found.begin(), found.end());
         return found[(size_t)std::floor(found.size() * 0.95)];
     }
@@ -614,12 +618,12 @@ namespace jasperengine::editor::pixelart::cleanup {
             for (int y = 0; y < height; y++) {
                 int n = 0;
                 for (int x = 0; x < width; x++) n += near(y * width + x, lab) ? 1 : 0;
-                rowLine[y] = double(n) / width >= LINE_SHARE;
+                rowLine[y] = double(n) / width >= sheet_ts::LINE_SHARE;
             }
             for (int x = 0; x < width; x++) {
                 int n = 0;
                 for (int y = 0; y < height; y++) n += near(y * width + x, lab) ? 1 : 0;
-                columnLine[x] = double(n) / height >= LINE_SHARE;
+                columnLine[x] = double(n) / height >= sheet_ts::LINE_SHARE;
             }
             // Lines are thin; a checkerboard's second tone fills half of every row, in one thick run
             auto thin = [](const std::vector<SheetRun>& runs, int size) {
@@ -649,26 +653,26 @@ namespace jasperengine::editor::pixelart::cleanup {
             for (const SheetRun& run : lineColumns) std::fill(onColumn.begin() + run.from, onColumn.begin() + run.to, 1);
             auto side = [&](int p, bool beside) { return near(p, fillLab) || (beside && near(p, lab)); };
             for (const SheetRun& run : lineRows) {
-                const int above = run.from - 1 - LINE_SIDE;
-                const int below = run.to + LINE_SIDE;
+                const int above = run.from - 1 - sheet_ts::LINE_SIDE;
+                const int below = run.to + sheet_ts::LINE_SIDE;
                 for (int x = 0; x < width; x++) {
                     // At the sheet's edge, the one side there is
                     if ((above >= 0 && !side(above * width + x, onRow[above] == 1)) ||
                         (below < height && !side(below * width + x, onRow[below] == 1))) {
                         continue;
                     }
-                    for (int y = std::max(0, run.from - LINE_SIDE); y < std::min(height, run.to + LINE_SIDE); y++) paint(y * width + x);
+                    for (int y = std::max(0, run.from - sheet_ts::LINE_SIDE); y < std::min(height, run.to + sheet_ts::LINE_SIDE); y++) paint(y * width + x);
                 }
             }
             for (const SheetRun& run : lineColumns) {
-                const int left = run.from - 1 - LINE_SIDE;
-                const int right = run.to + LINE_SIDE;
+                const int left = run.from - 1 - sheet_ts::LINE_SIDE;
+                const int right = run.to + sheet_ts::LINE_SIDE;
                 for (int y = 0; y < height; y++) {
                     if ((left >= 0 && !side(y * width + left, onColumn[left] == 1)) ||
                         (right < width && !side(y * width + right, onColumn[right] == 1))) {
                         continue;
                     }
-                    for (int x = std::max(0, run.from - LINE_SIDE); x < std::min(width, run.to + LINE_SIDE); x++) paint(y * width + x);
+                    for (int x = std::max(0, run.from - sheet_ts::LINE_SIDE); x < std::min(width, run.to + sheet_ts::LINE_SIDE); x++) paint(y * width + x);
                 }
             }
         }
@@ -736,7 +740,7 @@ namespace jasperengine::editor::pixelart::cleanup {
         const double usual = spacing.empty() ? least : std::max(least, 0.6 * *std::min_element(spacing.begin(), spacing.end()));
         std::vector<FrameBox> all;
         auto again = [&](auto& self, const FrameBox& box, int depth) -> void {
-            if (depth >= DEPTH || sheetBandsIn(image, box).kept.size() < 2) {
+            if (depth >= sheet_ts::DEPTH || sheetBandsIn(image, box).kept.size() < 2) {
                 all.push_back(box);
                 return;
             }

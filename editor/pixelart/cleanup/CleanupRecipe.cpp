@@ -243,7 +243,7 @@ namespace jasperengine::editor::pixelart::cleanup {
             r.error("grid.kind", "grid.kind is \"" + kind + "\"", "grid.kind is one of auto, cells, size");
         }
 
-        void readPalette(RecipeReader& r, const json& raw, Recipe& out) {
+        void readRecipePalette(RecipeReader& r, const json& raw, Recipe& out) {
             const json* value = r.find(raw, "palette");
             if (!value || value->is_null()) return;
             if (value->is_string()) {
@@ -617,7 +617,7 @@ namespace jasperengine::editor::pixelart::cleanup {
             out.sample.inset = r.number(*sample, "inset", "sample", 0.25, 0, 0.45);
             out.sample.alphaThreshold = r.number(*sample, "alpha_threshold", "sample", 128, 0, 255);
         }
-        readPalette(r, raw, out);
+        readRecipePalette(r, raw, out);
         const int metric = r.oneOf(raw, "metric", "", kMetricNames, 0);
         out.metric = metric == 1 ? ColorMetric::Ciede2000 : ColorMetric::OkLab;
         out.dither = (Dither)r.oneOf(raw, "dither", "", kDitherNames, 0);
