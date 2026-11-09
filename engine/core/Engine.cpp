@@ -1749,6 +1749,7 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
     // scripts registered goes while the code behind the callbacks is still loaded
     forEachComponentEvent(*scene, [](auto& event) { event.clear(); });
     scene->getSystem<PhysicsSystem>()->clearSubscriptions();
+    scene->getSystem<TitleArtSystem>()->clearSubscriptions();
 }
 
 void Engine::computeViewLayout(int screenWidth, int screenHeight, int preferredWidth, int preferredHeight, Scaling scalingMode,

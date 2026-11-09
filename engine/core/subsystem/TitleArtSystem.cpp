@@ -311,6 +311,22 @@ TitleArtInstance& TitleArtSystem::instanceOf(TitleArtRendererComponent& title){
     return *title.runtime;
 }
 
+void TitleArtSystem::clearSubscriptions(){
+    auto titles = scene->getComponentArray<TitleArtRendererComponent>();
+    for (size_t i = 0; i < titles->size(); i++){
+        TitleArtRendererComponent& title = titles->getComponentFromIndex(i);
+        if (title.runtime) title.runtime->forEachEvent([](auto& event) { event.clear(); });
+    }
+}
+
+void TitleArtSystem::removeSubscriptionsByTag(const std::string& substring){
+    auto titles = scene->getComponentArray<TitleArtRendererComponent>();
+    for (size_t i = 0; i < titles->size(); i++){
+        TitleArtRendererComponent& title = titles->getComponentFromIndex(i);
+        if (title.runtime) title.runtime->forEachEvent([&substring](auto& event) { event.removeByTagSubstring(substring); });
+    }
+}
+
 TitleArtSpace TitleArtSystem::spaceOf(EntityRegistry* registry, Entity entity){
     if (registry->findComponent<UIComponent>(entity) && registry->findComponent<ImageComponent>(entity)) return TitleArtSpace::UI;
     if (registry->findComponent<MeshComponent>(entity) && registry->findComponent<SpriteComponent>(entity)) return TitleArtSpace::World;

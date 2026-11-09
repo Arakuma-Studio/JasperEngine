@@ -111,6 +111,11 @@ namespace jasperengine{
         // the state of a component (made on first use)
         static titleart::TitleArtInstance& instanceOf(TitleArtRendererComponent& title);
 
+        // the script events of every title: gone at Stop before the C++ script library is unloaded
+        // (Engine::clearComponentSubscriptions), or by tag on a hot reload (Scene::removeSubscriptionsByTag)
+        void clearSubscriptions();
+        void removeSubscriptionsByTag(const std::string& substring);
+
         // ---- the API Lua, C++ scripts, clip events and tools share (R64-R67) ----
 
         // Sets one Exposed parameter's override: false with `error` (R65's sentences, `name`

@@ -27,6 +27,7 @@
 #include "component/ScrollbarComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/TextEffectComponent.h"
+#include "component/TitleArtRendererComponent.h"
 #include "component/TweenComponent.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
@@ -34,6 +35,8 @@
 #include "component/VideoPlayerComponent.h"
 #include "device/Device.h"
 #include "object/VideoPlayer.h"
+#include "subsystem/TitleArtInstance.h"
+#include "subsystem/TitleArtSystem.h"
 #include "object/navigation/NavMeshAgent.h"
 #include "object/navigation/NavMeshSurface.h"
 #if JASPERENGINE_SOUND_LAYER
@@ -252,3 +255,45 @@ TEST(PhysicsEventsTest, RemoveByTagIncludesControllerColliderHit) {
     EXPECT_EQ(physics.onControllerColliderHit.size(), 0u);
 }
 #endif
+
+// the Title Art Renderer's events live in the component's runtime state, not on the component, so
+// forEachComponentEvent does not reach them: the scene's TitleArtSystem must
+namespace {
+
+    template<typename F>
+    void forEachTitleEvent(titleart::TitleArtInstance& instance, F&& f) {
+        f(instance.onReady);
+        f(instance.onFailed);
+        f(instance.onMissingCharacters);
+        f(instance.onAnimationFinished);
+        f(instance.onLanguageReady);
+        f(instance.onAnimationEvent);
+    }
+
+    titleart::TitleArtInstance& subscribedTitle(Scene& scene) {
+        const Entity entity = scene.createEntity();
+        scene.addComponent<TitleArtRendererComponent>(entity, {});
+        titleart::TitleArtInstance& instance = TitleArtSystem::instanceOf(scene.getComponent<TitleArtRendererComponent>(entity));
+        forEachTitleEvent(instance, [](auto& event) { subscribe(event); });
+        return instance;
+    }
+
+    void expectNoTitleEvents(titleart::TitleArtInstance& instance, const char* when) {
+        forEachTitleEvent(instance, [when](auto& event) { EXPECT_EQ(event.size(), 0u) << "left " << when; });
+    }
+
+}
+
+TEST(TitleArtEventsTest, ClearAtStopReachesEveryEvent) {
+    Scene scene;
+    titleart::TitleArtInstance& instance = subscribedTitle(scene);
+    Engine::clearComponentSubscriptions(&scene);
+    expectNoTitleEvents(instance, "after the clear at Stop: a C++ script's callback would outlive its library");
+}
+
+TEST(TitleArtEventsTest, RemoveByTagReachesEveryEvent) {
+    Scene scene;
+    titleart::TitleArtInstance& instance = subscribedTitle(scene);
+    scene.removeSubscriptionsByTag("ScriptX_");
+    expectNoTitleEvents(instance, "after the removal by tag");
+}

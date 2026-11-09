@@ -134,6 +134,7 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
     // every event of every component (ComponentEvents.h), then the physics system's
     forEachComponentEvent(*this, [&substring](auto& event) { event.removeByTagSubstring(substring); });
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);
+    getSystem<TitleArtSystem>()->removeSubscriptionsByTag(substring);
 }
 
 void Scene::setCamera(Camera* camera){

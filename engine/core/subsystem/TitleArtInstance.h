@@ -139,6 +139,12 @@ namespace jasperengine::titleart{
         double lastDrivenTime = 0.0;
         FunctionSubscribe<void(const AnimationEvent&)> onAnimationEvent;
 
+        // every Lua and C++ script event above: TitleArtSystem::clearSubscriptions at Stop and
+        // removeSubscriptionsByTag on a reload walk them (tools/check_event_clears.py keeps it whole)
+        template<typename F> void forEachEvent(F&& f) {
+            f(onReady); f(onFailed); f(onMissingCharacters); f(onAnimationFinished); f(onLanguageReady); f(onAnimationEvent);
+        }
+
         // ---- warnings said once (R7, R19, R41, R51) ----
         std::set<std::string> said;
         bool sayOnce(const std::string& key){ return said.insert(key).second; }
