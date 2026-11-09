@@ -61,7 +61,7 @@ namespace {
         return rgba;
     }
 
-    class Section {
+    class GenerateSection {
     public:
         void draw(Project* project, uint32_t sceneId, Entity entity);
 
@@ -102,18 +102,18 @@ namespace {
         uint64_t textureCounter = 0;
     };
 
-    void Section::releaseRetired() {
+    void GenerateSection::releaseRetired() {
         for (Texture& texture : retired) texture.destroy();
         retired.clear();
     }
 
-    void Section::releaseImage() {
+    void GenerateSection::releaseImage() {
         if (!preview.empty()) retired.push_back(preview);
         preview = Texture();
         hasStats = false;
     }
 
-    void Section::loadGraph(Project* project, const std::string& key) {
+    void GenerateSection::loadGraph(Project* project, const std::string& key) {
         if (key == loadedKey && loadError.empty()) return;
         loadedKey = key;
         loadError.clear();
@@ -143,7 +143,7 @@ namespace {
         variables = std::move(next);
     }
 
-    void Section::drawGraphPicker(Project* project, TerrainEditorSettings& settings) {
+    void GenerateSection::drawGraphPicker(Project* project, TerrainEditorSettings& settings) {
         const std::string name = loadError.empty() ? loadedName : std::string("(missing)");
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
         if (ImGui::BeginCombo("Noise Graph", name.c_str())) {
@@ -191,11 +191,11 @@ namespace {
         }
     }
 
-    void Section::drawVariables() {
+    void GenerateSection::drawVariables() {
         for (auto& [variable, value] : variables) ImGui::DragFloat(variable.c_str(), &value, 0.01f);
     }
 
-    void Section::takePreview(const GenerationResult& result, float terrainSize, float maxHeight) {
+    void GenerateSection::takePreview(const GenerationResult& result, float terrainSize, float maxHeight) {
         releaseImage();
         hasStats = true;
         stats = result.stats;
@@ -218,7 +218,7 @@ namespace {
         }
     }
 
-    void Section::start(Project* project, uint32_t sceneId, Entity entity, bool dryRun, const TerrainComponent& terrain) {
+    void GenerateSection::start(Project* project, uint32_t sceneId, Entity entity, bool dryRun, const TerrainComponent& terrain) {
         GenerationRequest request;
         request.graph = loaded;
         request.displayName = loadedName;
@@ -251,7 +251,7 @@ namespace {
         });
     }
 
-    void Section::draw(Project* project, uint32_t sceneId, Entity entity) {
+    void GenerateSection::draw(Project* project, uint32_t sceneId, Entity entity) {
         releaseRetired();
         const bool open = ImGui::CollapsingHeader("Generate");
         UIProbe::item("terrain.generate");
@@ -373,6 +373,6 @@ namespace {
 
 void jasperengine::editor::drawTerrainGenerateSection(Project* project, uint32_t sceneId, Entity entity) {
     // The editor's life long, and not destroyed: its textures must not outlive the renderer at exit
-    static Section* section = new Section();
+    static GenerateSection* section = new GenerateSection();
     section->draw(project, sceneId, entity);
 }

@@ -61,14 +61,14 @@ namespace {
         }
     }
 
-    std::string formatNumber(const char* format, double value) {
+    std::string formatStat(const char* format, double value) {
         char buffer[64];
         std::snprintf(buffer, sizeof(buffer), format, value);
         return buffer;
     }
 
     std::string statsMegabytes(int64_t bytes) {
-        return formatNumber("%.2f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
+        return formatStat("%.2f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
     }
 
     // One undo step of a change of an asset's identity in memory: Voxel Size lives in the file's header,
@@ -303,7 +303,7 @@ std::vector<VoxelStatsRow> editor::voxelStatsRows(const VoxelStats& stats, const
     add("Draws", std::to_string(stats.draws));
     add("Jobs Pending", std::to_string(stats.jobsPending));
     add("Collision Bodies", std::to_string(stats.collisionBodies));
-    add("Last Mesh", formatNumber("%.2f ms", stats.lastMeshMs));
+    add("Last Mesh", formatStat("%.2f ms", stats.lastMeshMs));
     add("Last Latency", stats.lastLatencyFrames < 0 ? std::string("-") : std::to_string(stats.lastLatencyFrames) + " frames");
     return rows;
 }

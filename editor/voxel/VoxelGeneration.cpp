@@ -55,7 +55,7 @@ namespace {
   "metadata": {"noise": {"space": "world", "dimensions": "3d"}}
 })";
 
-    void replaceAll(std::string& text, const std::string& from, const std::string& to) {
+    void substitute(std::string& text, const std::string& from, const std::string& to) {
         size_t at = 0;
         while ((at = text.find(from, at)) != std::string::npos) {
             text.replace(at, from.size(), to);
@@ -155,10 +155,10 @@ namespace {
         if (preset == "overhangs") {
             std::string json = OVERHANGS_GRAPH;
             const double amplitude = 10.0 * voxelSize * sizeScale;
-            replaceAll(json, "@NEGHEIGHT@", std::to_string(-height));
-            replaceAll(json, "@AMPLITUDE@", std::to_string(amplitude));
-            replaceAll(json, "@WARP@", std::to_string(amplitude * 0.5));
-            replaceAll(json, "@FREQUENCY@", std::to_string(0.05 / (voxelSize * sizeScale)));
+            substitute(json, "@NEGHEIGHT@", std::to_string(-height));
+            substitute(json, "@AMPLITUDE@", std::to_string(amplitude));
+            substitute(json, "@WARP@", std::to_string(amplitude * 0.5));
+            substitute(json, "@FREQUENCY@", std::to_string(0.05 / (voxelSize * sizeScale)));
             return graphBase(json, seed, voxelSize, error);
         }
         return nullptr;

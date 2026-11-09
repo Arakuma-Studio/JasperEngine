@@ -73,7 +73,12 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorBlendTreeTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/navigation/NavBakeFoliageTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/navigation/TerrainWorldNavTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/physics/TerrainCollisionRefreshTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/FoliageGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/TerrainHolesGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/VoxelRenderGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/script/LuaTerrainMaterialsTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/shader/VoxelShaderTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageCullTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageLuaTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliagePhysicsTest.cpp
@@ -85,6 +90,7 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainEditTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainFilterTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainGoldenTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainHolesConsumersTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainHolesTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainOpsDepsTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainOpsKernelsTest.cpp
