@@ -296,3 +296,14 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - Final gates started on 564f6da51: box 22b24a0ef193 runs the WERROR linux build, full unit tests and the full MCP suite; box
   e704f0707dc6 runs web plus web gates (sample and six terrain projects), Android, the WERROR linux build, players and compile smoke
   tests (terrain, voxels); box db9262097667 runs origin/main's full unit tests as the baseline. Logs: terrain-evidence/final-gates/.
+- Final gate results on 564f6da51 (first pass):
+  - WERROR linux build: pass.
+  - Unit tests: core 4901 ran, 8 failed, 2 disabled; editor 4214 ran, 4 failed. The origin/main baseline fails ParticleExposed and
+    ShaderNeutralApi too (upstream's). Ours, being fixed on terrain/fix-unit: SchedulerTest x4 (subsystem count), NoiseDeterminism and
+    NoiseGolden (flush-to-zero left on by an earlier test), LodFadeGpu (timeout), GeneratedProject.PlatformSourcesListEveryBackendFile,
+    TerrainRawIO.RoundTripEveryFormat.
+  - Web: sample and terrain-edit gates pass. Being fixed on terrain/fix-web: the terrain, terrain-materials and foliage test projects
+    don't compile on web (an ambiguous `terrain` name), clang's missing `override` on VoxelSystem::setPaused, the voxels gate draws no
+    volume, and the noise gate never gets ready.
+  - The full MCP suite needs build/fixture-unity, which this host lacks. The CI suite (which holds all 24 of the programme's MCP files)
+    runs with the slow flags instead.
