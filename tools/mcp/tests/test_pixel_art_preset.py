@@ -2,7 +2,9 @@
 of the built-in 2d template. fix: ["pixel_art_mode"] then fix: ["all"], with output, give: canvas 320x180,
 scaling integer, PPU 1, Default Filter Mode point, window 1280x720, a Pixel Perfect Camera on Main's
 camera, player.png.meta with pixelArt: true, the sprite's reference nearest; the check is then clean,
-and undoing the two steps restores every file byte for byte.
+and undoing the two steps restores every file byte for byte, the metas the cook queue wrote included:
+once Pixel Art Mode is on, the queue's first imports of images the project already had are S14's
+(no pixelArt), so the preset's undo leaves nothing of the mode behind (D2).
 """
 
 from __future__ import annotations
@@ -31,16 +33,24 @@ async def settings(ed: Editor) -> dict:
     return {k: values.get(k) for k in keys}
 
 
+async def cooks_idle(ed: Editor) -> None:
+    """every texture's cook planned and written: the metas hold the import settings the queue inferred"""
+    for _ in range(300):
+        report = await ed.call("get_texture_cook_report", platforms=["desktop"])
+        busy = [row["path"] for row in report["textures"] if row["platforms"]["desktop"]["status"] in ("queued", "cooking")]
+        if not busy:
+            return
+        await ed.call("wait", frames=10)
+    ed.check(False, f"the texture cooks did not finish: {busy}")
+
+
 async def test_preset_through_fixes(ed: Editor):
     await ed.call("tool_groups", enable=["pixel_art"])
-    # the 2d template's art gets its import settings from the first cook
-    for _ in range(100):
-        meta = ed.project / "sprites" / "player.png.meta"
-        if meta.exists() and "textureImporter" in meta.read_text():
-            break
-        await ed.call("wait", frames=10)
+    # the 2d template's images get their import settings from their first cook
+    await cooks_idle(ed)
     before = hashes(ed.project)
-    first_import = {k for k in before if k.endswith(".png.meta") and "textureImporter" not in (ed.project / k).read_text()}
+    metas = {k: (ed.project / k).read_text() for k in before if k.endswith(".png.meta")}
+    ed.check(metas and all("textureImporter" in text for text in metas.values()), f"every image has its import settings: {metas}")
 
     first = await ed.call("check_pixel_art", fix=["pixel_art_mode"], output=True)
     ed.check(first.get("applied", {}).get("undo_step"), f"the project part applied: {first.get('applied')}")
@@ -67,10 +77,25 @@ async def test_preset_through_fixes(ed: Editor):
     # Ctrl+Z twice: each fix is one step of the timeline (its histories linked)
     await ed.call("undo", scope="timeline")
     await ed.call("undo", scope="timeline")
-    after = hashes(ed.project)
-    # the cook queue writes an image's first import settings whenever it reaches it, outside any undo
-    # step, so a meta that had none yet is not the preset's to restore
-    for meta in first_import:
-        before.pop(meta, None)
-        after.pop(meta, None)
-    ed.check_eq(after, before, "undo restores the project byte-identically")
+    # the recooks after the undo write no meta: every one is as it was, no pixelArt left behind
+    await cooks_idle(ed)
+    for path, text in metas.items():
+        ed.check_eq((ed.project / path).read_text(), text, f"{path} after undo")
+    ed.check_eq(hashes(ed.project), before, "undo restores the project byte-identically")
+
+
+async def test_preset_converts_particle_textures(ed: Editor):
+    """R2: the preset marks the textures a particle renderer draws as pixel art, as it does a Sprite's"""
+    async with Editor(create=True, name="Pixel Art Particles") as p:
+        await p.call("tool_groups", enable=["pixel_art", "particles"])
+        await p.call("generate_placeholder_art", path="fx/spark.png", width=8, height=8, color="#ffcc00")
+        made = await p.call("create_scene", name="Fx", type="2D", path="scenes/Fx")
+        scene = made["scene"]["id"]
+        await p.call("create_particles", scene=scene, name="Sparks", preset="sparks", position=[0, 0, 0], texture="fx/spark.png")
+        await p.call("save_scene", scene=scene)
+        await cooks_idle(p)
+        await p.call("check_pixel_art", fix=["pixel_art_mode"], output=True)
+        preview = await p.call("check_pixel_art", fix=["all"])
+        targets = {(c["target"], c["field"]) for fix in preview.get("fix_plan", []) for c in fix["changes"]}
+        p.check(any(target.endswith("fx/spark.png") and field == "import.textureImporter" for target, field in targets),
+                f"the particle texture is converted: {sorted(targets)}")

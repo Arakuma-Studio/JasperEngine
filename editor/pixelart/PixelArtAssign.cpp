@@ -25,11 +25,9 @@ AssignmentDefaults jasperengine::editor::pixelart::assignmentDefaults(const Proj
     std::error_code ec;
     if (!std::filesystem::is_regular_file(absolute, ec))
         return out;
+    // without import settings yet: as S14 infers them (an image added in Pixel Art Mode has its own, R1)
     TextureImportSettings settings;
-    const bool stored = TextureImportSettings::load(absolute.string(), settings);
-    // a texture not imported yet in Pixel Art Mode imports as pixel art (R1)
-    if (!stored && project.getPixelArtSettings().enabled)
-        settings.pixelArt = true;
+    TextureImportSettings::load(absolute.string(), settings);
     TextureFilter minFilter = TextureFilter::LINEAR, magFilter = TextureFilter::LINEAR;
     textureFilterModeFilters(settings.resolvedFilterMode(project.getDefaultFilterMode()), minFilter, magFilter);
     out.known = true;
