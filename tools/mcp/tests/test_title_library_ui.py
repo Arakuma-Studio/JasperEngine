@@ -23,7 +23,7 @@ PATH = "assets/ui.titleart"
 async def open_designer(ed: Editor, helper: ui_input.Ui, tab: str, query: str) -> None:
     await ed.call("focus_window", window="title_designer", title_designer={"path": PATH, "select": "Title", "panel": "library",
                                                                            "library": {"tab": tab, "query": query}})
-    await helper.frames(8)
+    await helper.frames(40)     # the search and the tiles answer over frames
 
 
 async def step_name(ed: Editor) -> str:
@@ -64,7 +64,8 @@ async def test_badge_converts_to_3d(ed: Editor):
     await open_designer(ed, helper, "looks", "Chrome 3D")
     await click_tile(helper)
     layer = await title_look(ed)
-    ed.check("three_d" in layer, f"the tile's badge said so and the layer is 3D: {sorted(layer)}, last step '{await step_name(ed)}'")
+    ed.check_eq(await step_name(ed), "Apply Look Chrome 3D", "the tile is the 3D look")
+    ed.check("three_d" in layer, f"the tile's badge said so and the layer is 3D: {sorted(layer)}")
     await helper.key("ctrl+z")
     await helper.frames(8)
 
