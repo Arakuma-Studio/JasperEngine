@@ -3101,7 +3101,7 @@ CASES = [
         "what_happened": "New tool (S42): blurry, uneven pixel art is check_pixel_art's to measure and fix (one call to "
                          "preview, the same with output: true to apply); without the guide's entry and the result's `next` "
                          "an agent edits import settings and filters by hand, or stops at the preview.",
-        "text_at_issue": "Guide 'Other areas': 'pixel art (check_pixel_art)'; check_pixel_art: 'fix previews the changes; "
+        "text_at_issue": "tool_groups' pixel_art: 'Pixel art: checks and palettes (jasper://docs/pixel-art)'; check_pixel_art: 'fix previews the changes; "
                          "the same call with output:true applies them as one undo step'; the results' `next`",
         "source": "S42 R22 (new tool text); no failure on record",
         "prompt": "Our pixel-art game looks blurry and some sprite columns are wider than others on a 1366x768 laptop. "

@@ -45,14 +45,12 @@ def ui_of(ed: Editor) -> ui_input.Ui:
 
 
 async def wait_item(ed: Editor, label: str, window: str | None = WINDOW, frames: int = 600) -> dict:
-    ui = ui_of(ed)
-    item = await ui.find(label, window, frames=frames)
-    ed.check(item is not None, f"{label} is drawn")
-    return item
+    """drawn, and scrolled into its window's view"""
+    return await ui_of(ed).reveal(label, window, frames=frames)
 
 
 async def click(ed: Editor, label: str, window: str | None = WINDOW) -> None:
-    await ui_of(ed).click_item(label, window)
+    await ui_of(ed).click_revealed(label, window)
 
 
 async def texture(ed: Editor, entity: str, scene: str = "scenes/Main.scene"):

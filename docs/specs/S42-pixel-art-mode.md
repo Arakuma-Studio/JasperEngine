@@ -626,8 +626,10 @@ Recorded at implementation (`feature/s42-pixel-art-mode`); the code is what is t
   changed (`list_project_templates` lists the new template).
 - **R13:** fixing a GameObject of a closed scene opens the scene; scene edits are unsaved until
   `save_scene` (the result's `next` says so), as every MCP scene edit.
-- **R26:** the agent guide gets an "Other areas" entry, `pixel art (check_pixel_art)` (the ledger's
-  upstream MCP rule change), not a digest section; the rest is in `docs/mcp/guide/pixel-art.md`.
+- **R26:** no line in the agent guide: it has 6,689 of 8,192 bytes with the 1,500 bytes of headroom
+  kept, so even the ledger's "Other areas" entry (29 bytes) breaks the budget. The `pixel_art` group's
+  description, which `tool_groups` shows, names it instead ("Pixel art: checks and palettes
+  (jasper://docs/pixel-art)"); the rules, loop and rule reference are in `docs/mcp/guide/pixel-art.md`.
 - **AC1-AC3, AC6, AC9, AC14 test names** follow docs/testing.md's naming (`MipChain.NearestResize`,
   `TexturePrepare.AlphaClip`, `PixelArtImport.*`, `TextureCook.PixelArtLossless`, `PixelArtCheck.*`,
   `PixelArtPreset.PlanMatchesFixes`, `PixelArtMode.OffRegistersNothing`). The rule unit tests run on
