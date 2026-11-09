@@ -177,6 +177,9 @@ namespace jasperengine::pixelart {
         // the Engine draws it (default); the editor turns it off while a frame is not the game's
         static void setEngineDrawEnabled(bool enabled);
         static bool isEngineDrawEnabled();
+        // a view Engine::drawView draws it over too (the editor's edit-mode Game view; 0: none)
+        static void setViewDrawId(uint32_t viewId);
+        static uint32_t getViewDrawId();
 
         // the editor's preview and capture_contact_sheet: a fixed coverage (and phase) drawn as if a
         // transition of that kind ran; a negative coverage ends it

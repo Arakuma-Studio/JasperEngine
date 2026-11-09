@@ -46,7 +46,7 @@ async def test_glitch_rows(ed: Editor):
     await ui.frames()
     ed.check(await glitch_enabled(ed, sid), "the Glitch row's checkbox turns it on")
     for row in ("glitch_rgb_split", "glitch_tear_shift", "glitch_burst_rate", "glitch_seed"):
-        ed.check(await ui.find("##pp_" + row, INSPECTOR, frames=20) is not None, f"its {row} row shows")
+        ed.check(await ui.reveal("##pp_" + row, INSPECTOR) is not None, f"its {row} row shows")
     ed.check(await ui.find("Burst now", INSPECTOR, frames=6) is None, "no Burst now while stopped")
     await ed.screenshot("editor", path=str(ed.scratch.root / "glitch-rows.png"), max_width=1600)
     keep("glitch-rows.png", (ed.scratch.root / "glitch-rows.png").read_bytes())
@@ -82,6 +82,9 @@ async def test_game_view_transition_button(ed: Editor):
     await ui.click_item("##GameTransition", GAME)
     await ui.frames()
     await ui.click_item("Fade")
+    await ui.frames(10)
+    await ed.screenshot("editor", path=str(ed.scratch.root / "transition-menu.png"), max_width=1600)
+    keep("transition-menu.png", (ed.scratch.root / "transition-menu.png").read_bytes())
 
     def ink_pixels(png: bytes) -> tuple[int, int]:
         width, height, rgba = pngdiff.decode(png)
@@ -89,7 +92,7 @@ async def test_game_view_transition_button(ed: Editor):
         return ink, width * height
 
     async def shot() -> bytes:
-        await ui.frames(3)
+        await ui.frames(20)
         taken = await ed.call_raw("screenshot", {"view": "game", "max_width": 0})
         ed.check(not taken.is_error and taken.images, f"a Game view screenshot: {taken.text[:200]}")
         return taken.images[0][0]

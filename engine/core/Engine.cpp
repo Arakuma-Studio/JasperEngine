@@ -2763,6 +2763,10 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         baseLayer = false;
     }
 
+    // the screen transition over a view that previews the game (the editor's Game view in edit mode)
+    if (viewId != 0 && viewId == pixelart::ScreenTransition::getViewDrawId() && pixelart::ScreenTransition::needsDraw())
+        pixelart::ScreenTransition::draw(target);
+
     currentFrameStats = gameFrameStats;
 
     SystemRender::commit();

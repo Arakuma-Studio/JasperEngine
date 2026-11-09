@@ -66,6 +66,7 @@ namespace jasperengine::pixelart {
         uint32_t nextId = 1;
         TransitionDefaults defaults;
         bool engineDraw = true;
+        uint32_t viewDrawId = 0;
 
         struct Preview {
             bool active = false;
@@ -800,6 +801,14 @@ namespace jasperengine::pixelart {
 
     bool ScreenTransition::isEngineDrawEnabled(){
         return engineDraw;
+    }
+
+    void ScreenTransition::setViewDrawId(uint32_t viewId){
+        viewDrawId = viewId;
+    }
+
+    uint32_t ScreenTransition::getViewDrawId(){
+        return viewDrawId;
     }
 
     void ScreenTransition::setPreview(TransitionKind kind, const TransitionOptions& options, float coverage, TransitionPhase phase){

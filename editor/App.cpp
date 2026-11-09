@@ -4026,6 +4026,7 @@ void editor::App::engineRender(){
     {
         const bool playing = project.isAnyScenePlaying();
         jasperengine::pixelart::ScreenTransition::setEngineDrawEnabled(playing);
+        jasperengine::pixelart::ScreenTransition::setViewDrawId(playing ? 0 : GAME_VIEW_ID);
         if (!playing)
             jasperengine::pixelart::ScreenTransition::update(ImGui::GetIO().DeltaTime);
     }
@@ -4615,9 +4616,8 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
         layers.push_back({childScene->scene, childCamera, viewRect, false, false, false, childCanvasWidth, childCanvasHeight});
     }
 
+    // (the Game view's transition preview draws inside it: ScreenTransition::setViewDrawId)
     Engine::drawView(GAME_VIEW_ID, target, layers);
-    // the Game view's transition preview (edit mode: the Engine does not draw it)
-    jasperengine::pixelart::ScreenTransition::draw(target);
 
     gameWindow->markEditPassRendered(sceneProject.id);
     renderedSceneThisFrame = true;
@@ -4682,9 +4682,10 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
     renderSystem->setDisableClouds(false);
     renderSystem->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
+    // the Game view's transition preview: this frame is the game's, the Engine draws it over the scenes
+    jasperengine::pixelart::ScreenTransition::setEngineDrawEnabled(true);
     Engine::systemDraw();
-    // the Game view's transition preview (edit mode: the Engine does not draw it)
-    jasperengine::pixelart::ScreenTransition::draw(gameWindow->getFramebuffer());
+    jasperengine::pixelart::ScreenTransition::setEngineDrawEnabled(false);
     renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
     // the game camera's Pixel Perfect Camera laid this pass out; the editor's views lay out
