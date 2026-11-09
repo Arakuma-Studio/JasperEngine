@@ -20,6 +20,7 @@
 #include "command/CommandHistory.h"
 #include "shortcuts/CommandCatalog.h"
 #include "shortcuts/DefaultCommands.h"
+#include "titleart/interchange/TitleImport.h"
 #include "titleart/TitleArtDocument.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitlePreviewQueue.h"
@@ -352,6 +353,38 @@ TEST(TitleDesignerWindowDeathTest, SearchJumpClearsTheField) {
         EXPECT_TRUE(Access::searchText(*window).empty()) << "the field is cleared after a jump";
         EXPECT_FALSE(Access::flashRow(*window).empty()) << "the row flashes";
         EXPECT_NE(window->designer().primary().kind, NodeKind::Document);
+    });
+}
+
+// S87 R34: an SVG dropped on the Designer comes in through import_svg: from outside the assets it
+// is copied beside the document, from inside it is referenced where it is.
+TEST(TitleDesignerWindowDeathTest, DroppedSvgComesInThroughImportSvg) {
+    IN_EDITOR("dropsvg", {
+        registerTitleInterchange();
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        const fs::path file = newTitle(w, "dropsvg");
+        ASSERT_TRUE(window->open(file, nullptr));
+        const char* svg = R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#ff0000"/></svg>)";
+        const fs::path outside = fs::temp_directory_path() / ("je_dropped_badge_" + std::to_string(::getpid()) + ".svg");
+        std::ofstream(outside) << svg;
+        const auto vectors = [&]() {
+            int count = 0;
+            ta::forEachLayer(window->designer().committed().root, [&](const ta::Json& l, const ta::Json*, int) {
+                if (ta::layerTypeOf(l) == ta::LayerType::Vector) count++;
+                return true;
+            });
+            return count;
+        };
+        std::string error;
+        ASSERT_TRUE(window->dropFiles({outside.string()}, std::string(), &error)) << error;
+        EXPECT_EQ(vectors(), 1);
+        EXPECT_TRUE(fs::exists(file.parent_path() / "dropsvg_assets" / outside.filename())) << "copied beside the document";
+        const fs::path inside = file.parent_path() / "inside.svg";
+        std::ofstream(inside) << svg;
+        ASSERT_TRUE(window->dropFiles({inside.string()}, std::string(), &error)) << error;
+        EXPECT_EQ(vectors(), 2);
+        EXPECT_FALSE(fs::exists(file.parent_path() / "dropsvg_assets" / "inside.svg")) << "a file in the assets stays where it is";
+        fs::remove(outside);
     });
 }
 

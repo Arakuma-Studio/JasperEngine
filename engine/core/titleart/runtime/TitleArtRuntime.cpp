@@ -14,6 +14,7 @@
 #include "texture/Texture.h"
 #include "texture/TextureData.h"
 #include "titleart/TitleArtHash.h"
+#include "titleart/TitleTranslations.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/runtime/TitleArtLive.h"
@@ -273,6 +274,8 @@ namespace {
 }
 
 void TitleArtRuntime::setState(TitleArtLive& live, const TitleArtLiveState& given){
+    // S87 R17: a new language resolves the document again; the hash below follows it
+    live.setLanguage(given.language);
     const TitleArtLiveState state = withTiers(given);
     live.setLiveBudgetMs(TitleArtScheduler::get().liveBudgetMs());
     // R55: with a Characters set (the editor's Play simulating the build), characters outside it
@@ -560,6 +563,15 @@ void TitleArtRuntime::setPrebaked(TitleArtLive& live, const std::string& texture
     const TitleArtRectI& region = live.state().region;
     image.frame = {region.x, region.y, region.width, region.height};
     live.setPrebaked(std::move(image));
+}
+
+bool TitleArtRuntime::readLanguages(const std::string& titlePath, std::vector<std::string>& out, std::string* error){
+    out.clear();
+    std::shared_ptr<const TitleArtDoc> doc = loadDocument(titlePath, error);
+    if (!doc) return false;
+    out = titleLanguageCodes(doc->root);
+    if (titleSourceLanguage(doc->root).empty()) out.insert(out.begin(), std::string());
+    return true;
 }
 
 bool TitleArtRuntime::readExposed(const std::string& titlePath, std::vector<TitleArtExposedParam>& out, std::string* error){

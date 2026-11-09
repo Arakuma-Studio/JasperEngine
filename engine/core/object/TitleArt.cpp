@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArt.h"
+#include "util/TitleArtLanguage.h"
 
 #include "titleanim/TitleAnimPlayer.h"
 
 #include "Log.h"
 #include "Scene.h"
+#include "System.h"
 #include "subsystem/TitleArtSystem.h"
 
 #include <algorithm>
@@ -389,6 +391,70 @@ FunctionSubscribe<void(const std::string&)>& TitleArt::getOnAnimationFinished(){
     static FunctionSubscribe<void(const std::string&)> none;
     TitleArtRendererComponent* c = component();
     return c ? TitleArtSystem::instanceOf(*c).onAnimationFinished : none;
+}
+
+// ---- languages (S87) ----
+
+std::string TitleArt::getLanguage() const{
+    TitleArtRendererComponent* c = component();
+    return c ? c->language : std::string();
+}
+
+void TitleArt::setLanguage(const std::string& code){
+    TitleArtRendererComponent* c = component();
+    if (!c) return;
+    // a tag the title lacks is no error: it resolves to its best match (getResolvedLanguage)
+    c->language = TitleArtLanguage::canonicalize(code);
+}
+
+std::string TitleArt::getResolvedLanguage() const{
+    TitleArtRendererComponent* c = component();
+    return c ? TitleArtSystem::instanceOf(*c).resolvedLanguage : std::string();
+}
+
+std::vector<std::string> TitleArt::getLanguages() const{
+    TitleArtRendererComponent* c = component();
+    return c ? TitleArtSystem::instanceOf(*c).languages : std::vector<std::string>();
+}
+
+bool TitleArt::isLanguageReady() const{
+    TitleArtRendererComponent* c = component();
+    if (!c) return false;
+    const titleart::TitleArtInstance& instance = TitleArtSystem::instanceOf(*c);
+    // a change made this frame reaches the system at its next update: a script that asks right
+    // after setLanguage must not read the old language's "ready"
+    if (!instance.languages.empty() && (instance.languageGeneration != TitleArtLanguage::generation() || instance.languageAsked != c->language)){
+        const std::string& source = instance.languages.front();
+        std::string picked = TitleArtLanguage::resolve(TitleArtLanguage::candidates(c->language, System::instance().getPreferredLocales(), source),
+                                                       instance.languages);
+        if (picked.empty()) picked = source;
+        if (picked != instance.shownLanguage) return false;
+    }
+    return instance.languageReady;
+}
+
+FunctionSubscribe<void(const std::string&)>& TitleArt::getOnLanguageReady(){
+    static FunctionSubscribe<void(const std::string&)> none;
+    TitleArtRendererComponent* c = component();
+    return c ? TitleArtSystem::instanceOf(*c).onLanguageReady : none;
+}
+
+bool TitleArt::setGlobalLanguage(const std::string& code, std::string* error){
+    getOnLanguageChanged();     // the listener exists before the first change
+    return TitleArtLanguage::setGlobal(code, error);
+}
+
+std::string TitleArt::getGlobalLanguage(){
+    return TitleArtLanguage::global();
+}
+
+FunctionSubscribe<void(const std::string&)>& TitleArt::getOnLanguageChanged(){
+    static FunctionSubscribe<void(const std::string&)>* event = []{
+        auto* e = new FunctionSubscribe<void(const std::string&)>();
+        TitleArtLanguage::addListener([e](const std::string& code){ e->call(code); });
+        return e;
+    }();
+    return *event;
 }
 
 void TitleArt::setFrameBudget(double ms){

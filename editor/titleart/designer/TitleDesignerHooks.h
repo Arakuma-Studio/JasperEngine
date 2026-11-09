@@ -55,6 +55,16 @@ namespace jasperengine::editor::titledesigner {
     void removeToolbarItem(const std::string& id);
     const std::vector<ToolbarItemDef>& toolbarItems();
 
+    // ---- canvas overlays (S87's fit boxes and language badge) ----
+    struct CanvasOverlayDef {
+        std::string id;
+        // drawn over the canvas image; `xform` maps document space (the device placement applied)
+        std::function<void(TitleDesignerState& state, ImDrawList* drawList, ImVec2 canvasMin, ImVec2 canvasMax, const CanvasXform& xform)> draw;
+    };
+    void addCanvasOverlay(CanvasOverlayDef overlay);
+    void removeCanvasOverlay(const std::string& id);
+    const std::vector<CanvasOverlayDef>& canvasOverlays();
+
     // ---- edits and time (S85) ----
     using EditRouter = std::function<Json(const Json& ops)>;
     void setEditRouter(EditRouter router);

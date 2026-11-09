@@ -49,7 +49,9 @@ namespace jasperengine::editor {
         std::vector<std::string> backgrounds = {"black", "white"};
         std::optional<int> displayHeightPx;         // S82's Device view: legibility at that height
         std::string baseline;                       // png path or "rev:<n>" (the golden check)
-        std::string language;                       // S87: checks run per language
+        std::string language;                       // S87: the language a per-language run is for ("" = the source)
+        std::vector<std::string> languages;         // S87: the languages to check (empty: every language of the document)
+        std::vector<std::string> projectLanguages;  // S87: the project's localization.languages
         std::string animation;                      // S85
         bool failOnWarn = false;                    // fail_on: "warn"
     };
@@ -70,6 +72,9 @@ namespace jasperengine::editor {
         // ("scene Main: Logo (realtime)"), when the caller read the project (check_title, check
         // --titles); unset when it did not: S83's runtime checks then take it as a runtime title
         std::optional<std::vector<std::string>> runtimeInstances;
+        // S87: in a per-language run, the document as stored (`doc` is the one resolved for
+        // options.language); null otherwise
+        const titleart::TitleArtDoc* source = nullptr;
         // renders a request through the caller's renderer and reads it back; null for checks run
         // without a GPU (their pixel checks report SKIP)
         std::function<bool(const titleart::RenderRequest& request, TitleCheckImage& out, std::string& error)> render;
@@ -95,6 +100,7 @@ namespace jasperengine::editor {
         std::string message;
         titleart::Json fix;                         // {ops: [...]} ready for edit_title, or null
         std::string method;                         // how it measured
+        std::string language;                       // S87: the language it is about ("" = none)
 
         titleart::Json toJson() const;
     };
@@ -105,6 +111,9 @@ namespace jasperengine::editor {
         std::string owner = "S80";
         std::string group;                          // `checks` may name a group ("anim")
         std::string description;
+        // S87: runs again for each translation language of a multilingual document, on the
+        // document resolved for it (glyphs_present, bake_fresh); results carry the language
+        bool perLanguage = false;
         // appends its results (one, or one per rule)
         std::function<void(TitleCheckContext& context, std::vector<TitleCheckResult>& out)> run;
     };
@@ -116,6 +125,9 @@ namespace jasperengine::editor {
 
         titleart::Json toJson() const;
     };
+
+    // S87: the document's languages a check run covers (options.languages, else every one)
+    std::vector<std::string> titleCheckLanguages(const TitleCheckContext& context);
 
     class TitleArtChecks {
     public:

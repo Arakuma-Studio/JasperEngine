@@ -13,6 +13,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "profiler/Profile.h"
 #include "titleart/designer/TitleAddCatalog.h"
+#include "util/FileDialogs.h"
 
 #include "imgui.h"
 
@@ -194,7 +195,18 @@ void TitleDesignerWindow::drawAddPalette() {
             previewAddEntry(*previewing);
         }
     }
-    if (chosen && doc.editable()) {
+    if (chosen && chosen->id == "layer:vector") {
+        // R34: a picker action, the chosen file goes through dropFiles
+        if (doc.editable()) {
+            doc.clearPreview();
+            const std::string file = FileDialogs::openFileDialogFiltered("", "SVG", "svg");
+            std::string error;
+            if (!file.empty() && !dropFiles({file}, std::string(), &error)) reportError(error);
+        }
+        addHovered.clear();
+        addOpen = false;
+        ImGui::CloseCurrentPopup();
+    } else if (chosen && doc.editable()) {
         std::string error;
         if (!addEntry(*chosen, &error)) reportError(error);
         addHovered.clear();

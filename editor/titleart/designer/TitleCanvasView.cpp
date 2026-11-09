@@ -132,7 +132,7 @@ void TitleCanvasView::clear() {
 
 bool TitleCanvasView::sameRender(const CanvasRenderRequest& a, const CanvasRenderRequest& b) {
     return a.doc == b.doc && a.docChange == b.docChange && a.pxScale == b.pxScale && a.region == b.region && a.draft == b.draft &&
-           a.includeGuides == b.includeGuides && a.assets == b.assets && a.testFlags == b.testFlags && a.tier == b.tier &&
+           a.includeGuides == b.includeGuides && a.assets == b.assets && a.testFlags == b.testFlags && a.tier == b.tier && a.language == b.language &&
            sameOverrides(a.overrides, b.overrides);
 }
 
@@ -178,6 +178,7 @@ void TitleCanvasView::startJob(const CanvasRenderRequest& request) {
     render.overrides = request.overrides;
     render.testFlags = request.testFlags;
     render.tier = request.tier;
+    render.language = request.language;
     render.output = ta::TitleOutputFormat::Srgb8;
     render.assets = request.assets;
     std::string error;

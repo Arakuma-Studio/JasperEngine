@@ -5324,6 +5324,7 @@ Measures a .titleart: PASS/WARN/FAIL per check with measured value, threshold, c
 | `baseline` | string |  | PNG or rev:<n>. |
 | `checks` | array of string |  |  |
 | `fail_on` | `"fail"` \| `"warn"` |  | Default: `"fail"`. |
+| `languages` | string or array |  |  |
 | `path` | string | yes |  |
 | `save_baseline` | string |  | PNG path. |
 | `screenshot` | `"on_failure"` \| `"always"` \| `"never"` |  | Default: `"on_failure"`. |
@@ -5356,7 +5357,7 @@ Edits a .titleart with ops, all or nothing, one undo step. Ops: set {layer?, val
 
 Group: `title_art` (listed once `tool_groups` enables it, callable either way). Hints: idempotent
 
-Bakes a .titleart's outputs (all, or `outputs` ids) to PNGs with recipes and the bake sidecar as a job; fresh ones are skipped unless force. dry_run reports files, sizes, bytes and VRAM without writing. Outputs are configured with edit_title (set outputs[i].scale). format: bake here; others arrive with later specs.
+Bakes a .titleart's outputs (all, or `outputs` ids) to PNGs with recipes and the bake sidecar as a job; fresh ones are skipped unless force. dry_run reports files, sizes, bytes and VRAM without writing. Outputs are configured with edit_title (set outputs[i].scale). Other formats write files to out (jasper://docs/title-art).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -5364,9 +5365,11 @@ Bakes a .titleart's outputs (all, or `outputs` ids) to PNGs with recipes and the
 | `dry_run` | boolean |  |  |
 | `force` | boolean |  |  |
 | `format` | `"bake"` \| `"glb"` \| `"png"` \| `"psd"` \| `"svg"` \| `"sheet"` \| `"atlas"` \| `"sequence"` \| `"ktx2"` \| `"csv"` \| `"xliff"` |  | Default: `"bake"`. |
+| `languages` | string or array |  |  |
 | `options` | object |  |  |
+| `out` | string |  |  |
 | `outputs` | array of string |  |  |
-| `path` | string | yes |  |
+| `path` | string or array | yes |  |
 | `timeout_seconds` | number |  | Default: `120`. |
 | `wait` | boolean |  | Default: `true`. |
 
@@ -5385,6 +5388,7 @@ Reads a .titleart: rev, canvas, layers (path, id, type, text, font, parts, effec
 | `detail` | `"outline"` \| `"overrides"` \| `"full"` |  | Default: `"outline"`. |
 | `entity` | integer or string |  |  |
 | `fields` | array of string |  |  |
+| `language` | string |  |  |
 | `layer` | string |  |  |
 | `path` | string |  |  |
 | `scene` | integer or string |  |  |

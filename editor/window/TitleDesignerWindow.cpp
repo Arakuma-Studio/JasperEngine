@@ -1564,6 +1564,12 @@ bool TitleDesignerWindow::dropFiles(const std::vector<std::string>& files, const
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return (char)std::tolower(c); });
         fs::path absolute = FileUtils::pathFromUtf8(file);
         if (!absolute.is_absolute()) absolute = project->getProjectPath() / absolute;
+        // R34: an SVG comes in through import_svg (a file outside the assets is copied beside the document)
+        if (ext == ".svg") {
+            ops.push_back({{"op", "import_svg"}, {"file", absolute.generic_string()}});
+            name = "Add Layer Vector (SVG)";
+            continue;
+        }
         std::error_code ec;
         const fs::path relative = fs::relative(absolute, project->getAssetsPath(), ec);
         const std::string assetPath = ec ? std::string() : relative.generic_string();
@@ -1574,9 +1580,6 @@ bool TitleDesignerWindow::dropFiles(const std::vector<std::string>& files, const
         if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" || ext == ".tga" || ext == ".bmp") {
             ops.push_back({{"op", "add_layer"}, {"type", "image"}, {"name", fs::path(file).stem().string()}, {"values", {{"image", {{"path", assetPath}, {"guid", ""}}}}}});
             name = "Add Layer Image";
-        } else if (ext == ".svg") {
-            ops.push_back({{"op", "add_layer"}, {"type", "vector"}, {"name", fs::path(file).stem().string()}, {"values", {{"svg", {{"path", assetPath}, {"guid", ""}}}}}});
-            name = "Add Layer Vector (SVG)";
         } else if (ext == ".ttf" || ext == ".otf" || ext == ".ttc") {
             std::string target = underLayer;
             if (target.empty()) {

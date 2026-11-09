@@ -207,6 +207,9 @@ namespace jasperengine{
         void applyLending(Entity entity, titleart::TitleArtInstance& instance, bool lending, bool realtime);
         void restoreCompanion(Entity entity, titleart::TitleArtInstance& instance);
         void updateStatus(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance);
+        // S87 R12-R15, R27: which language the title shows, and the Baked switch to its set
+        void updateLanguage(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance);
+        void finishLanguageSwitch(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance);
         void subscribeEvents(Entity entity);
         // S85: the library, the frame's player update and its markers, the companion's draw values
         static void loadAnimations(EntityRegistry* scene, Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance);

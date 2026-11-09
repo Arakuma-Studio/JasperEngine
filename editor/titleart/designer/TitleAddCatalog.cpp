@@ -149,7 +149,9 @@ std::vector<AddEntry> jasperengine::editor::titledesigner::buildAddEntries(const
                   "A " + enumLabel(shape) + " shape with rims and materials like text");
         }
         layer("Layers", "image", "Image...", Json{{"op", "add_layer"}, {"type", "image"}}, "A picture from the project (drop a Texture on the tree)");
-        layer("Layers", "vector", "Vector (SVG)...", Json{{"op", "add_layer"}, {"type", "vector"}}, "An SVG from the project");
+        // S87 R34: a picker action (no preview): the chosen file goes through dropFiles
+        layer("Layers", "vector", "Vector (SVG)...", Json{{"op", "add_layer"}, {"type", "vector"}}, "An SVG file, split into layers if you ask (import_svg)");
+        out.back().ops = Json::array();
         layer("Layers", "group", "Group", Json{{"op", "add_layer"}, {"type", "group"}}, "A folder of layers");
         std::vector<std::string> adjustments;
         if (const ta::SchemaKind* kind = ta::TitleArtSchema::get().kind("adjustment")) {

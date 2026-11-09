@@ -268,11 +268,15 @@ TEST_F(TitleArtSchemaTest, ReservedNamesNameTheirOwner) {
     EXPECT_EQ(runtime->owner, "S81");
     EXPECT_EQ(schema.reservedOwner("document", "scene_3d"), S86_OWNER);
     EXPECT_EQ(schema.reservedOwner("document", "color_schemes"), "S84");
-    EXPECT_EQ(schema.reservedOwner("document", "languages"), "S87");
+    // S87 registered its members (TitleTranslations.cpp)
+    EXPECT_EQ(schema.reservedOwner("document", "languages"), "");
+    ASSERT_NE(schema.member(*schema.kind("document"), "languages"), nullptr);
+    EXPECT_EQ(schema.member(*schema.kind("document"), "languages")->owner, "S87");
     EXPECT_EQ(schema.reservedOwner("transform", "z"), S86_OWNER);
-    EXPECT_EQ(schema.reservedOwner("layer.text", "translations"), "S87");
-    EXPECT_EQ(schema.reservedOwner("layer.text", "only_languages"), "S87") << "a variant has its base's reservations";
-    EXPECT_EQ(schema.reservedOwner("layer.text", "tint"), "");
+    EXPECT_EQ(schema.reservedOwner("layer.text", "translations"), "");
+    EXPECT_EQ(schema.member(*schema.kind("layer.text"), "translations")->owner, "S87");
+    EXPECT_EQ(schema.reservedOwner("layer.text", "only_languages"), "") << "S87 registered its layer members";
+    EXPECT_EQ(schema.reservedOwner("layer.text", "tint"), "") << "S85 registered tint";
     EXPECT_EQ(schema.reservedOwner("char_adjust", "rig"), S86_OWNER);
     EXPECT_EQ(schema.reservedOwner("document", "variants"), "") << "S87 released `variants`";
 }

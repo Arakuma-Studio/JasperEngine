@@ -55,9 +55,11 @@ namespace jasperengine::editor {
         // not a Title Art). A newer version opens read-only.
         static std::shared_ptr<TitleArtDocument> open(Project* project, const std::string& path, std::string* error);
         // a new file (refused when it exists) holding `doc` (makeNewTitleArt's when null; its GUID
-        // kept when it has a valid one), as one project undo step named `undoName`
+        // kept when it has a valid one), as one project undo step named `undoName`; `files` (S87's imports: fonts, images,
+        // split SVGs) are written in the same step
         static std::shared_ptr<TitleArtDocument> create(Project* project, const std::string& path, const titleart::TitleArtDoc* doc,
-                                                        const std::string& undoName, std::string* error);
+                                                        const std::string& undoName, std::string* error,
+                                                        const std::vector<TitleOpFile>& files = {});
         // reload the documents of these files; listeners notified with `origin` (the history's
         // undo and redo by default; a hot reload of an outside edit passes Disk)
         static void filesChanged(const std::vector<std::filesystem::path>& paths, TitleArtChangeOrigin origin = TitleArtChangeOrigin::History);
@@ -102,8 +104,9 @@ namespace jasperengine::editor {
 
         // writes `doc` (normalized; this document's GUID kept) as one undo step named `undoName`;
         // false + `error` when it is read-only, cannot be written or changed on disk meanwhile
+        // `files` are written in the same undo step (an op batch's TitleOpsResult::files)
         bool commit(const titleart::TitleArtDoc& doc, const std::string& undoName, const std::string& mergeKey, std::string* error,
-                    TitleArtChangeOrigin origin = TitleArtChangeOrigin::Person);
+                    TitleArtChangeOrigin origin = TitleArtChangeOrigin::Person, const std::vector<TitleOpFile>& files = {});
         // a whole-document text (S82's Restore This Version): parsed, normalized, this document's
         // GUID kept, one undo step
         bool commitText(const std::string& text, const std::string& undoName, std::string* error,
@@ -139,7 +142,7 @@ namespace jasperengine::editor {
 
         bool load(const std::string& newText, std::string* error);
         bool write(const std::string& newText, const std::string& undoName, const std::string& mergeKey, std::string* error,
-                   TitleArtChangeOrigin origin);
+                   TitleArtChangeOrigin origin, const std::vector<TitleOpFile>& files = {});
         void notify(TitleArtChangeOrigin origin);
     };
 

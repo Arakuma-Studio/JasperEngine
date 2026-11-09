@@ -84,7 +84,9 @@ TEST_F(TitleArtIOTest, EveryMemberIsWrittenWithItsDefault) {
     std::vector<std::string> order;
     for (auto it = root.begin(); it != root.end(); ++it) order.push_back(it.key());
     std::vector<std::string> expected = {"format", "version", "guid", "name", "canvas", "global_light", "seed",
-                                         "material_links", "layers", "exposed", "outputs", "runtime"};
+                                         "material_links", "layers", "exposed", "outputs", "runtime",
+                                         // S87's members (TitleTranslations.cpp)
+                                         "source_language", "languages", "string_namespace", "dpi", "import_notes"};
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
     expected.push_back("scene_3d");     // S86's member (null in a 2D document)
 #endif

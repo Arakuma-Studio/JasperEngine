@@ -119,6 +119,15 @@ void editor::InspectorWindow::drawTitleArtRendererComponent(ComponentType cpType
     drive.help = "Name of an animation that follows Animation Time instead of the clock (empty: None)";
     drive.stringSuggestions = &animationChoices;
     propertyRow(RowPropertyType::String, cpType, "driveAnimation", "Drive Animation", sceneProject, entities, drive);
+    // S87 R56: Language, empty = Auto (Device); the help lists what the title offers
+    if (!instance.languages.empty()){
+        RowSettings language;
+        std::string offered;
+        for (const std::string& code : instance.languages) offered += (offered.empty() ? "" : ", ") + code;
+        language.help = "Empty: Auto (Device): TitleArt.setLanguage, the device's languages, the project's default, the source. "
+                        "This title offers " + offered + (instance.resolvedLanguage.empty() ? "" : "; it shows " + instance.resolvedLanguage) + ".";
+        propertyRow(RowPropertyType::String, cpType, "language", "Language", sceneProject, entities, language);
+    }
     endTable();
 
     if (!title->title.path.empty() && InspectorWindowTitleArt::canOpenInDesigner()){

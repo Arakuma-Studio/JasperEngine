@@ -242,6 +242,7 @@ void TitleDesignerWindow::requestCanvasRender() {
     request.assets = &transient;
     // S86's Realtime tiers in Preview As: the canvas as that tier renders it
     request.tier = mode ? mode->renderTier : 0;
+    request.language = doc.language();
     if (const TimeSource& time = timeSource()) {
         // S85's playhead reaches the canvas as overrides it samples; the time feeds the key
         request.docChange ^= (uint64_t)std::llround(time() * 1000.0) << 20;
@@ -847,6 +848,18 @@ void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
     const ta::TitleArtDoc& shown = doc.shown();
     const TitleRect stage = stageRect();
     const ImVec2 stageMin = xform.toScreen({stage.x, stage.y + stage.height}), stageMax = xform.toScreen({stage.x + stage.width, stage.y});
+
+    // registered overlays (S87's fit boxes) in document space, the device placement applied
+    if (!canvasOverlays().empty()) {
+        double scale = 1.0, ox = 0.0, oy = 0.0;
+        devicePlacement(v, stage, shown, scale, ox, oy);
+        CanvasXform placed = xform;
+        placed.origin = xform.toScreen({ox, oy});
+        placed.zoom = (float)(xform.zoom * scale);
+        for (const CanvasOverlayDef& overlay : canvasOverlays()) {
+            if (overlay.draw) overlay.draw(doc, dl, stageMin, stageMax, placed);
+        }
+    }
 
     // device frame and safe areas (R31)
     if (!v.device.profile.empty() && v.safeAreas) {

@@ -84,6 +84,10 @@ namespace jasperengine::titleart {
         OutputContent content = OutputContent::All;
         std::vector<std::string> contentLayers;     // OutputContent::Layers: these layer ids
         std::vector<FieldOverride> overrides;       // applied to the snapshot copy (applyFieldOverrides)
+        // S87: the language to draw ("" = the source): the snapshot copy is the document resolved
+        // for it (TitleTranslations.h), then the overrides, then fit (TitleFit.h); a monolingual
+        // document without fit is drawn as it is
+        std::string language;
         std::vector<std::string> keepSplits;        // layer ids whose own composite is kept as a split
         // S81 R9: the live inputs (titleLive*Key) to keep (TitleSplits::live); their layers and
         // ancestors are planned, never read from the node cache

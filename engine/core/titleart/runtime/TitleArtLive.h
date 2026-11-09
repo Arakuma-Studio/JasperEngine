@@ -200,6 +200,10 @@ namespace jasperengine::titleart {
         bool has3D() const { return hasLayers3D; }
         // what the export cooked for it (a build's; none in the editor)
         void setCooked3D(std::shared_ptr<TitleCooked3DSource> source) { cooked3D = std::move(source); }
+        // S87 R17: the document resolved for `code` ("" = the source) becomes the one rendered
+        // (Glyph Atlas: its plan made again and a new atlas for it); false when it already is
+        bool setLanguage(const std::string& code);
+        const std::string& language() const { return languageCode; }
 
         // ---- the state (TitleArtSystem, once a frame) ----
         void setState(const TitleArtLiveState& state, uint64_t stateHash, std::vector<FieldOverride> overrides);
@@ -344,6 +348,9 @@ namespace jasperengine::titleart {
         uint64_t renderCount = 0, liveCount = 0;
         bool hasLayers3D = false;
         std::shared_ptr<TitleCooked3DSource> cooked3D;
+        // S87: the document as stored, and the language `doc` is resolved for
+        std::shared_ptr<const TitleArtDoc> sourceDoc;
+        std::string languageCode;
 
         TitleArtLiveState wanted;
         uint64_t wantedHash = 0;

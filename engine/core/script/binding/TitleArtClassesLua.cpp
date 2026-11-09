@@ -315,6 +315,14 @@ namespace {
         return options;
     }
 
+    // TitleArt.setLanguage(code): an invalid tag raises (S81 §6.6's sentence form), nothing changes
+    int setGlobalLanguage(lua_State* L){
+        const char* code = luaL_checkstring(L, 1);
+        std::string error;
+        if (!TitleArt::setGlobalLanguage(code, &error)) return luaL_error(L, "TitleArt: %s.", error.c_str());
+        return 0;
+    }
+
     int play(lua_State* L){
         TitleArt* self = titleSelf(L);
         const char* name = luaL_checkstring(L, 2);
@@ -398,6 +406,16 @@ void LuaBinding::registerTitleArtClasses(lua_State *L){
                                             [](TitleArt* self, lua_State* L) { self->getOnMissingCharacters() = L; })
         .addProperty("onAnimationFinished", [](TitleArt* self) { return &self->getOnAnimationFinished(); },
                                             [](TitleArt* self, lua_State* L) { self->getOnAnimationFinished() = L; })
+        // S87: the renderer's language ("" = Auto) and its events
+        .addProperty("language", &TitleArt::getLanguage, &TitleArt::setLanguage)
+        .addProperty("onLanguageReady", [](TitleArt* self) { return &self->getOnLanguageReady(); },
+                                        [](TitleArt* self, lua_State* L) { self->getOnLanguageReady() = L; })
+        .addFunction("getResolvedLanguage", &TitleArt::getResolvedLanguage)
+        .addFunction("getLanguages", +[](const TitleArt* self, lua_State* L) { return stringList(L, self->getLanguages()); })
+        .addFunction("isLanguageReady", &TitleArt::isLanguageReady)
+        .addStaticFunction("setLanguage", &setGlobalLanguage)
+        .addStaticFunction("getLanguage", &TitleArt::getGlobalLanguage)
+        .addStaticProperty("onLanguageChanged", +[]() { return &TitleArt::getOnLanguageChanged(); })
         .addFunction("setParameter", &setParameter)
         .addFunction("getParameter", &getParameter)
         .addFunction("hasParameter", &TitleArt::hasParameter)
@@ -431,7 +449,7 @@ void LuaBinding::registerTitleArtClasses(lua_State *L){
 
     // the Title Art Renderer of the GameObject, nil when it has none (reviewed neutral, R67)
     luabridge::getGlobalNamespace(L)
-        .deriveClass<GameObject, EntityHandle>("GameObject")
+        .beginClass<GameObject>("GameObject")
         .addFunction("getTitleArt", +[](GameObject* self) -> std::optional<TitleArt> {
             Scene* scene = self->getScene();
             if (!scene || !scene->isEntityCreated(self->getEntity()) || !scene->isComponentRegistered<TitleArtRendererComponent>() ||

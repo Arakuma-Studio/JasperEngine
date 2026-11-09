@@ -73,7 +73,9 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
         {RootKind::Project, {"formatVersion", "android", "apple", "application", "assetLabels", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "debug", "device", "dynamicBatching", "export", "foliageDistanceScale", "graphics", "htmlUiGlyphAtlasMiB", "htmlUiMsaaSamples", "htmlUiSdfPrimitives", "htmlUiTransformAwareText", "ignoredLayerCollisions", "input", "ios", "layers", "linux", "loading", "luaDir", "macos", "mesh", "mobilePbrTier", "name", "navigation", "packNativeResources", "physics2D", "physics3D", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "shaderCreation", "standalonePrefabs", "startSceneId", "tags", "texture", "textureStrategy", "threading", "titleArt", "versionControl", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
             "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor",
             // upstream's project.yaml blocks (SYNC#4): the editor writes and reads them
-            "audio", "physics3DWorld", "playerCrash", "presentation", "shaderGlobals", "uiScale"}},
+            "audio", "physics3DWorld", "playerCrash", "presentation", "shaderGlobals", "uiScale",
+            // S87: Project Settings > Localization
+            "localization"}},
         {RootKind::Material, {}},
         {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped"}},
     };

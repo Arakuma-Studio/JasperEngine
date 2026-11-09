@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArtLive.h"
+#include "titleart/TitleTranslations.h"
+#include "titleart/TitleArtHash.h"
 #include "TitleArtScheduler.h"
 
 #include "Log.h"
@@ -283,7 +285,7 @@ namespace {
 }
 
 TitleArtLive::TitleArtLive(std::string titlePath, TitleArtRenderMode mode, std::shared_ptr<const TitleArtDoc> document, uint64_t documentHash)
-    : path(std::move(titlePath)), renderMode(mode), doc(std::move(document)), docHash(documentHash){
+    : path(std::move(titlePath)), renderMode(mode), doc(std::move(document)), docHash(documentHash), sourceDoc(doc){
     // R9: only Realtime composes live (Glyph Atlas lays its glyphs out instead)
     if (renderMode == TitleArtRenderMode::REALTIME && doc) keepLive = titleLiveKeeps(*doc);
     if (doc){
@@ -292,6 +294,22 @@ TitleArtLive::TitleArtLive(std::string titlePath, TitleArtRenderMode mode, std::
             return !hasLayers3D;
         });
     }
+}
+
+bool TitleArtLive::setLanguage(const std::string& code){
+    if (code == languageCode || !sourceDoc || !titleIsMultilingual(sourceDoc->root)) return false;
+    languageCode = code;
+    doc = std::make_shared<const TitleArtDoc>(resolveTitleLanguage(*sourceDoc, code));
+    docHash = hashTitleArt(*doc).document;
+    // R9: the resolved document's Exposed targets decide what full renders keep
+    if (renderMode == TitleArtRenderMode::REALTIME) keepLive = titleLiveKeeps(*doc);
+    if (renderMode == TitleArtRenderMode::GLYPH_ATLAS){
+        // the atlas is keyed by (document, language): the new language's glyphs render into a
+        // new one; the running job keeps the old until the new image swaps in
+        glyphPlan = planTitleGlyphAtlas(*doc);
+        atlas.reset();
+    }
+    return true;
 }
 
 TitleArtLive::~TitleArtLive(){
@@ -320,6 +338,8 @@ uint64_t TitleArtLive::renderKeyOf(const TitleArtLiveState& state) const{
     uint64_t key = hashCombine((uint64_t)std::llround(state.resolution * 8.0f), ((uint64_t)(uint32_t)state.region.x << 32) ^ (uint32_t)state.region.y);
     key = hashCombine(key, ((uint64_t)(uint32_t)state.region.width << 32) ^ (uint32_t)state.region.height);
     key = hashCombine(key, ((uint64_t)state.testFlags << 8) ^ (state.glowOutput ? 1u : 2u) ^ (titleArtForceRgba8() ? 4u : 8u));
+    // a language resolves another document: the inputs a render kept are the old language's
+    key = hashCombine(key, fnv1a64(state.language));
     return hashCombine(key, ((uint64_t)(uint32_t)state.fxTier << 16) ^ (uint32_t)state.tier);
 }
 

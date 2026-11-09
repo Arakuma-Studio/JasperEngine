@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "window/TitleArtInterchangeWindows.h"
 #include "render/ViewCameraMirror.h"
 #include "component/Transform.h"
 #include "component/CameraShakerComponent.h"
@@ -686,6 +687,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("assets.delete", "Delete"),
         menuSeparator(),
         catalogItem("assets.import"),
+        catalogItem("assets.importTitleArt"),
         catalogItem("assets.refresh"),
         catalogItem("assets.reimportTextures"),
         catalogItem("assets.importSoundEssentials"),
@@ -2990,6 +2992,8 @@ void editor::App::show(){
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
     titleDesignerWindow->show();
+    // S87: Import Title Art, its report and the Title Designer's Export
+    drawTitleArtInterchangeWindows(&project);
     // also the tick of the Scene view's physics sessions, with the panel closed too
     physicsPlacementWindow->show();
     inspectorWindow->show();

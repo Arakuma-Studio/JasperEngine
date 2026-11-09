@@ -49,6 +49,8 @@
 #include "command/type/ThreadingSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
 #include "titleart/TitleArtSettingsCmd.h"
+#include "titleart/localisation/TitleLanguageNames.h"
+#include "util/TitleArtLanguage.h"
 #include "model/ModelCookQueue.h"
 #include "model/ModelSettingsCmd.h"
 #include "command/type/ShaderGlobalsCmd.h"
@@ -208,6 +210,7 @@ enum class ProjectCategory {
     Navigation,
     Mesh,
     TitleArt,
+    Localization,
     Count
 };
 
@@ -1103,6 +1106,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_deviceSettings = project->getDeviceSettings();
     m_navigation = project->getNavigationSettings();
     m_titleArt = project->getTitleArtSettings();
+    m_localization = project->getLocalizationSettings();
+    m_localizationInput[0] = '\0';
     m_audioSettings = project->getAudioSettings();
     snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
     snprintf(m_audioDefaultGroupBuffer, sizeof(m_audioDefaultGroupBuffer), "%s", m_audioSettings.defaultOutputGroup.c_str());
@@ -1230,6 +1235,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Navigation: drawNavigationSettings(); break;
         case ProjectCategory::Mesh: drawMeshSettings(); break;
         case ProjectCategory::TitleArt: drawTitleArtSettings(); break;
+        case ProjectCategory::Localization: drawLocalizationSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -3230,6 +3236,64 @@ void ProjectSettingsWindow::drawTitleArtSettings() {
             ImGui::EndTable();
         }
         drawSectionNote("Baked PNGs ship as ordinary textures; a .titleart ships only when a Realtime or Glyph Atlas title reads it.");
+    }
+    endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawLocalizationSettings() {
+    if (beginSettingsPanel("##LocalizationSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("localization.languages")) {
+                if (projectBeginSettingsRow("Languages", !m_localization.languages.empty())) m_localization.languages.clear();
+                int remove = -1, up = -1;
+                for (size_t i = 0; i < m_localization.languages.size(); i++) {
+                    ImGui::PushID((int)i);
+                    ImGui::TextUnformatted(titleLanguageLabel(m_localization.languages[i]).c_str());
+                    ImGui::SameLine();
+                    if (i > 0 && ImGui::SmallButton("Up")) up = (int)i;
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Remove")) remove = (int)i;
+                    ImGui::PopID();
+                }
+                if (remove >= 0) m_localization.languages.erase(m_localization.languages.begin() + remove);
+                if (up > 0) std::swap(m_localization.languages[(size_t)up], m_localization.languages[(size_t)up - 1]);
+                ImGui::SetNextItemWidth(160.0f);
+                ImGui::InputTextWithHint("##LocalizationAdd", "de, pt-BR, zh-Hant", m_localizationInput, sizeof(m_localizationInput));
+                ImGui::SameLine();
+                std::string error;
+                const bool valid = TitleArtLanguage::isValid(m_localizationInput, &error);
+                ImGui::BeginDisabled(!valid);
+                if (ImGui::Button("Add")) {
+                    const std::string code = TitleArtLanguage::canonicalize(m_localizationInput);
+                    if (std::find(m_localization.languages.begin(), m_localization.languages.end(), code) == m_localization.languages.end()) {
+                        m_localization.languages.push_back(code);
+                    }
+                    m_localizationInput[0] = '\0';
+                }
+                ImGui::EndDisabled();
+                if (!valid && m_localizationInput[0]) ImGui::TextDisabled("%s", error.c_str());
+                endSettingsRow("The languages the game ships, in order. Title Art bakes and fonts of other languages are left out of "
+                               "builds with a warning. Empty ships every language of every title.");
+            }
+            if (settingsui::beginRow("localization.default_language")) {
+                if (projectBeginSettingsRow("Default Language", !m_localization.defaultLanguage.empty())) m_localization.defaultLanguage.clear();
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                const std::string shown = m_localization.defaultLanguage.empty() ? "Auto (" + m_localization.effectiveDefault() + ")"
+                                                                                 : titleLanguageLabel(m_localization.defaultLanguage);
+                if (ImGui::BeginCombo("##LocalizationDefault", shown.c_str())) {
+                    if (ImGui::Selectable("Auto (the first language, else en)", m_localization.defaultLanguage.empty())) m_localization.defaultLanguage.clear();
+                    for (const std::string& code : m_localization.languages) {
+                        if (ImGui::Selectable(titleLanguageLabel(code).c_str(), code == m_localization.defaultLanguage)) m_localization.defaultLanguage = code;
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("The language shown when none of the device's languages matches a title's, before its source language. "
+                               "TitleArt.setLanguage and the device's languages come first.");
+            }
+            ImGui::EndTable();
+        }
+        drawSectionNote("Titles keep their translations inside the .titleart (Title Designer > Language). Play simulates a device "
+                        "language with the Game view's Device > Language.");
     }
     endSettingsPanel();
 }
@@ -5361,6 +5425,8 @@ bool ProjectSettingsWindow::applySettings() {
         m_project->setWindowTitle(m_windowTitleBuffer);
     }
     m_project->setWindowIcon(m_windowIcon);
+
+    m_project->getLocalizationSettings() = m_localization;
 
     PresentationSettings& presentation = m_project->getPresentationSettings();
     presentation.defaultOrientation = defaultOrientationValues[std::clamp(m_defaultOrientationIndex, 0, defaultOrientationCount - 1)];

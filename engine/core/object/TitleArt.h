@@ -152,6 +152,21 @@ namespace jasperengine{
         FunctionSubscribe<void(const std::string&)>& getOnMissingCharacters();
         FunctionSubscribe<void(const std::string&)>& getOnAnimationFinished();
 
+        // S87 R12-R15, §6.4: this renderer's language ("" = Auto), what it resolved to, what it
+        // offers (the source first) and whether the image on screen is in it
+        std::string getLanguage() const;
+        void setLanguage(const std::string& code);
+        std::string getResolvedLanguage() const;
+        std::vector<std::string> getLanguages() const;
+        bool isLanguageReady() const;
+        FunctionSubscribe<void(const std::string&)>& getOnLanguageReady();
+        // TitleArt.setLanguage: every renderer whose Language is Auto ("" = back to the device);
+        // false with `error` for a tag that is not BCP 47 (nothing changes)
+        static bool setGlobalLanguage(const std::string& code, std::string* error = nullptr);
+        static std::string getGlobalLanguage();
+        // fires once per setGlobalLanguage that changes the value, with the new code
+        static FunctionSubscribe<void(const std::string&)>& getOnLanguageChanged();
+
         // the frame budget of every title (R15): 0.25..16 ms
         static void setFrameBudget(double ms);
         static double getFrameBudget();

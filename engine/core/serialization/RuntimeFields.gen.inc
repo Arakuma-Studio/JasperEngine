@@ -2437,6 +2437,7 @@ const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
     JE_RF(TitleArtRendererComponent, title, 0x274a7ac6u, AssetPath),
     JE_RF(TitleArtRendererComponent, renderMode, 0x5ef14ed3u, Enum),
     JE_RF(TitleArtRendererComponent, overrides, 0x700e9409u, Array),
+    JE_RF(TitleArtRendererComponent, language, 0xeddbbcbau, String),
     JE_RF(TitleArtRendererComponent, pivotFromTitle, 0x3b25fd4au, Bool),
     JE_RF(TitleArtRendererComponent, uiScale, 0xece0fb18u, Float),
     JE_RF(TitleArtRendererComponent, pixelsPerUnit, 0x607847beu, Float),

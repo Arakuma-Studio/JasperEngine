@@ -74,6 +74,8 @@ namespace {
         JE_FIELD(TitleArtRendererComponent, title, .ops = &ops::AssetRefIfSet, .asset = AssetKind::TitleArt, .label = "Title Art", .uiOrder = 1),
         JE_FIELD(TitleArtRendererComponent, renderMode, .enumDesc = &kTitleArtRenderMode, .flags = OmitIfDefault, .uiOrder = 2),
         JE_FIELD(TitleArtRendererComponent, overrides, .flags = OmitIfDefault | NullIfEmpty | NotListed | Hidden, .label = "Parameters", .uiOrder = 3),
+        JE_FIELD(TitleArtRendererComponent, language, .flags = OmitIfDefault,
+                 .tooltip = "The language this title shows; empty is Auto (TitleArt.setLanguage, the device, the project default)", .uiOrder = 4),
         JE_FIELD(TitleArtRendererComponent, pivotFromTitle, .flags = OmitIfDefault, .uiOrder = 10),
         JE_FIELD(TitleArtRendererComponent, uiScale, .flags = OmitIfDefault, .min = 0.01f, .max = 100.0f, .step = 0.01f, .label = "UI Scale", .uiOrder = 11),
         JE_FIELD(TitleArtRendererComponent, pixelsPerUnit, .flags = OmitIfDefault, .min = 0.0f, .max = 100000.0f, .step = 1.0f,
