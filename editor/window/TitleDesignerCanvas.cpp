@@ -852,7 +852,7 @@ void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
     // registered overlays (S87's fit boxes) in document space, the device placement applied
     if (!canvasOverlays().empty()) {
         double scale = 1.0, ox = 0.0, oy = 0.0;
-        devicePlacement(v, stage, shown, scale, ox, oy);
+        devicePlacement(v, stage, shown, scale, ox, oy, inContext ? &*inContext : nullptr);
         CanvasXform placed = xform;
         placed.origin = xform.toScreen({ox, oy});
         placed.zoom = (float)(xform.zoom * scale);

@@ -124,13 +124,6 @@ namespace {
         changedPct = ink ? 100.0 * (double)changed / (double)ink : 0.0;
     }
 
-    bool renderStill(TitleCheckContext& ctx, TitleCheckImage& out, std::string& error){
-        tt::RenderRequest r;
-        r.doc = std::make_shared<const tt::TitleArtDoc>(ctx.doc);
-        r.pxScale = 0.5f;
-        return ctx.render(r, out, error);
-    }
-
     Json fixOps(Json ops){
         return Json{{"ops", std::move(ops)}};
     }
@@ -285,7 +278,7 @@ namespace {
             if (outro){
                 size_t covered = 0;
                 for (size_t i = 0; i < (size_t)end.width * (size_t)end.height; i++) covered += end.rgba[i * 4 + 3] > 0 ? 1 : 0;
-                const double pct = end.width * end.height ? 100.0 * (double)covered / (double)(end.width * end.height) : 0.0;
+                const double pct = end.width > 0 && end.height > 0 ? 100.0 * (double)covered / ((double)end.width * end.height) : 0.0;
                 r.measured = {{"animation", a->name}, {"coverage_pct", pct}};
                 r.threshold = {{"coverage_pct", 0.1}};
                 if (pct > 0.1){

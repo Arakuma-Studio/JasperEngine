@@ -406,15 +406,6 @@ namespace {
         if (!tp.reason.empty()) why += " " + tp.reason;
     }
 
-    void addKeyAt(Panel& p, TitleDesignerState& state, const ta::TitleTrack& t){
-        tt::Json op = opBase("set_key", p.animation);
-        op["layer"] = titleLayerRef(t.layer);
-        op["field"] = t.field;
-        op["time"] = p.time;
-        tt::Json ops = tt::Json::array();
-        ops.push_back(op);
-        commit(p, state, ops, "Add Key");
-    }
 
     void drawKeyMenu(Panel& p, TitleDesignerState& state, const ta::TitleAnimation& a){
         if (!ImGui::BeginPopup("##keymenu")) return;

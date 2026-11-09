@@ -160,9 +160,8 @@ bool editor::encodeTitlePng(const texsynth::Image& image, const TitlePngOptions&
     const std::vector<uint8_t> tail = be32(adler);
     idat.insert(idat.end(), tail.begin(), tail.end());
 
-    out.clear();
     const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
-    out.insert(out.end(), signature, signature + 8);
+    out.assign(signature, signature + 8);
     static const uint8_t colorTypes[5] = {0, 0, 4, 2, 6};
     std::vector<uint8_t> ihdr = be32((uint32_t)image.width);
     const std::vector<uint8_t> h = be32((uint32_t)image.height);
