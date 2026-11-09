@@ -352,7 +352,7 @@ void LuaBinding::registerTitleArtClasses(lua_State *L){
 
     // the Title Art Renderer of the GameObject, nil when it has none (reviewed neutral, R67)
     luabridge::getGlobalNamespace(L)
-        .deriveClass<GameObject, EntityHandle>("GameObject")
+        .beginClass<GameObject>("GameObject")
         .addFunction("getTitleArt", +[](GameObject* self) -> std::optional<TitleArt> {
             Scene* scene = self->getScene();
             if (!scene || !scene->isEntityCreated(self->getEntity()) || !scene->isComponentRegistered<TitleArtRendererComponent>() ||
