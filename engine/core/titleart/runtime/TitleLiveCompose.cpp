@@ -29,13 +29,24 @@ namespace {
         return rest.substr(0, rest.find('.'));
     }
 
-    // a definition's values as the renderer reads them (defaults filled, the global light bound)
-    ParamValues valuesOf(const std::vector<ParamDef>& params, const Json& stored, const GlobalLightBinding* light, const TitleArtDoc& doc) {
+    double msOf(const FxCost& cost, FxTier tier) {
+        return cost.fre * tfx::msPerFre(tier) + cost.instances * tfx::msPerInstance(tier);
+    }
+
+    // a definition's values as the renderer reads them (defaults filled); a ParamValues reads
+    // this Json, so it stays alive for the estimate
+    Json normalizedValues(const std::vector<ParamDef>& params, const Json& stored) {
         Json values = stored.is_object() ? stored : Json::object();
         NormalizeContext normalize;
         normalizeParams(params, values, "params", normalize);
+        return values;
+    }
+
+    double estimateMs(FxCost (*estimate)(const ParamValues&, const FxSize&, FxTier), const Json& values, const GlobalLightBinding* light,
+                      const TitleArtDoc& doc, const FxSize& size, FxTier tier) {
         const Json& global = doc.root.value("global_light", Json::object());
-        return ParamValues(values, light, global.value("angle", 120.0), global.value("altitude", 30.0));
+        const ParamValues params(values, light, global.value("angle", 120.0), global.value("altitude", 30.0));
+        return estimate ? msOf(estimate(params, size, tier), tier) : tfx::msPerFre(tier);
     }
 
     // §6.4's tier sizes: the desktop tier at the canvas size, the mobile tier on 1024 x 512
@@ -44,10 +55,6 @@ namespace {
         if (tier == FxTier::Desktop) return FxSize{cw, ch, 1.0f};
         const float scale = std::min(1024.0f / (float)cw, 512.0f / (float)ch);
         return FxSize{std::max(1, (int)((float)cw * scale)), std::max(1, (int)((float)ch * scale)), scale};
-    }
-
-    double msOf(const FxCost& cost, FxTier tier) {
-        return cost.fre * tfx::msPerFre(tier) + cost.instances * tfx::msPerInstance(tier);
     }
 
     // the earliest changed effect of each layer stack, and the changed generator layers
@@ -116,7 +123,14 @@ std::vector<std::string> titleart::titleLiveInputsOf(const TitleArtDoc& doc, con
     const Changes changes = changesOf(changed);
     for (const auto& [layerId, effect] : changes.stacks) {
         out.push_back(titleLiveContentKey(layerId));
-        out.push_back(titleLiveStackKey(layerId, effect));
+        // the first enabled effect reads the content itself (and its alpha-keyed results with it)
+        const Json* layer = findLayer(doc.root, layerId);
+        bool enabledBefore = false;
+        if (layer) {
+            const Json& list = effectsOf(*layer);
+            for (int i = 0; i < effect && i < (int)list.size(); i++) enabledBefore = enabledBefore || list[(size_t)i].value("enabled", true);
+        }
+        if (enabledBefore) out.push_back(titleLiveStackKey(layerId, effect));
     }
     for (const std::string& id : changes.generators) {
         const Json* layer = findLayer(doc.root, id);
@@ -234,8 +248,8 @@ double titleart::titleLiveCostMs(const TitleArtDoc& doc, const std::vector<Title
                 ms += tfx::msPerFre(tier);
                 continue;
             }
-            const ParamValues values = valuesOf(def->params, fx.value("params", Json::object()), &def->globalLight, doc);
-            ms += def->estimate ? msOf(def->estimate(values, size, tier), tier) : tfx::msPerFre(tier);
+            const Json values = normalizedValues(def->params, fx.value("params", Json::object()));
+            ms += estimateMs(def->estimate, values, &def->globalLight, doc, size, tier);
         }
     }
     for (const std::string& id : changes.generators) {
@@ -244,8 +258,8 @@ double titleart::titleLiveCostMs(const TitleArtDoc& doc, const std::vector<Title
         const Json& gen = layer->value("generator", Json::object());
         const GeneratorDef* def = findGenerator(gen.value("type", std::string()));
         if (!def) continue;
-        const ParamValues values = valuesOf(def->params, gen.value("params", Json::object()), def->globalLight.angleKey ? &def->globalLight : nullptr, doc);
-        ms += def->estimate ? msOf(def->estimate(values, size, tier), tier) : tfx::msPerFre(tier);
+        const Json values = normalizedValues(def->params, gen.value("params", Json::object()));
+        ms += estimateMs(def->estimate, values, def->globalLight.angleKey ? &def->globalLight : nullptr, doc, size, tier);
     }
     return ms;
 }

@@ -180,6 +180,9 @@ TitleArtHashes titleart::hashTitleArt(const TitleArtDoc& doc, const AssetRevisio
         h.node = hashCombine(hashCombine(hashCombine(h.stack, h.effects), hashCombine(h.masks, h.placement)),
                              hashText("canvas=" + canvas + ";" + t.at(HashScope::Node)));
         h.content = hashCombine(hashCombine(h.stack, h.effects), hashCombine(h.masks, hashText("canvas=" + canvas)));
+        // a generator's params are its layer's pixels: the node cache keys by this hash, and the
+        // params hash in the node scope with the placement (a new value must not hit the old pixels)
+        if (auto gen = layer.find("generator"); gen != layer.end()) h.content = hashCombine(h.content, hashText(writeTitleArtJson(*gen)));
         p.refs = std::move(t.refs);
         for (const Json& child : layerChildren(layer)) p.children.push_back(child.value("id", std::string()));
         pending.push_back(std::move(p));

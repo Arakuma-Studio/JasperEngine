@@ -301,8 +301,9 @@ uint64_t TitleArtLive::renderKeyOf(const TitleArtLiveState& state) const{
 }
 
 bool TitleArtLive::liveChange(){
-    if (keepLive.empty() || wanted.glowOutput || !frontImage.valid() || frontImage.prebaked || frontImage.liveInputs.empty() ||
-        frontImage.renderKey != renderKeyOf(wanted)){
+    // (a generator that follows nothing composes live with no inputs at all)
+    if (renderMode != TitleArtRenderMode::REALTIME || !doc || !doc->root.is_object() || wanted.glowOutput || !frontImage.valid() ||
+        frontImage.prebaked || frontImage.renderKey != renderKeyOf(wanted)){
         return false;
     }
     const TitleLiveDecision decision = decideTitleLive(*doc, frontImage.overrides, wantedOverrides, (FxTier)wanted.fxTier, liveBudget);

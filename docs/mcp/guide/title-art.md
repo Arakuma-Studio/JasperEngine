@@ -177,7 +177,9 @@ prefab variant may override one alone), the Live Effects (`sweepEnabled`, `sweep
   look into atlas pages (`get_title`'s `glyph_atlas.pages`); a change then costs a compose of the
   plates and cells, no render. Effects that read neighbours (warp, distort, hull plates, masks)
   do not apply per glyph: `check_title {checks: ["glyph_atlas"]}` lists them with fix ops; 3D
-  text, or no text layer exposed as `text`, falls back to Realtime.
+  text, or no text layer exposed as `text`, falls back to Realtime. An export prebakes the initial
+  text and every digit at each of its places, so a counter's first value renders no glyph
+  (its prebaked plates are 8-bit: the darkest colours may shift a few codes).
 - Live Effects (any mode, one draw, no extra pass): Sweep (a band at `sweepPosition` 0..1, 0 and
   1 off the frame; key it in a clip), Glow Pulse (needs a glow output), Tint, Glints (stars at the
   bake's highlight anchors). Nothing reads engine time: `--fixed-fps` runs are identical.

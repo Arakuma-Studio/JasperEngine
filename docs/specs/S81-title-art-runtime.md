@@ -1489,7 +1489,12 @@ rest of S82 lands in 6B.
     cache) followed by the rest of its stack, the composites above it and the output; the other
     layers are node-cache hits. A live param that changes the stack's reach re-places the inputs in
     the new region (a clear and a copy). The compose runs whole in its frame before the slices
-    (no cost-model gate), cuts to the new image and does not cache the old one. The live budget is
+    (no cost-model gate), cuts to the new image and does not cache the old one. A live compose keeps
+    the render's inputs on the new image and records what it touched (`TitleDisplayImage::liveTouched`):
+    an input that a later change would read after an earlier live change altered it (an effect before
+    it, a layer inside it, the layer a generator follows) re-renders, which keeps fresh ones. The first
+    enabled effect of a stack reads the kept content itself, so its alpha-keyed results stay valid
+    (a colour-like change runs no blur or distance field). The live budget is
     predicted with S83's §6.4 model on the device's tier (a scale_split one full-resolution
     equivalent, a kernel its estimate), the same function check_title's `fx_live_budget` uses, so
     the decision is the same on every device; the scheduler's measured costs (Deviation 30) apply to
@@ -1526,7 +1531,12 @@ rest of S82 lands in 6B.
 33. **Tests: AC27 is an MCP test** (`test_title_runtime.py::test_lua_live_effect_params`, AC20's
     harness) rather than a `TitleArtLuaFxTest` binary: Lua's `setParameter` in Play reaches the live
     compose through the component, the system and the scheduler, which a unit test would stub.
-34. **Tests: R32's export path** is `test_title_export.py` (JASPER_SLOW_BUILD=1, the prebuilt glcore
+34. **Bug fixed on the way: the node cache ignored a generator's params.** `LayerHashes::content`,
+    the node cache's key, did not include a generator layer's `generator` member (its params hash in
+    the node scope with the placement), so a new param value hit the old pixels in any renderer that
+    had drawn the layer. `content` now chains the member (`TitleArtHashTest.AGeneratorsParamsChangeItsNodeCacheKey`);
+    the document's hash, and so bake freshness, is unchanged.
+35. **Tests: R32's export path** is `test_title_export.py` (JASPER_SLOW_BUILD=1, the prebuilt glcore
     player): the build holds the atlas manifest and pages, and the player logs, once per atlas,
     `the glyph atlas showed its first string after N cell renders (M cells from the build's
     prebaked atlas)`; the test reads N = 0.

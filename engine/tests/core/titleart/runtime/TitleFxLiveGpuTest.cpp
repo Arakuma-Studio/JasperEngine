@@ -171,9 +171,11 @@ namespace {
             r.pxScale = SCALE;
             r.overrides = overrides;
             r.assets = &assets;
-            std::unique_ptr<TitleRenderJob> job;
-            Pixels p = render(reference, r, &job);
-            passes = job ? job->passesTotal() : 0;
+            // cold: a value seen before would hit the reference's node cache and count nothing
+            reference.trim();
+            const uint64_t before = reference.stats().passes;
+            Pixels p = render(reference, r);
+            passes = reference.stats().passes - before;
             return p;
         }
 
@@ -183,23 +185,26 @@ namespace {
             ASSERT_NE(c.param, nullptr);
             const TitleJobFactory factory = makeRendererJobFactory(renderer, &assets);
             TitleArtLive live("assets/live.titleart", TitleArtRenderMode::REALTIME, c.doc, hashTitleArt(*c.doc).document);
-            ASSERT_FALSE(live.liveKeeps().empty()) << "the exposed L param is live";
+            // every definition composes here; the budget's own decision is OverTheLiveBudgetReRenders
+            // (a preset of 2,600 particles predicts 1.04 ms on the desktop tier)
+            live.setLiveBudgetMs(1000.0);
             live.setState(stateOf(), 1, {});
             frames(live, factory);
             ASSERT_TRUE(live.front().valid()) << live.status().error;
-            ASSERT_FALSE(live.front().liveInputs.empty()) << "the render kept the live inputs";
             const Json* layer = findLayer(c.doc->root, c.layer);
             ASSERT_NE(layer, nullptr);
             const Json* stored = getTitleArtField(*layer, "layer", c.field);
             const Json current = stored ? *stored : c.param->defaultValue;
             // a live frame skips the content (effects) or the followed layer (following generators)
             const bool skips = c.layer == TITLE || !layer->value("follow", std::string()).empty();
+            EXPECT_EQ(live.liveKeeps().empty(), !skips) << "what a render keeps: the stack, or the followed layer";
+            EXPECT_EQ(live.front().liveInputs.empty(), !skips);
             for (const Json& value : valuesOf(*c.param, current)) {
                 SCOPED_TRACE(value.dump());
                 const std::vector<FieldOverride> overrides{FieldOverride{c.layer, c.field, value}};
                 const uint64_t hash = hashOf(overrides);
                 const uint64_t renders = live.rendersDone(), composes = live.liveComposesDone();
-                const uint64_t readbacks = gridReadbacks();
+                const uint64_t readbacks = analysis::gridReadbacks();
                 const uint64_t passesBefore = renderer.stats().passes;
                 live.setState(stateOf(), hash, overrides);
                 EXPECT_TRUE(live.liveWaiting()) << "a change of an L param composes live: " << live.status().liveFallback;
@@ -209,7 +214,7 @@ namespace {
                 EXPECT_EQ(live.rendersDone(), renders) << "no re-render: " << live.status().liveFallback;
                 EXPECT_EQ(live.liveComposesDone(), composes + 1);
                 EXPECT_LE(took, 3) << "composed in its frame (once its programs are built)";
-                EXPECT_EQ(gridReadbacks(), readbacks) << "a live frame reads nothing back";
+                EXPECT_EQ(analysis::gridReadbacks(), readbacks) << "a live frame reads nothing back";
                 uint64_t fullPasses = 0;
                 const Pixels expected = rerender(c, overrides, fullPasses);
                 if (skips) EXPECT_LT(livePasses, fullPasses) << "the live frame runs the live effect and what is above it, not the title";
