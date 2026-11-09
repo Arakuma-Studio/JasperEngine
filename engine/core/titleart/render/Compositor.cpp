@@ -761,10 +761,11 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
         // a 3D layer's pixels depend on the tier, the 3D path's test flags and the debug view too (S86)
         if (is3D(node)) {
             both((uint64_t)(req.tier + 1));
-            both((uint64_t)req.testFlags + 1);
             both((uint64_t)req.debugView3D + 1);
         }
 #endif
+        // a forced fallback path changes every layer's pixels, 2D too: its cache entries are its own
+        both((uint64_t)req.testFlags + 1);
         // the ancestors' rotation, scale and flips shape the pixels
         const geometry::Affine& m = place.toDocument;
         const double linear[4] = {m.a, m.b, m.c, m.d};

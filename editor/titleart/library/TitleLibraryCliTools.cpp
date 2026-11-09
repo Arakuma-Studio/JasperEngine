@@ -816,7 +816,7 @@ int titlelibrary::runReviewSheetCommand(const std::vector<std::string>& args, co
 }
 
 int titlelibrary::runCalibrateCommand(const std::vector<std::string>& args, const char* executable) {
-    const Args a = parseArgs(args, {"--out", "--red", "--scratch", "--samples", "--only"}, {});
+    const Args a = parseArgs(args, {"--out", "--red", "--scratch", "--samples", "--only", "--checks"}, {});
     if (!a.error.empty()) {
         std::cerr << "title-library calibrate: " << a.error << "\n";
         return USAGE;
@@ -861,7 +861,14 @@ int titlelibrary::runCalibrateCommand(const std::vector<std::string>& args, cons
         // legibility is judged on the backgrounds the look is made for (an empty `background` is any)
         const std::string background = identity.value("background", std::string());
         const Json backgrounds = background == "dark" ? Json::array({"black", "checker"}) : background == "light" ? Json::array({"white", "checker"}) : Json::array({"black", "white", "checker"});
-        s.calls.push_back(callLine("check_title", Json{{"path", "assets/" + p.doc}, {"backgrounds", backgrounds}, {"render_scale", 0.25}}));
+        Json arguments = Json{{"path", "assets/" + p.doc}, {"backgrounds", backgrounds}, {"render_scale", 0.25}};
+        if (a.values.count("--checks")) {      // only these checks (ids, comma separated): a tuning run's
+            Json ids = Json::array();
+            std::istringstream list(a.values.at("--checks"));
+            for (std::string id; std::getline(list, id, ',');) ids.push_back(id);
+            arguments["checks"] = ids;
+        }
+        s.calls.push_back(callLine("check_title", arguments));
     }
     for (const std::string& d : redDocs) s.calls.push_back(callLine("check_title", Json{{"path", "assets/" + d}, {"backgrounds", Json::array({"black", "white", "checker"})}, {"render_scale", 0.25}}));
     // which render each call is, for a person triaging the raw results beside it

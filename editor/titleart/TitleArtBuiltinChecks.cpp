@@ -788,6 +788,11 @@ namespace {
             }
         }
         if (holeCount == 0 || letter.empty()) return false;
+        // a glow or a soft shadow in the counter is translucent, the background still shows through
+        // it: only an opaque fill closes a counter
+        size_t alphaSum = 0;
+        for (size_t i : hole) alphaSum += styled.rgba[i * 4 + 3];
+        if (alphaSum < static_cast<size_t>(0.85 * 255.0 * hole.size())) return true;
         double letterSum = 0.0;
         for (size_t n : letter) letterSum += lightness(n);
         return std::abs(holeSum / holeCount - letterSum / letter.size()) >= 12.0;
@@ -800,7 +805,7 @@ namespace {
             if (titleart::layerTypeOf(layer) == titleart::LayerType::Text && layer.value("visible", true)) textLayers.push_back(str(layer, "id"));
             return textLayers.size() < 4;
         });
-        TitleCheckResult r = result(TitleCheckStatus::Pass, "", "holes of the plain text mask (no rims, no effects) still transparent in the styled layer, or filled with a colour that differs from the letter around them (delta L* >= 12)");
+        TitleCheckResult r = result(TitleCheckStatus::Pass, "", "holes of the plain text mask (no rims, no effects) still transparent in the styled layer, or filled translucently (mean alpha under 0.85), or with a colour that differs from the letter around them (delta L* >= 12)");
         r.threshold = TJson{{"survival", 0.8}};
         if (textLayers.empty()) {
             r.status = TitleCheckStatus::Skip;
@@ -1102,7 +1107,18 @@ namespace {
         options.tolerance = has3D ? 24 : 8;
         options.maxFraction = has3D ? 0.01 : cls == titleart::FallbackClass::F0 ? 0.005 : cls == titleart::FallbackClass::F1 ? 0.02 : 0.05;
         options.maxMean = has3D ? 3.0 : cls == titleart::FallbackClass::F0 ? 1.0 : cls == titleart::FallbackClass::F1 ? 1.5 : 3.0;
-        options.maxDiff = has3D ? 255 : cls == titleart::FallbackClass::F0 ? 48 : cls == titleart::FallbackClass::F1 ? 64 : 96;
+        // Lightning's edge cells and Backlight's shape centre read the followed layer's 8-bit grid: a
+        // borderline cell flips between the paths, a few pixels differ by more than the max while
+        // the mean and the share hold (S83's own TitleGenGpuTest makes the same exception)
+        bool gridLayout = false;
+        titleart::forEachLayer(ctx.doc.root, [&](const TJson& layer, const TJson*, int) {
+            if (layer.contains("generator") && layer["generator"].is_object() && layer.value("visible", true)) {
+                const std::string type = str(layer["generator"], "type");
+                gridLayout = gridLayout || type == "lightning" || type == "backlight";
+            }
+            return true;
+        });
+        options.maxDiff = has3D || gridLayout ? 255 : cls == titleart::FallbackClass::F0 ? 48 : cls == titleart::FallbackClass::F1 ? 64 : 96;
         const ImageDiffResult diff = diffImages(asImage(*floatPath), asImage(*rgba8), options);
         TitleCheckResult r = result(diff.ok ? TitleCheckStatus::Pass : TitleCheckStatus::Fail, "", "premultiplied comparison of the forced RGBA8 path with the float path, to the tolerance of the document's fallback class");
         r.measured = TJson{{"max", diff.max}, {"mean", diff.mean}, {"fraction_over", diff.fractionOver}, {"class", has3D ? "3D" : titleart::fallbackClassName(cls)}};

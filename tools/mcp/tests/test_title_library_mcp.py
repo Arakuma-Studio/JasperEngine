@@ -170,3 +170,19 @@ async def test_listing_latency(ed: Editor):
         median = sorted(samples)[len(samples) // 2]
         print(f"[AC21] list_title_library {label}: {median:.1f} ms (R40 30, MCP round trip included)")
         ed.check(median <= 90.0, f"{label} within three times the budget: {median:.1f} ms")
+
+
+async def test_fallback_parity_after_a_render(ed: Editor):
+    """A forced-RGBA8 render must not reuse the node cache of the float render that came before it
+    (red run: sports/goal-banner measured mean 80.65 after render_title, 0.31 before it)."""
+    await ed.call("tool_groups", enable=["title_art"])
+    path = "assets/parity-after-render.titleart"
+    await ed.call("edit_title", path=path, create={"template": "sports/goal-banner", "language": "en"}, bake="never")
+    args = {"path": path, "max_width": 480, "backgrounds": ["transparent"]}
+    r = await ed.call_raw("render_title", args)
+    job = (r.structured or {}).get("job_id")
+    while job and (await ed.call("get_job", job_id=job)).get("status") == "running":
+        pass
+    report = await ed.call("check_title", path=path, checks=["fallback_parity"], backgrounds=["black"], render_scale=0.25)
+    parity = next(c for c in report["checks"] if c["id"] == "fallback_parity")
+    ed.check_eq(parity["status"], "PASS", f"parity after a render: {parity.get('measured')}")

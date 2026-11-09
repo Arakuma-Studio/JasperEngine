@@ -14,6 +14,7 @@ Unavailable items are counted by reason, never skipped silently. Shard with
 JASPER_TITLE_LIBRARY_SHARD=<i>/<n> (the harness's -j runs one shard per editor)."""
 
 import hashlib
+import fnmatch
 import os
 import time
 
@@ -69,6 +70,9 @@ async def test_content(ed: Editor):
 
 
 def shard(items: list) -> list:
+    only = [g for g in os.environ.get("JASPER_TITLE_LIBRARY_ONLY", "").split(",") if g]
+    if only:
+        items = [item for item in items if any(fnmatch.fnmatchcase(item[1], g) for g in only)]
     spec = os.environ.get("JASPER_TITLE_LIBRARY_SHARD", "")
     if "/" not in spec:
         return items
@@ -94,7 +98,7 @@ async def render_once(ed: Editor, path: str) -> bytes:
 
 async def test_gate(ed: Editor):
     await setup(ed)
-    counts = {"looks": [0, 0, 0], "color_schemes": [0, 0, 0], "templates": [0, 0, 0]}   # checked, unavailable, allowlisted
+    counts = {"looks": [0, 0], "color_schemes": [0, 0], "templates": [0, 0]}   # checked, unavailable
     reasons: dict = {}
     work = []
     for kind in [k for k in os.environ.get("JASPER_TITLE_LIBRARY_KINDS", "looks,color_schemes,templates").split(",") if k]:
@@ -123,11 +127,8 @@ async def test_gate(ed: Editor):
         await ed.call("edit_title", path=path, create=create, bake="never")
         if kind == "color_schemes":
             await ed.call("edit_title", path=path, ops=[{"op": "apply_color_scheme", "color_scheme": ref}])
-        allow_checks = {a["check"] for a in detail.get("check_allow", [])}
-        allow_rules = {a["rule"] for a in detail.get("lint_allow", [])}
-        # tier, counter, parity and metal-sheen exceptions are declared properties of a heavy style, listed but not capped (Deviation 27)
-        if {c for c in allow_checks if not c.startswith(("3d_tier_budget", "counter_survival", "fallback_parity", "metal_range"))} or allow_rules:
-            counts[kind][2] += 1
+        # the owner's rule: every item passes every check; no item carries an exception
+        ed.check(not detail.get("check_allow") and not detail.get("lint_allow"), f"{ref}: no exception lists: {detail.get('check_allow')} {detail.get('lint_allow')}")
         a = await render_once(ed, path)
         b = await render_once(ed, path)
         ed.check_eq(hashlib.sha256(a).hexdigest(), hashlib.sha256(b).hexdigest(), f"{ref} ({text or language}): two renders are identical")
@@ -140,16 +141,9 @@ async def test_gate(ed: Editor):
                 continue
             if kind == "color_schemes" and cid == "counter_survival":
                 continue     # a scheme only recolours: its counters are the base look's
-            base = cid.split(".")[0]
-            rule = cid.split(".", 1)[1] if cid.startswith("style_lint.") else ""
-            if base in allow_checks or cid in allow_checks or rule in allow_rules:
-                continue
             ed.check(False, f"{ref} ({text or language}): {cid} {check['status']}: {check.get('message', '')} measured {check.get('measured')}")
         counts[kind][0] += 1
-    print(f"[gate] checked/unavailable/allowlisted per kind: {counts}; unavailable by reason: {reasons}")
-    for kind, (checked, unavailable, allowed) in counts.items():
-        total = checked + unavailable
-        ed.check(allowed * 10 <= max(total, 10), f"{kind}: quality allowlists on at most 10 % of the items ({allowed} of {total}; §6.14 spec Deviation 27 exempts tier and counter exceptions)")
+    print(f"[gate] checked/unavailable per kind: {counts}; unavailable by reason: {reasons}")
 
 
 RED = __import__("pathlib").Path(__file__).resolve().parent / "fixtures" / "title-library-red"
