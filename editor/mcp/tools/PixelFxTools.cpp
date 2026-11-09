@@ -638,29 +638,27 @@ void registerPixelFxTools(McpRegistry& registry) {
     tool.name = "capture_contact_sheet";
     tool.title = "Capture Contact Sheet";
     tool.description =
-        "Draws a GameObject (its animations, particles, material time; animation: an .anim on it; effect: a PixelFX effect), a "
-        ".particles asset or a screen transition at N times "
-        "into one labelled PNG at an integer scale, a row of frames per backdrop. isolated (default): the target alone, pinned; "
-        "scene: through its camera (in Play, steps the paused game). lint: effect checks and a verdict. A preview until output: true "
-        "writes path (one undo).";
+        "Draws a GameObject (animation: an .anim on it; effect: a PixelFX effect), a .particles asset or a screen transition at N "
+        "times into one labelled PNG, a row of frames per backdrop. isolated (default): the target alone; scene: through its camera "
+        "(in Play, steps the paused game). lint: effect checks and a verdict. A preview until output: true writes path (one undo).";
     tool.inputSchema = object({
         {"target", object({{"entity", entityRef()}, {"scene", sceneRef()}, {"animation", string("")}, {"effect", string("")},
                            {"effect_options", Json{{"type", "object"}}}, {"particles", string("")}, {"transition", string("")},
                            {"transition_options", Json{{"type", "object"}}}})},
-        {"frames", integer("", 1, pixelfxtools::kMaxFrames)},
+        {"frames", integer("")},
         {"times", array(number(""), "")},
-        {"duration", number("", 0, pixelfxtools::kMaxDuration)},
+        {"duration", number("")},
         {"loop", boolean("")},
         {"mode", stringEnum("", {"isolated", "scene"})},
         {"backdrops", array(stringEnum("", {"checker", "dark", "light", "sky", "ground", "black", "scene"}), "")},
-        {"scale", integer("", 0, 16)},
-        {"columns", integer("", 0, pixelfxtools::kMaxFrames)},
+        {"scale", integer("")},
+        {"columns", integer("")},
         {"labels", boolean("")},
-        {"margin", integer("", 0, 256)},
+        {"margin", integer("")},
         {"lint", Json{{"type", Json::array({"boolean", "array"})}, {"items", {{"type", "string"}}}}},
         {"output", boolean("")},
         {"path", string("")},
-        {"max_width", integer("", 64, 8192)}
+        {"max_width", integer("")}
     }, {"target"});
     tool.annotations.readOnly = true;
     tool.annotations.idempotent = true;

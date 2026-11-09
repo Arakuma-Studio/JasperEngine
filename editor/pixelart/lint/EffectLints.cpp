@@ -552,7 +552,8 @@ namespace jasperengine::editor::pixelart::lint {
         }
         if (wanted("one_shot_end")) {
             const PixelImage* last = input.last ? input.last : (input.frames.empty() ? nullptr : input.frames.back());
-            if (!input.spillApplies && !input.loop) {
+            // a transition draws no bounds, but its overlay pixels left at the end are what this counts (R28)
+            if (!input.spillApplies && !input.loop && !input.transition) {
                 report.add(skipped("one_shot_end", input.spillSkipReason.empty() ? std::string("the whole view is drawn") : input.spillSkipReason));
             } else {
                 report.add(lintOneShotEnd(last, input.loop));

@@ -869,8 +869,17 @@ void editor::GameWindow::drawToolbar() {
     ImGui::SameLine(0, Theme::dpi(12.0f));
     drawDeviceTierMenu();
 
-    // S48 R40: the shown scene's one selected GameObject drawn at N times on backdrops, with checks
+    // S48 R40: a screen transition played over the view; left of the right-aligned group, which
+    // runs off a narrow view's edge
     ImGui::SameLine(0, Theme::dpi(12.0f));
+    if (toggleButton(ICON_FA_CIRCLE_HALF_STROKE "##GameTransition", jasperengine::pixelart::ScreenTransition::isActive(),
+                     "Transition: play a screen transition (cover, hold, reveal) over the Game view, in edit mode or Play")) {
+        ImGui::OpenPopup("##GameTransitionMenu");
+    }
+    drawTransitionMenu();
+
+    // S48 R40: the shown scene's one selected GameObject drawn at N times on backdrops, with checks
+    ImGui::SameLine();
     {
         const uint32_t shownId = getTargetSceneId();
         const std::vector<Entity> selected = project->getSelectedEntities(shownId);
@@ -899,10 +908,9 @@ void editor::GameWindow::drawToolbar() {
     auto buttonWidth = [&](const char* label) {
         return ImGui::CalcTextSize(label, nullptr, true).x + style.FramePadding.x * 2.0f;
     };
-    const char* transitionLabel = ICON_FA_CIRCLE_HALF_STROKE "##GameTransition";
     auto groupWidth = [&]() {
-        return buttonWidth(transitionLabel) + buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) +
-               buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) + buttonWidth(physicsLabel) + style.ItemSpacing.x * 7.0f;
+        return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) +
+               buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) + buttonWidth(physicsLabel) + style.ItemSpacing.x * 6.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
@@ -917,13 +925,6 @@ void editor::GameWindow::drawToolbar() {
     if (rightX > ImGui::GetCursorPosX()) {
         ImGui::SetCursorPosX(rightX);
     }
-
-    if (toggleButton(transitionLabel, jasperengine::pixelart::ScreenTransition::isActive(),
-                     "Transition: play a screen transition (cover, hold, reveal) over the Game view, in edit mode or Play")) {
-        ImGui::OpenPopup("##GameTransitionMenu");
-    }
-    drawTransitionMenu();
-    ImGui::SameLine();
 
     ImGui::BeginDisabled(cooks.getProject() != project);
     if (toggleButton(texturesLabel.c_str(), viewFamily != TextureFamily::Desktop,
