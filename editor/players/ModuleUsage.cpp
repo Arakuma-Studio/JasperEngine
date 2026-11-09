@@ -49,7 +49,7 @@ namespace {
 
     // the modules a dynamic access or C++ code can reach: every one the detection decides
     const std::vector<std::string>& detectedModules() {
-        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "noise", "voxel"};
+        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "noise", "voxel", "terrainedit"};
         return modules;
     }
 
@@ -364,6 +364,8 @@ namespace {
                 if (has(registry->findComponent<CharacterControllerComponent>(entity))) add("physics3d", content.label, "Character Controller on " + object);
                 if (has(registry->findComponent<BuoyancyComponent>(entity))) add("physics3d", content.label, "Buoyancy on " + object);
                 if (const TerrainComponent* terrain = registry->findComponent<TerrainComponent>(entity)) {
+                    // T1 R54: a terrain a game may edit loads its maps for edits and uploads them
+                    if (terrain->allowRuntimeEdits) add("terrainedit", content.label, "Allow Runtime Edits on " + object);
                     // T5 R18, R39: foliage stays in core; only its capsules need the physics module
                     for (const TerrainTreePrototype& prototype : terrain->treePrototypes) {
                         if (prototype.collision == TerrainTreeCollision::Capsule) {

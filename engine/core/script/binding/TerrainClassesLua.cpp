@@ -8,6 +8,7 @@
 // objects do their work in a helper that returns, and raise only after it has.
 
 #include "LuaBinding.h"
+#include "terrain/TerrainEditModule.h"
 
 #include "lua.hpp"
 
@@ -21,8 +22,10 @@
 #include "object/Terrain.h"
 #include "object/TerrainEdit.h"
 #include "script/LuaJson.h"
+#if JASPERENGINE_TERRAIN_EDIT
 #include "terrain/TerrainOps.h"
 #include "object/TerrainOpsJson.h"
+#endif
 
 #include <cmath>
 #include <string>
@@ -100,6 +103,9 @@ namespace {
         TerrainComponentStore store(self->getScene(), self->getEntity(), self->getComponent<TerrainComponent>());
         return store.format(MapId{MapKind::Height, 0});
     }
+
+#if JASPERENGINE_TERRAIN_EDIT
+    // T1 R54: the writes, and getHeights beside them, are the runtime terrain edit module's
 
     // Pushes the reason and returns false when the terrain may not be written (R75, R77)
     bool terrainLuaWritable(lua_State* L, Terrain* self, const char* function) {
@@ -233,6 +239,7 @@ namespace {
         LuaJson::push(L, terrain::opResultJson(result, space, ops, 1));
         return true;
     }
+#endif
 
 }
 
@@ -249,6 +256,7 @@ void LuaBinding::registerTerrainClasses(lua_State *L){
         .addProperty("allowRuntimeEdits",
             +[](const Terrain* self) { return self->getComponent<TerrainComponent>().allowRuntimeEdits; },
             +[](Terrain* self, bool allow) { self->getComponent<TerrainComponent>().allowRuntimeEdits = allow; })
+#if JASPERENGINE_TERRAIN_EDIT
         .addFunction("setRuntimeUploadBudget", +[](Terrain* self, lua_Integer bytes) {
             TerrainComponent& terrain = self->getComponent<TerrainComponent>();
             if (!terrain.editState) terrain.editState = std::make_shared<TerrainEditState>();
@@ -257,5 +265,6 @@ void LuaBinding::registerTerrainClasses(lua_State *L){
         .addFunction("getHeights", +[](lua_State* L) -> int { return terrainLuaGetHeights(L) ? 1 : lua_error(L); })
         .addFunction("setHeights", +[](lua_State* L) -> int { return terrainLuaSetHeights(L) ? 1 : lua_error(L); })
         .addFunction("applyOps", +[](lua_State* L) -> int { return terrainLuaApplyOps(L) ? 1 : lua_error(L); })
+#endif
         .endClass();
 }

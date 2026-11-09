@@ -55,6 +55,11 @@ option(JASPERENGINE_VIDEO "Compile the HTML UI's <video> (needs JASPERENGINE_HTM
 # Voxel Volumes (docs/specs/T6-voxel-volumes.md): bounded smooth voxel terrain, Transvoxel LOD, destruction.
 # A player variant or a Compile build leaves it out when its project cannot reach it.
 option(JASPERENGINE_VOXEL "Compile Voxel Volumes (needs JASPERENGINE_NOISE)" ON)
+# Runtime terrain edits (docs/specs/T1-terrain-authoring.md R54, R75): the operation engine behind
+# Terrain:applyOps and setHeights, the op JSON, the edit targets' uploads and the collider refresh. A
+# player variant or a Compile build leaves them out when its project cannot reach them; the queries
+# (getHeightAt, raycast...) stay.
+option(JASPERENGINE_TERRAIN_EDIT "Compile runtime terrain edits (Terrain:applyOps, setHeights)" ON)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -2000,6 +2005,12 @@ include(core/particles/ParticleSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTICLE_SYSTEM_SRCS})
 include(core/terrain/TerrainSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TERRAIN_SRCS})
+# The runtime terrain edit module: what applyOps and setHeights reach, T5's registered foliage ops
+# among them, which run only through it
+if(NOT JASPERENGINE_TERRAIN_EDIT)
+    list(FILTER JASPERENGINE_SRCS EXCLUDE REGEX
+        "^core/(terrain/(TerrainOps|OverlayMapStore|TerrainStroke|TerrainPlacement|TerrainErosion|FoliageOps)|object/TerrainOpsJson|subsystem/MeshSystemTerrainEdit|physics/JoltTerrainRefresh)[.]cpp$")
+endif()
 include(core/noise/NoiseSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NOISE_SRCS} ${JASPERENGINE_NOISE_COMPAT_SRCS})
 if(JASPERENGINE_VOXEL)
@@ -2222,6 +2233,7 @@ target_compile_definitions(jasperengine
         JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
         JASPERENGINE_VOXEL=$<BOOL:${JASPERENGINE_VOXEL}>
         JASPERENGINE_VIDEO=$<BOOL:${JASPERENGINE_VIDEO}>
+        JASPERENGINE_TERRAIN_EDIT=$<BOOL:${JASPERENGINE_TERRAIN_EDIT}>
     PRIVATE
         $<$<BOOL:${JE_JOLT_OWN_POOL}>:JE_JOLT_OWN_POOL>
 )

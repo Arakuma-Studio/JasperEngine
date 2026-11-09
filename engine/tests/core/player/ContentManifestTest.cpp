@@ -158,8 +158,8 @@ TEST(ContentManifest, RefusesContentNeedingAModuleThePlayerLacks) {
     ASSERT_TRUE(ContentManifest::fromJson(json, old, error)) << error;
     EXPECT_FALSE(old.hasModules);
     EXPECT_EQ(missingModules(old, allModules()), std::vector<std::string>{});
-    // T2 added noise and T6 voxel, which lite variants leave out (N11)
-    EXPECT_EQ(missingModules(old, lite), (std::vector<std::string>{"htmlui", "video", "runtimeshaders", "noise", "voxel"}));
+    // T2 added noise, T6 voxel and T1 runtime terrain edits, which lite variants leave out (N11)
+    EXPECT_EQ(missingModules(old, lite), (std::vector<std::string>{"htmlui", "video", "runtimeshaders", "noise", "voxel", "terrainedit"}));
     // and a Compile build (no player id) is not asked
     problems.clear();
     EXPECT_TRUE(checkContent(m, "", access, false, problems, &lite));
@@ -181,14 +181,22 @@ TEST(ContentManifest, ContentNeedingVoxelRefusesLite3D) {
     EXPECT_EQ(missingModules(m, lite3d), std::vector<std::string>{"voxel"});
 }
 
-TEST(PlayerModules, KnowsVoxelLast) {
-    ASSERT_FALSE(allModules().empty());
-    EXPECT_EQ(allModules().back(), "voxel");
+TEST(PlayerModules, KnowsVoxelAndTerrainEdits) {
+    ASSERT_GE(allModules().size(), 2u);
+    // the newest last: T1's runtime terrain edits after T6's Voxel Volumes
+    EXPECT_EQ(allModules()[allModules().size() - 2], "voxel");
+    EXPECT_EQ(allModules().back(), "terrainedit");
     EXPECT_EQ(moduleDisplayName("voxel"), "Voxel Volumes");
+    EXPECT_EQ(moduleDisplayName("terrainedit"), "runtime terrain edits");
 #if JASPERENGINE_VOXEL
     EXPECT_TRUE(isModuleBuilt("voxel"));
 #else
     EXPECT_FALSE(isModuleBuilt("voxel"));
+#endif
+#if JASPERENGINE_TERRAIN_EDIT
+    EXPECT_TRUE(isModuleBuilt("terrainedit"));
+#else
+    EXPECT_FALSE(isModuleBuilt("terrainedit"));
 #endif
 }
 

@@ -127,6 +127,11 @@ class LuaApiJson(unittest.TestCase):
         for name in ('Noise', 'NoiseGraph', 'NoiseGrid', 'NoiseGridTask'):
             self.assertEqual(classes[name]['modules'], ['noise'], name)
         self.assertEqual(member('Noise', 'perlin')['modules'], ['noise'])
+        # T1 R54: a Terrain's writes are the runtime terrain edit module's, its queries the core's
+        for name in ('applyOps', 'setHeights', 'getHeights', 'setRuntimeUploadBudget'):
+            self.assertEqual(member('Terrain', name)['modules'], ['terrainedit'], name)
+        for name in ('getHeightAt', 'raycast', 'allowRuntimeEdits'):
+            self.assertEqual(member('Terrain', name)['modules'], [], name)
         # the music (S39 R19): every name on the soundlayer class
         audio = {m['name'] for m in classes['Audio']['methods'] + classes['Audio']['properties']}
         for name in ('playMusic', 'stopMusic', 'advanceMusic', 'playStinger', 'getMusic', 'getMusicTime', 'getMusicPosition',
@@ -137,7 +142,7 @@ class LuaApiJson(unittest.TestCase):
             for key in ('modules',):
                 self.assertIsInstance(c[key], list)
                 for m in c['methods'] + c['properties']:
-                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d', 'soundlayer', 'noise', 'voxel'}, m['name'])
+                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d', 'soundlayer', 'noise', 'voxel', 'terrainedit'}, m['name'])
 
 
 class Emitters(unittest.TestCase):

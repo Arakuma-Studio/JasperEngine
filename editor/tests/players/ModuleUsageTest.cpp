@@ -218,6 +218,29 @@ TEST(ModuleUsage, VoxelLuaNameNeedsTheModule) {
     EXPECT_FALSE(withLua("local v = 1").needs("voxel"));
 }
 
+// T1 R54: runtime terrain edits are a module, needed by a terrain that allows them or a script that writes one
+TEST(ModuleUsage, AllowRuntimeEditsNeedsTerrainEdits) {
+    OneEntity one;
+    TerrainComponent terrain;
+    one.scene.addComponent<TerrainComponent>(one.entity, terrain);
+    EXPECT_EQ(modules(one.usage()), "") << "a terrain alone is drawn and queried by the core";
+    one.scene.getComponent<TerrainComponent>(one.entity).allowRuntimeEdits = true;
+    const ModuleUsage usage = one.usage();
+    EXPECT_EQ(modules(usage), "terrainedit");
+    EXPECT_EQ(usage.firstEvidence("terrainedit"), "scene Main: Allow Runtime Edits on Thing");
+}
+
+TEST(ModuleUsage, TerrainWritesInLuaNeedTerrainEdits) {
+    for (const char* code : {"terrain:applyOps({{op = 'raise', delta = 1}})", "terrain:setHeights(0, 0, 2, 2, heights)",
+                             "local h = terrain:getHeights(0, 0, 4, 4)", "terrain:setRuntimeUploadBudget(1024)"}) {
+        const ModuleUsage usage = withLua(code);
+        EXPECT_TRUE(usage.needs("terrainedit")) << code;
+        EXPECT_NE(usage.firstEvidence("terrainedit").find("lua/test.lua:1"), std::string::npos) << usage.firstEvidence("terrainedit");
+    }
+    // the queries are the core's
+    EXPECT_FALSE(withLua("local y = terrain:getHeightAt(0, 0)\nlocal hit = terrain:raycast(o, d, 100)").needs("terrainedit"));
+}
+
 TEST(ModuleUsage, ScriptPropertyTypesNeedTheirModules) {
     OneEntity one;
     ScriptComponent scripts;
@@ -274,7 +297,7 @@ TEST(ModuleUsage, LuaNamesNeedTheirModules) {
 }
 
 TEST(ModuleUsage, DynamicAccessNeedsEveryModule) {
-    const std::string every = "htmlui video runtimeshaders physics3d physics2d noise voxel";
+    const std::string every = "htmlui video runtimeshaders physics3d physics2d noise voxel terrainedit";
     for (const char* code : {"local f = _G[name]", "local f = _ENV[name]", "local chunk = load(text)", "local s = loadstring(text)",
                              "dofile(path)", "local r = debug.getregistry()", "local g = package.loaded", "local m = require(name)",
                              "local g = require('_G')"}) {
@@ -290,7 +313,7 @@ TEST(ModuleUsage, CppScriptsNeedEveryModule) {
     ModuleScan scan = empty();
     scan.cppScripts.push_back("scripts/Player.cpp");
     const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
-    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel");
+    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel terrainedit");
     EXPECT_NE(usage.firstEvidence("htmlui").find("scripts/Player.cpp"), std::string::npos);
 }
 

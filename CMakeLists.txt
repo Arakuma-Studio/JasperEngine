@@ -589,6 +589,10 @@ if(DEFINED JASPERENGINE_NOISE AND NOT JASPERENGINE_NOISE)
     message(FATAL_ERROR "The editor needs JASPERENGINE_NOISE: only players can leave it out")
 endif()
 set(JASPERENGINE_NOISE_ALL_BACKENDS ON CACHE BOOL "" FORCE)
+# The editor's terrain tools run the operation engine (T1)
+if(DEFINED JASPERENGINE_TERRAIN_EDIT AND NOT JASPERENGINE_TERRAIN_EDIT)
+    message(FATAL_ERROR "The editor needs JASPERENGINE_TERRAIN_EDIT: only players can leave it out")
+endif()
 add_subdirectory(${JASPERENGINE_ROOT})
 
 # Signed alongside the exes, so it needs the same metadata. MinGW prefixes the name.

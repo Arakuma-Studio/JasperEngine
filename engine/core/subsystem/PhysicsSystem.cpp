@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "PhysicsSystem.h"
+#include "terrain/TerrainEditModule.h"
+#if JASPERENGINE_TERRAIN_EDIT
 #include "physics/JoltTerrainRefresh.h"
+#endif
 #include "component/Joint3DComponent.h"
 #include "component/Transform.h"
 #include "Scene.h"
@@ -4258,7 +4261,9 @@ void PhysicsSystem::fixedUpdate(double dt){
     // the ragdolls switch their parts before the bodies sync
     updateRagdolls();
     // terrain edits reach their heightfields; what must be built again is, in the sync below
+#if JASPERENGINE_TERRAIN_EDIT
     JoltTerrainRefresh::apply(scene, *this);
+#endif
 
     auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
     bool stepped3D = false;
