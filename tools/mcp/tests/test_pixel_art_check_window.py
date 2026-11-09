@@ -89,7 +89,8 @@ async def test_row_selects_and_fix_changes_one_reference(ed: Editor):
         ed.check_eq(await texture(ed, name), before, f"{name}'s reference is untouched")
     await ed.call("undo", scene="scenes/Main.scene")
     back = await texture(ed, "Bilinear")
-    ed.check(back.get("min_filter") == "linear", f"one undo puts it back: {back}")
+    # (the default sampler, linear, reads back as the path)
+    ed.check(back == "sprites/hero.png" or (isinstance(back, dict) and back.get("min_filter") == "linear"), f"one undo puts it back: {back}")
 
 
 async def test_fix_all_preview_counts_the_plan(ed: Editor):

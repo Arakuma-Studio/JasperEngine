@@ -32,7 +32,8 @@ const std::vector<PixelArtScreen>& jasperengine::editor::pixelart::presetBaseRes
 }
 
 std::vector<FixChange> jasperengine::editor::pixelart::planPixelArtPreset(const PixelArtCheckInput& input, const PixelArtPresetOptions& options){
-    std::vector<FixChange> out = rules::projectPresetChanges(input.project, options.baseWidth, options.baseHeight, options.scaling,
+    const Scaling scaling = options.integerExpand ? Scaling::INTEGER_EXPAND : Scaling::INTEGER;
+    std::vector<FixChange> out = rules::projectPresetChanges(input.project, options.baseWidth, options.baseHeight, scaling,
                                                               std::clamp(options.pixelsPerUnit, 1, 256), std::clamp(options.windowScale, 2, 8));
     std::vector<std::string> selected;
     if (options.addCameras) selected.push_back("integer_scale");

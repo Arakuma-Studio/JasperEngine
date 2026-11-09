@@ -17,11 +17,11 @@
 #include "pixelart/Rgba8.h"
 #include "texture/TextureImportSettings.h"
 
-#include "Engine.h"
-#include "component/PixelPerfectCameraComponent.h"
 #include "math/Quaternion.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
+#include "pixelart/PixelPerfectLayout.h"
+#include "render/Render.h"
 
 #include "json.hpp"
 
@@ -34,6 +34,10 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+namespace jasperengine {
+    enum class Scaling;   // Engine.h
+}
 
 namespace jasperengine::editor {
     class Project;
@@ -148,6 +152,17 @@ namespace jasperengine::editor::pixelart {
         std::string spriteMaterial;
     };
 
+    // a Pixel Perfect Camera's settings, as the rules read them
+    struct PixelArtCameraSettings {
+        bool enabled = true;
+        unsigned int referenceWidth = 0, referenceHeight = 0;
+        PixelUpscaleMode upscaleMode = PixelUpscaleMode::INTEGER;
+        bool upscaleRenderTexture = true;
+        bool pixelSnapping = true;
+        PixelRotation rotationMode = PixelRotation::STEPS_90;
+        bool subpixelSmoothing = false;
+    };
+
     struct PixelArtCamera {
         bool exists = false;                   // a saved camera GameObject (else the scene's default view)
         std::string entity;
@@ -156,7 +171,7 @@ namespace jasperengine::editor::pixelart {
         float roll = 0.0f;                     // degrees about Z
         Vector3 rotationEuler;                 // degrees, the Inspector's
         bool hasComponent = false;             // a Pixel Perfect Camera
-        PixelPerfectCameraComponent component;
+        PixelArtCameraSettings component;
     };
 
     struct PixelArtScene {
@@ -181,7 +196,7 @@ namespace jasperengine::editor::pixelart {
         bool modeEnabled = false;
         bool assumeMode = false;               // read as Pixel Art Mode would see it (Scope::assumeModeOn)
         int canvasWidth = 0, canvasHeight = 0;
-        Scaling scaling = Scaling::FITWIDTH;
+        Scaling scaling{};
         int pixelsPerUnit = 1;
         TextureFilterMode defaultFilterMode = TextureFilterMode::Bilinear;
         int windowWidth = 0, windowHeight = 0;

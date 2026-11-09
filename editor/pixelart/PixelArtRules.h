@@ -8,6 +8,8 @@
 
 #include "pixelart/PixelArtCheck.h"
 
+#include "Engine.h"
+
 #include <string>
 #include <vector>
 

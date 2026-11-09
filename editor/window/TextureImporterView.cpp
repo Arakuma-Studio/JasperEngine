@@ -870,8 +870,9 @@ void TextureImporterView::drawPixelArtNotes(const TextureImportSettings& setting
     const std::vector<pixelart::FixChange> changes = pixelart::referenceFilterChanges(*project, assetPaths[0]);
     if (!changes.empty()){
         const std::string label = "Apply to " + std::to_string(changes.size()) + " Reference" + (changes.size() == 1 ? "" : "s");
-        ImGui::TextDisabled("%zu reference(s) in the open scenes are not filtered as this Filter Mode.", changes.size());
-        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%zu reference(s) in the open scenes are not filtered as this Filter Mode.", changes.size());
+        ImGui::PopStyleColor();
         if (ImGui::SmallButton(label.c_str())){
             pixelart::FixApplyReport report;
             std::string error;

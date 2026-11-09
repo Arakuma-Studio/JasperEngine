@@ -32,7 +32,7 @@ px::PixelArtPresetOptions PixelArtPresetDialog::options() const{
         o.baseWidth = std::clamp(customWidth, 16, 4096);
         o.baseHeight = std::clamp(customHeight, 16, 4096);
     }
-    o.scaling = scalingIndex == 1 ? Scaling::INTEGER_EXPAND : Scaling::INTEGER;
+    o.integerExpand = scalingIndex == 1;
     o.pixelsPerUnit = std::clamp(pixelsPerUnit, 1, 256);
     o.windowScale = std::clamp(windowScale, 2, 8);
     o.addCameras = addCameras;

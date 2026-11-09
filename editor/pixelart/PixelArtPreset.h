@@ -23,7 +23,7 @@ namespace jasperengine::editor::pixelart {
 
     struct PixelArtPresetOptions {
         int baseWidth = 320, baseHeight = 180;
-        Scaling scaling = Scaling::INTEGER;      // INTEGER or INTEGER_EXPAND
+        bool integerExpand = false;              // Scaling Integer (Expand), else Integer (Letterbox)
         int pixelsPerUnit = 1;                   // 1...256
         int windowScale = 4;                     // 2...8
         bool addCameras = true;                  // a Pixel Perfect Camera on every 2D scene's main camera

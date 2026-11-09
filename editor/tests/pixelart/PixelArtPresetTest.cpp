@@ -10,6 +10,8 @@
 #include "pixelart/PixelArtCheck.h"
 #include "pixelart/PixelArtPreset.h"
 
+#include "Engine.h"
+
 #include <set>
 #include <tuple>
 

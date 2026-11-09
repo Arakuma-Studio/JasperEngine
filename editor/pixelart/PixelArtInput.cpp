@@ -267,7 +267,15 @@ namespace {
                 }
                 if (const PixelPerfectCameraComponent* ppc = scene->findComponent<PixelPerfectCameraComponent>(cameraEntity)){
                     out.camera.hasComponent = true;
-                    out.camera.component = *ppc;
+                    PixelArtCameraSettings& c = out.camera.component;
+                    c.enabled = ppc->enabled;
+                    c.referenceWidth = ppc->referenceWidth;
+                    c.referenceHeight = ppc->referenceHeight;
+                    c.upscaleMode = ppc->upscaleMode;
+                    c.upscaleRenderTexture = ppc->upscaleRenderTexture;
+                    c.pixelSnapping = ppc->pixelSnapping;
+                    c.rotationMode = ppc->rotationMode;
+                    c.subpixelSmoothing = ppc->subpixelSmoothing;
                 }
             }
         }
