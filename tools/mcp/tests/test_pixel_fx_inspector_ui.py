@@ -85,17 +85,27 @@ async def scene_state(ed: Editor) -> tuple[bool, int]:
 async def scroll_to(ed: Editor, label: str, notches: int = 80) -> dict:
     """the Inspector scrolled down until `label` is drawn (the material rows sit below the Mesh Renderer's)"""
     ui = ui_of(ed)
-    anchor = (await ed.call("find_ui_item", label="Mesh Renderer", window=WINDOW)).get("items") or \
-             (await ed.call("find_ui_item", label="Transform", window=WINDOW)).get("items")
-    ed.check(bool(anchor), "the Inspector shows the Hero")
-    area = anchor[0]["window_rect"]
+    area = None
+    for known in ("Shader", "Position", "Tag", "Geometry"):
+        anchor = [i for i in (await ed.call("find_ui_item", label=known, window=WINDOW)).get("items", []) if i.get("window_rect")]
+        if anchor:
+            area = anchor[0]["window_rect"]
+            break
+    if area is None:
+        focused = await ed.call("focus_window", window="inspector")
+        area = focused.get("rect")
+    ed.check(bool(area), "the Inspector's rectangle")
     turned = 0
     while True:
         items = [i for i in (await ed.call("find_ui_item", label=label, window=WINDOW)).get("items", []) if i.get("visible")]
         if items:
             return items[0]
         if turned >= notches:
-            ed.fail(f"{label!r} never drawn in the Inspector ({turned} notches)")
+            await shot(ed, "scroll-fail-" + label.strip("#"))
+            rows = (await ed.call("find_ui_item", label="Dissolve", window=WINDOW)).get("items", [])
+            material = (await ed.call("find_ui_item", label="Material", window=WINDOW)).get("items", [])
+            ed.fail(f"{label!r} never drawn in the Inspector ({turned} notches; Dissolve rows {[i['label'] for i in rows]}, "
+                    f"Material items {[(i['label'], i.get('visible')) for i in material][:6]}, area {area})")
         await ui.wheel(ui.centre(area), 3)
         turned += 3
         await ui_input.frames(ed, 4)
@@ -132,6 +142,10 @@ async def test_setup(ed: Editor):
 
 async def test_thumbnails(ed: Editor):
     ui = ui_of(ed)
+    # the submesh's material rows open from its arrow (closed by default)
+    toggle = await scroll_to(ed, "##toggle_mesh")
+    await ui.click(ui.centre(toggle["rect"]))
+    await ui_input.frames(ed, 10)
     await shot(ed, "0-inspector")
     for define in ("OUTLINE", "DITHER_FADE", "RAMP_RECOLOR", "DROP_SHADOW", "DISSOLVE"):
         item = await scroll_to(ed, f"##spritefx_thumb_{define}")
