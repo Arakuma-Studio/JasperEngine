@@ -134,6 +134,8 @@ namespace jasperengine{
         // S48 R7, runtime: the texels the built quad grew by for the material's Pixel FX (left,
         // bottom, right, top, a byte each; MeshSystem's @expand), in the padding before `sheet`
         uint32_t builtFxExpand = 0;
+        // MeshComponent::customUniformWrites at the last compare of the expand
+        uint32_t fxWritesSeen = 0;
 
         // A sheet sprite (docs/specs/S44-aseprite-import.md R48): its frames come from a sprite
         // sheet (an .aseprite file's import, a texture; S45: atlases and sliced textures), the
