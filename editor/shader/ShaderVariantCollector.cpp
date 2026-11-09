@@ -38,6 +38,7 @@
 #include "render/LightingTiers.h"
 #include "device/QualityResolver.h"
 #include "component/SkyboxComponent.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
@@ -600,11 +601,21 @@ namespace {
                         lentBaseColor = fluid && fluid->output == FluidOutput::MATERIAL;
                         pixelSnapKeys = scenePixelSnap && (registry->findComponent<SpriteComponent>(entity) ||
                                                            registry->findComponent<TilemapComponent>(entity));
-                        // S52: a snapped Sprite carries its snap pivot ('Spv', not when instanced)
-                        snapPivotKeys = pixelSnapKeys && registry->findComponent<SpriteComponent>(entity) && !mesh->spriteInstanced;
+                        // S52: a Sprite's batching inputs and its Sprite Batch as MeshSystem::update gives
+                        // them (not the mesh's fields: a scene not drawn yet has none), and a snapped one
+                        // carries its snap pivot ('Spv', not when instanced)
+                        if (registry->findComponent<SpriteComponent>(entity)){
+                            const SpriteBatchComponent* spriteBatch = registry->isComponentRegistered<SpriteBatchComponent>()
+                                                                      ? registry->findComponent<SpriteBatchComponent>(entity) : nullptr;
+                            spriteInstancedKeys = spriteBatch && spriteBatch->enabled && !registry->findComponent<InstancedMeshComponent>(entity);
+                            spriteAttributes = MeshSystem::spriteBatchAttributes(*mesh, false, scene->getDefaultCustomShader(ShaderType::MESH));
+                            snapPivotKeys = pixelSnapKeys && !spriteInstancedKeys;
+                        }
                         collectMesh(registry, entity, *mesh);
                         pixelSnapKeys = false;
                         snapPivotKeys = false;
+                        spriteInstancedKeys = false;
+                        spriteAttributes = 0;
                         lentBaseColor = false;
                     }
                 }
@@ -660,6 +671,9 @@ namespace {
         bool pixelSnapKeys = false;
         // and, a Sprite, with its snap pivot then ('Spv', S52)
         bool snapPivotKeys = false;
+        // a Sprite's S52 inputs: its Sprite Batch draws it instanced; what its shader reads per vertex
+        bool spriteInstancedKeys = false;
+        uint8_t spriteAttributes = 0;
 
         static bool scenePixelSnaps(EntityRegistry* registry){
             if (!registry->isComponentRegistered<PixelPerfectCameraComponent>())
@@ -727,6 +741,8 @@ namespace {
             // mesh's or the scene's, with its features; the depth pass's library program
             const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
             SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
+            inputs.instanced = instmesh || spriteInstancedKeys;
+            inputs.batchAttributes = spriteAttributes;
 
             const std::string depthShaderSrc = RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader);
             const uint16_t depthShaderId = ShaderPool::registerCustomShader(depthShaderSrc);

@@ -19,13 +19,13 @@ namespace jasperengine{
 
     // Retained: the instances stay until scripts change them; Clear Each Frame: what scripts write
     // in a frame is drawn in that frame only
-    enum class SpriteBatchMode : uint8_t{
+    enum class SpriteBatchMode{
         RETAINED,
         CLEAR_EACH_FRAME
     };
 
     // Local: instances move with the GameObject; World: their positions are world positions
-    enum class SpriteBatchSpace : uint8_t{
+    enum class SpriteBatchSpace{
         LOCAL,
         WORLD
     };

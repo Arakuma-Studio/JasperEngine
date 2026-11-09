@@ -782,7 +782,9 @@ Recorded by the implementer (2026-11-08).
 - **'Sfx', 'Sfr', 'Spv' follow the mesh**: MeshSystem gives a Sprite the attributes its material and
   scene read (`MeshComponent::batchAttributes`: an enabled `instance=` feature, a `framerect=`
   feature, a snapping scene), the variant takes the bit only when the mesh carries the attribute.
-  MESH bits 46-48, DEPTH 20; shader cache v59.
+  MESH bits 46-48, DEPTH 20; shader cache v59. The export's shader list
+  (`ShaderVariantCollector`) computes the same inputs from the Sprite's material and Sprite Batch
+  (`MeshSystem::spriteBatchAttributes`), so a scene saves the same list drawn or not.
 - **`custom_params` is a 64-bit FNV-1a hash** of the custom blocks (the engine-written members,
   and with 'Sfx' the `instance=` members, zeroed): a block of a dozen vectors does not fit the key's
   256 bytes. The library textures and palettes join the `texture` section.
@@ -795,8 +797,13 @@ Recorded by the implementer (2026-11-08).
 
 ### MCP, docs and evidence
 
-- **Guide index entry**: `rendering-2d (set_properties sortingLayer)` in the "Other areas" list, in
-  that list's form.
+- **No guide index entry** (R36): the agent guide had 1,503 bytes of the 1,500 of headroom
+  `tool_budget.py` keeps, so even `, rendering-2d` would cut into it. The route is where the agent
+  meets it instead: the `tags_and_layers.sorting_layers` setting, the `sortingLayer` schema (a name,
+  an id or `{id, name}`), the unknown-name error naming `set_project_settings`, and
+  `jasper://docs/rendering-2d` in the docs listing.
+- **Sprite Batch colours are sRGB**, as every wrapper's colour (Sprite's `setColor`): the instance
+  colour is converted to linear when written, so 64 instances match 64 Sprites (AC3).
 - **AC14's eval cases** are in `tools/mcp/eval/cases.py` (`guard_sorting_layer_route`,
   `bad_unknown_sorting_layer`, `bad_bullets_as_gameobjects`, `guard_sort_bucket_break`); the eval
   itself runs on owner-approved Orquester accounts and was not run by the implementer.

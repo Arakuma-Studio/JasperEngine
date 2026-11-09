@@ -52,8 +52,8 @@ namespace jasperengine{
 
         // whole streams: positions as x, y pairs (stride 2) or x, y, z triples (stride 3), which
         // sets the count; rotations in radians about z; scales uniform (stride 1) or x, y pairs
-        // (stride 2); frame indices; linear r, g, b, a colours; one FX slot ("palette", "flash",
-        // "fade" or "dissolve") of every instance
+        // (stride 2); frame indices; sRGB r, g, b, a colours (as Sprite colours); one FX slot
+        // ("palette", "flash", "fade" or "dissolve") of every instance
         std::string setPositions(std::span<const float> values, int stride = 2);
         std::string setRotations(std::span<const float> radians);
         std::string setScales(std::span<const float> values, int stride = 1);

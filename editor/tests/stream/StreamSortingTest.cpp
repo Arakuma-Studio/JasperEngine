@@ -30,8 +30,6 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -44,13 +42,6 @@ namespace {
     struct SortingLayersReset {
         ~SortingLayersReset() { SortingLayers::reset(); }
     };
-
-    std::string readText(const fs::path& path){
-        std::ifstream in(path, std::ios::binary);
-        std::stringstream text;
-        text << in.rdbuf();
-        return text.str();
-    }
 
     // a 2D scene of two sprites, the second naming `layer`
     std::string spriteScene(int layer){
@@ -194,8 +185,10 @@ TEST(StreamSorting, ComponentsRoundTrip){
     EXPECT_FALSE(plainComponents["sortinggroup"]["sortingOrder"].IsDefined());
 }
 
-// R38: a scene saved before S52 (a committed 2D fixture: sprites, points, lines) loads with the
-// defaults, draws in today's order (no field away from its default) and re-saves byte for byte
+// R38: a scene saved before S52 (a committed 2D scene, scenes/shader-library-export-2d.scene, in
+// the editor's current format: sprites, points, lines) loads with the defaults, draws in today's
+// order (no field away from its default) and re-saves byte for byte: the new keys write nothing
+// at their defaults
 TEST(StreamSorting, PreS52SceneLoadsWithDefaultsAndResavesAsItWas){
     const fs::path path = fixture("sorting/pre-s52.scene");
     const std::string source = readText(path);
@@ -320,21 +313,21 @@ TEST(StreamSorting, LayersKeepTheirIds){
 
 // R40: the prebuilt player's game.json carries the table and the sort settings
 TEST(StreamSorting, PlayerConfigCarriesTheSorting){
-    PlayerConfig config;
+    player::PlayerConfig config;
     config.sortingLayers = {{0, "Default"}, {4, "FX"}};
     config.transparencySortMode = TransparencySortMode::CUSTOM_AXIS;
     config.transparencySortAxis = Vector3(1.0f, 2.0f, 3.0f);
     const nlohmann::json json = config.toJson();
-    PlayerConfig back;
+    player::PlayerConfig back;
     std::string error;
-    ASSERT_TRUE(PlayerConfig::fromJson(json, back, error)) << error;
+    ASSERT_TRUE(player::PlayerConfig::fromJson(json, back, error)) << error;
     ASSERT_EQ(back.sortingLayers.size(), 2u);
     EXPECT_EQ(back.sortingLayers[1].id, 4);
     EXPECT_EQ(back.sortingLayers[1].name, "FX");
     EXPECT_EQ(back.transparencySortMode, TransparencySortMode::CUSTOM_AXIS);
     EXPECT_FLOAT_EQ(back.transparencySortAxis.y, 2.0f);
     // the defaults write no key
-    const std::string plain = PlayerConfig().toJson().dump();
+    const std::string plain = player::PlayerConfig().toJson().dump();
     EXPECT_EQ(plain.find("sortingLayers"), std::string::npos);
     EXPECT_EQ(plain.find("transparencySort"), std::string::npos);
 }

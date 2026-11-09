@@ -140,7 +140,10 @@ for i = 0, 99 do
     xy[#xy + 1] = math.floor(i / 10) * 20 - 100
 end
 batch:setPositions(xy)
-local ok, err = pcall(function() batch:setFrames({0, 9}) end)
+local frames = {}
+for i = 1, 100 do frames[i] = 0 end
+frames[50] = 9
+local ok, err = pcall(function() batch:setFrames(frames) end)
 return {batch.count, ok, tostring(err)}
 """
 

@@ -739,12 +739,12 @@ void MeshSystem::fillSpriteBatchAttributes(MeshComponent& mesh){
         mesh.needUpdateBuffer = true;
 }
 
-uint8_t MeshSystem::spriteBatchAttributes(const MeshComponent& mesh, bool pixelSnap) const{
+uint8_t MeshSystem::spriteBatchAttributes(const MeshComponent& mesh, bool pixelSnap, const std::string& sceneMeshShader){
     uint8_t attributes = pixelSnap ? MeshBatchAttribute_SnapPivot : 0;
     if (mesh.numSubmeshes == 0 && mesh.submeshes.stored() == 0)
         return attributes;
     const Submesh& submesh = mesh.submeshes[0];
-    const std::string& shader = RenderSystem::getSubmeshShader(mesh, submesh, scene->getDefaultCustomShader(ShaderType::MESH));
+    const std::string& shader = RenderSystem::getSubmeshShader(mesh, submesh, sceneMeshShader);
     if (shader.empty())
         return attributes;
     const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
@@ -8284,7 +8284,7 @@ void MeshSystem::update(double dt){
             // with them (a new layout: the mesh loads again)
             const SpriteBatchComponent* spriteBatch = signature.test(spriteBatchId) ? &scene->getComponent<SpriteBatchComponent>(entity) : nullptr;
             const bool instanced = spriteBatch && spriteBatch->enabled && !signature.test(scene->getComponentId<InstancedMeshComponent>());
-            const uint8_t attributes = spriteBatchAttributes(mesh, snapping);
+            const uint8_t attributes = spriteBatchAttributes(mesh, snapping, scene->getDefaultCustomShader(ShaderType::MESH));
             if (attributes != mesh.batchAttributes || instanced != mesh.spriteInstanced){
                 if (attributes != mesh.batchAttributes)
                     sprite.needUpdateSprite = true;

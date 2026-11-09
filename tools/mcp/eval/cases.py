@@ -3100,9 +3100,9 @@ CASES = [
         "id": "guard_sorting_layer_route",
         "kind": "guard",
         "what_happened": "New area (S52): putting a 2D renderer in front of others is a Sorting Layer (the setting "
-                         "tags_and_layers.sorting_layers, then the renderer's sortingLayer); without the guide entry agents "
+                         "tags_and_layers.sorting_layers, then the renderer's sortingLayer); without the setting and the doc agents "
                          "moved GameObjects in the hierarchy or changed z, which 2D cameras ignore.",
-        "text_at_issue": "Guide 'Other areas': 'rendering-2d (set_properties sortingLayer)'; jasper://docs/rendering-2d; "
+        "text_at_issue": "jasper://docs/rendering-2d; "
                          "tags_and_layers.sorting_layers: 'Sorting Layer names in draw order, first drawn first; must include "
                          "\"Default\"'",
         "source": "S52 R34, R36 (new MCP text); no failure on record",
@@ -3160,8 +3160,7 @@ CASES = [
         "what_happened": "Asked for a bullet-hell pattern of 2,000 bullets, agents created one GameObject per bullet (create_entity "
                          "in loops, Instantiate in Lua): 2,000 transforms updated every frame; a Sprite Batch draws them from one "
                          "GameObject with flat streams (S52).",
-        "text_at_issue": "jasper://docs/rendering-2d 'Sprite Batch' (add_component spritebatch, SpriteBatch:setPositions); "
-                         "guide 'Other areas' rendering-2d",
+        "text_at_issue": "jasper://docs/rendering-2d 'Sprite Batch' (add_component spritebatch, SpriteBatch:setPositions)",
         "source": "S52 R10-R12, R36 (new MCP text); paraphrased from the design review",
         "files": {"scripts/spawner.lua": "-- empty spawner script\n"},
         "prompt": "Our boss (GameObject 30, which has a Bullet sprite child, GameObject 31) should fire a ring of 2000 bullets "

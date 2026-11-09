@@ -30,7 +30,7 @@ batch:setPositions(positions)                       -- flat {x1, y1, x2, y2, ...
 batch:setFrames(frames)                             -- frame indices or names (default: frame 0)
 batch:setRotations(radians)                         -- about z
 batch:setScales(scales)                             -- uniform; {sx, sy} pairs with stride 2
-batch:setColors(rgba)                               -- flat linear {r, g, b, a, ...}
+batch:setColors(rgba)                               -- flat sRGB {r, g, b, a, ...}, as Sprite colours
 batch:setFx("flash", amounts)                       -- "palette", "flash", "fade" or "dissolve"
 local i = batch:add(x, y, bullet)
 batch:set(i, x, y)

@@ -37,7 +37,7 @@ namespace jasperengine{
 
     // the point a sprite sorts by along the Transparency Sort Axis (spec S52 R4, Unity's Sprite
     // Sort Point): its world bounds' centre, or its pivot
-    enum class SpriteSortPoint : uint8_t{
+    enum class SpriteSortPoint{
         CENTER,
         PIVOT
     };

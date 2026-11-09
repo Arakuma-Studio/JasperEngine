@@ -250,10 +250,17 @@ TEST_F(SpriteSortGpu, TheTransparentQueueComparesTheLayerFirst){
     camera.setPosition(0.0f, 0.0f, 10.0f);
     camera.setTarget(0.0f, 0.0f, 0.0f);
     camera.activate();
-    Sprite& nearSprite = sprite("sort-green-alpha", sortSolid(0, 255, 0, 128), -2.0f, -2.0f, 4);
-    nearSprite.setPosition(-2.0f, -2.0f, 2.0f);
-    Sprite& farSprite = sprite("sort-red-alpha", sortSolid(255, 0, 0, 128), -2.0f, -2.0f, 4);
-    farSprite.setPosition(-2.5f, -2.5f, -2.0f);
+    // two blended sprites over the view's centre (the order decides)
+    Sprite& nearSprite = sprite("sort-green-alpha", sortSolid(0, 255, 0, 128), 0.0f, 0.0f, 8);
+    nearSprite.setPivotPreset(PivotPreset::CENTER);
+    nearSprite.setPosition(0.0f, 0.0f, 2.0f);
+    Sprite& farSprite = sprite("sort-red-alpha", sortSolid(255, 0, 0, 128), 0.0f, 0.0f, 8);
+    farSprite.setPivotPreset(PivotPreset::CENTER);
+    farSprite.setPosition(0.5f, 0.5f, -2.0f);
+    // (an Alpha Blend material writes no depth: an AUTO one with a translucent texture does, and
+    // would hide the far sprite drawn after the near one)
+    for (Sprite* s : {&nearSprite, &farSprite})
+        s->getComponent<MeshComponent>().submeshes[0].material.blendMode = MaterialBlendMode::ALPHA;
     ASSERT_TRUE(render());
     std::vector<uint8_t> image = frame(true);
     const std::array<uint8_t, 4> byDistance = pixel(image, SORT_VIEW_SIZE / 2, SORT_VIEW_SIZE / 2);

@@ -10,6 +10,7 @@
 #include "sokol/SokolSystem.h"
 #include "sprite/SpriteSheet.h"
 #include "sprite/SpriteSheetPool.h"
+#include "util/Color.h"
 
 #include <algorithm>
 #include <cmath>
@@ -211,7 +212,8 @@ std::string SpriteBatch::setColors(std::span<const float> rgba){
         return "length: " + std::to_string(rgba.size()) + " numbers for " + std::to_string(state.count) + " r, g, b, a colours";
     for (uint32_t i = 0; i < state.count; i++){
         const float* c = rgba.data() + (size_t)i * 4;
-        state.colors[i] = Vector4(c[0], c[1], c[2], c[3]);
+        // sRGB as a Sprite's colour (Mesh::setColor): the instance colour is linear, as its factor
+        state.colors[i] = Color::sRGBToLinear(Vector4(c[0], c[1], c[2], c[3]));
     }
     written(state);
     return "";
