@@ -2268,9 +2268,13 @@ rest of S82 lands in 6B.
     pattern or texture kind in the Designer compiles a new variant, a one-time cost per kind.
     Measured on llvmpipe (render thread, cold): the whole program 7.9 s created + 4.3-5.4 s first
     draw; a plain element 0.02 + 0.17-0.21 s; the heaviest title tried (giraffe pattern with
-    relief, liquid texture, glass, reflection, satin, spans together) 0.3-0.4 + 1.2-1.3 s.
+    relief, liquid texture, glass, reflection, satin, spans together) 0.3-0.4 + 1.2-1.3 s. On an RTX
+    3080 Ti (one run each; creation is off the render thread): the first draws of the plain element,
+    that heaviest variant and the whole program are 25 / 609 / 1233 ms on GL and 50 / 784 / 9197 ms on
+    Vulkan, whose pipeline creation is the render thread's stall. The bound's floor is therefore
+    1 s, a third of the hang threshold.
     `TitleElementVariantGpu.CompileCostIsBounded` checks the largest variant a heavy title plans
-    against 40 % of the whole program's cost measured in the same process (red control: the same
+    against the larger of 1 s and 40 % of the whole program's cost measured in the same process (red control: the same
     title planned with the whole program). A synchronous render (`TitleArtRenderHost::render`:
     `check_title`'s pixel checks, `view_asset`, picking a generator) has no frame to spread over: its
     stall is the sum of the programs it meets.
