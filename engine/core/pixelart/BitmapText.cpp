@@ -158,20 +158,13 @@ namespace jasperengine::pixelart {
             glyphInfo->clear();
 
         // one quad per codepoint shown (a space too: its quad is empty), in logical order
-        struct Placed {
-            size_t index;
-            uint32_t line;
-            int pen;
-            uint32_t key;               // the codepoint, or the fallback glyph's key
-            const BitmapGlyph* glyph;
-        };
-        std::vector<Placed> placed;
+        placed.clear();
         placed.reserve(cp.size());
         charPositions.clear();
         charExtents.clear();
-        std::vector<Vector2> positions(cp.size(), Vector2(0, 0));
-        std::vector<CharExtent> extents(cp.size());
-        std::vector<bool> shown(cp.size(), false);
+        positions.assign(cp.size(), Vector2(0, 0));
+        extents.assign(cp.size(), CharExtent());
+        shown.assign(cp.size(), 0);
         int inkRight = 0;
         for (size_t l = 0; l < lines.size(); l++){
             const BitmapLine& line = lines[l];
@@ -280,12 +273,12 @@ namespace jasperengine::pixelart {
         // the Text's glyphs on its cache page, looked up once
         const std::unordered_map<uint32_t, CachedGlyph>* cached = fromCache ? BitmapTextCache::get().glyphsOf(cachePage, f, options.style) : nullptr;
         // each placed glyph's cache entry, found once for both of its quads
-        std::vector<const CachedGlyph*> cachedOf(cached ? placed.size() : 0, nullptr);
+        cachedOf.assign(cached ? placed.size() : 0, nullptr);
         for (size_t i = 0; i < cachedOf.size(); i++){
             auto it = cached->find(placed[i].key);
             if (it != cached->end()) cachedOf[i] = &it->second;
         }
-        auto cachedGlyph = [&cachedOf, &placed](const Placed& p) -> const CachedGlyph*{
+        auto cachedGlyph = [this](const Placed& p) -> const CachedGlyph*{
             return cachedOf.empty() ? nullptr : cachedOf[(size_t)(&p - placed.data())];
         };
         if (fromCache && styled){

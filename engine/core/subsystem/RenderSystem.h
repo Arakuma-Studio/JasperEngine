@@ -3754,7 +3754,10 @@ namespace jasperengine{
 		// The user LUT is read through the CubeLut cache to know its stage (a scene-stage .cube
 		// changes the curve, not the grade); the second form takes the loaded one (null: none)
 		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings);
-		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut);
+		// deviceRenderScale false: the device tier's render-scale cap is not applied (a UI camera's
+		// image, S51 R8)
+		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut,
+		                                                  bool deviceRenderScale = true);
 		// the k of the in-shader LUT's shaper s = sqrt(x / (x + k)) for a LUT of that side
 		// (PostColorLut::bake, includes/post_color.glsl): 1, or with tone mapping NONE the
 		// one putting the clip point (2^-exposure) on a texel, so whites reach 255 at any side

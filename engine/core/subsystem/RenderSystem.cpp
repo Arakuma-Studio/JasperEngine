@@ -4662,10 +4662,10 @@ PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSet
     return getPostProcessingTiers(settings, lut.get());
 }
 
-PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut){
+PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut, bool deviceRenderScale){
     PostProcessingTiers tiers;
     // the device tier's and the thermal response's caps (QualityResolver)
-    tiers.renderScale = std::min(std::max(QualityResolver::renderScale(settings.renderScale), 0.5f), 1.0f);
+    tiers.renderScale = std::min(std::max(deviceRenderScale ? QualityResolver::renderScale(settings.renderScale) : settings.renderScale, 0.5f), 1.0f);
     const int msaaSamples = QualityResolver::msaaSamples(settings.msaaSamples);
     tiers.msaaSamples = msaaSamples >= 4 ? 4 : (msaaSamples >= 2 ? 2 : 1);
 
@@ -4766,7 +4766,13 @@ void RenderSystem::applyPostProcessing(){
         postLutPath = lutPath;
         postLut = getCachedColorLut(lutPath);
     }
-    const PostProcessingTiers tiers = getPostProcessingTiers(settings, postLut.get());
+    // a UI camera's image is the UI: the device tier's render-scale cap, there to cut 3D fill,
+    // would only upscale its text and images through a linear filter (a Low tier's 0.5 blurs every
+    // edge, S51 R8); the scale its settings give still applies
+    const Entity mainCamera = scene->getCamera();
+    const CameraComponent* mainCameraComponent = mainCamera != NULL_ENTITY ? scene->findComponent<CameraComponent>(mainCamera) : nullptr;
+    const bool uiImage = mainCameraComponent && mainCameraComponent->type == CameraType::CAMERA_UI;
+    const PostProcessingTiers tiers = getPostProcessingTiers(settings, postLut.get(), !uiImage);
 
     // a new uber variant applies once it is built (or failed): until then the frame keeps the
     // tiers it draws with (its uber variant, its in-shader colour), instead of frames without

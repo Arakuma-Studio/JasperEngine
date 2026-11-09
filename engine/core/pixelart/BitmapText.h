@@ -31,6 +31,7 @@ namespace jasperengine {
 namespace jasperengine::pixelart {
 
     class BitmapFont;
+    struct BitmapGlyph;
 
     struct BitmapTextOptions {
         float unit = 1.0f;              // units per font pixel
@@ -97,6 +98,20 @@ namespace jasperengine::pixelart {
         int backQuads = 0;
         BitmapTextStyle lastStyle;
         std::vector<uint32_t> acquiredText;     // the codepoints of the last cache acquire
+
+        // a rebuild's scratch, kept between rebuilds so a warm one allocates nothing (R20)
+        struct Placed {
+            size_t index;
+            uint32_t line;
+            int pen;
+            uint32_t key;               // the codepoint, or the fallback glyph's key
+            const BitmapGlyph* glyph;
+        };
+        std::vector<Placed> placed;
+        std::vector<Vector2> positions;
+        std::vector<CharExtent> extents;
+        std::vector<uint8_t> shown;
+        std::vector<const CachedGlyph*> cachedOf;
     };
 
 }

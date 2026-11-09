@@ -720,12 +720,13 @@ Recorded by the implementation (branch `feature/s51-pixel-fonts`).
     fails naming the largest that fits, and the glyph grid shows the glyphs that fit (it says how
     many). The guide's "Unity names -> engine names" heading is "Unity names" (the guide's headroom
     for the group's name).
-15. **R20's styled rebuild is just over budget.** A rebuild sizes the buffer once and writes its
-    vertices in place, looks glyphs up through an ASCII table, lays each line out in one pass, and
-    an unchanged styled text skips the cache acquire. On box A (16 vCPU, release, the box shared)
-    a 200-character rebuild takes 0.026 ms (budget 0.05) and a styled one with a cache hit 0.057
-    and 0.058 ms in two runs (budget 0.05): it writes twice the quads of the plain rebuild, both
-    with vertex colours. `BitmapFontBench` logs both and gates them under `JASPER_TEST_PERF_SLACK`.
+15. **R20's budgets are measured, gated by `JASPER_TEST_PERF_SLACK`.** A rebuild sizes the
+    buffer once and writes its vertices in place, keeps its scratch lists between rebuilds, looks
+    glyphs up through an ASCII table, lays each line out in one pass, and an unchanged styled
+    text skips the cache acquire. `BitmapFontBench` reports both budgets through `perfSlack()`
+    (AGENTS: gated only on the benchmark run). On box A, shared vCPUs: a 200-character rebuild
+    0.026 ms (budget 0.05), a styled one with a cache hit 0.057 ms (it writes twice the quads,
+    both with vertex colours).
 16. **BMFont channels (R3).** `chnl=0` reads as all channels, as `chnl=15`: libGDX Hiero writes 0
     (fixture `engine/tests/core/fixtures/fonts/bm_hiero.fnt`).
 17. **Scene preload (R19).** A compiled game's scene resources list its Texts' bitmap fonts
@@ -736,11 +737,13 @@ Recorded by the implementation (branch `feature/s51-pixel-fonts`).
 18. **HTML UI pages (R15).** A bitmap face's glyphs go to their own glyph pages (`PageKind::PIXEL`
     and `PIXEL_EFFECT`, in the base budget), sampled NEAREST, so a CSS transform magnifies their
     pixels as blocks; vector glyphs keep S16's filtered pages.
-19. **AC22's comparison (open).** `tools/mcp/tests/test_pixel_fonts_export.py` compares the
-    compiled game of `tools/fixtures/pixel-fonts` (`SMOKE_METHOD=compile SMOKE_PLAY=1`, its own
-    1280x720 framebuffer screenshot, GL core) with the editor's Game view at the same size. The
-    cooked fonts ship and the sources do not, but 10,428 of 45,672 text pixels differ: the
-    exported frame is the editor's frame through a 3x3 [1 2 1] blur, everywhere (every pixel
-    within 1 level of that blur), so the glyphs are the same and something after them filters
-    the whole exported frame. That is outside S51's text path and is left to the engine; the test
-    stays strict.
+19. **AC22 and the device tier's render scale (R8).** The exported game logged "tier Low ... uber
+    pass on (features Scl, render scale 0.50)": S56's Low tier caps the render scale at 0.5
+    (Medium 0.85), and the uber pass upscales the half-size image through a linear filter, which
+    on edges at whole source pixels is exactly a 3x3 [1 2 1] blur of the editor's frame. The editor
+    applies no tier. A UI camera's image (a UI scene's text and images) no longer takes the tier's
+    render-scale cap (`RenderSystem::getPostProcessingTiers`, `deviceRenderScale`); a scale its
+    post-processing settings give still applies. Scenes under S41's Pixel Perfect Camera use its
+    fixed resolution and never took it. Pixel-art scenes without that camera still take the
+    tier's cap: S42's Pixel Art preset and mode should set the Low and Medium tiers' Render Scale
+    cells to 1 (or the mode should skip the cap), so an exported pixel-art game draws as the editor.
