@@ -151,11 +151,11 @@ vec4 trBand(vec2 p, out vec3 light){
     }
     // covered: rim when an uncovered pixel lies within `rim` steps toward the edge
     if (rimWidth > 0 && -v * scale <= float(rimWidth) + 1.5){
-        vec2 step = abs(g.x) >= abs(g.y) ? vec2(sign(g.x), 0.0) : vec2(0.0, sign(g.y));
+        vec2 toward = abs(g.x) >= abs(g.y) ? vec2(sign(g.x), 0.0) : vec2(0.0, sign(g.y));
         for (int s = 1; s <= 8; s++){
             if (s > rimWidth)
                 break;
-            vec2 q = p + step * float(s);
+            vec2 q = p + toward * float(s);
             if (!trInside(q))
                 break;
             if (trField(q) >= level){
@@ -238,9 +238,9 @@ vec4 trCrtOff(vec2 p, out vec3 light){
     float depth = max(d.y, max(d.x - halfCols, 0.0));
     if (depth <= float(rimWidth)){
         int n = trSteps();
-        int step = int(floor(depth * float(n) / float(rimWidth + 1))) + int(floor((1.0 - bright) * float(n)));
-        if (step < n)
-            return vec4(trHot(step), 1.0);
+        int rampStep = int(floor(depth * float(n) / float(rimWidth + 1))) + int(floor((1.0 - bright) * float(n)));
+        if (rampStep < n)
+            return vec4(trHot(rampStep), 1.0);
     }
     return vec4(tr.ink.rgb, 1.0);
 }
