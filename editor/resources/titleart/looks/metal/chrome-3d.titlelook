@@ -1,0 +1,252 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "metal/chrome-3d",
+  "revision": 1,
+  "name": {
+    "en": "Chrome 3D",
+    "ja": "クローム 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with a chrome face and a chamfer bevel, two bands (black metal, gloss black), an outline, an outer glow and a light glow.",
+    "ja": "クロームの面の3D押し出し文字（ベベル付き）、2本の帯（黒のメタル、黒の光沢）、アウトライン、外側の光彩、ライトグロー。"
+  },
+  "family": "metal",
+  "tags": [
+    "metal",
+    "3d",
+    "chrome",
+    "bevel",
+    "black",
+    "bands",
+    "outline",
+    "glow"
+  ],
+  "synonyms": {
+    "en": [
+      "metallic",
+      "metal finish",
+      "three-dimensional",
+      "extruded",
+      "mirror",
+      "polished metal",
+      "emboss",
+      "chiselled",
+      "dark",
+      "jet black",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "light",
+      "bloom",
+      "shine"
+    ],
+    "ja": [
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "クローム",
+      "鏡面",
+      "kuromu",
+      "kyomen",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "style_3d": {
+    "depth": 10.6,
+    "curve_segments": 10,
+    "bevel": {
+      "width": 1.6,
+      "depth": 1.6,
+      "profile": "chamfer"
+    },
+    "face": {
+      "preset": "chrome",
+      "color": "#ffffff",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#ffffff"
+          },
+          {
+            "pos": 0.22,
+            "color": "#e8eef5"
+          },
+          {
+            "pos": 0.45,
+            "color": "#8a94a3"
+          },
+          {
+            "pos": 0.52,
+            "color": "#2e343d"
+          },
+          {
+            "pos": 0.6,
+            "color": "#7d8794"
+          },
+          {
+            "pos": 0.8,
+            "color": "#dde4ee"
+          },
+          {
+            "pos": 1,
+            "color": "#ffffff"
+          }
+        ]
+      },
+      "metallic": 1,
+      "roughness": 0.04,
+      "env_multiplier": 0.85
+    },
+    "bands": [
+      {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#1a1e26",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#2a2f38",
+          "metallic": 1,
+          "roughness": 0.25,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "grow": 5,
+        "depth": 7,
+        "bevel": {
+          "width": 0.6,
+          "depth": 0.6
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#050505",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outline",
+      "params": {
+        "color": "#05070c",
+        "width": 2.5
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#7ab4ff",
+        "intensity": 1.4,
+        "opacity": 0.85,
+        "size": 12,
+        "spread": 0.3
+      }
+    },
+    {
+      "type": "light_glow",
+      "params": {
+        "exposure": 0.5,
+        "falloff": 35,
+        "intensity": 1.5,
+        "knee": 0.3,
+        "radius": 160,
+        "threshold": 0.5,
+        "tint_amount": 0.7,
+        "tint_outer": "#bcd8ff"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "studio",
+      "intensity": 1,
+      "rotation": -30,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory.ts",
+    "line": 1376,
+    "item": "f-3d-chrome",
+    "license_note": "used with the author's permission"
+  }
+}

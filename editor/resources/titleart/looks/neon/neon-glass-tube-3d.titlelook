@@ -1,0 +1,345 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "neon/neon-glass-tube-3d",
+  "revision": 1,
+  "name": {
+    "en": "Neon Glass Tube 3D",
+    "ja": "ネオンガラス管 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with a glowing pink face and a round bevel, four bands (black metal, glowing cyan, gloss black, chrome), an outline, an outer glow and a light glow.",
+    "ja": "発光するピンクの面の3D押し出し文字（ベベル付き）、4本の帯（黒のメタル、発光する水色、黒の光沢、クローム）、アウトライン、外側の光彩、ライトグロー。"
+  },
+  "family": "neon",
+  "tags": [
+    "neon",
+    "3d",
+    "pink",
+    "glow",
+    "bevel",
+    "black",
+    "metal",
+    "cyan",
+    "chrome",
+    "bands",
+    "outline",
+    "glass"
+  ],
+  "synonyms": {
+    "en": [
+      "neon sign",
+      "tube light",
+      "three-dimensional",
+      "extruded",
+      "rose",
+      "magenta",
+      "light",
+      "bloom",
+      "shine",
+      "emboss",
+      "chiselled",
+      "dark",
+      "jet black",
+      "metallic",
+      "metal finish",
+      "aqua",
+      "teal",
+      "mirror",
+      "polished metal",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "transparent",
+      "crystal"
+    ],
+    "ja": [
+      "ネオン",
+      "ネオン管",
+      "neon",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "ピンク",
+      "桃色",
+      "ももいろ",
+      "pinku",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "水色",
+      "シアン",
+      "みずいろ",
+      "mizuiro",
+      "クローム",
+      "鏡面",
+      "kuromu",
+      "kyomen",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "ガラス",
+      "透明",
+      "とうめい",
+      "garasu",
+      "tomei"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "style_3d": {
+    "depth": 8.5,
+    "curve_segments": 10,
+    "bevel": {
+      "width": 2.6,
+      "depth": 2.4,
+      "segments": 10
+    },
+    "bevel_position": "inside",
+    "face": {
+      "color": "#ff3cc8",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#fff0fa"
+          },
+          {
+            "pos": 0.03,
+            "color": "#ff40c8"
+          },
+          {
+            "pos": 0.08,
+            "color": "#3a0830"
+          },
+          {
+            "pos": 0.16,
+            "color": "#0a0610"
+          },
+          {
+            "pos": 1,
+            "color": "#04030a"
+          }
+        ]
+      },
+      "gradient_axis": "depth",
+      "roughness": 0.04,
+      "env_multiplier": 1.2,
+      "specular_multiplier": 1.5,
+      "clearcoat": 1,
+      "emission": "#ffffff",
+      "emission_intensity": 2.5
+    },
+    "bands": [
+      {
+        "grow": 0.3,
+        "depth": 8,
+        "offset": -8.5,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.5,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#06040c",
+          "metallic": 1,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#08060e",
+          "metallic": 1,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "grow": 1.1,
+        "join": "round",
+        "depth": 1,
+        "bevel": {
+          "width": 1.1,
+          "depth": 0.55,
+          "profile": "tube",
+          "segments": 12
+        },
+        "material": {
+          "color": "#20e0ff",
+          "roughness": 0.2,
+          "clearcoat": 1,
+          "emission": "#20e0ff",
+          "emission_intensity": 3.5
+        }
+      },
+      {
+        "grow": 2.2,
+        "bevel": {
+          "width": 0.6,
+          "depth": 0.6
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#04030a",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 0.8,
+        "depth": 4,
+        "bevel": {
+          "width": 0.5,
+          "depth": 0.5
+        },
+        "material": {
+          "preset": "chrome",
+          "color": "#606878",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outline",
+      "params": {
+        "color": "#000000",
+        "width": 2.5
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff40c8",
+        "intensity": 1.4,
+        "opacity": 0.85,
+        "size": 12,
+        "spread": 0.3
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff20b0",
+        "intensity": 1,
+        "opacity": 0.75,
+        "size": 30,
+        "spread": 0.05
+      }
+    },
+    {
+      "type": "light_glow",
+      "params": {
+        "exposure": 0.5,
+        "falloff": 35,
+        "knee": 0.3,
+        "radius": 160,
+        "threshold": 0.5,
+        "tint_amount": 0.7,
+        "tint_outer": "#ff60d0"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "night",
+      "intensity": 1,
+      "rotation": 0,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#60e0ff",
+        "intensity": 1.5,
+        "position": [900, -300, 300]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory3dSetB.ts",
+    "line": 40,
+    "item": "f-3d-neon-glass",
+    "license_note": "used with the author's permission"
+  }
+}

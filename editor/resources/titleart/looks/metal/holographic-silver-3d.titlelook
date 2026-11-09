@@ -1,0 +1,394 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "metal/holographic-silver-3d",
+  "revision": 1,
+  "name": {
+    "en": "Holographic Silver 3D",
+    "ja": "ホログラムシルバー 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with a silver metal face, four bands (chrome, blue metal, purple metal, gloss black), an outline, an outer glow and a light glow.",
+    "ja": "銀のメタルの面の3D押し出し文字、4本の帯（クローム、青のメタル、紫のメタル、黒の光沢）、アウトライン、外側の光彩、ライトグロー。"
+  },
+  "family": "metal",
+  "tags": [
+    "metal",
+    "3d",
+    "silver",
+    "chrome",
+    "blue",
+    "black",
+    "bands",
+    "outline",
+    "sparkle",
+    "glow",
+    "holographic"
+  ],
+  "synonyms": {
+    "en": [
+      "metallic",
+      "metal finish",
+      "three-dimensional",
+      "extruded",
+      "silvery",
+      "platinum",
+      "mirror",
+      "polished metal",
+      "azure",
+      "cobalt",
+      "dark",
+      "jet black",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "glint",
+      "twinkle",
+      "shine",
+      "light",
+      "bloom",
+      "hologram",
+      "iridescent"
+    ],
+    "ja": [
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "銀",
+      "シルバー",
+      "ぎん",
+      "gin",
+      "shiruba",
+      "クローム",
+      "鏡面",
+      "kuromu",
+      "kyomen",
+      "青",
+      "ブルー",
+      "あお",
+      "ao",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "きらめき",
+      "キラキラ",
+      "kirameki",
+      "kirakira",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro",
+      "ホログラム",
+      "horoguramu"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "style_3d": {
+    "depth": 12,
+    "curve_segments": 10,
+    "face": {
+      "color": "#f0f0ff",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#ffd6f4"
+          },
+          {
+            "pos": 0.2,
+            "color": "#d8e0ff"
+          },
+          {
+            "pos": 0.38,
+            "color": "#b8fff0"
+          },
+          {
+            "pos": 0.55,
+            "color": "#fff4c0"
+          },
+          {
+            "pos": 0.72,
+            "color": "#ffc8e8"
+          },
+          {
+            "pos": 0.88,
+            "color": "#c0d8ff"
+          },
+          {
+            "pos": 1,
+            "color": "#e8ffff"
+          }
+        ]
+      },
+      "gradient_angle": 60,
+      "gradient_bend": 0.8,
+      "metallic": 1,
+      "roughness": 0.08,
+      "env_multiplier": 0.9,
+      "iridescence": 1,
+      "flakes": 0.2,
+      "flake_scale": 0.5
+    },
+    "bands": [
+      {
+        "grow": 1.4,
+        "depth": 10.6,
+        "offset": -12,
+        "bevel": {
+          "width": 1.4,
+          "depth": 1.4,
+          "profile": "chamfer"
+        },
+        "material": {
+          "preset": "chrome",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04,
+          "env_multiplier": 0.9,
+          "iridescence": 0.6
+        }
+      },
+      {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#1a1430",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#1e1a30",
+          "metallic": 1,
+          "roughness": 0.25,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "grow": 2,
+        "bevel": {
+          "width": 1.2,
+          "depth": 1.2
+        },
+        "material": {
+          "preset": "purple_metal",
+          "color": "#b8a0ff",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#f0e0ff"
+              },
+              {
+                "pos": 0.4,
+                "color": "#a888ff"
+              },
+              {
+                "pos": 0.55,
+                "color": "#3a2a80"
+              },
+              {
+                "pos": 1,
+                "color": "#d0c0ff"
+              }
+            ]
+          },
+          "metallic": 0.9,
+          "roughness": 0.15,
+          "clearcoat": 1,
+          "iridescence": 0.8
+        }
+      },
+      {
+        "grow": 2.4,
+        "depth": 7,
+        "bevel": {
+          "width": 0.6,
+          "depth": 0.6
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#08061a",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      }
+    ],
+    "glint": {
+      "enabled": true,
+      "threshold": 2,
+      "intensity": 0.6,
+      "radius": 5,
+      "streaks": 6,
+      "length": 32,
+      "angle": 15,
+      "tint": "#ffffff"
+    }
+  },
+  "effects": [
+    {
+      "type": "outline",
+      "params": {
+        "color": "#06041a",
+        "width": 2.5
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#b080ff",
+        "intensity": 1.4,
+        "opacity": 0.85,
+        "size": 12,
+        "spread": 0.3
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "fill": "gradient",
+        "gradient": {
+          "stops": [
+            {
+              "pos": 0,
+              "color": "#ff70e0",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 0.5,
+              "color": "#8090ff",
+              "alpha": 1,
+              "mid": 0.5
+            },
+            {
+              "pos": 1,
+              "color": "#40f0ff",
+              "alpha": 1,
+              "mid": 0.5
+            }
+          ],
+          "interp": "rgb"
+        },
+        "intensity": 1,
+        "opacity": 0.8,
+        "size": 18
+      }
+    },
+    {
+      "type": "light_glow",
+      "params": {
+        "exposure": 0.5,
+        "falloff": 35,
+        "intensity": 1.5,
+        "knee": 0.3,
+        "radius": 160,
+        "threshold": 0.5,
+        "tint_amount": 0.7,
+        "tint_outer": "#e8e0ff"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "studio",
+      "intensity": 1,
+      "rotation": 60,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory3dMore.ts",
+    "line": 306,
+    "item": "f-3d-holo-silver",
+    "license_note": "used with the author's permission"
+  }
+}

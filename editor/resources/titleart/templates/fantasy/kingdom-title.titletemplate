@@ -78,7 +78,7 @@
   "material_links": {},
   "layers": [
     {
-      "id": "2829115a",
+      "id": "df83e784",
       "type": "generator",
       "name": "Backdrop",
       "visible": true,
@@ -134,7 +134,7 @@
       "follow": ""
     },
     {
-      "id": "6435e99a",
+      "id": "da8e5e19",
       "type": "generator",
       "name": "God Rays",
       "visible": true,
@@ -175,10 +175,10 @@
           "seed": 1
         }
       },
-      "follow": "ce638fc6"
+      "follow": "2829115a"
     },
     {
-      "id": "ce638fc6",
+      "id": "2829115a",
       "type": "text",
       "name": "Title",
       "visible": true,
@@ -200,7 +200,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "c13b15e7",
+          "id": "5b286134",
           "type": "inner_shadow",
           "enabled": true,
           "params": {
@@ -521,7 +521,7 @@
         },
         "rims": [
           {
-            "id": "da8e5e19",
+            "id": "23162bf9",
             "enabled": true,
             "width": 1,
             "join": "miter",
@@ -733,7 +733,7 @@
             }
           },
           {
-            "id": "23162bf9",
+            "id": "30d9a585",
             "enabled": true,
             "width": 3,
             "join": "miter",
@@ -969,7 +969,7 @@
             }
           },
           {
-            "id": "30d9a585",
+            "id": "21dab417",
             "enabled": true,
             "width": 2,
             "join": "miter",
@@ -1195,7 +1195,7 @@
       "style_3d": null
     },
     {
-      "id": "df83e784",
+      "id": "c13b15e7",
       "type": "text",
       "name": "Subtitle",
       "visible": true,
@@ -1217,7 +1217,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "5b286134",
+          "id": "662d0ef3",
           "type": "inner_shadow",
           "enabled": true,
           "params": {
@@ -1232,7 +1232,7 @@
           "from_look": false
         },
         {
-          "id": "662d0ef3",
+          "id": "6435e99a",
           "type": "drop_shadow",
           "enabled": true,
           "params": {
@@ -1517,7 +1517,7 @@
         },
         "rims": [
           {
-            "id": "21dab417",
+            "id": "4ef58b7f",
             "enabled": true,
             "width": 1.2,
             "join": "miter",
@@ -1729,7 +1729,7 @@
             }
           },
           {
-            "id": "4ef58b7f",
+            "id": "53168118",
             "enabled": true,
             "width": 4,
             "join": "miter",
@@ -1962,7 +1962,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "ce638fc6",
+          "layer": "2829115a",
           "field": "text"
         }
       ],
@@ -1976,7 +1976,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "df83e784",
+          "layer": "c13b15e7",
           "field": "text"
         }
       ],

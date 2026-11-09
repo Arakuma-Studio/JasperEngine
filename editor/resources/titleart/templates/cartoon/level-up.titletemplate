@@ -68,7 +68,7 @@
   "material_links": {},
   "layers": [
     {
-      "id": "2829115a",
+      "id": "df83e784",
       "type": "generator",
       "name": "Backdrop",
       "visible": true,
@@ -124,7 +124,7 @@
       "follow": ""
     },
     {
-      "id": "5b286134",
+      "id": "662d0ef3",
       "type": "generator",
       "name": "Sunburst",
       "visible": true,
@@ -146,7 +146,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "c13b15e7",
+          "id": "5b286134",
           "type": "gradient_overlay",
           "enabled": true,
           "params": {
@@ -305,10 +305,10 @@
           "width_variation": 40
         }
       },
-      "follow": "dfe8b7a0"
+      "follow": "2829115a"
     },
     {
-      "id": "dfe8b7a0",
+      "id": "2829115a",
       "type": "text",
       "name": "Title",
       "visible": true,
@@ -330,7 +330,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "df83e784",
+          "id": "c13b15e7",
           "type": "extrude",
           "enabled": true,
           "params": {
@@ -633,7 +633,7 @@
         },
         "rims": [
           {
-            "id": "662d0ef3",
+            "id": "6435e99a",
             "enabled": true,
             "width": 5.2,
             "join": "miter",
@@ -866,7 +866,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "dfe8b7a0",
+          "layer": "2829115a",
           "field": "text"
         }
       ],

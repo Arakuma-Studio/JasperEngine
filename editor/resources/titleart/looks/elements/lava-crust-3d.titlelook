@@ -1,0 +1,322 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "elements/lava-crust-3d",
+  "revision": 1,
+  "name": {
+    "en": "Lava Crust 3D",
+    "ja": "溶岩 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with an orange face and a round bevel, four bands (black metal, glowing orange, black, gloss black), an outline, an outer glow and a light glow.",
+    "ja": "オレンジの面の3D押し出し文字（ベベル付き）、4本の帯（黒のメタル、発光するオレンジ、黒、黒の光沢）、アウトライン、外側の光彩、ライトグロー。"
+  },
+  "family": "elements",
+  "tags": [
+    "elements",
+    "3d",
+    "orange",
+    "bevel",
+    "black",
+    "metal",
+    "glow",
+    "bands",
+    "outline",
+    "lava"
+  ],
+  "synonyms": {
+    "en": [
+      "energy",
+      "elemental",
+      "three-dimensional",
+      "extruded",
+      "amber",
+      "emboss",
+      "chiselled",
+      "dark",
+      "jet black",
+      "metallic",
+      "metal finish",
+      "light",
+      "bloom",
+      "shine",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "magma",
+      "molten"
+    ],
+    "ja": [
+      "エネルギー",
+      "属性",
+      "zokusei",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "オレンジ",
+      "橙",
+      "だいだい",
+      "orenji",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "溶岩",
+      "マグマ",
+      "ようがん",
+      "yogan"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "style_3d": {
+    "depth": 10.5,
+    "curve_segments": 10,
+    "bevel": {
+      "width": 1,
+      "depth": 1
+    },
+    "face": {
+      "color": "#ff7a00",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#ffd040"
+          },
+          {
+            "pos": 0.45,
+            "color": "#ff7a00"
+          },
+          {
+            "pos": 1,
+            "color": "#e02000"
+          }
+        ]
+      },
+      "roughness": 0.45,
+      "env_multiplier": 1,
+      "clearcoat": 0.2,
+      "pattern": {
+        "kind": "giraffe",
+        "color": "#2a2420",
+        "scale": 5,
+        "seed": 3,
+        "shade": 1,
+        "relief": 1
+      },
+      "surface": {
+        "kind": "crumple",
+        "scale": 3,
+        "seed": 5
+      }
+    },
+    "bands": [
+      {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.5,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.5,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#000000",
+          "metallic": 1,
+          "roughness": 0.6,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#200400",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ff4a00"
+              },
+              {
+                "pos": 0.3,
+                "color": "#5a0800"
+              },
+              {
+                "pos": 1,
+                "color": "#080000"
+              }
+            ]
+          },
+          "gradient_axis": "depth",
+          "roughness": 0.6,
+          "emission": "#ffffff",
+          "emission_intensity": 0.6
+        }
+      },
+      {
+        "grow": 1.2,
+        "join": "round",
+        "depth": 1,
+        "bevel": {
+          "width": 1.2,
+          "depth": 0.6,
+          "profile": "tube",
+          "segments": 12
+        },
+        "material": {
+          "color": "#ff5a00",
+          "roughness": 0.2,
+          "clearcoat": 1,
+          "emission": "#ff5a00",
+          "emission_intensity": 3.5
+        }
+      },
+      {
+        "grow": 2.4,
+        "depth": 7,
+        "bevel": {
+          "width": 1.2,
+          "depth": 1.2,
+          "profile": "chamfer"
+        },
+        "material": {
+          "color": "#1e1a18",
+          "metallic": 0.4,
+          "roughness": 0.5,
+          "surface": {
+            "kind": "crumple",
+            "scale": 3,
+            "seed": 5
+          }
+        }
+      },
+      {
+        "grow": 1,
+        "depth": 4,
+        "bevel": {
+          "width": 0.5,
+          "depth": 0.5
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#000000",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      }
+    ]
+  },
+  "effects": [
+    {
+      "type": "outline",
+      "params": {
+        "color": "#000000",
+        "width": 2.5
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff4a00",
+        "intensity": 1.4,
+        "opacity": 0.85,
+        "size": 12,
+        "spread": 0.3
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff3000",
+        "intensity": 1,
+        "opacity": 0.7,
+        "size": 30,
+        "spread": 0.05
+      }
+    },
+    {
+      "type": "light_glow",
+      "params": {
+        "exposure": 0.5,
+        "falloff": 35,
+        "intensity": 1.2,
+        "knee": 0.3,
+        "radius": 160,
+        "threshold": 0.5,
+        "tint_amount": 0.7,
+        "tint_outer": "#ff7a20"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "studio",
+      "intensity": 1,
+      "rotation": 0,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory3dSetB.ts",
+    "line": 227,
+    "item": "f-3d-lava",
+    "license_note": "used with the author's permission"
+  }
+}

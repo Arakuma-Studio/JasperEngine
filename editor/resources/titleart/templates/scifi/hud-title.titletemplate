@@ -78,7 +78,7 @@
   "material_links": {},
   "layers": [
     {
-      "id": "2829115a",
+      "id": "df83e784",
       "type": "generator",
       "name": "Backdrop",
       "visible": true,
@@ -134,7 +134,7 @@
       "follow": ""
     },
     {
-      "id": "662d0ef3",
+      "id": "6435e99a",
       "type": "group",
       "name": "Title FX",
       "visible": true,
@@ -158,11 +158,11 @@
       "look": {
         "id": "",
         "color_scheme": "",
-        "owner": "0826ecf6"
+        "owner": "2829115a"
       },
       "children": [
         {
-          "id": "6435e99a",
+          "id": "da8e5e19",
           "type": "generator",
           "name": "Magic Circle",
           "visible": true,
@@ -184,7 +184,7 @@
           "masks": [],
           "effects": [
             {
-              "id": "da8e5e19",
+              "id": "23162bf9",
               "type": "outer_glow",
               "enabled": true,
               "params": {
@@ -222,7 +222,7 @@
           "look": {
             "id": "",
             "color_scheme": "",
-            "owner": "0826ecf6"
+            "owner": "2829115a"
           },
           "generator": {
             "type": "magic_circle",
@@ -302,7 +302,7 @@
           "follow": ""
         },
         {
-          "id": "0826ecf6",
+          "id": "2829115a",
           "type": "text",
           "name": "Title",
           "visible": true,
@@ -324,7 +324,7 @@
           "masks": [],
           "effects": [
             {
-              "id": "5b286134",
+              "id": "662d0ef3",
               "type": "outer_glow",
               "enabled": true,
               "params": {
@@ -631,7 +631,7 @@
             },
             "rims": [
               {
-                "id": "30d9a585",
+                "id": "21dab417",
                 "enabled": true,
                 "width": 0.8,
                 "join": "miter",
@@ -843,7 +843,7 @@
                 }
               },
               {
-                "id": "21dab417",
+                "id": "4ef58b7f",
                 "enabled": true,
                 "width": 4.4,
                 "join": "miter",
@@ -1068,7 +1068,7 @@
           "part_effects": {
             "face": [
               {
-                "id": "c13b15e7",
+                "id": "5b286134",
                 "type": "scanlines",
                 "enabled": true,
                 "params": {
@@ -1093,7 +1093,7 @@
       "collapsed": false
     },
     {
-      "id": "df83e784",
+      "id": "c13b15e7",
       "type": "text",
       "name": "Subtitle",
       "visible": true,
@@ -1115,7 +1115,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "23162bf9",
+          "id": "30d9a585",
           "type": "contour_lines",
           "enabled": true,
           "params": {
@@ -1425,7 +1425,7 @@
         },
         "rims": [
           {
-            "id": "4ef58b7f",
+            "id": "53168118",
             "enabled": true,
             "width": 4.4,
             "join": "miter",
@@ -1637,7 +1637,7 @@
             }
           },
           {
-            "id": "53168118",
+            "id": "67e09885",
             "enabled": true,
             "width": 0.8,
             "join": "miter",
@@ -1870,7 +1870,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "0826ecf6",
+          "layer": "2829115a",
           "field": "text"
         }
       ],
@@ -1884,7 +1884,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "df83e784",
+          "layer": "c13b15e7",
           "field": "text"
         }
       ],

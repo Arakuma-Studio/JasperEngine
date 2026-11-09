@@ -1,0 +1,354 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "metal/carbon-gunmetal-orange-3d",
+  "revision": 1,
+  "name": {
+    "en": "Carbon Gunmetal + Orange 3D",
+    "ja": "カーボン + オレンジ 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with a silver metal face, five bands (orange metal, black metal, silver metal, orange metal, gloss black), an outline and an outer glow.",
+    "ja": "銀のメタルの面の3D押し出し文字、5本の帯（オレンジのメタル、黒のメタル、銀のメタル、オレンジのメタル、黒の光沢）、アウトライン、外側の光彩。"
+  },
+  "family": "metal",
+  "tags": [
+    "metal",
+    "3d",
+    "silver",
+    "orange",
+    "black",
+    "bands",
+    "outline",
+    "sparkle",
+    "glow",
+    "carbon"
+  ],
+  "synonyms": {
+    "en": [
+      "metallic",
+      "metal finish",
+      "three-dimensional",
+      "extruded",
+      "silvery",
+      "platinum",
+      "amber",
+      "dark",
+      "jet black",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "glint",
+      "twinkle",
+      "shine",
+      "light",
+      "bloom",
+      "carbon fibre"
+    ],
+    "ja": [
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "銀",
+      "シルバー",
+      "ぎん",
+      "gin",
+      "shiruba",
+      "オレンジ",
+      "橙",
+      "だいだい",
+      "orenji",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "きらめき",
+      "キラキラ",
+      "kirameki",
+      "kirakira",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro",
+      "カーボン",
+      "kabon"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "style_3d": {
+    "depth": 11.9,
+    "curve_segments": 10,
+    "face": {
+      "color": "#3a3e46",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#d8e0ec"
+          },
+          {
+            "pos": 0.2,
+            "color": "#6a7280"
+          },
+          {
+            "pos": 0.44,
+            "color": "#2a2e36"
+          },
+          {
+            "pos": 0.52,
+            "color": "#08090c"
+          },
+          {
+            "pos": 0.6,
+            "color": "#30343c"
+          },
+          {
+            "pos": 0.85,
+            "color": "#7a8290"
+          },
+          {
+            "pos": 1,
+            "color": "#c8d0dc"
+          }
+        ]
+      },
+      "metallic": 1,
+      "roughness": 0.18,
+      "env_multiplier": 0.85,
+      "clearcoat": 1,
+      "pattern": {
+        "kind": "checker",
+        "color": "#020306",
+        "color2": "#3a3e48",
+        "opacity": 0.75,
+        "scale": 1.1,
+        "angle": 45,
+        "shade": 0.9,
+        "relief": 0.6
+      }
+    },
+    "bands": [
+      {
+        "grow": 1.4,
+        "depth": 10.6,
+        "offset": -11.9,
+        "bevel": {
+          "width": 1.4,
+          "depth": 1.3,
+          "profile": "chamfer"
+        },
+        "material": {
+          "color": "#ff6a00",
+          "metallic": 0.6,
+          "roughness": 0.12,
+          "env_multiplier": 0.9,
+          "clearcoat": 1,
+          "emission": "#ff4a00",
+          "emission_intensity": 2
+        }
+      },
+      {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#100400",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#14161a",
+          "metallic": 1,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "grow": 2.4,
+        "bevel": {
+          "width": 1.3,
+          "depth": 1.3,
+          "profile": "chamfer"
+        },
+        "material": {
+          "color": "#3a3e46",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#d8e0ec"
+              },
+              {
+                "pos": 0.2,
+                "color": "#6a7280"
+              },
+              {
+                "pos": 0.44,
+                "color": "#2a2e36"
+              },
+              {
+                "pos": 0.52,
+                "color": "#08090c"
+              },
+              {
+                "pos": 0.6,
+                "color": "#30343c"
+              },
+              {
+                "pos": 0.85,
+                "color": "#7a8290"
+              },
+              {
+                "pos": 1,
+                "color": "#c8d0dc"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.25,
+          "env_multiplier": 0.85,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 0.6,
+        "depth": 4,
+        "bevel": {
+          "width": 0.5,
+          "depth": 0.5
+        },
+        "material": {
+          "color": "#ff6a00",
+          "metallic": 0.6,
+          "roughness": 0.12,
+          "env_multiplier": 0.9,
+          "clearcoat": 1,
+          "emission": "#ff4a00",
+          "emission_intensity": 2.5
+        }
+      },
+      {
+        "grow": 1.4,
+        "depth": 5,
+        "bevel": {
+          "width": 0.6,
+          "depth": 0.6
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#020202",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      }
+    ],
+    "glint": {
+      "enabled": true,
+      "threshold": 2.4,
+      "intensity": 0.4,
+      "radius": 5,
+      "length": 32,
+      "angle": 15,
+      "tint": "#fff0e0"
+    }
+  },
+  "effects": [
+    {
+      "type": "outline",
+      "params": {
+        "color": "#000000",
+        "width": 2.5
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff5a00",
+        "intensity": 1.4,
+        "opacity": 0.85,
+        "size": 12,
+        "spread": 0.3
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#ff4a00",
+        "intensity": 1,
+        "opacity": 0.6,
+        "size": 28,
+        "spread": 0.05
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "studio",
+      "intensity": 1,
+      "rotation": -20,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ff8a30",
+        "intensity": 2.5,
+        "position": [900, -300, 200]
+      },
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 1.4,
+        "position": [-300, 600, 1200]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory3dSetA.ts",
+    "line": 182,
+    "item": "f-3d-carbon-orange",
+    "license_note": "used with the author's permission"
+  }
+}

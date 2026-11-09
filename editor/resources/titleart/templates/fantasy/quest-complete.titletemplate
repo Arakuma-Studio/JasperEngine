@@ -69,7 +69,7 @@
   "material_links": {},
   "layers": [
     {
-      "id": "2829115a",
+      "id": "df83e784",
       "type": "generator",
       "name": "Backdrop",
       "visible": true,
@@ -125,7 +125,7 @@
       "follow": ""
     },
     {
-      "id": "df83e784",
+      "id": "c13b15e7",
       "type": "shape",
       "name": "Shield",
       "visible": true,
@@ -968,7 +968,7 @@
       }
     },
     {
-      "id": "662d0ef3",
+      "id": "6435e99a",
       "type": "generator",
       "name": "Glints",
       "visible": true,
@@ -1029,10 +1029,10 @@
           "twinkle_rotate": 0
         }
       },
-      "follow": "df83e784"
+      "follow": "c13b15e7"
     },
     {
-      "id": "c13b15e7",
+      "id": "5b286134",
       "type": "group",
       "name": "Title FX",
       "visible": true,
@@ -1056,11 +1056,11 @@
       "look": {
         "id": "",
         "color_scheme": "",
-        "owner": "b54767f0"
+        "owner": "2829115a"
       },
       "children": [
         {
-          "id": "b54767f0",
+          "id": "2829115a",
           "type": "text",
           "name": "Title",
           "visible": true,
@@ -1351,7 +1351,7 @@
             },
             "rims": [
               {
-                "id": "23162bf9",
+                "id": "30d9a585",
                 "enabled": true,
                 "width": 1,
                 "join": "miter",
@@ -1563,7 +1563,7 @@
                 }
               },
               {
-                "id": "30d9a585",
+                "id": "21dab417",
                 "enabled": true,
                 "width": 2,
                 "join": "miter",
@@ -1805,7 +1805,7 @@
                 }
               },
               {
-                "id": "21dab417",
+                "id": "4ef58b7f",
                 "enabled": true,
                 "width": 2,
                 "join": "miter",
@@ -2061,7 +2061,7 @@
           "style_3d": null
         },
         {
-          "id": "da8e5e19",
+          "id": "23162bf9",
           "type": "generator",
           "name": "Gold Dust",
           "visible": true,
@@ -2083,7 +2083,7 @@
           "masks": [],
           "effects": [
             {
-              "id": "6435e99a",
+              "id": "da8e5e19",
               "type": "outer_glow",
               "enabled": true,
               "params": {
@@ -2188,10 +2188,10 @@
               "twinkle": 0
             }
           },
-          "follow": "b54767f0"
+          "follow": "2829115a"
         },
         {
-          "id": "5b286134",
+          "id": "662d0ef3",
           "type": "generator",
           "name": "Glints",
           "visible": true,
@@ -2215,7 +2215,7 @@
           "look": {
             "id": "",
             "color_scheme": "",
-            "owner": "b54767f0"
+            "owner": "2829115a"
           },
           "generator": {
             "type": "glints",
@@ -2252,7 +2252,7 @@
               "twinkle_rotate": 0
             }
           },
-          "follow": "b54767f0"
+          "follow": "2829115a"
         }
       ],
       "collapsed": false
@@ -2265,7 +2265,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "b54767f0",
+          "layer": "2829115a",
           "field": "text"
         }
       ],

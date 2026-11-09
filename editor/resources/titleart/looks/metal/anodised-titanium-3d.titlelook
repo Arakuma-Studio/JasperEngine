@@ -1,0 +1,411 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "metal/anodised-titanium-3d",
+  "revision": 1,
+  "name": {
+    "en": "Anodised Titanium 3D",
+    "ja": "青チタン 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with a blue metal face and a chamfer bevel, five bands (silver metal, black metal, black metal, blue metal, gloss black), an outline, an outer glow and a light glow.",
+    "ja": "青のメタルの面の3D押し出し文字（ベベル付き）、5本の帯（銀のメタル、黒のメタル、黒のメタル、青のメタル、黒の光沢）、アウトライン、外側の光彩、ライトグロー。"
+  },
+  "family": "metal",
+  "tags": [
+    "metal",
+    "3d",
+    "blue",
+    "bevel",
+    "silver",
+    "black",
+    "bands",
+    "outline",
+    "sparkle",
+    "glow",
+    "titanium"
+  ],
+  "synonyms": {
+    "en": [
+      "metallic",
+      "metal finish",
+      "three-dimensional",
+      "extruded",
+      "azure",
+      "cobalt",
+      "emboss",
+      "chiselled",
+      "silvery",
+      "platinum",
+      "dark",
+      "jet black",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "glint",
+      "twinkle",
+      "shine",
+      "light",
+      "bloom",
+      "anodised"
+    ],
+    "ja": [
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "青",
+      "ブルー",
+      "あお",
+      "ao",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "銀",
+      "シルバー",
+      "ぎん",
+      "gin",
+      "shiruba",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "きらめき",
+      "キラキラ",
+      "kirameki",
+      "kirakira",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro",
+      "チタン",
+      "chitan"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "style_3d": {
+    "depth": 11.8,
+    "curve_segments": 10,
+    "bevel": {
+      "width": 1.2,
+      "depth": 1.2,
+      "profile": "chamfer"
+    },
+    "face": {
+      "color": "#020c38",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#b8d8ff"
+          },
+          {
+            "pos": 0.22,
+            "color": "#3a8aff"
+          },
+          {
+            "pos": 0.45,
+            "color": "#0c3aa8"
+          },
+          {
+            "pos": 0.53,
+            "color": "#020c38"
+          },
+          {
+            "pos": 0.62,
+            "color": "#0a40b8"
+          },
+          {
+            "pos": 0.84,
+            "color": "#2a7cff"
+          },
+          {
+            "pos": 1,
+            "color": "#a0ccff"
+          }
+        ]
+      },
+      "metallic": 1,
+      "roughness": 0.22,
+      "env_multiplier": 0.85,
+      "pattern": {
+        "kind": "stripes",
+        "color": "#ffffff",
+        "opacity": 0.12,
+        "scale": 0.8,
+        "shade": 0.9,
+        "relief": 0.4
+      }
+    },
+    "bands": [
+      {
+        "grow": 1.2,
+        "depth": 10.6,
+        "offset": -11.8,
+        "bevel": {
+          "width": 1.2,
+          "depth": 1.2,
+          "profile": "chamfer"
+        },
+        "material": {
+          "color": "#9aa0aa",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#e8ecf2"
+              },
+              {
+                "pos": 0.4,
+                "color": "#8a909c"
+              },
+              {
+                "pos": 0.52,
+                "color": "#3a3e48"
+              },
+              {
+                "pos": 0.62,
+                "color": "#7a808c"
+              },
+              {
+                "pos": 1,
+                "color": "#d8dce4"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.26,
+          "env_multiplier": 0.9
+        }
+      },
+      {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#0a0e16",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#141820",
+          "metallic": 1,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "grow": 2.2,
+        "bevel": {
+          "width": 1.4,
+          "depth": 1.4,
+          "profile": "chamfer"
+        },
+        "material": {
+          "color": "#3a3e46",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#8a909a"
+              },
+              {
+                "pos": 0.45,
+                "color": "#2a2e36"
+              },
+              {
+                "pos": 0.55,
+                "color": "#0a0c10"
+              },
+              {
+                "pos": 1,
+                "color": "#6a707a"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.26,
+          "env_multiplier": 0.9,
+          "pattern": {
+            "kind": "stripes",
+            "color": "#ffffff",
+            "opacity": 0.12,
+            "scale": 0.8,
+            "shade": 0.9,
+            "relief": 0.4
+          }
+        }
+      },
+      {
+        "grow": 0.7,
+        "depth": 4,
+        "bevel": {
+          "width": 0.6,
+          "depth": 0.6
+        },
+        "material": {
+          "preset": "blue_metal",
+          "color": "#2a6bff",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#8cc4ff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#3d8bff"
+              },
+              {
+                "pos": 0.45,
+                "color": "#1048d0"
+              },
+              {
+                "pos": 0.52,
+                "color": "#03154f"
+              },
+              {
+                "pos": 0.6,
+                "color": "#0e3fb8"
+              },
+              {
+                "pos": 0.8,
+                "color": "#3a85ff"
+              },
+              {
+                "pos": 1,
+                "color": "#86beff"
+              }
+            ]
+          },
+          "metallic": 0.9,
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 1.2,
+        "depth": 4,
+        "bevel": {
+          "width": 0.5,
+          "depth": 0.5
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#04060a",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      }
+    ],
+    "glint": {
+      "enabled": true,
+      "threshold": 2,
+      "intensity": 0.35,
+      "radius": 5,
+      "streaks": 2,
+      "length": 24,
+      "tint": "#e0eeff"
+    }
+  },
+  "effects": [
+    {
+      "type": "outline",
+      "params": {
+        "color": "#04060a",
+        "width": 2.5
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#2a7aff",
+        "intensity": 1.4,
+        "opacity": 0.85,
+        "size": 12,
+        "spread": 0.3
+      }
+    },
+    {
+      "type": "light_glow",
+      "params": {
+        "exposure": 0.5,
+        "falloff": 35,
+        "knee": 0.3,
+        "radius": 160,
+        "threshold": 0.5,
+        "tint_amount": 0.7,
+        "tint_outer": "#b0d4ff"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "strips",
+      "intensity": 1,
+      "rotation": 0,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory3dSetB.ts",
+    "line": 143,
+    "item": "f-3d-titanium",
+    "license_note": "used with the author's permission"
+  }
+}

@@ -1,0 +1,228 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "casino/orb-glass-purple-3d",
+  "revision": 1,
+  "name": {
+    "en": "Orb Glass Purple 3D",
+    "ja": "ガラス保留玉 紫 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with a purple glass face and a round bevel, one band (chrome).",
+    "ja": "紫のガラスの面の3D押し出し文字（ベベル付き）、1本の帯（クローム）。"
+  },
+  "family": "casino",
+  "tags": [
+    "casino",
+    "3d",
+    "purple",
+    "glass",
+    "bevel",
+    "chrome",
+    "metal",
+    "bands",
+    "outline",
+    "orb"
+  ],
+  "synonyms": {
+    "en": [
+      "slots",
+      "jackpot",
+      "pachislot",
+      "three-dimensional",
+      "extruded",
+      "violet",
+      "magenta",
+      "transparent",
+      "crystal",
+      "emboss",
+      "chiselled",
+      "mirror",
+      "polished metal",
+      "metallic",
+      "metal finish",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "sphere",
+      "ball",
+      "reserve ball"
+    ],
+    "ja": [
+      "カジノ",
+      "パチスロ",
+      "スロット",
+      "kajino",
+      "pachisuro",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "紫",
+      "パープル",
+      "むらさき",
+      "murasaki",
+      "ガラス",
+      "透明",
+      "とうめい",
+      "garasu",
+      "tomei",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "クローム",
+      "鏡面",
+      "kuromu",
+      "kyomen",
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "保留玉",
+      "球",
+      "たま",
+      "tama",
+      "horyu"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "style_3d": {
+    "depth": 10,
+    "curve_segments": 10,
+    "bevel": {
+      "width": 1,
+      "depth": 1.2
+    },
+    "face": {
+      "color": "#a020ff",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#e6a8ff"
+          },
+          {
+            "pos": 0.55,
+            "color": "#a020ff"
+          },
+          {
+            "pos": 1,
+            "color": "#30006a"
+          }
+        ]
+      },
+      "gradient_kind": "radial",
+      "roughness": 0.02,
+      "env_multiplier": 1.4,
+      "specular_multiplier": 2,
+      "clearcoat": 1,
+      "transmission": 1,
+      "dispersion": 0.2
+    },
+    "bands": [
+      {
+        "depth": 4,
+        "bevel": {
+          "width": 1.2,
+          "depth": 1.2
+        },
+        "material": {
+          "preset": "chrome",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04
+        }
+      }
+    ]
+  },
+  "effects": [],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "softbox",
+      "intensity": 1,
+      "rotation": 30,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory.ts",
+    "line": 1906,
+    "item": "f-orb-glass-purple",
+    "license_note": "used with the author's permission"
+  }
+}

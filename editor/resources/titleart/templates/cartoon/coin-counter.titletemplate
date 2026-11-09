@@ -68,7 +68,7 @@
   "material_links": {},
   "layers": [
     {
-      "id": "2829115a",
+      "id": "df83e784",
       "type": "generator",
       "name": "Backdrop",
       "visible": true,
@@ -124,7 +124,7 @@
       "follow": ""
     },
     {
-      "id": "8223eede",
+      "id": "2829115a",
       "type": "text",
       "name": "Title",
       "visible": true,
@@ -415,7 +415,7 @@
         },
         "rims": [
           {
-            "id": "df83e784",
+            "id": "c13b15e7",
             "enabled": true,
             "width": 1,
             "join": "miter",
@@ -627,7 +627,7 @@
             }
           },
           {
-            "id": "c13b15e7",
+            "id": "5b286134",
             "enabled": true,
             "width": 3,
             "join": "miter",
@@ -839,7 +839,7 @@
             }
           },
           {
-            "id": "5b286134",
+            "id": "662d0ef3",
             "enabled": true,
             "width": 2,
             "join": "miter",
@@ -1072,7 +1072,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "8223eede",
+          "layer": "2829115a",
           "field": "text"
         }
       ],

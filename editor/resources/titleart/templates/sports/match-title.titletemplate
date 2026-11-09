@@ -78,7 +78,7 @@
   "material_links": {},
   "layers": [
     {
-      "id": "2829115a",
+      "id": "df83e784",
       "type": "generator",
       "name": "Backdrop",
       "visible": true,
@@ -134,7 +134,7 @@
       "follow": ""
     },
     {
-      "id": "c13b15e7",
+      "id": "5b286134",
       "type": "generator",
       "name": "Stadium Rays",
       "visible": true,
@@ -175,10 +175,10 @@
           "seed": 1
         }
       },
-      "follow": "62f9143f"
+      "follow": "2829115a"
     },
     {
-      "id": "62f9143f",
+      "id": "2829115a",
       "type": "text",
       "name": "Title",
       "visible": true,
@@ -1000,7 +1000,7 @@
       }
     },
     {
-      "id": "5b286134",
+      "id": "662d0ef3",
       "type": "generator",
       "name": "Lens Flare",
       "visible": true,
@@ -1040,10 +1040,10 @@
           "streak": 700
         }
       },
-      "follow": "62f9143f"
+      "follow": "2829115a"
     },
     {
-      "id": "df83e784",
+      "id": "c13b15e7",
       "type": "text",
       "name": "Subtitle",
       "visible": true,
@@ -1334,7 +1334,7 @@
         },
         "rims": [
           {
-            "id": "662d0ef3",
+            "id": "6435e99a",
             "enabled": true,
             "width": 2,
             "join": "miter",
@@ -1546,7 +1546,7 @@
             }
           },
           {
-            "id": "6435e99a",
+            "id": "da8e5e19",
             "enabled": true,
             "width": 3,
             "join": "miter",
@@ -1758,7 +1758,7 @@
             }
           },
           {
-            "id": "da8e5e19",
+            "id": "23162bf9",
             "enabled": true,
             "width": 1.5,
             "join": "miter",
@@ -1991,7 +1991,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "62f9143f",
+          "layer": "2829115a",
           "field": "text"
         }
       ],
@@ -2005,7 +2005,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "df83e784",
+          "layer": "c13b15e7",
           "field": "text"
         }
       ],

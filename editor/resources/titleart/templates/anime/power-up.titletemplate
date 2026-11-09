@@ -68,7 +68,7 @@
   "material_links": {},
   "layers": [
     {
-      "id": "2829115a",
+      "id": "df83e784",
       "type": "generator",
       "name": "Backdrop",
       "visible": true,
@@ -124,7 +124,7 @@
       "follow": ""
     },
     {
-      "id": "c13b15e7",
+      "id": "5b286134",
       "type": "generator",
       "name": "Aura",
       "visible": true,
@@ -148,7 +148,7 @@
       "look": {
         "id": "",
         "color_scheme": "",
-        "owner": "4fe162c5"
+        "owner": "2829115a"
       },
       "generator": {
         "type": "aura",
@@ -203,10 +203,10 @@
           "wispiness": 60
         }
       },
-      "follow": "4fe162c5"
+      "follow": "2829115a"
     },
     {
-      "id": "4fe162c5",
+      "id": "2829115a",
       "type": "text",
       "name": "Title",
       "visible": true,
@@ -228,7 +228,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "df83e784",
+          "id": "c13b15e7",
           "type": "light_glow",
           "enabled": true,
           "params": {
@@ -516,7 +516,7 @@
         },
         "rims": [
           {
-            "id": "5b286134",
+            "id": "662d0ef3",
             "enabled": true,
             "width": 5.2,
             "join": "miter",
@@ -749,7 +749,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "4fe162c5",
+          "layer": "2829115a",
           "field": "text"
         }
       ],

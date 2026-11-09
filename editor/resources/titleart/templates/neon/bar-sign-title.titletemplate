@@ -80,7 +80,7 @@
   "material_links": {},
   "layers": [
     {
-      "id": "2829115a",
+      "id": "df83e784",
       "type": "generator",
       "name": "Backdrop",
       "visible": true,
@@ -123,7 +123,7 @@
       "follow": ""
     },
     {
-      "id": "d36e56cc",
+      "id": "2829115a",
       "type": "text",
       "name": "Title",
       "visible": true,
@@ -145,7 +145,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "c13b15e7",
+          "id": "5b286134",
           "type": "outer_glow",
           "enabled": true,
           "params": {
@@ -180,7 +180,7 @@
           "from_look": false
         },
         {
-          "id": "5b286134",
+          "id": "662d0ef3",
           "type": "light_glow",
           "enabled": true,
           "params": {
@@ -476,7 +476,7 @@
         },
         "rims": [
           {
-            "id": "6435e99a",
+            "id": "da8e5e19",
             "enabled": true,
             "width": 1.6,
             "join": "miter",
@@ -688,7 +688,7 @@
             }
           },
           {
-            "id": "da8e5e19",
+            "id": "23162bf9",
             "enabled": true,
             "width": 3.6,
             "join": "miter",
@@ -914,7 +914,7 @@
       "style_3d": null
     },
     {
-      "id": "df83e784",
+      "id": "c13b15e7",
       "type": "text",
       "name": "Subtitle",
       "visible": true,
@@ -936,7 +936,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "662d0ef3",
+          "id": "6435e99a",
           "type": "outer_glow",
           "enabled": true,
           "params": {
@@ -1244,7 +1244,7 @@
         },
         "rims": [
           {
-            "id": "23162bf9",
+            "id": "30d9a585",
             "enabled": true,
             "width": 3.8,
             "join": "miter",
@@ -1456,7 +1456,7 @@
             }
           },
           {
-            "id": "30d9a585",
+            "id": "21dab417",
             "enabled": true,
             "width": 1.4,
             "join": "miter",
@@ -1689,7 +1689,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "d36e56cc",
+          "layer": "2829115a",
           "field": "text"
         }
       ],
@@ -1703,7 +1703,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "df83e784",
+          "layer": "c13b15e7",
           "field": "text"
         }
       ],

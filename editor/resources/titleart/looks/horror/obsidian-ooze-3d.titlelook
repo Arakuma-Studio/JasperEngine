@@ -54,6 +54,7 @@
       "color": "#050505",
       "metallic": 0.2,
       "roughness": 0.08,
+      "env_multiplier": 1,
       "clearcoat": 1
     },
     "side": {
@@ -76,12 +77,14 @@
     "exposure": 1,
     "lights": [
       {
+        "id": "",
         "type": "directional",
         "color": "#ffffff",
         "intensity": 2,
         "position": [-600, 800, 1000]
       },
       {
+        "id": "",
         "type": "ambient",
         "color": "#ffffff",
         "intensity": 0.3,

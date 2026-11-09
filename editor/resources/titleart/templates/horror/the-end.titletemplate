@@ -68,7 +68,7 @@
   "material_links": {},
   "layers": [
     {
-      "id": "2829115a",
+      "id": "df83e784",
       "type": "generator",
       "name": "Backdrop",
       "visible": true,
@@ -124,7 +124,7 @@
       "follow": ""
     },
     {
-      "id": "c13b15e7",
+      "id": "5b286134",
       "type": "generator",
       "name": "Backlight",
       "visible": true,
@@ -148,7 +148,7 @@
       "look": {
         "id": "",
         "color_scheme": "",
-        "owner": "ad778d70"
+        "owner": "2829115a"
       },
       "generator": {
         "type": "backlight",
@@ -165,10 +165,10 @@
           "seed": 1
         }
       },
-      "follow": "ad778d70"
+      "follow": "2829115a"
     },
     {
-      "id": "ad778d70",
+      "id": "2829115a",
       "type": "text",
       "name": "Title",
       "visible": true,
@@ -190,7 +190,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "df83e784",
+          "id": "c13b15e7",
           "type": "outer_glow",
           "enabled": true,
           "params": {
@@ -495,7 +495,7 @@
         },
         "rims": [
           {
-            "id": "6435e99a",
+            "id": "da8e5e19",
             "enabled": true,
             "width": 5.2,
             "join": "miter",
@@ -721,7 +721,7 @@
       "style_3d": null
     },
     {
-      "id": "5b286134",
+      "id": "662d0ef3",
       "type": "adjustment",
       "name": "Film Grain",
       "visible": true,
@@ -743,7 +743,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "662d0ef3",
+          "id": "6435e99a",
           "type": "grain",
           "enabled": true,
           "params": {
@@ -772,7 +772,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "ad778d70",
+          "layer": "2829115a",
           "field": "text"
         }
       ],

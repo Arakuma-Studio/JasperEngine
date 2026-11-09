@@ -68,7 +68,7 @@
   "material_links": {},
   "layers": [
     {
-      "id": "2829115a",
+      "id": "df83e784",
       "type": "generator",
       "name": "Backdrop",
       "visible": true,
@@ -124,7 +124,7 @@
       "follow": ""
     },
     {
-      "id": "c13b15e7",
+      "id": "5b286134",
       "type": "group",
       "name": "Title FX",
       "visible": true,
@@ -148,11 +148,11 @@
       "look": {
         "id": "",
         "color_scheme": "",
-        "owner": "eb2cbe4a"
+        "owner": "2829115a"
       },
       "children": [
         {
-          "id": "5b286134",
+          "id": "662d0ef3",
           "type": "generator",
           "name": "Magic Circle",
           "visible": true,
@@ -174,7 +174,7 @@
           "masks": [],
           "effects": [
             {
-              "id": "662d0ef3",
+              "id": "6435e99a",
               "type": "outer_glow",
               "enabled": true,
               "params": {
@@ -212,7 +212,7 @@
           "look": {
             "id": "",
             "color_scheme": "",
-            "owner": "eb2cbe4a"
+            "owner": "2829115a"
           },
           "generator": {
             "type": "magic_circle",
@@ -292,7 +292,7 @@
           "follow": ""
         },
         {
-          "id": "eb2cbe4a",
+          "id": "2829115a",
           "type": "text",
           "name": "Title",
           "visible": true,
@@ -314,7 +314,7 @@
           "masks": [],
           "effects": [
             {
-              "id": "df83e784",
+              "id": "c13b15e7",
               "type": "outer_glow",
               "enabled": true,
               "params": {
@@ -625,7 +625,7 @@
             },
             "rims": [
               {
-                "id": "6435e99a",
+                "id": "da8e5e19",
                 "enabled": true,
                 "width": 1.2,
                 "join": "miter",
@@ -837,7 +837,7 @@
                 }
               },
               {
-                "id": "da8e5e19",
+                "id": "23162bf9",
                 "enabled": true,
                 "width": 4,
                 "join": "miter",
@@ -1073,7 +1073,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "eb2cbe4a",
+          "layer": "2829115a",
           "field": "text"
         }
       ],

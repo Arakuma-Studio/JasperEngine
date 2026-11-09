@@ -49,6 +49,7 @@
       "preset": "plastic",
       "color": "#ffd000",
       "roughness": 0.35,
+      "env_multiplier": 1,
       "clearcoat": 0.8
     },
     "side": {
@@ -72,12 +73,14 @@
     "exposure": 1,
     "lights": [
       {
+        "id": "",
         "type": "directional",
         "color": "#ffffff",
         "intensity": 2,
         "position": [-600, 800, 1000]
       },
       {
+        "id": "",
         "type": "ambient",
         "color": "#ffffff",
         "intensity": 0.3,

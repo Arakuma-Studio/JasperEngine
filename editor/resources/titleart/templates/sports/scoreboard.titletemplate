@@ -68,7 +68,7 @@
   "material_links": {},
   "layers": [
     {
-      "id": "2829115a",
+      "id": "df83e784",
       "type": "generator",
       "name": "Backdrop",
       "visible": true,
@@ -124,7 +124,7 @@
       "follow": ""
     },
     {
-      "id": "f9a8a635",
+      "id": "2829115a",
       "type": "text",
       "name": "Title",
       "visible": true,
@@ -146,7 +146,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "df83e784",
+          "id": "c13b15e7",
           "type": "outer_glow",
           "enabled": true,
           "params": {
@@ -473,7 +473,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "f9a8a635",
+          "layer": "2829115a",
           "field": "text"
         }
       ],

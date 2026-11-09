@@ -53,6 +53,7 @@
       "preset": "emissive",
       "color": "#000000",
       "roughness": 0.5,
+      "env_multiplier": 1,
       "emission": "#ff8a20",
       "emission_intensity": 1.5
     },
@@ -161,12 +162,14 @@
     "exposure": 1,
     "lights": [
       {
+        "id": "",
         "type": "directional",
         "color": "#ffffff",
         "intensity": 2,
         "position": [-600, 800, 1000]
       },
       {
+        "id": "",
         "type": "ambient",
         "color": "#ffffff",
         "intensity": 0.3,

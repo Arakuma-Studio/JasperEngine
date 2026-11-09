@@ -1,0 +1,381 @@
+{
+  "format": "jasperengine.titlelook",
+  "version": 1,
+  "id": "metal/chrome-blue-stack-3d",
+  "revision": 1,
+  "name": {
+    "en": "Chrome + Blue Stack 3D",
+    "ja": "クローム + 青スタック 3D"
+  },
+  "description": {
+    "en": "A 3D extruded title with a chrome face and a chamfer bevel, five bands (blue metal, blue metal, gloss white, blue metal, gloss black), an outline, an outer glow and a light glow.",
+    "ja": "クロームの面の3D押し出し文字（ベベル付き）、5本の帯（青のメタル、青のメタル、白の光沢、青のメタル、黒の光沢）、アウトライン、外側の光彩、ライトグロー。"
+  },
+  "family": "metal",
+  "tags": [
+    "metal",
+    "3d",
+    "chrome",
+    "bevel",
+    "blue",
+    "white",
+    "black",
+    "bands",
+    "outline",
+    "sparkle",
+    "glow",
+    "stack"
+  ],
+  "synonyms": {
+    "en": [
+      "metallic",
+      "metal finish",
+      "three-dimensional",
+      "extruded",
+      "mirror",
+      "polished metal",
+      "emboss",
+      "chiselled",
+      "azure",
+      "cobalt",
+      "snow",
+      "pearl white",
+      "dark",
+      "jet black",
+      "layered rims",
+      "stacked outlines",
+      "stroke",
+      "border",
+      "rim",
+      "glint",
+      "twinkle",
+      "shine",
+      "light",
+      "bloom",
+      "layered",
+      "stacked"
+    ],
+    "ja": [
+      "メタル",
+      "金属",
+      "きんぞく",
+      "kinzoku",
+      "metaru",
+      "立体",
+      "3D",
+      "りったい",
+      "rittai",
+      "クローム",
+      "鏡面",
+      "kuromu",
+      "kyomen",
+      "ベベル",
+      "面取り",
+      "めんとり",
+      "mentori",
+      "beberu",
+      "青",
+      "ブルー",
+      "あお",
+      "ao",
+      "白",
+      "ホワイト",
+      "しろ",
+      "shiro",
+      "黒",
+      "ブラック",
+      "くろ",
+      "kuro",
+      "外枠",
+      "そとわく",
+      "sotowaku",
+      "縁取り",
+      "ふちどり",
+      "縁",
+      "fuchidori",
+      "fuchi",
+      "きらめき",
+      "キラキラ",
+      "kirameki",
+      "kirakira",
+      "光彩",
+      "発光",
+      "グロー",
+      "はっこう",
+      "hakko",
+      "guro",
+      "重ね",
+      "かさね",
+      "kasane"
+    ]
+  },
+  "dimension": "3d",
+  "applies": "style",
+  "ref_size": 200,
+  "style_3d": {
+    "depth": 10.6,
+    "curve_segments": 10,
+    "bevel": {
+      "width": 1.4,
+      "depth": 1.4,
+      "profile": "chamfer"
+    },
+    "face": {
+      "preset": "chrome",
+      "color": "#ffffff",
+      "gradient": {
+        "stops": [
+          {
+            "color": "#ffffff"
+          },
+          {
+            "pos": 0.22,
+            "color": "#e8eef5"
+          },
+          {
+            "pos": 0.45,
+            "color": "#8a94a3"
+          },
+          {
+            "pos": 0.52,
+            "color": "#2e343d"
+          },
+          {
+            "pos": 0.6,
+            "color": "#7d8794"
+          },
+          {
+            "pos": 0.8,
+            "color": "#dde4ee"
+          },
+          {
+            "pos": 1,
+            "color": "#ffffff"
+          }
+        ]
+      },
+      "metallic": 1,
+      "roughness": 0.04,
+      "env_multiplier": 0.9
+    },
+    "bands": [
+      {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#0a1230",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#101830",
+          "metallic": 1,
+          "roughness": 0.25,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "bevel": {
+          "width": 1.6,
+          "depth": 1.6,
+          "profile": "chamfer"
+        },
+        "material": {
+          "preset": "blue_metal",
+          "color": "#2a6bff",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#8cc4ff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#3d8bff"
+              },
+              {
+                "pos": 0.45,
+                "color": "#1048d0"
+              },
+              {
+                "pos": 0.52,
+                "color": "#03154f"
+              },
+              {
+                "pos": 0.6,
+                "color": "#0e3fb8"
+              },
+              {
+                "pos": 0.8,
+                "color": "#3a85ff"
+              },
+              {
+                "pos": 1,
+                "color": "#86beff"
+              }
+            ]
+          },
+          "metallic": 0.9,
+          "roughness": 0.15,
+          "env_multiplier": 0.9,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 1,
+        "depth": 5,
+        "bevel": {
+          "width": 0.6,
+          "depth": 0.6
+        },
+        "material": {
+          "preset": "white_gloss",
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 2.4,
+        "depth": 7,
+        "bevel": {
+          "width": 1.1,
+          "depth": 1.1
+        },
+        "material": {
+          "preset": "blue_metal",
+          "color": "#0a1c5a",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#3060c0"
+              },
+              {
+                "pos": 0.45,
+                "color": "#0a1c5a"
+              },
+              {
+                "pos": 0.55,
+                "color": "#020818"
+              },
+              {
+                "pos": 1,
+                "color": "#2050b0"
+              }
+            ]
+          },
+          "metallic": 0.9,
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 1.2,
+        "depth": 5,
+        "bevel": {
+          "width": 0.6,
+          "depth": 0.6
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#02040c",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      }
+    ],
+    "glint": {
+      "enabled": true,
+      "threshold": 1.5,
+      "intensity": 0.5,
+      "radius": 5,
+      "length": 32,
+      "angle": 15,
+      "tint": "#eaf4ff"
+    }
+  },
+  "effects": [
+    {
+      "type": "outline",
+      "params": {
+        "color": "#02040c",
+        "width": 2.5
+      }
+    },
+    {
+      "type": "outer_glow",
+      "params": {
+        "color": "#2a7aff",
+        "intensity": 1.4,
+        "opacity": 0.85,
+        "size": 12,
+        "spread": 0.3
+      }
+    },
+    {
+      "type": "light_glow",
+      "params": {
+        "exposure": 0.5,
+        "falloff": 35,
+        "intensity": 1.5,
+        "knee": 0.3,
+        "radius": 160,
+        "threshold": 0.5,
+        "tint_amount": 0.7,
+        "tint_outer": "#a8d0ff"
+      }
+    }
+  ],
+  "part_effects": {},
+  "generators": [],
+  "group_effects": [],
+  "lighting": {
+    "environment": {
+      "preset": "studio",
+      "intensity": 1,
+      "rotation": 0,
+      "tint": "#ffffff",
+      "contrast": 1,
+      "saturation": 1,
+      "blur": 0,
+      "repeat_x": 1,
+      "repeat_y": 1
+    },
+    "tone_mapping": "punch",
+    "exposure": 1,
+    "lights": [
+      {
+        "id": "",
+        "type": "directional",
+        "color": "#ffffff",
+        "intensity": 2,
+        "position": [-600, 800, 1000]
+      },
+      {
+        "id": "",
+        "type": "ambient",
+        "color": "#ffffff",
+        "intensity": 0.3,
+        "position": [0, 0, 0]
+      }
+    ]
+  },
+  "links": {},
+  "lint_allow": [],
+  "check_allow": [],
+  "provenance": {
+    "source": "pachislop",
+    "commit": "1c32502",
+    "file": "src/presets/factory3dMore.ts",
+    "line": 55,
+    "item": "f-3d-chrome-blue",
+    "license_note": "used with the author's permission"
+  }
+}

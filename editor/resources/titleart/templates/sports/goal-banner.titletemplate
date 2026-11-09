@@ -68,7 +68,7 @@
   "material_links": {},
   "layers": [
     {
-      "id": "2829115a",
+      "id": "df83e784",
       "type": "generator",
       "name": "Backdrop",
       "visible": true,
@@ -124,7 +124,7 @@
       "follow": ""
     },
     {
-      "id": "5b286134",
+      "id": "662d0ef3",
       "type": "generator",
       "name": "Speed Lines",
       "visible": true,
@@ -196,10 +196,10 @@
           "width_random": 70
         }
       },
-      "follow": "69d7d65d"
+      "follow": "2829115a"
     },
     {
-      "id": "69d7d65d",
+      "id": "2829115a",
       "type": "text",
       "name": "Title",
       "visible": true,
@@ -221,7 +221,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "df83e784",
+          "id": "c13b15e7",
           "type": "motion_trail",
           "enabled": true,
           "params": {
@@ -514,7 +514,7 @@
         },
         "rims": [
           {
-            "id": "662d0ef3",
+            "id": "6435e99a",
             "enabled": true,
             "width": 5.2,
             "join": "miter",
@@ -740,7 +740,7 @@
       "style_3d": null
     },
     {
-      "id": "c13b15e7",
+      "id": "5b286134",
       "type": "generator",
       "name": "Fire",
       "visible": true,
@@ -764,7 +764,7 @@
       "look": {
         "id": "",
         "color_scheme": "",
-        "owner": "69d7d65d"
+        "owner": "2829115a"
       },
       "generator": {
         "type": "fire",
@@ -822,7 +822,7 @@
           "width": 28.6
         }
       },
-      "follow": "69d7d65d"
+      "follow": "2829115a"
     }
   ],
   "exposed": [
@@ -832,7 +832,7 @@
       "type": "text",
       "targets": [
         {
-          "layer": "69d7d65d",
+          "layer": "2829115a",
           "field": "text"
         }
       ],
