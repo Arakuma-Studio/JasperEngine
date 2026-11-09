@@ -271,3 +271,6 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   grown into one, so it is banned for streams.
 - Queue starved a one-file syntax check for over an hour; made the queue first come first served and added a fast lane.
 - Specs revised for no CI, the lean MCP rules and the Doriax overlap. Six near-duplicate tools merged away.
+- origin/main moved 257 commits (pixel art S41-S52, S90 Procedural Materials), with 41 conflicting files. Upstream took asset type 29
+  (ProceduralMaterial), so ours move up by one: TreeData 30, TerrainWorld 31, VoxelVolume 32, NoiseGraph 33 (never shipped, so no
+  migration). The merge is being done on terrain/upstream-merge in parallel with T1's budget work.
