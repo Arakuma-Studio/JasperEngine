@@ -447,3 +447,47 @@ TEST(PixelLintBench, LintsStayInteractive) {
         lintBenchReport((std::string(id) + ", one 128x128 frame").c_str(), ms, 5.0);
     }
 }
+
+// R27: a body is its opaque pixels; soft ones around it do not make it big enough to judge
+TEST(PixelLint, PillowShadingCountsOnlyOpaquePixelsInABody) {
+    PixelImage rings(9, 9);
+    for (int y = 0; y < 9; y++) {
+        for (int x = 0; x < 9; x++) {
+            const int d = std::min({x, y, 8 - x, 8 - y});
+            const uint8_t v = uint8_t(60 + d * 45);
+            rings.set(x, y, {v, v, v, uint8_t(d == 0 ? 128 : 255)});
+        }
+    }
+    expectStatus(lintOne(std::vector<PixelImage>{rings}, "pillow_shading"), LintStatus::Skip, "49 opaque pixels of 81 drawn");
+}
+
+// R26: the border test is on opaque pixels; a half-transparent border is partial_alpha's
+TEST(PixelLint, TransparentBackgroundCountsOnlyOpaqueBorderPixels) {
+    PixelImage soft(10, 10);
+    for (int y = 0; y < 10; y++) {
+        for (int x = 0; x < 10; x++) {
+            const bool border = x == 0 || y == 0 || x == 9 || y == 9;
+            soft.set(x, y, {40, 40, 40, uint8_t(border ? 128 : 255)});
+        }
+    }
+    LintInput input;
+    input.rules.transparentBackground = true;
+    expectStatus(lintOne(std::vector<PixelImage>{soft}, "transparent_background", input), LintStatus::Pass, "soft border");
+}
+
+// R26: a clear pixel has no colour: the RGB it happens to keep is neither a change nor sameness
+TEST(PixelLint, FlickerIgnoresTheColourHiddenUnderClearPixels) {
+    const PixelRgba lit{200, 60, 40, 255};
+    auto solid = [](PixelRgba color) {
+        PixelImage image(4, 4);
+        image.fill(color);
+        return image;
+    };
+    // lit, lit, then clear for three frames with different hidden RGB: nothing blinks
+    expectStatus(lintOne(std::vector<PixelImage>{solid(lit), solid(lit), solid({10, 20, 30, 0}), solid({40, 50, 60, 0}), solid({10, 20, 30, 0})}, "flicker"),
+                 LintStatus::Pass, "clear for three frames");
+    // clear, lit, clear with different hidden RGB: the lit frame is a one-frame blink
+    const LintResult blink = lintOne(std::vector<PixelImage>{solid({10, 20, 30, 0}), solid(lit), solid({40, 50, 60, 0})}, "flicker");
+    expectStatus(blink, LintStatus::Warn, "one lit frame");
+    EXPECT_EQ(blink.count, 16);
+}

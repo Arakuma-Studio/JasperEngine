@@ -13,7 +13,7 @@ on stdin; the answer is one JSON line on stdout, {"<id>": {"measured": .., "coun
      "frame_cells": [8.0, ...], "shared_cell": 8.0}
 
 The interpretation choices where the spec leaves room:
-- "drawn" is alpha > 0 and "opaque" in off_palette and banding is alpha 255;
+- "drawn" is alpha > 0 and "opaque" (off_palette, banding, transparent_background, pillow_shading) is alpha 255;
 - used colours are the distinct RGB of the drawn pixels, of every frame together;
 - orphans counts an empty neighbour as a colour of its own (ritmo's TRANSPARENT index);
 - flicker's share is over the pixels drawn in any frame, a blinking pixel counted once;
@@ -192,11 +192,11 @@ def transparent_background(frames, required):
         return SKIP
     worst, spots, failed = -1, 0, False
     for f in frames:
-        drawn = f[..., 3] > 0
-        ring = np.ones(drawn.shape, dtype=bool)
+        solid = f[..., 3] == 255
+        ring = np.ones(solid.shape, dtype=bool)
         ring[1:-1, 1:-1] = False
-        opaque = int(np.count_nonzero(drawn & ring))
-        corners = int(drawn[0, 0]) + int(drawn[0, -1]) + int(drawn[-1, 0]) + int(drawn[-1, -1])
+        opaque = int(np.count_nonzero(solid & ring))
+        corners = int(solid[0, 0]) + int(solid[0, -1]) + int(solid[-1, 0]) + int(solid[-1, -1])
         worst = max(worst, opaque)
         if corners >= 3 and opaque * 2 > int(np.count_nonzero(ring)):
             failed = True
@@ -340,6 +340,8 @@ def flicker(frames, loop):
     n = len(frames)
     if n < 3:
         return SKIP
+    # a clear pixel has no colour: the RGB it keeps is neither a change nor sameness
+    frames = [np.where(f[..., 3:] == 0, 0, f) for f in frames]
     any_drawn = np.any(np.stack([f[..., 3] > 0 for f in frames]), axis=0)
     blinking = np.zeros(any_drawn.shape, dtype=bool)
     for i in range(n):
@@ -495,7 +497,7 @@ def pillow_shading(frames, threshold=0.6):
     for f in frames:
         h, w = f.shape[:2]
         light = _oklab(f[..., :3])[..., 0]
-        for shape in _components(f[..., 3] > 0, False):
+        for shape in _components(f[..., 3] == 255, False):
             measured = _pillow_of(shape, light, h, w)
             if measured is not None:
                 bodies.append(measured)

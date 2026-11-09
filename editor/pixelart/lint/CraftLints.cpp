@@ -58,6 +58,11 @@ namespace jasperengine::editor::pixelart::lint {
             return f.row(y)[x * 4 + 3] != 0;
         }
 
+        // R26 and R27 say "opaque": a soft pixel is partial_alpha's to report, not part of a body or a border
+        bool craftOpaque(const PixelImage& f, int x, int y) {
+            return f.row(y)[x * 4 + 3] == 255;
+        }
+
         // 0xRRGGBBAA of a drawn pixel, 0 for every empty one (a drawn pixel has alpha > 0, so never 0)
         uint32_t craftKey(const PixelImage& f, int x, int y) {
             const uint8_t* p = f.row(y) + x * 4;
@@ -497,7 +502,7 @@ namespace jasperengine::editor::pixelart::lint {
             int border = 0, opaque = 0;
             auto visit = [&](int x, int y, bool spot) {
                 border++;
-                if (craftDrawn(*f, x, y)) {
+                if (craftOpaque(*f, x, y)) {
                     opaque++;
                     if (spot) r.addSpot({(int)fi + 1, x, y});
                 }
@@ -514,7 +519,7 @@ namespace jasperengine::editor::pixelart::lint {
                 }
             };
             walk(false);
-            const int corners = (int)craftDrawn(*f, 0, 0) + (int)craftDrawn(*f, w - 1, 0) + (int)craftDrawn(*f, 0, h - 1) + (int)craftDrawn(*f, w - 1, h - 1);
+            const int corners = (int)craftOpaque(*f, 0, 0) + (int)craftOpaque(*f, w - 1, 0) + (int)craftOpaque(*f, 0, h - 1) + (int)craftOpaque(*f, w - 1, h - 1);
             // a sprite may touch its edges; a background left in fills the corners too
             const bool fails = corners >= 3 && opaque * 2 > border;
             if (!any || opaque > worst) {
@@ -531,7 +536,7 @@ namespace jasperengine::editor::pixelart::lint {
         r.measured = worst;
         if (failed) {
             r.status = LintStatus::Fail;
-            r.message = std::to_string(r.count) + " border pixels are drawn: the background was not removed";
+            r.message = std::to_string(r.count) + " border pixels are opaque: the background was not removed";
             r.fix = "fix_pixel_art with remove_background: true";
         } else {
             r.status = LintStatus::Pass;
@@ -926,12 +931,12 @@ namespace jasperengine::editor::pixelart::lint {
             for (int y = 0; y < h; y++) {
                 const uint8_t* row = f->row(y);
                 for (int x = 0; x < w; x++) {
-                    if (row[x * 4 + 3] != 0) s.lightness[(size_t)y * w + x] = s.labs.of(craftRgb(row + x * 4)).l;
+                    if (row[x * 4 + 3] == 255) s.lightness[(size_t)y * w + x] = s.labs.of(craftRgb(row + x * 4)).l;
                 }
             }
             int bodyId = 0;
             for (int start = 0; start < (int)n; start++) {
-                if (s.label[(size_t)start] != 0 || !craftDrawn(*f, start % w, start / w)) continue;
+                if (s.label[(size_t)start] != 0 || !craftOpaque(*f, start % w, start / w)) continue;
                 bodyId++;
                 s.body.clear();
                 s.body.push_back(start);
@@ -942,7 +947,7 @@ namespace jasperengine::editor::pixelart::lint {
                     for (const auto& p : nb) {
                         if (p[0] < 0 || p[1] < 0 || p[0] >= w || p[1] >= h) continue;
                         const int j = p[1] * w + p[0];
-                        if (s.label[(size_t)j] == 0 && craftDrawn(*f, p[0], p[1])) {
+                        if (s.label[(size_t)j] == 0 && craftOpaque(*f, p[0], p[1])) {
                             s.label[(size_t)j] = bodyId;
                             s.body.push_back(j);
                         }
@@ -1052,7 +1057,7 @@ namespace jasperengine::editor::pixelart::lint {
             }
         }
         if (bodies.empty()) {
-            return craftSkipped("pillow_shading", "no drawn shape of at least 64 pixels with 3 or more lightness levels", &threshold);
+            return craftSkipped("pillow_shading", "no opaque shape of at least 64 pixels with 3 or more lightness levels", &threshold);
         }
         LintResult r = craftStarted("pillow_shading", threshold);
         const PillowBody* worst = nullptr;
