@@ -946,7 +946,10 @@ namespace jasperengine::pixelart {
                 const float px = (float)x + 0.5f, py = (float)y + 0.5f;
                 Vector4 light(0, 0, 0, 0), cover(0, 0, 0, 0);
                 uint8_t cell = TransitionImage::UNCOVERED, depth = 0;
-                switch (kind){
+                if (uniforms.state.x >= 1.0f){
+                    cover = Vector4(uniforms.ink.x, uniforms.ink.y, uniforms.ink.z, 1.0f);
+                    cell = TransitionImage::INK;
+                }else switch (kind){
                     case TransitionKind::PIXEL_DISSOLVE: cover = shader.pixelDissolve(px, py, light, cell, depth); break;
                     case TransitionKind::CRT_OFF: cover = shader.crtOff(px, py, light, cell, depth); break;
                     case TransitionKind::FADE: cover = shader.fade(px, py, cell); break;
@@ -999,7 +1002,8 @@ namespace jasperengine::pixelart {
                             qy -= dir[1];
                             continue;
                         }
-                        complete = cell == TransitionImage::INK || cell == TransitionImage::RIM;
+                        // a rim cell of another depth was measured along another axis: not this edge
+                        complete = cell == TransitionImage::INK;
                         break;
                     }
                     if (complete)

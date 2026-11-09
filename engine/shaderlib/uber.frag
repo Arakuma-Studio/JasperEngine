@@ -206,13 +206,19 @@ mediump vec3 sceneTap(highp vec2 uv){
 #endif
 
 #ifdef UBER_GLITCH
+    // a component by index without dynamic vector indexing (GL's flattened parameter block
+    // cannot index a vec4's components)
+    highp float glitchComponent(highp vec4 v, int i){
+        return i == 0 ? v.x : (i == 1 ? v.y : (i == 2 ? v.z : v.w));
+    }
+
     // the sideways shift of a source row (from the top) that a tear covers, in source texels
     highp float glitchRowShift(highp float row){
         int count = int(uber.glitch.z + 0.5);
         for (int i = 0; i < 8; i++){
             if (i >= count)
                 break;
-            int packed = int((i < 4 ? uber.glitchTearsA[i] : uber.glitchTearsB[i - 4]) + 0.5);
+            int packed = int((i < 4 ? glitchComponent(uber.glitchTearsA, i) : glitchComponent(uber.glitchTearsB, i - 4)) + 0.5);
             int first = packed % 8192;
             int height = (packed / 8192) % 8 + 1;
             if (row >= float(first) && row < float(first + height))

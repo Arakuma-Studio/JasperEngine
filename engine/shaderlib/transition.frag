@@ -270,6 +270,11 @@ void main(){
     vec3 light;
     vec4 cover;
     int kind = trKind();
+    // fully covered: every pixel is the ink, whatever the kind's rounding
+    if (tr.state.x >= 1.0){
+        frag_color = vec4(tr.ink.rgb, 1.0);
+        return;
+    }
     if (kind == KIND_PIXEL_DISSOLVE)
         cover = trPixelDissolve(p, light);
     else if (kind == KIND_CRT_OFF)
