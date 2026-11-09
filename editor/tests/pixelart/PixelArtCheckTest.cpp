@@ -481,3 +481,70 @@ TEST(PixelArtCheck, RegisteredRulesRunInTheirPlace){
     unregisterRule("cleanup_outputs");
     EXPECT_FALSE(isKnownRule("cleanup_outputs"));
 }
+
+TEST(PixelArtCheck, RotationFixKeepsFlips){
+    // a sprite flipped about Y and turned 37 degrees: only Z of its Euler angles moves
+    PixelArtCheckInput input = cleanInput();
+    PixelArtDrawable& d = input.scenes.front().drawables.front();
+    d.rotation = d.worldRotation = Quaternion(0.0f, 180.0f, 37.0f);
+    const CheckResult result = run(input, {"rotation"});
+    const Finding* f = findingOf(result, "rotation");
+    ASSERT_TRUE(f);
+    const FixChange& change = f->options.front().changes.front();
+    const Json& from = change.from["euler"];
+    const Json& to = change.to["euler"];
+    EXPECT_NEAR(to[0].get<double>(), from[0].get<double>(), 1e-3) << change.to.dump();
+    EXPECT_NEAR(to[1].get<double>(), from[1].get<double>(), 1e-3) << change.to.dump();
+    // the rotation it writes is drawn on a 90-degree step and stays flipped
+    Quaternion fixed(to[0].get<float>(), to[1].get<float>(), to[2].get<float>());
+    PixelArtCheckInput after = cleanInput();
+    after.scenes.front().drawables.front().rotation = after.scenes.front().drawables.front().worldRotation = fixed;
+    EXPECT_EQ(statusOf(after, "rotation"), RuleStatus::Pass) << change.to.dump();
+    const Vector3 normal = fixed.normalize() * Vector3(0, 0, 1);
+    EXPECT_LT(normal.z, -0.99f) << "still facing away: the flip is kept";
+}
+
+TEST(PixelArtCheck, MipmapsCompressionReadsTheProjectsTextureSettings){
+    PixelArtCheckInput input = cleanInput();
+    PixelArtTexture& t = input.textures["sprites/hero.png"];
+    t.width = 600;
+    t.height = 300;
+    EXPECT_EQ(statusOf(input, "mipmaps_compression"), RuleStatus::Pass) << "2048 by default: kept whole";
+    // Project Settings > Textures caps every platform at 256: the art is resized (uneven pixels)
+    input.project.textureSettings.defaultMaxSize = {256, 256, 256, 256};
+    const CheckResult result = run(input, {"mipmaps_compression"});
+    const Finding* f = findingOf(result, "mipmaps_compression");
+    ASSERT_TRUE(f);
+    EXPECT_EQ(f->status, RuleStatus::Warn);
+    EXPECT_EQ(f->measured["resized_to"], Json::array({256, 128}));
+    // the fix gives the texture a max size that keeps it whole
+    EXPECT_EQ(f->options.front().changes.front().to["maxSize"], 1024) << f->options.front().changes.front().to.dump();
+}
+
+TEST(PixelArtCheck, ParticlesWithoutAPixelPerfectCameraAreFixable){
+    PixelArtCheckInput input = cleanInput();
+    PixelArtScene& scene = input.scenes.front();
+    scene.camera = PixelArtCamera();          // no camera of its own
+    PixelArtDrawable particles;
+    particles.kind = DrawableKind::Particles;
+    particles.scene = scene.path;
+    particles.entity = "/Sparks";
+    particles.particleRenderMode = "billboard";
+    particles.particleSizes = {4.0f};
+    particles.hasTransform = true;
+    scene.drawables.push_back(particles);
+    const CheckResult result = run(input, {"integer_scale", "particles_grid"});
+    const Finding* f = findingOf(result, "particles_grid");
+    ASSERT_TRUE(f);
+    EXPECT_TRUE(f->needsPerson.empty()) << f->needsPerson;
+    ASSERT_FALSE(f->options.empty());
+    // the same change as integer_scale's, so fix: ["all"] adds one camera
+    const Finding* camera = findingOf(result, "integer_scale");
+    ASSERT_TRUE(camera);
+    const FixChange& a = f->options.front().changes.front();
+    const FixChange& b = camera->options.front().changes.front();
+    EXPECT_EQ(a.target, b.target);
+    EXPECT_EQ(a.field, "camera");
+    EXPECT_EQ(a.field, b.field);
+    EXPECT_EQ(a.to, b.to);
+}

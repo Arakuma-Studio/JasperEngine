@@ -32,9 +32,20 @@ namespace jasperengine::editor::pixelart {
     // "Fix Pixel Art (n)", n the fixes applied
     std::string fixStepName(const FixPlan& plan);
 
-    // the changes of one or more options as a plan (the preset, the window's Fix button)
+    // The changes whose `from` no longer holds: what was planned from an earlier check (the
+    // window's last result, an MCP job's snapshot, the preset dialog's preview) against an edit
+    // made since. The project is checked again on `scope` (read as Pixel Art Mode sees it, so
+    // every planned change has its finding) and each change must still be a fix of it with the
+    // same `from`; a project setting is compared with its current value. "<target> <field>" each.
+    std::vector<std::string> staleChanges(Project& project, const Scope& scope, const std::vector<FixChange>& changes);
+
+    // The changes of one or more options (the preset, the window's Fix button), identical ones
+    // applied once. verify: the scope of the check that planned them; when given, nothing is
+    // applied if a change is stale (error starts with "stale: "). Null for changes made from the
+    // current state the moment before (the importer's Apply to N References).
     bool applyChanges(Project& project, const std::vector<FixChange>& changes, const std::string& stepName, FixApplyReport& report,
-                      std::string& error);
-    bool applyFixPlan(Project& project, const FixPlan& plan, const std::string& stepName, FixApplyReport& report, std::string& error);
+                      std::string& error, const Scope* verify);
+    bool applyFixPlan(Project& project, const FixPlan& plan, const std::string& stepName, FixApplyReport& report, std::string& error,
+                      const Scope* verify);
 
 }

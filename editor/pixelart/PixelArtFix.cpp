@@ -18,6 +18,7 @@
 #include "pixelart/ApplyPalette.h"
 #include "pixelart/PaletteAssets.h"
 #include "pixelart/PixelArtInput.h"
+#include "pixelart/PixelArtRules.h"
 #include "pixelart/RgbaImage.h"
 #include "sprite/SpriteAtlasDocument.h"
 #include "util/EntityPath.h"
@@ -319,9 +320,58 @@ std::string jasperengine::editor::pixelart::fixStepName(const FixPlan& plan){
     return "Fix Pixel Art (" + std::to_string(plan.fixes.size()) + ")";
 }
 
-bool jasperengine::editor::pixelart::applyChanges(Project& project, const std::vector<FixChange>& changes, const std::string& stepName,
-                                                  FixApplyReport& report, std::string& error){
+std::vector<std::string> jasperengine::editor::pixelart::staleChanges(Project& project, const Scope& scope, const std::vector<FixChange>& changes){
+    Scope fresh = scope;
+    fresh.assumeModeOn = true;
+    std::vector<PixelProblem> errors;
+    const PixelArtCheckInput input = inputFromProject(project, fresh, errors);
+    const CheckResult result = run(input);
+    std::map<std::pair<std::string, std::string>, std::vector<Json>> current;
+    for (const Finding& finding : result.findings)
+        for (const FixOption& option : finding.options)
+            for (const FixChange& change : option.changes)
+                current[{change.target, change.field}].push_back(change.from);
+    const PixelArtProjectInfo& p = input.project;
+    const std::map<std::string, Json> settings = {
+        {"pixel_art.enabled", p.modeEnabled}, {"graphics.canvas_width", p.canvasWidth}, {"graphics.canvas_height", p.canvasHeight},
+        {"graphics.scaling_mode", rules::scalingName(p.scaling)}, {"graphics.pixels_per_unit", p.pixelsPerUnit},
+        {"graphics.default_filter_mode", textureFilterModeName(p.defaultFilterMode)},
+        {"player.window_width", p.windowWidth}, {"player.window_height", p.windowHeight}};
+    std::vector<std::string> stale;
+    for (const FixChange& change : changes){
+        if (change.target == "project"){
+            auto it = settings.find(change.field);
+            if (it != settings.end() && it->second != change.from)
+                stale.push_back(change.target + " " + change.field);
+            continue;
+        }
+        auto it = current.find({change.target, change.field});
+        if (it == current.end() || std::find(it->second.begin(), it->second.end(), change.from) == it->second.end())
+            stale.push_back(change.target + " " + change.field);
+    }
+    return stale;
+}
+
+bool jasperengine::editor::pixelart::applyChanges(Project& project, const std::vector<FixChange>& requested, const std::string& stepName,
+                                                  FixApplyReport& report, std::string& error, const Scope* verify){
     report = FixApplyReport();
+    // two findings may plan one change (integer_scale's and particles_grid's camera): it is made once
+    std::vector<FixChange> changes;
+    for (const FixChange& change : requested){
+        const bool seen = std::any_of(changes.begin(), changes.end(), [&](const FixChange& c){
+            return c.target == change.target && c.field == change.field && c.to == change.to;
+        });
+        if (!seen)
+            changes.push_back(change);
+    }
+    if (verify){
+        const std::vector<std::string> stale = staleChanges(project, *verify, changes);
+        if (!stale.empty()){
+            error = "stale: " + std::to_string(stale.size()) + " change(s) no longer match the project (" + stale.front() +
+                    (stale.size() > 1 ? ", ..." : "") + "), edited since the check that planned them";
+            return false;
+        }
+    }
     std::vector<std::pair<std::string, Json>> settings;
     std::vector<FixChange> assets;
     std::vector<std::string> sceneOrder;
@@ -368,9 +418,9 @@ bool jasperengine::editor::pixelart::applyChanges(Project& project, const std::v
 }
 
 bool jasperengine::editor::pixelart::applyFixPlan(Project& project, const FixPlan& plan, const std::string& stepName, FixApplyReport& report,
-                                                  std::string& error){
+                                                  std::string& error, const Scope* verify){
     std::vector<FixChange> changes;
     for (const auto& [key, option] : plan.fixes)
         changes.insert(changes.end(), option.changes.begin(), option.changes.end());
-    return applyChanges(project, changes, stepName, report, error);
+    return applyChanges(project, changes, stepName, report, error, verify);
 }

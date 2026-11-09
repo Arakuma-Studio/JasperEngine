@@ -26,11 +26,6 @@ namespace {
 
 }
 
-const std::vector<PixelArtScreen>& jasperengine::editor::pixelart::presetBaseResolutions(){
-    static const std::vector<PixelArtScreen> sizes = {{256, 144}, {320, 180}, {384, 216}, {480, 270}, {640, 360}};
-    return sizes;
-}
-
 std::vector<FixChange> jasperengine::editor::pixelart::planPixelArtPreset(const PixelArtCheckInput& input, const PixelArtPresetOptions& options){
     const Scaling scaling = options.integerExpand ? Scaling::INTEGER_EXPAND : Scaling::INTEGER;
     std::vector<FixChange> out = rules::projectPresetChanges(input.project, options.baseWidth, options.baseHeight, scaling,
@@ -48,8 +43,18 @@ std::vector<FixChange> jasperengine::editor::pixelart::planPixelArtPreset(const 
             // the preset adds cameras; it leaves a Stretch Fill camera to its owner
             if (finding.rule == "integer_scale" && finding.options.front().changes.front().field == "pixelperfectcamera.upscaleMode")
                 continue;
-            const std::vector<FixChange>& changes = finding.options.front().changes;
-            others.insert(others.end(), changes.begin(), changes.end());
+            for (FixChange change : finding.options.front().changes){
+                // a fixed-resolution scene's new camera draws the new base resolution (its
+                // integer_scale fix names the scene's old fixed size); others follow the canvas (0)
+                nlohmann::json* ppc = change.field == "pixelperfectcamera" ? &change.to
+                                    : change.field == "camera" && change.to.contains("pixelperfectcamera") ? &change.to["pixelperfectcamera"]
+                                                                                                          : nullptr;
+                if (ppc && ppc->value("referenceWidth", 0) > 0){
+                    (*ppc)["referenceWidth"] = options.baseWidth;
+                    (*ppc)["referenceHeight"] = options.baseHeight;
+                }
+                others.push_back(std::move(change));
+            }
         }
         std::stable_sort(others.begin(), others.end(), [](const FixChange& a, const FixChange& b){
             const int ka = kindOrder(a), kb = kindOrder(b);
@@ -88,5 +93,8 @@ PresetCounts jasperengine::editor::pixelart::countPresetChanges(const std::vecto
 
 bool jasperengine::editor::pixelart::applyPixelArtPreset(Project& project, const std::vector<FixChange>& plan, FixApplyReport& report,
                                                          std::string& error){
-    return applyChanges(project, plan, "Apply Pixel Art Preset", report, error);
+    // planned on the whole project as Pixel Art Mode sees it (planPixelArtPreset)
+    Scope scope;
+    scope.assumeModeOn = true;
+    return applyChanges(project, plan, "Apply Pixel Art Preset", report, error, &scope);
 }

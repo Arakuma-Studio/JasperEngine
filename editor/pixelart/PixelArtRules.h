@@ -39,6 +39,12 @@ namespace jasperengine::editor::pixelart::rules {
     std::vector<FixChange> projectPresetChanges(const PixelArtProjectInfo& project, int baseWidth, int baseHeight, Scaling scaling,
                                                 int pixelsPerUnit, int windowScale);
 
+    // what puts an enabled orthographic Pixel Perfect Camera on a scene's main camera (enable it,
+    // add it, or add a Main Camera with it; reference = the fixed resolution if set, else the
+    // canvas): integer_scale's fix, and particles_grid's when nothing snaps; empty for a
+    // perspective camera. label: the option's label
+    std::vector<FixChange> cameraFixChanges(const PixelArtCheckInput& input, const PixelArtScene& scene, std::string& label);
+
     // "nearest", "linear", ...: TextureFilter as set_properties names it
     const char* filterName(TextureFilter filter);
     // "letterbox", "integer" ...: Scaling as graphics.scaling_mode names it

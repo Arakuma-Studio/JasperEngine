@@ -162,6 +162,19 @@ namespace {
         return Json::array({number(v.x), number(v.y), number(v.z)});
     }
 
+    // a rotation's Euler angles as the Inspector and transform.rotation's "euler" show them
+    // (McpValues::eulerDegrees): tiny values 0, near-whole angles snapped
+    Vector3 eulerOf(const Quaternion& rotation){
+        Vector3 euler = Quaternion(rotation).normalize().getEulerAngles(RotationOrder::ZYX);
+        float* parts[3] = {&euler.x, &euler.y, &euler.z};
+        for (float* part : parts){
+            if (std::fabs(*part) < 1e-4f) *part = 0.0f;
+            const float rounded = std::round(*part * 1000.0f) / 1000.0f;
+            *part = rounded == 0.0f ? 0.0f : rounded;
+        }
+        return euler;
+    }
+
     // the scene's own camera, or none (its default view)
     bool hasCameraComponent(const PixelArtScene& scene){
         return scene.camera.exists && scene.camera.hasComponent && scene.camera.component.enabled && !scene.camera.perspective;
@@ -372,6 +385,29 @@ std::vector<FixChange> jasperengine::editor::pixelart::rules::projectPresetChang
     return out;
 }
 
+std::vector<FixChange> jasperengine::editor::pixelart::rules::cameraFixChanges(const PixelArtCheckInput& input, const PixelArtScene& scene,
+                                                                             std::string& label){
+    if (scene.camera.exists && scene.camera.perspective)
+        return {};
+    const std::string& cameraEntity = scene.camera.entity;
+    if (scene.camera.exists && scene.camera.hasComponent){
+        label = "Enable the Pixel Perfect Camera on " + cameraEntity;
+        return {{entityRef(scene.path, cameraEntity), "pixelperfectcamera.enabled", false, true}};
+    }
+    // reference = the fixed resolution if set, else the canvas (0)
+    const int refW = scene.fixedResolution && scene.fixedWidth > 0 ? scene.fixedWidth : 0;
+    const int refH = scene.fixedResolution && scene.fixedHeight > 0 ? scene.fixedHeight : 0;
+    Json ppc = {{"referenceWidth", refW}, {"referenceHeight", refH}};
+    if (input.project.upscaleMode != PixelUpscaleMode::INTEGER)
+        ppc["upscaleMode"] = pixelUpscaleModeName(input.project.upscaleMode);
+    if (scene.camera.exists){
+        label = "Add a Pixel Perfect Camera to " + cameraEntity;
+        return {{entityRef(scene.path, cameraEntity), "pixelperfectcamera", nullptr, ppc}};
+    }
+    label = "Add a Main Camera with a Pixel Perfect Camera to " + scene.name;
+    return {{scene.path, "camera", nullptr, {{"name", "Main Camera"}, {"pixelperfectcamera", ppc}}}};
+}
+
 // ---------------------------------------------------------------- pixel_art_mode
 
 RuleResult jasperengine::editor::pixelart::rules::pixelArtMode(const PixelArtCheckInput& input, std::vector<Finding>& findings){
@@ -447,28 +483,16 @@ RuleResult jasperengine::editor::pixelart::rules::integerScale(const PixelArtChe
         Json measured = {{"mode", layoutMode(input, scene)}, {"screens", layoutsJson(layouts)}};
         Finding finding = makeFinding("integer_scale", scene.path, status, target, measured,
                                       {{"integer", true}, {"pixel_perfect_camera", true}}, message);
-        const int refW = scene.fixedResolution && scene.fixedWidth > 0 ? scene.fixedWidth : 0;
-        const int refH = scene.fixedResolution && scene.fixedHeight > 0 ? scene.fixedHeight : 0;
         if (component){
             finding.options.push_back(option("default", "Set the Pixel Perfect Camera's Upscale Mode to Integer",
                                              {{entityRef(scene.path, cameraEntity), "pixelperfectcamera.upscaleMode", "stretch_fill", "integer"}}));
-        }else if (scene.camera.exists && scene.camera.perspective){
-            finding.needsPerson = "The main camera of " + scene.name + " is perspective: a Pixel Perfect Camera needs an orthographic camera.";
-        }else if (scene.camera.exists && scene.camera.hasComponent){
-            finding.options.push_back(option("default", "Enable the Pixel Perfect Camera on " + cameraEntity,
-                                             {{entityRef(scene.path, cameraEntity), "pixelperfectcamera.enabled", false, true}}));
-        }else if (scene.camera.exists){
-            Json to = {{"referenceWidth", refW}, {"referenceHeight", refH}};
-            if (input.project.upscaleMode != PixelUpscaleMode::INTEGER)
-                to["upscaleMode"] = pixelUpscaleModeName(input.project.upscaleMode);
-            finding.options.push_back(option("default", "Add a Pixel Perfect Camera to " + cameraEntity,
-                                             {{entityRef(scene.path, cameraEntity), "pixelperfectcamera", nullptr, to}}));
         }else{
-            Json ppc = {{"referenceWidth", refW}, {"referenceHeight", refH}};
-            if (input.project.upscaleMode != PixelUpscaleMode::INTEGER)
-                ppc["upscaleMode"] = pixelUpscaleModeName(input.project.upscaleMode);
-            finding.options.push_back(option("default", "Add a Main Camera with a Pixel Perfect Camera to " + scene.name,
-                                             {{scene.path, "camera", nullptr, {{"name", "Main Camera"}, {"pixelperfectcamera", ppc}}}}));
+            std::string label;
+            std::vector<FixChange> changes = cameraFixChanges(input, scene, label);
+            if (changes.empty())
+                finding.needsPerson = "The main camera of " + scene.name + " is perspective: a Pixel Perfect Camera needs an orthographic camera.";
+            else
+                finding.options.push_back(option("default", label, std::move(changes)));
         }
         findings.push_back(std::move(finding));
     }
@@ -534,7 +558,7 @@ RuleResult jasperengine::editor::pixelart::rules::mipmapsCompression(const Pixel
             findings.push_back(std::move(finding));
             continue;
         }
-        TextureProjectSettings projectSettings;
+        const TextureProjectSettings& projectSettings = input.project.textureSettings;
         Json formats = Json::object();
         bool lossy = false, mipmaps = false, resized = false, softResize = false;
         size_t vram = 0;
@@ -589,7 +613,8 @@ RuleResult jasperengine::editor::pixelart::rules::mipmapsCompression(const Pixel
         if (fixed.type && *fixed.type != TextureImportType::Sprite && *fixed.type != TextureImportType::UI)
             fixed.type = TextureImportType::Sprite;
         const int side = std::max(texture.width, texture.height);
-        if (side > 0 && (fixed.maxSize ? *fixed.maxSize < side : side > 2048)){
+        const int projectMax = *std::min_element(projectSettings.defaultMaxSize.begin(), projectSettings.defaultMaxSize.end());
+        if (side > 0 && (fixed.maxSize ? *fixed.maxSize < side : side > projectMax)){
             int size = 32;
             while (size < side && size < 16384) size *= 2;
             fixed.maxSize = size;
@@ -806,11 +831,14 @@ RuleResult jasperengine::editor::pixelart::rules::rotation(const PixelArtCheckIn
             if ((onStep(z, 90.0) && flatX && flatY) || onGridTarget)
                 continue;
             const std::string name = d.entity.substr(d.entity.find_last_of('/') + 1);
-            const Angles local = anglesOf(d.rotation);
-            const double localZ = cleanAngle(local.z);
             // the step S41 draws: the world angle rounded to 90 degrees, ties towards 0
             const double drawn = cleanAngle(nearestStep(z, 90.0));
-            const double toZ = cleanAngle(localZ + (drawn - z));
+            // only Z of the current Euler angles moves, so X/Y flips stay; a parent flipped over
+            // turns a local Z rotation the other way on screen
+            const Vector3 euler = eulerOf(d.rotation);
+            const double sign = (Quaternion(d.parentWorldRotation).normalize() * Vector3(0, 0, 1)).z < 0.0f ? -1.0 : 1.0;
+            Vector3 toEuler = euler;
+            toEuler.z = (float)cleanAngle((double)euler.z + sign * (drawn - z));
             Json measured = {{"z", number(z)}, {"x", number(cleanAngle(world.x))}, {"y", number(cleanAngle(world.y))},
                              {"pixel_rotation", policy == PixelRotation::ON_GRID ? "on_grid" : "steps_90"}};
             Finding finding = makeFinding("rotation", entityRef(d.scene, d.entity), RuleStatus::Warn, entityTarget(d.scene, d.entity),
@@ -819,8 +847,8 @@ RuleResult jasperengine::editor::pixelart::rules::rotation(const PixelArtCheckIn
                                               (policy == PixelRotation::ON_GRID ? "it rotates at screen resolution, off the grid."
                                                                                 : "it is drawn rounded to " + formatDouble(drawn) + " degrees."));
             finding.options.push_back(option("default", "Round " + name + "'s rotation to " + formatDouble(drawn) + " degrees",
-                                             {{entityRef(d.scene, d.entity), "transform.rotation", {{"euler", Json::array({0, 0, number(localZ)})}},
-                                               {{"euler", Json::array({0, 0, number(toZ)})}}}}));
+                                             {{entityRef(d.scene, d.entity), "transform.rotation", {{"euler", vec3(euler)}},
+                                               {{"euler", vec3(toEuler)}}}}));
             if (d.kind == DrawableKind::Sprite && hasCameraComponent(scene) && scene.camera.component.upscaleRenderTexture && flatX && flatY &&
                 d.pixelRotation != PixelRotation::ON_GRID){
                 finding.options.push_back(option("on_grid", "Rotate " + name + " on the grid (Pixel Rotation: Rotate On Grid)",
@@ -925,18 +953,34 @@ RuleResult jasperengine::editor::pixelart::rules::particlesGrid(const PixelArtCh
                                           {{"texture_filter", "nearest"}, {"render_mode", "billboard"}, {"sizes_px", "whole pixels"}, {"snapping", true}},
                                           name + " is off the pixel grid: " + list + ".");
             std::vector<FixChange> changes;
-            if (linear)
+            std::vector<std::string> labels;
+            if (linear){
                 changes.push_back({"project", "graphics.default_filter_mode", textureFilterModeName(input.project.defaultFilterMode), "point"});
-            if (!snapping && !perspective && hasCameraComponent(scene))
-                changes.push_back({entityRef(scene.path, scene.camera.entity), "pixelperfectcamera.pixelSnapping", false, true});
-            if (stretched || fractionalSize || perspective || (!snapping && !hasCameraComponent(scene))){
+                labels.push_back("sample runtime textures with Point filtering (Default Filter Mode)");
+            }
+            if (!snapping && !perspective){
+                // no enabled Pixel Perfect Camera: integer_scale's change (the same one, applied once)
+                if (!hasCameraComponent(scene)){
+                    std::string label;
+                    const std::vector<FixChange> camera = cameraFixChanges(input, scene, label);
+                    changes.insert(changes.end(), camera.begin(), camera.end());
+                    labels.push_back(label);
+                }
+                if (scene.camera.exists && scene.camera.hasComponent && !scene.camera.component.pixelSnapping){
+                    changes.push_back({entityRef(scene.path, scene.camera.entity), "pixelperfectcamera.pixelSnapping", false, true});
+                    labels.push_back("turn on the camera's Pixel Snapping");
+                }
+            }
+            if (stretched || fractionalSize || perspective){
                 finding.needsPerson = perspective ? "a perspective camera has no world pixel grid"
                                     : stretched   ? "set the Renderer module's Render Mode to Billboard (set_properties on the effect)"
-                                    : fractionalSize ? "give the Start Size whole pixels (" + std::to_string(ppu) + " per unit)"
-                                                     : "add a Pixel Perfect Camera with Pixel Snapping (integer_scale's fix)";
+                                                  : "give the Start Size whole pixels (" + std::to_string(ppu) + " per unit)";
             }else if (!changes.empty()){
-                finding.options.push_back(option("default", linear ? "Sample runtime textures with Point filtering (Default Filter Mode)"
-                                                                   : "Turn on the camera's Pixel Snapping", changes));
+                std::string label;
+                for (size_t i = 0; i < labels.size(); i++)
+                    label += (i == 0 ? "" : ", ") + labels[i];
+                label[0] = (char)std::toupper((unsigned char)label[0]);
+                finding.options.push_back(option("default", label, changes));
             }
             findings.push_back(std::move(finding));
         }

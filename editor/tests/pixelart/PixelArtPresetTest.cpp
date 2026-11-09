@@ -122,3 +122,28 @@ TEST(PixelArtPreset, PlanMatchesFixes){
     EXPECT_EQ(counts.textures, 1);
     EXPECT_EQ(counts.references, 1);
 }
+
+TEST(PixelArtPreset, AFixedResolutionScenesNewCameraDrawsTheNewBase){
+    // a 640 x 360 fixed-resolution scene without a camera of its own
+    PixelArtCheckInput input = templateInput(false);
+    input.scenes.front().fixedResolution = true;
+    input.scenes.front().fixedWidth = 640;
+    input.scenes.front().fixedHeight = 360;
+    // integer_scale alone names the scene's fixed size (R10)
+    const CheckResult checked = run(input, {"integer_scale"});
+    ASSERT_FALSE(checked.findings.empty());
+    EXPECT_EQ(checked.findings.front().options.front().changes.front().to["pixelperfectcamera"]["referenceWidth"], 640);
+    // the preset converts the scene to the base it sets
+    PixelArtPresetOptions options;
+    options.baseWidth = 384;
+    options.baseHeight = 216;
+    bool found = false;
+    for (const FixChange& change : planPixelArtPreset(input, options)){
+        if (change.field != "camera")
+            continue;
+        found = true;
+        EXPECT_EQ(change.to["pixelperfectcamera"]["referenceWidth"], 384) << change.to.dump();
+        EXPECT_EQ(change.to["pixelperfectcamera"]["referenceHeight"], 216) << change.to.dump();
+    }
+    EXPECT_TRUE(found);
+}

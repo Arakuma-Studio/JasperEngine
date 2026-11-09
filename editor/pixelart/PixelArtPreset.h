@@ -31,9 +31,6 @@ namespace jasperengine::editor::pixelart {
         bool pointReferences = true;             // those references Nearest
     };
 
-    // the base resolutions R2 offers (the dialog's and the hub's list): 256x144 ... 640x360
-    const std::vector<PixelArtScreen>& presetBaseResolutions();
-
     // the plan over an input read with Scope::assumeModeOn (deterministic: by kind, then path)
     std::vector<FixChange> planPixelArtPreset(const PixelArtCheckInput& input, const PixelArtPresetOptions& options);
     // the same from the project (main thread)
