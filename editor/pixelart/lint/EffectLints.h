@@ -100,7 +100,14 @@ namespace jasperengine::editor::pixelart::lint {
         IntPoint at;                      // where the narrowest or widest differs from the most common width
     };
     RimMeasure measureRim(const PixelImage& frame, std::span<const jasperengine::pixelart::Rgba8> rimColors);
-    LintResult lintTransitionEdges(const FrameView& frames, std::span<const jasperengine::pixelart::Rgba8> rimColors, bool transition, int artPixel = 1);
+    LintResult lintTransitionEdges(const FrameView& frames, std::span<const jasperengine::pixelart::Rgba8> rimColors, bool transition);
+    // A transition's rim from its own CPU evaluation (ScreenTransition::measureRim): the width along each row or
+    // column away from the uncovered side, the rule the shader draws by, which a colour-only image cannot show
+    struct RimSpreadFrame {
+        int crossings = 0, narrowest = 0, widest = 0;
+        int x = -1, y = -1;
+    };
+    LintResult lintRimSpreads(const std::vector<RimSpreadFrame>& frames);
 
     // ---- all of them over one capture
     struct EffectLintInput {
@@ -125,8 +132,7 @@ namespace jasperengine::editor::pixelart::lint {
         double hitStopSeconds = -1.0;
         std::string hitStopSkipReason;
         bool transition = false;
-        int artPixel = 1;                  // frame pixels per art pixel of a transition's capture
-        std::string rimSkipReason;         // set when the kind draws no continuous edge to measure
+        std::vector<RimSpreadFrame> rimSpreads;  // per frame (a transition's capture): takes the place of rimColors
         std::vector<jasperengine::pixelart::Rgba8> rimColors;
     };
     // `only`: ids to run (empty: every one); unknown ids are the caller's to refuse (isEffectLintId)

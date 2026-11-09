@@ -174,9 +174,7 @@ namespace jasperengine::editor::pixelart::lint {
                     for (int d = 1; d <= K; d++) {
                         if (!take(y + d, down)) break;
                     }
-                    // every neighbouring line matched: within K lines of the frame's border the fit is one-sided
-                    // and the run is cut, which reads as a width change of the rim that is not there
-                    if (n < 2 * K + 1) continue;
+                    if (n < 2 * K) continue;
                     const double denom = n * syy - sy * sy;
                     const double slope = denom != 0.0 ? (n * sye - sy * se) / denom : 0.0;
                     if (std::abs(slope) > 1.0) continue;
@@ -514,7 +512,7 @@ namespace jasperengine::editor::pixelart::lint {
         return m;
     }
 
-    LintResult lintTransitionEdges(const FrameView& frames, std::span<const Rgba8> rimColors, bool transition, int artPixel) {
+    LintResult lintTransitionEdges(const FrameView& frames, std::span<const Rgba8> rimColors, bool transition) {
         if (!transition) return skipped("transition_edges", "not a transition");
         if (rimColors.empty()) return skipped("transition_edges", "the transition has no rim (rim 0)");
         LintResult r = started("transition_edges");
@@ -522,16 +520,7 @@ namespace jasperengine::editor::pixelart::lint {
         int spread = 0, measuredFrames = 0;
         for (size_t fi = 0; fi < frames.size(); fi++) {
             if (!frames[fi]) continue;
-            // one sample per art pixel: the rim is measured in art pixels, whatever the capture's scale (R13)
-            const int step = std::max(artPixel, 1);
-            PixelImage sampled;
-            if (step > 1) {
-                sampled = PixelImage(frames[fi]->width() / step, frames[fi]->height() / step);
-                for (int y = 0; y < sampled.height(); y++) {
-                    for (int x = 0; x < sampled.width(); x++) sampled.set(x, y, frames[fi]->at(x * step + step / 2, y * step + step / 2));
-                }
-            }
-            const RimMeasure m = measureRim(step > 1 ? sampled : *frames[fi], rimColors);
+            const RimMeasure m = measureRim(*frames[fi], rimColors);
             if (m.samples == 0) continue;
             measuredFrames++;
             const int s = m.widest - m.narrowest;
@@ -544,6 +533,28 @@ namespace jasperengine::editor::pixelart::lint {
         if (spread > 0) {
             r.message = "the rim's width varies by " + std::to_string(spread) + " art px along the edge in " + std::to_string(r.count) + " frame(s)";
             r.fix = "draw the rim at whole art pixels (pixel_size 0 or the S41 grid scale) and keep rim within 0..8";
+        }
+        return r;
+    }
+
+    LintResult lintRimSpreads(const std::vector<RimSpreadFrame>& frames) {
+        LintResult r = started("transition_edges");
+        r.threshold = 0;
+        int spread = 0, measured = 0;
+        for (size_t fi = 0; fi < frames.size(); fi++) {
+            const RimSpreadFrame& f = frames[fi];
+            if (f.crossings == 0) continue;
+            measured++;
+            const int s = f.widest - f.narrowest;
+            if (s > 0) r.addSpot({(int)fi + 1, f.x, f.y});
+            spread = std::max(spread, s);
+        }
+        if (measured == 0) return skipped("transition_edges", "no frame shows a rim between ink and screen");
+        r.measured = spread;
+        r.status = spread > 0 ? LintStatus::Warn : LintStatus::Pass;
+        if (spread > 0) {
+            r.message = "the rim's width varies by " + std::to_string(spread) + " art px along the edge in " + std::to_string(r.count) + " frame(s)";
+            r.fix = "keep rim within 0..8 and draw it at whole art pixels (pixel_size 0 or the S41 grid scale)";
         }
         return r;
     }
@@ -589,8 +600,8 @@ namespace jasperengine::editor::pixelart::lint {
         if (wanted("frame_cost")) report.add(lintFrameCost(input.cost));
         if (wanted("hit_stop_length")) report.add(lintHitStopLength(input.hitStopSeconds, input.hitStopSkipReason));
         if (wanted("transition_edges")) {
-            report.add(!input.rimSkipReason.empty() ? skipped("transition_edges", input.rimSkipReason)
-                                                    : lintTransitionEdges(input.frames, input.rimColors, input.transition, input.artPixel));
+            report.add(!input.rimSpreads.empty() ? lintRimSpreads(input.rimSpreads)
+                                                 : lintTransitionEdges(input.frames, input.rimColors, input.transition));
         }
         return report;
     }

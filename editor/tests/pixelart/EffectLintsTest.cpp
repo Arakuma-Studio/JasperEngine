@@ -237,16 +237,17 @@ TEST(EffectLints, TransitionRimsOfConstantWidthPass) {
     EXPECT_EQ(lintTransitionEdges({&wipe}, rim, false).status, LintStatus::Skip);
 }
 
-TEST(EffectLints, TransitionRimIsMeasuredInArtPixels) {
-    const std::vector<Rgba8> rim = {{kRim[0], kRim[1], kRim[2], 255}};
-    const PixelImage art = fieldFrame(96, 96, 2, [](double x, double y) { return std::hypot(x - 48.0, y - 48.0) - 24.0; });
-    PixelImage scaled(96 * 3, 96 * 3);
-    for (int y = 0; y < scaled.height(); y++) {
-        for (int x = 0; x < scaled.width(); x++) scaled.set(x, y, art.at(x / 3, y / 3));
-    }
-    const LintResult pass = lintTransitionEdges({&scaled}, rim, true, 3);
-    EXPECT_EQ(pass.status, LintStatus::Pass) << pass.message;
-    EXPECT_EQ(pass.measured, 0);
+TEST(EffectLints, TransitionRimSpreadsFromTheCpuEvaluation) {
+    EXPECT_EQ(lintRimSpreads({{0, 0, 0}, {0, 0, 0}}).status, LintStatus::Skip);
+    const LintResult even = lintRimSpreads({{40, 2, 2}, {0, 0, 0}, {12, 2, 2}});
+    EXPECT_EQ(even.status, LintStatus::Pass);
+    EXPECT_EQ(even.measured, 0);
+    const LintResult uneven = lintRimSpreads({{40, 2, 2}, {12, 1, 3, 33, 2}});
+    EXPECT_EQ(uneven.status, LintStatus::Warn);
+    EXPECT_EQ(uneven.measured, 2);
+    ASSERT_EQ(uneven.at.size(), 1u);
+    EXPECT_EQ(uneven.at[0].frame, 2);
+    EXPECT_EQ(uneven.at[0].x, 33);
 }
 
 TEST(EffectLints, TransitionRimThatChangesWidthWarns) {

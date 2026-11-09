@@ -275,10 +275,17 @@ namespace {
 
         void describeLints(lint::EffectLintInput& input) const override {
             input.transition = true;
-            input.artPixel = std::max(options.pixelSize, 1);
-            using jasperengine::pixelart::TransitionKind;
-            if (kind == TransitionKind::PIXEL_DISSOLVE || kind == TransitionKind::FADE)
-                input.rimSkipReason = "this kind covers in blocks or by dither: it has no continuous edge to measure";
+            // the rim as the shader draws it (ScreenTransitionGpu pins the CPU twin against the GPU); art pixels, whatever
+            // the sheet's pixel_size
+            for (double time : input.times) {
+                float coverage = 0.0f;
+                jasperengine::pixelart::TransitionPhase state = jasperengine::pixelart::TransitionPhase::COVER;
+                at(time, coverage, state);
+                jasperengine::pixelart::TransitionImage image;
+                jasperengine::pixelart::ScreenTransition::evaluate(kind, options, coverage, state, artWidth, artHeight, image);
+                const jasperengine::pixelart::TransitionRimMeasure m = jasperengine::pixelart::ScreenTransition::measureRim(kind, image);
+                input.rimSpreads.push_back({m.crossings, m.minWidth, m.maxWidth, m.atX, m.atY});
+            }
             input.rimColors = jasperengine::pixelart::ScreenTransition::resolveRamp(options);
             input.spillApplies = false;
             input.spillSkipReason = "a transition draws over the whole screen";
