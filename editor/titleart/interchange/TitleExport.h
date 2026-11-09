@@ -125,6 +125,9 @@ namespace jasperengine::editor {
         void renderFrame(std::shared_ptr<const titleart::TitleArtDoc> doc, const std::string& language, const titleart::TitleRectI& frame,
                          double scale, const std::string& isolateLayer, std::function<void(texsynth::Image& pixels)> done, int width = 0,
                          int height = 0);
+        // the pixels of `img` (covering img.frame at img.pxScale) cut to `frame` at `scale`, width x height:
+        // the 8-bit output when the call asks for it, then the call's alpha handling
+        texsynth::Image cutFrame(TitleRenderedImage& img, const titleart::TitleRectI& frame, double scale, int width, int height) const;
         // the call's alpha handling on straight sRGB pixels (bleed, zeros, or premultiplied)
         void finishPixels(texsynth::Image& pixels) const;
         // PNG bytes with the call's chunks and the export recipe (language, options)
