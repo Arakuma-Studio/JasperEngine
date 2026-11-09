@@ -293,9 +293,9 @@ TEST_F(TitleArtScenesGpu, Deterministic) {
 // S80 Deviation 58: every Material member drawn with the ELEMENT variant of its material
 // (TitleElementVariant.h) is the image the whole program draws, on both pixel paths. The variants
 // make the members the material leaves off constants that equal the block's values; a variant
-// that dropped a member the material uses (or kept a wrong kind) shades differently. Red control:
-// with satin, glass and reflection made constants regardless of the block, those cases differ
-// (run by hand, Deviation 58).
+// that dropped a member the material uses (or kept a wrong kind) shades differently. Red control,
+// run by hand (Deviation 58): titleElementVariant without its satin bit, the satin case differs
+// by up to 128/255.
 TEST_F(TitleArtScenesGpu, ElementVariantsDrawTheWholeProgram) {
     for (uint32_t path : {0u, TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_R16F | TITLE_ART_TEST_NO_RGBA32F}) {
         for (const auto& [name, face] : materialCases()) {
