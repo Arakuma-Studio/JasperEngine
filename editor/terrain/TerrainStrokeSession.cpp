@@ -241,8 +241,7 @@ bool editor::TerrainStrokeSession::moveTo(float x, float z, float seconds){
 }
 
 void editor::TerrainStrokeSession::addSample(float time, float x, float z, float pressure){
-    // a pen reading 0..1; anything else is a mouse, which presses fully
-    const float pressed = pressure >= 0.0f && pressure <= 1.0f ? pressure : 1.0f;
+    const float pressed = StrokeResampler::samplePressure(pressure, time);
     if (brush.mode == TerrainBrushMode::Ramp && !brush.accumulateRamp){
         queue.clear();
         moveTo(x, z, 0.0f);
@@ -340,10 +339,20 @@ std::string editor::TerrainStrokeSession::replayCall(const std::vector<StrokeSam
         case TerrainBrushMode::PaintBase: op = {{"op", "paint_base"}}; break;
         default: return std::string();
     }
+    // R37, R39: a pen's samples replay as [x, z, pressure], what the session pressed with; an op's stroke scales
+    // strength by pressure and never size, so a stroke the brush scaled otherwise has no replay
+    bool pressed = false;
+    for (const StrokeSample& sample : samples){
+        pressed = pressed || StrokeResampler::samplePressure(sample.pressure, sample.time) != 1.0f;
+    }
+    if (pressed && (brush.pressureSize || !brush.pressureStrength)){
+        return std::string();
+    }
     nlohmann::json points = nlohmann::json::array();
     nlohmann::json times = nlohmann::json::array();
     for (const StrokeSample& sample : samples){
-        points.push_back({sample.x, sample.z});
+        if (pressed) points.push_back({sample.x, sample.z, StrokeResampler::samplePressure(sample.pressure, sample.time)});
+        else points.push_back({sample.x, sample.z});
         times.push_back(sample.time);
     }
     const char* falloff = brush.falloff == TerrainBrushFalloff::Smooth ? "smooth" : (brush.falloff == TerrainBrushFalloff::Linear ? "linear" : "constant");

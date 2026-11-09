@@ -93,16 +93,16 @@ namespace {
 void LuaBinding::registerFoliageClasses(lua_State* L) {
     luabridge::getGlobalNamespace(L)
         .beginClass<Terrain>("Terrain")
-        .addProperty("detailDistance", +[](const Terrain* self) { return terrainOf(self).detailDistance; }, +[](Terrain* self, float value) { terrainOf(self).detailDistance = value; terrainOf(self).needUpdateFoliage = true; })
-        .addProperty("detailDensity", +[](const Terrain* self) { return terrainOf(self).detailDensity; }, +[](Terrain* self, float value) { terrainOf(self).detailDensity = value; })
-        .addProperty("treeDistance", +[](const Terrain* self) { return terrainOf(self).treeDistance; }, +[](Terrain* self, float value) { terrainOf(self).treeDistance = value; })
-        .addProperty("billboardStart", +[](const Terrain* self) { return terrainOf(self).billboardStart; }, +[](Terrain* self, float value) { terrainOf(self).billboardStart = value; })
-        .addProperty("fadeLength", +[](const Terrain* self) { return terrainOf(self).fadeLength; }, +[](Terrain* self, float value) { terrainOf(self).fadeLength = value; })
-        .addProperty("maxMeshTrees", +[](const Terrain* self) { return terrainOf(self).maxMeshTrees; }, +[](Terrain* self, int value) { terrainOf(self).maxMeshTrees = value; })
-        .addProperty("windDirection", +[](const Terrain* self) { return terrainOf(self).windDirection; }, +[](Terrain* self, Vector3 value) { terrainOf(self).windDirection = value; })
-        .addProperty("windSpeed", +[](const Terrain* self) { return terrainOf(self).windSpeed; }, +[](Terrain* self, float value) { terrainOf(self).windSpeed = value; })
-        .addProperty("windSize", +[](const Terrain* self) { return terrainOf(self).windSize; }, +[](Terrain* self, float value) { terrainOf(self).windSize = value; })
-        .addProperty("windBending", +[](const Terrain* self) { return terrainOf(self).windBending; }, +[](Terrain* self, float value) { terrainOf(self).windBending = value; })
+        .addProperty("detailDistance", +[](const Terrain* self) -> float { return terrainOf(self).detailDistance; }, +[](Terrain* self, float value) { terrainOf(self).detailDistance = value; terrainOf(self).needUpdateFoliage = true; })
+        .addProperty("detailDensity", +[](const Terrain* self) -> float { return terrainOf(self).detailDensity; }, +[](Terrain* self, float value) { terrainOf(self).detailDensity = value; })
+        .addProperty("treeDistance", +[](const Terrain* self) -> float { return terrainOf(self).treeDistance; }, +[](Terrain* self, float value) { terrainOf(self).treeDistance = value; })
+        .addProperty("billboardStart", +[](const Terrain* self) -> float { return terrainOf(self).billboardStart; }, +[](Terrain* self, float value) { terrainOf(self).billboardStart = value; })
+        .addProperty("fadeLength", +[](const Terrain* self) -> float { return terrainOf(self).fadeLength; }, +[](Terrain* self, float value) { terrainOf(self).fadeLength = value; })
+        .addProperty("maxMeshTrees", +[](const Terrain* self) -> int { return terrainOf(self).maxMeshTrees; }, +[](Terrain* self, int value) { terrainOf(self).maxMeshTrees = value; })
+        .addProperty("windDirection", +[](const Terrain* self) -> Vector3 { return terrainOf(self).windDirection; }, +[](Terrain* self, Vector3 value) { terrainOf(self).windDirection = value; })
+        .addProperty("windSpeed", +[](const Terrain* self) -> float { return terrainOf(self).windSpeed; }, +[](Terrain* self, float value) { terrainOf(self).windSpeed = value; })
+        .addProperty("windSize", +[](const Terrain* self) -> float { return terrainOf(self).windSize; }, +[](Terrain* self, float value) { terrainOf(self).windSize = value; })
+        .addProperty("windBending", +[](const Terrain* self) -> float { return terrainOf(self).windBending; }, +[](Terrain* self, float value) { terrainOf(self).windBending = value; })
         .addFunction("setDetailDensity", +[](Terrain* self, int layer, float value) {
             TerrainComponent& terrain = terrainOf(self);
             if (layer >= 0 && layer < static_cast<int>(terrain.foliageLayers.size())) terrain.foliageLayers[layer].densityScale = value;
@@ -157,8 +157,8 @@ void LuaBinding::registerFoliageClasses(lua_State* L) {
         .addFunction("restoreDetails", +[](Terrain* self) { foliageOf(self)->restoreDetails(self->getEntity()); })
         .addFunction("getRuntimeFoliageState", +[](const Terrain* self) { return foliageOf(self)->getRuntimeState(self->getEntity()); })
         .addFunction("setRuntimeFoliageState", +[](Terrain* self, const std::string& state) { return foliageOf(self)->setRuntimeState(self->getEntity(), state); })
-        .addProperty("onTreeHit", +[](const Terrain*, lua_State* L) { return luabridge::LuaRef(L); }, +[](Terrain* self, const luabridge::LuaRef& function, lua_State* L) { setTreeHitHandler(self, function, L); })
-        .addProperty("onTreeRemoved", +[](const Terrain*, lua_State* L) { return luabridge::LuaRef(L); }, +[](Terrain* self, const luabridge::LuaRef& function, lua_State* L) { setTreeRemovedHandler(self, function, L); })
+        .addProperty("onTreeHit", +[](const Terrain*, lua_State* L) -> luabridge::LuaRef { return luabridge::LuaRef(L); }, +[](Terrain* self, const luabridge::LuaRef& function, lua_State* L) { setTreeHitHandler(self, function, L); })
+        .addProperty("onTreeRemoved", +[](const Terrain*, lua_State* L) -> luabridge::LuaRef { return luabridge::LuaRef(L); }, +[](Terrain* self, const luabridge::LuaRef& function, lua_State* L) { setTreeRemovedHandler(self, function, L); })
         // a MeshRaycast hit, a Physics ray hit or a contact's body and collider: its tree, or 0
         .addFunction("getTreeFromHit", +[](Terrain* self, const luabridge::LuaRef& hit) -> lua_Integer {
             FoliageSystem* foliage = foliageOf(self);

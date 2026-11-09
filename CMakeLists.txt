@@ -260,6 +260,7 @@ if(API_BACKEND STREQUAL "linux")
         ${EDITOR_DIR}/backend/BackendLinux.cpp
         ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
         ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp
+        ${JASPERENGINE_ROOT}/platform/linux/X11Pen.cpp
         ${JASPERENGINE_ROOT}/platform/linux/GamepadDB.cpp
         ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp
     )
@@ -1714,7 +1715,7 @@ function(configure_jasperengine_editor_target target_name)
         SOURCES ${EDITOR_DIR}/util/Clipboard.cpp ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
                 ${EDITOR_DIR}/backend/BackendLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
                 ${EDITOR_DIR}/platform/ScreenColorX11.cpp ${EDITOR_DIR}/platform/LaunchKeysX11.cpp ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp
-                ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp)
+                ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp ${JASPERENGINE_ROOT}/platform/linux/X11Pen.cpp)
     jasperengine_target_warnings(${target_name})
     jasperengine_target_unity_build(${target_name})
     get_target_property(targetType ${target_name} TYPE)
