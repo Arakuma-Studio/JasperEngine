@@ -154,6 +154,22 @@ TEST(Title3DDesignerTest, NoTargetFor2DOrLocked) {
 }
 
 // R55: a chrome ball and a gold disc over the panorama strip, lit by the environment
+// a preview's render asks for engine frames from a window; the editor draws only on activity, so
+// the wish has to outlive the drain or the render stops until the mouse moves
+TEST(Title3DDesignerTest, EngineFrameRequestsKeepTheEditorDrawingUntilTheyStop) {
+    runEngineFrameRequests();
+    runEngineFrameRequests();
+    EXPECT_FALSE(engineFramesWanted());
+    int runs = 0;
+    requestEngineFrame([&runs] { runs++; });
+    EXPECT_TRUE(engineFramesWanted());
+    runEngineFrameRequests();
+    EXPECT_EQ(runs, 1);
+    EXPECT_TRUE(engineFramesWanted()) << "drained in this frame: the next frame asks again";
+    runEngineFrameRequests();
+    EXPECT_FALSE(engineFramesWanted()) << "nothing asked: idle again, a finished preview costs nothing";
+}
+
 TEST(Title3DDesignerTest, EnvironmentTile) {
     const int w = 96, h = 64;
     const std::vector<uint8_t> studio = title3DEnvironmentTile("studio", w, h);

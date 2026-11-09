@@ -17,6 +17,7 @@
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
+#include "diag/HangWatchdog.h"
 #include "io/FileData.h"
 #include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
@@ -444,9 +445,11 @@ void TitleArtSystem::renderTitles(){
 }
 
 void TitleArtSystem::runRuntimeFrame(bool editorEditMode){
-    // one scheduler for the engine (R13): whichever asks first in a frame runs its steps
+    // one scheduler for the engine (R13): whichever asks first in a frame runs its steps. A frame
+    // ends at a main-loop heartbeat or at a commit, as TitleFirstDraws counts them: the editor
+    // commits only when a view redraws, so commits alone stop a render nothing else draws for
     static uint64_t lastFrame = ~uint64_t(0);
-    const uint64_t frame = SystemRender::getFrameCount();
+    const uint64_t frame = diag::heartbeats() + SystemRender::getFrameCount();
     if (frame == lastFrame) return;
     lastFrame = frame;
     if (!TitleArtRuntime::isBuilt()) return;

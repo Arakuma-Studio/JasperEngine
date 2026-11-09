@@ -276,8 +276,7 @@ bool TitleGpu::run(const TitleGpuPass& desc, std::string& error) {
     Program& p = *programs[number];
     const TargetKey& key = t->key();
     // the first draw in this state compiles the driver's variant: one a frame
-    const uint64_t drawKey = ((uint64_t)number << 32) ^ ((uint64_t)key.format << 24) ^ ((uint64_t)key.samples << 16) ^ ((uint64_t)key.depth << 8) ^
-                             (uint64_t)desc.blend;
+    const uint64_t drawKey = firstDrawKey(number, key, desc.blend);
     const bool firstDraw = !TitleFirstDraws::drew(drawKey);
     if (!TitleFirstDraws::allow(drawKey)) {
         deferredRun = true;
@@ -374,6 +373,11 @@ namespace {
         return f;
     }
 
+}
+
+uint64_t TitleGpu::firstDrawKey(uint32_t programNumber, const TargetKey& target, BlendMode blend) {
+    return ((uint64_t)programNumber << 32) ^ ((uint64_t)target.format << 24) ^ ((uint64_t)target.samples << 16) ^ ((uint64_t)target.depth << 8) ^
+           (uint64_t)blend;
 }
 
 bool TitleFirstDraws::drew(uint64_t key) {

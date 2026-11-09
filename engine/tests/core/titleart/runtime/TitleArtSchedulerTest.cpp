@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+#include "diag/HangWatchdog.h"
+#include "subsystem/TitleArtSystem.h"
 #include "titleart/runtime/TitleArtLive.h"
 #include "titleart/runtime/TitleArtScheduler.h"
 
@@ -145,6 +147,27 @@ TEST_F(TitleArtSchedulerTest, NoFrameRunsPastTheBudgetButTheGuaranteedStep) {
     const TitleFrameReport over = frame({b.get()}, fakeFactory(slow, 3, 5000), 2000, clock);
     EXPECT_EQ(over.steps, 1u);
     EXPECT_EQ(over.overBudgetSteps, 1u);
+}
+
+// The Title Designer's Glyph Atlas preview stalled at "rendering 35/44": the frame guard counted
+// commits, and the editor commits only when a view redraws. No commit here, only the main loop.
+TEST_F(TitleArtSchedulerTest, TheRuntimeFrameAdvancesOnTheMainLoopWithoutACommit) {
+    auto log = std::make_shared<FakeLog>();
+    TitleArtScheduler& scheduler = TitleArtScheduler::get();
+    scheduler.setJobFactoryForTesting(fakeFactory(log, 8, 100000));
+    auto live = makeLive();
+    live->setState(stateOf("preview"), 1, {});
+    scheduler.add(live.get());
+    for (int frame = 0; frame < 5; frame++){
+        diag::heartbeat();
+        TitleArtSystem::runRuntimeFrame(true);
+    }
+    EXPECT_EQ(log->stepped.size(), 5u) << "one step over the budget per main-loop frame";
+    // R13: whoever asks second in a frame gets nothing
+    TitleArtSystem::runRuntimeFrame(true);
+    EXPECT_EQ(log->stepped.size(), 5u);
+    scheduler.remove(live.get());
+    scheduler.setJobFactoryForTesting(nullptr);
 }
 
 TEST_F(TitleArtSchedulerTest, PlatformFactorScalesEstimates) {

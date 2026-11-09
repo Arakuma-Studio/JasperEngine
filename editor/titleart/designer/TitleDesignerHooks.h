@@ -98,6 +98,9 @@ namespace jasperengine::editor::titledesigner {
     // runs its scheduler there while no scene draws); one-shot, drained by the canvas view
     void requestEngineFrame(std::function<void()> work);
     void runEngineFrameRequests();
+    // a request waits or the last drain ran one: the editor keeps drawing, or work asked for from
+    // a window would wait for the next mouse move
+    bool engineFramesWanted();
 
     // ---- lint (R53) ----
     struct CheckFinding {

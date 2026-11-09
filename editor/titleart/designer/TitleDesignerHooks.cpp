@@ -88,6 +88,7 @@ namespace {
         static std::vector<std::function<void()>> list;
         return list;
     }
+    bool engineFrameRequestsRan = false;
 }
 
 void jasperengine::editor::titledesigner::requestEngineFrame(std::function<void()> work) {
@@ -97,7 +98,12 @@ void jasperengine::editor::titledesigner::requestEngineFrame(std::function<void(
 void jasperengine::editor::titledesigner::runEngineFrameRequests() {
     std::vector<std::function<void()>> work;
     work.swap(engineFrameRequests());
+    engineFrameRequestsRan = !work.empty();
     for (const std::function<void()>& w : work) w();
+}
+
+bool jasperengine::editor::titledesigner::engineFramesWanted() {
+    return engineFrameRequestsRan || !engineFrameRequests().empty();
 }
 
 void jasperengine::editor::titledesigner::addPreviewMode(PreviewModeDef mode) {

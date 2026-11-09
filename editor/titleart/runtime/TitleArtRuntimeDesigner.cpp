@@ -223,6 +223,7 @@ namespace {
         std::string path;
         uint64_t revision = ~0ull;
         std::string error;
+        bool frameQueued = false;
     };
     GlyphPreview& glyphPreview() {
         static GlyphPreview preview;
@@ -258,14 +259,21 @@ namespace {
                 ta::TitleArtRuntime::setState(*p.live, live);
             }
         }
-        // its scheduler runs in the render phase even while no scene draws a title this frame
-        requestEngineFrame([] { TitleArtSystem::runRuntimeFrame(true); });
         if (!p.error.empty()) {
             canvasNote(drawList, ImVec2(min.x + 12.0f, min.y + 30.0f), IM_COL32(240, 170, 50, 255), p.error);
             return true;
         }
         if (!p.live) return false;
         const ta::TitleArtLiveStatus status = ta::TitleArtRuntime::status(*p.live);
+        // its scheduler runs in the render phase even while no scene draws a title this frame,
+        // only until the image is done (a finished preview costs nothing), one request at a time
+        if (!status.ready && status.pending != "failed" && !p.frameQueued) {
+            p.frameQueued = true;
+            requestEngineFrame([] {
+                glyphPreview().frameQueued = false;
+                TitleArtSystem::runRuntimeFrame(true);
+            });
+        }
         TextureRender* texture = ta::TitleArtRuntime::display(*p.live);
         const ta::TitleDisplayImage& front = p.live->front();
         if (status.failed) canvasNote(drawList, ImVec2(min.x + 12.0f, min.y + 30.0f), IM_COL32(240, 120, 90, 255), status.error);

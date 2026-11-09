@@ -318,7 +318,7 @@ bool TitleDesignerWindow::needsFrames() const {
     const CanvasRenderInfo& info = canvas->info();
     return info.busy || info.rebuilding || now() - lastViewChange < 0.5 || doc.gestureActive() || (thumbnails && thumbnails->pendingCount() > 0) ||
            (libraryTiles && libraryTiles->pendingCount() > 0) ||
-           textEditing() || drag != Drag::None || !livePreviews.empty();
+           textEditing() || drag != Drag::None || !livePreviews.empty() || engineFramesWanted();
 }
 
 bool TitleDesignerWindow::typing() const {
