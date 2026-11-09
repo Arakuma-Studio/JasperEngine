@@ -593,7 +593,7 @@ namespace jasperengine::pixelart{
         };
         if (!scene || !scene->isEntityCreated(entity))
             return fail("the GameObject does not exist");
-        if ((int)effect < 0 || (int)effect >= kPixelFxEffectCount)
+        if ((int)effect >= kPixelFxEffectCount)
             return fail("unknown effect");
         bool any = false;
         forEachSpriteSubmesh(scene, entity, true, [&](MeshComponent&, Submesh&){ any = true; });
@@ -608,6 +608,11 @@ namespace jasperengine::pixelart{
         run->duration = std::max(seconds, 0.0f);
         run->options = options;
 
+        // what ended or lost its GameObject (a capture's scratch scene) goes first: the edit mode
+        // runs no update
+        std::vector<std::shared_ptr<PixelFxRun>>& runs = state().runs;
+        runs.erase(std::remove_if(runs.begin(), runs.end(), [](const std::shared_ptr<PixelFxRun>& r){ return r->done || !alive(*r); }),
+                   runs.end());
         // one effect per feature on a GameObject: the running one is replaced
         const std::string feature = kEffects[(int)effect].feature;
         for (const std::shared_ptr<PixelFxRun>& other : state().runs){
@@ -674,13 +679,15 @@ namespace jasperengine::pixelart{
         // a copy: an onFinished may play another effect
         std::vector<std::shared_ptr<PixelFxRun>> runs = s.runs;
         for (const std::shared_ptr<PixelFxRun>& run : runs){
-            if (run->done || run->options.manual)
+            if (run->done)
                 continue;
             if (!alive(*run)){
                 run->done = true;
                 run->options.onFinished = nullptr;
                 continue;
             }
+            if (run->options.manual)
+                continue;
             const double dt = run->options.unscaled ? unscaledDeltaTime : HitStop::deltaFor(run->scene, run->entity, deltaTime);
             advance(*run, dt);
         }
