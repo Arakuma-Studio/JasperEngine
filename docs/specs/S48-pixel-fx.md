@@ -992,15 +992,56 @@ Implementation notes that change what the spec says. Each item names the require
 - **Isolated mode runs no scripts** (the Lua state is the editor's); a script-driven effect is checked in scene mode
   in Play. Seeds: a Particle System with seed 0 takes the run's seed; spill's runs vary explicit seeds too. Unscaled
   particles run on the capture's one clock.
-- **AC23's dissolve fixture.** WP-A's DISSOLVE is not on this branch: `one_shot_end`'s red fixture is a particle burst
-  whose particles outlive the 1 s capture (`tools/fixtures/pixel-fx/fx/burst_leftover.particles`); add the dissolve
-  sprite (progress 1 leaving a texel) after the merge.
-- **frame_cost.** CPU only (median of 9 frames shown, 9 hidden, isolated, release builds); GPU time (S15) and the
-  variant's static texture taps are inputs of `lintFrameCost` that the capture does not fill yet (taps: WP-A's
-  `SpriteVariants.TapBudget` counter).
-- **hit_stop_length** needs WP-B's HitStop: the capture reports SKIP ("this build records no hit-stop requests") until
-  the merge records the longest `HitStop.play` during a Play capture into `CaptureOutput::lintInput.hitStopSeconds`.
+- **frame_cost.** The CPU time is the median of 9 frames shown and 9 hidden (isolated, release builds); the static taps
+  are below (R28 frame_cost); GPU time (S15) is not measured by the capture.
 - **transition_edges** measures the rim width across the edge (mean rim run times the cosine of the fitted edge slope,
-  over 7 lines), so slanted and curved rims of constant width pass; its capture needs WP-C's transition target.
+  over 7 lines), so slanted and curved rims of constant width pass.
 - **Contact Sheet... is a window**, not a modal (no EditorModal needed); Save As... uses the editor's file picker.
 - **Guide.** One "Other areas" entry `pixel-fx (capture_contact_sheet)` (ledger rule, no digest line).
+
+### PixelFX player and the contact sheet's effect and transition targets (M4, M5)
+- R24 end values: every effect ends with its animated value at the neutral 0 except the one-way `fade_out` and
+  `dissolve`, which end at 1 (the sprite gone, as asked); `stop()` puts the value back at 0 and does not call
+  `onFinished`. `outline_pulse` pulses whole on/off (never a partial alpha) and ends hidden when it turned OUTLINE on
+  itself, else at the material's own outline colour; it turns on OUTLINE with `OUTLINE_STYLE_PIXEL4`.
+- R24 one effect per feature: a new effect of the same library:sprite feature on a GameObject replaces the running
+  one (no `onFinished`); effects of different features run together. `PixelFX.set(go, name, value)` takes a channel
+  (`flash`, `fade`, `dissolve`, `ramp`) or any library:sprite property, stops that feature's effect and turns the
+  feature on. `PixelFX.activeCount` added (the effects still playing).
+- R24 status looks: petrify/freeze set Ramp Bevel 1, poison Bevel 0.5 and Pulse 2 (as the presets); in, held
+  (`opts.hold`, default half the duration), out over the rest. Ramps: `opts.ramp`, else the material's ramp, else the
+  grey default: `builtin:` palettes exist only in the editor, so the runtime cannot name the presets' built-in ramps
+  (the presets copy them into the project at authoring time).
+- R25: a Sprite whose material has no shader takes library:sprite with the feature; a material with another shader is
+  refused with the fix (give it a Sprite or a Pixel FX preset). The log line is the spec's, once per material (its
+  `.material` path, else `"<GameObject>"'s material`) per Play session, in development builds (the editor's Play is
+  one). The effect waits for `mesh.loaded && !needReload && !needVariantReload` (S32's stand-in variant counts as not
+  ready) and counts from zero the frame it is ready.
+- R26 embers: `opts.embers` names a Pixel Particles preset ("ember" is `pixel_ember`), which the editor resolves to the
+  preset's effect for the project's Pixels Per Unit (passed inline to emitAt), or a `.particles` path, which an
+  exported game needs (S49's presets live in the editor). Embers come from the texels whose cached key lies between the
+  burn fronts of the frame's two progresses (`pfxDissolveBurnFront`, the shader's `fxBurnt`), opaque texels only
+  (alpha >= 0.5 from the texture's pixels in memory, else its file read once per texture and rect; a compressed or
+  unreadable texture counts every texel opaque), at most `emberRate` a second, spread evenly over the crossing texels.
+  Only Sprites emit (tilemaps and polygons have no frame).
+- R27 contact sheet targets `target {entity, effect, effect_options}` (`effect_options`:
+  duration, ease, color, count, ramp, hold; the effect's time is the capture's, no embers) and
+  `target {transition, transition_options}` (Transition.play's options in snake_case plus `phase` play/cover/reveal
+  and `width`/`height` art pixels, default 160 x 90; drawn by ScreenTransition::renderInto over transparent black at
+  pixel_size screen pixels per art pixel, 0 meaning 1 since no Pixel Perfect Camera draws a capture). A transition
+  reports `spill` SKIP (it draws over the whole screen) and `frame_cost` SKIP (its cost is its pass). `drawOffscreen`
+  gained an `after` hook (draw over the target before the read-back).
+- R27 labels: the sheet's titles and frame labels are drawn in S51's built-in pixel font (`builtin:pixel`, 6 x 9
+  cells) instead of PoseImage's 6 x 10 font; the strips keep PoseContactSheet's geometry.
+- R28 frame_cost: the taps are the copies' library:sprite features' texture reads beyond the base sprite, counted in
+  the Vulkan SPIR-V by the same counter as SpriteVariants.TapBudget (moved to editor/shader/SpriteTaps.{h,cpp}); GPU
+  time stays unmeasured (no S15 timer in the capture). `hit_stop_length`: in a Play scene-mode capture the longest
+  HitStop.play requested during it (HitStop's stats reset at the capture's start; 0 when none); elsewhere SKIP.
+- S49 R38 hand-off: preview_particle_effect's S48 rows run S48's EffectLints on the pixel view's cells (base pixels,
+  premultiplied from the draws on black and white): off_palette SKIP (a particle effect names no palette),
+  partial_alpha (SKIP for additive emitters), spill (the emitters' origin plus 24 base pixels, one seed),
+  one_shot_end (SKIP unless a cell sits at the run's end), loop_seam, determinism SKIP (a preview is one run; its
+  state_hash compares runs). The rows keep S49's kind `content`.
+- AC23 dissolve fixture: library:sprite's DISSOLVE at progress 1 always hides every texel, so the red fixture is a
+  dissolve still burning when the capture ends (`tools/fixtures/pixel-fx/effects/dissolve_late.json`, 1.25 s captured
+  for 1 s); its twin reaches 1 at the end.
