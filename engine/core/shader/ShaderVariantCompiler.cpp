@@ -538,7 +538,7 @@ void addUberPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     static const char* const defines[] = {"UBER_FXAA", "UBER_CHROMATIC", "UBER_PIXELATE", "UBER_CRT", "UBER_EDGE", "UBER_GRAIN",
                                           "UBER_SHARPEN", "UBER_LUT", "UBER_VIGNETTE", "UBER_DITHER", "UBER_BLOOM", "UBER_BLUR",
                                           "UBER_UPSCALE", "UBER_VHS", "UBER_HALATION", "UBER_FILM_DAMAGE", "UBER_GRAIN_LENS",
-                                          "UBER_GRAIN_FILMIC", "UBER_SHARP_BILINEAR", "UBER_PALETTE"};
+                                          "UBER_GRAIN_FILMIC", "UBER_SHARP_BILINEAR", "UBER_PALETTE", "UBER_GLITCH"};
     for (int bit = 0; bit < (int)(sizeof(defines) / sizeof(defines[0])); bit++) {
         if (prop & shaderPropertyBit(bit)) defs.push_back({defines[bit], "1"});
     }

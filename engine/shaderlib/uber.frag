@@ -31,6 +31,13 @@ precision highp int;
 //      (UBER_GRAIN: the classic hash, or with UBER_GRAIN_LENS / UBER_GRAIN_FILMIC the film
 //      simulation's), dither (UBER_DITHER, last)
 //
+// Glitch (UBER_GLITCH, S48 R18) takes three places: in 1 the torn rows' sideways shift (whole
+// source texels, after the other warps), in 2 the RGB split's red and blue taps beside the scene
+// tap (added as their difference, like the chromatic aberration), and in 7 the interlace's dark
+// odd rows, before the grain. The engine picks the frame's corruption on the CPU
+// (engine/core/pixelart/Glitch.h, a pure function of the corruption frame and the seed); the
+// shader reads it from the parameter block.
+//
 // Palette Quantize (UBER_PALETTE, S43) sits between 6 and 7: the graded, edged and vignetted
 // colour onto the palette, and the display emulations on top of it the way a real screen would
 // show it. The table (engine/core/pixelart/PaletteQuantize.h) gives each display colour two
@@ -116,6 +123,9 @@ uniform u_fs_uberParams {
     vec4 gateWeave;           // xy offset (output px), z cos, w sin of the rotation
     vec4 gateMask;            // xy half size, z corner radius, w feather (output px); x 0: none
     vec4 palette;             // x cells per axis (32, 64), y dither size (0 none), w 1: the table is baked
+    vec4 glitch;              // x RGB split (source texels, signed), y interlace darkening (0 none), z tear count
+    vec4 glitchTearsA;        // tears 0-3, packed: first row + 8192 (height - 1) + 65536 (shift + 64)
+    vec4 glitchTearsB;        // tears 4-7
 } uber;
 
 mediump vec3 sceneTap(highp vec2 uv){
@@ -195,6 +205,23 @@ mediump vec3 sceneTap(highp vec2 uv){
     }
 #endif
 
+#ifdef UBER_GLITCH
+    // the sideways shift of a source row (from the top) that a tear covers, in source texels
+    highp float glitchRowShift(highp float row){
+        int count = int(uber.glitch.z + 0.5);
+        for (int i = 0; i < 8; i++){
+            if (i >= count)
+                break;
+            int packed = int((i < 4 ? uber.glitchTearsA[i] : uber.glitchTearsB[i - 4]) + 0.5);
+            int first = packed % 8192;
+            int height = (packed / 8192) % 8 + 1;
+            if (row >= float(first) && row < float(first + height))
+                return float(packed / 65536 - 64);
+        }
+        return 0.0;
+    }
+#endif
+
 // interleaved gradient noise in 0..1 (stable per pixel)
 highp float uberNoise(highp vec2 pixel){
     return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
@@ -230,6 +257,11 @@ void main(){
         // the image's position in output pixels from its top-left (the unwarped source UV is
         // the image's, y down on every backend): where the film damage and grain lie
         highp vec2 imagePixel = v_texcoord * uber.outputTexel.zw;
+    #endif
+    #ifdef UBER_GLITCH
+        // the source row (from the top on every backend: the source is stored the same way)
+        highp float glitchRow = floor(uv.y * uber.sourceTexel.w);
+        uv.x += glitchRowShift(glitchRow) * uber.sourceTexel.x;
     #endif
     #ifdef UBER_SHARP_BILINEAR
         // Stretch Fill (S41 R11): sharp bilinear in one pass. Each base pixel's interior is one
@@ -276,6 +308,15 @@ void main(){
     #ifdef UBER_SHARPEN
         // the corners average a 3x3 tent around the pixel: push away from it
         color = max(color + (color - (nw + ne + sw + se) * 0.25) * (2.0 * uber.edgeSharpenTime.z), vec3(0.0));
+    #endif
+
+    #ifdef UBER_GLITCH
+        // the RGB split: red from the left, blue from the right, whole source texels
+        if (uber.glitch.x != 0.0){
+            highp vec2 split = vec2(uber.glitch.x * uber.sourceTexel.x, 0.0);
+            color.r = max(color.r + (sceneTap(uv - split).r - sceneColor.r), 0.0);
+            color.b = max(color.b + (sceneTap(uv + split).b - sceneColor.b), 0.0);
+        }
     #endif
 
     #ifdef UBER_CHROMATIC
@@ -358,6 +399,12 @@ void main(){
 
     #ifdef UBER_FILM_DAMAGE
         color = filmDamage(color, imagePixel);
+    #endif
+
+    #ifdef UBER_GLITCH
+        // interlace: every odd source row dark
+        if (uber.glitch.y > 0.0 && mod(glitchRow, 2.0) > 0.5)
+            color *= 1.0 - uber.glitch.y;
     #endif
 
     #if defined(UBER_GRAIN_LENS) || defined(UBER_GRAIN_FILMIC)

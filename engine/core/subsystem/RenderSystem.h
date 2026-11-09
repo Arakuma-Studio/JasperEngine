@@ -390,6 +390,9 @@ namespace jasperengine{
 		Vector4 gateWeave;           // xy offset (output pixels), z cos, w sin of the rotation
 		Vector4 gateMask;            // xy half size, z corner radius, w feather (output pixels); x 0: none
 		Vector4 palette;             // Palette Quantize: x cells per axis, y dither size (0 none), w 1 when its table is baked
+		Vector4 glitch;              // Glitch (S48): x RGB split (source texels, signed), y interlace darkening, z tear count
+		Vector4 glitchTearsA;        // tears 0-3 (pixelart::packGlitchTear)
+		Vector4 glitchTearsB;        // tears 4-7
 	} fs_uber_t;
 
 	// the bloom and blur chain's passes (shaderlib/bloom.vert, bloom.frag)
@@ -525,7 +528,8 @@ namespace jasperengine{
 		UBER_GRAIN_FILMIC = 1u << 17, // 'Gfm' the Filmic film grain (with UBER_GRAIN)
 		UBER_SHARP_BILINEAR = 1u << 18, // 'Psb' the Pixel Perfect Camera's Stretch Fill (S41 R11)
 		UBER_PALETTE      = 1u << 19, // 'Pal' Palette Quantize (S43): the frame onto a palette, ordered dither per art pixel
-		UBER_FEATURE_COUNT = 20
+		UBER_GLITCH       = 1u << 20, // 'Gli' Glitch (S48): torn rows, RGB split and interlace in bursts, source texels
+		UBER_FEATURE_COUNT = 21
 	};
 
 	// What a PostProcessingSettings turns on (shader library phase 4): the in-shader colour
@@ -2553,6 +2557,7 @@ namespace jasperengine{
 		// the S13 effects' uber parameters (VHS, halation, film grain and damage) at that time,
 		// for an output viewport of that size
 		void fillUberFilm(const PostProcessingSettings& settings, double time, float viewportWidth, float viewportHeight);
+		void fillUberGlitch(const PostProcessingSettings& settings, double time, int sourceRows);
 		void destroyUber();
 		bool ensurePostSceneFramebuffer(unsigned int width, unsigned int height);
 		// whether the variants the loaded points, lines and sky take with the current colour bit

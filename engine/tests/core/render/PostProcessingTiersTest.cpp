@@ -41,9 +41,9 @@ TEST(PostProcessingTiers, S13Bits){
     EXPECT_EQ(UBER_GRAIN_LENS, 1u << 16);
     EXPECT_EQ(UBER_GRAIN_FILMIC, 1u << 17);
     // (S41's Stretch Fill, 'Psb', is bit 18 after them; S43's Palette Quantize, 'Pal', 19:
-    // PaletteQuantizeBit)
-    EXPECT_EQ(UBER_FEATURE_COUNT, 20);
-    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::BLIT), 20);
+    // PaletteQuantizeBit; S48's Glitch, 'Gli', 20: GlitchBit)
+    EXPECT_EQ(UBER_FEATURE_COUNT, 21);
+    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::BLIT), 21);
     const char* const shortNames[] = {"Vhs", "Hal", "Fdm", "Gln", "Gfm"};
     for (int i = 0; i < 5; i++)
         EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 13 + i, true), shortNames[i]);
@@ -187,4 +187,53 @@ TEST(PostProcessingTiers, PaletteQuantizeBit){
     s.pixelateEnabled = true;
     s.pixelateSize = 4.0f;
     EXPECT_EQ(featuresOf(s), UBER_PALETTE | UBER_PIXELATE);
+}
+
+// S48 R18, R48, AC15: Glitch's bit, appended after Palette Quantize; glitchEnabled sets exactly
+// UBER_GLITCH (also at intensity 0, where only scripted bursts show), and its other fields alone
+// change nothing (the default tiers stay the pre-S13 snapshot)
+TEST(PostProcessingTiers, GlitchBit){
+    EXPECT_EQ(UBER_GLITCH, 1u << 20);
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 20, true), "Gli");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 20, false), "Glitch");
+
+    PostProcessingSettings s;
+    EXPECT_FALSE(s.glitchEnabled);
+    EXPECT_FLOAT_EQ(s.glitchIntensity, 1.0f);
+    EXPECT_FLOAT_EQ(s.glitchRgbSplit, 2.0f);
+    EXPECT_EQ(s.glitchTears, 3);
+    EXPECT_FLOAT_EQ(s.glitchTearShift, 8.0f);
+    EXPECT_FLOAT_EQ(s.glitchInterlace, 0.3f);
+    EXPECT_FLOAT_EQ(s.glitchBurstRate, 0.5f);
+    EXPECT_FLOAT_EQ(s.glitchBurstLength, 0.25f);
+    EXPECT_FLOAT_EQ(s.glitchFps, 30.0f);
+    EXPECT_EQ(s.glitchSeed, 0);
+
+    // the fields without the switch: nothing
+    s.glitchRgbSplit = 8.0f;
+    s.glitchTears = 8;
+    s.glitchBurstRate = 0.0f;
+    s.glitchSeed = 99;
+    expectPreS13Defaults(RenderSystem::getPostProcessingTiers(s));
+
+    s.glitchEnabled = true;
+    PostProcessingTiers tiers = RenderSystem::getPostProcessingTiers(s);
+    EXPECT_TRUE(tiers.uber);
+    EXPECT_EQ(tiers.uberFeatures, UBER_GLITCH);
+    s.glitchIntensity = 0.0f;
+    EXPECT_EQ(featuresOf(s), UBER_GLITCH);
+    s.vignetteEnabled = true;
+    EXPECT_EQ(featuresOf(s), UBER_GLITCH | UBER_VIGNETTE);
+
+    // out-of-range values clamp to the documented ranges
+    PostProcessingSettings c;
+    c.glitchTears = 40;
+    c.glitchSeed = -3;
+    c.glitchFps = 500.0f;
+    c.glitchBurstLength = 0.0f;
+    c.clamp();
+    EXPECT_EQ(c.glitchTears, 8);
+    EXPECT_EQ(c.glitchSeed, 0);
+    EXPECT_FLOAT_EQ(c.glitchFps, 60.0f);
+    EXPECT_FLOAT_EQ(c.glitchBurstLength, 0.05f);
 }

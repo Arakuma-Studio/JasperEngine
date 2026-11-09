@@ -131,7 +131,8 @@ TEST(PixelSnapShaderTest, VariantBitsArePinned){
     }
     EXPECT_EQ(UBER_SHARP_BILINEAR, 1u << 18);
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 18, true), "Psb");
-    // S43's Palette Quantize took the next one, 19 'Pal' (PostProcessingTiers.PaletteQuantizeBit)
+    // S43's Palette Quantize took the next one, 19 'Pal' (PostProcessingTiers.PaletteQuantizeBit),
+    // and S48's Glitch 20 'Gli' (PostProcessingTiers.GlitchBit)
     EXPECT_GE(ShaderPool::getShaderPropertyCount(ShaderType::BLIT), 19);
 }
 

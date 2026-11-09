@@ -2532,6 +2532,17 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("paletteDitherStrength", &PostProcessingSettings::paletteDitherStrength, &PostProcessingSettings::paletteDitherStrength)
         .addProperty("paletteDistance", &PostProcessingSettings::paletteDistance, &PostProcessingSettings::paletteDistance)
         .addProperty("palettePrecision", &PostProcessingSettings::palettePrecision, &PostProcessingSettings::palettePrecision)
+        // Glitch (S48): bursts of torn rows, RGB split and interlace in source texels (PixelFX.glitch adds scripted bursts)
+        .addProperty("glitchEnabled", &PostProcessingSettings::glitchEnabled, &PostProcessingSettings::glitchEnabled)
+        .addProperty("glitchIntensity", &PostProcessingSettings::glitchIntensity, &PostProcessingSettings::glitchIntensity)
+        .addProperty("glitchRgbSplit", &PostProcessingSettings::glitchRgbSplit, &PostProcessingSettings::glitchRgbSplit)
+        .addProperty("glitchTears", &PostProcessingSettings::glitchTears, &PostProcessingSettings::glitchTears)
+        .addProperty("glitchTearShift", &PostProcessingSettings::glitchTearShift, &PostProcessingSettings::glitchTearShift)
+        .addProperty("glitchInterlace", &PostProcessingSettings::glitchInterlace, &PostProcessingSettings::glitchInterlace)
+        .addProperty("glitchBurstRate", &PostProcessingSettings::glitchBurstRate, &PostProcessingSettings::glitchBurstRate)
+        .addProperty("glitchBurstLength", &PostProcessingSettings::glitchBurstLength, &PostProcessingSettings::glitchBurstLength)
+        .addProperty("glitchFps", &PostProcessingSettings::glitchFps, &PostProcessingSettings::glitchFps)
+        .addProperty("glitchSeed", &PostProcessingSettings::glitchSeed, &PostProcessingSettings::glitchSeed)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

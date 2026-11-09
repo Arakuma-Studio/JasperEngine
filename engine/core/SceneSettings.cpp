@@ -140,6 +140,17 @@ const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFie
                 "how the nearest palette colour is chosen: oklab (perceptual), rgb"),
         PP_ENUM(palettePrecision, "palette_precision", palettePrecisionNames, "PalettePrecision", palettePrecisionValues,
                 "the colour table's grid: normal (32^3), high (64^3: slower to bake, for many close shades)"),
+        // Glitch (S48)
+        PP_FIELD(glitchEnabled, "glitch_enabled", T::Bool, 0.0f, 1.0f, "Glitch: digital corruption in bursts (torn rows, RGB split, interlace) in source texels; at intensity 0 only PixelFX.glitch bursts show"),
+        PP_FIELD(glitchIntensity, "glitch_intensity", T::Float, 0.0f, 1.0f, "how hard the scheduled bursts corrupt the frame (0..1)"),
+        PP_FIELD(glitchRgbSplit, "glitch_rgb_split", T::Float, 0.0f, 8.0f, "red and blue shifted apart in a burst, source texels (0..8)"),
+        PP_FIELD(glitchTears, "glitch_tears", T::Int, 0.0f, 8.0f, "rows torn sideways per burst frame (0..8)"),
+        PP_FIELD(glitchTearShift, "glitch_tear_shift", T::Float, 0.0f, 32.0f, "how far a torn row moves, source texels (0..32)"),
+        PP_FIELD(glitchInterlace, "glitch_interlace", T::Float, 0.0f, 1.0f, "chance per burst frame that every other row goes dark (0..1)"),
+        PP_FIELD(glitchBurstRate, "glitch_burst_rate", T::Float, 0.0f, 8.0f, "bursts per second (0..8; 0: corrupted all the time at the intensity)"),
+        PP_FIELD(glitchBurstLength, "glitch_burst_length", T::Float, 0.05f, 1.0f, "seconds a burst lasts (0.05..1)"),
+        PP_FIELD(glitchFps, "glitch_fps", T::Float, 1.0f, 60.0f, "the corruption's frame rate (1..60): it changes on these steps only"),
+        PP_FIELD(glitchSeed, "glitch_seed", T::Int, 0.0f, 65535.0f, "the burst schedule's seed (0..65535)"),
     };
     return fields;
 }
@@ -188,6 +199,8 @@ void PostProcessingSettings::clamp(){
     lutSize = lutSize > 16 ? 32 : 16;
     msaaSamples = msaaSamples >= 4 ? 4 : (msaaSamples >= 2 ? 2 : 1);
     dynamicResolutionTargetFps = std::min(std::max(dynamicResolutionTargetFps, 0), 240);
+    glitchTears = std::min(std::max(glitchTears, 0), 8);
+    glitchSeed = std::min(std::max(glitchSeed, 0), 65535);
     if ((int)tonemap < 0 || (int)tonemap > (int)TonemapMode::AGX) tonemap = TonemapMode::NONE;
     if ((int)monochromeMode < 0 || (int)monochromeMode > (int)MonochromeMode::SEPIA) monochromeMode = MonochromeMode::GRAYSCALE;
     if ((int)filmGrainType < 0 || (int)filmGrainType > (int)FilmGrainType::FILMIC) filmGrainType = FilmGrainType::CLASSIC;

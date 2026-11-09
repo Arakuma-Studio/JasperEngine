@@ -1223,7 +1223,8 @@ const std::vector<std::string>& editor::ShaderVariantCollector::getScriptableEff
         "fxaaEnabled", "chromaticAberrationEnabled", "pixelateEnabled", "crtEnabled", "edgeDetectEnabled",
         "filmGrainEnabled", "sharpenEnabled", "bloomEnabled", "blurEnabled",
         "colorGradingEnabled", "monochromeEnabled", "vignetteEnabled", "ditherEnabled", "renderScale",
-        "vhsEnabled", "halationEnabled", "filmDamageEnabled", "filmGrainType", "dynamicResolutionEnabled"
+        "vhsEnabled", "halationEnabled", "filmDamageEnabled", "filmGrainType", "dynamicResolutionEnabled",
+        "glitchEnabled"
     };
     return fields;
 }
