@@ -1,0 +1,266 @@
+{
+  "templates": [
+    {
+      "id": "metal/chrome-title",
+      "name": {
+        "en": "Chrome Title (3D, lens flare)",
+        "ja": "クロームタイトル (3D + レンズフレア)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 title in 3D chrome with a silver subtitle and a lens flare on the title's top left; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のタイトル：3D クロームの文字、シルバーのサブタイトル、タイトル左上のレンズフレア。背景はガイドレイヤー。"
+      },
+      "family": "metal",
+      "tags": [
+        "title",
+        "subtitle",
+        "3d",
+        "chrome",
+        "silver",
+        "lens-flare"
+      ],
+      "synonyms": {
+        "en": [
+          "steel title",
+          "metal logo",
+          "action title"
+        ],
+        "ja": [
+          "鋼鉄タイトル",
+          "メタルロゴ",
+          "アクションタイトル"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "STEEL FORCE",
+          "ja": "鋼鉄"
+        },
+        "subtitle": {
+          "en": "RISE",
+          "ja": "ライズ"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 220,
+            "transform.position": [
+              0,
+              60
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "linear",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#2a3038",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#0a0c10",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            },
+            "gen.angle": 90
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "text",
+          "name": "Subtitle",
+          "values": {
+            "text": "RISE",
+            "size": 120,
+            "transform.position": [
+              0,
+              -165
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "metal/chrome-3d",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Subtitle",
+          "look": "metal/silver-premium",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "lens_flare",
+          "name": "Lens Flare",
+          "follow": "Title",
+          "values": {
+            "gen.position": [
+              -700,
+              100
+            ]
+          }
+        },
+        {
+          "op": "expose",
+          "name": "subtitle",
+          "type": "text",
+          "label": "Subtitle",
+          "targets": [
+            {
+              "layer": "Subtitle",
+              "field": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "metal/gold-award-badge",
+      "name": {
+        "en": "Gold Award Badge (3D shield)",
+        "ja": "金のアワードバッジ (3D 盾)"
+      },
+      "description": {
+        "en": "A 1024 × 1024 badge: a 3D gold shield behind black-and-gold text arched over it, with glints on the shield; the backdrop is a guide layer.",
+        "ja": "1024 × 1024 のバッジ：3D の金の盾、その上にアーチ状の黒金の文字、盾にきらめき。背景はガイドレイヤー。"
+      },
+      "family": "metal",
+      "tags": [
+        "badge",
+        "award",
+        "3d",
+        "gold",
+        "shield",
+        "arched",
+        "glints"
+      ],
+      "synonyms": {
+        "en": [
+          "trophy badge",
+          "winner emblem",
+          "achievement"
+        ],
+        "ja": [
+          "トロフィーバッジ",
+          "優勝エンブレム",
+          "実績"
+        ]
+      },
+      "canvas": [
+        1024,
+        1024
+      ],
+      "canvas_note": "1024 × 1024, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "CHAMPION",
+          "ja": "優勝"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 135,
+            "transform.position": [
+              0,
+              60
+            ],
+            "warp.style": "arc",
+            "warp.bend": 30
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "radial",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#3a2a10",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#0a0804",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            }
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "shape",
+          "name": "Shield",
+          "before": "Title",
+          "values": {
+            "shape": "shield",
+            "size": 860,
+            "aspect": 0.82,
+            "transform.position": [
+              0,
+              -10
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Shield",
+          "look": "metal/gold-3d",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "metal/black-gold",
+          "apply_font": true
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "glints",
+          "name": "Glints",
+          "follow": "Shield"
+        }
+      ]
+    }
+  ]
+}

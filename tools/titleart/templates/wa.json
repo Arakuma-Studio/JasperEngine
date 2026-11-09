@@ -1,0 +1,172 @@
+{
+  "templates": [
+    {
+      "id": "wa/ink-title-vertical",
+      "name": {
+        "en": "Ink Title, Vertical (seal)",
+        "ja": "縦書きの墨文字 (落款)"
+      },
+      "description": {
+        "en": "A 1080 × 1920 portrait title set vertically in ink brush, with a red seal holding the kicker and ink splatter behind; the washi backdrop is a guide layer.",
+        "ja": "1080 × 1920 の縦長タイトル：縦書きの墨の筆文字、キッカーを入れた赤い落款、背後に墨の飛沫。和紙の背景はガイドレイヤー。"
+      },
+      "family": "wa",
+      "tags": [
+        "title",
+        "vertical",
+        "ink",
+        "brush",
+        "seal",
+        "portrait",
+        "japanese"
+      ],
+      "synonyms": {
+        "en": [
+          "calligraphy",
+          "vertical text",
+          "ink brush",
+          "hanko"
+        ],
+        "ja": [
+          "書道",
+          "縦書き",
+          "筆文字",
+          "落款"
+        ]
+      },
+      "canvas": [
+        1080,
+        1920
+      ],
+      "canvas_note": "1080 × 1920, transparent; vertical text, stored with the Japanese sample; the washi backdrop is a guide layer",
+      "language": "ja",
+      "texts": {
+        "text": {
+          "en": "LEGEND",
+          "ja": "伝説"
+        },
+        "kicker": {
+          "en": "印",
+          "ja": "印"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 520,
+            "transform.position": [
+              -40,
+              140
+            ],
+            "vertical": true
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "linear",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#f4ecd8",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#d8ccb0",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            },
+            "gen.angle": 90
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "shape",
+          "name": "Seal",
+          "before": "Title",
+          "values": {
+            "shape": "rect",
+            "size": 190,
+            "aspect": 1,
+            "transform.position": [
+              300,
+              -640
+            ],
+            "corner": 6
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "text",
+          "name": "Kicker",
+          "values": {
+            "text": "印",
+            "size": 130,
+            "transform.position": [
+              300,
+              -640
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "wa/ink-brush",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Seal",
+          "look": "wa/red-brush",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Kicker",
+          "look": "wa/ink-brush",
+          "apply_font": true
+        },
+        {
+          "op": "set",
+          "layer": "Kicker",
+          "values": {
+            "face.fill.kind": "solid",
+            "face.fill.color": "#fff4e6"
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "ink_splatter",
+          "name": "Ink Splatter",
+          "follow": "Title"
+        },
+        {
+          "op": "expose",
+          "name": "kicker",
+          "type": "text",
+          "label": "Kicker",
+          "targets": [
+            {
+              "layer": "Kicker",
+              "field": "text"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

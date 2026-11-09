@@ -1,0 +1,342 @@
+{
+  "templates": [
+    {
+      "id": "minimal/clean-title",
+      "name": {
+        "en": "Clean Title (flat, soft shadow)",
+        "ja": "クリーンタイトル (フラット + 柔らかい影)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 title: flat white letters with a soft shadow over a thin outline subtitle; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のタイトル：柔らかい影の白いフラットな文字、細い輪郭のサブタイトル。背景はガイドレイヤー。"
+      },
+      "family": "minimal",
+      "tags": [
+        "title",
+        "subtitle",
+        "flat",
+        "clean",
+        "shadow",
+        "outline",
+        "simple"
+      ],
+      "synonyms": {
+        "en": [
+          "simple title",
+          "film title",
+          "modern"
+        ],
+        "ja": [
+          "シンプルなタイトル",
+          "映画タイトル",
+          "モダン"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "STILL WATERS",
+          "ja": "静寂"
+        },
+        "subtitle": {
+          "en": "A STORY",
+          "ja": "ある物語"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 200,
+            "transform.position": [
+              0,
+              60
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "linear",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#3a4a5a",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#1a2430",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            },
+            "gen.angle": 90
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "text",
+          "name": "Subtitle",
+          "values": {
+            "text": "A STORY",
+            "size": 80,
+            "transform.position": [
+              0,
+              -120
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "minimal/flat",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "minimal/soft-shadow",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Subtitle",
+          "look": "minimal/outline-thin",
+          "apply_font": true
+        },
+        {
+          "op": "expose",
+          "name": "subtitle",
+          "type": "text",
+          "label": "Subtitle",
+          "targets": [
+            {
+              "layer": "Subtitle",
+              "field": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "minimal/chapter-card",
+      "name": {
+        "en": "Chapter Card (duotone, rule)",
+        "ja": "章カード (デュオトーン + 罫線)"
+      },
+      "description": {
+        "en": "A 1920 × 1080 card: duotone letters over a thin flat rule; the backdrop is a guide layer.",
+        "ja": "1920 × 1080 のカード：デュオトーンの文字と細いフラットな罫線。背景はガイドレイヤー。"
+      },
+      "family": "minimal",
+      "tags": [
+        "card",
+        "chapter",
+        "duotone",
+        "gradient",
+        "rule",
+        "simple"
+      ],
+      "synonyms": {
+        "en": [
+          "chapter title",
+          "section card",
+          "part"
+        ],
+        "ja": [
+          "章タイトル",
+          "セクション",
+          "パート"
+        ]
+      },
+      "canvas": [
+        1920,
+        1080
+      ],
+      "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "CHAPTER 1",
+          "ja": "第1章"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 220,
+            "transform.position": [
+              0,
+              40
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "linear",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#1e1e24",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#0e0e12",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            },
+            "gen.angle": 90
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "shape",
+          "name": "Rule",
+          "values": {
+            "shape": "rect",
+            "size": 12,
+            "aspect": 20,
+            "transform.position": [
+              0,
+              -110
+            ]
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "minimal/duotone",
+          "apply_font": true
+        },
+        {
+          "op": "apply_look",
+          "layer": "Rule",
+          "look": "minimal/flat",
+          "apply_font": true
+        }
+      ]
+    },
+    {
+      "id": "minimal/hud-label",
+      "name": {
+        "en": "HUD Label (ink inset)",
+        "ja": "HUD ラベル (インクの押し込み)"
+      },
+      "description": {
+        "en": "A 512 × 128 label: dark letterpress letters with a light inset edge; the backdrop is a guide layer.",
+        "ja": "512 × 128 のラベル：明るい押し込みの縁のある暗い活版風の文字。背景はガイドレイヤー。"
+      },
+      "family": "minimal",
+      "tags": [
+        "label",
+        "hud",
+        "score",
+        "letterpress",
+        "dark",
+        "simple"
+      ],
+      "synonyms": {
+        "en": [
+          "score label",
+          "ui label",
+          "counter label"
+        ],
+        "ja": [
+          "スコアラベル",
+          "UI ラベル",
+          "カウンター"
+        ]
+      },
+      "canvas": [
+        512,
+        128
+      ],
+      "canvas_note": "512 × 128, transparent; the backdrop is a guide layer",
+      "language": "en",
+      "texts": {
+        "text": {
+          "en": "SCORE 0",
+          "ja": "スコア 0"
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "size": 78,
+            "transform.position": [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "op": "add_layer",
+          "type": "generator",
+          "generator": "fill",
+          "name": "Backdrop",
+          "before": "Title",
+          "values": {
+            "guide": true,
+            "gen.kind": "linear",
+            "gen.gradient": {
+              "stops": [
+                {
+                  "pos": 0.0,
+                  "color": "#f0f0f2",
+                  "alpha": 1,
+                  "mid": 0.5
+                },
+                {
+                  "pos": 1.0,
+                  "color": "#d8d8dc",
+                  "alpha": 1,
+                  "mid": 0.5
+                }
+              ],
+              "interp": "rgb"
+            },
+            "gen.angle": 90
+          }
+        },
+        {
+          "op": "apply_look",
+          "layer": "Title",
+          "look": "minimal/ink-inset",
+          "apply_font": true
+        }
+      ]
+    }
+  ]
+}
