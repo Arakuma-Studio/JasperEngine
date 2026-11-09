@@ -177,7 +177,7 @@ never build or run them.
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
-| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | accepted; merging main (batch 3) |
+| S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | landing (batch 3) |
 | S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | review fixes |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
@@ -244,6 +244,12 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S51 merged `main` at `6e0376917` (13 conflicts resolved).
+  - Gate on box A: `WERROR`, core 74, HTML UI GL 8/8, 39 MCP tests. The `pixel_art` group is 3
+    tools and 2,850 characters; core 98,983 of 99,000; guide headroom 1,503.
+  - The only failures are `main`'s four (being fixed on `fix/main-shared-green`).
+  - Batch 3 is S51 on `land/batch3`: web, android, `htmlui-tests` Vulkan and the Vulkan font GPU
+    set are queued on box B. No shader change, so no cache bump.
 - 2026-11-09: The Doriax and mats-fx sessions have ended, but `main`'s shared-data failures remain
   (no `procmat-baked` goldens; `procmat-baked` saves `vertexCount` 0 or 3672 depending on whether
   it was drawn; the Animator IK `ShaderNeutralApi` hash).
