@@ -11,9 +11,9 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
-unsigned int jasperengine::terrain::hashFoliage(unsigned int seed, unsigned int chunkX, unsigned int chunkZ, unsigned int index) {
+unsigned int jasperengine::terraincore::hashFoliage(unsigned int seed, unsigned int chunkX, unsigned int chunkZ, unsigned int index) {
     unsigned int hash = (seed + 0x9E3779B9u) * 0x9E3779B1u;
     hash = (hash ^ chunkX) * 0x85EBCA6Bu;
     hash = (hash ^ chunkZ) * 0xC2B2AE35u;
@@ -22,18 +22,18 @@ unsigned int jasperengine::terrain::hashFoliage(unsigned int seed, unsigned int 
 }
 
 // Mix each draw independently before selecting its low 24 bits.
-unsigned int jasperengine::terrain::mixFoliage(unsigned int hash) {
+unsigned int jasperengine::terraincore::mixFoliage(unsigned int hash) {
     hash = (hash ^ (hash >> 16)) * 0x7FEB352Du;
     hash = (hash ^ (hash >> 15)) * 0x846CA68Bu;
     return hash ^ (hash >> 16);
 }
 
-float jasperengine::terrain::randomFoliage(unsigned int hash) {
+float jasperengine::terraincore::randomFoliage(unsigned int hash) {
     return static_cast<float>(hash & 0xFFFFFFu) / 16777216.0f;
 }
 
 // A zero-density cell must attempt no placements.
-unsigned int jasperengine::terrain::foliageCellAttempts(const FoliageLayerParams& layer) {
+unsigned int jasperengine::terraincore::foliageCellAttempts(const FoliageLayerParams& layer) {
     const float estimate = layer.density * FOLIAGE_DETAIL_CELL_SIZE * FOLIAGE_DETAIL_CELL_SIZE;
     return static_cast<unsigned int>(std::ceil(std::clamp(estimate, 0.0f, static_cast<float>(FOLIAGE_MAX_CELL_ATTEMPTS))));
 }
@@ -96,7 +96,7 @@ namespace {
 
 }
 
-float jasperengine::terrain::foliageAcos(float cosine) {
+float jasperengine::terraincore::foliageAcos(float cosine) {
     if (!(cosine > -1.0f)) return DET_PI;
     if (cosine >= 1.0f) return 0.0f;
     // acos(c) = 2 asin(sqrt((1 - c) / 2)), and a sine above one half reflects past pi / 2
@@ -107,7 +107,7 @@ float jasperengine::terrain::foliageAcos(float cosine) {
     return 2.0f * (DET_PI * 0.5f - 2.0f * foliageAsinSmall(std::sqrt((1.0f - sine) * 0.5f)));
 }
 
-float jasperengine::terrain::foliageValueNoise(float x, float z, uint32_t seed) {
+float jasperengine::terraincore::foliageValueNoise(float x, float z, uint32_t seed) {
     const float floorX = std::floor(x);
     const float floorZ = std::floor(z);
     const int cellX = static_cast<int>(floorX);
@@ -123,7 +123,7 @@ float jasperengine::terrain::foliageValueNoise(float x, float z, uint32_t seed) 
     return lower + (upper - lower) * tz;
 }
 
-FoliagePatchRect jasperengine::terrain::foliageHeightPatchRect(int cellX, int cellZ, float terrainSize, int mapWidth, int mapHeight) {
+FoliagePatchRect jasperengine::terraincore::foliageHeightPatchRect(int cellX, int cellZ, float terrainSize, int mapWidth, int mapHeight) {
     FoliagePatchRect rect;
     if (mapWidth <= 0 || mapHeight <= 0 || !(terrainSize > 0.0f)) return rect;
     const float originX = static_cast<float>(cellX) * FOLIAGE_DETAIL_CELL_SIZE;
@@ -142,7 +142,7 @@ FoliagePatchRect jasperengine::terrain::foliageHeightPatchRect(int cellX, int ce
     return rect;
 }
 
-FoliagePatchRect jasperengine::terrain::foliageDensityPatchRect(int cellX, int cellZ, float terrainSize, int mapWidth, int mapHeight) {
+FoliagePatchRect jasperengine::terraincore::foliageDensityPatchRect(int cellX, int cellZ, float terrainSize, int mapWidth, int mapHeight) {
     FoliagePatchRect rect;
     if (mapWidth <= 0 || mapHeight <= 0 || !(terrainSize > 0.0f)) return rect;
     const float half = terrainSize * 0.5f;
@@ -159,11 +159,11 @@ FoliagePatchRect jasperengine::terrain::foliageDensityPatchRect(int cellX, int c
     return rect;
 }
 
-float jasperengine::terrain::foliagePatchHeight(const FoliageMapPatch& patch, float terrainSize, float terrainMaxHeight, float localX, float localZ) {
+float jasperengine::terraincore::foliagePatchHeight(const FoliageMapPatch& patch, float terrainSize, float terrainMaxHeight, float localX, float localZ) {
     return terrainMaxHeight * foliagePatchHeightNormalized(patch, terrainSize, localX, localZ);
 }
 
-void jasperengine::terrain::foliagePatchNormal(const FoliageMapPatch& patch, float terrainSize, float terrainMaxHeight, float localX, float localZ,
+void jasperengine::terraincore::foliagePatchNormal(const FoliageMapPatch& patch, float terrainSize, float terrainMaxHeight, float localX, float localZ,
                                                float height, float normal[3]) {
     const float delta = terrainSize / static_cast<float>(patch.mapWidth);
     const float nx = height - terrainMaxHeight * foliagePatchHeightNormalized(patch, terrainSize, localX + delta, localZ);
@@ -180,7 +180,7 @@ void jasperengine::terrain::foliagePatchNormal(const FoliageMapPatch& patch, flo
     }
 }
 
-void jasperengine::terrain::foliageOrientation(float yawTurns, float alignToNormal, const float normal[3], float rotation[4]) {
+void jasperengine::terraincore::foliageOrientation(float yawTurns, float alignToNormal, const float normal[3], float rotation[4]) {
     // half the yaw about +Y, as Quaternion(angle, axis)
     const float halfYaw = yawTurns * DET_PI;
     float x = 0.0f, y = detSin(halfYaw), z = 0.0f, w = detCos(halfYaw);
@@ -214,14 +214,14 @@ void jasperengine::terrain::foliageOrientation(float yawTurns, float alignToNorm
     rotation[3] = w;
 }
 
-void jasperengine::terrain::foliageQuantizeRotation(const float rotation[4], int16_t out[4]) {
+void jasperengine::terraincore::foliageQuantizeRotation(const float rotation[4], int16_t out[4]) {
     for (int i = 0; i < 4; i++) {
         const float clamped = std::clamp(rotation[i], -1.0f, 1.0f);
         out[i] = static_cast<int16_t>(std::floor(clamped * 32767.0f + 0.5f));
     }
 }
 
-void jasperengine::terrain::scatterFoliageCell(const FoliageCellInput& input, std::vector<FoliageInstance>& out, FoliageScatterStats* stats) {
+void jasperengine::terraincore::scatterFoliageCell(const FoliageCellInput& input, std::vector<FoliageInstance>& out, FoliageScatterStats* stats) {
     const FoliageLayerParams& layer = input.layer;
     const float size = input.terrainSize;
     if (!(size > 0.0f)) return;
@@ -335,7 +335,7 @@ void jasperengine::terrain::scatterFoliageCell(const FoliageCellInput& input, st
     }
 }
 
-uint64_t jasperengine::terrain::foliageHash(std::span<const FoliageInstance> instances, uint64_t previous) {
+uint64_t jasperengine::terraincore::foliageHash(std::span<const FoliageInstance> instances, uint64_t previous) {
     // the struct has no padding (static_assert), and every shipped target is little-endian
     return fnv1a64(instances.data(), instances.size_bytes(), previous);
 }

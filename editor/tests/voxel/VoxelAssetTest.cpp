@@ -351,5 +351,5 @@ TEST_F(VoxelSceneTest, ExportCooksSlotSlices) {
     std::set<std::string> dropped;
     std::string error;
     ASSERT_TRUE(gatherTerrainSliceInputs(*project, inputs, dropped, error)) << error;
-    EXPECT_EQ(inputs.count(terrain::cookedSliceIndexKey("voxels/rock.png")), 1u) << inputs.size() << " slices";
+    EXPECT_EQ(inputs.count(terraincore::cookedSliceIndexKey("voxels/rock.png")), 1u) << inputs.size() << " slices";
 }

@@ -23,30 +23,30 @@ namespace jasperengine::editor {
     class Project;
 
     // zstd both ways, level 9 (D7)
-    terrain::TileCodec terrainWorldEditorCodec();
+    terraincore::TileCodec terrainWorldEditorCodec();
 
-    bool readWorldManifest(const std::filesystem::path& folder, terrain::WorldManifest& out, std::string& error);
-    bool writeWorldManifest(const std::filesystem::path& folder, const terrain::WorldManifest& manifest, std::string& error);
+    bool readWorldManifest(const std::filesystem::path& folder, terraincore::WorldManifest& out, std::string& error);
+    bool writeWorldManifest(const std::filesystem::path& folder, const terraincore::WorldManifest& manifest, std::string& error);
     // the tiles/x_z.jtile files present, in key order
-    std::vector<terrain::TileCoord> scanWorldTiles(const std::filesystem::path& folder);
-    bool writeTileFile(const std::filesystem::path& folder, const terrain::WorldTile& tile, std::string& error);
-    bool removeTileFile(const std::filesystem::path& folder, terrain::TileCoord tile, std::string& error);
+    std::vector<terraincore::TileCoord> scanWorldTiles(const std::filesystem::path& folder);
+    bool writeTileFile(const std::filesystem::path& folder, const terraincore::WorldTile& tile, std::string& error);
+    bool removeTileFile(const std::filesystem::path& folder, terraincore::TileCoord tile, std::string& error);
     // R32: a tile file's encoded bytes as they are (an import's swap, its undo), atomically
-    bool writeTileBytes(const std::filesystem::path& folder, terrain::TileCoord tile, const std::string& bytes, std::string& error);
+    bool writeTileBytes(const std::filesystem::path& folder, terraincore::TileCoord tile, const std::string& bytes, std::string& error);
     // R27: T5's tree file of a tile (tiles/x_z.jetrees), atomically, or removed
-    bool writeTreeBytes(const std::filesystem::path& folder, terrain::TileCoord tile, const std::string& bytes, std::string& error);
-    bool removeTreeFile(const std::filesystem::path& folder, terrain::TileCoord tile, std::string& error);
+    bool writeTreeBytes(const std::filesystem::path& folder, terraincore::TileCoord tile, const std::string& bytes, std::string& error);
+    bool removeTreeFile(const std::filesystem::path& folder, terraincore::TileCoord tile, std::string& error);
 
     // R40, R43: a new world folder: manifest and every listed tile at the base height, with the
     // macro colour of these layer colours (terrainWorldLayerColours) when given, as the runtime
     // would derive it, so an undo that puts a tile back writes the bytes it had. Refuses a folder
     // that exists.
-    bool createWorldFolder(const std::filesystem::path& folder, terrain::WorldManifest& manifest, const std::vector<terrain::TileCoord>& tiles,
+    bool createWorldFolder(const std::filesystem::path& folder, terraincore::WorldManifest& manifest, const std::vector<terraincore::TileCoord>& tiles,
                            std::string& error, const std::vector<float>& layerColours = {}, int layerCount = 0);
     // R33: a new world folder of tiles made elsewhere (a converted Terrain), each with T5's tree file
     // when it has trees (tiles/x_z.jetrees, R27); the manifest last. Refuses a folder that exists.
-    bool writeWorldFolder(const std::filesystem::path& folder, terrain::WorldManifest& manifest,
-                          const std::vector<std::shared_ptr<terrain::WorldTile>>& tiles,
+    bool writeWorldFolder(const std::filesystem::path& folder, terraincore::WorldManifest& manifest,
+                          const std::vector<std::shared_ptr<terraincore::WorldTile>>& tiles,
                           const std::map<uint32_t, std::vector<uint8_t>>& trees, std::string& error);
 
     // R52: the overview cache of a world and the fingerprint (tile names, sizes, times) it was made from
@@ -57,10 +57,10 @@ namespace jasperengine::editor {
     class EditorWorldSource final : public TerrainWorldSource {
     public:
         EditorWorldSource(std::filesystem::path folder, std::filesystem::path projectInternal);
-        bool manifest(terrain::WorldManifest& out, std::string& error) override;
-        std::string tilePath(terrain::TileCoord tile) const override;
+        bool manifest(terraincore::WorldManifest& out, std::string& error) override;
+        std::string tilePath(terraincore::TileCoord tile) const override;
         std::string overviewPath() const override;
-        std::string treePath(terrain::TileCoord tile) const override;
+        std::string treePath(terraincore::TileCoord tile) const override;
         bool editable() const override { return true; }
 
         const std::filesystem::path& folder() const { return worldFolder; }

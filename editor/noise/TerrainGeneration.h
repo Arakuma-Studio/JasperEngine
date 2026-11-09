@@ -4,7 +4,7 @@
 #pragma once
 
 // The one path of terrain generation (T2 R28): validate, snapshot what the graph reads, evaluate on a
-// job, apply on the main thread through T1's terrain::Batch as one undo step. The Generate section,
+// job, apply on the main thread through T1's terraincore::Batch as one undo step. The Generate section,
 // the Create Terrain dialog and generate_terrain all call this. Nothing here writes a map file: T1's
 // store and command own persistence and refresh.
 
@@ -86,7 +86,7 @@ namespace jasperengine::editor {
         std::vector<GenerationIssue> warnings;
         std::vector<GenerationOutputStats> outputs;
         GenerationStats stats;
-        std::vector<terrain::MapChangeReport> changed;
+        std::vector<terraincore::MapChangeReport> changed;
         std::string undoName;
         // the plan
         size_t ops = 0;
@@ -99,7 +99,7 @@ namespace jasperengine::editor {
         // Normalized heights of what ran, width * depth, for images
         std::vector<float> heights;
         int width = 0, depth = 0;
-        terrain::TexelRect rect;
+        terraincore::TexelRect rect;
     };
 
     // The largest side an interactive preview evaluates, whatever the terrain's resolution
@@ -113,19 +113,19 @@ namespace jasperengine::editor {
 
         // R32: everything that can be refused is refused here, before any evaluation. Snapshots what
         // the graph reads. Main thread. Null with result.ok false on a refusal.
-        static std::shared_ptr<Prepared> prepare(const terrain::TerrainMapStore& store, const GenerationRequest& request,
+        static std::shared_ptr<Prepared> prepare(const terraincore::TerrainMapStore& store, const GenerationRequest& request,
                                                  GenerationResult& result);
         // Runs anywhere, with no store: a job's body. False when cancelled.
         static bool evaluate(Prepared& prepared, jobs::CancelToken* cancel, bool parallel, GenerationResult& result);
         // Whether the terrain still is what prepare snapshotted (R33)
-        static bool stillMatches(const Prepared& prepared, const terrain::TerrainMapStore& store);
+        static bool stillMatches(const Prepared& prepared, const terraincore::TerrainMapStore& store);
         // Writes through one Batch (R29) and fills changed. Main thread. Skips writing on a dry run.
-        static bool apply(Prepared& prepared, terrain::TerrainMapStore& store, GenerationResult& result);
+        static bool apply(Prepared& prepared, terraincore::TerrainMapStore& store, GenerationResult& result);
         // The layers and foliage layers the graph writes, for what must exist before apply
         static std::vector<int> layersOf(const Prepared& prepared);
         static std::vector<int> densitiesOf(const Prepared& prepared);
         // The resolution prepare settled on
-        static terrain::TexelRect heightRectOf(const Prepared& prepared);
+        static terraincore::TexelRect heightRectOf(const Prepared& prepared);
         static bool replacesHeightMap(const Prepared& prepared);
         // R29's "Generate Terrain (Mountains, seed 7)"
         static std::string undoNameOf(const GenerationRequest& request);

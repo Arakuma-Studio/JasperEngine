@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     // Where a store finds its tiles. Main thread, as the store is.
     class TileAccess {

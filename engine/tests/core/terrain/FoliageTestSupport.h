@@ -33,7 +33,7 @@
 namespace foliagetest {
 
     using namespace jasperengine;
-    using namespace jasperengine::terrain;
+    using namespace jasperengine::terraincore;
 
     inline std::string crossMesh() {
         const std::filesystem::path path = std::filesystem::temp_directory_path() / "je-foliage-test-cross.obj";

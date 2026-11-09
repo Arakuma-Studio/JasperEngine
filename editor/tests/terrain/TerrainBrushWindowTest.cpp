@@ -101,9 +101,9 @@ TEST_F(TerrainBrushWindowTest, PaintByRulesPreviewLeavesTheMaps) {
         return rgba;
     };
     const std::vector<uint8_t> before = bake();
-    terrain::Op op;
-    op.type = terrain::OpType::PaintByRules;
-    terrain::PaintRule everywhere;
+    terraincore::Op op;
+    op.type = terraincore::OpType::PaintByRules;
+    terraincore::PaintRule everywhere;
     everywhere.layer = 1;
     op.rules.push_back(everywhere);
     std::string error;

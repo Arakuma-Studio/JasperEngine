@@ -7,7 +7,7 @@
 #include <functional>
 #include <vector>
 
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -37,7 +37,7 @@ namespace {
 
 }
 
-MaterialCost jasperengine::terrain::materialCost(const TerrainMaterialInputs& inputs, TerrainQuality quality) {
+MaterialCost jasperengine::terraincore::materialCost(const TerrainMaterialInputs& inputs, TerrainQuality quality) {
     const TerrainTierInfo& tier = terrainTierInfo(quality);
     MaterialCost cost;
     const int layerCount = std::min(inputs.layerCount, TERRAIN_MAX_LAYERS);

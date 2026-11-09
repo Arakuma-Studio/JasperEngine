@@ -39,7 +39,7 @@ namespace jasperengine::editor{
         static Stamp stampOf(const std::filesystem::path& file);
 
         // reason, when given, gets why the first execute failed (the history frees a command that fails)
-        TerrainWorldImportCmd(Project* project, uint32_t sceneId, Entity entity, std::filesystem::path stash, std::vector<terrain::TileCoord> tiles,
+        TerrainWorldImportCmd(Project* project, uint32_t sceneId, Entity entity, std::filesystem::path stash, std::vector<terraincore::TileCoord> tiles,
                               std::vector<Stamp> stamps, std::shared_ptr<std::string> reason = nullptr);
         ~TerrainWorldImportCmd() override;
 
@@ -65,7 +65,7 @@ namespace jasperengine::editor{
         std::string name;
         std::filesystem::path stash;
         std::filesystem::path folder;
-        std::vector<terrain::TileCoord> tiles;
+        std::vector<terraincore::TileCoord> tiles;
         std::vector<Stamp> stamps;
         std::vector<char> existed;
         bool done = false;

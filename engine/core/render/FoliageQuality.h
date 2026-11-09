@@ -7,7 +7,7 @@
 namespace jasperengine{
 
     // Foliage Quality per platform group (T5 R21). What each scales and caps is
-    // terrain::foliageTierLimits; distance is Foliage Distance's (Engine::setFoliageDistanceScale).
+    // terraincore::foliageTierLimits; distance is Foliage Distance's (Engine::setFoliageDistanceScale).
     enum class FoliageQuality{
         LOW = 0,
         MEDIUM = 1,

@@ -38,7 +38,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace fs = std::filesystem;
 

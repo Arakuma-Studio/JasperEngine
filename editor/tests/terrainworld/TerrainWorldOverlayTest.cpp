@@ -21,8 +21,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using jasperengine::terrain::TileCoord;
-using jasperengine::terrain::TileState;
+using jasperengine::terraincore::TileCoord;
+using jasperengine::terraincore::TileState;
 
 namespace {
 

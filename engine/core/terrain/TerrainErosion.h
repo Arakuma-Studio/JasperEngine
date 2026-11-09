@@ -14,7 +14,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     // Inclusive texel bounds
     struct ErosionRegion {

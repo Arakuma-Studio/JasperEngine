@@ -512,7 +512,7 @@ implementer copies something, in which case the normal rule applies.
 
 **D1 Layout (programme D1, D2).**
 ```
-engine/core/terrain/world/        pure, no ECS, no render, namespace jasperengine::terrain
+engine/core/terrain/world/        pure, no ECS, no render, namespace jasperengine::terraincore
   WorldLattice.h                  sample/tile/node arithmetic; triangle and bilerp kernels
   TerrainTileFormat.{h,cpp}       .jtile read/write, predictor, versions, migrations
   TerrainWorldSelect.{h,cpp}      the selection of D4 as a pure function
@@ -858,7 +858,7 @@ cook), S15 (profiler scopes), S19 (`updateTiles`, Volume), S24 (undo names), S26
 - **Doriax (D21; none landed: whichever lands second merges onto the first).** `draw-perf` moves `updateAllTerrainRenderTextures` and adds `Dlo`: a World's textures are not in that walk (D1's hook at `updateTerrain`), and `Twd` keys
   follow its twin rule. `ssr-probes`: the G-buffer's terrain AO applies to near tiles only, since the overview has no layers (R9). `mesh-memory`: a World's Mesh uses `StableArray` like any other, and D1 keeps indices across writes. `render-correctness`: foliage ring work reaches a World only through T5's regions.
   `agent-authoring`: `terrain.md` gets T4's heading, and `edit_terrain_details` takes a World through `entity`, per region density in `DENS`.
-- **Pixel art.** `AssetType` 24-27 are theirs; no shared names (`jasperengine::terrain`'s `TileCoord`, `WorldLattice` against S50's `TileGridLayout`, `TileCells`).
+- **Pixel art.** `AssetType` 24-27 are theirs; no shared names (`jasperengine::terraincore`'s `TileCoord`, `WorldLattice` against S50's `TileGridLayout`, `TileCells`).
 
 **Merge hotspots.** `RenderSystem.cpp`, `MeshSystem.cpp`, `InspectorWindow.cpp`, `TerrainEditWindow.cpp`
 (hooks only, D1), `terrain_vs.glsl` (one include under `HAS_TERRAIN_WORLD`), `ShaderVariantCompiler.cpp` and
@@ -887,7 +887,7 @@ cook), S15 (profiler scopes), S19 (`updateTiles`, Volume), S24 (undo names), S26
 
 Recorded while implementing (`terrain/t4-worlds`). The code is what holds; each item says what changed and why.
 
-- **Names.** The tile in memory is `terrain::WorldTile`, not `TileData`: `jasperengine::TileData` is the tilemap's, and both are visible where the runtime is written. The world's non-pure runtime is `TerrainWorldRuntime` (engine/core/subsystem/), which is also the `TileAccess` the `TiledMapStore` reads; D1's `TileFoliageRegion` and `TerrainWorldQuery` are not separate classes (see R27 below; the query is `TerrainWorldRuntime::query` and `::raycast`).
+- **Names.** The tile in memory is `terraincore::WorldTile`, not `TileData`: `jasperengine::TileData` is the tilemap's, and both are visible where the runtime is written. The world's non-pure runtime is `TerrainWorldRuntime` (engine/core/subsystem/), which is also the `TileAccess` the `TiledMapStore` reads; D1's `TileFoliageRegion` and `TerrainWorldQuery` are not separate classes (see R27 below; the query is `TerrainWorldRuntime::query` and `::raycast`).
 - **R7, AC2: the visited-node bound per doubling of the side is 40, not 4.** In a filled world a level more expands the eye's node and every neighbour within its range, about nine nodes of four children; a small world reaches the same levels through partly occupied nodes that expand one child. `TerrainWorldSelect.DoesNotScaleWithWorld` measured 60, 128 and 184 visits at 8, 64 and 256 tiles a side (64-quad tiles, eye at a quadrant corner, the worst case); a walk over the big world's tiles would visit 65,536.
 - **AC26: T1's golden hashes are not rerun on a one-tile `TiledMapStore`.** The store's format is the addressable lattice (D12), so T1's whole-map sequences would cover 32,769² texels, and edges differ (an absent tile reads the base height where one map clamps). `TiledMapStore.OpsMatchOneMap` instead runs raise, smooth, set_height and terrace on a 2 x 2 world and on one 129-sample map over the same samples and compares the bytes. `add_noise` anchors its field at the map's first texel, the world's addressable corner, so it is left out of that comparison: same op, another field.
 - **R29: a write makes an absent tile only when it changes a sample inside it.** A change on a shared border reaches the tiles there; an absent neighbour is made by a change strictly inside it and copies its borders from its neighbours when made. Otherwise an import or a stroke along a border spawned the ring of neighbours.

@@ -926,7 +926,7 @@ bool SplineSystem::collectStations(Entity entity, const SplineComponent& spline,
                 return sample;
             }
             // T3 R26: the height map stays defined under a hole, so a road bridges it
-            const terrain::SurfaceSample ground = querySurface(*terrain, local.x, local.z);
+            const terraincore::SurfaceSample ground = querySurface(*terrain, local.x, local.z);
             if (terrain->world && !ground.present){
                 return sample;
             }
@@ -1090,7 +1090,7 @@ void SplineSystem::scheduleExtrude(Entity entity, Resolve& resolve, const Spline
         if (world){
             // the footprint's block of the world's samples (sample s at s * spacing, the World only
             // translates, R4), within its tiles: an absent tile there reads the base height
-            const jasperengine::terrain::WorldLattice& lattice = world->lattice();
+            const jasperengine::terraincore::WorldLattice& lattice = world->lattice();
             const float spacing = lattice.spacing;
             const Vector3 at = terrainTransform->worldPosition;
             float minX = std::numeric_limits<float>::max(), minZ = minX;
@@ -1099,7 +1099,7 @@ void SplineSystem::scheduleExtrude(Entity entity, Resolve& resolve, const Spline
                 minX = std::min(minX, s.position.x - at.x); maxX = std::max(maxX, s.position.x - at.x);
                 minZ = std::min(minZ, s.position.z - at.z); maxZ = std::max(maxZ, s.position.z - at.z);
             }
-            jasperengine::terrain::TileCoord low, high;
+            jasperengine::terraincore::TileCoord low, high;
             world->occupancy().bounds(low, high);
             const int n = lattice.tileQuads;
             const float margin = extrude.maxHalfWidth + 2.0f * spacing;
@@ -1107,8 +1107,8 @@ void SplineSystem::scheduleExtrude(Entity entity, Resolve& resolve, const Spline
             const int x1 = std::clamp(static_cast<int>(std::ceil((maxX + margin) / spacing)), low.x * n, (high.x + 1) * n);
             const int z0 = std::clamp(static_cast<int>(std::floor((minZ - margin) / spacing)), low.z * n, (high.z + 1) * n);
             const int z1 = std::clamp(static_cast<int>(std::ceil((maxZ + margin) / spacing)), low.z * n, (high.z + 1) * n);
-            job->worldGround = world->heightReader(jasperengine::terrain::TileCoord(jasperengine::terrain::floorDiv(x0, n) - 1, jasperengine::terrain::floorDiv(z0, n) - 1),
-                                                   jasperengine::terrain::TileCoord(jasperengine::terrain::floorDiv(x1, n), jasperengine::terrain::floorDiv(z1, n)));
+            job->worldGround = world->heightReader(jasperengine::terraincore::TileCoord(jasperengine::terraincore::floorDiv(x0, n) - 1, jasperengine::terraincore::floorDiv(z0, n) - 1),
+                                                   jasperengine::terraincore::TileCoord(jasperengine::terraincore::floorDiv(x1, n), jasperengine::terraincore::floorDiv(z1, n)));
             job->worldX0 = x0;
             job->worldZ0 = z0;
             job->worldBaseY = at.y;

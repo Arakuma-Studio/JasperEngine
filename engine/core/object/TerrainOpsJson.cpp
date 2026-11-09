@@ -8,7 +8,7 @@
 #include <cstdio>
 #include <set>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
 using Json = nlohmann::json;
 

@@ -32,8 +32,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using terrain::MapId;
-using terrain::MapKind;
+using terraincore::MapId;
+using terraincore::MapKind;
 
 namespace {
 
@@ -109,12 +109,12 @@ namespace {
     }
 
     void bakeHeight(const TerrainOverlayBake& context, std::vector<uint8_t>& rgba) {
-        const terrain::SurfaceView view = terrainSurfaceView(*context.terrain);
+        const terraincore::SurfaceView view = terrainSurfaceView(*context.terrain);
         const float maxHeight = context.terrain->maxHeight;
         for (int y = 0; y < context.height; y++) {
             for (int x = 0; x < context.width; x++) {
                 const Vector2 local = context.localOf(x, y);
-                const float h = terrain::sampleHeight(view, local.x, local.y);
+                const float h = terraincore::sampleHeight(view, local.x, local.y);
                 overlayPut(rgba, static_cast<size_t>(y) * context.width + x, heightRamp(maxHeight != 0.0f ? h / maxHeight : 0.0f));
             }
         }
@@ -130,12 +130,12 @@ namespace {
     }
 
     void bakeSlope(const TerrainOverlayBake& context, std::vector<uint8_t>& rgba) {
-        const terrain::SurfaceView view = terrainSurfaceView(*context.terrain);
+        const terraincore::SurfaceView view = terrainSurfaceView(*context.terrain);
         const bool ranged = context.settings->slopeMin >= 0.0f && context.settings->slopeMax > context.settings->slopeMin;
         for (int y = 0; y < context.height; y++) {
             for (int x = 0; x < context.width; x++) {
                 const Vector2 local = context.localOf(x, y);
-                const float degrees = slopeDegrees(terrain::sampleSurface(view, local.x, local.y).normal);
+                const float degrees = slopeDegrees(terraincore::sampleSurface(view, local.x, local.y).normal);
                 Vector4 color;
                 if (ranged) {
                     color = degrees >= context.settings->slopeMin && degrees <= context.settings->slopeMax ? SLOPE_IN_RANGE : Vector4(0, 0, 0, 0);
@@ -155,13 +155,13 @@ namespace {
     }
 
     void bakeContours(const TerrainOverlayBake& context, std::vector<uint8_t>& rgba) {
-        const terrain::SurfaceView view = terrainSurfaceView(*context.terrain);
+        const terraincore::SurfaceView view = terrainSurfaceView(*context.terrain);
         const float step = contourStep(context);
         std::vector<int> band(static_cast<size_t>(context.width) * context.height);
         for (int y = 0; y < context.height; y++) {
             for (int x = 0; x < context.width; x++) {
                 const Vector2 local = context.localOf(x, y);
-                const float world = terrain::sampleHeight(view, local.x, local.y) * context.scaleY + context.originY;
+                const float world = terraincore::sampleHeight(view, local.x, local.y) * context.scaleY + context.originY;
                 band[static_cast<size_t>(y) * context.width + x] = static_cast<int>(std::floor(world / step));
             }
         }
@@ -192,12 +192,12 @@ namespace {
     void bakeLayerWeights(const TerrainOverlayBake& context, std::vector<uint8_t>& rgba) {
         const int layers = static_cast<int>(context.terrain->surfaceLayers.size());
         // each blend map read once, whole
-        std::map<int, std::pair<terrain::MapFormat, std::vector<float>>> maps;
+        std::map<int, std::pair<terraincore::MapFormat, std::vector<float>>> maps;
         for (int l = 0; l < layers; l++) {
-            const int index = terrain::terrainLayerChannel(l).map;
+            const int index = terraincore::terrainLayerChannel(l).map;
             if (maps.count(index)) continue;
             const MapId blend{MapKind::Blend, index};
-            const terrain::MapFormat format = context.store->format(blend);
+            const terraincore::MapFormat format = context.store->format(blend);
             if (!format.exists) continue;
             std::vector<float> values(static_cast<size_t>(format.bounds.area()) * format.channels);
             if (context.store->read(blend, format.bounds, values)) maps[index] = {format, std::move(values)};
@@ -209,10 +209,10 @@ namespace {
                 float total = 0.0f;
                 for (int l = 0; l < layers; l++) {
                     if (context.settings->layer >= 0 && context.settings->layer != l) continue;
-                    const terrain::LayerChannel channel = terrain::terrainLayerChannel(l);
+                    const terraincore::LayerChannel channel = terraincore::terrainLayerChannel(l);
                     auto found = maps.find(channel.map);
                     if (found == maps.end()) continue;
-                    const terrain::MapFormat& format = found->second.first;
+                    const terraincore::MapFormat& format = found->second.first;
                     const Vector2 at = context.store->texelOfWorld(MapId{MapKind::Blend, channel.map}, local.x, local.y);
                     const int bx = std::clamp(static_cast<int>(std::lround(at.x)), 0, format.bounds.w - 1);
                     const int by = std::clamp(static_cast<int>(std::lround(at.y)), 0, format.bounds.h - 1);
@@ -256,7 +256,7 @@ namespace {
         });
     }
 
-    TerrainOverlayBake bakeContext(Scene* scene, Entity entity, TerrainComponent& terrain, const terrain::TerrainMapStore& store,
+    TerrainOverlayBake bakeContext(Scene* scene, Entity entity, TerrainComponent& terrain, const terraincore::TerrainMapStore& store,
                                    const TerrainOverlaySettings& settings, int width, int height) {
         TerrainOverlayBake context;
         context.scene = scene;
@@ -275,8 +275,8 @@ namespace {
     }
 
     // The image's size: the height map's, at most MAX_IMAGE a side
-    void overlayImageSize(const terrain::TerrainMapStore& store, int& width, int& height) {
-        const terrain::MapFormat format = store.format(MapId{MapKind::Height, 0});
+    void overlayImageSize(const terraincore::TerrainMapStore& store, int& width, int& height) {
+        const terraincore::MapFormat format = store.format(MapId{MapKind::Height, 0});
         width = std::clamp(format.exists ? format.bounds.w : 256, 2, TerrainOverlay::MAX_IMAGE);
         height = std::clamp(format.exists ? format.bounds.h : 256, 2, TerrainOverlay::MAX_IMAGE);
     }
@@ -337,7 +337,7 @@ namespace {
 
     // T1 R67: the previews by terrain, and a count that changes with each, so a sheet bakes again
     struct OverlayPreviews {
-        std::map<std::pair<Scene*, Entity>, std::shared_ptr<const terrain::TerrainMapStore>> stores;
+        std::map<std::pair<Scene*, Entity>, std::shared_ptr<const terraincore::TerrainMapStore>> stores;
         uint64_t serial = 0;
     };
 
@@ -348,7 +348,7 @@ namespace {
 
 }
 
-void TerrainOverlay::setPreview(Scene* scene, Entity entity, std::shared_ptr<const terrain::TerrainMapStore> store) {
+void TerrainOverlay::setPreview(Scene* scene, Entity entity, std::shared_ptr<const terraincore::TerrainMapStore> store) {
     overlayPreviews().stores[{scene, entity}] = std::move(store);
     overlayPreviews().serial++;
 }
@@ -376,7 +376,7 @@ bool TerrainOverlay::bake(Scene* scene, Entity entity, const TerrainOverlaySetti
     }
     TerrainComponentStore own(scene, entity, *terrain);
     const auto preview = overlayPreviews().stores.find({scene, entity});
-    const terrain::TerrainMapStore& store = preview != overlayPreviews().stores.end() ? *preview->second : static_cast<const terrain::TerrainMapStore&>(own);
+    const terraincore::TerrainMapStore& store = preview != overlayPreviews().stores.end() ? *preview->second : static_cast<const terraincore::TerrainMapStore&>(own);
     if (width <= 0 || height <= 0) overlayImageSize(store, width, height);
     const TerrainOverlayBake context = bakeContext(scene, entity, *terrain, store, settings, width, height);
     rgba.assign(static_cast<size_t>(width) * height * 4, 0);
@@ -386,7 +386,7 @@ bool TerrainOverlay::bake(Scene* scene, Entity entity, const TerrainOverlaySetti
 }
 
 TerrainOverlay::TerrainOverlay(Scene* scene): scene(scene) {
-    edits = TerrainEditEvents::subscribe(scene, [this](Entity terrain, MapId, terrain::TexelRect) {
+    edits = TerrainEditEvents::subscribe(scene, [this](Entity terrain, MapId, terraincore::TexelRect) {
         auto found = sheets.find(terrain);
         if (found != sheets.end()) found->second.dirty = true;
     });
@@ -466,7 +466,7 @@ void TerrainOverlay::refresh(Entity entity, Sheet& sheet, const TerrainOverlaySe
     ensureMesh(sheet);
 
     // DC8: a grid over the terrain, each vertex at the highest texel of its footprint plus the lift
-    const terrain::SurfaceView view = terrainSurfaceView(terrain);
+    const terraincore::SurfaceView view = terrainSurfaceView(terrain);
     const int cells = std::clamp(view.width > 1 ? view.width - 1 : 64, 1, MAX_CELLS);
     const float size = terrain.terrainSize;
     const float step = size / static_cast<float>(cells);
@@ -491,10 +491,10 @@ void TerrainOverlay::refresh(Entity entity, Sheet& sheet, const TerrainOverlaySe
         for (int x = 0; x <= cells; x++) {
             const float lx = -size * 0.5f + static_cast<float>(x) * step;
             const float lz = -size * 0.5f + static_cast<float>(z) * step;
-            float top = terrain::sampleHeight(view, lx, lz);
+            float top = terraincore::sampleHeight(view, lx, lz);
             for (int dz = -reach; dz <= reach; dz++) {
                 for (int dx = -reach; dx <= reach; dx++) {
-                    top = std::max(top, terrain::sampleHeight(view, lx + static_cast<float>(dx) * texel, lz + static_cast<float>(dz) * texel));
+                    top = std::max(top, terraincore::sampleHeight(view, lx + static_cast<float>(dx) * texel, lz + static_cast<float>(dz) * texel));
                 }
             }
             mesh.buffer.addVector3(position, placement.model * Vector3(lx, top + lift, lz));
@@ -590,7 +590,7 @@ void TerrainOverlay::refreshWorld(Entity entity, Sheet& sheet, const TerrainOver
     if (mode == TerrainWorldOverlayMode::LodLevel && state.rects.empty()) worldPending = true;
     // the grid follows the box, the overview and which tiles are exact; the image what it shows
     int exact = 0;
-    for (uint8_t tileState : state.states) exact += tileState >= static_cast<uint8_t>(jasperengine::terrain::TileState::CpuReady) && tileState <= static_cast<uint8_t>(jasperengine::terrain::TileState::Resident);
+    for (uint8_t tileState : state.states) exact += tileState >= static_cast<uint8_t>(jasperengine::terraincore::TileState::CpuReady) && tileState <= static_cast<uint8_t>(jasperengine::terraincore::TileState::Resident);
     const uint64_t geometry = (static_cast<uint64_t>(static_cast<uint16_t>(state.low.x)) << 48) ^ (static_cast<uint64_t>(static_cast<uint16_t>(state.low.z)) << 32) ^
                               (static_cast<uint64_t>(static_cast<uint16_t>(state.high.x)) << 16) ^ static_cast<uint64_t>(static_cast<uint16_t>(state.high.z)) ^
                               (static_cast<uint64_t>(runtime->overviewRevision()) * 0x9E3779B97F4A7C15ull) ^ (static_cast<uint64_t>(exact) << 24);
@@ -632,7 +632,7 @@ void TerrainOverlay::refreshWorld(Entity entity, Sheet& sheet, const TerrainOver
                 bool any = false;
                 for (int dz = -1; dz <= 1; dz++) {
                     for (int dx = -1; dx <= 1; dx++) {
-                        const jasperengine::terrain::SurfaceSample sample = runtime->query(lx + 0.5f * stepX * static_cast<float>(dx), lz + 0.5f * stepZ * static_cast<float>(dz), false);
+                        const jasperengine::terraincore::SurfaceSample sample = runtime->query(lx + 0.5f * stepX * static_cast<float>(dx), lz + 0.5f * stepZ * static_cast<float>(dz), false);
                         if (!sample.present) continue;
                         top = any ? std::max(top, sample.height) : sample.height;
                         any = true;

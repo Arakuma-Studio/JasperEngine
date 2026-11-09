@@ -24,7 +24,7 @@ static std::vector<unsigned char> heights(33 * 33, 64);
 static std::vector<unsigned char> holes(33 * 33, 255);
 
 JASPERENGINE_INIT void init(){
-    jasperengine::terrain::TerrainQualitySettings::setGlobalOverride(jasperengine::terrain::TerrainQuality::LOW);
+    jasperengine::terraincore::TerrainQualitySettings::setGlobalOverride(jasperengine::terraincore::TerrainQuality::LOW);
     for (int y = 12; y < 21; y++){
         for (int x = 12; x < 21; x++){
             holes[static_cast<size_t>(y) * 33 + x] = 0;

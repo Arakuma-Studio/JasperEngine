@@ -124,7 +124,7 @@ namespace {
     uint64_t terrainHash(Scene* scene, Entity terrainEntity) {
         TerrainComponent* terrain = terrainEntity != NULL_ENTITY && scene->isEntityCreated(terrainEntity) ? scene->findComponent<TerrainComponent>(terrainEntity) : nullptr;
         if (!terrain) return 0;
-        const terrain::SurfaceView view = terrainSurfaceView(*terrain);
+        const terraincore::SurfaceView view = terrainSurfaceView(*terrain);
         if (!view.pixels) return 0;
         return fnv1a(view.pixels, static_cast<size_t>(view.width) * view.height * view.channels * view.bytesPerChannel);
     }

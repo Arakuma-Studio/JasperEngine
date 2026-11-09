@@ -56,7 +56,7 @@ namespace {
 
     uint64_t heightHash(Scene* scene, Entity entity) {
         TerrainComponentStore store(scene, entity, scene->getComponent<TerrainComponent>(entity));
-        return terrain::mapHash(store, HEIGHT_MAP);
+        return terraincore::mapHash(store, HEIGHT_MAP);
     }
 
 }
@@ -84,7 +84,7 @@ TEST_F(TerrainCreateDialogTest, CreateIsOneUndoStep) {
     EXPECT_EQ(made.terrainSize, 256.0f);
     EXPECT_EQ(made.maxHeight, 64.0f);
     TerrainComponentStore store(scene->scene, island, made);
-    const terrain::MapFormat format = store.format(HEIGHT_MAP);
+    const terraincore::MapFormat format = store.format(HEIGHT_MAP);
     ASSERT_TRUE(format.exists);
     EXPECT_EQ(format.bounds.w, 65);
     EXPECT_EQ(format.bitsPerChannel, 16);
@@ -116,22 +116,22 @@ TEST_F(TerrainCreateDialogTest, OpsWithUndoMakeMapsAndOneGroup) {
     giveHeight16(33);
     settleFiles();
     const std::vector<unsigned char> heightsBefore = bytesOf(HEIGHT_MAP);
-    terrain::Op raise;
-    raise.type = terrain::OpType::Raise;
+    terraincore::Op raise;
+    raise.type = terraincore::OpType::Raise;
     raise.delta = 1.0f;
-    terrain::Op paint;
-    paint.type = terrain::OpType::PaintLayer;
+    terraincore::Op paint;
+    paint.type = terraincore::OpType::PaintLayer;
     paint.layer = 1;
-    const std::vector<terrain::Op> ops = {raise, paint};
-    const terrain::TerrainOpResult preview = previewTerrainOps(project.get(), scene, terrainEntity, ops, terrain::OpOptions());
+    const std::vector<terraincore::Op> ops = {raise, paint};
+    const terraincore::TerrainOpResult preview = previewTerrainOps(project.get(), scene, terrainEntity, ops, terraincore::OpOptions());
     ASSERT_TRUE(preview.ok) << preview.error;
     ASSERT_FALSE(preview.createdMaps.empty()) << "painting makes the blend map";
 
     CommandHistory* history = CommandHandle::get(scene->id);
     const size_t start = history->mark();
-    terrain::TerrainOpResult reported;
+    terraincore::TerrainOpResult reported;
     std::string error;
-    ASSERT_TRUE(applyTerrainOpsWithUndo(project.get(), scene, terrainEntity, ops, terrain::OpOptions(), preview, "Edit Terrain", reported, error)) << error;
+    ASSERT_TRUE(applyTerrainOpsWithUndo(project.get(), scene, terrainEntity, ops, terraincore::OpOptions(), preview, "Edit Terrain", reported, error)) << error;
     ASSERT_TRUE(history->groupSince(start, "Edit Terrain"));
     EXPECT_EQ(reported.changed.size(), preview.changed.size()) << "the numbers are the preview's";
     EXPECT_NE(bytesOf(HEIGHT_MAP), heightsBefore);
@@ -162,17 +162,17 @@ TEST_F(TerrainCreateDialogTest, ImportRawStartShapeIsTheImportedFile) {
     CreateTerrainDialog::Settings flat = smallSettings("Flat", 33);
     const Entity reference = CreateTerrainDialog::create(project.get(), scene->id, NULL_ENTITY, flat, error);
     ASSERT_NE(reference, NULL_ENTITY) << error;
-    terrain::Op op;
-    op.type = terrain::OpType::ImportHeightmap;
+    terraincore::Op op;
+    op.type = terraincore::OpType::ImportHeightmap;
     op.importedWidth = imported.width;
     op.importedHeight = imported.height;
     op.importedHeights = imported.normalized;
-    const std::vector<terrain::Op> ops = {op};
-    const terrain::TerrainOpResult preview = previewTerrainOps(project.get(), scene, reference, ops, terrain::OpOptions());
+    const std::vector<terraincore::Op> ops = {op};
+    const terraincore::TerrainOpResult preview = previewTerrainOps(project.get(), scene, reference, ops, terraincore::OpOptions());
     ASSERT_TRUE(preview.ok) << preview.error;
-    terrain::TerrainOpResult reported;
+    terraincore::TerrainOpResult reported;
     const size_t importStart = history->mark();
-    ASSERT_TRUE(applyTerrainOpsWithUndo(project.get(), scene, reference, ops, terrain::OpOptions(), preview, "Import", reported, error)) << error;
+    ASSERT_TRUE(applyTerrainOpsWithUndo(project.get(), scene, reference, ops, terraincore::OpOptions(), preview, "Import", reported, error)) << error;
     ASSERT_TRUE(history->groupSince(importStart, "Import"));
     EXPECT_EQ(heightHash(scene->scene, made), heightHash(scene->scene, reference)) << "Create's heights are the import's";
 
@@ -214,7 +214,7 @@ TEST_F(TerrainCreateDialogTest, BaseLayerCoversTheTerrainInTheSameStep) {
         if (terrain.surfaceLayers.empty()) return -1.0;
         EXPECT_EQ(terrain.surfaceLayers[0].colorTexture.getPath(0), "textures/grass.png");
         TerrainComponentStore store(scene->scene, made, terrain);
-        const terrain::MapFormat format = store.format(BLEND_MAP);
+        const terraincore::MapFormat format = store.format(BLEND_MAP);
         EXPECT_TRUE(format.exists);
         if (!format.exists) return -1.0;
         EXPECT_EQ(format.bounds.w, 32);

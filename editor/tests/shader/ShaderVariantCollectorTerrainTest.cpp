@@ -77,12 +77,12 @@ TEST(ShaderVariantCollectorTerrain, TiersReachable){
     component.limitLayersPerPixel = true;
     component.surfaceLayers.resize(5);
     // a project at Low on Android: Low's keys, and no High's
-    const TierKeys low = collect(scene, terrain::terrainQualityBit(terrain::TerrainQuality::LOW));
+    const TierKeys low = collect(scene, terraincore::terrainQualityBit(terraincore::TerrainQuality::LOW));
     EXPECT_TRUE(low.low);
     EXPECT_FALSE(low.high);
     EXPECT_FALSE(low.medium);
     // a script names them: all three
-    const TierKeys all = collect(scene, terrain::TERRAIN_ALL_TIERS);
+    const TierKeys all = collect(scene, terraincore::TERRAIN_ALL_TIERS);
     EXPECT_TRUE(all.low);
     EXPECT_TRUE(all.medium);
     EXPECT_TRUE(all.high);
@@ -96,5 +96,5 @@ TEST(ShaderVariantCollectorTerrain, HoleMapShipsThl){
     TerrainComponent& component = scene.getComponent<TerrainComponent>(terrain.getEntity());
     component.heightMap.setPath("height.png");
     component.holeMap.setPath("holes.png");
-    EXPECT_TRUE(collect(scene, terrain::TERRAIN_ALL_TIERS).holes);
+    EXPECT_TRUE(collect(scene, terraincore::TERRAIN_ALL_TIERS).holes);
 }

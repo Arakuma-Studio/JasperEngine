@@ -987,7 +987,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
         m_shadowTiers[platform] = static_cast<int>(project->getShadowTier(platform));
     }
-    for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
         m_terrainTiers[platform] = static_cast<int>(project->getTerrainQualityTier(platform));
     }
     m_shipAllTerrainTiers = project->isShipAllTerrainTiers();
@@ -5415,8 +5415,8 @@ bool ProjectSettingsWindow::applySettings() {
         m_project->setShadowTier(platform, static_cast<ShadowTier>(m_shadowTiers[platform]));
     }
     // an old project writes no key until a tier moves from High (T3 R51)
-    for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
-        const terrain::TerrainQuality tier = static_cast<terrain::TerrainQuality>(m_terrainTiers[platform]);
+    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+        const terraincore::TerrainQuality tier = static_cast<terraincore::TerrainQuality>(m_terrainTiers[platform]);
         if (tier != m_project->getTerrainQualityTier(platform)) {
             m_project->setTerrainQualityTier(platform, tier);
             m_project->setTerrainQualityWritten(true);

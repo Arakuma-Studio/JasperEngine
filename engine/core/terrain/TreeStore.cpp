@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <cstring>
 
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -41,7 +41,7 @@ namespace {
 
 // XXH64 (Yann Collet), written from its published specification: the format needs the stated
 // algorithm in every player, and zstd's copy is private to its library.
-uint64_t jasperengine::terrain::treeXXHash64(const void* data, size_t size, uint64_t seed) {
+uint64_t jasperengine::terraincore::treeXXHash64(const void* data, size_t size, uint64_t seed) {
     const uint8_t* p = static_cast<const uint8_t*>(data);
     const uint8_t* end = p + size;
     uint64_t hash;

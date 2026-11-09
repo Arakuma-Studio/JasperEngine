@@ -280,7 +280,7 @@ MPL-2.0 line; the README now says only that copied code keeps its header and get
 
 ### Functional — erosion
 
-- **R24. Hydraulic.** `terrain::HeightfieldErosion::hydraulic`: droplets from Beyer's model. Parameters and
+- **R24. Hydraulic.** `terraincore::HeightfieldErosion::hydraulic`: droplets from Beyer's model. Parameters and
   defaults: `droplets_per_texel` 0.25 (0.01..4), `lifetime` 48 (8..128), `inertia` 0.05, `capacity` 4,
   `min_slope` 0.01, `erode_rate` 0.3, `deposit_rate` 0.3, `evaporation` 0.02, `gravity` 4, `radius` 1 (1..4),
   `seed_offset`. An optional `hardness` field scales the cut. Outputs: `height`, `flow` (where water
@@ -304,7 +304,7 @@ MPL-2.0 line; the README now says only that copied code keeps its header and get
 - **R28. One path.** `editor/noise/TerrainGeneration` is what the Generate section, the Create Terrain
   dialog and `generate_terrain` call: validate, snapshot what the graph reads, evaluate on a job
   (`Lane::Background`, `GateClass::Heavy`), and apply on the main thread.
-- **R29. Writes (D4, D6).** Every write goes through T1's `terrain::Batch` (`TerrainOps.h`, T1 R88): one undo step for the whole
+- **R29. Writes (D4, D6).** Every write goes through T1's `terraincore::Batch` (`TerrainOps.h`, T1 R88): one undo step for the whole
   generation, whichever maps it touches, named `Generate Terrain (Mountains, seed 7)`, reporting the
   dirty rectangle. No PNG writing here: T1 owns persistence, collider and foliage refresh.
 - **R30. Layers and density.** A graph's `output_layer` nodes paint by rules: weights are clamped to 0..1;
@@ -600,14 +600,14 @@ The result does not depend on which thread runs which tile. Thermal is Jacobi (R
 fail at load in a game with `bake-only-node`. The code still links when the module is on, because the tests and
 the editor share it; it costs about 8 KiB (assumed; measured under R51).
 
-**N8. D1 and the module.** `HeightfieldErosion` lives in `engine/core/terrain/` per D1, in `jasperengine::terrain`,
+**N8. D1 and the module.** `HeightfieldErosion` lives in `engine/core/terrain/` per D1, in `jasperengine::terraincore`,
 with no ECS or render dependency, but is compiled only with `JASPERENGINE_NOISE` so bakes pay nothing.
 
 **N9. Generate writes with T1's absolute operations.** T2 calls T1 R88's route and nothing else:
 
 ```cpp
 // engine/core/terrain/TerrainOps.h; T1's names win
-terrain::Batch batch(store);
+terraincore::Batch batch(store);
 batch.readHeights(rect, out);                                       // the terrain_height snapshot
 batch.setHeights(rect, std::span<const float> normalized);          // absolute, 0..1
 batch.setLayerWeights(rect, layers, weights);                       // normalized per R30

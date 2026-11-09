@@ -71,10 +71,10 @@ namespace {
 
         // the whole half of the terrain with local x < 0 is a hole
         void cutWestHalf(){
-            holes.assign(static_cast<size_t>(MAP_SIZE) * MAP_SIZE, terrain::SOLID_VALUE);
+            holes.assign(static_cast<size_t>(MAP_SIZE) * MAP_SIZE, terraincore::SOLID_VALUE);
             for (int y = 0; y < MAP_SIZE; y++){
                 for (int x = 0; x < MAP_SIZE / 2; x++){
-                    holes[static_cast<size_t>(y) * MAP_SIZE + x] = terrain::HOLE_VALUE;
+                    holes[static_cast<size_t>(y) * MAP_SIZE + x] = terraincore::HOLE_VALUE;
                 }
             }
             terrain().holeMap.setData(id("holes"), TextureData(MAP_SIZE, MAP_SIZE, static_cast<unsigned int>(holes.size()),
@@ -127,24 +127,24 @@ TEST_F(TerrainHolesConsumers, BrushRaysSeeThroughTheRule){
 TEST_F(TerrainHolesConsumers, HoldKeepsTheMap){
     TerrainComponentStore store(scene.get(), entity, terrain());
     terrain().holeMapHolds = 1;
-    terrain::Op cut;
-    cut.type = terrain::OpType::CutHoles;
-    cut.shape.type = terrain::ShapeType::Circle;
+    terraincore::Op cut;
+    cut.type = terraincore::OpType::CutHoles;
+    cut.shape.type = terraincore::ShapeType::Circle;
     cut.shape.center = Vector2(0.0f, 0.0f);
     cut.shape.radius = 8.0f;
-    ASSERT_TRUE(terrain::applyOps(store, std::span<const terrain::Op>(&cut, 1)).ok);
+    ASSERT_TRUE(terraincore::applyOps(store, std::span<const terraincore::Op>(&cut, 1)).ok);
     EXPECT_FALSE(terrain().holeMap.empty());
-    terrain::Op fill;
-    fill.type = terrain::OpType::FillHoles;
-    terrain::TerrainOpResult filled = terrain::applyOps(store, std::span<const terrain::Op>(&fill, 1));
+    terraincore::Op fill;
+    fill.type = terraincore::OpType::FillHoles;
+    terraincore::TerrainOpResult filled = terraincore::applyOps(store, std::span<const terraincore::Op>(&fill, 1));
     ASSERT_TRUE(filled.ok);
     EXPECT_FALSE(filled.ops[0].mapRemoved);
     EXPECT_FALSE(terrain().holeMap.empty()) << "the map stays, all solid";
     EXPECT_FALSE(querySurface(terrain(), 0.0f, 0.0f).hole);
 
     terrain().holeMapHolds = 0;
-    ASSERT_TRUE(terrain::applyOps(store, std::span<const terrain::Op>(&cut, 1)).ok);
-    filled = terrain::applyOps(store, std::span<const terrain::Op>(&fill, 1));
+    ASSERT_TRUE(terraincore::applyOps(store, std::span<const terraincore::Op>(&cut, 1)).ok);
+    filled = terraincore::applyOps(store, std::span<const terraincore::Op>(&fill, 1));
     ASSERT_TRUE(filled.ok);
     EXPECT_TRUE(filled.ops[0].mapRemoved);
     EXPECT_TRUE(terrain().holeMap.empty());
@@ -153,26 +153,26 @@ TEST_F(TerrainHolesConsumers, HoldKeepsTheMap){
 // T3 R27: a hole with no interior sample warns, and collision_samples_open counts what opens
 TEST_F(TerrainHolesConsumers, CollisionSamplesOpenAndWarning){
     TerrainComponentStore store(scene.get(), entity, terrain());
-    terrain::Op small;
-    small.type = terrain::OpType::CutHoles;
-    small.shape.type = terrain::ShapeType::Circle;
+    terraincore::Op small;
+    small.type = terraincore::OpType::CutHoles;
+    small.shape.type = terraincore::ShapeType::Circle;
     small.shape.center = Vector2(0.0f, 0.0f);
     small.shape.radius = 1.0f;
-    const terrain::TerrainOpResult first = terrain::applyOps(store, std::span<const terrain::Op>(&small, 1));
+    const terraincore::TerrainOpResult first = terraincore::applyOps(store, std::span<const terraincore::Op>(&small, 1));
     ASSERT_TRUE(first.ok);
     EXPECT_EQ(first.ops[0].collisionSamplesOpen, 0);
     EXPECT_TRUE(first.hasWarning("hole_no_collision"));
 
-    terrain::Op large = small;
+    terraincore::Op large = small;
     large.shape.radius = 16.0f;
-    const terrain::TerrainOpResult second = terrain::applyOps(store, std::span<const terrain::Op>(&large, 1));
+    const terraincore::TerrainOpResult second = terraincore::applyOps(store, std::span<const terraincore::Op>(&large, 1));
     ASSERT_TRUE(second.ok);
     EXPECT_GT(second.ops[0].collisionSamplesOpen, 0);
     EXPECT_FALSE(second.hasWarning("hole_no_collision"));
 
     // edit_terrain and Lua read the count from the result JSON
-    const terrain::OpSpace space = terrain::OpSpace::of(Matrix4(), Vector3(0.0f), Vector3(1.0f), false, false);
-    const nlohmann::json out = terrain::opResultJson(second, space, std::vector<terrain::Op>{large});
+    const terraincore::OpSpace space = terraincore::OpSpace::of(Matrix4(), Vector3(0.0f), Vector3(1.0f), false, false);
+    const nlohmann::json out = terraincore::opResultJson(second, space, std::vector<terraincore::Op>{large});
     ASSERT_TRUE(out["ops"][0].contains("collision_samples_open")) << out.dump();
     EXPECT_EQ(out["ops"][0]["collision_samples_open"].get<int>(), second.ops[0].collisionSamplesOpen);
 }

@@ -272,13 +272,13 @@ void JoltShapeBuilder::sampleHeightField(Scene* scene, TerrainComponent& terrain
     const float mirrorZ = scale.z < 0.0f ? -1.0f : 1.0f;
 
     // T3 R22: the collider's gap never includes drawn ground. A terrain without a map pays this test
-    const terrain::HoleMapView holes = terrain.holeMap.empty() ? terrain::HoleMapView{} : terrainSurfaceView(terrain).holes;
+    const terraincore::HoleMapView holes = terrain.holeMap.empty() ? terraincore::HoleMapView{} : terrainSurfaceView(terrain).holes;
 
     for (unsigned int y = y0; y < y0 + h; y++){
         const float localZ = mirrorZ * ((y == samplesSize - 1) ? halfSize : (-halfSize + spacing * y));
         for (unsigned int x = x0; x < x0 + w; x++){
             float& sample = out[(x - x0) + (y - y0) * w];
-            if (holes.texels && terrain::noCollisionSample(holes, static_cast<int>(samplesSize), mirrorX, mirrorZ, static_cast<int>(x), static_cast<int>(y))){
+            if (holes.texels && terraincore::noCollisionSample(holes, static_cast<int>(samplesSize), mirrorX, mirrorZ, static_cast<int>(x), static_cast<int>(y))){
                 sample = JPH::HeightFieldShapeConstants::cNoCollisionValue;
                 continue;
             }

@@ -23,8 +23,8 @@ namespace {
 
     // The fixed settings of a slice (R16): one format per family, so an array's slices can concatenate,
     // and at most the tier table's largest for that family
-    void sliceSettings(TextureImportSettings& settings, terrain::DetailSliceKind kind) {
-        settings.type = kind == terrain::DetailSliceKind::NORMAL ? TextureImportType::Normal : TextureImportType::Default;
+    void sliceSettings(TextureImportSettings& settings, terraincore::DetailSliceKind kind) {
+        settings.type = kind == terraincore::DetailSliceKind::NORMAL ? TextureImportType::Normal : TextureImportType::Default;
         // data to the array: the shader decodes a colour itself (terrain_fs.glsl), and one sampler reads them all
         settings.srgb = false;
         settings.mipmaps = true;
@@ -67,7 +67,7 @@ bool editor::gatherTerrainSliceInputs(Project& project, std::map<std::string, Te
         }
     };
     // Each slice of one array, under its key: 1 cooked whole, 0 not (its sources ship), -1 error
-    const auto cookArray = [&](std::span<const TerrainSurfaceLayer> layers, const terrain::DetailPlan& plan) -> int {
+    const auto cookArray = [&](std::span<const TerrainSurfaceLayer> layers, const terraincore::DetailPlan& plan) -> int {
         bool complete = plan.anySource;
         for (size_t s = 0; s < plan.sliceKeys.size() && complete; s++) {
             if (plan.sliceKeys[s].empty()) {
@@ -75,12 +75,12 @@ bool editor::gatherTerrainSliceInputs(Project& project, std::map<std::string, Te
                 complete = false;
                 break;
             }
-            const std::string key = terrain::cookedSliceIndexKey(plan.sliceKeys[s]);
+            const std::string key = terraincore::cookedSliceIndexKey(plan.sliceKeys[s]);
             if (inputs.count(key)) continue;
             std::vector<uint8_t> rgba;
             int width = 0;
             int height = 0;
-            if (!terrain::buildDetailSliceTop(layers, plan, static_cast<int>(s), MAX_TERRAIN_DETAIL_SIZE, rgba, width, height)) {
+            if (!terraincore::buildDetailSliceTop(layers, plan, static_cast<int>(s), MAX_TERRAIN_DETAIL_SIZE, rgba, width, height)) {
                 complete = false;
                 break;
             }
@@ -92,7 +92,7 @@ bool editor::gatherTerrainSliceInputs(Project& project, std::map<std::string, Te
                 error = "cannot write " + in.absolute.generic_string();
                 return -1;
             }
-            sliceSettings(in.settings, terrain::detailSliceKind(plan, static_cast<int>(s)));
+            sliceSettings(in.settings, terraincore::detailSliceKind(plan, static_cast<int>(s)));
             in.hasSettings = true;
             in.inference.linear = true;
             inputs.emplace(key, std::move(in));
@@ -109,15 +109,15 @@ bool editor::gatherTerrainSliceInputs(Project& project, std::map<std::string, Te
         auto volumes = sceneProject.scene->getComponentArray<VoxelVolumeComponent>();
         for (size_t v = 0; v < volumes->size(); v++) {
             const std::vector<TerrainSurfaceLayer> layers = voxelSlotLayers(sceneProject.scene, volumes->getComponentFromIndex(v));
-            terrain::DetailPlanOptions options;
+            terraincore::DetailPlanOptions options;
             options.wholeBlendMaps = false;
-            if (cookArray(layers, terrain::planDetailArray(layers, options)) < 0) return false;
+            if (cookArray(layers, terraincore::planDetailArray(layers, options)) < 0) return false;
         }
         auto terrains = sceneProject.scene->getComponentArray<TerrainComponent>();
         for (size_t t = 0; t < terrains->size(); t++) {
             const TerrainComponent& component = terrains->getComponentFromIndex(t);
             const std::span<const TerrainSurfaceLayer> layers(component.surfaceLayers.data(), std::min(component.surfaceLayers.size(), static_cast<size_t>(MAX_TERRAIN_LAYERS)));
-            if (cookArray(layers, terrain::planDetailArray(component)) < 0) return false;
+            if (cookArray(layers, terraincore::planDetailArray(component)) < 0) return false;
         }
     }
     for (const std::string& source : rawSources) cookedLayerSources.erase(source);

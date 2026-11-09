@@ -27,7 +27,7 @@
 #include <filesystem>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 namespace fs = std::filesystem;
 
 namespace jasperengine::editor::mcp {
@@ -352,12 +352,12 @@ Json foliageStatsJson(Project* project, SceneProject* sceneProject, Entity entit
                     cell.heightMap.mapWidth = cell.heightMap.width = heightFormat.bounds.w;
                     cell.heightMap.mapHeight = cell.heightMap.height = heightFormat.bounds.h;
                     cell.heightMap.channels = heightFormat.channels;
-                    cell.heightMap.bytesPerChannel = terrain::bytesPerChannelOf(heightFormat.bitsPerChannel);
+                    cell.heightMap.bytesPerChannel = terraincore::bytesPerChannelOf(heightFormat.bitsPerChannel);
                     cell.densityMap.texels = densityBytes.data();
                     cell.densityMap.mapWidth = cell.densityMap.width = densityFormat.bounds.w;
                     cell.densityMap.mapHeight = cell.densityMap.height = densityFormat.bounds.h;
                     cell.densityMap.channels = densityFormat.channels;
-                    cell.densityMap.bytesPerChannel = terrain::bytesPerChannelOf(densityFormat.bitsPerChannel);
+                    cell.densityMap.bytesPerChannel = terraincore::bytesPerChannelOf(densityFormat.bitsPerChannel);
                     if (!holeBytes.empty()) cell.holes = HoleMapView{holeBytes.data(), holeFormat.bounds.w, holeFormat.bounds.h};
                     placed.clear();
                     scatterFoliageCell(cell, placed);

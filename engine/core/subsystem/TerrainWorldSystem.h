@@ -23,7 +23,7 @@
 namespace jasperengine {
 
     struct TerrainWorldComponent;
-    namespace terrain {
+    namespace terraincore {
         class FoliageRegion;
     }
 
@@ -87,7 +87,7 @@ namespace jasperengine {
 
         // R27: T5's foliage, one region per resident tile
         struct FoliageTile {
-            std::shared_ptr<terrain::FoliageRegion> region;
+            std::shared_ptr<terraincore::FoliageRegion> region;
             uint32_t revision = 0;
         };
 

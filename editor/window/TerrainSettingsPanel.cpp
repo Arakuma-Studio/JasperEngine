@@ -45,21 +45,21 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using terrain::MapId;
-using terrain::MapKind;
+using terraincore::MapId;
+using terraincore::MapKind;
 
 namespace {
 
     // T1 R67: the window's rules as the paint_by_rules op Apply and Preview run
-    terrain::Op paintByRulesOp(const TerrainEditorSettings& ts, const TerrainComponent& terrain) {
-        terrain::Op op;
-        op.type = terrain::OpType::PaintByRules;
+    terraincore::Op paintByRulesOp(const TerrainEditorSettings& ts, const TerrainComponent& terrain) {
+        terraincore::Op op;
+        op.type = terraincore::OpType::PaintByRules;
         op.seed = static_cast<uint32_t>(ts.paintRulesSeed);
         for (const TerrainPaintRule& rule : ts.paintRules) {
-            terrain::PaintRule r;
+            terraincore::PaintRule r;
             r.layer = rule.layer;
-            if (rule.useSlope) r.slope = terrain::FilterRange{rule.slopeMin, rule.slopeMax};
-            if (rule.useHeight) r.height = terrain::FilterRange{rule.heightMin * terrain.maxHeight, rule.heightMax * terrain.maxHeight};
+            if (rule.useSlope) r.slope = terraincore::FilterRange{rule.slopeMin, rule.slopeMax};
+            if (rule.useHeight) r.height = terraincore::FilterRange{rule.heightMin * terrain.maxHeight, rule.heightMax * terrain.maxHeight};
             r.invert = rule.invert;
             r.opacity = rule.opacity;
             r.noise = rule.noise;
@@ -180,14 +180,14 @@ bool editor::TerrainEditWindow::setTerrainHeight(SceneProject* sceneProject, flo
     setTerrainProperty("maxHeight", height);
     if (keepWorldHeights && !terrain.heightMap.empty()){
         // the stored 0-1 heights rescale so each texel keeps its metres (clamped at the new top)
-        terrain::Op remap;
-        remap.type = terrain::OpType::RemapHeights;
-        remap.inRange = terrain::FilterRange{0.0f, height};
-        remap.outRange = terrain::FilterRange{0.0f, before};
-        const std::vector<terrain::Op> ops = {remap};
-        const terrain::TerrainOpResult preview = previewTerrainOps(project, sceneProject, selectedEntity, ops, terrain::OpOptions());
-        terrain::TerrainOpResult reported;
-        if (!preview.ok || !applyTerrainOpsWithUndo(project, sceneProject, selectedEntity, ops, terrain::OpOptions(), preview, "Terrain Height", reported, error)){
+        terraincore::Op remap;
+        remap.type = terraincore::OpType::RemapHeights;
+        remap.inRange = terraincore::FilterRange{0.0f, height};
+        remap.outRange = terraincore::FilterRange{0.0f, before};
+        const std::vector<terraincore::Op> ops = {remap};
+        const terraincore::TerrainOpResult preview = previewTerrainOps(project, sceneProject, selectedEntity, ops, terraincore::OpOptions());
+        terraincore::TerrainOpResult reported;
+        if (!preview.ok || !applyTerrainOpsWithUndo(project, sceneProject, selectedEntity, ops, terraincore::OpOptions(), preview, "Terrain Height", reported, error)){
             if (error.empty()) error = preview.error;
             while (history->position() > start && history->canUndo() && history->undo()){}
             return false;
@@ -259,7 +259,7 @@ void editor::TerrainEditWindow::drawSettingsTool(SceneProject* sceneProject, Ter
         for (size_t i = 0; i < terrain.blendMaps.size(); i++) maps.push_back({MapId{MapKind::Blend, static_cast<int>(i)}, "Blend Map " + std::to_string(i)});
         for (size_t i = 0; i < terrain.foliageLayers.size(); i++) maps.push_back({MapId{MapKind::Density, static_cast<int>(i)}, "Details " + std::to_string(i)});
         for (const auto& [map, name] : maps){
-            const terrain::MapFormat format = store.format(map);
+            const terraincore::MapFormat format = store.format(map);
             if (!format.exists) continue;
             settingsRow(name.c_str());
             Texture* texture = terrainMapTexture(terrain, map);
@@ -314,7 +314,7 @@ void editor::TerrainEditWindow::drawSettingsTool(SceneProject* sceneProject, Ter
     }
 
     if (Theme::foldoutHeader("Collision", ImGuiTreeNodeFlags_DefaultOpen) && settingsTableBegin("terrain_settings_collision")){
-        const terrain::MapFormat height = store.format(MapId{MapKind::Height, 0});
+        const terraincore::MapFormat height = store.format(MapId{MapKind::Height, 0});
         settingsRow("Samples");
         if (height.exists){
             const int samples = std::min(height.bounds.w, 1025);
@@ -336,11 +336,11 @@ void editor::TerrainEditWindow::drawSettingsTool(SceneProject* sceneProject, Ter
         if (ImGui::Checkbox("##allow_runtime_edits", &allow)) setTerrainProperty("allowRuntimeEdits", allow);
         double bytes = 0.0;
         for (const MapId& map : {MapId{MapKind::Height, 0}, MapId{MapKind::Hole, 0}}){
-            const terrain::MapFormat format = store.format(map);
+            const terraincore::MapFormat format = store.format(map);
             if (format.exists) bytes += static_cast<double>(format.bounds.area()) * format.channels * (format.bitsPerChannel / 8);
         }
         for (size_t i = 0; i < terrain.blendMaps.size(); i++){
-            const terrain::MapFormat format = store.format(MapId{MapKind::Blend, static_cast<int>(i)});
+            const terraincore::MapFormat format = store.format(MapId{MapKind::Blend, static_cast<int>(i)});
             if (format.exists) bytes += static_cast<double>(format.bounds.area()) * format.channels * (format.bitsPerChannel / 8);
         }
         settingsRow("Memory", "What the maps keep on the CPU for runtime edits.");
@@ -494,7 +494,7 @@ bool editor::TerrainEditWindow::importRawFile(SceneProject* sceneProject, std::s
     };
     TerrainComponent* terrain = &sceneProject->scene->getComponent<TerrainComponent>(selectedEntity);
     TerrainComponentStore store(sceneProject->scene, selectedEntity, *terrain);
-    const terrain::MapFormat format = store.format(MapId{MapKind::Height, 0});
+    const terraincore::MapFormat format = store.format(MapId{MapKind::Height, 0});
     // R61: another size is a new map (the structural path); the same size is a delta
     if (!format.exists || format.bounds.w != p.width || format.bounds.h != p.height){
         if (!createMapForTarget(TerrainMapTarget::HeightMap, p.width, p.height)){
@@ -506,15 +506,15 @@ bool editor::TerrainEditWindow::importRawFile(SceneProject* sceneProject, std::s
     if (importRaw.setHeightFromRange && importRaw.options.range == HeightRange::Source && importRaw.options.sourceMax > importRaw.options.sourceMin){
         setTerrainProperty("maxHeight", importRaw.options.sourceMax - importRaw.options.sourceMin);
     }
-    terrain::Op op;
-    op.type = terrain::OpType::ImportHeightmap;
+    terraincore::Op op;
+    op.type = terraincore::OpType::ImportHeightmap;
     op.importedWidth = p.width;
     op.importedHeight = p.height;
     op.importedHeights = p.normalized;
-    const std::vector<terrain::Op> ops = {op};
-    const terrain::TerrainOpResult preview = previewTerrainOps(project, sceneProject, selectedEntity, ops, terrain::OpOptions());
-    terrain::TerrainOpResult reported;
-    if (!preview.ok || !applyTerrainOpsWithUndo(project, sceneProject, selectedEntity, ops, terrain::OpOptions(), preview, "Import Heightmap", reported, error)){
+    const std::vector<terraincore::Op> ops = {op};
+    const terraincore::TerrainOpResult preview = previewTerrainOps(project, sceneProject, selectedEntity, ops, terraincore::OpOptions());
+    terraincore::TerrainOpResult reported;
+    if (!preview.ok || !applyTerrainOpsWithUndo(project, sceneProject, selectedEntity, ops, terraincore::OpOptions(), preview, "Import Heightmap", reported, error)){
         if (error.empty()) error = preview.error;
         rollback();
         return false;
@@ -554,7 +554,7 @@ void editor::TerrainEditWindow::drawExportRawDialog(SceneProject* sceneProject, 
         if (!chosen.empty()){
             TerrainComponentStore store(sceneProject->scene, selectedEntity, terrain);
             const MapId heightMap{MapKind::Height, 0};
-            const terrain::MapFormat format = store.format(heightMap);
+            const terraincore::MapFormat format = store.format(heightMap);
             std::vector<float> heights(static_cast<size_t>(format.bounds.area()));
             store.read(heightMap, format.bounds, heights);
             std::string error;
@@ -602,7 +602,7 @@ void editor::TerrainEditWindow::drawInfoPanel(SceneProject* sceneProject, Terrai
         ImGui::TextDisabled("Point at the terrain in the Scene view.");
         return;
     }
-    const terrain::SurfaceSample sample = querySurface(terrain, infoLocal.x, infoLocal.z);
+    const terraincore::SurfaceSample sample = querySurface(terrain, infoLocal.x, infoLocal.z);
     const Vector3 world = terrainWorldPlacement(sceneProject->scene, selectedEntity).model * Vector3(infoLocal.x, sample.height, infoLocal.z);
     if (!settingsTableBegin("terrain_info")) return;
     settingsRow("Position");
@@ -615,7 +615,7 @@ void editor::TerrainEditWindow::drawInfoPanel(SceneProject* sceneProject, Terrai
     ImGui::TextUnformatted(sample.hole ? "Yes" : "No");
 
     TerrainComponentStore store(sceneProject->scene, selectedEntity, terrain);
-    const terrain::MapFormat height = store.format(MapId{MapKind::Height, 0});
+    const terraincore::MapFormat height = store.format(MapId{MapKind::Height, 0});
     if (height.exists){
         const Vector2 texel = store.texelOfWorld(MapId{MapKind::Height, 0}, infoLocal.x, infoLocal.z);
         const float size = height.bounds.w > 1 ? terrain.terrainSize / static_cast<float>(height.bounds.w - 1) : 0.0f;
@@ -630,15 +630,15 @@ void editor::TerrainEditWindow::drawInfoPanel(SceneProject* sceneProject, Terrai
     float total = 0.0f;
     std::vector<float> texel(4);
     for (int l = 0; l < static_cast<int>(terrain.surfaceLayers.size()); l++){
-        const terrain::LayerChannel channel = terrain::terrainLayerChannel(l);
+        const terraincore::LayerChannel channel = terraincore::terrainLayerChannel(l);
         const MapId blend{MapKind::Blend, channel.map};
-        const terrain::MapFormat format = store.format(blend);
+        const terraincore::MapFormat format = store.format(blend);
         if (!format.exists) continue;
         const Vector2 at = store.texelOfWorld(blend, infoLocal.x, infoLocal.z);
         const int bx = std::clamp(static_cast<int>(std::lround(at.x)), 0, format.bounds.w - 1);
         const int by = std::clamp(static_cast<int>(std::lround(at.y)), 0, format.bounds.h - 1);
         texel.assign(static_cast<size_t>(format.channels), 0.0f);
-        store.read(blend, terrain::TexelRect{bx, by, 1, 1}, texel);
+        store.read(blend, terraincore::TexelRect{bx, by, 1, 1}, texel);
         const float value = channel.inverted ? 1.0f - texel[channel.channel] : texel[channel.channel];
         weights.push_back({value, l});
         total += value;
@@ -655,13 +655,13 @@ void editor::TerrainEditWindow::drawInfoPanel(SceneProject* sceneProject, Terrai
     }
     if (selectedFoliageLayer >= 0 && selectedFoliageLayer < static_cast<int>(terrain.foliageLayers.size())){
         const MapId density{MapKind::Density, selectedFoliageLayer};
-        const terrain::MapFormat format = store.format(density);
+        const terraincore::MapFormat format = store.format(density);
         if (format.exists){
             const Vector2 at = store.texelOfWorld(density, infoLocal.x, infoLocal.z);
             const int dx = std::clamp(static_cast<int>(std::lround(at.x)), 0, format.bounds.w - 1);
             const int dy = std::clamp(static_cast<int>(std::lround(at.y)), 0, format.bounds.h - 1);
             texel.assign(static_cast<size_t>(format.channels), 0.0f);
-            store.read(density, terrain::TexelRect{dx, dy, 1, 1}, texel);
+            store.read(density, terraincore::TexelRect{dx, dy, 1, 1}, texel);
             settingsRow("Details");
             ImGui::ProgressBar(texel[0], ImVec2(-1.0f, 0.0f));
         }
@@ -743,19 +743,19 @@ void editor::TerrainEditWindow::drawPaintByRules(SceneProject* sceneProject, Ter
     if (ImGui::Button("Apply")){
         TerrainOverlay::clearPreview(sceneProject->scene, selectedEntity);
         paintRulesPreview = false;
-        const terrain::Op op = paintByRulesOp(ts, terrain);
-        const std::vector<terrain::Op> ops = {op};
-        terrain::OpOptions options;
+        const terraincore::Op op = paintByRulesOp(ts, terrain);
+        const std::vector<terraincore::Op> ops = {op};
+        terraincore::OpOptions options;
         options.newMapResolution = blendMapResolution;
-        const terrain::TerrainOpResult preview = previewTerrainOps(project, sceneProject, selectedEntity, ops, options);
+        const terraincore::TerrainOpResult preview = previewTerrainOps(project, sceneProject, selectedEntity, ops, options);
         CommandHistory* history = CommandHandle::get(sceneProject->id);
         const size_t start = history->mark();
-        terrain::TerrainOpResult reported;
+        terraincore::TerrainOpResult reported;
         std::string error;
         if (preview.ok && applyTerrainOpsWithUndo(project, sceneProject, selectedEntity, ops, options, preview, "Paint by Rules", reported, error)){
             history->groupSince(start, "Paint by Rules");
             int64_t texels = 0;
-            for (const terrain::MapChangeReport& change : reported.changed) texels += change.texels;
+            for (const terraincore::MapChangeReport& change : reported.changed) texels += change.texels;
             paintRulesMessage = "Painted " + std::to_string(texels) + " texels.";
         }else{
             while (history->position() > start && history->canUndo() && history->undo()){}
@@ -769,22 +769,22 @@ void editor::TerrainEditWindow::drawPaintByRules(SceneProject* sceneProject, Ter
     }
 }
 
-bool editor::TerrainEditWindow::previewPaintByRules(Project* project, SceneProject* sceneProject, Entity entity, const terrain::Op& op,
+bool editor::TerrainEditWindow::previewPaintByRules(Project* project, SceneProject* sceneProject, Entity entity, const terraincore::Op& op,
                                                      int newMapResolution, std::string& error){
     std::shared_ptr<TerrainOpsSnapshot> snapshot = snapshotTerrainMaps(project, sceneProject, entity);
     if (!snapshot || !snapshot->overlay){
         error = "The terrain's maps could not be copied.";
         return false;
     }
-    terrain::OpOptions options;
+    terraincore::OpOptions options;
     options.newMapResolution = newMapResolution;
-    const terrain::TerrainOpResult result = terrain::applyOps(*snapshot->overlay, std::span<const terrain::Op>(&op, 1), options);
+    const terraincore::TerrainOpResult result = terraincore::applyOps(*snapshot->overlay, std::span<const terraincore::Op>(&op, 1), options);
     if (!result.ok){
         error = result.error;
         return false;
     }
     // the overlay keeps the copy alive as long as it shows it
-    TerrainOverlay::setPreview(sceneProject->scene, entity, std::shared_ptr<const terrain::TerrainMapStore>(snapshot, snapshot->overlay.get()));
+    TerrainOverlay::setPreview(sceneProject->scene, entity, std::shared_ptr<const terraincore::TerrainMapStore>(snapshot, snapshot->overlay.get()));
     return true;
 }
 

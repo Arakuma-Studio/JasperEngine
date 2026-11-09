@@ -66,8 +66,8 @@ namespace jasperengine::editor{
 
         // The Slope Filter (T1 R66): texels outside it keep what they had. Paint Texture's alone,
         // unless allMaps (All Tools); an inverted range keeps what is outside it
-        std::optional<terrain::FilterRange> slope;      // degrees
-        std::optional<terrain::FilterRange> height;     // terrain-local
+        std::optional<terraincore::FilterRange> slope;      // degrees
+        std::optional<terraincore::FilterRange> height;     // terrain-local
         bool filterAllMaps = false;
         bool invertSlope = false;
         bool invertHeight = false;

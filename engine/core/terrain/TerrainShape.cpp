@@ -11,9 +11,9 @@
 #include <cstring>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
-MapLattice jasperengine::terrain::latticeOf(const TerrainMapStore& store, MapId map, const MapFormat& format) {
+MapLattice jasperengine::terraincore::latticeOf(const TerrainMapStore& store, MapId map, const MapFormat& format) {
     MapLattice lattice;
     const TexelRect& b = format.bounds;
     lattice.baseX = b.x;
@@ -27,7 +27,7 @@ MapLattice jasperengine::terrain::latticeOf(const TerrainMapStore& store, MapId 
     return lattice;
 }
 
-LocalBounds jasperengine::terrain::localBoundsOf(const MapLattice& lattice, const MapFormat& format) {
+LocalBounds jasperengine::terraincore::localBoundsOf(const MapLattice& lattice, const MapFormat& format) {
     LocalBounds result;
     const float halfX = std::fabs(lattice.stepX) * 0.5f;
     const float halfZ = std::fabs(lattice.stepZ) * 0.5f;
@@ -261,7 +261,7 @@ float ShapeEvaluator::characteristicRadius() const {
     return 0.0f;
 }
 
-TexelRect jasperengine::terrain::shapeTexels(const TerrainMapStore& store, MapId map, const MapFormat& format, const ShapeEvaluator& evaluator, int64_t* rawArea) {
+TexelRect jasperengine::terraincore::shapeTexels(const TerrainMapStore& store, MapId map, const MapFormat& format, const ShapeEvaluator& evaluator, int64_t* rawArea) {
     LocalBounds local;
     if (!evaluator.bounds(local)) {
         if (rawArea) *rawArea = format.bounds.area();
@@ -286,7 +286,7 @@ TexelRect jasperengine::terrain::shapeTexels(const TerrainMapStore& store, MapId
     return TexelRect{static_cast<int>(left), static_cast<int>(top), static_cast<int>(right - left), static_cast<int>(bottom - top)};
 }
 
-float jasperengine::terrain::softRange(float value, float low, float high, float softness) {
+float jasperengine::terraincore::softRange(float value, float low, float high, float softness) {
     if (!(value >= low && value <= high)) return 0.0f;
     if (softness <= 0.0f) return 1.0f;
     const float band = (high - low) * 0.5f * detClamp01(softness);
@@ -294,7 +294,7 @@ float jasperengine::terrain::softRange(float value, float low, float high, float
     return detSmoothstep(low, low + band, value) * detSmoothstep(high, high - band, value);
 }
 
-float jasperengine::terrain::softSlope(float normalY, float minDegrees, float maxDegrees, float softness) {
+float jasperengine::terraincore::softSlope(float normalY, float minDegrees, float maxDegrees, float softness) {
     // Steeper is a smaller cosine, so the range turns over
     const float cosLow = minDegrees <= 0.0f ? 1.0f : detCos(detRadians(minDegrees));
     const float cosHigh = maxDegrees >= 90.0f ? 0.0f : detCos(detRadians(maxDegrees));
@@ -307,7 +307,7 @@ float jasperengine::terrain::softSlope(float normalY, float minDegrees, float ma
     return detSmoothstep(cosLow, cosLowInner, normalY) * detSmoothstep(cosHigh, cosHighInner, normalY);
 }
 
-float jasperengine::terrain::sampleWindow(const HeightWindow& window, float x, float z) {
+float jasperengine::terraincore::sampleWindow(const HeightWindow& window, float x, float z) {
     float texelX = static_cast<float>(window.lattice.baseX) + (x - window.lattice.originX) * window.invStepX;
     float texelY = static_cast<float>(window.lattice.baseY) + (z - window.lattice.originZ) * window.invStepZ;
     // clamp to the map's edge, the sampler's rule
@@ -341,7 +341,7 @@ namespace {
 
 }
 
-void jasperengine::terrain::evaluateFilter(const TerrainMapStore& store, const Filter& filter, const MapLattice& lattice, TexelRect block,
+void jasperengine::terraincore::evaluateFilter(const TerrainMapStore& store, const Filter& filter, const MapLattice& lattice, TexelRect block,
                                            std::span<float> weights, MapReader reader, void* readerUser) {
     std::fill(weights.begin(), weights.end(), 1.0f);
     if (!filter.active() || block.empty()) return;

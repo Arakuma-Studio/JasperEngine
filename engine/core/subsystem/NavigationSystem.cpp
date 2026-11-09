@@ -2491,7 +2491,7 @@ bool NavigationSystem::rebuildGrid(Entity grid, std::string& error) {
                     continue;
                 }
                 // heights at the cell centre (spec risk table: hex cells too)
-                const terrain::SurfaceSample sample = querySurface(*terrain, local.x, local.z);
+                const terraincore::SurfaceSample sample = querySurface(*terrain, local.x, local.z);
                 const Vector3 surfaceWorld = terrainTransform->modelMatrix * Vector3(local.x, sample.height, local.z);
                 map->setHeight(cell, frame.toNav(surfaceWorld).y);
                 if (!map->getOverride(cell)) {

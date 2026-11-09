@@ -232,7 +232,7 @@ namespace {
 #if JASPERENGINE_TERRAIN_WORLD
             // T4 R4: a World translates only, over the box of its tiles
             if (terrain->world && terrain->world->started()) {
-                jasperengine::terrain::TileCoord low, high;
+                jasperengine::terraincore::TileCoord low, high;
                 if (terrain->world->occupancy().bounds(low, high)) {
                     const float size = terrain->world->lattice().tileSize();
                     const Vector3& at = transform->worldPosition;
@@ -1582,13 +1582,13 @@ struct PlacementWorld::Impl {
     void addWorldChunks(Entity entity, TerrainComponent& terrainComponent, const AABB& region, std::vector<JPH::BodyID>& added) {
         TerrainWorldRuntime* runtime = terrainComponent.world;
         Transform* transform = scene->findComponent<Transform>(entity);
-        terrain::TileCoord low, high;
+        terraincore::TileCoord low, high;
         if (!runtime || !runtime->started() || !transform || !runtime->occupancy().bounds(low, high)) return;
         resolveTransform(scene, entity);
-        const terrain::WorldLattice& lattice = runtime->lattice();
+        const terraincore::WorldLattice& lattice = runtime->lattice();
         const TerrainWorldComponent* component = scene->findComponent<TerrainWorldComponent>(entity);
         const int wanted = component ? component->collisionChunkQuads : 64;
-        const int quads = std::clamp(terrain::isPowerOfTwo(wanted) ? wanted : 64, 32, lattice.tileQuads);
+        const int quads = std::clamp(terraincore::isPowerOfTwo(wanted) ? wanted : 64, 32, lattice.tileQuads);
         const int perTile = lattice.tileQuads / quads;
         const float chunkSize = static_cast<float>(quads) * lattice.spacing;
         const float tileSize = lattice.tileSize();
@@ -1603,7 +1603,7 @@ struct PlacementWorld::Impl {
         JPH::BodyInterface& bi = bodyInterface();
         for (int gz = static_cast<int>(std::floor(minZ / chunkSize)); gz <= static_cast<int>(std::floor(maxZ / chunkSize)); gz++) {
             for (int gx = static_cast<int>(std::floor(minX / chunkSize)); gx <= static_cast<int>(std::floor(maxX / chunkSize)); gx++) {
-                const terrain::TileCoord tile(terrain::floorDiv(gx, perTile), terrain::floorDiv(gz, perTile));
+                const terraincore::TileCoord tile(terraincore::floorDiv(gx, perTile), terraincore::floorDiv(gz, perTile));
                 const int cx = gx - tile.x * perTile, cz = gz - tile.z * perTile;
                 if (!tile.addressable() || !runtime->occupancy().present(tile)) continue;
                 const uint64_t key = (static_cast<uint64_t>(tile.key()) << 32) | (static_cast<uint64_t>(static_cast<uint16_t>(cx)) << 16) | static_cast<uint16_t>(cz);

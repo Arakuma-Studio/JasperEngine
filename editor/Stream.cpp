@@ -2799,8 +2799,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // T3 R51: only a project that says; an old one writes no key and stays High everywhere
         if (project->isTerrainQualityWritten()){
             YAML::Node terrainTiers;
-            for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++){
-                terrainTiers[Project::getShadowTierPlatformName(platform)] = terrain::terrainQualityName(project->getTerrainQualityTier(platform));
+            for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++){
+                terrainTiers[Project::getShadowTierPlatformName(platform)] = terraincore::terrainQualityName(project->getTerrainQualityTier(platform));
             }
             graphics["terrainQuality"] = terrainTiers;
         }
@@ -3582,12 +3582,12 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         const YAML::Node graphics = node["graphics"];
         const bool written = graphics && graphics.IsMap() && graphics["terrainQuality"] && graphics["terrainQuality"].IsMap();
         project->setTerrainQualityWritten(written);
-        for (int platform = 0; platform < terrain::TerrainQualitySettings::PLATFORM_COUNT; platform++){
-            terrain::TerrainQuality tier = terrain::TerrainQuality::HIGH;
+        for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++){
+            terraincore::TerrainQuality tier = terraincore::TerrainQuality::HIGH;
             if (written){
                 const YAML::Node value = graphics["terrainQuality"][Project::getShadowTierPlatformName(platform)];
                 if (value && value.IsScalar())
-                    terrain::terrainQualityFromName(value.Scalar().c_str(), tier);
+                    terraincore::terrainQualityFromName(value.Scalar().c_str(), tier);
             }
             project->setTerrainQualityTier(platform, tier);
         }

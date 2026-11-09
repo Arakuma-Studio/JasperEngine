@@ -27,7 +27,7 @@ namespace jasperengine {
     class NavigationSystem;
     class Scene;
     class TerrainWorldRuntime;
-    namespace terrain {
+    namespace terraincore {
         struct WorldTile;
     }
 
@@ -39,7 +39,7 @@ namespace jasperengine::nav {
     constexpr int MAX_UNBOUNDED_WORLD_TILES = 64;
 
     struct NavWorldHeld {
-        std::shared_ptr<const terrain::WorldTile> data;
+        std::shared_ptr<const terraincore::WorldTile> data;
         // the runtime's revision of the tile when it was taken: an edit since takes it again
         uint32_t revision = 0;
     };

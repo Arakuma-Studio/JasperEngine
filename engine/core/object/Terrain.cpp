@@ -308,22 +308,22 @@ bool Terrain::isEnabled() const{
 // ---------------------------------------------------------------- T3 R48
 
 namespace {
-    terrain::TerrainQualityResolved resolvedTierOf(const TerrainComponent& component){
-        terrain::TerrainQualityRequest request;
-        terrain::TerrainQuality forced;
-        if (terrain::TerrainQualitySettings::getEditorPreview(forced)){
+    terraincore::TerrainQualityResolved resolvedTierOf(const TerrainComponent& component){
+        terraincore::TerrainQualityRequest request;
+        terraincore::TerrainQuality forced;
+        if (terraincore::TerrainQualitySettings::getEditorPreview(forced)){
             request.hasPreview = true;
             request.preview = forced;
-        }else if (terrain::TerrainQualitySettings::getGlobalOverride(forced)){
+        }else if (terraincore::TerrainQualitySettings::getGlobalOverride(forced)){
             request.hasOverride = true;
             request.globalOverride = forced;
         }
-        const terrain::TerrainVariantInputs variant = getTerrainVariantInputs(component);
+        const terraincore::TerrainVariantInputs variant = getTerrainVariantInputs(component);
         request.hasComponent = variant.hasComponentQuality;
         request.component = variant.componentQuality;
-        request.project = terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
-        request.shippedMask = terrain::TerrainQualitySettings::getShippedMask();
-        return terrain::resolveTerrainQuality(request);
+        request.project = terraincore::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
+        request.shippedMask = terraincore::TerrainQualitySettings::getShippedMask();
+        return terraincore::resolveTerrainQuality(request);
     }
 }
 
@@ -353,7 +353,7 @@ JE_TERRAIN_FIELD(bool, setMacroNormal, isMacroNormal, macroNormal)
 #undef JE_TERRAIN_FIELD
 
 std::string Terrain::getEffectiveQuality() const{
-    return terrain::terrainQualityName(resolvedTierOf(getComponent<TerrainComponent>()).quality);
+    return terraincore::terrainQualityName(resolvedTierOf(getComponent<TerrainComponent>()).quality);
 }
 
 void Terrain::setHoleMap(const std::string& path){

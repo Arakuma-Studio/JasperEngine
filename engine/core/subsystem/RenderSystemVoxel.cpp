@@ -119,10 +119,10 @@ RenderSystem::VoxelDetailArray* RenderSystem::getVoxelDetailArray(Entity owner, 
     // R50: T3's builder over the slots' layers, so a volume's array has the terrain's formats, cooked
     // slices and height in colour alpha; no surface slices at Low
     const std::vector<TerrainSurfaceLayer> layers = voxelSlotLayers(scene, *volume);
-    terrain::DetailPlanOptions planOptions;
+    terraincore::DetailPlanOptions planOptions;
     planOptions.surfaceSlices = tier != 3;
     planOptions.wholeBlendMaps = false;
-    const terrain::DetailPlan plan = terrain::planDetailArray(layers, planOptions);
+    const terraincore::DetailPlan plan = terraincore::planDetailArray(layers, planOptions);
     if (!plan.anySource) return nullptr;
 
     auto found = voxelDetailArrays.find(owner);
@@ -150,10 +150,10 @@ RenderSystem::VoxelDetailArray* RenderSystem::getVoxelDetailArray(Entity owner, 
     entry.failed = true;
 
     const int cap = maxArraySize(tier);
-    terrain::DetailBuildOptions options;
+    terraincore::DetailBuildOptions options;
     options.maxSize = cap;
-    terrain::DetailPixels pixels;
-    if (!terrain::loadCookedDetailArray(plan, cap, pixels) && !terrain::buildDetailPixels(layers, plan, options, pixels)) return nullptr;
+    terraincore::DetailPixels pixels;
+    if (!terraincore::loadCookedDetailArray(plan, cap, pixels) && !terraincore::buildDetailPixels(layers, plan, options, pixels)) return nullptr;
     std::vector<TextureLevel> levels(pixels.levels.size());
     for (size_t level = 0; level < pixels.levels.size(); level++) {
         levels[level].width = pixels.levelWidths[level];

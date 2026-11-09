@@ -36,12 +36,12 @@ namespace jasperengine::editor{
         // While set, the last fill leaves the hole map in place, all solid: edit_terrain removes it as
         // a structural step of its own, which its undo can put back
         void setKeepsMaps(bool keeps) { keepsMaps = keeps; }
-        bool canRemoveMap(terrain::MapId map) const override { return !keepsMaps && TerrainComponentStore::canRemoveMap(map); }
+        bool canRemoveMap(terraincore::MapId map) const override { return !keepsMaps && TerrainComponentStore::canRemoveMap(map); }
 
-        terrain::WriteResult write(terrain::MapId map, terrain::TexelRect rect, std::span<const float> in) override;
-        terrain::WriteResult writeBytes(terrain::MapId map, terrain::TexelRect rect, std::span<const uint8_t> in) override;
-        terrain::WriteResult createMap(terrain::MapId map, terrain::MapFormat format, float fill) override;
-        void takeDirty(std::vector<std::pair<terrain::MapId, terrain::TexelRect>>& out) override;
+        terraincore::WriteResult write(terraincore::MapId map, terraincore::TexelRect rect, std::span<const float> in) override;
+        terraincore::WriteResult writeBytes(terraincore::MapId map, terraincore::TexelRect rect, std::span<const uint8_t> in) override;
+        terraincore::WriteResult createMap(terraincore::MapId map, terraincore::MapFormat format, float fill) override;
+        void takeDirty(std::vector<std::pair<terraincore::MapId, terraincore::TexelRect>>& out) override;
 
     private:
         struct Sharer{
@@ -49,18 +49,18 @@ namespace jasperengine::editor{
             Entity entity = NULL_ENTITY;
         };
         struct Sharing{
-            terrain::MapId map;
+            terraincore::MapId map;
             std::vector<Sharer> others;
         };
 
         void afterEdit();
-        const std::vector<Sharer>& sharersOf(terrain::MapId map);
+        const std::vector<Sharer>& sharersOf(terraincore::MapId map);
 
         Project* project;
         uint32_t sceneId;
         // held while stroking: a stroke's end reaches the state whatever became of the component
         std::shared_ptr<TerrainEditState> strokeState;
-        std::vector<std::pair<terrain::MapId, terrain::TexelRect>> edits;
+        std::vector<std::pair<terraincore::MapId, terraincore::TexelRect>> edits;
         std::vector<Sharing> sharing;
         bool keepsMaps = false;
     };

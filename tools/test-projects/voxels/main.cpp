@@ -158,6 +158,7 @@ JASPERENGINE_INIT void init(){
     volume.quality = VoxelQuality::Low;
     VoxelMaterialSlot slot;
     slot.name = "ground";
+    slot.layer.pbr = true;      // a slot's tint applies on a PBR slot alone, as on a Terrain Layer
     slot.layer.colorFactor = Vector3(0.45f, 0.40f, 0.30f);
     volume.materialSlots.push_back(slot);
     volume.focus = sceneCamera.getEntity();

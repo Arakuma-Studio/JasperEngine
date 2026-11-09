@@ -40,7 +40,7 @@ namespace {
         // A step that changed the map in memory
         void commitEdit(float delta = 3.0f) {
             EditorTerrainStore store(project.get(), scene->id, scene->scene, terrainEntity, terrain());
-            terrain::OverlayMapStore overlay(store);
+            terraincore::OverlayMapStore overlay(store);
             ASSERT_TRUE(runOn(overlay, raiseOp(delta)).ok);
             auto* step = new TerrainMapDeltaCmd(project.get(), scene->id, terrainEntity, terrainEntity, overlay, false);
             overlay.discard();
@@ -104,7 +104,7 @@ TEST_F(TerrainMapPersistenceTest, AStrokeHoldsTheFile) {
     {
         EditorTerrainStore store(project.get(), scene->id, scene->scene, terrainEntity, terrain());
         store.beginStroke();
-        terrain::OverlayMapStore overlay(store);
+        terraincore::OverlayMapStore overlay(store);
         ASSERT_TRUE(runOn(overlay, raiseOp(2.0f)).ok);
         ASSERT_TRUE(overlay.flushToBase().ok);
         ASSERT_EQ(persistence.pendingCount(), 1u);

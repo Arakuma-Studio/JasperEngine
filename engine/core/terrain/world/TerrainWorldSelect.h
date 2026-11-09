@@ -17,7 +17,7 @@
 #include <functional>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     // Which tiles are present, with their min and max, as a dense pyramid over the addressable grid
     // (D4's world min/max pyramid above T). Level 0 is a tile.

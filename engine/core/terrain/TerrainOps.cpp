@@ -20,7 +20,7 @@
 #include <mutex>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -1754,14 +1754,14 @@ namespace {
 
 }
 
-const char* jasperengine::terrain::opTypeName(OpType type) {
+const char* jasperengine::terraincore::opTypeName(OpType type) {
     for (const OpNameRow& row : OP_NAMES) {
         if (row.type == type) return row.name;
     }
     return nullptr;
 }
 
-bool jasperengine::terrain::opTypeFromName(std::string_view name, OpType& out) {
+bool jasperengine::terraincore::opTypeFromName(std::string_view name, OpType& out) {
     for (const OpNameRow& row : OP_NAMES) {
         if (name == row.name) {
             out = row.type;
@@ -1771,7 +1771,7 @@ bool jasperengine::terrain::opTypeFromName(std::string_view name, OpType& out) {
     return false;
 }
 
-bool jasperengine::terrain::registerOp(std::string_view name, OpValidateFn validate, OpApplyFn apply, RegisteredOpTraits traits) {
+bool jasperengine::terraincore::registerOp(std::string_view name, OpValidateFn validate, OpApplyFn apply, RegisteredOpTraits traits) {
     OpType builtin;
     if (opTypeFromName(name, builtin)) return false;
     std::lock_guard<std::mutex> lock(registryMutex());
@@ -1787,23 +1787,23 @@ bool jasperengine::terrain::registerOp(std::string_view name, OpValidateFn valid
     return true;
 }
 
-bool jasperengine::terrain::registeredOpExists(std::string_view name) {
+bool jasperengine::terraincore::registeredOpExists(std::string_view name) {
     RegisteredOp found;
     return findRegistered(name, found);
 }
 
-bool jasperengine::terrain::registeredOpSpansFrames(std::string_view name) {
+bool jasperengine::terraincore::registeredOpSpansFrames(std::string_view name) {
     RegisteredOp found;
     return findRegistered(name, found) && found.traits.spansFrames;
 }
 
-void jasperengine::terrain::unregisterOp(std::string_view name) {
+void jasperengine::terraincore::unregisterOp(std::string_view name) {
     std::lock_guard<std::mutex> lock(registryMutex());
     std::vector<RegisteredOp>& ops = registry();
     ops.erase(std::remove_if(ops.begin(), ops.end(), [&](const RegisteredOp& op) { return op.name == name; }), ops.end());
 }
 
-TerrainOpResult jasperengine::terrain::validateOps(const TerrainMapStore& store, std::span<const Op> ops) {
+TerrainOpResult jasperengine::terraincore::validateOps(const TerrainMapStore& store, std::span<const Op> ops) {
     TerrainOpResult result;
     result.ok = true;
     for (size_t i = 0; i < ops.size(); i++) {
@@ -1814,7 +1814,7 @@ TerrainOpResult jasperengine::terrain::validateOps(const TerrainMapStore& store,
     return result;
 }
 
-TerrainOpResult jasperengine::terrain::applyOps(TerrainMapStore& store, std::span<const Op> ops, const OpOptions& options) {
+TerrainOpResult jasperengine::terraincore::applyOps(TerrainMapStore& store, std::span<const Op> ops, const OpOptions& options) {
     TerrainOpResult result = validateOps(store, ops);
     result.dryRun = options.dryRun;
     if (!result.ok) return result;
@@ -1882,7 +1882,7 @@ TerrainOpResult jasperengine::terrain::applyOps(TerrainMapStore& store, std::spa
     return result;
 }
 
-TerrainOpResult jasperengine::terrain::setHeights(TerrainMapStore& store, TexelRect rect, std::span<const float> localHeights) {
+TerrainOpResult jasperengine::terraincore::setHeights(TerrainMapStore& store, TexelRect rect, std::span<const float> localHeights) {
     const float maxHeight = store.frame().maxHeight;
     const float toNormalized = maxHeight != 0.0f ? 1.0f / maxHeight : 0.0f;
     std::vector<float> normalized(localHeights.size());
@@ -1894,7 +1894,7 @@ TerrainOpResult jasperengine::terrain::setHeights(TerrainMapStore& store, TexelR
     return batch.commit();
 }
 
-TerrainOpResult jasperengine::terrain::applyField(TerrainMapStore& store, MapId map, TexelRect rect, FieldFn field, void* user) {
+TerrainOpResult jasperengine::terraincore::applyField(TerrainMapStore& store, MapId map, TexelRect rect, FieldFn field, void* user) {
     TerrainOpResult result;
     const MapFormat format = store.format(map);
     if (!format.exists) {
@@ -1967,7 +1967,7 @@ TerrainOpResult jasperengine::terrain::applyField(TerrainMapStore& store, MapId 
     return result;
 }
 
-uint64_t jasperengine::terrain::mapHash(const TerrainMapStore& store, MapId map) {
+uint64_t jasperengine::terraincore::mapHash(const TerrainMapStore& store, MapId map) {
     const MapFormat format = store.format(map);
     uint64_t hash = FNV1A64_SEED;
     if (!format.exists) return hash;
@@ -1979,7 +1979,7 @@ uint64_t jasperengine::terrain::mapHash(const TerrainMapStore& store, MapId map)
     return hash;
 }
 
-void jasperengine::terrain::encodeLayerWeights(std::span<const int> layers, std::span<const float> values, std::span<float> perLayer) {
+void jasperengine::terraincore::encodeLayerWeights(std::span<const int> layers, std::span<const float> values, std::span<float> perLayer) {
     std::fill(perLayer.begin(), perLayer.end(), 0.0f);
     float sum = 0.0f;
     bool hasLayerZero = false;

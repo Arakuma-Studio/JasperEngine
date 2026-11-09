@@ -205,7 +205,7 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
 
 ### Functional — the operation engine (D1, D4)
 
-- **R1** `engine/core/terrain/` holds the engine, namespace `jasperengine::terrain`, with no ECS,
+- **R1** `engine/core/terrain/` holds the engine, namespace `jasperengine::terraincore`, with no ECS,
   render or editor includes (only `math/`, `jobs/`, the standard library, and the `noise/` headers T2 R36
   and N8 name for `noise::compat` and `HeightfieldErosion`).
   `TerrainOpsDeps.NoEcsOrRenderIncludes` enforces it by reading the folder's includes (the
@@ -681,7 +681,7 @@ here win where theirs were assumptions (each of them says so).
   the rectangle is larger than that block. With a non-null `beginLarge` token, `applyOps` works block
   by block straight on the store and the token holds undo (T4 R30); with a null token it uses the
   overlay, which holds only touched tiles. Both give the same bytes.
-- **R88** `terrain::Batch` is the absolute write route for generators (T2 N9): `Batch batch(store)`,
+- **R88** `terraincore::Batch` is the absolute write route for generators (T2 N9): `Batch batch(store)`,
   `setHeights(rect, normalized)`, `setLayerWeights(rect, layers, weights)`, `setDensity(rect,
   foliageLayer, values)`, `readHeights(rect, out)`, `commit()` returning `TerrainOpResult`, or
   `discard()`. Its `setLayerWeights` is the single encoder of layer weights: clamp 0..1, normalize a
@@ -764,7 +764,7 @@ here win where theirs were assumptions (each of them says so).
   not lost to rounding (the reason at `TerrainEditWindow.h:135-137`), per touched tile instead of per
   map. Height goes through normalized floats, lossless for R8 and R16 in a 32-bit float.
 - **DC3 The hole seam.** D7 gives T3 the representation and T3 R18 fixes it: `holeMap`, R8, 0 =
-  hole, 255 = solid. T1 runs the ops through `terrain::rasterizeRegion` (`TerrainHoles.h`) against `MapKind::Hole`
+  hole, 255 = solid. T1 runs the ops through `terraincore::rasterizeRegion` (`TerrainHoles.h`) against `MapKind::Hole`
   with values 0 and 255 only (T3 D5). T1's foundation lands first (§8), so T1 creates the field
   and a minimal `TerrainHoles` to T3's definitions (R92) and T3 extends them. Nothing draws a hole
   until T3's consumers land, which the warning says.
@@ -944,7 +944,7 @@ The last three columns give one mesh quad per heightmap texel at the finest leve
 
 ```cpp
 // engine/core/terrain/TerrainMapStore.h
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
     enum class MapKind : uint8_t { Height, Blend, Hole, Density };
     struct MapId { MapKind kind = MapKind::Height; int index = 0; };  // Blend: blend map, Density: foliage layer
     struct TexelRect { int x = 0, y = 0, w = 0, h = 0; };             // signed origin (T4), w and h >= 0
@@ -979,7 +979,7 @@ namespace jasperengine::terrain {
 }
 
 // engine/core/terrain/TerrainOps.h
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
     struct Shape { /* type, center, radius, min, max, points, mask pixels, size, rotation, falloff, feather, spacing */ };
     struct Filter { /* slope, height, layer ranges, invert, softness */ };
     struct Op { OpType type; Shape shape; Filter filter; /* the Table 1 fields */ };
@@ -995,7 +995,7 @@ namespace jasperengine::terrain {
 }
 
 // engine/core/terrain/TerrainSurface.h
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
     struct SurfaceView { const uint8_t* pixels; int width, height, channels, bytesPerChannel; float size, maxHeight;
                          HoleMapView holes; };                                         // T3's view (TerrainHoles.h)
     struct SurfaceSample { float height; Vector3 normal; bool hole, inside, present, exact; };
@@ -1014,11 +1014,11 @@ namespace jasperengine::terrain {
 
 // engine/core/object/TerrainEdit.h
 namespace jasperengine {
-    terrain::SurfaceSample querySurface(TerrainComponent& terrain, float localX, float localZ);   // R14; T4 adds its branch here
+    terraincore::SurfaceSample querySurface(TerrainComponent& terrain, float localX, float localZ);   // R14; T4 adds its branch here
     void applyNewTerrainDefaults(TerrainComponent& terrain);                                      // R91
     class TerrainEditEvents {                                                                     // R42
     public:
-        using Handler = std::function<void(Entity terrain, terrain::MapId map, terrain::TexelRect rect)>;
+        using Handler = std::function<void(Entity terrain, terraincore::MapId map, terraincore::TexelRect rect)>;
         static Subscription subscribe(Handler handler);                                           // RAII (S09)
     };
 }
@@ -1472,7 +1472,7 @@ other names:
 
 | Spec | They asked for | Here |
 |---|---|---|
-| T2 N9, §8 | `TerrainOps::Batch`, `setHeights`, `setLayerWeights`, `setDensity`, `commit`, `store.readHeights` | R88: `terrain::Batch`, and `batch.readHeights` |
+| T2 N9, §8 | `TerrainOps::Batch`, `setHeights`, `setLayerWeights`, `setDensity`, `commit`, `store.readHeights` | R88: `terraincore::Batch`, and `batch.readHeights` |
 | T2 R36, N13 | Moved brushes call `noise::compat`; the second lander deletes `TerrainNoise.h` | R22 |
 | T2 R61, §8 | Create dialog lists `TerrainPresets::list()`, calls `TerrainGeneration::start()`; one-line `drawGenerateSection()` | R91 |
 | T3 D5, §8 | Hole rectangles, `rasterizeRegion`, R27's result, `isHole` in the query, `ignoreHoles` on brush rays, `terrainLayerChannel`, collider refresh grown by one cell, Macro Normal from dirty rects, Create Terrain's limit on, its overlays | R12, R16, R92, R79, R42, R91, R90 |
@@ -1517,7 +1517,7 @@ migration, delta undo and persistence together with R23; strokes; MCP tools; UI;
 | `draw-perf` | `updateAllTerrainRenderTextures` (`RenderSystem.cpp:5905-5919`) walks `TerrainComponent` instead of `MeshComponent`; DC10's hook at `:5855` | Hook the terrain's texture update, whichever loop calls it |
 | `ssr-probes`, `mesh-memory` | Nothing in T1's code; `MeshComponent` stays out of `TerrainOps` (R1), and `MeshSystemTerrainEdit.cpp` uses indices, not references, across writes to its arrays | No action beyond that rule |
 
-**Pixel art.** S50 uses "terrain" for tile autotiling (`TerrainSolver`, `TerrainTemplates`, `terrain_sets`, `edit_tilemap`'s terrain brush). T1's C++ names are in `jasperengine::terrain`, its commands are `terrain.*` and S50 adds no `edit_terrain`, so nothing collides, but `namespace {}` helpers must not reuse S50's file-scope names in a unity build (`AGENTS.md`, Code), and `terrain_control_tilemap_name` (AC74) keeps agents apart.
+**Pixel art.** S50 uses "terrain" for tile autotiling (`TerrainSolver`, `TerrainTemplates`, `terrain_sets`, `edit_tilemap`'s terrain brush). T1's C++ names are in `jasperengine::terraincore`, its commands are `terrain.*` and S50 adds no `edit_terrain`, so nothing collides, but `namespace {}` helpers must not reuse S50's file-scope names in a unity build (`AGENTS.md`, Code), and `terrain_control_tilemap_name` (AC74) keeps agents apart.
 
 ## 9. Risks & defaults
 
@@ -1607,7 +1607,7 @@ the sketch's names, which all still exist unless a line below says otherwise.
   convenience (R22 allowed either). The Terrain window passes the whole map as its window until the
   brush migrates.
 - **D-14 The private height decoders are renamed, not yet gone by use.** `TerrainEditWindow` calls
-  `terrain::heightTexelAt` and `terrain::sampleHeightTexels`; AC12's names are gone. Its stroke code
+  `terraincore::heightTexelAt` and `terraincore::sampleHeightTexels`; AC12's names are gone. Its stroke code
   still reads through them until R17 and R22 remove it.
 - **D-15 `holeMap` is `Hidden` in reflection.** It is cut and filled by ops and saved by its codec, so
   no Inspector row and no change to `inspector_layouts.json`. T3 may show it.
@@ -1684,3 +1684,10 @@ the sketch's names, which all still exist unless a line below says otherwise.
   out of `lite3d` and `lite2d`. T1's share is counted from a player's symbols by source file, as the merge base with `origin/main`
   also holds T2, T3, T5 and T6. Measured (`docs/perf/terrain.md`): 40.1 KiB without the module, inside the 96 KiB; with it
   320.9 KiB, and the module adds 456 KiB to the Linux glcore player.
+- **D-42 The namespace is `jasperengine::terraincore`, not D1's and R1's `jasperengine::terrain`.** A game's C++ declares its
+  objects at file scope after `using namespace jasperengine;` (`engine/project/main.cpp`, every test project), and the natural
+  name of a Terrain is `terrain`: with a namespace of that name, every use of the object was ambiguous, so upstream's own
+  `tools/test-projects/terrain` (and `terrain-materials`) stopped compiling on the web, and T3 had to move tests whose fixture
+  has a function `terrain` (AC31). A user's project that compiled before the programme would break the same way. The directory
+  stays `engine/core/terrain/`; `TerrainUserCode.AFileScopeTerrainNamedTerrainIsNotAmbiguous` is written as such a game and
+  stops compiling if the name comes back. `jasperengine::voxel` stays: its class is `VoxelVolume`.

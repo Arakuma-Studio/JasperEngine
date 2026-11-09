@@ -12,7 +12,7 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -810,7 +810,7 @@ FoliageOpScope::~FoliageOpScope() {
     foliageCurrentHost = previous;
 }
 
-void jasperengine::terrain::registerFoliageOps() {
+void jasperengine::terraincore::registerFoliageOps() {
     if (registeredOpExists("scatter_by_rules")) return;
     registerOp("scatter_by_rules", validateScatter, applyScatter);
     registerOp("clear_foliage", validateClear, applyClear);
@@ -819,7 +819,7 @@ void jasperengine::terrain::registerFoliageOps() {
     registerOp("convert_placed_to_trees", validateConvert, applyConvert);
 }
 
-void jasperengine::terrain::unregisterFoliageOps() {
+void jasperengine::terraincore::unregisterFoliageOps() {
     unregisterOp("scatter_by_rules");
     unregisterOp("clear_foliage");
     unregisterOp("place_trees");
@@ -827,7 +827,7 @@ void jasperengine::terrain::unregisterFoliageOps() {
     unregisterOp("convert_placed_to_trees");
 }
 
-bool jasperengine::terrain::foliageOpParams(const FoliageOpHost& host, const TerrainMapStore& store, const Op& op, FoliageTreeScatter& trees, FoliageDensityScatter& density,
+bool jasperengine::terraincore::foliageOpParams(const FoliageOpHost& host, const TerrainMapStore& store, const Op& op, FoliageTreeScatter& trees, FoliageDensityScatter& density,
                                             bool& detailTarget, FoliageScatterMode& mode, OpError& error) {
     ParsedScatter parsed;
     if (!parseScatter(host, store, op, parsed, error)) return false;

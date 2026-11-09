@@ -14,7 +14,7 @@
 #include <span>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     struct PlacementParams {
         float spacing = 1.0f;           // against every existing and planned point

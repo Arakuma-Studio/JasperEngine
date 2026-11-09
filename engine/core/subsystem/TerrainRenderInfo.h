@@ -20,7 +20,7 @@ namespace jasperengine {
     struct TerrainComponent;
 
     // The terrain's inputs to its variant (D2): its own Quality, its layers and the features it turns on
-    JASPERENGINE_API terrain::TerrainVariantInputs getTerrainVariantInputs(const TerrainComponent& terrain);
+    JASPERENGINE_API terraincore::TerrainVariantInputs getTerrainVariantInputs(const TerrainComponent& terrain);
     // R43: what the scene's render system built as the terrain's detail array; false when it has none
     JASPERENGINE_API bool getTerrainDetailArrayInfo(Scene* scene, Entity entity, GpuTextureFormat& format, int& slices, uint64_t& bytes);
 

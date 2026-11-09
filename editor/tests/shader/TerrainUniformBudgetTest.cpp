@@ -184,8 +184,8 @@ TEST(TerrainUniformBudgetSlow, TerrainProgrammeVariantsFitGles3){
     size_t compiled = 0;
     size_t worst = 0;
     std::string worstName;
-    for (jasperengine::terrain::TerrainQuality tier : {jasperengine::terrain::TerrainQuality::HIGH, jasperengine::terrain::TerrainQuality::MEDIUM,
-                                                      jasperengine::terrain::TerrainQuality::LOW}){
+    for (jasperengine::terraincore::TerrainQuality tier : {jasperengine::terraincore::TerrainQuality::HIGH, jasperengine::terraincore::TerrainQuality::MEDIUM,
+                                                      jasperengine::terraincore::TerrainQuality::LOW}){
         for (bool holes : {false, true}){
             for (bool features : {false, true}){
                 for (int both = 0; both < 4; both++){
@@ -227,7 +227,7 @@ TEST(TerrainUniformBudgetSlow, TerrainProgrammeVariantsFitGles3){
                     CustomShaderSources sources;
                     if (custom)
                         sources = ShaderVariantCompiler::resolveCustomShaderSources(reference, nullptr, ShaderType::MESH);
-                    const std::string name = std::string(jasperengine::terrain::terrainQualityName(tier)) + (holes ? ", holes" : "") +
+                    const std::string name = std::string(jasperengine::terraincore::terrainQualityName(tier)) + (holes ? ", holes" : "") +
                                              (features ? ", every feature" : "") + (heavy ? ", capsule shadows, 2d lights and shadows" : "") +
                                              (world ? ", Terrain World" : "") + " (" + ShaderPool::getShaderStr(ShaderType::MESH, variant.properties, customId) + ")";
                     ShaderData data;
@@ -293,8 +293,8 @@ TEST(TerrainUniformBudgetSlow, PackedLayersCrossCompileForEveryBackend){
     inputs.terrainVariant.heightBlend = true;
     const ShaderBackend backends[] = {ShaderBackend::GLCore, ShaderBackend::GLES3, ShaderBackend::D3D11, ShaderBackend::MetalMacOS,
                                       ShaderBackend::MetalIOS, ShaderBackend::Vulkan};
-    for (jasperengine::terrain::TerrainQuality tier : {jasperengine::terrain::TerrainQuality::HIGH, jasperengine::terrain::TerrainQuality::MEDIUM,
-                                                      jasperengine::terrain::TerrainQuality::LOW}){
+    for (jasperengine::terraincore::TerrainQuality tier : {jasperengine::terraincore::TerrainQuality::HIGH, jasperengine::terraincore::TerrainQuality::MEDIUM,
+                                                      jasperengine::terraincore::TerrainQuality::LOW}){
         MeshShaderEnvironment environment;
         environment.lights = true;
         environment.litQualityHigh = true;

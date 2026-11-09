@@ -29,8 +29,8 @@ using namespace jasperengine::voxel;
 
 namespace {
 
-    const terrain::MapId HOLE_MAP{terrain::MapKind::Hole, 0};
-    const terrain::MapId HEIGHT_MAP{terrain::MapKind::Height, 0};
+    const terraincore::MapId HOLE_MAP{terraincore::MapKind::Hole, 0};
+    const terraincore::MapId HEIGHT_MAP{terraincore::MapKind::Height, 0};
 
     // A map's pixels from its file, for a terrain whose scene was loaded but never drawn (an export)
     bool decodeMap(const Texture& texture, TextureData& out) {
@@ -69,11 +69,11 @@ namespace {
         }
 
         float height(float x, float z) const override {
-            return terrain::sampleHeight(snapshot.view, x + offset.x, z + offset.z) - offset.y;
+            return terraincore::sampleHeight(snapshot.view, x + offset.x, z + offset.z) - offset.y;
         }
 
         void gradient(float x, float z, float& dhdx, float& dhdz) const override {
-            const terrain::SurfaceSample sample = terrain::sampleSurface(snapshot.view, x + offset.x, z + offset.z);
+            const terraincore::SurfaceSample sample = terraincore::sampleSurface(snapshot.view, x + offset.x, z + offset.z);
             const float ny = sample.normal.y > 0.001f ? sample.normal.y : 0.001f;
             dhdx = -sample.normal.x / ny;
             dhdz = -sample.normal.z / ny;
@@ -122,7 +122,7 @@ namespace {
         void readMissingMaps(TerrainComponent& terrain) {
             TextureData decoded;
             if (!snapshot.view.pixels && decodeMap(terrain.heightMap, decoded)) {
-                terrain::SurfaceView& view = snapshot.view;
+                terraincore::SurfaceView& view = snapshot.view;
                 view.width = decoded.getWidth();
                 view.height = decoded.getHeight();
                 view.channels = decoded.getChannels();
@@ -235,8 +235,8 @@ void VoxelSystem::attachTerrain(VolumeState& state, VoxelVolumeComponent& compon
         // R46: a sculpt under the volume regenerates its unmodified base and re-evaluates the cut.
         // Filtered to our terrain here: the handler only notes the rectangle.
         VolumeState* self = &state;
-        state.terrainEdits = TerrainEditEvents::subscribe(scene, [self, wanted](Entity edited, terrain::MapId map, terrain::TexelRect rect){
-            if (edited == wanted && map.kind == terrain::MapKind::Height) self->terrainDirty.push_back(rect);
+        state.terrainEdits = TerrainEditEvents::subscribe(scene, [self, wanted](Entity edited, terraincore::MapId map, terraincore::TexelRect rect){
+            if (edited == wanted && map.kind == terraincore::MapKind::Height) self->terrainDirty.push_back(rect);
         });
         // The mask starts as the file left it, then the whole footprint is evaluated
         if (state.asset && !state.asset->terrainCut.empty()){
@@ -256,7 +256,7 @@ void VoxelSystem::attachTerrain(VolumeState& state, VoxelVolumeComponent& compon
         state.attachedTerrain = wanted;
     }
     if (!state.terrainDirty.empty()){
-        std::vector<terrain::TexelRect> rects;
+        std::vector<terraincore::TexelRect> rects;
         rects.swap(state.terrainDirty);
         TerrainComponent& terrain = scene->getComponent<TerrainComponent>(wanted);
         const Transform* terrainTransform = scene->findComponent<Transform>(wanted);
@@ -267,7 +267,7 @@ void VoxelSystem::attachTerrain(VolumeState& state, VoxelVolumeComponent& compon
             const float voxelSize = state.store->desc().voxelSize;
             const Int3 dim = state.store->desc().dimensions;
             IntBox box;
-            for (const terrain::TexelRect& rect : rects){
+            for (const terraincore::TexelRect& rect : rects){
                 const Vector2 low = holes.worldOfTexel(HEIGHT_MAP, rect.x, rect.y);
                 const Vector2 high = holes.worldOfTexel(HEIGHT_MAP, rect.right(), rect.bottom());
                 box.include(Int3{static_cast<int>(std::floor((low.x - offset.x) / voxelSize)) - 1, 0, static_cast<int>(std::floor((low.y - offset.z) / voxelSize)) - 1});
@@ -301,14 +301,14 @@ void VoxelSystem::attachTerrain(VolumeState& state, VoxelVolumeComponent& compon
         const float size = terrain.terrainSize;
         int width = state.cutWidth;
         for (const auto& run : state.pendingOpens){
-            terrain::Shape shape;
-            shape.type = terrain::ShapeType::Rect;
+            terraincore::Shape shape;
+            shape.type = terraincore::ShapeType::Rect;
             const Vector2 first = holes.worldOfTexel(state.holeLattice, run[1], run[0]);
             const Vector2 last = holes.worldOfTexel(state.holeLattice, run[1] + run[2] - 1, run[0]);
             const float halfTexel = size / static_cast<float>(width) * 0.25f;
             shape.min = Vector2(first.x - halfTexel, first.y - halfTexel);
             shape.max = Vector2(last.x + halfTexel, last.y + halfTexel);
-            terrain::rasterizeRegion(holes, shape, terrain::HOLE_VALUE, nullptr);
+            terraincore::rasterizeRegion(holes, shape, terraincore::HOLE_VALUE, nullptr);
         }
         state.pendingOpens.clear();
     }
@@ -336,7 +336,7 @@ void VoxelSystem::updateTerrainCut(VolumeState& state, VoxelVolumeComponent& com
     // lies overlap under the terrain. Positive: the voxel ground is lower, and the terrain would stand
     // proud of it at a hole's edge
     const auto departureAt = [&](float vx, float vz){
-        const terrain::SurfaceSample sample = querySurface(terrain, vx + offset.x, vz + offset.z);
+        const terraincore::SurfaceSample sample = querySurface(terrain, vx + offset.x, vz + offset.z);
         const float h = sample.height - offset.y;
         const double d = valueAt(store, Vec3d{vx, h, vz});
         const float ny = sample.normal.y > 0.001f ? sample.normal.y : 0.001f;
@@ -364,16 +364,16 @@ void VoxelSystem::updateTerrainCut(VolumeState& state, VoxelVolumeComponent& com
     coverage->seedHeight.resize(static_cast<size_t>(dim.x) * dim.z);
     for (int z = 0; z < dim.z; z++){
         for (int x = 0; x < dim.x; x++){
-            const terrain::SurfaceSample sample = querySurface(terrain, (static_cast<float>(x) + 0.5f) * voxelSize + offset.x, (static_cast<float>(z) + 0.5f) * voxelSize + offset.z);
+            const terraincore::SurfaceSample sample = querySurface(terrain, (static_cast<float>(x) + 0.5f) * voxelSize + offset.x, (static_cast<float>(z) + 0.5f) * voxelSize + offset.z);
             coverage->seedHeight[static_cast<size_t>(x) + static_cast<size_t>(dim.x) * z] = (sample.height - offset.y - overlap) / voxelSize;
         }
     }
 
     // ---- R39-R40: the hole map, texel by texel
     TerrainComponentStore holes(scene, owner, terrain);
-    const terrain::MapFormat holeFormat = holes.format(HOLE_MAP);
-    const terrain::MapFormat latticeFormat = holeFormat.exists ? holeFormat : holes.format(HEIGHT_MAP);
-    const terrain::MapId latticeMap = holeFormat.exists ? HOLE_MAP : HEIGHT_MAP;
+    const terraincore::MapFormat holeFormat = holes.format(HOLE_MAP);
+    const terraincore::MapFormat latticeFormat = holeFormat.exists ? holeFormat : holes.format(HEIGHT_MAP);
+    const terraincore::MapId latticeMap = holeFormat.exists ? HOLE_MAP : HEIGHT_MAP;
     state.holeLattice = latticeMap;
     // the texels a cut grows past what departs (R44's rim), which the mesher keeps drawn
     int rimTexels = 1;
@@ -400,7 +400,7 @@ void VoxelSystem::updateTerrainCut(VolumeState& state, VoxelVolumeComponent& com
         // terrain collider's rim (one collision cell, T3 R22), so its edge lies on seeded ground: the
         // step there is the overlap, in render and in collision alike
         const float texelMetres = terrain.terrainSize / static_cast<float>(width);
-        const terrain::MapFormat heightFormat = holes.format(HEIGHT_MAP);
+        const terraincore::MapFormat heightFormat = holes.format(HEIGHT_MAP);
         const int samples = heightFormat.exists ? std::min(heightFormat.bounds.w, heightFormat.bounds.h) : width;
         const float cellMetres = terrain.terrainSize / static_cast<float>(std::max(samples - 1, 1));
         const int rim = static_cast<int>(std::ceil(cellMetres / texelMetres)) + 1;
@@ -500,14 +500,14 @@ void VoxelSystem::updateTerrainCut(VolumeState& state, VoxelVolumeComponent& com
         }
         // R44: a fill closes the hole first, then the voxels go; a cut waits for the voxels
         for (const auto& run : fills){
-            terrain::Shape shape;
-            shape.type = terrain::ShapeType::Rect;
+            terraincore::Shape shape;
+            shape.type = terraincore::ShapeType::Rect;
             const Vector2 first = holes.worldOfTexel(latticeMap, run[1], run[0]);
             const Vector2 last = holes.worldOfTexel(latticeMap, run[1] + run[2] - 1, run[0]);
             const float halfTexel = terrain.terrainSize / static_cast<float>(width) * 0.25f;
             shape.min = Vector2(first.x - halfTexel, first.y - halfTexel);
             shape.max = Vector2(last.x + halfTexel, last.y + halfTexel);
-            terrain::rasterizeRegion(holes, shape, terrain::SOLID_VALUE, nullptr);
+            terraincore::rasterizeRegion(holes, shape, terraincore::SOLID_VALUE, nullptr);
         }
         // R40: the terrain's collider keeps a rim of one collision cell inside a drawn hole, so an
         // entrance narrower than 3 cells has nothing to walk through (T3 R22)
@@ -545,13 +545,13 @@ void VoxelSystem::detachTerrain(VolumeState& state, VoxelVolumeComponent&){
         const TerrainCutRuns runs = TerrainCutRuns::fromMask(state.cutMask.data(), state.cutWidth, state.cutHeight);
         const float halfTexel = terrain->terrainSize / static_cast<float>(state.cutWidth) * 0.25f;
         for (const TerrainCutRuns::Run& run : runs.runs){
-            terrain::Shape shape;
-            shape.type = terrain::ShapeType::Rect;
+            terraincore::Shape shape;
+            shape.type = terraincore::ShapeType::Rect;
             const Vector2 first = holes.worldOfTexel(HOLE_MAP, run.start, run.row);
             const Vector2 last = holes.worldOfTexel(HOLE_MAP, run.start + run.length - 1, run.row);
             shape.min = Vector2(first.x - halfTexel, first.y - halfTexel);
             shape.max = Vector2(last.x + halfTexel, last.y + halfTexel);
-            terrain::rasterizeRegion(holes, shape, terrain::SOLID_VALUE, nullptr);
+            terraincore::rasterizeRegion(holes, shape, terraincore::SOLID_VALUE, nullptr);
         }
         state.cutMask.clear();
     }

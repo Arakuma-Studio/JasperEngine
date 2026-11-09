@@ -33,13 +33,13 @@ namespace jasperengine::editor {
     const char* terrainWorldOverlayLabel(const std::string& source);
 
     // R41's colour of a tile state, the panel's minimap and the overlay alike
-    Vector4 terrainWorldStateColour(terrain::TileState state, bool pinned);
+    Vector4 terrainWorldStateColour(terraincore::TileState state, bool pinned);
 
     // What one bake shows: the box of tiles drawn, each tile's state, and the rectangles of a mode
     // (LOD: drawn nodes, value the level, overview when drawn from it; collision: value 1 for coarse)
     struct TerrainWorldOverlayState {
         TerrainWorldOverlayMode mode = TerrainWorldOverlayMode::TileBorders;
-        terrain::TileCoord low, high;
+        terraincore::TileCoord low, high;
         float tileSize = 1.0f;
         std::vector<uint8_t> states;    // per tile of the box, row by row (TileState)
         std::vector<uint8_t> pinned;

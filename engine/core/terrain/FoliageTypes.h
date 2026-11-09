@@ -9,7 +9,7 @@
 
 #include <cstdint>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     // Details place in cells of this size (the scatter's hash takes the cell, so it is part of what a seed means)
     inline constexpr float FOLIAGE_DETAIL_CELL_SIZE = 8.0f;

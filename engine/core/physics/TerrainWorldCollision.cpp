@@ -28,7 +28,7 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 #ifdef JASPERENGINE_PHYSICS_3D
 

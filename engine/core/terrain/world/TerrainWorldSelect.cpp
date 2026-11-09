@@ -7,7 +7,7 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -284,13 +284,13 @@ void WorldSelection::clear() {
     overflow = false;
 }
 
-float jasperengine::terrain::worldLevelRange(const WorldSelectParams& params, int level) {
+float jasperengine::terraincore::worldLevelRange(const WorldSelectParams& params, int level) {
     const float range = 2.0f * params.lattice.nodeSize(level) * params.lodDistance;
     if (level >= params.lattice.rootLevel()) return std::max(range, params.farClip);
     return range;
 }
 
-void jasperengine::terrain::selectWorld(const WorldSelectParams& params, const WorldOccupancy& occupancy, WorldSelection& out) {
+void jasperengine::terraincore::selectWorld(const WorldSelectParams& params, const WorldOccupancy& occupancy, WorldSelection& out) {
     out.clear();
     Walker walker{params, occupancy, out};
     walker.tileLevel = params.lattice.tileLevel();

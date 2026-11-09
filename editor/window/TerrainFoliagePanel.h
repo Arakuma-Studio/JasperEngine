@@ -93,10 +93,10 @@ namespace jasperengine::editor {
         bool setPrototypes(SceneProject* sceneProject, Entity entity, const std::vector<TerrainTreePrototype>& prototypes, const std::string& name);
         void addPrototype(SceneProject* sceneProject, Entity entity, TerrainComponent& terrain, const std::string& meshPath);
         void removePrototype(SceneProject* sceneProject, Entity entity, TerrainComponent& terrain, int index);
-        void commitStamp(SceneProject* sceneProject, Entity entity, terrain::TreeDelta&& delta);
+        void commitStamp(SceneProject* sceneProject, Entity entity, terraincore::TreeDelta&& delta);
         bool stampWorld(TerrainComponent& terrain, const Vector3& local, float brushSize);
         // the record a paint stamp makes at a point, after its surface: size, turn, tint (one draw order for both kinds of Terrain)
-        terrain::TreeRecord strokeTree(const TerrainTreePrototype& authored);
+        terraincore::TreeRecord strokeTree(const TerrainTreePrototype& authored);
 
         Project* project;
         TerrainEditWindow* window;

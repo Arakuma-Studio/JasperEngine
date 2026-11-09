@@ -35,9 +35,9 @@ using namespace jasperengine;
 
 namespace {
 
-    using terrain::MapId;
-    using terrain::MapKind;
-    using terrain::TexelRect;
+    using terraincore::MapId;
+    using terraincore::MapKind;
+    using terraincore::TexelRect;
 
     // World XZ to the terrain's local XZ, on its plane
     Vector2 terrainLuaLocal(const Transform& transform, float x, float z) {
@@ -54,7 +54,7 @@ namespace {
         TerrainComponent& terrain = self->getComponent<TerrainComponent>();
         const Transform& transform = self->getComponent<Transform>();
         const Vector2 local = terrainLuaLocal(transform, x, z);
-        const terrain::SurfaceSample sample = querySurface(terrain, local.x, local.y);
+        const terraincore::SurfaceSample sample = querySurface(terrain, local.x, local.y);
         return (transform.modelMatrix * Vector3(local.x, sample.height, local.y)).y;
     }
 
@@ -93,7 +93,7 @@ namespace {
         return out;
     }
 
-    terrain::MapFormat terrainLuaHeightFormat(Terrain* self) {
+    terraincore::MapFormat terrainLuaHeightFormat(Terrain* self) {
         TerrainComponentStore store(self->getScene(), self->getEntity(), self->getComponent<TerrainComponent>());
         return store.format(MapId{MapKind::Height, 0});
     }
@@ -137,7 +137,7 @@ namespace {
                          static_cast<int>(luaL_checkinteger(L, first + 2)), static_cast<int>(luaL_checkinteger(L, first + 3))};
     }
 
-    bool terrainLuaRect(lua_State* L, const terrain::MapFormat& format, const TexelRect& rect, const char* function) {
+    bool terrainLuaRect(lua_State* L, const terraincore::MapFormat& format, const TexelRect& rect, const char* function) {
         if (!format.exists) {
             lua_pushfstring(L, "Terrain:%s: the terrain has no height map loaded", function);
             return false;
@@ -193,13 +193,13 @@ namespace {
                 return false;
             }
         }
-        const terrain::TerrainOpResult result = terrain::setHeights(store, rect, values);
+        const terraincore::TerrainOpResult result = terraincore::setHeights(store, rect, values);
         if (!result.ok) {
             lua_pushstring(L, ("Terrain:setHeights: " + result.error).c_str());
             return false;
         }
-        const terrain::OpSpace local = terrain::OpSpace::of(Matrix4(), Vector3(0.0f), Vector3(1.0f), false, false);
-        LuaJson::push(L, terrain::opResultJson(result, local, {}, 1));
+        const terraincore::OpSpace local = terraincore::OpSpace::of(Matrix4(), Vector3(0.0f), Vector3(1.0f), false, false);
+        LuaJson::push(L, terraincore::opResultJson(result, local, {}, 1));
         return true;
     }
 
@@ -216,27 +216,27 @@ namespace {
         if (!terrainLuaWritable(L, self, "applyOps")) return false;
         TerrainComponent& terrain = self->getComponent<TerrainComponent>();
         const Transform& transform = self->getComponent<Transform>();
-        const terrain::OpSpace space = terrain::OpSpace::of(transform.modelMatrix, transform.worldPosition, transform.worldScale,
+        const terraincore::OpSpace space = terraincore::OpSpace::of(transform.modelMatrix, transform.worldPosition, transform.worldScale,
                                                             transform.worldRotation != Quaternion::IDENTITY, true);
-        terrain::OpJsonHooks hooks;
+        terraincore::OpJsonHooks hooks;
         hooks.fieldsDoc = "docs/scripting/terrain.md";
         hooks.firstIndex = 1;
         const std::string authoring = "is for the editor only: edit_terrain or the Terrain window.";
-        hooks.refused = {{terrain::OpType::PlaceObjects, authoring}, {terrain::OpType::EraseObjects, authoring},
-                         {terrain::OpType::RemapLayers, authoring}, {terrain::OpType::ImportHeightmap, authoring}};
-        terrain::OpJsonParser parser(space, hooks);
-        std::vector<terrain::Op> ops;
+        hooks.refused = {{terraincore::OpType::PlaceObjects, authoring}, {terraincore::OpType::EraseObjects, authoring},
+                         {terraincore::OpType::RemapLayers, authoring}, {terraincore::OpType::ImportHeightmap, authoring}};
+        terraincore::OpJsonParser parser(space, hooks);
+        std::vector<terraincore::Op> ops;
         if (!parser.parseList(list, ops)) {
             lua_pushstring(L, ("Terrain:applyOps: " + parser.error).c_str());
             return false;
         }
         TerrainComponentStore store(self->getScene(), self->getEntity(), terrain);
-        const terrain::TerrainOpResult result = terrain::applyOps(store, ops);
+        const terraincore::TerrainOpResult result = terraincore::applyOps(store, ops);
         if (!result.ok) {
             lua_pushstring(L, ("Terrain:applyOps: " + result.error).c_str());
             return false;
         }
-        LuaJson::push(L, terrain::opResultJson(result, space, ops, 1));
+        LuaJson::push(L, terraincore::opResultJson(result, space, ops, 1));
         return true;
     }
 #endif

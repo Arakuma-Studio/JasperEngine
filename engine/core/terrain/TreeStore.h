@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     inline constexpr uint32_t TREE_FILE_MAGIC = 0x5254454Au;    // "JETR", little-endian
     inline constexpr uint32_t TREE_FILE_VERSION = 1;

@@ -179,8 +179,8 @@ TEST(TerrainGeneration, CreateDialogSeam) {
     const auto heightBytes = [&]() {
         TerrainComponent& terrain = scene->getComponent<TerrainComponent>(entity);
         TerrainComponentStore store(scene, entity, terrain);
-        const terrain::MapId height{terrain::MapKind::Height, 0};
-        const terrain::MapFormat format = store.format(height);
+        const terraincore::MapId height{terraincore::MapKind::Height, 0};
+        const terraincore::MapFormat format = store.format(height);
         std::vector<uint8_t> bytes(static_cast<size_t>(format.bounds.area()) * static_cast<size_t>(format.channels) *
                                    static_cast<size_t>(format.bitsPerChannel / 8));
         EXPECT_TRUE(store.readBytes(height, format.bounds, bytes));

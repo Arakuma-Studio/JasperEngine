@@ -20,7 +20,7 @@
 namespace terraintest {
 
     using namespace jasperengine;
-    using namespace jasperengine::terrain;
+    using namespace jasperengine::terraincore;
 
     inline constexpr MapId HEIGHT{MapKind::Height, 0};
     inline constexpr MapId HOLE{MapKind::Hole, 0};

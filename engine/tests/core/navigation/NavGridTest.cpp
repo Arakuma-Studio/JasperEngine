@@ -451,10 +451,10 @@ TEST_F(NavGridTest, JumpPointSearchMatchesAStar){
 // T3 R23: a cell over a hole is Not Walkable unless overridden
 TEST_F(NavGridTest, GridHole) {
     std::vector<uint8_t> heights((size_t)17 * 17, 32);
-    std::vector<uint8_t> holes((size_t)17 * 17, terrain::SOLID_VALUE);
+    std::vector<uint8_t> holes((size_t)17 * 17, terraincore::SOLID_VALUE);
     for (int y = 0; y < 17; y++) {
         for (int x = 0; x < 8; x++)
-            holes[(size_t)y * 17 + x] = terrain::HOLE_VALUE;
+            holes[(size_t)y * 17 + x] = terraincore::HOLE_VALUE;
     }
     const Entity terrainEntity = transformEntity(*scene, Vector3());
     TerrainComponent terrainComponent;

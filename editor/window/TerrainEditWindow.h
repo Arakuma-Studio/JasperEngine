@@ -120,7 +120,7 @@ namespace jasperengine::editor{
         bool started = false;
         std::chrono::steady_clock::time_point startTime;
         // T1 R39: the drag's samples, kept when JASPER_TERRAIN_STROKE_LOG names a log
-        std::vector<terrain::StrokeSample> logSamples;
+        std::vector<terraincore::StrokeSample> logSamples;
         // Placement strokes write entities instead of a map, so none of the map state applies
         bool placement = false;
         // Fixed at stroke start, cleared if the asset turns out not to be instanceable
@@ -129,7 +129,7 @@ namespace jasperengine::editor{
         // Terrain-local XZ of every prop already on this terrain, grown as the stroke places more
         std::vector<Vector2> placedPoints;
         // The drag's spaced stamps (T1 R21)
-        std::optional<terrain::StrokeResampler> placementPath;
+        std::optional<terraincore::StrokeResampler> placementPath;
     };
 
     class TerrainFoliagePanel;
@@ -240,7 +240,7 @@ namespace jasperengine::editor{
         struct ResizeMapDialog{
             bool open = false;
             bool justOpened = false;
-            terrain::MapId map;
+            terraincore::MapId map;
             int size = 0;
         };
         ResizeMapDialog resizeMap;
@@ -397,7 +397,7 @@ namespace jasperengine::editor{
                                      std::string& error);
         // T1 R67: Paint by Rules' Preview: the op run on a copy of the maps, shown by the Layer Weights overlay;
         // the terrain's maps stay as they are. false with error
-        static bool previewPaintByRules(Project* project, SceneProject* sceneProject, Entity entity, const terrain::Op& op, int newMapResolution,
+        static bool previewPaintByRules(Project* project, SceneProject* sceneProject, Entity entity, const terraincore::Op& op, int newMapResolution,
                                         std::string& error);
         // T1 R63: the eyedroppers' values at a terrain-local point
         static TerrainPickValues pickValues(Scene* scene, Entity entity, float localX, float localZ);

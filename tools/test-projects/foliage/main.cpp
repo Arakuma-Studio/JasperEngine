@@ -3,7 +3,9 @@
 
 // T5 AC1, AC4: foliage in wasm with one thread. The fixture's hash goes to the console for the gate to
 // compare with the constant the native suite pins, and a camera jump fills a new ring within the frame
-// budget (WEB_PROJECT=foliage tools/build.sh web, GATE=foliage tools/build.sh web-gate).
+// budget (WEB_PROJECT=foliage tools/build.sh web, GATE=foliage tools/build.sh web-gate). The terrain is a real
+// one, built and drawn by the engine; its foliage is assets/cross.obj. The camera looks up, so the canvas
+// centre stays the background.
 
 #include "JasperEngine.h"
 
@@ -26,6 +28,7 @@ namespace {
 
     Scene scene;
     Camera sceneCamera(&scene);
+    Terrain ground(&scene);
     Entity terrainEntity = NULL_ENTITY;
     FoliageSystem* foliage = nullptr;
     std::vector<double> frames;
@@ -43,9 +46,8 @@ namespace {
 
     void update() {
         if (phase > 1) return;
-        TerrainComponent& terrain = scene.getComponent<TerrainComponent>(terrainEntity);
-        terrain.heightMapLoaded = true;
-        terrain.needUpdateTerrain = false;
+        // the engine builds the terrain from its heightmap first; until then the foliage waits for it
+        if (!scene.getComponent<TerrainComponent>(terrainEntity).heightMapLoaded) return;
         const auto start = std::chrono::steady_clock::now();
         foliage->update(1.0 / 60.0);
         frames.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
@@ -82,17 +84,13 @@ JASPERENGINE_INIT void init(){
     std::snprintf(text, sizeof(text), "[gate] foliage %016llx", static_cast<unsigned long long>(hash));
     Log::print("%s", text);
 
-    terrainEntity = scene.createEntity();
-    scene.addComponent<Transform>(terrainEntity);
-    scene.addComponent<TerrainComponent>(terrainEntity);
+    terrainEntity = ground.getEntity();
     TerrainComponent& terrain = scene.getComponent<TerrainComponent>(terrainEntity);
     terrain.terrainSize = 256.0f;
     terrain.maxHeight = 40.0f;
     giveMap(terrain.heightMap, "foliage-gate-height", foliagegolden::fixture().height, ColorFormat::RED16);
-    terrain.heightMapLoaded = true;
-    terrain.needUpdateTerrain = false;
     TerrainFoliageLayer layer;
-    layer.meshPath = AssetRef("no-mesh.obj");
+    layer.meshPath = AssetRef("cross.obj");
     layer.density = 2.0f;
     layer.maxSlope = 90.0f;
     layer.drawDistance = 80.0f;
@@ -104,6 +102,8 @@ JASPERENGINE_INIT void init(){
     // The console holds the results the gate compares; the canvas only says the engine ran to here
     scene.setBackgroundColor(0.157f, 0.784f, 0.353f, 1.0f);
     sceneCamera.setPosition(0.0f, 40.0f, 0.0f);
+    sceneCamera.setTarget(0.0f, 140.0f, -200.0f);
+    sceneCamera.setFarClip(1000.0f);
     sceneCamera.activate();
     Engine::setScene(&scene);
     Engine::onUpdate.add("foliageGate", update);

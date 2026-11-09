@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// T3 R18-R21: one hole mask in every pass, the same texels as terrain::isHole, read from the frame on
+// T3 R18-R21: one hole mask in every pass, the same texels as terraincore::isHole, read from the frame on
 // the headless device with a camera straight down, so a pixel centre is a terrain-local point.
 
 #include "TerrainGpuFixture.h"
@@ -65,7 +65,7 @@ namespace {
             holeTexels.resize(static_cast<size_t>(width) * height);
             for (int y = 0; y < height; y++){
                 for (int x = 0; x < width; x++){
-                    holeTexels[static_cast<size_t>(y) * width + x] = hole(x, y) ? terrain::HOLE_VALUE : terrain::SOLID_VALUE;
+                    holeTexels[static_cast<size_t>(y) * width + x] = hole(x, y) ? terraincore::HOLE_VALUE : terraincore::SOLID_VALUE;
                 }
             }
             component().holeMap.setData(poolId("holes"), TextureData(width, height, static_cast<unsigned int>(holeTexels.size()),
@@ -88,7 +88,7 @@ namespace {
 
         // every pixel on the terrain: through a hole it is `through`, else `solid`
         void expectMask(const std::vector<uint8_t>& frame, const PixelColor& solid, const PixelColor& through, const char* pass){
-            const terrain::HoleMapView view{holeTexels.data(), holeWidth, holeHeight};
+            const terraincore::HoleMapView view{holeTexels.data(), holeWidth, holeHeight};
             int wrong = 0;
             int compared = 0;
             int holes = 0;
@@ -101,7 +101,7 @@ namespace {
                         continue;
                     }
                     compared++;
-                    const bool hole = terrain::isHole(view, u, v);
+                    const bool hole = terraincore::isHole(view, u, v);
                     holes += hole ? 1 : 0;
                     const uint8_t* pixel = &frame[(static_cast<size_t>(y) * FRAME_WIDTH + x) * 4];
                     if (!sameColor(pixel, hole ? through : solid, 16)){
@@ -220,12 +220,12 @@ TEST_F(TerrainHolesGpu, ACutAfterTheFirstFrameDraws){
     EXPECT_EQ(mesh.submeshes[0].shaderProperties & holesBit, 0u);
 
     TerrainComponentStore store(&scene, terrain->getEntity(), component());
-    terrain::Op cut;
-    cut.type = terrain::OpType::CutHoles;
-    cut.shape.type = terrain::ShapeType::Circle;
+    terraincore::Op cut;
+    cut.type = terraincore::OpType::CutHoles;
+    cut.shape.type = terraincore::ShapeType::Circle;
     cut.shape.center = Vector2(0.0f, 0.0f);
     cut.shape.radius = 10.0f;
-    ASSERT_TRUE(terrain::applyOps(store, std::span<const terrain::Op>(&cut, 1)).ok);
+    ASSERT_TRUE(terraincore::applyOps(store, std::span<const terraincore::Op>(&cut, 1)).ok);
 
     ASSERT_TRUE(render()) << "the holed variant never came in";
     ASSERT_TRUE(readFrame(frame));
@@ -286,8 +286,8 @@ TEST_F(TerrainHolesGpu, LibraryShaderCuts){
     ASSERT_TRUE(readFrame(frame));
     const MeshComponent& mesh = scene.getComponent<MeshComponent>(terrain->getEntity());
     EXPECT_NE(mesh.submeshes[0].shaderProperties & ShaderPool::getTerrainHolesProperty(ShaderType::MESH), 0u);
-    const terrain::HoleMapView view{holeTexels.data(), holeWidth, holeHeight};
-    EXPECT_TRUE(terrain::isHole(view, 8.0f / 37.0f, 6.0f / 23.0f));
+    const terraincore::HoleMapView view{holeTexels.data(), holeWidth, holeHeight};
+    EXPECT_TRUE(terraincore::isHole(view, 8.0f / 37.0f, 6.0f / 23.0f));
     const Vector2 uvToPixel((8.0f / 37.0f * TERRAIN_SIZE - TERRAIN_SIZE * 0.5f + VIEW_WIDTH * 0.5f) / VIEW_WIDTH * FRAME_WIDTH,
                             (6.0f / 23.0f * TERRAIN_SIZE - TERRAIN_SIZE * 0.5f + VIEW_HEIGHT * 0.5f) / VIEW_HEIGHT * FRAME_HEIGHT);
     const uint8_t* pixel = &frame[(static_cast<size_t>(uvToPixel.y) * FRAME_WIDTH + static_cast<size_t>(uvToPixel.x)) * 4];

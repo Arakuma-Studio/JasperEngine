@@ -547,14 +547,14 @@ namespace jasperengine { namespace noise {
             const auto gridOf = [&](int32_t buffer) { return grids[buffer - run.plan.firstGrid]; };
             const size_t texels = static_cast<size_t>(run.region.width) * static_cast<size_t>(run.region.depth);
             const EvalContext& context = run.context;
-            terrain::ErosionRegion region;
+            terraincore::ErosionRegion region;
             region.startX = run.region.startX;
             region.startZ = run.region.startZ;
             region.width = run.region.width;
             region.depth = run.region.depth;
             region.maxHeight = context.maxHeight;
             region.metresPerTexel = context.metresPerTexel;
-            terrain::ErosionControl control;
+            terraincore::ErosionControl control;
             control.cancel = context.cancel;
             control.parallel = context.parallel && !context.scratch;
             if (op.kind == OpKind::SlopeMask){
@@ -564,7 +564,7 @@ namespace jasperengine { namespace noise {
             const uint64_t before = context.report ? steadyNs() : 0;
             bool finished = true;
             if (op.kind == OpKind::Hydraulic){
-                terrain::HydraulicParams params;
+                terraincore::HydraulicParams params;
                 params.dropletsPerTexel = op.f[0];
                 params.inertia = op.f[1];
                 params.capacity = op.f[2];
@@ -579,20 +579,20 @@ namespace jasperengine { namespace noise {
                 float* height = gridOf(op.out[0]);
                 std::memcpy(height, gridOf(op.in[0]), texels * sizeof(float));
                 uint64_t steps = 0;
-                finished = terrain::HeightfieldErosion::hydraulic(params, region, height, op.in[1] >= 0 ? gridOf(op.in[1]) : nullptr,
+                finished = terraincore::HeightfieldErosion::hydraulic(params, region, height, op.in[1] >= 0 ? gridOf(op.in[1]) : nullptr,
                                                                   op.out[1] >= 0 ? gridOf(op.out[1]) : nullptr, op.out[2] >= 0 ? gridOf(op.out[2]) : nullptr, control, &steps);
                 report.dropletSteps += steps;
                 for (size_t i = 0; i < texels; i++){
                     height[i] = height[i] < op.f[8] ? op.f[8] : (height[i] > op.f[9] ? op.f[9] : height[i]);
                 }
             } else {
-                terrain::ThermalParams params;
+                terraincore::ThermalParams params;
                 params.iterations = op.i[0];
                 params.talusAngle = op.f[0];
                 params.rate = op.f[1];
                 float* height = gridOf(op.out[0]);
                 std::memcpy(height, gridOf(op.in[0]), texels * sizeof(float));
-                finished = terrain::HeightfieldErosion::thermal(params, region, height, control);
+                finished = terraincore::HeightfieldErosion::thermal(params, region, height, control);
             }
             if (context.report) report.erosionMs += static_cast<double>(steadyNs() - before) / 1e6;
             return finished;

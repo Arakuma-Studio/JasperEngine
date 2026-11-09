@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     inline constexpr uint32_t WORLD_FORMAT_VERSION = 1;
     // the header flag of an overview container

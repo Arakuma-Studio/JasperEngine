@@ -46,7 +46,7 @@ namespace jasperengine {
         // R23: one fine chunk's samples as the collider builds them (worldChunkSamples), its tile and
         // neighbours read now if they must be (Physics Placement reads synchronously); false when the
         // tile is absent
-        static bool chunkSamplesNow(TerrainWorldRuntime& runtime, terrain::TileCoord tile, int chunkQuads, int chunkX, int chunkZ,
+        static bool chunkSamplesNow(TerrainWorldRuntime& runtime, terraincore::TileCoord tile, int chunkQuads, int chunkX, int chunkZ,
                                     std::vector<float>& out);
 
         explicit TerrainWorldCollision(TerrainWorldRuntime& runtime);
@@ -60,7 +60,7 @@ namespace jasperengine {
         // R18: a coarse collider under this point now, for a teleport; false off the world
         bool ensureAt(float localX, float localZ);
         // R18's collision level: the tile's fine chunks round its subjects are in place
-        bool fineActive(terrain::TileCoord tile) const;
+        bool fineActive(terraincore::TileCoord tile) const;
         // Drops every collider (Stop, the World removed)
         void clear();
         // The colliders in the compound now, coarse tiles first

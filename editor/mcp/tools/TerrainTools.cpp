@@ -80,11 +80,11 @@ namespace terrain_tools {
 
 namespace fs = std::filesystem;
 
-using terrain::MapId;
-using terrain::MapKind;
-using terrain::Op;
-using terrain::OpType;
-using terrain::TexelRect;
+using terraincore::MapId;
+using terraincore::MapKind;
+using terraincore::Op;
+using terraincore::OpType;
+using terraincore::TexelRect;
 
 
 bool hasKey(const Json& args, const char* key) {
@@ -134,8 +134,8 @@ bool resolveTerrainTarget(const CallPtr& call, TerrainCallTarget& target) {
     return true;
 }
 
-terrain::OpSpace spaceOf(const TerrainWorldPlacement& placement, bool world) {
-    return terrain::OpSpace::of(placement.model, placement.position, placement.scale, placement.rotated, world);
+terraincore::OpSpace spaceOf(const TerrainWorldPlacement& placement, bool world) {
+    return terraincore::OpSpace::of(placement.model, placement.position, placement.scale, placement.rotated, world);
 }
 
 // Image files a mask or an import reads, through the project
@@ -156,9 +156,9 @@ bool readProjectFile(Project* project, const std::string& path, std::vector<uint
 }
 
 // What edit_terrain adds to the engine's op reader: project files for masks and imports
-terrain::OpJsonHooks editorHooks(Project* project, HeightImport& lastImport) {
-    terrain::OpJsonHooks hooks;
-    hooks.loadMask = [project](const std::string& path, terrain::Shape& shape, std::string& error) {
+terraincore::OpJsonHooks editorHooks(Project* project, HeightImport& lastImport) {
+    terraincore::OpJsonHooks hooks;
+    hooks.loadMask = [project](const std::string& path, terraincore::Shape& shape, std::string& error) {
         std::vector<uint8_t> bytes;
         if (!readProjectFile(project, path, bytes, error)) return false;
         FloatImage image;
@@ -260,22 +260,22 @@ int64_t expectedTexels(TerrainComponent& terrain, const std::vector<Op>& ops) {
     const float half = terrain.terrainSize * 0.5f;
     double total = 0.0;
     for (const Op& op : ops) {
-        const terrain::Shape& shape = op.shape;
+        const terraincore::Shape& shape = op.shape;
         float minX = -half, minZ = -half, maxX = half, maxZ = half;
         switch (shape.type) {
-            case terrain::ShapeType::Circle:
+            case terraincore::ShapeType::Circle:
                 minX = shape.center.x - shape.radius; maxX = shape.center.x + shape.radius;
                 minZ = shape.center.y - shape.radius; maxZ = shape.center.y + shape.radius;
                 break;
-            case terrain::ShapeType::Rect:
+            case terraincore::ShapeType::Rect:
                 minX = shape.min.x; maxX = shape.max.x; minZ = shape.min.y; maxZ = shape.max.y;
                 break;
-            case terrain::ShapeType::Mask:
+            case terraincore::ShapeType::Mask:
                 minX = shape.center.x - shape.size.x * 0.5f; maxX = shape.center.x + shape.size.x * 0.5f;
                 minZ = shape.center.y - shape.size.y * 0.5f; maxZ = shape.center.y + shape.size.y * 0.5f;
                 break;
-            case terrain::ShapeType::Polyline:
-            case terrain::ShapeType::Stroke:
+            case terraincore::ShapeType::Polyline:
+            case terraincore::ShapeType::Stroke:
                 if (!shape.points.empty()) {
                     minX = maxX = shape.points[0].x;
                     minZ = maxZ = shape.points[0].y;
@@ -286,7 +286,7 @@ int64_t expectedTexels(TerrainComponent& terrain, const std::vector<Op>& ops) {
                     minX -= shape.radius; maxX += shape.radius; minZ -= shape.radius; maxZ += shape.radius;
                 }
                 break;
-            case terrain::ShapeType::All:
+            case terraincore::ShapeType::All:
                 break;
         }
         const double w = std::max(0.0f, std::min(maxX, half) - std::max(minX, -half));
@@ -299,12 +299,12 @@ int64_t expectedTexels(TerrainComponent& terrain, const std::vector<Op>& ops) {
 }
 
 void addImportDetection(Json& out, const std::vector<Op>& ops, const HeightImport& imported);
-std::string nextFor(const terrain::TerrainOpResult& result);
+std::string nextFor(const terraincore::TerrainOpResult& result);
 
 // R69: the ops run on a copy of the maps off the main thread; the main thread commits them as
 // one undo step if the terrain did not change meanwhile
-void startTerrainJob(const CallPtr& call, const TerrainCallTarget& target, const std::vector<Op>& ops, const terrain::OpOptions& options,
-                     const terrain::OpSpace& space, const HeightImport& imported) {
+void startTerrainJob(const CallPtr& call, const TerrainCallTarget& target, const std::vector<Op>& ops, const terraincore::OpOptions& options,
+                     const terraincore::OpSpace& space, const HeightImport& imported) {
     const Json& args = call->args();
     Project* project = target.project;
     const uint32_t sceneId = target.scene->id;
@@ -319,7 +319,7 @@ void startTerrainJob(const CallPtr& call, const TerrainCallTarget& target, const
     jobs::submit([snapshot, opList, options, job, project, sceneId, entity, space, importedCopy, name]() {
         // not in place: the ops' own overlay reports what changed (an in-place run leaves changed
         // empty), then commits into the snapshot's overlay, which the hand-back turns into undo
-        auto result = std::make_shared<terrain::TerrainOpResult>(terrain::applyOps(*snapshot->overlay, *opList, options));
+        auto result = std::make_shared<terraincore::TerrainOpResult>(terraincore::applyOps(*snapshot->overlay, *opList, options));
         // the editor's own queue: it runs every frame and wakes an idle editor (jobs::postToMain drains
         // only in frames that draw a scene)
         editor::getEditorHost().enqueueMainThreadTask([snapshot, opList, result, job, project, sceneId, entity, space, importedCopy, name]() {
@@ -342,14 +342,14 @@ void startTerrainJob(const CallPtr& call, const TerrainCallTarget& target, const
                 return;
             }
             history->groupSince(start);
-            Json out = terrain::opResultJson(*result, space, *opList);
+            Json out = terraincore::opResultJson(*result, space, *opList);
             addImportDetection(out, *opList, *importedCopy);
             out["terrain"] = McpRefs::entityJson(scene, entity);
             out["dry_run"] = false;
             out["undo_name"] = "Edit Terrain (" + name + ")";
             out["next"] = nextFor(*result);
             int64_t texels = 0;
-            for (const terrain::MapChangeReport& change : result->changed) texels += change.texels;
+            for (const terraincore::MapChangeReport& change : result->changed) texels += change.texels;
             job->succeed("Edited the terrain: " + std::to_string(texels) + " texel(s) changed in " + std::to_string(result->changed.size()) + " map(s).", out);
         });
     }, {jobs::Lane::Background, jobs::GateClass::Default, "edit-terrain"});
@@ -367,7 +367,7 @@ void startTerrainJob(const CallPtr& call, const TerrainCallTarget& target, const
 // R21: place_objects and erase_objects. The engine plans (TerrainPlacement) against the objects there;
 // the editor makes the brush's own commands, one undo step. instanced: T5's tree store, through
 // place_trees and remove_trees, the prototype named by the asset's file stem as T5's tools name it.
-void editObjectsFromOps(const CallPtr& call, const TerrainCallTarget& target, std::vector<Op> ops, const terrain::OpSpace& space, bool dryRun) {
+void editObjectsFromOps(const CallPtr& call, const TerrainCallTarget& target, std::vector<Op> ops, const terraincore::OpSpace& space, bool dryRun) {
     const Json& list = call->args()["ops"];
     Project* project = target.project;
     SceneProject* sceneProject = target.scene;
@@ -414,7 +414,7 @@ void editObjectsFromOps(const CallPtr& call, const TerrainCallTarget& target, st
     // a World's trees by their World ids (T4 R27), a Terrain's by record id
     std::vector<std::vector<uint64_t>> treeIds(ops.size());
     std::vector<std::string> prototypes(ops.size());
-    std::shared_ptr<terrain::TreeStore> store;
+    std::shared_ptr<terraincore::TreeStore> store;
     std::unique_ptr<TerrainWorldTreeEdit> worldTrees;
     std::vector<std::pair<Entity, Vector2>> placed;
     if (trees) {
@@ -442,30 +442,30 @@ void editObjectsFromOps(const CallPtr& call, const TerrainCallTarget& target, st
             }
             if (worldTrees) {
                 // the tiles the op's region reaches, each tree where its tile puts it
-                terrain::LocalBounds bounds;
-                const std::vector<terrain::TileCoord> reached = terrain::ShapeEvaluator(ops[i].shape).bounds(bounds)
+                terraincore::LocalBounds bounds;
+                const std::vector<terraincore::TileCoord> reached = terraincore::ShapeEvaluator(ops[i].shape).bounds(bounds)
                     ? worldTrees->tilesIn(bounds.min.x, bounds.min.y, bounds.max.x, bounds.max.y) : worldTrees->presentTiles();
-                for (const terrain::TileCoord& tile : reached) {
+                for (const terraincore::TileCoord& tile : reached) {
                     std::string why;
-                    const terrain::TreeStore* tileTrees = worldTrees->trees(tile, &why);
+                    const terraincore::TreeStore* tileTrees = worldTrees->trees(tile, &why);
                     if (!tileTrees) {
                         call->fail(why + "; nothing was changed.");
                         return;
                     }
                     const Vector2 centre = worldTrees->centre(tile);
-                    for (const terrain::TreeRecord& record : tileTrees->records()) {
+                    for (const terraincore::TreeRecord& record : tileTrees->records()) {
                         if (prototypeId >= 0 && record.prototypeId != static_cast<uint16_t>(prototypeId)) continue;
-                        ops[i].existingObjects.push_back(Vector2(terrain::foliageTreeLocalX(record, worldTrees->tileSize()) + centre.x,
-                                                                 terrain::foliageTreeLocalZ(record, worldTrees->tileSize()) + centre.y));
+                        ops[i].existingObjects.push_back(Vector2(terraincore::foliageTreeLocalX(record, worldTrees->tileSize()) + centre.x,
+                                                                 terraincore::foliageTreeLocalZ(record, worldTrees->tileSize()) + centre.y));
                         treeIds[i].push_back(terrainWorldTreeId(tile, record.id));
                     }
                 }
                 continue;
             }
             if (!store) continue;
-            for (const terrain::TreeRecord& record : store->records()) {
+            for (const terraincore::TreeRecord& record : store->records()) {
                 if (prototypeId >= 0 && record.prototypeId != static_cast<uint16_t>(prototypeId)) continue;
-                ops[i].existingObjects.push_back(Vector2(terrain::foliageTreeLocalX(record, terrain.terrainSize), terrain::foliageTreeLocalZ(record, terrain.terrainSize)));
+                ops[i].existingObjects.push_back(Vector2(terraincore::foliageTreeLocalX(record, terrain.terrainSize), terraincore::foliageTreeLocalZ(record, terrain.terrainSize)));
                 treeIds[i].push_back(record.id);
             }
         }
@@ -477,9 +477,9 @@ void editObjectsFromOps(const CallPtr& call, const TerrainCallTarget& target, st
     }
 
     TerrainComponentStore planner(scene, entity, terrain);
-    terrain::OpOptions plan;
+    terraincore::OpOptions plan;
     plan.dryRun = true;
-    const terrain::TerrainOpResult result = terrain::applyOps(planner, ops, plan);
+    const terraincore::TerrainOpResult result = terraincore::applyOps(planner, ops, plan);
     if (!result.ok) {
         call->fail(result.error);
         return;
@@ -491,20 +491,20 @@ void editObjectsFromOps(const CallPtr& call, const TerrainCallTarget& target, st
         for (size_t i = 0; i < ops.size(); i++) {
             Op op;
             op.type = OpType::Registered;
-            op.params.kind = terrain::OpParam::Kind::Object;
-            auto number = [](double value) { terrain::OpParam p; p.kind = terrain::OpParam::Kind::Number; p.number = value; return p; };
-            terrain::OpParam items;
-            items.kind = terrain::OpParam::Kind::List;
+            op.params.kind = terraincore::OpParam::Kind::Object;
+            auto number = [](double value) { terraincore::OpParam p; p.kind = terraincore::OpParam::Kind::Number; p.number = value; return p; };
+            terraincore::OpParam items;
+            items.kind = terraincore::OpParam::Kind::List;
             if (ops[i].type == OpType::PlaceObjects) {
-                for (const terrain::PlacedObject& object : result.ops[i].plan.objects) {
-                    terrain::OpParam point;
-                    point.kind = terrain::OpParam::Kind::List;
+                for (const terraincore::PlacedObject& object : result.ops[i].plan.objects) {
+                    terraincore::OpParam point;
+                    point.kind = terraincore::OpParam::Kind::List;
                     point.items = {number(object.x), number(object.z), number(object.yaw * 180.0 / 3.14159265358979323846), number(object.scale)};
                     items.items.push_back(point);
                 }
                 if (items.items.empty()) continue;
-                terrain::OpParam prototype;
-                prototype.kind = terrain::OpParam::Kind::String;
+                terraincore::OpParam prototype;
+                prototype.kind = terraincore::OpParam::Kind::String;
                 prototype.text = prototypes[i];
                 op.registeredName = "place_trees";
                 op.params.fields = {{"prototype", prototype}, {"points", items}, {"align_to_normal", number(aligns[i])}};
@@ -530,7 +530,7 @@ void editObjectsFromOps(const CallPtr& call, const TerrainCallTarget& target, st
         erasedCount += result.ops[i].erasedObjects.size();
     }
     const std::string undoName = "Edit Terrain Objects (" + name + ")";
-    Json out = terrain::opResultJson(result, space, ops);
+    Json out = terraincore::opResultJson(result, space, ops);
     out["terrain"] = McpRefs::entityJson(sceneProject, entity);
     out["placed"] = placedCount;
     out["erased"] = erasedCount;
@@ -547,7 +547,7 @@ void editObjectsFromOps(const CallPtr& call, const TerrainCallTarget& target, st
     };
     for (size_t i = 0; i < ops.size(); i++) {
         if (ops[i].type == OpType::PlaceObjects) {
-            for (const terrain::PlacedObject& object : result.ops[i].plan.objects) {
+            for (const terraincore::PlacedObject& object : result.ops[i].plan.objects) {
                 float height = 0.0f;
                 Vector3 normal(0.0f, 1.0f, 0.0f);
                 MeshSystem::sampleTerrainSurface(scene->getComponent<TerrainComponent>(entity), object.x, object.z, height, normal);
@@ -600,7 +600,7 @@ void addImportDetection(Json& out, const std::vector<Op>& ops, const HeightImpor
 }
 
 // The call that verifies or fixes what a warning says (R95: next)
-std::string nextFor(const terrain::TerrainOpResult& result) {
+std::string nextFor(const terraincore::TerrainOpResult& result) {
     if (result.hasWarning("clipped_high")) return "Heights reached the terrain's top: raise maxHeight with set_properties, then remap_heights to keep the shape.";
     if (result.hasWarning("filter_excluded_all")) return "The filter kept every texel out: check it with sample_terrain stats [\"height\", \"slope\"].";
     return "Check the result with sample_terrain (stats, hash) or look with visualize_terrain.";
@@ -662,7 +662,7 @@ bool sampleTerrainExtras(const CallPtr& call, Project* project, SceneProject* sc
         for (size_t i = 0; i < terrain.blendMaps.size(); i++) maps.push_back(MapId{MapKind::Blend, static_cast<int>(i)});
         for (size_t i = 0; i < terrain.foliageLayers.size(); i++) maps.push_back(MapId{MapKind::Density, static_cast<int>(i)});
         for (const MapId& map : maps) {
-            if (store.format(map).exists) hashes[terrain::mapIdName(map)] = terrain::hashHex(terrain::mapHash(store, map));
+            if (store.format(map).exists) hashes[terraincore::mapIdName(map)] = terraincore::hashHex(terraincore::mapHash(store, map));
         }
         data["hashes"] = hashes;
     }
@@ -684,14 +684,14 @@ bool sampleTerrainExtras(const CallPtr& call, Project* project, SceneProject* sc
             return false;
         }
     }
-    const terrain::MapFormat format = store.format(heightMap);
+    const terraincore::MapFormat format = store.format(heightMap);
     if (!format.exists) {
         call->fail("stats: the terrain has no height map. edit_terrain create makes one.");
         return false;
     }
 
     // region: a box in the call's space, snapped outward to texels
-    const terrain::OpSpace space = spaceOf(transform, world);
+    const terraincore::OpSpace space = spaceOf(transform, world);
     const float half = terrain.terrainSize * 0.5f;
     float minX = -half, minZ = -half, maxX = half, maxZ = half;
     if (hasKey(args, "region")) {
@@ -724,12 +724,12 @@ bool sampleTerrainExtras(const CallPtr& call, Project* project, SceneProject* sc
     std::vector<float> slopes;
     const int bins = hasKey(args, "slope_bins") && args["slope_bins"].is_number_integer() ? std::clamp(args["slope_bins"].get<int>(), 1, 90) : 9;
     std::vector<int64_t> binCounts(static_cast<size_t>(bins), 0);
-    const terrain::SurfaceView view = terrainSurfaceView(terrain);
+    const terraincore::SurfaceView view = terrainSurfaceView(terrain);
     int64_t clippedLow = 0, clippedHigh = 0, texels = 0;
     for (int y = y0; y <= y1; y += stride) {
         for (int x = x0; x <= x1; x += stride) {
             const Vector2 local = store.worldOfTexel(heightMap, x, y);
-            const terrain::SurfaceSample sample = terrain::sampleSurface(view, local.x, local.y);
+            const terraincore::SurfaceSample sample = terraincore::sampleSurface(view, local.x, local.y);
             texels++;
             if (wantHeight) {
                 const float normalized = terrain.maxHeight != 0.0f ? sample.height / terrain.maxHeight : 0.0f;
@@ -781,9 +781,9 @@ bool sampleTerrainExtras(const CallPtr& call, Project* project, SceneProject* sc
                 double total = 0.0;
                 samples++;
                 for (int l = 0; l < layerCount; l++) {
-                    const terrain::LayerChannel channel = terrain::terrainLayerChannel(l);
+                    const terraincore::LayerChannel channel = terraincore::terrainLayerChannel(l);
                     const MapId blend{MapKind::Blend, channel.map};
-                    const terrain::MapFormat blendFormat = store.format(blend);
+                    const terraincore::MapFormat blendFormat = store.format(blend);
                     if (!blendFormat.exists) continue;
                     const Vector2 at = store.texelOfWorld(blend, local.x, local.y);
                     const int bx = std::clamp(static_cast<int>(std::lround(at.x)), 0, blendFormat.bounds.w - 1);
@@ -833,7 +833,7 @@ void editTerrainTool(const CallPtr& call) {
     }
 
     const TerrainWorldPlacement transform = terrainWorldPlacement(scene, target.entity);
-    const terrain::OpSpace space = spaceOf(transform, !(hasKey(args, "space") && args["space"] == "local"));
+    const terraincore::OpSpace space = spaceOf(transform, !(hasKey(args, "space") && args["space"] == "local"));
     const bool dryRun = hasKey(args, "dry_run") && args["dry_run"].get<bool>();
 
     CommandHistory* history = CommandHandle::get(target.scene->id);
@@ -915,7 +915,7 @@ void editTerrainTool(const CallPtr& call) {
     }
 
     HeightImport imported;
-    terrain::OpJsonParser parser(space, editorHooks(target.project, imported));
+    terraincore::OpJsonParser parser(space, editorHooks(target.project, imported));
     std::vector<Op> ops;
     if (!parser.parseList(args["ops"], ops)) {
         rollback();
@@ -945,7 +945,7 @@ void editTerrainTool(const CallPtr& call) {
         return;
     }
 
-    terrain::OpOptions options;
+    terraincore::OpOptions options;
     if (hasKey(args, "map_resolution") && args["map_resolution"].is_number_integer()) options.newMapResolution = args["map_resolution"].get<int>();
 
     const std::pair<uint32_t, Entity> key{target.scene->id, target.entity};
@@ -962,7 +962,7 @@ void editTerrainTool(const CallPtr& call) {
 
     // Everything runs once as a dry run: the call's answer when dry, else what the real run must
     // prepare (maps to make first, a hole map to remove after)
-    const terrain::TerrainOpResult preview = previewTerrainOps(target.project, target.scene, target.entity, ops, options);
+    const terraincore::TerrainOpResult preview = previewTerrainOps(target.project, target.scene, target.entity, ops, options);
     if (!preview.ok) {
         rollback();
         call->fail(preview.error);
@@ -971,7 +971,7 @@ void editTerrainTool(const CallPtr& call) {
 
     std::string undoName = "Edit Terrain (" + scene->getEntityName(target.entity) + ")";
     if (dryRun) {
-        Json out = terrain::opResultJson(preview, space, ops);
+        Json out = terraincore::opResultJson(preview, space, ops);
         addImportDetection(out, ops, imported);
         out["terrain"] = McpRefs::entityJson(target.scene, target.entity);
         out["dry_run"] = true;
@@ -981,7 +981,7 @@ void editTerrainTool(const CallPtr& call) {
         return;
     }
 
-    terrain::TerrainOpResult reported;
+    terraincore::TerrainOpResult reported;
     std::string error;
     if (!applyTerrainOpsWithUndo(target.project, target.scene, target.entity, ops, options, preview, "Edit Terrain", reported, error)) {
         rollback();
@@ -990,7 +990,7 @@ void editTerrainTool(const CallPtr& call) {
     }
     history->groupSince(start);
 
-    Json out = terrain::opResultJson(reported, space, ops);
+    Json out = terraincore::opResultJson(reported, space, ops);
     addImportDetection(out, ops, imported);
     out["terrain"] = McpRefs::entityJson(target.scene, target.entity);
     out["dry_run"] = false;
@@ -999,13 +999,13 @@ void editTerrainTool(const CallPtr& call) {
     if (hasKey(args, "hash") && args["hash"].get<bool>()) {
         Json hashes = Json::object();
         TerrainComponentStore written(scene, target.entity, scene->getComponent<TerrainComponent>(target.entity));
-        for (const terrain::MapChangeReport& change : reported.changed) {
-            hashes[terrain::mapIdName(change.map)] = terrain::hashHex(terrain::mapHash(written, change.map));
+        for (const terraincore::MapChangeReport& change : reported.changed) {
+            hashes[terraincore::mapIdName(change.map)] = terraincore::hashHex(terraincore::mapHash(written, change.map));
         }
         out["hashes"] = hashes;
     }
     int64_t texels = 0;
-    for (const terrain::MapChangeReport& change : reported.changed) texels += change.texels;
+    for (const terraincore::MapChangeReport& change : reported.changed) texels += change.texels;
     call->ok("Edited the terrain: " + std::to_string(texels) + " texel(s) changed in " + std::to_string(reported.changed.size()) + " map(s).", out);
 }
 
@@ -1030,7 +1030,7 @@ void exportTerrainHeightmapTool(const CallPtr& call) {
 
     TerrainComponentStore store(target.scene->scene, target.entity, terrain);
     const MapId heightMap{MapKind::Height, 0};
-    const terrain::MapFormat format = store.format(heightMap);
+    const terraincore::MapFormat format = store.format(heightMap);
     if (!format.exists) {
         call->fail("The terrain has no height map to export: edit_terrain create makes one.");
         return;
@@ -1083,7 +1083,7 @@ void exportTerrainHeightmapTool(const CallPtr& call) {
     const float minHeight = *std::min_element(heights.begin(), heights.end()) * terrain.maxHeight;
     const float maxHeight = *std::max_element(heights.begin(), heights.end()) * terrain.maxHeight;
     Json out = {{"path", path}, {"format", TerrainRawIO::formatName(options.format)}, {"width", format.bounds.w}, {"height", format.bounds.h},
-                {"bytes", bytes.size()}, {"min", minHeight}, {"max", maxHeight}, {"hash", terrain::hashHex(terrain::mapHash(store, heightMap))},
+                {"bytes", bytes.size()}, {"min", minHeight}, {"max", maxHeight}, {"hash", terraincore::hashHex(terraincore::mapHash(store, heightMap))},
                 {"warnings", Json::array()},
                 {"next", "edit_terrain {op: import_heightmap, path, range: \"" + std::string(options.range == HeightRange::Full ? "full" : "source") +
                          "\"} reads it back" + (options.range == HeightRange::Auto ? " with source_min " + std::to_string(low) + " and source_max " + std::to_string(high) : "") + "."}};
@@ -1150,13 +1150,13 @@ void visualizeTerrainTool(const CallPtr& call) {
     Scene* scene = target.scene->scene;
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(target.entity);
     const TerrainWorldPlacement transform = terrainWorldPlacement(scene, target.entity);
-    const terrain::OpSpace space = spaceOf(transform, !(hasKey(args, "space") && args["space"] == "local"));
+    const terraincore::OpSpace space = spaceOf(transform, !(hasKey(args, "space") && args["space"] == "local"));
     const float half = terrain.terrainSize * 0.5f;
     float minX = -half, minZ = -half, maxX = half, maxZ = half;
     float boxHeight = terrain.maxHeight;
 #if JASPERENGINE_TERRAIN_WORLD
     // T4 R4: a World's box is its tiles'
-    jasperengine::terrain::TileCoord low, high;
+    jasperengine::terraincore::TileCoord low, high;
     if (isWorld && terrain.world && terrain.world->started() && terrain.world->occupancy().bounds(low, high)) {
         const float size = terrain.world->lattice().tileSize();
         minX = static_cast<float>(low.x) * size;
@@ -1274,7 +1274,7 @@ void visualizeTerrainTool(const CallPtr& call) {
 
 void registerTerrainTools(McpRegistry& registry) {
     using namespace schema;
-    terrain::registerFoliageOps();
+    terraincore::registerFoliageOps();
     // T5 R56: editor only, so Lua's applyOps does not know it
     ImpostorBaker::registerOp();
 

@@ -535,10 +535,10 @@ TEST(MeshRaycast, TerrainHoleMisses){
     terrain.setSize(32.0f);
     terrain.setMaxHeight(8.0f);
     std::vector<uint8_t> heights((size_t)33 * 33, 128);
-    std::vector<uint8_t> holes((size_t)33 * 33, terrain::SOLID_VALUE);
+    std::vector<uint8_t> holes((size_t)33 * 33, terraincore::SOLID_VALUE);
     for (int y = 10; y < 20; y++){
         for (int x = 10; x < 20; x++){
-            holes[(size_t)y * 33 + x] = terrain::HOLE_VALUE;
+            holes[(size_t)y * 33 + x] = terraincore::HOLE_VALUE;
         }
     }
     TerrainComponent& component = scene.getComponent<TerrainComponent>(terrain.getEntity());

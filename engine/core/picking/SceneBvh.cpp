@@ -1080,7 +1080,7 @@ void SceneBvh::raycast(const Vector3& origin, const Vector3& direction, float ra
                 return true;
             };
             if (filter.kinds & PICK_TREE){
-                foliage->forEachTreeAlongRay(ray, range, [&](Entity terrain, terrain::TreeId id, int prototype, const Matrix4& world, float distance){
+                foliage->forEachTreeAlongRay(ray, range, [&](Entity terrain, terraincore::TreeId id, int prototype, const Matrix4& world, float distance){
                     return consider(terrain, foliage->getPrototypeEntity(terrain, prototype), world, distance, PickKind::TREE, id, prototype);
                 });
             }

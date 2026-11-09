@@ -79,7 +79,7 @@ namespace {
             return;
         }
         luabridge::LuaRef kept = function;
-        foliage->setTreeRemovedHandler(entity, [kept, L](terrain::TreeId id, const FoliageInstanceInfo& pose) {
+        foliage->setTreeRemovedHandler(entity, [kept, L](terraincore::TreeId id, const FoliageInstanceInfo& pose) {
             try {
                 kept(static_cast<lua_Integer>(id), poseTable(L, pose));
             } catch (const luabridge::LuaException& error) {
@@ -133,12 +133,12 @@ void LuaBinding::registerFoliageClasses(lua_State* L) {
                 const luabridge::LuaRef option = options["updateNavigation"];
                 if (option.isBool()) updateNavigation = option.unsafe_cast<bool>();
             }
-            const std::optional<FoliageInstanceInfo> pose = foliageOf(self)->removeTreeInstance(self->getEntity(), static_cast<terrain::TreeId>(id), updateNavigation);
+            const std::optional<FoliageInstanceInfo> pose = foliageOf(self)->removeTreeInstance(self->getEntity(), static_cast<terraincore::TreeId>(id), updateNavigation);
             if (!pose) return luabridge::LuaRef(L);
             return poseTable(L, *pose);
         })
         .addFunction("restoreTreeInstance", +[](Terrain* self, lua_Integer id) {
-            return foliageOf(self)->restoreTreeInstance(self->getEntity(), static_cast<terrain::TreeId>(id));
+            return foliageOf(self)->restoreTreeInstance(self->getEntity(), static_cast<terraincore::TreeId>(id));
         })
         .addFunction("addTreeInstance", +[](Terrain* self, const luabridge::LuaRef& spec) -> lua_Integer {
             if (!spec.isTable()) return 0;
@@ -168,7 +168,7 @@ void LuaBinding::registerFoliageClasses(lua_State* L) {
             if (hit.isInstance<RayReturn>()) {
                 const RayReturn ray = hit.unsafe_cast<RayReturn>();
                 Entity terrainEntity = NULL_ENTITY;
-                terrain::TreeId id = 0;
+                terraincore::TreeId id = 0;
                 if (foliage->getTreeFromBody(ray.body, ray.colliderIndex, terrainEntity, id) && terrainEntity == self->getEntity()) return static_cast<lua_Integer>(id);
             }
             return 0;

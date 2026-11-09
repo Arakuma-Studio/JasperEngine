@@ -9,6 +9,7 @@
 
 #include "terrain/FoliageScatter.h"
 #include "terrain/TerrainDeterministic.h"
+#include "terrain/TerrainSurface.h"
 
 #include <cmath>
 #include <cstdint>
@@ -17,7 +18,7 @@
 namespace foliagegolden {
 
     using namespace jasperengine;
-    using namespace jasperengine::terrain;
+    using namespace jasperengine::terraincore;
 
     constexpr int FIXTURE_MAP = 256;
     constexpr float FIXTURE_SIZE = 256.0f;

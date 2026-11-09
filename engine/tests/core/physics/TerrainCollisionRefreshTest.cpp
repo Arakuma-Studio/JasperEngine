@@ -99,16 +99,16 @@ namespace {
         }
 
         // An edit as a game's applyOps makes it: through the component's store
-        terrain::TerrainOpResult edit(terrain::OpType type, float radius, float delta){
+        terraincore::TerrainOpResult edit(terraincore::OpType type, float radius, float delta){
             TerrainComponent& terrain = scene->getComponent<TerrainComponent>(terrainEntity);
             TerrainComponentStore store(scene.get(), terrainEntity, terrain);
-            terrain::Op op;
+            terraincore::Op op;
             op.type = type;
-            op.shape.type = terrain::ShapeType::Circle;
+            op.shape.type = terraincore::ShapeType::Circle;
             op.shape.center = Vector2(0.0f, 0.0f);
             op.shape.radius = radius;
             op.delta = delta;
-            return terrain::applyOps(store, std::span<const terrain::Op>(&op, 1));
+            return terraincore::applyOps(store, std::span<const terraincore::Op>(&op, 1));
         }
 
         void resolveTransforms(){
@@ -182,7 +182,7 @@ TEST_F(TerrainCollisionRefresh, SetHeightsMatchesRebuild){
     ASSERT_TRUE(shape) << error;
     const std::vector<float> before = heightsOf(field(shape));
 
-    ASSERT_TRUE(edit(terrain::OpType::Lower, 4.0f, 3.0f).ok);
+    ASSERT_TRUE(edit(terraincore::OpType::Lower, 4.0f, 3.0f).ok);
     ASSERT_TRUE(terrain.editState && terrain.editState->collisionDirty) << "the edit is waiting for the colliders";
     const TerrainEditState& state = *terrain.editState;
     const HeightFieldBlock block = JoltTerrainRefresh::blockOver(SIZE, MAP, field(shape).GetSampleCount(), field(shape).GetBlockSize(),
@@ -218,7 +218,7 @@ TEST_F(TerrainCollisionRefresh, AHoleCutRefreshesAsTheBuildOpensIt){
     JPH::ShapeRefC shape = JoltShapeBuilder::buildHeightFieldShape(scene.get(), terrain, Vector3(1, 1, 1), MAP, &error);
     ASSERT_TRUE(shape) << error;
 
-    ASSERT_TRUE(edit(terrain::OpType::CutHoles, 4.0f, 0.0f).ok);
+    ASSERT_TRUE(edit(terraincore::OpType::CutHoles, 4.0f, 0.0f).ok);
     ASSERT_TRUE(terrain.editState && terrain.editState->collisionDirty);
     const TerrainEditState& state = *terrain.editState;
     const HeightFieldBlock block = JoltTerrainRefresh::blockOver(SIZE, MAP, field(shape).GetSampleCount(), field(shape).GetBlockSize(),
@@ -245,7 +245,7 @@ TEST_F(TerrainCollisionRefresh, AHeightPastTheRangeOrMostOfTheShapeIsBuiltAgain)
     std::string error;
     JPH::ShapeRefC shape = JoltShapeBuilder::buildHeightFieldShape(scene.get(), terrain, Vector3(1, 1, 1), MAP, &error);
     ASSERT_TRUE(shape) << error;
-    ASSERT_TRUE(edit(terrain::OpType::Raise, 3.0f, 3.0f).ok);
+    ASSERT_TRUE(edit(terraincore::OpType::Raise, 3.0f, 3.0f).ok);
     const TerrainEditState& state = *terrain.editState;
     const HeightFieldBlock block = JoltTerrainRefresh::blockOver(SIZE, MAP, field(shape).GetSampleCount(), field(shape).GetBlockSize(),
                                                                  state.collisionMinX, state.collisionMinZ, state.collisionMaxX, state.collisionMaxZ, 1.0f, 1.0f);
@@ -271,7 +271,7 @@ TEST_F(TerrainCollisionRefresh, RaysHitTheNewSurface){
     const JPH::Shape* built = body.colliders[0].shape.GetPtr();
     EXPECT_NEAR(groundAt(0.0f, 0.0f), 5.0f, 0.05f);
 
-    ASSERT_TRUE(edit(terrain::OpType::Lower, 4.0f, 3.0f).ok);
+    ASSERT_TRUE(edit(terraincore::OpType::Lower, 4.0f, 3.0f).ok);
     steps(1);
     EXPECT_NEAR(groundAt(0.0f, 0.0f), 2.0f, 0.05f) << "the crater's floor";
     EXPECT_NEAR(groundAt(10.0f, 10.0f), 5.0f, 0.05f) << "the ground away from it";
@@ -282,7 +282,7 @@ TEST_F(TerrainCollisionRefresh, RaysHitTheNewSurface){
 TEST_F(TerrainCollisionRefresh, AnEditPastTheRangeRebuildsAndStillHits){
     makeTerrain(false, true);
     steps(1);
-    ASSERT_TRUE(edit(terrain::OpType::Raise, 4.0f, 3.0f).ok);
+    ASSERT_TRUE(edit(terraincore::OpType::Raise, 4.0f, 3.0f).ok);
     steps(1);
     EXPECT_NEAR(groundAt(0.0f, 0.0f), 8.0f, 0.05f);
 }
@@ -315,7 +315,7 @@ TEST_F(TerrainCollisionRefresh, SleepingBodyWakes){
     const float resting = static_cast<float>(bodies.GetPosition(id).GetY());
     EXPECT_NEAR(resting, 5.5f, 0.1f);
 
-    ASSERT_TRUE(edit(terrain::OpType::Lower, 6.0f, 3.0f).ok);
+    ASSERT_TRUE(edit(terraincore::OpType::Lower, 6.0f, 3.0f).ok);
     steps(1);
     EXPECT_TRUE(bodies.IsActive(id)) << "it wakes when the ground under it moves";
     steps(120);

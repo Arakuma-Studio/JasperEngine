@@ -25,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     // §6 Table 1: 24 public ops, then the internal one with its own type. apply_field and set_heights
     // are their own functions below.

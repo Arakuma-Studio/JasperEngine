@@ -3743,7 +3743,7 @@ size_t MeshSystem::getTerrainGridArraySize(int rootGridSize, int levels){
 }
 
 float MeshSystem::terrainTexelCoord(float local, float terrainSize, int size){
-    return terrain::surfaceTexelCoord(local, terrainSize, size);
+    return terraincore::surfaceTexelCoord(local, terrainSize, size);
 }
 
 // channel 0 of a height or density map texel, 0-1: 8-bit, 16-bit (R16) or 32-bit float (a linear
@@ -3763,11 +3763,11 @@ static float readMapTexel(const unsigned char* pixels, size_t index, int bytesPe
 }
 
 float MeshSystem::sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY){
-    return terrain::sampleHeightTexels(pixels, width, height, channels, bytesPerChannel, texelX, texelY);
+    return terraincore::sampleHeightTexels(pixels, width, height, channels, bytesPerChannel, texelX, texelY);
 }
 
 float MeshSystem::sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ){
-    return terrain::sampleHeightLocal(pixels, width, height, channels, bytesPerChannel, terrainSize, localX, localZ);
+    return terraincore::sampleHeightLocal(pixels, width, height, channels, bytesPerChannel, terrainSize, localX, localZ);
 }
 
 bool MeshSystem::raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint, bool ignoreHoles){
@@ -4100,7 +4100,7 @@ bool MeshSystem::loadPlacedModel(Entity entity, const std::string& path, bool as
 
 // Sample height and normal in terrain-local space.
 void MeshSystem::sampleTerrainSurface(TerrainComponent& terrain, float localX, float localZ, float& height, Vector3& normal){
-    const terrain::SurfaceSample sample = querySurface(terrain, localX, localZ);
+    const terraincore::SurfaceSample sample = querySurface(terrain, localX, localZ);
     height = sample.height;
     normal = sample.normal;
 }

@@ -23,31 +23,31 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using terrain::MapId;
-using terrain::MapKind;
-using terrain::TexelRect;
+using terraincore::MapId;
+using terraincore::MapKind;
+using terraincore::TexelRect;
 
 namespace {
 
     // A store that says what reached it
-    class RecordingStore : public terrain::RawMapStore {
+    class RecordingStore : public terraincore::RawMapStore {
     public:
-        RecordingStore(): terrain::RawMapStore(1000.0f, 400.0f) {}
+        RecordingStore(): terraincore::RawMapStore(1000.0f, 400.0f) {}
 
         struct Write { MapId map; TexelRect rect; };
         std::vector<Write> writes;
 
-        terrain::WriteResult write(MapId map, TexelRect rect, std::span<const float> in) override {
+        terraincore::WriteResult write(MapId map, TexelRect rect, std::span<const float> in) override {
             writes.push_back({map, rect});
-            return terrain::RawMapStore::write(map, rect, in);
+            return terraincore::RawMapStore::write(map, rect, in);
         }
-        terrain::WriteResult writeBytes(MapId map, TexelRect rect, std::span<const uint8_t> in) override {
+        terraincore::WriteResult writeBytes(MapId map, TexelRect rect, std::span<const uint8_t> in) override {
             writes.push_back({map, rect});
-            return terrain::RawMapStore::writeBytes(map, rect, in);
+            return terraincore::RawMapStore::writeBytes(map, rect, in);
         }
     };
 
-    void addHeight(terrain::RawMapStore& store, int size, float value) {
+    void addHeight(terraincore::RawMapStore& store, int size, float value) {
         const MapId height{MapKind::Height, 0};
         store.addMap(height, size, size, 1, 16);
         const std::vector<float> values(static_cast<size_t>(size) * size, value);
@@ -102,7 +102,7 @@ namespace {
         return request;
     }
 
-    bool runAll(terrain::TerrainMapStore& store, const GenerationRequest& request, GenerationResult& result) {
+    bool runAll(terraincore::TerrainMapStore& store, const GenerationRequest& request, GenerationResult& result) {
         auto prepared = TerrainGeneration::prepare(store, request, result);
         if (!prepared) return false;
         if (!TerrainGeneration::evaluate(*prepared, nullptr, false, result)) return false;
@@ -189,7 +189,7 @@ TEST(TerrainGeneration, OptionalLayerWarnsAndSkips) {
     EXPECT_TRUE(result.issues.empty());
     // Heights still apply
     bool heightChanged = false;
-    for (const terrain::MapChangeReport& report : result.changed) heightChanged = heightChanged || report.map.kind == MapKind::Height;
+    for (const terraincore::MapChangeReport& report : result.changed) heightChanged = heightChanged || report.map.kind == MapKind::Height;
     EXPECT_TRUE(heightChanged);
 }
 
@@ -226,13 +226,13 @@ TEST(TerrainGeneration, PeakBytesWithinBudget) {
     EXPECT_LE(result.peakBytes, grids * texels * 4u + 64u * 1024u * 1024u);
 }
 
-// T3 R15: layers 10-12 live in the blend maps' alphas, as 1 - weight (terrain::terrainLayerChannel). A feathered
+// T3 R15: layers 10-12 live in the blend maps' alphas, as 1 - weight (terraincore::terrainLayerChannel). A feathered
 // region blends from a layer's old weight: for layer 10 that is 1 - its stored alpha, not the alpha itself.
 TEST(TerrainGeneration, FeatherBlendsFromAnAlphaLayersWeight) {
     RecordingStore store;
     store.setFrame(1000.0f, 400.0f);
     addHeight(store, 17, 0.25f);
-    const terrain::LayerChannel where = terrain::terrainLayerChannel(10);
+    const terraincore::LayerChannel where = terraincore::terrainLayerChannel(10);
     ASSERT_TRUE(where.inverted);
     const MapId alphaMap{MapKind::Blend, where.map};
     const auto layer10 = [&](std::vector<float>& weights) {
