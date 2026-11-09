@@ -9,6 +9,7 @@
 
 #include "terrain/FoliageScatter.h"
 #include "terrain/TerrainDeterministic.h"
+#include "terrain/TerrainSurface.h"
 
 #include <cmath>
 #include <cstdint>
