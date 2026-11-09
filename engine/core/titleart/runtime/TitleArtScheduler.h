@@ -92,6 +92,8 @@ namespace jasperengine::titleart {
 
         // the pool's live bytes (get_title, get_vram_report)
         size_t poolBytes() const;
+        // the Cache Budget of the running platform group (R18 prerender checks its frames against it)
+        size_t cacheBudgetBytes() const;
         // every title's GPU side is gone (device loss, the engine's end)
         void releaseAll();
 

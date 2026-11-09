@@ -14,9 +14,12 @@
 
 #include "Project.h"
 #include "Theme.h"
+#include "animation/PreviewOwner.h"
 #include "command/CommandHandle.h"
+#include "command/type/AddComponentCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "component/AudioSourceComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TitleArtRendererComponent.h"
@@ -119,6 +122,29 @@ void editor::InspectorWindow::drawTitleArtRendererComponent(ComponentType cpType
         if (ImGui::Button(ICON_FA_PEN_TO_SQUARE " Open in Title Designer")) {
             InspectorWindowTitleArt::openInDesigner(project->getProjectPath() / fs::path(title->title.path));
         }
+    }
+    // S85 R49: the default animation in the Scene and Game views, restored on Stop
+    if (single && sceneProject->playState == ScenePlayState::STOPPED && !animationChoices.empty()){
+        static PreviewOwner::Token previewToken = 0;
+        const bool previewing = TitleArtSystem::isAnimationEditPreviewing(scene, entity);
+        if (ImGui::Button(previewing ? ICON_FA_STOP " Stop Preview" : ICON_FA_PLAY " Preview")){
+            if (previewing){
+                PreviewOwner::release(previewToken);
+                previewToken = 0;
+                TitleArtSystem::stopAnimationEditPreview(scene, entity);
+            }else if (TitleArtSystem::startAnimationEditPreview(scene, entity)){
+                previewToken = PreviewOwner::acquire(sceneProject->id, entity, scene, "Title Art preview", [scene, entity](){
+                    previewToken = 0;
+                    TitleArtSystem::stopAnimationEditPreview(scene, entity);
+                });
+            }
+        }
+    }
+    // R49: where a marker's sound plays
+    if (single && TitleArtSystem::animationHasMarkerSounds(scene, entity) && !(scene->isComponentRegistered<AudioSourceComponent>() && scene->findComponent<AudioSourceComponent>(entity))){
+        ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " Marker sounds play 2D on Master without an Audio Source");
+        if (ImGui::SmallButton("Add Audio Source"))
+            CommandHandle::get(sceneProject->id)->addCommandNoMerge(new AddComponentCmd(project, sceneProject->id, entity, ComponentType::AudioSourceComponent));
     }
     if (single) ImGui::TextColored(Theme::Colors::SubtleText, "%s", costLine(*title, instance).c_str());
     if (single && TitleArtSystem::hasBothCompanions(scene, entity)){

@@ -211,6 +211,11 @@ void TitleArtScheduler::setClockForTesting(double seconds){
     clock = seconds;
 }
 
+size_t TitleArtScheduler::cacheBudgetBytes() const{
+    // half the budget is for shown-before images (R20, as runFrame's limits)
+    return (size_t)(config.cacheBudgetMiB[(size_t)platformGroup()] * 1024.0 * 1024.0) / 2;
+}
+
 size_t TitleArtScheduler::poolBytes() const{
     if (!rendererInstance) return 0;
     const TitleTargetPoolStats& stats = rendererInstance->poolStats();

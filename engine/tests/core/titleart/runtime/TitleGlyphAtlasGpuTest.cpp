@@ -370,7 +370,7 @@ TEST_F(TitleGlyphAtlasGpu, GlyphPosesMoveTintAndFlashCells) {
     auto doc = counterDoc(110, 0, {{"style", {{"face", solidFace("#ffffff")}, {"rims", Json::array()}}}}, false);
     auto runWith = [&](std::map<uint32_t, GlyphPose> poses, const std::string& key) {
         auto live = glyphLive(doc);
-        live->setGlyphPoses(std::make_shared<const std::map<uint32_t, GlyphPose>>(std::move(poses)), true);
+        live->setGlyphPoses(std::make_shared<const std::map<uint32_t, GlyphPose>>(std::move(poses)));
         live->setState(state(), stateHash(key), textOverride("88"));
         runFrames(*live, factory());
         EXPECT_TRUE(live->front().valid()) << live->status().error;

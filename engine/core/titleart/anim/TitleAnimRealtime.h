@@ -65,6 +65,14 @@ namespace jasperengine::titleart {
         titleanim::TrackPivot pivot = titleanim::TrackPivot::Center;
         bool identity() const;
     };
+    // R14, R15: what a Realtime title's frame composes while it plays (TitleAnimCompose): each
+    // split layer's sampled field values (absolute, long paths) and each cells text layer's glyphs
+    struct JASPERENGINE_API TitleComposePose {
+        std::map<std::string, std::map<std::string, Json>> layers;
+        std::map<std::string, std::map<uint32_t, GlyphPose>> glyphs;
+        bool empty() const { return layers.empty() && glyphs.empty(); }
+    };
+
     // what the job's cached compose depends on (equal poses: equal hashes)
     JASPERENGINE_API uint64_t glyphPoseHash(const GlyphPose& pose);
     // the glyph poses of text layer `layerId` from a sampled animation, combined into `poses`

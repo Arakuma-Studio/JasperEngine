@@ -29,6 +29,7 @@
 #include "audio/TimelineAudio.h"
 #endif
 
+#include <chrono>
 #include <algorithm>
 #include <cmath>
 
@@ -204,6 +205,40 @@ void TitleArtSystem::resetAnimation(EntityRegistry* scene, Entity entity){
     if (ta::TitleAnimPlayer* player = animationPlayer(scene, entity)) player->reset();
 }
 
+bool TitleArtSystem::startAnimationEditPreview(EntityRegistry* scene, Entity entity){
+    TitleArtRendererComponent* title = titleComponent(scene, entity);
+    ta::TitleAnimPlayer* player = animationPlayer(scene, entity);
+    if (!title || !player || !player->library() || player->library()->animations.empty()) return false;
+    const std::string name = !title->defaultAnimation.empty() ? title->defaultAnimation : player->library()->defaultName;
+    if (name.empty()) return false;
+    ta::TitleAnimPlayOptions options;
+    options.loop = 1;       // the preview repeats until Stop, whatever the animation's wrap
+    if (!playAnimation(scene, entity, name, options)) return false;
+    instanceOf(*title).animationEditPreview = true;
+    instanceOf(*title).animationEditPreviewLast = std::chrono::steady_clock::time_point();
+    return true;
+}
+
+void TitleArtSystem::stopAnimationEditPreview(EntityRegistry* scene, Entity entity){
+    TitleArtRendererComponent* title = titleComponent(scene, entity);
+    if (!title) return;
+    instanceOf(*title).animationEditPreview = false;
+    resetAnimation(scene, entity);
+}
+
+bool TitleArtSystem::isAnimationEditPreviewing(EntityRegistry* scene, Entity entity){
+    TitleArtRendererComponent* title = titleComponent(scene, entity);
+    return title && instanceOf(*title).animationEditPreview;
+}
+
+bool TitleArtSystem::animationHasMarkerSounds(EntityRegistry* scene, Entity entity){
+    ta::TitleAnimPlayer* player = animationPlayer(scene, entity);
+    if (!player || !player->library()) return false;
+    for (const ta::CompiledTitleAnimation& a : player->library()->animations)
+        for (const ta::CompiledMarker& m : a.markers) if (!m.sound.empty()) return true;
+    return false;
+}
+
 bool TitleArtSystem::sampleAnimation(EntityRegistry* scene, Entity entity, const std::string& name, double time){
     ta::TitleAnimPlayer* player = animationPlayer(scene, entity);
     if (!player) return false;
@@ -224,6 +259,7 @@ bool TitleArtSystem::isAnimationReady(EntityRegistry* scene, Entity entity, cons
     const ta::CompiledTitleAnimation* animation = player->find(name);
     if (!animation) return false;
     TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
+    if (animation->rerender == ta::RerenderPolicy::Prerender && instance.live && TitleArtRuntime::isPrerendering(*instance.live)) return false;
     // a Baked flipbook is ready when its pages are on the GPU; everything else plays at once
     auto pages = instance.flipbookPages.find(animation->id);
     if (pages == instance.flipbookPages.end()) return true;
@@ -244,7 +280,9 @@ bool TitleArtSystem::prepareAnimation(EntityRegistry* scene, Entity entity, cons
                       joined(animationNames(scene, entity)).c_str());
         return false;
     }
-    // asking for the pages starts their loads (getRender loads a texture on first use)
+    // R18: a prerender animation's frames render ahead; the pages' loads start on first use
+    TitleArtInstance& instance = instanceOf(*titleComponent(scene, entity));
+    if (instance.live) TitleArtRuntime::prepareAnimation(*instance.live, *player, name);
     return isAnimationReady(scene, entity, name);
 }
 
@@ -281,11 +319,24 @@ void TitleArtSystem::updateAnimation(Entity entity, TitleArtRendererComponent& t
         if (player.isDriven()) player.reset();
         // a written animationTime seeks (no markers)
         if (title.animationTimeKeyed) player.seek(title.animationTime);
-        if (!paused){
-            // the component's Animation Update, or a play's own `unscaled`
-            const double unscaled = (double)Engine::getUnscaledDeltatime();
-            const double step = title.animationUnscaledTime ? unscaled : dt;
+        if (!paused || instance.animationEditPreview){
+            // the component's Animation Update, or a play's own `unscaled`; Edit mode has no scaled
+            // time, so its preview runs on the unscaled clock
+            double unscaled = (double)Engine::getUnscaledDeltatime();
+            if (paused){
+                // no frame time in Edit mode: the preview runs on the wall clock
+                const auto now = std::chrono::steady_clock::now();
+                unscaled = instance.animationEditPreviewLast.time_since_epoch().count() ? std::chrono::duration<double>(now - instance.animationEditPreviewLast).count() : 0.0;
+                unscaled = std::min(unscaled, 0.25);
+                instance.animationEditPreviewLast = now;
+            }
+            const double step = title.animationUnscaledTime || paused ? unscaled : dt;
             player.update(step, unscaled, instance.firedMarkers, instance.finishedAnimations);
+            // R49: silent, and no script is running in Edit mode to hear it
+            if (paused){
+                instance.firedMarkers.clear();
+                instance.finishedAnimations.clear();
+            }
         }
         title.animationTime = (float)player.baseTime();
     }

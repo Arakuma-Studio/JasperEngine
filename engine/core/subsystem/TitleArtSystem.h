@@ -158,6 +158,11 @@ namespace jasperengine{
         // "" stops every animation (the pose stays); a name stops that one; false when it does not play
         static bool stopAnimation(EntityRegistry* scene, Entity entity, const std::string& name);
         static void resetAnimation(EntityRegistry* scene, Entity entity);
+        // R49: the default animation running in Edit mode, silently (no markers fire); stop resets it
+        static bool startAnimationEditPreview(EntityRegistry* scene, Entity entity);
+        static void stopAnimationEditPreview(EntityRegistry* scene, Entity entity);
+        static bool isAnimationEditPreviewing(EntityRegistry* scene, Entity entity);
+        static bool animationHasMarkerSounds(EntityRegistry* scene, Entity entity);
         static bool sampleAnimation(EntityRegistry* scene, Entity entity, const std::string& name, double time);
         // Realtime prerender and Glyph Atlas cells asked for now; true when it plays at once
         static bool prepareAnimation(EntityRegistry* scene, Entity entity, const std::string& name);

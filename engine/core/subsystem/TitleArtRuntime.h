@@ -141,6 +141,10 @@ namespace jasperengine{
             // under the title's share of the frame budget) and the glyph-cell poses; called each
             // frame before setState (nothing when nothing plays)
             static void setAnimation(TitleArtLive& live, const titleanim::TitleAnimPlayer& player, int animatingTitles);
+            // R18: a `prerender` animation's sample times rendered ahead into the title's frame cache;
+            // false when they do not fit the Cache Budget (it then plays live, warned once)
+            static bool prepareAnimation(TitleArtLive& live, const titleanim::TitleAnimPlayer& player, const std::string& name);
+            static bool isPrerendering(const TitleArtLive& live);
 
             // the document's Exposed parameters with their values (R5); false with `error`
             static bool readExposed(const std::string& titlePath, std::vector<TitleArtExposedParam>& out, std::string* error);

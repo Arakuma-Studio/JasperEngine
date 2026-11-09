@@ -17,6 +17,7 @@
 #include <cstring>
 #include <functional>
 #include <map>
+#include <set>
 
 using namespace jasperengine;
 using namespace jasperengine::titleart;
@@ -572,12 +573,14 @@ TitleAnimPlan jasperengine::titleart::buildAnimPlan(const TitleArtDoc& doc, cons
                 };
                 switch (t.cls){
                     case ta::TrackClass::LayerLive:{
-                        // S85 Deviation: no live compose of layer splits; these re-render at the
-                        // animation's capped rate (R18), and the reason says why it costs
+                        // R14: the fields a quad can carry; an effect's L parameters re-render
+                        const bool composable = t.field.rfind("transform.", 0) == 0 || t.field == "opacity" || t.field.rfind("tint", 0) == 0 ||
+                                                t.field.rfind("flash.", 0) == 0;
                         std::string code;
                         const std::string why = splitBlocker(t.layer, code);
-                        rerender(why.empty() ? std::string("layer-live tracks re-render: the runtime has no layer split compose") : "not a layer split: " + why,
-                                 why.empty() ? "no_layer_compose" : code.c_str());
+                        if (!composable) rerender("effect parameters re-render the layer", "not_composable");
+                        else if (!why.empty()) rerender("not a layer split: " + why, code.c_str());
+                        else set(TrackPlay::Plays, "layer_split");
                         break;
                     }
                     case ta::TrackClass::Glyph:
@@ -636,6 +639,22 @@ TitleAnimPlan jasperengine::titleart::buildAnimPlan(const TitleArtDoc& doc, cons
                 }
             }
             ap.tracks.push_back(std::move(tp));
+        }
+        // R14: a split image holds the layer at rest, so a layer that also re-renders (or draws
+        // per glyph) re-renders all of it instead
+        if (effective == TitleArtRenderMode::REALTIME){
+            std::set<std::string> redrawn;
+            for (const TrackPlan& tp : ap.tracks) if (tp.how == "rerender" || tp.how == "prerender" || tp.how == "glyph_cells") redrawn.insert(tp.layer);
+            for (TrackPlan& tp : ap.tracks){
+                if (tp.how != "layer_split" || !redrawn.count(tp.layer)) continue;
+                const bool prerender = a.rerender == ta::RerenderPolicy::Prerender;
+                tp.how = prerender ? "prerender" : "rerender";
+                tp.play = TrackPlay::FallsBack;
+                tp.reason = "another track redraws this layer, so its splits re-render with it";
+                tp.code = "split_redrawn";
+                if (prerender) ap.prerender = true;
+                else ap.rerender = true;
+            }
         }
         // R16: Glow Pulse needs a glow output, which frames do not have
         if (ap.flipbook){

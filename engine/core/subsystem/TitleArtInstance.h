@@ -21,6 +21,7 @@
 #include "util/TitleArtBakeInfo.h"
 #include "asset/AssetRef.h"
 
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -102,6 +103,8 @@ namespace jasperengine::titleart{
         titleanim::TitleAnimPlayer animation;
         bool animationLoaded = false;       // the library was looked for (resolve resets it)
         bool animationAutoStarted = false;  // Play Automatically ran for this enable
+        bool animationEditPreview = false;  // the Inspector's Preview runs its clock in Edit mode (R49)
+        std::chrono::steady_clock::time_point animationEditPreviewLast;     // its last frame (Edit mode has no scene time)
         std::string animationSource;        // "document" (the module compiled it) or "data" (<file>.anim.json)
         // a Baked title's flipbook pages, by animation id (textures of the pages beside the document)
         std::map<std::string, std::vector<Texture>> flipbookPages;

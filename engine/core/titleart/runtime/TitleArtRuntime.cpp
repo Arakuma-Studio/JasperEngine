@@ -255,12 +255,61 @@ std::shared_ptr<titleanim::TitleAnimLibrary> TitleArtRuntime::compileAnimations(
     return titleart::compileAnimations(*doc, &layout, nullptr);
 }
 
+bool TitleArtRuntime::prepareAnimation(TitleArtLive& live, const titleanim::TitleAnimPlayer& player, const std::string& name){
+    const titleanim::CompiledTitleAnimation* animation = player.find(name);
+    if (!animation || animation->rerender != titleanim::RerenderPolicy::Prerender || live.mode() != TitleArtRenderMode::REALTIME) return true;
+    if (live.prerendering()) return true;
+    const TitleAnimPlan builtPlan = buildAnimPlan(*live.document(), player.library()->animations, live.mode());
+    const AnimationPlan* plan = builtPlan.find(animation->name);
+    if (!plan) return true;
+    std::map<const titleanim::CompiledTitleTrack*, bool> rerendered;
+    for (const TrackPlan& t : plan->tracks)
+        if ((t.how == "prerender" || t.how == "rerender") && t.track < animation->tracks.size()) rerendered[&animation->tracks[t.track]] = true;
+    if (rerendered.empty()) return true;
+    // every sample a playback asks for (R18's k / rerender_fps), the hash it asks with
+    const double fps = std::max(1.0f, animation->rerenderFps);
+    const int count = std::max(1, (int)std::ceil(animation->duration * fps - 1e-4) + 1);
+    const TitleDisplayImage& front = live.front();
+    const size_t frameBytes = front.valid() ? front.bytes : (size_t)live.document()->canvasWidth() * live.document()->canvasHeight() * 4u;
+    if ((size_t)count * frameBytes > TitleArtScheduler::get().cacheBudgetBytes()){
+        Log::warn("Title Art: prerender of '%s' needs %.1f MiB of frames, over the Cache Budget: it plays live", name.c_str(),
+                  (double)count * frameBytes / (1024.0 * 1024.0));
+        return false;
+    }
+    titleanim::TitleAnimPlayer sampler;
+    sampler.setLibrary(player.library());
+    std::vector<TitleArtLive::PrerenderFrame> frames;
+    for (int k = 0; k < count; k++){
+        sampler.sample(animation->name, k / fps);
+        PlayerPose pose;
+        playerPose(*live.document(), sampler, true, [&](const titleanim::CompiledTitleTrack& t){ return rerendered.count(&t) > 0; }, pose);
+        frames.push_back({pose.values.overrides(), hashCombine(pose.values.hash(), 0)});
+    }
+    live.setPrerenderFrames(std::move(frames));
+    return true;
+}
+
+bool TitleArtRuntime::isPrerendering(const TitleArtLive& live){
+    return live.prerendering();
+}
+
 void TitleArtRuntime::setAnimation(TitleArtLive& live, const titleanim::TitleAnimPlayer& player, int animatingTitles){
     const std::shared_ptr<const titleanim::TitleAnimLibrary>& library = player.library();
+    // R18: one frame of a prepare at a time, when nothing else renders; each lands in the frame
+    // cache as the next one replaces it
+    if (live.prerendering() && !player.active()){
+        if (!live.hasWork()){
+            const TitleArtLive::PrerenderFrame& frame = live.nextPrerenderFrame();
+            live.setAnimationOverrides(frame.overrides, frame.hash);
+            live.advancePrerender();
+        }
+        return;
+    }
     if (!library || !player.active()){
         if (!live.animationOverrides().empty() || live.animating()){
             live.setAnimationOverrides({}, 0);
-            live.setGlyphPoses(nullptr, false);
+            live.setGlyphPoses(nullptr);
+            live.setComposePose(nullptr);
         }
         live.setAnimating(false, 1.0);
         return;
@@ -278,24 +327,45 @@ void TitleArtRuntime::setAnimation(TitleArtLive& live, const titleanim::TitleAni
         const AnimationPlan* ap = plan.find(a.name);
         if (!ap) continue;
         for (const TrackPlan& t : ap->tracks){
-            const bool rerender = t.how == "rerender" || t.how == "prerender" || t.how == "plate_rerender" || t.how == "layer_split";
+            const bool rerender = t.how == "rerender" || t.how == "prerender" || t.how == "plate_rerender";
             if (rerender && t.track < a.tracks.size()) rerendered[&a.tracks[t.track]] = true;
         }
     }
     PlayerPose pose;
     playerPose(*live.document(), player, true, [&](const titleanim::CompiledTitleTrack& t){ return rerendered.count(&t) > 0; }, pose);
-    // R15: the glyphs of the text layer the Glyph Atlas plan names compose as cells (a Realtime
-    // title only while they animate); a document the plan cannot split keeps its merged render
-    if (live.mode() == TitleArtRenderMode::REALTIME && !pose.glyphs.empty() && live.glyphAtlasPlan().textLayer.empty() && live.glyphAtlasPlan().fallback.empty())
-        live.setGlyphPlan(planTitleGlyphAtlas(*live.document()));
-    std::shared_ptr<const std::map<uint32_t, GlyphPose>> glyphs;
-    uint64_t glyphHash = 0;
-    if (auto found = pose.glyphs.find(live.glyphAtlasPlan().textLayer); found != pose.glyphs.end() && live.glyphAtlasPlan().fallback.empty()){
-        for (const auto& entry : found->second) glyphHash = hashCombine(glyphHash, hashCombine(entry.first, glyphPoseHash(entry.second)));
-        glyphs = std::make_shared<const std::map<uint32_t, GlyphPose>>(std::move(found->second));
+    uint64_t composeHash = 0;
+    if (live.mode() == TitleArtRenderMode::REALTIME){
+        // R14, R15: layer splits and cells compose at the display rate, at unquantized time
+        std::map<const titleanim::CompiledTitleTrack*, bool> split;
+        for (const titleanim::CompiledTitleAnimation& a : library->animations){
+            const AnimationPlan* ap = plan.find(a.name);
+            if (!ap) continue;
+            for (const TrackPlan& t : ap->tracks) if (t.how == "layer_split" && t.track < a.tracks.size()) split[&a.tracks[t.track]] = true;
+        }
+        auto compose = std::make_shared<TitleComposePose>();
+        if (!split.empty()){
+            PlayerPose layerPose;
+            playerPose(*live.document(), player, false, [&](const titleanim::CompiledTitleTrack& t){ return split.count(&t) > 0; }, layerPose);
+            for (const FieldOverride& o : layerPose.values.overrides()){
+                compose->layers[o.layerId][o.path] = o.value;
+                composeHash = hashCombine(composeHash, fnv1a64(o.layerId + "|" + o.path + "|" + o.value.dump()));
+            }
+        }
+        for (auto& [layer, glyphs] : pose.glyphs){
+            for (const auto& entry : glyphs) composeHash = hashCombine(composeHash, hashCombine(fnv1a64(layer), hashCombine(entry.first, glyphPoseHash(entry.second))));
+            compose->glyphs[layer] = glyphs;
+        }
+        live.setComposePose(compose->empty() || !player.isPlaying() ? nullptr : compose);
+    }else{
+        // a Glyph Atlas title's own layer: its cells draw through the atlas compose
+        std::shared_ptr<const std::map<uint32_t, GlyphPose>> glyphs;
+        if (auto found = pose.glyphs.find(live.glyphAtlasPlan().textLayer); found != pose.glyphs.end() && live.glyphAtlasPlan().fallback.empty()){
+            for (const auto& entry : found->second) composeHash = hashCombine(composeHash, hashCombine(entry.first, glyphPoseHash(entry.second)));
+            glyphs = std::make_shared<const std::map<uint32_t, GlyphPose>>(std::move(found->second));
+        }
+        live.setGlyphPoses(glyphs);
     }
-    live.setGlyphPoses(glyphs, glyphs != nullptr && player.isPlaying());
-    live.setAnimationOverrides(pose.values.overrides(), hashCombine(pose.values.hash(), glyphHash));
+    live.setAnimationOverrides(pose.values.overrides(), hashCombine(pose.values.hash(), composeHash));
     const int n = std::max(1, animatingTitles);
     live.setAnimating(player.isPlaying(), 1.0 / (double)n);
 }

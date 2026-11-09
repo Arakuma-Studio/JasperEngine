@@ -124,6 +124,14 @@ std::shared_ptr<titleanim::TitleAnimLibrary> TitleArtRuntime::compileAnimations(
     return nullptr;
 }
 
+bool TitleArtRuntime::prepareAnimation(TitleArtLive&, const titleanim::TitleAnimPlayer&, const std::string&){
+    return true;
+}
+
+bool TitleArtRuntime::isPrerendering(const TitleArtLive&){
+    return false;
+}
+
 void TitleArtRuntime::setAnimation(TitleArtLive&, const titleanim::TitleAnimPlayer&, int){
 }
 

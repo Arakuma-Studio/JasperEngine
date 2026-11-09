@@ -90,8 +90,10 @@ namespace jasperengine::titleart {
         TitleGlyphAtlasPlan glyphPlan;
         uint64_t docHash = 0;           // the document's content hash (the atlas style's)
         std::string titlePath;          // the title's path (its prebaked atlas sits beside it)
-        // S85 R15: the per-glyph values of the text layer's cells (null when none animates)
+        // S85 R15: the per-glyph values of the Glyph Atlas layer's cells (null when none animates)
         std::shared_ptr<const std::map<uint32_t, GlyphPose>> glyphPoses;
+        // S85 R14, R15: a Realtime title composes its moving layers and glyphs (spec.atlas caches)
+        std::shared_ptr<const TitleComposePose> compose;
     };
 
     // The scheduler's view of one render (S80's TitleRenderJob in a game; a fake in tests)
@@ -197,12 +199,22 @@ namespace jasperengine::titleart {
         const std::vector<FieldOverride>& animationOverrides() const { return animOverrides; }
         uint64_t animationOverridesHash() const { return animOverridesHash; }
         void setAnimating(bool on, double share){ animatingFlag = on; budgetShare = share; }
-        // R15: the glyphs' sampled values (null: none); `compose` asks for the atlas compose even
-        // in Realtime, which shows the merged render at rest and the cells while they animate
-        void setGlyphPoses(std::shared_ptr<const std::map<uint32_t, GlyphPose>> poses, bool compose){
-            glyphPoses = std::move(poses);
-            glyphCellCompose = compose;
+        // R15: a Glyph Atlas title's glyph values (null: none)
+        void setGlyphPoses(std::shared_ptr<const std::map<uint32_t, GlyphPose>> poses){ glyphPoses = std::move(poses); }
+        // R18 prerender: the sample times still to render ahead (TitleArtRuntime::prepareAnimation)
+        struct PrerenderFrame {
+            std::vector<FieldOverride> overrides;
+            uint64_t hash = 0;
+        };
+        void setPrerenderFrames(std::vector<PrerenderFrame> frames){
+            prerenderFrames = std::move(frames);
+            prerenderNext = 0;
         }
+        bool prerendering() const { return prerenderNext < prerenderFrames.size(); }
+        const PrerenderFrame& nextPrerenderFrame() const { return prerenderFrames[prerenderNext]; }
+        void advancePrerender(){ prerenderNext++; }
+        // R14, R15: a Realtime title's moving layers and glyphs (null: the normal render)
+        void setComposePose(std::shared_ptr<const TitleComposePose> pose){ composePose = std::move(pose); }
         bool animating() const { return animatingFlag; }
         double animationShare() const { return budgetShare; }
         // the animation library the overrides were planned for (TitleArtRuntime::setAnimation)
@@ -242,7 +254,9 @@ namespace jasperengine::titleart {
         std::vector<FieldOverride> animOverrides;
         uint64_t animOverridesHash = 0;
         std::shared_ptr<const std::map<uint32_t, GlyphPose>> glyphPoses;
-        bool glyphCellCompose = false;
+        std::shared_ptr<const TitleComposePose> composePose;
+        std::vector<PrerenderFrame> prerenderFrames;
+        size_t prerenderNext = 0;
         bool animatingFlag = false;
         double budgetShare = 1.0;
         std::shared_ptr<const TitleArtDoc> doc;

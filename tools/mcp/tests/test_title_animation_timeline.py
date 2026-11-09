@@ -269,3 +269,46 @@ async def test_preset_hover_previews_without_a_step(ed: Editor):
     ed.check((await panel(ed))["preview_active"] is False, "closing the menu ends the preview")
     after = await ed.call("get_title", path=path, animation="Intro")
     ed.check_eq(after["animation"], before["animation"], "a hover adds no step")
+
+
+async def test_the_inspector_previews_and_warns(ed: Editor):
+    """R49: Preview runs the default animation in Edit mode and Stop restores it; marker sounds
+    without an Audio Source say so."""
+    path, ui = await fresh(ed, "inspector")
+    await ed.call("edit_title", path=path, bake="never", ops=[{"op": "set_marker", "animation": "Intro", "name": "ding", "time": 0.1, "sound": {"path": "assets/ding.wav", "guid": ""}}])
+    await ed.call("export_title", path=path)
+    made = await ed.call("create_scene", name="Hud", type="UI", path="scenes/Hud")
+    scene = made["scene"]["id"]
+    await ed.call("create_ui", scene=scene, root={"type": "image", "name": "Logo", "layout": {"anchor": "center", "size": [256, 128]}})
+    await ed.call("add_component", scene=scene, entity="Logo", component="titleart")
+    await ed.call("set_properties", scene=scene, entity="Logo", values={"titleart": {"title": path}})
+    await ed.call("select_entities", scene=scene, entities=["Logo"])
+    await ed.call("focus_window", window="inspector")
+    await ui.settle(10)
+    (SHOTS / "inspector-animation.png").write_bytes(await ed.screenshot("editor", max_width=0))
+    # the rows sit below the component's other sections: scroll to them, as a person does
+    async def reveal(label: str) -> dict:
+        for _ in range(40):
+            await ui.settle(2)
+            items = (await ed.call("find_ui_item", label=label, window="Inspector")).get("items", [])
+            shown = [i for i in items if i.get("visible")]
+            if shown:
+                return shown[0]["rect"]
+            rect = (items[0]["window_rect"] if items else None) or {"x": 1248, "y": 54, "width": 352, "height": 804}
+            await ui.move(rect["x"] + rect["width"] / 2, rect["y"] + rect["height"] / 2)
+            ui.xdo("click", "--repeat", "4", "5")
+        ed.fail(f"{label} is never drawn")
+    await reveal("Add Audio Source")
+    (SHOTS / "inspector-animation.png").write_bytes(await ed.screenshot("editor", max_width=0))
+    r = await reveal("Preview")
+    await ui.click(r["x"] + r["width"] / 2, r["y"] + r["height"] / 2)
+    await ui.settle(10)
+    first = await ed.call("get_title", entity="Logo", scene=scene)
+    await ui.settle(30)
+    second = await ed.call("get_title", entity="Logo", scene=scene)
+    ed.check(first["animation_time"] != second["animation_time"], f"the clock runs in Edit mode: {first['animation_time']} {second['animation_time']}")
+    r = await reveal("Stop Preview")
+    await ui.click(r["x"] + r["width"] / 2, r["y"] + r["height"] / 2)
+    await ui.settle(6)
+    stopped = await ed.call("get_title", entity="Logo", scene=scene)
+    ed.check(stopped.get("animation") is None, f"Stop restores the title: {stopped.get('animation')}")
