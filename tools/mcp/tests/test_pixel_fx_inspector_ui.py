@@ -88,7 +88,8 @@ async def test_contact_sheet_capture_and_save(ed: Editor):
         if image:
             break
     ed.check(image is not None, "the sheet is drawn in the window")
-    ed.check(await ui.find("##cs_checks", "Contact Sheet") is not None, "with the checks table")
+    # the checks table's header row (Check, Status, Measured, Threshold, Message)
+    ed.check(await ui.find("Status", "Contact Sheet") is not None, "with the checks table")
     await shot(ed, "2-contact-sheet-captured")
 
     before = {e["id"] for e in (await ed.call("get_undo_history", scope="project", limit=500))["entries"]}

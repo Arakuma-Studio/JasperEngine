@@ -246,7 +246,9 @@ async def test_clean_fixture(ed: Editor):
 
 
 async def test_determinism_in_play(ed: Editor):
-    red = await sprite(ed, "Random", HERO_PNG, 8, at=(0.0, -3.0))
+    # a 2D scene's camera works in points: a 128 px sprite at 16 per unit is 8 points wide, and the scripts
+    # move it by up to 24 points
+    red = await sprite(ed, "Random", HERO_PNG, 128, at=(0.0, -3.0))
     await ed.call("create_script", kind="lua", name="RandomStart", content=(FIXTURE / "scripts" / "RandomStart.lua").read_text(), entity=red)
     await ed.call("save_scene", scene=S["scene"], path="assets/scenes/Sheets")
     await ed.call("play", action="start", scene=S["scene"], fixed_fps=60, auto_pause=True)
@@ -261,7 +263,7 @@ async def test_determinism_in_play(ed: Editor):
     finally:
         await ed.call("play", action="stop")
     await ed.call("delete_entity", scene=S["scene"], entity=red)
-    fixed = await sprite(ed, "Seeded", HERO_PNG, 8, at=(0.0, -3.0))
+    fixed = await sprite(ed, "Seeded", HERO_PNG, 128, at=(0.0, -3.0))
     await ed.call("create_script", kind="lua", name="SeededStart", content=(FIXTURE / "scripts" / "SeededStart.lua").read_text(), entity=fixed)
     await ed.call("save_scene", scene=S["scene"])
     await ed.call("play", action="start", scene=S["scene"], fixed_fps=60, auto_pause=True)

@@ -4,7 +4,7 @@ local RandomStart = {}
 
 function RandomStart:init()
     local go = GameObject(self.scene, self.entity)
-    go:setPosition(math.random(-12, 12) / 16, 0)
+    go:setPosition(math.random(-24, 24), 0)
 end
 
 return RandomStart
