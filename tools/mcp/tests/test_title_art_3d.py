@@ -155,8 +155,9 @@ async def test_realtime_3d_quality_setting(ed: Editor):
 async def test_export_cooks_realtime_3d(ed: Editor):
     """S86 R26, R38 (AC26's export side): a source export of a Realtime 3D title whose geometry is fixed
     ships its meshes at every Realtime tier and its environment cube per texture family
-    (assets/je-titleart/index.json) and turns the mesher off; an Exposed text on a second Realtime 3D
-    title turns it on and ships no mesh for that layer."""
+    (assets/je-titleart/index.json); an Exposed text on a second Realtime 3D title ships no mesh for
+    that layer. (A source export keeps every module: the mesher switch is the Compile smoke's,
+    tools/fixtures/title3d-fixed, and TitleArtModuleUsage.ThreeDSubOptions'.)"""
     await setup(ed)
     fixed, dynamic = "assets/titles/fixed3d.titleart", "assets/titles/dynamic3d.titleart"
     for path in (fixed, dynamic):
@@ -184,9 +185,6 @@ async def test_export_cooks_realtime_3d(ed: Editor):
         ed.check(not r.is_error and (r.structured or {}).get("status") == "succeeded", f"the export: {r.text[:400]}")
         return out
 
-    def settings_text(out) -> str:
-        return "\n".join(p.read_text(errors="replace") for p in out.rglob("*") if p.is_file() and (p.suffix == ".cmake" or p.name == "CMakeLists.txt"))
-
     out = await export("export-cooked3d")
     indexes = list(out.rglob("je-titleart/index.json"))
     ed.check_eq(len(indexes), 1, f"one index: {indexes}")
@@ -207,15 +205,11 @@ async def test_export_cooks_realtime_3d(ed: Editor):
     ed.check_eq(sorted(families), ["desktop", "mobile", "web"], "a source export carries every family (android_etc2 only with its fallback setting)")
     for family, presets in families.items():
         ed.check((root / presets["softbox"]).read_bytes()[:12] == b"\xabKTX 20\xbb\r\n\x1a\n", f"{family}'s softbox cube is a KTX2")
-    settings = settings_text(out)
-    ed.check_in("set(JASPERENGINE_TITLE_ART_3D ON)", settings)
-    ed.check_in("set(JASPERENGINE_TITLE_ART_MESHER OFF)", settings, "fixed geometry: no mesher")
 
-    await ed.call("create_ui", scene=scene, root={"type": "image", "name": "Dynamic", "layout": {"anchor": "top", "size": [300, 150]}})
+    await ed.call("create_ui", scene=scene, root={"type": "image", "name": "Dynamic", "layout": {"anchor": "top_center", "size": [300, 150]}})
     await ed.call("add_component", scene=scene, entity="Dynamic", component="titleart")
     await ed.call("set_properties", scene=scene, entity="Dynamic", values={"titleart": {"title": dynamic, "renderMode": "realtime"}})
     await ed.call("save_scene", scene=scene)
     out = await export("export-dynamic3d")
     index = json.loads(next(out.rglob("je-titleart/index.json")).read_text())
     ed.check_eq(index["titles"][dynamic]["meshes"], {}, "an Exposed text: the layer meshes at runtime")
-    ed.check_in("set(JASPERENGINE_TITLE_ART_MESHER ON)", settings_text(out), "and the build keeps the mesher")
