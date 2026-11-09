@@ -472,11 +472,17 @@ namespace {
                 ConvertedPsStyle converted;
                 std::string error;
                 if (!convertPsStyle(src, 100, {}, {}, converted, error)) return false;
-                const Json fill = converted.style["face"]["fill"];
-                params = Json{{"kind", fill.value("kind", std::string("linear"))}, {"gradient", fill["gradient"]},
-                              {"angle", fill.value("angle", 90.0)}, {"scale", std::clamp(fill.value("scale", 1.0), 0.1, 10.0)},
-                              {"offset", fill.value("offset", 0.0)}};
-                if (params["kind"] == "solid") params = Json{{"kind", "solid"}, {"color", fill.value("color", std::string("#202020"))}};
+                // a damaged gradient may convert to no fill at all: untrusted input, nothing is assumed
+                const Json face = converted.style.value("face", Json::object());
+                Json fill = face.is_object() ? face.value("fill", Json::object()) : Json::object();
+                if (!fill.is_object()) fill = Json::object();
+                if (fill.value("kind", std::string("linear")) == "solid" || !fill.contains("gradient")) {
+                    params = Json{{"kind", "solid"}, {"color", fill.value("color", std::string("#202020"))}};
+                } else {
+                    params = Json{{"kind", fill.value("kind", std::string("linear"))}, {"gradient", fill["gradient"]},
+                                  {"angle", fill.value("angle", 90.0)}, {"scale", std::clamp(fill.value("scale", 1.0), 0.1, 10.0)},
+                                  {"offset", fill.value("offset", 0.0)}};
+                }
                 for (const std::string& n : converted.notes) notes.add(path, "fill", n, "approximated");
             } else {
                 notes.add(path, "fill", "pattern fill layer: no Title Art generator draws a bitmap pattern over the canvas", "dropped");
