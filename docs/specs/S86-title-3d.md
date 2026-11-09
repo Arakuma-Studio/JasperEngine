@@ -1546,7 +1546,9 @@ rest of S82 lands in 6B.
       (`tools/fixtures/title3d-fixed`, made by `tools/fixtures/make_title3d_fixed_fixture.py`, run with `SMOKE_METHOD=build
       SMOKE_PLAY=1`: the smoke's new method, the editor's Compile build `jasperengine-editor build --method compile`; its
       `compile` method is a source export, which keeps every module by design) checks instead: the build's
-      `set(JASPERENGINE_TITLE_ART_MESHER OFF)` (`smoke-export-expect.txt`), the
+      `set(JASPERENGINE_TITLE_ART_MESHER OFF)` (`smoke-export-expect.txt`; the frame check allows 2 % of pixels over 24/255, the
+      cooked-against-built tolerance of `ACookedEnvironmentLightsLikeTheBuiltOne`: measured 1.15 %, on the curved bevels, inferred to
+      be the BC6H cube from the CPU twin against the editor's GPU build, not isolated), the
       player's log line that its 3D layers draw the cooked meshes (printed only by a build without the mesher), the Lua gate
       (`getMeshStats` with `cooked=true` at the Low tier), and the game's own frame against the editor's frame of the same
       scene (`smoke-golden.json`, `tools/ci/smoke_golden.py`). The fixture is lit by the softbox, an HDRI no player has.

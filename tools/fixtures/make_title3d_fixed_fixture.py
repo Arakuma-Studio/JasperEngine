@@ -112,8 +112,10 @@ async def main() -> int:
     (target / "smoke-expect.txt").write_text(EXPECT)
     (target / "smoke-export-expect.txt").write_text(EXPORT_EXPECT)
     (target / "smoke-golden.json").write_text(json.dumps(
-        {"image": "smoke-golden.png", "tolerance": 24, "max_fraction": 0.01,
-         "about": "the editor's frame of the start scene (record_game); the game's own frame (SMOKE_PLAY=1) must match it"}, indent=1) + "\n")
+        {"image": "smoke-golden.png", "tolerance": 24, "max_fraction": 0.02,
+         "about": "the editor's frame of the start scene (record_game); the game's own frame (SMOKE_PLAY=1) must match it, within "
+                  "S86's tolerance of a cooked cube against the built one (Title3DRendererGpu.ACookedEnvironmentLightsLikeTheBuiltOne)"},
+        indent=1) + "\n")
     print(f"[fixture] wrote {target}: {sorted(str(p.relative_to(target)) for p in target.rglob('*') if p.is_file())}")
     return 0
 
