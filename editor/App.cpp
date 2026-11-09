@@ -5842,7 +5842,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v59: S43's palettes: library:sprite's PALETTE_SWAP and PALETTE_CYCLE (includes/palette.glsl,
     //      the custom block's paletteRow, paletteCycleSpeed and sceneTime), the uber pass's
     //      Palette Quantize (BLIT 'Pal' 19, includes/bayer.glsl).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v59";
+    // v60: S48's Pixel FX: library:sprite's DITHER_FADE, DISSOLVE, RAMP_RECOLOR, DROP_SHADOW and
+    //      OUTLINE_STYLE (includes/pixel_fx.glsl, u_fxRampTexture), the uber pass's Glitch
+    //      (BLIT 'Gli' 20) and the screen transition program.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v60";
 }
 
 void editor::App::pushTabNotificationStyle(){
