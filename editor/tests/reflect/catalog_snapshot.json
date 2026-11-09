@@ -21251,6 +21251,7 @@
     "glowColor",
     "glowEnabled",
     "glowPulse",
+    "language",
     "liveTime",
     "liveUnscaledTime",
     "overrides",
@@ -21344,6 +21345,11 @@
     ],
     "glowPulse": [
      2,
+     0,
+     true
+    ],
+    "language": [
+     1,
      0,
      true
     ],
@@ -21541,6 +21547,11 @@
     ],
     "glowPulse": [
      2,
+     0,
+     true
+    ],
+    "language": [
+     1,
      0,
      true
     ],
