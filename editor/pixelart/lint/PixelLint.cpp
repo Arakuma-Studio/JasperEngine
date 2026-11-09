@@ -72,7 +72,6 @@ namespace jasperengine::editor::pixelart::lint {
             return report;
         }
         const FrameView frames = frameView(input.frames);
-        std::vector<LintAnimation> animations = input.animations;
 
         if (wanted("off_palette")) {
             OffPaletteOptions o;
@@ -125,8 +124,8 @@ namespace jasperengine::editor::pixelart::lint {
         if (wanted("contrast")) report.add(lintContrast(frames, input.backdrops, catalogueThreshold(options, "contrast", 0.5, input.backdropsSource)));
         if (wanted("banding")) report.add(lintBanding(frames, catalogueThreshold(options, "banding", 12)));
         if (wanted("pillow_shading")) report.add(lintPillowShading(frames, catalogueThreshold(options, "pillow_shading", 0.6)));
-        if (wanted("empty_frame")) report.add(lintEmptyFrame(frames, animations));
-        if (wanted("one_frame")) report.add(lintOneFrame(animations));
+        if (wanted("empty_frame")) report.add(lintEmptyFrame(frames, input.animations));
+        if (wanted("one_frame")) report.add(lintOneFrame(input.animations));
         if (wanted("frame_scale")) report.add(lintFrameScale(input.frameCells, input.sharedCell, catalogueThreshold(options, "frame_scale", 0.05)));
         return report;
     }

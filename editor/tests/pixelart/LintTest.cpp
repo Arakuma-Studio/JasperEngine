@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <string>
@@ -186,6 +187,7 @@ TEST(PixelLint, DoublesWarnsOnLCorners) {
     const LintResult pos = lintOne("doubles_pos", "doubles");
     expectStatus(pos, LintStatus::Warn, "three L corners");
     EXPECT_EQ(pos.count, 3);
+    ASSERT_FALSE(pos.at.empty());
     EXPECT_EQ(pos.at[0], (LintSpot{1, 3, 1}));
     EXPECT_NE(pos.fix.find("edit_sprite: remove the corner pixel at 3,1"), std::string::npos) << pos.fix;
     expectStatus(lintOne("doubles_neg", "doubles"), LintStatus::Pass, "clean lines");
@@ -203,6 +205,7 @@ TEST(PixelLint, FlickerWarnsOnAOneFrameBlinkAndSkipsUnderThreeFrames) {
     expectStatus(pos, LintStatus::Warn, "10% blink");
     EXPECT_DOUBLE_EQ(pos.measured, 0.1);
     EXPECT_EQ(pos.count, 10);
+    ASSERT_FALSE(pos.at.empty());
     EXPECT_EQ(pos.at[0].frame, 2);
     expectStatus(lintOne(lintFrames("flicker_neg", 4), "flicker"), LintStatus::Pass, "held two frames");
     std::vector<PixelImage> two = lintFrames("flicker_pos", 2);
@@ -245,6 +248,10 @@ TEST(PixelLint, PillowShadingWarnsOnRingsPassesALightDirectionAndSkipsAFlatShape
     expectStatus(neg, LintStatus::Pass, "lit from the top-left");
     const LintResult flat = lintOne("pillow_shading_flat", "pillow_shading");
     expectStatus(flat, LintStatus::Skip, "flat");
+    // the rings are still there (rho high), but the rim is lit unevenly: a light direction, not a pillow
+    const LintResult lit = lintOne("pillow_shading_lit_rings", "pillow_shading");
+    expectStatus(lit, LintStatus::Pass, "rings under a side light");
+    EXPECT_GE(lit.measured, 0.6) << "the fixture must get past the rho test, so that the balance guard is what passes it";
 }
 
 TEST(PixelLint, SheetLintsFindEmptyAndLoneFramesAndOffScaleFrames) {
@@ -259,12 +266,14 @@ TEST(PixelLint, SheetLintsFindEmptyAndLoneFramesAndOffScaleFrames) {
     const LintReport report = pl::lint(input, options);
     const LintResult& empty = resultOf(report, "empty_frame");
     expectStatus(empty, LintStatus::Fail, "frame 2 empty");
+    ASSERT_FALSE(empty.at.empty());
     EXPECT_EQ(empty.at[0].frame, 2);
     const LintResult& one = resultOf(report, "one_frame");
     expectStatus(one, LintStatus::Warn, "idle has one frame");
     EXPECT_NE(one.message.find("idle"), std::string::npos);
     const LintResult& scale = resultOf(report, "frame_scale");
     expectStatus(scale, LintStatus::Warn, "9 against 8");
+    ASSERT_FALSE(scale.at.empty());
     EXPECT_EQ(scale.at[0].frame, 3);
 
     input.animations = {{"walk", {0, 2}}};

@@ -213,6 +213,8 @@ def main() -> int:
     png("pillow_shading_pos.png", disc(lambda x, y, d: grey([0, 60, 100, 140, 180, 210, 230][min(d, 6)])))
     png("pillow_shading_neg.png", disc(lambda x, y, d: grey(max(20, 230 - (x + y) * 8))))
     png("pillow_shading_flat.png", disc(lambda x, y, d: grey(120)))
+    # rings that follow the silhouette (rho high) under a strong light from the left: the rim is uneven, so not pillow
+    png("pillow_shading_lit_rings.png", disc(lambda x, y, d: grey(min(255, max(0, [0, 60, 100, 140, 180, 210, 230][min(d, 6)] + (6 - x) * 9)))))
     return 0
 
 

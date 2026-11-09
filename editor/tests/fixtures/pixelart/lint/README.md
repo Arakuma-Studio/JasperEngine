@@ -1,0 +1,1 @@
+The lint catalogue's fixtures (S46 AC10, `editor/tests/pixelart/LintTest.cpp`). Regenerate with `python3 -I make_lint_fixtures.py` in this directory; a multi-frame fixture is one file per frame (`<name>_f1.png`, ...).
