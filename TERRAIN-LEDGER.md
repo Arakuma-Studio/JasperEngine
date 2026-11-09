@@ -336,3 +336,12 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   test_pixel_fonts' re-save golden gained our two fixture GameObjects. Upstream's test_text_effect is flaky on origin/main too (1 in 5).
 - Final full gates rerun on 42f36ee4a: every unit test (box 22b24a0ef193) and the CI MCP suite with the slow flags (box db9262097667).
   An end-to-end smoke test of a scratch editor project with terrain, layers, a hole, foliage and a voxel volume runs on box e704f0707dc6.
+- Smoke test passed (both methods) on a scratch editor project at /work/scratch/terrain-smoke on box e704f0707dc6: generated terrain,
+  two painted layers, a hole, grass, 233 trees, a dug 32^3 Voxel Volume and a 3x2 Terrain World, exported and run with both the
+  prebuilt player and a compiled build. It found a -Wodr clash (two `ErosionRegion` structs, from T1 and T2) and the hole map missing
+  from the editor's map clean-up protection; being fixed on terrain/fix-final with the .meta clean-up and two spec questions.
+- Final suites on 42f36ee4a: core 4943 ran, 2 failed (upstream's ParticleExposed; LodFadeGpu's 60 s hang, now seen in 2 of 4 whole
+  runs on our tree and none on the baseline, being root-caused on terrain/fix-lodfade). Editor 4221 ran, 3 failed: two upstream
+  (ShaderNeutralApi, Stream.DerivedTransform), and PhysicsContactsTest's cost ratio at 7.20% against 7% (wall-clock, upstream's
+  test, shared vCPU). The CI MCP suite refused to start on upstream's test_pixel_fonts_export (CI = False without CI_EXCLUDED,
+  which origin/main's runner also refuses). It now declares why; the suite is rerunning.
