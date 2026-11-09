@@ -530,6 +530,9 @@ uint64_t jasperengine::titleart::titleGlyphStyleHash(uint64_t documentHash, cons
 }
 
 bool TitleGlyphAtlas::snapshot(TitleGlyphAtlasSnapshot& out, std::string& error){
+    // the pages' draws were recorded, not submitted: Vulkan's readback waits for what was
+    // submitted (FrameReadback reads after the frame that drew was committed)
+    SystemRender::commit();
     out = TitleGlyphAtlasSnapshot();
     Json manifest{{"format", "jasperengine.titleart.glyphs"}, {"version", 1}, {"page_size", pageSide}};
     Json skylines = Json::array();

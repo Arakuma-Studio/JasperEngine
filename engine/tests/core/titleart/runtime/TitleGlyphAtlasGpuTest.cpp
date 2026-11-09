@@ -321,7 +321,7 @@ TEST_F(TitleGlyphAtlasGpu, ACellsFaceKeepsItsInkNotTheLayersGlow) {
 
     auto wide = glyphLive(doc);
     wide->setState(state(2048, 4), stateHash("JACKPOT"), textOverride("JACKPOT"));
-    runFrames(*wide, factory(), 4000);
+    runFrames(*wide, factory());
     ASSERT_FALSE(wide->status().failed) << wide->status().error;
     TitleGlyphAtlasSnapshot snapshot;
     std::string error;
@@ -343,19 +343,19 @@ TEST_F(TitleGlyphAtlasGpu, ACellsFaceKeepsItsInkNotTheLayersGlow) {
     // one cell a 1,024 page, seven pages: the default four say R29's sentence, Max Pages 8 is enough
     auto four = glyphLive(doc);
     four->setState(state(1024, 4), stateHash("JACKPOT"), textOverride("JACKPOT"));
-    runFrames(*four, factory(), 4000);
+    runFrames(*four, factory());
     EXPECT_TRUE(four->status().failed);
     EXPECT_NE(four->status().error.find("the glyph atlas is full (4 pages of 1024). Raise Max Pages"), std::string::npos) << four->status().error;
     auto eight = glyphLive(doc);
     eight->setState(state(1024, 8), stateHash("JACKPOT"), textOverride("JACKPOT"));
-    runFrames(*eight, factory(), 4000);
+    runFrames(*eight, factory());
     ASSERT_FALSE(eight->status().failed) << eight->status().error;
     ASSERT_TRUE(eight->front().valid());
 
     // a cell wider than a page: more pages cannot help, and the error says what can
     auto small = glyphLive(doc);
     small->setState(state(512, 8), stateHash("JACKPOT"), textOverride("JACKPOT"));
-    runFrames(*small, factory(), 4000);
+    runFrames(*small, factory());
     EXPECT_TRUE(small->status().failed);
     EXPECT_NE(small->status().error.find("does not fit an atlas page of 512"), std::string::npos) << small->status().error;
     EXPECT_NE(small->status().error.find("Raise Atlas Page Size"), std::string::npos) << small->status().error;
@@ -366,7 +366,7 @@ TEST_F(TitleGlyphAtlasGpu, ACellsFaceKeepsItsInkNotTheLayersGlow) {
     const std::string letter = "A";
     auto single = glyphLive(doc);
     single->setState(state(2048, 4), stateHash(letter), textOverride(letter));
-    runFrames(*single, factory(), 4000);
+    runFrames(*single, factory());
     ASSERT_TRUE(single->front().valid()) << single->status().error;
     const Pixels glyph = frontPixels(*single);
     const Pixels merged = realtimeAt(doc, letter, *single->glyphAtlas(), 220);
