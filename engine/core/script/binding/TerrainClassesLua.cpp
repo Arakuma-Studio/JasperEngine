@@ -39,12 +39,6 @@ namespace {
     using terrain::MapKind;
     using terrain::TexelRect;
 
-    Terrain* terrainLuaSelf(lua_State* L) {
-        auto self = luabridge::get<Terrain*>(L, 1);
-        if (!self || !*self) luaL_argerror(L, 1, "a Terrain (call it with ':')");
-        return *self;
-    }
-
     // World XZ to the terrain's local XZ, on its plane
     Vector2 terrainLuaLocal(const Transform& transform, float x, float z) {
         const Vector3 local = transform.modelMatrix.inverse() * Vector3(x, transform.worldPosition.y, z);
@@ -106,6 +100,12 @@ namespace {
 
 #if JASPERENGINE_TERRAIN_EDIT
     // T1 R54: the writes, and getHeights beside them, are the runtime terrain edit module's
+
+    Terrain* terrainLuaSelf(lua_State* L) {
+        auto self = luabridge::get<Terrain*>(L, 1);
+        if (!self || !*self) luaL_argerror(L, 1, "a Terrain (call it with ':')");
+        return *self;
+    }
 
     // Pushes the reason and returns false when the terrain may not be written (R75, R77)
     bool terrainLuaWritable(lua_State* L, Terrain* self, const char* function) {
