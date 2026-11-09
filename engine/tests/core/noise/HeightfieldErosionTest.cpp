@@ -39,8 +39,8 @@ namespace {
         return heights;
     }
 
-    ErosionRegion regionOf(int size, float worldSize = 1000.0f, float maxHeight = 400.0f) {
-        ErosionRegion region;
+    HeightfieldRegion regionOf(int size, float worldSize = 1000.0f, float maxHeight = 400.0f) {
+        HeightfieldRegion region;
         region.width = size;
         region.depth = size;
         region.maxHeight = maxHeight;
@@ -73,7 +73,7 @@ namespace {
         return sum / static_cast<double>((size - 2 * stencil) * (size - 2 * stencil));
     }
 
-    float steepest(const std::vector<float>& h, int size, const ErosionRegion& region) {
+    float steepest(const std::vector<float>& h, int size, const HeightfieldRegion& region) {
         float top = 0.0f;
         for (int z = 0; z < size; z++) {
             for (int x = 0; x + 1 < size; x++) {
@@ -206,7 +206,7 @@ TEST(HeightfieldErosion, ThermalRespectsTalus) {
             h[static_cast<size_t>(z) * size + x] = x < size / 2 ? 0.2f : 0.8f;
         }
     }
-    const ErosionRegion region = regionOf(size, 640.0f, 200.0f);
+    const HeightfieldRegion region = regionOf(size, 640.0f, 200.0f);
     const float before = steepest(h, size, region);
     ThermalParams params;
     params.iterations = 64;

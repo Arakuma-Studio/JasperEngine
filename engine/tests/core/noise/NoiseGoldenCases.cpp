@@ -305,7 +305,7 @@ namespace jasperengine { namespace noise { namespace golden {
                     height[static_cast<size_t>(z) * 129 + static_cast<size_t>(x)] = (perlin2(static_cast<float>(x) * 0.05f, static_cast<float>(z) * 0.05f, 3u) + 1.0f) * 0.5f;
                 }
             }
-            terraincore::ErosionRegion region;
+            terraincore::HeightfieldRegion region;
             region.startX = 17;
             region.startZ = -9;
             region.width = 129;

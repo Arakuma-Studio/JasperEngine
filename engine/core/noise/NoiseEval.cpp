@@ -547,7 +547,7 @@ namespace jasperengine { namespace noise {
             const auto gridOf = [&](int32_t buffer) { return grids[buffer - run.plan.firstGrid]; };
             const size_t texels = static_cast<size_t>(run.region.width) * static_cast<size_t>(run.region.depth);
             const EvalContext& context = run.context;
-            terraincore::ErosionRegion region;
+            terraincore::HeightfieldRegion region;
             region.startX = run.region.startX;
             region.startZ = run.region.startZ;
             region.width = run.region.width;
