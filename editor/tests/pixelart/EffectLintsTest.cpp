@@ -317,6 +317,47 @@ TEST(EffectLints, ReportAndVerdict) {
     EXPECT_EQ(some.results[0].id, "spill");
 }
 
+// scene mode: the frames are the whole opaque view, so these three cannot see the target alone
+TEST(EffectLints, WholeViewSkipsTheLintsThatCountTheSceneBehind) {
+    // a small sprite that blinks on an opaque background that is no palette colour: read alone, each lint misreports
+    PixelImage a = box(100, 100, 0, 0, 100, 100, kInk), b = a;
+    for (int y = 40; y < 48; y++)
+        for (int x = 40; x < 48; x++) b.set(x, y, kRed);
+    EffectLintInput input;
+    input.frames = {&a, &b, &a, &b, &a};
+    input.palette = {Rgba8{200, 40, 40, 255}};
+    EXPECT_EQ(find(runEffectLints(input), "flicker")->status, LintStatus::Pass) << "the blink is lost in the whole view's pixels";
+    EXPECT_EQ(find(runEffectLints(input), "off_palette")->status, LintStatus::Fail) << "the background counts as off palette";
+    input.wholeView = true;
+    const LintReport report = runEffectLints(input);
+    for (const char* id : {"flicker", "off_palette", "partial_alpha"}) {
+        ASSERT_NE(find(report, id), nullptr) << id;
+        EXPECT_EQ(find(report, id)->status, LintStatus::Skip) << id;
+        EXPECT_NE(find(report, id)->message.find("scene mode"), std::string::npos) << find(report, id)->message;
+    }
+}
+
+// a frame read back that is not the CPU evaluation is reported, also on a kind with no rim to measure
+TEST(EffectLints, TransitionFramesThatDifferFromTheCpuEvaluationWarn) {
+    RimSpreadFrame same{4, 2, 2, -1, -1};
+    EXPECT_EQ(lintRimSpreads({same}).status, LintStatus::Pass);
+    RimSpreadFrame differs = same;
+    differs.twinDiffering = 7;
+    differs.x2 = 3;
+    differs.y2 = 5;
+    const LintResult r = lintRimSpreads({same, differs});
+    EXPECT_EQ(r.status, LintStatus::Warn);
+    EXPECT_EQ(r.measured, 7);
+    ASSERT_EQ(r.at.size(), 1u);
+    EXPECT_EQ(r.at[0], (LintSpot{2, 3, 5}));
+    EXPECT_NE(r.message.find("read back"), std::string::npos) << r.message;
+    EXPECT_FALSE(r.fix.empty());
+    RimSpreadFrame noRim;
+    EXPECT_EQ(lintRimSpreads({noRim}).status, LintStatus::Skip);
+    noRim.twinDiffering = 1;
+    EXPECT_EQ(lintRimSpreads({noRim}).status, LintStatus::Warn);
+}
+
 TEST(EffectLints, VerdictIsNotCleanWhenNothingWasMeasured) {
     LintReport report;
     report.add(lintLoopSeam({}, false));

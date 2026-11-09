@@ -75,8 +75,9 @@ namespace jasperengine::editor::pixelart::lint {
     LintResult lintPartialAlpha(const FrameView& frames);
 
     // ---- frame_cost: the median CPU time a frame takes with the target shown minus hidden (and the GPU
-    // time when measured), plus the variant's static texture taps against R33's budget. WARN above
-    // 1 ms or taps over the budget, FAIL above 4 ms; SKIP when nothing was measured.
+    // time when measured), plus the variant's static texture taps against R33's budget (SPIR-V call
+    // sites: a read inside a shader loop counts once). WARN above 1 ms or taps over the budget, FAIL
+    // above 4 ms; SKIP with `skipReason` when no time was measured and the taps are within budget.
     struct FrameCost {
         double shownMs = -1.0, hiddenMs = -1.0;   // medians; < 0: not measured
         double gpuMs = -1.0;                      // added GPU time (S15 timers); < 0: not measured
@@ -102,10 +103,13 @@ namespace jasperengine::editor::pixelart::lint {
     RimMeasure measureRim(const PixelImage& frame, std::span<const jasperengine::pixelart::Rgba8> rimColors);
     LintResult lintTransitionEdges(const FrameView& frames, std::span<const jasperengine::pixelart::Rgba8> rimColors, bool transition);
     // A transition's rim from its own CPU evaluation (ScreenTransition::measureRim): the width along each row or
-    // column away from the uncovered side, the rule the shader draws by, which a colour-only image cannot show
+    // column away from the uncovered side, the rule the shader draws by, which a colour-only image cannot show.
+    // twinDiffering: art pixels of the frame read back that differ from that CPU evaluation (x2, y2: the first)
     struct RimSpreadFrame {
         int crossings = 0, narrowest = 0, widest = 0;
         int x = -1, y = -1;
+        int twinDiffering = 0;
+        int x2 = -1, y2 = -1;
     };
     LintResult lintRimSpreads(const std::vector<RimSpreadFrame>& frames);
 
@@ -133,6 +137,9 @@ namespace jasperengine::editor::pixelart::lint {
         std::string hitStopSkipReason;
         bool transition = false;
         std::vector<RimSpreadFrame> rimSpreads;  // per frame (a transition's capture): takes the place of rimColors
+        // the frames are the whole opaque view (scene mode): off_palette and flicker would count the scene behind
+        // the target, partial_alpha would read a forced alpha, so they SKIP
+        bool wholeView = false;
         std::vector<jasperengine::pixelart::Rgba8> rimColors;
     };
     // `only`: ids to run (empty: every one); unknown ids are the caller's to refuse (isEffectLintId)
@@ -149,7 +156,8 @@ namespace jasperengine::editor::pixelart::lint {
 
     // The family's verdict (PIXEL-ART-LEDGER.md "Agent behaviour", ritmo's order): clean without a WARN
     // or FAIL; needs_person when determinism or frame_cost FAILs (code or budget decisions a setting
-    // does not fix); else fixable (each WARN and FAIL names its fix)
+    // does not fix) or when every lint SKIPs (nothing was measured, so clean would be a claim nothing
+    // backs); else fixable (each WARN and FAIL names its fix)
     Verdict effectVerdict(const LintReport& report);
 
 }
