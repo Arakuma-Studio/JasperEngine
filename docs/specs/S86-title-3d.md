@@ -1538,7 +1538,9 @@ rest of S82 lands in 6B.
       Exposed targets decide; and not only text: any target that changes geometry (text, font, size, `style_3d.depth`,
       the bevel, mode, inflate, band shapes, the 2D style while `style_3d` derives from it, an unrigged letter's transforms)
       needs the mesher, while materials, lighting, transforms, skew, glint, AO, opacity and rigged letters' transforms do
-      not. ModuleUsage's evidence names the title, the layer and the parameter.
+      not. ModuleUsage's evidence names the title, the layer and the parameter. A title made by `edit_title {create}` exposes
+      its text by default, so it needs `unexpose` to count as fixed (an instance's override of an Exposed text would otherwise
+      draw another title's mesh).
     - **AC26's "no Clipper2 symbols in the player"** cannot hold: S80's 2D offsets (`geometry/Offset.cpp`) link Clipper2
       whenever `titleart` is in, as R38 itself says ("Clipper2 stays while S80's 2D plates use it"). The smoke case
       (`tools/fixtures/title3d-fixed`, made by `tools/fixtures/make_title3d_fixed_fixture.py`, run with `SMOKE_METHOD=build

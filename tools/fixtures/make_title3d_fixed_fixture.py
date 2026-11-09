@@ -80,6 +80,8 @@ async def main() -> int:
             "graphics.canvas_width": WIDTH, "graphics.canvas_height": HEIGHT,
             "player.window_width": WIDTH, "player.window_height": HEIGHT})
         await ed.call("edit_title", path=DOC, create={"text": "3D", "canvas": [400, 200]}, bake="never", ops=[
+            # a new title exposes its text: unexposed, nothing at runtime can change its geometry
+            {"op": "unexpose", "name": "text"},
             {"op": "set_dimension", "layer": "Title", "dimension": "3d"},
             {"op": "apply_material", "layer": "Title", "part": "face", "preset": "gold"},
             {"op": "add_band", "layer": "Title", "preset": "bright_ring"},

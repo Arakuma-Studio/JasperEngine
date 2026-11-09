@@ -163,8 +163,9 @@ async def test_export_cooks_realtime_3d(ed: Editor):
         await create3D(ed, path)
         await ed.call("edit_title", path=path, ops=[{"op": "set", "values": {"scene_3d.environment.preset": "softbox"}}])
         await ed.call("export_title", path=path)
-    await ed.call("edit_title", path=dynamic, ops=[{"op": "expose", "name": "text", "type": "text",
-                                                     "targets": [{"layer": "Title", "field": "text"}]}])
+    # a new title exposes its text: the fixed one drops that, the dynamic one keeps it
+    await ed.call("edit_title", path=fixed, ops=[{"op": "unexpose", "name": "text"}])
+    await ed.call("export_title", path=fixed)
     await ed.call("set_project_settings", values={"title_art.realtime_3d_quality": {p: "low" for p in
                                                   ("windows", "linux", "macos", "ios", "android", "web")}})
     made = await ed.call("create_scene", name="Cooked3D", type="UI", path="scenes/Cooked3D")

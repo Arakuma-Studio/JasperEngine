@@ -178,9 +178,10 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         [[ -x "$GAME" ]] || { echo "FAIL: no executable ($GAME)"; exit 1; }
         # smoke-export-expect.txt: lines the generated CMakeLists of the build must hold (module switches)
         if [[ -f project/smoke-export-expect.txt ]]; then
+            TREE="$(sed -n "s/.*Building in the shared compile tree //p" build.log | head -1)"
             while IFS= read -r line; do
                 [[ -z "$line" || "$line" == "#"* ]] && continue
-                grep -qF -- "$line" project/.jasperengine/export/player-linux/CMakeLists.txt || { echo "FAIL: the build does not hold: $line"; exit 1; }
+                grep -qF -- "$line" "$TREE/CMakeLists.txt" || { echo "FAIL: the build does not hold: $line"; exit 1; }
             done < project/smoke-export-expect.txt
             echo "ok: the build holds project/smoke-export-expect.txt"
         fi
