@@ -19,7 +19,7 @@
 #include "command/CommandHistory.h"
 #include "command/type/CreateEntityCmd.h"
 #include "component/MeshComponent.h"
-#include "component/Transform.h"
+#include "Catalog.h"
 #include "pixelart/PixelArtCheck.h"
 #include "pixelart/PixelArtFix.h"
 #include "pixelart/PixelArtInput.h"
@@ -91,6 +91,11 @@ namespace {
         return id;
     }
 
+    // the Transform's position through the Catalog (no Transform header: tools/check_fanout.py)
+    Vector3& positionOf(Scene* scene, Entity entity) {
+        return *static_cast<Vector3*>(Catalog::getProperty(scene, entity, ComponentType::Transform, "position").ref);
+    }
+
     Entity sprite(uint32_t sceneId, const std::string& name, Vector3 position, TextureFilter filter = TextureFilter::NEAREST) {
         auto* cmd = new CreateEntityCmd(project(), sceneId, name, EntityCreationType::SPRITE);
         cmd->setQuiet(true);
@@ -104,7 +109,7 @@ namespace {
         base = Texture("sprites/missing.png");
         base.setMinFilter(filter);
         base.setMagFilter(filter);
-        scene->getComponent<Transform>(e).position = position;
+        positionOf(scene, e) = position;
         return e;
     }
 
@@ -265,18 +270,18 @@ TEST(PixelArtFix, AFixPlannedBeforeAnEditIsRefused) {
 
     // the sprite moves after the check: the planned move would put it back where the check saw it
     Scene* scene = project()->getScene(id)->scene;
-    scene->getComponent<Transform>(hero).position = Vector3(10.2537f, 4.0f, 0.0f);
+    positionOf(scene, hero) = Vector3(10.2537f, 4.0f, 0.0f);
     px::FixApplyReport report;
     std::string error;
     EXPECT_FALSE(px::applyFixPlan(*project(), plan, px::fixStepName(plan), report, error, &scope));
     EXPECT_EQ(error.rfind("stale: ", 0), 0u) << error;
-    EXPECT_FLOAT_EQ(scene->getComponent<Transform>(hero).position.x, 10.2537f) << "the newer edit stays";
+    EXPECT_FLOAT_EQ(positionOf(scene, hero).x, 10.2537f) << "the newer edit stays";
 
     // a plan from the current state applies
     const px::FixPlan fresh = px::plan(px::run(px::inputFromProject(*project(), scope, errors), {"off_grid"}), {"off_grid"});
     ASSERT_EQ(fresh.fixes.size(), 1u);
     EXPECT_TRUE(px::applyFixPlan(*project(), fresh, px::fixStepName(fresh), report, error, &scope)) << error;
-    const float x = scene->getComponent<Transform>(hero).position.x;
+    const float x = positionOf(scene, hero).x;
     EXPECT_NE(x, 10.2537f);
     EXPECT_NEAR(x, 10.2537f, 0.5f) << "moved onto whole pixels from where it is now";
 }
