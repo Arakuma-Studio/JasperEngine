@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "animation/BoneOverlay.h"
+#include "window/BitmapFontInspector.h"
 #include "pixelart/PixelPerfectEditor.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "graph/GraphEditorHooks.h"
@@ -13318,6 +13319,10 @@ void editor::InspectorWindow::show(){
         const std::filesystem::path inspectedImage = inspectedFiles.size() == 1
             ? (inspectedFiles[0].is_absolute() ? inspectedFiles[0] : project->getProjectPath() / inspectedFiles[0]).lexically_normal()
             : std::filesystem::path();
+        // a sheet named <name>@WxH.png: the Create Bitmap Font banner (S51 R24)
+        if (!inspectedImage.empty() && Util::isImageFile(inspectedImage.string()) && BitmapFontInspector::drawFontSheetBanner(project, inspectedImage)) {
+            ImGui::Separator();
+        }
         if (!inspectedImage.empty() && Util::isImageFile(inspectedImage.string()) && drawSpriteNormalsAsset(inspectedImage)) {
             ImGui::Separator();
         }

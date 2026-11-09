@@ -34,6 +34,7 @@
 #include "htmlui/compat/css/props/Rewriters.h"
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <atomic>
 #include <array>
@@ -2303,8 +2304,84 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
         }
         list = std::move(out);
     };
+    // S51 R15: a rule naming a bitmap font family with a glow, a blur or a blurred text-shadow: the
+    // engine drops the effect (pixel fonts draw pixel outlines and sharp shadows only)
+    if (!result.bitmapFontFamilies.empty()){
+        auto lower = [](std::string text){
+            for (char& c : text) c = (char)std::tolower((unsigned char)c);
+            return text;
+        };
+        auto trimmed = [](const std::string& text){
+            const size_t a = text.find_first_not_of(" \t\n");
+            const size_t b = text.find_last_not_of(" \t\n");
+            return a == std::string::npos ? std::string() : text.substr(a, b - a + 1);
+        };
+        auto namesBitmapFamily = [&](const std::string& value){
+            std::string first = lower(value.substr(0, value.find(',')));
+            first.erase(std::remove(first.begin(), first.end(), '"'), first.end());
+            first.erase(std::remove(first.begin(), first.end(), '\''), first.end());
+            for (const std::string& family : result.bitmapFontFamilies){
+                const std::string name = lower(family);
+                // `font: 18px Hud` ends with the family; `font-family: Hud` is it
+                if (first == name || (first.size() > name.size() && first.compare(first.size() - name.size(), name.size(), name) == 0 &&
+                                      first[first.size() - name.size() - 1] == ' '))
+                    return true;
+            }
+            return false;
+        };
+        for (const FlatRule& rule : session.rules){
+            if (rule.dropped)
+                continue;
+            bool bitmap = false;
+            for (const Declaration& d : rule.declarations)
+                if ((d.name == "font-family" || d.name == "font") && namesBitmapFamily(trimmed(serialize(d.value))))
+                    bitmap = true;
+            if (!bitmap)
+                continue;
+            for (const Declaration& d : rule.declarations){
+                const std::string value = lower(serialize(d.value));
+                bool blurred = false;
+                if (d.name == "font-effect")
+                    blurred = value.find("glow") != std::string::npos || value.find("blur") != std::string::npos;
+                if (d.name == "text-shadow" && value != "none"){
+                    // per shadow (commas outside a colour function's parentheses), a third length
+                    // that is not zero is a blur radius; a colour function's numbers are not lengths
+                    int depth = 0, lengths = 0;
+                    std::string token;
+                    auto endToken = [&](){
+                        if (!token.empty() && (std::isdigit((unsigned char)token[0]) || token[0] == '-' || token[0] == '.') &&
+                                ++lengths == 3 && std::atof(token.c_str()) != 0.0)
+                            blurred = true;
+                        token.clear();
+                    };
+                    for (const char c : value + ","){
+                        if (c == '(') depth++;
+                        if (depth > 0){
+                            if (c == ')') depth--;
+                            token.clear();
+                            continue;
+                        }
+                        if (c == ',' || c == ' '){
+                            endToken();
+                            if (c == ',') lengths = 0;
+                        }else{
+                            token += c;
+                        }
+                    }
+                }
+                if (!blurred)
+                    continue;
+                std::string buffer;
+                const std::string selector = rule.selectorCount() > 0 ? std::string(rule.selectorText(0, buffer)) : std::string();
+                session.sink->report(codes::BitmapFontEffect, d.ref,
+                                     "'" + selector + "' blurs a bitmap font (" + d.name + ": " + serialize(d.value) + "): dropped",
+                                     "use font-effect: outline(1px <colour>) or a text-shadow without blur", std::string(), selector);
+            }
+        }
+    }
     unique(result.fontFamilies);
     unique(result.declaredFontFamilies);
+    unique(result.bitmapFontFamilies);
     unique(result.animationFillNames);
     return result;
 }

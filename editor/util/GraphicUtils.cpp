@@ -11,6 +11,8 @@
 #include "stb_image_write.h"
 #include "stb_image_resize2.h"
 #include "util/STBText.h"
+#include "pixelart/BitmapFont.h"
+#include "pixelart/BitmapText.h"
 #include "jobs/JobSystem.h"
 
 #include <algorithm>
@@ -114,7 +116,9 @@ Vector2 editor::GraphicUtils::getRectTransformCenter(Scene* scene, Entity entity
     Signature signature = scene->getSignature(entity);
     if (signature.test(scene->getComponentId<TextComponent>())) {
         TextComponent& text = scene->getComponent<TextComponent>(entity);
-        if (text.pivotBaseline) {
+        if (text.pivotBaseline && text.bitmapText) {
+            center.y = text.bitmapText->getAscent(text.pixelUnit);
+        }else if (text.pivotBaseline && text.stbtext) {
             center.y = text.stbtext->getAscent();
         }
         if (text.pivotCentered) {

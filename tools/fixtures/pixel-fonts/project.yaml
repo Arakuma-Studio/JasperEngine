@@ -1,0 +1,26 @@
+formatVersion: 1
+name: Pixel Fonts
+canvasWidth: 320
+canvasHeight: 180
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+versionControl:
+  lfs: true
+startSceneId: 1868004712
+audio:
+  mixer: audio/Main.mixer
+  outputStage: linear
+  iosSessionCategory: ambient
+scenes:
+  - filepath: PixelFonts.scene
+    filepathGuid: a582e7540dde078b3c101ebbaee92d23

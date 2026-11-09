@@ -7,6 +7,7 @@
 #include "asset/AssetRef.h"
 #include "Engine.h"
 #include "math/Vector2.h"
+#include "math/Vector3.h"
 #include "util/CharExtent.h"
 #include "util/TextGlyphInfo.h"
 #include "math/Vector4.h"
@@ -16,6 +17,7 @@
 namespace jasperengine{
 
     class STBText;
+    namespace pixelart { class BitmapText; }
 
     //like a CSS font-family list: the main font first, then the fallbacks tried in order
     //for what it misses. Empty slots are skipped, the built-in fonts close the chain
@@ -44,6 +46,9 @@ namespace jasperengine{
         // (linear, as UIComponent::color; Text's setters take sRGB)
         float outlineWidth = 0.0f;
         Vector4 outlineColor = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
+        // a bitmap font's pixel outline grows through 4 or 8 neighbours (S51 R10); its outline
+        // width and shadow offset are whole font pixels
+        int outlineNeighbors = 8;
         // Shadow (TMP "Underlay"): colour (linear), offset in UI units (y down: right-down),
         // softness (blur radius) and dilate (the shape grows), UI units
         bool shadowEnabled = false;
@@ -64,6 +69,13 @@ namespace jasperengine{
         unsigned long buildCount = 0;
 
         std::shared_ptr<STBText> stbtext = NULL;
+        // a bitmap font (S51), set instead of stbtext: its layout, its pixel scale k (0 for a
+        // vector font, R7), the units one font pixel takes, and the face colour its vertices carry
+        std::shared_ptr<pixelart::BitmapText> bitmapText;
+        int pixelScale = 0;
+        float pixelUnit = 0.0f;
+        Vector3 bitmapFaceColor = Vector3(1.0f, 1.0f, 1.0f);
+        bool bitmapSizeNoted = false;
 
         //atlas state this text was built with, see STBText
         unsigned long atlasVersion = 0;

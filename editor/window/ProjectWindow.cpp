@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "pixelart/BitmapFontCreate.h"
 #include "animation/AnimatorAssetDocument.h"
 #include "window/PoseAnimationWindow.h"
 #include "EditorModal.h"
@@ -2296,6 +2297,21 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         ImGui::EndMenu();
                     }
                     ImGui::Separator();
+                }
+                // S51 R24: a font sheet, a BMFont file or a pixel TTF as a Bitmap Font
+                std::string fontSourceExtension = FileUtils::pathToUtf8(FileUtils::pathFromUtf8(file.name).extension());
+                std::transform(fontSourceExtension.begin(), fontSourceExtension.end(), fontSourceExtension.begin(),
+                               [](unsigned char c){ return (char)std::tolower(c); });
+                if (!file.isDirectory && fontSourceExtension != ".bitmapfont" && (Util::isFontFile(file.name) || fontSourceExtension == ".png")) {
+                    if (ImGui::MenuItem(ICON_FA_FONT " Create Bitmap Font")) {
+                        const fs::path source = (currentPath / FileUtils::pathFromUtf8(file.name)).lexically_normal();
+                        std::string error;
+                        const fs::path created = pixelart::createBitmapFont(project, source, error);
+                        if (created.empty())
+                            Out::error("Create Bitmap Font: %s", error.c_str());
+                        else
+                            selectCreated(created.parent_path(), FileUtils::pathToUtf8(created.filename()), false);
+                    }
                 }
                 if (file.type == FileType::MATERIAL || Util::isParticleEffectFile(file.name)){
                     // a double-click shows these in the Inspector: their text stays reachable

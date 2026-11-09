@@ -1638,6 +1638,7 @@ const FieldEntry kBody_TextComponent_fields[] = {
     JE_RF(TextComponent, pivotCentered, 0xeba1acf4u, Bool),
     JE_RF(TextComponent, outlineWidth, 0x5563a8d2u, Float),
     JE_RF(TextComponent, outlineColor, 0x6b800909u, Vector4),
+    JE_RF(TextComponent, outlineNeighbors, 0x15f6a8cdu, Int),
     JE_RF(TextComponent, shadowEnabled, 0x346dc7b5u, Bool),
     JE_RF(TextComponent, shadowColor, 0xb74840bbu, Vector4),
     JE_RF(TextComponent, shadowOffset, 0x06e6418fu, Vector2),

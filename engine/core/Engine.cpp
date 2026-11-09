@@ -69,6 +69,7 @@
 #include "pool/TextureDataPool.h"
 #include "pool/ShaderPool.h"
 #include "pool/FontPool.h"
+#include "pixelart/BitmapFontPool.h"
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
 #include "pool/MeshBufferPool.h"
@@ -1575,6 +1576,7 @@ void Engine::clearPools(){
     TextureDataPool::clear();
     ShaderPool::clear();
     FontPool::clear();
+    pixelart::BitmapFontPool::clear();
     ModelPool::clear();
     MeshLodPool::clear();
     MeshBufferPool::clear();
@@ -1595,6 +1597,7 @@ void Engine::clearUnusedPools(){
     TextureDataPool::clearUnused();
     ShaderPool::clearUnused();
     FontPool::clearUnused();
+    pixelart::BitmapFontPool::clearUnused();
     ModelPool::clearUnused();
     MeshLodPool::clearUnused();
     MeshBufferPool::clearUnused();

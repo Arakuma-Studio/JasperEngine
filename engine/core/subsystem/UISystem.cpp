@@ -36,6 +36,8 @@
 #include "util/Color.h"
 #include "util/StringUtils.h"
 #include "pool/FontPool.h"
+#include "pixelart/BitmapFont.h"
+#include "pixelart/BitmapText.h"
 #include "htmlui/HtmlUIClock.h"
 
 using namespace jasperengine;
@@ -243,6 +245,9 @@ static bool hasTextOutlineOrShadow(const TextComponent& text){
 
 STBTextOptions UISystem::getTextOptions(const TextComponent& text) const{
     STBTextOptions options;
+    // a bitmap font's scale is in its quads and its outline in its pixels (S51 D3, R10)
+    if (text.loaded ? (bool)text.bitmapText : pixelart::isBitmapFontPath(text.font[0]))
+        return options;
     const float fontSize = (float)std::max(text.fontSize, 1u);
 
     // whole raster pixels, so a resize reuses an atlas once the size settles
@@ -325,6 +330,17 @@ void UISystem::syncFontAtlas(TextComponent& text, UIComponent& ui){
 }
 
 bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
+    if (pixelart::isBitmapFontPath(text.font[0]))
+        return loadBitmapFont(text, ui);
+
+    // back from a bitmap font: coverage sampled filtered, as before
+    ui.textRgba = false;
+    ui.pixelOriginSnap = false;
+    if (ui.texture.getMinFilter() == TextureFilter::NEAREST || ui.texture.getMagFilter() == TextureFilter::NEAREST){
+        ui.texture.setMinFilter(TextureFilter::LINEAR);
+        ui.texture.setMagFilter(TextureFilter::LINEAR);
+    }
+
     const STBTextOptions options = getTextOptions(text);
     std::string fontId = getFontId(text, options);
 
@@ -482,6 +498,11 @@ void UISystem::updateTextShaderParams(TextComponent& text, UIComponent& ui){
 
 void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
 
+    if (text.bitmapText){
+        createBitmapText(text, ui, layout);
+        return;
+    }
+
     ui.primitiveType = PrimitiveType::TRIANGLES;
 
     ui.buffer.clear();
@@ -525,8 +546,18 @@ void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformCom
     syncFontAtlas(text, ui);
     updateTextShaderParams(text, ui);
 
-    float baselineOffsetY = ui.flipY ? (layout.height - text.stbtext->getAscent()) : text.stbtext->getAscent();
+    finishTextGeometry(text, ui, layout, text.stbtext->getAscent(), 0.0f, true, indices_array);
+}
+
+void UISystem::finishTextGeometry(TextComponent& text, UIComponent& ui, RectTransformComponent& layout, float ascent, float pivotStep,
+                                  bool fillColors, std::vector<uint16_t>& indices_array){
+    float baselineOffsetY = ui.flipY ? (layout.height - ascent) : ascent;
     float offsetX = text.pivotCentered ? -(layout.width / 2.0f) : 0.0f;
+    // a bitmap text's pivot stays a whole number of font pixels from its glyphs (S51 R8)
+    if (pivotStep > 0.0f){
+        baselineOffsetY = std::round(baselineOffsetY / pivotStep) * pivotStep;
+        offsetX = text.pivotCentered ? -std::floor((float)layout.width / 2.0f / pivotStep) * pivotStep : 0.0f;
+    }
     float offsetY = text.pivotBaseline ? 0.0f : baselineOffsetY;
 
     if (text.pivotCentered || !text.pivotBaseline){
@@ -561,7 +592,7 @@ void UISystem::createText(TextComponent& text, UIComponent& ui, RectTransformCom
         hideTextGlyphsAfter(text, ui, (size_t)text.visibleCharacters);
     }
 
-    if (text.vertexColor){
+    if (text.vertexColor && fillColors){
         // the Text Effect writes the colours (rgb, and its alpha factor); until then the text's own
         Attribute* atrColor = ui.buffer.getAttribute(AttributeType::COLOR);
         const unsigned int vertices = ui.buffer.getAttribute(AttributeType::POSITION)->getCount();
@@ -1798,12 +1829,20 @@ Vector2 UISystem::getTextMinSize(TextComponent& text){
     if (text.stbtext){
         minHeight = text.stbtext->getLineHeight();
         minWidth = text.stbtext->getCharWidth('W');
+    }else if (text.bitmapText){
+        const float unit = text.pixelUnit > 0.0f ? text.pixelUnit : 1.0f;
+        minHeight = (int)std::ceil((float)text.bitmapText->getFont()->getLineHeight() * unit);
+        minWidth = (float)text.bitmapText->getFont()->advanceOf('W') * unit;
     }
 
     return Vector2(minWidth, minHeight);
 }
 
 void UISystem::checkTextAtlasOptions(TextComponent& text, UIComponent& ui){
+    if (text.bitmapText){
+        updateBitmapText(text, ui);
+        return;
+    }
     if (text.loaded && !text.needReloadAtlas){
         const STBTextOptions options = getTextOptions(text);
         if (options.rasterScale != text.rasterScale || options.sdfPadding != text.sdfPadding){
@@ -2150,12 +2189,15 @@ void UISystem::applyTextEffect(Entity entity, TextEffectComponent& effect, TextC
     const unsigned int vertexCount = std::min<unsigned int>(positions->getCount(), (unsigned int)effect.basePositions.size());
     const Vector4 base = effect.baseColor;   // linear
     const Vector3 plainRgb(base.x, base.y, base.z);
+    // a styled bitmap glyph's back quad (S51) keeps the colours of its texture: white
+    const Vector3 white(1.0f, 1.0f, 1.0f);
+    auto isBack = [&text](size_t glyph){ return glyph < text.glyphInfo.size() && text.glyphInfo[glyph].back; };
 
     // the plain text: the base vertices and its colour
     if (!effect.playing){
         for (unsigned int v = 0; v < vertexCount; v++){
             ui.buffer.setVector3(v, positions, effect.basePositions[v]);
-            ui.buffer.setVector4(v, colors, Vector4(plainRgb, 1.0f));
+            ui.buffer.setVector4(v, colors, Vector4(isBack(v / 4) ? white : plainRgb, 1.0f));
         }
         effect.applied = false;
         ui.needUpdateBuffer = ui.loaded;
@@ -2185,7 +2227,10 @@ void UISystem::applyTextEffect(Entity entity, TextEffectComponent& effect, TextC
     // types from its first character too
     std::vector<int> order(glyphCount, -1);
     std::vector<std::pair<uint32_t, size_t>> selectedGlyphs;
-    for (size_t g = 0; g < glyphCount; g++){
+    // the back quads come first, one per face quad (S51 D5): each takes its face's order
+    size_t backCount = 0;
+    while (isBack(backCount)) backCount++;
+    for (size_t g = backCount; g < glyphCount; g++){
         const Vector3& p0 = effect.basePositions[g * 4];
         const Vector3& p2 = effect.basePositions[g * 4 + 2];
         if (p0.x == p2.x || p0.y == p2.y)
@@ -2206,6 +2251,8 @@ void UISystem::applyTextEffect(Entity entity, TextEffectComponent& effect, TextC
     const int count = (int)selectedGlyphs.size();
     for (int i = 0; i < count; i++)
         order[selectedGlyphs[(size_t)i].second] = i;
+    for (size_t g = 0; g < backCount && g + backCount < glyphCount; g++)
+        order[g] = order[g + backCount];
     // TMP Effect times glyphs over the characters, spaces included: the selection's and the text's
     const int textCharacters = (int)clusters.size();
     int characters = 0;
@@ -2226,7 +2273,7 @@ void UISystem::applyTextEffect(Entity entity, TextEffectComponent& effect, TextC
         if (order[g] < 0){
             for (unsigned int v = 0; v < 4; v++){
                 ui.buffer.setVector3(first + v, positions, effect.basePositions[first + v]);
-                ui.buffer.setVector4(first + v, colors, Vector4(plainRgb, 1.0f));
+                ui.buffer.setVector4(first + v, colors, Vector4(isBack(g) ? white : plainRgb, 1.0f));
             }
             continue;
         }
@@ -2249,7 +2296,7 @@ void UISystem::applyTextEffect(Entity entity, TextEffectComponent& effect, TextC
             TextEffects::applyLayer(layer, order[g], count, layerTime, fontSize, reduced, state, characters, textCharacters);
         }
 
-        const Vector3 rgb = Color::sRGBToLinear(Vector3(state.color.x, state.color.y, state.color.z));
+        const Vector3 rgb = isBack(g) ? white : Color::sRGBToLinear(Vector3(state.color.x, state.color.y, state.color.z));
         const float alpha = (baseSRGB.w > 0.0f) ? state.color.w / baseSRGB.w : state.color.w;
         for (int c = 0; c < 4; c++){
             const Vector3& p = effect.basePositions[first + corner[c]];
@@ -2626,6 +2673,9 @@ void UISystem::destroyText(TextComponent& text){
     text.needUpdateText = true;
 
     text.atlasVersion = 0;
+
+    text.bitmapText.reset();
+    text.pixelScale = 0;
 
     if (text.stbtext){
         // an atlas of a raster scale or a distance field is one of many (each canvas scale,
