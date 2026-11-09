@@ -416,6 +416,31 @@ const TitleFirstDrawStats& TitleFirstDraws::stats() {
     return firstDraws().stats;
 }
 
+TitleDrawGate::Result TitleDrawGate::check(ShaderType type, uint64_t properties, const PipelineState& state) {
+    const uint64_t key = titleDrawKey(type, properties, state);
+    if (warming && TitleFirstDraws::drew(key)) {
+        skipped = true;
+        return Result::Skip;
+    }
+    if (TitleFirstDraws::allow(key)) return Result::Draw;
+    stop = true;
+    return Result::Stop;
+}
+
+void TitleDrawGate::begin() {
+    stop = false;
+    skipped = false;
+}
+
+bool TitleDrawGate::end() {
+    if (stop) {
+        warming = true;
+        return true;
+    }
+    warming = false;
+    return skipped;
+}
+
 TitleFirstDraws::SynchronousScope::SynchronousScope() : previous(firstDraws().unbounded) {
     firstDraws().unbounded = true;
 }

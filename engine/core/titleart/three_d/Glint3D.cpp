@@ -185,7 +185,7 @@ bool Glint3D::ready(GlintMode mode, std::string* error) {
     return true;
 }
 
-bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutput& out, std::string& error) {
+bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutput& out, TitleDrawGate& gate, std::string& error) {
     Impl& im = *impl;
     const Glint3DParams& g = in.params;
     const bool mobile = in.mode == GlintMode::Mobile;
@@ -260,10 +260,9 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
         state.target.sampleCount = 1;
         state.blend = additive ? BlendMode::ADDITIVE_PREMULTIPLIED : BlendMode::NONE;
         // a program's first draw after another's this frame: the chain stops (TitleFirstDraws)
-        if (!TitleFirstDraws::allow(titleDrawKey(Impl::typeOf(program), program, state))) {
-            out.deferred = true;
-            return false;
-        }
+        const TitleDrawGate::Result pass = gate.check(Impl::typeOf(program), program, state);
+        if (pass == TitleDrawGate::Result::Stop) return false;
+        if (pass == TitleDrawGate::Result::Skip) return true;
         im.camera.setColorActions(additive ? LoadAction::LOAD : LoadAction::DONTCARE, StoreAction::STORE);
         im.camera.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
         im.camera.setLabel("title 3d glint");
@@ -370,10 +369,9 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
         state.target.depth = DepthStencilFormat::NONE;
         state.target.sampleCount = 1;
         state.blend = BlendMode::ADDITIVE_PREMULTIPLIED;
-        if (!TitleFirstDraws::allow(titleDrawKey(ShaderType::TITLE_GLINT_SPRITE, 0, state))) {
-            out.deferred = true;
-            return false;
-        }
+        const TitleDrawGate::Result pass = gate.check(ShaderType::TITLE_GLINT_SPRITE, 0, state);
+        if (pass == TitleDrawGate::Result::Stop) return false;
+        if (pass == TitleDrawGate::Result::Skip) return true;
         im.camera.setColorActions(LoadAction::LOAD, StoreAction::STORE);
         im.camera.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
         im.camera.setLabel("title 3d glint sprites");

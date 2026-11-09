@@ -37,6 +37,8 @@ namespace jasperengine {
 
 namespace jasperengine::titleart {
 
+    class TitleDrawGate;
+
     struct Glint3DInput {
         TextureRender* source = nullptr;    // the main HDR image (premultiplied, k x the region)
         int sourceWidth = 0, sourceHeight = 0;
@@ -57,9 +59,6 @@ namespace jasperengine::titleart {
         TargetRef light;                    // RGBA16F added light on the level-B lattice
         float uv[4] = {1, 1, 0, 0};         // region uv -> light uv: x scale, y scale, x offset, y offset
         uint32_t passes = 0;
-        // a pass met its program's first draw after another program's this frame
-        // (TitleFirstDraws): render() returned false without an error, nothing usable
-        bool deferred = false;
     };
 
     class JASPERENGINE_API Glint3D {
@@ -71,8 +70,8 @@ namespace jasperengine::titleart {
 
         // false while a program of the mode compiles
         bool ready(GlintMode mode, std::string* error);
-        // the glint of `in` into `out`; false with `error`
-        bool render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutput& out, std::string& error);
+        // the glint of `in` into `out`; false with `error`, or without one when `gate` stopped it
+        bool render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutput& out, TitleDrawGate& gate, std::string& error);
 
     private:
         struct Impl;

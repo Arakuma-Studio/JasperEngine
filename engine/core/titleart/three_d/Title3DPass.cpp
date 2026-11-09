@@ -417,12 +417,17 @@ TitlePx TitlePlanner::title3D(const DrawNode& node, const std::vector<std::strin
     step.costWeight = 40.0f * (float)(plan->k * plan->k) * (float)step.passes;
     step.splittable = false;
     TitleRenderServices* services = &svc;
-    // a render that stopped at a program's first draw (TitleFirstDraws) runs again on a later frame
-    auto deferred = std::make_shared<bool>(false);
+    // a render that did not draw the image (it stopped at a program's first draw, TitleFirstDraws,
+    // or only met programs) runs again on a later frame: 2 = it just ran, 1 = waiting for the frame
+    auto deferred = std::make_shared<int>(0);
     step.ready = [services, plan, testFlags, deferred]() {
-        if (*deferred) {
+        if (*deferred == 2) {
+            *deferred = 1;
+            return false;
+        }
+        if (*deferred == 1) {
             if (!TitleFirstDraws::available()) return false;
-            *deferred = false;
+            *deferred = 0;
         }
         return title3DRenderer(*services).ready(*plan, testFlags);
     };
@@ -433,7 +438,7 @@ TitlePx TitlePlanner::title3D(const DrawNode& node, const std::vector<std::strin
         if (!target) return false;
         Title3DRenderer& renderer = title3DRenderer(state->services);
         const bool ok = renderer.render(*plan, rect, pxScale, coloured, state->services, target, testFlags, error);
-        *deferred = ok && renderer.lastRenderDeferred();
+        *deferred = ok && renderer.lastRenderDeferred() ? 2 : 0;
         return ok;
     };
     steps.add(std::move(step));

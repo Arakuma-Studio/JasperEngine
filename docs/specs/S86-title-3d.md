@@ -1490,10 +1490,12 @@ rest of S82 lands in 6B.
 31. **Implementation: a 3D layer's programs draw one a frame too** (W4; it was one group of first draws, Deviation 23).
     Every draw of `Title3DRenderer` (the AO prepass, each slot's Title Lit variant in its state, the wireframe, the post
     passes, the behind copy, the glint chain and its sprites, the environment builder's tiles) asks
-    `TitleFirstDraws::allow` for its key (`titleDrawKey`: the program in its pipeline state); the second new one in a
-    frame stops the render (`lastRenderDeferred()`, `Title3DStats::deferredRenders`, the counters keep finished renders
-    only), the 3D step waits for the next frame and runs the render again from its start, and an environment build stops
-    at the tile and goes on in the next `ready()` call (a call cut short that way is not counted as a build step). A
+    `TitleDrawGate` (`TitleGpu.h`) about its key (`titleDrawKey`: the program in its pipeline state); the second new one
+    in a frame stops the render (`lastRenderDeferred()`, `Title3DStats::deferredRenders`, the counters keep finished
+    renders only) and the 3D step runs it again on a later frame. Those runs only meet programs: a draw of a program that
+    drew before is skipped, because llvmpipe rasterized the main pass again for 2 s in each otherwise (the main thread
+    waits for it at the swap); after the last new program one complete run draws the image. An environment build stops at
+    the tile and goes on in the next `ready()` call (a call cut short that way is not counted as a build step). A
     synchronous render (`TitleFirstDraws::SynchronousScope`) still draws everything at once. With S80's ELEMENT variants
     (S80 Deviation 58) no single program's compile on llvmpipe reaches the hang threshold:
     `Title3DRendererGpu.NewProgramsDrawOneAFrame` (one new program a frame, the image the same; red control: unbounded,

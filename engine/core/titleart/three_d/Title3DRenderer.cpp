@@ -201,9 +201,12 @@ struct Title3DRenderer::Impl {
     int behindWidth = 0, behindHeight = 0, behindLevels = 0;
     CameraRender pass;
     uint64_t clock = 0;
-    // the render (or the build) met a program's first draw while another one drew this frame
-    // (TitleFirstDraws): it stopped there and runs again on a later frame
-    bool deferred = false;
+    // the render's first draws (TitleFirstDraws): it stops at the frame's second new program and
+    // runs again on a later frame
+    TitleDrawGate gate;
+    // the environment build met a program's first draw after another's this frame
+    bool buildDeferred = false;
+    bool renderAgain = false;
 
     ~Impl() {
         for (auto& [key, p] : fullscreen) {
@@ -258,14 +261,6 @@ struct Title3DRenderer::Impl {
         std::shared_ptr<ShaderRender> shader = ShaderPool::get(type, properties);
         if (!shader || !shader->isCreated()) return nullptr;
         return shader;
-    }
-
-    // whether a draw of the program in `state` may go now: its first draw only when no other went
-    // this frame (TitleFirstDraws); else the render is deferred
-    bool mayDraw(ShaderType type, uint64_t properties, const PipelineState& state) {
-        if (TitleFirstDraws::allow(titleDrawKey(type, properties, state))) return true;
-        deferred = true;
-        return false;
     }
 
     Fullscreen* program(ShaderType type, uint32_t properties, const char* block, const char* source, std::string* error) {
@@ -494,7 +489,11 @@ struct Title3DRenderer::Impl {
         state.target.color = ColorFormat::RGBA16F;
         state.target.depth = DepthStencilFormat::NONE;
         state.blend = BlendMode::NONE;
-        if (!mayDraw(ShaderType::TITLE_ENV, item.program, state)) return false;
+        // every tile counts towards the cube: never skipped, only stopped at a first draw
+        if (!TitleFirstDraws::allow(titleDrawKey(ShaderType::TITLE_ENV, item.program, state))) {
+            buildDeferred = true;
+            return false;
+        }
         const bool whole = item.w == item.size && item.h == item.size;
         pass.setColorActions(whole ? LoadAction::DONTCARE : LoadAction::LOAD, StoreAction::STORE);
         pass.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
@@ -521,7 +520,7 @@ struct Title3DRenderer::Impl {
             const EnvItem& item = b.items[b.next];
             if (used > 0 && used + item.units > budget) break;
             if (!runItem(b, item, face, levels, error)) {
-                if (deferred) break;
+                if (buildDeferred) break;
                 return false;
             }
             used += item.units;
@@ -616,7 +615,7 @@ struct Title3DRenderer::Impl {
         uint64_t used = 0;
         const bool complete = advance(*slot, UINT64_MAX, used, error);
         // stopped at a first draw: the build goes on when the render runs again
-        if (!complete && deferred && error.empty()) return nullptr;
+        if (!complete && buildDeferred && error.empty()) return nullptr;
         if (!complete) {
             if (error.empty()) error = "the title environment could not be built";
             builds.erase(env.key);
@@ -784,7 +783,9 @@ struct Title3DRenderer::Impl {
         state.target.depth = DepthStencilFormat::NONE;
         state.target.sampleCount = 1;
         state.blend = BlendMode::NONE;
-        if (!mayDraw(p.type, p.properties, state)) return false;
+        const TitleDrawGate::Result drawing = gate.check(p.type, p.properties, state);
+        if (drawing == TitleDrawGate::Result::Stop) return false;
+        if (drawing == TitleDrawGate::Result::Skip) return true;
         pass.setColorActions(LoadAction::DONTCARE, StoreAction::STORE);
         pass.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
         pass.setLabel("title 3d post");
@@ -953,16 +954,16 @@ bool Title3DRenderer::ready(const Title3DPlan& plan, uint32_t testFlags) {
         const auto start = std::chrono::steady_clock::now();
         const uint64_t share = (testFlags & TITLE_ART_TEST_ENV_ONE_SHOT) ? UINT64_MAX : impl->envShare;
         uint64_t used = 0;
-        impl->deferred = false;
+        impl->buildDeferred = false;
         const bool complete = impl->advance(*slot, share, used, error);
         const double ms = millisSince(start);
         // a call cut short by a program's first draw (TitleFirstDraws) is not a share of the
         // build: neither counted nor a measure of it
-        if (!impl->deferred) {
+        if (!impl->buildDeferred) {
             counters.environmentSteps++;
             counters.environmentMaxStepUnits = std::max(counters.environmentMaxStepUnits, used);
         }
-        if (!(testFlags & TITLE_ART_TEST_ENV_ONE_SHOT) && !impl->deferred) {
+        if (!(testFlags & TITLE_ART_TEST_ENV_ONE_SHOT) && !impl->buildDeferred) {
             if (ms < ENV_FAST_MS) impl->envShare = std::min(TITLE_ENV_STEP_UNITS_MAX, impl->envShare * 2);
             else if (ms > ENV_SLOW_MS) impl->envShare = std::max(TITLE_ENV_STEP_UNITS / 4, impl->envShare / 2);
         }
@@ -981,12 +982,15 @@ bool Title3DRenderer::ready(const Title3DPlan& plan, uint32_t testFlags) {
 
 bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, double pxScale, const std::vector<std::string>& parts,
                              TitleRenderServices& services, TitleTarget* out, uint32_t testFlags, std::string& error) {
-    impl->deferred = false;
+    impl->gate.begin();
+    impl->buildDeferred = false;
     const Title3DStats before = counters;
     const bool ok = renderPasses(plan, region, pxScale, parts, services, out, testFlags, error);
-    if (!impl->deferred) return ok;
-    // stopped at a program's first draw: what it drew is drawn again in full on a later frame
-    // (the counters keep the renders that finished)
+    const bool gateStopped = impl->gate.stopped();
+    impl->renderAgain = impl->gate.end() || impl->buildDeferred;
+    if ((!ok && !gateStopped && !impl->buildDeferred) || !impl->renderAgain) return ok;
+    // stopped at a program's first draw, or only meeting programs: drawn again in full on a later
+    // frame (the counters keep the renders that finished)
     counters.renders = before.renders;
     counters.mainPasses = before.mainPasses;
     counters.postPasses = before.postPasses;
@@ -999,7 +1003,7 @@ bool Title3DRenderer::render(const Title3DPlan& plan, const TitleRectI& region, 
 }
 
 bool Title3DRenderer::lastRenderDeferred() const {
-    return impl->deferred;
+    return impl->renderAgain;
 }
 
 bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& region, double pxScale, const std::vector<std::string>& parts,
@@ -1019,7 +1023,7 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
     for (size_t i = 0; i < plan.environments.size(); i++) {
         if (plan.environments[i].matcap) continue;
         envCubes[i] = im.cube(plan.environments[i], error, counters, plan.environments);
-        if (!envCubes[i]) return false;     // an error, or a first draw deferred (im.deferred)
+        if (!envCubes[i]) return false;     // an error, or a first draw deferred (im.buildDeferred)
     }
     GpuMesh* gpuMesh = im.mesh(plan, error, counters);
     if (!gpuMesh) return false;
@@ -1270,12 +1274,13 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
         state.blend = BlendMode::NONE;
         state.depthCompare = CompareFunc::LESS_EQUAL;
         state.depthWrite = true;
-        if (!im.mayDraw(ShaderType::TITLE_LIT, geometryBits(plan, 3), state)) return false;
+        const TitleDrawGate::Result drawing = im.gate.check(ShaderType::TITLE_LIT, geometryBits(plan, 3), state);
+        if (drawing == TitleDrawGate::Result::Stop) return false;
         im.pass.setColorActions(LoadAction::CLEAR, StoreAction::STORE, Vector4(0, 0, 0, 0));
         im.pass.setDepthStencilActions(LoadAction::CLEAR, StoreAction::DONTCARE, 1.0f);
         im.pass.setLabel("title 3d ao prepass");
         im.pass.startRenderPass(&ndt->framebuffer());
-        if (prepass->object.beginDraw(state)) {
+        if (drawing == TitleDrawGate::Result::Draw && prepass->object.beginDraw(state)) {
             if (prepass->env.first >= 0) prepass->object.addTexture(prepass->env, ShaderStageType::FRAGMENT, &im.placeholderCube);
             for (auto slot : {prepass->ramps, prepass->base, prepass->matcap, prepass->behind}) {
                 if (slot.first >= 0) prepass->object.addTexture(slot, ShaderStageType::FRAGMENT, &im.placeholder2D);
@@ -1328,7 +1333,7 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
     };
     startMain(true);
     auto drawSlots = [&](bool transparent, bool depthOnly, bool everyPart) {
-        for (size_t s = 0; s < mesh.slots.size() && s < plan.slots.size() && !im.deferred; s++) {
+        for (size_t s = 0; s < mesh.slots.size() && s < plan.slots.size() && !im.gate.stopped(); s++) {
             const TitleMeshSlot& slot = mesh.slots[s];
             if (!slot.indexCount) continue;
             const Title3DSlotMaterial& sm = plan.slots[s];
@@ -1347,8 +1352,9 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
             state.depthCompare = CompareFunc::LESS_EQUAL;
             state.depthWrite = !transparent;
             state.writeMask = depthOnly ? ColorWriteMask::NONE : ColorWriteMask::RGBA;
-            if (!im.mayDraw(ShaderType::TITLE_LIT, bits, state)) break;
-            if (!o->object.beginDraw(state)) continue;
+            const TitleDrawGate::Result drawing = im.gate.check(ShaderType::TITLE_LIT, bits, state);
+            if (drawing == TitleDrawGate::Result::Stop) break;
+            if (drawing == TitleDrawGate::Result::Skip || !o->object.beginDraw(state)) continue;
             const size_t envIndex = std::min<size_t>(sm.environment, plan.environments.size() - 1);
             setEnvironment(envIndex);
             const Title3DEnvPlan& envPlan = plan.environments[envIndex];
@@ -1388,7 +1394,7 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
         drawSlots(false, true, true);
         drawSlots(true, true, true);
         const uint32_t wireBits = geometryBits(plan, 1) | (compressed ? TitleLitBits::HDR_COMPRESS : 0u);
-        LitObject* wire = im.deferred ? nullptr : im.lit(*gpuMesh, wireBits, true, &error);
+        LitObject* wire = im.gate.stopped() ? nullptr : im.lit(*gpuMesh, wireBits, true, &error);
         if (wire) {
             PipelineState state;
             state.target.color = mainKey.format;
@@ -1397,7 +1403,7 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
             state.blend = BlendMode::NONE;
             state.depthCompare = CompareFunc::LESS_EQUAL;
             state.depthWrite = false;
-            if (im.mayDraw(ShaderType::TITLE_LIT, wireBits, state) && wire->object.beginDraw(state)) {
+            if (im.gate.check(ShaderType::TITLE_LIT, wireBits, state) == TitleDrawGate::Result::Draw && wire->object.beginDraw(state)) {
                 if (wire->env.first >= 0) wire->object.addTexture(wire->env, ShaderStageType::FRAGMENT, &im.placeholderCube);
                 for (auto slot : {wire->ramps, wire->base, wire->matcap, wire->behind}) {
                     if (slot.first >= 0) wire->object.addTexture(slot, ShaderStageType::FRAGMENT, &im.placeholder2D);
@@ -1411,7 +1417,7 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
     } else {
         if (!parts.empty()) drawSlots(false, true, false);     // the whole title's depth first
         drawSlots(false, false, false);
-        if (behind && !im.deferred) {
+        if (behind && !im.gate.stopped()) {
             // the opaque parts resolved into the behind copy and its levels, then the pass again
             // for the gems (the opaque depth drawn anew)
             im.pass.endRenderPass();
@@ -1445,7 +1451,7 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
     }
     im.pass.endRenderPass();
     counters.mainPasses++;
-    if (im.deferred || !error.empty()) return false;
+    if (im.gate.stopped() || !error.empty()) return false;
 
     // ---- the glint on the pre-tone-map image (R32) ----
     Glint3DOutput glintOut;
@@ -1468,10 +1474,7 @@ bool Title3DRenderer::renderPasses(const Title3DPlan& plan, const TitleRectI& re
         gi.params = plan.glintParams;
         gi.mode = glint;
         gi.originTopLeft = features.originTopLeft;
-        if (!im.glint->render(gi, services.pool, glintOut, error)) {
-            if (glintOut.deferred) im.deferred = true;
-            return false;
-        }
+        if (!im.glint->render(gi, services.pool, glintOut, im.gate, error)) return false;
         counters.glintPasses += glintOut.passes;
     }
 

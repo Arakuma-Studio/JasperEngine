@@ -176,6 +176,26 @@ namespace jasperengine::titleart {
         };
     };
 
+    // The first draws of one render that draws everything in one call (a 3D layer's): the render
+    // stops at the frame's second new program and runs again on a later frame. While it is only
+    // meeting programs (`warming`, after a stop), a draw of a program that drew before is skipped,
+    // so a run costs its one compile and not the passes before it (llvmpipe rasterizes a 3D main
+    // pass for seconds); once a warming run reaches the end, one complete run draws the image.
+    class JASPERENGINE_API TitleDrawGate {
+    public:
+        enum class Result { Draw, Skip, Stop };
+        // what a draw of the program in `state` does in this run
+        Result check(ShaderType type, uint64_t properties, const PipelineState& state);
+        // a run starts / has ended: the end's answer is true when the run did not draw the image
+        // (it stopped, or it was warming), so the caller runs again on a later frame
+        void begin();
+        bool end();
+        bool stopped() const { return stop; }
+
+    private:
+        bool warming = false, stop = false, skipped = false;
+    };
+
     class JASPERENGINE_API TitleGpu {
     public:
         TitleGpu();
