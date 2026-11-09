@@ -54,8 +54,10 @@ std::string editor::Factory::createNavMeshSurfaceComponent(int indentSpaces, Ent
     code << ind << "navSurface.plane = " << enumCode(editor::reflect::enums::kNavPlane, surface.plane) << ";\n";
     code << ind << "navSurface.runtimeCarving = " << formatBool(surface.runtimeCarving) << ";\n";
     code << ind << "navSurface.maxCarvingObstacles = " << surface.maxCarvingObstacles << ";\n";
-    code << ind << "navSurface.followTerrainWorldFocus = " << formatBool(surface.followTerrainWorldFocus) << ";\n";
-    code << ind << "navSurface.followRadius = " << formatFloat(surface.followRadius) << ";\n";
+    // T4: only when set, so a surface without a Terrain World generates what it did
+    const NavMeshSurfaceComponent defaults;
+    if (surface.followTerrainWorldFocus != defaults.followTerrainWorldFocus) code << ind << "navSurface.followTerrainWorldFocus = true;\n";
+    if (surface.followRadius != defaults.followRadius) code << ind << "navSurface.followRadius = " << formatFloat(surface.followRadius) << ";\n";
     code << ind << "navSurface.navMeshData = " << formatString(surface.navMeshData.path) << ";\n";
     if (!surface.enabled) code << ind << "navSurface.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "NavMeshSurfaceComponent", "navSurface", assignExisting);

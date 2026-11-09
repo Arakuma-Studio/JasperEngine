@@ -40,8 +40,10 @@ YAML::Node editor::Stream::encodeNavMeshSurfaceComponent(const NavMeshSurfaceCom
     node["plane"] = StreamSchema::navPlane().toString(surface.plane);
     node["runtimeCarving"] = surface.runtimeCarving;
     node["maxCarvingObstacles"] = surface.maxCarvingObstacles;
-    node["followTerrainWorldFocus"] = surface.followTerrainWorldFocus;
-    node["followRadius"] = surface.followRadius;
+    // T4: written only when set, so a surface without a Terrain World saves what it did
+    const NavMeshSurfaceComponent defaults;
+    if (surface.followTerrainWorldFocus != defaults.followTerrainWorldFocus) node["followTerrainWorldFocus"] = surface.followTerrainWorldFocus;
+    if (surface.followRadius != defaults.followRadius) node["followRadius"] = surface.followRadius;
     encodeAssetRef(node, "navMeshData", surface.navMeshData);
     return node;
 }
