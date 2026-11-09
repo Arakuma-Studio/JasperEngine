@@ -1076,11 +1076,9 @@ void registerTitleArtTools(McpRegistry& registry) {
         tool.name = "list_title_library";
         tool.title = "List Title Library";
         tool.description =
-            "The Title Art catalogue. No args: counts per kind. kind lists rows (effects, generators, blend_modes, fonts, environments, "
-            "materials_3d, bevel_profiles; looks, color_schemes, templates with a ready `use` op; animation_presets: later). "
-            "id: one item's params, presets or keep/replace contract. query searches names en/ja, aliases, tags; category, family, "
-            "dimension, tags, scope, favorites filter. sheet: items rendered on your text or layer as one numbered image: pick by seeing. "
-            "Apply with edit_title ops apply_look, apply_color_scheme, apply_template.";
+            "The Title Art catalogue. No args: counts per kind. kind: rows (looks, color_schemes, templates carry a ready `use` op). "
+            "id: one item. query: names en/ja, aliases, tags; category, family, dimension, tags, scope, favorites filter. "
+            "sheet: items rendered on your text or layer, numbered: pick by seeing.";
         std::vector<std::string> kinds;
         for (const LibraryKind& k : LIBRARY_KINDS) kinds.push_back(k.kind);
         tool.inputSchema = object({
