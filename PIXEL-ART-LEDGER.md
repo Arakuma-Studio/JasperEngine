@@ -173,7 +173,7 @@ never build or run them.
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | implementing |
-| S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | implementing |
+| S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | in review |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | in review |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | implementing |
@@ -255,6 +255,11 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 - Destroy the build boxes A–D when the program ends.
 
 ## Log
+
+- 2026-11-09: S48's review found one blocker (a use-after-free of the transition's centre scene
+  across `loadScene`), 12 should-fixes and 3 nits; all went back to S48's implementer. S47 passed
+  its lighter gate at `699b39535` (`WERROR` build, unit 217/217, MCP 150 passed and 3 skipped, real
+  Aseprite opened and re-saved edited files) and its independent review started.
 
 - 2026-11-09: S48's lighter gate passed at `e8c5db318` (`WERROR` build, editor 206/206, core 173/173,
   MCP 150 passed and 3 skipped, transition goldens 8/8, Vulkan 29/29, post-FX 3/3; red controls for
