@@ -51,6 +51,19 @@ namespace jasperengine::pixelart {
         return cross > 0.0f && a01 > 0.0f && a10 > 0.0f && diagonal <= tolerance * cross;
     }
 
+    void exactGridZeros(Matrix4& m){
+        const float a00 = std::fabs(m[0][0]), a01 = std::fabs(m[1][0]);
+        const float a10 = std::fabs(m[0][1]), a11 = std::fabs(m[1][1]);
+        constexpr float tolerance = 1e-6f;
+        if (a00 > 0.0f && a11 > 0.0f && a01 + a10 <= tolerance * (a00 + a11)){
+            m[1][0] = 0.0f;
+            m[0][1] = 0.0f;
+        }else if (a01 > 0.0f && a10 > 0.0f && a00 + a11 <= tolerance * (a01 + a10)){
+            m[0][0] = 0.0f;
+            m[1][1] = 0.0f;
+        }
+    }
+
     float snapWorld(float world, int pixelsPerUnit){
         const float ppu = (float)(pixelsPerUnit > 0 ? pixelsPerUnit : 1);
         return snap(world * ppu) / ppu;

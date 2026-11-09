@@ -335,6 +335,7 @@ YAML::Node editor::Stream::encodeTrailRendererComponent(const TrailRendererCompo
     node["widthMultiplier"] = YamlNumbers::text(trail.widthMultiplier);
     if (trail.emitting != defaults.emitting) node["emitting"] = trail.emitting;
     if (trail.autodestruct != defaults.autodestruct) node["autodestruct"] = trail.autodestruct;
+    encodeSortingFields(node, trail.sortingLayer, trail.sortingOrder);
     encodeRibbonFields(node, trail, defaults);
 
     if (!trail.customShader.empty())
@@ -358,6 +359,7 @@ TrailRendererComponent editor::Stream::decodeTrailRendererComponent(const YAML::
     trail.minVertexDistance = node["minVertexDistance"] ? std::max(0.0f, decodeFinite(node["minVertexDistance"], defaults.minVertexDistance)) : defaults.minVertexDistance;
     trail.emitting = node["emitting"] ? YamlNumbers::as<bool>(node["emitting"]) : defaults.emitting;
     trail.autodestruct = node["autodestruct"] ? YamlNumbers::as<bool>(node["autodestruct"]) : defaults.autodestruct;
+    decodeSortingFields(node, trail.sortingLayer, trail.sortingOrder);
     decodeRibbonFields(node, trail, defaults);
 
     trail.customShader = node["customShader"] ? decodeShaderRef(node, "customShader") : ShaderRef();

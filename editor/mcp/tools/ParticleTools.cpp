@@ -40,7 +40,6 @@
 #include "pixelart/PixelColor.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/ParticleSystemState.h"
-#include "subsystem/RenderSystem.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
 #include "util/ProjectFileWrites.h"

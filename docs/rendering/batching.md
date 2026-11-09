@@ -43,7 +43,13 @@ ambient), the colour of a Text without a Text Effect.
 join an earlier batch when its bounds touch nothing drawn in between: `coin, enemy, coin, enemy`
 of two textures that do not overlap is two draws, not four. Overlapping draws keep their order.
 
-**Never batched** (drawn alone, counted with the reason): custom and library shaders, materials
+**Pixel art** (S52): Sprites under a Pixel Perfect Camera batch, rotated ones too (a batch holds
+one snap rule: corners or pivot); `library:sprite` batches, its FLASH amount and Palette Swap row
+per sprite, its other values equal; OUTLINE and OVERLAY batch on Sprites. Draws batch only within
+one Sorting Layer, Order in Layer and Sorting Group ([2D sorting](2d-sorting.md)).
+
+**Never batched** (drawn alone, counted with the reason): custom shaders and library shaders other
+than `library:sprite`, materials
 with an extra pass, image-based lighting and reflection probes, mirrors, skinned and morphed
 meshes, lattices, Vertex Animation, mesh LODs, more than one submesh, render-target textures,
 fake billboards, instanced meshes, tilemaps and terrains (they have their own one-draw paths),
@@ -83,14 +89,22 @@ frames (an animated size) gets a dynamic buffer of its own.
   `batch_breaks: N`, the first N breaks with their entities; `get_gpu_passes include_draws` marks
   batch draws (`docs/mcp/guide/profiling.md`).
 
-## For engine code (pixel-art S52)
+## For engine code
 
 - **Sort buckets.** `BatchItem::sortKey` (`engine/core/render/DrawBatcher.h`) is the bucket of a
-  draw; a draw never moves past one of another bucket. Every draw is in bucket 0 today. Sorting
-  Layers and Order in Layer put `(layer rank, order)` there and submit the pass's draws sorted by
-  it; batching and 2D reordering then work inside each bucket.
+  draw; a draw never moves past one of another bucket and a run holds one bucket. A scene that does
+  not sort puts every draw in bucket 0; Sorting Layers, Order in Layer and Sorting Groups put
+  `(layer value, order, outermost group)` there (`RenderSystemSorting.cpp`).
 - **Per-object values in vertices.** A per-object shader value that must not break batches lives
   in a vertex attribute of the mesh, the same at each of its vertices: the bake copies attributes
   it does not know as they are. `RenderSystem::setBatchAttributeRole(type, POINT)` bakes one like
-  a position (an object-space point, e.g. a pivot for pixel snapping), `DIRECTION` like a normal.
+  a position (an object-space point: a sprite's `a_snapPivot`), `DIRECTION` like a normal.
   A value kept as a material uniform is part of the batch key instead.
+- **Batchable library shaders.** A manifest with `// @batchable [framerect=A,B]` batches: its
+  textures and its custom block (the engine-written members left out) are in the key; a property
+  with `instance=fx.<x|y|z|w>` is read as `customParams.<member> + spriteFx(<slot>)`
+  (`includes/sprite_fx.glsl`): drawn alone the attribute `a_spriteFx` is 0, batched the bake writes
+  the material's values into it and the run's uniform is 0 ('Sfx'). The features of `framerect=`
+  read the frame rect per vertex (`a_frameRect`, 'Sfr'). Sprites get these attributes from
+  MeshSystem when their material reads them; a mesh without them draws alone
+  (`ineligible_frame_rect`).

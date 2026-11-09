@@ -27,6 +27,8 @@
 #include "component/FluidSimulationComponent.h"
 #include "particles/LegacyParticleSystem.h"
 #include "component/FogComponent.h"
+#include "component/SpriteBatchComponent.h"
+#include "component/SpriteComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
@@ -274,6 +276,10 @@ namespace luabridge
     template<> struct Stack<SpriteDrawMode> : EnumWrapper<SpriteDrawMode>{};
     template<> struct Stack<PixelUpscaleMode> : EnumWrapper<PixelUpscaleMode>{};
     template<> struct Stack<PixelRotation> : EnumWrapper<PixelRotation>{};
+    // Sprite Batch and Sprite Sort Point (S52)
+    template<> struct Stack<SpriteBatchMode> : EnumWrapper<SpriteBatchMode>{};
+    template<> struct Stack<SpriteBatchSpace> : EnumWrapper<SpriteBatchSpace>{};
+    template<> struct Stack<SpriteSortPoint> : EnumWrapper<SpriteSortPoint>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
     // ui-components: the Button's Selectable enums

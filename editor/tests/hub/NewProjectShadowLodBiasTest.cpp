@@ -24,7 +24,7 @@ namespace fs = std::filesystem;
 TEST(NewProjectShadowLodBias, TemplatesAndOldProjectsReadOne) {
     TestTempDir dir("shadow-lod-bias");
     const std::vector<ProjectTemplate> list = templates::all(templates::userDirectory(dir.path() / "settings"));
-    for (const char* id : {"empty", "3d", "2d", "ui"}) {
+    for (const char* id : {"empty", "3d", "2d", "2d-pixel-art", "ui"}) {
         const ProjectTemplate* info = templates::find(list, id);
         ASSERT_NE(info, nullptr) << id;
         std::string error;

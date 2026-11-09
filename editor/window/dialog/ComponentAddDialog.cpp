@@ -73,6 +73,8 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::LightComponent, "Directional, point or spot light"},
             {ComponentType::CapsuleShadowCasterComponent, "Soft capsule shadows of a character from its bones"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
+            {ComponentType::SpriteBatchComponent, "Draws many instances of this GameObject's Sprite in one call per texture page (filled by scripts)"},
+            {ComponentType::SortingGroupComponent, "Sorts this GameObject and its children as one item by Sorting Layer and Order in Layer"},
             {ComponentType::TilemapComponent, "Grid of tiles from a texture atlas"},
             {ComponentType::LineRendererComponent, "Draws lines: a polyline with width, colour gradient, joints and caps, or debug segments"},
             {ComponentType::PointsComponent, "Draws a point cloud"},

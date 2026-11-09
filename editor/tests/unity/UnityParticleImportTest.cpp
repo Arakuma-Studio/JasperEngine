@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 #include "component/ParticleSystemComponent.h"
 #include "component/Transform.h"
+#include "registry/SortingLayers.h"
 
 #include "Catalog.h"
 #include "Stream.h"
@@ -271,7 +272,10 @@ TEST(UnityParticleImportTest, PrefabSystemValues) {
     EXPECT_EQ(ps.renderer.renderMode, RenderMode::VerticalBillboard);
     EXPECT_EQ(ps.renderer.sortMode, SortMode::ByDistance);
     EXPECT_FLOAT_EQ(ps.renderer.sortingFudge, 10.0f);
-    EXPECT_EQ(ps.renderer.sortPriority, 2);
+    // S52 R41: Unity's Order in Layer is the system's sortingOrder now (it was the effect's
+    // sortPriority before S52, which effects imported then keep: deliberate change)
+    EXPECT_EQ(ps.renderer.sortPriority, 0);
+    EXPECT_EQ(flameSystem.sortingOrder, 2);
     // it draws itself: no MeshComponent, no InstancedMesh, no action
     EXPECT_FALSE(component(flame, ComponentType::MeshComponent));
     EXPECT_FALSE(component(flame, ComponentType::InstancedMeshComponent));
@@ -294,6 +298,29 @@ TEST(UnityParticleImportTest, PrefabSystemValues) {
     EXPECT_TRUE(result.hasWarnings);
     EXPECT_TRUE(fs::is_regular_file(project.root / "assets/fx/Flame.import-report.json"));
     EXPECT_EQ(result.reportFile, "assets/fx/Flame.import-report.json");
+}
+
+// S52 R41: m_SortingLayerID is found by name (ProjectSettings/TagManager.asset) among the engine
+// project's Sorting Layers; a layer the project lacks draws on Default with a note naming it. Ids
+// compare as Unity's 32 bits: the renderer's -1110369953 is TagManager's uniqueID 3184597343
+TEST(UnityParticleImportTest, SortingLayerByName) {
+    SortingLayers::setLayers({{DEFAULT_SORTING_LAYER_ID, "Default"}, {5, "FX"}});
+    TempProject project;
+    const unity::ImportResult result = importFile(project, "Assets/Fx/Flame.prefab");
+    SortingLayers::reset();
+    ASSERT_TRUE(result.ok) << result.error;
+    const YAML::Node prefab = YAML::LoadFile((project.root / result.prefabs[0]).string());
+    const ParticleSystemComponent flame = componentOf(findMember(prefab["members"], "Flame"));
+    EXPECT_EQ(flame.sortingLayer, 5);
+    EXPECT_EQ(flame.sortingOrder, 2);
+    const ParticleSystemComponent smoke = componentOf(findMember(prefab["members"], "Smoke"));
+    EXPECT_EQ(smoke.sortingLayer, 0);
+    const Json* smokeReport = systemReport(result.report, "Flame/Smoke");
+    ASSERT_NE(smokeReport, nullptr) << result.report.dump(2);
+    EXPECT_TRUE(hasNote(*smokeReport, "sorting-layer-missing")) << smokeReport->dump(2);
+    const Json* flameReport = systemReport(result.report, "Flame");
+    ASSERT_NE(flameReport, nullptr);
+    EXPECT_FALSE(hasNote(*flameReport, "sorting-layer-missing"));
 }
 
 TEST(UnityParticleImportTest, ChildSystemMeshAndUnsupportedModules) {

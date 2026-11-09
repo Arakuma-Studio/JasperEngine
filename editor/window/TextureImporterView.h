@@ -93,6 +93,13 @@ namespace jasperengine::editor {
 
         void drawPreview(const TextureCookState* state);
         void drawGeneral(const ResolvedTextureSettings& resolved);
+        // S42 R7, R17, R20: a lossy override of a pixel-art texture, a sheet over 2048 x 2048, and
+        // Apply to N References when references drifted from the Filter Mode
+        void drawPixelArtNotes(const TextureImportSettings& settings);
+        size_t referenceCount = 0;          // Apply to N References: N, read twice a second
+        std::string referenceChangesPath;
+        double referenceChangesAt = -1.0;
+        bool previewOneX = false;
         void drawAdvanced(const ResolvedTextureSettings& resolved);
         void drawMipMaps(const ResolvedTextureSettings& resolved);
         void drawPlatform(const ResolvedTextureSettings& resolved);

@@ -319,7 +319,7 @@ entities:
               nameGuid: c89e6ffcc35ca8e01755862283b86bc9
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
-            vertexCount: 0
+            vertexCount: 3672
             faceCulling: true
             textureShadow: false
             overrideFields: 17179840511

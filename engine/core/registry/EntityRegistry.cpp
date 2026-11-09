@@ -64,6 +64,8 @@
 #include "component/RotationTweenComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
+#include "component/SortingGroupComponent.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
@@ -218,6 +220,9 @@ EntityRegistry::EntityRegistry() {
     registerComponent<WaterWakeComponent>(ComponentOrder::Insertion, "WaterWakeComponent");
     // pixel art (S41)
     registerComponent<PixelPerfectCameraComponent>(ComponentOrder::Insertion, "PixelPerfectCameraComponent");
+    // 2D sorting and Sprite Batch (S52)
+    registerComponent<SortingGroupComponent>(ComponentOrder::Insertion, "SortingGroupComponent");
+    registerComponent<SpriteBatchComponent>(ComponentOrder::Insertion, "SpriteBatchComponent");
     // S48 Pixel FX
     registerComponent<HitStopExemptComponent>(ComponentOrder::Insertion, "HitStopExemptComponent");
     // complete: markChangedComponent may look into it

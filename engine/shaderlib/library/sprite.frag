@@ -6,6 +6,7 @@
 // @description "Sprite, tilemap and polygon effects on the sprite's own texture and colour: outline (smooth, or pixel with 4 or 8 neighbours, an inline and a colour from a ramp or the art, sel-out), hue shift, hit flash, grayscale, colour replace, overlay, glow, palette swap and cycling, and the Pixel FX dither fade, dissolve, ramp recolour and drop shadow; lit by 2D lights, with the material's Normal Texture as the normal map. Fixed order: palette swap, colour replace, hue shift, ramp recolour, grayscale, overlay, flash, dissolve, inline, outline (behind), drop shadow (behind the outline), alpha mode, 2D lights, glow, dither fade. A pixel outline or a drop shadow grows the sprite's quad so nothing is cut at the frame edge. Alpha blended, both faces, no shadows; with the Premultiplied blend mode the texture is read as premultiplied."
 // @require uv1 color normalmap
 // @state blend=alpha zwrite=off cull=off shadows=off
+// @batchable framerect=OUTLINE,OVERLAY,OUTLINE_STYLE_PIXEL4,OUTLINE_STYLE_PIXEL8,DROP_SHADOW,DISSOLVE,RAMP_RECOLOR,DITHER_FADE
 // @feature OUTLINE "Outline"
 // @feature HUE_SHIFT "Hue shift"
 // @feature FLASH "Hit flash"
@@ -20,7 +21,7 @@
 // @property hueShift range(0, 360) 120 "Hue shift (degrees)" feature=HUE_SHIFT
 // @property hueSpeed float 0 "Hue cycle speed (degrees per second)" feature=HUE_SHIFT
 // @property flashColor color (1, 1, 1, 1) "Flash colour" feature=FLASH
-// @property flashAmount range(0, 1) 0.75 "Flash amount" feature=FLASH
+// @property flashAmount range(0, 1) 0.75 "Flash amount" feature=FLASH instance=fx.y
 // @property grayscaleAmount range(0, 1) 1 "Grayscale amount" feature=GRAYSCALE
 // @property replaceColorR color (0.9, 0.2, 0.2, 1) "Replacement for the mask's red (alpha: strength)" feature=COLOR_REPLACE
 // @property replaceColorG color (0.2, 0.8, 0.3, 1) "Replacement for the mask's green (alpha: strength)" feature=COLOR_REPLACE
@@ -34,7 +35,7 @@
 // @texture u_replaceMaskTexture black "Replace mask (RGB selects the replacement colour)" feature=COLOR_REPLACE
 // @texture u_overlayTexture white "Overlay texture" feature=OVERLAY
 // @palette u_palette "Palette" feature=PALETTE_SWAP,PALETTE_CYCLE
-// @property paletteRow int 0 "Active palette (0: original)" feature=PALETTE_SWAP
+// @property paletteRow int 0 "Active palette (0: original)" feature=PALETTE_SWAP instance=fx.x
 // @property paletteCycleSpeed float 1 "Cycling speed" feature=PALETTE_CYCLE
 // @feature DITHER_FADE "Dither Fade"
 // @feature DISSOLVE "Dissolve"
@@ -45,10 +46,10 @@
 // @property outlineRampSteps range(1, 4) 1 "Selective: ramp steps darker" feature=OUTLINE_STYLE_PIXEL4,OUTLINE_STYLE_PIXEL8
 // @property inlineWidth range(0, 2) 0 "Inline width (texels)" feature=OUTLINE_STYLE_PIXEL4,OUTLINE_STYLE_PIXEL8
 // @property inlineColor color (0, 0, 0, 1) "Inline colour" feature=OUTLINE_STYLE_PIXEL4,OUTLINE_STYLE_PIXEL8
-// @property ditherFadeAmount range(0, 1) 0 "Dither fade (1: gone)" feature=DITHER_FADE
+// @property ditherFadeAmount range(0, 1) 0 "Dither fade (1: gone)" feature=DITHER_FADE instance=fx.z
 // @property ditherMatrix choice("Bayer 4x4", "Bayer 8x8") 0 "Dither matrix" feature=DITHER_FADE
 // @property ditherSpace choice("Sprite texels", "Screen pixels") 0 "Dither space" feature=DITHER_FADE
-// @property dissolveProgress range(0, 1) 0 "Dissolve progress (1: gone)" feature=DISSOLVE
+// @property dissolveProgress range(0, 1) 0 "Dissolve progress (1: gone)" feature=DISSOLVE instance=fx.w
 // @property dissolveDirection vector2 (0, 1) "Dissolve direction (texels, y up; 0: noise only)" feature=DISSOLVE
 // @property dissolveNoise range(0, 1) 0.35 "Dissolve noise" feature=DISSOLVE
 // @property dissolveNoiseScale range(1, 32) 4 "Dissolve noise cell (texels)" feature=DISSOLVE
@@ -89,6 +90,9 @@
 // output (finalizeStraightColor), as are the other modes' outputs. No shadows by default:
 // the sprite's shape is its texture's alpha, and without a depth program a shadow would be
 // the whole quad (as Unity's sprites, which cast none either).
+// Dynamic Batching draws it (@batchable): the Palette Swap row, the flash, dither fade and dissolve
+// amounts are read with their FX slot added (includes/sprite_fx.glsl), and the frame rect of
+// OUTLINE, OVERLAY and the Pixel FX features comes per vertex (sprite.vert).
 
 #if defined(OUTLINE_STYLE_PIXEL4) || defined(OUTLINE_STYLE_PIXEL8)
     #define OUTLINE_PIXEL
@@ -228,17 +232,13 @@ out vec4 g_finalColor;
 #include "includes/color_fx.glsl"
 #include "includes/base_color_fs.glsl"
 #include "includes/palette.glsl"
+#include "includes/sprite_fx.glsl"
 #ifdef USE_LIGHT2D
     #include "includes/lighting2d.glsl"
 #endif
 #ifdef SPRITE_FX
     #include "includes/pixel_fx.glsl"
     #include "includes/bayer.glsl"
-#endif
-// S52's per-instance FX slots (includes/sprite_fx.glsl, included above it) when the variant has
-// them, else 0
-#ifndef spriteFx
-    #define spriteFx(slot) (0.0)
 #endif
 
 // the texture as straight-alpha (sRGB-encoded colour, alpha)
@@ -459,7 +459,7 @@ void main() {
     #if defined(PALETTE_SWAP) || defined(PALETTE_CYCLE)
         // the authored bytes, before the tint: a white tint keeps the exact palette
         #ifdef PALETTE_SWAP
-            float paletteRow = customParams.paletteRow;
+            float paletteRow = customParams.paletteRow + spriteFx(x);
         #else
             float paletteRow = 0.0;
         #endif
@@ -534,7 +534,7 @@ void main() {
     #endif
 
     #ifdef FLASH
-        color.rgb = mix(color.rgb, customParams.flashColor.rgb, customParams.flashAmount * customParams.flashColor.a);
+        color.rgb = mix(color.rgb, customParams.flashColor.rgb, (customParams.flashAmount + spriteFx(y)) * customParams.flashColor.a);
     #endif
 
     #if defined(DISSOLVE) && defined(SPRITE_FX)

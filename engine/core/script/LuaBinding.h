@@ -98,6 +98,8 @@ namespace jasperengine {
         static void registerNavigationComponentClasses(lua_State *L);
         static void registerSplineClasses(lua_State *L);
         static void registerPixelArtClasses(lua_State *L);
+        // S52: SortingLayer, the renderers' sorting fields, SortingGroup, SpriteBatch (SortingClassesLua.cpp)
+        static void registerSortingClasses(lua_State *L);
         // S48: HitStop and HitStopExempt (HitStopClassesLua.cpp)
         static void registerHitStopClasses(lua_State *L);
         // S48: Transition, TransitionHandle, TransitionKind, PixelFX.glitch (TransitionClassesLua.cpp)

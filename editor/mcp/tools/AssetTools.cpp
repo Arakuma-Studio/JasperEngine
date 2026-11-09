@@ -4736,7 +4736,9 @@ const std::vector<std::pair<std::string, std::string>>& textureSettingFields() {
         {"resize_filter", "resizeFilter"}, {"mipmaps", "mipmaps"}, {"mip_filter", "mipFilter"}, {"mip_limit", "mipLimit"},
         {"preserve_coverage", "preserveCoverage"}, {"alpha_cutoff", "alphaCutoff"}, {"flip_green", "flipGreen"},
         {"channel", "channel"}, {"quality", "quality"}, {"effort", "effort"}, {"streamable", "streamable"},
-        {"ship_source", "shipSource"}};
+        {"ship_source", "shipSource"},
+        // S42 R4, R6, R7
+        {"pixel_art", "pixelArt"}, {"alpha_clip", "alphaClip"}, {"filter_mode", "filterMode"}, {"pixels_per_unit", "pixelsPerUnit"}};
     return fields;
 }
 
@@ -4794,7 +4796,7 @@ Json resolvedTextureJson(const ResolvedTextureSettings& r) {
                 {"channel", textureChannelName(r.channel)}, {"quality", textureQualityName(r.quality)},
                 {"effort", textureEffortName(r.effort)}, {"streamable", r.streamable},
                 {"format", r.format.empty() ? Json(nullptr) : Json(r.format)}, {"rdo", r.rdo < 0.0f ? Json(nullptr) : Json(r.rdo)},
-                {"cpu_readable", r.cpuReadable}};
+                {"cpu_readable", r.cpuReadable}, {"alpha_clip", r.alphaClip}};
 }
 
 // a texture source named by its project-relative path; its asset-relative form
@@ -4906,6 +4908,10 @@ void getTextureImportSettingsTool(const CallPtr& call) {
         if (!inputs.inference.cpuReason.empty()) inferred["cpu_reason"] = inputs.inference.cpuReason;
         Json data = {{"path", projectPath}, {"stored", textureYamlToJson(stored)}, {"inferred", inferred},
                      {"resolved", resolved}, {"warnings", warnings}};
+        // S42 R4, R7: Pixel Art and what an assignment copies
+        data["pixel_art"] = {{"enabled", inputs.settings.resolvedPixelArt()},
+                             {"filter_mode", textureFilterModeName(inputs.settings.resolvedFilterMode(project->getDefaultFilterMode()))},
+                             {"pixels_per_unit", inputs.settings.resolvedPixelsPerUnit(project->getPixelsPerUnit())}};
         call->ok(projectPath + ": " + textureImportTypeName(inputs.settings.resolvedType()) +
                  (stored && !stored.IsNull() ? "" : " (inferred: " + inputs.inference.reason + ")"), data);
     });
@@ -5173,7 +5179,7 @@ void registerTextureTools(McpRegistry& registry) {
         tool.name = "set_texture_import_settings";
         tool.title = "Set Texture Import Settings";
         tool.description = "Partial update of textures' import settings (type, srgb, max_size, mipmaps, quality, effort, "
-                           "flip_green...; null removes one); with platform, that platform's override (max_size, format, "
+                           "flip_green, pixel_art...; null removes one); with platform, that platform's override (max_size, format, "
                            "quality, effort, rdo). One undo step; recooks.";
         tool.inputSchema = object({
             {"paths", array(string(""), "Project-relative texture paths.")},

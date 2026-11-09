@@ -1,0 +1,47 @@
+formatVersion: 1
+name: pixel-art
+canvasWidth: 320
+canvasHeight: 180
+scalingMode: integer
+textureStrategy: none
+vsync: true
+pixelArt:
+  enabled: true
+htmlUiMsaaSamples: 4
+device:
+  tiers:
+    desktop:
+      low:
+        render_scale: 1.0
+      medium:
+        render_scale: 1.0
+    mobile:
+      low:
+        render_scale: 1.0
+      medium:
+        render_scale: 1.0
+    web:
+      low:
+        render_scale: 1.0
+      medium:
+        render_scale: 1.0
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+graphics:
+  defaultFilterMode: point
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+versionControl:
+  lfs: true
+startSceneId: 3618188041
+audio:
+  mixer: audio/Main.mixer
+  outputStage: linear
+  iosSessionCategory: ambient
+scenes:
+  - filepath: scenes/Main.scene
+    filepathGuid: 54209cffcf4c44d6f2cf10426c6598f7

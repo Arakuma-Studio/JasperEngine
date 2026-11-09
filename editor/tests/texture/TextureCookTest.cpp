@@ -245,6 +245,41 @@ TEST(TextureCook, RawPathAndUncompressedCookAgree){
     }
 }
 
+// S42 AC3 (R4): a 256 x 128 sprite with pixelArt: true cooks to one RGBA8 level on every family
+// (uncompressed, zstd: lossless), and each decodes to the source's bytes exactly
+TEST(TextureCook, PixelArtLossless){
+    CookBench bench("cook-pixel-art");
+    CorpusImage image = corpusImage("photo", 256, 128);
+    image.name = "pixel_sprite";
+    for (size_t i = 3; i < image.rgba.size(); i += 4) image.rgba[i] = 255;   // opaque: Alpha Clip and bleeding keep every byte
+    const fs::path file = writeCorpusImage(image, bench.scratch.path / "src");
+    TextureImportSettings settings;
+    settings.pixelArt = true;
+    for (TextureFamily family : {TextureFamily::Desktop, TextureFamily::Mobile, TextureFamily::AndroidEtc2, TextureFamily::Web}){
+        SCOPED_TRACE(textureFamilyName(family));
+        const TextureCookResult result = bench.cook(file, settings, family);
+        ASSERT_TRUE(result.ok) << result.error;
+        const std::vector<uint8_t> bytes = bench.artifact(result.record.key);
+        Ktx2MemorySource source(bytes);
+        Ktx2Image cooked;
+        std::string error;
+        ASSERT_TRUE(Ktx2::read(source, 0, cooked, error)) << error;
+        EXPECT_EQ(cooked.info.format, GpuTextureFormat::RGBA8);
+        ASSERT_EQ(cooked.levels.size(), 1u) << "no mipmaps";
+        ASSERT_EQ(cooked.levels[0].size(), image.rgba.size());
+        EXPECT_TRUE(cooked.levels[0] == image.rgba) << "the cooked level is the source, byte for byte";
+    }
+    // red control: the same texture without Pixel Art is block-compressed with a mip chain
+    const TextureCookResult lossy = bench.cook(file, TextureImportSettings(), TextureFamily::Desktop);
+    ASSERT_TRUE(lossy.ok) << lossy.error;
+    const std::vector<uint8_t> lossyBytes = bench.artifact(lossy.record.key);
+    Ktx2MemorySource lossySource(lossyBytes);
+    Ktx2Image lossyImage;
+    std::string error;
+    ASSERT_TRUE(Ktx2::read(lossySource, 0, lossyImage, error)) << error;
+    EXPECT_GT(lossyImage.levels.size(), 1u);
+}
+
 // ---- R32 metadata, cubes and the CPU copy, cancellation
 
 TEST(TextureCook, CookedFilesCarryTheirMetadata){
