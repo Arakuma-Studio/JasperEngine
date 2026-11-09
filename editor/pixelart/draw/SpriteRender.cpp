@@ -5,9 +5,12 @@
 
 #include "pixelart/aseprite/AsepriteBlend.h"
 
+#include "miniz.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <map>
 #include <string>
 
 namespace jasperengine::editor::pixelart::draw {
@@ -77,6 +80,84 @@ namespace jasperengine::editor::pixelart::draw {
             blend::unpack(blend::rgbaNormal(blend::pack(dst), blend::pack(src), opacity), dst);
         }
 
+    }
+
+    std::string encodeSheetPng(const PixelImage& image) {
+        const int w = image.width(), h = image.height();
+        if (w == 0 || h == 0) return std::string();
+        const std::span<const uint8_t> pixels = image.pixels();
+        // the palette, with the previous pixel as a fast path: sheets are long runs of one colour
+        std::vector<uint32_t> colors;
+        std::map<uint32_t, uint8_t> slots;
+        std::vector<uint8_t> indices(static_cast<size_t>(w) * h);
+        bool fits = true;
+        uint32_t previous = 0;
+        uint8_t previousSlot = 0;
+        bool hasPrevious = false;
+        for (size_t i = 0; i < indices.size() && fits; i++) {
+            const uint8_t* p = pixels.data() + i * 4;
+            const uint32_t key = (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | p[3];
+            if (hasPrevious && key == previous) {
+                indices[i] = previousSlot;
+                continue;
+            }
+            auto it = slots.find(key);
+            if (it == slots.end()) {
+                if (colors.size() >= 256) {
+                    fits = false;
+                    break;
+                }
+                it = slots.emplace(key, static_cast<uint8_t>(colors.size())).first;
+                colors.push_back(key);
+            }
+            previous = key;
+            previousSlot = it->second;
+            hasPrevious = true;
+            indices[i] = previousSlot;
+        }
+        const size_t stride = fits ? static_cast<size_t>(w) : static_cast<size_t>(w) * 4;
+        std::vector<uint8_t> raw((stride + 1) * h, 0);
+        for (int y = 0; y < h; y++) {
+            uint8_t* out = raw.data() + static_cast<size_t>(y) * (stride + 1) + 1;
+            std::memcpy(out, fits ? indices.data() + static_cast<size_t>(y) * w : image.row(y), stride);
+        }
+        std::vector<uint8_t> z(mz_compressBound(static_cast<mz_ulong>(raw.size())));
+        mz_ulong zLength = static_cast<mz_ulong>(z.size());
+        if (mz_compress2(z.data(), &zLength, raw.data(), static_cast<mz_ulong>(raw.size()), 1) != MZ_OK) return std::string();
+        std::string out("\x89PNG\r\n\x1a\n", 8);
+        auto chunk = [&](const char* type, const uint8_t* data, size_t size) {
+            const auto be32 = [&](uint32_t v) {
+                for (int s = 24; s >= 0; s -= 8) out.push_back(static_cast<char>(static_cast<uint8_t>(v >> s)));
+            };
+            be32(static_cast<uint32_t>(size));
+            const size_t at = out.size();
+            out.append(type, 4);
+            if (size > 0) out.append(reinterpret_cast<const char*>(data), size);
+            be32(static_cast<uint32_t>(mz_crc32(MZ_CRC32_INIT, reinterpret_cast<const uint8_t*>(out.data()) + at, size + 4)));
+        };
+        uint8_t ihdr[13] = {};
+        for (int i = 0; i < 4; i++) {
+            ihdr[i] = static_cast<uint8_t>(uint32_t(w) >> (24 - i * 8));
+            ihdr[4 + i] = static_cast<uint8_t>(uint32_t(h) >> (24 - i * 8));
+        }
+        ihdr[8] = 8;
+        ihdr[9] = fits ? 3 : 6;
+        chunk("IHDR", ihdr, 13);
+        if (fits) {
+            std::vector<uint8_t> plte, trns;
+            for (uint32_t c : colors) {
+                plte.push_back(static_cast<uint8_t>(c >> 24));
+                plte.push_back(static_cast<uint8_t>(c >> 16));
+                plte.push_back(static_cast<uint8_t>(c >> 8));
+                trns.push_back(static_cast<uint8_t>(c));
+            }
+            while (!trns.empty() && trns.back() == 255) trns.pop_back();
+            chunk("PLTE", plte.data(), plte.size());
+            if (!trns.empty()) chunk("tRNS", trns.data(), trns.size());
+        }
+        chunk("IDAT", z.data(), zLength);
+        chunk("IEND", nullptr, 0);
+        return out;
     }
 
     PixelImage renderSheet(const SpriteDoc& sprite, const SheetOptions& options, nlohmann::json& layout) {

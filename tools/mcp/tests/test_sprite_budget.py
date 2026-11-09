@@ -1,6 +1,8 @@
 """The token budget of the sprite tools (docs/specs/S47-agent-sprite-drawing.md AC15, §6.3): the
 text bytes of every row of the table, on generated 32 x 32 and 128 x 128 sprites, stay within 25 %
-of the spec's estimates."""
+of the spec's estimates. The structuredContent JSON (what some clients show instead of the text)
+is measured too and printed, for the 20-edit session and against the same limits where the
+estimates already hold it."""
 
 from __future__ import annotations
 
@@ -40,9 +42,17 @@ async def test_setup(ed: Editor):
         await ok(ed, "edit_sprite", sprite=path, ops=ops, echo="none")
 
 
+async def text_and_structured(ed: Editor, tool: str, **args) -> tuple[int, int]:
+    r = await ed.call_raw(tool, args)
+    ed.check(not r.is_error, f"{tool}: {r.text}")
+    return len(r.text.encode("utf-8")), size(r.structured)
+
+
 async def test_get_sprite(ed: Editor):
-    check(ed, "get_sprite 32", size(await ok(ed, "get_sprite", sprite=SMALL)), 600)
-    check(ed, "get_sprite 128", size(await ok(ed, "get_sprite", sprite=LARGE)), 900)
+    for path, name, estimate in ((SMALL, "32", 600), (LARGE, "128", 900)):
+        text, structured = await text_and_structured(ed, "get_sprite", sprite=path)
+        print(f"     [budget] get_sprite {name}: text {text} bytes, structured {structured} bytes")
+        check(ed, f"get_sprite {name} text", text, estimate)
 
 
 async def test_read_one_full_frame(ed: Editor):

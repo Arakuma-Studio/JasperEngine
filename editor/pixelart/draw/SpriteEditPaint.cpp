@@ -218,7 +218,7 @@ namespace jasperengine::editor::pixelart::draw::detail {
             int n = 2;
             std::vector<int> matrix;
             if (pattern == "checker") {
-                matrix = {0, 1, 1, 0};
+                matrix = {0, 2, 2, 0};
             } else {
                 n = std::stoi(pattern.substr(5));
                 matrix = bayerMatrix(n);

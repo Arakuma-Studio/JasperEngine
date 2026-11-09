@@ -121,9 +121,9 @@ TEST(SpriteDrawBench, RenderSixtyFourFramesAtFourX) {
     const auto start = std::chrono::steady_clock::now();
     const PixelImage sheet = renderSheet(sprite, options, layout);
     const double renderMs = elapsedMs(start);
-    const std::string png = sheet.encodePng();
-    budget("render_sprite 64 frames 64x64 at 4x", renderMs, 60);
-    std::printf("[bench] with PNG encode: %.2f ms\n", elapsedMs(start));
+    const std::string png = encodeSheetPng(sheet);
+    budget("render_sprite 64 frames 64x64 at 4x (with its PNG)", elapsedMs(start), 60);
+    std::printf("[bench] the render alone: %.2f ms, PNG %zu KB\n", renderMs, png.size() / 1024);
     EXPECT_FALSE(png.empty());
 }
 

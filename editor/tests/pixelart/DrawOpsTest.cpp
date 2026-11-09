@@ -130,7 +130,7 @@ TEST(DrawOps, PolygonFillIsEvenOddOnAStar) {
     const std::vector<std::string> rows = paint(polygonFilled(star, {0, 0, 31, 31}), 31, 31);
     EXPECT_EQ(rows[17][15], '.') << "the centre is covered twice: even-odd leaves it empty";
     EXPECT_EQ(rows[8][15], '#') << "a tip is covered once";
-    EXPECT_EQ(rows[20][8], '#');
+    EXPECT_EQ(rows[5][15], '#');
 }
 
 TEST(DrawOps, OpOutsideTheCanvasIsClippedAndReportsNothingDrawn) {

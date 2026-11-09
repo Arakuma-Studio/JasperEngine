@@ -570,7 +570,7 @@ void editSpriteTool(const CallPtr& call) {
         sheet.highlight = result.changed;
         Json layout;
         const pixelart::PixelImage image = draw::renderSheet(session->sprite, sheet, layout);
-        const std::string png = image.encodePng();
+        const std::string png = draw::encodeSheetPng(image);
         reply.images.push_back({Base64::encode(reinterpret_cast<const unsigned char*>(png.data()), png.size()), "image/png"});
     }
     call->reply(std::move(reply));
@@ -783,7 +783,7 @@ void renderSpriteTool(const CallPtr& call) {
     }
     Json layout;
     const pixelart::PixelImage image = draw::renderSheet(sprite, sheet, layout);
-    const std::string png = image.encodePng();
+    const std::string png = draw::encodeSheetPng(image);
     Json out = {{"scale", layout["scale"]}, {"layout", layout["layout"]}, {"last_edit", lastEdit}, {"revision", session->revision}};
     if (capped) out["next"] = "The sprite has " + std::to_string(doc.frameCount()) + " frames: this shows the first 64; pass frames for the rest.";
     session->lastSeen[sessionKey(call)] = session->revision;

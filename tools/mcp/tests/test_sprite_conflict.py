@@ -27,6 +27,9 @@ async def external_save(ed: Editor, data: bytes) -> str:
 
 async def test_setup(ed: Editor):
     await enable(ed)
+    # the person's version of the file: made first, so the agent's edit stays the newest step
+    await ok(ed, "create_sprite", path="assets/sprites/person.aseprite", size=[16, 16], palette=["#ff0000", "#00ff00"])
+    await ok(ed, "edit_sprite", sprite="assets/sprites/person.aseprite", ops=[{"op": "pixel", "points": [[9, 9]], "color": 2}])
     await ok(ed, "create_sprite", path=PATH, size=[16, 16], palette=["#ff0000", "#00ff00"])
     S["clean"] = (ed.project / PATH).read_bytes()
     r = await ok(ed, "edit_sprite", sprite=PATH, ops=[{"op": "pixel", "points": [[0, 0]], "color": 1}])
@@ -39,9 +42,6 @@ S: dict = {}
 
 
 async def test_undo_refused_after_an_outside_save(ed: Editor):
-    # the person's version: a different pixel on the clean file, written by "another program"
-    person = await ok(ed, "create_sprite", path="assets/sprites/person.aseprite", size=[16, 16], palette=["#ff0000", "#00ff00"])
-    await ok(ed, "edit_sprite", sprite="assets/sprites/person.aseprite", ops=[{"op": "pixel", "points": [[9, 9]], "color": 2}])
     theirs = (ed.project / "assets/sprites/person.aseprite").read_bytes()
     await external_save(ed, theirs)
     await ed.call("wait", frames=3)

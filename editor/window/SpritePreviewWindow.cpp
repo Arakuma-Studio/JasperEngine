@@ -1409,11 +1409,7 @@ void SpritePreviewWindow::drawOverlays(ImDrawList* draw, ImVec2 origin) {
                 const ImVec2 a = at(static_cast<float>(d.rect.x), static_cast<float>(d.rect.y));
                 const ImVec2 b = at(static_cast<float>(d.rect.x + d.rect.w), static_cast<float>(d.rect.y + d.rect.h));
                 draw->AddRect(a, b, color, 0.0f, 0, 2.0f);
-                const ImVec2 restore = ImGui::GetCursorScreenPos();
-                ImGui::SetCursorScreenPos(a);
-                ImGui::Dummy(ImVec2(b.x - a.x, b.y - a.y));
-                UIProbe::item("spritePreview.agentEdit.rect");
-                ImGui::SetCursorScreenPos(restore);
+                UIProbe::rect("spritePreview.agentEdit.rect", a.x, a.y, b.x, b.y);
             }
         }
     }

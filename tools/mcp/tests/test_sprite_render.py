@@ -109,7 +109,7 @@ async def test_context_returns_the_view_around_the_game_object(ed: Editor):
             break
         await ed.call("wait", seconds=0.2)
     await ed.call("wait", frames=5)
-    data, imgs = await images(ed, "render_sprite", sprite=PATH, frames=[1], context={"entity": created["entity"], "view": "scene"})
+    data, imgs = await images(ed, "render_sprite", sprite=PATH, frames=[1], context={"entity": created["sprite"], "view": "scene"})
     ed.check(len(imgs) == 2, f"a second image: {len(imgs)}")
     w, h, pixels = pngdiff.decode(imgs[1])
     ed.check(w > 0 and h > 0, f"context image {w}x{h}")

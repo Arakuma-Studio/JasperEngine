@@ -42,6 +42,10 @@ namespace jasperengine::editor::pixelart::draw {
     // The sheet as RGBA. `layout` is {scale, layout: [{frame (from 1), backdrop, x, y, w, h}]}.
     PixelImage renderSheet(const SpriteDoc& sprite, const SheetOptions& options, nlohmann::json& layout);
 
+    // A sheet as a PNG, quick and deterministic: palette PNG when it has at most 256 colours
+    // (sheets of pixel art nearly always do), else RGBA; fast deflate (R38)
+    std::string encodeSheetPng(const PixelImage& image);
+
     // Two frames side by side (a diff's image), the changes' bounds outlined; `frames` from 0 of each
     PixelImage renderDiffImage(const PixelImage& before, const PixelImage& after, const IntRect& bbox, int maxWidth);
 
