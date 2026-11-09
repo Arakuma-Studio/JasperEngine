@@ -192,6 +192,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::LIGHTING_PASS;
         return true;
     }
+    if (typeToken == "transition") {
+        shaderType = ShaderType::TRANSITION;
+        return true;
+    }
 
     return false;
 }
@@ -614,6 +618,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::PARTICLES: return lowerCase ? "particles" : "Particles";
         case ShaderType::HTMLUI_PRIM: return lowerCase ? "htmluiprim" : "HTML UI Primitives";
         case ShaderType::LIGHTING_PASS: return lowerCase ? "lightingpass" : "Lighting Pass";
+        case ShaderType::TRANSITION: return lowerCase ? "transition" : "Screen Transition";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -716,7 +721,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::SSR_BLUR: return 0;
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
-        case ShaderType::BLIT:   return 20;  // RenderSystem::UBER_FEATURE_COUNT (PostProcessingTiers.S13Bits checks it)
+        case ShaderType::BLIT:   return 21;  // RenderSystem::UBER_FEATURE_COUNT (PostProcessingTiers.S13Bits checks it)
         case ShaderType::BLOOM:  return 4;
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
@@ -734,6 +739,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::HTMLUI_PRIM: return 0;
         // 'Oir': the OIT resolve, else the contact shadows' mask
         case ShaderType::LIGHTING_PASS: return 1;
+        // one program: the kind is a uniform
+        case ShaderType::TRANSITION: return 0;
         default:                 return 0;
     }
 }
@@ -983,6 +990,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 18: return shortName ? "Psb" : "Pixel Sharp Bilinear";
             // Palette Quantize (S43 R19, UBER_PALETTE)
             case 19: return shortName ? "Pal" : "Palette Quantize";
+            // Glitch (S48 R18, UBER_GLITCH)
+            case 20: return shortName ? "Gli" : "Glitch";
         }
     } else if (shaderType == ShaderType::BLOOM) {
         // the pass of the bloom and blur chain (bloom.frag); 0 is the dual-filter downsample

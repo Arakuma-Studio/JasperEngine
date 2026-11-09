@@ -1775,6 +1775,8 @@ set(JASPERENGINE_SRCS
     core/script/binding/SplineClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/HitStopClassesLua.cpp
+    # S48 screen transitions and the scripted glitch
+    core/script/binding/TransitionClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp

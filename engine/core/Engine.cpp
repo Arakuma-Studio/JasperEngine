@@ -79,6 +79,8 @@
 #include "pool/PhysicsMaterialPool.h"
 #include "pixelart/PaletteSwap.h"
 #include "pixelart/HitStop.h"
+#include "pixelart/Glitch.h"
+#include "pixelart/ScreenTransition.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "native/NativeBridge.h"
@@ -1525,7 +1527,8 @@ void Engine::beginCompositeFramebuffer(){
 // backends draw them straight to the swapchain (re-check when sokol_gfx is updated).
 // A screenshot's capture frame draws offscreen on every backend, to be read after it.
 #if defined(SOKOL_VULKAN)
-    const bool stacked = scenes.size() > 1;
+    // a screen transition is one more pass over the scenes (S48)
+    const bool stacked = scenes.size() > 1 || (pixelart::ScreenTransition::isEngineDrawEnabled() && pixelart::ScreenTransition::needsDraw());
 #else
     const bool stacked = false;
 #endif
@@ -2587,6 +2590,10 @@ void Engine::runFrame(bool draw){
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
         }
+        // the screen transition and the scripted glitch run on unscaled time (S48): a hit-stop or
+        // the time scale never slows them; a transition's onCovered runs here, with the scripts
+        pixelart::ScreenTransition::update(unscaledDeltatime);
+        pixelart::Glitch::update(unscaledDeltatime);
         // timers (the Scheduler's, the Lua Timer's among them), then the coroutines waiting
         // seconds, frames, predicates, timers or other work: after the update, before the
         // post-update (Unity's yield null / WaitForSeconds point: after Update, before
@@ -2634,9 +2641,19 @@ void Engine::runFrame(bool draw){
         drawStart = stm_now();
         {
             JE_PROFILE_SCOPE("Draw");
+            // the screen transition (S48 R16): over every scene, or with Cover UI off right after
+            // the main scene, under its layer scenes; never while idle
+            const bool transition = pixelart::ScreenTransition::isEngineDrawEnabled() && pixelart::ScreenTransition::needsDraw();
+            bool transitionDrawn = false;
             for (int i = 0; i < scenes.size(); i++){
                 scenes[i]->draw();
+                if (transition && !pixelart::ScreenTransition::isCoverUI() && scenes[i] == mainScene){
+                    pixelart::ScreenTransition::draw(framebuffer);
+                    transitionDrawn = true;
+                }
             }
+            if (transition && !transitionDrawn)
+                pixelart::ScreenTransition::draw(framebuffer);
 
             // the debug overlay above every scene (the loading scene too), outside the game's
             // frame statistics
@@ -2759,6 +2776,10 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         baseLayer = false;
     }
 
+    // the screen transition over a view that previews the game (the editor's Game view in edit mode)
+    if (viewId != 0 && viewId == pixelart::ScreenTransition::getViewDrawId() && pixelart::ScreenTransition::needsDraw())
+        pixelart::ScreenTransition::draw(target);
+
     currentFrameStats = gameFrameStats;
 
     SystemRender::commit();
@@ -2787,6 +2808,8 @@ void Engine::systemViewDestroyed(){
 
     // the overlay's Scene goes with the GPU objects (it is made again when shown)
     DebugOverlay::viewDestroyed();
+    // the screen transition's program is made again on its next use
+    pixelart::ScreenTransition::releaseGpu();
 
     //TODO: must destroy all scenes (even if not a layer)
     for (int i = 0; i < scenes.size(); i++){
@@ -2825,6 +2848,9 @@ void Engine::systemShutdown(){
 
     // the overlay (and its Lua commands) goes while the Lua state still exists
     DebugOverlay::shutdown();
+    // a screen transition's callbacks may hold Lua too (S48)
+    pixelart::ScreenTransition::reset();
+    pixelart::Glitch::stop();
 
     // what the game (and its onShutdown handlers) stored is on disk before it goes
     UserSettings::save();

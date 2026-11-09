@@ -92,6 +92,11 @@ namespace jasperengine::editor {
         bool editPassRendered = false;
         // what the view shows: the running game, or the edit-mode pass
         Framebuffer framebuffer;
+        // the Transition menu's preview values (Project Settings' defaults until changed)
+        bool transitionPreviewSet = false;
+        float transitionPreviewDuration = 0.6f;
+        Vector4 transitionPreviewColor;
+        char transitionPreviewRamp[512] = {0};
 
         void loadSettings();
         void saveSettings();
@@ -108,6 +113,8 @@ namespace jasperengine::editor {
         // Device: Auto | Low | Medium | High | Ultra, its platform family and thermal state (S56)
         void drawDeviceTierMenu();
         void drawToolbar();
+        // Transition ▾ (S48 R40): plays a screen transition over the view, edit mode or Play
+        void drawTransitionMenu();
         void drawContent(uint32_t sceneId);
         void drawStats(ImVec2 imageMin, ImVec2 imageMax, const SceneProject* sceneProject);
         bool computeAspect(float& aspect) const;

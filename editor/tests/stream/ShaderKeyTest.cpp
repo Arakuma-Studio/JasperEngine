@@ -57,7 +57,8 @@ namespace {
         ShaderType::POSTPROCESS, ShaderType::BLOOM, ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT,
         ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT, ShaderType::PROBE_FILTER, ShaderType::FLUID,
         ShaderType::SHADOW_CACHE, ShaderType::ATMOSPHERE_DEPTH, ShaderType::VOLUMETRIC_FOG, ShaderType::ATMOSPHERE_DENOISE,
-        ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE, ShaderType::LIGHTING_PASS};
+        ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE, ShaderType::LIGHTING_PASS,
+        ShaderType::TRANSITION};
 
     // MESH has every one of its 32 bits (bit 5, the retired 'Pcf', is Stochastic Tiling since
     // October 2026, see StochasticTilingTest.cpp)
