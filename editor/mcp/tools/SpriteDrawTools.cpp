@@ -20,6 +20,8 @@
 #include "Scene.h"
 #include "asset/AssetIndex.h"
 #include "component/CameraComponent.h"
+#include "component/MeshComponent.h"
+#include "render/SceneRender.h"
 #include "object/Camera.h"
 #include "asset/Guid.h"
 #include "command/CommandHistory.h"
@@ -641,8 +643,8 @@ void renderSpriteContext(const CallPtr& call, ToolResult reply, const Json& cont
         }
         std::string error;
         SceneProject* scene = project->getScene(sceneId);
-        const std::string decoded = Base64::decode(capture.image.data);
-        std::optional<pixelart::PixelImage> image = pixelart::PixelImage::decodePng(std::span(reinterpret_cast<const uint8_t*>(decoded.data()), decoded.size()), &error);
+        const std::vector<unsigned char> decoded = Base64::decode(capture.image.data);
+        std::optional<pixelart::PixelImage> image = pixelart::PixelImage::decodePng(std::span<const uint8_t>(decoded.data(), decoded.size()), &error);
         if (!image || !scene) {
             call->fail("The " + view + " view could not be read: " + error);
             return;
@@ -659,10 +661,12 @@ void renderSpriteContext(const CallPtr& call, ToolResult reply, const Json& cont
                 drawn = {r.value("x", 0), r.value("y", 0), r.value("width", image->width()), r.value("height", image->height())};
             }
         }
-        const AABB box = project->getEntityWorldAABB(scene->scene, entity, scene->scene);
+        // a sprite's mesh holds its world bounds; without one the whole view is shown
+        AABB box;
+        if (MeshComponent* mesh = scene->scene->findComponent<MeshComponent>(entity)) box = mesh->worldAABB;
         const Vector3 lo = box.getMinimum(), hi = box.getMaximum();
         double minX = 1e18, minY = 1e18, maxX = -1e18, maxY = -1e18;
-        for (int corner = 0; corner < 8; corner++) {
+        for (int corner = 0; corner < 8 && !box.isNull(); corner++) {
             const Vector4 clip = viewProjection * Vector4((corner & 1) ? hi.x : lo.x, (corner & 2) ? hi.y : lo.y, (corner & 4) ? hi.z : lo.z, 1.0f);
             if (clip.w == 0.0f) continue;
             const double ndcX = clip.x / clip.w, ndcY = clip.y / clip.w;

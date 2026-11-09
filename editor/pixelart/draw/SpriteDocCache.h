@@ -73,6 +73,8 @@ namespace jasperengine::editor::pixelart::draw {
         void adoptWrite(SpriteSession& session, SpriteDoc sprite, std::shared_ptr<const std::vector<uint8_t>> bytes, const std::string& revision);
         void addPatch(SpriteSession& session, const std::shared_ptr<const SpritePatchSet>& patch);
         void forget(const std::filesystem::path& absolute);
+        // what the session remembers of a file, no disk access (the Inspector's line)
+        std::optional<LastEdit> lastEditOf(const std::filesystem::path& absolute) const;
 
         // the state at a revision, rebuilt from the session and the live patches (R29)
         std::optional<SpriteDoc> rebuild(const SpriteSession& session, const std::string& revision) const;

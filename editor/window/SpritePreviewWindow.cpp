@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "SpritePreviewWindow.h"
+
+#include "AppSettings.h"
+#include "command/UndoTimeline.h"
+#include "pixelart/draw/SpriteDocCache.h"
+#include "pixelart/draw/SpriteEditEvents.h"
 #include "widget/ColorField.h"
 
 #include "App.h"
@@ -37,6 +42,11 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 namespace ase = jasperengine::editor::pixelart::aseprite;
+
+static double spritePreviewNow() {
+    using namespace std::chrono;
+    return duration<double>(steady_clock::now().time_since_epoch()).count();
+}
 
 struct SpritePreviewWindow::Loaded {
     std::shared_ptr<const ase::Document> document;
@@ -111,9 +121,50 @@ namespace {
 }
 
 SpritePreviewWindow::SpritePreviewWindow(Project* project, ProjectWindow* projectWindow)
-    : project(project), projectWindow(projectWindow) {}
+    : project(project), projectWindow(projectWindow) {
+    pixelart::draw::SpriteEditEvents::addListener(this, [this](const pixelart::draw::SpriteEdited& event) { onSpriteEdited(event); },
+        [this](const pixelart::draw::SpriteExternalSave& event) {
+            const fs::path shown = (this->project->getAssetsPath() / FileUtils::pathFromUtf8(assetPath)).lexically_normal();
+            if (!assetPath.empty() && (this->project->getProjectPath() / FileUtils::pathFromUtf8(event.path)).lexically_normal() == shown) externalSaveNotice = event.message;
+        });
+}
 
-SpritePreviewWindow::~SpritePreviewWindow() = default;
+SpritePreviewWindow::~SpritePreviewWindow() {
+    pixelart::draw::SpriteEditEvents::removeListener(this);
+}
+
+void SpritePreviewWindow::onSpriteEdited(const pixelart::draw::SpriteEdited& event) {
+    if (assetPath.empty()) return;
+    if ((project->getProjectPath() / FileUtils::pathFromUtf8(event.path)).lexically_normal() != (project->getAssetsPath() / FileUtils::pathFromUtf8(assetPath)).lexically_normal()) return;
+    adoptDocumentFromSession();
+    AgentEdit edit;
+    edit.rects = event.rects;
+    edit.by = event.by;
+    edit.summary = event.summary;
+    edit.revision = event.revision;
+    edit.at = spritePreviewNow();
+    edit.showLine = event.origin == "agent";
+    agentEdit = std::move(edit);
+    if (event.origin == "agent") externalSaveNotice.clear();
+    Backend::getApp().requestRedraw();
+}
+
+// the session already holds the edited document: the Source view shows it without a file read (R41)
+void SpritePreviewWindow::adoptDocumentFromSession() {
+    pixelart::PixelProblem problem;
+    std::shared_ptr<pixelart::draw::SpriteSession> session = pixelart::draw::SpriteDocCache::get().openAbsolute(project, project->getAssetsPath() / FileUtils::pathFromUtf8(assetPath), problem);
+    if (!session) return;
+    auto next = std::make_shared<Loaded>();
+    auto document = std::make_shared<ase::Document>(session->sprite.doc);
+    document->provenance.reset();
+    next->document = document;
+    next->tags = loaded ? loaded->tags : std::vector<SpriteTag>();
+    if (loaded) next->pages = loaded->pages;
+    loaded = std::move(next);
+    retireAll();
+    const int frames = frameCount();
+    frame = frames > 0 ? std::clamp(frame, 0, frames - 1) : 0;
+}
 
 void SpritePreviewWindow::open() {
     setOpen(true);
@@ -205,6 +256,8 @@ void SpritePreviewWindow::clearFile() {
     fitRequested = true;
     pan = ImVec2(0.0f, 0.0f);
     statusMessage.clear();
+    agentEdit.reset();
+    externalSaveNotice.clear();
     statusIsError = false;
 }
 
@@ -774,6 +827,7 @@ void SpritePreviewWindow::show() {
         ImGui::TextDisabled("Select an .aseprite file in the Project window, or use Open Sprite Preview in its Inspector.");
     } else {
         drawToolbar();
+        drawAgentEditLine();
         ImGui::Separator();
         if (ImGui::BeginTable("##spritePreviewLayout", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV)) {
             ImGui::TableSetupColumn("panel", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 15.0f);
@@ -795,8 +849,34 @@ void SpritePreviewWindow::show() {
     }
     ImGui::End();
 
-    if (playing || loadTask.isValid()) Backend::getApp().requestRedraw();
+    if (playing || loadTask.isValid() || (agentEdit && spritePreviewNow() - agentEdit->at < 3.0)) Backend::getApp().requestRedraw();
     if (!windowOpen) setOpen(false);
+}
+
+void SpritePreviewWindow::drawAgentEditLine() {
+    if (!externalSaveNotice.empty()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), "%s", externalSaveNotice.c_str());
+        UIProbe::item("spritePreview.externalSave");
+    }
+    if (!agentEdit || !agentEdit->showLine) return;
+    const uint32_t sceneId = project->getSelectedScene() ? project->getSelectedSceneId() : NULL_PROJECT_SCENE;
+    UndoTimeline::EntryView top = UndoTimeline::nextUndo(sceneId);
+    if (agentEdit->undoId == 0 && top && std::string(top.entry->cmd->typeName()) == "SpriteEditCmd") agentEdit->undoId = top.entry->info.id;
+    const int seconds = static_cast<int>(spritePreviewNow() - agentEdit->at);
+    ImGui::TextWrapped("Edited by %s: %s \xE2\x80\x94 %d s ago", agentEdit->by.c_str(), agentEdit->summary.c_str(), seconds);
+    UIProbe::item("spritePreview.agentEdit.line");
+    const bool onTop = top && agentEdit->undoId != 0 && top.entry->info.id == agentEdit->undoId;
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!onTop);
+    if (ImGui::SmallButton("Undo##agentEdit")) {
+        std::string why;
+        if (!UndoTimeline::undo(sceneId, &why)) setStatus(why, true);
+    }
+    ImGui::EndDisabled();
+    UIProbe::item("spritePreview.agentEdit.undo");
+    if (!onTop && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("A newer step is on top of the undo history; undo that one first");
+    ImGui::TextDisabled("Edited by %s \xE2\x80\x94 reopen it in Aseprite before editing there", agentEdit->by.c_str());
+    UIProbe::item("spritePreview.agentEdit.reopen." + agentEdit->revision);
 }
 
 void SpritePreviewWindow::drawToolbar() {
@@ -1317,6 +1397,26 @@ void SpritePreviewWindow::drawOverlays(ImDrawList* draw, ImVec2 origin) {
         draw->AddLine(ImVec2(p.x - r, p.y), ImVec2(p.x + r + 1.0f, p.y), color, 1.0f);
         draw->AddLine(ImVec2(p.x, p.y - r), ImVec2(p.x, p.y + r + 1.0f), color, 1.0f);
     };
+
+    // R41: what the agent changed, fading over 3 s
+    if (agentEdit && view == View::Source && AppSettings::getPixelArtPreferences().agentEditHighlight) {
+        const double age = spritePreviewNow() - agentEdit->at;
+        if (age < 3.0) {
+            const float alpha = static_cast<float>(1.0 - age / 3.0);
+            const ImU32 color = ImGui::ColorConvertFloat4ToU32(ImVec4(0.2f, 0.85f, 1.0f, alpha));
+            for (const pixelart::draw::DirtyRect& d : agentEdit->rects) {
+                if (d.frame != frame + 1) continue;
+                const ImVec2 a = at(static_cast<float>(d.rect.x), static_cast<float>(d.rect.y));
+                const ImVec2 b = at(static_cast<float>(d.rect.x + d.rect.w), static_cast<float>(d.rect.y + d.rect.h));
+                draw->AddRect(a, b, color, 0.0f, 0, 2.0f);
+                const ImVec2 restore = ImGui::GetCursorScreenPos();
+                ImGui::SetCursorScreenPos(a);
+                ImGui::Dummy(ImVec2(b.x - a.x, b.y - a.y));
+                UIProbe::item("spritePreview.agentEdit.rect");
+                ImGui::SetCursorScreenPos(restore);
+            }
+        }
+    }
 
     if (showGrid && zoom >= 4) {
         const ImU32 grid = IM_COL32(128, 128, 128, 70);

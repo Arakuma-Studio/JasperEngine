@@ -3,6 +3,10 @@
 
 #include "AsepriteImporterView.h"
 
+#include "pixelart/draw/SpriteDocCache.h"
+
+#include <chrono>
+
 #include "Out.h"
 #include "Project.h"
 #include "Theme.h"
@@ -709,6 +713,16 @@ void AsepriteImporterView::drawStatus(){
         else if (record->ok){
             ImGui::TextWrapped("%s", record->summary.c_str());
             UIProbe::item("asepriteImporter.summary." + file.assetPath);
+            // S47 R42: who touched the file last, while this editor remembers it
+            if (editor::Project* project = importer.getProject()) {
+                if (const std::optional<editor::pixelart::draw::LastEdit> edit = editor::pixelart::draw::SpriteDocCache::get().lastEditOf(project->getAssetsPath() / file.assetPath)) {
+                    const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                    const int64_t seconds = (now - edit->timeMs) / 1000;
+                    const std::string ago = seconds < 60 ? std::to_string(seconds) + " s" : std::to_string(seconds / 60) + " min";
+                    ImGui::TextDisabled("Last edited by %s, %s ago", edit->by.c_str(), ago.c_str());
+                    UIProbe::item("asepriteImporter.lastEdited." + file.assetPath);
+                }
+            }
         }
         if (record && !record->ok) aseViewProblem(record->error);
         if (record)

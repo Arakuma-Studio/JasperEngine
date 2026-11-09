@@ -144,6 +144,16 @@ void UndoHistoryWindow::drawToolbar(uint32_t sceneId) {
     }
 }
 
+// the next step to undo or redo, when it refuses (S47 R33: a sprite saved from outside the editor)
+std::string UndoHistoryWindow::refusalOf(const UndoTimeline::EntryView& view) const {
+    if (std::string(view.entry->cmd->typeName()) != "SpriteEditCmd") return std::string();
+    const uint32_t sceneId = project->getSelectedScene() ? project->getSelectedSceneId() : NULL_PROJECT_SCENE;
+    const UndoTimeline::EntryView nextUndo = UndoTimeline::nextUndo(sceneId);
+    if (view.applied) return nextUndo && nextUndo.entry->info.id == view.entry->info.id ? view.entry->cmd->undoRefusal() : std::string();
+    const UndoTimeline::EntryView nextRedo = UndoTimeline::nextRedo(sceneId);
+    return nextRedo && nextRedo.entry->info.id == view.entry->info.id ? view.entry->cmd->redoRefusal() : std::string();
+}
+
 void UndoHistoryWindow::drawTooltip(const UndoTimeline::EntryView& view) const {
     const EntryInfo& info = view.entry->info;
     const std::time_t time = std::chrono::system_clock::to_time_t(info.time);
@@ -161,6 +171,7 @@ void UndoHistoryWindow::drawTooltip(const UndoTimeline::EntryView& view) const {
     ImGui::Text("Origin: %s", origin.c_str());
     ImGui::Text("Size: %s (estimate)", formatMegabytes(info.bytes).c_str());
     ImGui::Text("Type: %s", view.entry->cmd->typeName());
+    if (const std::string refusal = refusalOf(view); !refusal.empty()) ImGui::TextWrapped("%s", refusal.c_str());
     if (!view.editable) ImGui::TextDisabled("Edit-time step: not while the scene plays");
     ImGui::EndTooltip();
 }
@@ -187,7 +198,7 @@ void UndoHistoryWindow::drawRows(uint32_t sceneId) {
                 ImGui::SeparatorText("Play Mode");
             }
             ImGui::BeginDisabled(!view.editable);
-            const bool dim = !view.applied;
+            const bool dim = !view.applied || !refusalOf(view).empty();
             if (dim) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
             const std::string label = std::string(rowIcon(view)) + "  " + view.entry->name();
             if (ImGui::Selectable(label.c_str(), view.entry->info.id == currentId, ImGuiSelectableFlags_AllowOverlap)) {

@@ -194,6 +194,7 @@ bool AppSettings::htmlUiVerboseDiagnostics = false;
 bool AppSettings::htmlUiPatchReload = true;
 LoggingSettings AppSettings::loggingSettings;
 DiagnosticsSettings AppSettings::diagnosticsSettings;
+PixelArtPreferences AppSettings::pixelArtPreferences;
 VersionControlSettings AppSettings::versionControlSettings;
 
 bool AppSettings::initialize(bool preferUserDirectory) {
@@ -668,6 +669,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (diagnosticsNode["show_crash_notice"]) loaded.showCrashNotice = diagnosticsNode["show_crash_notice"].as<bool>();
         }
         setDiagnosticsSettings(loaded);
+        PixelArtPreferences pixelArt;
+        if (settingsData["pixel_art"] && settingsData["pixel_art"]["agent_edit_highlight"]) pixelArt.agentEditHighlight = settingsData["pixel_art"]["agent_edit_highlight"].as<bool>();
+        setPixelArtPreferences(pixelArt);
         VersionControlSettings vcs;
         if (const YAML::Node vcsNode = settingsData["version_control"]; vcsNode && vcsNode.IsMap()) {
             if (vcsNode["git_path"]) vcs.gitPath = vcsNode["git_path"].as<std::string>();
@@ -953,6 +957,13 @@ bool AppSettings::saveSettings() {
             loggingNode["backtrace_on_error"] = loggingSettings.backtraceOnError;
             loggingNode["show_source"] = loggingSettings.showSource;
             settingsData["logging"] = loggingNode;
+        }
+        if (pixelArtPreferences == PixelArtPreferences()) {
+            if (settingsData["pixel_art"]) settingsData.remove("pixel_art");
+        } else {
+            YAML::Node pixelArtNode;
+            pixelArtNode["agent_edit_highlight"] = pixelArtPreferences.agentEditHighlight;
+            settingsData["pixel_art"] = pixelArtNode;
         }
         if (diagnosticsSettings == DiagnosticsSettings()) {
             if (settingsData["diagnostics"]) settingsData.remove("diagnostics");
@@ -1415,6 +1426,14 @@ void AppSettings::applyLoggingSettings() {
     Out::setFileShowsSource(loggingSettings.showSource);
     Logger::setBacktraceOnError(loggingSettings.backtraceOnError);
     Out::applyLevelOverride();
+}
+
+PixelArtPreferences AppSettings::getPixelArtPreferences() {
+    return pixelArtPreferences;
+}
+
+void AppSettings::setPixelArtPreferences(const PixelArtPreferences& settings) {
+    pixelArtPreferences = settings;
 }
 
 DiagnosticsSettings AppSettings::getDiagnosticsSettings() {

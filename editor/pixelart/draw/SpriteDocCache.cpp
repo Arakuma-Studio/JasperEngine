@@ -83,6 +83,11 @@ namespace jasperengine::editor::pixelart::draw {
         sessions.erase(absolute.lexically_normal().generic_string());
     }
 
+    std::optional<LastEdit> SpriteDocCache::lastEditOf(const fs::path& absolute) const {
+        auto it = sessions.find(absolute.lexically_normal().generic_string());
+        return it == sessions.end() ? std::nullopt : it->second->lastEdit;
+    }
+
     std::shared_ptr<SpriteSession> SpriteDocCache::open(Project* p, const std::string& given, PixelProblem& problem) {
         attach(p);
         std::string relative = given;
