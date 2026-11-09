@@ -345,3 +345,12 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   (ShaderNeutralApi, Stream.DerivedTransform), and PhysicsContactsTest's cost ratio at 7.20% against 7% (wall-clock, upstream's
   test, shared vCPU). The CI MCP suite refused to start on upstream's test_pixel_fonts_export (CI = False without CI_EXCLUDED,
   which origin/main's runner also refuses). It now declares why; the suite is rerunning.
+- LodFadeGpu hang fixed (b5c2eda51, terrain/fix-lodfade 3280adc57). RuntimeShaderCompiler's compile queue stayed bound to the first job
+  system, so after T2's tests restarted jobs every new background compile was cancelled and the shader waited forever. This only showed
+  with a cold shader cache. The queue now follows the current job system; there is a new test. The minimal three-test filter is red
+  without the fix and green with it. Whole cold core run: 4944 ran, only upstream's ParticleExposed failed.
+- Smoke-test fixes landed (8c3522da8, terrain/fix-final 50d2b7977): T2's ErosionRegion renamed HeightfieldRegion (ODR); 10
+  unity-colliding helpers renamed; map clean-up keeps hole maps and in-use .meta sidecars (import settings were lost on every save);
+  a Terrain World's overview follows edits flushed before its refresh (T4 R52); tint-only layers draw, with a white slice per layer
+  and no new uniform or variant (T3 Deviations). Upstream's terrain_painted_lights golden was redrawn with its tints.
+- Last check on 8c3522da8 running: WERROR linux, touched unit filters, the programme's 20 MCP files, web plus all seven web gates.
