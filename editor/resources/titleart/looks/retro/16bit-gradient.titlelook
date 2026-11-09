@@ -132,7 +132,12 @@
       "reason": "pixel art has hard shadows"
     }
   ],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "fallback_parity",
+      "reason": "RGBA8 path differs on the 'kanji' sample (class F1): max 255, mean 0.01, 0.00 % of pixels over tolerance"
+    }
+  ],
   "provenance": {
     "source": "jasperengine"
   }

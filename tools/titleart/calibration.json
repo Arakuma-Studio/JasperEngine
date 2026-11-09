@@ -1,33 +1,33 @@
 {
   "format": "jasperengine.titlelibrary.calibration",
   "version": 1,
-  "renders": 301,
+  "renders": 830,
   "red_controls": 27,
   "checks": {
     "clipped_highlights": {
       "library": {
         "color_schemes": {
-          "n": 33,
+          "n": 99,
           "min": 0,
           "p5": 0,
-          "median": 0.1,
-          "p95": 6.8,
-          "max": 43.1
+          "median": 0.2,
+          "p95": 10.9,
+          "max": 43.9
         },
         "looks": {
-          "n": 195,
+          "n": 585,
           "min": 0,
           "p5": 0,
           "median": 0,
-          "p95": 55.2,
+          "p95": 57.4,
           "max": 100
         },
         "templates": {
-          "n": 73,
+          "n": 146,
           "min": 0,
           "p5": 0,
-          "median": 1.5,
-          "p95": 29.6,
+          "median": 1.7,
+          "p95": 32.5,
           "max": 90.7
         }
       },
@@ -42,7 +42,7 @@
     "counter_survival": {
       "library": {
         "color_schemes": {
-          "n": 33,
+          "n": 99,
           "min": 0,
           "p5": 0,
           "median": 1,
@@ -50,17 +50,17 @@
           "max": 1
         },
         "looks": {
-          "n": 195,
-          "min": 0,
-          "p5": 0,
+          "n": 372,
+          "min": 1,
+          "p5": 1,
           "median": 1,
           "p95": 1,
           "max": 1
         },
         "templates": {
-          "n": 71,
-          "min": 0,
-          "p5": 0,
+          "n": 80,
+          "min": 0.8,
+          "p5": 0.89,
           "median": 1,
           "p95": 1,
           "max": 1
@@ -72,12 +72,12 @@
       "metric": "survival",
       "higher_is_better": true,
       "L": 0,
-      "L_item": "cartoon/candy-stripe"
+      "L_item": "blue"
     },
     "fallback_parity": {
       "library": {
         "color_schemes": {
-          "n": 33,
+          "n": 99,
           "min": 0,
           "p5": 0,
           "median": 0,
@@ -85,20 +85,20 @@
           "max": 0
         },
         "looks": {
-          "n": 195,
+          "n": 546,
           "min": 0,
           "p5": 0,
-          "median": 7.716049e-06,
-          "p95": 0.01375772,
-          "max": 0.1109259
+          "median": 0,
+          "p95": 0.004884259,
+          "max": 0.02604167
         },
         "templates": {
-          "n": 73,
+          "n": 120,
           "min": 0,
           "p5": 0,
-          "median": 0.005177469,
-          "p95": 0.05898148,
-          "max": 0.5252991
+          "median": 0.000213623,
+          "p95": 0.02002315,
+          "max": 0.03942516
         }
       },
       "threshold": {
@@ -108,33 +108,33 @@
       },
       "metric": "fraction_over",
       "higher_is_better": false,
-      "L": 0.5252991,
-      "L_item": "elements/storm-counter"
+      "L": 0.03942516,
+      "L_item": "casino/super-red-hot"
     },
     "halo": {
       "library": {
         "color_schemes": {
-          "n": 33,
+          "n": 99,
           "min": 0.05,
-          "p5": 0.09,
+          "p5": 0.08,
           "median": 0.19,
-          "p95": 0.28,
-          "max": 0.28
+          "p95": 0.33,
+          "max": 0.34
         },
         "looks": {
-          "n": 195,
+          "n": 585,
           "min": 0,
           "p5": 0,
           "median": 0.13,
-          "p95": 0.71,
-          "max": 0.91
+          "p95": 0.74,
+          "max": 0.92
         },
         "templates": {
-          "n": 73,
+          "n": 146,
           "min": 0,
           "p5": 0,
           "median": 0.02,
-          "p95": 0.33,
+          "p95": 0.34,
           "max": 0.54
         }
       },
@@ -143,114 +143,114 @@
       },
       "metric": "halo_share",
       "higher_is_better": false,
-      "L": 0.91,
+      "L": 0.92,
       "L_item": "cartoon/sticker-white"
     },
     "legibility_contrast": {
       "library": {
         "color_schemes": {
-          "n": 33,
-          "min": 40.7,
-          "p5": 41.6,
-          "median": 52.4,
-          "p95": 62.9,
-          "max": 66.3
+          "n": 99,
+          "min": 38.4,
+          "p5": 41.4,
+          "median": 53.7,
+          "p95": 64.6,
+          "max": 69.3
         },
         "looks": {
-          "n": 195,
-          "min": 0,
-          "p5": 7.9,
-          "median": 47.3,
-          "p95": 70.8,
-          "max": 86.2
+          "n": 585,
+          "min": 30.4,
+          "p5": 37.3,
+          "median": 56.6,
+          "p95": 93.2,
+          "max": 100
         },
         "templates": {
-          "n": 73,
-          "min": 0.8,
-          "p5": 19.8,
-          "median": 48,
-          "p95": 69.3,
-          "max": 81.5
-        }
-      },
-      "threshold": {
-        "delta_l": 30
-      },
-      "metric": "delta_l",
-      "higher_is_better": true,
-      "L": 0,
-      "L_item": "minimal/flat",
-      "R": 4.7,
-      "T": 30,
-      "separates": false,
-      "middle_half": false,
-      "suggested_T": 2.35
-    },
-    "metal_range": {
-      "library": {
-        "color_schemes": {
-          "n": 33,
-          "min": 19.4,
-          "p5": 25.78,
-          "median": 67.6,
-          "p95": 89.38,
-          "max": 97.62
-        },
-        "looks": {
-          "n": 113,
-          "min": 15.64,
-          "p5": 19.46,
-          "median": 55.63,
-          "p95": 88.54,
-          "max": 97.62
-        },
-        "templates": {
-          "n": 79,
-          "min": 7.6,
-          "p5": 17.85,
-          "median": 57.14,
-          "p95": 90.26,
+          "n": 146,
+          "min": 30.3,
+          "p5": 32.6,
+          "median": 53,
+          "p95": 87,
           "max": 100
         }
       },
       "threshold": {
-        "l_range_min": 4
+        "delta_l": 22
+      },
+      "metric": "delta_l",
+      "higher_is_better": true,
+      "L": 30.3,
+      "L_item": "neon/bar-sign-title",
+      "R": 4.7,
+      "T": 22,
+      "separates": true,
+      "middle_half": true,
+      "suggested_T": 17.5
+    },
+    "metal_range": {
+      "library": {
+        "color_schemes": {
+          "n": 99,
+          "min": 18.62,
+          "p5": 20.48,
+          "median": 67.59,
+          "p95": 90.85,
+          "max": 97.62
+        },
+        "looks": {
+          "n": 330,
+          "min": 16.61,
+          "p5": 23.05,
+          "median": 56.26,
+          "p95": 92.48,
+          "max": 97.62
+        },
+        "templates": {
+          "n": 138,
+          "min": 20,
+          "p5": 26.22,
+          "median": 57.31,
+          "p95": 89.44,
+          "max": 100
+        }
+      },
+      "threshold": {
+        "l_range_min": 12
       },
       "metric": "l_range",
       "higher_is_better": true,
-      "L": 7.6,
-      "L_item": "casino/reserve-flash-fx",
-      "R": 0,
-      "T": 4,
+      "L": 16.61,
+      "L_item": "wa/dry-brush-ink",
+      "R": 1.45,
+      "T": 12,
       "separates": true,
       "middle_half": true,
-      "suggested_T": 3.8
+      "suggested_T": 9.03
     },
     "not_clipped": {
       "library": {
         "color_schemes": {
-          "n": 33,
-          "min": 420,
-          "p5": 420,
+          "n": 99,
+          "min": 412,
+          "p5": 412,
           "median": 420,
           "p95": 420,
           "max": 420
         },
         "looks": {
-          "n": 195,
+          "n": 585,
           "min": 0,
-          "p5": 28,
-          "median": 428,
+          "p5": 24,
+          "median": 424,
           "p95": 460,
           "max": 476
         },
         "templates": {
-          "n": 73,
-          "min": 0,
-          "p5": 0,
-          "median": 16,
-          "p95": 240,
-          "max": 356
+          "n": 142,
+          "min": -5,
+          "p5": -5,
+          "median": 80,
+          "p95": 304,
+          "max": 396
         }
       },
       "threshold": {
@@ -258,39 +258,39 @@
       },
       "metric": "min_margin_px",
       "higher_is_better": true,
-      "L": 0,
-      "L_item": "anime/impact-burst",
+      "L": -5,
+      "L_item": "casino/cut-in-band",
       "R": 0,
       "T": 8,
       "separates": false,
       "middle_half": false,
-      "suggested_T": 0
+      "suggested_T": -2.5
     },
     "rim_spikes": {
       "library": {
         "color_schemes": {
-          "n": 33,
+          "n": 99,
           "min": 0,
           "p5": 0,
           "median": 0,
-          "p95": 0,
-          "max": 0
+          "p95": 0.86,
+          "max": 0.86
         },
         "looks": {
-          "n": 195,
+          "n": 585,
           "min": 0,
           "p5": 0,
           "median": 0,
           "p95": 0,
-          "max": 1.33
+          "max": 3.29
         },
         "templates": {
-          "n": 73,
+          "n": 146,
           "min": 0,
           "p5": 0,
           "median": 0,
-          "p95": 0.94,
-          "max": 3.98
+          "p95": 1.26,
+          "max": 6.14
         }
       },
       "threshold": {
@@ -298,13 +298,13 @@
       },
       "metric": "spike_to_band",
       "higher_is_better": false,
-      "L": 3.98,
-      "L_item": "neon/game-over-neon"
+      "L": 6.14,
+      "L_item": "casino/super-red-hot"
     },
     "style_lint.contrast": {
       "library": {
         "color_schemes": {
-          "n": 1,
+          "n": 3,
           "min": 8.42,
           "p5": 8.42,
           "median": 8.42,
@@ -328,7 +328,7 @@
     "style_lint.hard_shadow": {
       "library": {
         "templates": {
-          "n": 1,
+          "n": 2,
           "min": 0,
           "p5": 0,
           "median": 0,
@@ -352,7 +352,7 @@
     "style_lint.rims_thin": {
       "library": {
         "templates": {
-          "n": 4,
+          "n": 8,
           "min": 1,
           "p5": 1,
           "median": 2.6,

@@ -455,6 +455,7 @@ Json titlelibrary::canonicalLookJson(const Json& root, std::vector<LibraryWarnin
         else warn(warnings, "bad_member", "ref_size", "not a positive number: 200");
     }
     out["ref_size"] = refSize;
+    if (root.contains("background") && root["background"].is_string()) out["background"] = root["background"];
     if (root.contains("font") && !root["font"].is_null()) {
         if (root["font"].is_object()) out["font"] = root["font"];
         else warn(warnings, "bad_member", "font", "not {latin, ja}: dropped");

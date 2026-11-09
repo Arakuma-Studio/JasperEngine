@@ -49,7 +49,21 @@
     "canvas_note": "1024 × 512, transparent; the backdrop is a guide layer",
     "provenance": {
       "source": "jasperengine"
-    }
+    },
+    "check_allow": [
+      {
+        "check": "3d_tier_budget.low",
+        "reason": "8 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
+      },
+      {
+        "check": "3d_tier_budget.medium",
+        "reason": "8 stacked solids (letter and bands) over the medium tier's 5 on the 'ja' sample; fit_to_tier reduces it"
+      },
+      {
+        "check": "fallback_parity",
+        "reason": "RGBA8 path differs on the 'ja' sample (class 3D): max 228, mean 1.41, 2.04 % of pixels over tolerance"
+      }
+    ]
   },
   "name": "",
   "canvas": {

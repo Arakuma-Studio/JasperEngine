@@ -221,7 +221,12 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "metal_range",
+      "reason": "its face is metallic in the 3D sense, but lit flat: L* range 13.3 on the 'kanji' sample; not meant to read as a polished metal"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

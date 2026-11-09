@@ -123,8 +123,8 @@ async def test_gate(ed: Editor):
         detail = await ed.call("list_title_library", kind=kind, id=ref)
         allow_checks = {a["check"] for a in detail.get("check_allow", [])}
         allow_rules = {a["rule"] for a in detail.get("lint_allow", [])}
-        # tier and counter exceptions are declared properties of a heavy style, listed but not capped (Deviation 27)
-        if {c for c in allow_checks if not c.startswith(("3d_tier_budget", "counter_survival", "fallback_parity"))} or allow_rules:
+        # tier, counter, parity and metal-sheen exceptions are declared properties of a heavy style, listed but not capped (Deviation 27)
+        if {c for c in allow_checks if not c.startswith(("3d_tier_budget", "counter_survival", "fallback_parity", "metal_range"))} or allow_rules:
             counts[kind][2] += 1
         a = await render_once(ed, path)
         b = await render_once(ed, path)

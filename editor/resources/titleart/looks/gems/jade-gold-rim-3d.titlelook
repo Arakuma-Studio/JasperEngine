@@ -375,7 +375,12 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "3d_tier_budget.low",
+      "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

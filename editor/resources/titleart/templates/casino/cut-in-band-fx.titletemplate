@@ -140,7 +140,7 @@
   },
   "name": "Cut-in Band FX (flow lines, lightning, speech)",
   "canvas": {
-    "width": 1920,
+    "width": 2880,
     "height": 1080,
     "background": {
       "transparent": true,

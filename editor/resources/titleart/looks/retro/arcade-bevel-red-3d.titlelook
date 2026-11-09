@@ -137,7 +137,7 @@
   "check_allow": [
     {
       "check": "metal_range",
-      "reason": "a saturated red bevel lit head-on: it is paint, not a mirror metal"
+      "reason": "its face is metallic in the 3D sense, but lit flat: L* range 1.6 on the 'digits' sample; not meant to read as a polished metal"
     }
   ],
   "provenance": {

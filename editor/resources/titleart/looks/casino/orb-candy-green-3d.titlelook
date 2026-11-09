@@ -101,6 +101,7 @@
   "dimension": "3d",
   "applies": "style",
   "ref_size": 200,
+  "background": "dark",
   "font": {
     "latin": "dela-gothic-one",
     "ja": "dela-gothic-one"

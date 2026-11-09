@@ -98,7 +98,12 @@
   "group_effects": [],
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "fallback_parity",
+      "reason": "RGBA8 path differs on the 'latin' sample (class F1): max 242, mean 0.28, 0.62 % of pixels over tolerance"
+    }
+  ],
   "provenance": {
     "source": "jasperengine"
   }

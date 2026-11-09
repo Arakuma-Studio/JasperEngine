@@ -39,6 +39,7 @@
   "dimension": "2d",
   "applies": "style",
   "ref_size": 200,
+  "background": "light",
   "font": {
     "latin": "dela-gothic-one",
     "ja": "dela-gothic-one"
@@ -102,7 +103,12 @@
   "group_effects": [],
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "counter_survival",
+      "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+    }
+  ],
   "provenance": {
     "source": "jasperengine"
   }

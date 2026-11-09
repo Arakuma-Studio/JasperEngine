@@ -104,11 +104,21 @@
       "line": 417,
       "item": "t-gekiatsu-fire",
       "license_note": "used with the author's permission"
-    }
+    },
+    "check_allow": [
+      {
+        "check": "counter_survival",
+        "reason": "survival 0.33 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+      },
+      {
+        "check": "fallback_parity",
+        "reason": "RGBA8 path differs on the 'en' sample (class F2): max 62, mean 1.17, 5.05 % of pixels over tolerance"
+      }
+    ]
   },
   "name": "Red Hot (fire)",
   "canvas": {
-    "width": 1920,
+    "width": 2400,
     "height": 1080,
     "background": {
       "transparent": true,

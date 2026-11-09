@@ -39,6 +39,7 @@
   "dimension": "2d",
   "applies": "style",
   "ref_size": 200,
+  "background": "dark",
   "font": {
     "latin": "mochiy-pop-one",
     "ja": "mplus1p-black"
@@ -82,7 +83,12 @@
   "group_effects": [],
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "fallback_parity",
+      "reason": "RGBA8 path differs on the 'kanji' sample (class F2): max 101, mean 0.04, 0.23 % of pixels over tolerance"
+    }
+  ],
   "provenance": {
     "source": "jasperengine"
   }

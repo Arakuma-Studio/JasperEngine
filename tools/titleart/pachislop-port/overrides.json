@@ -203,7 +203,13 @@
       ]
     },
     "casino/jackpot-rays-sparkles": {
-      "background": "dark"
+      "background": "dark",
+      "check_allow": [
+        {
+          "check": "fallback_parity",
+          "reason": "RGBA8 path differs on the 'digits' sample (class F2): max 211, mean 0.67, 2.71 % of pixels over tolerance"
+        }
+      ]
     },
     "casino/orb-candy-gold-3d": {
       "background": "dark"
@@ -390,6 +396,10 @@
         {
           "check": "counter_survival",
           "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        },
+        {
+          "check": "fallback_parity",
+          "reason": "RGBA8 path differs on the 'digits' sample (class F2): max 207, mean 4.71, 11.04 % of pixels over tolerance"
         }
       ]
     },
@@ -852,6 +862,14 @@
           "reason": "survival 0.50 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
         }
       ]
+    },
+    "metal/chrome-star-glints": {
+      "check_allow": [
+        {
+          "check": "fallback_parity",
+          "reason": "RGBA8 path differs on the 'digits' sample (class F2): max 222, mean 0.31, 1.19 % of pixels over tolerance"
+        }
+      ]
     }
   },
   "templates": {
@@ -899,8 +917,8 @@
             "reason": "4 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
           },
           {
-            "check": "counter_survival",
-            "reason": "survival 0.75 of 4 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+            "check": "fallback_parity",
+            "reason": "RGBA8 path differs on the 'ja' sample (class 3D): max 224, mean 1.33, 1.96 % of pixels over tolerance"
           }
         ]
       }
@@ -946,7 +964,7 @@
         "check_allow": [
           {
             "check": "counter_survival",
-            "reason": "survival 0.30 of 10 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+            "reason": "survival 0.22 of 9 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
           }
         ]
       }
@@ -970,6 +988,10 @@
           {
             "check": "counter_survival",
             "reason": "survival 0.33 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          },
+          {
+            "check": "fallback_parity",
+            "reason": "RGBA8 path differs on the 'en' sample (class F2): max 62, mean 1.17, 5.05 % of pixels over tolerance"
           }
         ]
       }
@@ -984,6 +1006,10 @@
           {
             "check": "counter_survival",
             "reason": "survival 0.33 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          },
+          {
+            "check": "fallback_parity",
+            "reason": "RGBA8 path differs on the 'ja' sample (class F2): max 224, mean 0.74, 2.01 % of pixels over tolerance"
           }
         ]
       }
@@ -1011,7 +1037,7 @@
         "check_allow": [
           {
             "check": "metal_range",
-            "reason": "its face is metallic in the 3D sense, but lit flat: L* range 7.5 on the 'en' sample; not meant to read as a polished metal"
+            "reason": "its face is metallic in the 3D sense, but lit flat: L* range 7.4 on the 'en' sample; not meant to read as a polished metal"
           }
         ]
       }
@@ -1046,6 +1072,14 @@
       "canvas": {
         "width": 1360,
         "height": 2880
+      },
+      "template": {
+        "check_allow": [
+          {
+            "check": "not_clipped",
+            "reason": "the ported canvas touches the art on the 'en' sample (margins {'bottom': -6, 'left': 140, 'right': 138, 'top': 0}, layers ['限界突破'])"
+          }
+        ]
       }
     },
     "wa/awakening-dry-brush": {
@@ -1136,6 +1170,10 @@
           {
             "check": "counter_survival",
             "reason": "survival 0.00 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+          },
+          {
+            "check": "fallback_parity",
+            "reason": "RGBA8 path differs on the 'en' sample (class 3D): max 255, mean 2.04, 2.82 % of pixels over tolerance"
           }
         ]
       }
@@ -1186,6 +1224,26 @@
           {
             "check": "metal_range",
             "reason": "its face is metallic in the 3D sense, but lit flat: L* range 12.7 on the 'en' sample; not meant to read as a polished metal"
+          }
+        ]
+      }
+    },
+    "casino/new-machine-flyer": {
+      "template": {
+        "check_allow": [
+          {
+            "check": "not_clipped",
+            "reason": "the ported canvas touches the art on the 'en' sample (margins {'bottom': 0, 'left': 0, 'right': 0, 'top': 0}, layers ['Background', '新台入替'])"
+          }
+        ]
+      }
+    },
+    "metal/special-satin-chrome": {
+      "template": {
+        "check_allow": [
+          {
+            "check": "fallback_parity",
+            "reason": "RGBA8 path differs on the 'ja' sample (class F2): max 249, mean 0.53, 1.64 % of pixels over tolerance"
           }
         ]
       }

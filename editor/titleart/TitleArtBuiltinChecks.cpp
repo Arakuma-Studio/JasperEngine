@@ -636,6 +636,9 @@ namespace {
         out.push_back(std::move(r));
     }
 
+    // calibrated (S84 §6.14.3): red controls at most 4.7, the library at least 30.3 on its intended background
+    constexpr double LEGIBILITY_MIN_DELTA = 22.0;
+
     void legibility(TitleCheckContext& ctx, Out& out) {
         Renders& renders = rendersOf(ctx);
         std::string error;
@@ -672,7 +675,7 @@ namespace {
         }
         const size_t minBand = std::max<size_t>(16, bands[0].size() / 20);
         TitleCheckResult r = result(TitleCheckStatus::Pass, "", "CIE L* of the silhouette's bands composited on each background (outer ring inwards to 5 % of the height), the band that stands out most against the background");
-        r.threshold = TJson{{"delta_l", 30}};
+        r.threshold = TJson{{"delta_l", LEGIBILITY_MIN_DELTA}};
         if (bands[0].empty()) {
             r.status = TitleCheckStatus::Skip;
             r.message = "no opaque silhouette to measure";
@@ -704,7 +707,7 @@ namespace {
             }
         }
         r.measured = TJson{{"delta_l", measured}};
-        if (worst < 30.0) {
+        if (worst < LEGIBILITY_MIN_DELTA) {
             r.status = TitleCheckStatus::Fail;
             r.message = "the silhouette is hard to tell from the " + worstBg + " background (delta L* " + std::to_string(static_cast<int>(worst)) + ")";
             titleart::TitleColor bg;
@@ -1150,7 +1153,7 @@ namespace {
         {"not_flat", TitleCheckKind::Pixels, "The render is not blank or one colour", notFlat},
         {"not_clipped", TitleCheckKind::Pixels, "No ink or light at the canvas edge; margins of 8 px", notClipped},
         {"alpha_bounds", TitleCheckKind::Pixels, "Trim box, coverage 10..90 %, centre offset", alphaBoundsCheck},
-        {"legibility_contrast", TitleCheckKind::Pixels, "A band of the silhouette delta L* >= 30 on each background", legibility},
+        {"legibility_contrast", TitleCheckKind::Pixels, "A band of the silhouette delta L* >= 22 on each background the item is made for", legibility},
         {"counter_survival", TitleCheckKind::Pixels, "Letter counters still open in the render", counterSurvival},
         {"noop_effects", TitleCheckKind::Pixels, "Enabled effects that change nothing", noopEffects},
         {"clipped_highlights", TitleCheckKind::Pixels, "Ink clipped to white <= 5 %", clippedHighlights},

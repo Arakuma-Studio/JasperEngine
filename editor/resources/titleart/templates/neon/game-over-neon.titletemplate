@@ -49,7 +49,14 @@
     "canvas_note": "1280 × 720, transparent; the backdrop is a guide layer",
     "provenance": {
       "source": "jasperengine"
-    }
+    },
+    "background": "dark",
+    "check_allow": [
+      {
+        "check": "fallback_parity",
+        "reason": "RGBA8 path differs on the 'en' sample (class F1): max 255, mean 0.90, 2.77 % of pixels over tolerance"
+      }
+    ]
   },
   "name": "",
   "canvas": {

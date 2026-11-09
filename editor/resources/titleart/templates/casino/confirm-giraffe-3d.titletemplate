@@ -134,7 +134,21 @@
       "line": 636,
       "item": "t-kakutei-giraffe-3d",
       "license_note": "used with the author's permission"
-    }
+    },
+    "check_allow": [
+      {
+        "check": "3d_tier_budget.low",
+        "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'ja' sample; fit_to_tier reduces it"
+      },
+      {
+        "check": "counter_survival",
+        "reason": "survival 0.00 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+      },
+      {
+        "check": "fallback_parity",
+        "reason": "RGBA8 path differs on the 'en' sample (class 3D): max 255, mean 2.04, 2.82 % of pixels over tolerance"
+      }
+    ]
   },
   "name": "Confirm Giraffe (3D glint)",
   "canvas": {

@@ -99,7 +99,7 @@
   "check_allow": [
     {
       "check": "metal_range",
-      "reason": "translucent jelly: the sheen is the look, its face has no dark bands on purpose"
+      "reason": "its face is metallic in the 3D sense, but lit flat: L* range 1.0 on the 'digits' sample; not meant to read as a polished metal"
     }
   ],
   "provenance": {

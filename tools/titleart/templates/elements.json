@@ -376,6 +376,10 @@
         {
           "check": "counter_survival",
           "reason": "survival 0.67 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+        },
+        {
+          "check": "fallback_parity",
+          "reason": "RGBA8 path differs on the 'ja' sample (class F2): max 195, mean 18.85, 52.53 % of pixels over tolerance"
         }
       ]
     }

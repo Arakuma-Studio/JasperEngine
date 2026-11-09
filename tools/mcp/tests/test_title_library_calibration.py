@@ -41,7 +41,7 @@ async def test_rule_itself(ed: Editor):
 
 # the checks of §6.14.3 whose metric cannot separate the library from its red controls; each is a
 # recorded finding (spec Deviations), not a pass
-CANNOT_SEPARATE = {"legibility_contrast", "not_clipped", "style_lint.hard_shadow", "style_lint.rims_thin"}
+CANNOT_SEPARATE = {"not_clipped", "style_lint.hard_shadow", "style_lint.rims_thin"}
 # thresholds held on purpose where the calibration would move them (spec Deviation 25)
 PINNED = {"style_lint.contrast": "StyleLintTest.MatchesPachislop holds the lint to Pachislop's constants"}
 

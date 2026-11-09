@@ -84,7 +84,12 @@
       "reason": "pixel art has hard shadows"
     }
   ],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "fallback_parity",
+      "reason": "RGBA8 path differs on the 'digits' sample (class F0): max 85, mean 0.00, 0.01 % of pixels over tolerance"
+    }
+  ],
   "provenance": {
     "source": "jasperengine"
   }

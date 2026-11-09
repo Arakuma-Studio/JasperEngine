@@ -120,12 +120,18 @@
       "line": 823,
       "item": "t-kanzen-fukkatsu",
       "license_note": "used with the author's permission"
-    }
+    },
+    "check_allow": [
+      {
+        "check": "not_clipped",
+        "reason": "the ported canvas touches the art on the 'en' sample (margins {'bottom': -6, 'left': 140, 'right': 138, 'top': 0}, layers ['限界突破'])"
+      }
+    ]
   },
   "name": "Liquid Gold Vertical + Kicker",
   "canvas": {
-    "width": 1080,
-    "height": 1920,
+    "width": 1360,
+    "height": 2880,
     "background": {
       "transparent": true,
       "color": "#000000"

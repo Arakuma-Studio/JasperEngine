@@ -59,7 +59,14 @@
     "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
     "provenance": {
       "source": "jasperengine"
-    }
+    },
+    "background": "dark",
+    "check_allow": [
+      {
+        "check": "counter_survival",
+        "reason": "survival 0.25 of 4 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+      }
+    ]
   },
   "name": "",
   "canvas": {

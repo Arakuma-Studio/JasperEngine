@@ -39,6 +39,7 @@
   "dimension": "3d",
   "applies": "style",
   "ref_size": 200,
+  "background": "dark",
   "font": {
     "latin": "titan-one",
     "ja": "potta-one"

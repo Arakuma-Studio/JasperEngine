@@ -38,6 +38,7 @@
   "dimension": "2d",
   "applies": "effects",
   "ref_size": 200,
+  "background": "dark",
   "effects": [
     {
       "type": "drop_shadow",

@@ -380,6 +380,10 @@
         {
           "check": "3d_tier_budget.medium",
           "reason": "8 stacked solids (letter and bands) over the medium tier's 5 on the 'ja' sample; fit_to_tier reduces it"
+        },
+        {
+          "check": "fallback_parity",
+          "reason": "RGBA8 path differs on the 'ja' sample (class 3D): max 228, mean 1.41, 2.04 % of pixels over tolerance"
         }
       ]
     }
