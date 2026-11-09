@@ -41,7 +41,10 @@ def graph_file(fields: dict) -> str:
 async def test_kind_with_existing_tools(ed: Editor):
     kinds = await ed.call("list_graph_kinds")
     ed.check("noise" in [k["id"] for k in kinds["kinds"]], f"noise is listed: {kinds}")
-    types = (await ed.call("list_graph_node_types", kind="noise"))["node_types"]
+    listed = await ed.call("list_graph_node_types", kind="noise")
+    ed.check_eq(len(listed["signatures"]), 29, "29 signature lines, under S90's catalog limit")
+    ed.check_in("octaves=", next(line for line in listed["signatures"] if line.startswith("fbm(")), "a signature holds defaults")
+    types = (await ed.call("list_graph_node_types", kind="noise", detail=True))["node_types"]
     ed.check_eq(len(types), 29, "29 node types")
     fbm = next(t for t in types if t["id"] == "fbm")
     octaves = next(p for p in fbm["params"] if p["name"] == "octaves")
