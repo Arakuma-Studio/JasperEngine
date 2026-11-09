@@ -163,6 +163,74 @@ tt::Json TitleFlipbookResult::toJson() const{
     return tt::Json{{"ok", ok}, {"code", code}, {"error", error}, {"animations", list}, {"warnings", warnings}};
 }
 
+// ==================================================================== packing
+
+bool editor::packTitleFlipbook(const std::vector<texsynth::Image>& renders, int maxPage, TitleFlipbookPacking& out, std::string& error){
+    out = TitleFlipbookPacking();
+    tt::TitleRectI bounds;
+    for (const texsynth::Image& f : renders){
+        const tt::TitleRectI b = TitleArtRenderHost::alphaBoundsOf(f);
+        if (b.empty()) continue;
+        if (bounds.empty()){
+            bounds = b;
+            continue;
+        }
+        const int x0 = std::min(bounds.x, b.x), y0 = std::min(bounds.y, b.y);
+        const int x1 = std::max(bounds.x + bounds.width, b.x + b.width), y1 = std::max(bounds.y + bounds.height, b.y + b.height);
+        bounds = {x0, y0, x1 - x0, y1 - y0};
+    }
+    if (bounds.empty()) bounds = {0, 0, 1, 1};
+    bounds = {bounds.x - 1, bounds.y - 1, bounds.width + 2, bounds.height + 2};
+    const int fw = bounds.width, fh = bounds.height;
+    const int cellW = alignUp(fw) + GUTTER, cellH = alignUp(fh) + GUTTER;
+    if (cellW - GUTTER > maxPage || cellH - GUTTER > maxPage){
+        error = "a frame is " + std::to_string(fw) + " x " + std::to_string(fh) + " px, over max_page " + std::to_string(maxPage) +
+                ": lower flipbook.scale or raise flipbook.max_page";
+        return false;
+    }
+    // identical frames once: a hash, then the bytes
+    std::vector<texsynth::Image> unique;
+    std::vector<uint64_t> hashes;
+    std::vector<int> frameOf;
+    for (const texsynth::Image& f : renders){
+        texsynth::Image cut = crop(f, bounds.x, bounds.y, fw, fh);
+        const uint64_t h = fnv1a64(cut.data.data(), cut.data.size());
+        int found = -1;
+        for (size_t u = 0; u < unique.size(); u++)
+            if (hashes[u] == h && unique[u].data == cut.data){ found = (int)u; break; }
+        if (found < 0){
+            found = (int)unique.size();
+            hashes.push_back(h);
+            unique.push_back(std::move(cut));
+        }
+        frameOf.push_back(found);
+    }
+    const int cols = std::max(1, (maxPage + GUTTER) / cellW), rows = std::max(1, (maxPage + GUTTER) / cellH);
+    const int perPage = cols * rows;
+    const int pageCount = ((int)unique.size() + perPage - 1) / perPage;
+    std::vector<ta::FlipbookFrame> cellOf(unique.size());
+    for (int p = 0; p < pageCount; p++){
+        const int first = p * perPage, count = std::min(perPage, (int)unique.size() - first);
+        const int usedCols = std::min(cols, count), usedRows = (count + cols - 1) / cols;
+        const int pw = alignUp(usedCols * cellW - GUTTER), ph = alignUp(usedRows * cellH - GUTTER);
+        texsynth::Image page = texsynth::Image::make(pw, ph, 4, 8);
+        for (int i = 0; i < count; i++){
+            const int x = (i % cols) * cellW, y = (i / cols) * cellH;
+            const texsynth::Image& cell = unique[(size_t)(first + i)];
+            for (int row = 0; row < fh; row++) std::memcpy(page.pixel(x, y + row), cell.pixel(0, row), (size_t)fw * 4);
+            cellOf[(size_t)(first + i)] = {p, x, y};
+        }
+        out.bytes.add(pw, ph);
+        out.pages.push_back(std::move(page));
+    }
+    for (int f : frameOf) out.frames.push_back(cellOf[(size_t)f]);
+    out.bounds = bounds;
+    out.frameWidth = fw;
+    out.frameHeight = fh;
+    out.unique = (int)unique.size();
+    return true;
+}
+
 // ==================================================================== <file>.anim.json without frames
 
 ta::TitleAnimData editor::titleAnimDataOf(const tt::TitleArtDoc& doc, const fs::path& document, const std::string& sourceHash, uint32_t bakeVersion,
@@ -343,49 +411,14 @@ bool TitleFlipbookBakeJob::write(){
             continue;
         }
         const float scale = pxScale * std::max(0.25f, std::min(1.0f, w.animation->flipbookSettings.scale));
-        // R16: one frame size, the union of the frames' alpha bounds with 1 px
-        tt::TitleRectI bounds;
-        for (const texsynth::Image& f : w.frames){
-            const tt::TitleRectI b = TitleArtRenderHost::alphaBoundsOf(f);
-            if (b.empty()) continue;
-            if (bounds.empty()) bounds = b;
-            else{
-                const int x0 = std::min(bounds.x, b.x), y0 = std::min(bounds.y, b.y);
-                const int x1 = std::max(bounds.x + bounds.width, b.x + b.width), y1 = std::max(bounds.y + bounds.height, b.y + b.height);
-                bounds = {x0, y0, x1 - x0, y1 - y0};
-            }
-        }
-        if (bounds.empty()) bounds = {0, 0, 1, 1};
-        bounds = {bounds.x - 1, bounds.y - 1, bounds.width + 2, bounds.height + 2};
-        const int fw = bounds.width, fh = bounds.height;
-        const int cellW = alignUp(fw) + GUTTER, cellH = alignUp(fh) + GUTTER;
-        const int maxPage = w.animation->flipbookSettings.maxPage;
-        if (cellW - GUTTER > maxPage || cellH - GUTTER > maxPage){
-            fail("frame_too_large", "a frame of '" + w.animation->name + "' is " + std::to_string(fw) + " x " + std::to_string(fh) + " px, over max_page " +
-                                        std::to_string(maxPage) + ": lower flipbook.scale or raise flipbook.max_page");
+        TitleFlipbookPacking packed;
+        std::string packError;
+        if (!packTitleFlipbook(w.frames, w.animation->flipbookSettings.maxPage, packed, packError)){
+            fail("frame_too_large", "'" + w.animation->name + "': " + packError);
             return false;
         }
-        // dedupe: a hash, then the bytes
-        std::vector<texsynth::Image> unique;
-        std::vector<uint64_t> hashes;
-        std::vector<int> frameOf;
-        for (const texsynth::Image& f : w.frames){
-            texsynth::Image cut = crop(f, bounds.x, bounds.y, fw, fh);
-            const uint64_t h = fnv1a64(cut.data.data(), cut.data.size());
-            int found = -1;
-            for (size_t u = 0; u < unique.size(); u++)
-                if (hashes[u] == h && unique[u].data == cut.data){ found = (int)u; break; }
-            if (found < 0){
-                found = (int)unique.size();
-                hashes.push_back(h);
-                unique.push_back(std::move(cut));
-            }
-            frameOf.push_back(found);
-        }
-        // pages: a grid of cells, as few pages as fit, each trimmed to the cells it holds
-        const int cols = std::max(1, (maxPage + GUTTER) / cellW), rows = std::max(1, (maxPage + GUTTER) / cellH);
-        const int perPage = cols * rows;
-        const int pageCount = ((int)unique.size() + perPage - 1) / perPage;
+        const tt::TitleRectI bounds = packed.bounds;
+        const int fw = packed.frameWidth, fh = packed.frameHeight;
         ta::CompiledFlipbook fb;
         fb.fps = (float)titleFlipbookFps(*w.animation);
         fb.blend = w.animation->flipbookSettings.frameBlend;
@@ -398,19 +431,10 @@ bool TitleFlipbookBakeJob::write(){
         fb.pixelWidth = fw;
         fb.pixelHeight = fh;
         const std::string animationHash = hex64(tt::animationHash(*doc, *w.authored));
-        std::vector<ta::FlipbookFrame> cellOf(unique.size());
-        TitleFlipbookBytes bytes;
+        const int pageCount = (int)packed.pages.size();
         for (int p = 0; p < pageCount; p++){
-            const int first = p * perPage, count = std::min(perPage, (int)unique.size() - first);
-            const int usedCols = std::min(cols, count), usedRows = (count + cols - 1) / cols;
-            const int pw = alignUp(usedCols * cellW - GUTTER), ph = alignUp(usedRows * cellH - GUTTER);
-            texsynth::Image page = texsynth::Image::make(pw, ph, 4, 8);
-            for (int i = 0; i < count; i++){
-                const int x = (i % cols) * cellW, y = (i / cols) * cellH;
-                const texsynth::Image& cell = unique[(size_t)(first + i)];
-                for (int row = 0; row < fh; row++) std::memcpy(page.pixel(x, y + row), cell.pixel(0, row), (size_t)fw * 4);
-                cellOf[(size_t)(first + i)] = {p, x, y};
-            }
+            texsynth::Image& page = packed.pages[(size_t)p];
+            const int pw = page.width, ph = page.height;
             bleedAlpha(page, 2);
             std::vector<uint8_t> encoded;
             if (!texsynth::encodePng(page, encoded)){
@@ -447,11 +471,11 @@ bool TitleFlipbookBakeJob::write(){
             }
             staged.push_back({png, std::move(withRecipe)});
             fb.pages.push_back({file, guidOfMeta(meta, metaText), pw, ph});
-            bytes.add(pw, ph);
             w.report.files.push_back(project ? project->normalizeToProjectRelative(png).generic_string() : png.generic_string());
         }
-        for (int f : frameOf) fb.frames.push_back(cellOf[(size_t)f]);
-        w.report.unique = (int)unique.size();
+        fb.frames = packed.frames;
+        const TitleFlipbookBytes bytes = packed.bytes;
+        w.report.unique = packed.unique;
         w.report.pages = pageCount;
         w.report.frameWidth = fw;
         w.report.frameHeight = fh;

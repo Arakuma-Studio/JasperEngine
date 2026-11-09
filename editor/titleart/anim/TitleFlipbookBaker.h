@@ -52,6 +52,20 @@ namespace jasperengine::editor {
     std::vector<double> titleFlipbookFrameTimes(const titleanim::CompiledTitleAnimation& animation);
     double titleFlipbookFps(const titleanim::CompiledTitleAnimation& animation);
 
+    // R16's storage of rendered frames (same-size straight RGBA8 images of one region): the
+    // union of their alpha bounds with 1 px, identical frames once, a grid of 4-px aligned cells
+    // with 4-px gutters on pages of at most `maxPage` a side (each trimmed to its cells, a
+    // multiple of 4). Pure and deterministic. False with `error` when a frame is over `maxPage`.
+    struct TitleFlipbookPacking {
+        titleart::TitleRectI bounds;    // in the renders' pixels
+        int frameWidth = 0, frameHeight = 0;
+        std::vector<texsynth::Image> pages;
+        std::vector<titleanim::FlipbookFrame> frames;   // one per render, into `pages`
+        int unique = 0;
+        TitleFlipbookBytes bytes;
+    };
+    bool packTitleFlipbook(const std::vector<texsynth::Image>& renders, int maxPage, TitleFlipbookPacking& out, std::string& error);
+
     struct TitleFlipbookReport {
         std::string animation, id;
         bool needed = false;            // a track that is not title live (Baked frames)
