@@ -1318,6 +1318,7 @@ void registerParticleTools(McpRegistry& registry) {
             {"times", array(number(""), "Seconds, instead of frames.")},
             {"frames", withDefault(integer("", 0, 24), 6)},
             {"view", withDefault(stringEnum("", {"three_quarter", "front", "side", "top", "pixel"}), "three_quarter")},
+            {"scale", integer("")},   // the pixel view's, 1 to 8: the handler checks it (the listed schema stays lean)
             {"background", withDefault(stringEnum("", {"dark", "light", "checker"}), "dark")},
             {"overdraw_map", withDefault(boolean("Adds a GPU heat row."), false)},
             {"platform", withDefault(stringEnum("", {"mobile", "web", "desktop"}), "mobile")},
