@@ -39,7 +39,7 @@ namespace {
         TransitionDefaults settings;
         settings.kind = TransitionKind::CRT_OFF;
         settings.duration = 1.25f;
-        settings.color = Vector4(1.0f, 0.0f, 0.5f, 1.0f);
+        settings.color = Vector4(1.0f, 0.0f, 128.0f / 255.0f, 1.0f);   // whole bytes: the file stores "#rrggbb"
         settings.ramp = "palettes/ui.palette#ramp:gold";
         settings.rim = 3;
         settings.pixelSize = 4;
