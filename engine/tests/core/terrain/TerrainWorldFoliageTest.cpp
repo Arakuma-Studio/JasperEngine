@@ -462,12 +462,12 @@ TEST(TerrainWorldFoliage, RuntimeStateCoversEveryTile) {
     world.scene->getComponent<TerrainComponent>(world.entity).treeDistance = 2000.0f;
     world.setCamera(-160.0f, -160.0f);
     const int focus = world.runtime->addFocus(-160.0f, -160.0f);
-    ASSERT_TRUE(world.settle([&] { return world.foliage->getRegionCount(world.entity) > 0 && world.trees().size() == 3; }));
+    ASSERT_TRUE(world.settle([&] { return world.foliage->hasRegion(world.entity, TileCoord(-3, -2).key()) && world.trees().size() == 3; }));
 
     for (const FoliageInstanceInfo& tree : world.trees()) {
         if (std::lround(tree.position.x) != -150) ASSERT_TRUE(world.foliage->removeTreeInstance(world.entity, tree.id).has_value());
     }
-    ASSERT_NE(world.foliage->addTreeInstance(world.entity, 0, Vector3(-130.0f, 0.0f, -130.0f), 30.0f, 1.5f), 0u);
+    ASSERT_NE(world.foliage->addTreeInstance(world.entity, 0, Vector3(-130.0f, 0.0f, -100.0f), 30.0f, 1.5f), 0u);
     const std::string state = world.foliage->getRuntimeState(world.entity);
     ASSERT_EQ(state.rfind("JEFW1|", 0), 0u) << state;
     // (-3, -3), (-2, -3) and (-3, -2), in key order

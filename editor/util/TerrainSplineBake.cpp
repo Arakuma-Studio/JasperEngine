@@ -561,7 +561,7 @@ static bool clearSplineTrees(editor::Project* project, uint32_t sceneId, Entity 
         }
         std::string error;
         if (!edit.commit("Erase Trees (" + scene->getEntityName(terrainEntity) + ")", &error)){
-            Out::error("%s", error.c_str());
+            editor::Out::error("%s", error.c_str());
             return false;
         }
         return true;
