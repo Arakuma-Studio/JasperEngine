@@ -724,9 +724,8 @@ Recorded by the implementation (branch `feature/s51-pixel-fonts`).
     buffer once and writes its vertices in place, keeps its scratch lists between rebuilds, looks
     glyphs up through an ASCII table, lays each line out in one pass, and an unchanged styled
     text skips the cache acquire. `BitmapFontBench` reports both budgets through `perfSlack()`
-    (AGENTS: gated only on the benchmark run). On box A, shared vCPUs: a 200-character rebuild
-    0.026 ms (budget 0.05), a styled one with a cache hit 0.057 ms (it writes twice the quads,
-    both with vertex colours).
+    (gated only on the benchmark run, AGENTS). On box A, shared vCPUs: a 200-character rebuild
+    takes 0.016 ms and a styled one with a cache hit 0.036 ms (budget 0.05 each).
 16. **BMFont channels (R3).** `chnl=0` reads as all channels, as `chnl=15`: libGDX Hiero writes 0
     (fixture `engine/tests/core/fixtures/fonts/bm_hiero.fnt`).
 17. **Scene preload (R19).** A compiled game's scene resources list its Texts' bitmap fonts
