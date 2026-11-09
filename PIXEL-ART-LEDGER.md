@@ -168,7 +168,7 @@ never build or run them.
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
 | S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | merged and pushed |
-| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | implementing |
+| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | review fixes |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
@@ -244,6 +244,19 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S42's lighter gate passed at `08ee95baa` (editor 191, core 85, 165 MCP tests).
+  The review found 1 blocker (the stale generated `ui` template breaks `HubTest`) and 8 should-fix
+  issues:
+  - Point Default Filter Mode changes LINEAR UI data on Stop;
+  - `mipmaps_compression` ignores the project's texture settings;
+  - the rotation fix un-flips sprites;
+  - stale fixes can overwrite newer edits;
+  - `check --hook` is noisy;
+  - a meta leak hidden by the flaky-test fix;
+  - main-thread cost;
+  - Project scope equals Build Scenes.
+
+  All were sent back.
 - 2026-11-09: S49's review fixes are done at `833e98d5c`. Sub-emitters now draw in S20's renderer
   for every effect. Gate on box C: core 180, editor 146, 148 MCP tests.
   - The trial batch-2 merge with `main` conflicts in 21 files (mats-fx's S91 particle work), so
