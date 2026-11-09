@@ -113,7 +113,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 |---|---|---|
 | Analysis of the three repos and our code | done | Nine reports |
 | Build host setup | done | Docker 29.1.3, swap, `rb.sh` queue |
-| Baseline on the merged tree | in progress | Linux, unit, MCP, web and Android results to compare against |
+| Baseline on the merged tree | done (see the Log) | Linux, unit, MCP, web and Android results to compare against |
 | T1 spec | done | 93 requirements, 73 acceptance criteria at first draft |
 | T2 spec | done | 71 and 47 |
 | T3 spec | done | 53 and 47, then one requirement added in reconciliation |
@@ -123,14 +123,14 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | Spec reconciliation | done | One bit table, one landing order, T1's names win |
 | Merge of `origin/main` (pixel art, Doriax specs, lean MCP, no CI) | done | Specs renumbered from S41-S46 to T1-T6 |
 | Spec revision for the upstream changes | done | `terrain` 10 tools, `voxels` 4, no format bump, no new budget exceptions |
-| T1 foundation | done, verification continuing | On integration; writer migration has since moved to `terrain/s53-authoring` |
-| T1 implementation | landed; budget work in progress | All of T1 is in integration, including T1b's pen pressure and benches (3dcc6470f). Open: T1's size budget (~312 KiB vs 96 KiB; runtime edit path to become a player module) and 9 of 18 bench budgets, on terrain/t1-perf |
-| T2 implementation | landed | Merged into integration (6af5f3b9d) at 2b280b147: core 133/133, editor 70/70 and 9/9, T2 and T1 MCP files pass, fan-out worst 129, lints. Not run: the test_noise_export player run, je-bench-noise, eval, web, Android, size checks, NDK armv7. Build tree deleted |
-| T3 implementation | landed | Merged into integration (9f3ffd6ba) at 8376cd9c4: core 560/560 (all 207 variants), editor 182/182, terrain MCP 35/35, fan-out worst 127. Driver workarounds recorded (llvmpipe GL path). Not run: web, Android, full Vulkan suite, perf checks |
-| T4 implementation | landed | Main work (a58f1cc26) plus world trees (tree paint, erase, Mass Place on Worlds; World-aware tree calls), both identical to T4's tested trees |
-| T5 implementation | landed | Merged into integration (caf5a42a0) at 34b6bf7a3: core 221/221, GPU 22/22 cold cache, editor 137/137, foliage/terrain/navigation MCP files, lints. Not run here: test_foliage_export (player), the eval case for `wait`, web, Android, other platforms. Build tree deleted for disk |
-| T6 implementation | landed | Merged into integration (e1021e82c) at 10bc59d4c: core 461/461 WERROR, editor 267/267 WERROR, test_voxels 12/12, voxel and hole GPU tests on Vulkan 48/48 and glcore 49/49. The Vulkan 'hang' was T6's own test giving up after 4 frames while Vulkan creates pipelines on a worker; no render bug (general runtime variant switch on Vulkan verified). Not run: web, Android, sanitizers, full suites, eval. Build tree deleted |
-| Merge `terrain/integration` to `main`, merge `origin/main`, push | in progress | origin/main (622 commits) merged into integration; final merge and push after T1b, T1 performance and T4 land and the final gates pass |
+| T1 foundation | done (see the Log) | On integration; writer migration has since moved to `terrain/s53-authoring` |
+| T1 implementation | done (see the Log) | All of T1 is in integration, including T1b's pen pressure and benches (3dcc6470f). Open: T1's size budget (~312 KiB vs 96 KiB; runtime edit path to become a player module) and 9 of 18 bench budgets, on terrain/t1-perf |
+| T2 implementation | done (see the Log) | Merged into integration (6af5f3b9d) at 2b280b147: core 133/133, editor 70/70 and 9/9, T2 and T1 MCP files pass, fan-out worst 129, lints. Not run: the test_noise_export player run, je-bench-noise, eval, web, Android, size checks, NDK armv7. Build tree deleted |
+| T3 implementation | done (see the Log) | Merged into integration (9f3ffd6ba) at 8376cd9c4: core 560/560 (all 207 variants), editor 182/182, terrain MCP 35/35, fan-out worst 127. Driver workarounds recorded (llvmpipe GL path). Not run: web, Android, full Vulkan suite, perf checks |
+| T4 implementation | done (see the Log) | Main work (a58f1cc26) plus world trees (tree paint, erase, Mass Place on Worlds; World-aware tree calls), both identical to T4's tested trees |
+| T5 implementation | done (see the Log) | Merged into integration (caf5a42a0) at 34b6bf7a3: core 221/221, GPU 22/22 cold cache, editor 137/137, foliage/terrain/navigation MCP files, lints. Not run here: test_foliage_export (player), the eval case for `wait`, web, Android, other platforms. Build tree deleted for disk |
+| T6 implementation | done (see the Log) | Merged into integration (e1021e82c) at 10bc59d4c: core 461/461 WERROR, editor 267/267 WERROR, test_voxels 12/12, voxel and hole GPU tests on Vulkan 48/48 and glcore 49/49. The Vulkan 'hang' was T6's own test giving up after 4 frames while Vulkan creates pipelines on a worker; no render bug (general runtime variant switch on Vulkan verified). Not run: web, Android, sanitizers, full suites, eval. Build tree deleted |
+| Merge `terrain/integration` to `main`, merge `origin/main`, push | done (see the Log) | origin/main (622 commits) merged into integration; final merge and push after T1b, T1 performance and T4 land and the final gates pass |
 
 ## Log
 
@@ -376,3 +376,15 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   VoxelBrush 15, TerrainBrush 16. Both agents had fixed the export-tiers bug; kept fix-mcp2's, which is per export and has a test.
   New upstream failures, proven on origin/main: test_text_atlas_is_not_saved, two Lua API SpriteBatch signature tests.
 - Lighter pre-push checks running on 437cfee07: WERROR linux, filtered unit tests, 26 MCP files by name, the seven web gates.
+- Deadlock fix landed (terrain/fix-io 88ed69c31): a reader gave a gate slot back while holding AssetIOService's mutex, and the release wakes the
+  readers through that mutex, so a cancel racing a claim froze the reader and then stop(). The code is upstream's; Terrain World streaming makes
+  it reachable. Red: with the fix removed and the window widened by a temporary 1 ms sleep, the new test deadlocks (watchdog at 30 s); with the
+  fix it passes with and without the sleep. Filters on that tree: core 95, editor 27, no failures.
+- Checks before the push, on 437cfee07 (filtered, no full suite, the owner's rule): WERROR linux passed; seven web gates passed; core 1274 ran, 0
+  failed; editor 525 ran, 0 failed, 1 disabled; 26 MCP files 215 passed, 1 failed (upstream's text atlas), 3 skipped (need fixture-unity).
+- Not verified on the pushed tree: full unit tests and the CI MCP suite (last run on 42f36ee4a), Android build (last passed on 564f6da51),
+  Vulkan GPU runs, Windows, macOS and iOS, the eval. Compile-mode smoke and prebuilt smoke last passed on 3e2d65a4f.
+- Upstream failures left alone, each failing on origin/main: AudioSystem::playFree link error in compile builds without the sound layer,
+  bake_vertex_animation no_animation, mesh_update_flags budget, procmat goldens and determinism, ParticleExposed, ShaderNeutralApi,
+  text atlas sampler, two SpriteBatch Lua API signatures; flaky: audio ceiling and loudness, pixel-font text effect, mesh undo buffer count.
+- Follow-ups: first Play measured 0.89 s against 0.53 s in one diagnostic (unverified); the eval runs on Orquester-managed accounts.
