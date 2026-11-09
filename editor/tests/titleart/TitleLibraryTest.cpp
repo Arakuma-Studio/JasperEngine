@@ -205,9 +205,13 @@ TEST_F(TitleLibraryFixture, TitleLookMigrationsTestDefaultChangeKeepsOldLooks) {
     auto runV2 = [&](bool withStep) {
         Json root = v1;
         titleart::TitleJsonMigrations table(TITLE_LOOK_FORMAT, 1);
-        if (withStep) EXPECT_TRUE(table.add(step));
+        if (withStep) {
+            EXPECT_TRUE(table.add(step));
+        }
         titleart::MigrationLog log;
-        if (withStep) EXPECT_TRUE(table.run(root, 1, 2, log, nullptr));
+        if (withStep) {
+            EXPECT_TRUE(table.run(root, 1, 2, log, nullptr));
+        }
         // the v2 reader: a rim without `join` takes the new default
         const Json& rim = root["style"]["rims"][0];
         return rim.value("join", std::string("round"));

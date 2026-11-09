@@ -265,7 +265,11 @@ TEST(TitleAnimStaggerTest, WhitespaceSkipped){
     const GlyphUnits u = glyphUnitsOf(doc.layers()[0], ta::StaggerUnit::Glyph, &layout);
     EXPECT_EQ(u.count, 3u);
     int seen = 0;
-    for (int32_t x : u.clusterUnit) if (x >= 0) EXPECT_EQ(x, seen++);
+    for (int32_t x : u.clusterUnit) {
+        if (x >= 0) {
+            EXPECT_EQ(x, seen++);
+        }
+    }
 }
 
 TEST(TitleAnimStaggerTest, WordAndLineUnits){
@@ -294,7 +298,9 @@ TEST(TitleAnimStaggerTest, VerticalColumns){
     const LaidOutText& t = layout.layout(layer);
     for (size_t i = 0; i + 1 < t.clusters.size(); i++){
         if (g.clusterUnit[i] < 0 || g.clusterUnit[i + 1] < 0) continue;
-        if (t.clusters[i].index < t.clusters[i + 1].index) EXPECT_LT(g.clusterUnit[i], g.clusterUnit[i + 1]);
+        if (t.clusters[i].index < t.clusters[i + 1].index) {
+            EXPECT_LT(g.clusterUnit[i], g.clusterUnit[i + 1]);
+        }
     }
 }
 
