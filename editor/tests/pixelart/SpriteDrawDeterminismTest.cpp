@@ -11,7 +11,7 @@
 
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
-using jasperengine::editor::pixelart::testing::json;
+using jasperengine::editor::pixelart::s47test::json;
 
 namespace {
 
@@ -59,9 +59,9 @@ namespace {
     };
 
     Outcome runScript() {
-        draw::SpriteDoc sprite = testing::makeSprite(32, 32);
+        draw::SpriteDoc sprite = s47test::makeSprite(32, 32);
         Outcome outcome;
-        const testing::Run run = testing::apply(sprite, hundredOps());
+        const s47test::Run run = s47test::apply(sprite, hundredOps());
         EXPECT_TRUE(run.ok) << run.problem.kind << ": " << run.problem.message << " at " << run.opIndex;
         PixelProblem problem;
         EXPECT_TRUE(draw::encodeSprite(sprite, outcome.bytes, problem)) << problem.message;

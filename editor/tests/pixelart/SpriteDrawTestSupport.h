@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace jasperengine::editor::pixelart::testing {
+namespace jasperengine::editor::pixelart::s47test {
 
     namespace ase = aseprite;
     using nlohmann::json;
@@ -65,8 +65,8 @@ namespace jasperengine::editor::pixelart::testing {
 
 #define S47_APPLY(sprite, ...)                                                  \
     do {                                                                        \
-        const ::jasperengine::editor::pixelart::testing::Run s47Run =           \
-            ::jasperengine::editor::pixelart::testing::apply((sprite), __VA_ARGS__); \
+        const ::jasperengine::editor::pixelart::s47test::Run s47Run =           \
+            ::jasperengine::editor::pixelart::s47test::apply((sprite), __VA_ARGS__); \
         ASSERT_TRUE(s47Run.ok) << s47Run.problem.kind << ": " << s47Run.problem.message << " fix: " << s47Run.problem.fix; \
     } while (0)
 

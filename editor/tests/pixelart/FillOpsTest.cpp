@@ -13,7 +13,7 @@
 
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
-using jasperengine::editor::pixelart::testing::json;
+using jasperengine::editor::pixelart::s47test::json;
 
 namespace {
 
@@ -58,7 +58,7 @@ TEST(FillOps, ScanlineEqualsReferenceOn200RandomMasks) {
 }
 
 TEST(FillOps, ToleranceIsPerChannelMaximum) {
-    draw::SpriteDoc sprite = testing::makeSprite(3, 1, aseprite::ColorMode::Rgba);
+    draw::SpriteDoc sprite = s47test::makeSprite(3, 1, aseprite::ColorMode::Rgba);
     S47_APPLY(sprite, json::array({{{"op", "pixel"}, {"points", {{0, 0}}}, {"color", "#646464"}},
                                    {{"op", "pixel"}, {"points", {{1, 0}}}, {"color", "#6e6e6e"}},
                                    {{"op", "pixel"}, {"points", {{2, 0}}}, {"color", "#b4b4b4"}}}));
@@ -71,51 +71,51 @@ TEST(FillOps, ToleranceIsPerChannelMaximum) {
 }
 
 TEST(FillOps, NotContiguousReplacesDisconnectedAreas) {
-    draw::SpriteDoc sprite = testing::makeSprite(5, 1);
+    draw::SpriteDoc sprite = s47test::makeSprite(5, 1);
     S47_APPLY(sprite, json::array({{{"op", "paste"}, {"rows", {"12121"}}}}));
     S47_APPLY(sprite, json::array({{{"op", "fill"}, {"at", {0, 0}}, {"color", 3}, {"contiguous", false}}}));
-    EXPECT_EQ(testing::canvasRows(sprite)[0], "32323");
+    EXPECT_EQ(s47test::canvasRows(sprite)[0], "32323");
 }
 
 TEST(FillOps, CompositeSampleFillsWhatTheFrameShowsIntoTheTargetLayer) {
-    draw::SpriteDoc sprite = testing::makeSprite(4, 1, aseprite::ColorMode::Indexed, 1, {"bottom", "top"});
+    draw::SpriteDoc sprite = s47test::makeSprite(4, 1, aseprite::ColorMode::Indexed, 1, {"bottom", "top"});
     // a wall on the top layer splits the row as the frame shows it
     S47_APPLY(sprite, json::array({{{"op", "pixel"}, {"points", {{2, 0}}}, {"color", 1}, {"layer", "top"}}}));
     S47_APPLY(sprite, json::array({{{"op", "fill"}, {"at", {0, 0}}, {"color", 2}, {"sample", "composite"}, {"layer", "bottom"}}}));
-    EXPECT_EQ(testing::canvasRows(sprite, 0)[0], "22..") << "stops at the top layer's wall, paints only the bottom layer";
-    EXPECT_EQ(testing::canvasRows(sprite, 1)[0], "..1.");
+    EXPECT_EQ(s47test::canvasRows(sprite, 0)[0], "22..") << "stops at the top layer's wall, paints only the bottom layer";
+    EXPECT_EQ(s47test::canvasRows(sprite, 1)[0], "..1.");
 }
 
 TEST(FillOps, IndexedToleranceZeroComparesIndices) {
-    draw::SpriteDoc sprite = testing::makeSprite(2, 1);
+    draw::SpriteDoc sprite = s47test::makeSprite(2, 1);
     // two palette entries of one colour stay apart at tolerance 0
     sprite.doc.palette[2].color = sprite.doc.palette[1].color;
     S47_APPLY(sprite, json::array({{{"op", "paste"}, {"rows", {"12"}}}}));
     S47_APPLY(sprite, json::array({{{"op", "fill"}, {"at", {0, 0}}, {"color", 3}}}));
-    EXPECT_EQ(testing::canvasRows(sprite)[0], "32");
+    EXPECT_EQ(s47test::canvasRows(sprite)[0], "32");
 }
 
 TEST(FillOps, FillStaysInsideTheSelection) {
-    draw::SpriteDoc sprite = testing::makeSprite(6, 1);
+    draw::SpriteDoc sprite = s47test::makeSprite(6, 1);
     S47_APPLY(sprite, json::array({{{"op", "select"}, {"shape", "rect"}, {"rect", {0, 0, 3, 1}}},
                                    {{"op", "fill"}, {"at", {0, 0}}, {"color", 2}}}));
-    EXPECT_EQ(testing::canvasRows(sprite)[0], "222...");
+    EXPECT_EQ(s47test::canvasRows(sprite)[0], "222...");
 }
 
 TEST(FillOps, DitherUsesCanvasCoordinatesAndTheBayerMatrix) {
     const std::vector<int> m2 = bayerMatrix(2);
     EXPECT_EQ(m2, (std::vector<int>{0, 2, 3, 1}));
-    draw::SpriteDoc sprite = testing::makeSprite(4, 2);
+    draw::SpriteDoc sprite = s47test::makeSprite(4, 2);
     S47_APPLY(sprite, json::array({{{"op", "dither"}, {"colors", {1, 2}}, {"pattern", "checker"}, {"level", 0.5}}}));
-    const std::vector<std::string> rows = testing::canvasRows(sprite);
+    const std::vector<std::string> rows = s47test::canvasRows(sprite);
     EXPECT_EQ(rows[0], "2121");
     EXPECT_EQ(rows[1], "1212");
 }
 
 TEST(FillOps, DitherGradientRamps) {
-    draw::SpriteDoc sprite = testing::makeSprite(16, 1);
+    draw::SpriteDoc sprite = s47test::makeSprite(16, 1);
     S47_APPLY(sprite, json::array({{{"op", "dither"}, {"colors", {1, 2}}, {"pattern", "bayer4"}, {"gradient", {{"from", {0, 0}}, {"to", {15, 0}}}}}}));
-    const std::string row = testing::canvasRows(sprite)[0];
+    const std::string row = s47test::canvasRows(sprite)[0];
     EXPECT_EQ(row[0], '1');
     EXPECT_EQ(row[15], '2');
     EXPECT_GT(std::count(row.begin(), row.end(), '2'), 3);
@@ -123,9 +123,9 @@ TEST(FillOps, DitherGradientRamps) {
 }
 
 TEST(FillOps, ClearAndReplace) {
-    draw::SpriteDoc sprite = testing::makeSprite(4, 1);
+    draw::SpriteDoc sprite = s47test::makeSprite(4, 1);
     S47_APPLY(sprite, json::array({{{"op", "paste"}, {"rows", {"1212"}}},
                                    {{"op", "replace"}, {"from", 1}, {"to", 3}},
                                    {{"op", "clear"}, {"rect", {3, 0, 1, 1}}}}));
-    EXPECT_EQ(testing::canvasRows(sprite)[0], "323.");
+    EXPECT_EQ(s47test::canvasRows(sprite)[0], "323.");
 }

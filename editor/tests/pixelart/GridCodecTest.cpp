@@ -8,7 +8,7 @@
 
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
-using jasperengine::editor::pixelart::testing::json;
+using jasperengine::editor::pixelart::s47test::json;
 
 namespace {
 
@@ -86,12 +86,12 @@ TEST(GridCodec, Hex2KeepsWithDoubleDash) {
 }
 
 TEST(GridCodec, PasteOverKeepsIndexZero) {
-    draw::SpriteDoc sprite = testing::makeSprite(2, 1);
+    draw::SpriteDoc sprite = s47test::makeSprite(2, 1);
     S47_APPLY(sprite, json::array({{{"op", "pixel"}, {"points", {{0, 0}, {1, 0}}}, {"color", 2}}}));
     S47_APPLY(sprite, json::array({{{"op", "paste"}, {"rows", {".3"}}, {"blend", "over"}}}));
-    EXPECT_EQ(testing::canvasRows(sprite)[0], "23");
+    EXPECT_EQ(s47test::canvasRows(sprite)[0], "23");
     S47_APPLY(sprite, json::array({{{"op", "paste"}, {"rows", {".-"}}}}));
-    EXPECT_EQ(testing::canvasRows(sprite)[0], ".3");
+    EXPECT_EQ(s47test::canvasRows(sprite)[0], ".3");
 }
 
 TEST(GridCodec, LegendAssignsCharactersInFirstAppearanceOrder) {

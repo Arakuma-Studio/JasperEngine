@@ -24,7 +24,7 @@
 using namespace jasperengine;
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
-using jasperengine::editor::pixelart::testing::json;
+using jasperengine::editor::pixelart::s47test::json;
 
 namespace {
 
@@ -39,7 +39,7 @@ namespace {
     }
 
     draw::SpriteDoc framedSprite(int size, aseprite::ColorMode mode, int frames) {
-        draw::SpriteDoc sprite = testing::makeSprite(size, size, mode, frames);
+        draw::SpriteDoc sprite = s47test::makeSprite(size, size, mode, frames);
         std::mt19937 random(7);
         // every frame gets a painted cel, so a whole file is more than empty headers
         for (int f = 1; f <= frames; f++) {
@@ -48,7 +48,7 @@ namespace {
                 const int x = random() % std::max(1, size - 8), y = random() % std::max(1, size - 8);
                 ops.push_back({{"op", "rect"}, {"rect", {x, y, 7, 5}}, {"color", 1 + (i + f) % 5}, {"fill", true}, {"frame", f}});
             }
-            testing::apply(sprite, ops);
+            s47test::apply(sprite, ops);
         }
         return sprite;
     }
@@ -58,7 +58,7 @@ namespace {
         const auto total = std::chrono::steady_clock::now();
         draw::SpriteDoc working = session;
         const auto opsStart = std::chrono::steady_clock::now();
-        const testing::Run run = testing::apply(working, ops);
+        const s47test::Run run = s47test::apply(working, ops);
         opsMs = elapsedMs(opsStart);
         ASSERT_TRUE(run.ok) << run.problem.message;
         std::vector<uint8_t> bytes;

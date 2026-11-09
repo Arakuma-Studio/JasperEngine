@@ -11,7 +11,7 @@
 
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
-using jasperengine::editor::pixelart::testing::json;
+using jasperengine::editor::pixelart::s47test::json;
 
 namespace {
 
@@ -63,7 +63,7 @@ TEST(DrawOps, PolylineDrawsEachJointOnce) {
 }
 
 TEST(DrawOps, PixelPerfectRemovesEveryCorner) {
-    draw::SpriteDoc plain = testing::makeSprite(32, 32), perfect = plain;
+    draw::SpriteDoc plain = s47test::makeSprite(32, 32), perfect = plain;
     S47_APPLY(plain, json::array({{{"op", "line"}, {"points", staircase()}, {"color", 1}, {"pixel_perfect", false}}}));
     S47_APPLY(perfect, json::array({{{"op", "line"}, {"points", staircase()}, {"color", 1}}}));
     EXPECT_EQ(doublesStatus(plain), lint::LintStatus::Warn) << "without pixel_perfect the joints have L-corners";
@@ -71,18 +71,18 @@ TEST(DrawOps, PixelPerfectRemovesEveryCorner) {
 }
 
 TEST(DrawOps, LShapedLineLosesItsCornerPixel) {
-    draw::SpriteDoc sprite = testing::makeSprite(4, 4);
+    draw::SpriteDoc sprite = s47test::makeSprite(4, 4);
     S47_APPLY(sprite, json::array({{{"op", "line"}, {"points", {{0, 0}, {3, 0}, {3, 3}}}, {"color", 1}}}));
-    const std::vector<std::string> rows = testing::canvasRows(sprite);
+    const std::vector<std::string> rows = s47test::canvasRows(sprite);
     EXPECT_EQ(rows[0], "111.") << "the corner (3,0) goes";
     EXPECT_EQ(rows[1], "...1");
     EXPECT_EQ(rows[3], "...1");
 }
 
 TEST(DrawOps, ThickLinesStampASquareBrush) {
-    draw::SpriteDoc sprite = testing::makeSprite(8, 8);
+    draw::SpriteDoc sprite = s47test::makeSprite(8, 8);
     S47_APPLY(sprite, json::array({{{"op", "line"}, {"points", {{1, 3}, {5, 3}}}, {"color", 2}, {"thickness", 3}}}));
-    const std::vector<std::string> rows = testing::canvasRows(sprite);
+    const std::vector<std::string> rows = s47test::canvasRows(sprite);
     EXPECT_EQ(rows[2], "2222222.");
     EXPECT_EQ(rows[3], "2222222.");
     EXPECT_EQ(rows[4], "2222222.");
@@ -134,8 +134,8 @@ TEST(DrawOps, PolygonFillIsEvenOddOnAStar) {
 }
 
 TEST(DrawOps, OpOutsideTheCanvasIsClippedAndReportsNothingDrawn) {
-    draw::SpriteDoc sprite = testing::makeSprite(4, 4);
-    testing::Run run = testing::apply(sprite, json::array({{{"op", "pixel"}, {"points", {{9, 9}}}, {"color", 1}}}));
+    draw::SpriteDoc sprite = s47test::makeSprite(4, 4);
+    s47test::Run run = s47test::apply(sprite, json::array({{{"op", "pixel"}, {"points", {{9, 9}}}, {"color", 1}}}));
     ASSERT_TRUE(run.ok);
     EXPECT_FALSE(run.result.changedAnything());
     ASSERT_EQ(run.result.warnings.size(), 1u);
@@ -144,8 +144,8 @@ TEST(DrawOps, OpOutsideTheCanvasIsClippedAndReportsNothingDrawn) {
 }
 
 TEST(DrawOps, ClosedFieldTablesRefuseAMisplacedField) {
-    draw::SpriteDoc sprite = testing::makeSprite(4, 4);
-    testing::Run run = testing::apply(sprite, json::array({{{"op", "pixel"}, {"points", {{0, 0}}}, {"color", 1}}, {{"op", "line"}, {"points", {{0, 0}, {1, 0}}}, {"rows", {"1"}}, {"color", 1}}}));
+    draw::SpriteDoc sprite = s47test::makeSprite(4, 4);
+    s47test::Run run = s47test::apply(sprite, json::array({{{"op", "pixel"}, {"points", {{0, 0}}}, {"color", 1}}, {{"op", "line"}, {"points", {{0, 0}, {1, 0}}}, {"rows", {"1"}}, {"color", 1}}}));
     ASSERT_FALSE(run.ok);
     EXPECT_EQ(run.problem.kind, "bad_op_field");
     EXPECT_EQ(run.opIndex, 1);
@@ -153,8 +153,8 @@ TEST(DrawOps, ClosedFieldTablesRefuseAMisplacedField) {
 }
 
 TEST(DrawOps, HexColorNotInThePaletteNamesTheNearestAndThePaletteOp) {
-    draw::SpriteDoc sprite = testing::makeSprite(4, 4);
-    testing::Run run = testing::apply(sprite, json::array({{{"op", "pixel"}, {"points", {{0, 0}}}, {"color", "#fe0101"}}}));
+    draw::SpriteDoc sprite = s47test::makeSprite(4, 4);
+    s47test::Run run = s47test::apply(sprite, json::array({{{"op", "pixel"}, {"points", {{0, 0}}}, {"color", "#fe0101"}}}));
     ASSERT_FALSE(run.ok);
     EXPECT_EQ(run.problem.kind, "color_not_in_palette");
     EXPECT_NE(run.problem.fix.find("index 1"), std::string::npos) << run.problem.fix;
