@@ -72,21 +72,31 @@ async def test_onion_skin_has_the_given_opacity(ed: Editor):
     ed.check(a == 255 and g == 0 and b == 0 and abs(r - 127) <= 2, f"frame 1's red at 50%: {(r, g, b, a)}")
 
 
-async def test_last_edit_outline_encloses_the_rects(ed: Editor):
-    data, image = await render(ed, max_width=512, labels=False, frames=[1], highlight="last_edit")
-    scale = data["scale"]
-    panel = data["layout"][0]
-    rect = next(r for r in S["rects"] if r["frame"] == 1)["rect"]
+def check_outline(ed: Editor, image, scale: int, panel: dict, rect: list) -> None:
     left = panel["x"] + rect[0] * scale - 1
     top = panel["y"] + rect[1] * scale - 1
     right = panel["x"] + (rect[0] + rect[2]) * scale
     bottom = panel["y"] + (rect[1] + rect[3]) * scale
     magenta = (255, 0, 255, 255)
     for x in range(left, right + 1):
-        ed.check(px(image, x, top) == magenta and px(image, x, bottom) == magenta, f"top/bottom of the frame at x={x}")
+        ed.check(px(image, x, top) == magenta and px(image, x, bottom) == magenta, f"top/bottom of the frame at x={x} on panel {panel}")
     for y in range(top, bottom + 1):
-        ed.check(px(image, left, y) == magenta and px(image, right, y) == magenta, f"sides of the frame at y={y}")
+        ed.check(px(image, left, y) == magenta and px(image, right, y) == magenta, f"sides of the frame at y={y} on panel {panel}")
     ed.check(px(image, left + 1, top + 1) != magenta, "the rect itself is not painted")
+
+
+async def test_last_edit_outlines_each_rect_in_its_own_panel(ed: Editor):
+    data, image = await render(ed, max_width=512, labels=False, highlight="last_edit")
+    scale = data["scale"]
+    ed.check(len(S["rects"]) == 2, f"two changed rects on two frames: {S['rects']}")
+    for rect in S["rects"]:
+        panel = next(p for p in data["layout"] if p["frame"] == rect["frame"])
+        check_outline(ed, image, scale, panel, rect["rect"])
+    # a frame's outline stays in its own panel
+    other = next(p for p in data["layout"] if p["frame"] == 1)
+    rect2 = next(r for r in S["rects"] if r["frame"] == 2)["rect"]
+    corner = (other["x"] + rect2[0] * scale - 1, other["y"] + rect2[1] * scale - 1)
+    ed.check(px(image, *corner) != (255, 0, 255, 255), "frame 2's rect is not outlined on frame 1")
     ed.check(data["last_edit"]["revision"], f"last_edit: {data['last_edit']}")
 
 
@@ -95,6 +105,20 @@ async def test_grid_lines_and_labels(ed: Editor):
     ed.check(data["scale"] >= 1, "renders with labels")
     plain, im2 = await render(ed, max_width=512, labels=False, grid=True, frames=[1])
     ed.check(plain["scale"] >= 6, f"grid needs scale 6: {plain['scale']}")
+
+
+async def test_too_large_a_scale_is_refused_and_the_editor_lives(ed: Editor):
+    path = "assets/sprites/wide.aseprite"
+    await ok(ed, "create_sprite", path=path, size=[128, 16], frames=8, palette=["#ff0000"])
+    raw = await ed.call_raw("render_sprite", {"sprite": path, "scale": 64})
+    ed.check(raw.is_error, f"8 x 128 x 64 pixels are refused: {raw.structured}")
+    e = raw.structured["error"]
+    ed.check(e["kind"] == "region_too_large" and e["field"] == "scale", f"{e}")
+    largest = [int(word) for word in e["fix"].replace(",", " ").split() if word.isdigit()]
+    ed.check(largest, f"the fix names the largest scale that fits: {e['fix']}")
+    fine, imgs = await images(ed, "render_sprite", sprite=path, scale=largest[0], max_width=2048)
+    ed.check(len(imgs) == 1, f"that scale renders: {fine['scale']}")
+    await ed.call("editor_status")
 
 
 async def test_context_returns_the_view_around_the_game_object(ed: Editor):
@@ -112,7 +136,16 @@ async def test_context_returns_the_view_around_the_game_object(ed: Editor):
     data, imgs = await images(ed, "render_sprite", sprite=PATH, frames=[1], context={"entity": created["sprite"], "view": "scene"})
     ed.check(len(imgs) == 2, f"a second image: {len(imgs)}")
     w, h, pixels = decode_png(imgs[1])
-    ed.check(w > 0 and h > 0, f"context image {w}x{h}")
-    ed.check(data["context"]["view"] == "scene" and data["context"]["scale"] >= 1, f"{data.get('context')}")
-    red = sum(1 for i in range(0, len(pixels), 4) if pixels[i] > 180 and pixels[i + 1] < 90 and pixels[i + 2] < 90)
-    ed.check(red > 0, f"the sprite's red pixel shows in the view ({w}x{h}, context {data.get('context')})")
+    context = data["context"]
+    scale, rect = context["scale"], context["rect"]
+    ed.check(context["view"] == "scene" and scale >= 1, f"{context}")
+    ed.check(w == rect[2] * scale and h == rect[3] * scale, f"the image is the cropped view at an integer scale: {w}x{h}, {context}")
+    # the sprite's one red pixel: a solid block whose sides are whole multiples of the scale
+    reds = [(x, y) for y in range(h) for x in range(w) if pixels[(y * w + x) * 4] > 180 and pixels[(y * w + x) * 4 + 1] < 90 and pixels[(y * w + x) * 4 + 2] < 90]
+    ed.check(reds, f"the sprite's red pixel shows in the view ({w}x{h}, {context})")
+    xs = [x for x, _ in reds]
+    ys = [y for _, y in reds]
+    bw, bh = max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
+    ed.check(len(reds) == bw * bh, f"one solid block: {len(reds)} pixels in {bw}x{bh}")
+    ed.check(bw % scale == 0 and bh % scale == 0, f"whole multiples of the scale {scale}: {bw}x{bh}")
+    ed.check(abs(bw - bh) <= scale, f"square: {bw}x{bh}, scale {scale}")

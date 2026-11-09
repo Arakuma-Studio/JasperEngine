@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 using namespace jasperengine::editor::pixelart;
@@ -125,4 +126,88 @@ TEST(SpriteImportFrames, PlainPngIsOneFrame) {
     EXPECT_EQ(frames.durations[0], 100);
     std::error_code ec;
     std::filesystem::remove(path, ec);
+}
+
+namespace {
+
+    std::vector<uint8_t> apngOf(int frames, std::vector<std::tuple<uint8_t, uint8_t, std::vector<uint8_t>>> rows) {
+        std::vector<uint8_t> file = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
+        std::vector<uint8_t> ihdr;
+        be32(ihdr, 2);
+        be32(ihdr, 1);
+        ihdr.insert(ihdr.end(), {8, 6, 0, 0, 0});
+        pngChunk(file, "IHDR", ihdr);
+        std::vector<uint8_t> actl;
+        be32(actl, static_cast<uint32_t>(frames));
+        be32(actl, 0);
+        pngChunk(file, "acTL", actl);
+        uint32_t seq = 0;
+        for (size_t i = 0; i < rows.size(); i++) {
+            const auto& [dispose, blend, rgba] = rows[i];
+            std::vector<uint8_t> fctl;
+            be32(fctl, seq++);
+            be32(fctl, 2);
+            be32(fctl, 1);
+            be32(fctl, 0);
+            be32(fctl, 0);
+            fctl.insert(fctl.end(), {0, 10, 0, 100, dispose, blend});
+            pngChunk(file, "fcTL", fctl);
+            std::vector<uint8_t> raw = {0};
+            raw.insert(raw.end(), rgba.begin(), rgba.end());
+            if (i == 0) {
+                pngChunk(file, "IDAT", stored(raw));
+            } else {
+                std::vector<uint8_t> fdat;
+                be32(fdat, seq++);
+                const std::vector<uint8_t> z = stored(raw);
+                fdat.insert(fdat.end(), z.begin(), z.end());
+                pngChunk(file, "fdAT", fdat);
+            }
+        }
+        pngChunk(file, "IEND", {});
+        return file;
+    }
+
+    bool readBytes(const std::vector<uint8_t>& file, ImportedFrames& frames, PixelProblem& problem) {
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "s47-apng-blend-test.png";
+        {
+            std::ofstream out(path, std::ios::binary);
+            out.write(reinterpret_cast<const char*>(file.data()), static_cast<std::streamsize>(file.size()));
+        }
+        const bool ok = readFramesFile(path, frames, problem);
+        std::error_code ec;
+        std::filesystem::remove(path, ec);
+        return ok;
+    }
+
+}
+
+TEST(SpriteImportFrames, BlendComposesOverWhatFrameOneLeft) {
+    // keep (dispose 0), then an over-blended frame with a transparent left pixel: the first frame shows through
+    ImportedFrames frames;
+    PixelProblem problem;
+    ASSERT_TRUE(readBytes(apngOf(2, {{0, 0, {255, 0, 0, 255, 0, 0, 0, 0}}, {0, 1, {0, 0, 0, 0, 0, 255, 0, 255}}}), frames, problem)) << problem.message;
+    ASSERT_EQ(frames.frames.size(), 2u);
+    EXPECT_EQ(frames.frames[1].at(0, 0), (PixelRgba{255, 0, 0, 255})) << "blend over keeps what is under a clear pixel";
+    EXPECT_EQ(frames.frames[1].at(1, 0), (PixelRgba{0, 255, 0, 255}));
+}
+
+TEST(SpriteImportFrames, DisposePreviousRestoresTheCanvas) {
+    ImportedFrames frames;
+    PixelProblem problem;
+    ASSERT_TRUE(readBytes(apngOf(3, {{0, 0, {255, 0, 0, 255, 0, 0, 0, 0}},
+                                     {2, 1, {0, 0, 0, 0, 0, 255, 0, 255}},
+                                     {0, 1, {0, 0, 0, 0, 0, 0, 255, 255}}}), frames, problem)) << problem.message;
+    ASSERT_EQ(frames.frames.size(), 3u);
+    EXPECT_EQ(frames.frames[2].at(0, 0), (PixelRgba{255, 0, 0, 255})) << "frame 2 disposed back to frame 1";
+    EXPECT_EQ(frames.frames[2].at(1, 0), (PixelRgba{0, 0, 255, 255})) << "and frame 2's own pixel did not stay";
+}
+
+TEST(SpriteImportFrames, HeaderIsCheckedBeforeDecoding) {
+    ImportedFrames frames;
+    PixelProblem problem;
+    // an APNG claiming 300 frames, whose data is only one
+    ASSERT_FALSE(readBytes(apngOf(300, {{0, 0, {1, 2, 3, 255, 4, 5, 6, 255}}}), frames, problem));
+    EXPECT_EQ(problem.kind, "bad_op_field");
+    EXPECT_NE(problem.message.find("300"), std::string::npos) << problem.message;
 }

@@ -129,3 +129,23 @@ TEST(FillOps, ClearAndReplace) {
                                    {{"op", "clear"}, {"rect", {3, 0, 1, 1}}}}));
     EXPECT_EQ(s47test::canvasRows(sprite)[0], "323.");
 }
+
+TEST(FillOps, MirroredSeedDoesNotSeeItsTwinsPaint) {
+    // row 0 is one area of a; row 1 is near the ink's colour. Filling row 0 from both seeds must not
+    // let the second seed read the first one's ink and bleed into row 1
+    draw::SpriteDoc sprite = s47test::makeSprite(3, 2, aseprite::ColorMode::Rgba);
+    S47_APPLY(sprite, json::array({{{"op", "rect"}, {"rect", {0, 0, 3, 1}}, {"color", "#101010"}, {"fill", true}},
+                                   {{"op", "rect"}, {"rect", {0, 1, 3, 1}}, {"color", "#f0f0f0"}, {"fill", true}}}));
+    S47_APPLY(sprite, json::array({{{"op", "fill"}, {"at", {0, 0}}, {"color", "#e8e8e8"}, {"tolerance", 20}}}), json{{"x", true}});
+    const PixelImage canvas = draw::celCanvas(sprite.doc, 0, 0);
+    EXPECT_EQ(canvas.at(1, 0), (PixelRgba{0xe8, 0xe8, 0xe8, 255}));
+    EXPECT_EQ(canvas.at(1, 1), (PixelRgba{0xf0, 0xf0, 0xf0, 255})) << "row 1 is not this fill's";
+}
+
+TEST(FillOps, LinkedCelsAreFilledOnce) {
+    draw::SpriteDoc sprite = s47test::makeSprite(2, 1, aseprite::ColorMode::Rgba);
+    S47_APPLY(sprite, json::array({{{"op", "pixel"}, {"points", {{0, 0}}}, {"color", "#ff0000"}}, {{"op", "frame"}, {"action", "add"}, {"link", true}}}));
+    const s47test::Run run = s47test::apply(sprite, json::array({{{"op", "shade"}, {"mode", "simple"}, {"direction", "darken"}, {"amount", 50}, {"rect", {0, 0, 2, 1}}, {"frame", "all"}}}));
+    ASSERT_TRUE(run.ok) << run.problem.message;
+    EXPECT_EQ(draw::celCanvas(sprite.doc, 0, 0).at(0, 0), (PixelRgba{128, 0, 0, 255})) << "darkened once, not once per frame showing it";
+}

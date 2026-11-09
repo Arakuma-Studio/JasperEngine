@@ -43,6 +43,9 @@ namespace jasperengine::editor::pixelart::draw {
         std::vector<uint8_t> iend;        // the IEND chunk as read
         std::vector<uint8_t> trailing;    // bytes after IEND
         bool hadPalette = false;          // a PLTE chunk (RGBA PNGs keep a suggested palette as it was)
+        int colorType = 6;                // IHDR's, kept when the PNG is written back
+        bool animated = false;            // acTL/fcTL/fdAT: an APNG, whose frames the writer can't keep
+        bool colorKey = false;            // a tRNS on a non-palette PNG
     };
 
     struct SpriteDoc {
@@ -74,6 +77,8 @@ namespace jasperengine::editor::pixelart::draw {
     PixelImage celCanvas(const aseprite::Document& doc, int layer, int frame);
     // A canvas-sized transparent image in the document's model for a layer
     PixelImage blankCanvas(const aseprite::Document& doc, int layer);
+    // ... and any size (a background layer's clear colour is its palette entry's)
+    PixelImage blankImage(const aseprite::Document& doc, int layer, int width, int height);
 
     // "#rrggbb" or "#rrggbbaa" (alpha written only when not 255)
     std::string hexColor(const PixelRgba& c);

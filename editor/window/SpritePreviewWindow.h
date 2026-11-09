@@ -178,9 +178,11 @@ namespace jasperengine::editor {
             std::string by, summary, revision;
             bool showLine = false;         // an agent's edit (an undo or redo only outlines)
             double at = 0.0;               // the steady clock of the edit
-            uint64_t undoId = 0;           // the history step, found on the frame after it
+            uint64_t undoId = 0;           // the history step (0 when the event is an undo or redo)
         };
         std::optional<AgentEdit> agentEdit;
+        std::string loadedRevision;     // the revision `loaded` holds, when known
+        double ageTickDue = 0.0;        // when the "N s ago" line last armed its wake-up
         std::string externalSaveNotice;
         void onSpriteEdited(const pixelart::draw::SpriteEdited& event);
         void adoptDocumentFromSession();

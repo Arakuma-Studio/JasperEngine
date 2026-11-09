@@ -68,6 +68,9 @@ namespace jasperengine::editor::pixelart::draw {
         std::shared_ptr<SpriteSession> open(Project* project, const std::string& given, PixelProblem& problem);
         // the same for an absolute path (SpriteEditCmd; a file no longer readable gives null)
         std::shared_ptr<SpriteSession> openAbsolute(Project* project, const std::filesystem::path& absolute, PixelProblem& problem);
+        // the session as it is, no disk access: null when none (the editor's own write must not
+        // look like an outside change)
+        std::shared_ptr<SpriteSession> find(const std::filesystem::path& absolute) const;
         // the editor wrote the file: the session is `sprite` at those bytes, and the watcher's
         // view of them is settled
         void adoptWrite(SpriteSession& session, SpriteDoc sprite, std::shared_ptr<const std::vector<uint8_t>> bytes, const std::string& revision);

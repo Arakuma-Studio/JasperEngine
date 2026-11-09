@@ -9,6 +9,8 @@
 #include "pixelart/draw/DrawPrimitives.h"
 #include "pixelart/lint/PixelLint.h"
 
+#include <chrono>
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
 using jasperengine::editor::pixelart::s47test::json;
@@ -159,4 +161,35 @@ TEST(DrawOps, HexColorNotInThePaletteNamesTheNearestAndThePaletteOp) {
     EXPECT_EQ(run.problem.kind, "color_not_in_palette");
     EXPECT_NE(run.problem.fix.find("index 1"), std::string::npos) << run.problem.fix;
     EXPECT_NE(run.problem.fix.find("\"palette\""), std::string::npos) << run.problem.fix;
+}
+
+TEST(DrawOps, HugeRectsClipToTheCanvasQuickly) {
+    draw::SpriteDoc sprite = s47test::makeSprite(4, 4);
+    const auto start = std::chrono::steady_clock::now();
+    S47_APPLY(sprite, json::array({{{"op", "rect"}, {"rect", {0, 0, 2000000000, 2000000000}}, {"color", 1}, {"fill", true}},
+                                   {{"op", "rect"}, {"rect", {-5, 2, 2000000000, 1}}, {"color", 2}, {"thickness", 16}}}));
+    EXPECT_LT(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(), 2.0);
+    EXPECT_EQ(s47test::canvasRows(sprite)[1], "1111");
+    EXPECT_EQ(s47test::canvasRows(sprite)[2], "2222");
+    // clipped, so a far-out shape neither hangs nor draws
+    const s47test::Run run = s47test::apply(sprite, json::array({{{"op", "ellipse"}, {"rect", {3000000, 3000000, 4, 4}}, {"color", 3}}}));
+    EXPECT_TRUE(run.ok) << run.problem.message;
+    EXPECT_FALSE(run.result.changedAnything());
+}
+
+TEST(DrawOps, StrokesAreBoundedAndPointsTooFarOutAreRefused) {
+    draw::SpriteDoc sprite = s47test::makeSprite(4, 4);
+    s47test::Run run = s47test::apply(sprite, json::array({{{"op", "line"}, {"points", {{-1000000, 0}, {1000000, 0}}}, {"color", 1}, {"pixel_perfect", false}}}));
+    ASSERT_FALSE(run.ok);
+    EXPECT_EQ(run.problem.kind, "bad_op_field");
+    run = s47test::apply(sprite, json::array({{{"op", "pixel"}, {"points", {{2000000, 0}}}, {"color", 1}}}));
+    ASSERT_FALSE(run.ok);
+    EXPECT_NE(run.problem.fix.find("1048576"), std::string::npos) << run.problem.fix;
+}
+
+TEST(DrawOps, MirroredShapeKeepsWhatLandsBackOnTheCanvas) {
+    // the mirror of an off-canvas part of the stroke lands on the canvas: clipping must not lose it
+    draw::SpriteDoc sprite = s47test::makeSprite(8, 1);
+    S47_APPLY(sprite, json::array({{{"op", "rect"}, {"rect", {-2, 0, 3, 1}}, {"color", 1}, {"fill", true}}}), json{{"x", 2.0}});
+    EXPECT_EQ(s47test::canvasRows(sprite)[0], "1.11.1..") << "row -2..0 and its mirror 4..6 about x=2";
 }

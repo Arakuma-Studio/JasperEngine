@@ -39,7 +39,12 @@ namespace jasperengine::editor::pixelart::draw {
         std::vector<DirtyRect> highlight;   // outlined in magenta in every panel they touch
     };
 
-    // The sheet as RGBA. `layout` is {scale, layout: [{frame (from 1), backdrop, x, y, w, h}]}.
+    // the longest side a sheet may be; render_sprite refuses a scale that passes it
+    inline constexpr int kMaxSheetSide = 8192;
+    // the largest scale that keeps the sheet within kMaxSheetSide (0: none)
+    int largestSheetScale(const SpriteDoc& sprite, const SheetOptions& options);
+
+    // The sheet as RGBA (empty when it would pass kMaxSheetSide). `layout` is {scale, layout: [{frame (from 1), backdrop, x, y, w, h}]}.
     PixelImage renderSheet(const SpriteDoc& sprite, const SheetOptions& options, nlohmann::json& layout);
 
     // A sheet as a PNG, quick and deterministic: palette PNG when it has at most 256 colours

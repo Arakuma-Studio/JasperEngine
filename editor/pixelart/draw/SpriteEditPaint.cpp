@@ -38,12 +38,29 @@ namespace jasperengine::editor::pixelart::draw::detail {
             return canvas;
         }
 
+        // what a shape must keep: the canvas, and with symmetry whatever can mirror onto it
+        IntRect shapeClip(const EditState& s) {
+            const IntRect canvas{0, 0, s.doc.width, s.doc.height};
+            if (!s.symmetric()) return canvas;
+            IntRect clip = canvas;
+            for (const IntPoint corner : {IntPoint{0, 0}, IntPoint{canvas.w - 1, 0}, IntPoint{0, canvas.h - 1}, IntPoint{canvas.w - 1, canvas.h - 1}}) {
+                for (const IntPoint& m : s.mirrorsOf(corner)) clip = clip.unite({m.x, m.y, 1, 1});
+            }
+            return clip;
+        }
+
         void paintPixels(EditState& s, const Json& op, const std::vector<IntPoint>& pixels, const Ink& ink) {
             const std::vector<IntPoint> all = s.withMirrors(pixels);
             const int layer = s.pixelLayer(op);
-            for (int frame : s.frames(op)) {
-                Canvas& c = s.canvas(layer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(layer, s.frames(op))) {
+                Canvas& c = *target;
                 for (const IntPoint& p : all) s.put(c, p.x, p.y, ink);
+            }
+        }
+
+        void refuseLongStroke(const std::vector<IntPoint>& points, const char* op) {
+            if (strokeLength(points) > kMaxStrokePixels) {
+                fail("bad_op_field", "points", std::string(op) + " would draw more than 1048576 pixels of stroke", "draw shorter strokes (ops are clipped to the canvas)");
             }
         }
 
@@ -52,24 +69,27 @@ namespace jasperengine::editor::pixelart::draw::detail {
             std::vector<IntPoint> pixels;
             const int thickness = intField(op, "thickness", 1, 1, 16);
             const bool fill = boolField(op, "fill", false);
+            const IntRect clip = shapeClip(s);
             if (name == "pixel") {
                 pixels = pointsField(op, "points", 1);
             } else if (name == "line") {
                 const std::vector<IntPoint> points = pointsField(op, "points", 2);
+                refuseLongStroke(points, "line");
                 const bool perfect = boolField(op, "pixel_perfect", true) && thickness == 1;
-                pixels = stamp(polyline(points, perfect), thickness);
+                pixels = stamp(polyline(points, perfect), thickness, clip);
             } else if (name == "rect") {
                 if (!op.contains("rect")) fail("bad_op_field", "rect", "rect needs rect: [x, y, w, h]", "");
                 const IntRect r = rectValue(op["rect"], "rect");
                 const int radius = intField(op, "radius", 0, 0, 64);
-                pixels = fill ? roundedRectFilled(r, radius) : roundedRectOutline(r, radius, thickness);
+                pixels = fill ? roundedRectFilled(r, radius, clip) : roundedRectOutline(r, radius, thickness, clip);
             } else if (name == "ellipse") {
                 if (!op.contains("rect")) fail("bad_op_field", "rect", "ellipse needs rect: [x, y, w, h] (the box it fits)", "");
                 const IntRect r = rectValue(op["rect"], "rect");
-                pixels = fill ? ellipseFilled(r) : ellipseRing(r, thickness);
+                pixels = fill ? ellipseFilled(r, clip) : ellipseRing(r, thickness, clip);
             } else {
                 const std::vector<IntPoint> points = pointsField(op, "points", 3);
-                pixels = fill ? polygonFilled(points, {0, 0, s.doc.width, s.doc.height}) : polygonEdges(points);
+                refuseLongStroke(points, "polygon");
+                pixels = fill ? polygonFilled(points, clip) : polygonEdges(points);
             }
             paintPixels(s, op, pixels, ink);
         }
@@ -115,8 +135,8 @@ namespace jasperengine::editor::pixelart::draw::detail {
                     if (!skip[i]) cells.push_back({{at.x + x, at.y + y}, i});
                 }
             }
-            for (int frame : s.frames(op)) {
-                Canvas& c = s.canvas(layer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(layer, s.frames(op))) {
+                Canvas& c = *target;
                 for (const auto& [p, i] : cells) {
                     s.put(c, p.x, p.y, inks[i]);
                     if (s.symmetric()) {
@@ -139,33 +159,36 @@ namespace jasperengine::editor::pixelart::draw::detail {
             for (const IntPoint& m : s.mirrorsOf(seed)) seeds.push_back(m);
             dedupe(seeds);
             const int w = s.doc.width, h = s.doc.height;
-            for (int frame : s.frames(op)) {
-                Canvas& c = s.canvas(layer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(layer, s.frames(op))) {
+                Canvas& c = *target;
+                // decided on the layer, or on what the frame shows (Pixelorama's _fill_merged_area),
+                // before anything of this op is painted: a mirrored seed must not see its twin's paint
+                const PixelImage sample = composite ? s.composite(frame, s.indexed()) : c.current;
+                const bool sampleIndexed = sample.hasIndices();
+                std::vector<std::vector<uint8_t>> areas;
                 for (const IntPoint& from : seeds) {
                     if (from.x < 0 || from.y < 0 || from.x >= w || from.y >= h) continue;
-                    // decided on the layer, or on what the frame shows (Pixelorama's _fill_merged_area)
-                    const PixelImage sample = composite ? s.composite(frame, s.indexed()) : c.current;
-                    const bool sampleIndexed = sample.hasIndices();
-                    const Ink target = s.inkAt(sample, from.x, from.y);
+                    const Ink seedInk = s.inkAt(sample, from.x, from.y);
                     auto similar = [&](int x, int y) {
                         const Ink here = s.inkAt(sample, x, y);
-                        if (!sampleIndexed && tolerance == 0) return here.rgba == target.rgba || (here.rgba[3] == 0 && target.rgba[3] == 0);
-                        return s.similar(here, target, tolerance);
+                        if (!sampleIndexed && tolerance == 0) return here.rgba == seedInk.rgba || (here.rgba[3] == 0 && seedInk.rgba[3] == 0);
+                        return s.similar(here, seedInk, tolerance);
                     };
-                    std::vector<uint8_t> area;
                     if (contiguous) {
-                        area = floodFill(w, h, from, connectivity == 8, [&](int x, int y) { return similar(x, y) && s.writable(x, y); });
+                        areas.push_back(floodFill(w, h, from, connectivity == 8, [&](int x, int y) { return similar(x, y) && s.writable(x, y); }));
                     } else {
                         // Pixelorama's COLORS mode: every similar pixel
-                        area.assign(static_cast<size_t>(w) * h, 0);
+                        std::vector<uint8_t> area(static_cast<size_t>(w) * h, 0);
                         for (int y = 0; y < h; y++) {
                             for (int x = 0; x < w; x++) area[static_cast<size_t>(y) * w + x] = similar(x, y) ? 1 : 0;
                         }
+                        areas.push_back(std::move(area));
                     }
-                    Canvas& target2 = s.canvas(layer, frame);
+                }
+                for (const std::vector<uint8_t>& area : areas) {
                     for (int y = 0; y < h; y++) {
                         for (int x = 0; x < w; x++) {
-                            if (area[static_cast<size_t>(y) * w + x]) s.put(target2, x, y, ink);
+                            if (area[static_cast<size_t>(y) * w + x]) s.put(c, x, y, ink);
                         }
                     }
                 }
@@ -179,8 +202,8 @@ namespace jasperengine::editor::pixelart::draw::detail {
             const int tolerance = intField(op, "tolerance", 0, 0, 255);
             const IntRect area = opArea(s, op);
             const int layer = s.pixelLayer(op);
-            for (int frame : s.frames(op)) {
-                Canvas& c = s.canvas(layer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(layer, s.frames(op))) {
+                Canvas& c = *target;
                 const PixelImage before = c.current;
                 for (int y = area.y; y < area.y + area.h; y++) {
                     for (int x = area.x; x < area.x + area.w; x++) {
@@ -226,8 +249,8 @@ namespace jasperengine::editor::pixelart::draw::detail {
             const IntRect area = opArea(s, op);
             const int layer = s.pixelLayer(op);
             const double dx = g1.x - g0.x, dy = g1.y - g0.y, len2 = dx * dx + dy * dy;
-            for (int frame : s.frames(op)) {
-                Canvas& c = s.canvas(layer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(layer, s.frames(op))) {
+                Canvas& c = *target;
                 for (int y = area.y; y < area.y + area.h; y++) {
                     for (int x = area.x; x < area.x + area.w; x++) {
                         double l = level;
@@ -250,8 +273,8 @@ namespace jasperengine::editor::pixelart::draw::detail {
             const IntRect area = opArea(s, op);
             const int layer = s.pixelLayer(op);
             const Ink clear = s.clearInk(layer);
-            for (int frame : s.frames(op)) {
-                Canvas& c = s.canvas(layer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(layer, s.frames(op))) {
+                Canvas& c = *target;
                 for (int y = area.y; y < area.y + area.h; y++) {
                     for (int x = area.x; x < area.x + area.w; x++) s.put(c, x, y, clear);
                 }
@@ -266,8 +289,8 @@ namespace jasperengine::editor::pixelart::draw::detail {
                                                                          shape == "square" ? NeighbourShape::Square : NeighbourShape::Diamond);
             const int layer = s.pixelLayer(op);
             const int w = s.doc.width, h = s.doc.height;
-            for (int frame : s.frames(op)) {
-                Canvas& c = s.canvas(layer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(layer, s.frames(op))) {
+                Canvas& c = *target;
                 const PixelImage before = c.current;
                 for (int y = 0; y < h; y++) {
                     for (int x = 0; x < w; x++) {
@@ -358,8 +381,8 @@ namespace jasperengine::editor::pixelart::draw::detail {
                 if (!matcher) matcher.emplace(colors, jasperengine::pixelart::ColorMetric::OkLab);
                 return s.inkOfIndex(matcher->nearest({rgba[0], rgba[1], rgba[2], rgba[3]}));
             };
-            for (int frame : s.frames(op)) {
-                Canvas& c = s.canvas(layer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(layer, s.frames(op))) {
+                Canvas& c = *target;
                 const PixelImage before = c.current;
                 for (const IntPoint& p : points) {
                     if (p.x < 0 || p.y < 0 || p.x >= s.doc.width || p.y >= s.doc.height) continue;

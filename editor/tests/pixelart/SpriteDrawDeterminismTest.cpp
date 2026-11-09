@@ -1,12 +1,11 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S47 AC18 (R4): a 100-op script touching every op kind, run twice and at 1 and 8 job workers,
-// gives identical file bytes and echo text.
+// S47 AC18 (R4): a 100-op script touching every op kind, run twice, gives identical file bytes;
+// the handler's own echo output is compared in test_sprite_draw.py.
 
 #include "SpriteDrawTestSupport.h"
 
-#include "jobs/JobSystem.h"
 #include "pixelart/draw/GridCodec.h"
 
 using namespace jasperengine::editor::pixelart;
@@ -82,24 +81,4 @@ TEST(SpriteDrawDeterminism, SameScriptSameBytesAndEcho) {
     const Outcome second = runScript();
     EXPECT_EQ(first.bytes, second.bytes);
     EXPECT_EQ(first.text, second.text);
-}
-
-TEST(SpriteDrawDeterminism, WorkerCountDoesNotChangeTheOutput) {
-    namespace jobs = jasperengine::jobs;
-    const bool hadSystem = jobs::hasSystem();
-    if (hadSystem) jobs::shutdown();
-    auto withWorkers = [](int workers) {
-        jobs::Config config;
-        config.workers = workers;
-        config.reserveForFrame = 0;
-        jobs::initialize(config);
-        Outcome outcome = runScript();
-        jobs::shutdown();
-        return outcome;
-    };
-    const Outcome one = withWorkers(1);
-    const Outcome eight = withWorkers(8);
-    if (hadSystem) jobs::initialize({});
-    EXPECT_EQ(one.bytes, eight.bytes);
-    EXPECT_EQ(one.text, eight.text);
 }

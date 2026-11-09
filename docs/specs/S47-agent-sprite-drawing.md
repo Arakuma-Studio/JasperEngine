@@ -874,7 +874,7 @@ Recorded while implementing (branch `feature/s47-agent-sprite-drawing`):
 - **R5/R24 structure limits.** A `frame add` or `layer add` past 256 fails with `too_many_ops` (the
   closest listed kind) naming the limit.
 - **S46's lint library** (`editor/pixelart/lint/PixelLint`, `CraftLints`, `EffectLints`) is copied
-  verbatim from `feature/s46-pixel-art-cleanup` (commit `66819890`) so `edit_sprite {lint}` runs against
+  verbatim from `feature/s46-pixel-art-cleanup` (byte-identical to its branch at `0b4b0ca1d`) so `edit_sprite {lint}` runs against
   the real API; the batch landing keeps S46's copy. `SpriteDrawLint` is the one call site (R31).
 - **`.png` deviations from R1:** 16-bit PNGs are refused (`unsupported_feature`, their precision would be
   lost). A PNG re-saves as 8-bit: a palette PNG at 1/2/4 bits becomes 8-bit indexed.
@@ -898,6 +898,17 @@ Recorded while implementing (branch `feature/s47-agent-sprite-drawing`):
   sizes beside them (what some clients show instead of the text). The JSON of `get_sprite` on the 32 x 32
   fixture is 930 bytes against the 0.6 KB estimate, because R10's shape lists every cel and frame; every
   other row's JSON fits its estimate (20-edit session 11.2 KB of 20 KB).
+- **R14 and transforms.** "Pixel op" in R14 is the paint family: `shift`, `flip`, `rotate`, `scale`, `mirror`
+  and `copy` take the selected pixels and write them where the op lands them, even outside the selection
+  (a `mirror` writes only into it). Clipping the landing to the selection would delete moved pixels.
+- **R21, default transform target.** The canvas, not the cel's own bounds: Aseprite trims cels, so "the
+  cel" would make a whole-sprite flip depend on where its pixels happen to be.
+- **R9** counts `max_pixels` per frame, as written (each frame up to `max_pixels` pixels).
+- **R10 shape, trimmed for §6.3.** `get_sprite` leaves out empty lists and defaults (`transparent_index` 0, a
+  cel's `layer` 0) and lists frames as runs of one duration (`{frame, to, duration_ms}`, `to` absent for one
+  frame), so the 32 x 32 row fits its 0.6 KB; the guide says so.
+- **`write_failed`** is an added R35 kind: the one way a call can fail after every check passed (a full disk, a
+  read-only folder); its message carries the reason.
 - **R38's bench** is `editor/tests/pixelart/SpriteDrawBench.cpp` (`SpriteDrawBench.*`, printed `[bench]`
   lines, enforced by `JASPER_TEST_PERF_SLACK`), not `tools/perf/sprite_draw_bench`, matching the
   repository's bench suites. Measured on box B (Release, under the batch's load): 50 paint ops on a

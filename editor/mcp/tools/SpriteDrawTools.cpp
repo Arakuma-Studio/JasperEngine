@@ -35,10 +35,12 @@
 #include "pixelart/draw/SpriteDocCache.h"
 #include "pixelart/draw/SpriteDrawLint.h"
 #include "pixelart/draw/SpriteEdit.h"
+#include "pixelart/draw/SpriteEditEvents.h"
 #include "pixelart/draw/SpriteImportFrames.h"
 #include "pixelart/draw/SpriteRender.h"
 #include "util/Base64.h"
 #include "util/ProjectFileWrites.h"
+#include "util/SafeWrite.h"
 #include "vcs/VcsService.h"
 
 #include <algorithm>
@@ -119,7 +121,7 @@ Json spriteJson(Project* project, draw::SpriteSession& session) {
     Json palette = Json::array();
     for (const ase::PaletteEntry& e : doc.palette) palette.push_back(draw::hexColor(e.color));
     j["palette"] = std::move(palette);
-    if (doc.mode == ase::ColorMode::Indexed) j["transparent_index"] = doc.transparentIndex;
+    if (doc.mode == ase::ColorMode::Indexed && doc.transparentIndex != 0) j["transparent_index"] = doc.transparentIndex;
     Json layers = Json::array();
     for (int i = 0; i < static_cast<int>(doc.layers.size()); i++) {
         const ase::Layer& l = doc.layers[static_cast<size_t>(i)];
@@ -133,8 +135,16 @@ Json spriteJson(Project* project, draw::SpriteSession& session) {
         layers.push_back(std::move(lj));
     }
     j["layers"] = std::move(layers);
+    // duration runs: an animation's frames usually share one, and the 16-frame list is half the reply
     Json frames = Json::array();
-    for (int f = 0; f < doc.frameCount(); f++) frames.push_back({{"frame", f + 1}, {"duration_ms", doc.frameDurations[static_cast<size_t>(f)]}});
+    for (int f = 0; f < doc.frameCount();) {
+        int to = f;
+        while (to + 1 < doc.frameCount() && doc.frameDurations[static_cast<size_t>(to + 1)] == doc.frameDurations[static_cast<size_t>(f)]) to++;
+        Json run = {{"frame", f + 1}, {"duration_ms", doc.frameDurations[static_cast<size_t>(f)]}};
+        if (to > f) run["to"] = to + 1;
+        frames.push_back(std::move(run));
+        f = to + 1;
+    }
     j["frames"] = std::move(frames);
     Json tags = Json::array();
     for (const ase::Tag& t : doc.tags) {
@@ -143,7 +153,7 @@ Json spriteJson(Project* project, draw::SpriteSession& session) {
         if (t.repeat != 0) tj["repeat"] = t.repeat;
         tags.push_back(std::move(tj));
     }
-    j["tags"] = std::move(tags);
+    if (!tags.empty()) j["tags"] = std::move(tags);
     Json slices = Json::array();
     for (const ase::Slice& s : doc.slices) {
         Json sj = {{"name", s.name}};
@@ -156,10 +166,11 @@ Json spriteJson(Project* project, draw::SpriteSession& session) {
         }
         slices.push_back(std::move(sj));
     }
-    j["slices"] = std::move(slices);
+    if (!slices.empty()) j["slices"] = std::move(slices);
     Json cels = Json::array();
     for (const ase::Cel& c : doc.cels) {
-        Json cj = {{"frame", c.frame + 1}, {"layer", c.layer}};
+        Json cj = {{"frame", c.frame + 1}};
+        if (c.layer != 0) cj["layer"] = c.layer;
         if (c.linkedFrame >= 0) {
             cj["linked_to"] = c.linkedFrame + 1;
         } else if (c.image) {
@@ -168,7 +179,7 @@ Json spriteJson(Project* project, draw::SpriteSession& session) {
         }
         cels.push_back(std::move(cj));
     }
-    j["cels"] = std::move(cels);
+    if (!cels.empty()) j["cels"] = std::move(cels);
     Json usedBy = Json::array();
     AssetDatabase::Resolution found = project->resolveAsset(session.path, "", AssetType::Unknown);
     if (found.found() && project->getAssetIndex().isReady()) {
@@ -177,7 +188,7 @@ Json spriteJson(Project* project, draw::SpriteSession& session) {
             usedBy.push_back({{"file", project->getAssetIndex().referrerPath(edge.referrer)}, {"object", edge.entityPath}});
         }
     }
-    j["used_by"] = std::move(usedBy);
+    if (!usedBy.empty()) j["used_by"] = std::move(usedBy);
     if (session.lastEdit) {
         j["last_edit"] = {{"by", session.lastEdit->by}, {"revision", session.lastEdit->revision}, {"rects", rectsJson(doc, session.lastEdit->rects)}};
     }
@@ -269,7 +280,8 @@ void readSpritePixelsTool(const CallPtr& call) {
         }
     }
     const int maxPixels = std::clamp(args.value("max_pixels", 4096), 1, 16384);
-    const long long area = static_cast<long long>(rect.w) * rect.h * static_cast<long long>(frames.size());
+    // R9: max_pixels per frame ("larger than max_pixels x frames")
+    const long long area = static_cast<long long>(rect.w) * rect.h;
     if (area > maxPixels) {
         const int tile = std::min(64, std::max(1, rect.w));
         failProblem(call, {"region_too_large", "rect", "the region is " + std::to_string(area) + " pixels, above max_pixels " + std::to_string(maxPixels),
@@ -500,9 +512,23 @@ void editSpriteTool(const CallPtr& call) {
     }
     CommandHistory* history = project->getProjectCommandHistory();
     auto* command = new SpriteEditCmd(project, session->absolute, patch, bytes, written);
+    auto failure = std::make_shared<std::string>();
+    command->reportFailureTo(failure);
     if (!history->addCommand(command)) {
-        failProblem(call, {"write_failed", "sprite", "couldn't write " + session->path, "check the file is writable"});
+        failProblem(call, {"write_failed", "sprite", "couldn't write " + session->path + (failure->empty() ? "" : ": " + *failure), "check the file is writable"});
         return;
+    }
+    {
+        // the live view learns the history entry the step became (R41)
+        draw::SpriteEdited event;
+        event.path = session->path;
+        event.revision = revision;
+        event.rects = result.changed;
+        event.origin = "agent";
+        event.by = patch->by;
+        event.summary = patch->summary;
+        if (const UndoEntry* top = history->top()) event.undoId = top->info.id;
+        draw::SpriteEditEvents::edited(event);
     }
     session = cache.open(project, args.value("sprite", std::string()), problem);
     if (!session) {
@@ -783,8 +809,15 @@ void renderSpriteTool(const CallPtr& call) {
     }
     Json layout;
     const pixelart::PixelImage image = draw::renderSheet(sprite, sheet, layout);
+    if (image.empty()) {
+        const int largest = draw::largestSheetScale(sprite, sheet);
+        failProblem(call, {"region_too_large", "scale", "this sheet would be more than " + std::to_string(draw::kMaxSheetSide) + " pixels on a side at scale " + std::to_string(sheet.scale),
+                           largest > 0 ? "scale is at most " + std::to_string(largest) + " here (or fewer frames, columns or backdrops)" : "use fewer frames, columns or backdrops"});
+        return;
+    }
     const std::string png = draw::encodeSheetPng(image);
-    Json out = {{"scale", layout["scale"]}, {"layout", layout["layout"]}, {"last_edit", lastEdit}, {"revision", session->revision}};
+    Json out = {{"scale", layout["scale"]}, {"layout", layout["layout"]}, {"revision", session->revision}};
+    if (!lastEdit.is_null()) out["last_edit"] = lastEdit;
     if (capped) out["next"] = "The sprite has " + std::to_string(doc.frameCount()) + " frames: this shows the first 64; pass frames for the rest.";
     session->lastSeen[sessionKey(call)] = session->revision;
     std::string text = baseName(session->path) + ": " + std::to_string(sheet.frames.size()) + " frame(s) at " + std::to_string(layout["scale"].get<int>()) + "x (" +
@@ -996,6 +1029,11 @@ void createSpriteTool(const CallPtr& call) {
     if (args.contains("from")) {
         const std::string fromGiven = args["from"].get<std::string>();
         const fs::path from = (project->getProjectPath() / fs::path(fromGiven)).lexically_normal();
+        // nothing outside the project is read, links followed
+        if (!safewrite::isInsideResolved(from, project->getProjectPath())) {
+            failProblem(call, {"outside_assets", "from", fromGiven + " is outside the project", "pass a project-relative .png or .gif path"});
+            return;
+        }
         draw::ImportedFrames imported;
         if (!draw::readFramesFile(from, imported, problem)) {
             failProblem(call, problem);
@@ -1023,6 +1061,10 @@ void createSpriteTool(const CallPtr& call) {
                     slot[key] = static_cast<int>(colors.size());
                 }
             }
+        }
+        if (!fits && args.value("mode", std::string()) == "indexed") {
+            failProblem(call, {"too_many_colors", "mode", fromGiven + " has more than 255 colours", "leave mode out (it becomes RGBA), or reduce the colours first"});
+            return;
         }
         doc.mode = fits ? ase::ColorMode::Indexed : ase::ColorMode::Rgba;
         if (fits) {
@@ -1138,7 +1180,6 @@ void registerSpriteDrawTools(McpRegistry& registry) {
             {"from", assetPath("A .png, .gif or APNG to take frames and colours from.")},
             {"overwrite", withDefault(boolean(""), false)},
         }, {"path"});
-        tool.annotations.destructive = true;
         tool.activity = ToolActivity::Edit;
         tool.writesFiles = [](const Json&) { return true; };
         tool.group = "sprites";

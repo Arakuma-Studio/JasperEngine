@@ -42,6 +42,11 @@ namespace jasperengine::editor {
         // frees pixel buffers and strings only
         bool releaseOffThread() const override { return true; }
         std::string failure() const override { return lastFailure; }
+        // Where execute() writes why it failed: the history deletes a failed command, the sink outlives it
+        void reportFailureTo(std::shared_ptr<std::string> sink) { failureSink = std::move(sink); }
+        // why undo or redo would be refused now, from what the session knows (no stat): the
+        // Undo History window asks every frame
+        std::string cachedRefusal(bool undo) const;
 
     private:
         Project* project;
@@ -52,12 +57,13 @@ namespace jasperengine::editor {
         std::shared_ptr<const std::vector<uint8_t>> firstBytes;
         pixelart::draw::SpriteDoc firstDoc;
         std::string lastFailure;
+        std::shared_ptr<std::string> failureSink;
 
         // `want` is the revision the file must hold; "" with the sentence naming why not
         std::string fileConflict(const std::string& want, const char* verb) const;
         bool apply(bool forward, std::string& why);
         bool writeFile(const std::vector<uint8_t>& bytes, std::string& why);
-        void afterWrite(const char* origin);
+        void afterWrite(const char* origin, bool announce);
     };
 
 }

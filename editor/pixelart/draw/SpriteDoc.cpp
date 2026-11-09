@@ -124,6 +124,7 @@ namespace jasperengine::editor::pixelart::draw {
                     depth = data[8];
                     colorType = data[9];
                     interlace = data[12];
+                    layout.colorType = colorType;
                     chunk.role = PngChunk::Role::Ihdr;
                 } else if (std::memcmp(type, "PLTE", 4) == 0) {
                     plte.assign(data, data + length);
@@ -132,6 +133,7 @@ namespace jasperengine::editor::pixelart::draw {
                 } else if (std::memcmp(type, "tRNS", 4) == 0) {
                     trns.assign(data, data + length);
                     chunk.role = PngChunk::Role::Trns;
+                    layout.colorKey = colorType == 0 || colorType == 2;
                 } else if (std::memcmp(type, "IDAT", 4) == 0) {
                     zdata.insert(zdata.end(), data, data + length);
                     if (idatPlaced) {
@@ -140,6 +142,9 @@ namespace jasperengine::editor::pixelart::draw {
                     }
                     idatPlaced = true;
                     chunk.role = PngChunk::Role::Idat;
+                } else if (std::memcmp(type, "acTL", 4) == 0 || std::memcmp(type, "fcTL", 4) == 0 || std::memcmp(type, "fdAT", 4) == 0) {
+                    layout.animated = true;
+                    chunk.bytes.assign(bytes.begin() + static_cast<std::ptrdiff_t>(pos), bytes.begin() + static_cast<std::ptrdiff_t>(end));
                 } else if (std::memcmp(type, "IEND", 4) == 0) {
                     layout.iend.assign(bytes.begin() + static_cast<std::ptrdiff_t>(pos), bytes.begin() + static_cast<std::ptrdiff_t>(end));
                     layout.trailing.assign(bytes.begin() + static_cast<std::ptrdiff_t>(end), bytes.end());
@@ -252,14 +257,29 @@ namespace jasperengine::editor::pixelart::draw {
                 problem = {"invalid_document", "png", "the PNG has no pixel layer", ""};
                 return false;
             }
+            // the colour type stays what the file had: an RGB PNG has nowhere to put alpha
+            const bool rgb = !indexed && sprite.png.colorType == 2;
+            if (rgb) {
+                const std::span<const uint8_t> pixels = canvas.pixels();
+                for (size_t i = 3; i < pixels.size(); i += 4) {
+                    if (pixels[i] != 255) {
+                        problem = {"unsupported_feature", "png", "this PNG is RGB with no alpha, so it can't hold a transparent or partial pixel",
+                                   "create_sprite {from: <the png>} makes an .aseprite with alpha, or save the PNG as RGBA"};
+                        return false;
+                    }
+                }
+            }
             std::vector<uint8_t> raw;
-            const size_t bpp = indexed ? 1 : 4;
+            const size_t bpp = indexed ? 1 : rgb ? 3 : 4;
             raw.reserve((static_cast<size_t>(w) * bpp + 1) * h);
             for (int y = 0; y < h; y++) {
                 raw.push_back(0);
                 if (indexed) {
                     const std::span<const uint8_t> plane = canvas.indices();
                     raw.insert(raw.end(), plane.begin() + static_cast<std::ptrdiff_t>(y) * w, plane.begin() + static_cast<std::ptrdiff_t>(y + 1) * w);
+                } else if (rgb) {
+                    const uint8_t* row = canvas.row(y);
+                    for (int x = 0; x < w; x++) raw.insert(raw.end(), row + x * 4, row + x * 4 + 3);
                 } else {
                     raw.insert(raw.end(), canvas.row(y), canvas.row(y) + static_cast<size_t>(w) * 4);
                 }
@@ -274,7 +294,7 @@ namespace jasperengine::editor::pixelart::draw {
             std::vector<uint8_t> ihdr;
             putBe32(ihdr, static_cast<uint32_t>(w));
             putBe32(ihdr, static_cast<uint32_t>(h));
-            ihdr.insert(ihdr.end(), {8, static_cast<uint8_t>(indexed ? 3 : 6), 0, 0, 0});
+            ihdr.insert(ihdr.end(), {8, static_cast<uint8_t>(indexed ? 3 : rgb ? 2 : 6), 0, 0, 0});
             std::vector<uint8_t> plte, trns;
             if (indexed) {
                 const bool clear = !doc.layers.empty() && !doc.layers[0].background();
@@ -377,6 +397,11 @@ namespace jasperengine::editor::pixelart::draw {
     }
 
     PixelProblem editRefusal(const SpriteDoc& sprite) {
+        if (sprite.isPng()) {
+            if (sprite.png.animated) return {"unsupported_feature", "png", "this is an animated PNG: an edit would rewrite its first frame and invalidate the others", "create_sprite {from: <the png>} makes an .aseprite of its frames"};
+            if (sprite.png.colorType == 0 || sprite.png.colorType == 4) return {"unsupported_feature", "png", "this is a grayscale PNG, whose format an edit would change", "save it as RGB or RGBA, or create_sprite {from: <the png>} makes an .aseprite"};
+            if (sprite.png.colorKey) return {"unsupported_feature", "png", "this PNG's transparency is a colour key, which the editor can't keep", "save it as RGBA, or create_sprite {from: <the png>} makes an .aseprite"};
+        }
         if (sprite.indexed() && !sprite.doc.paletteChanges.empty()) {
             return {"unsupported_feature", "palette", "the palette changes on frame " + std::to_string(sprite.doc.paletteChanges.begin()->first + 1) +
                     ", which edits cannot keep in step", "flatten the palette changes in Aseprite (one palette for every frame), then edit"};
@@ -384,13 +409,14 @@ namespace jasperengine::editor::pixelart::draw {
         return {};
     }
 
-    PixelImage blankCanvas(const aseprite::Document& doc, int layer) {
-        if (doc.mode != ase::ColorMode::Indexed) return PixelImage(doc.width, doc.height);
+    PixelImage blankImage(const aseprite::Document& doc, int layer, int width, int height) {
+        if (doc.mode != ase::ColorMode::Indexed) return PixelImage(width, height);
         const bool background = layer >= 0 && layer < static_cast<int>(doc.layers.size()) && doc.layers[static_cast<size_t>(layer)].background();
-        const std::vector<uint8_t> paletteRgba = doc.paletteRgba(0);
-        return PixelImage::fromIndices(doc.width, doc.height, std::vector<uint8_t>(static_cast<size_t>(doc.width) * doc.height, doc.transparentIndex),
-                                       paletteRgba, background ? -1 : doc.transparentIndex);
+        return PixelImage::fromIndices(width, height, std::vector<uint8_t>(static_cast<size_t>(width) * height, doc.transparentIndex), doc.paletteRgba(0),
+                                       background ? -1 : doc.transparentIndex);
     }
+
+    PixelImage blankCanvas(const aseprite::Document& doc, int layer) { return blankImage(doc, layer, doc.width, doc.height); }
 
     PixelImage celCanvas(const aseprite::Document& doc, int layer, int frame) {
         if (layer < 0 || layer >= static_cast<int>(doc.layers.size()) || doc.layers[static_cast<size_t>(layer)].type != ase::LayerType::Image) return PixelImage();

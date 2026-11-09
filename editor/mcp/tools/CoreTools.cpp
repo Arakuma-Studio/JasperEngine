@@ -380,6 +380,11 @@ void undoRedo(const CallPtr& call, bool undo) {
             }
         } else {
             stopped = !UndoTimeline::jumpTo(sceneId, target, &why, &done);
+            if (stopped) {
+                // the step that refused is the next one, its history kept why
+                UndoTimeline::EntryView next = undo ? UndoTimeline::nextUndo(sceneId) : UndoTimeline::nextRedo(sceneId);
+                if (next && next.history && !next.history->lastRefusal().empty()) report.refusedWhy = next.history->lastRefusal();
+            }
         }
     } else {
         for (int i = 0; i < steps; i++) {

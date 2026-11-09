@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cstdint>
 #include <map>
 #include <unordered_set>
 
@@ -38,19 +39,8 @@ namespace jasperengine::editor::pixelart::draw {
             return (static_cast<int64_t>(p.x) << 32) ^ static_cast<int64_t>(static_cast<uint32_t>(p.y));
         }
 
-        // the points of `all` not in `minus`, in order
-        std::vector<IntPoint> subtract(const std::vector<IntPoint>& all, const std::vector<IntPoint>& minus) {
-            std::unordered_set<int64_t> gone;
-            for (const IntPoint& p : minus) gone.insert(pointKey(p));
-            std::vector<IntPoint> out;
-            for (const IntPoint& p : all) {
-                if (!gone.count(pointKey(p))) out.push_back(p);
-            }
-            return out;
-        }
-
-        // the border's pixels as spans per row
-        std::vector<IntPoint> fillSpans(const std::vector<IntPoint>& border) {
+        // the leftmost and rightmost x of the shape on each row of a border
+        std::map<int, std::pair<int, int>> rowSpans(const std::vector<IntPoint>& border) {
             std::map<int, std::pair<int, int>> rows;
             for (const IntPoint& p : border) {
                 auto it = rows.find(p.y);
@@ -60,11 +50,24 @@ namespace jasperengine::editor::pixelart::draw {
                     it->second.second = std::max(it->second.second, p.x);
                 }
             }
-            std::vector<IntPoint> out;
-            for (const auto& [y, span] : rows) {
-                for (int x = span.first; x <= span.second; x++) out.push_back({x, y});
-            }
-            return out;
+            return rows;
+        }
+
+        void emitSpan(std::vector<IntPoint>& out, int y, int from, int to, const IntRect& clip) {
+            if (y < clip.y || y >= clip.y + clip.h) return;
+            const int a = std::max(from, clip.x), b = std::min(to, clip.x + clip.w - 1);
+            for (int x = a; x <= b; x++) out.push_back({x, y});
+        }
+
+        // the rows of the rounded rect, as [start, end] per row (DrawingAlgos.gd get_rounded_rect_points_filled)
+        std::pair<int, int> roundedSpan(const IntRect& rect, int radius, int y) {
+            const int left = rect.x, right = rect.x + rect.w - 1, top = rect.y, bottom = rect.y + rect.h - 1;
+            int d = 0;
+            if (radius > 0 && y < top + radius) d = (top + radius) - y;
+            else if (radius > 0 && y > bottom - radius) d = y - (bottom - radius);
+            if (d == 0) return {left, right};
+            const int dx = static_cast<int>(std::floor(std::sqrt(static_cast<double>(radius * radius - d * d))));
+            return {left + radius - dx, right - radius + dx};
         }
 
     }
@@ -119,6 +122,14 @@ namespace jasperengine::editor::pixelart::draw {
         return out;
     }
 
+    int64_t strokeLength(std::span<const IntPoint> points) {
+        int64_t total = 0;
+        for (size_t i = 1; i < points.size(); i++) {
+            total += std::max(std::llabs(static_cast<int64_t>(points[i].x) - points[i - 1].x), std::llabs(static_cast<int64_t>(points[i].y) - points[i - 1].y)) + 1;
+        }
+        return total;
+    }
+
     std::vector<IntPoint> polyline(std::span<const IntPoint> points, bool pixelPerfect) {
         std::vector<IntPoint> stroke;
         if (points.empty()) return stroke;
@@ -137,7 +148,7 @@ namespace jasperengine::editor::pixelart::draw {
         return pixelPerfect ? pixelPerfectFilter(stroke) : stroke;
     }
 
-    std::vector<IntPoint> ellipseBorder(const IntRect& rect) {
+    std::vector<IntPoint> ellipseBorder(const IntRect& rect, const IntRect& clip) {
         std::vector<IntPoint> out;
         if (rect.empty()) return out;
         // Zingl, "A Rasterizing Algorithm for Drawing Curves" (plotEllipseRect), as Pixelorama
@@ -182,51 +193,68 @@ namespace jasperengine::editor::pixelart::draw {
             y0++;
             y1--;
         }
+        out.erase(std::remove_if(out.begin(), out.end(), [&](const IntPoint& p) { return !clip.contains(p.x, p.y); }), out.end());
         dedupe(out);
         return out;
     }
 
-    std::vector<IntPoint> ellipseFilled(const IntRect& rect) {
-        return fillSpans(ellipseBorder(rect));
-    }
-
-    std::vector<IntPoint> ellipseRing(const IntRect& rect, int thickness) {
-        if (thickness <= 1) return ellipseBorder(rect);
-        const IntRect inner{rect.x + thickness, rect.y + thickness, rect.w - 2 * thickness, rect.h - 2 * thickness};
-        if (inner.empty()) return ellipseFilled(rect);
-        return subtract(ellipseFilled(rect), ellipseFilled(inner));
-    }
-
-    std::vector<IntPoint> roundedRectFilled(const IntRect& rect, int radius) {
+    std::vector<IntPoint> ellipseFilled(const IntRect& rect, const IntRect& clip) {
         std::vector<IntPoint> out;
-        if (rect.empty()) return out;
-        radius = std::min({radius, rect.w / 2, rect.h / 2});
-        const int left = rect.x, right = rect.x + rect.w - 1, top = rect.y, bottom = rect.y + rect.h - 1;
-        const int r2 = radius * radius;
-        for (int y = top; y <= bottom; y++) {
-            int startX = left, endX = right;
-            if (radius > 0 && y < top + radius) {
-                const int d = (top + radius) - y;
-                const int dx = static_cast<int>(std::floor(std::sqrt(static_cast<double>(r2 - d * d))));
-                startX = left + radius - dx;
-                endX = right - radius + dx;
-            } else if (radius > 0 && y > bottom - radius) {
-                const int d = y - (bottom - radius);
-                const int dx = static_cast<int>(std::floor(std::sqrt(static_cast<double>(r2 - d * d))));
-                startX = left + radius - dx;
-                endX = right - radius + dx;
+        for (const auto& [y, span] : rowSpans(ellipseBorder(rect))) emitSpan(out, y, span.first, span.second, clip);
+        return out;
+    }
+
+    std::vector<IntPoint> ellipseRing(const IntRect& rect, int thickness, const IntRect& clip) {
+        if (thickness <= 1) return ellipseBorder(rect, clip);
+        const IntRect inner{rect.x + thickness, rect.y + thickness, rect.w - 2 * thickness, rect.h - 2 * thickness};
+        if (inner.empty()) return ellipseFilled(rect, clip);
+        const std::map<int, std::pair<int, int>> outerRows = rowSpans(ellipseBorder(rect));
+        const std::map<int, std::pair<int, int>> innerRows = rowSpans(ellipseBorder(inner));
+        std::vector<IntPoint> out;
+        for (const auto& [y, span] : outerRows) {
+            auto hole = innerRows.find(y);
+            if (hole == innerRows.end()) {
+                emitSpan(out, y, span.first, span.second, clip);
+            } else {
+                emitSpan(out, y, span.first, hole->second.first - 1, clip);
+                emitSpan(out, y, hole->second.second + 1, span.second, clip);
             }
-            for (int x = startX; x <= endX; x++) out.push_back({x, y});
         }
         return out;
     }
 
-    std::vector<IntPoint> roundedRectOutline(const IntRect& rect, int radius, int thickness) {
+    std::vector<IntPoint> roundedRectFilled(const IntRect& rect, int radius, const IntRect& clip) {
+        std::vector<IntPoint> out;
+        if (rect.empty()) return out;
+        radius = std::min({radius, rect.w / 2, rect.h / 2});
+        const int from = std::max(rect.y, clip.y), to = std::min(rect.y + rect.h - 1, clip.y + clip.h - 1);
+        for (int y = from; y <= to; y++) {
+            const auto [start, end] = roundedSpan(rect, radius, y);
+            emitSpan(out, y, start, end, clip);
+        }
+        return out;
+    }
+
+    std::vector<IntPoint> roundedRectOutline(const IntRect& rect, int radius, int thickness, const IntRect& clip) {
+        std::vector<IntPoint> out;
+        if (rect.empty()) return out;
         thickness = std::max(1, thickness);
-        const std::vector<IntPoint> filled = roundedRectFilled(rect, radius);
+        radius = std::min({radius, rect.w / 2, rect.h / 2});
         const IntRect inner{rect.x + thickness, rect.y + thickness, rect.w - 2 * thickness, rect.h - 2 * thickness};
-        if (inner.empty()) return filled;
-        return subtract(filled, roundedRectFilled(inner, std::max(0, radius - thickness)));
+        if (inner.empty()) return roundedRectFilled(rect, radius, clip);
+        const int innerRadius = std::min({std::max(0, radius - thickness), inner.w / 2, inner.h / 2});
+        const int from = std::max(rect.y, clip.y), to = std::min(rect.y + rect.h - 1, clip.y + clip.h - 1);
+        for (int y = from; y <= to; y++) {
+            const auto [start, end] = roundedSpan(rect, radius, y);
+            if (y < inner.y || y >= inner.y + inner.h) {
+                emitSpan(out, y, start, end, clip);
+                continue;
+            }
+            const auto [innerStart, innerEnd] = roundedSpan(inner, innerRadius, y);
+            emitSpan(out, y, start, innerStart - 1, clip);
+            emitSpan(out, y, innerEnd + 1, end, clip);
+        }
+        return out;
     }
 
     std::vector<IntPoint> polygonEdges(std::span<const IntPoint> points) {
@@ -271,17 +299,21 @@ namespace jasperengine::editor::pixelart::draw {
         return out;
     }
 
-    std::vector<IntPoint> stamp(std::span<const IntPoint> pixels, int thickness) {
+    std::vector<IntPoint> stamp(std::span<const IntPoint> pixels, int thickness, const IntRect& clip) {
         std::vector<IntPoint> out;
         if (thickness <= 1) {
-            out.assign(pixels.begin(), pixels.end());
+            for (const IntPoint& p : pixels) {
+                if (clip.contains(p.x, p.y)) out.push_back(p);
+            }
             return out;
         }
         // a square brush centred on the pixel (even sizes lean up-left, as Pixelorama's stamps)
         const int before = (thickness - 1) / 2, after = thickness / 2;
         for (const IntPoint& p : pixels) {
             for (int dy = -before; dy <= after; dy++) {
-                for (int dx = -before; dx <= after; dx++) out.push_back({p.x + dx, p.y + dy});
+                for (int dx = -before; dx <= after; dx++) {
+                    if (clip.contains(p.x + dx, p.y + dy)) out.push_back({p.x + dx, p.y + dy});
+                }
             }
         }
         dedupe(out);

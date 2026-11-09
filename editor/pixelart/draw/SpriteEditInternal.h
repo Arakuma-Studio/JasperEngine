@@ -26,6 +26,12 @@ namespace jasperengine::editor::pixelart::draw::detail {
     namespace ase = aseprite;
     using Json = nlohmann::json;
 
+    // What a coordinate may be (R3, R5): enough to reach off any canvas (at most 4,096 wide) and
+    // far inside int range, so nothing later can overflow or run for long
+    inline constexpr int kMaxCoordinate = 1 << 20;
+    // the most a stroke may draw before it is refused (a line op's whole polyline)
+    inline constexpr int64_t kMaxStrokePixels = int64_t(1) << 20;
+
     struct OpError {
         PixelProblem problem;
     };
@@ -86,6 +92,10 @@ namespace jasperengine::editor::pixelart::draw::detail {
 
         // ---- the canvases
         Canvas& canvas(int layer, int frame);
+        // the canvases an op's frames touch, each once however many frames show it (linked cels
+        // share one: drawing them per frame would flip or shade the same pixels twice), with a
+        // frame that shows each
+        std::vector<std::pair<Canvas*, int>> canvasesOf(int layer, const std::vector<int>& frames);
         // a pixel write: inside the canvas and (unless the op ignores it) the selection
         bool writable(int x, int y) const;
         void put(Canvas& canvas, int x, int y, const Ink& ink);

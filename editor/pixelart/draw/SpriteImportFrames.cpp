@@ -130,6 +130,71 @@ namespace jasperengine::editor::pixelart::draw {
             return true;
         }
 
+        // R5 checked from the file's header (and its frame count, where it says one), before
+        // decoding what could be gigabytes
+        bool headerFits(const std::vector<uint8_t>& bytes, bool gif, PixelProblem& problem) {
+            uint32_t w = 0, h = 0, frames = 1;
+            if (gif) {
+                if (bytes.size() < 13) return true;   // the decoder reports what is wrong
+                w = static_cast<uint32_t>(bytes[6]) | (static_cast<uint32_t>(bytes[7]) << 8);
+                h = static_cast<uint32_t>(bytes[8]) | (static_cast<uint32_t>(bytes[9]) << 8);
+                // the frames: count the image descriptors, block by block
+                size_t pos = 13;
+                if (bytes[10] & 0x80) pos += 3u << ((bytes[10] & 7) + 1);
+                frames = 0;
+                while (pos < bytes.size()) {
+                    const uint8_t tag = bytes[pos];
+                    if (tag == 0x3B) break;
+                    if (tag == 0x2C) {
+                        if (pos + 10 > bytes.size()) break;
+                        frames++;
+                        const uint8_t flags = bytes[pos + 9];
+                        pos += 10;
+                        if (flags & 0x80) pos += 3u << ((flags & 7) + 1);
+                        pos += 1;   // LZW minimum code size
+                    } else if (tag == 0x21) {
+                        pos += 2;
+                    } else {
+                        break;
+                    }
+                    while (pos < bytes.size() && bytes[pos] != 0) pos += bytes[pos] + 1u;
+                    pos += 1;
+                }
+                if (frames == 0) frames = 1;
+            } else {
+                if (bytes.size() < 8 || std::memcmp(bytes.data(), kSignature, 8) != 0) return true;
+                size_t pos = 8;
+                while (pos + 12 <= bytes.size()) {
+                    const uint32_t length = readBe32(&bytes[pos]);
+                    if (length > bytes.size() - pos - 12) break;
+                    const char* type = reinterpret_cast<const char*>(&bytes[pos + 4]);
+                    if (std::memcmp(type, "IHDR", 4) == 0 && length >= 8) {
+                        w = readBe32(&bytes[pos + 8]);
+                        h = readBe32(&bytes[pos + 12]);
+                    } else if (std::memcmp(type, "acTL", 4) == 0 && length >= 4) {
+                        frames = readBe32(&bytes[pos + 8]);
+                    } else if (std::memcmp(type, "IDAT", 4) == 0) {
+                        break;
+                    }
+                    pos += 12 + length;
+                }
+            }
+            if (w > 4096 || h > 4096) {
+                problem = {"canvas_too_large", "from", "the image is " + std::to_string(w) + "x" + std::to_string(h) + ", above 4096x4096", "each side is 1-4096"};
+                return false;
+            }
+            if (frames > 256) {
+                problem = {"bad_op_field", "from", "the image has " + std::to_string(frames) + " frames, above 256", "frames is 1-256"};
+                return false;
+            }
+            // what a decoder would hold while it composes the frames
+            if (static_cast<uint64_t>(w) * h * frames * 4 > (uint64_t(1) << 30)) {
+                problem = {"region_too_large", "from", "the frames would decode to more than 1 GiB", "use fewer or smaller frames"};
+                return false;
+            }
+            return true;
+        }
+
         bool decodeGif(const std::vector<uint8_t>& bytes, ImportedFrames& out, PixelProblem& problem) {
             int* delays = nullptr;
             int w = 0, h = 0, count = 0, comp = 0;
@@ -164,6 +229,7 @@ namespace jasperengine::editor::pixelart::draw {
         std::string ext = path.extension().string();
         for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         out = ImportedFrames();
+        if ((ext == ".gif" || ext == ".png" || ext == ".apng") && !headerFits(bytes, ext == ".gif", problem)) return false;
         if (ext == ".gif") return decodeGif(bytes, out, problem);
         if (ext == ".png" || ext == ".apng") return decodeApng(bytes, out, problem);
         problem = {"not_a_sprite", "from", path.filename().generic_string() + " is not a .png, .apng or .gif", "pass a .png, .gif or animated PNG"};

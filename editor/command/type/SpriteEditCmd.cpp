@@ -48,6 +48,15 @@ namespace jasperengine::editor {
         return "Edit Sprite (" + fileName + (patch->summary.empty() ? "" : ": " + patch->summary) + ")";
     }
 
+    std::string SpriteEditCmd::cachedRefusal(bool undo) const {
+        std::shared_ptr<SpriteSession> session = SpriteDocCache::get().find(absolute);
+        if (!session) return std::string();
+        if (session->revision != (undo ? patch->revisionAfter : patch->revisionBefore)) {
+            return fileName + " changed outside the editor after this step; " + (undo ? "undoing" : "redoing") + " would overwrite that change";
+        }
+        return std::string();
+    }
+
     size_t SpriteEditCmd::memoryBytes() const {
         return patch->memoryBytes() + (firstBytes ? firstBytes->size() : 0);
     }
@@ -67,10 +76,11 @@ namespace jasperengine::editor {
         return true;
     }
 
-    void SpriteEditCmd::afterWrite(const char* origin) {
-        pixelart::PixelProblem problem;
-        std::shared_ptr<SpriteSession> session = SpriteDocCache::get().openAbsolute(project, absolute, problem);
-        if (session) {
+    void SpriteEditCmd::afterWrite(const char* origin, bool announce) {
+        // no openAbsolute here: this is the editor's own write, the session already holds it
+        std::shared_ptr<SpriteSession> session = SpriteDocCache::get().find(absolute);
+        // the first execute: the tool announces it, with the history entry the step becomes (R41)
+        if (session && announce) {
             SpriteEdited event;
             event.path = session->path;
             event.revision = session->revision;
@@ -128,17 +138,17 @@ namespace jasperengine::editor {
             std::string why;
             if (!writeFile(*firstBytes, why)) {
                 lastFailure = why;
+                if (failureSink) *failureSink = why;
                 return false;
             }
-            pixelart::PixelProblem problem;
-            std::shared_ptr<SpriteSession> session = SpriteDocCache::get().openAbsolute(project, absolute, problem);
+            std::shared_ptr<SpriteSession> session = SpriteDocCache::get().find(absolute);
             if (session) {
                 SpriteDocCache::get().adoptWrite(*session, std::move(firstDoc), firstBytes, patch->revisionAfter);
                 SpriteDocCache::get().addPatch(*session, patch);
             }
             firstBytes.reset();
             firstDoc = SpriteDoc();
-            afterWrite("agent");
+            afterWrite("agent", false);
             return true;
         }
         std::string why;
@@ -146,7 +156,7 @@ namespace jasperengine::editor {
             lastFailure = why;
             return false;
         }
-        afterWrite("redo");
+        afterWrite("redo", true);
         return true;
     }
 
@@ -156,7 +166,7 @@ namespace jasperengine::editor {
             undoProblem = why;
             return;
         }
-        afterWrite("undo");
+        afterWrite("undo", true);
     }
 
 }

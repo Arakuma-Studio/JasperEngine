@@ -67,8 +67,9 @@ namespace jasperengine::editor::pixelart::draw {
                 if (change.directory || change.origin != ChangeOrigin::External) continue;
                 auto it = sessions.find(change.path.lexically_normal().generic_string());
                 if (it == sessions.end()) continue;
-                PixelProblem ignored;
-                if (!sync(*it->second, ignored)) sessions.erase(it);
+                PixelProblem problem;
+                // a save still in progress can fail to decode: the session stays for R34 once it does
+                if (!sync(*it->second, problem) && problem.kind == "sprite_missing") sessions.erase(it);
             }
         });
     }
@@ -81,6 +82,11 @@ namespace jasperengine::editor::pixelart::draw {
 
     void SpriteDocCache::forget(const fs::path& absolute) {
         sessions.erase(absolute.lexically_normal().generic_string());
+    }
+
+    std::shared_ptr<SpriteSession> SpriteDocCache::find(const fs::path& absolute) const {
+        auto it = sessions.find(absolute.lexically_normal().generic_string());
+        return it == sessions.end() ? nullptr : it->second;
     }
 
     std::optional<LastEdit> SpriteDocCache::lastEditOf(const fs::path& absolute) const {
@@ -139,7 +145,7 @@ namespace jasperengine::editor::pixelart::draw {
         } else {
             session = it->second;
             if (!sync(*session, problem)) {
-                sessions.erase(key);
+                if (problem.kind == "sprite_missing") sessions.erase(key);
                 return nullptr;
             }
         }

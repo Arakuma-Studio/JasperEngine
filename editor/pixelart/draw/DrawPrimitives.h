@@ -26,6 +26,8 @@ namespace jasperengine::editor::pixelart::draw {
 
     // Bresenham from a to b, both ends included, in drawing order
     void bresenham(IntPoint a, IntPoint b, std::vector<IntPoint>& out);
+    // A stroke's length in pixels (the longer axis of each segment), to bound it before drawing
+    int64_t strokeLength(std::span<const IntPoint> points);
     // A polyline's pixels in stroke order, each joint once. pixelPerfect removes every L-corner
     // (Drawers.gd PixelPerfectDrawer: when the newest pixel is diagonal to the one two back and
     // orthogonal to the one before, that one goes)
@@ -33,24 +35,28 @@ namespace jasperengine::editor::pixelart::draw {
     // The pixel-perfect filter alone, on pixels in stroke order
     std::vector<IntPoint> pixelPerfectFilter(std::span<const IntPoint> stroke);
 
+    // Only the pixels inside `clip` come out, so a shape reaching far past the canvas costs what
+    // the canvas does: the rasterisers below stay within the clip's rows and columns.
+    inline constexpr IntRect kNoClip{-(1 << 21), -(1 << 21), 1 << 22, 1 << 22};
+
     // Zingl's ellipse inside a rect (DrawingAlgos.gd get_ellipse_points): its border pixels
-    std::vector<IntPoint> ellipseBorder(const IntRect& rect);
+    std::vector<IntPoint> ellipseBorder(const IntRect& rect, const IntRect& clip = kNoClip);
     // The filled ellipse as spans between its border pixels, one row at a time
-    std::vector<IntPoint> ellipseFilled(const IntRect& rect);
+    std::vector<IntPoint> ellipseFilled(const IntRect& rect, const IntRect& clip = kNoClip);
     // A ring `thickness` wide: the filled ellipse less the one inset by thickness (1: the border)
-    std::vector<IntPoint> ellipseRing(const IntRect& rect, int thickness);
+    std::vector<IntPoint> ellipseRing(const IntRect& rect, int thickness, const IntRect& clip = kNoClip);
 
     // DrawingAlgos.gd get_rounded_rect_points_filled; radius 0 is the plain rect
-    std::vector<IntPoint> roundedRectFilled(const IntRect& rect, int radius);
+    std::vector<IntPoint> roundedRectFilled(const IntRect& rect, int radius, const IntRect& clip = kNoClip);
     // The outline `thickness` wide (the filled shape less the inner one, radius - thickness)
-    std::vector<IntPoint> roundedRectOutline(const IntRect& rect, int radius, int thickness);
+    std::vector<IntPoint> roundedRectOutline(const IntRect& rect, int radius, int thickness, const IntRect& clip = kNoClip);
 
     // Polygon edges by the line rule (closed), and the even-odd interior at pixel centres
     std::vector<IntPoint> polygonEdges(std::span<const IntPoint> points);
     std::vector<IntPoint> polygonFilled(std::span<const IntPoint> points, const IntRect& clip);
 
     // A square brush `thickness` wide stamped on each pixel (thickness 1: the pixels)
-    std::vector<IntPoint> stamp(std::span<const IntPoint> pixels, int thickness);
+    std::vector<IntPoint> stamp(std::span<const IntPoint> pixels, int thickness, const IntRect& clip = kNoClip);
 
     // Scanline flood fill over a w x h grid from `seed`: `similar(x, y)` says whether a pixel
     // belongs to the area. 8-connectivity also joins diagonal neighbours. Returns the area as a

@@ -110,8 +110,8 @@ namespace jasperengine::editor::pixelart::draw::detail {
                     map[static_cast<size_t>(y) * rect.w + x] = sy * rect.w + sx;
                 }
             }
-            for (int frame : s.frames(op)) {
-                Canvas& c = s.canvas(layer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(layer, s.frames(op))) {
+                Canvas& c = *target;
                 const Taken t = takeTarget(s, c, rect);
                 if (wrap) placeMap(s, c, t, map, rect.x, rect.y, rect.w, rect.h);
                 else placeMap(s, c, t, map, rect.x + by.x, rect.y + by.y, rect.w, rect.h);
@@ -131,8 +131,8 @@ namespace jasperengine::editor::pixelart::draw::detail {
                     map[static_cast<size_t>(y) * rect.w + x] = sy * rect.w + sx;
                 }
             }
-            for (int frame : s.frames(op)) {
-                Canvas& c = s.canvas(layer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(layer, s.frames(op))) {
+                Canvas& c = *target;
                 placeMap(s, c, takeTarget(s, c, rect), map, rect.x, rect.y, rect.w, rect.h);
             }
         }
@@ -155,8 +155,8 @@ namespace jasperengine::editor::pixelart::draw::detail {
                 py = p[1].get<double>() - rect.y;
             }
             const int layer = s.pixelLayer(op);
-            for (int frame : s.frames(op)) {
-                Canvas& c = s.canvas(layer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(layer, s.frames(op))) {
+                Canvas& c = *target;
                 const Taken t = takeTarget(s, c, rect);
                 const std::vector<int32_t> map = rotateMap(rect.w, rect.h, t.rgba, angle, px, py, method);
                 placeMap(s, c, t, map, rect.x, rect.y, rect.w, rect.h);
@@ -179,8 +179,8 @@ namespace jasperengine::editor::pixelart::draw::detail {
             // centred on the target (the lower-right pixel wins half a pixel), clipped by the canvas
             const int outX = rect.x + static_cast<int>(std::floor((rect.w - outW) / 2.0));
             const int outY = rect.y + static_cast<int>(std::floor((rect.h - outH) / 2.0));
-            for (int frame : s.frames(op)) {
-                Canvas& c = s.canvas(layer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(layer, s.frames(op))) {
+                Canvas& c = *target;
                 const Taken t = takeTarget(s, c, rect);
                 std::vector<int32_t> map;
                 if (method == "nearest") {
@@ -216,8 +216,8 @@ namespace jasperengine::editor::pixelart::draw::detail {
             const double defaultAxis = axis == "x" ? rect.x + (rect.w - 1) / 2.0 : rect.y + (rect.h - 1) / 2.0;
             const int twice = static_cast<int>(std::floor(numberField(op, "at", defaultAxis, -1, 8192) * 2 + 0.5));
             const int layer = s.pixelLayer(op);
-            for (int frame : s.frames(op)) {
-                Canvas& c = s.canvas(layer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(layer, s.frames(op))) {
+                Canvas& c = *target;
                 const PixelImage before = c.current;
                 for (int y = rect.y; y < rect.y + rect.h; y++) {
                     for (int x = rect.x; x < rect.x + rect.w; x++) {
@@ -263,8 +263,8 @@ namespace jasperengine::editor::pixelart::draw::detail {
                     }
                 }
             }
-            for (int frame : toFrames) {
-                Canvas& to = s.canvas(toLayer, frame);
+            for (const auto& [target, frame] : s.canvasesOf(toLayer, toFrames)) {
+                Canvas& to = *target;
                 for (int y = 0; y < rect.h; y++) {
                     for (int x = 0; x < rect.w; x++) {
                         if (!isTaken(x, y)) continue;

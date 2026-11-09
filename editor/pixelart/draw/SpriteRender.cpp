@@ -160,6 +160,37 @@ namespace jasperengine::editor::pixelart::draw {
         return out;
     }
 
+    namespace {
+
+        struct SheetSize {
+            int columns = 1, perBackdropRows = 1, rows = 1, labelH = 0;
+            int backdrops = 1;
+        };
+
+        SheetSize sheetSizeOf(const SheetOptions& options, int n, int backdrops) {
+            SheetSize size;
+            size.columns = options.columns > 0 ? std::max(1, std::min(options.columns, std::max(1, n))) : std::max(1, std::min(8, n));
+            size.perBackdropRows = n <= 0 ? 1 : (n + size.columns - 1) / size.columns;
+            size.backdrops = backdrops;
+            size.rows = size.perBackdropRows * backdrops;
+            size.labelH = options.labels ? kLabelHeight : 0;
+            return size;
+        }
+
+        // 64-bit: a sheet side can overflow an int long before it is refused
+        int64_t sheetW(const SheetSize& s, int width, int scale) { return kGap + int64_t(s.columns) * (int64_t(width) * scale + kGap); }
+        int64_t sheetH(const SheetSize& s, int height, int scale) { return kGap + int64_t(s.rows) * (int64_t(height) * scale + s.labelH + kGap); }
+
+    }
+
+    int largestSheetScale(const SpriteDoc& sprite, const SheetOptions& options) {
+        const SheetSize size = sheetSizeOf(options, static_cast<int>(options.frames.size()), std::max(1, static_cast<int>(options.backdrops.size())));
+        for (int scale = 64; scale >= 1; scale--) {
+            if (sheetW(size, sprite.doc.width, scale) <= kMaxSheetSide && sheetH(size, sprite.doc.height, scale) <= kMaxSheetSide) return scale;
+        }
+        return 0;
+    }
+
     PixelImage renderSheet(const SpriteDoc& sprite, const SheetOptions& options, nlohmann::json& layout) {
         const ase::Document& doc = sprite.doc;
         const int n = static_cast<int>(options.frames.size());
@@ -170,18 +201,20 @@ namespace jasperengine::editor::pixelart::draw {
             checker.name = "checker";
             backdrops.push_back(checker);
         }
-        const int columns = options.columns > 0 ? std::max(1, std::min(options.columns, std::max(1, n))) : std::max(1, std::min(8, n));
-        const int perBackdropRows = n <= 0 ? 1 : (n + columns - 1) / columns;
-        const int rows = perBackdropRows * static_cast<int>(backdrops.size());
-        const int labelH = options.labels ? kLabelHeight : 0;
+        const SheetSize size = sheetSizeOf(options, n, static_cast<int>(backdrops.size()));
+        const int columns = size.columns, perBackdropRows = size.perBackdropRows, labelH = size.labelH;
         int scale = options.scale;
         if (scale <= 0) {
             scale = std::max(1, (options.maxWidth - kGap * (columns + 1)) / std::max(1, columns * doc.width));
         }
+        if (sheetW(size, doc.width, scale) > kMaxSheetSide || sheetH(size, doc.height, scale) > kMaxSheetSide) {
+            layout = nlohmann::json::object();
+            return PixelImage();
+        }
         const int cellW = doc.width * scale;
         const int cellH = doc.height * scale;
-        const int sheetW = kGap + columns * (cellW + kGap);
-        const int sheetH = kGap + rows * (cellH + labelH + kGap);
+        const int sheetW = static_cast<int>(draw::sheetW(size, doc.width, scale));
+        const int sheetH = static_cast<int>(draw::sheetH(size, doc.height, scale));
         PixelImage out(sheetW, sheetH);
         std::span<uint8_t> px = out.editPixels();
         fillSpan(px, sheetW, sheetH, 0, 0, sheetW, sheetH, kSheetBackground);
@@ -204,7 +237,9 @@ namespace jasperengine::editor::pixelart::draw {
                 const int frame = options.frames[static_cast<size_t>(i)];
                 const int ox = kGap + (i % columns) * (cellW + kGap);
                 const int oy = kGap + (b * perBackdropRows + i / columns) * (cellH + labelH + kGap) + labelH;
-                panels.push_back({{"frame", frame + 1}, {"backdrop", backdrop.name}, {"x", ox}, {"y", oy}, {"w", cellW}, {"h", cellH}});
+                nlohmann::json panel = {{"frame", frame + 1}, {"x", ox}, {"y", oy}, {"w", cellW}, {"h", cellH}};
+                if (backdrops.size() > 1) panel["backdrop"] = backdrop.name;
+                panels.push_back(std::move(panel));
                 if (options.labels) {
                     std::string text = std::to_string(frame + 1) + " " + std::to_string(doc.frameDurations[static_cast<size_t>(frame)]) + "MS";
                     const std::string tag = tagsOf(doc, frame);

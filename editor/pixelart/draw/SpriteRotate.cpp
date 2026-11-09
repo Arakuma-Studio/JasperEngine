@@ -115,7 +115,8 @@ namespace jasperengine::editor::pixelart::draw {
                         case 2: sx = -dx; sy = -dy; break;
                         default: sx = -dy; sy = dx; break;     // R(-270)
                     }
-                    const double fx = roundHalfAway(pivotX + sx), fy = roundHalfAway(pivotY + sy);
+                    // floor(v + 0.5), not away from zero: a half at -0.5 is the row at 0, not -1
+                    const double fx = std::floor(pivotX + sx + 0.5), fy = std::floor(pivotY + sy + 0.5);
                     if (fx < 0.0 || fy < 0.0 || fx >= w || fy >= h) continue;
                     map[static_cast<size_t>(y) * w + x] = static_cast<int32_t>(fy) * w + static_cast<int32_t>(fx);
                 }

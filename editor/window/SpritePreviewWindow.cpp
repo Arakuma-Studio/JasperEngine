@@ -3,6 +3,9 @@
 
 #include "SpritePreviewWindow.h"
 
+#include <chrono>
+#include <thread>
+
 #include "AppSettings.h"
 #include "command/UndoTimeline.h"
 #include "pixelart/draw/SpriteDocCache.h"
@@ -134,7 +137,8 @@ SpritePreviewWindow::~SpritePreviewWindow() {
 }
 
 void SpritePreviewWindow::onSpriteEdited(const pixelart::draw::SpriteEdited& event) {
-    if (assetPath.empty()) return;
+    // a closed panel costs nothing: no session, no document copy, no redraw
+    if (!windowOpen || assetPath.empty()) return;
     if ((project->getProjectPath() / FileUtils::pathFromUtf8(event.path)).lexically_normal() != (project->getAssetsPath() / FileUtils::pathFromUtf8(assetPath)).lexically_normal()) return;
     adoptDocumentFromSession();
     AgentEdit edit;
@@ -144,6 +148,7 @@ void SpritePreviewWindow::onSpriteEdited(const pixelart::draw::SpriteEdited& eve
     edit.revision = event.revision;
     edit.at = spritePreviewNow();
     edit.showLine = event.origin == "agent";
+    edit.undoId = event.undoId;
     agentEdit = std::move(edit);
     if (event.origin == "agent") externalSaveNotice.clear();
     Backend::getApp().requestRedraw();
@@ -155,6 +160,7 @@ void SpritePreviewWindow::adoptDocumentFromSession() {
     std::shared_ptr<pixelart::draw::SpriteSession> session = pixelart::draw::SpriteDocCache::get().openAbsolute(project, project->getAssetsPath() / FileUtils::pathFromUtf8(assetPath), problem);
     if (!session) return;
     auto next = std::make_shared<Loaded>();
+    loadedRevision = session->revision;
     auto document = std::make_shared<ase::Document>(session->sprite.doc);
     document->provenance.reset();
     next->document = document;
@@ -371,6 +377,11 @@ void SpritePreviewWindow::adoptLoad() {
     }
     loadTask = jobs::Task<std::shared_ptr<Loaded>>();
     retireAll();
+    // a file read off the job: its revision is the session's when the session holds this file's latest
+    {
+        std::shared_ptr<pixelart::draw::SpriteSession> session = pixelart::draw::SpriteDocCache::get().find(project->getAssetsPath() / FileUtils::pathFromUtf8(assetPath));
+        loadedRevision = session ? session->revision : std::string();
+    }
     const int frames = frameCount();
     frame = frames > 0 ? std::clamp(frame, 0, frames - 1) : 0;
     if (tag >= static_cast<int>(tags().size())) tag = -1;
@@ -849,7 +860,8 @@ void SpritePreviewWindow::show() {
     }
     ImGui::End();
 
-    if (playing || loadTask.isValid() || (agentEdit && spritePreviewNow() - agentEdit->at < 3.0)) Backend::getApp().requestRedraw();
+    const bool fading = agentEdit && AppSettings::getPixelArtPreferences().agentEditHighlight && spritePreviewNow() - agentEdit->at < 3.0;
+    if (playing || loadTask.isValid() || fading) Backend::getApp().requestRedraw();
     if (!windowOpen) setOpen(false);
 }
 
@@ -861,9 +873,25 @@ void SpritePreviewWindow::drawAgentEditLine() {
     if (!agentEdit || !agentEdit->showLine) return;
     const uint32_t sceneId = project->getSelectedScene() ? project->getSelectedSceneId() : NULL_PROJECT_SCENE;
     UndoTimeline::EntryView top = UndoTimeline::nextUndo(sceneId);
-    if (agentEdit->undoId == 0 && top && std::string(top.entry->cmd->typeName()) == "SpriteEditCmd") agentEdit->undoId = top.entry->info.id;
     const int seconds = static_cast<int>(spritePreviewNow() - agentEdit->at);
-    ImGui::TextWrapped("Edited by %s: %s \xE2\x80\x94 %d s ago", agentEdit->by.c_str(), agentEdit->summary.c_str(), seconds);
+    if (seconds < 60) {
+        ImGui::TextWrapped("Edited by %s: %s \xE2\x80\x94 %d s ago", agentEdit->by.c_str(), agentEdit->summary.c_str(), seconds);
+        // an idle editor draws no frames: one small wake-up a second keeps the count honest, and
+        // nothing runs once the minute is over (the line then says so instead of counting)
+        const double now = spritePreviewNow();
+        if (now >= ageTickDue) {
+            ageTickDue = now + 1.0;
+            jobs::SubmitOptions options;
+            options.lane = jobs::Lane::Background;
+            options.name = "sprite-preview-age-tick";
+            jobs::submit([]() {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                getEditorHost().enqueueMainThreadTask([]() {});
+            }, options);
+        }
+    } else {
+        ImGui::TextWrapped("Edited by %s: %s \xE2\x80\x94 over a minute ago", agentEdit->by.c_str(), agentEdit->summary.c_str());
+    }
     UIProbe::item("spritePreview.agentEdit.line");
     const bool onTop = top && agentEdit->undoId != 0 && top.entry->info.id == agentEdit->undoId;
     ImGui::SameLine();
@@ -874,6 +902,7 @@ void SpritePreviewWindow::drawAgentEditLine() {
     }
     ImGui::EndDisabled();
     UIProbe::item("spritePreview.agentEdit.undo");
+    if (!onTop) UIProbe::item("spritePreview.agentEdit.undoDisabled");
     if (!onTop && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("A newer step is on top of the undo history; undo that one first");
     ImGui::TextDisabled("Edited by %s \xE2\x80\x94 reopen it in Aseprite before editing there", agentEdit->by.c_str());
     UIProbe::item("spritePreview.agentEdit.reopen." + agentEdit->revision);
@@ -1289,6 +1318,10 @@ void SpritePreviewWindow::drawCanvas(const ImVec2& size) {
     }
     if (drawFrameImage(draw, origin, frame, IM_COL32_WHITE)) {
         UIProbe::rect("spritePreview.frameImage", origin.x, origin.y, origin.x + static_cast<float>(w) * z, origin.y + static_cast<float>(h) * z);
+        // the document the texture on screen was uploaded from (S47 AC17)
+        if (view == View::Source && !loadedRevision.empty()) {
+            UIProbe::rect("spritePreview.texture." + loadedRevision, origin.x, origin.y, origin.x + static_cast<float>(w) * z, origin.y + static_cast<float>(h) * z);
+        }
     } else if (view == View::Imported) {
         draw->AddText(origin, ImGui::GetColorU32(ImGuiCol_TextDisabled), "The import has no pixels for this frame");
     }

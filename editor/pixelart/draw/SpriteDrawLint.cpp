@@ -108,7 +108,6 @@ namespace jasperengine::editor::pixelart::draw {
                 tagOptions.only = {"flicker"};
                 const lint::LintReport part = lint::lint(tagInput, tagOptions);
                 for (const lint::LintResult& result : part.results) take(result, tagFrames);
-                break;
             }
         }
         return {{"counts", {{"pass", report.pass}, {"warn", report.warn}, {"fail", report.fail}, {"skip", report.skip}}}, {"results", std::move(results)}};

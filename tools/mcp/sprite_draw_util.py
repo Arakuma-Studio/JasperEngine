@@ -34,6 +34,15 @@ async def err(ed: Editor, tool: str, **args) -> dict:
     return e
 
 
+def expand_frames(sprite: dict) -> list[dict]:
+    """get_sprite's duration runs [{frame, to?, duration_ms}] as one {frame, duration_ms} per frame"""
+    out = []
+    for run in sprite["frames"]:
+        for frame in range(run["frame"], run.get("to", run["frame"]) + 1):
+            out.append({"frame": frame, "duration_ms": run["duration_ms"]})
+    return out
+
+
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 

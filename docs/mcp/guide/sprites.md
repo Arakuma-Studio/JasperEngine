@@ -255,10 +255,14 @@ is `[x, y, w, h]`, ops outside the canvas are clipped, and an op that changes no
 | `palette` | `action` set\|add\|replace\|load, `colors`, `index`, `color`, `asset` (a `.palette`), `remap` keep_indices\|nearest |
 | `canvas` | `action` resize\|crop\|convert, `size` [w, h], `anchor`, `rect`, `mode` indexed\|rgba, `snap` |
 
-A `select` holds for the rest of the batch: pixel ops change only selected pixels unless
-`ignore_selection` is set, and the next call starts with none. `copy` takes the selection when
-`source.rect` is absent and places it anywhere. Transforms act on `rect`, else the selection's
-bounds, else the whole canvas.
+A `select` holds for the rest of the batch: paint ops change only selected pixels unless
+`ignore_selection` is set, and the next call starts with none. Transforms and `copy` take the selected
+pixels (`copy` when `source.rect` is absent) and place them where the op says, inside the selection or
+not. Transforms act on `rect`, else the selection's bounds, else the whole canvas.
+
+`get_sprite` lists `frames` as runs of one duration: `{"frame": 1, "to": 4, "duration_ms": 100}` is
+frames 1 to 4 at 100 ms (`to` is left out for a single frame). Empty lists and defaults (`transparent_index`
+0, a cel's `layer` 0) are left out.
 
 `symmetry` mirrors `pixel`, `line`, `rect`, `ellipse`, `polygon`, `fill` seeds, `paste` and `shade`
 points: `x: true` about the canvas centre, `x: 15.5` about an axis in pixels, `diagonal: "xy"`,

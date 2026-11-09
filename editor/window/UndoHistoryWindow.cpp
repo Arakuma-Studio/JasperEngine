@@ -3,6 +3,8 @@
 
 #include "UndoHistoryWindow.h"
 
+#include "command/type/SpriteEditCmd.h"
+
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "external/IconsFontAwesome6.h"
@@ -149,9 +151,11 @@ std::string UndoHistoryWindow::refusalOf(const UndoTimeline::EntryView& view) co
     if (std::string(view.entry->cmd->typeName()) != "SpriteEditCmd") return std::string();
     const uint32_t sceneId = project->getSelectedScene() ? project->getSelectedSceneId() : NULL_PROJECT_SCENE;
     const UndoTimeline::EntryView nextUndo = UndoTimeline::nextUndo(sceneId);
-    if (view.applied) return nextUndo && nextUndo.entry->info.id == view.entry->info.id ? view.entry->cmd->undoRefusal() : std::string();
+    // what the session knows, no stat: the row is drawn every frame (R39)
+    const SpriteEditCmd* command = static_cast<const SpriteEditCmd*>(view.entry->cmd.get());
+    if (view.applied) return nextUndo && nextUndo.entry->info.id == view.entry->info.id ? command->cachedRefusal(true) : std::string();
     const UndoTimeline::EntryView nextRedo = UndoTimeline::nextRedo(sceneId);
-    return nextRedo && nextRedo.entry->info.id == view.entry->info.id ? view.entry->cmd->redoRefusal() : std::string();
+    return nextRedo && nextRedo.entry->info.id == view.entry->info.id ? command->cachedRefusal(false) : std::string();
 }
 
 void UndoHistoryWindow::drawTooltip(const UndoTimeline::EntryView& view) const {

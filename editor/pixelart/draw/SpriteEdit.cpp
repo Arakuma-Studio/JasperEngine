@@ -325,6 +325,13 @@ namespace jasperengine::editor::pixelart::draw {
 
         IntPoint pointValue(const Json& value, const std::string& field) {
             if (!isIntPair(value)) fail("bad_op_field", field, field + " must be [x, y] integers", "");
+            for (const Json& v : value) {
+                const int64_t c = v.get<int64_t>();
+                if (c < -kMaxCoordinate || c > kMaxCoordinate) {
+                    fail("bad_op_field", field, field + " has a coordinate " + v.dump() + " outside the drawable range",
+                         "x and y are within -1048576 to 1048576 (ops are clipped to the canvas)");
+                }
+            }
             return {value[0].get<int>(), value[1].get<int>()};
         }
 
@@ -346,9 +353,14 @@ namespace jasperengine::editor::pixelart::draw {
             if (!value.is_array() || value.size() != 4 || !std::all_of(value.begin(), value.end(), [](const Json& e) { return e.is_number_integer(); })) {
                 fail("bad_op_field", field, field + " must be [x, y, w, h] integers", "");
             }
-            const IntRect r{value[0].get<int>(), value[1].get<int>(), value[2].get<int>(), value[3].get<int>()};
-            if (r.w <= 0 || r.h <= 0) fail("bad_op_field", field, field + " has w or h below 1", field + " is [x, y, w, h] with w and h at least 1");
-            return r;
+            const int64_t x = value[0].get<int64_t>(), y = value[1].get<int64_t>(), w = value[2].get<int64_t>(), h = value[3].get<int64_t>();
+            if (w <= 0 || h <= 0) fail("bad_op_field", field, field + " has w or h below 1", field + " is [x, y, w, h] with w and h at least 1");
+            // far past any canvas (R3 clips): the edges stop where they can never matter, and later
+            // sums (x + w) stay inside an int
+            const int64_t limit = kMaxCoordinate;
+            const int64_t x0 = std::clamp<int64_t>(x, -limit, limit), y0 = std::clamp<int64_t>(y, -limit, limit);
+            const int64_t x1 = std::clamp<int64_t>(x + w, -limit, limit), y1 = std::clamp<int64_t>(y + h, -limit, limit);
+            return {static_cast<int>(x0), static_cast<int>(y0), static_cast<int>(x1 - x0), static_cast<int>(y1 - y0)};
         }
 
         std::optional<IntRect> rectField(const Json& op, const char* name) {
@@ -563,6 +575,16 @@ namespace jasperengine::editor::pixelart::draw {
             }
             it->second.frames.insert(frame);
             return it->second;
+        }
+
+        std::vector<std::pair<Canvas*, int>> EditState::canvasesOf(int layer, const std::vector<int>& frames) {
+            std::vector<std::pair<Canvas*, int>> out;
+            for (int frame : frames) {
+                Canvas* c = &canvas(layer, frame);
+                const bool seen = std::any_of(out.begin(), out.end(), [&](const std::pair<Canvas*, int>& o) { return o.first == c; });
+                if (!seen) out.push_back({c, frame});
+            }
+            return out;
         }
 
         bool EditState::selected(int x, int y) const {

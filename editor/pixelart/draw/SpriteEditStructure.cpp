@@ -262,6 +262,7 @@ namespace jasperengine::editor::pixelart::draw::detail {
                     detach(root, layer, node);
                     if (group >= 0 && !findNode(root, group)) fail("no_layer", "group", "a group can't move inside itself", s.layerList());
                     placeInGroup(root, std::move(node), group, -1);
+                    refuseBackgroundOrder(s, root);
                     applyTree(s, root);
                     changed = true;
                 }
@@ -757,6 +758,10 @@ namespace jasperengine::editor::pixelart::draw::detail {
                 return colors;
             };
             const std::vector<ase::PaletteEntry> before = doc.palette;
+            if (!doc.tilesets.empty() && (action == "set" || action == "load")) {
+                fail("unsupported_feature", "palette", "palette " + action + " would leave this sprite's tileset indices stale",
+                     "edit the palette in Aseprite (which remaps the tilesets), or use action add or replace");
+            }
             if (action == "set") {
                 const std::vector<PixelRgba> colors = colorList();
                 if (colors.size() > 256) fail("palette_full", "colors", "a palette holds at most 256 colours, this list " + std::to_string(colors.size()), "give at most 256 colours");
@@ -853,8 +858,11 @@ namespace jasperengine::editor::pixelart::draw::detail {
                     }
                     continue;
                 }
-                const IntRect local{kept.x - bounds.x, kept.y - bounds.y, kept.w, kept.h};
-                cel.image = std::make_shared<const PixelImage>(cel.image->crop(local));
+                // a blank of the document's model, not crop(): a background layer's image has no clear
+                // index, so a rect leaving it would lose its plane
+                PixelImage image = blankImage(doc, cel.layer, kept.w, kept.h);
+                image.blit(*cel.image, bounds.x - kept.x, bounds.y - kept.y);
+                cel.image = std::make_shared<const PixelImage>(std::move(image));
                 cel.x = kept.x;
                 cel.y = kept.y;
                 cels.push_back(std::move(cel));
@@ -909,15 +917,20 @@ namespace jasperengine::editor::pixelart::draw::detail {
             if (mode.empty()) fail("bad_op_field", "mode", "canvas convert needs mode: indexed or rgba", "");
             if ((mode == "indexed") == s.indexed() && (mode != "rgba" || !s.grayscale())) return;
             if (mode == "rgba") {
+                // every image a new pointer, grayscale's too: the writer keys a chunk's unchanged
+                // bytes by the pointer, and those bytes are in the old depth
                 for (ase::Cel& cel : doc.cels) {
-                    if (!cel.image || !cel.image->hasIndices()) continue;
+                    if (!cel.image) continue;
                     PixelImage image = *cel.image;
-                    image.dropIndices();
+                    if (image.hasIndices()) image.dropIndices();
                     cel.image = std::make_shared<const PixelImage>(std::move(image));
                 }
                 doc.mode = ase::ColorMode::Rgba;
                 s.markStructure();
                 return;
+            }
+            if (!doc.tilesets.empty()) {
+                fail("unsupported_feature", "mode", "converting to indexed does not reach this sprite's tilesets", "convert it in Aseprite");
             }
             if (doc.palette.empty()) fail("too_many_colors", "mode", "the sprite has no palette to convert to", "set one first: {\"op\": \"palette\", \"action\": \"set\", \"colors\": [...]}");
             const bool snap = boolField(op, "snap", false);
@@ -981,6 +994,58 @@ namespace jasperengine::editor::pixelart::draw::detail {
 
     }
 
+    namespace {
+
+        // Aseprite keeps a link's holder at the earliest frame (the writer refuses a link to a later
+        // one): whoever an op moved, the earliest frame of each linked group becomes the holder
+        void holdersAtEarliestFrame(ase::Document& doc) {
+            for (int layer = 0; layer < static_cast<int>(doc.layers.size()); layer++) {
+                // holder frame -> the frames showing it (itself included), ascending
+                std::map<int, std::vector<int>> groups;
+                for (const ase::Cel& c : doc.cels) {
+                    if (c.layer != layer) continue;
+                    if (c.linkedFrame >= 0) {
+                        int root = c.linkedFrame;
+                        for (int hops = 0; hops < 8; hops++) {
+                            const ase::Cel* next = doc.celRecord(layer, root);
+                            if (!next || next->linkedFrame < 0) break;
+                            root = next->linkedFrame;
+                        }
+                        groups[root].push_back(c.frame);
+                    } else if (c.image || c.tilemap) {
+                        groups[c.frame];
+                    }
+                }
+                for (auto& [root, frames] : groups) {
+                    if (frames.empty()) continue;
+                    frames.push_back(root);
+                    std::sort(frames.begin(), frames.end());
+                    frames.erase(std::unique(frames.begin(), frames.end()), frames.end());
+                    const int earliest = frames.front();
+                    ase::Cel* holder = doc.celRecord(layer, root);
+                    ase::Cel* first = doc.celRecord(layer, earliest);
+                    if (!holder || !first) continue;
+                    if (earliest != root) {
+                        first->image = holder->image;
+                        first->tilemap = holder->tilemap;
+                        first->x = holder->x;
+                        first->y = holder->y;
+                        first->opacity = holder->opacity;
+                        first->linkedFrame = -1;
+                        holder->image.reset();
+                        holder->tilemap.reset();
+                    }
+                    for (int f : frames) {
+                        if (f == earliest) continue;
+                        ase::Cel* cel = doc.celRecord(layer, f);
+                        if (cel) cel->linkedFrame = earliest;
+                    }
+                }
+            }
+        }
+
+    }
+
     void runStructureOp(EditState& state, const Json& op, const std::string& name) {
         if (name == "layer") layerOp(state, op);
         else if (name == "frame") frameOp(state, op);
@@ -989,6 +1054,7 @@ namespace jasperengine::editor::pixelart::draw::detail {
         else if (name == "cel") celOp(state, op);
         else if (name == "palette") paletteOp(state, op);
         else if (name == "canvas") canvasOp(state, op);
+        if (name == "frame" || name == "cel") holdersAtEarliestFrame(state.doc);
     }
 
 }

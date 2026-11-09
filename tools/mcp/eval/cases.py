@@ -890,21 +890,19 @@ CASES = [
     {
         "id": "bad_sprite_edit_frame_from_one",
         "kind": "bad",
-        "what_happened": "Asked to change the sprite's third frame, an agent used to 0-based APIs edited frame index 2 of the file; "
-                         "Aseprite's frame 3 is frame: 3 (S47 D10).",
-        "text_at_issue": "edit_sprite's frame parameter description 'frames from 1' and the no_frame fix",
+        "what_happened": "Asked to change the sprite's third frame, an agent used to 0-based APIs edited frame index 2 of the file, "
+                         "which is the second frame: frames are numbered from 1 here, as in Aseprite (S47 D10).",
+        "text_at_issue": "edit_sprite's frame parameter description ('Default frame, from 1.'); get_sprite's description ('frames from 1')",
         "source": "S47 spec (paraphrased)",
         "files": {"assets/hero.aseprite": "binary placeholder"},
-        "prompt": "In assets/hero.aseprite, on frame 3 as Aseprite numbers it, set pixel (2,2) to palette colour 4.",
+        "prompt": "On the third frame of assets/hero.aseprite, set pixel (2,2) to palette colour 4.",
         "mocks": [
             {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
             {"tool": "get_sprite", "args": {}, "result": ok(
                 "hero.aseprite: 16x16 indexed, 4 frames, 1 layer. Revision abc123abc123.",
-                {"path": "assets/hero.aseprite", "revision": "abc123abc123", "size": [16, 16], "mode": "indexed",
-                 "frames": [{"frame": 1, "duration_ms": 100}, {"frame": 2, "duration_ms": 100}, {"frame": 3, "duration_ms": 100}, {"frame": 4, "duration_ms": 100}]})},
+                {"path": "assets/hero.aseprite", "revision": "abc123abc123", "size": [16, 16], "mode": "indexed"})},
             {"tool": "edit_sprite", "args": {}, "result": ok(
-                "hero.aseprite: 1 op(s), 1 pixel(s) in 1 rect(s).",
-                {"revision": "def456def456", "applied": 1, "changed": {"pixels": 1, "rects": [{"frame": 3, "layer": "Layer 1", "rect": [2, 2, 1, 1]}]}})},
+                "hero.aseprite: 1 op(s), 1 pixel(s) in 1 rect(s).", {"revision": "def456def456", "applied": 1, "changed": {"pixels": 1}})},
         ],
         "checks": {"any_of": [{"calls": [{"tool": "edit_sprite", "args": {"frame": 3}}]},
                                {"calls": [{"tool": "edit_sprite", "args": {"ops": [{"frame": 3}]}}]}]},
@@ -913,7 +911,8 @@ CASES = [
     {
         "id": "bad_sprite_changed_then_read_again",
         "kind": "bad",
-        "what_happened": "After sprite_changed an agent resent the same ops at once; the person's version must be read first (S47 R34).",
+        "what_happened": "After sprite_changed an agent resent the same ops at once; the person's version must be read first and "
+                         "the edit sent against its revision (S47 R34).",
         "text_at_issue": "edit_sprite's sprite_changed error text (fix: read the region again, then resend with expect_revision)",
         "source": "S47 spec (paraphrased)",
         "files": {"assets/hero.aseprite": "binary placeholder"},
@@ -929,23 +928,78 @@ CASES = [
             {"tool": "read_sprite_pixels", "args": {}, "result": ok(
                 "hero.aseprite chars revision bbb222bbb222", {"revision": "bbb222bbb222", "encoding": "chars", "frames": [{"frame": 1, "layer": "composite", "rect": [0, 0, 4, 4], "rows": ["....", "....", "....", "...."]}]})},
         ],
-        "checks": {"calls": [{"tool": "read_sprite_pixels"}, {"tool": "edit_sprite", "args": {"expect_revision": "bbb222bbb222"}}]},
+        "checks": {"order": [[{"tool": "read_sprite_pixels"}, {"tool": "edit_sprite", "args": {"expect_revision": "bbb222bbb222"}}]]},
         "max_turns": 10,
     },
     {
         "id": "bad_sprite_grid_alphabet",
         "kind": "bad",
-        "what_happened": "An agent wrote palette index 1 as '0' (tenten's alphabet); here 0 and '.' are index 0 and '1' is index 1 (S47 R6).",
+        "what_happened": "An agent wrote palette index 1 as '0' (tenten's alphabet, where the digits start at index 1); here each index "
+                         "is its own digit and letters start at 10 (S47 R6).",
         "text_at_issue": "read_sprite_pixels description ('.'=0, 1-9, a-z=10-35, A-Z=36-61) and jasper://docs/sprites Grids",
         "source": "S47 spec (tenten's off-by-one, paraphrased)",
         "files": {"assets/hero.aseprite": "binary placeholder"},
-        "prompt": "Paste a 2x1 grid at (0,0) in assets/hero.aseprite that sets the first pixel to palette index 1 and the second to palette index 10.",
+        "prompt": "Paste a 2x1 grid at (0,0) in assets/hero.aseprite: the first pixel palette index 1, the second palette index 10.",
         "mocks": [
             {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
-            {"tool": "read_file", "args": {}, "result": ok("Grids: chars: . = 0, 1-9 = 1-9, a-z = 10-35, A-Z = 36-61.", {})},
+            {"tool": "get_sprite", "args": {}, "result": ok("hero.aseprite: 16x16 indexed. Revision aaa111aaa111.", {"revision": "aaa111aaa111", "size": [16, 16]})},
             {"tool": "edit_sprite", "args": {}, "result": ok("hero.aseprite: 1 op(s), 2 pixel(s).", {"revision": "d1", "applied": 1, "changed": {"pixels": 2}})},
         ],
         "checks": {"calls": [{"tool": "edit_sprite", "args": {"ops": [{"rows": ["re:^1a"]}]}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_sprite_create_layers_bottom_first",
+        "kind": "bad",
+        "what_happened": "An agent listed a new sprite's layers top first, so the 'front' layer came out behind the 'back' one (S47 R3, R26).",
+        "text_at_issue": "create_sprite's layers parameter description ('Layer names, bottom first.')",
+        "source": "S47 spec (paraphrased)",
+        "files": {},
+        "prompt": "Create assets/sprites/knight.aseprite, 32x32, with two layers: 'back' drawn behind 'front'.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "create_sprite", "args": {}, "result": ok(
+                "Created knight.aseprite: 32x32 indexed, 1 frame, 2 layers. Revision abcabcabcabc.",
+                {"path": "assets/sprites/knight.aseprite", "revision": "abcabcabcabc", "size": [32, 32], "mode": "indexed"})},
+        ],
+        "checks": {"calls": [{"tool": "create_sprite", "args": {"layers": ["back", "front"]}}]},
+        "max_turns": 6,
+    },
+    {
+        "id": "bad_sprite_render_outlines_last_edit",
+        "kind": "bad",
+        "what_happened": "To check its edit an agent rendered the sprite with no outline of what changed; render_sprite outlines the last "
+                         "edit with highlight: last_edit (S47 R28).",
+        "text_at_issue": "render_sprite's highlight parameter description ('last_edit, none (default) or [x, y, w, h].')",
+        "source": "S47 spec (paraphrased)",
+        "files": {"assets/hero.aseprite": "binary placeholder"},
+        "prompt": "I just edited assets/hero.aseprite with edit_sprite. Render it so I can see exactly which pixels my last edit changed.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "render_sprite", "args": {}, "result": ok("hero.aseprite: 1 frame(s) at 8x.", {"scale": 8, "layout": []})},
+        ],
+        "checks": {"calls": [{"tool": "render_sprite", "args": {"highlight": "last_edit"}}]},
+        "max_turns": 6,
+    },
+    {
+        "id": "bad_sprite_diff_rows_paste_back",
+        "kind": "bad",
+        "what_happened": "Asked to repeat a change on another frame, an agent redrew it pixel by pixel; a diff_sprite frame's rows paste back "
+                         "as a patch at its bbox (S47 R30).",
+        "text_at_issue": "diff_sprite's description ('Its rows paste back as a patch.')",
+        "source": "S47 spec (paraphrased)",
+        "files": {"assets/hero.aseprite": "binary placeholder"},
+        "prompt": "My last edit changed frame 1 of assets/hero.aseprite. Apply exactly the same change to frame 2.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "diff_sprite", "args": {}, "result": ok(
+                "hero.aseprite: 2 pixel(s) differ.",
+                {"same": False, "changed": 2, "palette_same": True, "structure_changes": [],
+                 "frames": [{"frame": 1, "changed": 2, "bbox": [2, 2, 5, 2], "encoding": "chars", "rows": ["2----", "----3"]}]})},
+            {"tool": "edit_sprite", "args": {}, "result": ok("hero.aseprite: 1 op(s), 2 pixel(s).", {"revision": "d1", "applied": 1, "changed": {"pixels": 2}})},
+        ],
+        "checks": {"calls": [{"tool": "diff_sprite"}],
+                   "any_of": [{"calls": [{"tool": "edit_sprite", "args": {"ops": [{"op": "paste", "rows": ["2----", "----3"], "at": [2, 2]}]}}]}]},
         "max_turns": 8,
     },
 
