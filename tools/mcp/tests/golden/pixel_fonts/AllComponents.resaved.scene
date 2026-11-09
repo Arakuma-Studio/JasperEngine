@@ -56,7 +56,16 @@ shaderKeys:
     properties: 2
   - type: lines
     properties: 42
+  - type: mesh
+    properties: 12587096
+  - type: mesh
+    properties: 8602521688
+  - type: mesh
+    properties: 68732063832
+  - type: mesh
+    properties: 77321998424
   - type: sky
+  - type: depth
   - type: ui
     properties: 2
   - type: ui
@@ -104,6 +113,18 @@ shaderKeys:
   - type: particles
     properties: 512
   - type: htmluiprim
+  - type: mesh
+    properties: 12587096
+    customShader: builtin:lit#HAS_VOXEL,VOXEL_TIER_LOW
+  - type: mesh
+    properties: 8602521688
+    customShader: builtin:lit#HAS_VOXEL,VOXEL_TIER_LOW
+  - type: mesh
+    properties: 68732063832
+    customShader: builtin:lit#HAS_VOXEL,VOXEL_TIER_LOW
+  - type: mesh
+    properties: 77321998424
+    customShader: builtin:lit#HAS_VOXEL,VOXEL_TIER_LOW
   - type: particles
     customShader: library:particles#BLEND_ALPHA
   - type: particles
@@ -2765,3 +2786,53 @@ entities:
         space: world
         capacity: 7
         sortInstances: true
+  - type: Entity
+    entity: 1098
+    name: VoxelVolumeComponent
+    components:
+      transform:
+        position: [97, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      voxelvolume:
+        enabled: false
+        quality: low
+        lodLevels: 4
+        lodRadius: 6
+        maxDrawDistance: 4.4
+        castShadows: false
+        collision: false
+        collisionRadius: 7
+        rescueBodies: false
+        terrainCut: automatic
+        overlapDepth: 2
+        cutTolerance: 1
+        runtimeGeneration: true
+  - type: Entity
+    entity: 1099
+    name: TerrainWorldComponent
+    components:
+      transform:
+        position: [98, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      terrainworld:
+        enabled: false
+        useCameraFocus: false
+        poolSize: 4
+        lodDistance: 6.9
+        uploadBudget: 8.6
+        collisionRadius: 7.5
+        collisionChunkQuads: 6
+        autoAddTiles: false
+        overviewCastsShadows: true
