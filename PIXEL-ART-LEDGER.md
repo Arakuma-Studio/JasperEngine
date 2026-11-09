@@ -244,6 +244,13 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: Batch 3 (S51) checks on box B: web pass, android pass, Vulkan font/palette/pixel
+  98/98.
+  - `htmlui-tests` Vulkan: 3,394 passed, 6 failed (SharedMeshBuffers ×2, LatticeRender shadows,
+    the UIParticleSystems clipping golden, DebugOverlay gestures, TestScriptEvents touch).
+  - The six are being re-run on plain `main` to check they're pre-existing before S51 lands.
+  - Every agent stopped on the 5-hour limit again (reset 06:40 UTC); S42, S52, S48 (with its
+    sub-tasks) and the main-green fix were revived at 06:42.
 - 2026-11-09: S51 merged `main` at `6e0376917` (13 conflicts resolved).
   - Gate on box A: `WERROR`, core 74, HTML UI GL 8/8, 39 MCP tests. The `pixel_art` group is 3
     tools and 2,850 characters; core 98,983 of 99,000; guide headroom 1,503.
