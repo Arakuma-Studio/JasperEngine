@@ -354,3 +354,10 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   a Terrain World's overview follows edits flushed before its refresh (T4 R52); tint-only layers draw, with a white slice per layer
   and no new uniform or variant (T3 Deviations). Upstream's terrain_painted_lights golden was redrawn with its tints.
 - Last check on 8c3522da8 running: WERROR linux, touched unit filters, the programme's 20 MCP files, web plus all seven web gates.
+- CI MCP suite on 42f36ee4a plus the CI declaration: 2208 passed, 15 failed, 5 skipped. 11 are upstream's known failures. Four new ones
+  are being decided on terrain/fix-mcp2: export determinism of T3's shipped-tiers line (ours), text atlas sampler settings, mesh undo
+  leaving pipelines alive, an audio loudness readout.
+- Last check on 8c3522da8, so far: all seven web gates pass, WERROR linux passes, core filter 1091 ran, 0 failed, 0 skipped. The editor
+  filter and the programme's MCP files were cut off by a usage limit and are rerunning.
+- origin/main moved 56 more commits (batch 4: S42 Pixel Art Mode, S52 Sorting Layers and Sprite Batch), with 41 conflicts; merging on
+  terrain/upstream-merge. Upstream still has S46, S47 and S50 in flight, so we push right after this merge is verified.
