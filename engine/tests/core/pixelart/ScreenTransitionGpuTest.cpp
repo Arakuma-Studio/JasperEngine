@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cmath>
 #include <cstdlib>
 #include <string>
@@ -70,6 +71,7 @@ namespace {
 }
 
 TEST_F(ScreenTransitionGpu, MatchesTheCpuTwinWithHardPixels){
+    int largestDifference = 0;
     for (TransitionKind kind : kGpuKinds){
         for (int pixelSize : {1, 3}){
             for (float coverage : {0.25f, 0.5f, 0.9f}){
@@ -101,14 +103,17 @@ TEST_F(ScreenTransitionGpu, MatchesTheCpuTwinWithHardPixels){
                         const int d = std::max({std::abs(first[0] - want.r), std::abs(first[1] - want.g), std::abs(first[2] - want.b)});
                         if (d > 1) differing++;
                         else if (d == 1) near++;
+                        largestDifference = std::max(largestDifference, d);
                     }
                 }
                 EXPECT_EQ(blocksBroken, 0) << what;
                 // the twin's floats may round a field differently on an edge pixel or two
                 EXPECT_LE(differing, artWidth * artHeight / 500) << what << " (" << near << " within 1)";
+                std::printf("[transition-twin] %s: %d of %d art pixels differ by 1, %d by more\n", what.c_str(), near, artWidth * artHeight, differing);
             }
         }
     }
+    std::printf("[transition-twin] largest channel difference: %d of 255\n", largestDifference);
 }
 
 TEST_F(ScreenTransitionGpu, CoveredIsAllInkAndIdleDrawsNothing){
