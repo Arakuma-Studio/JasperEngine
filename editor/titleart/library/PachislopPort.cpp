@@ -1706,12 +1706,16 @@ namespace {
             bool hasGuideBackdrop = false;
         };
 
+        const TemplateState* currentTemplate = nullptr;     // while a template's layers convert
+
         // the members every Pachislop layer has (LayerBase), onto ours
         void layerBase(const Json& L, Json& out, const Ctx& c) {
             out["name"] = L.value("name", std::string());
             // a layer or group named after a replaced text takes the replacement (§6.7.3: no old text survives)
-            for (const TextEntry& e : t.texts) {
-                if (e.source == out["name"].get<std::string>()) out["name"] = t.storeJa ? e.ja : e.en;
+            if (currentTemplate) {
+                for (const TextEntry& e : currentTemplate->texts) {
+                    if (e.source == out["name"].get<std::string>()) out["name"] = currentTemplate->storeJa ? e.ja : e.en;
+                }
             }
             for (const char* key : {"visible", "locked", "guide", "clip"}) {
                 if (L.contains(key)) out[key] = L[key];
@@ -2074,10 +2078,12 @@ namespace {
             };
             for (size_t k = 0; k < top.size(); k++) assign(top[k], "layers[" + std::to_string(k) + "]");
             Json ours = Json::array();
+            currentTemplate = &t;
             for (size_t k = 0; k < top.size(); k++) {
                 ours.push_back(convertLayer(layers[top[k]], "layers[" + std::to_string(k) + "]", children, layers, t,
                                             Ctx{"template.layers[" + std::to_string(top[k]) + "]", "template.layers[]"}));
             }
+            currentTemplate = nullptr;
             for (const TextEntry& e : t.texts) {
                 if (!e.claimed) error(c, "template_texts entry `" + e.source + "` matches no text layer");
             }
