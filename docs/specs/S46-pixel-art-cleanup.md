@@ -935,4 +935,9 @@ namespace jasperengine::editor::pixelart::cleanup {
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **S48's lints are copied, not depended on.** S48 had not landed when S46 started, and `lint()` needs its `off_palette`, `partial_alpha` and `flicker` (R26). `editor/pixelart/lint/EffectLints.{h,cpp}` are byte-identical copies of `feature/s48-pixel-fx` at `8531847fc`. S48 owns them: at merge S48's version wins, and S46's CMake block for them is dropped. `off_palette`, `partial_alpha` and `flicker` are defined once, in S48's file; S46's catalogue only calls them.
+- **Fixture paths.** The lint fixtures live in `editor/tests/fixtures/pixelart/lint/`, not `editor/tests/pixelart/fixtures/lint/` (`JASPER_EDITOR_TEST_FIXTURES` is the suite's one fixture root, `docs/testing.md`). The AC11/AC15 photo is `editor/tests/fixtures/pixelart/cleanup/photo.jpg`, not `tools/fixtures/pixel-art/photo.jpg`, because that directory is a fixture project other suites read.
+- **Guide.** The upstream MCP rules (ledger) replace §6.1's `## Pixel art` digest line: the area is reached through the existing `pixel_art` "Other areas" entry and `jasper://docs/pixel-art-cleanup`.
+- **AC2's red control.** Replacing the vote by the median does NOT make the 7.6x case mismatch: vote and median agree on every AC2 case (0 mismatches, run once on a scratch copy). The vote is pinned instead by `VotingGetsAVeryNoisySpriteBackWhereTheMedianDoesNot` (noise 20) and `TheVoteNeverPicksAColourTheCellsPixelsDidNotVoteFor` (a hand-built cell), each failing with 2 wrong pixels under the median.
+- **R14.** `alpha_cutoff` decides only 1x1 (native) cells. Larger cells use `sample.alpha_threshold` per pixel read, as R5 says. Every output pixel is 0 or 255 either way.
+- **`moved` ids.** An id with an empty index (`"x:"`) is ignored; ritmo's `Number("")` reads it as line 0.
