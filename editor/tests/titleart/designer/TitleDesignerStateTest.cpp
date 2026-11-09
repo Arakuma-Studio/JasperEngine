@@ -403,6 +403,11 @@ TEST_F(TitleDesignerStateTest, SettingsAndWorkspaceRoundTrip) {
     settings.libraryCollapsed = true;
     settings.sections["rim/mat_bevel"] = false;
     settings.previewBudgetMs = 6.0f;
+    settings.onionSkin = true;
+    settings.onionBefore = 3;
+    settings.onionOpacity = 0.5f;
+    settings.animationPreviewAs = "glyph_atlas";
+    settings.animationPreviewSounds = false;
     settings.budgetSet = true;
     settings.quality = Quality::Full;
     settings.qualitySet = true;
@@ -411,6 +416,11 @@ TEST_F(TitleDesignerStateTest, SettingsAndWorkspaceRoundTrip) {
     EXPECT_TRUE(back.libraryCollapsed);
     EXPECT_FALSE(back.sections.at("rim/mat_bevel"));
     EXPECT_EQ(back.previewBudgetMs, 6.0f);
+    EXPECT_TRUE(back.onionSkin);
+    EXPECT_EQ(back.onionBefore, 3);
+    EXPECT_FLOAT_EQ(back.onionOpacity, 0.5f);
+    EXPECT_EQ(back.animationPreviewAs, "glyph_atlas");
+    EXPECT_FALSE(back.animationPreviewSounds);
     EXPECT_EQ(back.quality, Quality::Full);
     EXPECT_EQ(TitleDesignerSettings::decode(YAML::Node()).layersWidth, 260.0f) << "a missing block takes its defaults";
 

@@ -83,6 +83,14 @@ YAML::Node TitleDesignerSettings::encode() const {
     node["library_collapsed"] = libraryCollapsed;
     if (!sections.empty()) node["sections"] = writeFlags(sections);
     if (budgetSet) node["preview_budget_ms"] = previewBudgetMs;
+    YAML::Node onion(YAML::NodeType::Map);
+    onion["enabled"] = onionSkin;
+    onion["before"] = onionBefore;
+    onion["after"] = onionAfter;
+    onion["opacity"] = onionOpacity;
+    node["onion_skin"] = onion;
+    node["animation_preview_as"] = animationPreviewAs;
+    node["animation_preview_sounds"] = animationPreviewSounds;
     if (qualitySet) node["quality"] = qualityName(quality);
     node["stats"] = stats;
     node["snap_move"] = snapMove;
@@ -102,6 +110,16 @@ TitleDesignerSettings TitleDesignerSettings::decode(const YAML::Node& node) {
     s.propertiesCollapsed = read(node, "properties_collapsed", false);
     s.libraryCollapsed = read(node, "library_collapsed", false);
     if (node && node.IsMap()) s.sections = readFlags(node["sections"]);
+    if (node && node.IsMap()) {
+        if (const YAML::Node onion = node["onion_skin"]; onion && onion.IsMap()) {
+            s.onionSkin = read(onion, "enabled", false);
+            s.onionBefore = std::clamp(read(onion, "before", 2), 0, 8);
+            s.onionAfter = std::clamp(read(onion, "after", 2), 0, 8);
+            s.onionOpacity = std::clamp(read(onion, "opacity", 0.25f), 0.0f, 1.0f);
+        }
+        s.animationPreviewAs = read<std::string>(node, "animation_preview_as", "exact");
+        s.animationPreviewSounds = read(node, "animation_preview_sounds", true);
+    }
     if (node && node.IsMap() && node["preview_budget_ms"]) {
         s.previewBudgetMs = std::clamp(read(node, "preview_budget_ms", 4.0f), 1.0f, 16.0f);
         s.budgetSet = true;

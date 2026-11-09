@@ -71,7 +71,7 @@ namespace {
 
 TitleDesignerWindow::TitleDesignerWindow(Project* project) : project(project), doc(project) {
     settings = TitleDesignerSettings::load();
-    titledesigner::registerTitleAnimationPanel();
+    titledesigner::registerTitleAnimationPanel(&settings);
     // reopened as it was: its live parts are made by the first show() (R64, R65)
     windowOpen = settings.windowOpen;
 }
@@ -509,6 +509,8 @@ ta::Json TitleDesignerWindow::state() const {
     ta::Json openPanels = ta::Json::object();
     for (const PanelDef& panel : panels()) openPanels[panel.id] = panelOpen(panel);
     out["panels"] = openPanels;
+    out["animation_panel"] = titledesigner::titleAnimationPanelState();
+    out["canvas_origin"] = ta::Json::array({xform.origin.x, xform.origin.y});
     out["background"] = v ? v->backdrop.kind : std::string("checker");
     out["device"] = v && !v->device.profile.empty() ? ta::Json{{"profile", v->device.profile}, {"orientation", v->device.orientation},
                                                            {"display_height", v->device.displayHeight}}
@@ -1133,7 +1135,7 @@ void TitleDesignerWindow::showContents() {
     float panelsHeight = 0.0f;
     for (const PanelDef& panel : panels()) {
         if (panel.region != PanelDef::Region::Bottom) continue;
-        panelsHeight += panelOpen(panel) ? std::max(180.0f * scale, avail.y * 0.38f) : panelHeader;
+        panelsHeight += panelOpen(panel) ? std::max(180.0f * scale, avail.y * 0.45f) : panelHeader;
     }
     if (panelsHeight > 0.0f) panelsHeight = std::min(panelsHeight, avail.y * 0.55f) + ImGui::GetStyle().ItemSpacing.y;
     const float mainHeight = std::max(120.0f, avail.y - libraryHeight - statusHeight - librarySplitter - panelsHeight);

@@ -646,6 +646,8 @@ void getTitleTool(const CallPtr& call) {
         out["designer"] = {{"selection", state.value("selection", Json::array())},
                            {"staged", state.value("staged", false)},
                            {"preview_active", state.value("preview_active", false)},
+                           {"animation_panel", state.value("animation_panel", Json::object())},
+                           {"canvas_origin", state.value("canvas_origin", Json::array())},
                            {"view", {{"zoom", state.value("zoom", Json(1))}, {"background", state.value("background", Json("checker"))},
                                      {"device", state.value("device", Json())}}}};
     }

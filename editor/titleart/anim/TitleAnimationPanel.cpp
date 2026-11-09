@@ -26,6 +26,7 @@
 #include "titleart/anim/TitleAnimIO.h"
 #include "titleart/anim/TitleAnimPlan.h"
 #include "titleart/designer/TitleDesignerHooks.h"
+#include "titleart/designer/TitleDesignerPrefs.h"
 #include "titleart/designer/TitleDesignerState.h"
 #include "widget/CurveEditor.h"
 
@@ -100,12 +101,19 @@ namespace {
         Drag drag = Drag::None;
         ImVec2 dragStart;
         double dragTimeStart = 0.0, boxPivot = 0.0, boxSide = 0.0;
+        // the animation as the drag found it: the document shows the staged batch of the last
+        // frame, and a stage replaces, so each frame's ops are computed from the drag's start
+        ta::TitleAnimation dragFrom;
         bool boxMaxSide = false;
         bool focused = false;
+        std::string hoveredPreset;
+        // where the timeline is on screen this frame (scripted input finds keys with it)
+        struct { float x, rulerY, rulerH, rowsY, rowH; } geometry{0, 0, 0, 0, 0};
 
         // poses: the most recent at the back
         std::list<std::pair<uint64_t, std::unique_ptr<PoseTexture>>> poses;
         TitleDesignerState* state = nullptr;
+        TitleDesignerSettings* settings = nullptr;
 
         // what the marker lane played this pass
         double soundLast = 0.0;
@@ -153,6 +161,8 @@ namespace {
                 p.animation.clear();
                 p.time = 0.0;
                 p.previewing = false;
+                p.playing = false;
+                p.record = false;       // a new document never starts by keying its edits
                 p.keySelection.clear();
             }
             p.document = state.document().get();
@@ -312,10 +322,13 @@ namespace {
             // R47: ghosts only from poses already cached
             const ta::TitleAnimation* a = current(p);
             const double frame = 1.0 / fpsOf(p, a ? *a : ta::TitleAnimation());
-            for (int k : {-2, -1, 1, 2}){
+            const int before = p.settings ? p.settings->onionBefore : 2, after = p.settings ? p.settings->onionAfter : 2;
+            const int alpha = (int)std::lround(255.0f * (p.settings ? p.settings->onionOpacity : 0.25f));
+            for (int k = -before; k <= after; k++){
+                if (k == 0) continue;
                 const uint64_t key = poseKey(p, p.time + k * frame, p.previewAs.c_str(), scale);
                 for (const auto& entry : p.poses)
-                    if (entry.first == key) drawPoseImage(dl, *entry.second, w, h, xform, k < 0 ? IM_COL32(255, 150, 150, 64) : IM_COL32(150, 255, 150, 64));
+                    if (entry.first == key) drawPoseImage(dl, *entry.second, w, h, xform, k < 0 ? IM_COL32(255, 150, 150, alpha) : IM_COL32(150, 255, 150, alpha));
             }
         }
         dl->PopClipRect();
@@ -496,13 +509,25 @@ namespace {
             const size_t width = t.keys.front().key.value.size();
             for (size_t c = 0; c < width; c++){
                 Curve curve;
-                for (const ta::TitleKey& k : t.keys){
+                for (size_t i = 0; i < t.keys.size(); i++){
+                    const ta::TitleKey& k = t.keys[i];
                     CurveKey key;
                     key.time = k.key.time;
                     key.value = k.key.value[c];
                     if (k.key.hasTangents()){
                         key.inTangent = k.key.inTangent[c];
                         key.outTangent = k.key.outTangent[c];
+                    }else{
+                        // a linear key's segments are straight: a flat Hermite tangent would draw
+                        // (and, once edited, play) an S curve
+                        auto slope = [&](size_t a, size_t b){
+                            const float dt = t.keys[b].key.time - t.keys[a].key.time;
+                            return dt > 1e-6f ? (t.keys[b].key.value[c] - t.keys[a].key.value[c]) / dt : 0.0f;
+                        };
+                        if (i > 0) key.inTangent = slope(i - 1, i);
+                        if (i + 1 < t.keys.size()) key.outTangent = slope(i, i + 1);
+                        if (i == 0) key.inTangent = key.outTangent;
+                        if (i + 1 == t.keys.size()) key.outTangent = key.inTangent;
                     }
                     curve.keys.push_back(key);
                 }
@@ -634,8 +659,11 @@ namespace {
         ImGui::BeginChild("##titleanimrows", ImVec2(size.x, std::max(rowH, size.y - rulerH - markersH)), false, ImGuiWindowFlags_NoScrollbar);
         ImDrawList* rows = ImGui::GetWindowDrawList();
         const ImVec2 rowsOrigin = ImGui::GetCursorScreenPos();
-        ImGui::InvisibleButton("##timelinehit", ImVec2(size.x, std::max(rowH * (float)a.tracks.size(), rowH)));
-        const bool timelineHovered = ImGui::IsItemHovered() && mouse.x > timelineX;
+        // the timeline's own item: over the track column it would take the row buttons' hover
+        ImGui::SetCursorScreenPos(ImVec2(timelineX, rowsOrigin.y));
+        ImGui::InvisibleButton("##timelinehit", ImVec2(timelineW, std::max(rowH * (float)a.tracks.size(), rowH)));
+        const bool timelineHovered = ImGui::IsItemHovered();
+        p.geometry = {timelineX, origin.y + markersH, rulerH, rowsOrigin.y, rowH};
         int contextTrack = -1;
         // key hits, for picking and the track menus
         std::vector<std::pair<ImVec2, TitleKeyRef>> keyPoints;
@@ -701,8 +729,6 @@ namespace {
                 }
             }
         }
-        ImGui::SetCursorScreenPos(ImVec2(origin.x, rowsOrigin.y + rowH * (float)a.tracks.size()));
-        ImGui::Dummy(ImVec2(1, 1));
         // picking and key drags
         TitleKeyRef hit;
         double hitDist = 8.0 * scale;
@@ -736,6 +762,7 @@ namespace {
                 }
                 p.drag = Panel::Drag::Keys;
                 p.dragStart = mouse;
+                p.dragFrom = a;
                 p.dragTimeStart = a.tracks[(size_t)hit.track].keys[(size_t)hit.key].key.time;
             }else{
                 // an empty press starts a box; a box edge on the selection scales
@@ -766,7 +793,7 @@ namespace {
             const int snap = io.KeyAlt ? 0 : fps;
             if (std::fabs(mouse.x - p.dragStart.x) > 2.0f){
                 if (!state.gestureActive()) state.beginGesture("Move Keys");
-                applyDragOps(p, state, titleMoveKeysOps(a, p.keySelection, shift, snap));
+                applyDragOps(p, state, titleMoveKeysOps(p.dragFrom, p.keySelection, shift, snap));
             }
         }else if (p.drag == Panel::Drag::Box && ImGui::IsMouseDown(0)){
             const ImVec2 a0(std::min(p.dragStart.x, mouse.x), std::min(p.dragStart.y, mouse.y));
@@ -777,7 +804,7 @@ namespace {
             const double t = timeAt(p, mouse.x, timelineX);
             const double factor = (t - p.boxPivot) / std::max(1e-4, p.boxSide - p.boxPivot);
             if (!state.gestureActive()) state.beginGesture("Scale Keys");
-            applyDragOps(p, state, titleScaleKeysOps(a, p.keySelection, p.boxPivot, std::max(0.01, factor), io.KeyAlt ? 0 : fps));
+            applyDragOps(p, state, titleScaleKeysOps(p.dragFrom, p.keySelection, p.boxPivot, std::max(0.01, factor), io.KeyAlt ? 0 : fps));
         }
         if (p.drag != Panel::Drag::None && ImGui::IsMouseReleased(0)){
             if (p.drag == Panel::Drag::Box){
@@ -787,7 +814,7 @@ namespace {
                     if (k.first.x >= x0 && k.first.x <= x1 && k.first.y >= y0 && k.first.y <= y1 && !isSelected(k.second)) p.keySelection.push_back(k.second);
             }
             if (state.gestureActive()){
-                const ta::TitleAnimation before = a;
+                const ta::TitleAnimation before = p.dragFrom;
                 std::string error;
                 if (!state.endGesture(&error)) p.status = error;
                 refresh(p, state);
@@ -814,6 +841,7 @@ namespace {
                     p.boxPivot = t0;
                     p.boxSide = t1;
                     p.dragStart = mouse;
+                    p.dragFrom = a;
                 }
             }else if (timelineHovered && std::fabs(mouse.x - bx0) < 5.0f){
                 ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
@@ -822,6 +850,7 @@ namespace {
                     p.boxPivot = t1;
                     p.boxSide = t0;
                     p.dragStart = mouse;
+                    p.dragFrom = a;
                 }
             }
         }
@@ -882,7 +911,10 @@ namespace {
                 if (ImGui::IsItemHovered()){
                     hovering = true;
                     if (!preset->description.empty()) ImGui::SetTooltip("%s", preset->description.c_str());
-                    // a hover previews the preset's ops on the document without a step (R41)
+                    // a hover previews the preset's ops on the document without a step (R41), once
+                    // per item: applying them every frame would re-render every frame
+                    if (p.hoveredPreset == preset->id) continue;
+                    p.hoveredPreset = preset->id;
                     PreviewItem item;
                     item.kind = PreviewItem::Kind::Effect;
                     item.id = preset->id;
@@ -897,7 +929,10 @@ namespace {
             }
             ImGui::EndMenu();
         }
-        if (!hovering) state.clearPreview();
+        if (!hovering && !p.hoveredPreset.empty()){
+            state.clearPreview();
+            p.hoveredPreset.clear();
+        }
     }
 
     void newAnimation(Panel& p, TitleDesignerState& state){
@@ -957,6 +992,15 @@ namespace {
         }
     }
 
+    // §6.9: what the panel's toggles chose, written through the window's settings
+    void savePreferences(Panel& p){
+        if (!p.settings) return;
+        p.settings->onionSkin = p.onion;
+        p.settings->animationPreviewAs = p.previewAs;
+        p.settings->animationPreviewSounds = !p.muted;
+        p.settings->save();
+    }
+
     // the next item beside the last, or on a new row when `width` does not fit (a narrow window)
     void flow(float width){
         ImGui::SameLine();
@@ -1007,9 +1051,21 @@ namespace {
         if (ImGui::BeginPopup("##presets")){
             drawPresetMenu(p, state);
             ImGui::EndPopup();
+        }else if (!p.hoveredPreset.empty()){
+            state.clearPreview();
+            p.hoveredPreset.clear();
         }
         ImGui::SameLine();
-        ImGui::Checkbox("Onion", &p.onion);
+        if (ImGui::Checkbox("Onion", &p.onion)) savePreferences(p);
+        if (ImGui::BeginPopupContextItem("##onionoptions")){
+            if (p.settings){
+                bool changed = ImGui::DragInt("Before", &p.settings->onionBefore, 0.1f, 0, 8);
+                changed = ImGui::DragInt("After", &p.settings->onionAfter, 0.1f, 0, 8) || changed;
+                changed = ImGui::SliderFloat("Opacity", &p.settings->onionOpacity, 0.05f, 1.0f, "%.2f") || changed;
+                if (changed) savePreferences(p);
+            }
+            ImGui::EndPopup();
+        }
         ImGui::SameLine();
         ImGui::Checkbox("Curves", &p.curves);
         flow(150.0f);
@@ -1018,9 +1074,15 @@ namespace {
         static const char* const ids[] = {"exact", "baked", "realtime", "glyph_atlas"};
         int current = 0;
         for (int i = 0; i < 4; i++) if (p.previewAs == ids[i]) current = i;
-        if (ImGui::Combo("##previewas", &current, modes, 4)) p.previewAs = ids[current];
+        if (ImGui::Combo("##previewas", &current, modes, 4)){
+            p.previewAs = ids[current];
+            savePreferences(p);
+        }
         ImGui::SameLine();
-        if (ImGui::SmallButton(p.muted ? ICON_FA_VOLUME_XMARK "##mute" : ICON_FA_VOLUME_HIGH "##mute")) p.muted = !p.muted;
+        if (ImGui::SmallButton(p.muted ? ICON_FA_VOLUME_XMARK "##mute" : ICON_FA_VOLUME_HIGH "##mute")){
+            p.muted = !p.muted;
+            savePreferences(p);
+        }
         if (a){
             // the cost badge: colour by the mode's verdict (R44); a click runs the animation checks
             const TitleArtRenderMode mode = p.previewAs == "baked" ? TitleArtRenderMode::BAKED : p.previewAs == "glyph_atlas" ? TitleArtRenderMode::GLYPH_ATLAS : TitleArtRenderMode::REALTIME;
@@ -1137,17 +1199,31 @@ namespace {
     tt::Json recordRouter(const tt::Json& ops){
         Panel& p = panel();
         if (!p.record || !p.state || !p.state->isOpen()) return ops;
-        const ta::TitleAnimation* a = current(p);
+        // the committed document: a gesture stages from it each frame, and the track the last
+        // stage made must not look like one that was already there
+        const tt::TitleArtDoc& doc = p.state->committed();
+        const ta::TitleAnimationSet set = tt::readAnimationSet(doc);
+        const ta::TitleAnimation* a = set.find(p.animation);
         if (!a) return ops;
-        TitleRecordResult out = titleRecordRewrite(p.state->shown(), *a, p.time, ops);
-        if (!out.stepName.empty()) p.state->setGestureName(out.stepName);
+        TitleRecordResult out = titleRecordRewrite(doc, *a, p.time, ops);
+        if (!out.stepName.empty()){
+            if (p.state->gestureActive()) p.state->setGestureName(out.stepName);
+            else p.state->setRoutedStepName(out.stepName);
+        }
         if (!out.notKeyed.empty()) p.status = "Record: changed the document (not animatable): " + out.notKeyed.front();
         return out.ops;
     }
 
 }
 
-void jasperengine::editor::titledesigner::registerTitleAnimationPanel(){
+void jasperengine::editor::titledesigner::registerTitleAnimationPanel(TitleDesignerSettings* settings){
+    Panel& shared = panel();
+    shared.settings = settings;
+    if (settings){
+        shared.onion = settings->onionSkin;
+        shared.muted = !settings->animationPreviewSounds;
+        shared.previewAs = settings->animationPreviewAs;
+    }
     registerTitleAnimOps();
     registerTitleAnimPresetOp();
     registerTitleAnimChecks();
@@ -1209,6 +1285,27 @@ bool jasperengine::editor::titledesigner::previewTitleAnimation(const std::strin
     p.playing = false;
     p.previewing = true;
     return true;
+}
+
+tt::Json jasperengine::editor::titledesigner::titleAnimationPanelState(){
+    Panel& p = panel();
+    tt::Json out = tt::Json::object();
+    out["animation"] = p.animation;
+    out["time"] = p.time;
+    out["playing"] = p.playing;
+    out["previewing"] = p.previewing;
+    out["record"] = p.record;
+    out["curves"] = p.curves;
+    out["selected_keys"] = p.keySelection.size();
+    out["preview_active"] = p.state && p.state->previewActive();
+    out["status"] = p.status;
+    out["timeline"] = {{"x", p.geometry.x}, {"ruler_y", p.geometry.rulerY}, {"ruler_h", p.geometry.rulerH}, {"rows_y", p.geometry.rowsY}, {"row_h", p.geometry.rowH},
+                       {"view_start", p.viewStart}, {"seconds_per_pixel", p.secondsPerPixel}};
+    if (p.curves){
+        const auto& v = p.curveEditor.getView();
+        out["curve_view"] = {{"t0", v.t0}, {"t1", v.t1}, {"v0", v.v0}, {"v1", v.v1}, {"x0", v.x0}, {"y0", v.y0}, {"x1", v.x1}, {"y1", v.y1}};
+    }
+    return out;
 }
 
 bool jasperengine::editor::titledesigner::titleAnimationPanelFocused(){

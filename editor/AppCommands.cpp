@@ -602,8 +602,9 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (ui::ColorPickerWindow::get().isFocused()) state.panels.push_back(ShortcutContext::ColorPicker);
     if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
     if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
-    if (titleDesignerWindow->isFocused()) state.panels.push_back(ShortcutContext::TitleDesigner);
+    // the Animation panel's keys are its own while it has the focus (Delete deletes keys, not layers)
     if (titledesigner::titleAnimationPanelFocused()) state.panels.push_back(ShortcutContext::TitleAnimation);
+    else if (titleDesignerWindow->isFocused()) state.panels.push_back(ShortcutContext::TitleDesigner);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
     return state;
 }
