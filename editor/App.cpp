@@ -5885,7 +5885,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      Palette Quantize (BLIT 'Pal' 19, includes/bayer.glsl).
     // v60: S49's pixel particles: library:particles' Pixel render mode (PARTICLES 'Pxl' 12) and
     //      Analytic simulation (PARTICLES 'Ana' 13, particles_analytic_vs.glsl, its uniform block).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v60";
+    // v61: S52's pixel-art batching (after S49's v60): library:sprite @batchable
+    //      (instance=fx.x/fx.y read through includes/sprite_fx.glsl, a_frameRect), MESH 'Sfx' 46,
+    //      'Sfr' 47, 'Spv' 48, DEPTH 'Spv' 20, the instanced snap's per-instance mode
+    //      (pixelSnapInstanceMode).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v61";
 }
 
 void editor::App::pushTabNotificationStyle(){

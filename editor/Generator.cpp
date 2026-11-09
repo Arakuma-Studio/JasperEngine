@@ -2711,6 +2711,22 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         mainContent += "    TagManager::setLayerName(" + std::to_string(layer) + ", " + Factory::formatString(tagsAndLayers.layerNames[layer]) + ");\n";
     }
 
+    // Sorting Layers and the Transparency Sort settings (S52 R40), what differs from the defaults
+    if (tagsAndLayers.sortingLayers.size() > 1) {
+        mainContent += "    SortingLayers::setLayers({";
+        for (size_t i = 0; i < tagsAndLayers.sortingLayers.size(); i++) {
+            if (i > 0) mainContent += ", ";
+            mainContent += "{" + std::to_string(tagsAndLayers.sortingLayers[i].id) + ", " + Factory::formatString(tagsAndLayers.sortingLayers[i].name) + "}";
+        }
+        mainContent += "});\n";
+    }
+    if (tagsAndLayers.transparencySortMode == TransparencySortMode::CUSTOM_AXIS)
+        mainContent += "    SortingLayers::setTransparencySortMode(TransparencySortMode::CUSTOM_AXIS);\n";
+    if (tagsAndLayers.transparencySortAxis != Vector3(0.0f, 1.0f, 0.0f)) {
+        mainContent += "    SortingLayers::setTransparencySortAxis(Vector3(" + Factory::formatFloat(tagsAndLayers.transparencySortAxis.x) + ", " +
+                       Factory::formatFloat(tagsAndLayers.transparencySortAxis.y) + ", " + Factory::formatFloat(tagsAndLayers.transparencySortAxis.z) + "));\n";
+    }
+
     // Layer Collision Matrices: only the rows that do not collide with every layer
     auto emitLayerCollisionMatrix = [&mainContent](const char* physicsClass, const LayerCollisionRows& rows) {
         for (int layer = 0; layer < MAX_LAYERS; layer++) {

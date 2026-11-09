@@ -221,6 +221,12 @@ namespace jasperengine::editor {
         std::vector<std::string> m_tags;
         std::vector<std::string> m_layerNames;
         char m_newTagBuffer[128] = {0};
+        // Sorting Layers (S52 R30): applied at once, each edit one SortingLayersCmd
+        char m_newSortingLayerBuffer[128] = {0};
+        int32_t m_sortingLayerRenaming = -1;          // the layer whose name field is being edited
+        char m_sortingLayerRenameBuffer[128] = {0};
+        int32_t m_sortingLayerRemoving = -1;           // a used layer whose removal waits for confirmation
+        size_t m_sortingLayerRemovingUses = 0;
 
         // Layer Collision Matrices being edited (Physics and Physics 2D)
         LayerCollisionRows m_layerCollision3D = allLayersCollide();
@@ -312,6 +318,9 @@ namespace jasperengine::editor {
         // Debug: the on-device console and stats overlay, the log
         void drawDebugSettings();
         void drawTagsAndLayersSettings();
+        void drawSortingLayersSettings();
+        // the renderers and Sorting Groups of the open scenes on a layer
+        size_t countSortingLayerUses(int32_t id) const;
         // Why the New Tag Name field cannot be added ("" when it can)
         std::string newTagError() const;
         // Layer that already has the name (built-in or user, other than 'layer'), -1 when none

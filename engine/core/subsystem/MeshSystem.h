@@ -247,6 +247,11 @@ namespace jasperengine{
         // settings and the vertex attributes. The editor reads the shader variants of a
         // generated mesh off them, without generating it.
         static void prepareSpriteMesh(MeshComponent& mesh);
+        // S52: a sprite's pixel-art batching inputs (MeshComponent::batchAttributes) its shader
+        // (the scene's default when the mesh names none) reads, and their neutral values after the
+        // geometry the builders made. The export's shader list takes the same (ShaderVariantCollector)
+        static uint8_t spriteBatchAttributes(const MeshComponent& mesh, bool pixelSnap, const std::string& sceneMeshShader);
+        static void fillSpriteBatchAttributes(MeshComponent& mesh);
         // How many joints the skinned vertices name: their largest bone id plus one (0 without
         // skinned vertices). A palette shorter than that is read past its end
         static size_t skinJointCount(MeshComponent& mesh);

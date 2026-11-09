@@ -328,6 +328,9 @@ JASPERENGINE_INIT void init() {
     // the Device Tier the GPU gets applies from here on (spec S56)
     Device::configure(game.device);
     if (!game.tags.empty()) TagManager::setTags(game.tags);
+    if (!game.sortingLayers.empty()) SortingLayers::setLayers(game.sortingLayers);
+    SortingLayers::setTransparencySortMode(game.transparencySortMode);
+    SortingLayers::setTransparencySortAxis(game.transparencySortAxis);
     for (size_t layer = 0; layer < game.layerNames.size(); layer++)
         if (!game.layerNames[layer].empty()) TagManager::setLayerName(static_cast<int>(layer), game.layerNames[layer]);
     for (int layer = 0; layer < MAX_LAYERS; layer++) {

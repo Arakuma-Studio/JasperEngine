@@ -1227,6 +1227,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.staticShadowCaster = true;\n";
     code << ind << "mesh.lodEnabled = " << formatBool(mesh.lodEnabled) << ";\n";
     code << ind << "mesh.lodBias = " << formatFloat(mesh.lodBias) << ";\n";
+    if (mesh.sortingLayer != 0) code << ind << "mesh.sortingLayer = " << mesh.sortingLayer << ";\n";
+    if (mesh.sortingOrder != 0) code << ind << "mesh.sortingOrder = " << mesh.sortingOrder << ";\n";
     if (!mesh.allowGpuInstancing)
         code << ind << "mesh.allowGpuInstancing = false;\n";
     // the fade settings only away from their defaults (spec S54 R9)
@@ -1664,6 +1666,8 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
         code << ind << "sprite.pixelsPerUnit = " << formatFloat(sprite.pixelsPerUnit) << ";\n";
     if (sprite.pixelRotation != PixelRotation::CAMERA)
         code << ind << "sprite.pixelRotation = " << (sprite.pixelRotation == PixelRotation::STEPS_90 ? "PixelRotation::STEPS_90" : "PixelRotation::ON_GRID") << ";\n";
+    if (sprite.spriteSortPoint != SpriteSortPoint::CENTER)
+        code << ind << "sprite.spriteSortPoint = SpriteSortPoint::PIVOT;\n";
     // as authored, in pixels or normalised: the game normalises a frame when it shows it
     // (MeshSystem::setSpriteFrameRect), once its texture's size is known; the list sized first
     // (S45 R8: no fixed capacity)
@@ -3631,6 +3635,8 @@ std::string editor::Factory::createParticleSystemComponent(int indentSpaces, Ent
     if (p.playOnAwake != defaults.playOnAwake) code << ind << "particles.playOnAwake = " << formatBool(p.playOnAwake) << ";\n";
     if (p.seed != defaults.seed) code << ind << "particles.seed = " << formatUInt(p.seed) << ";\n";
     if (p.playbackSpeed != defaults.playbackSpeed) code << ind << "particles.playbackSpeed = " << formatFloat(p.playbackSpeed) << ";\n";
+    if (p.sortingLayer != 0) code << ind << "particles.sortingLayer = " << p.sortingLayer << ";\n";
+    if (p.sortingOrder != 0) code << ind << "particles.sortingOrder = " << p.sortingOrder << ";\n";
     if (p.useUnscaledTime != defaults.useUnscaledTime) code << ind << "particles.useUnscaledTime = " << formatBool(p.useUnscaledTime) << ";\n";
     for (const ParticleExposedValue& v : p.exposedValues)
         code << ind << "particles.exposedValues.push_back({" << formatString(v.name) << ", " << formatVector4(v.value) << "});\n";
@@ -3798,6 +3804,8 @@ std::string editor::Factory::createPointsComponent(int indentSpaces, EntityRegis
 
     code << ind << "PointsComponent pointscomp;\n";
     code << ind << "pointscomp.maxPoints = " << formatUInt(p.maxPoints) << ";\n";
+    if (p.sortingLayer != 0) code << ind << "pointscomp.sortingLayer = " << p.sortingLayer << ";\n";
+    if (p.sortingOrder != 0) code << ind << "pointscomp.sortingOrder = " << p.sortingOrder << ";\n";
     code << ind << "pointscomp.transparent = " << formatBool(p.transparent) << ";\n";
     code << ind << "pointscomp.autoTransparency = " << formatBool(p.autoTransparency) << ";\n";
     if (!p.customShader.empty())
@@ -3854,6 +3862,8 @@ std::string editor::Factory::createLineRendererComponent(int indentSpaces, Entit
     unsigned int maxLines = std::max(l.maxLines, static_cast<unsigned int>(l.lines.size()));
     code << ind << "LineRendererComponent linescomp;\n";
     code << ind << "linescomp.maxLines = " << formatUInt(maxLines) << ";\n";
+    if (l.sortingLayer != 0) code << ind << "linescomp.sortingLayer = " << l.sortingLayer << ";\n";
+    if (l.sortingOrder != 0) code << ind << "linescomp.sortingOrder = " << l.sortingOrder << ";\n";
     if (!l.customShader.empty())
         code << ind << "linescomp.customShader = " << formatString(l.customShader) << ";\n";
     if (!l.shaderUniforms.empty())
@@ -3909,6 +3919,8 @@ std::string editor::Factory::createTrailRendererComponent(int indentSpaces, Enti
     if (t.minVertexDistance != defaults.minVertexDistance) code << ind << "trailcomp.minVertexDistance = " << formatFloat(t.minVertexDistance) << ";\n";
     if (t.emitting != defaults.emitting) code << ind << "trailcomp.emitting = " << (t.emitting ? "true" : "false") << ";\n";
     if (t.autodestruct != defaults.autodestruct) code << ind << "trailcomp.autodestruct = " << (t.autodestruct ? "true" : "false") << ";\n";
+    if (t.sortingLayer != 0) code << ind << "trailcomp.sortingLayer = " << t.sortingLayer << ";\n";
+    if (t.sortingOrder != 0) code << ind << "trailcomp.sortingOrder = " << t.sortingOrder << ";\n";
     formatRibbonFields(code, ind, "trailcomp", t, defaults);
     if (!t.customShader.empty())
         code << ind << "trailcomp.customShader = " << formatString(t.customShader.path) << ";\n";

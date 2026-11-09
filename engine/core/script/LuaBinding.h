@@ -98,6 +98,8 @@ namespace jasperengine {
         static void registerNavigationComponentClasses(lua_State *L);
         static void registerSplineClasses(lua_State *L);
         static void registerPixelArtClasses(lua_State *L);
+        // S52: SortingLayer, the renderers' sorting fields, SortingGroup, SpriteBatch (SortingClassesLua.cpp)
+        static void registerSortingClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);

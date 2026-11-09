@@ -303,6 +303,12 @@ Matrix4 RenderSystem::pixelArtModel(Entity entity, const Matrix4& model, const P
     return rotation == PixelRotation::STEPS_90 ? pixelart::roundRotation90(model) : model;
 }
 
+Matrix4 RenderSystem::batchModel(Entity entity, const Matrix4& model) const{
+    if (pixelPerfectDrives.empty() || !batchPass.camera)
+        return model;
+    return pixelArtModel(entity, model, findPixelPerfectDrive(*batchPass.camera));
+}
+
 void RenderSystem::fillPassPixelSnap(frame_t& frame, const CameraComponent& camera){
     passPixelSnap = false;
     passPixelPerfect = nullptr;
@@ -355,6 +361,9 @@ void RenderSystem::fillPassPixelSnap(frame_t& frame, const CameraComponent& came
 float RenderSystem::pixelSnapDrawMode(const Matrix4& mvp) const{
     if (!passPixelSnap)
         return 0.0f;
+    // a batch draws with its head's mode (its MVP is the origin cell's, always on the grid)
+    if (passSnapModeOverride >= 0.0f)
+        return passSnapModeOverride;
     return pixelart::isGridAligned(mvp, passSnapGrid) ? 1.0f : 2.0f;
 }
 

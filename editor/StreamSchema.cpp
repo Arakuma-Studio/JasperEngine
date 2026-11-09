@@ -229,6 +229,11 @@ const EnumTable<AttributeType>& StreamSchema::attributeType() {
         {AttributeType::LINETANGENTIN, "linetangentin"},
         {AttributeType::LINETANGENTOUT, "linetangentout"},
         {AttributeType::LINEPARAMS, "lineparams"},
+        {AttributeType::SPRITEFX, "spritefx"},
+        {AttributeType::FRAMERECT, "framerect"},
+        {AttributeType::SNAPPIVOT, "snappivot"},
+        {AttributeType::INSTANCESPRITEFX, "instancespritefx"},
+        {AttributeType::INSTANCESNAPPIVOT, "instancesnappivot"},
     }, AttributeType::POSITION);
     return table;
 }

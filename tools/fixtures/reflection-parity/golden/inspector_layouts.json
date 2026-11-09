@@ -1783,6 +1783,22 @@
   {
    "component": "mesh",
    "group": "",
+   "kind": "Enum",
+   "label": "Sorting Layer",
+   "path": "sortingLayer",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Int",
+   "label": "Order in Layer",
+   "path": "sortingOrder",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
    "kind": "Bool",
    "label": "Render in Probes",
    "path": "renderInReflectionProbes",
@@ -4264,6 +4280,22 @@
    "component": "linerenderer",
    "group": "",
    "kind": "Enum",
+   "label": "Sorting Layer",
+   "path": "sortingLayer",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Int",
+   "label": "Order in Layer",
+   "path": "sortingOrder",
+   "read_only": false
+  },
+  {
+   "component": "linerenderer",
+   "group": "",
+   "kind": "Enum",
    "label": "Blend Mode",
    "path": "blendMode",
    "read_only": false
@@ -4547,6 +4579,22 @@
   {
    "component": "mesh",
    "group": "",
+   "kind": "Enum",
+   "label": "Sorting Layer",
+   "path": "sortingLayer",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Int",
+   "label": "Order in Layer",
+   "path": "sortingOrder",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
    "kind": "Bool",
    "label": "Render in Probes",
    "path": "renderInReflectionProbes",
@@ -4744,6 +4792,22 @@
    "kind": "Bool",
    "label": "Allow GPU Instancing",
    "path": "allowGpuInstancing",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Sorting Layer",
+   "path": "sortingLayer",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Int",
+   "label": "Order in Layer",
+   "path": "sortingOrder",
    "read_only": false
   },
   {
@@ -5247,6 +5311,22 @@
    "label": "Unscaled Time",
    "path": "useUnscaledTime",
    "read_only": false
+  },
+  {
+   "component": "particlesystem",
+   "group": "",
+   "kind": "Enum",
+   "label": "Sorting Layer",
+   "path": "sortingLayer",
+   "read_only": false
+  },
+  {
+   "component": "particlesystem",
+   "group": "",
+   "kind": "Int",
+   "label": "Order in Layer",
+   "path": "sortingOrder",
+   "read_only": false
   }
  ],
  "point_light#0": [
@@ -5418,6 +5498,22 @@
    "kind": "UInt",
    "label": "Max Points",
    "path": "maxPoints",
+   "read_only": false
+  },
+  {
+   "component": "points",
+   "group": "",
+   "kind": "Enum",
+   "label": "Sorting Layer",
+   "path": "sortingLayer",
+   "read_only": false
+  },
+  {
+   "component": "points",
+   "group": "",
+   "kind": "Int",
+   "label": "Order in Layer",
+   "path": "sortingOrder",
    "read_only": false
   },
   {
@@ -7321,6 +7417,22 @@
   {
    "component": "mesh",
    "group": "",
+   "kind": "Enum",
+   "label": "Sorting Layer",
+   "path": "sortingLayer",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Int",
+   "label": "Order in Layer",
+   "path": "sortingOrder",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
    "kind": "Bool",
    "label": "Render in Probes",
    "path": "renderInReflectionProbes",
@@ -7444,6 +7556,14 @@
    "kind": "Enum",
    "label": "Pixel Rotation",
    "path": "pixelRotation",
+   "read_only": false
+  },
+  {
+   "component": "sprite",
+   "group": "",
+   "kind": "Enum",
+   "label": "Sprite Sort Point",
+   "path": "spriteSortPoint",
    "read_only": false
   }
  ],
@@ -7656,6 +7776,22 @@
    "kind": "Bool",
    "label": "Allow GPU Instancing",
    "path": "allowGpuInstancing",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Sorting Layer",
+   "path": "sortingLayer",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Int",
+   "label": "Order in Layer",
+   "path": "sortingOrder",
    "read_only": false
   },
   {
@@ -8156,6 +8292,22 @@
    "kind": "Bool",
    "label": "Allow GPU Instancing",
    "path": "allowGpuInstancing",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Enum",
+   "label": "Sorting Layer",
+   "path": "sortingLayer",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Int",
+   "label": "Order in Layer",
+   "path": "sortingOrder",
    "read_only": false
   },
   {

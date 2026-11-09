@@ -359,6 +359,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 7, 0, 0, 1]
+  SortingGroupComponent:
+    position: [95, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 95, 0, 0, 1]
   SplineAnimateComponent:
     position: [76, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -384,6 +389,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 41, 0, 0, 1]
+  SpriteBatchComponent:
+    position: [96, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 96, 0, 0, 1]
   SpriteComponent:
     position: [42, 0, 0]
     rotation: [1, 0, 0, 0]

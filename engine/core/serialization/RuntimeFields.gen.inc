@@ -899,6 +899,8 @@ const FieldEntry kBody_MeshComponent_fields[] = {
     JE_RF(MeshComponent, lodEnabled, 0xe14c9cceu, Bool),
     JE_RF(MeshComponent, lodBias, 0xa7883134u, Float),
     JE_RF(MeshComponent, allowGpuInstancing, 0x6e2e5003u, Bool),
+    JE_RF(MeshComponent, sortingLayer, 0x3b86e957u, Int),
+    JE_RF(MeshComponent, sortingOrder, 0x0084eb92u, Int),
     JE_RF(MeshComponent, lodFadeMode, 0xb8aa480cu, Enum),
     JE_RF(MeshComponent, lodAnimateCrossFading, 0x34cb1489u, Bool),
     JE_RF(MeshComponent, lodFadeTransitionWidth, 0x1f4ff698u, Float),
@@ -919,6 +921,8 @@ const StructTable kBody_MeshComponent{"mesh", kBody_MeshComponent_fields, std::s
 const FieldEntry kBody_LineRendererComponent_fields[] = {
     JE_RF(LineRendererComponent, enabled, 0x8c1a6dbfu, Bool),
     JE_RF(LineRendererComponent, maxLines, 0xa25a462fu, UInt),
+    JE_RF(LineRendererComponent, sortingLayer, 0x7822d743u, Int),
+    JE_RF(LineRendererComponent, sortingOrder, 0x2fcb6d86u, Int),
     JE_RF(LineRendererComponent, customShader, 0x9c75b4dcu, AssetPath),
     JE_RF(LineRendererComponent, shaderUniforms, 0x8c21c9e2u, Custom),
     JE_RF(LineRendererComponent, shaderTextures, 0xa7f787fbu, Custom),
@@ -1006,6 +1010,8 @@ const StructTable kBody_TerrainComponent{"terrain", kBody_TerrainComponent_field
 const FieldEntry kBody_PointsComponent_fields[] = {
     JE_RF(PointsComponent, enabled, 0xd90c5469u, Bool),
     JE_RF(PointsComponent, maxPoints, 0xa447d921u, UInt),
+    JE_RF(PointsComponent, sortingLayer, 0x1cf0c161u, Int),
+    JE_RF(PointsComponent, sortingOrder, 0x805f5eacu, Int),
     JE_RF(PointsComponent, transparent, 0x0f08ab2au, Bool),
     JE_RF(PointsComponent, autoTransparency, 0x50eddcb9u, Bool),
     JE_RF(PointsComponent, texture, 0x2b8df5f3u, Texture),
@@ -1525,6 +1531,8 @@ const FieldEntry kBody_ParticleSystemComponent_fields[] = {
     JE_RF(ParticleSystemComponent, playOnAwake, 0x3067463eu, Bool),
     JE_RF(ParticleSystemComponent, seed, 0x75e55be5u, UInt),
     JE_RF(ParticleSystemComponent, playbackSpeed, 0x87a6362cu, Float),
+    JE_RF(ParticleSystemComponent, sortingLayer, 0x2763c589u, Int),
+    JE_RF(ParticleSystemComponent, sortingOrder, 0xfa4cece4u, Int),
     JE_RF(ParticleSystemComponent, useUnscaledTime, 0x54d44b97u, Bool),
     JE_RF(ParticleSystemComponent, exposedValues, 0xfac14eb6u, Custom),
     JE_RF_ENTITIES(ParticleSystemComponent, collisionPlanes, 0x5027e34bu, Array),
@@ -1621,6 +1629,7 @@ const FieldEntry kBody_SpriteComponent_fields[] = {
     JE_RF(SpriteComponent, drawMode, 0x68130ab3u, Enum),
     JE_RF(SpriteComponent, pixelsPerUnit, 0xd42e8cc4u, Float),
     JE_RF(SpriteComponent, pixelRotation, 0x236ae730u, Enum),
+    JE_RF(SpriteComponent, spriteSortPoint, 0x2a8adfe7u, Enum),
     JE_RF(SpriteComponent, numFramesRect, 0x533d2142u, UInt),
     JE_RF(SpriteComponent, framesRect, 0x64888c2au, Array),
 };
@@ -2237,6 +2246,8 @@ const FieldEntry kBody_TrailRendererComponent_fields[] = {
     JE_RF(TrailRendererComponent, emitting, 0xd733dd59u, Bool),
     JE_RF(TrailRendererComponent, autodestruct, 0x07628c03u, Bool),
     JE_RF(TrailRendererComponent, sortPriority, 0xa529dd3au, Int),
+    JE_RF(TrailRendererComponent, sortingLayer, 0x3b5b03d7u, Int),
+    JE_RF(TrailRendererComponent, sortingOrder, 0x00590612u, Int),
     JE_RF(TrailRendererComponent, customShader, 0x1fd5ec80u, AssetPath),
     JE_RF(TrailRendererComponent, shaderUniforms, 0x04ea570eu, Custom),
     JE_RF(TrailRendererComponent, shaderTextures, 0x187d06d7u, Custom),
@@ -2440,6 +2451,22 @@ const FieldEntry kBody_PixelPerfectCameraComponent_fields[] = {
 };
 const StructTable kBody_PixelPerfectCameraComponent{"pixelperfectcamera", kBody_PixelPerfectCameraComponent_fields, std::size(kBody_PixelPerfectCameraComponent_fields)};
 
+const FieldEntry kBody_SortingGroupComponent_fields[] = {
+    JE_RF(SortingGroupComponent, enabled, 0x64da6ed9u, Bool),
+    JE_RF(SortingGroupComponent, sortingLayer, 0x07d91e91u, Int),
+    JE_RF(SortingGroupComponent, sortingOrder, 0xb7a2ea5cu, Int),
+};
+const StructTable kBody_SortingGroupComponent{"sortinggroup", kBody_SortingGroupComponent_fields, std::size(kBody_SortingGroupComponent_fields)};
+
+const FieldEntry kBody_SpriteBatchComponent_fields[] = {
+    JE_RF(SpriteBatchComponent, enabled, 0x36e1fbdbu, Bool),
+    JE_RF(SpriteBatchComponent, mode, 0xf2c528e5u, Enum),
+    JE_RF(SpriteBatchComponent, space, 0x333e9508u, Enum),
+    JE_RF(SpriteBatchComponent, capacity, 0xbe29fba2u, UInt),
+    JE_RF(SpriteBatchComponent, sortInstances, 0xb551f71eu, Bool),
+};
+const StructTable kBody_SpriteBatchComponent{"spritebatch", kBody_SpriteBatchComponent_fields, std::size(kBody_SpriteBatchComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2550,6 +2577,8 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(WaterExcluderComponent, "waterexcluder", 0xf9df46e8u),
     JE_RF_COMPONENT(WaterWakeComponent, "waterwake", 0xbbb4fdc0u),
     JE_RF_COMPONENT(PixelPerfectCameraComponent, "pixelperfectcamera", 0xc6cced7fu),
+    JE_RF_COMPONENT(SortingGroupComponent, "sortinggroup", 0xc8581eb6u),
+    JE_RF_COMPONENT(SpriteBatchComponent, "spritebatch", 0xb9349884u),
     JE_RF_COMPONENTS_END
 };
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "pixelart/PixelArtAssign.h"
+#include "registry/SortingLayers.h"
 #include "component/ButtonComponent.h"
 #include "util/ProjectChecks.h"
 #include "component/CanvasGroupComponent.h"
@@ -2652,6 +2653,11 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         case PropertyType::Int:
             // a colour write mask by its channels ("rgba", "none", "auto")
             if (name == "colorWrite" || endsWith(name, ".colorWrite")) return colorWriteToJson(*static_cast<int*>(ref));
+            // a Sorting Layer by its id and name (S52 R34)
+            if (name == "sortingLayer") {
+                const int id = *static_cast<int*>(ref);
+                return Json{{"id", id}, {"name", SortingLayers::idToName(id)}};
+            }
             return *static_cast<int*>(ref);
         case PropertyType::Enum: {
             const int value = *static_cast<int*>(ref);
@@ -3193,6 +3199,27 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                     return nullptr;
                 }
                 return new PropertyCmd<int>(project, sceneId, entity, component, propertyName, mask, onChanged);
+            }
+            if (propertyName == "sortingLayer") {
+                // a layer name or id (or {id} / {name}, as it reads back)
+                Json given = value;
+                if (given.is_object()) given = given.contains("name") ? given["name"] : (given.contains("id") ? given["id"] : Json());
+                int32_t id = -1;
+                if (given.is_string()) {
+                    id = SortingLayers::nameToId(given.get<std::string>());
+                    if (id < 0) {
+                        error = "Property sortingLayer: no Sorting Layer is named \"" + given.get<std::string>() +
+                                "\"; add it with set_project_settings tags_and_layers.sorting_layers";
+                        return nullptr;
+                    }
+                } else if (isIntegral(given) && SortingLayers::isValid(static_cast<int32_t>(integralValue(given)))) {
+                    id = static_cast<int32_t>(integralValue(given));
+                } else {
+                    error = "Property sortingLayer: expected a Sorting Layer name or id of tags_and_layers.sorting_layers; "
+                            "add a new one with set_project_settings tags_and_layers.sorting_layers";
+                    return nullptr;
+                }
+                return new PropertyCmd<int>(project, sceneId, entity, component, propertyName, id, onChanged);
             }
             if (!isIntegral(value)) return expect("an integer");
             const bool stencilByte = endsWith(propertyName, "stencil.ref") || endsWith(propertyName, "stencil.readMask") ||

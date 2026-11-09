@@ -5,6 +5,7 @@
 
 #include "audio/AudioQaSettings.h"
 #include "render/GpuCreation.h"
+#include "registry/SortingLayers.h"
 #include <array>
 #include <functional>
 #include <string>
@@ -232,6 +233,10 @@ namespace jasperengine::editor {
         unsigned int maxBodies3D = 8192;
         unsigned int maxBodyPairs3D = 8192;
         unsigned int maxContactConstraints3D = 8192;
+        // Sorting Layers and Graphics > Transparency Sort (spec S52 R40)
+        std::vector<SortingLayerInfo> sortingLayers;
+        TransparencySortMode transparencySortMode = TransparencySortMode::DEFAULT;
+        Vector3 transparencySortAxis = Vector3(0.0f, 1.0f, 0.0f);
     };
 
     // A script build's state, published by every Generator (Play, compile_scripts, C++ reload,

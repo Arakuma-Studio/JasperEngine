@@ -66,7 +66,12 @@ draw the same image (compare two `screenshot`s).
 | `ui_color`, `text_params` | Texts of another colour or outline |
 | `scissor`, `origin_cell`, `mirrored`, `run_vertex_limit` | a clip rect, a 4,096-unit cell boundary, a mirroring scale, 65,536 vertices |
 | `foreign_draw` | something that never batches drew in between (Points, Lines, particles, video, HTML UI) |
-| `ineligible_*` | drawn alone: custom or library shader, extra pass, IBL, skinning, lattice, Vertex Animation, LODs, more than one submesh, too many vertices, a render-target texture, a fake billboard |
+| `sort_bucket` | another Sorting Layer, Order in Layer or Sorting Group: put sprites that may batch in one (`jasper://docs/rendering-2d`) |
+| `pixel_snap` | a Pixel Perfect Camera snaps one sprite by its corners, the other by its pivot (rotated): keep them apart in the hierarchy |
+| `custom_params` | `library:sprite` values that are not per sprite (outline colour, hue): give the sprites one material's values |
+| `ineligible_frame_rect` | OUTLINE or OVERLAY on a mesh that is not a Sprite (MeshPolygon): use a Sprite |
+| `ineligible_pixel_snap_pivot` | a rotated UI element under a Pixel Perfect Camera |
+| `ineligible_*` | drawn alone: custom shader or a library one other than `library:sprite`, extra pass, IBL, skinning, lattice, Vertex Animation, LODs, more than one submesh, too many vertices, a render-target texture, a fake billboard, a Sprite Batch (it draws instanced) |
 
 ## Caveats
 

@@ -1432,6 +1432,25 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("ON_GRID", PixelRotation::ON_GRID)
         .endNamespace();
 
+    // 2D sorting and Sprite Batch (S52)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SpriteSortPoint")
+        .addVariable("CENTER", SpriteSortPoint::CENTER)
+        .addVariable("PIVOT", SpriteSortPoint::PIVOT)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SpriteBatchMode")
+        .addVariable("RETAINED", SpriteBatchMode::RETAINED)
+        .addVariable("CLEAR_EACH_FRAME", SpriteBatchMode::CLEAR_EACH_FRAME)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SpriteBatchSpace")
+        .addVariable("LOCAL", SpriteBatchSpace::LOCAL)
+        .addVariable("WORLD", SpriteBatchSpace::WORLD)
+        .endNamespace();
+
     // the Canvas Scaler (Unity's CanvasScaler.ScaleMode, ScreenMatchMode, Unit)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("UIScaleMode")

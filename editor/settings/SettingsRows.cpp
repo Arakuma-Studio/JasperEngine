@@ -22,6 +22,7 @@
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
 #include "command/type/DrawSubmissionSettingsCmd.h"
+#include "command/type/SortingLayersCmd.h"
 #include "command/type/DeviceSettingsCmd.h"
 #include "command/type/ApplePrivacySettingsCmd.h"
 #include "command/UndoOrigin.h"
@@ -788,6 +789,21 @@ bool setDrawSubmission(SettingsContext& ctx, const std::function<void(DrawSubmis
         command->setNoMerge();
         if (!p->getProjectCommandHistory()->addCommand(command)) {
             error = "the draw submission settings could not be applied";
+            return false;
+        }
+    }
+    return true;
+}
+
+// Sorting Layers and Transparency Sort (spec S52): SortingSettings changed, applied as one undoable
+// step (undo scope project)
+bool setSorting(SettingsContext& ctx, const SortingSettings& changed, bool apply, std::string& error) {
+    Project* p = ctx.project();
+    if (apply && changed != SortingSettings::current()) {
+        auto* command = new SortingLayersCmd(p, changed);
+        command->setNoMerge();
+        if (!p->getProjectCommandHistory()->addCommand(command)) {
+            error = "the sorting settings could not be applied";
             return false;
         }
     }
@@ -2216,6 +2232,48 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        // 2D sorting (S52 R4)
+        {
+            Setting s;
+            s.key = "graphics.transparency_sort_mode";
+            s.type = "enum";
+            s.values = {"default", "custom_axis"};
+            s.description = "custom_axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw by "
+                            "graphics.transparency_sort_axis (a larger dot(axis, position) first). Undoable (undo scope project).";
+            s.get = [](SettingsContext& ctx) {
+                return Json(ctx.project()->getTransparencySortMode() == TransparencySortMode::CUSTOM_AXIS ? "custom_axis" : "default");
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string() || (value.get<std::string>() != "default" && value.get<std::string>() != "custom_axis")) {
+                    error = "must be \"default\" or \"custom_axis\"";
+                    return false;
+                }
+                SortingSettings changed = SortingSettings::current();
+                changed.mode = value.get<std::string>() == "custom_axis" ? TransparencySortMode::CUSTOM_AXIS : TransparencySortMode::DEFAULT;
+                return setSorting(ctx, changed, apply, error);
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "graphics.transparency_sort_axis";
+            s.type = "list";
+            s.description = "The Custom Axis, default [0, 1, 0] (a higher y draws first: top-down). Undoable (undo scope project).";
+            s.get = [](SettingsContext& ctx) {
+                const Vector3 axis = ctx.project()->getTransparencySortAxis();
+                return Json::array({axis.x, axis.y, axis.z});
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array() || value.size() != 3 || !value[0].is_number() || !value[1].is_number() || !value[2].is_number()) {
+                    error = "must be [x, y, z]";
+                    return false;
+                }
+                SortingSettings changed = SortingSettings::current();
+                changed.axis = Vector3(value[0].get<float>(), value[1].get<float>(), value[2].get<float>());
+                return setSorting(ctx, changed, apply, error);
+            };
+            add(s);
+        }
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
         // the tiers of volumetric fog and clouds per platform group
@@ -3307,6 +3365,74 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
+        // Sorting Layers (S52 R34): reads [{id, name}] in draw order; takes names or {id, name}
+        // entries (an id keeps its layer through a rename, a name already in the table keeps its)
+        {
+            Setting s;
+            s.key = "tags_and_layers.sorting_layers";
+            s.type = "list";
+            s.description = "Sorting Layers in draw order, first drawn first, as [{id, name}]; must include \"Default\". Pass the complete "
+                            "list: names, or {id, name} to rename a layer (it keeps its renderers); an unlisted layer is removed (its "
+                            "renderers draw on Default). Undoable (undo scope project).";
+            s.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (const SortingLayerInfo& layer : ctx.project()->getSortingLayers())
+                    list.push_back(Json{{"id", layer.id}, {"name", layer.name}});
+                return list;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of Sorting Layer names or {id, name} entries";
+                    return false;
+                }
+                std::vector<SortingLayerInfo> entries;
+                std::vector<std::string> names;
+                bool hasDefault = false;
+                for (const Json& item : value) {
+                    SortingLayerInfo entry{-1, std::string()};
+                    if (item.is_string()) {
+                        entry.name = item.get<std::string>();
+                    } else if (item.is_object() && item.contains("name") && item["name"].is_string() &&
+                               (!item.contains("id") || item["id"].is_number_integer())) {
+                        entry.name = item["name"].get<std::string>();
+                        if (item.contains("id")) entry.id = item["id"].get<int32_t>();
+                    }
+                    entry.name = TagManager::trimName(entry.name);
+                    if (entry.name.empty()) {
+                        error = "each Sorting Layer is a non-empty name or {id, name}";
+                        return false;
+                    }
+                    if (std::find(names.begin(), names.end(), entry.name) != names.end()) {
+                        error = "\"" + entry.name + "\" is listed twice";
+                        return false;
+                    }
+                    if (entry.id >= 0 && (entry.id == DEFAULT_SORTING_LAYER_ID) != (entry.name == "Default")) {
+                        error = "Default is id 0 and keeps its name";
+                        return false;
+                    }
+                    hasDefault = hasDefault || entry.name == "Default";
+                    names.push_back(entry.name);
+                    entries.push_back(entry);
+                }
+                if (!hasDefault) {
+                    error = "the list must include \"Default\" (it cannot be removed; place it where it draws)";
+                    return false;
+                }
+                SortingSettings changed = SortingSettings::current();
+                if (!SortingLayers::resolve(entries, changed.layers, error)) return false;
+                for (size_t a = 0; a < changed.layers.size(); a++) {
+                    for (size_t b = a + 1; b < changed.layers.size(); b++) {
+                        if (changed.layers[a].id == changed.layers[b].id) {
+                            error = "id " + std::to_string(changed.layers[a].id) + " is listed twice";
+                            return false;
+                        }
+                    }
+                }
+                return setSorting(ctx, changed, apply, error);
+            };
+            add(s);
+        }
+
         // ---- editor preferences (this machine / this editor session)
         {
             Setting s;
@@ -3772,6 +3898,8 @@ const Placement placements[] = {
     {"graphics.dynamic_batching", "Graphics", "", "Dynamic Batching", "batching batches draw calls saved by batching sprites"},
     {"graphics.runtime_shaders", "Graphics", "", "Runtime Shader Compilation", "variants"},
     {"graphics.gpu_instancing", "Graphics", "", "GPU Instancing", "batching instanced draw calls auto instancing"},
+    {"graphics.transparency_sort_mode", "Graphics", "", "Transparency Sort Mode", "2d sorting axis custom axis top-down"},
+    {"graphics.transparency_sort_axis", "Graphics", "", "Transparency Sort Axis", "2d sorting axis custom axis top-down"},
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
@@ -3856,6 +3984,7 @@ const Placement placements[] = {
     {"editor.assets_dir", "Editor", "", "Assets Directory", "assets root"},
     {"tags_and_layers.tags", "Tags and Layers", "Tags", "Tags", "tag"},
     {"tags_and_layers.layers", "Tags and Layers", "Layers", "Layers", "layer"},
+    {"tags_and_layers.sorting_layers", "Tags and Layers", "Sorting Layers", "Sorting Layers", "sorting layer order 2d draw order"},
     // Project Settings > Native Plugins
     {"android.gradle_dependencies", "Native Plugins", "Android", "Gradle Dependencies", "android gradle dependencies sdk api implementation"},
     {"android.gradle_repositories", "Native Plugins", "Android", "Maven Repositories", "android gradle maven repository url"},

@@ -124,6 +124,9 @@ namespace jasperengine{
         float max = 1.0f;
         std::string label;
         std::string feature; // shown only while this feature is on ("!<DEFINE>": while it is off)
+        // instance=fx.<x|y|z|w> (S52 R19): the FX slot that adds to it per sprite in a batch (the
+        // vertex channel a_spriteFx, a Sprite Batch's i_spriteFx); -1: none
+        int instanceSlot = -1;
         int line = 0;
     };
 
@@ -269,6 +272,12 @@ namespace jasperengine{
         std::vector<ShaderManifestKeywords> keywords;
         bool depth = false;      // has its own depth program
         ShaderRole role = ShaderRole::NONE; // @role
+        // "@batchable [framerect=A,B]" (S52 R20): Dynamic Batching may draw it, its per-object
+        // values being covered (textures and custom values in the batch key, instance= amounts and
+        // the frame rect per vertex); framerect= lists the features whose effects read the frame
+        // rect (they batch through a_frameRect)
+        bool batchable = false;
+        std::vector<std::string> frameRectFeatures;
         // A fork's .frag defines LIT_STOCHASTIC_PARAMS (definesLitStochasticParams): a fork of
         // the built-in Lit that samples the material's Stochastic Tiling (includes/pbr.glsl).
         // Set by ShaderManifests::get for forks, from the entry point an export ships, so the
@@ -287,6 +296,10 @@ namespace jasperengine{
         bool supportsLighting(ShaderLightingMode mode) const;
 
         const ShaderManifestProperty* findProperty(const std::string& member) const;
+        // a variant with these enabled defines (resolveFeatures) reads an instance= amount / the
+        // frame rect of @batchable framerect= (S52)
+        bool usesInstanceSlots(const std::vector<std::string>& enabledFeatures) const;
+        bool usesFrameRect(const std::vector<std::string>& enabledFeatures) const;
         const ShaderManifestTexture* findTexture(const std::string& uniform) const;
         const ShaderManifestPalette* findPalette(const std::string& uniform) const;
         const ShaderManifestFeature* findFeature(const std::string& define) const;

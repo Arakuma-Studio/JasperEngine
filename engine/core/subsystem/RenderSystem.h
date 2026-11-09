@@ -50,6 +50,7 @@
 #include "lattice/LatticeRender.h"
 #include "render/DynamicResolutionController.h"
 #include "render/DrawBatcher.h"
+#include "render/sprite/SpriteInstanceBatch.h"
 #include "render/FrustumCull.h"
 #include "render/SSRProbeSlots.h"
 #include "Engine.h"
@@ -67,6 +68,10 @@ namespace jasperengine::pixelart{
 }
 
 namespace jasperengine{
+
+	// S52 (component/SpriteBatchComponent.h)
+	struct SpriteBatchComponent;
+	struct SpriteBatchState;
 
 	namespace particles { struct CompiledEffect; struct ParticleRenderData; struct ParticleSystemState; class EmitterRuntime; }
 	// Legacy u_fs_lighting, declared by forks written before per-object lights: filled per
@@ -651,6 +656,10 @@ namespace jasperengine{
 		bool terrainHexStochastic = false;
 		// a pixel-art drawable (a Sprite or a Tilemap): snapped under a Pixel Perfect Camera (S41)
 		bool pixelArt = false;
+		// the pixel-art batching inputs its mesh carries (MeshComponent::batchAttributes, S52)
+		uint8_t batchAttributes = 0;
+		// instanced by an Instanced Mesh (not a Sprite Batch): its instances carry no i_spriteFx
+		bool instancedMesh = false;
 	};
 
 	// A camera that draws through a Pixel Perfect Camera this frame (S41, RenderSystemPixelArt.cpp)
@@ -717,6 +726,15 @@ namespace jasperengine{
 			TRAIL
 		};
 
+		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)
+		enum class LodFadePass : uint8_t{
+			ALL,    // all: single meshes as planned, an instance view's plain and dominant copies
+			PLAIN,  // no fading draw: the depth pre-pass, an instanced mesh's first queue entry
+			FADE    // only the fading draws: an instanced mesh's second queue entry (its fade copies)
+		};
+
+	public:
+		// (public: their order is tested, RenderQueueOrderTest)
 		struct TransparentRenderData{
 			TransparentRenderType type;
 			// the terrain layer uniforms are looked up by entity, so the sorted draw keeps it
@@ -744,17 +762,21 @@ namespace jasperengine{
 			// the one this is (null: the system has one emitter)
 			const particles::EmitterRuntime* emitter = nullptr;
 			particles::ParticleRenderData* emitterRender = nullptr;
+			// 2D sorting (spec S52 R6), all 0 unless the scene sorts: Sorting Layer value and
+			// Order in Layer (the outermost enabled Sorting Group's for its members), the group
+			// (its sequence + 1, 0 outside one), the member's own layer and order inside it, and
+			// the batcher's bucket. With a group in the queue, an item alone and a group are each
+			// one unit: unitPriority (a group's 0), unitDistance (far first) and unitSeq (an
+			// item's order, a group's sequence past every order) order the units
+			uint64_t sortKey = 0;
+			uint32_t sortGroup = 0;
+			uint64_t memberKey = 0;
+			uint64_t sortBucket = 0;
+			int unitPriority = 0;
+			float unitDistance = 0.0f;
+			uint64_t unitSeq = 0;
 		};
 
-		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)
-		enum class LodFadePass : uint8_t{
-			ALL,    // all: single meshes as planned, an instance view's plain and dominant copies
-			PLAIN,  // no fading draw: the depth pre-pass, an instanced mesh's first queue entry
-			FADE    // only the fading draws: an instanced mesh's second queue entry (its fade copies)
-		};
-
-	public:
-		// (public: their order is tested, RenderQueueOrderTest)
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
 		struct OpaqueRenderData{
 			Entity entity;
@@ -797,16 +819,40 @@ namespace jasperengine{
 		// draw order of the transparent queue: the lowest sort priority, then around the waters
 		// (waterSortOrder: the farthest sort distance, the higher rank, the farthest), then the
 		// submission order (a total order, so std::sort is deterministic)
-		// (Sorting Layers and Order in Layer, pixel-art S52, go before sortPriority; the water
-		// order stays right after it)
 		struct TransparentRenderComparison{
 			bool operator()(const TransparentRenderData& lhs, const TransparentRenderData& rhs) const{
+				// Sorting Layer and Order in Layer first (S52 R6; 0 when the scene does not sort)
+				if (lhs.sortKey != rhs.sortKey)
+					return lhs.sortKey < rhs.sortKey;
 				if (lhs.sortPriority != rhs.sortPriority)
 					return lhs.sortPriority < rhs.sortPriority;
 				const int water = waterSortOrder(lhs.waterSortDistance, lhs.waterRank, lhs.distanceToCamera,
 				                                 rhs.waterSortDistance, rhs.waterRank, rhs.distanceToCamera);
 				if (water != 0)
 					return water < 0;
+				return lhs.order < rhs.order;
+			}
+		};
+		// the same with an enabled Sorting Group in the queue (S52 R6): within one key, the units
+		// (an item alone or a whole group) by (priority, distance far first, sequence), each a
+		// total order of its own; members only among themselves, by their own layer and order
+		struct TransparentGroupComparison{
+			bool operator()(const TransparentRenderData& lhs, const TransparentRenderData& rhs) const{
+				if (lhs.sortKey != rhs.sortKey)
+					return lhs.sortKey < rhs.sortKey;
+				if (lhs.unitPriority != rhs.unitPriority)
+					return lhs.unitPriority < rhs.unitPriority;
+				if (lhs.unitDistance != rhs.unitDistance)
+					return lhs.unitDistance > rhs.unitDistance;
+				if (lhs.unitSeq != rhs.unitSeq)
+					return lhs.unitSeq < rhs.unitSeq;
+				// (one group's members)
+				if (lhs.memberKey != rhs.memberKey)
+					return lhs.memberKey < rhs.memberKey;
+				if (lhs.sortPriority != rhs.sortPriority)
+					return lhs.sortPriority < rhs.sortPriority;
+				if (lhs.distanceToCamera != rhs.distanceToCamera)
+					return lhs.distanceToCamera > rhs.distanceToCamera;
 				return lhs.order < rhs.order;
 			}
 		};
@@ -3001,6 +3047,18 @@ namespace jasperengine{
 			// the colour factor is in the vertex colours: the draw's is white
 			bool neutralColor = false;
 		};
+		// the pixelSnapDraw mode a batch's draw takes from its head (S52 R18): -1, the draw's own
+		float passSnapModeOverride = -1.0f;
+		// a batchable library shader's instance= amounts as the material holds them (fx slots x-w)
+		Vector4 batchSpriteFx(Submesh& submesh) const;
+		// a batched object's model matrix as its draw alone takes it (S41's Steps90 rounding)
+		Matrix4 batchModel(Entity entity, const Matrix4& model) const;
+		// its custom uniforms written (the bake and the key read them before any draw)
+		void refreshCustomUniforms(MeshComponent& mesh);
+		// a batchable library shader's custom values as a key section: its blocks' bytes, the
+		// engine-written members (and the instance= ones, carried per vertex) left out
+		uint64_t batchCustomParamsHash(Submesh& submesh, bool zeroInstanceSlots);
+		std::vector<uint8_t> batchParamScratch;
 		// the baked vertices of an object, kept while its inputs do not change (settled)
 		struct BatchRecord{
 			Entity entity = NULL_ENTITY;
@@ -3032,6 +3090,18 @@ namespace jasperengine{
 			Vector4 color;
 			bool bakesColor = false;
 			bool bakesNormals = false;
+			// S52: the FX slots baked into a_spriteFx (the material's instance= amounts) and
+			// the rect baked into a_frameRect (offsets -1: the mesh has none)
+			int spriteFxOffset = -1;
+			int frameRectOffset = -1;
+			Vector4 spriteFx;
+			// the custom blocks' key section and the MeshComponent::customUniformWrites it was
+			// hashed at (0: not yet), so an unchanged material is not hashed every frame
+			mutable uint64_t customHash = 0;
+			mutable uint32_t customWritesSeen = 0;
+			mutable bool customHashValid = false;
+			// the writes the baked spriteFx was read at
+			uint32_t spriteFxWritesSeen = 0;
 			bool localValid = false;
 			// what the placement read
 			Matrix4 placedWith;
@@ -3044,6 +3114,8 @@ namespace jasperengine{
 			// RenderSystem::update left its Transform's MVP as it was (ensureBatchMVP)
 			bool mvpStale = false;
 		};
+		// the record's baked amounts or inputs are not the mesh's any more (S52)
+		bool batchFxChanged(const BatchRecord& record, MeshComponent& mesh);
 		struct BatchPassContext{
 			BatchPass pass = BatchPass::COLOR;
 			CameraComponent* camera = nullptr;
@@ -3120,7 +3192,7 @@ namespace jasperengine{
 		// NONE when the mesh draws in batch form with pipType (its depth program's with depthPass),
 		// else why it is drawn alone
 		BatchBreak meshBatchForm(Entity entity, Signature signature, MeshComponent& mesh, Transform& transform, PipelineType pipType, bool depthPass);
-		BatchBreak uiBatchForm(UIComponent& ui, TextureRender* textureOverride);
+		BatchBreak uiBatchForm(UIComponent& ui, TextureRender* textureOverride, Transform* transform = nullptr);
 		bool bakeMeshRecord(BatchRecord& record, MeshComponent& mesh);
 		bool bakeUIRecord(BatchRecord& record, UIComponent& ui, const Vector4& drawColor, bool bakesColor);
 		void placeBatchRecord(BatchRecord& record, const Matrix4& model, const Matrix4* normalMatrix);
@@ -3492,7 +3564,99 @@ namespace jasperengine{
 		const pixelart::PixelPerfectLayout* getPixelPerfectLayout() const;
 		bool hasPixelSnapVariants() const { return pixelSnapVariants; }
 
+		// 2D sorting (spec S52, RenderSystemSorting.cpp): a transform's place in the 2D passes'
+		// order and its batcher bucket (BatchItem::sortKey)
+		struct SortedDraw{
+			uint32_t index = 0;
+			uint64_t bucket = 0;
+		};
+		// the bucket of the UI subtrees (they keep their place: not sort items)
+		static constexpr uint64_t UI_SORT_BUCKET = UINT64_MAX - 1;
+		// a renderer's key: Sorting Layer value (16) | Order in Layer + 32768 (16) | the
+		// Transparency Sort Axis distance as an order-preserving float, larger first (32; 0 in
+		// mode Default)
+		static uint64_t makeSortKey(uint16_t layerValue, int32_t order, bool axis, float distance);
+		// whether this frame's renderers leave the defaults (R9: else today's loop runs)
+		bool isSortingActive() const { return sortingActive; }
+		// the flag of this frame and a new frame for the order (update() calls it)
+		void updateSortingActive();
+		// the 2D order this frame's passes draw in (built on the first one that needs it)
+		const std::vector<SortedDraw>& getSorted2DOrder();
+		// how many times a 2D order was gathered since the system started (R26's counter)
+		uint32_t getSortGatherCount() const { return sortGathers; }
+
+		// Sprite Batch (S52 R13-R14, RenderSystemSpriteBatch.cpp): this frame's instanced draws,
+		// instances drawn and bytes uploaded, and the time its packing and uploads took (R27)
+		struct SpriteBatchStats{
+			uint64_t uploadBytes = 0;
+			uint32_t draws = 0;
+			uint32_t instances = 0;
+			double packMs = 0.0;
+			double uploadMs = 0.0;
+		};
+		const SpriteBatchStats& getSpriteBatchStats() const { return spriteBatchStats; }
+
+		// S52 R17: a SpriteInstanceBatch another producer owns (S50's tilemap chunks), drawn as the
+		// instances of a GameObject's MeshComponent: that GameObject's Transform is the batch's model
+		// matrix, its place in the Hierarchy and its renderer fields its sort item, the batch's
+		// bounds its bounds; uploaded when its revision moves. Not on a GameObject with a Sprite
+		// Batch or an Instanced Mesh. The producer keeps the batch alive until it detaches it.
+		void attachInstanceBatch(Entity entity, SpriteInstanceBatch* batch);
+		void detachInstanceBatch(Entity entity);
+		bool hasAttachedInstanceBatch(Entity entity) const { return attachedInstanceBatches.count(entity) != 0; }
+
 	private:
+		std::unordered_map<Entity, SpriteInstanceBatch*> attachedInstanceBatches;
+		std::unordered_map<Entity, uint64_t> attachedBoundsRevision;
+		void updateAttachedInstanceBatches();
+		// 2D sorting state (RenderSystemSorting.cpp)
+		struct SortItem{
+			uint64_t key = 0;
+			uint32_t index = 0;
+			uint32_t last = 0;       // a Sorting Group: its subtree's last transform index
+			bool group = false;
+		};
+		bool sortingActive = false;
+		uint64_t sortFrame = 0;          // bumped by update(): the order is gathered once per frame
+		uint64_t sortOrderFrame = UINT64_MAX;
+		uint32_t sortGathers = 0;
+		uint32_t sortGroupCounter = 0;
+		std::vector<SortedDraw> sortedOrder;
+		std::vector<std::vector<SortItem>> sortItemStack;
+		// per transform index (sortingActive only): the outermost enabled Sorting Group above or
+		// at it (-1: none) and that group's sequence + 1
+		std::vector<int32_t> sortOuterGroup;
+		std::vector<uint32_t> sortGroupSequence;
+		// the bucket of the draw the 2D loop submits now (BatchItem::sortKey)
+		uint64_t passSortBucket = 0;
+		// layer value, order and axis point of an entity's renderer (or Sorting Group); false
+		// when it has no renderer
+		bool rendererSortFields(Entity entity, Signature signature, uint16_t& layerValue, int32_t& order, Vector3& point);
+		uint64_t entitySortKey(Entity entity, Signature signature, bool axis);
+		void gatherSortRange(size_t first, size_t end, size_t depth, uint32_t outerSequence, uint64_t outerKey, int32_t skipGroup);
+		// true when an enabled Sorting Group is in the queue (sort with TransparentGroupComparison)
+		bool applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const Vector3& cameraPosition);
+
+		// Sprite Batch (RenderSystemSpriteBatch.cpp)
+		SpriteBatchStats spriteBatchStats;
+		std::vector<uint32_t> spriteBatchOrder;
+		std::vector<float> spriteBatchDistance;
+		std::vector<SpritePageRun> spriteBatchRuns;
+		// the instances of a Sprite Batch's GameObject (made with its state), null without one
+		SpriteInstanceBatch* spriteInstancesOf(Entity entity);
+		void addSpriteInstanceAttributes(ObjectRender& render, ShaderData& shaderData, SpriteInstanceBatch& batch);
+		// the Sprite's material reads an instance= amount: the instances carry the FX stream
+		bool spriteBatchWantsFx(const MeshComponent& mesh);
+		void updateSpriteBatches();
+		void packSpriteBatch(Entity entity, SpriteBatchComponent& component, SpriteBatchState& state, SpriteInstanceBatch& batch,
+		                     SpriteComponent& sprite, MeshComponent& mesh, Transform& transform);
+		// the instanced draws of its page runs (baseColorSlotType: the TextureShaderType a page binds
+		// to, -1 none); false when it has nothing to draw
+		bool drawSpriteInstances(ObjectRender& render, Submesh& submesh, SpriteInstanceBatch& batch, ShaderRender* shader, int baseColorSlotType);
+		// the custom fragment block with the instance= members 0 (a run or a Sprite Batch carries
+		// the amounts per vertex or per instance, S52 R21)
+		void applyInstanceSlotsZeroed(ObjectRender& render, Submesh& submesh);
+
 		CanvasGroupRenderStats canvasGroupRenderStats;
 		CanvasGroupRenderStats lastCanvasGroupRenderStats;
 
