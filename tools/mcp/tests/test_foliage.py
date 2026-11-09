@@ -294,3 +294,22 @@ async def test_duplicate_terrain_copies_on_first_write(ed: Editor):
     await ed.call("save_scene", scene=sid)
     ed.check_eq(original_file.read_bytes(), before, "the copy's write leaves the original's file alone")
     ed.check((await tree_data_path(ed, sid, copy)) != original_file, "the copy has a file of its own")
+
+
+
+async def test_foliage_quality_reaches_main_cpp(ed: Editor):
+    """A project made now declares its Foliage Quality (High, Low, Low, capped), which differs from the engine's
+    default and so reaches the compiled game's main.cpp; a change of it follows. (A project from before T5 has no
+    line: the reflection fixtures' codegen goldens hold that.)"""
+    sid, _ = await terrain_scene(ed, "Quality")
+    main = ed.project / ".jasperengine" / "generated" / "main.cpp"
+    await ed.call("save_scene", scene=sid)
+    ed.check("Engine::setFoliageQualityDefaults(FoliageQuality::HIGH, FoliageQuality::LOW, FoliageQuality::LOW, false);"
+             in main.read_text(encoding="utf-8"), "a new project's Foliage Quality reaches the compiled game")
+    await ed.call("set_project_settings", values={"quality.foliage_quality_mobile": "medium"})
+    try:
+        await ed.call("save_scene", scene=sid)
+        ed.check("Engine::setFoliageQualityDefaults(FoliageQuality::HIGH, FoliageQuality::MEDIUM, FoliageQuality::LOW, false);"
+                 in main.read_text(encoding="utf-8"), "a changed Foliage Quality follows")
+    finally:
+        await ed.call("set_project_settings", values={"quality.foliage_quality_mobile": "low"})

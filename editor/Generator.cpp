@@ -2583,17 +2583,21 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     };
     mainContent += "    Engine::setAtmosphereQualityDefaults(" + qualityName(atmosphereQuality[0]) + ", " + qualityName(atmosphereQuality[1]) + ", " +
                    qualityName(atmosphereQuality[2]) + ");\n";
-    // Foliage Quality per platform group (T5 R21)
-    auto foliageQualityName = [](FoliageQuality quality) -> std::string {
-        switch (quality) {
-            case FoliageQuality::LOW: return "FoliageQuality::LOW";
-            case FoliageQuality::MEDIUM: return "FoliageQuality::MEDIUM";
-            case FoliageQuality::HIGH: return "FoliageQuality::HIGH";
-        }
-        return "FoliageQuality::HIGH";
-    };
-    mainContent += "    Engine::setFoliageQualityDefaults(" + foliageQualityName(foliageQuality[0]) + ", " + foliageQualityName(foliageQuality[1]) + ", " +
-                   foliageQualityName(foliageQuality[2]) + ", " + (foliageQualityUncapped ? "true" : "false") + ");\n";
+    // Foliage Quality per platform group (T5 R21), written only when it differs from the engine's
+    // default (High everywhere, uncapped), so a project without foliage generates what it did before
+    if (foliageQuality != std::array<FoliageQuality, 3>{FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH} ||
+        !foliageQualityUncapped) {
+        auto foliageQualityName = [](FoliageQuality quality) -> std::string {
+            switch (quality) {
+                case FoliageQuality::LOW: return "FoliageQuality::LOW";
+                case FoliageQuality::MEDIUM: return "FoliageQuality::MEDIUM";
+                case FoliageQuality::HIGH: return "FoliageQuality::HIGH";
+            }
+            return "FoliageQuality::HIGH";
+        };
+        mainContent += "    Engine::setFoliageQualityDefaults(" + foliageQualityName(foliageQuality[0]) + ", " + foliageQualityName(foliageQuality[1]) + ", " +
+                       foliageQualityName(foliageQuality[2]) + ", " + (foliageQualityUncapped ? "true" : "false") + ");\n";
+    }
     // Foliage Distance per platform group, written only when the project changed it
     if (foliageDistanceScale != std::array<float, 3>{1.0f, 1.0f, 1.0f}) {
         mainContent += "    Engine::setFoliageDistanceScaleDefaults(" + Factory::formatFloat(foliageDistanceScale[0]) + ", " +
@@ -2657,7 +2661,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
                     terrainTierNames[static_cast<int>(tier)] + ");\n";
             }
         }
-        mainContent += "    terraincore::TerrainQualitySettings::setShippedMask(" + std::to_string(exportTerrainTiers) + "u);\n";
+        // every tier is the engine's default: a build that ships them all (no terrain, or the default) writes nothing
+        if (exportTerrainTiers != terraincore::TERRAIN_ALL_TIERS)
+            mainContent += "    terraincore::TerrainQualitySettings::setShippedMask(" + std::to_string(exportTerrainTiers) + "u);\n";
     }
     // Project Settings > Player > Allow Insecure HTTP: the same policy as the editor's Play
     mainContent += std::string("    Http::setInsecureHttpAllowed(") + (allowInsecureHttp ? "true" : "false") + ");\n";

@@ -56,8 +56,10 @@ async def test_only_runtime_use_ships_graphs(ed: Editor):
     await build_cache.player_runtime(ed, "glcore", "release")
 
     # Baked: the graph is a recipe for the editor, so it stays home
+    # (what the project needs is the manifest's list: the run's only runtime is the full player, which ships every module)
     baked, job = await export(ed, "export-baked")
-    ed.check("noise" not in job["result"]["modules"], f"a graph file is no evidence: {job['result'].get('module_reasons')}")
+    manifest = json.loads(next(baked.rglob("content-manifest.json")).read_text())
+    ed.check("noise" not in manifest["modules"], f"a graph file is no evidence: {manifest['modules']}, {job['result'].get('module_reasons')}")
     ed.check_eq(list(baked.rglob("*.noisegraph")), [], "no .noisegraph in a baked game's payload")
 
     # Used at run time: every graph ships, and the player evaluates it

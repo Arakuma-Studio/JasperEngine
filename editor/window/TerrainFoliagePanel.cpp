@@ -23,6 +23,9 @@
 #include "terrainworld/TerrainWorldTrees.h"
 #include "util/ImpostorBaker.h"
 #include "util/Util.h"
+#include "widget/ColorField.h"
+#include "widget/ColorPickerWindow.h"
+#include "window/EditorModal.h"
 #include "window/ProjectWindow.h"
 #include "window/TerrainEditWindow.h"
 
@@ -325,15 +328,16 @@ void editor::TerrainFoliagePanel::drawPrototypeGrid(SceneProject* sceneProject, 
             ImGui::OpenPopup("Remove Tree Prototype");
         }
     }
-    if (ImGui::BeginPopupModal("Remove Tree Prototype", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Remove Tree Prototype", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        EditorModal::message("Remove this prototype's trees on the Terrain with it?");
         ImGui::TextUnformatted("Remove this prototype's trees on the Terrain with it?");
-        if (ImGui::Button("Remove")) {
+        if (EditorModal::button("Remove", "ok")) {
             removePrototype(sceneProject, entity, terrain, removeIndex);
             removeIndex = -1;
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) {
+        if (EditorModal::button("Cancel", "cancel")) {
             removeIndex = -1;
             ImGui::CloseCurrentPopup();
         }
@@ -514,7 +518,7 @@ void editor::TerrainFoliagePanel::drawMassPlace(SceneProject* sceneProject, Enti
         massOpen = true;
         ImGui::OpenPopup("Mass Place Trees");
     }
-    if (!ImGui::BeginPopupModal("Mass Place Trees", &massOpen, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    if (!EditorModal::begin("Mass Place Trees", &massOpen, ImGuiWindowFlags_AlwaysAutoResize)) return;
 
     ImGui::DragInt("Number of Trees", &massCount, 10.0f, 0, 2000000);
     ImGui::Checkbox("Keep Existing Trees", &massKeepExisting);
@@ -579,7 +583,7 @@ void editor::TerrainFoliagePanel::drawMassPlace(SceneProject* sceneProject, Enti
 
     const bool running = massRunner != nullptr;
     ImGui::BeginDisabled(running || terrain.treePrototypes.empty());
-    if (ImGui::Button("Preview Count")) {
+    if (EditorModal::button("Preview Count", "preview")) {
         std::string* status = &massStatus;
         massStatus = "Counting...";
         massRunner = FoliageOpRunner::start(project, makeRequest(true), [status](const FoliageOpRunner::Outcome& outcome) {
@@ -593,7 +597,7 @@ void editor::TerrainFoliagePanel::drawMassPlace(SceneProject* sceneProject, Enti
         });
     }
     ImGui::SameLine();
-    if (ImGui::Button("Place")) {
+    if (EditorModal::button("Place", "ok")) {
         std::string* status = &massStatus;
         massStatus = "Placing...";
         massRunner = FoliageOpRunner::start(project, makeRequest(false), [status](const FoliageOpRunner::Outcome& outcome) {
@@ -603,12 +607,15 @@ void editor::TerrainFoliagePanel::drawMassPlace(SceneProject* sceneProject, Enti
     ImGui::EndDisabled();
     if (running) {
         ImGui::SameLine();
-        if (ImGui::Button("Cancel##mass")) massRunner->cancel();
+        if (EditorModal::button("Cancel##mass", "stop")) massRunner->cancel();
         ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()), ImVec2(-FLT_MIN, 0.0f));
     }
-    if (!massStatus.empty()) ImGui::TextWrapped("%s", massStatus.c_str());
+    if (!massStatus.empty()) {
+        EditorModal::message(massStatus);
+        ImGui::TextWrapped("%s", massStatus.c_str());
+    }
     // the job goes on without the dialog: its end lands in the panel's update
-    if (ImGui::Button("Close##mass")) {
+    if (EditorModal::button("Close##mass", "close")) {
         massOpen = false;
         ImGui::CloseCurrentPopup();
     }
@@ -820,8 +827,17 @@ void editor::TerrainFoliagePanel::drawDetails(SceneProject* sceneProject, Entity
         const auto set = [&](const char* field, float value) {
             CommandHandle::get(sceneProject->id)->addCommand(new PropertyCmd<float>(project, sceneProject->id, entity, ComponentType::TerrainComponent, prefix + field, value));
         };
-        const auto setColor = [&](const char* field, const Vector4& value) {
-            CommandHandle::get(sceneProject->id)->addCommand(new PropertyCmd<Vector4>(project, sceneProject->id, entity, ComponentType::TerrainComponent, prefix + field, value));
+        // linear tints through the editor's colour field: one undo step per Color window session
+        const auto colorRow = [&](const char* id, const char* label, const char* field, Vector4 value) {
+            ui::ColorFieldOptions options;
+            options.alpha = false;
+            options.label = label;
+            const ui::EditPhase phase = ui::colorField(id, value, options);
+            if (phase == ui::EditPhase::Begin) {
+                ui::ColorPickerWindow::beginEdit(CommandHandle::get(sceneProject->id), label);
+            } else if (phase == ui::EditPhase::Changing) {
+                CommandHandle::get(sceneProject->id)->addCommand(new PropertyCmd<Vector4>(project, sceneProject->id, entity, ComponentType::TerrainComponent, prefix + field, value));
+            }
         };
         if (ImGui::BeginTable("##detail_rows", 2, ImGuiTableFlags_SizingStretchProp)) {
             rowLabel("Min/Max Height", "Random height over the width scale.");
@@ -830,9 +846,9 @@ void editor::TerrainFoliagePanel::drawDetails(SceneProject* sceneProject, Entity
                 set("maxHeightRatio", layer.maxHeightRatio);
             }
             rowLabel("Healthy Color");
-            if (ImGui::ColorEdit3("##detail_healthy", &layer.healthyColor.x, ImGuiColorEditFlags_Float)) setColor("healthyColor", layer.healthyColor);
+            colorRow("##detail_healthy", "Healthy Color", "healthyColor", layer.healthyColor);
             rowLabel("Dry Color");
-            if (ImGui::ColorEdit3("##detail_dry", &layer.dryColor.x, ImGuiColorEditFlags_Float)) setColor("dryColor", layer.dryColor);
+            colorRow("##detail_dry", "Dry Color", "dryColor", layer.dryColor);
             rowLabel("Noise Spread", "Noise cells per world unit between Dry and Healthy; 0 picks per instance.");
             if (ImGui::DragFloat("##detail_noise", &layer.noiseSpread, 0.005f, 0.0f, 10.0f, "%.3f")) set("noiseSpread", layer.noiseSpread);
             rowLabel("Bend Factor", "How far the wind moves it; 0 draws the variant without wind.");

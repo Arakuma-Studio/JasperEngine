@@ -1853,7 +1853,6 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
             code << ind << var << ".minDrawDistance = " << formatFloat(layer.minDrawDistance) << ";\n";
         code << ind << var << ".seed = " << formatUInt(layer.seed) << ";\n";
         code << ind << var << ".castShadows = " << formatBool(layer.castShadows) << ";\n";
-        code << ind << var << ".minDrawDistance = " << formatFloat(layer.minDrawDistance) << ";\n";
         code << ind << var << ".minHeightRatio = " << formatFloat(layer.minHeightRatio) << ";\n";
         code << ind << var << ".maxHeightRatio = " << formatFloat(layer.maxHeightRatio) << ";\n";
         code << ind << var << ".healthyColor = " << formatVector4(layer.healthyColor) << ";\n";
@@ -1866,17 +1865,18 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
         code << ind << var << ".algorithmVersion = " << formatUInt(layer.algorithmVersion) << ";\n";
         code << ind << "terrain.foliageLayers.push_back(" << var << ");\n";
     }
-    code << ind << "terrain.detailDistance = " << formatFloat(terrain.detailDistance) << ";\n";
-    code << ind << "terrain.detailDensity = " << formatFloat(terrain.detailDensity) << ";\n";
-    code << ind << "terrain.treeDistance = " << formatFloat(terrain.treeDistance) << ";\n";
-    code << ind << "terrain.billboardStart = " << formatFloat(terrain.billboardStart) << ";\n";
-    code << ind << "terrain.fadeLength = " << formatFloat(terrain.fadeLength) << ";\n";
-    code << ind << "terrain.maxMeshTrees = " << terrain.maxMeshTrees << ";\n";
-    code << ind << "terrain.windDirection = " << formatVector3(terrain.windDirection) << ";\n";
-    code << ind << "terrain.windSpeed = " << formatFloat(terrain.windSpeed) << ";\n";
-    code << ind << "terrain.windSize = " << formatFloat(terrain.windSize) << ";\n";
-    code << ind << "terrain.windBending = " << formatFloat(terrain.windBending) << ";\n";
-    code << ind << "terrain.treeData = " << formatString(terrain.treeData) << ";\n";
+    // T5's Terrain Settings: only what differs from the defaults, so a terrain without foliage generates what it did
+    if (terrain.detailDistance != terrainDefaults.detailDistance) code << ind << "terrain.detailDistance = " << formatFloat(terrain.detailDistance) << ";\n";
+    if (terrain.detailDensity != terrainDefaults.detailDensity) code << ind << "terrain.detailDensity = " << formatFloat(terrain.detailDensity) << ";\n";
+    if (terrain.treeDistance != terrainDefaults.treeDistance) code << ind << "terrain.treeDistance = " << formatFloat(terrain.treeDistance) << ";\n";
+    if (terrain.billboardStart != terrainDefaults.billboardStart) code << ind << "terrain.billboardStart = " << formatFloat(terrain.billboardStart) << ";\n";
+    if (terrain.fadeLength != terrainDefaults.fadeLength) code << ind << "terrain.fadeLength = " << formatFloat(terrain.fadeLength) << ";\n";
+    if (terrain.maxMeshTrees != terrainDefaults.maxMeshTrees) code << ind << "terrain.maxMeshTrees = " << terrain.maxMeshTrees << ";\n";
+    if (terrain.windDirection != terrainDefaults.windDirection) code << ind << "terrain.windDirection = " << formatVector3(terrain.windDirection) << ";\n";
+    if (terrain.windSpeed != terrainDefaults.windSpeed) code << ind << "terrain.windSpeed = " << formatFloat(terrain.windSpeed) << ";\n";
+    if (terrain.windSize != terrainDefaults.windSize) code << ind << "terrain.windSize = " << formatFloat(terrain.windSize) << ";\n";
+    if (terrain.windBending != terrainDefaults.windBending) code << ind << "terrain.windBending = " << formatFloat(terrain.windBending) << ";\n";
+    if (!terrain.treeData.str().empty()) code << ind << "terrain.treeData = " << formatString(terrain.treeData) << ";\n";
     for (size_t i = 0; i < terrain.treePrototypes.size(); i++) {
         const TerrainTreePrototype& prototype = terrain.treePrototypes[i];
         const std::string var = "treePrototype" + std::to_string(i);

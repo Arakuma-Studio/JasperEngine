@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import test_foliage as common  # noqa: E402
 
 CI = True
-EDITOR = {"create": True, "name": "Foliage Export"}
+EDITOR = {"create": True, "name": "Foliage Export", "env": build_cache.player_env("glcore", "release")}
 PREBUILT_PLAYERS = ["glcore-release"]
 
 TIMEOUT = 1500
@@ -35,7 +35,7 @@ async def test_prebuilt_lite_player_draws_foliage(ed: Editor):
     camera = (await ed.call("create_entity", scene=sid, name="View", type="camera", position=[0, 20, 30]))["entity_id"]
     await ed.call("set_properties", scene=sid, entity=camera, values={"camera": {"target": [0, 8, 0]}})
     await ed.call("save_scene", scene=sid)
-    await ed.call("set_project_settings", values={"graphics": {"runtime_shaders": False}})
+    await ed.call("set_project_settings", values={"graphics.runtime_shaders": False})
 
     runtime = await build_cache.player_runtime(ed, "glcore", "release")
     out = ed.scratch.root / "export-foliage"

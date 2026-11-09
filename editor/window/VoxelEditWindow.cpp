@@ -7,6 +7,7 @@
 #include "Backend.h"
 #include "Project.h"
 #include "Theme.h"
+#include "command/CommandHandle.h"
 #include "component/TerrainComponent.h"
 #include "component/VoxelVolumeComponent.h"
 #include "external/IconsFontAwesome6.h"
@@ -22,6 +23,8 @@
 #include "voxel/VoxelSliceRender.h"
 #include "voxel/VoxelVolumeOps.h"
 #include "window/ProjectWindow.h"
+#include "widget/ColorField.h"
+#include "widget/ColorPickerWindow.h"
 #include "window/Widgets.h"
 
 #include "imgui.h"
@@ -550,8 +553,13 @@ void VoxelEditWindow::drawSlotRow(SceneProject& sceneProject, int index) {
             mapRow("Color", &TerrainSurfaceLayer::colorTexture);
             if (layer.pbr) {
                 voxelPanelRow("Tint", "Multiplies the slot's colour");
-                ImVec4 tint(layer.colorFactor.x, layer.colorFactor.y, layer.colorFactor.z, layer.colorFactor.w);
-                if (ImGui::ColorEdit3("##tint", &tint.x)) edit([&](VoxelMaterialSlot& next) { next.layer.colorFactor = Vector4(tint.x, tint.y, tint.z, tint.w); }, true);
+                Vector4 tint = layer.colorFactor;
+                ui::ColorFieldOptions tintOptions;
+                tintOptions.alpha = false;
+                tintOptions.label = "Tint";
+                const ui::EditPhase tintPhase = ui::colorField("##tint", tint, tintOptions);
+                if (tintPhase == ui::EditPhase::Begin) ui::ColorPickerWindow::beginEdit(CommandHandle::get(sceneProject.id), "Tint");
+                else if (tintPhase == ui::EditPhase::Changing) edit([&](VoxelMaterialSlot& next) { next.layer.colorFactor = tint; }, true);
                 mapRow("Normal", &TerrainSurfaceLayer::normalTexture);
                 factorRow("Normal Strength", &TerrainSurfaceLayer::normalStrength, 2.0f);
                 mapRow("Roughness", &TerrainSurfaceLayer::roughnessTexture);
