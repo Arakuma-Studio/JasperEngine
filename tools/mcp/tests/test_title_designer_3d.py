@@ -61,8 +61,8 @@ async def test_rows_parts_and_tiers(ed: Editor):
     ed.check_eq(r["state"]["selection"], ["Title/band#0"], "the band is a part")
     await focus(ed, select="Title/face")
     await ed.call("editor_status")
-    material = (await ed.call("find_ui_item", label="##matpick")).get("items", [])
-    ed.check(len(material) > 0, "the face page has the material picker")
+    material = await ui.find("##matpick", frames=120)
+    ed.check(material is not None, "the face page has the material picker")
     for mode in ("realtime_high", "realtime_low", "glyph_atlas", "realtime"):
         r = await focus(ed, preview_as=mode)
         ed.check_eq(r["state"]["preview_as"], mode, f"Preview As {mode}")

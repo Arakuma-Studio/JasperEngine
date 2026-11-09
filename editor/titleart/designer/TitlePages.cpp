@@ -258,7 +258,9 @@ namespace {
             std::vector<FieldEdit> edits;
             for (const ta::ParamDef& param : params) {
                 auto it = preset.params.find(param.key);
-                edits.push_back({layer, base + "." + param.key, it != preset.params.end() ? *it : param.defaultValue});
+                const ta::Json value = it != preset.params.end() ? *it : param.defaultValue;
+                // (a param without a default stays as it is: a preset only sets what it names)
+                if (!value.is_null()) edits.push_back({layer, base + "." + param.key, value});
             }
             return editsToOps(edits);
         };

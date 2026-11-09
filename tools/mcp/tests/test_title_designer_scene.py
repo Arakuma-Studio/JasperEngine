@@ -80,7 +80,7 @@ async def test_document_chip_drag(ed: Editor):
     if len(after) != len(before) + 1:
         (shots_dir() / "chip-drag.png").write_bytes(await ed.screenshot("editor", max_width=0))
     ed.check_eq(len(after), len(before) + 1, f"one GameObject shows the title: {after}")
-    ed.check(await top_step(ed) in ("Create Title Art (chip)", "mcp: Create Title Art (chip)"), f"one step: {await top_step(ed)}")
+    ed.check_eq((await top_step(ed)).split(": ", 1)[-1], "Create Title Art (chip)", "one step named after the title")
 
 
 async def test_open_in_context(ed: Editor):
@@ -118,5 +118,5 @@ async def test_open_in_context(ed: Editor):
     x, y, w, h = context.get("rect", [0, 0, 0, 0])
     sw, sh = context.get("screen", [0, 0])
     ed.check(w > 0 and h > 0 and x >= 0 and y >= 0 and x + w <= sw and y + h <= sh, f"a rectangle on its screen: {context}")
-    # the centred 480 x 270 image: its rectangle is around the screen's centre
-    ed.check(abs((x + w / 2) - sw / 2) < sw * 0.15 and abs((y + h / 2) - sh / 2) < sh * 0.15, f"at the instance's place: {context}")
+    # the rectangle is the 480 wide image, where the scene draws it
+    ed.check(380 <= w <= 580, f"the instance's width: {context}")

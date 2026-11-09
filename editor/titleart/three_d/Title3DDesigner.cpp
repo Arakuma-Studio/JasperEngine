@@ -1007,6 +1007,8 @@ std::vector<uint8_t> jasperengine::editor::title3DEnvironmentTile(const std::str
     sample.scene = ta::titleEnvironmentPreset(preset);
     const std::string slug = sample.scene && !sample.scene->hdri.empty() ? sample.scene->hdri : ta::titleEnvironmentIsPhoto(preset) ? preset : std::string();
     if (!slug.empty()) sample.hdri = ta::loadTitleHdri(slug);
+    // a photo environment whose HDRI is not installed renders the studio (R57): its tile says so
+    if (!slug.empty() && !sample.hdri) sample.scene = ta::titleEnvironmentPreset("studio");
     sample.yaw = ta::titleHdriYaw(preset);
     auto put = [&](int x, int y, const std::array<float, 3>& c, float alpha) {
         uint8_t* p = &out[((size_t)y * width + x) * 4];

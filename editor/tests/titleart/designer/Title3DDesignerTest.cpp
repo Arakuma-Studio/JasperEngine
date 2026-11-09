@@ -12,6 +12,7 @@
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
 #include "titleart/three_d/Title3DDesigner.h"
+#include "titleart/designer/TitleRows.h"
 #include "titleart/three_d/Title3DEditor.h"
 
 #include <map>
@@ -98,6 +99,43 @@ TEST(Title3DDesignerTest, LettersShiftEachFromItsOwnValue) {
     EXPECT_DOUBLE_EQ(tilt["chars.2.tilt_x"].get<double>(), 6.0);
     TitleOpsResult applied = TitleArtOps::apply(doc, editsToOps(target.write(Vec3d{}, Vec3d{10.0, 0.0, 0.0}, Gizmo3DGesture::Rotate)));
     EXPECT_TRUE(applied.ok) << applied.error();
+}
+
+// R51 "Inherited": a layer's lighting values it has not set come from the document, a part's
+// environment from the layer, then the document
+TEST(Title3DDesignerTest, InheritedLightingValues) {
+    registerTitle3DDesigner();
+    std::string id;
+    const ta::TitleArtDoc doc = threeD(id);
+    const ta::Json* layer = titledesigner::layerById(doc, id);
+    ASSERT_NE(layer, nullptr);
+    const ta::Json lighting = (*layer)["style_3d"]["lighting"];
+    EXPECT_FALSE(lighting.contains("exposure")) << lighting.dump();
+    EXPECT_FALSE(lighting.contains("tone_mapping")) << lighting.dump();
+    const InheritanceRule* exposure = inheritanceOf("lighting_3d", "exposure", nullptr, nullptr);
+    ASSERT_NE(exposure, nullptr);
+    ASSERT_TRUE(exposure->sparse);
+    EXPECT_EQ(exposure->valueAt(doc, {id, "style_3d.lighting.exposure"}, "exposure"), ta::Json(1.0)) << doc.root["scene_3d"].dump();
+    const InheritanceRule* tone = inheritanceOf("lighting_3d", "tone_mapping", nullptr, nullptr);
+    ASSERT_NE(tone, nullptr);
+    EXPECT_EQ(tone->valueAt(doc, {id, "style_3d.lighting.tone_mapping"}, "tone_mapping"), ta::Json("neutral"));
+    const InheritanceRule* env = inheritanceOf("environment_3d_overrides", "intensity", nullptr, nullptr);
+    ASSERT_NE(env, nullptr);
+    EXPECT_EQ(env->valueAt(doc, {id, "style_3d.face.environment.intensity"}, "intensity"), ta::Json(1.0));
+}
+
+// reading a sparse member a level has not set leaves the document as it was: an inserted null
+// made the row look "set here" with an empty value. Red control: the lookup indexing the object
+// (operator[]) writes the key
+TEST(Title3DDesignerTest, ReadingASparseMemberDoesNotInsertIt) {
+    std::string id;
+    const ta::TitleArtDoc doc = threeD(id);
+    const ta::Json* layer = titledesigner::layerById(doc, id);
+    ASSERT_NE(layer, nullptr);
+    const ta::Json* value = ta::getTitleArtField(*layer, "layer", "style_3d.lighting.exposure");
+    ASSERT_NE(value, nullptr);
+    EXPECT_TRUE(value->is_null());
+    EXPECT_FALSE((*layer)["style_3d"]["lighting"].contains("exposure")) << (*layer)["style_3d"]["lighting"].dump();
 }
 
 TEST(Title3DDesignerTest, NoTargetFor2DOrLocked) {
