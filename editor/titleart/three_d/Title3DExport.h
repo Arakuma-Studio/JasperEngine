@@ -14,7 +14,7 @@
 //   fixed 3D text and no player needs an HDRI.
 // - The tier a title renders at on a platform (the prebakes' too): its component's Quality Tier,
 //   else the project's for the platform; High draws as Medium on WebGL2 (titleArt3DTierFor).
-// - Thread-safety: main thread (meshes are built through the editor's resolver).
+// - Thread-safety: see each function: the meshes on the main thread, the cubes on any.
 
 #pragma once
 
@@ -39,11 +39,28 @@ namespace jasperengine::editor {
         size_t meshes = 0, environments = 0;
     };
 
-    // writes je-titleart/ into `assetsDst` (the build's assets root) for the plan's Realtime 3D
-    // titles on `platforms` (buildPlatformName's names) and `families`; removes it when no shipped
-    // title is 3D
-    Title3DCookResult cookTitleArt3D(Project* project, const TitleArtExportPlan& plan, const std::filesystem::path& assetsDst,
-                                     const std::vector<std::string>& platforms, const std::vector<TextureFamily>& families);
+    // what is left of a cook once its meshes are written: the environment cubes and the index
+    struct Title3DCookPending {
+        struct Cube {
+            TextureFamily family;
+            std::string preset;
+            int tier = 1;
+        };
+        std::filesystem::path dir;              // the build's je-titleart/
+        titleart::Json index;
+        std::vector<Cube> cubes;
+        bool any = false;                       // a shipped title is 3D: the index is written
+    };
+
+    // Main thread (meshes go through the editor's resolver): clears je-titleart/ in `assetsDst` (the
+    // build's assets root), writes the meshes of the plan's Realtime 3D titles on `platforms`
+    // (buildPlatformName's names) and lists the cubes of `families`
+    Title3DCookPending beginTitleArt3DCook(Project* project, const TitleArtExportPlan& plan, const std::filesystem::path& assetsDst,
+                                           const std::vector<std::string>& platforms, const std::vector<TextureFamily>& families,
+                                           Title3DCookResult& result);
+    // Any thread: cooks the cubes (seconds of CPU at 1024 px a face, so the export's worker, not
+    // the main thread) and writes the index
+    void finishTitleArt3DCook(Title3DCookPending& pending, Title3DCookResult& result);
 
     // the S86 tier (1 high, 2 medium, 3 low) `qualityTier` renders at on `platform` with the
     // project's Realtime 3D Quality

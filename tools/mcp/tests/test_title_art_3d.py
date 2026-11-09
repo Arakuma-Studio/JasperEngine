@@ -204,7 +204,7 @@ async def test_export_cooks_realtime_3d(ed: Editor):
         data = (root / file).read_bytes()
         ed.check(data[:4] == b"JTM1", f"{file} is a .titlemesh")
     families = index["environments"]
-    ed.check_eq(sorted(families), ["android_etc2", "desktop", "mobile", "web"], "a source export carries every family")
+    ed.check_eq(sorted(families), ["desktop", "mobile", "web"], "a source export carries every family (android_etc2 only with its fallback setting)")
     for family, presets in families.items():
         ed.check((root / presets["softbox"]).read_bytes()[:12] == b"\xabKTX 20\xbb\r\n\x1a\n", f"{family}'s softbox cube is a KTX2")
     settings = settings_text(out)

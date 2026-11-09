@@ -108,15 +108,17 @@ std::vector<std::string> editor::titleArt3DEnvironments(const titleart::TitleArt
     return std::vector<std::string>(presets.begin(), presets.end());
 }
 
-Title3DCookResult editor::cookTitleArt3D(Project* project, const TitleArtExportPlan& plan, const fs::path& assetsDst,
-                                         const std::vector<std::string>& platforms, const std::vector<TextureFamily>& families) {
-    Title3DCookResult result;
+Title3DCookPending editor::beginTitleArt3DCook(Project* project, const TitleArtExportPlan& plan, const fs::path& assetsDst,
+                                                const std::vector<std::string>& platforms, const std::vector<TextureFamily>& families,
+                                                Title3DCookResult& result) {
+    Title3DCookPending pending;
     // the bundled HDRIs' loader (a command-line build registers no MCP tools, which register it)
     registerTitle3DEditor();
     const fs::path cookedDir = assetsDst / titleart::TITLE_COOKED_DIR;
     std::error_code ec;
     fs::remove_all(cookedDir, ec);
-    if (!project) return result;
+    pending.dir = cookedDir;
+    if (!project) return pending;
 
     struct Title {
         std::shared_ptr<const titleart::TitleArtDoc> doc;
@@ -193,7 +195,7 @@ Title3DCookResult editor::cookTitleArt3D(Project* project, const TitleArtExportP
                 }
                 for (const auto& [layerId, bytes] : meshes) {
                     const std::string file = titleart::titleCookedMeshFile(path, layerId, tier);
-                    if (!write(cookedDir / file, bytes, result)) return result;
+                    if (!write(cookedDir / file, bytes, result)) return pending;
                     entry["meshes"][layerId][titleart::titleTierName(tier)] = file;
                     result.written.push_back(std::string(titleart::TITLE_COOKED_DIR) + "/" + file);
                     result.meshes++;
@@ -202,27 +204,33 @@ Title3DCookResult editor::cookTitleArt3D(Project* project, const TitleArtExportP
         }
         index["titles"][path] = entry;
     }
-    if (!any) return result;
-
-    // R26: the environment cubes, one per (family, preset)
+    pending.any = any;
+    pending.index = std::move(index);
+    if (!any) return pending;
     for (const auto& [key, tier] : cubes) {
-        const auto& [family, preset] = key;
-        if (preset == "matcap") continue;
+        if (key.second != "matcap") pending.cubes.push_back({key.first, key.second, tier});
+    }
+    return pending;
+}
+
+void editor::finishTitleArt3DCook(Title3DCookPending& pending, Title3DCookResult& result) {
+    if (!result.ok || !pending.any) return;
+    // R26: the environment cubes, one per (family, preset)
+    for (const Title3DCookPending::Cube& cube : pending.cubes) {
         std::vector<uint8_t> ktx2;
         std::string error;
-        if (!cookTitleEnvironment(preset, (titleart::TitleTier)tier, family, ktx2, error)) {
-            result.warnings.push_back("W-TITLEART-3D-ENV: the environment '" + preset + "' was not cooked for " + textureFamilyName(family) + " (" +
+        if (!cookTitleEnvironment(cube.preset, (titleart::TitleTier)cube.tier, cube.family, ktx2, error)) {
+            result.warnings.push_back("W-TITLEART-3D-ENV: the environment '" + cube.preset + "' was not cooked for " + textureFamilyName(cube.family) + " (" +
                                       error + "): 3D titles there light with the studio");
             continue;
         }
-        const std::string file = titleart::titleCookedEnvironmentFile(textureFamilyName(family), preset);
-        if (!write(cookedDir / file, ktx2, result)) return result;
-        index["environments"][textureFamilyName(family)][preset] = file;
+        const std::string file = titleart::titleCookedEnvironmentFile(textureFamilyName(cube.family), cube.preset);
+        if (!write(pending.dir / file, ktx2, result)) return;
+        pending.index["environments"][textureFamilyName(cube.family)][cube.preset] = file;
         result.written.push_back(std::string(titleart::TITLE_COOKED_DIR) + "/" + file);
         result.environments++;
     }
-    const std::string text = index.dump(1);
-    if (!write(cookedDir / titleart::TITLE_COOKED_INDEX_FILE, std::vector<uint8_t>(text.begin(), text.end()), result)) return result;
+    const std::string text = pending.index.dump(1);
+    if (!write(pending.dir / titleart::TITLE_COOKED_INDEX_FILE, std::vector<uint8_t>(text.begin(), text.end()), result)) return;
     result.written.push_back(std::string(titleart::TITLE_COOKED_DIR) + "/" + titleart::TITLE_COOKED_INDEX_FILE);
-    return result;
 }

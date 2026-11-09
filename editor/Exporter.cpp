@@ -2928,21 +2928,24 @@ bool editor::Exporter::writeTitleArtRuntime() {
     TitleArtPrebakeResult prebaked;
     TitleArtFontShipResult fonts;
     Title3DCookResult cooked3D;
+    Title3DCookPending cook3D;
     std::promise<void> done;
     auto doneFuture = done.get_future();
     const fs::path assetsDst = getExportProjectRoot() / "assets";
     const std::vector<std::string> platforms = exportPlatformNames();
     const std::vector<TextureFamily> families = TextureCookQueue::familiesForExport(platforms, project->getTextureSettings().androidEtc2Fallback);
-    editor::getEditorHost().enqueueMainThreadTask([this, &prebaked, &fonts, &cooked3D, &done, assetsDst, &platforms, &families]() {
+    editor::getEditorHost().enqueueMainThreadTask([this, &prebaked, &fonts, &cooked3D, &cook3D, &done, assetsDst, &platforms, &families]() {
         const TitleArtExportPlan plan = planTitleArtExport(project);
         // the fonts first: the prebakes are keyed by the documents the player reads (relinked to the subsets)
         fonts = shipTitleArtFonts(project, plan, assetsDst);
         if (fonts.ok) prebaked = writeTitleArtPrebakes(project, plan, assetsDst, platforms);
         // S86 R26, R38: the Realtime 3D titles' cooked meshes and environment cubes
-        if (fonts.ok && prebaked.ok) cooked3D = cookTitleArt3D(project, plan, assetsDst, platforms, families);
+        if (fonts.ok && prebaked.ok) cook3D = beginTitleArt3DCook(project, plan, assetsDst, platforms, families, cooked3D);
         done.set_value();
     });
     doneFuture.get();
+    // the cubes on this worker: seconds of CPU a face size of 1024 takes
+    finishTitleArt3DCook(cook3D, cooked3D);
     for (const std::string& line : fonts.shipped) Out::info("Title Art font %s", line.c_str());
     for (const std::string& line : fonts.warnings) Out::warning("%s", line.c_str());
     if (!fonts.ok) {
