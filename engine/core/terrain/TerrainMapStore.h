@@ -24,7 +24,7 @@
 #include <utility>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     enum class MapKind : uint8_t { Height, Blend, Hole, Density };
 

@@ -795,7 +795,7 @@ bool ParticleSubsystem::sampleTerrain(const void* context, const float p[3], flo
         const Vector3 local = t.worldToLocal * point(p);
         if (std::fabs(local.x) > t.halfSize || std::fabs(local.z) > t.halfSize)
             continue;
-        const terrain::SurfaceSample sample = querySurface(*t.terrain, local.x, local.z);
+        const terraincore::SurfaceSample sample = querySurface(*t.terrain, local.x, local.z);
         // T3 R26: no surface over a hole, so the particle passes
         if (sample.hole)
             continue;

@@ -3469,12 +3469,12 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.postColor = postColorVariants;
     environment.litQualityHigh = QualityResolver::litQuality(scene->getLitQuality()) == LitQuality::HIGH;
     environment.pbrTier = MaterialPbr::getRuntimeTier();
-    environment.terrainTier = terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
-    environment.terrainShippedMask = terrain::TerrainQualitySettings::getShippedMask();
-    environment.terrainDebugView = static_cast<int>(terrain::TerrainQualitySettings::getDebugView());
+    environment.terrainTier = terraincore::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
+    environment.terrainShippedMask = terraincore::TerrainQualitySettings::getShippedMask();
+    environment.terrainDebugView = static_cast<int>(terraincore::TerrainQualitySettings::getDebugView());
     {
-        terrain::TerrainQuality forced;
-        if (terrain::TerrainQualitySettings::getEditorPreview(forced) || terrain::TerrainQualitySettings::getGlobalOverride(forced)){
+        terraincore::TerrainQuality forced;
+        if (terraincore::TerrainQualitySettings::getEditorPreview(forced) || terraincore::TerrainQualitySettings::getGlobalOverride(forced)){
             environment.terrainForced = true;
             environment.terrainForcedTier = forced;
         }
@@ -4151,9 +4151,9 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // (a terrain with no layer draws its base material alone, views included: getTerrainDefineBits)
     const bool p_terrainDebug = inputs.terrain && !inputs.manifest && environment.terrainDebugView != 0 && inputs.terrainVariant.layerCount > 0;
     const bool p_terrainSurface = inputs.terrain && (inputs.terrainSurface || p_terrainDebug) && !inputs.manifest;
-    const terrain::TerrainQuality p_terrainTier = inputs.terrain ? resolveTerrainTier(environment, inputs.terrainVariant).quality : terrain::TerrainQuality::HIGH;
+    const terraincore::TerrainQuality p_terrainTier = inputs.terrain ? resolveTerrainTier(environment, inputs.terrainVariant).quality : terraincore::TerrainQuality::HIGH;
     // T3 R14: the macro normal takes the base material's normal map's place, and its slot
-    const bool p_terrainMacroNormal = p_terrainSurface && inputs.terrainVariant.macroNormal && terrain::terrainTierInfo(p_terrainTier).macroNormal && inputs.normal;
+    const bool p_terrainMacroNormal = p_terrainSurface && inputs.terrainVariant.macroNormal && terraincore::terrainTierInfo(p_terrainTier).macroNormal && inputs.normal;
     const bool useIBL = (environment.ibl || environment.reflectionProbes) && inputs.receiveIBL;
     // the stages evaluating the object's lights: pixel (USE_PUNCTUAL), vertex
     // (USE_VERTEX_LIGHTS) or both, which the lights' own shading then splits (MIXED)
@@ -17953,7 +17953,7 @@ void RenderSystem::update(double dt){
                     }else if (mesh.loaded && !mesh.needReload){
                         // so can a layer's hex tiling, a tier or a feature: defines of the built-in Lit's
                         // variant (as asked for: the plain variant standing in for it reloads on its own)
-                        terrain::TerrainVariantInputs variantInputs = getTerrainVariantInputs(*terrain);
+                        terraincore::TerrainVariantInputs variantInputs = getTerrainVariantInputs(*terrain);
                         variantInputs.hex = hasTerrainHexLayers(*terrain);
                         variantInputs.hexStochastic = variantInputs.hex && hasTerrainStochasticLayers(*terrain);
                         const bool unlit = (mesh.submeshes[s].shaderProperties & (1u << 0)) != 0;

@@ -7,7 +7,7 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -16,7 +16,7 @@ namespace {
 
 }
 
-const char* jasperengine::terrain::tileStateName(TileState state) {
+const char* jasperengine::terraincore::tileStateName(TileState state) {
     switch (state) {
         case TileState::Absent: return "absent";
         case TileState::Cold: return "cold";

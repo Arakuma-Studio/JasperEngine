@@ -136,18 +136,18 @@ TEST(TerrainWorldStreaming, QueryEqualsTheTileKernel) {
     ASSERT_TRUE(runtime);
     ASSERT_TRUE(world.pumpUntil([&] { return runtime->isReady(); }));
     // over a cold tile, on the game's side, the overview answers and says so (R24)
-    const jasperengine::terrain::SurfaceSample far = runtime->query(-100.0f, -100.0f, false);
+    const jasperengine::terraincore::SurfaceSample far = runtime->query(-100.0f, -100.0f, false);
     EXPECT_TRUE(far.present);
     EXPECT_FALSE(far.exact);
     // waiting (the editor, a job) reads the tile: the exact sample at lattice points, across borders
     for (int s : {-64, -1, 0, 1, 63, 64, 65}) {
-        const jasperengine::terrain::SurfaceSample sample = runtime->query(static_cast<float>(s), 7.0f, true);
+        const jasperengine::terraincore::SurfaceSample sample = runtime->query(static_cast<float>(s), 7.0f, true);
         EXPECT_TRUE(sample.exact);
         EXPECT_TRUE(sample.present);
         EXPECT_NEAR(sample.height, heightOfSample(fixtureSample(s, 7), 50.0f), 1e-4f) << s;
     }
     // off the world: absent, not a hole
-    const jasperengine::terrain::SurfaceSample off = runtime->query(5000.0f, 0.0f, true);
+    const jasperengine::terraincore::SurfaceSample off = runtime->query(5000.0f, 0.0f, true);
     EXPECT_FALSE(off.present);
     EXPECT_FALSE(off.hole);
     // T1's querySurface takes the branch, so every caller of it works on a World

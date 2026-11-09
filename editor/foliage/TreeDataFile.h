@@ -32,7 +32,7 @@ namespace jasperengine::editor {
         // The path of a new file in the maps folder, relative to the assets as the component stores it
         static std::string makePath(Project* project, uint32_t sceneId, Entity terrain);
         // The bytes, compressed above the store's limit
-        static void encode(const terrain::TreeStore& store, std::vector<uint8_t>& bytes);
+        static void encode(const terraincore::TreeStore& store, std::vector<uint8_t>& bytes);
     };
 
 }

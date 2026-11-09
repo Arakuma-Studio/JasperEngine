@@ -7,7 +7,7 @@
 #include <cstring>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -43,15 +43,15 @@ namespace {
 
 }
 
-const TerrainTierInfo& jasperengine::terrain::terrainTierInfo(TerrainQuality quality) {
+const TerrainTierInfo& jasperengine::terraincore::terrainTierInfo(TerrainQuality quality) {
     return TIERS[static_cast<int>(quality)];
 }
 
-const char* jasperengine::terrain::terrainQualityName(TerrainQuality quality) {
+const char* jasperengine::terraincore::terrainQualityName(TerrainQuality quality) {
     return NAMES[static_cast<int>(quality)];
 }
 
-bool jasperengine::terrain::terrainQualityFromName(const char* name, TerrainQuality& quality) {
+bool jasperengine::terraincore::terrainQualityFromName(const char* name, TerrainQuality& quality) {
     for (int i = 0; i < TERRAIN_QUALITY_COUNT; i++) {
         if (name && std::strcmp(name, NAMES[i]) == 0) {
             quality = static_cast<TerrainQuality>(i);
@@ -61,7 +61,7 @@ bool jasperengine::terrain::terrainQualityFromName(const char* name, TerrainQual
     return false;
 }
 
-TerrainQuality jasperengine::terrain::clampTerrainQuality(TerrainQuality quality, uint32_t shippedMask) {
+TerrainQuality jasperengine::terraincore::clampTerrainQuality(TerrainQuality quality, uint32_t shippedMask) {
     if (shippedMask == 0 || (shippedMask & terrainQualityBit(quality))) return quality;
     // the nearest one, higher first: towards High, then down
     for (int i = static_cast<int>(quality) - 1; i >= 0; i--) {
@@ -73,7 +73,7 @@ TerrainQuality jasperengine::terrain::clampTerrainQuality(TerrainQuality quality
     return quality;
 }
 
-TerrainQualityResolved jasperengine::terrain::resolveTerrainQuality(const TerrainQualityRequest& request) {
+TerrainQualityResolved jasperengine::terraincore::resolveTerrainQuality(const TerrainQualityRequest& request) {
     TerrainQualityResolved resolved;
     if (request.hasPreview) {
         resolved.quality = request.preview;

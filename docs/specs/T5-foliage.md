@@ -181,7 +181,7 @@ Inside the repository, follow `SplineSystem` for jobs, `bake_navigation` (`Navig
 - **R7. Surface query.** Placement, re-snap and queries use T1's surface query (ledger D5, D9) for
   height, normal and is-hole. The copied-texel form for jobs is T1's `SurfaceView` (T1 R93), with
   a test that it matches `querySurface` within 1e-4 (S26:467). The hole test is T3's pure
-  `terrain::isHole(HoleMapView, u, v)` at the instance origin, after the density test and before height
+  `terraincore::isHole(HoleMapView, u, v)` at the instance origin, after the density test and before height
   (T3 R19, R26).
 
 ### Functional: Details
@@ -560,7 +560,7 @@ colour noise use extra `mixFoliage` draws after the existing five, so they canno
 **F3. The instance.**
 
 ```cpp
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
     // one foliage instance on the GPU; stored and drawn in terrain-local space
     struct FoliageInstance {
         float position[3];
@@ -665,7 +665,7 @@ and automatic save slots (the engine has no save-game system to attach to).
 **F11. The seam for T4.** `FoliageSystem` works on regions, and a lone Terrain is one region:
 
 ```cpp
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
     using TreeId = uint64_t;    // (uint64_t(regionKey) << 32) | record id; regionKey 0 for one Terrain
 
     class FoliageRegion {
@@ -680,7 +680,7 @@ namespace jasperengine::terrain {
     };
 }
 // FoliageSystem
-void addRegion(Entity owner, std::shared_ptr<terrain::FoliageRegion> region);
+void addRegion(Entity owner, std::shared_ptr<terraincore::FoliageRegion> region);
 void removeRegion(Entity owner, uint32_t regionKey);    // budgeted release over frames
 ```
 
@@ -852,7 +852,7 @@ claim for a GPU can come from this host, and a report must say so.
   |---|---|---|
   | T1 | Register operations from another file (`registerOp`); a read-rectangle on `TerrainMapStore` usable from the main thread to fill job inputs (`read`); a subscribable dirty-rectangle event from every height, hole and density write (`TerrainEditEvents`); an overlay source interface (`TerrainOverlay::registerSource`); `region` on `sample_terrain` | `FoliageOps`, `density` and `tree_density` overlays, stats for `sample_terrain` |
   | T2 | `CompiledGraph::evaluateGrid` from `NoiseGraphRuntime.h` (T2 R21, R23). The editor's operation evaluates the mask and hands `FoliageRules` a float buffer, so `engine/core/terrain/` and players don't link `JASPERENGINE_NOISE` | Nothing |
-  | T3 | `terrain::isHole` and `HoleMapView`; T3's `TerrainHolesConsumers.Foliage` (its AC33) stays green when the scatter moves here | Hides trees and rejects placement over holes; narrows T3 R26's `needUpdateFoliage` to the dirty cells of T3 R28 |
+  | T3 | `terraincore::isHole` and `HoleMapView`; T3's `TerrainHolesConsumers.Foliage` (its AC33) stays green when the scatter moves here | Hides trees and rejects placement over holes; narrows T3 R26's `needUpdateFoliage` to the dirty cells of T3 R28 |
   | T4 | Adds regions, offsets, per-tile files, per-tile budget release (F11) | `FoliageRegion`, `addRegion`, `removeRegion`, `TreeId` |
   | T6 | Nothing now | May use the scatter later through a region |
   | S18 | `SplineTerrainSettings` extended by one field | Trees cleared by a bake |

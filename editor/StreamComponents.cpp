@@ -1029,7 +1029,7 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     terrain.windBending = decodeFinite(node["windBending"], terrainDefaults.windBending);
     terrain.treePrototypes.clear();
     if (node["treePrototypes"] && node["treePrototypes"].IsSequence()) {
-        for (std::size_t i = 0; i < node["treePrototypes"].size() && i < static_cast<std::size_t>(jasperengine::terrain::FOLIAGE_MAX_PROTOTYPES); i++) {
+        for (std::size_t i = 0; i < node["treePrototypes"].size() && i < static_cast<std::size_t>(jasperengine::terraincore::FOLIAGE_MAX_PROTOTYPES); i++) {
             if (!node["treePrototypes"][i] || node["treePrototypes"][i].IsNull()) continue;
             terrain.treePrototypes.push_back(decodeTerrainTreePrototype(node["treePrototypes"][i]));
         }

@@ -25,7 +25,7 @@
 
 namespace terrainworldtest {
 
-    using namespace jasperengine::terrain;
+    using namespace jasperengine::terraincore;
 
     inline TileCodec zstdCodec() {
         TileCodec codec;

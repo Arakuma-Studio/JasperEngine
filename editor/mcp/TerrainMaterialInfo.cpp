@@ -22,27 +22,27 @@ using namespace jasperengine::editor::mcp;
 
 namespace {
 
-    const char* qualitySourceName(terrain::TerrainQualitySource source) {
+    const char* qualitySourceName(terraincore::TerrainQualitySource source) {
         switch (source) {
-            case terrain::TerrainQualitySource::EDITOR_PREVIEW: return "editor_preview";
-            case terrain::TerrainQualitySource::GLOBAL_OVERRIDE: return "global_override";
-            case terrain::TerrainQualitySource::COMPONENT: return "component";
+            case terraincore::TerrainQualitySource::EDITOR_PREVIEW: return "editor_preview";
+            case terraincore::TerrainQualitySource::GLOBAL_OVERRIDE: return "global_override";
+            case terraincore::TerrainQualitySource::COMPONENT: return "component";
             default: return "project";
         }
     }
 
-    Json fetchesJson(const terrain::MaterialCost& cost) {
+    Json fetchesJson(const terraincore::MaterialCost& cost) {
         return Json{{"flat", cost.flat}, {"slope", cost.slope}, {"worst", cost.worst}};
     }
 
     // the blend map texels of a layer's weight at a local point, nearest: enough for the agent's answer,
-    // and the same mapping the shader reads (terrain::terrainLayerChannel)
+    // and the same mapping the shader reads (terraincore::terrainLayerChannel)
     void paintedWeights(TerrainComponent& component, float localX, float localZ, std::vector<float>& weights) {
-        const int layers = std::min(static_cast<int>(component.surfaceLayers.size()), terrain::TERRAIN_MAX_LAYERS);
+        const int layers = std::min(static_cast<int>(component.surfaceLayers.size()), terraincore::TERRAIN_MAX_LAYERS);
         weights.assign(static_cast<size_t>(layers), 0.0f);
         const float half = component.terrainSize * 0.5f;
         for (int layer = 0; layer < layers; layer++) {
-            const terrain::LayerChannel channel = terrain::terrainLayerChannel(layer);
+            const terraincore::LayerChannel channel = terraincore::terrainLayerChannel(layer);
             if (channel.map >= static_cast<int>(component.blendMaps.size())) continue;
             Texture& map = component.blendMaps[static_cast<size_t>(channel.map)];
             if (map.empty() || map.isFramebuffer() || !map.hasData() || !map.getData().getData()) continue;
@@ -61,9 +61,9 @@ namespace {
 
 }
 
-terrain::TerrainMaterialInputs jasperengine::editor::mcp::terrainMaterialInputs(const TerrainComponent& component, bool postColor) {
-    terrain::TerrainMaterialInputs inputs;
-    inputs.layerCount = std::min(static_cast<int>(component.surfaceLayers.size()), terrain::TERRAIN_MAX_LAYERS);
+terraincore::TerrainMaterialInputs jasperengine::editor::mcp::terrainMaterialInputs(const TerrainComponent& component, bool postColor) {
+    terraincore::TerrainMaterialInputs inputs;
+    inputs.layerCount = std::min(static_cast<int>(component.surfaceLayers.size()), terraincore::TERRAIN_MAX_LAYERS);
     for (int i = 0; i < inputs.layerCount; i++) {
         const TerrainSurfaceLayer& layer = component.surfaceLayers[static_cast<size_t>(i)];
         inputs.layers[i].pbr = layer.pbr;
@@ -83,34 +83,34 @@ terrain::TerrainMaterialInputs jasperengine::editor::mcp::terrainMaterialInputs(
     return inputs;
 }
 
-terrain::TerrainQualityResolved jasperengine::editor::mcp::terrainEffectiveTier(const TerrainComponent& component) {
-    terrain::TerrainQualityRequest request;
-    terrain::TerrainQuality forced;
-    if (terrain::TerrainQualitySettings::getEditorPreview(forced)) {
+terraincore::TerrainQualityResolved jasperengine::editor::mcp::terrainEffectiveTier(const TerrainComponent& component) {
+    terraincore::TerrainQualityRequest request;
+    terraincore::TerrainQuality forced;
+    if (terraincore::TerrainQualitySettings::getEditorPreview(forced)) {
         request.hasPreview = true;
         request.preview = forced;
-    } else if (terrain::TerrainQualitySettings::getGlobalOverride(forced)) {
+    } else if (terraincore::TerrainQualitySettings::getGlobalOverride(forced)) {
         request.hasOverride = true;
         request.globalOverride = forced;
     }
-    const terrain::TerrainVariantInputs variant = getTerrainVariantInputs(component);
+    const terraincore::TerrainVariantInputs variant = getTerrainVariantInputs(component);
     request.hasComponent = variant.hasComponentQuality;
     request.component = variant.componentQuality;
-    request.project = terrain::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
-    request.shippedMask = terrain::TerrainQualitySettings::getShippedMask();
-    return terrain::resolveTerrainQuality(request);
+    request.project = terraincore::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()));
+    request.shippedMask = terraincore::TerrainQualitySettings::getShippedMask();
+    return terraincore::resolveTerrainQuality(request);
 }
 
 Json jasperengine::editor::mcp::terrainMaterialJson(Scene* scene, Entity entity) {
     TerrainComponent& component = scene->getComponent<TerrainComponent>(entity);
-    const terrain::TerrainQualityResolved resolved = terrainEffectiveTier(component);
-    const terrain::TerrainMaterialInputs inputs = terrainMaterialInputs(component, true);
-    const terrain::MaterialCost cost = terrain::materialCost(inputs, resolved.quality);
+    const terraincore::TerrainQualityResolved resolved = terrainEffectiveTier(component);
+    const terraincore::TerrainMaterialInputs inputs = terrainMaterialInputs(component, true);
+    const terraincore::MaterialCost cost = terraincore::materialCost(inputs, resolved.quality);
 
     Json byTier = Json::object();
-    for (int tier = 0; tier < terrain::TERRAIN_QUALITY_COUNT; tier++) {
-        const terrain::TerrainQuality quality = static_cast<terrain::TerrainQuality>(tier);
-        byTier[terrain::terrainQualityName(quality)] = fetchesJson(terrain::materialCost(inputs, quality));
+    for (int tier = 0; tier < terraincore::TERRAIN_QUALITY_COUNT; tier++) {
+        const terraincore::TerrainQuality quality = static_cast<terraincore::TerrainQuality>(tier);
+        byTier[terraincore::terrainQualityName(quality)] = fetchesJson(terraincore::materialCost(inputs, quality));
     }
     Json fetches = fetchesJson(cost);
     fetches["by_tier"] = byTier;
@@ -123,7 +123,7 @@ Json jasperengine::editor::mcp::terrainMaterialJson(Scene* scene, Entity entity)
         detail = Json{{"format", gpuFormatInfo(format).name}, {"slices", slices}, {"bytes", bytes}};
     }
 
-    const terrain::TerrainTierInfo& tier = terrain::terrainTierInfo(resolved.quality);
+    const terraincore::TerrainTierInfo& tier = terraincore::terrainTierInfo(resolved.quality);
     Json features = Json::array();
     const auto feature = [&](bool on, const char* name) {
         if (on) features.push_back(name);
@@ -141,21 +141,21 @@ Json jasperengine::editor::mcp::terrainMaterialJson(Scene* scene, Entity entity)
         feature(component.macroNormal && tier.macroNormal && !mesh->submeshes[0].material.normalTexture.empty(), "base_normal_replaced");
     }
 
-    return Json{{"quality", terrain::terrainQualityName(resolved.quality)},
+    return Json{{"quality", terraincore::terrainQualityName(resolved.quality)},
                 {"quality_source", qualitySourceName(resolved.source)},
                 {"limit_layers_per_pixel", component.limitLayersPerPixel},
                 {"layers", inputs.layerCount},
                 {"blend_maps_read", cost.blendMapsRead},
                 {"fetches", fetches},
-                {"texture_slots", {{"used", cost.textureSlots}, {"limit", terrain::TERRAIN_TEXTURE_SLOT_LIMIT}}},
+                {"texture_slots", {{"used", cost.textureSlots}, {"limit", terraincore::TERRAIN_TEXTURE_SLOT_LIMIT}}},
                 {"detail_array", detail},
                 {"features", features}};
 }
 
 Json jasperengine::editor::mcp::terrainHolesJson(TerrainComponent& component) {
     if (component.holeMap.empty()) return nullptr;
-    const terrain::HoleMapView view = terrainSurfaceView(component).holes;
-    const int64_t holes = terrain::countHoleTexels(view, 0, 0, view.width, view.height);
+    const terraincore::HoleMapView view = terrainSurfaceView(component).holes;
+    const int64_t holes = terraincore::countHoleTexels(view, 0, 0, view.width, view.height);
     const int64_t total = static_cast<int64_t>(view.width) * view.height;
     const int samples = component.heightMap.hasData() ? static_cast<int>(JoltShapeBuilder::defaultHeightFieldSamples(component)) : 0;
     return Json{{"map", component.holeMap.getPath(0)},
@@ -167,21 +167,21 @@ Json jasperengine::editor::mcp::terrainHolesJson(TerrainComponent& component) {
 
 void jasperengine::editor::mcp::addTerrainPointMaterial(Scene* scene, Entity entity, float localX, float localZ, bool full, Json& sample) {
     TerrainComponent& component = scene->getComponent<TerrainComponent>(entity);
-    const terrain::SurfaceSample surface = querySurface(component, localX, localZ);
+    const terraincore::SurfaceSample surface = querySurface(component, localX, localZ);
     sample["hole"] = surface.hole;
     if (!full) return;
 
     bool gap = false;
     bool excluded = false;
     if (!component.holeMap.empty() && surface.inside) {
-        const terrain::HoleMapView view = terrainSurfaceView(component).holes;
+        const terraincore::HoleMapView view = terrainSurfaceView(component).holes;
         const int samples = static_cast<int>(JoltShapeBuilder::defaultHeightFieldSamples(component));
         std::vector<uint8_t> open;
         std::vector<uint8_t> gaps;
         std::vector<uint8_t> cells;
-        terrain::openSquares(view, samples, 1.0f, 1.0f, open);
-        terrain::noCollisionSamples(open, samples, gaps);
-        terrain::navHoleCells(view, samples, cells);
+        terraincore::openSquares(view, samples, 1.0f, 1.0f, open);
+        terraincore::noCollisionSamples(open, samples, gaps);
+        terraincore::navHoleCells(view, samples, cells);
         const int spans = samples - 1;
         const float u = (localX + component.terrainSize * 0.5f) / component.terrainSize * static_cast<float>(spans);
         const float v = (localZ + component.terrainSize * 0.5f) / component.terrainSize * static_cast<float>(spans);
@@ -204,10 +204,10 @@ void jasperengine::editor::mcp::addTerrainPointMaterial(Scene* scene, Entity ent
     }
     sample["layers_painted"] = painted;
 
-    const terrain::TerrainQuality quality = terrainEffectiveTier(component).quality;
-    const terrain::TerrainTierInfo& tier = terrain::terrainTierInfo(quality);
+    const terraincore::TerrainQuality quality = terrainEffectiveTier(component).quality;
+    const terraincore::TerrainTierInfo& tier = terraincore::terrainTierInfo(quality);
     const int keep = component.limitLayersPerPixel ? tier.limitedLayersPerPixel : tier.layersPerPixel;
-    const terrain::LayerSelection selection = terrain::selectLayers(weights.data(), static_cast<int>(weights.size()), keep);
+    const terraincore::LayerSelection selection = terraincore::selectLayers(weights.data(), static_cast<int>(weights.size()), keep);
     Json drawn = Json::array();
     for (int i = 0; i < selection.count; i++) {
         if (selection.weight[i] > 0.0f) drawn.push_back({{"layer", selection.layer[i]}, {"weight", selection.weight[i]}});
@@ -215,13 +215,13 @@ void jasperengine::editor::mcp::addTerrainPointMaterial(Scene* scene, Entity ent
     sample["layers_drawn"] = drawn;
 
     // this point's reads: the blend maps, each drawn layer's maps, and what the variant adds
-    const terrain::TerrainMaterialInputs inputs = terrainMaterialInputs(component, true);
-    const terrain::MaterialCost cost = terrain::materialCost(inputs, quality);
+    const terraincore::TerrainMaterialInputs inputs = terrainMaterialInputs(component, true);
+    const terraincore::MaterialCost cost = terraincore::materialCost(inputs, quality);
     int fetches = cost.blendMapsRead + (inputs.holes ? 1 : 0) + (inputs.macroNormal && tier.macroNormal ? 1 : 0);
     for (int i = 0; i < selection.count; i++) {
         if (selection.weight[i] <= 0.0f) continue;
-        const terrain::TerrainLayerCostInput& layer = inputs.layers[selection.layer[i]];
-        if (quality == terrain::TerrainQuality::LOW) {
+        const terraincore::TerrainLayerCostInput& layer = inputs.layers[selection.layer[i]];
+        if (quality == terraincore::TerrainQuality::LOW) {
             fetches += 1 + (i == 0 && layer.pbr && layer.normalMap ? 1 : 0);
         } else {
             fetches += 1 + (layer.pbr && layer.normalMap ? 1 : 0) + (layer.pbr && layer.surfaceMap ? 1 : 0);
@@ -233,7 +233,7 @@ void jasperengine::editor::mcp::addTerrainPointMaterial(Scene* scene, Entity ent
 Json jasperengine::editor::mcp::terrainCoverageJson(TerrainComponent& component, float minX, float minZ, float maxX, float maxZ) {
     const float half = component.terrainSize * 0.5f;
     Json out = Json::object();
-    const terrain::HoleMapView view = terrainSurfaceView(component).holes;
+    const terraincore::HoleMapView view = terrainSurfaceView(component).holes;
     double holeFraction = 0.0;
     if (view.texels) {
         const int x0 = static_cast<int>(std::floor((minX + half) / component.terrainSize * static_cast<float>(view.width)));
@@ -241,13 +241,13 @@ Json jasperengine::editor::mcp::terrainCoverageJson(TerrainComponent& component,
         const int x1 = static_cast<int>(std::ceil((maxX + half) / component.terrainSize * static_cast<float>(view.width)));
         const int y1 = static_cast<int>(std::ceil((maxZ + half) / component.terrainSize * static_cast<float>(view.height)));
         const int64_t area = static_cast<int64_t>(std::clamp(x1, 0, view.width) - std::clamp(x0, 0, view.width)) * (std::clamp(y1, 0, view.height) - std::clamp(y0, 0, view.height));
-        if (area > 0) holeFraction = static_cast<double>(terrain::countHoleTexels(view, x0, y0, x1, y1)) / static_cast<double>(area);
+        if (area > 0) holeFraction = static_cast<double>(terraincore::countHoleTexels(view, x0, y0, x1, y1)) / static_cast<double>(area);
     }
     out["hole_fraction"] = holeFraction;
 
     // the histogram of how many layers a point has painted, over a grid of the rectangle
     constexpr int GRID = 64;
-    int histogram[terrain::TERRAIN_MAX_LAYERS + 1] = {};
+    int histogram[terraincore::TERRAIN_MAX_LAYERS + 1] = {};
     std::vector<float> weights;
     for (int j = 0; j < GRID; j++) {
         const float z = minZ + (maxZ - minZ) * (static_cast<float>(j) + 0.5f) / GRID;
@@ -260,7 +260,7 @@ Json jasperengine::editor::mcp::terrainCoverageJson(TerrainComponent& component,
         }
     }
     Json layerCounts = Json::object();
-    for (int count = 0; count <= terrain::TERRAIN_MAX_LAYERS; count++) {
+    for (int count = 0; count <= terraincore::TERRAIN_MAX_LAYERS; count++) {
         if (histogram[count] > 0) layerCounts[std::to_string(count)] = static_cast<double>(histogram[count]) / (GRID * GRID);
     }
     out["layer_count_histogram"] = layerCounts;

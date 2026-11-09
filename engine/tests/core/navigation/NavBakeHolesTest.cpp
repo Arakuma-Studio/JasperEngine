@@ -43,13 +43,13 @@ namespace {
 
         Entity add(Scene& scene, const std::string& name) {
             heights.assign((size_t)HOLE_TERRAIN_SAMPLES * HOLE_TERRAIN_SAMPLES, 64);
-            holes.assign((size_t)HOLE_TERRAIN_SAMPLES * HOLE_TERRAIN_SAMPLES, terrain::SOLID_VALUE);
+            holes.assign((size_t)HOLE_TERRAIN_SAMPLES * HOLE_TERRAIN_SAMPLES, terraincore::SOLID_VALUE);
             for (int y = 0; y < HOLE_TERRAIN_SAMPLES; y++) {
                 for (int x = 0; x < HOLE_TERRAIN_SAMPLES; x++) {
                     const float localX = (x + 0.5f) / HOLE_TERRAIN_SAMPLES * HOLE_TERRAIN_SIZE - HOLE_TERRAIN_SIZE * 0.5f;
                     const float localZ = (y + 0.5f) / HOLE_TERRAIN_SAMPLES * HOLE_TERRAIN_SIZE - HOLE_TERRAIN_SIZE * 0.5f;
                     if (std::fabs(localX) < 2.0f && localZ < 10.0f)
-                        holes[(size_t)y * HOLE_TERRAIN_SAMPLES + x] = terrain::HOLE_VALUE;
+                        holes[(size_t)y * HOLE_TERRAIN_SAMPLES + x] = terraincore::HOLE_VALUE;
                 }
             }
             const Entity entity = navtest::transformEntity(scene, Vector3());
@@ -127,12 +127,12 @@ TEST_F(NavBake, HoleChangesTileHash) {
     TerrainComponent& component = scene->getComponent<TerrainComponent>(entity);
     TextureData& data = component.holeMap.getData();
     uint8_t* texels = static_cast<uint8_t*>(data.getData());
-    texels[0] = terrain::HOLE_VALUE;
+    texels[0] = terraincore::HOLE_VALUE;
     const int dirty = nav->countDirtyTiles(surface);
     EXPECT_GT(dirty, 0);
     EXPECT_LT(dirty, 4) << "only touched tiles rebake";
 
     // a change of a texel that changes no cell's state leaves every tile clean
-    texels[0] = terrain::SOLID_VALUE;
+    texels[0] = terraincore::SOLID_VALUE;
     EXPECT_EQ(nav->countDirtyTiles(surface), 0);
 }

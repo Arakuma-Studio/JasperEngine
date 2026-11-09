@@ -154,8 +154,8 @@ namespace {
         void seamSteps(const std::vector<uint8_t>& frame, const std::vector<uint8_t>& terrainOnly, float& acrossEdge, float& acrossTerrain, int& edges) {
             TerrainComponent& terrainComponent = component();
             TerrainComponentStore store(&scene, terrain->getEntity(), terrainComponent);
-            const terrain::MapId map{terrain::MapKind::Hole, 0};
-            const terrain::MapFormat format = store.format(map);
+            const terraincore::MapId map{terraincore::MapKind::Hole, 0};
+            const terraincore::MapFormat format = store.format(map);
             acrossEdge = acrossTerrain = 0.0f;
             edges = 0;
             if (!format.exists) return;

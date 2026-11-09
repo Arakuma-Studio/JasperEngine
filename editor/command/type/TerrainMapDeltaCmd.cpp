@@ -20,7 +20,7 @@
 #include <utility>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -158,7 +158,7 @@ void editor::TerrainMapDeltaCmd::applyXor(bool makesTiles) {
         }
     }
     if (makesTiles) {
-        if (std::unique_ptr<terrain::TerrainStoreUndoHook> hook = store.takeUndoHook()) undoHooks.push_back(std::move(hook));
+        if (std::unique_ptr<terraincore::TerrainStoreUndoHook> hook = store.takeUndoHook()) undoHooks.push_back(std::move(hook));
     }
 }
 
@@ -174,7 +174,7 @@ bool editor::TerrainMapDeltaCmd::execute() {
             edit->redo();
         }
         // the hooks of this step so far: one the first application adds has nothing to redo yet
-        const std::vector<std::shared_ptr<terrain::TerrainStoreUndoHook>> hooks = undoHooks;
+        const std::vector<std::shared_ptr<terraincore::TerrainStoreUndoHook>> hooks = undoHooks;
         applyXor(!replayed);
         for (const auto& hook : hooks) {
             hook->redo();

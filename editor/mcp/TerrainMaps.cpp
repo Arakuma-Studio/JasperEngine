@@ -36,24 +36,24 @@ constexpr ColorFormat kHeightmapFormat = ColorFormat::RED16;
 // fractal_noise keep their bytes; random_noise hashes per texel, so a seed means one map everywhere.
 std::vector<unsigned char> makeHeightPixels(const TerrainHeightmapRequest& request) {
     const int resolution = std::max(2, request.resolution);
-    const terrain::MapId heightMap{terrain::MapKind::Height, 0};
+    const terraincore::MapId heightMap{terraincore::MapKind::Height, 0};
 
-    terrain::RawMapStore store(static_cast<float>(resolution), 1.0f);
+    terraincore::RawMapStore store(static_cast<float>(resolution), 1.0f);
     store.addMap(heightMap, resolution, resolution, 1, 16);
 
-    terrain::Op op;
-    op.type = terrain::OpType::FillNoise;
-    op.fill = request.mode == "random_noise" ? terrain::FillMode::RandomNoise
-            : (request.mode == "fractal_noise" ? terrain::FillMode::FractalNoise : terrain::FillMode::Flat);
+    terraincore::Op op;
+    op.type = terraincore::OpType::FillNoise;
+    op.fill = request.mode == "random_noise" ? terraincore::FillMode::RandomNoise
+            : (request.mode == "fractal_noise" ? terraincore::FillMode::FractalNoise : terraincore::FillMode::Flat);
     op.baseHeight = request.baseHeight;
     op.amplitude = request.amplitude;
     op.frequency = request.frequency;
     op.octaves = std::max(1, std::min(8, request.octaves));
     op.seed = request.seed;
 
-    terrain::OpOptions options;
+    terraincore::OpOptions options;
     options.inPlace = true;
-    terrain::applyOps(store, std::span<const terrain::Op>(&op, 1), options);
+    terraincore::applyOps(store, std::span<const terraincore::Op>(&op, 1), options);
 
     const unsigned char* bytes = store.mapBytes(heightMap);
     return std::vector<unsigned char>(bytes, bytes + store.mapByteCount(heightMap));

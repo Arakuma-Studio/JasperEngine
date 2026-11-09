@@ -6,7 +6,7 @@
 // T3 R16, D8: with Compress Terrain Layers on, an export cooks each terrain array slice as an ordinary 2D
 // KTX2 through S14's encoders. Slices are fixed so all of an array share a format: desktop BC7, mobile ASTC
 // 6x6, Android ETC2_RGBA8, web UASTC. Keyed by the slice key in je-cooked/<family>/index.json, so shared maps
-// dedupe, and the player concatenates each level (terrain::loadCookedDetailArray).
+// dedupe, and the player concatenates each level (terraincore::loadCookedDetailArray).
 
 #include "TextureCookQueue.h"
 

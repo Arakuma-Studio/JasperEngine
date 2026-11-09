@@ -99,7 +99,7 @@ namespace jasperengine::editor {
                                  bool allLightCapacities = false, bool scriptsSetPostProcessing = false,
                                  const std::vector<std::string>& scriptPostProcessingFields = {},
                                  bool scriptsSetShadowQuality = false, bool scriptsSetLitQuality = false,
-                                 PbrTier mobilePbrTier = PbrTier::FULL, uint32_t terrainTiers = terrain::TERRAIN_ALL_TIERS);
+                                 PbrTier mobilePbrTier = PbrTier::FULL, uint32_t terrainTiers = terraincore::TERRAIN_ALL_TIERS);
 
         // the UI effect variants of documents (asset-relative .html/.htm/.rml paths) of a project
         static void collectUiEffects(const std::vector<std::string>& documents, const std::filesystem::path& projectRoot,

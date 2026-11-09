@@ -1,5 +1,5 @@
 // T3 R3, D9: the strongest layers of a pixel, picked from the blend weights already read. The C++ form
-// is terrain::selectLayers (TerrainLayers.h), held to this one by TerrainMaterialsGpu.ShaderMatchesCpuSelect.
+// is terraincore::selectLayers (TerrainLayers.h), held to this one by TerrainMaterialsGpu.ShaderMatchesCpuSelect.
 //
 // With TERRAIN_KEEP kept and w the next strongest, each kept weight becomes max(w_i - w, 0), then is
 // scaled so the kept weights sum to the sum of all the layers' weights: a layer's share is 0 at the

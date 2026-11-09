@@ -12,7 +12,7 @@
 #include "terrain/TerrainLayers.h"
 #include "terrain/TerrainQuality.h"
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     struct TerrainLayerCostInput {
         bool pbr = false;

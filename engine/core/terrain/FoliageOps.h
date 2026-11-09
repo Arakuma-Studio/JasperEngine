@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     // Everything an op needs that a map store cannot tell: the Terrain's tree data and its names
     class JASPERENGINE_API FoliageOpHost {

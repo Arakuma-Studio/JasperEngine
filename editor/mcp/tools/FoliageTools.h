@@ -18,7 +18,7 @@ namespace jasperengine {
     class Scene;
 }
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
     struct OpSpace;
 }
 
@@ -37,11 +37,11 @@ namespace jasperengine::editor::mcp {
     };
 
     // The ops T5 registers: they write trees as well as density, so edit_terrain hands them here
-    bool isFoliageOp(const terrain::Op& op);
+    bool isFoliageOp(const terraincore::Op& op);
     // A list of foliage ops as a job on a snapshot (T5 R23), or bake_impostors alone (R56)
-    void editFoliageFromOps(const CallPtr& call, const TerrainTarget& target, std::vector<terrain::Op> ops, const terrain::OpSpace& space, bool dryRun);
+    void editFoliageFromOps(const CallPtr& call, const TerrainTarget& target, std::vector<terraincore::Op> ops, const terraincore::OpSpace& space, bool dryRun);
     // bake_impostors: a job that spans frames (T5 R56)
-    void bakeImpostorsFromOps(const CallPtr& call, const TerrainTarget& target, const std::vector<terrain::Op>& ops, bool dryRun);
+    void bakeImpostorsFromOps(const CallPtr& call, const TerrainTarget& target, const std::vector<terraincore::Op>& ops, bool dryRun);
     // sample_terrain {foliage: true} (T5 R55), over a local region when there is one
     struct FoliageRegionXZ {
         float minX, minZ, maxX, maxZ;

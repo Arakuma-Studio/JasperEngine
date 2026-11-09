@@ -165,14 +165,14 @@ namespace jasperengine{
         std::vector<std::array<int, 3>> pendingOpens;
         uint64_t pendingOpenSet = 0;
         std::vector<uint8_t> columnFlush;
-        terrain::MapId holeLattice;
+        terraincore::MapId holeLattice;
         int coverageRing = 0;
         int lastHolesCut = 0;
         int lastHolesFilled = 0;
         bool lastEntranceNarrow = false;
         // R46: the terrain's dirty rectangles reach us through T1's events
         Subscription terrainEdits;
-        std::vector<terrain::TexelRect> terrainDirty;
+        std::vector<terraincore::TexelRect> terrainDirty;
 
         double lastMeshMs = 0.0;
         uint64_t latencyStartFrame = 0;

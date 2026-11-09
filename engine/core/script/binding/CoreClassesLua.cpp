@@ -2314,13 +2314,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         // T3 R48: a tier for every terrain, until cleared; a tier the build did not ship clamps to the nearest
         .addStaticFunction("setTerrainQuality", +[](TerrainQualitySetting quality){
             switch (quality){
-                case TerrainQualitySetting::HIGH: terrain::TerrainQualitySettings::setGlobalOverride(terrain::TerrainQuality::HIGH); break;
-                case TerrainQualitySetting::MEDIUM: terrain::TerrainQualitySettings::setGlobalOverride(terrain::TerrainQuality::MEDIUM); break;
-                case TerrainQualitySetting::LOW: terrain::TerrainQualitySettings::setGlobalOverride(terrain::TerrainQuality::LOW); break;
-                default: terrain::TerrainQualitySettings::clearGlobalOverride(); break;
+                case TerrainQualitySetting::HIGH: terraincore::TerrainQualitySettings::setGlobalOverride(terraincore::TerrainQuality::HIGH); break;
+                case TerrainQualitySetting::MEDIUM: terraincore::TerrainQualitySettings::setGlobalOverride(terraincore::TerrainQuality::MEDIUM); break;
+                case TerrainQualitySetting::LOW: terraincore::TerrainQualitySettings::setGlobalOverride(terraincore::TerrainQuality::LOW); break;
+                default: terraincore::TerrainQualitySettings::clearGlobalOverride(); break;
             }
         })
-        .addStaticFunction("clearTerrainQuality", +[](){ terrain::TerrainQualitySettings::clearGlobalOverride(); })
+        .addStaticFunction("clearTerrainQuality", +[](){ terraincore::TerrainQualitySettings::clearGlobalOverride(); })
         .addStaticProperty("scene", &Engine::getScene, &Engine::setScene)
         .addStaticFunction("setScene", &Engine::setScene)
         .addStaticFunction("getScene", &Engine::getScene)

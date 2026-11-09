@@ -100,7 +100,7 @@ TEST(TerrainMapSeed, ANewBlendMapExistsAtOnce) {
     terrain.blendMaps = {Texture(made.relativePath)};
 
     TerrainComponentStore store(&scene, entity, terrain);
-    const terrain::MapFormat format = store.format(terrain::MapId{terrain::MapKind::Blend, 0});
+    const terraincore::MapFormat format = store.format(terraincore::MapId{terraincore::MapKind::Blend, 0});
     EXPECT_TRUE(format.exists) << "the store asked before the file's load could run";
     EXPECT_EQ(format.bounds.w, 33);
 }

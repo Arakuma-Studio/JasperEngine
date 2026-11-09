@@ -44,7 +44,7 @@ using namespace jasperengine;
 // (a named namespace, tests included: a unity build merges the test sources)
 namespace terrain_world_nav_test {
 
-    namespace tw = jasperengine::terrain;
+    namespace tw = jasperengine::terraincore;
 
     // 64 m tiles of 64 quads at 1 m
     constexpr int QUADS = 64;

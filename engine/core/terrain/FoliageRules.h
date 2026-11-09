@@ -18,7 +18,7 @@
 #include <span>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     enum class FoliageScatterMode : uint8_t { Replace, Add, Remove };
 

@@ -36,7 +36,7 @@
 #include <map>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 namespace fs = std::filesystem;
 
 namespace {
@@ -62,8 +62,8 @@ namespace {
         std::vector<float> values(static_cast<size_t>(context.width) * context.height, 0.0f);
         const int layer = foliageOverlayLayer(context);
         if (layer >= static_cast<int>(context.terrain->foliageLayers.size())) return values;
-        const terrain::MapId map{terrain::MapKind::Density, layer};
-        const terrain::MapFormat format = context.store->format(map);
+        const terraincore::MapId map{terraincore::MapKind::Density, layer};
+        const terraincore::MapFormat format = context.store->format(map);
         if (!format.exists || format.bounds.empty()) return values;
         std::vector<float> densities(static_cast<size_t>(format.bounds.area()));
         if (!context.store->read(map, format.bounds, densities)) return values;
@@ -84,14 +84,14 @@ namespace {
         std::vector<float> values(static_cast<size_t>(context.width) * context.height, 0.0f);
         const float size = context.terrain->terrainSize;
         const FoliageSystem* foliage = context.scene ? context.scene->getSystem<FoliageSystem>().get() : nullptr;
-        const std::shared_ptr<const terrain::TreeStore> trees = foliage ? foliage->getTreeStore(context.entity) : nullptr;
+        const std::shared_ptr<const terraincore::TreeStore> trees = foliage ? foliage->getTreeStore(context.entity) : nullptr;
         if (!trees || size <= 0.0f) return values;
         const float half = size * 0.5f;
         const float cell = size / static_cast<float>(TREE_OVERLAY_GRID);
         std::vector<float> cells(static_cast<size_t>(TREE_OVERLAY_GRID) * TREE_OVERLAY_GRID, 0.0f);
-        for (const terrain::TreeRecord& record : trees->records()) {
-            const int cx = std::clamp(static_cast<int>((terrain::foliageTreeLocalX(record, size) + half) / cell), 0, TREE_OVERLAY_GRID - 1);
-            const int cz = std::clamp(static_cast<int>((terrain::foliageTreeLocalZ(record, size) + half) / cell), 0, TREE_OVERLAY_GRID - 1);
+        for (const terraincore::TreeRecord& record : trees->records()) {
+            const int cx = std::clamp(static_cast<int>((terraincore::foliageTreeLocalX(record, size) + half) / cell), 0, TREE_OVERLAY_GRID - 1);
+            const int cz = std::clamp(static_cast<int>((terraincore::foliageTreeLocalZ(record, size) + half) / cell), 0, TREE_OVERLAY_GRID - 1);
             cells[static_cast<size_t>(cz) * TREE_OVERLAY_GRID + cx] += 1.0f / (cell * cell);
         }
         for (int y = 0; y < context.height; y++) {
@@ -223,7 +223,7 @@ void editor::TerrainFoliagePanel::removePrototype(SceneProject* sceneProject, En
     if (terrain.world) {
         // T4 R27: every tile's, those out of memory too
         TerrainWorldTreeEdit edit(project, sceneProject->id, entity);
-        for (const terrain::TileCoord& tile : edit.presentTiles()) {
+        for (const terraincore::TileCoord& tile : edit.presentTiles()) {
             const TreeStore* store = edit.trees(tile);
             if (!store) continue;
             std::vector<uint32_t> removed;
@@ -980,7 +980,7 @@ bool editor::TerrainFoliagePanel::stamp(SceneProject* sceneProject, Entity entit
 bool editor::TerrainFoliagePanel::stampWorld(TerrainComponent& terrain, const Vector3& local, float brushSize) {
     TerrainWorldTreeEdit& edit = *worldStroke;
     const float size = edit.tileSize();
-    const std::vector<terrain::TileCoord> reached = edit.tilesIn(local.x - brushSize, local.z - brushSize, local.x + brushSize, local.z + brushSize);
+    const std::vector<terraincore::TileCoord> reached = edit.tilesIn(local.x - brushSize, local.z - brushSize, local.x + brushSize, local.z + brushSize);
     if (reached.empty()) {
         strokeOverAbsent = true;
         return false;
@@ -991,7 +991,7 @@ bool editor::TerrainFoliagePanel::stampWorld(TerrainComponent& terrain, const Ve
         const uint32_t onlyId = (strokeEraseSelectedOnly && isReady(terrain)) ? terrain.treePrototypes[prototype].id : UINT32_MAX;
         const float radiusSquared = brushSize * brushSize;
         bool any = false;
-        for (const terrain::TileCoord& tile : reached) {
+        for (const terraincore::TileCoord& tile : reached) {
             const TreeStore* store = edit.trees(tile);
             if (!store) continue;
             const Vector2 centre = edit.centre(tile);
@@ -1027,7 +1027,7 @@ bool editor::TerrainFoliagePanel::stampWorld(TerrainComponent& terrain, const Ve
         const float radius = std::sqrt(unit(random)) * brushSize;
         const float x = local.x + std::cos(angle) * radius;
         const float z = local.z + std::sin(angle) * radius;
-        const terrain::TileCoord tile = edit.tileAt(x, z);
+        const terraincore::TileCoord tile = edit.tileAt(x, z);
         // trees need ground: over an absent tile the stamp places nothing
         if (!edit.present(tile)) {
             strokeOverAbsent = true;
@@ -1037,7 +1037,7 @@ bool editor::TerrainFoliagePanel::stampWorld(TerrainComponent& terrain, const Ve
         bool close = false;
         if (spacing > 0.0f) {
             // the trees of every tile within spacing: a border lets no two trees closer
-            for (const terrain::TileCoord& nearby : edit.tilesIn(x - spacing, z - spacing, x + spacing, z + spacing)) {
+            for (const terraincore::TileCoord& nearby : edit.tilesIn(x - spacing, z - spacing, x + spacing, z + spacing)) {
                 const TreeStore* store = edit.trees(nearby);
                 if (!store) continue;
                 const Vector2 centre = edit.centre(nearby);
@@ -1066,7 +1066,7 @@ bool editor::TerrainFoliagePanel::stampWorld(TerrainComponent& terrain, const Ve
     }
     bool any = false;
     for (const auto& [key, records] : added) {
-        if (edit.apply(terrain::TileCoord::fromKey(key), {}, records)) {
+        if (edit.apply(terraincore::TileCoord::fromKey(key), {}, records)) {
             strokeChanged += static_cast<int>(records.size());
             any = true;
         }
@@ -1143,7 +1143,7 @@ bool editor::TerrainFoliagePanel::pickPrototype(SceneProject* sceneProject, Enti
     if (terrain.world) {
         // T4 R27: the tiles round the point, each in its own frame
         TerrainWorldTreeEdit edit(project, sceneProject->id, entity);
-        for (const terrain::TileCoord& tile : edit.tilesIn(local.x - radius, local.z - radius, local.x + radius, local.z + radius)) {
+        for (const terraincore::TileCoord& tile : edit.tilesIn(local.x - radius, local.z - radius, local.x + radius, local.z + radius)) {
             if (const TreeStore* store = edit.trees(tile)) consider(*store, edit.tileSize(), edit.centre(tile).x, edit.centre(tile).y);
         }
     } else if (std::shared_ptr<TreeStore> store = foliage->getTreeStore(entity)) {

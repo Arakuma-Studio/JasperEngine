@@ -13,7 +13,7 @@
 #include <span>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     struct StrokeSample {
         float time = 0.0f;      // seconds; only differences matter

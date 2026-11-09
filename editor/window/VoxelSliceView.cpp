@@ -90,7 +90,7 @@ void VoxelSliceView::redrawImage(voxel::Store& store, Entity owner) {
             const float localX = static_cast<float>(x) + offset.x;
             const float localZ = static_cast<float>(z) + offset.z;
             if (localX < -half || localX > half || localZ < -half || localZ > half) return false;
-            height = static_cast<double>(terrain::sampleHeight(snapshot.view, localX, localZ)) - static_cast<double>(offset.y);
+            height = static_cast<double>(terraincore::sampleHeight(snapshot.view, localX, localZ)) - static_cast<double>(offset.y);
             return true;
         };
     }

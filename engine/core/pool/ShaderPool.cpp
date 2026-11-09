@@ -709,10 +709,10 @@ uint64_t ShaderPool::getTerrainHolesProperty(ShaderType shaderType){
     }
 }
 
-uint64_t ShaderPool::getTerrainTierProperty(terrain::TerrainQuality quality){
+uint64_t ShaderPool::getTerrainTierProperty(terraincore::TerrainQuality quality){
     switch (quality) {
-        case terrain::TerrainQuality::MEDIUM: return shaderPropertyBit(23);
-        case terrain::TerrainQuality::LOW:    return shaderPropertyBit(24);
+        case terraincore::TerrainQuality::MEDIUM: return shaderPropertyBit(23);
+        case terraincore::TerrainQuality::LOW:    return shaderPropertyBit(24);
         default:                              return 0;
     }
 }

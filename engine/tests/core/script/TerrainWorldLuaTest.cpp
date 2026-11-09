@@ -30,30 +30,30 @@ namespace {
 
     class MemoryWorldSource final : public TerrainWorldSource {
     public:
-        explicit MemoryWorldSource(terrain::WorldManifest manifest): data(std::move(manifest)) {}
-        bool manifest(terrain::WorldManifest& out, std::string& error) override {
+        explicit MemoryWorldSource(terraincore::WorldManifest manifest): data(std::move(manifest)) {}
+        bool manifest(terraincore::WorldManifest& out, std::string& error) override {
             (void)error;
             out = data;
             return true;
         }
         // no tile file exists: a present tile stays cold until a pump, which these tests never run
-        std::string tilePath(terrain::TileCoord tile) const override { return "terrain-world-lua-test-none/" + terrainWorldTileName(tile); }
+        std::string tilePath(terraincore::TileCoord tile) const override { return "terrain-world-lua-test-none/" + terrainWorldTileName(tile); }
         std::string overviewPath() const override { return std::string(); }
 
     private:
-        terrain::WorldManifest data;
+        terraincore::WorldManifest data;
     };
 
     enum class WorldData { None, Empty, OneTile };
 
     // 64 m tiles; OneTile has tile (0, 0), so world X and Z from 0 to 64 past the World's position
-    terrain::WorldManifest testManifest(WorldData kind) {
-        terrain::WorldManifest manifest;
+    terraincore::WorldManifest testManifest(WorldData kind) {
+        terraincore::WorldManifest manifest;
         manifest.guid = "6a0c1f52-3a7e-4f0e-9b1d-5c2e7d9a4b10";
         manifest.lattice.tileQuads = 64;
         manifest.lattice.spacing = 1.0f;
         manifest.maps.maxHeight = 100.0f;
-        if (kind == WorldData::OneTile) manifest.tiles.push_back({terrain::TileCoord(0, 0), 0, 65535});
+        if (kind == WorldData::OneTile) manifest.tiles.push_back({terraincore::TileCoord(0, 0), 0, 65535});
         return manifest;
     }
 

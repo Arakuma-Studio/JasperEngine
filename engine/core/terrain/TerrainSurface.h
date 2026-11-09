@@ -20,7 +20,7 @@
 #include <cstring>
 #include <cstdint>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     struct SurfaceView {
         const uint8_t* pixels = nullptr;

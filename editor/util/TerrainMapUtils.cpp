@@ -123,11 +123,11 @@ void editor::TerrainMapUtils::refresh(SceneProject* sceneProject, Entity entity,
         terrain->needUpdateTexture = true;
     }else if (ref.target == TerrainMapTarget::HoleMap){
         // T3 R26, R28: a map made, removed or rebound moves the foliage and the collider as an edit does
-        terrain::TexelRect whole;
+        terraincore::TexelRect whole;
         if (terrain->holeMap.hasData()){
-            whole = terrain::TexelRect{0, 0, static_cast<int>(terrain->holeMap.getData().getWidth()), static_cast<int>(terrain->holeMap.getData().getHeight())};
+            whole = terraincore::TexelRect{0, 0, static_cast<int>(terrain->holeMap.getData().getWidth()), static_cast<int>(terrain->holeMap.getData().getHeight())};
         }
-        noteTerrainMapEdited(sceneProject->scene, entity, *terrain, terrain::MapId{terrain::MapKind::Hole, 0}, whole);
+        noteTerrainMapEdited(sceneProject->scene, entity, *terrain, terraincore::MapId{terraincore::MapKind::Hole, 0}, whole);
     }else{
         terrain->needUpdateFoliage = true;
     }
@@ -165,22 +165,22 @@ void editor::TerrainMapUtils::refreshSharing(Project* project, uint32_t sceneId,
     }
 }
 
-terrain::MapId editor::TerrainMapUtils::mapOfRef(const TerrainMapRef& ref){
+terraincore::MapId editor::TerrainMapUtils::mapOfRef(const TerrainMapRef& ref){
     switch (ref.target){
-        case TerrainMapTarget::HeightMap: return terrain::MapId{terrain::MapKind::Height, 0};
-        case TerrainMapTarget::BlendMap: return terrain::MapId{terrain::MapKind::Blend, ref.layer};
-        case TerrainMapTarget::DensityMap: return terrain::MapId{terrain::MapKind::Density, ref.layer};
-        case TerrainMapTarget::HoleMap: return terrain::MapId{terrain::MapKind::Hole, 0};
+        case TerrainMapTarget::HeightMap: return terraincore::MapId{terraincore::MapKind::Height, 0};
+        case TerrainMapTarget::BlendMap: return terraincore::MapId{terraincore::MapKind::Blend, ref.layer};
+        case TerrainMapTarget::DensityMap: return terraincore::MapId{terraincore::MapKind::Density, ref.layer};
+        case TerrainMapTarget::HoleMap: return terraincore::MapId{terraincore::MapKind::Hole, 0};
     }
-    return terrain::MapId{};
+    return terraincore::MapId{};
 }
 
-editor::TerrainMapRef editor::TerrainMapUtils::refOfMap(terrain::MapId map){
+editor::TerrainMapRef editor::TerrainMapUtils::refOfMap(terraincore::MapId map){
     switch (map.kind){
-        case terrain::MapKind::Height: return TerrainMapRef(TerrainMapTarget::HeightMap);
-        case terrain::MapKind::Blend: return TerrainMapRef(TerrainMapTarget::BlendMap, map.index);
-        case terrain::MapKind::Density: return TerrainMapRef(TerrainMapTarget::DensityMap, map.index);
-        case terrain::MapKind::Hole: return TerrainMapRef(TerrainMapTarget::HoleMap);
+        case terraincore::MapKind::Height: return TerrainMapRef(TerrainMapTarget::HeightMap);
+        case terraincore::MapKind::Blend: return TerrainMapRef(TerrainMapTarget::BlendMap, map.index);
+        case terraincore::MapKind::Density: return TerrainMapRef(TerrainMapTarget::DensityMap, map.index);
+        case terraincore::MapKind::Hole: return TerrainMapRef(TerrainMapTarget::HoleMap);
     }
     return TerrainMapRef();
 }
@@ -394,7 +394,7 @@ std::vector<unsigned char> editor::TerrainMapUtils::convertTexturePixels(Texture
             if (isScalarTarget(target)){
                 // Decode the source value (8- or 16-bit, R channel) and re-encode at the
                 // destination precision. This upcasts legacy 8-bit heightmaps to 16-bit.
-                const float normalized = terrain::heightTexelAt(src, texelIndex, srcChannels, srcBytesPerChannel);
+                const float normalized = terraincore::heightTexelAt(src, texelIndex, srcChannels, srcBytesPerChannel);
                 encodeHeightTexel(pixels.data(), texelIndex, dstBytesPerChannel, normalized);
             }else{
                 const size_t srcIndex = texelIndex * srcChannels * srcBytesPerChannel;

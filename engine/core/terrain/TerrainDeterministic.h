@@ -13,7 +13,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     // PCG32 (XSH-RR, M. E. O'Neill, pcg-random.org): a small generator with a stated output on every
     // platform

@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     enum class TileState : uint8_t { Absent, Cold, Queued, Loading, CpuReady, Uploading, Resident, Error };
     JASPERENGINE_API const char* tileStateName(TileState state);

@@ -14,7 +14,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     inline constexpr int FOLIAGE_MAX_LODS = 4;
 

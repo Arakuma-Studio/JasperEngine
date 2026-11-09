@@ -10,7 +10,7 @@
 #include <cstring>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -78,7 +78,7 @@ namespace {
 
 }
 
-void jasperengine::terrain::encodeWorldBin(const WorldManifest& manifest, std::vector<uint8_t>& out) {
+void jasperengine::terraincore::encodeWorldBin(const WorldManifest& manifest, std::vector<uint8_t>& out) {
     // byte by byte: GCC 11 misreads an insert of the magic into a cleared vector (-Wstringop-overflow)
     out.clear();
     for (uint8_t byte : WORLD_BIN_MAGIC) out.push_back(byte);
@@ -126,7 +126,7 @@ void jasperengine::terrain::encodeWorldBin(const WorldManifest& manifest, std::v
     w.u64(fnv1a64(out.data(), out.size()));
 }
 
-bool jasperengine::terrain::decodeWorldBin(std::span<const uint8_t> bytes, WorldManifest& out, std::string* error) {
+bool jasperengine::terraincore::decodeWorldBin(std::span<const uint8_t> bytes, WorldManifest& out, std::string* error) {
     auto fail = [&](const std::string& message) {
         if (error) *error = message;
         return false;
@@ -196,7 +196,7 @@ bool jasperengine::terrain::decodeWorldBin(std::span<const uint8_t> bytes, World
     return true;
 }
 
-void jasperengine::terrain::initOverview(WorldOverview& overview, const WorldLattice& lattice, TileCoord low, TileCoord high, uint16_t baseHeight) {
+void jasperengine::terraincore::initOverview(WorldOverview& overview, const WorldLattice& lattice, TileCoord low, TileCoord high, uint16_t baseHeight) {
     overview = WorldOverview();
     overview.low = low;
     overview.tilesX = high.x - low.x + 1;
@@ -207,7 +207,7 @@ void jasperengine::terrain::initOverview(WorldOverview& overview, const WorldLat
     for (size_t i = 3; i < overview.colour.size(); i += 4) overview.colour[i] = 255;
 }
 
-bool jasperengine::terrain::setOverviewPatch(WorldOverview& overview, const WorldTile& tile) {
+bool jasperengine::terraincore::setOverviewPatch(WorldOverview& overview, const WorldTile& tile) {
     if (!overview.covers(tile.coord)) return false;
     const int side = overview.stride + 1;
     if (tile.overviewHeight.size() != static_cast<size_t>(side) * side) return false;
@@ -227,7 +227,7 @@ bool jasperengine::terrain::setOverviewPatch(WorldOverview& overview, const Worl
     return true;
 }
 
-SurfaceSample jasperengine::terrain::sampleOverview(const WorldOverview& overview, const WorldLattice& lattice, float maxHeight, float localX, float localZ) {
+SurfaceSample jasperengine::terraincore::sampleOverview(const WorldOverview& overview, const WorldLattice& lattice, float maxHeight, float localX, float localZ) {
     SurfaceSample sample;
     sample.exact = false;
     if (overview.empty()) return sample;
@@ -256,7 +256,7 @@ SurfaceSample jasperengine::terrain::sampleOverview(const WorldOverview& overvie
     return sample;
 }
 
-bool jasperengine::terrain::encodeOverview(const WorldOverview& overview, const WorldLattice& lattice, const TileCodec& codec, int level,
+bool jasperengine::terraincore::encodeOverview(const WorldOverview& overview, const WorldLattice& lattice, const TileCodec& codec, int level,
                                            std::vector<uint8_t>& out, std::string* error) {
     if (overview.heights.size() != static_cast<size_t>(overview.width()) * overview.height() || overview.colour.size() != overview.heights.size() * 4) {
         if (error) *error = "the overview's sizes do not match its box";
@@ -290,7 +290,7 @@ bool jasperengine::terrain::encodeOverview(const WorldOverview& overview, const 
     return writeTileSections(header, sections, nullptr, codec, level, out, error);
 }
 
-TileError jasperengine::terrain::decodeOverview(std::span<const uint8_t> file, const TileCodec& codec, WorldOverview& out) {
+TileError jasperengine::terraincore::decodeOverview(std::span<const uint8_t> file, const TileCodec& codec, WorldOverview& out) {
     TileHeader header;
     const TileError parsed = parseTileHeader(file, header);
     if (parsed != TileError::None) return parsed;
@@ -339,11 +339,11 @@ TileError jasperengine::terrain::decodeOverview(std::span<const uint8_t> file, c
     return TileError::None;
 }
 
-uint64_t jasperengine::terrain::layerColourHash(std::span<const float> colours) {
+uint64_t jasperengine::terraincore::layerColourHash(std::span<const float> colours) {
     return fnv1a64(colours.data(), colours.size_bytes());
 }
 
-WorldPlatformBudget jasperengine::terrain::worldPlatformBudget(WorldPlatform platform) {
+WorldPlatformBudget jasperengine::terraincore::worldPlatformBudget(WorldPlatform platform) {
     WorldPlatformBudget budget;
     if (platform == WorldPlatform::Desktop) return budget;
     budget.poolSize = platform == WorldPlatform::Mobile ? 20 : 16;

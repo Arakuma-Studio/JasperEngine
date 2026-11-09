@@ -167,9 +167,9 @@ namespace {
         // T1 R20, R40: fn(world, current, sample) over the footprint through applyField, returning
         // what its bytes changed
         template<typename Fn>
-        editor::TerrainMapRegion forEachTexel(terrain::TerrainMapStore& store, terrain::MapId map, Fn&& fn) const{
+        editor::TerrainMapRegion forEachTexel(terraincore::TerrainMapStore& store, terraincore::MapId map, Fn&& fn) const{
             editor::TerrainMapRegion changed;
-            const terrain::MapFormat format = store.format(map);
+            const terraincore::MapFormat format = store.format(map);
             if (!format.exists){
                 return changed;
             }
@@ -181,15 +181,15 @@ namespace {
                 const RouteField* field;
                 Fn* fn;
             } call{this, &fn};
-            const terrain::FieldFn callback = [](void* user, float localX, float localZ, std::span<const float> current){
+            const terraincore::FieldFn callback = [](void* user, float localX, float localZ, std::span<const float> current){
                 const Call& c = *static_cast<const Call*>(user);
-                terrain::FieldSample sample;
+                terraincore::FieldSample sample;
                 (*c.fn)(c.field->frame.localToWorld * Vector3(localX, 0.0f, localZ), current, sample);
                 return sample;
             };
-            const terrain::TexelRect rect{region.minX, region.minY, region.width(), region.height()};
-            const terrain::TerrainOpResult result = terrain::applyField(store, map, rect, callback, &call);
-            for (const terrain::MapChangeReport& report : result.changed){
+            const terraincore::TexelRect rect{region.minX, region.minY, region.width(), region.height()};
+            const terraincore::TerrainOpResult result = terraincore::applyField(store, map, rect, callback, &call);
+            for (const terraincore::MapChangeReport& report : result.changed){
                 changed.merge(report.rect.x, report.rect.y, report.rect.right() - 1, report.rect.bottom() - 1);
             }
             return changed;
@@ -198,14 +198,14 @@ namespace {
 
     // The bake's kernels, on any store: heights
 
-    editor::TerrainMapRegion storeBakeHeights(terrain::TerrainMapStore& store, const std::vector<spline::SplineStation>& route, const std::vector<Vector3>& closedOutline,
+    editor::TerrainMapRegion storeBakeHeights(terraincore::TerrainMapStore& store, const std::vector<spline::SplineStation>& route, const std::vector<Vector3>& closedOutline,
                                               const SplineTerrainSettings& settings, const editor::TerrainBakeFrame& frame){
         if (frame.maxHeight == 0.0f){
             return editor::TerrainMapRegion();
         }
-        const terrain::MapId map{terrain::MapKind::Height, 0};
+        const terraincore::MapId map{terraincore::MapKind::Height, 0};
         const RouteField field(route, closedOutline, settings, frame, settings.falloff);
-        return field.forEachTexel(store, map, [&](const Vector3& world, std::span<const float> current, terrain::FieldSample& out){
+        return field.forEachTexel(store, map, [&](const Vector3& world, std::span<const float> current, terraincore::FieldSample& out){
             float weight = 0.0f;
             float bed = 0.0f;
             if (!field.sample(world.x, world.z, 0.0f, settings.falloff, weight, bed)){
@@ -223,10 +223,10 @@ namespace {
         });
     }
 
-    editor::TerrainMapRegion storeBakeBlend(terrain::TerrainMapStore& store, int blendMap, const std::vector<spline::SplineStation>& route, const std::vector<Vector3>& closedOutline,
+    editor::TerrainMapRegion storeBakeBlend(terraincore::TerrainMapStore& store, int blendMap, const std::vector<spline::SplineStation>& route, const std::vector<Vector3>& closedOutline,
                                             const SplineTerrainSettings& settings, const editor::TerrainBakeFrame& frame, int channel){
-        const terrain::MapId map{terrain::MapKind::Blend, blendMap};
-        const terrain::MapFormat format = store.format(map);
+        const terraincore::MapId map{terraincore::MapKind::Blend, blendMap};
+        const terraincore::MapFormat format = store.format(map);
         if (!format.exists || format.channels < 3 || channel < 0 || channel > 2){
             return editor::TerrainMapRegion();
         }
@@ -234,7 +234,7 @@ namespace {
         const float noise = std::clamp(settings.paintNoise, 0.0f, 1.0f);
         const float strength = std::clamp(settings.paintStrength, 0.0f, 1.0f);
         const RouteField field(route, closedOutline, settings, frame, falloff + noise * falloff);
-        return field.forEachTexel(store, map, [&](const Vector3& world, std::span<const float> current, terrain::FieldSample& out){
+        return field.forEachTexel(store, map, [&](const Vector3& world, std::span<const float> current, terraincore::FieldSample& out){
             // the edge breaks up: the band grows or shrinks by up to paintNoise of the falloff
             const float band = noise > 0.0f ? (valueNoise(world.x, world.z) - 0.5f) * 2.0f * noise * falloff : 0.0f;
             float weight = 0.0f;
@@ -256,10 +256,10 @@ namespace {
         });
     }
 
-    editor::TerrainMapRegion storeBakeDensity(terrain::TerrainMapStore& store, int layer, const std::vector<spline::SplineStation>& route, const std::vector<Vector3>& closedOutline,
+    editor::TerrainMapRegion storeBakeDensity(terraincore::TerrainMapStore& store, int layer, const std::vector<spline::SplineStation>& route, const std::vector<Vector3>& closedOutline,
                                               const SplineTerrainSettings& settings, const editor::TerrainBakeFrame& frame){
         const RouteField field(route, closedOutline, settings, frame, settings.falloff);
-        return field.forEachTexel(store, terrain::MapId{terrain::MapKind::Density, layer}, [&](const Vector3& world, std::span<const float>, terrain::FieldSample& out){
+        return field.forEachTexel(store, terraincore::MapId{terraincore::MapKind::Density, layer}, [&](const Vector3& world, std::span<const float>, terraincore::FieldSample& out){
             float weight = 0.0f;
             float bed = 0.0f;
             if (field.sample(world.x, world.z, 0.0f, settings.falloff, weight, bed)){
@@ -270,8 +270,8 @@ namespace {
     }
 
     // The pure bake's frame and pixels as a store
-    terrain::RawMapStore rawStoreOf(const editor::TerrainBakeFrame& frame, terrain::MapId map, editor::TerrainBakeMap& pixels){
-        terrain::RawMapStore store(frame.terrainSize, frame.maxHeight);
+    terraincore::RawMapStore rawStoreOf(const editor::TerrainBakeFrame& frame, terraincore::MapId map, editor::TerrainBakeMap& pixels){
+        terraincore::RawMapStore store(frame.terrainSize, frame.maxHeight);
         store.borrowMap(map, pixels.width, pixels.height, pixels.channels, pixels.bytesPerChannel * 8, pixels.pixels);
         return store;
     }
@@ -346,7 +346,7 @@ editor::TerrainMapRegion editor::TerrainSplineBake::bakeHeights(const std::vecto
     if (!map.valid()){
         return TerrainMapRegion();
     }
-    terrain::RawMapStore store = rawStoreOf(frame, terrain::MapId{terrain::MapKind::Height, 0}, map);
+    terraincore::RawMapStore store = rawStoreOf(frame, terraincore::MapId{terraincore::MapKind::Height, 0}, map);
     return storeBakeHeights(store, route, closedOutline, settings, frame);
 }
 
@@ -356,7 +356,7 @@ editor::TerrainMapRegion editor::TerrainSplineBake::bakeBlend(const std::vector<
     if (!map.valid()){
         return TerrainMapRegion();
     }
-    terrain::RawMapStore store = rawStoreOf(frame, terrain::MapId{terrain::MapKind::Blend, 0}, map);
+    terraincore::RawMapStore store = rawStoreOf(frame, terraincore::MapId{terraincore::MapKind::Blend, 0}, map);
     return storeBakeBlend(store, 0, route, closedOutline, settings, frame, channel);
 }
 
@@ -366,7 +366,7 @@ editor::TerrainMapRegion editor::TerrainSplineBake::bakeDensity(const std::vecto
     if (!map.valid()){
         return TerrainMapRegion();
     }
-    terrain::RawMapStore store = rawStoreOf(frame, terrain::MapId{terrain::MapKind::Density, 0}, map);
+    terraincore::RawMapStore store = rawStoreOf(frame, terraincore::MapId{terraincore::MapKind::Density, 0}, map);
     return storeBakeDensity(store, 0, route, closedOutline, settings, frame);
 }
 
@@ -424,7 +424,7 @@ bool editor::TerrainSplineBake::bakeInPlace(Project* project, uint32_t sceneId, 
     return bakeInto(store, project, sceneId, splineEntity, terrainEntity, changes, error);
 }
 
-bool editor::TerrainSplineBake::bakeInto(terrain::TerrainMapStore& store, Project* project, uint32_t sceneId, Entity splineEntity, Entity terrainEntity,
+bool editor::TerrainSplineBake::bakeInto(terraincore::TerrainMapStore& store, Project* project, uint32_t sceneId, Entity splineEntity, Entity terrainEntity,
                                          TerrainBakeChanges& changes, std::string& error){
     changes = TerrainBakeChanges();
     SceneProject* sceneProject = project->getScene(sceneId);
@@ -448,7 +448,7 @@ bool editor::TerrainSplineBake::bakeInto(terrain::TerrainMapStore& store, Projec
     const SplineTerrainSettings& settings = spline->terrain;
 
     if (settings.flatten){
-        const terrain::MapFormat heights = store.format(terrain::MapId{terrain::MapKind::Height, 0});
+        const terraincore::MapFormat heights = store.format(terraincore::MapId{terraincore::MapKind::Height, 0});
         if (!heights.exists){
             changes.warnings.push_back("The terrain's heightmap has no data: nothing flattened.");
         }else{
@@ -463,7 +463,7 @@ bool editor::TerrainSplineBake::bakeInto(terrain::TerrainMapStore& store, Projec
         if (blendMap >= static_cast<int>(terrain->blendMaps.size())){
             changes.warnings.push_back("The terrain has no blend map for surface layer " + std::to_string(settings.paintLayer) +
                                        ": paint it once with the Terrain tool to create it.");
-        }else if (store.format(terrain::MapId{terrain::MapKind::Blend, blendMap}).exists){
+        }else if (store.format(terraincore::MapId{terraincore::MapKind::Blend, blendMap}).exists){
             changes.blend = storeBakeBlend(store, blendMap, route, outline, settings, frame, static_cast<int>(settings.paintLayer % 3));
             changes.blendMap = blendMap;
         }else{
@@ -487,12 +487,12 @@ bool editor::TerrainSplineBake::bakeInto(terrain::TerrainMapStore& store, Projec
 }
 
 // The trees whose base is within the band of the route the bake flattened (S18 R11's footprint)
-std::vector<uint32_t> editor::TerrainSplineBake::treesInFootprint(const terrain::TreeStore& store, float terrainSize, const std::vector<Vector2>& line, float reach){
+std::vector<uint32_t> editor::TerrainSplineBake::treesInFootprint(const terraincore::TreeStore& store, float terrainSize, const std::vector<Vector2>& line, float reach){
     std::vector<uint32_t> ids;
-    for (const terrain::TreeRecord& record : store.records()){
-        const float x = terrain::foliageTreeLocalX(record, terrainSize);
-        const float z = terrain::foliageTreeLocalZ(record, terrainSize);
-        if (terrain::foliageDistanceToPolyline(line, x, z) <= reach){
+    for (const terraincore::TreeRecord& record : store.records()){
+        const float x = terraincore::foliageTreeLocalX(record, terrainSize);
+        const float z = terraincore::foliageTreeLocalZ(record, terrainSize);
+        if (terraincore::foliageDistanceToPolyline(line, x, z) <= reach){
             ids.push_back(record.id);
         }
     }
@@ -509,7 +509,7 @@ static bool clearSplineTrees(editor::Project* project, uint32_t sceneId, Entity 
         return false;
     }
     FoliageSystem* foliage = scene->getSystem<FoliageSystem>().get();
-    std::shared_ptr<terrain::TreeStore> store = foliage->getTreeStore(terrainEntity);
+    std::shared_ptr<terraincore::TreeStore> store = foliage->getTreeStore(terrainEntity);
     if (!terrain->world && (!store || store->empty())){
         return false;
     }
@@ -541,8 +541,8 @@ static bool clearSplineTrees(editor::Project* project, uint32_t sceneId, Entity 
             minZ = std::min(minZ, point.y);
             maxZ = std::max(maxZ, point.y);
         }
-        for (const terrain::TileCoord& tile : edit.tilesIn(minX - reach, minZ - reach, maxX + reach, maxZ + reach)){
-            const terrain::TreeStore* trees = edit.trees(tile);
+        for (const terraincore::TileCoord& tile : edit.tilesIn(minX - reach, minZ - reach, maxX + reach, maxZ + reach)){
+            const terraincore::TreeStore* trees = edit.trees(tile);
             if (!trees){
                 continue;
             }
@@ -570,7 +570,7 @@ static bool clearSplineTrees(editor::Project* project, uint32_t sceneId, Entity 
     if (removed.empty()){
         return false;
     }
-    terrain::TreeDelta delta;
+    terraincore::TreeDelta delta;
     store->apply(removed, {}, {}, &delta);
     editor::CommandHandle::get(sceneId)->addCommand(new editor::TreeEditCmd(project, sceneId, terrainEntity,
         "Erase Trees (" + scene->getEntityName(terrainEntity) + ")", std::move(delta)));
@@ -594,7 +594,7 @@ bool editor::TerrainSplineBake::apply(Project* project, uint32_t sceneId, Entity
 
     // The bake lands on an overlay, and the step applies what it holds: the maps are written once
     EditorTerrainStore store(project, sceneId, scene, terrainEntity, terrain);
-    terrain::OverlayMapStore overlay(store);
+    terraincore::OverlayMapStore overlay(store);
     if (!bakeInto(overlay, project, sceneId, splineEntity, terrainEntity, changes, error)){
         return false;
     }
@@ -644,7 +644,7 @@ bool editor::TerrainSplineLiveSession::begin(Project* project, uint32_t sceneId,
     this->spline = splineEntity;
     this->terrain = terrainEntity;
     store = std::make_unique<EditorTerrainStore>(project, sceneId, scene, terrainEntity, scene->getComponent<TerrainComponent>(terrainEntity));
-    overlay = std::make_unique<terrain::OverlayMapStore>(*store);
+    overlay = std::make_unique<terraincore::OverlayMapStore>(*store);
     // the map's file waits until the session ends, as for a stroke
     store->beginStroke();
     bakedVersion = 0;

@@ -26,7 +26,7 @@
 #include <sstream>
 
 using namespace terrainprojecttest;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 

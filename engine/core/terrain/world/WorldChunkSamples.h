@@ -18,7 +18,7 @@
 #include <cfloat>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     inline constexpr float WORLD_NO_COLLISION = FLT_MAX;
 

@@ -49,7 +49,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::test;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 

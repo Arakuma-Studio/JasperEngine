@@ -31,7 +31,7 @@ using namespace jasperengine;
 #include <cstring>
 #include <map>
 
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 struct TerrainWorldRender::Impl {
     struct Page {

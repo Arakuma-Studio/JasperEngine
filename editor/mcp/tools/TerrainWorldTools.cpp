@@ -47,8 +47,8 @@ namespace jasperengine::editor::mcp {
 
 namespace terrain_world_tools {
 
-using terrain::TileCoord;
-using terrain::TileState;
+using terraincore::TileCoord;
+using terraincore::TileState;
 using Clock = std::chrono::steady_clock;
 
 constexpr double DEFAULT_TIMEOUT_SECONDS = 30.0;
@@ -126,8 +126,8 @@ bool parseTiles(const Json& value, const std::string& where, std::vector<TileCoo
             return false;
         }
         const long long x = item[0].get<long long>(), z = item[1].get<long long>();
-        if (x < terrain::WORLD_TILE_MIN || x > terrain::WORLD_TILE_MAX || z < terrain::WORLD_TILE_MIN || z > terrain::WORLD_TILE_MAX) {
-            error = at + " is outside the tile range " + std::to_string(terrain::WORLD_TILE_MIN) + " to " + std::to_string(terrain::WORLD_TILE_MAX) + ".";
+        if (x < terraincore::WORLD_TILE_MIN || x > terraincore::WORLD_TILE_MAX || z < terraincore::WORLD_TILE_MIN || z > terraincore::WORLD_TILE_MAX) {
+            error = at + " is outside the tile range " + std::to_string(terraincore::WORLD_TILE_MIN) + " to " + std::to_string(terraincore::WORLD_TILE_MAX) + ".";
             return false;
         }
         out.emplace_back(static_cast<int>(x), static_cast<int>(z));
@@ -230,8 +230,8 @@ bool parseOp(const Json& item, size_t index, WorldOp& op, std::string& error) {
                 const Json& origin = item["origin"];
                 if (!origin.is_array() || origin.size() != 2 || !origin[0].is_number_integer() || !origin[1].is_number_integer() ||
                     !TileCoord(static_cast<int>(origin[0].get<long long>()), static_cast<int>(origin[1].get<long long>())).addressable()) {
-                    error = where + ".origin must be [x, z]: the tile the file's first sample lands on, from " + std::to_string(terrain::WORLD_TILE_MIN) +
-                            " to " + std::to_string(terrain::WORLD_TILE_MAX) + ".";
+                    error = where + ".origin must be [x, z]: the tile the file's first sample lands on, from " + std::to_string(terraincore::WORLD_TILE_MIN) +
+                            " to " + std::to_string(terraincore::WORLD_TILE_MAX) + ".";
                     return false;
                 }
                 op.origin = TileCoord(static_cast<int>(origin[0].get<long long>()), static_cast<int>(origin[1].get<long long>()));
@@ -301,7 +301,7 @@ bool parseOp(const Json& item, size_t index, WorldOp& op, std::string& error) {
                 !readNumber(item, "chunk_quads", 32, 1024, where, op.chunkQuads, error)) {
                 return false;
             }
-            if (op.chunkQuads && !terrain::isPowerOfTwo(static_cast<int>(*op.chunkQuads))) {
+            if (op.chunkQuads && !terraincore::isPowerOfTwo(static_cast<int>(*op.chunkQuads))) {
                 error = where + ".chunk_quads must be a power of two from 32 to 1024.";
                 return false;
             }
@@ -457,7 +457,7 @@ uint64_t predictedBytes(const TerrainWorldRuntime& runtime, int tiles) {
 Json worldStatus(const TerrainWorldRuntime& runtime, const std::vector<TileCoord>& asked) {
     const TerrainWorldStats stats = runtime.stats();
     Json counts = {{"total", stats.tiles}};
-    for (int i = 0; i < 8; i++) counts[terrain::tileStateName(static_cast<TileState>(i))] = stats.states[i];
+    for (int i = 0; i < 8; i++) counts[terraincore::tileStateName(static_cast<TileState>(i))] = stats.states[i];
     std::vector<TileCoord> listed = asked;
     bool truncated = false;
     if (listed.empty()) {
@@ -468,7 +468,7 @@ Json worldStatus(const TerrainWorldRuntime& runtime, const std::vector<TileCoord
         }
     }
     Json tiles = Json::array();
-    for (const TileCoord& tile : listed) tiles.push_back({{"tile", tileJson(tile)}, {"state", terrain::tileStateName(runtime.tileState(tile))}});
+    for (const TileCoord& tile : listed) tiles.push_back({{"tile", tileJson(tile)}, {"state", terraincore::tileStateName(runtime.tileState(tile))}});
     Json draws = Json::array();
     for (int view = 0; view < 4; view++) {
         draws.push_back({{"view", view}, {"colour", stats.draws[view][0]}, {"depth", stats.draws[view][1]}, {"gbuffer", stats.draws[view][2]}});
@@ -809,9 +809,9 @@ void editTerrainWorldTool(const CallPtr& call) {
             return;
         }
     }
-    if (runtime->focusCount() + newFocuses > terrain::WORLD_MAX_FOCUSES) {
+    if (runtime->focusCount() + newFocuses > terraincore::WORLD_MAX_FOCUSES) {
         rollback();
-        call->fail("A Terrain World streams round at most " + std::to_string(terrain::WORLD_MAX_FOCUSES) + " focuses and this one has " +
+        call->fail("A Terrain World streams round at most " + std::to_string(terraincore::WORLD_MAX_FOCUSES) + " focuses and this one has " +
                    std::to_string(runtime->focusCount()) + ": remove_focus frees one. Nothing was changed.");
         return;
     }
@@ -877,8 +877,8 @@ void editTerrainWorldTool(const CallPtr& call) {
                 }
                 for (const TileCoord& tile : done) {
                     (remove ? removed : added).push_back(tileJson(tile));
-                    if (!remove && terrain::tilePastWarning(runtime->lattice(), tile)) {
-                        warnings.push_back("Tile " + tileText(tile) + " reaches past " + std::to_string(static_cast<int>(terrain::WORLD_EXTENT_WARN)) +
+                    if (!remove && terraincore::tilePastWarning(runtime->lattice(), tile)) {
+                        warnings.push_back("Tile " + tileText(tile) + " reaches past " + std::to_string(static_cast<int>(terraincore::WORLD_EXTENT_WARN)) +
                                            " m from the GameObject: float precision drops out there.");
                     }
                 }
@@ -963,7 +963,7 @@ void editTerrainWorldTool(const CallPtr& call) {
                 }
                 if (id == 0) {
                     rollback();
-                    call->fail(where + "the world has " + std::to_string(terrain::WORLD_MAX_FOCUSES) + " focuses already: remove_focus frees one.");
+                    call->fail(where + "the world has " + std::to_string(terraincore::WORLD_MAX_FOCUSES) + " focuses already: remove_focus frees one.");
                     return;
                 }
                 focusIds.push_back(id);
@@ -1087,7 +1087,7 @@ void sampleTerrainWorld(const CallPtr& call, Project* project, SceneProject* sce
         return;
     }
     std::optional<double> radiusValue;
-    if (!readNumber(area, "radius", 0, terrain::WORLD_EXTENT_LIMIT * 2.0, "world.wait_for", radiusValue, error)) {
+    if (!readNumber(area, "radius", 0, terraincore::WORLD_EXTENT_LIMIT * 2.0, "world.wait_for", radiusValue, error)) {
         call->fail(error);
         return;
     }

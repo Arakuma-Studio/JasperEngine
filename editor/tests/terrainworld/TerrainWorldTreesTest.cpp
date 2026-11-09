@@ -36,7 +36,7 @@
 #include <thread>
 
 using namespace terrainprojecttest;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 

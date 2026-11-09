@@ -6,9 +6,9 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
-FoliageCellVisibility jasperengine::terrain::classifyFoliageBox(const FoliageFrustum& frustum, const float boxMin[3], const float boxMax[3], float padding) {
+FoliageCellVisibility jasperengine::terraincore::classifyFoliageBox(const FoliageFrustum& frustum, const float boxMin[3], const float boxMax[3], float padding) {
     bool inside = true;
     const float center[3] = {(boxMin[0] + boxMax[0]) * 0.5f, (boxMin[1] + boxMax[1]) * 0.5f, (boxMin[2] + boxMax[2]) * 0.5f};
     const float half[3] = {(boxMax[0] - boxMin[0]) * 0.5f, (boxMax[1] - boxMin[1]) * 0.5f, (boxMax[2] - boxMin[2]) * 0.5f};
@@ -27,7 +27,7 @@ FoliageCellVisibility jasperengine::terrain::classifyFoliageBox(const FoliageFru
     return inside ? FoliageCellVisibility::Inside : FoliageCellVisibility::Intersecting;
 }
 
-unsigned int jasperengine::terrain::selectFoliageLod(const FoliageLodTable& table, float distance, float worldScale) {
+unsigned int jasperengine::terraincore::selectFoliageLod(const FoliageLodTable& table, float distance, float worldScale) {
     if (!table.enabled || table.numLods < 2) {
         return 0;
     }
@@ -43,12 +43,12 @@ unsigned int jasperengine::terrain::selectFoliageLod(const FoliageLodTable& tabl
     return level;
 }
 
-bool jasperengine::terrain::foliageRankDraws(uint8_t rank, float density) {
+bool jasperengine::terraincore::foliageRankDraws(uint8_t rank, float density) {
     // written on the bytes, so that the subset of a density is exactly a prefix of the next one's
     return (static_cast<float>(rank) + 1.0f) / 256.0f <= density;
 }
 
-float jasperengine::terrain::foliageDensityFalloff(const FoliageDetailCull& cull, float distance) {
+float jasperengine::terraincore::foliageDensityFalloff(const FoliageDetailCull& cull, float distance) {
     if (cull.farDensity >= 1.0f || !(cull.falloffEnd > cull.falloffStart)) {
         return 1.0f;
     }
@@ -58,7 +58,7 @@ float jasperengine::terrain::foliageDensityFalloff(const FoliageDetailCull& cull
     return 1.0f + (cull.farDensity - 1.0f) * t;
 }
 
-float jasperengine::terrain::foliageFadeScale(const FoliageDetailCull& cull, float distance) {
+float jasperengine::terraincore::foliageFadeScale(const FoliageDetailCull& cull, float distance) {
     float share = 1.0f;
     if (cull.limitDistance && cull.drawDistance > cull.fadeStart) {
         share = std::clamp((cull.drawDistance - distance) / (cull.drawDistance - cull.fadeStart), 0.0f, 1.0f);
@@ -69,7 +69,7 @@ float jasperengine::terrain::foliageFadeScale(const FoliageDetailCull& cull, flo
     return share;
 }
 
-void jasperengine::terrain::foliageBoxDistancesXZ(const float eye[3], const float boxMin[3], const float boxMax[3], float& nearest, float& farthest) {
+void jasperengine::terraincore::foliageBoxDistancesXZ(const float eye[3], const float boxMin[3], const float boxMax[3], float& nearest, float& farthest) {
     const float dx = std::max({boxMin[0] - eye[0], 0.0f, eye[0] - boxMax[0]});
     const float dz = std::max({boxMin[2] - eye[2], 0.0f, eye[2] - boxMax[2]});
     nearest = std::sqrt(dx * dx + dz * dz);
@@ -78,7 +78,7 @@ void jasperengine::terrain::foliageBoxDistancesXZ(const float eye[3], const floa
     farthest = std::sqrt(fx * fx + fz * fz);
 }
 
-bool jasperengine::terrain::foliageCellInDistance(const FoliageDetailCull& cull, const float boxMin[3], const float boxMax[3]) {
+bool jasperengine::terraincore::foliageCellInDistance(const FoliageDetailCull& cull, const float boxMin[3], const float boxMax[3]) {
     float nearest, farthest;
     foliageBoxDistancesXZ(cull.eye, boxMin, boxMax, nearest, farthest);
     if (cull.limitDistance && nearest >= cull.drawDistance) return false;
@@ -86,7 +86,7 @@ bool jasperengine::terrain::foliageCellInDistance(const FoliageDetailCull& cull,
     return true;
 }
 
-size_t jasperengine::terrain::cullFoliageCell(const FoliageInstance* instances, size_t count, const FoliageDetailCull& cull, const FoliageFrustum& frustum,
+size_t jasperengine::terraincore::cullFoliageCell(const FoliageInstance* instances, size_t count, const FoliageDetailCull& cull, const FoliageFrustum& frustum,
                                               FoliageCellVisibility visibility, FoliageInstance* out, uint8_t* lodOut, uint64_t* planeTests) {
     if (visibility == FoliageCellVisibility::Outside) return 0;
 
@@ -160,7 +160,7 @@ size_t jasperengine::terrain::cullFoliageCell(const FoliageInstance* instances, 
     return written;
 }
 
-FoliageTreeBands jasperengine::terrain::selectFoliageTreeBands(const FoliageTreeBandSettings& settings, float nearest, float farthest, bool allowMesh) {
+FoliageTreeBands jasperengine::terraincore::selectFoliageTreeBands(const FoliageTreeBandSettings& settings, float nearest, float farthest, bool allowMesh) {
     FoliageTreeBands bands;
     if (nearest >= settings.treeDistance) {
         return bands;
@@ -190,7 +190,7 @@ FoliageTreeBands jasperengine::terrain::selectFoliageTreeBands(const FoliageTree
     return bands;
 }
 
-float jasperengine::terrain::foliageMeshFade(const FoliageTreeBandSettings& settings, float distance) {
+float jasperengine::terraincore::foliageMeshFade(const FoliageTreeBandSettings& settings, float distance) {
     if (settings.hasImpostor) {
         if (settings.fadeLength <= 0.0f) return distance < settings.billboardStart ? 1.0f : 0.0f;
         return std::clamp((settings.billboardStart - distance) / settings.fadeLength, 0.0f, 1.0f);
@@ -200,7 +200,7 @@ float jasperengine::terrain::foliageMeshFade(const FoliageTreeBandSettings& sett
     return std::clamp((settings.treeDistance - distance) / settings.fadeLength, 0.0f, 1.0f);
 }
 
-float jasperengine::terrain::foliageImpostorFade(const FoliageTreeBandSettings& settings, float distance) {
+float jasperengine::terraincore::foliageImpostorFade(const FoliageTreeBandSettings& settings, float distance) {
     if (!settings.hasImpostor) return 0.0f;
     if (settings.fadeLength <= 0.0f) return (distance >= settings.billboardStart && distance < settings.treeDistance) ? 1.0f : 0.0f;
     const float in = 1.0f - std::clamp((settings.billboardStart - distance) / settings.fadeLength, 0.0f, 1.0f);
@@ -208,7 +208,7 @@ float jasperengine::terrain::foliageImpostorFade(const FoliageTreeBandSettings& 
     return in * out;
 }
 
-bool jasperengine::terrain::applyFoliageCaps(std::vector<FoliageCapCandidate>& candidates, uint32_t maxInstances, uint32_t maxDraws, uint32_t drawsAlreadyUsed) {
+bool jasperengine::terraincore::applyFoliageCaps(std::vector<FoliageCapCandidate>& candidates, uint32_t maxInstances, uint32_t maxDraws, uint32_t drawsAlreadyUsed) {
     std::vector<uint32_t> byDistance(candidates.size());
     for (uint32_t i = 0; i < byDistance.size(); i++) byDistance[i] = i;
     std::sort(byDistance.begin(), byDistance.end(), [&](uint32_t a, uint32_t b) {

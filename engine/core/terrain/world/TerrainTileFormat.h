@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     inline constexpr uint32_t TILE_FORMAT_VERSION = 1;
     // A section larger than this is corrupt, whatever its header says (N = 1024 heights are 2 MiB)

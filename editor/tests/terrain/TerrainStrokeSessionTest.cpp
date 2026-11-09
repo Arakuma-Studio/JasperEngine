@@ -30,7 +30,7 @@ namespace {
     constexpr float FLOW = 1.5f;
     constexpr float CLICK_SECONDS = 1.0f / 60.0f;
 
-    void addHeight(terrain::RawMapStore& store, int size, unsigned value) {
+    void addHeight(terraincore::RawMapStore& store, int size, unsigned value) {
         std::vector<uint8_t> bytes(static_cast<size_t>(size) * size * 2);
         for (size_t i = 0; i < bytes.size(); i += 2) {
             bytes[i] = static_cast<uint8_t>(value & 0xFF);
@@ -39,7 +39,7 @@ namespace {
         store.addMap(HEIGHT_MAP, size, size, 1, 16, std::move(bytes));
     }
 
-    unsigned heightAt(const terrain::RawMapStore& store, int size, int x, int y) {
+    unsigned heightAt(const terraincore::RawMapStore& store, int size, int x, int y) {
         const uint8_t* bytes = store.mapBytes(HEIGHT_MAP);
         const size_t index = (static_cast<size_t>(y) * size + x) * 2;
         return bytes[index] | (static_cast<unsigned>(bytes[index + 1]) << 8);
@@ -58,7 +58,7 @@ namespace {
 // R34: a click is one stamp of strength * falloff * flow * 1/60 s
 TEST(TerrainStrokeSession, AClickDepositsOneStamp) {
     constexpr int N = 65;
-    terrain::RawMapStore store(static_cast<float>(N), 10.0f);
+    terraincore::RawMapStore store(static_cast<float>(N), 10.0f);
     addHeight(store, N, 0);
     TerrainStrokeSession session(store, HEIGHT_MAP, static_cast<float>(N), raiseBrush(4.0f, 0.5f));
     ASSERT_TRUE(session.moveTo(0.0f, 0.0f, CLICK_SECONDS));
@@ -72,7 +72,7 @@ TEST(TerrainStrokeSession, AClickDepositsOneStamp) {
 // DC2: stamps too gentle for the stored bytes add up in the floats, through flushes
 TEST(TerrainStrokeSession, GentleStampsAccumulateThroughFlushes) {
     constexpr int N = 65;
-    terrain::RawMapStore store(static_cast<float>(N), 10.0f);
+    terraincore::RawMapStore store(static_cast<float>(N), 10.0f);
     addHeight(store, N, 0);
     TerrainStrokeSession session(store, HEIGHT_MAP, static_cast<float>(N), raiseBrush(4.0f, 0.01f));
     const float seconds = 0.2f / (65535.0f * 0.01f * FLOW);    // a fifth of a stored step, per stamp
@@ -86,9 +86,9 @@ TEST(TerrainStrokeSession, GentleStampsAccumulateThroughFlushes) {
 // R18: the stamps of a move fall as TEW:1607-1628 cut them, and share its time
 TEST(TerrainStrokeSession, AMoveCutsItsTimeOverItsStamps) {
     constexpr int N = 129;
-    terrain::RawMapStore cut(static_cast<float>(N), 10.0f);
+    terraincore::RawMapStore cut(static_cast<float>(N), 10.0f);
     addHeight(cut, N, 0);
-    terrain::RawMapStore handMade(static_cast<float>(N), 10.0f);
+    terraincore::RawMapStore handMade(static_cast<float>(N), 10.0f);
     addHeight(handMade, N, 0);
 
     TerrainStrokeSession moved(cut, HEIGHT_MAP, static_cast<float>(N), raiseBrush(8.0f, 0.5f));
@@ -114,14 +114,14 @@ TEST(TerrainStrokeSession, AMoveCutsItsTimeOverItsStamps) {
 TEST(TerrainStrokeSession, AMouseRampDependsOnlyOnItsEnds) {
     constexpr int N = 65;
     auto rampThrough = [&](const std::vector<Vector2>& path, bool accumulate) {
-        auto store = std::make_unique<terrain::RawMapStore>(static_cast<float>(N), 10.0f);
+        auto store = std::make_unique<terraincore::RawMapStore>(static_cast<float>(N), 10.0f);
         addHeight(*store, N, 20000);
         std::vector<uint8_t> raised(static_cast<size_t>(4) * 4 * 2);
         for (size_t i = 0; i < raised.size(); i += 2) {
             raised[i] = 0;
             raised[i + 1] = 0xC0;
         }
-        store->writeBytes(HEIGHT_MAP, terrain::TexelRect{50, 30, 4, 4}, raised);
+        store->writeBytes(HEIGHT_MAP, terraincore::TexelRect{50, 30, 4, 4}, raised);
         TerrainStrokeBrush brush = raiseBrush(5.0f, 0.6f);
         brush.mode = TerrainBrushMode::Ramp;
         brush.accumulateRamp = accumulate;
@@ -146,7 +146,7 @@ TEST(TerrainStrokeSession, AMouseRampDependsOnlyOnItsEnds) {
 TEST(TerrainStrokeSession, TheMouseRateDoesNotChangeTheDrag) {
     constexpr int N = 129;
     auto drag = [&](int eventsPerSecond, double budget) {
-        auto store = std::make_unique<terrain::RawMapStore>(static_cast<float>(N), 10.0f);
+        auto store = std::make_unique<terraincore::RawMapStore>(static_cast<float>(N), 10.0f);
         addHeight(*store, N, 20000);
         TerrainStrokeSession session(*store, HEIGHT_MAP, static_cast<float>(N), raiseBrush(6.0f, 0.3f));
         const int events = eventsPerSecond;   // one second from x = -40 to x = 40
@@ -163,7 +163,7 @@ TEST(TerrainStrokeSession, TheMouseRateDoesNotChangeTheDrag) {
     const std::vector<uint8_t> slow = drag(20, 0.0);
     EXPECT_EQ(drag(240, 0.0), slow) << "the stamps sit at the brush's spacing, not at the events";
     EXPECT_EQ(drag(240, 1e-9), slow) << "a tight frame budget only delays them";
-    terrain::RawMapStore flat(static_cast<float>(N), 10.0f);
+    terraincore::RawMapStore flat(static_cast<float>(N), 10.0f);
     addHeight(flat, N, 20000);
     EXPECT_NE(slow, std::vector<uint8_t>(flat.mapBytes(HEIGHT_MAP), flat.mapBytes(HEIGHT_MAP) + flat.mapByteCount(HEIGHT_MAP))) << "the drag wrote";
 }
@@ -171,7 +171,7 @@ TEST(TerrainStrokeSession, TheMouseRateDoesNotChangeTheDrag) {
 // R34, R35: a pointer held still keeps stamping at 60 a second (one sample a frame), each a click's deposit
 TEST(TerrainStrokeSession, AHeldBrushStampsAtSixtyASecond) {
     constexpr int N = 65;
-    auto store = std::make_unique<terrain::RawMapStore>(static_cast<float>(N), 10.0f);
+    auto store = std::make_unique<terraincore::RawMapStore>(static_cast<float>(N), 10.0f);
     addHeight(*store, N, 20000);
     TerrainStrokeSession session(*store, HEIGHT_MAP, static_cast<float>(N), raiseBrush(4.0f, 0.5f));
     session.addSample(0.0f, 0.0f, 0.0f, 1.0f);
@@ -191,7 +191,7 @@ namespace {
     // One sample of a stroke at `time` seconds in, run and shown: the map's bytes
     std::vector<uint8_t> penClick(TerrainStrokeBrush brush, float time, float pressure) {
         constexpr int N = 65;
-        terrain::RawMapStore store(static_cast<float>(N), 10.0f);
+        terraincore::RawMapStore store(static_cast<float>(N), 10.0f);
         addHeight(store, N, 0);
         TerrainStrokeSession session(store, HEIGHT_MAP, static_cast<float>(N), std::move(brush));
         session.addSample(time, 0.0f, 0.0f, pressure);
@@ -234,12 +234,12 @@ TEST(TerrainStroke, PressureScalesStrengthAndSize) {
 // AC27 (R37): a tap's zero, read before the pen's sensor has any pressure, is a click; a zero later in a
 // stroke presses nothing
 TEST(TerrainStroke, ZeroPressureAfterPenIsClick) {
-    EXPECT_EQ(terrain::StrokeResampler::samplePressure(0.0f, 0.0f), 1.0f);
-    EXPECT_EQ(terrain::StrokeResampler::samplePressure(0.0f, terrain::StrokeResampler::PEN_CLICK_SECONDS), 1.0f);
-    EXPECT_EQ(terrain::StrokeResampler::samplePressure(0.0f, 0.2f), 0.0f);
-    EXPECT_EQ(terrain::StrokeResampler::samplePressure(0.25f, 0.0f), 0.25f) << "only a zero is taken for a click";
-    EXPECT_EQ(terrain::StrokeResampler::samplePressure(-1.0f, 5.0f), 1.0f) << "the input layer's no-pen";
-    EXPECT_EQ(terrain::StrokeResampler::samplePressure(std::nanf(""), 5.0f), 1.0f);
+    EXPECT_EQ(terraincore::StrokeResampler::samplePressure(0.0f, 0.0f), 1.0f);
+    EXPECT_EQ(terraincore::StrokeResampler::samplePressure(0.0f, terraincore::StrokeResampler::PEN_CLICK_SECONDS), 1.0f);
+    EXPECT_EQ(terraincore::StrokeResampler::samplePressure(0.0f, 0.2f), 0.0f);
+    EXPECT_EQ(terraincore::StrokeResampler::samplePressure(0.25f, 0.0f), 0.25f) << "only a zero is taken for a click";
+    EXPECT_EQ(terraincore::StrokeResampler::samplePressure(-1.0f, 5.0f), 1.0f) << "the input layer's no-pen";
+    EXPECT_EQ(terraincore::StrokeResampler::samplePressure(std::nanf(""), 5.0f), 1.0f);
 
     const std::vector<uint8_t> click = penClick(raiseBrush(4.0f, 0.5f), 0.0f, -1.0f);
     EXPECT_EQ(penClick(raiseBrush(4.0f, 0.5f), 0.05f, 0.0f), click) << "a pen's zero 50 ms in is the mouse's click";
@@ -250,7 +250,7 @@ TEST(TerrainStroke, ZeroPressureAfterPenIsClick) {
 // R27: Esc goes back through the before tiles
 TEST(TerrainStrokeSession, CancelRestoresEveryByte) {
     constexpr int N = 200;
-    terrain::RawMapStore store(static_cast<float>(N), 10.0f);
+    terraincore::RawMapStore store(static_cast<float>(N), 10.0f);
     addHeight(store, N, 12345);
     const std::vector<uint8_t> before(store.mapBytes(HEIGHT_MAP), store.mapBytes(HEIGHT_MAP) + store.mapByteCount(HEIGHT_MAP));
     TerrainStrokeSession session(store, HEIGHT_MAP, static_cast<float>(N), raiseBrush(10.0f, 1.0f));
@@ -265,7 +265,7 @@ TEST(TerrainStrokeSession, CancelRestoresEveryByte) {
 // The heights a stroke reads for its ramp and its cursor are those it found, wherever it has been
 TEST(TerrainStrokeSession, HeightBeforeIsTheMapItFound) {
     constexpr int N = 65;
-    terrain::RawMapStore store(static_cast<float>(N), 10.0f);
+    terraincore::RawMapStore store(static_cast<float>(N), 10.0f);
     addHeight(store, N, 32768);
     TerrainStrokeSession session(store, HEIGHT_MAP, static_cast<float>(N), raiseBrush(8.0f, 1.0f));
     const float found = session.heightBefore(0.0f, 0.0f);
@@ -280,7 +280,7 @@ TEST(TerrainStrokeSession, HeightBeforeIsTheMapItFound) {
 TEST(TerrainStrokeSession, SmallStrokeOnHugeMapNoWholeMapAlloc) {
     if (!testsupport::countsAllocations()) GTEST_SKIP() << "no allocation counter on this platform";
     constexpr int N = 4096;
-    terrain::RawMapStore store(static_cast<float>(N), 100.0f);
+    terraincore::RawMapStore store(static_cast<float>(N), 100.0f);
     addHeight(store, N, 20000);
 
     testsupport::resetLargestAllocation();
@@ -353,7 +353,7 @@ namespace {
     protected:
         int deliveriesAfterAFrame(const std::function<void()>& edit) {
             int deliveries = 0;
-            Subscription subscription = TerrainEditEvents::subscribe(scene->scene, [&](Entity entity, terrain::MapId, terrain::TexelRect) {
+            Subscription subscription = TerrainEditEvents::subscribe(scene->scene, [&](Entity entity, terraincore::MapId, terraincore::TexelRect) {
                 if (entity == terrainEntity) deliveries++;
             });
             edit();
@@ -399,7 +399,7 @@ TEST_F(TerrainEditorRoutesTest, ASharingTerrainFollows) {
 
     {
         EditorTerrainStore store(project.get(), scene->id, scene->scene, terrainEntity, terrain());
-        terrain::OverlayMapStore overlay(store);
+        terraincore::OverlayMapStore overlay(store);
         ASSERT_TRUE(runOn(overlay, raiseOp(4.0f)).ok);
         ASSERT_TRUE(overlay.flushToBase().ok);
     }
@@ -413,7 +413,7 @@ TEST_F(TerrainEditorRoutesTest, ASharingTerrainFollows) {
 // T3 R41, R29: the hole brush cuts whole texels whatever its strength, and while a stroke runs the
 // map stays, so filling the last hole shows at once; only the stroke's end may take the map away
 TEST_F(TerrainEditorRoutesTest, HoleBrushKeepsTheMapThroughAStroke) {
-    constexpr terrain::MapId HOLE_MAP{terrain::MapKind::Hole, 0};
+    constexpr terraincore::MapId HOLE_MAP{terraincore::MapKind::Hole, 0};
     giveHeight16(128);
     const TerrainMapRef holeRef(TerrainMapTarget::HoleMap);
     ASSERT_TRUE(TerrainMapUtils::ensureEditableMap(project.get(), scene, terrainEntity, holeRef, 128, false));
@@ -457,7 +457,7 @@ TEST(TerrainStrokeSession, AlternatesLiftFloorsAndFlattenPeaks) {
     constexpr int N = 65;
     constexpr unsigned LOW = 10000, HIGH = 50000, TARGET = 30000;
     for (const TerrainBrushMode mode : {TerrainBrushMode::Raise, TerrainBrushMode::Lower}) {
-        terrain::RawMapStore store(static_cast<float>(N), 10.0f);
+        terraincore::RawMapStore store(static_cast<float>(N), 10.0f);
         std::vector<uint8_t> bytes(static_cast<size_t>(N) * N * 2);
         for (int y = 0; y < N; y++) {
             for (int x = 0; x < N; x++) {
@@ -492,18 +492,18 @@ TEST(TerrainStrokeSession, AlternatesLiftFloorsAndFlattenPeaks) {
 TEST(TerrainStrokeSession, TheStrokeLogReplaysToTheSameBytes) {
     constexpr int N = 65;
     for (const TerrainBrushMode mode : {TerrainBrushMode::Raise, TerrainBrushMode::Flatten}) {
-        terrain::RawMapStore dragged(static_cast<float>(N), 10.0f);
-        terrain::RawMapStore replayed(static_cast<float>(N), 10.0f);
+        terraincore::RawMapStore dragged(static_cast<float>(N), 10.0f);
+        terraincore::RawMapStore replayed(static_cast<float>(N), 10.0f);
         addHeight(dragged, N, 9000);
         addHeight(replayed, N, 9000);
         TerrainStrokeBrush brush = raiseBrush(5.0f, 0.6f);
         brush.mode = mode;
         brush.flattenTarget = 0.4f;
         TerrainStrokeSession session(dragged, HEIGHT_MAP, static_cast<float>(N), brush);
-        std::vector<terrain::StrokeSample> samples;
+        std::vector<terraincore::StrokeSample> samples;
         for (int i = 0; i < 24; i++) {
             const float t = static_cast<float>(i) / 23.0f;
-            samples.push_back(terrain::StrokeSample{t * 0.4f, -20.0f + 40.0f * t, 12.0f * std::sin(t * 3.0f), 1.0f});
+            samples.push_back(terraincore::StrokeSample{t * 0.4f, -20.0f + 40.0f * t, 12.0f * std::sin(t * 3.0f), 1.0f});
             session.addSample(samples.back().time, samples.back().x, samples.back().z, 1.0f);
         }
         ASSERT_TRUE(session.run(0.0));
@@ -513,12 +513,12 @@ TEST(TerrainStrokeSession, TheStrokeLogReplaysToTheSameBytes) {
         ASSERT_FALSE(line.empty()) << "a round brush with no mask is logged";
         const nlohmann::json call = nlohmann::json::parse(line);
         EXPECT_EQ(call["space"], "local");
-        terrain::OpSpace space;
+        terraincore::OpSpace space;
         space.world = false;
-        terrain::OpJsonParser parser(space, terrain::OpJsonHooks{});
-        std::vector<terrain::Op> ops;
+        terraincore::OpJsonParser parser(space, terraincore::OpJsonHooks{});
+        std::vector<terraincore::Op> ops;
         ASSERT_TRUE(parser.parseList(call["ops"], ops)) << parser.error;
-        ASSERT_TRUE(terrain::applyOps(replayed, ops, terrain::OpOptions()).ok);
+        ASSERT_TRUE(terraincore::applyOps(replayed, ops, terraincore::OpOptions()).ok);
         const size_t bytes = static_cast<size_t>(N) * N * 2;
         EXPECT_EQ(std::memcmp(dragged.mapBytes(HEIGHT_MAP), replayed.mapBytes(HEIGHT_MAP), bytes), 0) << "byte for byte, mode " << static_cast<int>(mode);
     }
@@ -528,16 +528,16 @@ TEST(TerrainStrokeSession, TheStrokeLogReplaysToTheSameBytes) {
 // scales size by pressure, which an op's stroke cannot say, is not logged
 TEST(TerrainStroke, PenStrokeLogCarriesItsPressure) {
     constexpr int N = 65;
-    terrain::RawMapStore dragged(static_cast<float>(N), 10.0f);
-    terrain::RawMapStore replayed(static_cast<float>(N), 10.0f);
+    terraincore::RawMapStore dragged(static_cast<float>(N), 10.0f);
+    terraincore::RawMapStore replayed(static_cast<float>(N), 10.0f);
     addHeight(dragged, N, 9000);
     addHeight(replayed, N, 9000);
     TerrainStrokeSession session(dragged, HEIGHT_MAP, static_cast<float>(N), raiseBrush(5.0f, 0.6f));
-    std::vector<terrain::StrokeSample> samples;
+    std::vector<terraincore::StrokeSample> samples;
     for (int i = 0; i < 24; i++) {
         const float t = static_cast<float>(i) / 23.0f;
         // the tap's first reading is the sensor's zero, then the pen presses harder along the drag
-        samples.push_back(terrain::StrokeSample{t * 0.4f, -20.0f + 40.0f * t, 12.0f * std::sin(t * 3.0f), i == 0 ? 0.0f : 0.2f + 0.7f * t});
+        samples.push_back(terraincore::StrokeSample{t * 0.4f, -20.0f + 40.0f * t, 12.0f * std::sin(t * 3.0f), i == 0 ? 0.0f : 0.2f + 0.7f * t});
         session.addSample(samples.back().time, samples.back().x, samples.back().z, samples.back().pressure);
     }
     ASSERT_TRUE(session.run(0.0));
@@ -550,12 +550,12 @@ TEST(TerrainStroke, PenStrokeLogCarriesItsPressure) {
     ASSERT_EQ(points.size(), samples.size());
     EXPECT_EQ(points[0].size(), 3u) << "[x, z, pressure]";
     EXPECT_EQ(points[0][2].get<float>(), 1.0f) << "the tap's zero pressed as a click";
-    terrain::OpSpace space;
+    terraincore::OpSpace space;
     space.world = false;
-    terrain::OpJsonParser parser(space, terrain::OpJsonHooks{});
-    std::vector<terrain::Op> ops;
+    terraincore::OpJsonParser parser(space, terraincore::OpJsonHooks{});
+    std::vector<terraincore::Op> ops;
     ASSERT_TRUE(parser.parseList(call["ops"], ops)) << parser.error;
-    ASSERT_TRUE(terrain::applyOps(replayed, ops, terrain::OpOptions()).ok);
+    ASSERT_TRUE(terraincore::applyOps(replayed, ops, terraincore::OpOptions()).ok);
     EXPECT_EQ(std::memcmp(dragged.mapBytes(HEIGHT_MAP), replayed.mapBytes(HEIGHT_MAP), static_cast<size_t>(N) * N * 2), 0) << "byte for byte";
 
     TerrainStrokeBrush sized = raiseBrush(5.0f, 0.6f);
@@ -567,8 +567,8 @@ TEST(TerrainStroke, PenStrokeLogCarriesItsPressure) {
 // R56: Paint Texture's alternate moves the weights toward their true 3 x 3 average, so a hard edge softens
 TEST(TerrainStrokeSession, PaintTextureAlternateAveragesTheBlend) {
     constexpr int N = 33;
-    const terrain::MapId blend{terrain::MapKind::Blend, 0};
-    terrain::RawMapStore store(static_cast<float>(N), 10.0f);
+    const terraincore::MapId blend{terraincore::MapKind::Blend, 0};
+    terraincore::RawMapStore store(static_cast<float>(N), 10.0f);
     addHeight(store, N, 9000);
     std::vector<uint8_t> bytes(static_cast<size_t>(N) * N * 4, 0);
     for (int y = 0; y < N; y++) {

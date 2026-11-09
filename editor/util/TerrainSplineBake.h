@@ -71,7 +71,7 @@ namespace jasperengine::editor{
 
         // The route: stations resampled to at most half a texel apart (D8)
         // T5 R29: the trees within reach of a terrain-local XZ polyline
-        static std::vector<uint32_t> treesInFootprint(const terrain::TreeStore& store, float terrainSize, const std::vector<Vector2>& line, float reach);
+        static std::vector<uint32_t> treesInFootprint(const terraincore::TreeStore& store, float terrainSize, const std::vector<Vector2>& line, float reach);
         static void routeStations(const std::vector<spline::SplineStation>& stations, float texelSize,
                                   std::vector<spline::SplineStation>& route);
         // Flatten the heights within the footprint; closedOutline (world XZ, a closed spline's
@@ -97,7 +97,7 @@ namespace jasperengine::editor{
         static bool bakeInPlace(Project* project, uint32_t sceneId, Entity splineEntity, Entity terrainEntity,
                                 TerrainBakeChanges& changes, std::string& error);
         // The same into a store: an overlay over the terrain's maps is a step or a live session
-        static bool bakeInto(terrain::TerrainMapStore& store, Project* project, uint32_t sceneId, Entity splineEntity, Entity terrainEntity,
+        static bool bakeInto(terraincore::TerrainMapStore& store, Project* project, uint32_t sceneId, Entity splineEntity, Entity terrainEntity,
                              TerrainBakeChanges& changes, std::string& error);
         // whether the terrain's heightmap is 8-bit (the bake warns: the bed steps visibly)
         static bool isHeightMap8Bit(Scene* scene, Entity terrainEntity);
@@ -114,7 +114,7 @@ namespace jasperengine::editor{
         Entity spline = NULL_ENTITY;
         Entity terrain = NULL_ENTITY;
         std::unique_ptr<EditorTerrainStore> store;
-        std::unique_ptr<terrain::OverlayMapStore> overlay;
+        std::unique_ptr<terraincore::OverlayMapStore> overlay;
         uint64_t bakedVersion = 0;
         bool active = false;
 

@@ -11,7 +11,7 @@
 #include <unordered_set>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 editor::TreeEditCmd::TreeEditCmd(Project* project, uint32_t sceneId, Entity terrain, std::string name, TreeDelta delta, uint64_t strokeId):
     project(project), sceneId(sceneId), terrain(terrain), name(std::move(name)), delta(std::move(delta)), strokeId(strokeId) {}

@@ -17,7 +17,7 @@
 namespace foliagegolden {
 
     using namespace jasperengine;
-    using namespace jasperengine::terrain;
+    using namespace jasperengine::terraincore;
 
     constexpr int FIXTURE_MAP = 256;
     constexpr float FIXTURE_SIZE = 256.0f;

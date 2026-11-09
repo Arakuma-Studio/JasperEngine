@@ -493,10 +493,10 @@ namespace jasperengine{
 		bool atmosphereDepth = false;
 		// T3 R2, R34: the project's tier of the platform, the forced one (editor preview, Engine.
 		// setTerrainQuality), what the build shipped, and the Scene view's debug view
-		terrain::TerrainQuality terrainTier = terrain::TerrainQuality::HIGH;
+		terraincore::TerrainQuality terrainTier = terraincore::TerrainQuality::HIGH;
 		bool terrainForced = false;
-		terrain::TerrainQuality terrainForcedTier = terrain::TerrainQuality::HIGH;
-		uint32_t terrainShippedMask = terrain::TERRAIN_ALL_TIERS;
+		terraincore::TerrainQuality terrainForcedTier = terraincore::TerrainQuality::HIGH;
+		uint32_t terrainShippedMask = terraincore::TERRAIN_ALL_TIERS;
 		int terrainDebugView = 0;
 		// S57 (RenderSystemLighting.cpp): the pixel lights come from screen tiles ('Til'), the
 		// shadowed lit variants take capsule ('Cap') and contact ('Cts') shadows (contact shadows
@@ -676,7 +676,7 @@ namespace jasperengine{
 		// the Terrain is a Terrain World (T4 R58): every pass reads its pages ('Twd')
 		bool terrainWorld = false;
 		// what the Terrain says of its variant (T3 D2); the tier is the environment's with it
-		terrain::TerrainVariantInputs terrainVariant;
+		terraincore::TerrainVariantInputs terrainVariant;
 		// a pixel-art drawable (a Sprite or a Tilemap): snapped under a Pixel Perfect Camera (S41)
 		bool pixelArt = false;
 	};
@@ -2715,8 +2715,8 @@ namespace jasperengine{
 		// T3 R14 (RenderSystemTerrain.cpp): the bake of a macro normal map, in progress
 		struct TerrainMacroNormalWork{
 			std::vector<uint8_t> pixels;
-			terrain::MacroNormalSource source;
-			std::vector<terrain::MacroNormalLevel> levels;
+			terraincore::MacroNormalSource source;
+			std::vector<terraincore::MacroNormalLevel> levels;
 			std::atomic<bool> done{false};
 			bool threaded = false;
 			int nextRow = 0;
@@ -2754,8 +2754,8 @@ namespace jasperengine{
 		// T3 D1 (RenderSystemTerrain.cpp)
 		void applyTerrainMacroVertexUniform(ObjectRender& render, int slot, const TerrainComponent& terrain);
 	public:
-		static uint64_t getTerrainDefineBits(const MeshShaderEnvironment& environment, const terrain::TerrainVariantInputs& inputs, bool surfacePath, bool unlit, bool hasNormals);
-		static terrain::TerrainQualityResolved resolveTerrainTier(const MeshShaderEnvironment& environment, const terrain::TerrainVariantInputs& inputs);
+		static uint64_t getTerrainDefineBits(const MeshShaderEnvironment& environment, const terraincore::TerrainVariantInputs& inputs, bool surfacePath, bool unlit, bool hasNormals);
+		static terraincore::TerrainQualityResolved resolveTerrainTier(const MeshShaderEnvironment& environment, const terraincore::TerrainVariantInputs& inputs);
 	private:
 		bool loadTerrainTextures(Entity entity, TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData);
 		bool loadTerrainHeightTexture(TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData);

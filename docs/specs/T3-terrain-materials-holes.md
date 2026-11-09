@@ -585,7 +585,7 @@ TF:520-522 about local-memory arrays applies to the picked weights, which stay o
 **D10 Sketches.**
 
 ```cpp
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
     enum class TerrainQuality : int { HIGH, MEDIUM, LOW };   // stored as ints: append only
     struct HoleMapView { const uint8_t* texels = nullptr; int width = 0, height = 0; };
     bool isHole(const HoleMapView& map, float u, float v);
@@ -760,7 +760,7 @@ a fourth blend map has no slot. Base Map macro multiplies with a neutral at 0.5 
   At `LP_NATIVE_VECTOR_WIDTH=128` llvmpipe aborts on most variants, layers or not (not chased).
 - **R20: no extra pass on a terrain.** `RenderSystem::hasExtraPass` returns false for a terrain, so the extra pass has nothing to cut; `mesh.frag` covers it if that ever changes.
 - **R26: `TerrainComponent::holeMapRevision`** (not saved, not reflected) is new: `SplineSystem` rebuilds on a hole change by it, which the spec's "Spline conform" and "Instantiate" rows need and no existing flag said without also firing on a density stroke.
-- **AC31:** the tests are `NavBake.*` in `engine/tests/core/navigation/NavBakeHolesTest.cpp`: `NavBakeTest.cpp`'s fixtures have a function named `terrain`, which the `jasperengine::terrain` namespace makes ambiguous. **AC33:** `NavigationSystem.GridHole` is `NavGridTest.GridHole`; `ParticleCollision.TerrainHole` is `TerrainHolesConsumers.ParticlesPassThroughAHole`; `SplineSystem.InstantiateDropsOverHole` and `.ConformOverHole` are one test, `SplineGpu.InstantiateDropsOverHole`, because pool models load on the device.
+- **AC31:** the tests are `NavBake.*` in `engine/tests/core/navigation/NavBakeHolesTest.cpp`: `NavBakeTest.cpp`'s fixtures have a function named `terrain`, which the namespace `jasperengine::terrain` made ambiguous (now `jasperengine::terraincore`, T1 D-42). **AC33:** `NavigationSystem.GridHole` is `NavGridTest.GridHole`; `ParticleCollision.TerrainHole` is `TerrainHolesConsumers.ParticlesPassThroughAHole`; `SplineSystem.InstantiateDropsOverHole` and `.ConformOverHole` are one test, `SplineGpu.InstantiateDropsOverHole`, because pool models load on the device.
 - **AC1 on Vulkan:** `legacyOptions` holds Vulkan to the cross-backend bound of the other suites (threshold 16, 3 %, mean 3), not to a difference measured on the pre-change commit: that needed a second full build of the base. The difference each run measures is printed.
 - **AC29, AC30:** `JoltShapeBuilder.*` is `HeightfieldHoles.*` in `engine/tests/core/physics/HeightfieldHolesTest.cpp`: it tests engine code and needs no editor, which keeps it in the fast suite. It asks the shape itself (`IsNoCollision`, `CastRay`).
 - **R17 rides on upstream's per-slot terrain cut.** The merge of origin/main brought Doriax's `RenderSystem::shadowTerrainCut` (S55 R5): each shadow slot selects its own terrain nodes, from the slot's eye for a Static Shadow Caster, else as the camera's cut filtered by the slot's frustum. T3's second per-camera cut and its buffers are gone; with Off-screen Shadows on, the non-static branch runs the CDLOD selection from the camera's eye and ranges with the slot's frustum in place of the camera's, which is R17's rule per slot. Its nodes stream through upstream's per-draw binding, so no buffer is allocated at all and `NoAllocationWhenOff` was dropped. Red control for AC24: the same test on the merged tree before this change (`terrain-evidence/T3/merge-gpu-2.log`: lit 139, shadowed 139); with it, 139 against 60.

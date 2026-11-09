@@ -25,7 +25,7 @@ voxel::GroundSample voxel::sampleGround(Scene* scene, float x, float z, float yH
         const Transform* transform = scene->findComponent<Transform>(terrains->getEntity(i));
         if (!transform) continue;
         const Vector3 local = transform->modelMatrix.inverse() * Vector3(x, 0.0f, z);
-        const terrain::SurfaceSample sample = querySurface(terrain, local.x, local.z);
+        const terraincore::SurfaceSample sample = querySurface(terrain, local.x, local.z);
         if (!sample.inside || !sample.present) continue;
         if (sample.hole) continue;
         out.height = (transform->modelMatrix * Vector3(local.x, sample.height, local.z)).y;

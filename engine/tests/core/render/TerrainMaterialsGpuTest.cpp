@@ -72,7 +72,7 @@ namespace {
     class TerrainMaterialsGpu : public TerrainGpuFixture {
     protected:
         void TearDown() override{
-            terrain::TerrainQualitySettings::reset();
+            terraincore::TerrainQualitySettings::reset();
             TerrainGpuFixture::TearDown();
         }
 
@@ -99,14 +99,14 @@ namespace {
         }
 
         // the view's count of the frame, per pixel on the terrain (R: the count at 8/255 a step)
-        std::vector<int> readCounts(terrain::TerrainDebugView view){
+        std::vector<int> readCounts(terraincore::TerrainDebugView view){
             // the background black: a count of 0, where the sky's red would read as a count
             scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
-            terrain::TerrainQualitySettings::setDebugView(view);
+            terraincore::TerrainQualitySettings::setDebugView(view);
             EXPECT_TRUE(render());
             std::vector<uint8_t> frame;
             EXPECT_TRUE(readFrame(frame));
-            terrain::TerrainQualitySettings::setDebugView(terrain::TerrainDebugView::SHADED);
+            terraincore::TerrainQualitySettings::setDebugView(terraincore::TerrainDebugView::SHADED);
             scene.setBackgroundColor(0.55f, 0.68f, 0.82f, 1.0f);
             std::vector<int> counts(frame.size() / 4);
             for (size_t i = 0; i < counts.size(); i++){
@@ -117,12 +117,12 @@ namespace {
         }
 
         int maxFetches(){
-            const std::vector<int> counts = readCounts(terrain::TerrainDebugView::FETCH_COST);
+            const std::vector<int> counts = readCounts(terraincore::TerrainDebugView::FETCH_COST);
             return *std::max_element(counts.begin(), counts.end());
         }
 
-        void setTier(terrain::TerrainQuality tier){
-            terrain::TerrainQualitySettings::setGlobalOverride(tier);
+        void setTier(terraincore::TerrainQuality tier){
+            terraincore::TerrainQualitySettings::setGlobalOverride(tier);
         }
 
         void holesAcross(){
@@ -252,12 +252,12 @@ TEST_F(TerrainMaterialsGpu, FetchBudgets){
     terrainNine(24.0f, cliffBack);
     holesAcross();
     component().macroNormal = true;
-    setTier(terrain::TerrainQuality::HIGH);
+    setTier(terraincore::TerrainQuality::HIGH);
     const int high = maxFetches();
-    setTier(terrain::TerrainQuality::MEDIUM);
+    setTier(terraincore::TerrainQuality::MEDIUM);
     const int medium = maxFetches();
     EXPECT_LE(medium, 23) << "Medium with holes and Macro Normal";
-    setTier(terrain::TerrainQuality::LOW);
+    setTier(terraincore::TerrainQuality::LOW);
     const int low = maxFetches();
     EXPECT_LE(low, 7) << "Low with holes";
     EXPECT_GT(high, medium);
@@ -278,20 +278,20 @@ TEST_F(TerrainMaterialsGpu, FetchBudgets){
 TEST_F(TerrainMaterialsGpu, CostMatchesShader){
     JASPER_REQUIRE_GPU();
     terrainNine(24.0f, cliffBack);
-    terrain::TerrainMaterialInputs inputs;
+    terraincore::TerrainMaterialInputs inputs;
     inputs.layerCount = 9;
     for (int i = 0; i < 9; i++){
         inputs.layers[i].pbr = true;
         inputs.layers[i].normalMap = true;
         inputs.layers[i].surfaceMap = true;
     }
-    for (terrain::TerrainQuality tier : {terrain::TerrainQuality::HIGH, terrain::TerrainQuality::MEDIUM, terrain::TerrainQuality::LOW}){
+    for (terraincore::TerrainQuality tier : {terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::MEDIUM, terraincore::TerrainQuality::LOW}){
         setTier(tier);
         const int measured = maxFetches();
-        const terrain::MaterialCost cost = terrain::materialCost(inputs, tier);
-        EXPECT_LE(measured, cost.worst) << terrain::terrainQualityName(tier) << ": a pixel read more than the formula's worst";
-        if (tier != terrain::TerrainQuality::HIGH){
-            EXPECT_EQ(measured, cost.worst) << terrain::terrainQualityName(tier) << ": the cliff and the blend reach the tier's worst";
+        const terraincore::MaterialCost cost = terraincore::materialCost(inputs, tier);
+        EXPECT_LE(measured, cost.worst) << terraincore::terrainQualityName(tier) << ": a pixel read more than the formula's worst";
+        if (tier != terraincore::TerrainQuality::HIGH){
+            EXPECT_EQ(measured, cost.worst) << terraincore::terrainQualityName(tier) << ": the cliff and the blend reach the tier's worst";
         }
     }
     EXPECT_NO_ENGINE_ERRORS();
@@ -304,7 +304,7 @@ TEST_F(TerrainMaterialsGpu, LimitedHighDrawsWithoutLayers){
     scene.setLitQuality(LitQuality::HIGH);
     makeTerrain(4.0f, [](float x, float z){ return 0.5f + 0.2f * std::sin(x * 0.1f) * std::cos(z * 0.1f); });
     component().limitLayersPerPixel = true;
-    setTier(terrain::TerrainQuality::HIGH);
+    setTier(terraincore::TerrainQuality::HIGH);
     ASSERT_TRUE(render());
     std::vector<uint8_t> frame;
     ASSERT_TRUE(readFrame(frame));
@@ -326,7 +326,7 @@ TEST_F(TerrainMaterialsGpu, LimitThatCutsNothingDrawsTheSame){
         return TerrainGpuColor{static_cast<unsigned char>((1.0f - v) * 70.0f), 0, 0, 255};
     });
     component().limitLayersPerPixel = true;
-    setTier(terrain::TerrainQuality::HIGH);
+    setTier(terraincore::TerrainQuality::HIGH);
     const uint64_t limitBit = MaterialPbr::getDefineBit("TERRAIN_LAYER_LIMIT");
     ASSERT_TRUE(render());
     std::vector<uint8_t> skipped;
@@ -353,15 +353,15 @@ TEST_F(TerrainMaterialsGpu, LimitedHighDrawsNineLayers){
     scene.setLitQuality(LitQuality::HIGH);
     terrainNine(4.0f, cliffBack);
     component().limitLayersPerPixel = true;
-    setTier(terrain::TerrainQuality::HIGH);
+    setTier(terraincore::TerrainQuality::HIGH);
     ASSERT_TRUE(render());
-    const std::vector<int> counts = readCounts(terrain::TerrainDebugView::LAYER_COUNT);
+    const std::vector<int> counts = readCounts(terraincore::TerrainDebugView::LAYER_COUNT);
     EXPECT_LE(*std::max_element(counts.begin(), counts.end()), 4);
     EXPECT_GT(*std::max_element(counts.begin(), counts.end()), 0) << "the layers drew";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// AC5: how many layers the shader drew, against terrain::selectLayers at 64 points
+// AC5: how many layers the shader drew, against terraincore::selectLayers at 64 points
 TEST_F(TerrainMaterialsGpu, ShaderMatchesCpuSelect){
     JASPER_REQUIRE_GPU();
     terrainNine(0.001f, [](float, float){ return 0.0f; });
@@ -377,10 +377,10 @@ TEST_F(TerrainMaterialsGpu, ShaderMatchesCpuSelect){
         map.setMinFilter(TextureFilter::NEAREST);
         map.setMagFilter(TextureFilter::NEAREST);
     }
-    for (terrain::TerrainQuality tier : {terrain::TerrainQuality::MEDIUM, terrain::TerrainQuality::LOW}){
+    for (terraincore::TerrainQuality tier : {terraincore::TerrainQuality::MEDIUM, terraincore::TerrainQuality::LOW}){
         setTier(tier);
-        const std::vector<int> counts = readCounts(terrain::TerrainDebugView::LAYER_COUNT);
-        const int keep = terrain::terrainTierInfo(tier).layersPerPixel;
+        const std::vector<int> counts = readCounts(terraincore::TerrainDebugView::LAYER_COUNT);
+        const int keep = terraincore::terrainTierInfo(tier).layersPerPixel;
         for (int j = 0; j < 8; j++){
             for (int i = 0; i < 8; i++){
                 const int px = 40 + i * 80;
@@ -390,18 +390,18 @@ TEST_F(TerrainMaterialsGpu, ShaderMatchesCpuSelect){
                 // the map's value, read as the shader reads it: nearest is close enough away from a tie
                 float weights[9];
                 for (int layer = 0; layer < 9; layer++){
-                    const terrain::LayerChannel channel = terrain::terrainLayerChannel(layer);
+                    const terraincore::LayerChannel channel = terraincore::terrainLayerChannel(layer);
                     TextureData& data = terrainComponent.blendMaps[channel.map].getData();
                     const int tx = std::clamp(static_cast<int>(u * BLEND_RESOLUTION), 0, BLEND_RESOLUTION - 1);
                     const int ty = std::clamp(static_cast<int>(v * BLEND_RESOLUTION), 0, BLEND_RESOLUTION - 1);
                     weights[layer] = static_cast<const uint8_t*>(data.getData())[(static_cast<size_t>(ty) * BLEND_RESOLUTION + tx) * 4 + channel.channel] / 255.0f;
                 }
-                const terrain::LayerSelection selection = terrain::selectLayers(weights, 9, keep);
+                const terraincore::LayerSelection selection = terraincore::selectLayers(weights, 9, keep);
                 int drawn = 0;
                 for (int k = 0; k < selection.count; k++){
                     drawn += selection.weight[k] > 0.0f ? 1 : 0;
                 }
-                EXPECT_EQ(counts[static_cast<size_t>(py) * FRAME_WIDTH + px], drawn) << terrain::terrainQualityName(tier) << " at " << px << ", " << py;
+                EXPECT_EQ(counts[static_cast<size_t>(py) * FRAME_WIDTH + px], drawn) << terraincore::terrainQualityName(tier) << " at " << px << ", " << py;
             }
         }
     }
@@ -443,11 +443,11 @@ TEST_F(TerrainMaterialsGpu, LayerCapSeamless){
         }
         return largest;
     };
-    setTier(terrain::TerrainQuality::HIGH);
+    setTier(terraincore::TerrainQuality::HIGH);
     const int high = largestStep();
-    for (terrain::TerrainQuality tier : {terrain::TerrainQuality::MEDIUM, terrain::TerrainQuality::LOW}){
+    for (terraincore::TerrainQuality tier : {terraincore::TerrainQuality::MEDIUM, terraincore::TerrainQuality::LOW}){
         setTier(tier);
-        EXPECT_LE(largestStep(), high + 6) << terrain::terrainQualityName(tier);
+        EXPECT_LE(largestStep(), high + 6) << terraincore::terrainQualityName(tier);
     }
     expectFrameGolden("terrain_layer_cap_low");
 }
@@ -459,7 +459,7 @@ TEST_F(TerrainMaterialsGpu, LowHeightAndNormal){
     addPbrLayer(0, "grass", 90, 150, 60);
     addPbrLayer(1, "rock", 140, 130, 120);
     setBlendMap(0, [](float u, float v){ return bands(u, v, 2); });
-    setTier(terrain::TerrainQuality::LOW);
+    setTier(terraincore::TerrainQuality::LOW);
     ASSERT_TRUE(render());
     expectFrameGolden("terrain_low_height");
     EXPECT_NO_ENGINE_ERRORS();
@@ -546,7 +546,7 @@ TEST_F(TerrainMaterialsGpu, DistanceResampling){
     component().resampleEnabled = true;
     component().resampleNear = 10.0f;
     component().resampleFar = 40.0f;
-    const std::vector<int> counts = readCounts(terrain::TerrainDebugView::FETCH_COST);
+    const std::vector<int> counts = readCounts(terraincore::TerrainDebugView::FETCH_COST);
     int smallest = 1000, largest = 0;
     for (int count : counts){
         if (count > 0){
@@ -567,7 +567,7 @@ TEST_F(TerrainMaterialsGpu, CliffProjection){
     makeTerrain(24.0f, cliffBack);
     addPbrLayer(0, "rock", 140, 130, 120);
     setBlendMap(0, [](float, float){ return TerrainGpuColor{255, 0, 0, 255}; });
-    setTier(terrain::TerrainQuality::HIGH);
+    setTier(terraincore::TerrainQuality::HIGH);
     const int withSides = maxFetches();
     TerrainSurfaceLayer layer = terrain->getSurfaceLayer(0);
     layer.cliffProjection = TerrainCliffProjection::FLAT_ONLY;
@@ -578,11 +578,11 @@ TEST_F(TerrainMaterialsGpu, CliffProjection){
 
     layer.cliffProjection = TerrainCliffProjection::AUTO;
     terrain->setSurfaceLayer(0, layer);
-    setTier(terrain::TerrainQuality::MEDIUM);
+    setTier(terraincore::TerrainQuality::MEDIUM);
     EXPECT_LE(maxFetches(), 1 + 3 * 2) << "one blend map, 2 reads a map";
     ASSERT_TRUE(render());
     expectFrameGolden("terrain_cliff_medium");
-    setTier(terrain::TerrainQuality::LOW);
+    setTier(terraincore::TerrainQuality::LOW);
     EXPECT_LE(maxFetches(), 1 + 2) << "colour and normal, once each";
     ASSERT_TRUE(render());
     expectFrameGolden("terrain_cliff_low");
@@ -673,11 +673,11 @@ namespace {
     struct VariantCase {
         VariantLayers layers;
         LitQuality lit;
-        terrain::TerrainQuality tier;
+        terraincore::TerrainQuality tier;
         bool limit;
         bool holes;
         VariantFeature feature;
-        terrain::TerrainDebugView debug = terrain::TerrainDebugView::SHADED;
+        terraincore::TerrainDebugView debug = terraincore::TerrainDebugView::SHADED;
         // T4: the same terrain as a Terrain World ('Twd' on every pass), its maps its tiles'
         bool world = false;
     };
@@ -686,7 +686,7 @@ namespace {
         std::vector<VariantCase> cases;
         for (VariantLayers layers : {VariantLayers::NONE, VariantLayers::COLOR, VariantLayers::PBR}){
             for (LitQuality lit : {LitQuality::STANDARD, LitQuality::HIGH}){
-                for (terrain::TerrainQuality tier : {terrain::TerrainQuality::HIGH, terrain::TerrainQuality::MEDIUM, terrain::TerrainQuality::LOW}){
+                for (terraincore::TerrainQuality tier : {terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::MEDIUM, terraincore::TerrainQuality::LOW}){
                     for (bool limit : {false, true}){
                         for (bool holes : {false, true}){
                             cases.push_back({layers, lit, tier, limit, holes, VariantFeature::NONE});
@@ -697,7 +697,7 @@ namespace {
                     }
                     // the Scene view's Terrain views (R42), which the editor draws on any terrain
                     if (lit == LitQuality::STANDARD){
-                        for (terrain::TerrainDebugView view : {terrain::TerrainDebugView::LAYER_COUNT, terrain::TerrainDebugView::FETCH_COST, terrain::TerrainDebugView::HOLES}){
+                        for (terraincore::TerrainDebugView view : {terraincore::TerrainDebugView::LAYER_COUNT, terraincore::TerrainDebugView::FETCH_COST, terraincore::TerrainDebugView::HOLES}){
                             cases.push_back({layers, lit, tier, true, true, VariantFeature::NONE, view});
                         }
                     }
@@ -717,7 +717,7 @@ namespace {
     // A cooked 2 x 2 world over the fixture's 128 m (tiles -1..0 of 64 quads), heights by f, a hole
     // patch in each tile when asked: what an export writes (T4 R53)
     void writeVariantWorld(const std::filesystem::path& folder, float maxHeight, float (*f)(float, float), bool holes){
-        using namespace jasperengine::terrain;
+        using namespace jasperengine::terraincore;
         WorldManifest manifest;
         manifest.guid = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
         manifest.lattice.tileQuads = 64;
@@ -770,7 +770,7 @@ namespace {
         static const char* const featureNames[] = {"", "_MacroNoise", "_MacroBaseMap", "_Resample", "_Cliff", "_HeightBlend", "_MacroNormal"};
         static const char* const viewNames[] = {"", "_LayerCountView", "_FetchCostView", "_HolesView"};
         const VariantCase& c = info.param;
-        std::string name = std::string(layerNames[static_cast<int>(c.layers)]) + "_" + terrain::terrainQualityName(c.tier) +
+        std::string name = std::string(layerNames[static_cast<int>(c.layers)]) + "_" + terraincore::terrainQualityName(c.tier) +
                            (c.lit == LitQuality::HIGH ? "_LitHigh" : "_LitStandard") + (c.limit ? "_Limited" : "") +
                            (c.holes ? "_Holes" : "") + featureNames[static_cast<int>(c.feature)] + viewNames[static_cast<int>(c.debug)] +
                            (c.world ? "_World" : "");
@@ -793,7 +793,7 @@ TEST_P(TerrainVariantGpu, Draws){
     }
     scene.setLitQuality(c.lit);
     setTier(c.tier);
-    terrain::TerrainQualitySettings::setDebugView(c.debug);
+    terraincore::TerrainQualitySettings::setDebugView(c.debug);
     TerrainComponent& terrainComponent = component();
     terrainComponent.limitLayersPerPixel = c.limit;
     if (c.holes && !c.world){

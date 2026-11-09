@@ -40,11 +40,11 @@ namespace {
 
         // A stroke's end on a mapSize² 16-bit map: rect raised as a brush leaves it (a smooth change,
         // not noise), shown, then cut into a step and undone
-        Timing strokeOver(int mapSize, terrain::TexelRect rect, unsigned salt) {
+        Timing strokeOver(int mapSize, terraincore::TexelRect rect, unsigned salt) {
             giveHeight16(mapSize);
             terrain().terrainSize = static_cast<float>(mapSize);
             EditorTerrainStore store(project.get(), scene->id, scene->scene, terrainEntity, terrain());
-            terrain::OverlayMapStore overlay(store);
+            terraincore::OverlayMapStore overlay(store);
             std::vector<uint8_t> bytes(static_cast<size_t>(rect.area()) * 2);
             for (int y = 0; y < rect.h; y++) {
                 for (int x = 0; x < rect.w; x++) {
@@ -89,7 +89,7 @@ TEST_F(TerrainDeltaBench, CommitAndUndoWithinBudget) {
     for (unsigned run = 0; run < 5; run++) {
         // 8 x 8 tiles of 64, somewhere else each time
         const int origin = 64 * static_cast<int>(run);
-        const Timing timing = strokeOver(1024, terrain::TexelRect{origin, origin, 512, 512}, run);
+        const Timing timing = strokeOver(1024, terraincore::TexelRect{origin, origin, 512, 512}, run);
         ASSERT_EQ(timing.tiles, 64u);
         commits.push_back(timing.commitMs);
         undos.push_back(timing.undoMs);
@@ -98,7 +98,7 @@ TEST_F(TerrainDeltaBench, CommitAndUndoWithinBudget) {
     report("undo 64 tiles", medianOf(undos), 1.0, slack);
 
     const int whole = slack > 0.0 ? 4096 : 1024;
-    const Timing map = strokeOver(whole, terrain::TexelRect{0, 0, whole, whole}, 7);
+    const Timing map = strokeOver(whole, terraincore::TexelRect{0, 0, whole, whole}, 7);
     ASSERT_EQ(map.tiles, static_cast<size_t>(whole / 64) * static_cast<size_t>(whole / 64));
     std::printf("[bench] whole map is %d^2\n", whole);
     report("commit a whole map", map.commitMs, 60.0, slack);
@@ -113,11 +113,11 @@ TEST_F(TerrainDeltaBench, ADiagonalStrokeStoresAnEighthOfTodaysPatch) {
     giveHeight16(N);
     terrain().terrainSize = static_cast<float>(N);
     EditorTerrainStore store(project.get(), scene->id, scene->scene, terrainEntity, terrain());
-    terrain::OverlayMapStore overlay(store);
-    terrain::Op op;
-    op.type = terrain::OpType::Raise;
+    terraincore::OverlayMapStore overlay(store);
+    terraincore::Op op;
+    op.type = terraincore::OpType::Raise;
     op.delta = 0.5f;
-    op.shape.type = terrain::ShapeType::Stroke;
+    op.shape.type = terraincore::ShapeType::Stroke;
     op.shape.radius = RADIUS;
     const float end = static_cast<float>(N) * 0.5f - RADIUS;
     op.shape.points = {Vector2(-end, -end), Vector2(end, end)};

@@ -200,7 +200,7 @@ namespace jasperengine{
         static uint64_t getTerrainWorldProperty(ShaderType shaderType);
         // the GBUFFER bits of a terrain's tier and of its twelve layers (T3 D2: Lit defines do not reach
         // a G-buffer); High has no bit, so its keys stay
-        static uint64_t getTerrainTierProperty(terrain::TerrainQuality quality);
+        static uint64_t getTerrainTierProperty(terraincore::TerrainQuality quality);
         static uint64_t getTerrainExtendedProperty();
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);

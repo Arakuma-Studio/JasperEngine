@@ -150,7 +150,7 @@ namespace {
             const FoliageViewList list = drawnView();
             const Vector3 eye = camera.getWorldPosition();
             std::map<std::array<float, 3>, int> positions;
-            for (const terrain::FoliageInstance& instance : list.stream){
+            for (const terraincore::FoliageInstance& instance : list.stream){
                 const float dx = instance.position[0] - eye.x;
                 const float dz = instance.position[2] - eye.z;
                 const float distance = std::sqrt(dx * dx + dz * dz);
@@ -191,7 +191,7 @@ TEST_F(TerrainFoliageGpu, WalkingKeepsTheChunkEntities){
     settle();
     // 64 m of walking enters at most 9 columns of 8 m cells, each as tall as the ring
     const uint32_t placed = scene.getSystem<FoliageSystem>()->getStats(terrain.getEntity()).detailCellsPlaced - placedBefore;
-    const uint32_t ringSide = static_cast<uint32_t>(std::ceil(2.0f * 50.0f / terrain::FOLIAGE_DETAIL_CELL_SIZE)) + 1;
+    const uint32_t ringSide = static_cast<uint32_t>(std::ceil(2.0f * 50.0f / terraincore::FOLIAGE_DETAIL_CELL_SIZE)) + 1;
     EXPECT_LE(placed, 9u * ringSide) << "walking refilled cells that stayed";
     // one entity for the layer, for its life (the ring is cells, not entities: T5 F1, R66)
     EXPECT_EQ(seen.size(), 1u);
@@ -207,7 +207,7 @@ TEST_F(TerrainFoliageGpu, MinDrawDistanceAndTheScaleSetTheChunksFades){
     ASSERT_FALSE(list.stream.empty());
     const Vector3 eye = camera.getWorldPosition();
     float nearest = 1e9f, farthest = 0.0f;
-    for (const terrain::FoliageInstance& instance : list.stream){
+    for (const terraincore::FoliageInstance& instance : list.stream){
         const float dx = instance.position[0] - eye.x;
         const float dz = instance.position[2] - eye.z;
         const float distance = std::sqrt(dx * dx + dz * dz);

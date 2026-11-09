@@ -8,9 +8,9 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
-PlacementPlan jasperengine::terrain::planPlacement(std::span<const PlacementStamp> stamps, const PlacementParams& params, std::span<const Vector2> existing,
+PlacementPlan jasperengine::terraincore::planPlacement(std::span<const PlacementStamp> stamps, const PlacementParams& params, std::span<const Vector2> existing,
                                                    Vector2 boundsMin, Vector2 boundsMax, PlacementAccept accept, void* acceptUser) {
     PlacementPlan plan;
     Pcg32 random(params.seed);

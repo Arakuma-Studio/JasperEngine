@@ -19,7 +19,7 @@
 #include <random>
 #include <vector>
 
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 TEST(TerrainQuality, Table) {
     EXPECT_EQ(terrainTierInfo(TerrainQuality::HIGH).layersPerPixel, 0);

@@ -20,8 +20,8 @@ namespace {
     // far past them would wrap onto a real tile
     bool terrainWorldOnLattice(const TerrainWorldRuntime& runtime, float localX, float localZ) {
         const float size = runtime.lattice().tileSize();
-        const float low = static_cast<float>(terrain::WORLD_TILE_MIN) * size;
-        const float high = static_cast<float>(terrain::WORLD_TILE_MAX + 1) * size;
+        const float low = static_cast<float>(terraincore::WORLD_TILE_MIN) * size;
+        const float high = static_cast<float>(terraincore::WORLD_TILE_MAX + 1) * size;
         return localX >= low && localX < high && localZ >= low && localZ < high;
     }
 
@@ -83,7 +83,7 @@ TerrainWorldSurface TerrainWorld::getSurfaceAt(float x, float z) const{
     const Vector3 origin = getOrigin();
     const float localX = x - origin.x, localZ = z - origin.z;
     if (!runtime || !terrainWorldOnLattice(*runtime, localX, localZ)) return out;
-    const terrain::SurfaceSample sample = runtime->query(localX, localZ, !runtime->playing());
+    const terraincore::SurfaceSample sample = runtime->query(localX, localZ, !runtime->playing());
     out.height = sample.height + origin.y;
     out.normal = sample.normal;
     out.hole = sample.hole;
@@ -97,10 +97,10 @@ std::string TerrainWorld::getTileState(float x, float z) const{
     TerrainWorldRuntime* runtime = getRuntime();
     const Vector3 origin = getOrigin();
     const float localX = x - origin.x, localZ = z - origin.z;
-    if (!runtime || !terrainWorldOnLattice(*runtime, localX, localZ)) return terrain::tileStateName(terrain::TileState::Absent);
+    if (!runtime || !terrainWorldOnLattice(*runtime, localX, localZ)) return terraincore::tileStateName(terraincore::TileState::Absent);
     const float size = runtime->lattice().tileSize();
-    const terrain::TileCoord tile(terrain::tileOfLocal(localX, size), terrain::tileOfLocal(localZ, size));
-    return terrain::tileStateName(runtime->tileState(tile));
+    const terraincore::TileCoord tile(terraincore::tileOfLocal(localX, size), terraincore::tileOfLocal(localZ, size));
+    return terraincore::tileStateName(runtime->tileState(tile));
 }
 
 bool TerrainWorld::isAreaReady(float x, float z, float radius, TerrainWorldReadyLevel level) const{

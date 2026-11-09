@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     // A Terrain has up to TERRAIN_MAX_LAYERS layers; a Voxel Volume's array has one per slot (T6 R50)
     inline constexpr int DETAIL_MAX_LAYERS = 16;

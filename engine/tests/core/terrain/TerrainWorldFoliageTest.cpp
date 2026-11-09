@@ -44,7 +44,7 @@ using jasperengine::TerrainWorldRuntime;
 using jasperengine::TerrainWorldSystem;
 using jasperengine::Transform;
 using jasperengine::Vector3;
-using jasperengine::terrain::TreeId;
+using jasperengine::terraincore::TreeId;
 
 namespace {
 
@@ -61,7 +61,7 @@ namespace {
     // A tile's own tree file: whole-metre world points, stored as T5 stores them over the tile's square
     // (its region is centred on the tile), at the fixture's height there, as a paint snaps them
     std::vector<uint8_t> groveTrees(TileCoord tile, const std::vector<std::pair<int, int>>& points) {
-        jasperengine::terrain::TreeStore store;
+        jasperengine::terraincore::TreeStore store;
         std::vector<TreeRecord> added;
         for (const auto& point : points) {
             TreeRecord record{};
@@ -362,7 +362,7 @@ TEST(TerrainWorldFoliage, TreeFilePerTile) {
 
     EXPECT_EQ(world.foliage->getStats(world.entity).treesTotal, 3u);
     size_t stores = 0;
-    world.foliage->forEachTreeStore(world.entity, [&](const jasperengine::terrain::TreeStore& store) {
+    world.foliage->forEachTreeStore(world.entity, [&](const jasperengine::terraincore::TreeStore& store) {
         stores++;
         EXPECT_EQ(store.size(), 3u);
     });
@@ -396,7 +396,7 @@ TEST(TerrainWorldFoliage, RemovedHandlerCoversEveryTile) {
     for (const FoliageInstanceInfo& tree : world.trees()) {
         ASSERT_TRUE(world.foliage->removeTreeInstance(world.entity, tree.id).has_value());
         removed.insert(tree.id);
-        tiles.insert(jasperengine::terrain::treeIdRegion(tree.id));
+        tiles.insert(jasperengine::terraincore::treeIdRegion(tree.id));
     }
     EXPECT_EQ(tiles, (std::set<uint32_t>{TileCoord(-1, -1).key(), TileCoord(0, -1).key()}));
     EXPECT_EQ(std::set<TreeId>(heard.begin(), heard.end()), removed);
@@ -446,7 +446,7 @@ TEST(TerrainWorldFoliage, TreeHitHandlerOnAnyTile) {
     for (int i = 0; i < 120; i++) world.scene->fixedUpdate(1.0f / 60.0f);
 
     EXPECT_EQ(hits, 1);
-    EXPECT_EQ(jasperengine::terrain::treeIdRegion(seen.id), TileCoord(-1, -1).key());
+    EXPECT_EQ(jasperengine::terraincore::treeIdRegion(seen.id), TileCoord(-1, -1).key());
     EXPECT_EQ(seen.body, ball);
     EXPECT_LT(world.scene->getComponent<Transform>(ball).worldPosition.x, -32.0f) << "the capsule stops it at the drawn tree";
 }

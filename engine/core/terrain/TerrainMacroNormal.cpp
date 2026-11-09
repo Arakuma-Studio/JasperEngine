@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace jasperengine::terrain;
+using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -23,7 +23,7 @@ namespace {
 
 }
 
-void jasperengine::terrain::bakeMacroNormalRows(const MacroNormalSource& source, int width, int height, int rowBegin, int rowEnd, uint8_t* top) {
+void jasperengine::terraincore::bakeMacroNormalRows(const MacroNormalSource& source, int width, int height, int rowBegin, int rowEnd, uint8_t* top) {
     if (!source.pixels || width <= 0 || height <= 0 || !top || source.terrainSize <= 0.0f) return;
     const float stepX = source.terrainSize / static_cast<float>(width);
     const float stepZ = source.terrainSize / static_cast<float>(height);
@@ -47,7 +47,7 @@ void jasperengine::terrain::bakeMacroNormalRows(const MacroNormalSource& source,
     }
 }
 
-void jasperengine::terrain::buildMacroNormalMips(std::vector<MacroNormalLevel>& levels) {
+void jasperengine::terraincore::buildMacroNormalMips(std::vector<MacroNormalLevel>& levels) {
     if (levels.empty()) return;
     levels.resize(1);
     while (levels.back().width > 1 || levels.back().height > 1) {
@@ -83,7 +83,7 @@ void jasperengine::terrain::buildMacroNormalMips(std::vector<MacroNormalLevel>& 
     }
 }
 
-std::vector<MacroNormalLevel> jasperengine::terrain::bakeMacroNormal(const MacroNormalSource& source) {
+std::vector<MacroNormalLevel> jasperengine::terraincore::bakeMacroNormal(const MacroNormalSource& source) {
     std::vector<MacroNormalLevel> levels;
     if (!source.pixels || source.width <= 0 || source.height <= 0) return levels;
     MacroNormalLevel top;

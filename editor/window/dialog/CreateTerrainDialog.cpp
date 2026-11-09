@@ -90,8 +90,8 @@ bool editor::CreateTerrainDialog::createGenerated(Project* project, uint32_t sce
     request.applyTo.density = false;
     request.layerCount = 0;
     // the new height map, as Create will make it: generated first, so Create's one step holds the result
-    const terrain::MapId height{terrain::MapKind::Height, 0};
-    auto store = std::make_shared<terrain::RawMapStore>(settings.size, settings.height);
+    const terraincore::MapId height{terraincore::MapKind::Height, 0};
+    auto store = std::make_shared<terraincore::RawMapStore>(settings.size, settings.height);
     store->addMap(height, settings.heightmap, settings.heightmap, 1, 16);
     auto result = std::make_shared<GenerationResult>();
     std::shared_ptr<TerrainGeneration::Prepared> prepared = TerrainGeneration::prepare(*store, request, *result);
@@ -267,13 +267,13 @@ Entity editor::CreateTerrainDialog::create(Project* project, uint32_t sceneId, E
                                                                                          "surfaceLayers", std::vector<TerrainSurfaceLayer>{layer}))){
             return fail("The Base Layer could not be added.");
         }
-        terrain::MapFormat blendFormat;
-        blendFormat.bounds = terrain::TexelRect{0, 0, s.control, s.control};
+        terraincore::MapFormat blendFormat;
+        blendFormat.bounds = terraincore::TexelRect{0, 0, s.control, s.control};
         blendFormat.channels = 4;
         blendFormat.bitsPerChannel = 8;
         blendFormat.exists = true;
         TerrainMadeMap made;
-        if (!makeTerrainBlankMap(project, sceneProject, entity, terrain::MapId{terrain::MapKind::Blend, 0}, blendFormat, made)){
+        if (!makeTerrainBlankMap(project, sceneProject, entity, terraincore::MapId{terraincore::MapKind::Blend, 0}, blendFormat, made)){
             return fail("The Base Layer's blend map could not be made.");
         }
         TerrainMapSnapshot filled = made.blank;

@@ -95,7 +95,7 @@ Json hitJson(Project* project, const ScenePickEntry& entry) {
         if (entry.hit.kind == PickKind::TREE) {
             // a Terrain World's tree as edit_terrain's remove_trees names it: tile and record (T4 R27)
             const bool world = scene && scene->scene && scene->scene->findComponent<TerrainWorldComponent>(entry.entity);
-            out["tree_id"] = world ? terrainWorldTreeId(terrain::TileCoord::fromKey(terrain::treeIdRegion(entry.hit.foliageId)), terrain::treeIdRecord(entry.hit.foliageId))
+            out["tree_id"] = world ? terrainWorldTreeId(terraincore::TileCoord::fromKey(terraincore::treeIdRegion(entry.hit.foliageId)), terraincore::treeIdRecord(entry.hit.foliageId))
                                    : entry.hit.foliageId;
         }
     }

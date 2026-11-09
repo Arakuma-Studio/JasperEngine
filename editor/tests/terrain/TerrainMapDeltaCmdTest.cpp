@@ -22,16 +22,16 @@ namespace {
     class TerrainMapDeltaCmdTest : public TerrainProjectFixture {
     protected:
         // Runs op into a step applied by the history's execute
-        TerrainMapDeltaCmd* stepOf(terrain::OverlayMapStore& overlay, const std::string& verb = {}) {
+        TerrainMapDeltaCmd* stepOf(terraincore::OverlayMapStore& overlay, const std::string& verb = {}) {
             auto* delta = new TerrainMapDeltaCmd(project.get(), scene->id, terrainEntity, terrainEntity, overlay, false, verb);
             overlay.discard();
             EXPECT_TRUE(history()->addCommandNoMerge(delta));
             return delta;
         }
 
-        void expectBitExact(const std::vector<terrain::MapId>& maps, const std::vector<std::vector<unsigned char>>& before) {
+        void expectBitExact(const std::vector<terraincore::MapId>& maps, const std::vector<std::vector<unsigned char>>& before) {
             std::vector<std::vector<unsigned char>> after;
-            for (const terrain::MapId& map : maps) after.push_back(bytesOf(map));
+            for (const terraincore::MapId& map : maps) after.push_back(bytesOf(map));
             EXPECT_NE(after, before);
             for (int round = 0; round < 3; round++) {
                 ASSERT_TRUE(history()->undo());
@@ -50,7 +50,7 @@ TEST_F(TerrainMapDeltaCmdTest, UndoRedoAreBitExact) {
         giveFileMap(TerrainMapRef(TerrainMapTarget::HeightMap), 96, format, 1, [](size_t i) { return (i * 7) % 251; });
         const std::vector<unsigned char> before = bytesOf(HEIGHT_MAP);
         EditorTerrainStore store(project.get(), scene->id, scene->scene, terrainEntity, terrain());
-        terrain::OverlayMapStore overlay(store);
+        terraincore::OverlayMapStore overlay(store);
         ASSERT_TRUE(runOn(overlay, raiseOp(4.0f)).ok);
         stepOf(overlay);
         expectBitExact({HEIGHT_MAP}, {before});
@@ -64,15 +64,15 @@ TEST_F(TerrainMapDeltaCmdTest, UndoRedoAreBitExact) {
     const std::vector<std::vector<unsigned char>> before = {bytesOf(HEIGHT_MAP), bytesOf(BLEND_MAP), bytesOf(DENSITY_MAP)};
     {
         EditorTerrainStore store(project.get(), scene->id, scene->scene, terrainEntity, terrain());
-        terrain::OverlayMapStore overlay(store);
+        terraincore::OverlayMapStore overlay(store);
         ASSERT_TRUE(runOn(overlay, raiseOp(2.0f)).ok);
-        terrain::Op paint;
-        paint.type = terrain::OpType::PaintLayer;
+        terraincore::Op paint;
+        paint.type = terraincore::OpType::PaintLayer;
         paint.layer = 1;
         paint.shape = raiseOp(0.0f).shape;
         ASSERT_TRUE(runOn(overlay, paint).ok);
-        terrain::Op density;
-        density.type = terrain::OpType::EraseDensity;
+        terraincore::Op density;
+        density.type = terraincore::OpType::EraseDensity;
         density.layer = 0;
         density.shape = raiseOp(0.0f).shape;
         ASSERT_TRUE(runOn(overlay, density).ok);
@@ -87,7 +87,7 @@ TEST_F(TerrainMapDeltaCmdTest, RefusesAfterMapChanged) {
     const std::vector<unsigned char> before = bytesOf(HEIGHT_MAP);
     {
         EditorTerrainStore store(project.get(), scene->id, scene->scene, terrainEntity, terrain());
-        terrain::OverlayMapStore overlay(store);
+        terraincore::OverlayMapStore overlay(store);
         ASSERT_TRUE(runOn(overlay, raiseOp(4.0f)).ok);
         stepOf(overlay);
     }
@@ -109,7 +109,7 @@ TEST_F(TerrainMapDeltaCmdTest, RefusesAMapOfAnotherSize) {
     giveHeight16(64);
     {
         EditorTerrainStore store(project.get(), scene->id, scene->scene, terrainEntity, terrain());
-        terrain::OverlayMapStore overlay(store);
+        terraincore::OverlayMapStore overlay(store);
         ASSERT_TRUE(runOn(overlay, raiseOp(4.0f)).ok);
         stepOf(overlay);
     }
@@ -124,18 +124,18 @@ TEST_F(TerrainMapDeltaCmdTest, CompressedAndRawTilesBothWork) {
     TerrainMapDeltaCmd* step = nullptr;
     {
         EditorTerrainStore store(project.get(), scene->id, scene->scene, terrainEntity, terrain());
-        terrain::OverlayMapStore overlay(store);
+        terraincore::OverlayMapStore overlay(store);
         std::mt19937 random(7);
         std::vector<uint8_t> noisy(static_cast<size_t>(64) * 64 * 2);
         for (uint8_t& byte : noisy) byte = static_cast<uint8_t>(random());
-        ASSERT_TRUE(overlay.writeBytes(HEIGHT_MAP, terrain::TexelRect{0, 0, 64, 64}, noisy).ok);
+        ASSERT_TRUE(overlay.writeBytes(HEIGHT_MAP, terraincore::TexelRect{0, 0, 64, 64}, noisy).ok);
         // a gentle change: a low byte moved by one
         std::vector<uint8_t> rect(static_cast<size_t>(64) * 64 * 2);
         for (int y = 0; y < 64; y++) {
             std::copy_n(before.data() + (static_cast<size_t>(y + 64) * 128) * 2, 128, rect.data() + static_cast<size_t>(y) * 128);
         }
         for (size_t i = 0; i < rect.size(); i += 2) rect[i] = static_cast<uint8_t>(rect[i] + 1);
-        ASSERT_TRUE(overlay.writeBytes(HEIGHT_MAP, terrain::TexelRect{0, 64, 64, 64}, rect).ok);
+        ASSERT_TRUE(overlay.writeBytes(HEIGHT_MAP, terraincore::TexelRect{0, 64, 64, 64}, rect).ok);
         step = stepOf(overlay);
     }
     ASSERT_NE(step, nullptr);
@@ -147,14 +147,14 @@ TEST_F(TerrainMapDeltaCmdTest, CompressedAndRawTilesBothWork) {
 TEST_F(TerrainMapDeltaCmdTest, AnUnchangedTileIsDropped) {
     giveHeight16(128);
     EditorTerrainStore store(project.get(), scene->id, scene->scene, terrainEntity, terrain());
-    terrain::OverlayMapStore overlay(store);
+    terraincore::OverlayMapStore overlay(store);
     // touched and put back: the overlay holds the tile, the step has nothing to do
     std::vector<float> values(static_cast<size_t>(64) * 64);
-    ASSERT_TRUE(overlay.read(HEIGHT_MAP, terrain::TexelRect{0, 0, 64, 64}, values));
+    ASSERT_TRUE(overlay.read(HEIGHT_MAP, terraincore::TexelRect{0, 0, 64, 64}, values));
     std::vector<float> moved = values;
     moved[0] += 0.25f;
-    ASSERT_TRUE(overlay.write(HEIGHT_MAP, terrain::TexelRect{0, 0, 64, 64}, moved).ok);
-    ASSERT_TRUE(overlay.write(HEIGHT_MAP, terrain::TexelRect{0, 0, 64, 64}, values).ok);
+    ASSERT_TRUE(overlay.write(HEIGHT_MAP, terraincore::TexelRect{0, 0, 64, 64}, moved).ok);
+    ASSERT_TRUE(overlay.write(HEIGHT_MAP, terraincore::TexelRect{0, 0, 64, 64}, values).ok);
     ASSERT_EQ(overlay.tileCount(), 1u);
     TerrainMapDeltaCmd step(project.get(), scene->id, terrainEntity, terrainEntity, overlay, false);
     EXPECT_TRUE(step.empty());
@@ -167,11 +167,11 @@ TEST_F(TerrainMapDeltaCmdTest, MemoryBound) {
     constexpr size_t TILE_BYTES = 64 * 64 * 2;
     giveHeight16(N);
     EditorTerrainStore store(project.get(), scene->id, scene->scene, terrainEntity, terrain());
-    terrain::OverlayMapStore overlay(store);
+    terraincore::OverlayMapStore overlay(store);
 
     // the worst case: every byte of nine tiles changes to noise, which does not compress
     std::mt19937 random(11);
-    const terrain::TexelRect rect{0, 0, 192, 192};
+    const terraincore::TexelRect rect{0, 0, 192, 192};
     std::vector<uint8_t> noise(static_cast<size_t>(rect.area()) * 2);
     for (uint8_t& byte : noise) byte = static_cast<uint8_t>(random());
     ASSERT_TRUE(overlay.writeBytes(HEIGHT_MAP, rect, noise).ok);

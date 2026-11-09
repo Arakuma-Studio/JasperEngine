@@ -189,23 +189,23 @@ int main(int argc, char** argv) {
     {
         const int size = 513;
         const std::vector<float> start = erosionGround(size);
-        terrain::ErosionRegion region;
+        terraincore::ErosionRegion region;
         region.width = region.depth = size;
         region.maxHeight = 400.0f;
         region.metresPerTexel = 4.0;
-        terrain::ErosionControl serial;
+        terraincore::ErosionControl serial;
         serial.parallel = false;
         std::vector<float> h = start;
-        terrain::HydraulicParams hydraulic;
+        terraincore::HydraulicParams hydraulic;
         uint64_t steps = 0;
         auto begin = bench::Clock::now();
-        terrain::HeightfieldErosion::hydraulic(hydraulic, region, h.data(), nullptr, nullptr, nullptr, serial, &steps);
+        terraincore::HeightfieldErosion::hydraulic(hydraulic, region, h.data(), nullptr, nullptr, nullptr, serial, &steps);
         results.add("hydraulic_mega_steps_per_s", static_cast<double>(steps) / bench::secondsSince(begin) / 1e6, "M/s");
         h = start;
-        terrain::ThermalParams thermal;
+        terraincore::ThermalParams thermal;
         thermal.iterations = 16;
         begin = bench::Clock::now();
-        terrain::HeightfieldErosion::thermal(thermal, region, h.data(), serial);
+        terraincore::HeightfieldErosion::thermal(thermal, region, h.data(), serial);
         results.add("thermal_mega_texel_iterations_per_s", static_cast<double>(size) * size * thermal.iterations / bench::secondsSince(begin) / 1e6, "M/s");
     }
 

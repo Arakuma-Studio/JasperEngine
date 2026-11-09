@@ -14,7 +14,7 @@
 #include <cstdint>
 #include <string>
 
-namespace jasperengine::terrain {
+namespace jasperengine::terraincore {
 
     inline constexpr int WORLD_TILE_MIN = -256;
     inline constexpr int WORLD_TILE_MAX = 255;

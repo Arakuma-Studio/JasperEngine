@@ -108,8 +108,8 @@ namespace jasperengine::editor{
         // to the same file takes the new content, a prefab's other instances included
         static void refreshSharing(Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
 
-        static terrain::MapId mapOfRef(const TerrainMapRef& ref);
-        static TerrainMapRef refOfMap(terrain::MapId map);
+        static terraincore::MapId mapOfRef(const TerrainMapRef& ref);
+        static TerrainMapRef refOfMap(terraincore::MapId map);
 
         // ---- the files the engine writes are named terrain_edit_* under terrain_maps/ (T1 R32)
 

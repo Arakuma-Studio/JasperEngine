@@ -16,7 +16,7 @@
 #include <memory>
 #include <vector>
 
-namespace jasperengine { namespace terrain {
+namespace jasperengine { namespace terraincore {
 
     namespace {
 

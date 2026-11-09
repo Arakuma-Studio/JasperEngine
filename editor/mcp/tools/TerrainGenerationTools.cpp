@@ -50,20 +50,20 @@ Json issueJson(const GenerationIssue& issue) {
     return out;
 }
 
-const char* mapKindName(terrain::MapKind kind) {
+const char* mapKindName(terraincore::MapKind kind) {
     switch (kind) {
-        case terrain::MapKind::Height: return "height";
-        case terrain::MapKind::Blend: return "blend";
-        case terrain::MapKind::Hole: return "hole";
+        case terraincore::MapKind::Height: return "height";
+        case terraincore::MapKind::Blend: return "blend";
+        case terraincore::MapKind::Hole: return "hole";
         default: return "density";
     }
 }
 
-Json changedJson(const std::vector<terrain::MapChangeReport>& changed) {
+Json changedJson(const std::vector<terraincore::MapChangeReport>& changed) {
     Json list = Json::array();
-    for (const terrain::MapChangeReport& report : changed) {
+    for (const terraincore::MapChangeReport& report : changed) {
         std::string map = mapKindName(report.map.kind);
-        if (report.map.kind == terrain::MapKind::Blend || report.map.kind == terrain::MapKind::Density) map += ":" + std::to_string(report.map.index);
+        if (report.map.kind == terraincore::MapKind::Blend || report.map.kind == terraincore::MapKind::Density) map += ":" + std::to_string(report.map.index);
         list.push_back({{"map", map},
                         {"rect", {report.rect.x, report.rect.y, report.rect.w, report.rect.h}},
                         {"local", {report.localMin.x, report.localMin.y, report.localMax.x, report.localMax.y}},

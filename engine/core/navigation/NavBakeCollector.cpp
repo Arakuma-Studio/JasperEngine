@@ -771,7 +771,7 @@ namespace {
         }
         if (!terrain.holeMap.empty()) {
             // T3 R23, R24: the walkable area stays inside the drawn ground
-            if (terrain::navHoleCells(terrainSurfaceView(terrain).holes, samples, lattice.holeCells) == 0)
+            if (terraincore::navHoleCells(terrainSurfaceView(terrain).holes, samples, lattice.holeCells) == 0)
                 lattice.holeCells.clear();
         }
         lattice.computeBounds();
@@ -851,13 +851,13 @@ namespace {
             stats.warnings.push_back("Terrain World '" + name + "' is not running (" + why + "); it bakes nothing");
             return;
         }
-        const terrain::WorldLattice& lattice = runtime->lattice();
+        const terraincore::WorldLattice& lattice = runtime->lattice();
         const float size = lattice.tileSize();
         const float maxHeight = runtime->maxHeight();
         const Matrix4 toNav = navFromWorld * world;
 
         // the tiles: the Follow region, else those meeting the Volume, else every present tile
-        std::vector<terrain::TileCoord> tiles;
+        std::vector<terraincore::TileCoord> tiles;
         if (entity == followedWorld) {
             std::set<uint32_t> region;
             float x = 0.0f, z = 0.0f;
@@ -873,7 +873,7 @@ namespace {
                 return;
             }
             for (uint32_t key : region)
-                tiles.push_back(terrain::TileCoord::fromKey(key));
+                tiles.push_back(terraincore::TileCoord::fromKey(key));
             followRegion = std::move(region);
             followX = x;
             followZ = z;
@@ -882,10 +882,10 @@ namespace {
             const int side = (int)std::ceil(2.0f * (surface.followRadius + size) / input->config.tileWorldSize()) + 2;
             input->reserveTiles = std::max(input->reserveTiles, side * side);
         } else {
-            for (const terrain::TileCoord& tile : runtime->occupancy().presentTiles()) {
+            for (const terraincore::TileCoord& tile : runtime->occupancy().presentTiles()) {
                 if (surface.collectObjects == NavCollectObjects::VOLUME) {
                     // the tile's box from its min/max in nav space against the volume
-                    const terrain::TileMinMax heights = runtime->occupancy().minMax(0, tile.x, tile.z);
+                    const terraincore::TileMinMax heights = runtime->occupancy().minMax(0, tile.x, tile.z);
                     Vector3 lo(std::numeric_limits<float>::max()), hi(-std::numeric_limits<float>::max());
                     for (int c = 0; c < 8; c++) {
                         const Vector3 local((float)tile.x * size + ((c & 1) ? size : 0.0f),
@@ -905,23 +905,23 @@ namespace {
 
         // each tile's data by shared reference: what is in memory now or held from an earlier try;
         // the rest is demanded from the streamer (its jobs read it) and the collection waits
-        std::vector<std::shared_ptr<const terrain::WorldTile>> data(tiles.size());
+        std::vector<std::shared_ptr<const terraincore::WorldTile>> data(tiles.size());
         int pending = 0;
         for (size_t t = 0; t < tiles.size(); t++) {
-            const terrain::TileCoord tile = tiles[t];
+            const terraincore::TileCoord tile = tiles[t];
             const uint64_t key = ((uint64_t)entity << 32) | tile.key();
             const uint32_t revision = runtime->tileRevision(tile);
             auto held = worldContext.held.find(key);
             if (held != worldContext.held.end() && held->second.revision == revision) {
                 data[t] = held->second.data;
-            } else if (std::shared_ptr<const terrain::WorldTile> resident = runtime->resident(tile)) {
+            } else if (std::shared_ptr<const terraincore::WorldTile> resident = runtime->resident(tile)) {
                 data[t] = resident;
                 worldContext.held[key] = NavWorldHeld{resident, revision};
-            } else if (runtime->tileState(tile) == terrain::TileState::Error) {
+            } else if (runtime->tileState(tile) == terraincore::TileState::Error) {
                 stats.warnings.push_back("tile " + std::to_string(tile.x) + "," + std::to_string(tile.z) + " of Terrain World '" + name +
                                          "' could not be read; it bakes nothing");
             } else {
-                runtime->tiles().demand(tile, terrain::TilePriority::High);
+                runtime->tiles().demand(tile, terraincore::TilePriority::High);
                 pending++;
             }
         }
@@ -939,7 +939,7 @@ namespace {
         for (size_t t = 0; t < tiles.size(); t++) {
             if (!data[t])
                 continue;
-            const terrain::WorldTile& tile = *data[t];
+            const terraincore::WorldTile& tile = *data[t];
             NavTerrainInput navLattice;
             navLattice.toNav = toNav;
             navLattice.halfSize = size * 0.5f;
@@ -957,8 +957,8 @@ namespace {
             navLattice.tileMaxHeight = maxHeight;
             if (!tile.holes.empty()) {
                 // T3 R23 per tile: the walkable area stays inside the drawn ground
-                const terrain::HoleMapView holes{tile.holes.bytes.data(), tile.holes.width, tile.holes.height};
-                if (terrain::navHoleCells(holes, navLattice.samples, navLattice.holeCells) == 0)
+                const terraincore::HoleMapView holes{tile.holes.bytes.data(), tile.holes.width, tile.holes.height};
+                if (terraincore::navHoleCells(holes, navLattice.samples, navLattice.holeCells) == 0)
                     navLattice.holeCells.clear();
             }
             navLattice.computeBounds();

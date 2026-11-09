@@ -141,7 +141,7 @@ TEST(TerrainEditGpu, StreamMapReadsBack){
     }else{
         const TerrainUploadFormat format = render.getUploadFormat() == ColorFormat::R32F ? TerrainUploadFormat::Float32 : TerrainUploadFormat::Half;
         upload.resize(heights.size() * (format == TerrainUploadFormat::Float32 ? 4 : 2));
-        convertTerrainHeightRect(heights.data(), 8, terrain::TexelRect{0, 0, 8, 8}, format, upload.data());
+        convertTerrainHeightRect(heights.data(), 8, terraincore::TexelRect{0, 0, 8, 8}, format, upload.data());
     }
     ASSERT_TRUE(render.updateTexture(upload.data(), upload.size()));
     GpuEnvironment::drawFrames(1);
@@ -167,12 +167,12 @@ TEST(TerrainEditGpu, UploadMatchesFreshLoad){
         before = editGpuTarget();
         TerrainComponent& component = stage.terrain->getComponent<TerrainComponent>();
         TerrainComponentStore store(&stage.scene, stage.terrain->getEntity(), component);
-        terrain::Op raise;
-        raise.type = terrain::OpType::Raise;
+        terraincore::Op raise;
+        raise.type = terraincore::OpType::Raise;
         raise.delta = 1.5f;
-        raise.shape.type = terrain::ShapeType::Circle;
+        raise.shape.type = terraincore::ShapeType::Circle;
         raise.shape.radius = 2.5f;
-        ASSERT_TRUE(terrain::applyOps(store, std::vector<terrain::Op>{raise}).ok);
+        ASSERT_TRUE(terraincore::applyOps(store, std::vector<terraincore::Op>{raise}).ok);
         ASSERT_TRUE(stage.settle());
         TextureRender* render = component.heightMap.getRender();
         ASSERT_NE(render, nullptr);

@@ -25,7 +25,7 @@ namespace jasperengine::editor{
     class TerrainStrokeSession{
     public:
         // terrainSize: what the stamps' spacing and brush radius floor are measured against
-        TerrainStrokeSession(terrain::TerrainMapStore& base, terrain::MapId map, float terrainSize, TerrainStrokeBrush brush);
+        TerrainStrokeSession(terraincore::TerrainMapStore& base, terraincore::MapId map, float terrainSize, TerrainStrokeBrush brush);
 
         TerrainStrokeSession(const TerrainStrokeSession&) = delete;
         TerrainStrokeSession& operator=(const TerrainStrokeSession&) = delete;
@@ -57,17 +57,17 @@ namespace jasperengine::editor{
         // Normalized height of a terrain-local point as the stroke found it (bilinear, as drawn)
         float heightBefore(float x, float z) const;
 
-        terrain::OverlayMapStore& overlay() { return transaction; }
-        const terrain::OverlayMapStore& overlay() const { return transaction; }
-        terrain::MapId mapId() const { return map; }
+        terraincore::OverlayMapStore& overlay() { return transaction; }
+        const terraincore::OverlayMapStore& overlay() const { return transaction; }
+        terraincore::MapId mapId() const { return map; }
 
         // The op a stamp of this brush runs: the shape's place and the deposit are set per stamp (tests)
-        const terrain::Op& currentOp() const { return op; }
+        const terraincore::Op& currentOp() const { return op; }
 
         // T1 R39: the drag's samples as one edit_terrain call ({"space": "local", "ops": [...]}) whose stroke
         // replays it to the same bytes; empty for a brush the op list does not express (a mask, a square,
         // Ramp, Erode, Noise, Terrace, Stamp, an alternate, a filter or a radius under a texel)
-        std::string replayCall(const std::vector<terrain::StrokeSample>& samples) const;
+        std::string replayCall(const std::vector<terraincore::StrokeSample>& samples) const;
 
     private:
         void buildOp();
@@ -75,11 +75,11 @@ namespace jasperengine::editor{
         bool applyStamp(float x, float z, float seconds);
         bool applyRamp(float x, float z, float strength);
 
-        terrain::OverlayMapStore transaction;
+        terraincore::OverlayMapStore transaction;
         // T1 R47: the stamps' block buffers, kept for the stroke
-        terrain::OpScratch scratch;
-        terrain::MapId map;
-        terrain::MapFormat format;
+        terraincore::OpScratch scratch;
+        terraincore::MapId map;
+        terraincore::MapFormat format;
         float terrainSize;
         float maxHeight;
         TerrainStrokeBrush brush;
@@ -87,12 +87,12 @@ namespace jasperengine::editor{
         float flow = 0.0f;
 
         // Kept between stamps: a mask's pixels are not copied again for each one
-        terrain::Op op;
+        terraincore::Op op;
 
         // R33: the drag's resampler, made by its first sample and again after a lift
-        std::optional<terrain::StrokeResampler> resampler;
-        std::deque<terrain::StrokeStamp> queue;
-        std::vector<terrain::StrokeStamp> sampled;
+        std::optional<terraincore::StrokeResampler> resampler;
+        std::deque<terraincore::StrokeStamp> queue;
+        std::vector<terraincore::StrokeStamp> sampled;
 
         bool hasLastPoint = false;
         float lastX = 0.0f, lastZ = 0.0f;

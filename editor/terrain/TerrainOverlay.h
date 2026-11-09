@@ -63,7 +63,7 @@ namespace jasperengine::editor {
         Scene* scene = nullptr;
         Entity entity = NULL_ENTITY;
         TerrainComponent* terrain = nullptr;
-        const terrain::TerrainMapStore* store = nullptr;
+        const terraincore::TerrainMapStore* store = nullptr;
         const TerrainOverlaySettings* settings = nullptr;
         int width = 0;
         int height = 0;
@@ -93,7 +93,7 @@ namespace jasperengine::editor {
                          std::vector<uint8_t>& rgba, std::vector<TerrainOverlayLegendStop>& legend, std::string& error);
 
         // T1 R67: maps to bake from instead of the terrain's own (Paint by Rules' Preview), until cleared
-        static void setPreview(Scene* scene, Entity entity, std::shared_ptr<const terrain::TerrainMapStore> store);
+        static void setPreview(Scene* scene, Entity entity, std::shared_ptr<const terraincore::TerrainMapStore> store);
         static void clearPreview(Scene* scene, Entity entity);
         static bool hasPreview(Scene* scene, Entity entity);
 
