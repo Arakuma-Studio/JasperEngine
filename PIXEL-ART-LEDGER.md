@@ -175,7 +175,7 @@ never build or run them.
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
-| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | in review |
+| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | review fixed; merging main |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | in review |
 | S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | implementing |
@@ -244,6 +244,15 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S49's review fixes are done at `833e98d5c`. Sub-emitters now draw in S20's renderer
+  for every effect. Gate on box C: core 180, editor 146, 148 MCP tests.
+  - The trial batch-2 merge with `main` conflicts in 21 files (mats-fx's S91 particle work), so
+    S49 is merging `main` itself.
+  - Overlap found: `main`'s S91 already has `ParticleEffectPreview`, `ParticleSheetBake`,
+    `ParticleEffectChecks`, `preview_particle_effect`, `bake_particle_sheet` and
+    `check --particles`.
+  - S49 now builds its bake, contact sheets and checks on S91's machinery instead of duplicating
+    them. S48's contact sheets and lints reuse the same capture and check plumbing.
 - 2026-11-09: Every agent (S42, S48 with its four sub-tasks, S49, S51, S52) stopped on a 5-hour
   API limit that reset at 01:40 UTC. All were revived at 01:41; their work was committed or saved.
   S48 was told to keep at most 2–3 sub-agents active at once, to limit API load.
