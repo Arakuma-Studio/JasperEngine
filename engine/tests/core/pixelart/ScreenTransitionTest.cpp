@@ -85,8 +85,9 @@ TEST(ScreenTransitionCpu, RimWidthIsConstant){
                     if (test.kind == TransitionKind::CRT_OFF && c > 0.55f)
                         continue;   // the line and the dot have no uncovered side
                     // near the end the uncovered part may be thinner than the rim: no edge to measure
-                    if (c < 0.75f)
+                    if (c < 0.75f) {
                         ASSERT_GT(measure.crossings, 0) << what;
+                    }
                     if (measure.crossings == 0)
                         continue;
                     EXPECT_EQ(measure.minWidth, rim) << what << " at (" << measure.atX << ", " << measure.atY << ")";
