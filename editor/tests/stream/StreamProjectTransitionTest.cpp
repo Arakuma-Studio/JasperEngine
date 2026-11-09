@@ -102,8 +102,9 @@ TEST(StreamProjectTransition, ExportsCarryThem) {
         std::stringstream text;
         text << in.rdbuf();
         EXPECT_EQ(text.str().find("ScreenTransition::setDefaults(transitionDefaults);") != std::string::npos, changed);
-        if (changed)
+        if (changed){
             EXPECT_NE(text.str().find("transitionDefaults.ramp = \"palettes/ui.palette#ramp:gold\";"), std::string::npos);
+        }
     }
     // the prebuilt player's game.json
     PlayerConfig config;

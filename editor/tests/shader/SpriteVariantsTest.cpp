@@ -215,8 +215,9 @@ TEST(SpriteVariants, CompileForEveryBackend){
                 ASSERT_TRUE(fragment) << name;
                 EXPECT_LE(fragment->textures.size(), 8u) << name << ": over 8 fragment texture bindings";
                 for (const ShaderUniformBlock& block : fragment->uniformblocks){
-                    if (block.name.find("customParams") != std::string::npos)
+                    if (block.name.find("customParams") != std::string::npos){
                         EXPECT_LE(block.sizeBytes, 32u * 16u) << name << ": the custom block is over 32 vectors";
+                    }
                 }
             }
         }
