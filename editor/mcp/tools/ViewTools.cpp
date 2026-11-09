@@ -11,6 +11,7 @@
 #include "window/ProjectWindow.h"
 #include "window/SpriteNormalsWindow.h"
 #include "window/TitleDesignerWindow.h"
+#include "titleart/anim/TitleAnimationPanel.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
@@ -1530,11 +1531,11 @@ Json poseWindowState(const CallPtr& call) {
 // focus_window title_designer's object (S82 R78): its keys applied in this order, each through the
 // window's scripted API; an unknown key fails listing the valid ones
 bool focusTitleDesigner(const CallPtr& call, TitleDesignerWindow* designer) {
-    static const std::vector<std::string> keys = {"path", "select", "panel", "search", "library", "preview_as", "background", "device", "zoom", "add"};
+    static const std::vector<std::string> keys = {"path", "select", "panel", "search", "library", "animation", "preview_as", "background", "device", "zoom", "add"};
     const Json& args = call->args();
     const Json options = args.value("title_designer", Json::object());
     if (!options.is_object()) {
-        call->fail("title_designer must be an object with any of: path, select, panel, search, library, preview_as, background, device, zoom, add.");
+        call->fail("title_designer must be an object with any of: path, select, panel, search, library, animation, preview_as, background, device, zoom, add.");
         return false;
     }
     for (auto it = options.begin(); it != options.end(); ++it) {
@@ -1572,6 +1573,18 @@ bool focusTitleDesigner(const CallPtr& call, TitleDesignerWindow* designer) {
         const Json& lib = options["library"];
         if (!lib.is_object()) return fail("library must be {tab, family, query}");
         if (!designer->setLibrary(lib.value("tab", std::string()), lib.value("family", std::string()), lib.value("query", std::string()), &error)) return fail(error);
+    }
+    // S85: the Animation panel's preview at a time ({name, time}; null stops it), as a scrub does
+    if (auto animation = options.find("animation"); animation != options.end()) {
+        const bool stop = animation->is_null();
+        if (!stop && (!animation->is_object() || !(*animation)["time"].is_number())) {
+            call->fail("title_designer.animation is {name, time} or null.");
+            return false;
+        }
+        if (!titledesigner::previewTitleAnimation(stop ? std::string() : animation->value("name", std::string()), stop ? -1.0 : (*animation)["time"].get<double>(), &error)) {
+            call->fail(error);
+            return false;
+        }
     }
     if (options.contains("preview_as") && !designer->setPreviewAs(options.value("preview_as", std::string()), &error)) return fail(error);
     if (options.contains("background")) {

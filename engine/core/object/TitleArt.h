@@ -23,9 +23,14 @@
 #include <string>
 #include <vector>
 
+namespace jasperengine::titleanim{
+    struct TitleAnimPlayOptions;
+}
+
 namespace jasperengine{
 
     struct TitleArtValue;
+    struct AnimationEvent;
 
     class JASPERENGINE_API TitleArt: public GameObject{
     public:
@@ -111,11 +116,35 @@ namespace jasperengine{
         Vector4 getGlintColor() const;
         void setGlintColor(const Vector4& color);
 
-        // S85's animations (R44): none play before S85 lands; play returns false with a warning
+        // S85's animations (docs/specs/S85-title-animation.md §6.5): false and one warning per
+        // name for an unknown animation (R30)
         std::vector<std::string> getAnimations() const;
         bool isPlaying() const;
-        bool play(const std::string& name, float speed = 1.0f, bool loop = false, bool unscaled = false);
+        bool play(const std::string& name);
+        bool play(const std::string& name, const titleanim::TitleAnimPlayOptions& options);
+        bool playOverlay(const std::string& name);
+        bool playOverlay(const std::string& name, const titleanim::TitleAnimPlayOptions& options);
+        // every animation (the pose stays), or one by name
         void stop();
+        bool stop(const std::string& name);
+        // back to the still: the title is idle again
+        void reset();
+        bool isPaused() const;
+        void setPaused(bool paused);
+        bool isAnimationPlaying(const std::string& name) const;
+        bool prepare(const std::string& name);
+        bool isAnimationReady(const std::string& name) const;
+        // shows `name` at `time` without playing (pauses)
+        bool sample(const std::string& name, double time);
+        // seconds; -1 for an unknown name
+        double getDuration(const std::string& name) const;
+        // the base animation ("" none), its time (a write seeks, no markers) and the speed of all
+        std::string getAnimation() const;
+        float getAnimationTime() const;
+        void setAnimationTime(float seconds);
+        float getAnimationSpeed() const;
+        void setAnimationSpeed(float speed);
+        FunctionSubscribe<void(const AnimationEvent&)>& getOnAnimationEvent();
 
         // events (Lua: t.onReady:add("tag", fn) or t.onReady = fn)
         FunctionSubscribe<void()>& getOnReady();

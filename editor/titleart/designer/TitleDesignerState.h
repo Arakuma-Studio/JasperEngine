@@ -117,6 +117,8 @@ namespace jasperengine::editor::titledesigner {
 
         // ---- S85's Record mode (§6.8) ----
         void setEditRouter(std::function<Json(const Json&)> router) { editRouter = std::move(router); }
+        // the name the commit being routed takes instead of its own ("Record Key: Title/Scale")
+        void setRoutedStepName(const std::string& name) { routedStepName = name; }
 
         // ---- selection (view state, D8) ----
         const std::vector<NodeRef>& selection() const { return selected; }
@@ -157,6 +159,7 @@ namespace jasperengine::editor::titledesigner {
         bool commitPerStage = false;
         TitleOpsResult result;
         std::function<Json(const Json&)> editRouter;
+        std::string routedStepName;
         std::vector<NodeRef> selected;
         std::optional<ExternalChange> external;
 

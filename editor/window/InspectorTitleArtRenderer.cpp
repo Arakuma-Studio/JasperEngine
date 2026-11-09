@@ -13,10 +13,15 @@
 #include "InspectorWindowTitleArt.h"
 
 #include "Project.h"
+#include "Backend.h"
 #include "Theme.h"
+#include "App.h"
+#include "animation/PreviewOwner.h"
 #include "command/CommandHandle.h"
+#include "command/type/AddComponentCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "component/AudioSourceComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TitleArtRendererComponent.h"
@@ -98,6 +103,22 @@ void editor::InspectorWindow::drawTitleArtRendererComponent(ComponentType cpType
     mode.help = "Baked shows the bake (no engine code); Realtime renders the title again when its text or a parameter changes; "
                 "Glyph Atlas renders each glyph once and lays out changing text every frame (counters, scores, timers)";
     propertyRow(RowPropertyType::Enum, cpType, "renderMode", "Render Mode", sceneProject, entities, mode);
+    // S85 R49: the animation rows (the names are the document's; an unknown name warns once at Play)
+    static std::vector<std::string> animationChoices;
+    animationChoices = single ? TitleArtSystem::animationNames(scene, entity) : std::vector<std::string>();
+    RowSettings animationName;
+    animationName.help = "An animation of the title by name (the Title Designer's Animation panel lists them); empty for none";
+    animationName.stringSuggestions = &animationChoices;
+    propertyRow(RowPropertyType::Bool, cpType, "playAutomatically", "Play Automatically", sceneProject, entities);
+    propertyRow(RowPropertyType::String, cpType, "defaultAnimation", "Default Animation", sceneProject, entities, animationName);
+    propertyRow(RowPropertyType::Float, cpType, "animationSpeed", "Animation Speed", sceneProject, entities);
+    RowSettings unscaled;
+    unscaled.help = "Off: the animation follows the scene's time scale; On: unscaled time";
+    propertyRow(RowPropertyType::Bool, cpType, "animationUnscaledTime", "Unscaled Time", sceneProject, entities, unscaled);
+    RowSettings drive;
+    drive.help = "Name of an animation that follows Animation Time instead of the clock (empty: None)";
+    drive.stringSuggestions = &animationChoices;
+    propertyRow(RowPropertyType::String, cpType, "driveAnimation", "Drive Animation", sceneProject, entities, drive);
     endTable();
 
     if (!title->title.path.empty() && InspectorWindowTitleArt::canOpenInDesigner()){
@@ -106,6 +127,34 @@ void editor::InspectorWindow::drawTitleArtRendererComponent(ComponentType cpType
             if (single) InspectorWindowTitleArt::openInContext(project->getProjectPath() / fs::path(title->title.path), sceneProject->id, entity);
             else InspectorWindowTitleArt::openInDesigner(project->getProjectPath() / fs::path(title->title.path));
         }
+    }
+    // S85 R49: the default animation in the Scene and Game views, restored on Stop
+    if (single && sceneProject->playState == ScenePlayState::STOPPED && !animationChoices.empty()){
+        static PreviewOwner::Token previewToken = 0;
+        const bool previewing = TitleArtSystem::isAnimationEditPreviewing(scene, entity);
+        // the editor draws a stopped scene only when asked: the preview's clock needs its frames
+        if (previewing){
+            sceneProject->needUpdateRender = true;
+            Backend::getApp().requestRedraw();
+        }
+        if (ImGui::Button(previewing ? ICON_FA_STOP " Stop Preview" : ICON_FA_PLAY " Preview")){
+            if (previewing){
+                PreviewOwner::release(previewToken);
+                previewToken = 0;
+                TitleArtSystem::stopAnimationEditPreview(scene, entity);
+            }else if (TitleArtSystem::startAnimationEditPreview(scene, entity)){
+                previewToken = PreviewOwner::acquire(sceneProject->id, entity, scene, "Title Art preview", [scene, entity](){
+                    previewToken = 0;
+                    TitleArtSystem::stopAnimationEditPreview(scene, entity);
+                });
+            }
+        }
+    }
+    // R49: where a marker's sound plays
+    if (single && TitleArtSystem::animationHasMarkerSounds(scene, entity) && !(scene->isComponentRegistered<AudioSourceComponent>() && scene->findComponent<AudioSourceComponent>(entity))){
+        ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " Marker sounds play 2D on Master without an Audio Source");
+        if (ImGui::SmallButton("Add Audio Source"))
+            CommandHandle::get(sceneProject->id)->addCommandNoMerge(new AddComponentCmd(project, sceneProject->id, entity, ComponentType::AudioSourceComponent));
     }
     if (single) ImGui::TextColored(Theme::Colors::SubtleText, "%s", costLine(*title, instance).c_str());
     if (single && TitleArtSystem::hasBothCompanions(scene, entity)){

@@ -370,7 +370,7 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
                     edge.referrer = referrer;
                     edge.kind = DepEdgeKind::TitleArtAsset;
                     edge.field = field;
-                    edge.expected = kind == titleart::TitleAssetKind::Font ? AssetType::Font : AssetType::Texture;
+                    edge.expected = kind == titleart::TitleAssetKind::Sound ? AssetType::Unknown : kind == titleart::TitleAssetKind::Font ? AssetType::Font : AssetType::Texture;
                     edge.target = Guid::parse(ref.guid);
                     edge.targetPath = ref.path.empty() ? std::string() : toProjectRelative(roots, AssetPathBase::Assets, ref.path);
                     if (edge.target.isNull() && !edge.targetPath.empty()) {

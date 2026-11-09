@@ -187,7 +187,7 @@ async def test_reserved_and_options(ed: Editor):
     ed.check_in("bad_option", msg, "an unknown option key")
     ed.check_in("languages", msg, "lists the keys later features add")
     msg = await ed.check_error("render_title", path=path, options={"animation": {}})
-    ed.check_in("S85", msg, "a later spec's key names its owner")
+    ed.check_in("options.animation", msg, "S85's key is validated now that S85 owns it")
     msg = await ed.check_error("export_title", path=path, format="psd")
     ed.check_in("not_available", msg, "psd is a later format")
     ed.check_in("S87", msg, "naming S87")

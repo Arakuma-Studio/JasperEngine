@@ -255,7 +255,12 @@ TEST_F(TitleArtSchemaTest, ReservedNamesNameTheirOwner) {
 #else
     const std::string S86_OWNER = "S86";
 #endif
-    EXPECT_EQ(schema.reservedOwner("document", "animation"), "S85");
+    // S85 registered `animation`, the layer's tint and flash, transform.stretch and glyph_mode
+    EXPECT_EQ(schema.reservedOwner("document", "animation"), "");
+    const SchemaMember* animation = schema.member(*schema.kind("document"), "animation");
+    ASSERT_NE(animation, nullptr);
+    EXPECT_EQ(animation->owner, "S85");
+    EXPECT_TRUE(animation->omitDefault);
     // S81 registered `runtime`: the member names its owner, the reservation is gone
     EXPECT_EQ(schema.reservedOwner("document", "runtime"), "");
     const SchemaMember* runtime = schema.member(*schema.kind("document"), "runtime");
@@ -266,7 +271,8 @@ TEST_F(TitleArtSchemaTest, ReservedNamesNameTheirOwner) {
     EXPECT_EQ(schema.reservedOwner("document", "languages"), "S87");
     EXPECT_EQ(schema.reservedOwner("transform", "z"), S86_OWNER);
     EXPECT_EQ(schema.reservedOwner("layer.text", "translations"), "S87");
-    EXPECT_EQ(schema.reservedOwner("layer.text", "tint"), "S85") << "a variant has its base's reservations";
+    EXPECT_EQ(schema.reservedOwner("layer.text", "only_languages"), "S87") << "a variant has its base's reservations";
+    EXPECT_EQ(schema.reservedOwner("layer.text", "tint"), "");
     EXPECT_EQ(schema.reservedOwner("char_adjust", "rig"), S86_OWNER);
     EXPECT_EQ(schema.reservedOwner("document", "variants"), "") << "S87 released `variants`";
 }

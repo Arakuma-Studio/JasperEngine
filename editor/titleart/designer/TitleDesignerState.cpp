@@ -574,11 +574,14 @@ bool TitleDesignerState::commit(const ta::Json& ops, const std::string& stepName
     if (!editable()) return fail(error, readOnlyReason());
     if (gesture) cancelGesture();
     TitleArtEditOptions options;
-    options.undoName = stepName;
     options.mergeKey = mergeKey;
     options.ops.idSeed = idSeed;
+    routedStepName.clear();
+    const ta::Json batch = routed(ops.is_array() ? ops : ta::Json::array({ops}));
+    options.undoName = routedStepName.empty() ? stepName : routedStepName;
+    routedStepName.clear();
     committing = true;
-    result = doc->edit(routed(ops.is_array() ? ops : ta::Json::array({ops})), options);
+    result = doc->edit(batch, options);
     committing = false;
     rebuild();
     if (!result.ok) return fail(error, result.error());

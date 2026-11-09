@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleGlyphAtlas.h"
+#include "TitleAnimCompose.h"
 
 #include "Log.h"
 #include "io/AtomicFile.h"
@@ -114,7 +115,7 @@ namespace {
         geometry::Affine m;
         for (const Json* layer : chain){
             const TitleTransform t = decodeTransform(layer->value("transform", Json::object()));
-            geometry::Affine local = geometry::Affine::scale((t.flipX ? -1.0 : 1.0) * t.scale, (t.flipY ? -1.0 : 1.0) * t.scale);
+            geometry::Affine local = geometry::Affine::scale((t.flipX ? -1.0 : 1.0) * t.scale * t.stretch.x, (t.flipY ? -1.0 : 1.0) * t.scale * t.stretch.y);
             local = geometry::Affine::rotateDegrees(-t.rotation).after(local);
             local = geometry::Affine::translate(t.position.x, t.position.y).after(local);
             m = m.after(local);
@@ -174,6 +175,10 @@ namespace {
         int page = 0;
         TitleRectI cell;            // atlas pixels
         double x0 = 0, y0 = 0;      // the compose target's pixels
+        // S85 R15: where the glyph's pose moved it (null pose: at rest), the cell's own pixels
+        // to the target's as p' = (m[0] x + m[1] y + m[2], m[3] x + m[4] y + m[5])
+        const GlyphPose* pose = nullptr;
+        double move[6] = {1, 0, 0, 0, 1, 0};
     };
 
 }
@@ -908,7 +913,7 @@ namespace {
 
         std::vector<ShaderKey> shaderKeys() const override{
             std::vector<ShaderKey> keys = subKeys;
-            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::Output, TitleRenderProgram::Blend}){
+            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::GlyphComposeAnim, TitleRenderProgram::Output, TitleRenderProgram::Blend}){
                 const ShaderKey k = titleRenderProgramKey((uint32_t)p);
                 if (std::find(keys.begin(), keys.end(), k) == keys.end()) keys.push_back(k);
             }
@@ -967,6 +972,9 @@ namespace {
         struct Placed {
             std::string key;
             double x = 0, y = 0;        // the string glyph's position, output pixels
+            // S85 R15: the glyph's pose (null: at rest) and its move in output pixels
+            const GlyphPose* pose = nullptr;
+            double move[6] = {1, 0, 0, 0, 1, 0};
         };
         std::vector<Placed> placed;     // the string's glyphs in order
 
@@ -989,6 +997,17 @@ namespace {
 
         TitleVec2 toOutput(const TitleVec2& layerPoint) const{
             return canvasFrame.toFrame(toDocument.apply(layerPoint));
+        }
+
+        // R15: the glyph's sampled values as a move in output pixels: about its pivot (the
+        // ink box's centre, baseline, bottom or top), to the pivot shifted by the offset (% of
+        // the layer's size, layer axes), as the editor's exact pose does
+        void poseGlyph(Placed& glyph, const LaidOutCluster& cluster, const Json& textLayer) const{
+            if (!spec.glyphPoses) return;
+            auto found = spec.glyphPoses->find(cluster.index);
+            if (found == spec.glyphPoses->end() || found->second.identity()) return;
+            glyph.pose = &found->second;
+            titleGlyphMove(found->second, cluster.inkBox, cluster.pen, textLayer.value("size", 200.0), [this](const TitleVec2& p){ return toOutput(p); }, glyph.move);
         }
 
         // the style: overrides, its hash (R32's file key), the cell document
@@ -1149,7 +1168,9 @@ namespace {
                 // pixels and is never resampled
                 const int qx = phaseOf(at.x - ax), qy = phaseOf(at.y - ay);
                 const std::string key = base + "|" + std::to_string(qx) + "," + std::to_string(qy);
-                placed.push_back({key, at.x, at.y});
+                Placed glyph{key, at.x, at.y};
+                poseGlyph(glyph, cluster, *layer);
+                placed.push_back(glyph);
                 stringKeys.insert(key);
                 if (atlas->find(key) || queued.count(key)) continue;
                 needed.push_back({key, text, adjusted, offset, ax + qx / (double)PHASES, ay + qy / (double)PHASES, qx / (double)PHASES,
@@ -1308,12 +1329,24 @@ namespace {
                 if (!cell || cell->blank) continue;
                 shown.insert(p.key);
                 const double dx = std::round(p.x - cell->anchorX), dy = std::round(p.y - cell->anchorY);
+                // the pose moves output pixels; these quads sit in the compose target's
+                auto posed = [&](Quad quad){
+                    if (p.pose){
+                        quad.pose = p.pose;
+                        std::copy(p.move, p.move + 6, quad.move);
+                        quad.move[2] -= composeRect.x - (quad.move[0] * composeRect.x + quad.move[1] * composeRect.y);
+                        quad.move[5] -= composeRect.y - (quad.move[3] * composeRect.x + quad.move[4] * composeRect.y);
+                    }
+                    return quad;
+                };
                 if (!cell->back.empty())
-                    quads.push_back({cell->page, cell->back, cell->backPixels.x + dx - composeRect.x, cell->backPixels.y + dy - composeRect.y});
-                Quad front{cell->page, cell->front, cell->frontPixels.x + dx - composeRect.x, cell->frontPixels.y + dy - composeRect.y};
+                    quads.push_back(posed({cell->page, cell->back, cell->backPixels.x + dx - composeRect.x, cell->backPixels.y + dy - composeRect.y}));
+                Quad front = posed({cell->page, cell->front, cell->frontPixels.x + dx - composeRect.x, cell->frontPixels.y + dy - composeRect.y});
                 if (!cell->front.empty()) (stringOrder ? quads : fronts).push_back(front);
             }
             quads.insert(quads.end(), fronts.begin(), fronts.end());
+            const bool anyPose = std::any_of(quads.begin(), quads.end(), [](const Quad& q){ return q.pose != nullptr; });
+            if (anyPose) return drawPosedCells(into, quads, passes, error);
             const float side = (float)atlas->pageSize();
             for (size_t i = 0; i < quads.size();){
                 // a run of quads of one page, at most QUADS_PER_PASS
@@ -1345,11 +1378,40 @@ namespace {
             return true;
         }
 
+        // S85 R15: the quads with their poses
+        bool drawPosedCells(TitleTarget* into, const std::vector<Quad>& quads, uint32_t& passes, std::string& error){
+            const float side = (float)atlas->pageSize();
+            std::vector<TitlePosedQuad> posed;
+            for (const Quad& quad : quads){
+                TitlePosedQuad p;
+                TitleTarget* page = atlas->pageTarget(quad.page);
+                p.texture = page ? page->colorTexture() : nullptr;
+                p.uv[0] = quad.cell.x / side;
+                p.uv[1] = quad.cell.y / side;
+                p.uv[2] = (quad.cell.x + quad.cell.width) / side;
+                p.uv[3] = (quad.cell.y + quad.cell.height) / side;
+                p.x0 = quad.x0;
+                p.y0 = quad.y0;
+                p.width = quad.cell.width;
+                p.height = quad.cell.height;
+                std::copy(quad.move, quad.move + 6, p.move);
+                if (quad.pose){
+                    p.opacity = (float)quad.pose->opacity;
+                    for (int k = 0; k < 3; k++){
+                        p.tint[k] = srgbToLinear((float)quad.pose->tint[k]);
+                        p.flash[k] = srgbToLinear((float)quad.pose->flash[k]) * (float)quad.pose->flashAmount;
+                    }
+                }
+                posed.push_back(p);
+            }
+            return drawTitlePosedQuads(atlas->gpu(), into, posed, composeRect.width, composeRect.height, passes, error);
+        }
+
         // R28: back plate, back cells, front cells, front plate, then the output pass; a text layer
         // with an opacity or a blend composes its glyphs apart, then over the back plate
         bool compose(StepReport& report){
             const bool apart = blendMode != (int)TitleBlend::Normal || opacity < 1.0;
-            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::Output})
+            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::GlyphComposeAnim, TitleRenderProgram::Output})
                 if (!ensure(p)) return false;
             if (blendMode != (int)TitleBlend::Normal && !ensure(TitleRenderProgram::Blend)) return false;
             blocked = false;

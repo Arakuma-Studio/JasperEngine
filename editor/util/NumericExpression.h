@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::editor {
@@ -44,6 +45,9 @@ namespace jasperengine::editor {
     class NumericExpression {
     public:
         static NumericResult evaluate(std::string_view text, double current, const NumericContext& context = NumericContext());
+        // An expression over named values (S85's Animation Presets: D, n, fps and the preset's
+        // parameters), with the same functions; no units, no relative ops. An unknown name fails.
+        static NumericResult evaluateWith(std::string_view text, const std::vector<std::pair<std::string, double>>& variables);
 
         // A plain number (what ImGui parses itself): the hook leaves those alone
         static bool isPlainNumber(std::string_view text);

@@ -27,6 +27,7 @@ namespace fs = std::filesystem;
 namespace {
 
     AssetType expectedType(titleart::TitleAssetKind kind) {
+        if (kind == titleart::TitleAssetKind::Sound) return AssetType::Unknown;    // a clip or a Sound Event
         return kind == titleart::TitleAssetKind::Font ? AssetType::Font : AssetType::Texture;
     }
 
@@ -212,14 +213,9 @@ std::unique_ptr<titleart::TitleRenderJob> TitleArtRenderHost::begin(Project* pro
     return job;
 }
 
-bool TitleArtRenderHost::render(Project* project, titleart::RenderRequest request, TitleRenderedImage& out, std::string& error) {
-    const auto start = std::chrono::steady_clock::now();
-    const int bits = request.outputBitDepth == 16 ? 16 : 8;
-    const float scale = request.pxScale;
-    const titleart::TitleRectI asked = request.region.empty() && request.doc
-        ? titleart::TitleRectI{0, 0, request.doc->canvasWidth(), request.doc->canvasHeight()} : request.region;
+std::unique_ptr<titleart::TitleRenderJob> TitleArtRenderHost::runToEnd(Project* project, titleart::RenderRequest request, std::string& error) {
     std::unique_ptr<titleart::TitleRenderJob> job = begin(project, std::move(request), error);
-    if (!job) return false;
+    if (!job) return nullptr;
     // no editor frame runs while this call does, so a program the job waits for (built in the
     // background, created off the render thread) is published here, within a deadline, and the
     // first draws are not spread over frames (S86's TitleFirstDraws)
@@ -232,11 +228,22 @@ bool TitleArtRenderHost::render(Project* project, titleart::RenderRequest reques
         if (!job->waiting()) continue;
         if (std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - waitStart).count() > PROGRAM_WAIT_MS) {
             error = "a title art program was not built within " + std::to_string(static_cast<int>(PROGRAM_WAIT_MS / 1000.0)) + " s";
-            return false;
+            return nullptr;
         }
         SystemRender::waitGpuCreationIdle(5.0);
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    return job;
+}
+
+bool TitleArtRenderHost::render(Project* project, titleart::RenderRequest request, TitleRenderedImage& out, std::string& error) {
+    const auto start = std::chrono::steady_clock::now();
+    const int bits = request.outputBitDepth == 16 ? 16 : 8;
+    const float scale = request.pxScale;
+    const titleart::TitleRectI asked = request.region.empty() && request.doc
+        ? titleart::TitleRectI{0, 0, request.doc->canvasWidth(), request.doc->canvasHeight()} : request.region;
+    std::unique_ptr<titleart::TitleRenderJob> job = runToEnd(project, std::move(request), error);
+    if (!job) return false;
     if (job->failed() || !job->done()) {
         error = job->error().empty() ? std::string("the render did not finish") : job->error();
         out.problems = job->problems();
@@ -275,7 +282,13 @@ titleart::TitleRectI TitleArtRenderHost::alphaBoundsOf(const texsynth::Image& im
 }
 
 bool TitleArtRenderHost::readBack(const titleart::TitleRenderJob& job, int bitDepth, TitleRenderedImage& out, std::string& error) {
-    const titleart::TitleImage& image = job.image();
+    if (!readImage(job.image(), bitDepth, out, error)) return false;
+    out.problems = job.problems();
+    out.passes = job.passesDone();
+    return true;
+}
+
+bool TitleArtRenderHost::readImage(const titleart::TitleImage& image, int bitDepth, TitleRenderedImage& out, std::string& error) {
     titleart::TitleTarget* target = image.target.get();
     TextureRender* texture = target ? target->colorTexture() : nullptr;
     if (!texture || image.width <= 0 || image.height <= 0) {
@@ -325,8 +338,6 @@ bool TitleArtRenderHost::readBack(const titleart::TitleRenderJob& job, int bitDe
     }
     out.frame = image.frame;
     out.alphaBounds = alphaBoundsOf(out.image);
-    out.problems = job.problems();
-    out.passes = job.passesDone();
     return true;
 }
 

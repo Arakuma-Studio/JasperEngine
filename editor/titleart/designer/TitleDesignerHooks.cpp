@@ -16,6 +16,7 @@ namespace {
         std::vector<PreviewModeDef> previewModes;
         std::vector<std::pair<std::string, CheckSource>> checks;
         EditRouter router;
+        CanvasPoseSource poseSource;
         TimeSource time;
         Gizmo3DProvider gizmo3d;
         std::shared_ptr<TitleLibraryProvider> library;
@@ -119,6 +120,14 @@ void jasperengine::editor::titledesigner::addCanvasOverlay(const std::string& id
 
 void jasperengine::editor::titledesigner::runCanvasOverlays(const TitleDesignerState& state, ImDrawList* drawList, const CanvasXform& xform) {
     for (const auto& [id, overlay] : canvasOverlays()) overlay(state, drawList, xform);
+}
+
+void jasperengine::editor::titledesigner::setCanvasPoseSource(CanvasPoseSource source) {
+    hooks().poseSource = std::move(source);
+}
+
+const jasperengine::editor::titledesigner::CanvasPoseSource& jasperengine::editor::titledesigner::canvasPoseSource() {
+    return hooks().poseSource;
 }
 
 void jasperengine::editor::titledesigner::addPreviewMode(PreviewModeDef mode) {

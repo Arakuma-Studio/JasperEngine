@@ -484,6 +484,7 @@ namespace jasperengine::editor {
         enum Region : int { RegionToolbar = 0, RegionLayers, RegionCanvas, RegionProperties, RegionLibrary, RegionCount };
         int pendingRegionFocus = -1;        // Tab asked for it; its region takes the focus when drawn
         int keyboardRegion = -1;            // the region Tab reached (outlined while it has the focus)
+        std::map<std::string, bool> panelOpenStates;    // the registered panels' headers
         int focusedRegion = -1;             // last frame's region with the keyboard focus
         int focusedRegionNow = -1;
         bool regionAvailable[RegionCount] = {true, true, true, true, false};
@@ -529,6 +530,8 @@ namespace jasperengine::editor {
         void handleExternalChange();
 
         // regions
+        bool panelOpen(const titledesigner::PanelDef& panel) const;
+        void drawPanels(float height);
         void drawToolbar();
         void drawReadOnlyBanner();
         void drawStatusBar();

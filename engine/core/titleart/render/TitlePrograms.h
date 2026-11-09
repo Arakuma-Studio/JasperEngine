@@ -44,7 +44,8 @@ namespace jasperengine::titleart {
         Grow = 39,
         SeedAlpha = 40,
         ResolveAlpha = 41,
-        GlyphCompose = 42           // S81's Glyph Atlas compose (TitleGlyphAtlas)
+        GlyphCompose = 42,          // S81's Glyph Atlas compose (TitleGlyphAtlas)
+        GlyphComposeAnim = 43       // S85 R15: the compose with per-glyph poses
     };
 
     constexpr uint32_t TITLE_RENDER_PROGRAM_FIRST = 18;

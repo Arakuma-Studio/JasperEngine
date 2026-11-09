@@ -204,6 +204,7 @@ void TitleDesignerWindow::requestCanvasRender() {
     const bool baked = v.previewAs == "baked";
     const PreviewModeDef* mode = activePreviewMode();
     if (baked || (mode && mode->draw)) return;
+    if (canvasPoseSource().active && canvasPoseSource().active(doc)) return;    // S85: the panel draws the pose
     const ta::TitleArtDoc& shown = doc.shown();
     const double t = now();
     const bool settled = t - lastViewChange >= SETTLE_SECONDS;
@@ -998,7 +999,8 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
     setup.checkerPixels = 8.0f * displayScale;
     const bool baked = v.previewAs == "baked";
     const PreviewModeDef* activeMode = activePreviewMode();
-    setup.dim = (baked || (activeMode && activeMode->draw)) ? 0.0f : 1.0f;
+    const bool poseShown = canvasPoseSource().active && canvasPoseSource().active(doc);
+    setup.dim = (baked || (activeMode && activeMode->draw) || poseShown) ? 0.0f : 1.0f;
     CanvasBackdrop backdrop;
     const std::string& kind = v.backdrop.kind;
     if (kind == "black") backdrop.kind = CanvasBackdrop::Kind::Black;
@@ -1126,6 +1128,8 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
         }
         if (!mode.note.empty()) dl->AddText(ImVec2(canvasMin.x + 12.0f, canvasMax.y - 24.0f), IM_COL32(200, 200, 200, 220), mode.note.c_str());
     }
+
+    if (poseShown && canvasPoseSource().draw) canvasPoseSource().draw(doc, dl, canvasMin, canvasMax, titleXform);
 
     drawCanvasOverlays(dl);
 

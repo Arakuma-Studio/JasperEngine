@@ -73,6 +73,16 @@ namespace jasperengine::editor {
         // renders a request through the caller's renderer and reads it back; null for checks run
         // without a GPU (their pixel checks report SKIP)
         std::function<bool(const titleart::RenderRequest& request, TitleCheckImage& out, std::string& error)> render;
+        // S85: an animation's frame at a time as the companion shows it (`as`: exact, baked,
+        // realtime, glyph_atlas; `companion` false leaves the title-level values out), through
+        // the caller's project; null without a GPU (the animation pixel checks report SKIP)
+        std::function<bool(const std::string& animation, double time, const std::string& as, bool companion, TitleCheckImage& out,
+                           std::string& error)> renderAnimation;
+        // S85: the Render Mode the checks judge (a component's; unset: every mode)
+        std::optional<int> renderMode;
+        // S85: whether a project asset (assets-relative path, GUID) exists (marker sounds); null
+        // without a project
+        std::function<bool(const std::string& path, const std::string& guid)> assetExists;
     };
 
     struct TitleCheckResult {

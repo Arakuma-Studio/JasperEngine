@@ -17,6 +17,7 @@
 #include "titleart/render/TitleStepCosts.h"
 #include "titleart/runtime/TitleGlyphAtlas.h"
 #include "titleart/runtime/TitleLiveCompose.h"
+#include "titleart/runtime/TitleAnimCompose.h"
 
 #include <algorithm>
 #include <cmath>
@@ -263,6 +264,7 @@ namespace {
 
 TitleJobFactory jasperengine::titleart::makeRendererJobFactory(TitleArtRenderer& renderer, const AssetResolver* assets){
     return [&renderer, assets](const TitleJobSpec& spec) -> std::unique_ptr<TitleJob> {
+        if (spec.compose) return makeTitleAnimComposeJob(renderer, assets, spec);
         if (spec.atlas) return makeGlyphAtlasJob(renderer, assets, spec);
         return std::make_unique<RendererJob>(renderer, assets, spec);
     };
@@ -449,7 +451,13 @@ void TitleArtLive::startJob(const TitleScheduleContext& context){
     running.overrides = wantedOverrides;
     running.renderKey = renderKeyOf(wanted);
     TitleJobSpec spec = specOf();
-    if (renderMode == TitleArtRenderMode::GLYPH_ATLAS && glyphPlan.fallback.empty() && !glyphPlan.textLayer.empty()){
+    if (renderMode == TitleArtRenderMode::REALTIME && composePose && !composePose->empty()){
+        if (!atlas) atlas = std::make_shared<TitleGlyphAtlas>();
+        atlas->setLimits(wanted.atlasPageSize, wanted.atlasMaxPages);
+        spec.atlas = atlas;
+        spec.compose = composePose;
+        spec.docHash = docHash;
+    }else if (renderMode == TitleArtRenderMode::GLYPH_ATLAS && glyphPlan.fallback.empty() && !glyphPlan.textLayer.empty()){
         // R25-R29: per glyph; a title whose plan falls back renders as Realtime
         if (!atlas) atlas = std::make_shared<TitleGlyphAtlas>();
         atlas->setLimits(wanted.atlasPageSize, wanted.atlasMaxPages);
@@ -457,6 +465,7 @@ void TitleArtLive::startJob(const TitleScheduleContext& context){
         spec.glyphPlan = glyphPlan;
         spec.docHash = docHash;
         spec.titlePath = path;
+        spec.glyphPoses = glyphPoses;
     }else if (!wanted.glowOutput){
         // R9: the inputs a later live compose starts from
         spec.keepLive = keepLive;

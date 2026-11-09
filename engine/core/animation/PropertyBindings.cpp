@@ -460,6 +460,11 @@ namespace {
         title.sweepPositionKeyed = true;
     }
 
+    // S85 R27: a written animationTime seeks the base animation (or, with driveAnimation, drives it)
+    void titleArtAnimationTimeKeyed(Scene*, Entity, TitleArtRendererComponent& title){
+        title.animationTimeKeyed = true;
+    }
+
     // the document's Exposed parameter of an "overrides.<name>" row, null when it has none
     const titleart::TitleArtExposedParam* titleArtExposed(EntityRegistry* registry, Entity entity, const std::string& name){
         TitleArtRendererComponent* title = registry && registry->isComponentRegistered<TitleArtRendererComponent>()
@@ -700,10 +705,12 @@ namespace {
         rows.push_back(enabledRow<AnimatorComponent>("animator"));
 
         // the Title Art Renderer (S81 R40): its live layers' values and its numeric Exposed
-        // parameters; S85 adds titleart.animationTime
+        // parameters; S85's titleart.animationTime and animationSpeed
         using TA = TitleArtRendererComponent;
         rows.push_back(enabledRow<TA>("titleart"));
         rows.push_back(fieldRow<TA, float, &TA::liveTime>("titleart", "liveTime", "Live Time", "", F));
+        rows.push_back(fieldRow<TA, float, &TA::animationTime, &titleArtAnimationTimeKeyed>("titleart", "animationTime", "Animation Time", "", F));
+        rows.push_back(fieldRow<TA, float, &TA::animationSpeed>("titleart", "animationSpeed", "Animation Speed", "", F));
         rows.push_back(fieldRow<TA, float, &TA::sweepPosition, &titleArtSweepKeyed>("titleart", "sweepPosition", "Sweep Position", "", F));
         rows.push_back(fieldRow<TA, float, &TA::sweepWidth>("titleart", "sweepWidth", "Sweep Width", "", F));
         rows.push_back(fieldRow<TA, float, &TA::sweepSoftness>("titleart", "sweepSoftness", "Sweep Softness", "", F));

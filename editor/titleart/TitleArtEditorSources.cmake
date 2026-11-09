@@ -49,6 +49,27 @@ string(APPEND jasperengineTitleFxPresetsHeader "static const TitleFxPresetEmbedd
 file(WRITE "${GENERATED_DIR}/title_fx_presets.h.in" "${jasperengineTitleFxPresetsHeader}")
 configure_file("${GENERATED_DIR}/title_fx_presets.h.in" "${GENERATED_DIR}/title_fx_presets.h" COPYONLY)
 
+# S85's Animation Presets (editor/resources/titleart/animation-presets/<id>.json), embedded as
+# title_anim_presets.h (editor/titleart/anim/TitleAnimPresets.cpp parses them)
+file(GLOB jasperengineTitleAnimPresetFiles CONFIGURE_DEPENDS ${jasperengineTitleArtEditorDir}/resources/titleart/animation-presets/*.json)
+list(SORT jasperengineTitleAnimPresetFiles)
+set(jasperengineTitleAnimPresetsHeader "// Generated from editor/resources/titleart/animation-presets by editor/titleart/TitleArtEditorSources.cmake. Do not edit.\n#pragma once\n\n")
+set(jasperengineTitleAnimPresetEntries "")
+set(jasperengineTitleAnimPresetIndex 0)
+foreach(presetFile IN LISTS jasperengineTitleAnimPresetFiles)
+    get_filename_component(presetName "${presetFile}" NAME)
+    file(READ "${presetFile}" presetHex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," presetBytes "${presetHex}")
+    string(APPEND jasperengineTitleAnimPresetsHeader "static const unsigned char title_anim_preset_${jasperengineTitleAnimPresetIndex}[] = {${presetBytes}0x00};\n")
+    string(APPEND jasperengineTitleAnimPresetEntries "    { \"${presetName}\", title_anim_preset_${jasperengineTitleAnimPresetIndex}, sizeof(title_anim_preset_${jasperengineTitleAnimPresetIndex}) - 1 },\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${presetFile}")
+    math(EXPR jasperengineTitleAnimPresetIndex "${jasperengineTitleAnimPresetIndex} + 1")
+endforeach()
+string(APPEND jasperengineTitleAnimPresetsHeader "\nstruct TitleAnimPresetEmbeddedFile { const char* name; const unsigned char* data; unsigned int size; };\n")
+string(APPEND jasperengineTitleAnimPresetsHeader "static const TitleAnimPresetEmbeddedFile title_anim_preset_embedded_files[] = {\n${jasperengineTitleAnimPresetEntries}    { nullptr, nullptr, 0 }\n};\n")
+file(WRITE "${GENERATED_DIR}/title_anim_presets.h.in" "${jasperengineTitleAnimPresetsHeader}")
+configure_file("${GENERATED_DIR}/title_anim_presets.h.in" "${GENERATED_DIR}/title_anim_presets.h" COPYONLY)
+
 # the Pachislop effect id map (S83 §6.9), embedded as title_pachislop_fx_map.h
 set(jasperengineTitleFxMapFile ${jasperengineTitleArtEditorDir}/resources/titleart/pachislop-fx-map.yaml)
 file(READ "${jasperengineTitleFxMapFile}" jasperengineTitleFxMapHex HEX)

@@ -1807,6 +1807,11 @@ set(JASPERENGINE_SRCS
     core/subsystem/CameraControlSystem.cpp
     core/subsystem/FluidSystem.cpp
     core/subsystem/TitleArtSystem.cpp
+    core/subsystem/TitleArtSystemAnimation.cpp
+    core/titleanim/TitleAnimTypes.cpp
+    core/titleanim/TitleAnimSampling.cpp
+    core/titleanim/TitleAnimDataIO.cpp
+    core/titleanim/TitleAnimPlayer.cpp
     core/subsystem/VideoPlayerSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp

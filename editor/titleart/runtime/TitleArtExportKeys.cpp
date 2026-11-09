@@ -71,5 +71,6 @@ bool editor::addTitleArtRenderKeys(const fs::path& projectRoot, const std::strin
     }
     // a Glyph Atlas title composes its cells (R28): its glyph cells and plates use the programs above
     keys.insert(titleart::titleRenderProgramKey((uint32_t)titleart::TitleRenderProgram::GlyphCompose));
+    keys.insert(titleart::titleRenderProgramKey((uint32_t)titleart::TitleRenderProgram::GlyphComposeAnim));
     return true;
 }

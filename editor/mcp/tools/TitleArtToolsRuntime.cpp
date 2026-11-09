@@ -149,6 +149,8 @@ namespace {
         out["pool_bytes"] = titleart::TitleArtScheduler::get().poolBytes();
         out["last_render"] = s.lastFrames > 0 ? Json{{"frames", s.lastFrames}, {"gpu_ms_est", s.lastGpuMsEstimate}, {"gpu_ms", nullptr},
                                                      {"cpu_ms", s.lastCpuMs}, {"over_budget_steps", s.overBudgetSteps}} : Json(nullptr);
+        out["animation"] = instance.animation.baseAnimation() ? Json(instance.animation.baseAnimation()->animation->name) : Json();
+        out["animation_time"] = title.animationTime;
         out["live"] = Json{{"sweep", title.sweepEnabled}, {"glow", title.glowEnabled}, {"tint", title.tintEnabled}, {"glints", title.glintsEnabled},
                            {"live_time", title.liveTime}, {"anchors", instance.anchors.size()},
                            // R9: full renders and live composes of Exposed effect parameters, and why the last live change re-rendered

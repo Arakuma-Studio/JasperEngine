@@ -85,6 +85,15 @@ YAML::Node TitleArtProjectSettings::encode() const {
     groups("frameBudgetMs", frameBudgetMs, defaults.frameBudgetMs, &editorFrameBudgetMs, defaults.editorFrameBudgetMs);
     groups("releaseDelaySeconds", releaseDelaySeconds, defaults.releaseDelaySeconds, nullptr, 0.0);
     groups("cacheBudgetMiB", cacheBudgetMiB, defaults.cacheBudgetMiB, nullptr, 0.0);
+    if (flipbookBudgetMiB != defaults.flipbookBudgetMiB || flipbookBudgetAndroidEtc2MiB != defaults.flipbookBudgetAndroidEtc2MiB) {
+        YAML::Node group(YAML::NodeType::Map);
+        group["desktop"] = flipbookBudgetMiB.desktop;
+        group["mobile"] = flipbookBudgetMiB.mobile;
+        group["android_etc2"] = flipbookBudgetAndroidEtc2MiB;
+        group["web"] = flipbookBudgetMiB.web;
+        node["flipbookBudgetMiB"] = group;
+    }
+    if (animationDefaultFps != defaults.animationDefaultFps) node["animationDefaultFps"] = animationDefaultFps;
     if (referenceHeight != defaults.referenceHeight) node["referenceHeight"] = referenceHeight;
     if (simulateExportCharacters != defaults.simulateExportCharacters) node["simulateExportCharacters"] = simulateExportCharacters;
     // S86 R37: only the platforms whose tier is not the default
@@ -130,6 +139,17 @@ TitleArtProjectSettings TitleArtProjectSettings::decode(const YAML::Node& node, 
     groups("frameBudgetMs", out.frameBudgetMs, 0.25, 16.0, &out.editorFrameBudgetMs);
     groups("releaseDelaySeconds", out.releaseDelaySeconds, 0.0, 600.0, nullptr);
     groups("cacheBudgetMiB", out.cacheBudgetMiB, 1.0, 4096.0, nullptr);
+    if (const YAML::Node group = node["flipbookBudgetMiB"]; group && group.IsMap()) {
+        number(group["desktop"], out.flipbookBudgetMiB.desktop, 1.0, 4096.0, "flipbookBudgetMiB.desktop");
+        number(group["mobile"], out.flipbookBudgetMiB.mobile, 1.0, 4096.0, "flipbookBudgetMiB.mobile");
+        number(group["android_etc2"], out.flipbookBudgetAndroidEtc2MiB, 1.0, 4096.0, "flipbookBudgetMiB.android_etc2");
+        number(group["web"], out.flipbookBudgetMiB.web, 1.0, 4096.0, "flipbookBudgetMiB.web");
+    }
+    if (node["animationDefaultFps"]) {
+        double fps = out.animationDefaultFps;
+        number(node["animationDefaultFps"], fps, 1.0, 120.0, "animationDefaultFps");
+        out.animationDefaultFps = (int)fps;
+    }
     if (node["referenceHeight"]) {
         double height = out.referenceHeight;
         number(node["referenceHeight"], height, 0.0, 8192.0, "referenceHeight");

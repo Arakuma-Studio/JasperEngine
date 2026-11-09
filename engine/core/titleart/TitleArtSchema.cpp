@@ -29,6 +29,8 @@ namespace jasperengine::titleart {
     // the program's registration functions: one line per spec that adds members (S81 `runtime`,
     // S85 `transform.stretch`, S86 `style_3d`, S87 `translations`...), called after S80's table
     void registerProgramMembers(TitleArtSchema& schema);
+    // S85's members (anim/TitleAnimIO.cpp)
+    void registerTitleAnimMembers(TitleArtSchema& schema);
 
 }
 
@@ -1120,6 +1122,7 @@ namespace {
 void jasperengine::titleart::registerProgramMembers(TitleArtSchema& schema) {
     // each later title spec adds one call here (S81, S84-S87), after S80's table
     registerS81Members(schema);
+    registerTitleAnimMembers(schema);
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
     registerTitle3DMembers(schema);
 #endif
@@ -1270,6 +1273,13 @@ bool TitleArtSchema::removeKind(std::string_view name) {
     if (it == kinds.end()) return false;
     kinds.erase(it);
     reindex();
+    return true;
+}
+
+bool TitleArtSchema::setFinish(std::string_view kindName, void (*finish)(Json& object, const std::string& path, NormalizeContext& context)) {
+    SchemaKind* k = mutableKind(kindName);
+    if (!k || k->finish) return false;
+    k->finish = finish;
     return true;
 }
 

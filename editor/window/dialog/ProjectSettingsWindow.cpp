@@ -3159,6 +3159,31 @@ void ProjectSettingsWindow::drawTitleArtSettings() {
                      "%.1f s", "Seconds without a render after which the titles' render targets are freed.", nullptr, 0.0);
             groupRow("title_art.cache_budget_mib", "Cache Budget", m_titleArt.cacheBudgetMiB, defaults.cacheBudgetMiB, 1.0f, 4096.0f,
                      "%.0f MiB", "Memory for images shown before (toggling back to a text renders nothing) and the render caches.", nullptr, 0.0);
+            if (settingsui::beginRow("title_art.animation.flipbook_budget_mib")) {
+                const bool budgetChanged = m_titleArt.flipbookBudgetMiB != defaults.flipbookBudgetMiB || m_titleArt.flipbookBudgetAndroidEtc2MiB != defaults.flipbookBudgetAndroidEtc2MiB;
+                if (projectBeginSettingsRow("Flipbook Budget", budgetChanged)) {
+                    m_titleArt.flipbookBudgetMiB = defaults.flipbookBudgetMiB;
+                    m_titleArt.flipbookBudgetAndroidEtc2MiB = defaults.flipbookBudgetAndroidEtc2MiB;
+                }
+                const char* const names[] = {"Desktop", "Mobile", "Android ETC2", "Web"};
+                double* values[] = {&m_titleArt.flipbookBudgetMiB.desktop, &m_titleArt.flipbookBudgetMiB.mobile, &m_titleArt.flipbookBudgetAndroidEtc2MiB,
+                                    &m_titleArt.flipbookBudgetMiB.web};
+                const float width = (ImGui::GetContentRegionAvail().x - helpMarkerWidth()) / 4 - ImGui::GetStyle().ItemSpacing.x;
+                for (int i = 0; i < 4; i++) {
+                    if (i) ImGui::SameLine();
+                    float v = (float)*values[i];
+                    ImGui::SetNextItemWidth(width);
+                    if (ImGui::DragFloat((std::string("##flipbudget") + names[i]).c_str(), &v, 0.5f, 1.0f, 4096.0f, "%.0f MiB")) *values[i] = v;
+                    ImGui::SetItemTooltip("%s", names[i]);
+                }
+                endSettingsRow("Baked flipbook pages against these budgets per family: a flipbook over one fails its check.");
+            }
+            if (settingsui::beginRow("title_art.animation.default_fps")) {
+                if (projectBeginSettingsRow("Default Fps", m_titleArt.animationDefaultFps != defaults.animationDefaultFps)) m_titleArt.animationDefaultFps = defaults.animationDefaultFps;
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - helpMarkerWidth());
+                ImGui::DragInt("##animfps", &m_titleArt.animationDefaultFps, 0.5f, 1, 120);
+                endSettingsRow("The animation fps of new documents.");
+            }
             if (settingsui::beginRow("title_art.reference_height")) {
                 if (projectBeginSettingsRow("Reference Height", m_titleArt.referenceHeight != defaults.referenceHeight)) {
                     m_titleArt.referenceHeight = defaults.referenceHeight;

@@ -417,6 +417,7 @@ TitleTransform titleart::decodeTransform(const Json& transform) {
     t.scale = numberOr(transform, "scale", 1.0);
     t.flipX = transform.value("flip_x", false);
     t.flipY = transform.value("flip_y", false);
+    if (auto stretch = transform.find("stretch"); stretch != transform.end()) t.stretch = decodeVec2(*stretch);
     return t;
 }
 

@@ -167,6 +167,8 @@ namespace jasperengine::titleart {
         bool waiting() const { return blocked; }
         // estimated cost done / total, 0..1 (rises monotonically to 1)
         float progress() const;
+        // the static estimate of every step in us (S85's re-render cost per sample)
+        uint64_t estimatedTotalUs() const { return totalUs; }
         uint32_t passesDone() const { return passesRun; }
         uint32_t passesTotal() const { return passCount; }
         // the next step's estimate in us, the model's prediction when there is one (0 when done)

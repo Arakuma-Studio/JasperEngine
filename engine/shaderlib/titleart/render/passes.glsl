@@ -17,12 +17,14 @@ bool taInsideUv(vec2 uv) { return all(greaterThanEqual(uv, vec2(0.0))) && all(le
 #if TA_PROGRAM == TA_PROGRAM_COPY
 // TA_TEX0 through p[2] x opacity p[3].x; p[3].y 0 rgba, 1 the red channel as a value (r r r r);
 // p[3].z 1: transparent outside the source; p[3].w mask 0 none, 1 TA_TEX1's alpha, 2 its red,
-// through p[4]
+// through p[4]; p[5].w 1: S85's layer tint p[5].rgb (multiply) and flash p[6].rgb (added under
+// the alpha), linear, on the premultiplied source
 void main() {
     vec2 uv = taMapUv(ta.p[2]);
     vec4 s = texture(TA_TEX0, uv);
     if (ta.p[3].y > 0.5) s = vec4(s.r);
     if (ta.p[3].z > 0.5 && !taInsideUv(uv)) s = vec4(0.0);
+    if (ta.p[5].w > 0.5) s.rgb = max(s.rgb * ta.p[5].rgb + ta.p[6].rgb * s.a, vec3(0.0));
     s *= ta.p[3].x;
     if (ta.p[3].w > 0.5) {
         vec4 m = texture(TA_TEX1, taMapUv(ta.p[4]));
@@ -35,10 +37,12 @@ void main() {
 #if TA_PROGRAM == TA_PROGRAM_BLEND
 // mode p[5].x of TA_TEX1 (through p[2], transparent outside it) x opacity p[5].y over the
 // backdrop copy TA_TEX0 (through p[3]); p[5].z 1: inside TA_TEX2's alpha (the clip group's base
-// content), through p[4]
+// content), through p[4]; p[6].w 1: S85's layer tint p[6].rgb and flash p[7].rgb (as COPY's)
 void main() {
     vec2 su = taMapUv(ta.p[2]);
-    vec4 s = taInsideUv(su) ? texture(TA_TEX1, su) * ta.p[5].y : vec4(0.0);
+    vec4 s = taInsideUv(su) ? texture(TA_TEX1, su) : vec4(0.0);
+    if (ta.p[6].w > 0.5) s.rgb = max(s.rgb * ta.p[6].rgb + ta.p[7].rgb * s.a, vec3(0.0));
+    s *= ta.p[5].y;
     if (ta.p[5].z > 0.5) s *= texture(TA_TEX2, taMapUv(ta.p[4])).a;
     vec4 d = texture(TA_TEX0, taMapUv(ta.p[3]));
     frag_color = taBlend(d, s, int(ta.p[5].x + 0.5));
@@ -167,6 +171,35 @@ void main() {
         vec4 u = ta.p[4 + 2 * i];
         vec2 t = (f - r.xy) / max(r.zw - r.xy, vec2(1e-3));
         vec4 s = texture(TA_TEX0, mix(u.xy, u.zw, t));
+        acc = s + acc * (1.0 - s.a);
+    }
+    frag_color = acc;
+}
+#endif
+
+#if TA_PROGRAM == TA_PROGRAM_GLYPH_COMPOSE_ANIM
+// S85 R15: up to 7 cell quads of the atlas page TA_TEX0 with a per-glyph pose, each over the ones
+// before it (premultiplied). p[2].x the count; quad i: p[3 + 6i] the moved quad's bounds in this
+// target's pixels; p[4 + 6i] its cell in the page (u0, v0, u1, v1); p[5 + 6i].xyz and p[6 + 6i].xyz
+// the affine from those pixels to the cell's unit square, p[5 + 6i].w the opacity; p[7 + 6i].rgb
+// the tint and p[8 + 6i].rgb the flash (colour x amount), linear. The tint multiplies and the
+// flash adds, so a glyph at (1, 1, 1) tint and 0 flash is the compose's own colour.
+void main() {
+    vec2 f = gl_FragCoord.xy;
+    int count = int(ta.p[2].x + 0.5);
+    vec4 acc = vec4(0.0);
+    for (int i = 0; i < 7; i++) {
+        if (i >= count) break;
+        vec4 r = ta.p[3 + 6 * i];
+        if (f.x < r.x || f.y < r.y || f.x >= r.z || f.y >= r.w) continue;
+        vec4 row0 = ta.p[5 + 6 * i];
+        vec4 row1 = ta.p[6 + 6 * i];
+        vec2 t = vec2(dot(row0.xyz, vec3(f, 1.0)), dot(row1.xyz, vec3(f, 1.0)));
+        if (t.x < 0.0 || t.y < 0.0 || t.x >= 1.0 || t.y >= 1.0) continue;
+        vec4 u = ta.p[4 + 6 * i];
+        vec4 s = texture(TA_TEX0, mix(u.xy, u.zw, t));
+        s.rgb = s.rgb * ta.p[7 + 6 * i].rgb + ta.p[8 + 6 * i].rgb * s.a;
+        s *= row0.w;
         acc = s + acc * (1.0 - s.a);
     }
     frag_color = acc;

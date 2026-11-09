@@ -1077,7 +1077,8 @@ void editor::registerBuiltinTitleChecks() {
 std::vector<titleart::TitleProblem> editor::titleArtMissingAssets(const titleart::TitleArtDoc& doc, const titleart::AssetResolver& assets) {
     std::vector<titleart::TitleProblem> problems;
     titleart::visitTitleArtRefs(doc.root, [&](const titleart::TitleAssetRef& ref, const std::string& field, titleart::TitleAssetKind kind) {
-        if (ref.empty()) return true;
+        // a missing marker sound is anim_markers' (a warning: the title still draws)
+        if (ref.empty() || kind == titleart::TitleAssetKind::Sound) return true;
         if (assets.resolve(ref, kind).found) return true;
         std::string layerId, path;
         splitLayerPath(doc.root, field, layerId, path);

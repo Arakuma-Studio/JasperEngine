@@ -1,0 +1,82 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "sweep_in",
+  "name": "Sweep In",
+  "group": "in",
+  "role": "intro",
+  "duration": 0.6,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "A soft-edged mask wipes the main text in; the title's sweep follows it.",
+  "params": [
+    {
+      "name": "angle",
+      "label": "Angle (deg)",
+      "type": "number",
+      "default": 0,
+      "min": -180,
+      "max": 180
+    },
+    {
+      "name": "feather",
+      "label": "Feather (%)",
+      "type": "number",
+      "default": 30,
+      "min": 0,
+      "max": 100
+    }
+  ],
+  "adds": [
+    {
+      "id": "wipe",
+      "kind": "mask",
+      "type": "gradient",
+      "values": {
+        "shape": "'linear'",
+        "angle": "angle",
+        "length": "max(1, W*feather/100)"
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "target": "add:wipe",
+      "field": "@.position",
+      "keys": [
+        [
+          0,
+          [
+            "-(W/2+W*feather/200)*cos(angle*pi/180)",
+            "-(W/2+W*feather/200)*sin(angle*pi/180)"
+          ],
+          "sine_in_out"
+        ],
+        [
+          "D",
+          [
+            "(W/2+W*feather/200)*cos(angle*pi/180)",
+            "(W/2+W*feather/200)*sin(angle*pi/180)"
+          ]
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "live.sweep_position",
+      "keys": [
+        [
+          0.1,
+          0,
+          "sine_in_out"
+        ],
+        [
+          "D",
+          1
+        ]
+      ]
+    }
+  ],
+  "markers": []
+}

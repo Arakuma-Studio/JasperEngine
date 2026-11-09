@@ -238,6 +238,11 @@ void TitleArtScheduler::setClockForTesting(double seconds){
     clock = seconds;
 }
 
+size_t TitleArtScheduler::cacheBudgetBytes() const{
+    // half the budget is for shown-before images (R20, as runFrame's limits)
+    return (size_t)(config.cacheBudgetMiB[(size_t)platformGroup()] * 1024.0 * 1024.0) / 2;
+}
+
 size_t TitleArtScheduler::poolBytes() const{
     if (!rendererInstance) return 0;
     const TitleTargetPoolStats& stats = rendererInstance->poolStats();
@@ -279,10 +284,15 @@ TitleFrameReport TitleArtScheduler::schedule(const std::vector<TitleArtLive*>& e
         bool ran = false;
         // what the model learned since the job's steps were last cut
         if (context.costs) live->resplit(context);
+        // S85 R18: an animating title spends at most its share of the budget a frame (the budget
+        // over the animating visible titles, at least a quarter of it), so the others keep theirs
+        const double titleStart = spent;
+        const double shareUs = live->animating() ? std::max(0.25, std::min(1.0, live->animationShare())) * (double)budgetUs : (double)budgetUs;
         while (live->hasWork() && !live->jobDone() && !live->liveWaiting()){
             const uint32_t next = live->nextCostUs(context);
             // R15: whole steps while they fit; the first step of the frame always runs
             if (report.steps > 0 && spent + next > budgetUs) break;
+            if (ran && spent - titleStart + next > shareUs) break;
             const double before = spent;
             if (!live->runStep(context, spent)) break;
             if (spent - before > budgetUs) report.overBudgetSteps++;

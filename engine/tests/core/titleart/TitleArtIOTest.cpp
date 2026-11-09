@@ -390,9 +390,12 @@ TEST_F(TitleArtIOTest, FieldWritesValidateAndClamp) {
     EXPECT_EQ(typo.nearest, "bevel");
     FieldSetResult readOnly = setTitleArtField(layer, "layer", "id", "00000000");
     EXPECT_EQ(readOnly.code, "read_only");
-    FieldSetResult reserved = setTitleArtField(layer, "layer", "transform.stretch", Json::array({2, 1}));
+    FieldSetResult reserved = setTitleArtField(layer, "layer", "only_languages", Json::array({"ja"}));
     EXPECT_EQ(reserved.code, "not_available");
-    EXPECT_NE(reserved.error.find("S85"), std::string::npos);
+    EXPECT_NE(reserved.error.find("S87"), std::string::npos);
+    // S85 registered transform.stretch: it writes like any member
+    FieldSetResult stretch = setTitleArtField(layer, "layer", "transform.stretch", Json::array({2, 1}));
+    EXPECT_TRUE(stretch.ok) << stretch.error;
     FieldSetResult created = setTitleArtField(layer, "layer", "chars.2.rotation", 15);
     ASSERT_TRUE(created.ok) << created.error;
     EXPECT_EQ(layer["chars"]["2"]["rotation"], 15);

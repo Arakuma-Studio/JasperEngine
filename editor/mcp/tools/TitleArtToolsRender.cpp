@@ -6,6 +6,7 @@
 // compare with a kept revision or a PNG, the forced RGBA8 path, and the checks of the registry.
 
 #include "TitleArtToolsShared.h"
+#include "TitleArtToolsAnimation.h"
 #include "titleart/three_d/Title3DEditor.h"
 #include "titleart/three_d/TitleMesh.h"
 
@@ -636,6 +637,11 @@ bool checkRenderOptions(const Json& options, std::string& error) {
         return false;
     }
     for (auto it = options.begin(); it != options.end(); ++it) {
+        // S85 R53: a frame or a filmstrip of an animation
+        if (it.key() == "animation") {
+            if (!checkAnimationOption(it.value(), error)) return false;
+            continue;
+        }
         // S83 §6.11: the cost readout, per tier
         if (it.key() == "cost") {
             if (!it.value().is_string() || (it.value() != "desktop" && it.value() != "mobile")) {
@@ -883,6 +889,10 @@ void renderTitleTool(const CallPtr& call) {
         extra["cost"] = fromOrdered(cost.toJson());
         prefix = cost.summary() + ". ";
     }
+    if (options.is_object() && options.contains("animation")) {
+        renderTitleAnimation(call, std::move(spec));
+        return;
+    }
     startRender(call, std::move(spec), extra, prefix);
 }
 
@@ -951,6 +961,9 @@ void checkTitleTool(const CallPtr& call) {
             context.options.baseline = baselineFile.string();
         }
         texsynth::Image lastRender;
+        // S85: the anim checks' animation, their renders and asset lookups
+        std::shared_ptr<void> animationRenderer;
+        if (doc->editable()) setupAnimationChecks(context, project, std::make_shared<const titleart::TitleArtDoc>(doc->doc()), a, animationRenderer);
         if (doc->editable()) {
             context.render = [project, &lastRender](const titleart::RenderRequest& request, TitleCheckImage& out, std::string& error) {
                 TitleRenderedImage image;

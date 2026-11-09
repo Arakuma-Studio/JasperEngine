@@ -21,6 +21,9 @@
 #include "texture/TextureCookQueue.h"
 #include "texture/TextureImportSettings.h"
 #include "titleart/TitleArtIO.h"
+#include "titleart/anim/TitleAnimIO.h"
+#include "titleart/anim/TitleFlipbookBaker.h"
+#include "titleanim/TitleAnimDataIO.h"
 #include "titleart/TitleEffectRegistry.h"
 #include "util/AssetDatabase.h"
 #include "util/ProjectFileWrites.h"
@@ -512,6 +515,15 @@ bool TitleArtBakeJob::write() {
     info.bakeVersion = status.bakeVersion;
     sidecarText = info.toText();
     staged.push_back({titleArtSidecarPath(documentPath), std::vector<uint8_t>(sidecarText.begin(), sidecarText.end())});
+    // S85 R60: a document with animations ships <file>.anim.json beside the sidecar (title tracks,
+    // markers; the flipbooks of animations whose pages are still fresh)
+    if (titleart::hasAnimations(*doc)) {
+        std::vector<std::string> animationWarnings;
+        const titleanim::TitleAnimData data = titleAnimDataOf(*doc, documentPath, status.sourceHash, status.bakeVersion, &animationWarnings);
+        const std::string animText = titleanim::writeAnimData(data);
+        staged.push_back({fs::path(documentPath.string() + titleanim::TITLE_ANIM_DATA_SUFFIX), std::vector<uint8_t>(animText.begin(), animText.end())});
+        outcome.warnings.insert(outcome.warnings.end(), animationWarnings.begin(), animationWarnings.end());
+    }
 
     if (options.dryRun) {
         outcome.ok = true;
