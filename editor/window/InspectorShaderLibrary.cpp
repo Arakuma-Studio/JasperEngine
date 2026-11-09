@@ -26,6 +26,7 @@
 #include "material/MaterialChange.h"
 #include "material/MaterialPresets.h"
 #include "pixelart/Palette.h"
+#include "pixelart/PixelArtMode.h"
 #include "pixelart/PaletteAssets.h"
 #include "pixelart/PaletteMaterial.h"
 #include "pixelart/PaletteSwap.h"
@@ -802,6 +803,9 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         if (ImGui::Checkbox(("##feature_" + feature.define).c_str(), &enabled)) {
             std::vector<std::string> changed = features;
             ShaderLibraryValues::setFeature(changed, shader, feature.define, enabled);
+            // a Pixel Art Mode project's outline is the pixel one (S48 R38), in the same undo step
+            if (enabled && feature.define == "OUTLINE")
+                pixelart::PixelArtMode::pickPixelOutline(changed, shader, project->getPixelArtSettings().enabled);
             setFeatures(changed);
             // ticking Palette Swap on fills an empty Source when one project palette covers the
             // sprite (R18): the rows start Detect once the slot shows

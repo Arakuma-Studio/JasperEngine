@@ -893,9 +893,9 @@ Implementation notes that change what the spec says. Each item names the require
   Everything else is in `docs/mcp/guide/pixel-fx.md`; user docs are `docs/pixel-fx.md`.
 - **S52 names (R10, R30, R31).** S52 calls the FX stream `a_spriteFx` / `i_spriteFx` (FLOAT4, read through
   `spriteFx(slot)` from `includes/sprite_fx.glsl`) and the manifest line `// @batchable framerect=...`, not `i_fx`
-  (HALF4) and `@instanceable`. Until S52 is on the tree, `sprite.frag` reads the amounts as `customParams.X +
-  spriteFx(z|w)` with a guarded `#define spriteFx(slot) (0.0)` fallback; `instance=fx.z` / `instance=fx.w`, the
-  `@batchable framerect=` features and AC11's slots are added when S52 lands.
+  (HALF4) and `@instanceable`. `ditherFadeAmount` is `instance=fx.z` and `dissolveProgress` `instance=fx.w`; the
+  Pixel FX features that read the frame rect (pixel outlines, Drop Shadow, Dissolve, Ramp Recolour, Dither Fade) are in
+  `@batchable framerect=`. AC11 is `PixelArtBatchGpu.FxSlotsDitherFadeDissolve` beside S52's `FxSlotsZW`.
 - **Shader cache.** S48's sources are cached under v62 (S49 took v60, S52 v61).
 - **Mobile budgets (R34, AC25).** No Adreno 610 / Mali-G57-class device was available: the phone numbers are not
   measured. R35's CPU costs are inferred from the code (idle paths return at once, no draw, upload or allocation).
@@ -910,7 +910,9 @@ Implementation notes that change what the spec says. Each item names the require
 - **R2, alpha and screen space.** A fragment the dither keeps keeps its own alpha: the effect makes no partial alpha but does not change the art's. Screen space with S41 uses `floor(gl_FragCoord / frame.pixelSnap.w)`, carried as a flat varying from the vertex stage. Without S41 it uses `gl_FragCoord`, whose vertical origin is the backend's, so the screen-space pattern can mirror vertically between GL and D3D/Metal/Vulkan. Sprite space, the default, is identical on every backend.
 - **AC2–AC5, AC9, AC10 test names and counting.** GPU suites must end in `Gpu` (docs/testing.md), so AC2, AC3, AC4, AC5 and AC10 are core GPU gtests `SpritePixelFxGpu.{LegacyCombinationsUnchanged, NewFeatures, LegacyBlocksUniform, KeyMatchesCpu, IdleEqualsOff}` with `GrownQuad` (R7). They render at an exact 4× scale into the headless target; the goldens are in `engine/tests/core/golden/sprite_fx/`. `test_pixel_fx_golden.py` holds AC27. AC9 counts texture reads (OpImageSample*, OpImageFetch, OpImageGather) statically in the Vulkan SPIR-V. Functions are not inlined, so the count is a lower bound on the per-fragment taps.
 - **AC27, re-save test.** The fixtures predate `main`'s current scene format (format stamp, guid, newer keys: main's to migrate), so a byte comparison with the fixture is not S48's. The test saves each `shader-library-export` scene and two fixture `.material` files twice. It checks that the second save is byte-identical, that no S48 name appears in a file that does not use it, and that the legacy OUTLINE variant keeps its pre-S48 name.
-- **R38 / D2, S42 parts.** S42 lands in the same batch: "Pixel Art Mode picks PIXEL4 when OUTLINE is ticked" and the 24-variant export warning are wired at the batch landing, when S42's mode and validator are on the tree.
+- **R38 / D2, S42 parts.** "Pixel Art Mode picks PIXEL4" is `PixelArtMode::pickPixelOutline`, called when the
+  Inspector ticks Outline (same undo step). The 24-variant export warning is S42's `sprite_variants` rule, which counts
+  every distinct `library:sprite` variant (S48's features included) and names the materials that add the most.
 - **R38, presets.**
     - Presets set `shaderParams`.
     - The animated amounts are left at 0, idle until played, in Hit Flash, Teleport Fade, Burn Away and Enemy.
