@@ -37,10 +37,35 @@ async def title_look(ed: Editor) -> dict:
     return next(l for l in got["layers"] if l.get("name") == "Title")
 
 
-async def click_tile(helper: ui_input.Ui) -> None:
+async def click_tile(ed: Editor, helper: ui_input.Ui, step: str) -> None:
+    """Hover first: the hover preview's render takes frames, and a click during it can be lost."""
     tile = await helper.reveal("##tile")
-    await helper.click(helper.centre(tile["rect"]))
-    await helper.frames(8)
+    await helper.move(helper.centre(tile["rect"]), frames=30)
+    for _ in range(40):
+        state = (await ed.call("focus_window", window="title_designer", title_designer={})).get("state", {})
+        if not state.get("busy"):
+            break
+        await helper.frames(10)
+    for _ in range(2):
+        await helper.click(helper.centre(tile["rect"]))
+        for _ in range(30):
+            await helper.frames(4)
+            if await step_name(ed) == step:
+                return
+    ed.fail(f"the tile click did not apply: last step '{await step_name(ed)}'")
+
+
+async def layer_menu(ed: Editor, helper: ui_input.Ui, item: str) -> None:
+    got = await ed.call("get_title", path=PATH)
+    layer = next(l for l in got["layers"] if l.get("name") == "Title")
+    await ed.call("focus_window", window="title_designer", title_designer={"path": PATH, "select": "Title", "panel": "layers"})
+    await helper.frames(20)
+    row = await helper.find("##row" + layer["id"])
+    ed.check(row, "the Layers panel shows the layer's row")
+    await helper.click(helper.centre(row["rect"]), button="3")
+    await helper.frames(10)
+    await helper.click_item(item)
+    await helper.frames(10)
 
 
 async def test_tile_click(ed: Editor):
@@ -49,8 +74,7 @@ async def test_tile_click(ed: Editor):
     await ed.call("edit_title", path=PATH, create={"text": "HERO"}, bake="never")
     helper = ui_input.Ui(ed)
     await open_designer(ed, helper, "looks", "Classic Gold")
-    await click_tile(helper)
-    ed.check_eq(await step_name(ed), "Apply Look Classic Gold", "one undo step named after the look")
+    await click_tile(ed, helper, "Apply Look Classic Gold")
     layer = await title_look(ed)
     ed.check_eq(layer.get("look", {}).get("id"), "metal/classic-gold", f"the look applied: {layer.get('look')}")
     await helper.key("ctrl+z")
@@ -62,12 +86,30 @@ async def test_tile_click(ed: Editor):
 async def test_badge_converts_to_3d(ed: Editor):
     helper = ui_input.Ui(ed)
     await open_designer(ed, helper, "looks", "Chrome 3D")
-    await click_tile(helper)
+    await click_tile(ed, helper, "Apply Look Chrome 3D")
     layer = await title_look(ed)
-    ed.check_eq(await step_name(ed), "Apply Look Chrome 3D", "the tile is the 3D look")
     ed.check("three_d" in layer, f"the tile's badge said so and the layer is 3D: {sorted(layer)}")
     await helper.key("ctrl+z")
     await helper.frames(8)
+
+
+async def test_revert_and_save_as(ed: Editor):
+    helper = ui_input.Ui(ed)
+    await open_designer(ed, helper, "looks", "Classic Gold")
+    await click_tile(ed, helper, "Apply Look Classic Gold")
+    await ed.call("edit_title", path=PATH, ops=[{"op": "set", "layer": "Title", "values": {"rim#0.width": 9}}])
+    await layer_menu(ed, helper, "Revert to Look")
+    ed.check_eq(await step_name(ed), "Revert to Look", "Revert to Look is one undo step")
+    await layer_menu(ed, helper, "Save As Look...")
+    name = await helper.find("Name")
+    ed.check(name, "the Save As dialog draws its Name field")
+    await helper.click(helper.centre(name["rect"]))
+    await helper.type("Saved Gold")
+    await helper.frames(10)
+    await helper.click_item("Save")
+    await helper.frames(20)
+    saved = [p for p in ed.project.rglob("*.titlelook") if "saved-gold" in p.name]
+    ed.check(saved, f"Save As Look wrote the file: {[p.name for p in ed.project.rglob('*.titlelook')]}")
 
 
 async def test_three_tabs_draw(ed: Editor):
