@@ -168,7 +168,7 @@ never build or run them.
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
 | S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | merged and pushed |
-| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | ready for batch 4 |
+| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | landing (batch 4) |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
@@ -178,7 +178,7 @@ never build or run them.
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | landing (batch 3) |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | accepted; merging main |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | landing (batch 4) |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -244,6 +244,16 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: Batch 4 assembled on `land/batch3` (the worktree is reused): `main` + S42 (`9c7f0b34b`,
+  clean merge) + S52 (`0bea149af`).
+  - Three conflicts resolved, keeping both sides: `Project.cpp` (S42's default filter beside
+    S52's sorting fields), `McpValues.cpp` includes, and the eval cases (143, no duplicates,
+    `test_grade` OK).
+  - S52: shader cache v61, mesh bits 46–48, depth 20. The `Transform.h` fanout 152 comes from
+    S49's `ParticleEffectPreview.cpp`/`ParticlePreviewSource.cpp` includes (the main-green fix
+    handles it).
+  - Verification running on box B: `WERROR` linux, the filtered editor and core sets with the
+    shared data, 18 MCP files, budget, grader. Then web, android and Vulkan.
 - 2026-11-09: S42 merged `main` at `9c7f0b34b` and wired the S49 `particles_grid` hook.
   - `pixel_art` group: 3 tools, 3,191 characters.
   - Gate on box B: `WERROR`, core 85, editor 205, 168 MCP tests. The failures are `main`'s
