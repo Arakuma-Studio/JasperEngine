@@ -8,7 +8,6 @@ Pachislop's limits (max 48/255, mean 0.25/255, at most 0.1 % of pixels over 8/25
 renders twice first (identical bytes). JASPER_TITLE_UPDATE_GOLDEN=1 rewrites them; an update needs
 a row in docs/titleart/goldens.md (tools/titleart/check_golden_ledger.py)."""
 
-import base64
 import os
 import time
 from pathlib import Path
@@ -55,7 +54,7 @@ async def render(ed: Editor, path: str, width: int) -> bytes:
             state = await ed.call("get_job", job_id=job)
         r = await ed.call_raw("render_title", args)
     ed.check(not r.is_error and r.images, f"{path}: {r.text[:300]}")
-    return base64.b64decode(r.images[0].data)
+    return r.images[0][0]
 
 
 async def case(ed: Editor, name: str, create: dict, ops: list | None, report: list):

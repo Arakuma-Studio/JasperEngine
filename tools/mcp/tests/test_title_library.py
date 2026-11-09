@@ -13,7 +13,6 @@ lint (its lint_allow excepted). Allowlists carry reasons and at most 10 % of a k
 Unavailable items are counted by reason, never skipped silently. Shard with
 JASPER_TITLE_LIBRARY_SHARD=<i>/<n> (the harness's -j runs one shard per editor)."""
 
-import base64
 import hashlib
 import os
 import time
@@ -89,7 +88,7 @@ async def render_once(ed: Editor, path: str) -> bytes:
     ed.check(not r.is_error and r.images, f"{path}: renders: {r.text[:300]}")
     metrics = (r.structured or {}).get("metrics") or (r.structured or {}).get("cells", [{}])[0].get("metrics") or {}
     ed.check(not metrics.get("flat", False), f"{path}: the render is not flat")
-    return base64.b64decode(r.images[0].data) if r.images else b""
+    return r.images[0][0] if r.images else b""
 
 
 async def test_gate(ed: Editor):
