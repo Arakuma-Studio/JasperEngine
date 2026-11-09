@@ -196,7 +196,7 @@ async def test_reserved_and_options(ed: Editor):
     msg = await ed.check_error("export_title", path=path, options={"nope": 1})
     ed.check_in("bleed_px", msg, "bad_option lists the valid keys")
     msg = await ed.check_error("edit_title", path=path, create={"template": "casino"})
-    ed.check_in("S84", msg, "templates arrive with S84")
+    ed.check_in("casino/", msg, "an unknown template offers the closest ids (S84)")
 
 
 # ---------------------------------------------------------------------------------------- checks
