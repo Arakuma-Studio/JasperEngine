@@ -2853,6 +2853,32 @@ for _cls, _who, _example in (
         'overloads': [([('position', 'Vector3'), ('radius', 'number'), ('preset', _SHAKE_PRESET),
                         ('options?', 'ShakeOptions')], 'ShakeInstance')]}
 
+# S52 Sprite Batch: lua_CFunctions taking tables of numbers or frames (engine/core/script/binding/SortingClassesLua.cpp)
+OVERRIDES[('SpriteBatch', 'frameId')] = {
+    'doc': ['The index of the Sprite\'s frame with this name; an error when it has none.'],
+    'overloads': [([('name', 'string')], 'integer')]}
+OVERRIDES[('SpriteBatch', 'add')] = {
+    'doc': ['Adds an instance at (x, y) showing `frame` (an index or a frame name, default 0) and returns its index.'],
+    'overloads': [([('x', 'number'), ('y', 'number'), ('frame?', 'integer|string')], 'integer')]}
+OVERRIDES[('SpriteBatch', 'setPositions')] = {
+    'doc': ['Every instance\'s position, `stride` numbers each (2 by default).'],
+    'overloads': [([('values', 'number[]'), ('stride?', 'integer')], '')]}
+OVERRIDES[('SpriteBatch', 'setRotations')] = {
+    'doc': ['Every instance\'s rotation, one number each.'],
+    'overloads': [([('values', 'number[]')], '')]}
+OVERRIDES[('SpriteBatch', 'setScales')] = {
+    'doc': ['Every instance\'s scale, `stride` numbers each (1 by default).'],
+    'overloads': [([('values', 'number[]'), ('stride?', 'integer')], '')]}
+OVERRIDES[('SpriteBatch', 'setColors')] = {
+    'doc': ['Every instance\'s colour.'],
+    'overloads': [([('values', 'number[]')], '')]}
+OVERRIDES[('SpriteBatch', 'setFrames')] = {
+    'doc': ['Every instance\'s frame, an index or a frame name each.'],
+    'overloads': [([('frames', '(integer|string)[]')], '')]}
+OVERRIDES[('SpriteBatch', 'setFx')] = {
+    'doc': ['Every instance\'s amount of one effect slot: `"palette"`, `"flash"`, `"fade"` or `"dissolve"`.'],
+    'overloads': [([('slot', 'string'), ('amounts', 'number[]')], '')]}
+
 # S48 Hit-Stop: HitStop.play takes an options table (HitStopOptions, engine/core/script/binding/stubs/CameraShake.lua)
 OVERRIDES[('HitStop', 'play')] = {
     'doc': ['Freezes (or slows, `opts.timeScale` 0..1) the game for `seconds` of unscaled time: Time.deltaTime,',
