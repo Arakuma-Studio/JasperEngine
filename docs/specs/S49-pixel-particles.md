@@ -899,4 +899,96 @@ uniform u_vs_analyticParams { /* AnalyticProgram, with t split as loop phase + s
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+Recorded by the S49 implementation (`feature/s49-pixel-particles`).
+
+- **S48 is not implemented.** `capture_particles {checks}` reports S48's ids (`off_palette`,
+  `partial_alpha`, `spill`, `one_shot_end`, `loop_seam`, `determinism`) as SKIP with "needs S48
+  (Pixel FX)" (`editor/pixelart/particles/ParticleCaptureChecks.cpp`); S49's own `off_grid` and
+  `over_budget` run. AC11's `partial_alpha` and `loop_seam` red controls wait for S48.
+- **R21a: `emitAt` is not an undo step.** It adds runtime particles to an engine-owned system
+  entity (never saved) and writes no file or scene data, so an undo would have nothing to put back;
+  `writeUndoable` does not apply. Its determinism is the emitter's (the seed, and seek for
+  Simulated). A refused call (Analytic, unreadable) leaves no emitter, and a scene's emitters are
+  forgotten when its ParticleSubsystem is destroyed (`PixelParticlesTest`).
+- **Variant bits** (R23): `Pxl` is particle bit 12 and `Ana` bit 13 (count 14), pinned by
+  `ParticlePixelShader.VariantBitsArePinned` and `PixelSnapShaderTest.VariantBitsArePinned`; the
+  shader cache version is taken at the batch landing.
+- **R22's "integer maths".** The shapes are evaluated at whole-pixel centres with floor, sums and
+  products (no texture fetch, no derivatives), but Disc, Ring, Puff and Glow compare squared float
+  distances and Shard and Chunk rotate by one cos/sin per particle, so a pixel exactly on a rule's
+  edge can round differently between the CPU twin and a backend; the GPU tests compare on pixel
+  centres (`particles_pixel.glsl`'s header says so).
+- **AC2, AC3, AC6 (GPU), AC8 and the sub-emitter draws** live in their own suite,
+  `engine/tests/core/render/ParticlesPixelGpuTest.cpp` (`ParticlesPixelGpu.*`), beside S20's
+  `ParticlesGpuTest.cpp`. Per the owner's per-feature gate they ran on glcore only; gles3 and
+  Vulkan run at the batch landing.
+- **AC13 and AC16** (benchmarks against S20's stack, mobile numbers, web/android builds and the
+  smoke export) are not run per feature (owner decision of 2026-11-08); they belong to the batch
+  landing. R28's CPU side is measured per run (`AnalyticParticles.CostIsPerEmitterNotPerParticle`:
+  per-frame cost and seek at 65,536 slots, printed, enforced under `perfSlack()`); its GPU numbers
+  need a hardware GPU (the box renders with llvmpipe).
+- **R28's 1 KB block.** The Analytic block packs its curves (32 samples, 12 bits over the curve's
+  range, two to a float) and its colour table (RGBA8, two floats an entry): 1,024 bytes. A Blend
+  gradient's 32 samples are sRGB bytes interpolated in linear; a Fixed gradient is stepped at 1/32
+  of the life.
+- **The Analytic flight** uses the Taylor series of f and h below k·t = 1 (ten terms, Horner), on
+  the GPU and in the float32 CPU twin alike (R19: within 1e-3 px of the exact flight,
+  `AnalyticParticles.Float32TwinWithinAMilliPixel`); `flyPosition` in double stays the reference
+  of the bounds and of AC9.
+- **The Analytic block's random keys** are 16-bit halves stored as floats (`AnalyticBlock::keys`):
+  the GL backends flatten a uniform block only when all its members are one type, and an
+  unflattened block is limited to sokol's 16 members.
+- **Analytic bursts in a loop** fire only inside the loop (their cycles clamped to the loop's
+  firings, no firing at or past the duration), and their counts are drawn uniformly over
+  min..max as Simulated draws them.
+- **Analytic bounds** are worked out again in `setMotion` under the scene's gravity (not 9.81 times
+  the modifier); Scene-view picking of an Analytic system uses the twin's live particles (R19).
+- **Sub-emitters draw** through `main`'s renderer (BF23 F1, landed while S49 was in review): S49's own
+  child render data was dropped in the merge for `main`'s, and S49's pixel, Analytic and Hold Frames
+  draw paths were ported onto its emitter-level draw. S49's GPU tests of the sub-emitter draws
+  (`ParticlesPixelGpu.SubEmittersDraw`, `PresetSubEmittersDraw`) stay. Render Mode Ring took 10 on
+  `main`, so Pixel is 11 (stored by name, nothing to migrate).
+- **Contact sheets, checks and the bake are S91's** (`main`'s effect preview, landed while S49 was in
+  review). S49 adds to it instead of shipping its own: a **pixel view** (`view: "pixel"`, `scale`) in
+  `ParticleEffectPreview` (orthographic from the front on the base-pixel grid, each base pixel drawn
+  4 x 4 times; Analytic emitters measured through their twin), S49's `off_grid` and S48's six lints as
+  `ParticleEffectChecks` rows, Pixel Grid, Scale and Aseprite JSON in the Particle Effect window's
+  panel, and `aseprite` on `bake_particle_sheet`. R38's `capture_particles {frames, time_end, scale,
+  background, checks}` and the Scene view's Bake dialog are gone: `preview_particle_effect` and
+  `bake_particle_sheet` replace them. `over_budget` is not repeated: S91's `capacity_hit` and
+  `platform_budget` judge the count. R21's PNG strip is S91's grid sheet with straight alpha and an
+  effect that plays it; the Aseprite json-hash describes the grid.
+- **AC15** is driven with real input in `test_particles_pixel_ui.py` (the Pixel Shape menu's icons,
+  Analytic chosen in the Inspector and "Disable unsupported modules" as one undo step, the panel's
+  scrub, Pixel Grid, a ramp dragged from the Palette window). Its "identical images" are two
+  captures at the same time with a scrub elsewhere between them: the Scene view and an offscreen
+  capture draw through different cameras.
+- **Analytic Velocity over Lifetime and Force** follow R15 (constant, dragged with the start
+  velocity; force folded into g). Analytic Start Color as a Ramp takes the random step from the
+  same stream as Simulated mode. A Hold Frames rate on an Analytic effect quantises t (R5); the
+  compiler clears the Simulated pack-hold for it.
+- **Hold Frames packing** keeps one pack per (emitter, view) in `HeldPacks` (one per camera, up to
+  8), packs again when the step changes or the emitter was reset, cleared or seeked (its
+  generation) or its effect changed, and is cleared when the render data reloads; AC4's "pack
+  calls drop by >= 70 %" is measured with `packCount()`.
+- **AC10's spark path.** S20 moves a particle by the tick's mean velocity, pixelfx by its end
+  velocity, so the two paths differ by (v₀ − v)·dt/2 by construction (1.4 px at 0.5 s for a fast
+  spark); `PixelPresetsTest.SparkFliesAsPixelfx` takes that known offset out and holds the rest to
+  the 1 px budget. AC9's reference uses pixelfx's formula where it is well conditioned and its
+  exact series below k·t = 1e-3, where the formula cancels.
+- **Grit and Debris bounce as pixelfx** under S20's response (it keeps (1 − dampen) of the reflected
+  velocity, so their bounce is pixelfx's share over it, as Spark's), and settle on the outgoing
+  speed pixelfx's rest threshold gives (Grit 130 px/s in, a quarter out: 32.5; shards 70 x 0.35;
+  chunks 70 x 0.3). Grit's 40 % chance of a bounce is not modelled: a fast landing always bounces
+  (`PixelPresets.GritAndDebrisBounceAsPixelfx`).
+- **`off_grid` measures the draw**: the pixel view draws every base pixel 4 x 4 times; a base pixel
+  whose screen pixels are not one colour (on black or on white) was drawn between grid lines.
+- **A sub-emitter spawner** (Render Mode None with sub-emitters, the Debris preset) no longer gets
+  S20's "None draws only trails" warning.
+- **Presets.** Sub-emitter children (`pixel_smoke` of `pixel_fire`; `pixel_debris_shard` and
+  `pixel_debris_chunk` of `pixel_debris`) are written beside the created asset, one undo step with
+  it; `create_particle_effect` lists them in `children`. Rates the pixelfx demos do not state
+  (smoke, fire, ember) are ours, as `docs/particles-pixel.md` says. Light Flash cools down the
+  `hot` ramp.
+- **AC14's red control** (the base's codec refusing `pixelArt`) ran with main's editor build on box
+  C (no S49): the log of that run is the coordinator report's evidence.

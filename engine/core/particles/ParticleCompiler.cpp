@@ -9,13 +9,18 @@
 #include "ParticleCompiler.h"
 
 #include "math/noise/GradientCurl3D.h"
+#include "particles/AnalyticParticles.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleKernels.h"
+#include "pixelart/PixelColor.h"
+#include "particles/ParticleModules.h"
 #include "util/Color.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
+#include <functional>
 
 using namespace jasperengine;
 using namespace jasperengine::particles;
@@ -79,12 +84,216 @@ namespace {
             out[i] = curve.evaluate((float)i / (float)(size - 1)) * multiplier;
     }
 
+    // where a value's LUT goes: appended to the pool (a compile), or over the LUT the value had
+    // (applyExposed: false when the new one does not fit there)
+    using LutPlace = std::function<bool(const std::vector<float>& values, bool second, uint32_t& offset)>;
+
+    // the LUT size that keeps every channel of a gradient within half a step of 8 bits
+    uint32_t gradientLutSize(const Gradient& g){
+        if (g.mode == GradientMode::Fixed)
+            return 1025;
+        for (uint32_t size = 65; size < 1025; size = (size - 1) * 2 + 1){
+            bool ok = true;
+            for (uint32_t i = 0; i + 1 < size && ok; i++){
+                const float t0 = (float)i / (float)(size - 1), t1 = (float)(i + 1) / (float)(size - 1);
+                const Vector4 a = g.evaluate(t0), b = g.evaluate(t1), m = g.evaluate((t0 + t1) * 0.5f);
+                const Vector4 lerp = (a + b) * 0.5f;
+                ok = std::fabs(lerp.x - m.x) < 0.5f / 255.0f && std::fabs(lerp.y - m.y) < 0.5f / 255.0f &&
+                     std::fabs(lerp.z - m.z) < 0.5f / 255.0f && std::fabs(lerp.w - m.w) < 0.5f / 255.0f;
+            }
+            if (ok)
+                return size;
+        }
+        return 1025;
+    }
+
+    bool buildCurve(const MinMaxCurve& v, uint32_t salt, float scale, bool startValue, const LutPlace& place, CurveParam& c){
+        c = CurveParam();
+        c.stream = salt;
+        c.driver = v.driver;
+        c.wrap = v.wrap;
+        if (startValue && c.driver != CurveDriver::Random)
+            c.driver = CurveDriver::EmitterTime;
+        const float span = v.driverMax - v.driverMin;
+        c.scale = span != 0.0f ? 1.0f / span : 0.0f;
+        c.offset = span != 0.0f ? -v.driverMin / span : 0.0f;
+        switch (v.mode){
+            case CurveMode::Constant:
+                c.kind = CurveParam::Const;
+                c.c0 = c.c1 = v.constant * scale;
+                return true;
+            case CurveMode::TwoConstants:
+                c.kind = v.constant == v.constantMax ? CurveParam::Const : CurveParam::Range;
+                c.c0 = v.constant * scale;
+                c.c1 = v.constantMax * scale;
+                return true;
+            case CurveMode::Curve:
+            case CurveMode::Ease:
+            case CurveMode::TwoCurves: {
+                const bool two = v.mode == CurveMode::TwoCurves;
+                // a flat curve is a constant
+                float lo0, hi0;
+                v.curve.valueRange(lo0, hi0);
+                if (!two && lo0 == hi0){
+                    c.kind = CurveParam::Const;
+                    c.c0 = c.c1 = lo0 * v.multiplier * scale;
+                    return true;
+                }
+                c.kind = two ? CurveParam::LutRange : CurveParam::Lut;
+                // both LUTs share a size (the finer of the two)
+                uint32_t size0 = ParticleCompiler::lutSize(v.curve, 1.0e-4f * curveValueRange(v.curve));
+                uint32_t size1 = two ? ParticleCompiler::lutSize(v.curveMax, 1.0e-4f * curveValueRange(v.curveMax)) : size0;
+                c.lutSize = std::max(size0, size1);
+                std::vector<float> values;
+                bakeCurve(v.curve, v.multiplier * scale, c.lutSize, values);
+                if (!place(values, false, c.lut0))
+                    return false;
+                if (two){
+                    bakeCurve(v.curveMax, v.multiplier * scale, c.lutSize, values);
+                    if (!place(values, true, c.lut1))
+                        return false;
+                }
+                return true;
+            }
+        }
+        return true;
+    }
+
+    std::vector<float> gradientLut(const Gradient& g, uint32_t size){
+        std::vector<float> values(size * 4);
+        for (uint32_t i = 0; i < size; i++){
+            const Vector4 c = g.evaluate((float)i / (float)(size - 1));
+            values[i * 4 + 0] = c.x;
+            values[i * 4 + 1] = c.y;
+            values[i * 4 + 2] = c.z;
+            values[i * 4 + 3] = c.w;
+        }
+        return values;
+    }
+
+    bool buildGradient(const MinMaxGradient& v, uint32_t salt, bool startValue, const LutPlace& place, GradientParam& g){
+        g = GradientParam();
+        g.stream = salt;
+        g.driver = v.driver;
+        g.wrap = v.wrap;
+        if (startValue && g.driver != CurveDriver::Random)
+            g.driver = CurveDriver::EmitterTime;
+        const float span = v.driverMax - v.driverMin;
+        g.scale = span != 0.0f ? 1.0f / span : 0.0f;
+        g.offset = span != 0.0f ? -v.driverMin / span : 0.0f;
+        auto linear = [](const Vector4& c, float out[4]){
+            const Vector4 l = Color::sRGBToLinear(c);
+            out[0] = l.x; out[1] = l.y; out[2] = l.z; out[3] = l.w;
+        };
+        switch (v.mode){
+            case GradientValueMode::Ramp: {
+                // the exact steps (S49 R13): no LUT between them; Start Color picks one at random.
+                // lut0 the steps in linear, lut1 their sRGB8 bytes (packed, bit for bit in the pool)
+                const std::vector<pixelart::Rgba8> colors = v.resolveRamp();
+                if (colors.empty()){
+                    g.kind = GradientParam::Const;
+                    for (int c = 0; c < 4; c++) g.c0[c] = g.c1[c] = 1.0f;
+                    return true;
+                }
+                g.kind = GradientParam::Ramp;
+                if (startValue){
+                    g.driver = CurveDriver::Random;
+                    g.scale = 1.0f;
+                    g.offset = 0.0f;
+                }
+                g.lutSize = (uint32_t)colors.size();
+                std::vector<float> values, bytes;
+                for (const pixelart::Rgba8& c : colors){
+                    const Vector4 l = pixelart::toEngineLinear(c);
+                    values.insert(values.end(), {l.x, l.y, l.z, l.w});
+                    const uint32_t packed = (uint32_t)c.r | ((uint32_t)c.g << 8) | ((uint32_t)c.b << 16) | ((uint32_t)c.a << 24);
+                    float word;
+                    std::memcpy(&word, &packed, sizeof(word));
+                    bytes.push_back(word);
+                }
+                if (!place(values, false, g.lut0) || !place(bytes, true, g.lut1))
+                    return false;
+                g.rampBias = std::clamp(v.rampBias, 0.1f, 10.0f);
+                g.rampReverse = v.rampReverse ? 1u : 0u;
+                return true;
+            }
+            case GradientValueMode::Color:
+                g.kind = GradientParam::Const;
+                linear(v.color, g.c0);
+                linear(v.color, g.c1);
+                return true;
+            case GradientValueMode::TwoColors:
+                g.kind = v.color == v.colorMax ? GradientParam::Const : GradientParam::Range;
+                linear(v.color, g.c0);
+                linear(v.colorMax, g.c1);
+                return true;
+            case GradientValueMode::RandomColor:
+                // Unity's Random Color: the gradient read at a random point per particle
+                g.driver = CurveDriver::Random;
+                g.scale = 1.0f;
+                g.offset = 0.0f;
+                g.wrap = CurveWrap::Clamp;
+                [[fallthrough]];
+            case GradientValueMode::Gradient:
+            case GradientValueMode::TwoGradients: {
+                const bool two = v.mode == GradientValueMode::TwoGradients;
+                g.kind = two ? GradientParam::LutRange : GradientParam::Lut;
+                g.lutSize = std::max(gradientLutSize(v.gradient), two ? gradientLutSize(v.gradientMax) : 0u);
+                if (!place(gradientLut(v.gradient, g.lutSize), false, g.lut0))
+                    return false;
+                if (two && !place(gradientLut(v.gradientMax, g.lutSize), true, g.lut1))
+                    return false;
+                return true;
+            }
+        }
+        return true;
+    }
+
+    // What the compiler decides from a value besides its numbers: a change of any of it is a
+    // change of the program's structure (applyExposed compiles again)
+    uint32_t curveShape(const MinMaxCurve& v){
+        uint32_t shape = (uint32_t)v.mode | ((uint32_t)v.driver << 4);
+        if (v.isZero()) shape |= 1u << 8;
+        if (v.isConstant()) shape |= 1u << 9;
+        if (v.isConstant() && v.constant == 1.0f) shape |= 1u << 10;
+        if (v.usesCurve() && v.mode != CurveMode::TwoCurves){
+            // a flat curve compiles to a constant
+            float lo, hi;
+            v.curve.valueRange(lo, hi);
+            if (lo == hi) shape |= 1u << 11;
+        }
+        return shape;
+    }
+
+    uint32_t gradientShape(const MinMaxGradient& v){
+        return (uint32_t)v.mode | ((uint32_t)v.driver << 4);
+    }
+
     struct Context {
         ParticleProgram& program;
         PoolWriter pool;
         const ParticleEffectDocument& doc;
         const CompileEnvironment& env;
         std::vector<Diagnostic>& diagnostics;
+
+        // the exposed parameters' values (curve or colour fields) and the slots of their uses
+        // (empty without exposed parameters)
+        struct Bound {
+            const void* source = nullptr;
+            std::vector<uint32_t> bindings;
+        };
+        std::vector<Bound> bound;
+        std::vector<ExposedSlot>* slots = nullptr;
+        std::vector<ExposedBinding>* bindings = nullptr;
+        // the slots' patterns, to find their copies once the program is done
+        std::vector<std::vector<unsigned char>> patterns;
+
+        LutPlace append(){
+            return [this](const std::vector<float>& values, bool, uint32_t& offset){
+                offset = pool.addFloats(values.data(), values.size());
+                return true;
+            };
+        }
 
         // a constant-free curve compiled into its LUT(s)
         uint32_t curveLut(const Curve& curve, float multiplier, uint32_t& size){
@@ -94,129 +303,70 @@ namespace {
             return pool.addFloats(values.data(), values.size());
         }
 
-        CurveParam curve(const MinMaxCurve& v, ModuleId module, uint32_t stream, float scale = 1.0f, bool startValue = false){
-            CurveParam c;
-            c.stream = randomSalt((uint32_t)module, stream);
-            c.driver = v.driver;
-            c.wrap = v.wrap;
-            if (startValue && c.driver != CurveDriver::Random)
-                c.driver = CurveDriver::EmitterTime;
-            const float span = v.driverMax - v.driverMin;
-            c.scale = span != 0.0f ? 1.0f / span : 0.0f;
-            c.offset = span != 0.0f ? -v.driverMin / span : 0.0f;
-            switch (v.mode){
-                case CurveMode::Constant:
-                    c.kind = CurveParam::Const;
-                    c.c0 = c.c1 = v.constant * scale;
-                    break;
-                case CurveMode::TwoConstants:
-                    c.kind = v.constant == v.constantMax ? CurveParam::Const : CurveParam::Range;
-                    c.c0 = v.constant * scale;
-                    c.c1 = v.constantMax * scale;
-                    break;
-                case CurveMode::Curve:
-                case CurveMode::TwoCurves: {
-                    const bool two = v.mode == CurveMode::TwoCurves;
-                    // a flat curve is a constant
-                    float lo0, hi0;
-                    v.curve.valueRange(lo0, hi0);
-                    if (!two && lo0 == hi0){
-                        c.kind = CurveParam::Const;
-                        c.c0 = c.c1 = lo0 * v.multiplier * scale;
-                        break;
-                    }
-                    c.kind = two ? CurveParam::LutRange : CurveParam::Lut;
-                    // both LUTs share a size (the finer of the two)
-                    uint32_t size0 = ParticleCompiler::lutSize(v.curve, 1.0e-4f * curveValueRange(v.curve));
-                    uint32_t size1 = two ? ParticleCompiler::lutSize(v.curveMax, 1.0e-4f * curveValueRange(v.curveMax)) : size0;
-                    c.lutSize = std::max(size0, size1);
-                    std::vector<float> values;
-                    bakeCurve(v.curve, v.multiplier * scale, c.lutSize, values);
-                    c.lut0 = pool.addFloats(values.data(), values.size());
-                    if (two){
-                        bakeCurve(v.curveMax, v.multiplier * scale, c.lutSize, values);
-                        c.lut1 = pool.addFloats(values.data(), values.size());
-                    }
-                    break;
-                }
+        Bound* boundOf(const void* source){
+            for (Bound& b : bound){
+                if (b.source == source)
+                    return &b;
             }
+            return nullptr;
+        }
+
+        // a compiled use of an exposed value: a slot tagged in the param's pad byte
+        template<class Param>
+        void record(const void* source, Param& param, bool gradient, const MinMaxCurve* curveValue, const MinMaxGradient* colorValue,
+                    float scale, bool startValue){
+            Bound* b = boundOf(source);
+            if (!b)
+                return;
+            if (slots->size() >= 255){
+                // past the pad byte's tags: these uses are not rewritable
+                for (uint32_t i : b->bindings) (*bindings)[i].rewritable = false;
+                return;
+            }
+            ExposedSlot slot;
+            slot.gradient = gradient;
+            slot.tag = (uint8_t)(slots->size() + 1);
+            slot.salt = param.stream;
+            slot.scale = scale;
+            slot.startValue = startValue;
+            if (curveValue) slot.curve = *curveValue;
+            if (colorValue) slot.color = *colorValue;
+            param.pad = slot.tag;
+            std::vector<unsigned char> pattern(sizeof(Param));
+            std::memcpy(pattern.data(), &param, sizeof(Param));
+            patterns.push_back(std::move(pattern));
+            for (uint32_t i : b->bindings) (*bindings)[i].slots.push_back((uint32_t)slots->size());
+            slots->push_back(std::move(slot));
+        }
+
+        // a use of an exposed value's numbers outside its CurveParam / GradientParam: its
+        // parameters compile again when they change
+        void raw(const void* source){
+            if (Bound* b = boundOf(source)){
+                for (uint32_t i : b->bindings) (*bindings)[i].rewritable = false;
+            }
+        }
+
+        // `source`: the document's value when `v` is an adjusted copy of it
+        CurveParam curve(const MinMaxCurve& v, ModuleId module, uint32_t stream, float scale = 1.0f, bool startValue = false,
+                         const MinMaxCurve* source = nullptr){
+            CurveParam c;
+            buildCurve(v, randomSalt((uint32_t)module, stream), scale, startValue, append(), c);
+            if (!bound.empty())
+                record(source ? source : &v, c, false, &v, nullptr, scale, startValue);
             return c;
         }
 
-        uint32_t gradientLut(const Gradient& g, uint32_t size){
-            std::vector<float> values(size * 4);
-            for (uint32_t i = 0; i < size; i++){
-                const Vector4 c = g.evaluate((float)i / (float)(size - 1));
-                values[i * 4 + 0] = c.x;
-                values[i * 4 + 1] = c.y;
-                values[i * 4 + 2] = c.z;
-                values[i * 4 + 3] = c.w;
-            }
-            return pool.addFloats(values.data(), values.size());
-        }
-
-        // the LUT size that keeps every channel of a gradient within half a step of 8 bits
-        static uint32_t gradientLutSize(const Gradient& g){
-            if (g.mode == GradientMode::Fixed)
-                return 1025;
-            for (uint32_t size = 65; size < 1025; size = (size - 1) * 2 + 1){
-                bool ok = true;
-                for (uint32_t i = 0; i + 1 < size && ok; i++){
-                    const float t0 = (float)i / (float)(size - 1), t1 = (float)(i + 1) / (float)(size - 1);
-                    const Vector4 a = g.evaluate(t0), b = g.evaluate(t1), m = g.evaluate((t0 + t1) * 0.5f);
-                    const Vector4 lerp = (a + b) * 0.5f;
-                    ok = std::fabs(lerp.x - m.x) < 0.5f / 255.0f && std::fabs(lerp.y - m.y) < 0.5f / 255.0f &&
-                         std::fabs(lerp.z - m.z) < 0.5f / 255.0f && std::fabs(lerp.w - m.w) < 0.5f / 255.0f;
-                }
-                if (ok)
-                    return size;
-            }
-            return 1025;
-        }
-
-        GradientParam gradient(const MinMaxGradient& v, ModuleId module, uint32_t stream, bool startValue = false){
+        GradientParam gradient(const MinMaxGradient& v, ModuleId module, uint32_t stream, bool startValue = false, const MinMaxGradient* source = nullptr){
             GradientParam g;
-            g.stream = randomSalt((uint32_t)module, stream);
-            g.driver = v.driver;
-            g.wrap = v.wrap;
-            if (startValue && g.driver != CurveDriver::Random)
-                g.driver = CurveDriver::EmitterTime;
-            const float span = v.driverMax - v.driverMin;
-            g.scale = span != 0.0f ? 1.0f / span : 0.0f;
-            g.offset = span != 0.0f ? -v.driverMin / span : 0.0f;
-            auto linear = [](const Vector4& c, float out[4]){
-                const Vector4 l = Color::sRGBToLinear(c);
-                out[0] = l.x; out[1] = l.y; out[2] = l.z; out[3] = l.w;
-            };
-            switch (v.mode){
-                case GradientValueMode::Color:
-                    g.kind = GradientParam::Const;
-                    linear(v.color, g.c0);
-                    linear(v.color, g.c1);
-                    break;
-                case GradientValueMode::TwoColors:
-                    g.kind = v.color == v.colorMax ? GradientParam::Const : GradientParam::Range;
-                    linear(v.color, g.c0);
-                    linear(v.colorMax, g.c1);
-                    break;
-                case GradientValueMode::RandomColor:
-                    // Unity's Random Color: the gradient read at a random point per particle
-                    g.driver = CurveDriver::Random;
-                    g.scale = 1.0f;
-                    g.offset = 0.0f;
-                    g.wrap = CurveWrap::Clamp;
-                    [[fallthrough]];
-                case GradientValueMode::Gradient:
-                case GradientValueMode::TwoGradients: {
-                    const bool two = v.mode == GradientValueMode::TwoGradients;
-                    g.kind = two ? GradientParam::LutRange : GradientParam::Lut;
-                    g.lutSize = std::max(gradientLutSize(v.gradient), two ? gradientLutSize(v.gradientMax) : 0u);
-                    g.lut0 = gradientLut(v.gradient, g.lutSize);
-                    if (two)
-                        g.lut1 = gradientLut(v.gradientMax, g.lutSize);
-                    break;
-                }
-            }
+            buildGradient(v, randomSalt((uint32_t)module, stream), startValue, append(), g);
+            if (!bound.empty())
+                record(source ? source : &v, g, true, nullptr, &v, 1.0f, startValue);
+            // a ramp that cannot be read draws white (S49 R12)
+            if (v.mode == GradientValueMode::Ramp && g.kind != GradientParam::Ramp)
+                diagnostics.push_back({Diagnostic::Severity::Warning, std::string(ParticleModules::get(module).key),
+                                       "the palette ramp \"" + v.ramp + "\" cannot be read: drawn white", "ramp_missing",
+                                       "pick a ramp of a .palette in the project"});
             return g;
         }
 
@@ -235,6 +385,83 @@ namespace {
         m[0] = cy * cz + sy * sx * sz;  m[1] = cx * sz;  m[2] = -sy * cz + cy * sx * sz;
         m[3] = -cy * sz + sy * sx * cz; m[4] = cx * cz;  m[5] = sy * sz + cy * sx * cz;
         m[6] = sy * cx;                 m[7] = -sx;      m[8] = cy * cx;
+    }
+
+    // ---------------------------------------------------------------- pixel art (S49)
+
+    // the camera-facing modes the Pixel Art module applies to (R1)
+    bool pixelArtMode(RenderMode mode){
+        return mode == RenderMode::Billboard || mode == RenderMode::FacingCameraPosition || mode == RenderMode::StretchedBillboard ||
+               mode == RenderMode::VelocityAligned || mode == RenderMode::Pixel;
+    }
+
+    void compilePixel(Context& cx, RenderParams& r, const ColorOverLifetimeModule& col, const ColorBySpeedModule& cbs, bool replaceColor, bool storedColor){
+        const ParticleEffectDocument& d = cx.doc;
+        const RendererModule& rm = d.renderer;
+        const PixelArtModule& pa = d.pixelArt;
+        PixelParams& p = r.pixel;
+        const bool module = on(pa.present, pa.enabled);
+        if (module && rm.enabled && rm.renderMode == RenderMode::Mesh)
+            cx.diagnostics.push_back({Diagnostic::Severity::Warning, "modules.pixelArt", "Mesh particles ignore the Pixel Art module", "pixel_art_mesh",
+                                      "use Render Mode Pixel or a billboard mode"});
+        p.shapes = r.mode == RenderMode::Pixel ? 1 : 0;
+        p.module = (module && pixelArtMode(r.mode)) ? 1 : 0;
+        p.active = (p.shapes || p.module) ? 1 : 0;
+        if (!p.active)
+            return;
+        // without the module the Pixel mode keeps S20's look otherwise: blended, unsnapped sizes in pixels
+        const PixelArtModule defaults;
+        const PixelArtModule& m = p.module ? pa : defaults;
+        p.snap = (p.module && m.snap) ? 1 : 0;
+        p.pixelSizes = (!p.module || m.pixelSizes) ? 1 : 0;
+        p.integerSize = (!p.module || m.integerSize) ? 1 : 0;
+        p.fade = p.module ? m.fade : PixelFade::Alpha;
+        p.ditherSize = (uint8_t)(m.ditherSize <= 2 ? 2 : (m.ditherSize >= 8 ? 8 : 4));
+        p.ditherSpace = m.ditherSpace;
+        p.secondary = m.secondary;
+        p.secondaryOffset = (int8_t)std::clamp(m.secondaryOffset, -8, 8);
+        p.secondaryColor[0] = m.secondaryColor.x; p.secondaryColor[1] = m.secondaryColor.y;
+        p.secondaryColor[2] = m.secondaryColor.z; p.secondaryColor[3] = m.secondaryColor.w;
+        p.holdFrameRate = p.module ? std::max(m.holdFrameRate, 0.0f) : 0.0f;
+        p.fadeCurve = (p.module && !(m.fadeOverLifetime.isConstant() && m.fadeOverLifetime.constant == 1.0f)) ? 1 : 0;
+        if (p.fadeCurve)
+            p.fadeOverLifetime = cx.curve(m.fadeOverLifetime, ModuleId::PixelArt, 4);
+        p.wobble = (p.module && (m.wobbleAmplitude.x != 0.0f || m.wobbleAmplitude.y != 0.0f)) ? 1 : 0;
+        p.wobbleRandomPhase = m.wobbleRandomPhase ? 1 : 0;
+        p.wobbleAmplitude[0] = m.wobbleAmplitude.x; p.wobbleAmplitude[1] = m.wobbleAmplitude.y;
+        p.wobbleFrequency[0] = m.wobbleFrequency.x; p.wobbleFrequency[1] = m.wobbleFrequency.y;
+        p.flickerBelow = p.module ? std::clamp(m.flickerBelow, 0.0f, 1.0f) : 0.0f;
+        p.flickerRate = std::max(m.flickerRate, 0.1f);
+        p.shape = rm.pixelShape;
+        p.streakLengthScale = std::max(rm.streakLengthScale, 0.0f);
+        p.streakMaxLength = std::clamp(rm.streakMaxLength, 1.0f, 64.0f);
+        p.streakHeadFraction = std::clamp(rm.streakHeadFraction, 0.0f, 1.0f);
+        p.streakWidth = (uint32_t)std::clamp(rm.streakWidth, 1, 3);
+        p.discRim = rm.discRim ? 1 : 0;
+        p.ringWidth = (uint32_t)std::clamp(rm.ringWidth, 1, 8);
+        p.dotShadeBottom = rm.dotShadeBottom ? 1 : 0;
+        p.glowBands = (uint32_t)std::clamp(rm.glowBands, 1, 4);
+        p.rotationSteps = (uint32_t)std::clamp(rm.rotationSteps, 1, 360);
+
+        // the ramp: Color over Lifetime's when it is one, else Start Color's (R6)
+        const bool colOn = on(col.present, col.enabled);
+        const bool cbsOn = on(cbs.present, cbs.enabled);
+        if (colOn && !col.setMode && r.colorOverLifetime && r.color.kind == GradientParam::Ramp){
+            p.rampSource = 2;
+            p.ramp = r.color;
+        }else if (d.main.startColor.mode == GradientValueMode::Ramp){
+            p.ramp = cx.gradient(d.main.startColor, ModuleId::Main, 10, true);
+            p.rampSource = p.ramp.kind == GradientParam::Ramp ? 1 : 0;
+        }
+        // the ramp's bytes are drawn as they are when every other colour is white (R13)
+        const MinMaxGradient& start = d.main.startColor;
+        const bool startWhiteRgb = start.mode == GradientValueMode::Color && start.color.x == 1.0f && start.color.y == 1.0f && start.color.z == 1.0f;
+        const bool othersWhite = !cbsOn && !replaceColor && !storedColor;
+        if (p.rampSource == 2)
+            p.exactColor = (startWhiteRgb && othersWhite) ? 1 : 0;
+        else if (p.rampSource == 1)
+            p.exactColor = (othersWhite && (!colOn || (col.color.mode == GradientValueMode::Color && col.color.color.x == 1.0f &&
+                                                      col.color.color.y == 1.0f && col.color.color.z == 1.0f))) ? 1 : 0;
     }
 
     // ---------------------------------------------------------------- the Low noise field
@@ -360,7 +587,11 @@ namespace {
             s.rotation = true;
         if (on(d.rotationOverLifetime.present, d.rotationOverLifetime.enabled) && !drivenPurely(d.rotationOverLifetime.angularVelocity))
             s.rotation = true;
-        const bool mesh = d.renderer.enabled && d.renderer.renderMode == RenderMode::Mesh;
+        // a particle at rest stops turning: its rotation is ticked, so the tick can hold it (S49 R14)
+        if (on(d.rotationOverLifetime.present, d.rotationOverLifetime.enabled) && on(d.collision.present, d.collision.enabled) &&
+                d.collision.settleSpeed > 0.0f)
+            s.rotation = true;
+        const bool mesh = d.renderer.enabled && (d.renderer.renderMode == RenderMode::Mesh || d.renderer.renderMode == RenderMode::Ring);
         if (mesh){
             s.quat = true;
             s.angularVelocity3D = on(d.rotationOverLifetime.present, d.rotationOverLifetime.enabled) || on(d.rotationBySpeed.present, d.rotationBySpeed.enabled);
@@ -506,6 +737,59 @@ namespace {
 
 }
 
+namespace {
+
+    // what the bounds and the collision radii read of the sizes and speeds (also after
+    // applyExposed changed one of them)
+    void sizeHints(const ParticleEffectDocument& d, ParticleProgram& prog){
+        float lo, hi;
+        d.main.startSize.range(lo, hi);
+        prog.maxStartSize = std::max(hi, 0.0f);
+        if (d.main.startSize3D){
+            prog.maxStartSize = std::max({prog.maxStartSize, maxOf(d.main.startSizeY), maxOf(d.main.startSizeZ)});
+        }
+        prog.maxSpeedHint = std::max(std::fabs(maxOf(d.main.startSpeed)), 0.0f);
+        // the bounds' padding: the largest size multiplier the modules reach
+        const RenderParams& r = prog.render;
+        const SizeOverLifetimeModule& sol = d.sizeOverLifetime;
+        const SizeBySpeedModule& sbs = d.sizeBySpeed;
+        float factor = 1.0f;
+        if (r.sizeOverLifetime)
+            factor *= std::max({maxOf(sol.size), sol.separateAxes ? maxOf(sol.sizeY) : 0.0f, sol.separateAxes ? maxOf(sol.sizeZ) : 0.0f, 0.0f});
+        if (r.sizeBySpeed)
+            factor *= std::max({maxOf(sbs.size), sbs.separateAxes ? maxOf(sbs.sizeY) : 0.0f, sbs.separateAxes ? maxOf(sbs.sizeZ) : 0.0f, 0.0f});
+        if (r.noiseSize)
+            factor *= 1.0f + std::fabs(maxOf(d.noise.sizeAmount)) * std::fabs(maxOf(d.noise.strength));
+        if (r.storedSize && on(d.setOverAge.present, d.setOverAge.enabled)){
+            for (const SetOverAgeEntry& e : d.setOverAge.entries){
+                if (e.property == SetProperty::Size || e.property == SetProperty::Scale){
+                    const float big = std::max({std::fabs(e.from.x), std::fabs(e.to.x), std::fabs(e.from.y), std::fabs(e.to.y), std::fabs(e.from.z), std::fabs(e.to.z)});
+                    prog.maxStartSize = std::max(prog.maxStartSize, big);
+                }
+            }
+        }
+        prog.maxSizeFactor = std::max(factor, 1.0e-3f);
+    }
+
+    // where the copies of each slot's param went: the pool, the program object (its params
+    // outside the pool) and the bursts. The pad byte's tag and the random stream make each
+    // pattern unique.
+    void locateSlots(const ParticleProgram& prog, const std::vector<std::vector<unsigned char>>& patterns, std::vector<ExposedSlot>& slots){
+        auto find = [](const unsigned char* base, size_t bytes, const std::vector<unsigned char>& pattern, std::vector<uint32_t>& out){
+            for (size_t at = 0; at + pattern.size() <= bytes; at += 4){
+                if (std::memcmp(base + at, pattern.data(), pattern.size()) == 0)
+                    out.push_back((uint32_t)at);
+            }
+        };
+        for (size_t i = 0; i < slots.size(); i++){
+            find(reinterpret_cast<const unsigned char*>(prog.pool.data()), prog.pool.size() * sizeof(uint32_t), patterns[i], slots[i].inPool);
+            find(reinterpret_cast<const unsigned char*>(&prog), sizeof(ParticleProgram), patterns[i], slots[i].inProgram);
+            find(reinterpret_cast<const unsigned char*>(prog.emission.bursts.data()), prog.emission.bursts.size() * sizeof(BurstParam), patterns[i], slots[i].inBursts);
+        }
+    }
+
+}
+
 uint32_t ParticleCompiler::lutSize(const Curve& curve, float tolerance){
     if (curve.keys.size() < 2)
         return 65;
@@ -634,16 +918,53 @@ std::shared_ptr<CompiledEffect> ParticleCompiler::compile(const ParticleEffectDo
     return effect;
 }
 
+namespace {
+
+    // compiles run on loading threads too; 32 bits: a lock-free atomic on every target (wasm32
+    // and armv7 included), and the count is only ever compared before and after a change
+    std::atomic<uint32_t> compiles{0};
+
+}
+
+uint32_t ParticleCompiler::compileCount(){
+    return compiles.load(std::memory_order_relaxed);
+}
+
 void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnvironment& env, CompiledEffect& effect){
+    compiles.fetch_add(1, std::memory_order_relaxed);
     effect.document = d;
     effect.diagnostics.clear();
     effect.program = ParticleProgram();
+    effect.exposedSlots.clear();
+    effect.exposedBindings.clear();
     effect.valid = ParticleEffectCodec::validate(d, effect.diagnostics);
+    // an Analytic effect computes a subset of the modules (S49 R15): the rest refuse it
+    if (effect.valid && d.simulationMode == SimulationMode::Analytic)
+        effect.valid = AnalyticParticles::validate(d, effect.diagnostics);
     if (!effect.valid)
         return;
 
     ParticleProgram& prog = effect.program;
     Context cx{prog, PoolWriter(prog.pool), d, env, effect.diagnostics};
+    // the exposed parameters' curve and colour values: their uses become slots (R10)
+    cx.slots = &effect.exposedSlots;
+    cx.bindings = &effect.exposedBindings;
+    for (size_t i = 0; i < d.exposed.size(); i++){
+        const ParticleModules::Resolved r = ParticleModules::resolve(const_cast<ParticleEffectDocument&>(d), d.exposed[i].path);
+        ExposedBinding binding;
+        binding.parameter = (uint32_t)i;
+        binding.member = r.member;
+        binding.rewritable = r.field && (r.field->type == FieldType::MinMaxCurve || r.field->type == FieldType::MinMaxGradient);
+        effect.exposedBindings.push_back(binding);
+        if (!binding.rewritable)
+            continue;
+        Context::Bound* b = cx.boundOf(r.storage);
+        if (!b){
+            cx.bound.push_back({r.storage, {}});
+            b = &cx.bound.back();
+        }
+        b->bindings.push_back((uint32_t)i);
+    }
 
     prog.duration = d.duration;
     prog.looping = d.looping;
@@ -664,15 +985,15 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             MinMaxCurve arcSpeed = sh.arcSpeed, radiusSpeed = sh.radiusSpeed;
             if (arcSpeed.driver != CurveDriver::Random) arcSpeed.driver = CurveDriver::EmitterTime;
             if (radiusSpeed.driver != CurveDriver::Random) radiusSpeed.driver = CurveDriver::EmitterTime;
-            prog.arcSpeed = moving(sh.arcMode) ? cx.curve(arcSpeed, ModuleId::Shape, 20, 360.0f) : CurveParam();
-            prog.radiusSpeed = moving(sh.radiusMode) ? cx.curve(radiusSpeed, ModuleId::Shape, 21) : CurveParam();
+            prog.arcSpeed = moving(sh.arcMode) ? cx.curve(arcSpeed, ModuleId::Shape, 20, 360.0f, false, &sh.arcSpeed) : CurveParam();
+            prog.radiusSpeed = moving(sh.radiusMode) ? cx.curve(radiusSpeed, ModuleId::Shape, 21, 1.0f, false, &sh.radiusSpeed) : CurveParam();
         }
         const NoiseModule& n = d.noise;
         prog.noiseScroll = on(n.present, n.enabled) && !n.scrollSpeed.isConstant();
         if (prog.noiseScroll){
             MinMaxCurve scroll = n.scrollSpeed;
             if (scroll.driver != CurveDriver::Random) scroll.driver = CurveDriver::EmitterTime;
-            prog.noiseScrollSpeed = cx.curve(scroll, ModuleId::Noise, 10);
+            prog.noiseScrollSpeed = cx.curve(scroll, ModuleId::Noise, 10, 1.0f, false, &n.scrollSpeed);
         }
     }
     prog.space = d.simulationSpace;
@@ -714,6 +1035,8 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
     const bool collisionOn = on(d.collision.present, d.collision.enabled);
     const bool worldCollision = collisionOn && (d.collision.type == CollisionType::World || d.collision.type == CollisionType::World2D);
     if (worldCollision) need({ChPlaneNX, ChPlaneNY, ChPlaneNZ, ChPlaneD, ChPlaneTick});
+    // only an effect that settles pays for the flag (S49 R14)
+    if (collisionOn && d.collision.settleSpeed > 0.0f) need({ChSettled});
     const bool trailsOn = on(d.trails.present, d.trails.enabled) && d.trails.mode == TrailMode::PerParticle;
     if (trailsOn) need({ChTrailSlot});
     {
@@ -725,10 +1048,16 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             !(v.x.isZero() && v.y.isZero() && v.z.isZero() && v.orbitalX.isZero() && v.orbitalY.isZero() &&
               v.orbitalZ.isZero() && v.radial.isZero()));
         const bool alongVelocity = rm.renderMode == RenderMode::StretchedBillboard ||
-            (rm.renderMode == RenderMode::Mesh && rm.meshAlignment == MeshAlignment::Velocity);
+            ((rm.renderMode == RenderMode::Mesh || rm.renderMode == RenderMode::Ring) && rm.meshAlignment == MeshAlignment::Velocity);
         if (animated && alongVelocity) need({ChAnimVelX, ChAnimVelY, ChAnimVelZ});
     }
     prog.inheritsRotation = env.inheritsRotation;
+    prog.followsParent = env.followsParent;
+    prog.followsRotation = env.followsParent && env.followsRotation;
+    prog.followsScale = env.followsParent && env.followsScale;
+    if (prog.followsParent) need({ChParentId});
+    if (prog.followsRotation) need({ChFollowQuatX, ChFollowQuatY, ChFollowQuatZ, ChFollowQuatW});
+    if (prog.followsScale) need({ChFollowSize});
 
     // ---- emission
     {
@@ -738,14 +1067,16 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             // rates follow the emitter time
             MinMaxCurve rate = d.emission.rateOverTime;
             if (rate.driver != CurveDriver::Random) rate.driver = CurveDriver::EmitterTime;
-            e.rate = cx.curve(rate, ModuleId::Emission, 1);
+            e.rate = cx.curve(rate, ModuleId::Emission, 1, 1.0f, false, &d.emission.rateOverTime);
             MinMaxCurve distance = d.emission.rateOverDistance;
             if (distance.driver != CurveDriver::Random) distance.driver = CurveDriver::EmitterTime;
-            e.rateOverDistance = cx.curve(distance, ModuleId::Emission, 2);
+            e.rateOverDistance = cx.curve(distance, ModuleId::Emission, 2, 1.0f, false, &d.emission.rateOverDistance);
             for (size_t bi = 0; bi < d.emission.bursts.size(); bi++){
                 const Burst& b = d.emission.bursts[bi];
                 BurstParam bp;
                 bp.time = b.time;
+                // the constants are read here, not through a CurveParam
+                cx.raw(&b.count);
                 bp.countMin = b.count.mode == CurveMode::TwoConstants ? std::min(b.count.constant, b.count.constantMax) : b.count.constant;
                 bp.countMax = b.count.mode == CurveMode::TwoConstants ? std::max(b.count.constant, b.count.constantMax) : b.count.constant;
                 if (b.count.usesCurve()){
@@ -753,7 +1084,7 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
                     MinMaxCurve count = b.count;
                     if (count.driver != CurveDriver::Random) count.driver = CurveDriver::EmitterTime;
                     bp.countCurve = 1;
-                    bp.count = cx.curve(count, ModuleId::Emission, 110u + (uint32_t)bi);
+                    bp.count = cx.curve(count, ModuleId::Emission, 110u + (uint32_t)bi, 1.0f, false, &b.count);
                 }
                 bp.cycles = b.cycles;
                 bp.interval = std::max(b.interval, 1.0e-4f);
@@ -809,7 +1140,8 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         st.initFrame = stored.frame ? 1 : 0;
         if (stored.frame){
             const TextureSheetAnimationModule& ts = d.textureSheetAnimation;
-            st.startFrame = cx.curve(ts.present ? ts.startFrame : MinMaxCurve(0.0f), ModuleId::TextureSheetAnimation, 2);
+            const MinMaxCurve noFrame(0.0f);
+            st.startFrame = cx.curve(ts.present ? ts.startFrame : noFrame, ModuleId::TextureSheetAnimation, 2);
             if (ts.present && !ts.startFrameList.empty()){
                 std::vector<uint32_t> frames;
                 for (int f : ts.startFrameList) frames.push_back((uint32_t)std::max(f, 0));
@@ -836,13 +1168,6 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             }
         }
         prog.spawnOps.push_back({OpCode::SpawnStartValues, cx.pool.add(st)});
-        float lo, hi;
-        d.main.startSize.range(lo, hi);
-        prog.maxStartSize = std::max(hi, 0.0f);
-        if (d.main.startSize3D){
-            prog.maxStartSize = std::max({prog.maxStartSize, maxOf(d.main.startSizeY), maxOf(d.main.startSizeZ)});
-        }
-        prog.maxSpeedHint = std::max(std::fabs(maxOf(d.main.startSpeed)), 0.0f);
     }
 
     // ---- update ops, in order
@@ -934,6 +1259,9 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             ap.oz = cx.curve(v.orbitalZ, ModuleId::VelocityOverLifetime, 6, kDegToRad);
             ap.offsetConst = (v.offsetX.isConstant() && v.offsetY.isConstant() && v.offsetZ.isConstant()) ? 1 : 0;
             ap.offset[0] = v.offsetX.constant; ap.offset[1] = v.offsetY.constant; ap.offset[2] = v.offsetZ.constant;
+            cx.raw(&v.offsetX);
+            cx.raw(&v.offsetY);
+            cx.raw(&v.offsetZ);
             if (!ap.offsetConst){
                 ap.offX = cx.curve(v.offsetX, ModuleId::VelocityOverLifetime, 9);
                 ap.offY = cx.curve(v.offsetY, ModuleId::VelocityOverLifetime, 10);
@@ -962,6 +1290,7 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         np.frequency = n.frequency;
         np.strengthScale = n.damping ? 1.0f / std::max(n.frequency, 1.0e-4f) : 1.0f;
         np.scrollSpeed = n.scrollSpeed.constant;
+        cx.raw(&n.scrollSpeed);
         np.scrollAccumulated = prog.noiseScroll ? 1 : 0;
         np.octaveMultiplier = n.octaveMultiplier;
         np.octaveScale = n.octaveScale;
@@ -1019,22 +1348,22 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         StoredAppearanceParams sa;
         const RotationBySpeedModule& rbs = d.rotationBySpeed;
         const RotationOverLifetimeModule& rol = d.rotationOverLifetime;
-        auto bySpeed = [&](const MinMaxCurve& c){
+        auto bySpeed = [&](const MinMaxCurve& c, uint32_t stream){
             MinMaxCurve speed = c;
             speed.driver = CurveDriver::Speed;
             speed.driverMin = rbs.speedRange.x;
             speed.driverMax = rbs.speedRange.y;
-            return speed;
+            return cx.curve(speed, ModuleId::RotationBySpeed, stream, kDegToRad, false, &c);
         };
         if (on(rbs.present, rbs.enabled) && stored.quat){
             // a mesh turns its quaternion: Z, and X / Y with separate axes
             sa.rotationBySpeed3D = 1;
-            sa.rotationSpeed = cx.curve(bySpeed(rbs.angularVelocity), ModuleId::RotationBySpeed, 1, kDegToRad);
-            sa.rotationSpeedX = rbs.separateAxes ? cx.curve(bySpeed(rbs.angularVelocityX), ModuleId::RotationBySpeed, 2, kDegToRad) : CurveParam();
-            sa.rotationSpeedY = rbs.separateAxes ? cx.curve(bySpeed(rbs.angularVelocityY), ModuleId::RotationBySpeed, 3, kDegToRad) : CurveParam();
+            sa.rotationSpeed = bySpeed(rbs.angularVelocity, 1);
+            sa.rotationSpeedX = rbs.separateAxes ? bySpeed(rbs.angularVelocityX, 2) : CurveParam();
+            sa.rotationSpeedY = rbs.separateAxes ? bySpeed(rbs.angularVelocityY, 3) : CurveParam();
         }else if (on(rbs.present, rbs.enabled) && stored.rotation){
             sa.rotationBySpeed = 1;
-            sa.rotationSpeed = cx.curve(bySpeed(rbs.angularVelocity), ModuleId::RotationBySpeed, 1, kDegToRad);
+            sa.rotationSpeed = bySpeed(rbs.angularVelocity, 1);
         }
         if (on(rol.present, rol.enabled) && stored.rotation && !stored.quat){
             sa.angularVelocity = 1;
@@ -1080,6 +1409,7 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         cp.maxQueries = c.quality == CollisionQuality::High ? 0xffffffffu : (uint32_t)std::max(c.maxQueriesPerTick, 1);
         cp.planeCacheTicks = (uint32_t)std::max(c.planeCacheTicks, 1);
         cp.maxEvents = (uint32_t)std::max(c.maxCollisionEvents, 1);
+        cp.settleSpeed = std::max(c.settleSpeed, 0.0f);
         prog.hasCollision = true;
         prog.collisionKind = cp.kind;
         prog.collisionEvents = c.sendEvents;
@@ -1108,12 +1438,18 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         }
         const SizeBySpeedModule& sbs = d.sizeBySpeed;
         if (on(sbs.present, sbs.enabled)){
-            auto bySpeed = [&](MinMaxCurve c){ c.driver = CurveDriver::Speed; c.driverMin = sbs.speedRange.x; c.driverMax = sbs.speedRange.y; return c; };
+            auto bySpeed = [&](const MinMaxCurve& source, uint32_t stream){
+                MinMaxCurve c = source;
+                c.driver = CurveDriver::Speed;
+                c.driverMin = sbs.speedRange.x;
+                c.driverMax = sbs.speedRange.y;
+                return cx.curve(c, ModuleId::SizeBySpeed, stream, 1.0f, false, &source);
+            };
             r.sizeBySpeed = 1;
             r.sizeBySpeed3D = sbs.separateAxes ? 1 : 0;
-            r.speedSizeX = cx.curve(bySpeed(sbs.size), ModuleId::SizeBySpeed, 1);
-            r.speedSizeY = cx.curve(bySpeed(sbs.separateAxes ? sbs.sizeY : sbs.size), ModuleId::SizeBySpeed, 2);
-            r.speedSizeZ = cx.curve(bySpeed(sbs.separateAxes ? sbs.sizeZ : sbs.size), ModuleId::SizeBySpeed, 3);
+            r.speedSizeX = bySpeed(sbs.size, 1);
+            r.speedSizeY = bySpeed(sbs.separateAxes ? sbs.sizeY : sbs.size, 2);
+            r.speedSizeZ = bySpeed(sbs.separateAxes ? sbs.sizeZ : sbs.size, 3);
         }
         const ColorOverLifetimeModule& col = d.colorOverLifetime;
         if (on(col.present, col.enabled) && !col.setMode){
@@ -1121,6 +1457,7 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             r.color = cx.gradient(col.color, ModuleId::ColorOverLifetime, 1);
         }else if (replaceColor){
             // the alpha still multiplies: the gradient with white colour keys
+            cx.raw(&col.color);
             MinMaxGradient alpha = col.color;
             for (Gradient* g : {&alpha.gradient, &alpha.gradientMax}){
                 for (GradientColorKey& key : g->colorKeys) key.color = Vector3(1.0f, 1.0f, 1.0f);
@@ -1137,7 +1474,7 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             g.driverMin = cbs.speedRange.x;
             g.driverMax = cbs.speedRange.y;
             r.colorBySpeed = 1;
-            r.speedColor = cx.gradient(g, ModuleId::ColorBySpeed, 1);
+            r.speedColor = cx.gradient(g, ModuleId::ColorBySpeed, 1, false, &cbs.color);
         }
         r.storedRotation = stored.rotation ? 1 : 0;
         r.storedSize = stored.size ? 1 : 0;
@@ -1147,7 +1484,7 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         r.size3D = (d.main.startSize3D || stored.size3D) ? 1 : 0;
         r.noiseSize = (noiseOn && !d.noise.sizeAmount.isZero()) ? 1 : 0;
         r.quat = stored.quat ? 1 : 0;
-        r.mesh = r.mode == RenderMode::Mesh ? 1 : 0;
+        r.mesh = (r.mode == RenderMode::Mesh || r.mode == RenderMode::Ring) ? 1 : 0;
         if (!stored.rotation && !r.startRotationStored)
             r.startRotation = cx.curve(d.main.startRotation, ModuleId::Main, 7, kDegToRad, true);
         r.flipRotation = d.main.flipRotation;
@@ -1157,6 +1494,7 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             const MinMaxCurve& w = rol.angularVelocity;
             r.rotationRate = cx.curve(w, ModuleId::RotationOverLifetime, 1, kDegToRad);
             if (r.rotationRate.kind == CurveParam::Lut || r.rotationRate.kind == CurveParam::LutRange){
+                cx.raw(&w);
                 // the LUTs hold the integral over normalized age instead (times the lifetime at render)
                 r.rotationRate.lut0 = integralLut(cx, w, false, r.rotationRate.lutSize);
                 if (r.rotationRate.kind == CurveParam::LutRange)
@@ -1189,7 +1527,7 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
                 fot.driverMin = ts.speedRange.x;
                 fot.driverMax = ts.speedRange.y;
             }
-            r.frameOverTime = cx.curve(fot, ModuleId::TextureSheetAnimation, 1);
+            r.frameOverTime = cx.curve(fot, ModuleId::TextureSheetAnimation, 1, 1.0f, false, &ts.frameOverTime);
             r.fps = ts.fps;
             r.startFrame = cx.curve(ts.startFrame, ModuleId::TextureSheetAnimation, 2);
             r.cycles = ts.cycles;
@@ -1228,30 +1566,15 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
         r.verticalEmitter = rm.verticalLock == VerticalLock::Emitter ? 1 : 0;
         r.meshSelection = (uint8_t)rm.meshSelection;
         r.meshAlignment = rm.meshAlignment;
-        r.meshCount = (uint32_t)std::min(rm.meshes.size(), kMaxRendererMeshes);
+        // a ring is one mesh, made from the ring settings
+        r.meshCount = r.mode == RenderMode::Ring ? 1u : (uint32_t)std::min(rm.meshes.size(), kMaxRendererMeshes);
         r.pivot[0] = rm.pivot.x; r.pivot[1] = rm.pivot.y; r.pivot[2] = rm.pivot.z;
         r.flip[0] = rm.flip.x; r.flip[1] = rm.flip.y; r.flip[2] = rm.flip.z;
         r.minScreenSize = rm.minScreenSize;
         r.maxScreenSize = rm.maxScreenSize;
         r.sortingFudge = rm.sortingFudge;
         r.emissive = rm.emissionIntensity;
-        // the bounds' padding: the largest size multiplier the modules reach
-        float factor = 1.0f;
-        if (r.sizeOverLifetime)
-            factor *= std::max({maxOf(sol.size), sol.separateAxes ? maxOf(sol.sizeY) : 0.0f, sol.separateAxes ? maxOf(sol.sizeZ) : 0.0f, 0.0f});
-        if (r.sizeBySpeed)
-            factor *= std::max({maxOf(sbs.size), sbs.separateAxes ? maxOf(sbs.sizeY) : 0.0f, sbs.separateAxes ? maxOf(sbs.sizeZ) : 0.0f, 0.0f});
-        if (r.noiseSize)
-            factor *= 1.0f + std::fabs(maxOf(d.noise.sizeAmount)) * std::fabs(maxOf(d.noise.strength));
-        if (stored.size && on(d.setOverAge.present, d.setOverAge.enabled)){
-            for (const SetOverAgeEntry& e : d.setOverAge.entries){
-                if (e.property == SetProperty::Size || e.property == SetProperty::Scale){
-                    const float big = std::max({std::fabs(e.from.x), std::fabs(e.to.x), std::fabs(e.from.y), std::fabs(e.to.y), std::fabs(e.from.z), std::fabs(e.to.z)});
-                    prog.maxStartSize = std::max(prog.maxStartSize, big);
-                }
-            }
-        }
-        prog.maxSizeFactor = std::max(factor, 1.0e-3f);
+        compilePixel(cx, r, col, cbs, replaceColor, stored.color);
     }
 
     // ---- trails
@@ -1275,12 +1598,131 @@ void ParticleCompiler::compile(const ParticleEffectDocument& d, const CompileEnv
             t.sizeAffectsWidth = tm.sizeAffectsWidth;
             t.sizeAffectsLifetime = tm.sizeAffectsLifetime;
             t.textureMode = tm.textureMode;
-            t.lightingData = tm.generateLightingData;
+        }
+    }
+
+    sizeHints(d, prog);
+    if (!effect.exposedSlots.empty())
+        locateSlots(prog, cx.patterns, effect.exposedSlots);
+    // ---- Analytic (S49): the slot count must fit; each system compiles its seed's program
+    if (d.simulationMode == SimulationMode::Analytic){
+        prog.analytic = true;
+        prog.render.pixel.holdFrameRate = 0.0f;   // its time is quantised instead (AnalyticParticles::setTime)
+        float lo, hi;
+        d.main.startLifetime.range(lo, hi);
+        prog.maxLifetime = std::max(hi, 1.0e-4f);
+        AnalyticProgram probe;
+        if (!AnalyticParticles::compile(d, prog, 1u, probe, effect.diagnostics)){
+            effect.valid = false;
+            effect.program = ParticleProgram();
         }
     }
 }
 
 // ---------------------------------------------------------------- program queries
+
+bool ParticleCompiler::applyExposed(CompiledEffect& effect, size_t parameter, const Vector4& value){
+    if (!effect.valid || parameter >= effect.exposedBindings.size() || parameter >= effect.document.exposed.size())
+        return false;
+    const ExposedBinding& binding = effect.exposedBindings[parameter];
+    if (!binding.rewritable)
+        return false;
+    ParticleEffectDocument& d = effect.document;
+    const ParticleModules::Resolved r = ParticleModules::resolve(d, d.exposed[parameter].path);
+    if (!r.field || !r.storage)
+        return false;
+    const bool gradient = r.field->type == FieldType::MinMaxGradient;
+    MinMaxCurve nextCurve;
+    MinMaxGradient nextColor;
+    if (gradient){
+        MinMaxGradient& field = *static_cast<MinMaxGradient*>(r.storage);
+        nextColor = field;
+        if (!ParticleModules::writeExposedMember(nextColor, binding.member, value) || gradientShape(nextColor) != gradientShape(field))
+            return false;
+    }else{
+        MinMaxCurve& field = *static_cast<MinMaxCurve*>(r.storage);
+        nextCurve = field;
+        if (!ParticleModules::writeExposedMember(nextCurve, binding.member, value.x) || curveShape(nextCurve) != curveShape(field))
+            return false;
+        // out of the field's range the document is invalid: the compile says so
+        float lo, hi;
+        nextCurve.range(lo, hi);
+        if (lo < r.field->minValue || hi > r.field->maxValue)
+            return false;
+    }
+
+    // every slot's new param first (and its LUTs where the old ones are), then the writes
+    ParticleProgram& prog = effect.program;
+    unsigned char* pool = reinterpret_cast<unsigned char*>(prog.pool.data());
+    unsigned char* object = reinterpret_cast<unsigned char*>(&prog);
+    unsigned char* bursts = reinterpret_cast<unsigned char*>(prog.emission.bursts.data());
+    struct Pending {
+        uint32_t slot = 0;
+        CurveParam curve;
+        GradientParam color;
+        MinMaxCurve curveValue;
+        MinMaxGradient colorValue;
+        std::vector<std::pair<uint32_t, std::vector<float>>> luts;
+    };
+    std::vector<Pending> pending;
+    for (uint32_t index : binding.slots){
+        ExposedSlot& slot = effect.exposedSlots[index];
+        const unsigned char* first = !slot.inPool.empty() ? pool + slot.inPool[0] : !slot.inProgram.empty() ? object + slot.inProgram[0]
+                                   : !slot.inBursts.empty() ? bursts + slot.inBursts[0] : nullptr;
+        Pending p;
+        p.slot = index;
+        auto overLut = [&](uint32_t kind, uint32_t lutSize, uint32_t lut0, uint32_t lut1, uint32_t lutKind, uint32_t rangeKind){
+            return [&p, kind, lutSize, lut0, lut1, lutKind, rangeKind, gradient](const std::vector<float>& values, bool second, uint32_t& offset){
+                const size_t perEntry = gradient ? 4u : 1u;
+                if ((kind != lutKind && kind != rangeKind) || (second && kind != rangeKind) || values.size() != (size_t)lutSize * perEntry)
+                    return false;
+                offset = second ? lut1 : lut0;
+                p.luts.push_back({offset, values});
+                return true;
+            };
+        };
+        if (gradient){
+            p.colorValue = slot.color;
+            if (!ParticleModules::writeExposedMember(p.colorValue, binding.member, value))
+                return false;
+            GradientParam old;
+            if (first) std::memcpy(&old, first, sizeof(old));
+            if (!buildGradient(p.colorValue, slot.salt, slot.startValue,
+                               overLut(old.kind, old.lutSize, old.lut0, old.lut1, GradientParam::Lut, GradientParam::LutRange), p.color))
+                return false;
+            p.color.pad = slot.tag;
+        }else{
+            p.curveValue = slot.curve;
+            if (!ParticleModules::writeExposedMember(p.curveValue, binding.member, value.x))
+                return false;
+            CurveParam old;
+            if (first) std::memcpy(&old, first, sizeof(old));
+            if (!buildCurve(p.curveValue, slot.salt, slot.scale, slot.startValue,
+                            overLut(old.kind, old.lutSize, old.lut0, old.lut1, CurveParam::Lut, CurveParam::LutRange), p.curve))
+                return false;
+            p.curve.pad = slot.tag;
+        }
+        pending.push_back(std::move(p));
+    }
+
+    for (Pending& p : pending){
+        ExposedSlot& slot = effect.exposedSlots[p.slot];
+        const void* bytes = gradient ? (const void*)&p.color : (const void*)&p.curve;
+        const size_t size = gradient ? sizeof(GradientParam) : sizeof(CurveParam);
+        for (uint32_t at : slot.inPool) std::memcpy(pool + at, bytes, size);
+        for (uint32_t at : slot.inProgram) std::memcpy(object + at, bytes, size);
+        for (uint32_t at : slot.inBursts) std::memcpy(bursts + at, bytes, size);
+        for (const auto& lut : p.luts) std::memcpy(pool + lut.first, lut.second.data(), lut.second.size() * sizeof(float));
+        if (gradient) slot.color = std::move(p.colorValue);
+        else slot.curve = std::move(p.curveValue);
+    }
+    if (gradient)
+        *static_cast<MinMaxGradient*>(r.storage) = nextColor;
+    else
+        *static_cast<MinMaxCurve*>(r.storage) = nextCurve;
+    sizeHints(d, prog);
+    return true;
+}
 
 bool ParticleProgram::sameStructure(const ParticleProgram& other) const{
     if (channels != other.channels || maxParticles != other.maxParticles || space != other.space || tickRate != other.tickRate)
@@ -1296,10 +1738,16 @@ bool ParticleProgram::sameStructure(const ParticleProgram& other) const{
     if (trails.enabled != other.trails.enabled || (trails.enabled && (trails.mode != other.trails.mode || trails.maxPoints != other.trails.maxPoints ||
                                                                       trails.ratio != other.trails.ratio)))
         return false;
-    return render.mode == other.render.mode && render.mesh == other.render.mesh && subEmitters == other.subEmitters;
+    return render.mode == other.render.mode && render.mesh == other.render.mesh && subEmitters == other.subEmitters && analytic == other.analytic;
 }
 
 uint32_t ParticleProgram::capacityHint() const{
+    // storage: the peak with room to spare, never under a chunk
+    const double peak = std::ceil(peakEstimate() * 1.1) + 8.0;
+    return (uint32_t)std::min<double>(std::max(peak, 64.0), maxParticles);
+}
+
+double ParticleProgram::peakEstimate() const{
     // the continuous peak: the largest rate times the longest lifetime, plus every burst
     const unsigned char* base = reinterpret_cast<const unsigned char*>(pool.data());
     float lifetime = 1.0f;
@@ -1343,8 +1791,7 @@ uint32_t ParticleProgram::capacityHint() const{
         if (!emission.rateOverDistance.isZero())
             peak = maxParticles;
     }
-    peak = std::ceil(peak * 1.1) + 8.0;
-    return (uint32_t)std::min<double>(std::max(peak, 64.0), maxParticles);
+    return std::min<double>(peak, maxParticles);
 }
 
 size_t ParticleProgram::bytesPerParticle() const{
@@ -1362,6 +1809,7 @@ const char* particles::channelName(Channel channel){
         "startColor", "rotation", "prevRotation", "startRotation", "sizeX", "sizeY", "sizeZ", "prevSizeX", "startSizeY",
         "startSizeZ", "quatX", "quatY", "quatZ", "quatW", "angVelX", "angVelY", "angVelZ", "colorR", "colorG", "colorB",
         "colorA", "accelX", "accelY", "accelZ", "frame", "noiseSize", "planeNX", "planeNY", "planeNZ", "planeD", "planeTick",
-        "trailSlot", "animVelX", "animVelY", "animVelZ"};
+        "trailSlot", "animVelX", "animVelY", "animVelZ", "parentId", "followQuatX", "followQuatY", "followQuatZ", "followQuatW",
+        "followSize", "settled"};
     return channel < ChCount ? names[channel] : "?";
 }

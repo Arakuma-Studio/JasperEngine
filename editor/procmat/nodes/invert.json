@@ -1,0 +1,36 @@
+{
+ "code": [],
+ "description": "A filter that inverts the R, G, and B channels of its input while keeping the A channel unchanged",
+ "format": 1,
+ "functions": [],
+ "id": "invert",
+ "inputs": [
+  {
+   "default": "vec4(1.0, 1.0, 1.0, 1.0)",
+   "description": "The input image",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Invert",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the inverted image",
+   "expr": "vec4(vec3(1.0)-$in($uv).rgb, $in($uv).a)",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [],
+ "short_description": "Invert filter",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/invert.mmg"
+ },
+ "type_version": 1
+}

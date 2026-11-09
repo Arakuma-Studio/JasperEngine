@@ -618,7 +618,9 @@ What the implementation does differently from the text above, and why.
 - **Mesh source "GameObject"** is the GameObject's own MeshComponent; a migrated Mesh target keeps
   its MeshComponent disabled as that source.
 - **Editor**: S27's curve widget has not landed, so curves and gradients show previews with key
-  tables (the spec's fallback, §9). The editor had no Inspector preview pane for assets: a
+  tables (the spec's fallback, §9). (Note, 2026-11-04, BF23 F26: S27's widget has landed since,
+  and `InspectorParticles.cpp` draws curves with `CurveField` and gradients with `GradientField`.)
+  The editor had no Inspector preview pane for assets: a
   `.particles` file picked in the Project window takes the Inspector (a live preview and its
   modules) until the GameObject selection changes. In Edit mode the particle subsystem is paused
   and the Scene view's Particle Effect panel simulates the selected systems (and the ones a tool

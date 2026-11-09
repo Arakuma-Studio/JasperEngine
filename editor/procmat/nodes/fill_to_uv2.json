@@ -1,0 +1,60 @@
+{
+ "code": [
+  "vec4 $(name_uv)_bb = $in($uv);"
+ ],
+ "description": "A fill companion node that generated an UV map that follows each filled area",
+ "format": 1,
+ "functions": [
+  "fill_to_uv_square",
+  "fill_to_uv_stretch"
+ ],
+ "id": "fill_to_uv2",
+ "inputs": [
+  {
+   "default": "vec4(0.0)",
+   "description": "The input fill data, to be connected to the output of a Fill node",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "fill"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Fill to UV      ",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The generated output UV map, to be connected to a Custom UV node",
+   "expr": "fill_to_uv_$mode($uv, $(name_uv)_bb, float($seed))",
+   "label": "Output",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The mode decides how the UVs are layed out on each bounding box:\n- Stretch mode where the UV layout is stretched to the bounding box. \n- Square mode where the UV layout is even and centerered based on the longest axis of the bounding box.",
+   "label": "",
+   "name": "mode",
+   "short_description": "Mode",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Stretch",
+     "value": "stretch"
+    },
+    {
+     "name": "Square",
+     "value": "square"
+    }
+   ]
+  }
+ ],
+ "short_description": "Fill to UV",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/fill_to_uv2.mmg"
+ },
+ "type_version": 1
+}

@@ -89,6 +89,9 @@ namespace jasperengine{
         // the effect (asset, inline document, exposed values) changed: rebound next update,
         // keeping the live particles when only parameters changed
         bool needReload = true;
+        // a script set an exposed value (setFloat): written into the running effect next update,
+        // without compiling it when the value allows (docs/specs/S91-effect-authoring.md R10)
+        bool exposedChanged = false;
 
         FunctionSubscribe<void(const std::vector<ParticleCollisionInfo>&)> onCollision;
         FunctionSubscribe<void(const std::vector<ParticleDeathInfo>&)> onParticleDeath;

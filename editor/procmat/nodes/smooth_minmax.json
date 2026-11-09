@@ -1,0 +1,110 @@
+{
+ "code": [
+  "float $(name_uv)_clamp_false = $op($in1($uv), $in2($uv), $k);",
+  "float $(name_uv)_clamp_true = clamp($(name_uv)_clamp_false, 0.0, 1.0);"
+ ],
+ "description": "Performs a smooth minimum/maximum math operation between its inputs",
+ "format": 1,
+ "functions": [
+  "smax",
+  "smin"
+ ],
+ "id": "smooth_minmax",
+ "inputs": [
+  {
+   "default": "$default_in1",
+   "description": "The A operand",
+   "label": "2:A",
+   "name": "in1",
+   "short_description": "A",
+   "type": "f"
+  },
+  {
+   "default": "$default_in2",
+   "description": "The B operand",
+   "label": "B",
+   "name": "in2",
+   "short_description": "B",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Smooth MinMax",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a grayscale image of the result",
+   "expr": "$(name_uv)_clamp_$clamp",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 1,
+   "description": "The operation to be performed",
+   "label": "",
+   "name": "op",
+   "short_description": "Operation",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Min",
+     "value": "smin"
+    },
+    {
+     "name": "Max",
+     "value": "smax"
+    }
+   ]
+  },
+  {
+   "default": 0,
+   "description": "The default value for A, used if the corresponding input is not connected",
+   "label": "",
+   "max": 1,
+   "min": 0,
+   "name": "default_in1",
+   "short_description": "A",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The default value for B, used if the corresponding input is not connected",
+   "label": "",
+   "max": 1,
+   "min": 0,
+   "name": "default_in2",
+   "short_description": "B",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The smoothness of the operation",
+   "label": "",
+   "max": 1,
+   "min": 0,
+   "name": "k",
+   "short_description": "Smoothness",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": false,
+   "description": "The result is clamped to [0, 1] if this option is checked",
+   "label": "Clamp",
+   "name": "clamp",
+   "short_description": "Clamp",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Smooth MinMax",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/smooth_minmax.mmg"
+ },
+ "type_version": 1
+}

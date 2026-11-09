@@ -20,6 +20,8 @@ namespace jasperengine::editor{
     constexpr uint32_t POSE_VIEW_ID = 3;
     // the Vertex Animation Baker's preview views (VatPreviewView: a scene of their own each)
     constexpr uint32_t VAT_PREVIEW_VIEW_ID = 4;
+    // ParticleEffectPreview's cells (preview_particle_effect, the Particle Effect window's filmstrip)
+    constexpr uint32_t PARTICLE_PREVIEW_VIEW_ID = 5;
 
     // Ray through (x, y), in pixels of a view of viewWidth x viewHeight that viewProjection
     // covers. An orthographic ray spans the whole near-far range.

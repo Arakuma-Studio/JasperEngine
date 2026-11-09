@@ -55,6 +55,10 @@ namespace jasperengine{
 namespace jasperengine::particles {
     struct ParticleEffectDocument;
 }
+
+namespace jasperengine::anim {
+    struct AnimatorDebugSnapshot;
+}
 #include <tuple>
 
 namespace jasperengine::editor{
@@ -241,6 +245,25 @@ namespace jasperengine::editor{
         std::set<std::string> usedPreviewIds;
 
         std::map<std::string, MaterialRender> materialRenders;
+        // the inspected .material: its values on a mesh no scene list holds, so the rows work on
+        // it as on any mesh, made on first use
+        struct MaterialAssetView {
+            SceneProject host;
+            Entity entity = NULL_ENTITY;
+            std::filesystem::path path;
+            std::filesystem::file_time_type time;
+            std::uintmax_t size = 0;
+            std::string error;
+            Material inFile;        // as the file holds it
+            Material inLinked;      // as the linked submeshes hold it
+            // each scene's unsaved mark before the edit reached the linked submeshes
+            std::map<uint32_t, bool> scenesModified;
+            Project* project = nullptr;
+            ~MaterialAssetView();
+        };
+        std::unique_ptr<MaterialAssetView> materialAsset;
+        int materialAssetFrame = -10;
+        int particleAssetFrame = -10;
         std::map<std::string, DirectionRender> directionRenders;
 
         MeshPreviewRender shapePreviewRender;
@@ -378,6 +401,7 @@ namespace jasperengine::editor{
         bool usePlayerClipFiles(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index, const std::vector<std::string>& files);
         void drawAnimationPlayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawAnimatorLive(const anim::AnimatorDebugSnapshot& snapshot);
         void drawAnimationPlayerClips(ComponentType cpType, SceneProject* sceneProject, Entity entity);
         void drawPlayerClipNameRow(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index);
         void drawPlayerDefaultClipRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
@@ -455,6 +479,14 @@ namespace jasperengine::editor{
         void drawAudioClipAsset(const std::filesystem::path& asset);
         // a .physicsmaterial: friction, bounciness and their combine modes (InspectorPhysics2D.cpp)
         void drawPhysicsMaterialAsset(const std::filesystem::path& asset);
+        // A .material as the Project window's selection (InspectorMaterialPbr.cpp): the rows of a
+        // submesh's material, on a mesh of a scene of its own. An edit reaches the linked submeshes
+        // as it is made and the file once its gesture ends, as one project undo step
+        void drawMaterialAsset(const std::filesystem::path& asset);
+        void readMaterialAsset(const std::filesystem::path& asset);
+        void writeMaterialAsset();
+        // the view stops: an edit still held goes to the file, nothing is held for later
+        void leaveMaterialAsset();
         // a .physicsmaterial path field (drop from the Project window, pick, clear) with undo
         bool physicsMaterialRow(ComponentType cpType, const std::string& property, const std::string& label,
                                 SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& help = "");
@@ -797,6 +829,10 @@ namespace jasperengine::editor{
         // every selected submesh as one undo step
         void drawMaterialPresetRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
                                    unsigned int submesh, const RowSettings& settingsMaterial);
+        // Every row of a submesh's material (the Mesh component's, and a .material's in
+        // drawMaterialAsset); onValueChanged runs after each edit
+        void drawSubmeshMaterialRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                     int s, const std::function<void()>& onValueChanged);
 
         // Scene-level variant: edits a scene default shader property (e.g. "default_mesh_shader"),
         // used by every component of that type whose customShader is empty.
@@ -1091,6 +1127,16 @@ namespace jasperengine::editor{
         void setOpen(bool open);
         bool isOpen() const;
         void focusNameInput();
+        // opened if closed, and focused on its next draw
+        void requestFocus();
+        // the Inspector drew a .material or a .particles this frame or the last: the edit keys
+        // and undo are the project's, not the selected GameObject's
+        bool showsProjectAsset() const;
+        // the Project window opened the .particles it has selected: the Inspector takes it again
+        // even if the same file was picked before
+        void showPickedParticleAgain() { lastProjectParticleFile.clear(); }
+        // the project closes: the .material view and its scene go, what it held written first
+        void resetMaterialAsset();
         // Component > Add... (main menu): opens the Add Component dialog for the selection
         void requestAddComponent();
         // Add Component's own path (the Search palette's components): one undo step per

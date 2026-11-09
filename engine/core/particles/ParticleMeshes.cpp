@@ -376,6 +376,27 @@ namespace {
 
 }
 
+void ParticleMeshes::ring(float outerRadius, float innerRadius, float arcDegrees, int segments, ParticleMeshData& out){
+    out.vertices.clear();
+    out.indices.clear();
+    const float arc = std::clamp(arcDegrees, 0.0f, 360.0f) / 360.0f;
+    const int around = std::clamp(segments, 3, (int)kMaxRingSegments);
+    // the arc's share of the circle's segments, one at least
+    const int count = std::max(1, (int)std::ceil((float)around * arc - 1.0e-4f));
+    const float span = arc * 6.28318530718f;
+    for (int k = 0; k <= count; k++){
+        const float u = (float)k / (float)count;
+        const float c = std::cos(span * u), s = std::sin(span * u);
+        vertex(out, c * outerRadius, s * outerRadius, 0.0f, 0, 0, 1, u, 0.0f);
+        vertex(out, c * innerRadius, s * innerRadius, 0.0f, 0, 0, 1, u, 1.0f);
+    }
+    for (int k = 0; k < count; k++){
+        const uint32_t outer = (uint32_t)k * 2, inner = outer + 1;
+        // counter-clockwise seen from +Z
+        quadIndices(out, inner, outer, outer + 2, inner + 2);
+    }
+}
+
 void ParticleMeshes::primitive(PrimitiveMesh primitive, ParticleMeshData& out){
     out.vertices.clear();
     out.indices.clear();

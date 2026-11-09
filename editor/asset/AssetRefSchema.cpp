@@ -607,6 +607,8 @@ namespace {
         switch (kind) {
             case particles::ParticleModules::AssetKind::Model: return AssetType::Model;
             case particles::ParticleModules::AssetKind::Effect: return AssetType::ParticleEffect;
+            case particles::ParticleModules::AssetKind::Palette: return AssetType::Palette;
+            case particles::ParticleModules::AssetKind::SoundEvent: return AssetType::SoundEvent;
             case particles::ParticleModules::AssetKind::Texture: break;
         }
         return AssetType::Texture;

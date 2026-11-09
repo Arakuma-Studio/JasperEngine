@@ -38,6 +38,10 @@ namespace jasperengine{
         bool customData = false;     // CUSTOM_DATA: the Custom Data stream
         bool receiveShadows = false; // RECEIVE_SHADOWS: the main light's shadow
         bool fog = false;            // HAS_FOG: the scene fog
+        // S49: the Pixel Art module or Render Mode Pixel (PARTICLE_PIXEL: the grid, the shapes,
+        // the dither); Analytic simulation (PARTICLE_ANALYTIC: each particle from its slot)
+        bool pixel = false;
+        bool analytic = false;
     };
 
     class JASPERENGINE_API ShaderPool{

@@ -1,0 +1,101 @@
+{
+ "code": [
+  "float $(name_uv)_angle = 6.28318530718*($map($uv).y-0.5);",
+  "vec2 $(name_uv)_uv = matmap_uv($uv, $(name_uv)_angle, $map($uv).z);",
+  ""
+ ],
+ "description": "Applies a workflow map to a base material, and generates height information as well as PBR channels for the result.\nThe height input must be connected to a Create Map or Mix Maps node. The other inputs must be connected to a base material.\nThe outputs must be connected to the Mix or the Output node, or a workflow filter node.",
+ "format": 1,
+ "functions": [
+  "matmap_rotate_nm",
+  "matmap_uv"
+ ],
+ "id": "mwf_map",
+ "inputs": [
+  {
+   "default": "vec3(1.0, 0.5, 0.0)",
+   "description": "The input workflow map",
+   "label": "Map",
+   "name": "map",
+   "short_description": "Map",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.0)",
+   "description": "The Albedo channel of the input base material",
+   "group_size": 4,
+   "label": "Albedo",
+   "name": "mat1",
+   "short_description": "Albedo",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.0)",
+   "description": "The ambient occlusion, roughness and metallic channels of the input material",
+   "label": "ORM",
+   "name": "mat2",
+   "short_description": "ORM",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.0)",
+   "description": "The emission channel of the input material",
+   "label": "Emission",
+   "name": "mat3",
+   "short_description": "Emission",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.5, 0.5, 1.0)",
+   "description": "The normal map of the input material",
+   "label": "Normal",
+   "name": "mat4",
+   "short_description": "Normal",
+   "type": "rgb"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Apply Map",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The height map of the result",
+   "expr": "$map($uv).x",
+   "group_size": 5,
+   "label": "Height",
+   "type": "f"
+  },
+  {
+   "description": "The albedo channel of the result",
+   "expr": "$mat1($(name_uv)_uv)",
+   "label": "Albedo",
+   "type": "rgb"
+  },
+  {
+   "description": "The ambient occlusion, roughness and metallic channels of the result",
+   "expr": "$mat2($(name_uv)_uv)",
+   "label": "ORM",
+   "type": "rgb"
+  },
+  {
+   "description": "The emission channel of the result",
+   "expr": "$mat3($(name_uv)_uv)",
+   "label": "Emission",
+   "type": "rgb"
+  },
+  {
+   "description": "The normal map of the result",
+   "expr": "matmap_rotate_nm($mat4($(name_uv)_uv), -$(name_uv)_angle)",
+   "label": "Normal",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [],
+ "short_description": "Apply Map",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/mwf_map.mmg"
+ },
+ "type_version": 1
+}

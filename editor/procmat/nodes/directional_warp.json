@@ -1,0 +1,75 @@
+{
+ "code": [],
+ "description": "Warps an image towards a specified direction",
+ "format": 1,
+ "functions": [],
+ "id": "directional_warp",
+ "inputs": [
+  {
+   "default": "vec4($uv, 0.0, 1.0)",
+   "description": "Input image to be warped",
+   "label": "",
+   "name": "in#",
+   "short_description": "Input#",
+   "type": "rgba"
+  },
+  {
+   "default": "1.0",
+   "description": "An optional map for warp angle (in degrees)",
+   "label": "",
+   "name": "anglemap",
+   "short_description": "AngleMap",
+   "type": "f"
+  },
+  {
+   "default": "0.0",
+   "description": "An optional map for intensity of the warp operation",
+   "label": "",
+   "name": "strengthmap",
+   "short_description": "StrengthMap",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Directional Warp",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the warped image",
+   "expr": "$in#($uv + vec2(cos($angle * $anglemap($uv) * 0.01745329251), sin($angle * $anglemap($uv) * 0.01745329251)) * ($strengthmap($uv) - 0.5) * $strength )",
+   "label": "Output#",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.0,
+   "description": "Angle of the warp operation",
+   "label": "2:Angle",
+   "max": 180.0,
+   "min": -180.0,
+   "name": "angle",
+   "short_description": "Angle",
+   "step": 1.0,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "Intensity of the warp operation",
+   "label": "Strength",
+   "max": 1.0,
+   "min": -1.0,
+   "name": "strength",
+   "short_description": "Strength",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Directional Warp",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/directional_warp.mmg"
+ },
+ "type_version": 1
+}

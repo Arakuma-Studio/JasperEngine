@@ -300,6 +300,8 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     // others read them (materials linked elsewhere, textures, HTML UI documents)
     std::map<std::string, std::vector<fs::path>> external, editorWritten;
     std::vector<fs::path> openDocuments, gone;
+    // graph files removed or moved away: their open documents learn the file is gone
+    std::vector<fs::path> graphsGone;
     for (const FileChange& change : changes) {
         const std::string relPath = relative(change.path);
         result.handled.push_back(change.path);
@@ -317,6 +319,8 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         if (change.directory) continue;
         if (change.kind == FileChangeKind::Removed) gone.push_back(change.path);
         if (change.kind == FileChangeKind::Moved) gone.push_back(change.oldPath);
+        if (change.kind == FileChangeKind::Removed && reload::kindOf(change.path) == "graph") graphsGone.push_back(change.path);
+        if (change.kind == FileChangeKind::Moved && reload::kindOf(change.oldPath) == "graph") graphsGone.push_back(change.oldPath);
         if (change.kind == FileChangeKind::Removed) {
             notify(change.path, reload::kindOf(change.path), Event::Dropped);
             if (sprite::SpriteAtlasBuilder::get().getProject() == project) {
@@ -329,6 +333,11 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             }
             // a removed HTML document is reported missing by its scene's documents
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) external["ui"].push_back(change.path);
+            // a removed .clips sidecar (an undo, a delete): the model's clips play the importer's
+            // settings again, so its clip documents and players reload (S77 R29)
+            if (change.path.extension() == ".clips") {
+                (change.origin == ChangeOrigin::Editor ? editorWritten : external)["animation"].push_back(change.path);
+            }
             continue;
         }
         // S45: a renamed atlas is forgotten under its old name (built again under the new one
@@ -389,6 +398,9 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             if (change.origin == ChangeOrigin::External && kind == "animation") {
                 reload::addAnimationFileProblems(*project, change.path, result.problems);
             }
+            // (and what the watcher found in these is the file's as it is now, not as it was)
+            if (change.origin == ChangeOrigin::External && kind == "particles") reload::addParticleEffectFileProblems(*project, change.path, result.problems);
+            if (change.origin == ChangeOrigin::External && kind == "graph") reload::addGraphFileProblems(*project, change.path, result.problems);
             continue;
         }
         if (change.origin == ChangeOrigin::Editor) {
@@ -396,7 +408,8 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             // and its load problems are the call's)
             // (a palette the Palette window or edit_palette wrote: the swaps drawn with it update; an
             // .aseprite an editor tool wrote: imported again like another program's save, S44 R23)
-            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "palette" || kind == "aseprite")
+            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "palette" || kind == "graph" ||
+                kind == "aseprite")
                 editorWritten[kind].push_back(change.path);
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) editorWritten["ui"].push_back(change.path);
             continue;
@@ -443,7 +456,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
 
     std::vector<fs::path> scripts = files(external, "script");
     std::vector<fs::path> code = scripts;
-    for (const char* kind : {"shader", "ui", "material", "text"}) {
+    for (const char* kind : {"shader", "ui", "material", "text", "particles", "graph"}) {
         for (const fs::path& path : files(external, kind)) code.push_back(path);
     }
     reload::reloadCodeEditorBuffers(ctx, code, options.full);
@@ -469,6 +482,11 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     }
     reload::reloadParticleEffects(ctx, files(external, "particles"));
     reload::reloadPalettes(ctx, both("palette"));
+    {
+        std::vector<fs::path> graphDocuments = files(editorWritten, "graph");
+        graphDocuments.insert(graphDocuments.end(), graphsGone.begin(), graphsGone.end());
+        reload::reloadGraphs(ctx, files(external, "graph"), graphDocuments);
+    }
     reload::reloadFonts(ctx, files(external, "font"));
     reload::reloadAnimations(ctx, both("animation"), files(external, "model"), options.full);
     // another program's changes not reloaded yet (the dedupe above): the documents' own stamps

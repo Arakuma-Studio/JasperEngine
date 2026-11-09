@@ -56,6 +56,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerLatticeTools, "Lattices (free-form deformation)", "animation"},   // upstream (lattice deformer)
     {registerPoseTools, "Pose animation", "animation"},   // upstream (Pose Animation)
     {registerVatTools, "Vertex animation", "animation"},   // upstream (Vertex Animation Textures)
+    {registerAnimationQualityTools, "Clip quality: reports and key reduction", "animation"},   // S77
     {registerAnimatorTools, "Animator: controllers, masks, montages, live control", "animation"},   // S21
     {registerPlacementTools, "Physics placement", "editor_ux"},   // upstream (Physics Placement)
     {registerHtmlUiTools, "HTML/CSS UI", ""},
@@ -67,7 +68,8 @@ const ToolModule TOOL_MODULES[] = {
     {registerMeshLodTools, "Meshes: import, cook and detail levels", "meshes"},   // S53, S54
     {registerDeviceTools, "Device tiers: GPU, thermal and memory state, simulation", "device"},   // S56
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
-    {registerGraphTools, "Graphs", "scripting"},   // S23
+    {registerGraphTools, "Graphs", "graphs"},   // S23; S90 R32 moved them out of scripting
+    {registerProceduralMaterialTools, "Procedural Materials: preview, checks and bake", "materials"},   // S90
     {registerGameplayTools, "Gameplay: input, character controller, water", "gameplay"},   // S22
     {registerSplineTools, "Splines: roads, walls, placement, terrain and water", "splines"},   // S18
     {registerEditorToolsTools, "Editor tools: recorder, colour sampling, swatches, curves", "editor_tools"},   // S27

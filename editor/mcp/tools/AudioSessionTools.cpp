@@ -29,6 +29,7 @@
 #include "settings/SettingsRegistry.h"
 #include "subsystem/AudioSystem.h"
 #include "util/ProjectFileWrites.h"
+#include "util/QaChecks.h"
 
 #include <algorithm>
 #include <map>
@@ -48,9 +49,9 @@ constexpr int MAX_EVENTS = 2000;
 constexpr int MAX_EXPECT = 64;
 constexpr double WAIT_SECONDS = 60.0;
 
-// consecutive FAILs of a check on a scene in this editor session: "<scene>|<check>"
-std::map<std::string, int>& failRounds() {
-    static std::map<std::string, int> rounds;
+// consecutive FAILs of a check on a scene in this editor session
+qa::FailRounds& failRounds() {
+    static qa::FailRounds rounds;
     return rounds;
 }
 
@@ -305,10 +306,7 @@ void checkAction(const CallPtr& call, std::shared_ptr<SessionWork> work) {
     }
 
     const std::string scene = work->capture.session.value("scene", std::string());
-    for (const std::string& id : AudioQa::checkIds()) {
-        auto found = failRounds().find(scene + "|" + id);
-        if (found != failRounds().end()) request.rounds[id] = found->second;
-    }
+    request.rounds = failRounds().previous(scene);
 
     if (args.contains("baseline") && args["baseline"].is_string()) {
         const std::string name = args["baseline"].get<std::string>();
@@ -349,15 +347,8 @@ void checkAction(const CallPtr& call, std::shared_ptr<SessionWork> work) {
         if (!work->error.empty()) return ToolResult::error(work->error);
         Json& data = work->data;
         std::string text = "Verdict " + data.value("verdict", "") + " on capture " + work->capture.id + ".";
-        for (const Json& check : data["checks"]) {
-            const std::string id = check.value("id", "");
-            const std::string status = check.value("status", "");
-            if (status == "FAIL") failRounds()[scene + "|" + id] = check.value("round", 1);
-            else failRounds().erase(scene + "|" + id);
-            text += "\n" + status + " " + id + ": " + (check["measured"].is_null() ? std::string("not measured") : check["measured"].dump());
-            if (check["limited_by"].is_string()) text += ". " + check["limited_by"].get<std::string>();
-            if (check["fix_hint"].is_string()) text += " " + check["fix_hint"].get<std::string>();
-        }
+        failRounds().record(scene, data["checks"]);
+        for (const Json& check : data["checks"]) text += "\n" + qa::rowLine(check);
         if (!data["thresholds"]["changed"].empty()) text += "\nThresholds changed from their defaults: " + data["thresholds"]["changed"].dump() + ".";
         text += "\n" + data.value("guidance", "");
 

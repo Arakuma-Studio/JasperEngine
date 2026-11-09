@@ -313,7 +313,9 @@ void RenderSystem::fillPassPixelSnap(frame_t& frame, const CameraComponent& came
     passPixelSnap = false;
     passPixelPerfect = nullptr;
     frame.pixelSnap = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-    frame.pixelSnapOffset = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    // the rounding bias without a grid too: S49's pixel particles round their boxes with
+    // pixelSnapRound on the orthographic and screen grids
+    frame.pixelSnapOffset = Vector4(0.0f, 0.0f, 0.0f, pixelSnapBias);
     if (!pixelSnapVariants)
         return;
 

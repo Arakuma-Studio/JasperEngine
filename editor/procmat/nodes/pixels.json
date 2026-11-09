@@ -1,0 +1,58 @@
+{
+ "code": [],
+ "description": "Draws a tiny image",
+ "format": 1,
+ "functions": [],
+ "id": "pixels",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Pixels",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "$pixels(ivec2(floor(vec2(float($pixels_size.x), float($pixels_size.y))*$uv)))",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "bpp": 1,
+    "h": 8,
+    "pl": [
+     {
+      "a": 1,
+      "b": 0.5,
+      "g": 0.5,
+      "r": 0.5
+     },
+     {
+      "a": 1,
+      "b": 1,
+      "g": 1,
+      "r": 1
+     }
+    ],
+    "px": [
+     42,
+     42
+    ],
+    "type": "Pixels",
+    "w": 8
+   },
+   "description": "Pixel data of the image",
+   "label": "",
+   "name": "pixels",
+   "short_description": "Pixels",
+   "type": "pixels"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/pixels.mmg"
+ },
+ "type_version": 1
+}

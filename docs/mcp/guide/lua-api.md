@@ -2319,6 +2319,8 @@ controller does not have warn once and do nothing.
 | `montageJumpToSection(name)`, `montageSetNextSection(from, to)` | |
 | `setIKTarget(constraint, position [, weight])`, `clearIKTarget(constraint)`, `setIKWeight(constraint, w)` | world space; a script target wins over the constraint's GameObject |
 | `setLookAt(position [, weight])` | the first look_at constraint |
+| `isIKReached(constraint)` | the last solve left the end within 1 mm of its target (look_at: the aim within 0.1 degree; foot_ik: on ground it found), measured on the final pose: false for a partial weight, a soft limit, a clamp, a target out of reach, weight 0, a disabled or culled Animator, an unknown name |
+| `setIKSoften(constraint, soften)`, `setIKHingeAxis(constraint, axis)`, `setIKTwist(constraint, degrees)`, `setIKAimOffset(constraint, offset)` | the constraint's fields: `soften` 0..1 (0: a hard limit), `axis` the middle bone's local hinge (`Vector3(0, 0, 0)`: auto), `offset` the eyes from the last bone |
 | `hasBone(slotOrPath)`, `getBonePosition(slotOrPath)`, `getBoneRotation(slotOrPath)` | world space, from the last evaluated pose; humanoid slots (`"left_hand"`) or paths |
 | `speed`, `applyRootMotion` | rw |
 | `getDeltaPosition()`, `getDeltaRotation()` | the last update's root motion (world space) |
@@ -2942,7 +2944,7 @@ t seconds), `step(ticks)`, `sendTrigger(name)` (the effect's Trigger sub-emitter
 at every play), `effect` (a .particles path; "" plays the inline effect), `useUnscaledTime` (the
 GameObject's own: it ticks with the unscaled frame time and plays at `Engine.timeScale` 0, a pause
 menu or UI particles; the effect's `ps.main.useUnscaledTime` does the same for every system playing
-it). ro: `isPlaying`, `isPaused`, `isEmitting`, `particleCount`, `time`.
+it). ro: `isPlaying`, `isPaused`, `isEmitting`, `particleCount` (with its sub-emitter children), `time`.
 
 Events, one batch per frame on the main thread after the simulation (plain tables, 1-based):
 `onCollision(fn)` (position, normal, velocity, particleId, killed; at most the Collision
@@ -2956,6 +2958,27 @@ ps:play()
 ps:onCollision(function(events)
     print(#events .. " hits, first at " .. events[1].position.y)
 end)
+```
+
+Pixel particles (S49): `ps.pixelArt` is the Pixel Art module's view (`snap`, `pixelSizes`,
+`integerSize`, `fade` (`ParticleFade.Dither` / `Cutout` / `Alpha`), `ditherSize`, `holdFrameRate`,
+`secondaryOffset`, `wobbleAmplitude`, `flickerBelow`, ...); `ps.renderer.renderMode =
+ParticleSystemRenderMode.Pixel` with `ps.renderer.pixelShape` (`ParticlePixelShape.Dot` ... `Glow`).
+A module's colour (`ps.colorOverLifetime.color`, `ps.main.startColor`) is a live
+`ParticleSystemGradient`: it reads as a MinMaxGradient, and `:setRamp(palettePath, rampName[,
+steps])` makes it a Palette Ramp of that system (a MinMaxGradient value has `setRamp` too, and rw
+`ramp`, `rampSteps`, `rampReverse`, `rampBias`). rw `ps.simulationMode` (`ParticleSimulationMode.Simulated`
+/ `Analytic`; a change restarts the system); `ps:getAnalyticParticle(slot, time)` is the CPU twin of an
+Analytic particle (`alive`, `index`, `age`, `life`, `position`, `velocity`, `rotation`, `size`,
+`color`, `rampStep`; nil for a Simulated system). An Analytic system raises no `onParticleDeath`,
+`onCollision` or sub-emitter events (adding a listener warns `analytic_no_events`).
+
+```lua
+local ps = ParticleSystem(scene)
+ps.renderer.renderMode = ParticleSystemRenderMode.Pixel
+ps.renderer.pixelShape = ParticlePixelShape.Disc
+ps.pixelArt.fade = ParticleFade.Dither
+ps.colorOverLifetime.color:setRamp("palettes/fx.palette", "fire")
 ```
 
 Deprecated (the old Action API, kept for old scripts: they edit the inline effect and warn
@@ -3385,7 +3408,7 @@ gate.area = 0 ; gate:remove()
 | `TangentMode` | `Free`, `Auto`, `Linear`, `Constant`, `ClampedAuto` |
 | `GradientMode` | `Blend`, `Fixed` |
 | `MinMaxCurveMode` | `Constant`, `TwoConstants`, `Curve`, `TwoCurves` |
-| `MinMaxGradientMode` | `Color`, `Gradient`, `TwoColors`, `TwoGradients` |
+| `MinMaxGradientMode` | `Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor`, `Ramp` |
 | `ActionState` | `Running`, `Paused`, `Stopped` |
 | `AudioSourceState` | `Playing`, `Paused`, `Stopped` |
 | `AudioSourceAttenuation` | `NO_ATTENUATION`, `INVERSE_DISTANCE`, `LINEAR_DISTANCE`, `EXPONENTIAL_DISTANCE` |

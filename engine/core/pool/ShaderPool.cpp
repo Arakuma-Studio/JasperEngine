@@ -745,7 +745,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // the source's texture type: 2D (none), array, cube or 3D
         case ShaderType::PASS_PREVIEW: return 3;
         // ShaderPool::getParticlesProperties
-        case ShaderType::PARTICLES: return 12;
+        case ShaderType::PARTICLES: return 14;
         case ShaderType::HTMLUI_PRIM: return 0;
         // 'Oir': the OIT resolve, else the contact shadows' mask
         case ShaderType::LIGHTING_PASS: return 1;
@@ -963,6 +963,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 10: return shortName ? "Pcl" : "Post Color";
             // centres (and 90-degree quads' corners) on the pixel grid (S41)
             case 11: return shortName ? "Pxs" : "Pixel Snap";
+            // pixel particles (S49): the grid, the shapes and the dither; Analytic simulation
+            case 12: return shortName ? "Pxl" : "Pixel";
+            case 13: return shortName ? "Ana" : "Analytic";
         }
     } else if (shaderType == ShaderType::LINES) {
         switch (bit) {
@@ -2006,6 +2009,8 @@ uint64_t ShaderPool::getParticlesProperties(const ParticlesShaderFlags& flags){
     prop |= flags.customData     ? (1 <<  7) : 0;
     prop |= flags.receiveShadows ? (1 <<  8) : 0;
     prop |= flags.fog            ? (1 <<  9) : 0;
+    prop |= flags.pixel          ? (1 << 12) : 0;
+    prop |= flags.analytic       ? (1 << 13) : 0;
 
     return prop;
 }

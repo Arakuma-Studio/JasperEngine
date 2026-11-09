@@ -3,6 +3,9 @@
 
 #include "ParticleModules.h"
 
+#include "pixelart/PaletteRampTexture.h"
+#include "action/Ease.h"
+
 #include <cstdlib>
 #include <cstring>
 
@@ -130,7 +133,7 @@ namespace {
                                        {"stretchedBillboard", "Stretched Billboard", 2}, {"horizontalBillboard", "Horizontal Billboard", 3},
                                        {"verticalBillboard", "Vertical Billboard", 4}, {"worldOriented", "World Oriented", 5},
                                        {"localOriented", "Local Oriented", 6}, {"mesh", "Mesh", 7}, {"none", "None", 8},
-                                       {"velocityAligned", "Velocity Aligned", 9}};
+                                       {"velocityAligned", "Velocity Aligned", 9}, {"ring", "Ring", 10}, {"pixel", "Pixel", 11}};
     const EnumOption kVerticalLocks[] = {{"world", "World Y", 0}, {"emitter", "Emitter Y", 1}};
     const EnumOption kMeshSelections[] = {{"random", "Random", 0}, {"index", "By Spawn Index", 1}};
     const EnumOption kUntexturedShapes[] = {{"disc", "Soft Disc", 0}, {"square", "Square", 1}};
@@ -146,6 +149,15 @@ namespace {
                                          {"scale", "Scale", 7}, {"frame", "Frame", 8}};
     const EnumOption kSubEmitterTriggers[] = {{"birth", "Birth", 0}, {"death", "Death", 1}, {"collision", "Collision", 2}, {"trigger", "Trigger", 3}};
     const EnumOption kExposedTypes[] = {{"float", "Float", 0}, {"vector3", "Vector3", 1}, {"color", "Color", 2}};
+    // pixel art (S49)
+    const EnumOption kPixelShapes[] = {{"dot", "Dot", 0}, {"cross", "Cross", 1}, {"disc", "Disc", 2}, {"ring", "Ring", 3}, {"streak", "Streak", 4},
+                                       {"puff", "Puff", 5}, {"shard", "Shard", 6}, {"chunk", "Chunk", 7}, {"glow", "Glow", 8}};
+    const EnumOption kPixelFades[] = {{"dither", "Dither", 0}, {"cutout", "Cutout", 1}, {"alpha", "Alpha", 2}};
+    const EnumOption kDitherSpaces[] = {{"screen", "Screen", 0}, {"particle", "Particle", 1}};
+    const EnumOption kSecondaryModes[] = {{"rampOffset", "Ramp Offset", 0}, {"color", "Color", 1}};
+    const EnumOption kSimulationModes[] = {{"simulated", "Simulated", 0}, {"analytic", "Analytic", 1}};
+    const EnumOption kTriggerActions[] = {{"none", "Nothing", 0}, {"play", "Play", 1}, {"pause", "Pause", 2}, {"stop", "Stop", 3},
+                                          {"stopAndClear", "Stop and Clear", 4}};
 
     // ---------------------------------------------------------------- nested structs
 
@@ -167,6 +179,9 @@ namespace {
         s.fields.push_back(ranged(field("cycles", "Cycles", FieldType::Int, JE_ACC(Burst, cycles), FieldFlag_None, "0 repeats for ever"), 0, 100000));
         s.fields.push_back(ranged(field("interval", "Interval", FieldType::Float, JE_ACC(Burst, interval)), 0.0001f, 1.0e6f));
         s.fields.push_back(ranged(field("probability", "Probability", FieldType::Float, JE_ACC(Burst, probability)), 0.0f, 1.0f));
+        s.fields.push_back(field("soundEvent", "Sound Event", FieldType::String, JE_ACC(Burst, soundEvent), FieldFlag_AssetPath,
+                                 "a .soundevent played at the emitter each time the burst fires"));
+        s.fields.push_back(field("soundEventGuid", "Sound Event GUID", FieldType::String, JE_ACC(Burst, soundEventGuid), FieldFlag_Guid | FieldFlag_Hidden));
         return s;
     }
     const StructDesc& burstDesc(){ static const StructDesc s = makeBurst(); return s; }
@@ -562,6 +577,8 @@ namespace {
         f.push_back(field("sendEvents", "Send Collision Messages", FieldType::Bool, JE_ACC(CollisionModule, sendEvents)));
         f.push_back(shownIf(ranged(field("maxCollisionEvents", "Max Collision Events", FieldType::Int, JE_ACC(CollisionModule, maxCollisionEvents)), 1, 4096),
                             JE_IF(CollisionModule, m.sendEvents)));
+        f.push_back(ranged(field("settleSpeed", "Settle Speed", FieldType::Float, JE_ACC(CollisionModule, settleSpeed), FieldFlag_None,
+                                 "a hit slower than this (after the bounce) makes the particle rest until it dies; 0: off"), 0.0f, 1.0e6f));
         return d;
     }
 
@@ -583,7 +600,8 @@ namespace {
         f.push_back(field("sizeAffectsWidth", "Size affects Width", FieldType::Bool, JE_ACC(TrailsModule, sizeAffectsWidth)));
         f.push_back(shownIf(field("sizeAffectsLifetime", "Size affects Lifetime", FieldType::Bool, JE_ACC(TrailsModule, sizeAffectsLifetime)), JE_IF(TrailsModule, m.mode == TrailMode::PerParticle)));
         f.push_back(enumField("textureMode", "Texture Mode", JE_ACC(TrailsModule, textureMode), kTrailTextureModes));
-        f.push_back(field("generateLightingData", "Generate Lighting Data", FieldType::Bool, JE_ACC(TrailsModule, generateLightingData)));
+        // nothing reads it (lit trails are not built): old files keep loading, the Inspector does not offer it
+        f.push_back(field("generateLightingData", "Generate Lighting Data", FieldType::Bool, JE_ACC(TrailsModule, generateLightingData), FieldFlag_Hidden));
         return d;
     }
 
@@ -614,25 +632,35 @@ namespace {
         f.push_back(shownIf(field("freezeInView", "Freeze in View", FieldType::Bool, JE_ACC(RendererModule, freezeInView)), stretched));
         f.push_back(shownIf(enumField("verticalLock", "Vertical Lock", JE_ACC(RendererModule, verticalLock), kVerticalLocks), JE_IF(RendererModule, m.renderMode == RenderMode::VerticalBillboard)));
         auto mesh = JE_IF(RendererModule, m.renderMode == RenderMode::Mesh);
+        auto ring = JE_IF(RendererModule, m.renderMode == RenderMode::Ring);
         f.push_back(shownIf(arrayField<std::vector<MeshSource>>("meshes", "Meshes", JE_ACC(RendererModule, meshes), &meshSourceDesc(), (uint32_t)kMaxRendererMeshes), mesh));
         f.push_back(shownIf(enumField("meshSelection", "Mesh Distribution", JE_ACC(RendererModule, meshSelection), kMeshSelections), mesh));
+        f.push_back(shownIf(ranged(field("ringOuterRadius", "Outer Radius", FieldType::Float, JE_ACC(RendererModule, ringOuterRadius), FieldFlag_None,
+                                         "at a particle size of 1; the size scales it"), 0.0f, 1.0e4f), ring));
+        f.push_back(shownIf(ranged(field("ringInnerRadius", "Inner Radius", FieldType::Float, JE_ACC(RendererModule, ringInnerRadius), FieldFlag_None,
+                                         "0 makes a disc"), 0.0f, 1.0e4f), ring));
+        f.push_back(shownIf(ranged(field("ringArc", "Arc", FieldType::Float, JE_ACC(RendererModule, ringArc), FieldFlag_Degrees,
+                                         "degrees of the circle, from +X towards +Y"), 0.0f, 360.0f), ring));
+        f.push_back(shownIf(ranged(field("ringSegments", "Segments", FieldType::Int, JE_ACC(RendererModule, ringSegments), FieldFlag_None,
+                                         "around the whole circle"), 3, (float)kMaxRingSegments), ring));
         f.push_back(shownIf(enumField("meshAlignment", "Render Alignment", JE_ACC(RendererModule, meshAlignment), kMeshAlignments, FieldFlag_None,
                                       "how meshes turn: in the simulation space, to the camera plane or position, in world or emitter axes, or +Z along the velocity"),
-                            mesh));
+                            JE_IF(RendererModule, m.renderMode == RenderMode::Mesh || m.renderMode == RenderMode::Ring)));
         f.push_back(field("pivot", "Pivot", FieldType::Vector3, JE_ACC(RendererModule, pivot)));
         f.push_back(field("flip", "Flip", FieldType::Vector3, JE_ACC(RendererModule, flip)));
         f.push_back(field("shader", "Shader", FieldType::String, JE_ACC(RendererModule, shader), FieldFlag_None, "library:particles, or a fork of it"));
         f.push_back(stringArrayField("shaderFeatures", "Shader Features", JE_ACC(RendererModule, shaderFeatures), 64));
         f.push_back(arrayField<std::vector<ShaderProperty>>("shaderProperties", "Shader Properties", JE_ACC(RendererModule, shaderProperties), &shaderPropertyDesc(), 64));
         f.push_back(arrayField<std::vector<ShaderTexture>>("shaderTextures", "Shader Textures", JE_ACC(RendererModule, shaderTextures), &shaderTextureDesc(), 16));
-        f.push_back(field("texture", "Texture", FieldType::String, JE_ACC(RendererModule, texture), FieldFlag_AssetPath));
+        auto notPixel = JE_IF(RendererModule, m.renderMode != RenderMode::Pixel);
+        f.push_back(shownIf(field("texture", "Texture", FieldType::String, JE_ACC(RendererModule, texture), FieldFlag_AssetPath), notPixel));
         f.push_back(field("textureGuid", "Texture GUID", FieldType::String, JE_ACC(RendererModule, textureGuid), FieldFlag_Guid | FieldFlag_Hidden));
         f.push_back(shownIf(field("textureTiling", "Tiling and Offset", FieldType::Vector4, JE_ACC(RendererModule, textureTiling), FieldFlag_None,
                                   "the texture's UVs scaled by X and Y, then offset by Z and W (a material's tiling and offset)"),
-                            JE_IF(RendererModule, !m.texture.empty())));
+                            JE_IF(RendererModule, !m.texture.empty() && m.renderMode != RenderMode::Pixel)));
         f.push_back(shownIf(enumField("untexturedShape", "Without Texture", JE_ACC(RendererModule, untexturedShape), kUntexturedShapes, FieldFlag_Advanced,
                                       "what a billboard draws without a texture: a soft disc (Unity's default particle) or a square (the old points)"),
-                            JE_IF(RendererModule, m.texture.empty())));
+                            JE_IF(RendererModule, m.texture.empty() && m.renderMode != RenderMode::Pixel)));
         f.push_back(field("trailTexture", "Trail Texture", FieldType::String, JE_ACC(RendererModule, trailTexture), FieldFlag_AssetPath));
         f.push_back(field("trailTextureGuid", "Trail Texture GUID", FieldType::String, JE_ACC(RendererModule, trailTextureGuid), FieldFlag_Guid | FieldFlag_Hidden));
         f.push_back(enumField("blend", "Blend", JE_ACC(RendererModule, blend), kBlends));
@@ -641,8 +669,8 @@ namespace {
                               "sorts the particles of one emitter (Alpha and Premultiplied blends only)"));
         f.push_back(field("sortingFudge", "Sorting Fudge", FieldType::Float, JE_ACC(RendererModule, sortingFudge)));
         f.push_back(field("sortPriority", "Sort Priority", FieldType::Int, JE_ACC(RendererModule, sortPriority)));
-        f.push_back(ranged(field("minScreenSize", "Min Particle Size", FieldType::Float, JE_ACC(RendererModule, minScreenSize)), 0.0f, 1.0f));
-        f.push_back(ranged(field("maxScreenSize", "Max Particle Size", FieldType::Float, JE_ACC(RendererModule, maxScreenSize)), 0.0f, 10.0f));
+        f.push_back(shownIf(ranged(field("minScreenSize", "Min Particle Size", FieldType::Float, JE_ACC(RendererModule, minScreenSize)), 0.0f, 1.0f), notPixel));
+        f.push_back(shownIf(ranged(field("maxScreenSize", "Max Particle Size", FieldType::Float, JE_ACC(RendererModule, maxScreenSize)), 0.0f, 10.0f), notPixel));
         f.push_back(field("renderLayers", "Rendering Layer Mask", FieldType::Mask, JE_ACC(RendererModule, renderLayers)));
         f.push_back(field("receiveShadows", "Receive Shadows", FieldType::Bool, JE_ACC(RendererModule, receiveShadows)));
         f.push_back(enumField("lighting", "Lighting", JE_ACC(RendererModule, lighting), kLightingModes));
@@ -657,6 +685,29 @@ namespace {
         f.push_back(field("emissionMapGuid", "Emission Map GUID", FieldType::String, JE_ACC(RendererModule, emissionMapGuid), FieldFlag_Guid | FieldFlag_Hidden));
         f.push_back(shownIf(field("emissionColor", "Emission Color", FieldType::Color, JE_ACC(RendererModule, emissionColor)), sixWay));
         f.push_back(shownIf(ranged(field("emissionIntensity", "Emission Intensity", FieldType::Float, JE_ACC(RendererModule, emissionIntensity)), 0.0f, 1.0e4f), sixWay));
+        // the Pixel render mode's shape (S49 R9, R31): each shape's own fields under it
+        auto pixel = JE_IF(RendererModule, m.renderMode == RenderMode::Pixel);
+        f.push_back(shownIf(enumField("pixelShape", "Pixel Shape", JE_ACC(RendererModule, pixelShape), kPixelShapes, FieldFlag_None,
+                                      "drawn per whole base pixel, no texture"), pixel));
+        auto streak = JE_IF(RendererModule, m.renderMode == RenderMode::Pixel && m.pixelShape == PixelShape::Streak);
+        f.push_back(shownIf(ranged(field("streakLengthScale", "Length Scale", FieldType::Float, JE_ACC(RendererModule, streakLengthScale), FieldFlag_None,
+                                         "pixels of length per pixel per second of speed"), 0.0f, 10.0f), streak));
+        f.push_back(shownIf(ranged(field("streakMaxLength", "Max Length", FieldType::Float, JE_ACC(RendererModule, streakMaxLength)), 1.0f, 64.0f), streak));
+        f.push_back(shownIf(ranged(field("streakHeadFraction", "Head Fraction", FieldType::Float, JE_ACC(RendererModule, streakHeadFraction), FieldFlag_None,
+                                         "the share of the length from the head drawn in the primary colour; the rest is secondary"), 0.0f, 1.0f), streak));
+        f.push_back(shownIf(ranged(field("streakWidth", "Width", FieldType::Int, JE_ACC(RendererModule, streakWidth)), 1, 3), streak));
+        f.push_back(shownIf(field("discRim", "Rim", FieldType::Bool, JE_ACC(RendererModule, discRim), FieldFlag_None, "the outer pixel ring in the secondary colour"),
+                            JE_IF(RendererModule, m.renderMode == RenderMode::Pixel && m.pixelShape == PixelShape::Disc)));
+        f.push_back(shownIf(ranged(field("ringWidth", "Ring Width", FieldType::Int, JE_ACC(RendererModule, ringWidth)), 1, 8),
+                            JE_IF(RendererModule, m.renderMode == RenderMode::Pixel && m.pixelShape == PixelShape::Ring)));
+        f.push_back(shownIf(field("dotShadeBottom", "Shade Bottom", FieldType::Bool, JE_ACC(RendererModule, dotShadeBottom), FieldFlag_None,
+                                  "the bottom row in the secondary colour (2 px and larger)"),
+                            JE_IF(RendererModule, m.renderMode == RenderMode::Pixel && m.pixelShape == PixelShape::Dot)));
+        f.push_back(shownIf(ranged(field("glowBands", "Bands", FieldType::Int, JE_ACC(RendererModule, glowBands)), 1, 4),
+                            JE_IF(RendererModule, m.renderMode == RenderMode::Pixel && m.pixelShape == PixelShape::Glow)));
+        f.push_back(shownIf(ranged(field("rotationSteps", "Rotation Steps", FieldType::Int, JE_ACC(RendererModule, rotationSteps), FieldFlag_None,
+                                         "angles per turn the shape is drawn at"), 1, 360),
+                            JE_IF(RendererModule, m.renderMode == RenderMode::Pixel && (m.pixelShape == PixelShape::Shard || m.pixelShape == PixelShape::Chunk))));
         return d;
     }
 
@@ -664,6 +715,42 @@ namespace {
         ModuleDesc d = module<SetOverAgeModule>(ModuleId::SetOverAge, "setOverAge", "Set over Age", JE_DOC(setOverAge),
                                                 "Sets a property to a curve over the particle's age inside a window of ages (the old from-to modifiers)");
         d.fields.fields.push_back(arrayField<std::vector<SetOverAgeEntry>>("entries", "Entries", JE_ACC(SetOverAgeModule, entries), &setEntryDesc(), (uint32_t)kMaxSetOverAgeEntries));
+        return d;
+    }
+
+    ModuleDesc makePixelArt(){
+        ModuleDesc d = module<PixelArtModule>(ModuleId::PixelArt, "pixelArt", "Pixel Art", JE_DOC(pixelArt),
+                                              "Particles on the pixel grid at whole-pixel sizes, faded with a dither, held to a drawn frame rate");
+        auto& f = d.fields.fields;
+        f.push_back(field("snap", "Snap to Pixel Grid", FieldType::Bool, JE_ACC(PixelArtModule, snap)));
+        f.push_back(field("pixelSizes", "Sizes in Pixels", FieldType::Bool, JE_ACC(PixelArtModule, pixelSizes), FieldFlag_None,
+                          "Start Size, Size over Lifetime and Size by Speed are base pixels"));
+        f.push_back(field("integerSize", "Integer Size", FieldType::Bool, JE_ACC(PixelArtModule, integerSize), FieldFlag_None, "boxes of whole pixels"));
+        f.push_back(enumField("fade", "Fade", JE_ACC(PixelArtModule, fade), kPixelFades, FieldFlag_None,
+                              "Dither: a Bayer pattern of whole pixels; Cutout: drawn above half; Alpha: blended"));
+        auto dither = JE_IF(PixelArtModule, m.fade == PixelFade::Dither);
+        f.push_back(shownIf(ranged(field("ditherSize", "Dither Size", FieldType::Int, JE_ACC(PixelArtModule, ditherSize), FieldFlag_None, "2, 4 or 8"), 2, 8), dither));
+        f.push_back(shownIf(enumField("ditherSpace", "Dither Space", JE_ACC(PixelArtModule, ditherSpace), kDitherSpaces, FieldFlag_None,
+                                      "Screen: the pattern holds still as particles move; Particle: it travels with each one"), dither));
+        f.push_back(ranged(field("fadeOverLifetime", "Fade over Lifetime", FieldType::MinMaxCurve, JE_ACC(PixelArtModule, fadeOverLifetime)), 0.0f, 1.0f));
+        f.push_back(ranged(field("holdFrameRate", "Hold Frames", FieldType::Float, JE_ACC(PixelArtModule, holdFrameRate), FieldFlag_None,
+                                 "Hz: the drawn state changes only at these steps; 0 = every frame"), 0.0f, 240.0f));
+        f.push_back(enumField("secondary", "Secondary Color", JE_ACC(PixelArtModule, secondary), kSecondaryModes, FieldFlag_None,
+                              "what a shape's second colour is (tails, rims, caps, tips)"));
+        f.push_back(shownIf(ranged(field("secondaryOffset", "Ramp Offset", FieldType::Int, JE_ACC(PixelArtModule, secondaryOffset), FieldFlag_None,
+                                         "ramp steps from the particle's own; positive toward the ramp's end"), -8, 8),
+                            JE_IF(PixelArtModule, m.secondary == SecondaryColorMode::RampOffset)));
+        f.push_back(field("secondaryColor", "Secondary", FieldType::Color, JE_ACC(PixelArtModule, secondaryColor), FieldFlag_None,
+                          "the second colour (Ramp Offset falls back to it without a ramp)"));
+        f.push_back(field("wobbleAmplitude", "Wobble", FieldType::Vector2, JE_ACC(PixelArtModule, wobbleAmplitude), FieldFlag_None,
+                          "a drawn sway in base pixels (x, y); it never moves the simulation"));
+        f.push_back(field("wobbleFrequency", "Wobble Frequency", FieldType::Vector2, JE_ACC(PixelArtModule, wobbleFrequency), FieldFlag_None,
+                          "Hz on x and y; a loop's frequencies are whole multiples of 1 / duration"));
+        f.push_back(field("wobbleRandomPhase", "Wobble Random Phase", FieldType::Bool, JE_ACC(PixelArtModule, wobbleRandomPhase)));
+        f.push_back(ranged(field("flickerBelow", "Flicker Below", FieldType::Float, JE_ACC(PixelArtModule, flickerBelow), FieldFlag_None,
+                                 "blinks when less than this share of its life is left; 0: off"), 0.0f, 1.0f));
+        f.push_back(shownIf(ranged(field("flickerRate", "Flicker Rate", FieldType::Float, JE_ACC(PixelArtModule, flickerRate)), 0.1f, 240.0f),
+                            JE_IF(PixelArtModule, m.flickerBelow > 0.0f)));
         return d;
     }
 
@@ -679,6 +766,9 @@ namespace {
         f.push_back(ranged(field("startDelay", "Start Delay", FieldType::MinMaxCurve, JE_ACC(ParticleEffectDocument, startDelay), FieldFlag_None,
                                  "seconds before it emits; a random range picks one each play"), 0.0f, 1.0e5f));
         f.push_back(enumField("simulationSpace", "Simulation Space", JE_ACC(ParticleEffectDocument, simulationSpace), kSimulationSpaces));
+        f.push_back(enumField("simulationMode", "Simulation Mode", JE_ACC(ParticleEffectDocument, simulationMode), kSimulationModes, FieldFlag_None,
+                              "Simulated: every module, ticked; Analytic: each particle computed on the GPU from its slot and the time "
+                              "(exact loops and scrubbing, no CPU cost per particle, a subset of the modules)"));
         f.push_back(ranged(field("tickRate", "Tick Rate", FieldType::Int, JE_ACC(ParticleEffectDocument, tickRate), FieldFlag_None,
                                  "simulation ticks per second; 0 follows the frames in bounded steps"), 0, 240));
         f.push_back(field("interpolate", "Interpolate", FieldType::Bool, JE_ACC(ParticleEffectDocument, interpolate)));
@@ -706,6 +796,8 @@ namespace {
         f.push_back(shownIf(ranged(field("lodEmissionScale", "LOD Emission", FieldType::MinMaxCurve, JE_ACC(ParticleEffectDocument, lod.emissionScale), FieldFlag_Advanced), 0.0f, 1.0f), lod));
         f.push_back(shownIf(ranged(field("lodRenderThinning", "LOD Drawn Share", FieldType::MinMaxCurve, JE_ACC(ParticleEffectDocument, lod.renderThinning), FieldFlag_Advanced), 0.0f, 1.0f), lod));
         f.push_back(shownIf(ranged(field("lodMaxDistance", "LOD Max Distance", FieldType::Float, JE_ACC(ParticleEffectDocument, lod.maxDistance), FieldFlag_Advanced), 0.0f, 1.0e7f), lod));
+        f.push_back(ranged(field("designPixelsPerUnit", "Design Pixels Per Unit", FieldType::Float, JE_ACC(ParticleEffectDocument, designPixelsPerUnit),
+                                 FieldFlag_Hidden, "the project Pixels Per Unit a pixel preset was made for"), 0.0f, 100000.0f));
         return s;
     }
 
@@ -724,6 +816,28 @@ namespace {
         f.push_back(ranged(field("inheritFactor", "Inherit Factor", FieldType::Float, JE_ACC(SubEmitterEntry, inheritFactor)), 0.0f, 100.0f));
         f.push_back(ranged(field("emitCount", "Emit Count", FieldType::Int, JE_ACC(SubEmitterEntry, emitCount)), 0, 10000));
         f.push_back(ranged(field("probability", "Emit Probability", FieldType::Float, JE_ACC(SubEmitterEntry, probability)), 0.0f, 1.0f));
+        f.push_back(field("followParent", "Follow Parent", FieldType::Bool, JE_ACC(SubEmitterEntry, followParent), FieldFlag_None,
+                          "the children move with the particle that spawned them while it lives (trails on a moving parent)"));
+        auto follow = JE_IF(SubEmitterEntry, m.followParent);
+        f.push_back(shownIf(field("followRotation", "Follow Rotation", FieldType::Bool, JE_ACC(SubEmitterEntry, followRotation), FieldFlag_None,
+                                  "and turn with it: its 3D rotation (mesh particles), else its roll about the Z axis"), follow));
+        f.push_back(shownIf(field("followScale", "Follow Scale", FieldType::Bool, JE_ACC(SubEmitterEntry, followScale), FieldFlag_None,
+                                  "and spread or gather as its size changes"), follow));
+        f.push_back(field("soundEvent", "Sound Event", FieldType::String, JE_ACC(SubEmitterEntry, soundEvent), FieldFlag_AssetPath,
+                          "a .soundevent played where the entry fires"));
+        f.push_back(field("soundEventGuid", "Sound Event GUID", FieldType::String, JE_ACC(SubEmitterEntry, soundEventGuid), FieldFlag_Guid | FieldFlag_Hidden));
+        return s;
+    }
+
+    StructDesc makeTrigger(){
+        StructDesc s = structOf<EffectTrigger>("Trigger");
+        auto& f = s.fields;
+        f.push_back(field("name", "Name", FieldType::String, JE_ACC(EffectTrigger, name), FieldFlag_None, "what sendTrigger names"));
+        f.push_back(enumField("action", "Action", JE_ACC(EffectTrigger, action), kTriggerActions, FieldFlag_None,
+                              "what it does to this emitter; Trigger sub-emitters of the same name fire too"));
+        f.push_back(field("soundEvent", "Sound Event", FieldType::String, JE_ACC(EffectTrigger, soundEvent), FieldFlag_AssetPath,
+                          "a .soundevent played at the emitter"));
+        f.push_back(field("soundEventGuid", "Sound Event GUID", FieldType::String, JE_ACC(EffectTrigger, soundEventGuid), FieldFlag_Guid | FieldFlag_Hidden));
         return s;
     }
 
@@ -808,7 +922,7 @@ const std::vector<ModuleDesc>& ParticleModules::all(){
         makeMain(), makeEmission(), makeShape(), makeStartVelocity(), makeVelocityOverLifetime(), makeLimitVelocity(),
         makeForceOverLifetime(), makeColorOverLifetime(), makeColorBySpeed(), makeSizeOverLifetime(), makeSizeBySpeed(),
         makeRotationOverLifetime(), makeRotationBySpeed(), makeExternalForces(), makeNoise(), makeOrbit(), makeCollision(),
-        makeSubEmittersModule(), makeTextureSheet(), makeTrails(), makeCustomData(), makeSetOverAge(), makeRenderer()
+        makeSubEmittersModule(), makeTextureSheet(), makeTrails(), makeCustomData(), makeSetOverAge(), makePixelArt(), makeRenderer()
     };
     return modules;
 }
@@ -841,6 +955,11 @@ const StructDesc& ParticleModules::subEmitterFields(){
 
 const StructDesc& ParticleModules::exposedFields(){
     static const StructDesc s = makeExposed();
+    return s;
+}
+
+const StructDesc& ParticleModules::triggerFields(){
+    static const StructDesc s = makeTrigger();
     return s;
 }
 
@@ -911,14 +1030,42 @@ ParticleModules::Resolved ParticleModules::resolve(ParticleEffectDocument& docum
 
 const std::vector<EnumOption>& ParticleModules::curveModes(){
     static const std::vector<EnumOption> v = {{"constant", "Constant", 0}, {"twoConstants", "Random Between Two Constants", 1},
-                                              {"curve", "Curve", 2}, {"twoCurves", "Random Between Two Curves", 3}};
+                                              {"curve", "Curve", 2}, {"twoCurves", "Random Between Two Curves", 3}, {"ease", "Ease", 4}};
+    return v;
+}
+
+const std::vector<EnumOption>& ParticleModules::easeTypes(){
+    // every preset with a function of its own (CUSTOM and CURVE have none)
+    static const std::vector<EnumOption> v = {
+        {"linear", "Linear", (uint8_t)EaseType::LINEAR},
+        {"quadIn", "Quad In", (uint8_t)EaseType::QUAD_IN}, {"quadOut", "Quad Out", (uint8_t)EaseType::QUAD_OUT},
+        {"quadInOut", "Quad In Out", (uint8_t)EaseType::QUAD_IN_OUT},
+        {"cubicIn", "Cubic In", (uint8_t)EaseType::CUBIC_IN}, {"cubicOut", "Cubic Out", (uint8_t)EaseType::CUBIC_OUT},
+        {"cubicInOut", "Cubic In Out", (uint8_t)EaseType::CUBIC_IN_OUT},
+        {"quartIn", "Quart In", (uint8_t)EaseType::QUART_IN}, {"quartOut", "Quart Out", (uint8_t)EaseType::QUART_OUT},
+        {"quartInOut", "Quart In Out", (uint8_t)EaseType::QUART_IN_OUT},
+        {"quintIn", "Quint In", (uint8_t)EaseType::QUINT_IN}, {"quintOut", "Quint Out", (uint8_t)EaseType::QUINT_OUT},
+        {"quintInOut", "Quint In Out", (uint8_t)EaseType::QUINT_IN_OUT},
+        {"sineIn", "Sine In", (uint8_t)EaseType::SINE_IN}, {"sineOut", "Sine Out", (uint8_t)EaseType::SINE_OUT},
+        {"sineInOut", "Sine In Out", (uint8_t)EaseType::SINE_IN_OUT},
+        {"expoIn", "Expo In", (uint8_t)EaseType::EXPO_IN}, {"expoOut", "Expo Out", (uint8_t)EaseType::EXPO_OUT},
+        {"expoInOut", "Expo In Out", (uint8_t)EaseType::EXPO_IN_OUT},
+        {"circIn", "Circ In", (uint8_t)EaseType::CIRC_IN}, {"circOut", "Circ Out", (uint8_t)EaseType::CIRC_OUT},
+        {"circInOut", "Circ In Out", (uint8_t)EaseType::CIRC_IN_OUT},
+        {"elasticIn", "Elastic In", (uint8_t)EaseType::ELASTIC_IN}, {"elasticOut", "Elastic Out", (uint8_t)EaseType::ELASTIC_OUT},
+        {"elasticInOut", "Elastic In Out", (uint8_t)EaseType::ELASTIC_IN_OUT},
+        {"backIn", "Back In", (uint8_t)EaseType::BACK_IN}, {"backOut", "Back Out", (uint8_t)EaseType::BACK_OUT},
+        {"backInOut", "Back In Out", (uint8_t)EaseType::BACK_IN_OUT},
+        {"bounceIn", "Bounce In", (uint8_t)EaseType::BOUNCE_IN}, {"bounceOut", "Bounce Out", (uint8_t)EaseType::BOUNCE_OUT},
+        {"bounceInOut", "Bounce In Out", (uint8_t)EaseType::BOUNCE_IN_OUT},
+        {"step", "Step", (uint8_t)EaseType::STEP}};
     return v;
 }
 
 const std::vector<EnumOption>& ParticleModules::gradientModes(){
     static const std::vector<EnumOption> v = {{"color", "Color", 0}, {"gradient", "Gradient", 1},
                                               {"twoColors", "Random Between Two Colors", 2}, {"twoGradients", "Random Between Two Gradients", 3},
-                                              {"randomColor", "Random Color", 4}};
+                                              {"randomColor", "Random Color", 4}, {"ramp", "Palette Ramp", 5}};
     return v;
 }
 
@@ -1004,30 +1151,24 @@ namespace {
             }
             case FieldType::MinMaxCurve: {
                 MinMaxCurve& c = *static_cast<MinMaxCurve*>(r.storage);
+                if (write)
+                    return ParticleModules::writeExposedMember(c, m, value.x);
                 float* target = nullptr;
                 if (m == "constant") target = &c.constant;
-                else if (m == "constantMax") target = &c.constantMax;
+                else if (m == "constantMax" || (m.empty() && c.mode == CurveMode::Ease)) target = &c.constantMax;
                 else if (m == "multiplier" || (m.empty() && c.usesCurve())) target = &c.multiplier;
                 else if (m.empty()) target = &c.constant;
                 if (!target) return false;
-                if (write){
-                    *target = value.x;
-                    if (m.empty() && c.mode == CurveMode::Constant) c.constantMax = value.x;
-                }else{
-                    value = Vector4(*target, 0, 0, 0);
-                }
+                value = Vector4(*target, 0, 0, 0);
                 return true;
             }
             case FieldType::MinMaxGradient: {
                 MinMaxGradient& g = *static_cast<MinMaxGradient*>(r.storage);
-                Vector4* target = m == "colorMax" ? &g.colorMax : ((m.empty() || m == "color") ? &g.color : nullptr);
+                if (write)
+                    return ParticleModules::writeExposedMember(g, m, value);
+                const Vector4* target = m == "colorMax" ? &g.colorMax : ((m.empty() || m == "color") ? &g.color : nullptr);
                 if (!target) return false;
-                if (write){
-                    *target = value;
-                    if (m.empty() && g.mode == GradientValueMode::Color) g.colorMax = value;
-                }else{
-                    value = *target;
-                }
+                value = *target;
                 return true;
             }
             default:
@@ -1035,6 +1176,29 @@ namespace {
         }
     }
 
+}
+
+bool ParticleModules::writeExposedMember(MinMaxCurve& c, const std::string& member, float value){
+    float* target = nullptr;
+    if (member == "constant") target = &c.constant;
+    // an Ease value without a member: the value it eases to (its multiplier stays as shown)
+    else if (member == "constantMax" || (member.empty() && c.mode == CurveMode::Ease)) target = &c.constantMax;
+    else if (member == "multiplier" || (member.empty() && c.usesCurve())) target = &c.multiplier;
+    else if (member.empty()) target = &c.constant;
+    if (!target) return false;
+    *target = value;
+    if (member.empty() && c.mode == CurveMode::Constant) c.constantMax = value;
+    // an ease's start or end moves its curve
+    if (c.mode == CurveMode::Ease && target != &c.multiplier) c.rebuildEase();
+    return true;
+}
+
+bool ParticleModules::writeExposedMember(MinMaxGradient& g, const std::string& member, const Vector4& value){
+    Vector4* target = member == "colorMax" ? &g.colorMax : ((member.empty() || member == "color") ? &g.color : nullptr);
+    if (!target) return false;
+    *target = value;
+    if (member.empty() && g.mode == GradientValueMode::Color) g.colorMax = value;
+    return true;
 }
 
 bool ParticleModules::setExposed(ParticleEffectDocument& document, std::string_view name, const Vector4& value){
@@ -1061,8 +1225,20 @@ namespace {
                 std::string none;
                 const std::string key = field.key;
                 const ParticleModules::AssetKind kind = key == "model" ? ParticleModules::AssetKind::Model
-                                                      : (key == "effect" ? ParticleModules::AssetKind::Effect : ParticleModules::AssetKind::Texture);
+                                                      : key == "effect" ? ParticleModules::AssetKind::Effect
+                                                      : key == "soundEvent" ? ParticleModules::AssetKind::SoundEvent : ParticleModules::AssetKind::Texture;
                 visit(value, guid ? *guid : none, kind, path);
+            }else if (field.type == FieldType::MinMaxGradient){
+                // a Ramp's palette (S49 R43): the path before "#ramp:", put back with its ramp name
+                MinMaxGradient& gradient = *static_cast<MinMaxGradient*>(field.field(owner));
+                std::string palette, ramp;
+                if (gradient.mode == GradientValueMode::Ramp && pixelart::parsePaletteRampPath(gradient.ramp, &palette, &ramp)){
+                    std::string guid;
+                    const std::string before = palette;
+                    visit(palette, guid, ParticleModules::AssetKind::Palette, path + ".ramp");
+                    if (palette != before)
+                        gradient.ramp = palette.empty() ? std::string() : palette + "#ramp:" + ramp;
+                }
             }else if (field.type == FieldType::Struct && field.element){
                 visitStruct(*field.element, field.field(owner), path, visit);
             }else if (field.type == FieldType::Array && field.element){
@@ -1082,4 +1258,6 @@ void ParticleModules::visitAssets(ParticleEffectDocument& document, const AssetV
         visitStruct(module.fields, module.module(document), module.key, visit);
     for (size_t i = 0; i < document.subEmitters.size(); i++)
         visitStruct(subEmitterFields(), &document.subEmitters[i], "subEmitters[" + std::to_string(i) + "]", visit);
+    for (size_t i = 0; i < document.triggers.size(); i++)
+        visitStruct(triggerFields(), &document.triggers[i], "triggers[" + std::to_string(i) + "]", visit);
 }

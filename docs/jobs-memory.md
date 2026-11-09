@@ -152,7 +152,7 @@ Allocators are serial-use (one user at a time, asserted in builds with assertion
 the memory they hold under AddressSanitizer. Each registers a record in `memory::snapshot()`
 with its kind (Arena, Pool, Range, Tracked), residency (Cpu, Gpu, Mapped), current bytes,
 peak, capacity and count. Readers never lock: each record is a seqlock. Tracked by default:
-`Texture.GPU`, `Texture.RenderTargets`, `Mesh.GPUBuffers`, `Lua.Heap`,
+`Texture.GPU`, `Texture.RenderTargets`, `Mesh.GPUBuffers`, `Lua.Heap`, `Animation.Clips`,
 `Physics.JoltTempAllocator`, `Jobs.Slabs`, `Jobs.Queues`, the scratch arenas, `Engine.FrameArena.*`
 and `Render.PipelineDescs` (the base pipeline descriptions render objects share: one per distinct
 shader and vertex layout, however many objects draw with it).

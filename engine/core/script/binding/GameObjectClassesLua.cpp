@@ -48,6 +48,7 @@
 #include "Model.h"
 #include "PoseAnimator.h"
 #include "AnimationPlayer.h"
+#include <set>
 #include <cstdio>
 
 #include "Log.h"
@@ -976,6 +977,24 @@ int luaCameraShakerShakeAt(lua_State* L){
 
 }
 
+
+#ifndef DISABLE_LUA_BINDINGS
+namespace {
+
+    // an Analytic effect raises no particle events (S49 R19): said once a system, when a script
+    // first listens to one of them
+    void warnAnalyticEvents(ParticleSystem& system){
+        if (system.getEffectDocument().simulationMode != particles::SimulationMode::Analytic)
+            return;
+        static std::set<std::pair<const void*, Entity>> warned;
+        if (!warned.insert({system.getScene(), system.getEntity()}).second)
+            return;
+        Log::warn("analytic_no_events: %s is Analytic: its particles raise no onParticleDeath, onCollision or sub-emitter events",
+                  system.getName().c_str());
+    }
+
+}
+#endif
 
 void LuaBinding::registerGameObjectClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
@@ -2583,16 +2602,19 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("onCollision", +[](ParticleSystem* self, lua_State* L) {
             luaL_checktype(L, 2, LUA_TFUNCTION);
             lua_settop(L, 2);
+            warnAnalyticEvents(*self);
             return self->getComponent<ParticleSystemComponent>().onCollision.add("lua", L);
         })
         .addFunction("onParticleDeath", +[](ParticleSystem* self, lua_State* L) {
             luaL_checktype(L, 2, LUA_TFUNCTION);
             lua_settop(L, 2);
+            warnAnalyticEvents(*self);
             return self->getComponent<ParticleSystemComponent>().onParticleDeath.add("lua", L);
         })
         .addFunction("onSubEmit", +[](ParticleSystem* self, lua_State* L) {
             luaL_checktype(L, 2, LUA_TFUNCTION);
             lua_settop(L, 2);
+            warnAnalyticEvents(*self);
             return self->getComponent<ParticleSystemComponent>().onSubEmit.add("lua", L);
         })
         .addFunction("getParticleSystemComponent", &ParticleSystem::getComponent<ParticleSystemComponent>)
@@ -4330,6 +4352,11 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<const std::string&, const Vector3&, float>(&Animator::setIKTarget))
         .addFunction("clearIKTarget", &Animator::clearIKTarget)
         .addFunction("setIKWeight", &Animator::setIKWeight)
+        .addFunction("isIKReached", &Animator::isIKReached)
+        .addFunction("setIKSoften", &Animator::setIKSoften)
+        .addFunction("setIKHingeAxis", &Animator::setIKHingeAxis)
+        .addFunction("setIKTwist", &Animator::setIKTwist)
+        .addFunction("setIKAimOffset", &Animator::setIKAimOffset)
         .addFunction("setLookAt",
             luabridge::overload<const Vector3&>(&Animator::setLookAt),
             luabridge::overload<const Vector3&, float>(&Animator::setLookAt))

@@ -33,6 +33,8 @@
 #include "util/CxxStandards.h"
 #include "util/Util.h"
 #include "physics/PlacementSettings.h"
+#include "particles/ParticleQaSettings.h"
+#include "procmat/ProcMatQaSettings.h"
 #include "navigation/NavigationProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
 #include "render/LightingTiers.h"
@@ -985,6 +987,9 @@ namespace jasperengine::editor{
         uint32_t startSceneId;
         LoadingSettings loadingSettings;
         ThreadingProjectSettings threadingSettings;
+        uint32_t particleWorldBudget = 0;
+        ParticleQaSettings particleQa;
+        procmat::ProcMatQaSettings procMatQa;
         ShaderCreationProjectSettings shaderCreationSettings;
         AudioSettings audioSettings;
         DebugSettings debugSettings;
@@ -1536,6 +1541,7 @@ namespace jasperengine::editor{
     private:
         // see getInspectedAsset()
         std::filesystem::path inspectedAsset;
+        SceneProject* materialAssetScene = nullptr;
 
     public:
         // Unity's activeObject (animation clips spec 9.R30): the asset the Inspector shows, set by
@@ -2046,6 +2052,17 @@ namespace jasperengine::editor{
         void setStartSceneId(uint32_t sceneId);
 
         LoadingSettings& getLoadingSettings();
+        // Project Settings > Graphics > World Particle Budget (0: the platform's default)
+        static constexpr unsigned int maxParticleWorldBudget = 1u << 24;
+        uint32_t getParticleWorldBudget() const;
+        void setParticleWorldBudget(uint32_t budget);
+        // Project Settings > Graphics > Particle Checks (S91 R28)
+        const ParticleQaSettings& getParticleQaSettings() const { return particleQa; }
+        void setParticleQaSettings(const ParticleQaSettings& settings) { particleQa = settings; }
+        // Project Settings > Graphics > Material Checks (S90 R36)
+        const procmat::ProcMatQaSettings& getProcMatQaSettings() const { return procMatQa; }
+        void setProcMatQaSettings(const procmat::ProcMatQaSettings& settings) { procMatQa = settings; }
+
         const ThreadingProjectSettings& getThreadingSettings() const;
         // Stores them and applies what applies live (the reserve, the web pump budget) to
         // the editor's job system; the worker and reader counts apply on the next launch
@@ -2258,6 +2275,9 @@ namespace jasperengine::editor{
         // The .material files submeshes are linked to (project-relative). Their changes on
         // disk reach the links through the hot reload (editor/reload, S05).
         std::vector<std::string> getLinkedMaterialFiles() const;
+        // Each linked .material as its file says now (Stop: the Play snapshot holds their values from
+        // before an edit made while playing)
+        void reapplyLinkedMaterialFiles();
         // `relativePath` was read again: every submesh linked to it takes `material`
         void applyLinkedMaterialFile(const std::string& relativePath, const Material& material);
 
@@ -2644,6 +2664,12 @@ namespace jasperengine::editor{
         // asset only by path (a tool's or a paste's new values) get the asset's GUID, so the
         // file follows the asset when it moves (R13 rewrites no referrer)
         void bindMaterialAssetRefs(Material& material);
+        // What resolve_asset answers: an asset by GUID or project-relative path, as the database has it. A miss
+        // only looks at the disk again: a path the database has not seen (written a moment ago) is imported
+        // alone, a GUID it does not know takes a refresh. A hit touches nothing.
+        AssetDatabase::Resolution resolveAsset(const std::string& asset, const std::string& hint, AssetType expected);
+        // A file on disk at `projectRelative` the database has not seen yet is imported now, alone; true when it was
+        bool importUnseenAsset(const std::string& projectRelative);
         // The identity keys (guid, formerGuids) a scene, prefab or material file is written
         // with, put at the top of its root; returns the GUID (a new one for a new file)
         Guid prepareDocumentIdentity(YAML::Node& root, const std::filesystem::path& relativePath);
@@ -2652,6 +2678,11 @@ namespace jasperengine::editor{
         // unless the policy accepts the loss
         SaveResult writeMaterialFile(const std::filesystem::path& relativePath, const Material& material,
                                      DegradedSavePolicy policy = DegradedSavePolicy::Refuse, std::string* error = nullptr);
+        // The text of a .material with its identity, for an undoable write of it
+        std::string materialFileText(const std::filesystem::path& file, const Material& material);
+        // The Inspector's scene for a .material's rows: getScene answers to its id, no scene list
+        // holds it, so nothing else ever draws, saves or closes it
+        void setMaterialAssetScene(SceneProject* sceneProject) { materialAssetScene = sceneProject; }
         // The edges of the loaded documents, unsaved edits included (the index overlay)
         void collectMemoryEdges(std::unordered_map<Guid, std::vector<DepEdge>>& edges);
         // After assets moved: the path hints of the loaded documents follow their GUIDs

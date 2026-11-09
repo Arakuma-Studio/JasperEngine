@@ -16,6 +16,7 @@
 // flushPoseBlend writes it unchanged.
 
 #include "ActionSystem.h"
+#include "component/Transform.h"
 #include "ActionSystemPlayersDetail.h"
 
 #include "Scene.h"

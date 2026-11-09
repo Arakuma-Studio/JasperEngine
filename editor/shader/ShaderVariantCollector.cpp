@@ -27,6 +27,7 @@
 #include "util/FbxImporter.h"
 #include "component/ParticleSystemComponent.h"
 #include "particles/ParticleCompiler.h"
+#include "particles/ParticleEffectLibrary.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "component/PointsComponent.h"
 #include "component/ReflectionProbeComponent.h"
@@ -107,6 +108,20 @@ namespace {
         if (!manifest || !manifest->present)
             return false;
         return (manifest->resolveRequire(ShaderReference::getEnabledFeatures(shader, features)) & ShaderRequire_SceneDepth) != 0;
+    }
+
+    // an effect's soft particles, or its sub-emitter children's (they draw in the same pass)
+    bool effectReadsSceneDepth(const particles::ParticleEffectDocument& effect, int depth){
+        if (readsSceneDepth(effect.renderer.shader, effect.renderer.shaderFeatures))
+            return true;
+        if (depth >= particles::kMaxSubEmitterDepth || !effect.subEmittersModule.present || !effect.subEmittersModule.enabled)
+            return false;
+        for (const particles::SubEmitterEntry& entry : effect.subEmitters){
+            const particles::EffectAsset& asset = particles::ParticleEffectLibrary::get(entry.effect);
+            if (asset.document && effectReadsSceneDepth(*asset.document, depth + 1))
+                return true;
+        }
+        return false;
     }
 
     // RenderSystem::loadPostProcess: a pass of the chain (enabled or not: a script may turn it
@@ -207,7 +222,7 @@ namespace {
             // a particle system's soft particles (library:particles SOFT)
             if (const ParticleSystemComponent* particles = registry->findComponent<ParticleSystemComponent>(entity)){
                 if (const particles::ParticleEffectDocument* effect = ParticleSubsystem::getDocument(*particles)){
-                    if (readsSceneDepth(effect->renderer.shader, effect->renderer.shaderFeatures)){
+                    if (effectReadsSceneDepth(*effect, 1)){
                         facts |= FACT_SCENE_DEPTH;
                     }
                 }
@@ -988,13 +1003,16 @@ namespace {
             }
         }
 
-        // what RenderSystem::loadParticles draws with: the effect's quads, meshes and trails,
-        // with and without the scene fog
         void collectParticles(const ParticleSystemComponent& particles){
-            const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(particles);
-            if (!document)
-                return;
-            const std::shared_ptr<particles::CompiledEffect> effect = particles::ParticleCompiler::compile(*document);
+            if (const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(particles))
+                collectParticleEffect(*document, 1);
+        }
+
+        // what RenderSystem::loadParticleEmitter draws with: the effect's quads, meshes and trails,
+        // with and without the scene fog, and its sub-emitter children's own (as many levels as
+        // EmitterRuntime::bindSubEmitters binds)
+        void collectParticleEffect(const particles::ParticleEffectDocument& document, int depth){
+            const std::shared_ptr<particles::CompiledEffect> effect = particles::ParticleCompiler::compile(document);
             if (!effect->valid)
                 return;
             for (bool fog : {false, true}){
@@ -1003,6 +1021,13 @@ namespace {
                 if (set.quads) insertKeys(ShaderType::PARTICLES, set.quadProperties, id);
                 if (set.meshes) insertKeys(ShaderType::PARTICLES, set.meshProperties, id);
                 if (set.trails) insertKeys(ShaderType::PARTICLES, set.trailProperties, id);
+            }
+            if (!effect->program.subEmitters || depth >= particles::kMaxSubEmitterDepth)
+                return;
+            for (const particles::SubEmitterEntry& entry : document.subEmitters){
+                const particles::EffectAsset& asset = particles::ParticleEffectLibrary::get(entry.effect);
+                if (asset.document)
+                    collectParticleEffect(*asset.document, depth + 1);
             }
         }
 

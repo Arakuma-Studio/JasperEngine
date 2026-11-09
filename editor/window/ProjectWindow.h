@@ -14,6 +14,7 @@
 #include "window/AssetCreateMenu.h"
 
 #include <iostream>
+#include <map>
 #include "io/watch/FileWatcher.h"
 
 #include <filesystem>
@@ -354,6 +355,9 @@ namespace jasperengine::editor {
         // frames a material thumbnail waited for its shader variant or textures (main thread)
         int materialRenderWaits = 0;
         fs::path materialRenderWaitPath;
+        // the materials given up on (a texture that never loads), by the file's time then: what
+        // they drew is a stand-in, so no thumbnail is written and only a change asks again
+        std::map<std::string, fs::file_time_type> abandonedMaterialThumbnails; // guarded by thumbnailMutex
 
         fs::path pendingModelPath;
         bool hasPendingModelRender = false; // guarded by thumbnailMutex
@@ -409,6 +413,11 @@ namespace jasperengine::editor {
         // Sprite Normal Map: a generated PNG's badge and tooltip (its recipe, the watcher's
         // staleness), and the image context menu's items
         void updateSpriteNormalsBadge(FileEntry& file, const fs::path& path);
+        // a PNG a Procedural Material baked (its jasper.procmat recipe): the badge, yellow once the graph
+        // changed since (S90 R16), and what the tooltip says
+        void updateProceduralBakeBadge(FileEntry& file, const fs::path& path);
+        // both badges of an image, from scratch: the sprite-normals one, else the bake's
+        void updateImageBadges(FileEntry& file, const fs::path& path);
         void drawSpriteNormalsMenuItems(const FileEntry& file, const fs::path& imagePath);
         // S43 R37: a palette's Export menu, a texture's Apply Palette... / Reduce Colours... /
         // Extract Palette, a foreign palette file's Import as Palette
@@ -471,6 +480,7 @@ namespace jasperengine::editor {
         // search the folder it started from (else the project root)
         fs::path listingFolder() const;
         // the Create items for a folder (Project window spec 6.6), as menu items
+        void createPixelParticleEffect(const std::string& preset, const std::filesystem::path& directory);
         void renderCreateItems(const fs::path& directory);
         void renderTreeContextMenu(const fs::path& folder);
         void startNewItem(AssetCreateKind kind, const fs::path& directory);
@@ -592,6 +602,7 @@ namespace jasperengine::editor {
         // Assets > Create > Shake Preset: "New Shake Preset.shake" with the explosion preset's values,
         // one project undo step, then renamed in place (camera shake spec 6)
         void assetsCreateShakePreset(const fs::path& directory);
+        void assetsCreateProceduralMaterial(const fs::path& directory);
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
         void assetsCreateAudioMixer(const fs::path& directory);

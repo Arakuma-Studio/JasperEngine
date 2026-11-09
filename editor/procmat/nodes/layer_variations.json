@@ -1,0 +1,138 @@
+{
+ "code": [],
+ "description": "Layers controlled variations for its input using the variations of the mask by iterating on the variable",
+ "format": 1,
+ "functions": [
+  "rand"
+ ],
+ "id": "layer_variations",
+ "inputs": [
+  {
+   "default": "1.0",
+   "description": "The input image",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "f"
+  },
+  {
+   "default": "0.0",
+   "description": "The input mask",
+   "function": true,
+   "label": "",
+   "name": "mask",
+   "short_description": "Mask",
+   "type": "f"
+  }
+ ],
+ "instance": [
+  "float layer_variations_$(name)(vec2 uv, float v1, float v2, float step, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tfloat v = 0.0;",
+  "\tif (sign(step) == sign(v2-v1)) {",
+  "\t\tfloat count = 1.0+floor((v2-v1)/step);",
+  "\t\tfloat seedvar = _seed_variation_;",
+  "\t\tvec4 var = _controlled_variation_;",
+  "\t\tvar.$variable = v1;",
+  "\t\tfloat input_v = $in.variation(uv, seedvar, var);",
+  "\t\tv = input_v;",
+  "\t\tfor (float x = v1+step; x < v2; x += step) {",
+  "\t\t\tvar.$variable = x;",
+  "\t\t\tinput_v = $in.variation(uv, seedvar, var);",
+  "\t\t\tfloat mask_v = $mask.variation(uv, seedvar, var);",
+  "\t\t\tv = mix(v, input_v, mask_v);",
+  "\t\t\tif ($randomize) {",
+  "\t\t\t\tseedvar = rand(vec2(seedvar,x));",
+  "\t\t\t}",
+  "\t\t}",
+  "\t}",
+  "\treturn v;",
+  "}"
+ ],
+ "kind": "shader",
+ "name": "Layer Variations",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a variation of the input",
+   "expr": "layer_variations_$(name)($uv, $v1, $v2, $step, _seed_variation_, _controlled_variation_)",
+   "label": "Output1",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.0,
+   "description": "Variable name",
+   "label": "Variable",
+   "name": "variable",
+   "short_description": "Variable",
+   "type": "enum",
+   "values": [
+    {
+     "name": "$?1",
+     "value": "x"
+    },
+    {
+     "name": "$?2",
+     "value": "y"
+    },
+    {
+     "name": "$?3",
+     "value": "z"
+    },
+    {
+     "name": "$?4",
+     "value": "w"
+    }
+   ]
+  },
+  {
+   "default": 0.0,
+   "description": "Initial value of the variable",
+   "label": "From",
+   "max": 1.0,
+   "min": 0.0,
+   "name": "v1",
+   "short_description": "From",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1.0,
+   "description": "Maximum value of the variable",
+   "label": "To",
+   "max": 1.0,
+   "min": 0.0,
+   "name": "v2",
+   "short_description": "To",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "Step value when iterating",
+   "label": "Step",
+   "max": 1.0,
+   "min": 0.0,
+   "name": "step",
+   "short_description": "Step",
+   "step": 0.001,
+   "type": "float"
+  },
+  {
+   "default": true,
+   "description": "Pick different seeds for different variations",
+   "label": "Randomize",
+   "name": "randomize",
+   "short_description": "Randomize",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Layer Variations",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/layer_variations.mmg"
+ },
+ "type_version": 1
+}

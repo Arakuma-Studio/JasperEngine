@@ -1,0 +1,115 @@
+{
+ "code": [
+  "vec2 $(name_uv)_uv = floor(($uv*vec2($x, $y)))+vec2(0.5);",
+  "vec3 $(name_uv)_dither = $t;",
+  ""
+ ],
+ "description": "Creates a pixelated image from its input, and also quantifies the colors with optional dithering.",
+ "format": 1,
+ "functions": [
+  "bayer_matrix"
+ ],
+ "id": "pixelize",
+ "inputs": [
+  {
+   "default": "vec3(1.0)",
+   "description": "The image to be pixelated",
+   "label": "",
+   "name": "i",
+   "short_description": "Input",
+   "type": "rgb"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Pixelize",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "A pixelated version of the input image",
+   "expr": "floor($i($(name_uv)_uv/vec2($x, $y))*$c+$d*($(name_uv)_dither))/$c",
+   "label": "Output",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 4,
+   "description": "Number of pixel columns of the output",
+   "label": "Columns",
+   "max": 256,
+   "min": 1,
+   "name": "x",
+   "short_description": "Columns",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 4,
+   "description": "Number of pixel rows of the output",
+   "label": "Rows",
+   "max": 256,
+   "min": 1,
+   "name": "y",
+   "short_description": "Rows",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 4,
+   "description": "Number of color levels for each channel",
+   "label": "Levels",
+   "max": 32,
+   "min": 2,
+   "name": "c",
+   "short_description": "Levels",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "description": "Amount of dithering in the output image",
+   "label": "Dither",
+   "max": 1,
+   "min": 0,
+   "name": "d",
+   "short_description": "Dithering",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "label": "Dither type",
+   "name": "t",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Random",
+     "value": "fract(vec3(dot(vec2(171.0, 231.0), $(name_uv)_uv))/vec3(103.0, 71.0, 97.0))"
+    },
+    {
+     "name": "Bayer 2x2",
+     "value": "vec3(bayer_matrix($(name_uv)_uv, 1))"
+    },
+    {
+     "name": "Bayer 4x4",
+     "value": "vec3(bayer_matrix($(name_uv)_uv, 2))"
+    },
+    {
+     "name": "Bayer 8x8",
+     "value": "vec3(bayer_matrix($(name_uv)_uv, 3))"
+    },
+    {
+     "name": "Bayer 16x16",
+     "value": "vec3(bayer_matrix($(name_uv)_uv, 4))"
+    }
+   ]
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/pixelize.mmg"
+ },
+ "type_version": 1
+}

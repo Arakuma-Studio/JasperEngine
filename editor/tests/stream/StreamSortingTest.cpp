@@ -374,7 +374,9 @@ TEST(StreamSorting, PlayerConfigCarriesTheSorting){
 }
 
 // S52's shader sources (library:sprite @batchable, 'Sfx' 'Sfr' 'Spv', the instanced snap's mode)
-// are cached under v61: a cache of an older version holds programs without them
+// are cached under v61 or later: a cache of an older version holds programs without them
 TEST(StreamSorting, ShaderCacheVersionCoversThePixelArtBatching){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v61");
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 61) << name;
 }

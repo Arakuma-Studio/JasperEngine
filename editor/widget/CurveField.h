@@ -64,6 +64,11 @@ namespace jasperengine::editor::ui {
         EditPhase consume(ImGuiID id, std::vector<Curve>& curves);
         void close();
 
+        // the window the opened field is drawn in (its top-level window's name)
+        bool openedFrom(const char* windowName) const { return target != 0 && opener == windowName; }
+        // a playhead on the graph for this frame (the opener's clock on the curve's time axis, S91
+        // R23): a line, and Paste at Playhead in the menus; not set in a frame, it goes
+        void setPlayhead(float time);
         // the window has the keyboard focus (App: the Curve context and its claim on the edit commands)
         bool isFocused() const { return target != 0 && windowFocused; }
         // the catalog's curve.* commands
@@ -90,6 +95,8 @@ namespace jasperengine::editor::ui {
 
         // the opened field
         ImGuiID target = 0;
+        std::string opener;
+        int playheadFrame = -1;
         CurveFieldOptions options;
         bool twoCurves = false;
         std::string title;

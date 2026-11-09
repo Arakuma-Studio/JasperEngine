@@ -4,6 +4,7 @@
 #include "AudioQa.h"
 
 #include "AudioBaseline.h"
+#include "util/QaChecks.h"
 
 #include <algorithm>
 #include <cmath>
@@ -19,7 +20,7 @@ namespace {
     using Json = nlohmann::json;
 
     constexpr double FLOOR_DB = -60.0;
-    constexpr int MAX_AT = 10;
+    constexpr int MAX_AT = qa::MAX_AT;
 
     double linear(double db) {
         return std::pow(10.0, db / 20.0);
@@ -46,12 +47,11 @@ namespace {
 
     Json entry(const std::string& id) {
         static const std::set<std::string> mixer = {"true_peak", "clipping", "voice_budget", "load_delay"};
-        return {{"id", id}, {"kind", mixer.count(id) ? "mixer" : "content"}, {"status", "SKIP"}, {"round", 0}, {"measured", nullptr},
-                {"threshold", nullptr}, {"threshold_source", nullptr}, {"limited_by", nullptr}, {"at", Json::array()}, {"fix_hint", nullptr}, {"method", ""}};
+        return qa::row(id, mixer.count(id) ? "mixer" : "content");
     }
 
     void addAt(Json& check, double t) {
-        if ((int)check["at"].size() < MAX_AT) check["at"].push_back(std::round(t * 1000.0) / 1000.0);
+        qa::addAt(check, t);
     }
 
     double stampSeconds(const Context& c, const Json& line) {
@@ -782,23 +782,12 @@ AudioQa::Json AudioQa::run(const AudioSessionData& data, const Request& request)
     if (wanted("regression")) results["regression"] = checkRegression(c);
 
     Json checks = Json::array();
-    bool anyFail = false, anyWarn = false, anyPass = false;
-    bool stop = false;
     for (const std::string& id : checkIds()) {
         auto found = results.find(id);
-        if (found == results.end()) continue;
-        Json check = found->second;
-        const std::string status = check["status"];
-        anyFail = anyFail || status == "FAIL";
-        anyWarn = anyWarn || status == "WARN";
-        anyPass = anyPass || status == "PASS";
-        auto rounds = request.rounds.find(id);
-        const int previous = rounds == request.rounds.end() ? 0 : rounds->second;
-        const int round = status == "FAIL" ? previous + 1 : 0;
-        check["round"] = round;
-        stop = stop || round > request.qa.fixRounds;
-        checks.push_back(std::move(check));
+        if (found != results.end()) checks.push_back(std::move(found->second));
     }
+    const bool stop = qa::countRounds(checks, request.rounds, request.qa.fixRounds);
+    const std::string verdict = qa::verdict(checks);
 
     // what a person should hear: the first of each failure, the worst margin, the loudest moment, each clip's first start
     Json listen = Json::array();
@@ -831,31 +820,22 @@ AudioQa::Json AudioQa::run(const AudioSessionData& data, const Request& request)
     // the audit: what differs from the defaults
     const AudioQaSettings defaults;
     const AudioLoudnessTargets targetDefaults;
-    Json values = Json::object(), changed = Json::array();
-    const auto audit = [&](const std::string& key, const Json& value, const Json& standard) {
-        values[key] = value;
-        if (value != standard) changed.push_back({{"key", key}, {"value", value}, {"default", standard}});
-    };
+    qa::ThresholdAudit audit;
     for (const AudioQaField& field : audioQaFields()) {
-        if (field.real) audit(field.key, request.qa.*field.real, defaults.*field.real);
-        else audit(field.key, request.qa.*field.whole, defaults.*field.whole);
+        if (field.real) audit.add(field.key, request.qa.*field.real, defaults.*field.real);
+        else audit.add(field.key, request.qa.*field.whole, defaults.*field.whole);
     }
-    audit("audio.qa.music_group", request.qa.musicGroup, defaults.musicGroup);
-    audit("audio.loudness_target_lufs", request.targets.targetLufs, targetDefaults.targetLufs);
-    audit("audio.loudness_tolerance_lu", request.targets.toleranceLu, targetDefaults.toleranceLu);
-    audit("audio.true_peak_ceiling_dbtp", request.targets.ceilingDbtp, targetDefaults.ceilingDbtp);
+    audit.add("audio.qa.music_group", request.qa.musicGroup, defaults.musicGroup);
+    audit.add("audio.loudness_target_lufs", request.targets.targetLufs, targetDefaults.targetLufs);
+    audit.add("audio.loudness_tolerance_lu", request.targets.toleranceLu, targetDefaults.toleranceLu);
+    audit.add("audio.true_peak_ceiling_dbtp", request.targets.ceilingDbtp, targetDefaults.ceilingDbtp);
 
-    std::string guidance;
-    if (stop) {
-        guidance = "A check failed " + std::to_string(request.qa.fixRounds + 1) + " times in a row: stop fixing, and report what it measured to the user. ";
-    } else if (anyFail) {
-        guidance = "Fix what fix_hint says, capture again and check again. Never loosen a threshold. ";
-    }
-    guidance += "Report these numbers; never claim a sound plays without a capture.";
+    const std::string guidance = qa::guidance(stop, verdict == "FAIL", request.qa.fixRounds, "capture again and check again",
+                                              "Report these numbers; never claim a sound plays without a capture.");
 
     return {{"session", data.capture.id}, {"scene", data.capture.session.value("scene", "")},
             {"format", "jasperengine.audio-check"}, {"version", 1},
-            {"verdict", anyFail ? "FAIL" : anyWarn ? "WARN" : anyPass ? "PASS" : "SKIP"},
+            {"verdict", verdict},
             {"range", {{"start", data.startSeconds}, {"end", data.endSeconds}}},
-            {"checks", checks}, {"listen", listen}, {"thresholds", {{"values", values}, {"changed", changed}}}, {"guidance", guidance}};
+            {"checks", checks}, {"listen", listen}, {"thresholds", audit.json()}, {"guidance", guidance}};
 }

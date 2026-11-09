@@ -17807,6 +17807,11 @@
      35184372088832,
      true
     ],
+    "ik[].aimOffset": [
+     5,
+     0,
+     true
+    ],
     "ik[].boneWeights": [
      15,
      0,
@@ -17838,6 +17843,11 @@
      true
     ],
     "ik[].forwardAxis": [
+     5,
+     0,
+     true
+    ],
+    "ik[].hingeAxis": [
      5,
      0,
      true
@@ -17897,6 +17907,11 @@
      0,
      true
     ],
+    "ik[].soften": [
+     2,
+     0,
+     true
+    ],
     "ik[].speedThreshold": [
      2,
      0,
@@ -17913,6 +17928,11 @@
      true
     ],
     "ik[].tolerance": [
+     2,
+     0,
+     true
+    ],
+    "ik[].twist": [
      2,
      0,
      true
@@ -22225,6 +22245,11 @@
     35184372088832,
     true
    ],
+   "ik[N].aimOffset": [
+    5,
+    0,
+    true
+   ],
    "ik[N].boneWeights": [
     15,
     0,
@@ -22256,6 +22281,11 @@
     true
    ],
    "ik[N].forwardAxis": [
+    5,
+    0,
+    true
+   ],
+   "ik[N].hingeAxis": [
     5,
     0,
     true
@@ -22315,6 +22345,11 @@
     0,
     true
    ],
+   "ik[N].soften": [
+    2,
+    0,
+    true
+   ],
    "ik[N].speedThreshold": [
     2,
     0,
@@ -22331,6 +22366,11 @@
     true
    ],
    "ik[N].tolerance": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].twist": [
     2,
     0,
     true

@@ -1,0 +1,40 @@
+{
+ "code": [],
+ "description": "Generates a grid made of random color squares",
+ "format": 1,
+ "functions": [
+  "color_dots"
+ ],
+ "id": "color_noise",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Color Noise",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the noise pattern",
+   "expr": "color_dots($(uv), 1.0/$(size), $(seed))",
+   "label": "Output",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 8,
+   "description": "The grid size",
+   "first": 2,
+   "label": "Grid Size",
+   "last": 12,
+   "name": "size",
+   "short_description": "Size",
+   "type": "size"
+  }
+ ],
+ "short_description": "Color Noise",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/color_noise.mmg"
+ },
+ "type_version": 1
+}

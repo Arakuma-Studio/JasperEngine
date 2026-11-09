@@ -5,7 +5,13 @@
 #include "window/PoseAnimationWindow.h"
 #include "EditorModal.h"
 #include "animation/AnimatorEditorHooks.h"
+#include "graph/GraphEditorHooks.h"
+#include "procmat/ProceduralMaterialKind.h"
 #include "ProjectWindow.h"
+#include "particles/ParticleEffectCodec.h"
+#include "pixelart/particles/PixelParticlePresets.h"
+#include "pixelart/particles/PixelPresetCreate.h"
+#include "util/ProjectFileWrites.h"
 #include "sprite/SpriteAtlasBuilder.h"
 #include "sprite/SpriteSheetSources.h"
 #include "sprite/SpriteSheetPool.h"
@@ -57,6 +63,7 @@
 #include "camera/ShakePresets.h"
 #include "animation/AnimationClipIO.h"
 #include "util/ProjectFileWrites.h"
+#include "procmat/ProceduralBake.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/CreateDirCmd.h"
 #include "command/type/DeleteFileCmd.h"
@@ -110,6 +117,7 @@
 
 #include "imgui_internal.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <thread>
@@ -617,6 +625,7 @@ void editor::ProjectWindow::cancelThumbnailWork(){
         std::queue<ThumbnailRequest> empty;
         std::swap(thumbnailQueue, empty);
         pendingThumbnailRequests.clear();
+        abandonedMaterialThumbnails.clear();
 
         // The worker publishes pending preview state before clearing busy, so
         // after this wait all of its state can be invalidated atomically.
@@ -748,6 +757,18 @@ bool editor::ProjectWindow::hasPendingThumbnailWork() {
            !poseThumbnailQueue.empty() || poseThumbnailer.busy();
 }
 
+namespace {
+
+    // A load that never ends cannot be had on demand (a texture that fails to load is not pending:
+    // it counts as empty): test_material_thumbnail.py holds one with this marker file
+    bool materialThumbnailStuckForTest(const fs::path& projectPath) {
+        static const char* const marker = std::getenv("JASPER_TEST_MATERIAL_THUMBNAIL_STUCK");
+        std::error_code ec;
+        return marker && fs::exists(projectPath / marker, ec);
+    }
+
+}
+
 void editor::ProjectWindow::processMaterialThumbnails() {
     ThumbnailRequest pending;
     {
@@ -768,13 +789,33 @@ void editor::ProjectWindow::processMaterialThumbnails() {
             materialRenderWaitPath = pending.path;
             materialRenderWaits = 0;
         }
-        if (materialRender.isPending() && materialRenderWaits < maxMaterialRenderWaits) {
+        const bool stillLoading = materialRender.isPending() || materialThumbnailStuckForTest(project->getProjectPath());
+        if (stillLoading && materialRenderWaits < maxMaterialRenderWaits) {
             materialRenderWaits++;
             Engine::executeSceneOnce(materialRender.getScene());
             return;
         }
         materialRenderWaits = 0;
         materialRenderWaitPath.clear();
+
+        if (stillLoading) {
+            Log::warn("No thumbnail for material %s: it was still loading after %d frames (asked again when it changes)",
+                      pending.path.string().c_str(), maxMaterialRenderWaits);
+            std::error_code timeError;
+            const fs::file_time_type fileTime = fs::last_write_time(pending.path, timeError);
+            {
+                std::lock_guard<std::mutex> thumbnailLock(thumbnailMutex);
+                if (pending.generation == thumbnailGeneration) {
+                    if (!timeError) abandonedMaterialThumbnails[thumbnailRequestKey(pending.path)] = fileTime;
+                    pendingThumbnailRequests.erase(thumbnailRequestKey(pending.path));
+                    hasPendingMaterialRender = false;
+                    pendingMaterialPath.clear();
+                    pendingMaterialGeneration = 0;
+                }
+            }
+            notifyThumbnailWork();
+            return;
+        }
 
         fs::path thumbnailPath = project->getThumbnailPath(pending.path);
         fs::create_directories(thumbnailPath.parent_path());
@@ -1220,6 +1261,28 @@ static float drawToolbarStrip(float height) {
     return height;
 }
 
+// A pixel particle preset as a .particles asset in `directory` (S49 R20): its palette copy and
+// child effects with it, one undo step of the project
+void editor::ProjectWindow::createPixelParticleEffect(const std::string& preset, const fs::path& directory) {
+    std::error_code ec;
+    const std::string folder = fs::relative(directory, project->getAssetsPath(), ec).generic_string();
+    const std::string base = (folder.empty() || folder == "." ? std::string() : folder + "/");
+    pixelart::ProjectPixelPreset made;
+    std::string error;
+    if (!pixelart::prepareProjectPixelPreset(*project, preset, base.empty() ? std::string() : folder, made, error)) {
+        Out::error("Could not make the pixel preset %s: %s", preset.c_str(), error.c_str());
+        return;
+    }
+    std::string name = base + preset + ".particles";
+    for (int i = 1; fs::exists(project->getAssetsPath() / FileUtils::pathFromUtf8(name), ec); i++)
+        name = base + preset + " " + std::to_string(i) + ".particles";
+    made.writes.push_back({project->getAssetsPath() / FileUtils::pathFromUtf8(name), particles::ParticleEffectCodec::write(made.document)});
+    if (!ProjectFileWrites::writeUndoable(project, made.writes, error, nullptr, nullptr, {}, true,
+                                          "Create Particle Effect " + pixelart::pixelParticlePresetLabel(preset))) {
+        Out::error("Could not write %s: %s", name.c_str(), error.c_str());
+    }
+}
+
 // The Create items for `directory` (the one list, AssetCreateMenu), then the imports
 void editor::ProjectWindow::renderCreateItems(const fs::path& directory) {
     for (const AssetCreateItem& item : assetCreateItems()) {
@@ -1239,6 +1302,20 @@ void editor::ProjectWindow::renderCreateItems(const fs::path& directory) {
             createAsset(item.kind, directory);
             ImGui::CloseCurrentPopup();
         }
+    }
+    // Particle Effect > Pixel > <preset> (S49 R20): a .particles asset of a pixel preset here
+    ImGui::Separator();
+    if (ImGui::BeginMenu(ICON_FA_FIRE " Particle Effect")) {
+        if (ImGui::BeginMenu("Pixel")) {
+            for (const std::string& preset : pixelart::pixelParticlePresetNames()) {
+                if (ImGui::MenuItem(pixelart::pixelParticlePresetLabel(preset).c_str())) {
+                    createPixelParticleEffect(preset, directory);
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::EndMenu();
     }
     ImGui::Separator();
 
@@ -2220,6 +2297,15 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     }
                     ImGui::Separator();
                 }
+                if (file.type == FileType::MATERIAL || Util::isParticleEffectFile(file.name)){
+                    // a double-click shows these in the Inspector: their text stays reachable
+                    const bool openText = ImGui::MenuItem(ICON_FA_FILE_CODE " Open as Text");
+                    UIProbe::item("project.menu.open_as_text");
+                    if (openText) {
+                        codeEditor->openFile((currentPath / file.name).string(), true);
+                    }
+                    ImGui::Separator();
+                }
                 if (!file.isDirectory && hasSpriteSelection() && (SpriteSheetSources::isTexturePath(file.name) || SpriteSheetPool::isAsepritePath(file.name))) {
                     if (ImGui::MenuItem(ICON_FA_TABLE_CELLS " Create Sprite Atlas from Selection")) {
                         assetsCreateSpriteAtlasFromSelection();
@@ -2997,7 +3083,7 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         if (Util::isImageFile(fileEntry.extension)){
             fileEntry.type = FileType::IMAGE;
             // a Sprite Normal Map output (its recipe; read again only when the file changed)
-            updateSpriteNormalsBadge(fileEntry, path);
+            updateImageBadges(fileEntry, path);
         }else if (Util::isSceneFile(fileEntry.extension)){
             fileEntry.type = FileType::SCENE;
             fileEntry.icon = sceneIcon.getRender();
@@ -3620,6 +3706,14 @@ void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, F
         std::lock_guard<std::mutex> lock(thumbnailMutex);
         if (thumbnailWorkSuspended) {
             return;
+        }
+        if (auto abandoned = abandonedMaterialThumbnails.find(requestKey); abandoned != abandonedMaterialThumbnails.end()) {
+            std::error_code timeError;
+            const fs::file_time_type fileTime = fs::last_write_time(normalizedPath, timeError);
+            if (!forceRegenerate && !timeError && fileTime == abandoned->second) {
+                return;
+            }
+            abandonedMaterialThumbnails.erase(abandoned);
         }
         if (!pendingThumbnailRequests.insert(requestKey).second) {
             return;
@@ -4264,7 +4358,7 @@ void editor::ProjectWindow::onFilesChanged(std::span<const FileChange> changes) 
         }
         return path.lexically_normal().parent_path() == current;
     };
-    bool rescan = false, folders = false, documents = false, prefabs = false;
+    bool rescan = false, folders = false, documents = false, prefabs = false, graphs = false;
     std::vector<fs::path> modified;
     for (const FileChange& change : changes) {
         if (change.kind == FileChangeKind::Rescan) {
@@ -4283,12 +4377,19 @@ void editor::ProjectWindow::onFilesChanged(std::span<const FileChange> changes) 
             modified.push_back(change.path);
             if (Util::isPrefabFile(name)) prefabs = true;
         }
+        // a Procedural Material edited, moved or gone: the bakes shown may be stale now (R16)
+        if (Util::isProceduralMaterialFile(name) || Util::isProceduralMaterialFile(watch::pathToUtf8(change.oldPath))) graphs = true;
     }
     if (rescan) {
         scanDirectory(currentPath);
     } else {
         if (folders) dirTreeGeneration++;
         if (documents) refreshProjectFiles();
+        if (graphs) {
+            for (FileEntry& f : files) {
+                if (f.type == FileType::IMAGE) updateImageBadges(f, currentPath / f.name);
+            }
+        }
     }
     for (const fs::path& path : modified) notifyResourceFileChanged(path);
     // a prefab's thumbnail also shows what it nests
@@ -4321,6 +4422,23 @@ void editor::ProjectWindow::updateSpriteNormalsBadge(FileEntry& file, const fs::
             file.generatedStale = true;
             file.generatedBy += "\nThe source " + spritenormalsentry::fileName(head.source) + " is missing";
         }
+    }
+}
+
+void editor::ProjectWindow::updateImageBadges(FileEntry& file, const fs::path& path) {
+    updateSpriteNormalsBadge(file, path);
+    if (!file.generated) updateProceduralBakeBadge(file, path);
+}
+
+void editor::ProjectWindow::updateProceduralBakeBadge(FileEntry& file, const fs::path& path) {
+    const std::optional<procmat::BakeStatus> status = procmat::cachedBakeStatus(project->getProjectPath(), path);
+    if (!status) return;
+    file.generated = true;
+    file.generatedBy = "Baked from " + status->recipe.graphPath + " (" + status->recipe.output + ", " + std::to_string(status->recipe.size) +
+                       ", seed " + std::to_string(status->recipe.seed) + ", " + status->recipe.tier + " " + status->recipe.device + ")";
+    if (status->state != procmat::BakeState::Fresh) {
+        file.generatedStale = true;
+        file.generatedBy += "\nStale: " + status->reason + ". Bake it again.";
     }
 }
 
@@ -4384,7 +4502,7 @@ void editor::ProjectWindow::show() {
         if (watcher->revision() != spriteNormalsRevision) {
             spriteNormalsRevision = watcher->revision();
             for (FileEntry& f : files) {
-                if (f.type == FileType::IMAGE) updateSpriteNormalsBadge(f, currentPath / f.name);
+                if (f.type == FileType::IMAGE) updateImageBadges(f, currentPath / f.name);
             }
         }
     }
@@ -4820,6 +4938,22 @@ void editor::ProjectWindow::assetsCreateShakePreset(const fs::path& directory) {
     std::string error;
     if (!ProjectFileWrites::writeUndoable(project, {{project->getProjectPath() / relative, camera::writeShakePreset(file)}}, error)) {
         Backend::getApp().registerAlert("Create Shake Preset", error);
+        return;
+    }
+    selectCreated(directory, relative.filename().string(), true);
+}
+
+void editor::ProjectWindow::assetsCreateProceduralMaterial(const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path relative = uniqueRelativePath(directory, "New Procedural Material", procmat::PROCEDURAL_MATERIAL_EXTENSION);
+    const std::string text = graph::save(procmat::starterProceduralMaterial(anim::generateClipGuid()));
+    std::string error;
+    if (!ProjectFileWrites::writeUndoable(project, {{project->getProjectPath() / relative, text}}, error)) {
+        Backend::getApp().registerAlert("Create Procedural Material", error);
         return;
     }
     selectCreated(directory, relative.filename().string(), true);
@@ -5268,10 +5402,26 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         editor::getEditorHost().openInputActions(filePath);
     } else if (file.type == FileType::COLOR_LUT) {
         assignColorLut(filePath);  // the open scene's Color Grading LUT
+    } else if (Util::isParticleEffectFile(filePath.string()) && project->isInsideAssetsPath(filePath)) {
+        // the Particle Effect window on it (S91); a single click still shows it in the Inspector
+        // and the context menu has Open as Text
+        editor::getEditorHost().openParticleEffect(project->normalizeToAssetsRelative(filePath).generic_string());
+    } else if (file.type == FileType::MATERIAL || Util::isParticleEffectFile(filePath.string())) {
+        // Unity: selected and shown in the Inspector (the context menu has Open as Text)
+        selectedFiles.clear();
+        selectedFiles.insert(file.name);
+        lastSelectedFile = file.name;
+        project->setInspectedAsset(filePath.lexically_normal());
+        if (InspectorWindow* inspector = Backend::getApp().getInspectorWindow()) {
+            inspector->showPickedParticleAgain();
+            inspector->requestFocus();
+        }
     } else if (filePath.extension() == AudioMixerIO::EXTENSION) {
         editor::getEditorHost().openAudioMixerWindow(filePath);
     } else if (file.type == FileType::PALETTE) {
         if (PaletteWindow* palettes = Backend::getApp().getPaletteWindow()) palettes->open(filePath);
+    } else if (graphEditorHooks().openGraph && graphEditorHooks().openGraph(filePath.string())) {
+        // a graph kind's file: the window of its kind (S90 R26)
     } else {
         // text files (an .anim only when the clip hooks are unset: its JSON text)
         codeEditor->openFile(filePath.string(), true);
@@ -5393,6 +5543,7 @@ void editor::ProjectWindow::createAsset(AssetCreateKind kind, const fs::path& di
         case AssetCreateKind::PhysicsMaterial: assetsCreatePhysicsMaterial(false, directory); break;
         case AssetCreateKind::PhysicsMaterial2D: assetsCreatePhysicsMaterial(true, directory); break;
         case AssetCreateKind::ShakePreset: assetsCreateShakePreset(directory); break;
+        case AssetCreateKind::ProceduralMaterial: assetsCreateProceduralMaterial(directory); break;
         case AssetCreateKind::SpriteAtlas: assetsCreateSpriteAtlas(directory); break;
         case AssetCreateKind::Palette: assetsCreatePalette(directory); break;
         default: break;
