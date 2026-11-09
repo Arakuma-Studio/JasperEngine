@@ -527,6 +527,7 @@ namespace {
             writeSubmeshCustomUniforms(scene, mesh, mesh.submeshes[i]);
         }
         mesh.needUpdateShaderUniforms = false;
+        mesh.customUniformWrites++;
     }
 
     // both stages of a single-block component, from its values, the globals it binds and its
@@ -3992,6 +3993,7 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     inputs.terrainSurface = terrain && hasTerrainSurfaceLayers(*terrain);
     // a Sprite Batch draws its Sprite with the instanced variant (S52 R13)
     inputs.instanced = instmesh != nullptr || mesh.spriteInstanced;
+    inputs.instancedMesh = instmesh != nullptr;
     inputs.batchAttributes = mesh.batchAttributes;
     // Opted in per field, not per band, so emptying the band (editor preview) neither
     // rebuilds the shader nor drops the variant from an export.
@@ -4301,14 +4303,16 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         variant.properties |= ShaderPool::getPixelSnapProperty(ShaderType::MESH);
     // S52: the pixel-art batching inputs, only for a variant whose mesh carries them and reads
     // them: a @batchable manifest's instance= amounts (per vertex, or a Sprite Batch's per
-    // instance), its framerect= features (not instanced: the instance's rect composes), the snap
-    // pivot of a snapped sprite (not instanced: the instance's origin is its pivot)
+    // instance; not an Instanced Mesh's, whose instances have no i_spriteFx), its framerect=
+    // features (not instanced: the instance's rect composes), the snap pivot of a snapped sprite
+    // (per vertex for a batched one, per instance for a Sprite Batch's; an Instanced Mesh's
+    // instance snaps at its matrix's origin)
     const bool batchableManifest = manifest && manifest->batchable;
-    const bool p_spriteFx = batchableManifest && (inputs.batchAttributes & MeshBatchAttribute_SpriteFx) &&
+    const bool p_spriteFx = batchableManifest && !inputs.instancedMesh && (inputs.batchAttributes & MeshBatchAttribute_SpriteFx) &&
                             manifest->usesInstanceSlots(inputs.features);
     const bool p_frameRect = batchableManifest && !inputs.instanced && (inputs.batchAttributes & MeshBatchAttribute_FrameRect) &&
                              manifest->usesFrameRect(inputs.features);
-    const bool p_snapPivot = p_pixelSnap && !inputs.instanced && (inputs.batchAttributes & MeshBatchAttribute_SnapPivot);
+    const bool p_snapPivot = p_pixelSnap && (inputs.instanced ? !inputs.instancedMesh : (inputs.batchAttributes & MeshBatchAttribute_SnapPivot) != 0);
     if (p_spriteFx)
         variant.properties |= ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX);
     if (p_frameRect)
@@ -6879,11 +6883,13 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         instmesh->needUpdateBuffer = true;
     }
     // a Sprite Batch's instances (S52): its buffers at their capacity, the FX stream when the
-    // material reads an instance= amount; bound below as an instanced mesh's
+    // material reads an instance= amount, the pivots in a snapping scene ('Spv'); bound below as
+    // an instanced mesh's
     SpriteInstanceBatch* spriteInstances = (!instmesh && mesh.spriteInstanced) ? spriteInstancesOf(entity) : nullptr;
     if (spriteInstances){
         if (spriteBatchWantsFx(mesh))
             spriteInstances->enableFx();
+        spriteInstances->setPivotsEnabled(pixelSnapVariants);
         if (!spriteInstances->createGpu()){
             for (BufferRender* created : buffersCreatedThisLoad)
                 created->destroyBuffer();
@@ -7321,6 +7327,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[i].customVSParams.resolve(shaderData, "u_vs_customParams");
         mesh.submeshes[i].customFSParams.resolve(shaderData, "u_fs_customParams");
         writeSubmeshCustomUniforms(scene, mesh, mesh.submeshes[i]);
+        mesh.customUniformWrites++;
 
         // what the binding below takes stand-ins for (noteTextureBinding)
         const TextureBindMark bindMark = markTextureBinding();
@@ -8804,8 +8811,10 @@ SubmeshBatchVariant RenderSystem::getSubmeshBatchVariant(const MeshComponent& me
         return batch;
     // a draw is never both batched and instanced: dynamic batching (the Doriax catch-up's
     // sprite-batching) takes single-submesh meshes of up to 64 vertices drawn by the built-in shader
-    const bool builtinShader = meshShaderSrc.empty() || ShaderReference::isBuiltin(meshShaderSrc);
-    if (builtinShader && mesh.numSubmeshes == 1 && submeshVertexCount(mesh, submesh) <= DYNAMIC_BATCH_MAX_VERTICES)
+    // or a @batchable library shader (S52)
+    const bool batchedShader = meshShaderSrc.empty() || ShaderReference::isBuiltin(meshShaderSrc) ||
+                               (inputs.manifest && inputs.manifest->batchable);
+    if (batchedShader && mesh.numSubmeshes == 1 && submeshVertexCount(mesh, submesh) <= DYNAMIC_BATCH_MAX_VERTICES)
         return batch;
     // the most vertex inputs it reads (a library shader's a_smoothNormal counted), with the
     // instance's vectors within sokol's 16
@@ -13396,10 +13405,16 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
             instmesh->buffer.getRender()->destroyBuffer();
             instmesh->vatBuffer.getRender()->destroyBuffer();
         }
-        // a Sprite Batch's buffers go with the bindings that held them (the next load makes them)
+        // a Sprite Batch's buffers go with the bindings that held them (the next load makes them;
+        // an attached batch's too, S52 R17)
         if (SpriteBatchComponent* spriteBatch = scene->findComponent<SpriteBatchComponent>(entity)){
             if (spriteBatch->state && spriteBatch->state->batch)
                 spriteBatch->state->batch->destroyGpu();
+        }
+        if (!attachedInstanceBatches.empty()){
+            auto attached = attachedInstanceBatches.find(entity);
+            if (attached != attachedInstanceBatches.end())
+                attached->second->destroyGpu();
         }
 
         submesh.lodIndices.getRender()->destroyBuffer();
@@ -20044,8 +20059,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             renderData.waterSortDistance = renderData.distanceToCamera;
     }
     // (S52 R6: Sorting Layers, Order in Layer and Sorting Groups first; nothing without them)
-    applyTransparentSortKeys(transparentRenders, cameraTransform.worldPosition);
-    std::sort(transparentRenders.begin(), transparentRenders.end(), TransparentRenderComparison());
+    if (applyTransparentSortKeys(transparentRenders, cameraTransform.worldPosition))
+        std::sort(transparentRenders.begin(), transparentRenders.end(), TransparentGroupComparison());
+    else
+        std::sort(transparentRenders.begin(), transparentRenders.end(), TransparentRenderComparison());
     // S57: an Order Independent camera's alpha-blended submeshes accumulate in a pass of their
     // own, resolved over the scene; the sorted loop below draws the rest
     if (oitPlanned && colorTarget && hasOitDraws(transparentRenders)){

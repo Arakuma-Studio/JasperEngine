@@ -603,13 +603,17 @@ namespace {
                                                            registry->findComponent<TilemapComponent>(entity));
                         // S52: a Sprite's batching inputs and its Sprite Batch as MeshSystem::update gives
                         // them (not the mesh's fields: a scene not drawn yet has none), and a snapped one
-                        // carries its snap pivot ('Spv', not when instanced)
+                        // carries its snap pivot ('Spv': per vertex, or per instance in a Sprite Batch;
+                        // not with an Instanced Mesh)
                         if (registry->findComponent<SpriteComponent>(entity)){
                             const SpriteBatchComponent* spriteBatch = registry->isComponentRegistered<SpriteBatchComponent>()
                                                                       ? registry->findComponent<SpriteBatchComponent>(entity) : nullptr;
-                            spriteInstancedKeys = spriteBatch && spriteBatch->enabled && !registry->findComponent<InstancedMeshComponent>(entity);
+                            const bool instancedMesh = registry->findComponent<InstancedMeshComponent>(entity) != nullptr;
+                            spriteInstancedKeys = spriteBatch && spriteBatch->enabled && !instancedMesh;
                             spriteAttributes = MeshSystem::spriteBatchAttributes(*mesh, false, scene->getDefaultCustomShader(ShaderType::MESH));
-                            snapPivotKeys = pixelSnapKeys && !spriteInstancedKeys;
+                            if (instancedMesh)
+                                spriteAttributes &= (uint8_t)~MeshBatchAttribute_SpriteFx;
+                            snapPivotKeys = pixelSnapKeys && !instancedMesh;
                         }
                         collectMesh(registry, entity, *mesh);
                         pixelSnapKeys = false;

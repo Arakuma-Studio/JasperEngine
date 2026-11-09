@@ -2,7 +2,8 @@
 
 Many copies of one Sprite's frames from one GameObject, drawn with GPU instancing: one draw call
 per texture page (spec: [S52](../specs/S52-sprite-instancing.md)). Bullets, coins, debris, crowds:
-no GameObject per copy, 96 bytes an instance (112 with FX).
+no GameObject per copy, 96 bytes an instance (112 with FX; 8 more in a scene with a Pixel
+Perfect Camera, for the instance's snap pivot).
 
 ## Setting it up
 

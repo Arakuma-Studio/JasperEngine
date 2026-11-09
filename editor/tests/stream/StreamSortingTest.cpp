@@ -311,6 +311,45 @@ TEST(StreamSorting, LayersKeepTheirIds){
     EXPECT_EQ(SortingLayers::idToName(99), "");
 }
 
+// R1: a removed layer's id is never given to a later layer (its renderers draw on Default, not
+// on the newcomer), project.yaml keeps the next id once it is past the listed ones, and an entry
+// naming its id keeps the layer through a rename
+TEST(StreamSorting, RemovedIdsAreNeverGivenAgain){
+    SortingLayersReset reset;
+    Project project;
+    Project reloaded;
+    SortingLayers::reset();
+    SortingLayers::setLayers(SortingLayers::fromNames({"Default", "Back", "Front"}));
+    const int32_t front = SortingLayers::nameToId("Front");
+    ASSERT_GT(front, 0);
+    SortingLayers::setLayers(SortingLayers::fromNames({"Default", "Back"}));
+    SortingLayers::setLayers(SortingLayers::fromNames({"Default", "Back", "Clouds"}));
+    EXPECT_NE(SortingLayers::nameToId("Clouds"), front);
+    EXPECT_FALSE(SortingLayers::isValid(front)) << "a renderer still naming it draws on Default";
+
+    // saved and loaded: the next id survives a reopen
+    const int32_t next = SortingLayers::getNextId();
+    const YAML::Node saved = Stream::encodeProject(&project);
+    ASSERT_TRUE(saved["sortingLayerNextId"].IsDefined());
+    SortingLayers::reset();
+    Stream::decodeProject(&reloaded, saved, Workspace());
+    EXPECT_EQ(SortingLayers::getNextId(), next);
+    SortingLayers::setLayers(SortingLayers::fromNames({"Default", "Back", "Clouds", "Rain"}));
+    EXPECT_GE(SortingLayers::nameToId("Rain"), next);
+
+    // a rename by id keeps the layer; the old name listed again is a new layer
+    const int32_t back = SortingLayers::nameToId("Back");
+    std::vector<SortingLayerInfo> resolved;
+    std::string error;
+    ASSERT_TRUE(SortingLayers::resolve({{0, "Default"}, {back, "Far"}, {-1, "Back"}}, resolved, error)) << error;
+    ASSERT_EQ(resolved.size(), 3u);
+    EXPECT_EQ(resolved[1].id, back);
+    EXPECT_EQ(resolved[1].name, "Far");
+    EXPECT_NE(resolved[2].id, back);
+    EXPECT_FALSE(SortingLayers::resolve({{0, "Default"}, {4242, "Nope"}}, resolved, error));
+    EXPECT_NE(error.find("4242"), std::string::npos) << error;
+}
+
 // R40: the prebuilt player's game.json carries the table and the sort settings
 TEST(StreamSorting, PlayerConfigCarriesTheSorting){
     player::PlayerConfig config;
@@ -333,7 +372,7 @@ TEST(StreamSorting, PlayerConfigCarriesTheSorting){
 }
 
 // S52's shader sources (library:sprite @batchable, 'Sfx' 'Sfr' 'Spv', the instanced snap's mode)
-// are cached under v59: a cache of an older version holds programs without them
+// are cached under v61: a cache of an older version holds programs without them
 TEST(StreamSorting, ShaderCacheVersionCoversThePixelArtBatching){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v59");
+    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v61");
 }

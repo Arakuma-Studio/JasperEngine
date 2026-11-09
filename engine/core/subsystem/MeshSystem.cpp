@@ -8283,8 +8283,13 @@ void MeshSystem::update(double dt){
             // S52: what its batched and instanced variants read; a change rebuilds the quad
             // with them (a new layout: the mesh loads again)
             const SpriteBatchComponent* spriteBatch = signature.test(spriteBatchId) ? &scene->getComponent<SpriteBatchComponent>(entity) : nullptr;
-            const bool instanced = spriteBatch && spriteBatch->enabled && !signature.test(scene->getComponentId<InstancedMeshComponent>());
-            const uint8_t attributes = spriteBatchAttributes(mesh, snapping, scene->getDefaultCustomShader(ShaderType::MESH));
+            const bool instancedMesh = signature.test(scene->getComponentId<InstancedMeshComponent>());
+            const bool instanced = (spriteBatch && spriteBatch->enabled && !instancedMesh) ||
+                                   scene->getSystem<RenderSystem>()->hasAttachedInstanceBatch(entity);
+            uint8_t attributes = spriteBatchAttributes(mesh, snapping, scene->getDefaultCustomShader(ShaderType::MESH));
+            // an Instanced Mesh's instances carry no FX amounts (its variant takes no 'Sfx')
+            if (instancedMesh)
+                attributes &= (uint8_t)~MeshBatchAttribute_SpriteFx;
             if (attributes != mesh.batchAttributes || instanced != mesh.spriteInstanced){
                 if (attributes != mesh.batchAttributes)
                     sprite.needUpdateSprite = true;

@@ -9274,8 +9274,8 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
     propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
     propertyRow(RowPropertyType::Enum, cpType, "pixelRotation", "Pixel Rotation", sceneProject, entities, settingsPixelRotation);
-    // S52: the Mesh's Sorting Layer and Order in Layer, and the point Custom Axis sorting measures
-    drawSortingRows(ComponentType::MeshComponent, sceneProject, entities);
+    // S52: the point Custom Axis sorting measures (Sorting Layer and Order in Layer are the Mesh
+    // Renderer's rows, drawn with it)
     RowSettings settingsSortPoint;
     settingsSortPoint.enumEntries = enumEntries(reflect::enums::kSpriteSortPoint);
     settingsSortPoint.help = "What Transparency Sort Mode Custom Axis measures: the sprite's bounds' centre or its pivot.";

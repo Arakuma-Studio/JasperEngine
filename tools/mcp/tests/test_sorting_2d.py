@@ -1,6 +1,7 @@
 """S52 AC13 (docs/specs/S52-sprite-instancing.md R34, R37, R15): 2D sorting and Sprite Batch through
-the existing tools. The setting tags_and_layers.sorting_layers takes the layer names in draw order
-(ids kept by name; Default stays), graphics.transparency_sort_mode / _axis the Custom Axis;
+the existing tools. The setting tags_and_layers.sorting_layers reads [{id, name}] in draw order and
+takes names or {id, name} (a rename keeps the id, a removed id is never given again; Default
+stays), graphics.transparency_sort_mode / _axis the Custom Axis;
 set_properties takes sortingLayer as a name or an id and get_entity reads it back as {id, name};
 an unknown name fails with the fix; a Game view screenshot shows the order change; a Sorting Group
 is an ordinary component (undo removes it); a Sprite Batch filled by eval_lua in Play reports its
@@ -40,16 +41,20 @@ async def settings(ed: Editor, *keys: str) -> dict:
     return (await ed.call("get_project_settings", keys=list(keys)))["settings"]
 
 
+def names(layers: list) -> list:
+    return [layer["name"] for layer in layers]
+
+
 async def test_sorting_layers_setting(ed: Editor):
     await setup(ed)
     got = await settings(ed, "tags_and_layers.sorting_layers", "graphics.transparency_sort_mode", "graphics.transparency_sort_axis")
-    ed.check_eq(got["tags_and_layers.sorting_layers"], ["Default"], "a new project has Default alone")
+    ed.check_eq(got["tags_and_layers.sorting_layers"], [{"id": 0, "name": "Default"}], "a new project has Default alone")
     ed.check_eq(got["graphics.transparency_sort_mode"], "default", "the mode is Default")
     ed.check_eq(got["graphics.transparency_sort_axis"], [0, 1, 0], "the axis is (0, 1, 0)")
 
     await ed.call("set_project_settings", values={"tags_and_layers.sorting_layers": ["Background", "Default", "Foreground"]})
     got = await settings(ed, "tags_and_layers.sorting_layers")
-    ed.check_eq(got["tags_and_layers.sorting_layers"], ["Background", "Default", "Foreground"], "the order reads back")
+    ed.check_eq(names(got["tags_and_layers.sorting_layers"]), ["Background", "Default", "Foreground"], "the order reads back")
 
     bad = await ed.call_raw("set_project_settings", {"values": {"tags_and_layers.sorting_layers": ["Foreground"]}})
     ed.check(bad.is_error and "Default" in bad.text, f"Default cannot be removed: {bad.text}")
@@ -66,6 +71,32 @@ async def test_sorting_layers_setting(ed: Editor):
     await ed.call("undo", scope="project")
     got = await settings(ed, "graphics.transparency_sort_mode")
     ed.check_eq(got["graphics.transparency_sort_mode"], "default", "undone")
+
+
+async def test_sorting_layer_ids_kept(ed: Editor):
+    """R1: a renderer keeps its layer through a rename ({id, name}), and a removed layer's id is
+    never given to a later one (its renderers draw on Default, not on the newcomer)"""
+    s = await setup(ed)
+    await ed.call("set_project_settings", values={"tags_and_layers.sorting_layers": ["Default", "Back", "Front"]})
+    layers = (await settings(ed, "tags_and_layers.sorting_layers"))["tags_and_layers.sorting_layers"]
+    front = next(layer for layer in layers if layer["name"] == "Front")
+    await ed.call("set_properties", scene=s["scene"], entity="Red", values={"mesh": {"sortingLayer": "Front"}})
+    # rename Front to Foreground by its id: Red stays on it
+    renamed = [layer if layer["name"] != "Front" else {"id": front["id"], "name": "Foreground"} for layer in layers]
+    await ed.call("set_project_settings", values={"tags_and_layers.sorting_layers": renamed})
+    red = await ed.call("get_entity", scene=s["scene"], entity="Red", properties=["sortingLayer"])
+    ed.check_eq(red["components"]["mesh"]["sortingLayer"], {"id": front["id"], "name": "Foreground"}, "the rename keeps the renderer's layer")
+    # remove Foreground, add Clouds: Clouds takes a new id, Red draws on Default
+    await ed.call("set_project_settings", values={"tags_and_layers.sorting_layers": ["Default", "Back"]})
+    await ed.call("set_project_settings", values={"tags_and_layers.sorting_layers": ["Default", "Back", "Clouds"]})
+    layers = (await settings(ed, "tags_and_layers.sorting_layers"))["tags_and_layers.sorting_layers"]
+    clouds = next(layer for layer in layers if layer["name"] == "Clouds")
+    ed.check(clouds["id"] != front["id"], f"a removed layer's id is not given again: {layers}")
+    red = await ed.call("get_entity", scene=s["scene"], entity="Red", properties=["sortingLayer"])
+    ed.check(red["components"]["mesh"]["sortingLayer"]["name"] != "Clouds", f"Red is not moved onto Clouds: {red['components']['mesh']}")
+    bad = await ed.call_raw("set_project_settings", {"values": {"tags_and_layers.sorting_layers": ["Default", {"id": 999, "name": "Nope"}]}})
+    ed.check(bad.is_error and "999" in bad.text, f"an unknown id is refused: {bad.text}")
+    await ed.call("set_properties", scene=s["scene"], entity="Red", values={"mesh": {"sortingLayer": "Default"}})
 
 
 async def test_sorting_layer_property(ed: Editor):

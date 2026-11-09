@@ -301,7 +301,8 @@ TEST(UnityParticleImportTest, PrefabSystemValues) {
 }
 
 // S52 R41: m_SortingLayerID is found by name (ProjectSettings/TagManager.asset) among the engine
-// project's Sorting Layers; a layer the project lacks draws on Default with a note naming it
+// project's Sorting Layers; a layer the project lacks draws on Default with a note naming it. Ids
+// compare as Unity's 32 bits: the renderer's -1110369953 is TagManager's uniqueID 3184598343
 TEST(UnityParticleImportTest, SortingLayerByName) {
     SortingLayers::setLayers({{DEFAULT_SORTING_LAYER_ID, "Default"}, {5, "FX"}});
     TempProject project;

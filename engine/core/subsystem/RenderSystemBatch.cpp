@@ -464,9 +464,11 @@ bool RenderSystem::bakeMeshRecord(BatchRecord& record, MeshComponent& mesh){
         ? batchFloatAttribute(buffer, AttributeType::SPRITEFX, 4) : -1;
     record.frameRectOffset = (properties & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FRAME_RECT))
         ? batchFloatAttribute(buffer, AttributeType::FRAMERECT, 4) : -1;
+    record.customHashValid = false;
     if (record.spriteFxOffset >= 0){
         refreshCustomUniforms(mesh);
         record.spriteFx = batchSpriteFx(submesh);
+        record.spriteFxWritesSeen = mesh.customUniformWrites;
     }
     const float frameRect[4] = {record.hasRect ? record.rect.getX() : 0.0f, record.hasRect ? record.rect.getY() : 0.0f,
                                 record.hasRect ? record.rect.getWidth() : 1.0f, record.hasRect ? record.rect.getHeight() : 1.0f};
@@ -719,9 +721,14 @@ bool RenderSystem::fillMeshKey(BatchKey& key, Entity entity, MeshComponent& mesh
     // a batchable library shader's custom values (S52 R20), the instance= ones per vertex with 'Sfx'
     if (submesh.manifest){
         refreshCustomUniforms(mesh);
-        const uint64_t hash = batchCustomParamsHash(const_cast<Submesh&>(submesh),
-            (properties & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX)) != 0);
-        fits = fits && key.addSection(BatchBreak::CUSTOM_PARAMS, &hash, sizeof(hash));
+        // hashed again only when the blocks were written since (a value changed)
+        if (!record.customHashValid || record.customWritesSeen != mesh.customUniformWrites){
+            record.customHash = batchCustomParamsHash(const_cast<Submesh&>(submesh),
+                (properties & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX)) != 0);
+            record.customWritesSeen = mesh.customUniformWrites;
+            record.customHashValid = true;
+        }
+        fits = fits && key.addSection(BatchBreak::CUSTOM_PARAMS, &record.customHash, sizeof(record.customHash));
     }
 
     if (!record.bakesColor)
@@ -789,8 +796,11 @@ bool RenderSystem::batchFxChanged(const BatchRecord& record, MeshComponent& mesh
         return true;
     if (!hasFx)
         return false;
-    // an amount animated by a script or a clip: re-baked on the CPU, the GPU buffer unchanged (D5)
+    // an amount animated by a script or a clip: re-baked on the CPU, the GPU buffer unchanged (D5);
+    // nothing to compare while the blocks were not written since the bake
     refreshCustomUniforms(mesh);
+    if (record.spriteFxWritesSeen == mesh.customUniformWrites)
+        return false;
     return record.spriteFx != batchSpriteFx(mesh.submeshes[0]);
 }
 

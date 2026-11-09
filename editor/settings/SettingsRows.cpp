@@ -3178,42 +3178,69 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
-        // Sorting Layers (S52 R34): names in draw order; a name already in the table keeps its id
+        // Sorting Layers (S52 R34): reads [{id, name}] in draw order; takes names or {id, name}
+        // entries (an id keeps its layer through a rename, a name already in the table keeps its)
         {
             Setting s;
             s.key = "tags_and_layers.sorting_layers";
             s.type = "list";
-            s.description = "Sorting Layer names in draw order, first drawn first; must include \"Default\". Pass the complete list: a "
-                            "listed name keeps its layer, an unlisted one is removed (its renderers draw on Default). Undoable (undo scope project).";
+            s.description = "Sorting Layers in draw order, first drawn first, as [{id, name}]; must include \"Default\". Pass the complete "
+                            "list: names, or {id, name} to rename a layer (it keeps its renderers); an unlisted layer is removed (its "
+                            "renderers draw on Default). Undoable (undo scope project).";
             s.get = [](SettingsContext& ctx) {
                 Json list = Json::array();
-                for (const SortingLayerInfo& layer : ctx.project()->getSortingLayers()) list.push_back(layer.name);
+                for (const SortingLayerInfo& layer : ctx.project()->getSortingLayers())
+                    list.push_back(Json{{"id", layer.id}, {"name", layer.name}});
                 return list;
             };
             s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
                 if (!value.is_array()) {
-                    error = "must be a list of Sorting Layer names";
+                    error = "must be a list of Sorting Layer names or {id, name} entries";
                     return false;
                 }
+                std::vector<SortingLayerInfo> entries;
                 std::vector<std::string> names;
+                bool hasDefault = false;
                 for (const Json& item : value) {
-                    const std::string name = item.is_string() ? TagManager::trimName(item.get<std::string>()) : std::string();
-                    if (name.empty()) {
-                        error = "Sorting Layer names must be non-empty strings";
+                    SortingLayerInfo entry{-1, std::string()};
+                    if (item.is_string()) {
+                        entry.name = item.get<std::string>();
+                    } else if (item.is_object() && item.contains("name") && item["name"].is_string() &&
+                               (!item.contains("id") || item["id"].is_number_integer())) {
+                        entry.name = item["name"].get<std::string>();
+                        if (item.contains("id")) entry.id = item["id"].get<int32_t>();
+                    }
+                    entry.name = TagManager::trimName(entry.name);
+                    if (entry.name.empty()) {
+                        error = "each Sorting Layer is a non-empty name or {id, name}";
                         return false;
                     }
-                    if (std::find(names.begin(), names.end(), name) != names.end()) {
-                        error = "\"" + name + "\" is listed twice";
+                    if (std::find(names.begin(), names.end(), entry.name) != names.end()) {
+                        error = "\"" + entry.name + "\" is listed twice";
                         return false;
                     }
-                    names.push_back(name);
+                    if (entry.id >= 0 && (entry.id == DEFAULT_SORTING_LAYER_ID) != (entry.name == "Default")) {
+                        error = "Default is id 0 and keeps its name";
+                        return false;
+                    }
+                    hasDefault = hasDefault || entry.name == "Default";
+                    names.push_back(entry.name);
+                    entries.push_back(entry);
                 }
-                if (std::find(names.begin(), names.end(), "Default") == names.end()) {
+                if (!hasDefault) {
                     error = "the list must include \"Default\" (it cannot be removed; place it where it draws)";
                     return false;
                 }
                 SortingSettings changed = SortingSettings::current();
-                changed.layers = SortingLayers::fromNames(names);
+                if (!SortingLayers::resolve(entries, changed.layers, error)) return false;
+                for (size_t a = 0; a < changed.layers.size(); a++) {
+                    for (size_t b = a + 1; b < changed.layers.size(); b++) {
+                        if (changed.layers[a].id == changed.layers[b].id) {
+                            error = "id " + std::to_string(changed.layers[a].id) + " is listed twice";
+                            return false;
+                        }
+                    }
+                }
                 return setSorting(ctx, changed, apply, error);
             };
             add(s);

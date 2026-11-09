@@ -233,6 +233,7 @@ const EnumTable<AttributeType>& StreamSchema::attributeType() {
         {AttributeType::FRAMERECT, "framerect"},
         {AttributeType::SNAPPIVOT, "snappivot"},
         {AttributeType::INSTANCESPRITEFX, "instancespritefx"},
+        {AttributeType::INSTANCESNAPPIVOT, "instancesnappivot"},
     }, AttributeType::POSITION);
     return table;
 }

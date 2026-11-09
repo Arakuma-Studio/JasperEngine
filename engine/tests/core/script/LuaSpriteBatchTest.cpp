@@ -17,7 +17,13 @@
 
 #include <gtest/gtest.h>
 
+#include "support/AllocationCounter.h"
+
+#include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <string>
+#include <vector>
 
 using namespace jasperengine;
 
@@ -138,4 +144,27 @@ TEST_F(LuaSpriteBatch, TypedErrorsChangeNothing){
     EXPECT_EQ(s.count, 2u);
     EXPECT_EQ(s.frames[1], 0);
     EXPECT_FALSE(s.hasFx);
+}
+
+// R26-R28: setPositions of 10,000 instances from a Lua table, as a script calls it each frame (the
+// table read and the validation; the pack and upload are SpriteBatchBenchGpu's). [bench] line,
+// enforced through perfSlack (JASPER_TEST_PERF_SLACK); the count always
+using LuaSpriteBatchBench = LuaSpriteBatch;
+
+TEST_F(LuaSpriteBatchBench, SetPositionsOf10000FromLua){
+    ASSERT_EQ(runBatchLua(L, "benchXY = {}\nfor i = 1, 20000 do benchXY[i] = i * 0.5 end\n"), "");
+    std::vector<double> times;
+    for (int run = 0; run < 20; run++){
+        const auto start = std::chrono::steady_clock::now();
+        ASSERT_EQ(runBatchLua(L, "batch:setPositions(benchXY)\n"), "");
+        times.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+    }
+    EXPECT_EQ(state().count, 10000u);
+    std::sort(times.begin(), times.end());
+    const double median = times[times.size() / 2];
+    std::printf("[bench] Lua SpriteBatch:setPositions of 10,000 (a flat table): %.3f ms median (budget 1.0)\n", median);
+    if (testsupport::perfSlack() > 0.0){
+        EXPECT_LE(median, 1.0 * testsupport::perfSlack());
+    }
+    runBatchLua(L, "benchXY = nil\n");
 }

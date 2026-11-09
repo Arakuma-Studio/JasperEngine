@@ -20,7 +20,9 @@
 #include "object/PixelPerfectCamera.h"
 #include "object/Sprite.h"
 #include "object/SpriteBatch.h"
+#include "pool/ShaderPool.h"
 #include "render/SystemRender.h"
+#include "render/sprite/SpriteInstanceBatch.h"
 #include "sprite/SpriteSheet.h"
 #include "sprite/SpriteSheetPool.h"
 #include "subsystem/RenderSystem.h"
@@ -80,6 +82,48 @@ namespace {
         mesh.setMaterial(material);
     }
 
+    // a sheet of two trimmed frames of different sizes on one page (the strip as a PNG), each
+    // with its own offset in a larger source frame, given to the pool as "s52-trimmed": an
+    // instance's quad is its frame's, offset from the pivot as the Sprite's own is
+    // (the page lives as long as the process: the pool keeps the sheet)
+    const std::string& trimmedPagePath(){
+        static TempDir dir;
+        static const std::string path = [](){
+            TextureData strip = instanceFrames();
+            std::vector<uint8_t> pixels((uint8_t*)strip.getData(), (uint8_t*)strip.getData() + 16 * 8 * 4);
+            const std::string file = dir.file("trimmed.png").generic_string();
+            writePng(file, pixels, 16, 8);
+            return file;
+        }();
+        return path;
+    }
+
+    void registerTrimmedSheet(){
+        static bool registered = false;
+        if (registered)
+            return;
+        registered = true;
+        SpriteSheetPool::registerSource([](const std::string& path){ return path == "s52-trimmed"; },
+            [](const std::string&) -> std::shared_ptr<const SpriteSheetData>{
+                auto sheet = std::make_shared<SpriteSheetData>();
+                sheet->pages.push_back({trimmedPagePath(), 16, 8});
+                SpriteFrame a;
+                a.name = "a";
+                a.rect = Rect(0, 0, 8, 8);
+                a.sourceSize = Vector2(12, 11);
+                a.offset = Vector2(3, 1);
+                a.pivot = Vector2(2, 9);
+                SpriteFrame b;
+                b.name = "b";
+                b.rect = Rect(8, 1, 5, 6);
+                b.sourceSize = Vector2(9, 9);
+                b.offset = Vector2(1, 2);
+                b.pivot = Vector2(7, 3);
+                sheet->frames = {a, b};
+                return sheet;
+            });
+    }
+
     class SpriteBatchComponentGpu : public ::testing::Test {
     protected:
         Scene scene;
@@ -117,6 +161,19 @@ namespace {
             s.setFrame(0);
             s.setSize(16, 16);
             s.setPivotPreset(pivot);
+            return s;
+        }
+
+        // a Sprite of the trimmed sheet (2 world units a pixel), frame `frame`
+        Sprite& trimmedSprite(int frame, PivotPreset pivot){
+            registerTrimmedSheet();
+            sprites.push_back(std::make_unique<Sprite>(&scene));
+            Sprite& s = *sprites.back();
+            s.setSheet("s52-trimmed");
+            s.setPixelsPerUnit(0.5f);
+            s.setPivotPreset(pivot);
+            s.setFrame(frame);
+            nearest(s);
             return s;
         }
 
@@ -199,6 +256,7 @@ namespace {
             });
     }
 
+
 }
 
 // AC3 (R13): 10,000 instances of one page are one instanced draw
@@ -268,15 +326,17 @@ TEST_F(SpriteBatchComponentGpu, PageRunsAreDraws){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// AC3 (R11): 64 instances draw what 64 Sprites of the same frames and transforms draw
+// AC3 (R11): 64 instances draw what 64 Sprites of the same frames and transforms draw: trimmed
+// frames of different sizes and offsets, a bottom-left pivot (an instance's quad is offset from its
+// position as its Sprite's), turned, scaled and tinted
 TEST_F(SpriteBatchComponentGpu, MatchesSprites){
     JASPER_REQUIRE_GPU();
     // the reference: 64 Sprites
     std::vector<float> positions, rotations, scales, colors;
     std::vector<int32_t> frames;
     for (int i = 0; i < 64; i++){
-        const float x = (float)(i % 8) * 30.0f + 12.0f;
-        const float y = (float)(i / 8) * 30.0f + 12.0f;
+        const float x = (float)(i % 8) * 30.0f + 14.0f;
+        const float y = (float)(i / 8) * 30.0f + 14.0f;
         const float rotation = (float)(i % 4) * HALF_PI;
         const float scale = (i % 3 == 0) ? 1.0f : 0.5f;
         positions.insert(positions.end(), {x, y});
@@ -284,8 +344,7 @@ TEST_F(SpriteBatchComponentGpu, MatchesSprites){
         scales.push_back(scale);
         frames.push_back(i % 2);
         colors.insert(colors.end(), {1.0f, (i % 5) * 0.25f, 1.0f, 1.0f});
-        Sprite& s = frameSprite(PivotPreset::CENTER);
-        s.setFrame(i % 2);
+        Sprite& s = trimmedSprite(i % 2, PivotPreset::BOTTOM_LEFT);
         s.setPosition(x, y, 0.0f);
         s.setRotation(0.0f, 0.0f, (float)(i % 4) * 90.0f);
         s.setScale(scale);
@@ -295,7 +354,7 @@ TEST_F(SpriteBatchComponentGpu, MatchesSprites){
     const std::vector<uint8_t> reference = image();
     sprites.clear();
 
-    Sprite& base = frameSprite(PivotPreset::CENTER);
+    Sprite& base = trimmedSprite(0, PivotPreset::BOTTOM_LEFT);
     SpriteBatch batch(&scene, base.getEntity());
     ASSERT_EQ(batch.setPositions(positions), "");
     ASSERT_EQ(batch.setRotations(rotations), "");
@@ -304,7 +363,7 @@ TEST_F(SpriteBatchComponentGpu, MatchesSprites){
     ASSERT_EQ(batch.setColors(colors), "");
     ASSERT_TRUE(settle());
     const std::vector<uint8_t> instanced = image();
-    EXPECT_GT(lit(reference), 2000u);
+    EXPECT_GT(lit(reference), 1500u);
     EXPECT_EQ(differing(instanced, reference), 0u);
     EXPECT_EQ(batchStats().draws, 1u);
     EXPECT_NO_ENGINE_ERRORS();
@@ -351,6 +410,37 @@ TEST_F(SpriteBatchComponentGpu, RetainedUploadsOnce){
     GpuEnvironment::drawFrames(1);
     EXPECT_EQ(batchStats().uploadBytes, 200u * sizeof(InstanceRenderData));
     EXPECT_EQ(sizeof(InstanceRenderData), 96u);
+}
+
+// R12: past its capacity a batch grows by half again, so one instance added a frame past 1,024
+// reloads the mesh (a larger GPU buffer) a few times, not every frame
+TEST_F(SpriteBatchComponentGpu, GrowthReloadsRarely){
+    JASPER_REQUIRE_GPU();
+    Sprite& base = frameSprite();
+    SpriteBatch batch(&scene, base.getEntity());
+    std::vector<float> positions;
+    for (int i = 0; i < 1024; i++)
+        positions.insert(positions.end(), {(float)(i % 32) * 8.0f, (float)(i / 32) * 8.0f});
+    ASSERT_EQ(batch.setPositions(positions), "");
+    ASSERT_TRUE(settle());
+    const SpriteBatchState& state = *scene.getComponent<SpriteBatchComponent>(base.getEntity()).state;
+    ASSERT_TRUE(state.batch);
+    uint32_t gpuCapacity = state.batch->getGpuCapacity();
+    EXPECT_GE(gpuCapacity, 1024u);
+    int reloads = 0;
+    for (int f = 0; f < 300; f++){
+        batch.add((float)(f % 32) * 8.0f, 200.0f);
+        GpuEnvironment::drawFrames(1);
+        if (state.batch->getGpuCapacity() != gpuCapacity){
+            reloads++;
+            gpuCapacity = state.batch->getGpuCapacity();
+        }
+    }
+    ASSERT_TRUE(settle());
+    EXPECT_GE(state.batch->getGpuCapacity(), 1324u);
+    EXPECT_LE(reloads, 2) << "a reload per growth step, not per frame";
+    EXPECT_EQ(batchStats().instances, 1324u);
+    EXPECT_NO_ENGINE_ERRORS();
 }
 
 // AC3 (R15): a batch out of view is culled whole (nothing drawn, nothing uploaded); back in view it draws
@@ -424,6 +514,34 @@ TEST_F(SpriteBatchComponentGpu, SnapPerInstance){
         EXPECT_GT(lit(reference), 500u);
         EXPECT_EQ(differing(instanced, reference), 0u);
         sprites.clear();
+
+        // trimmed frames of different sizes and offsets, turned off the grid: each instance snaps
+        // at its position (its pivot), not at its matrix's origin (which carries the frame's offset)
+        positions.clear();
+        rotations.clear();
+        std::vector<int32_t> frames;
+        for (int i = 0; i < 12; i++){
+            const float x = 24.0f + (float)(i % 4) * 30.0f + 0.25f * (float)(i % 3);
+            const float y = 34.0f + (float)(i / 4) * 34.0f + 0.25f;
+            positions.insert(positions.end(), {x, y});
+            rotations.push_back(angles[i % 3] * HALF_PI / 90.0f);
+            frames.push_back(i % 2);
+            Sprite& s = trimmedSprite(i % 2, PivotPreset::BOTTOM_LEFT);
+            s.setPosition(x, y, 0.0f);
+            s.setRotation(0.0f, 0.0f, angles[i % 3]);
+        }
+        ASSERT_TRUE(settle());
+        const std::vector<uint8_t> trimmedReference = image();
+        sprites.clear();
+        Sprite& trimmedBase = trimmedSprite(0, PivotPreset::BOTTOM_LEFT);
+        SpriteBatch trimmedBatch(&scene, trimmedBase.getEntity());
+        ASSERT_EQ(trimmedBatch.setPositions(positions), "");
+        ASSERT_EQ(trimmedBatch.setRotations(rotations), "");
+        ASSERT_EQ(trimmedBatch.setFrames(frames), "");
+        ASSERT_TRUE(settle());
+        EXPECT_GT(lit(trimmedReference), 300u);
+        EXPECT_EQ(differing(image(), trimmedReference), 0u) << "trimmed frames";
+        sprites.clear();
         scene.removeComponent<PixelPerfectCameraComponent>(camera.getEntity());
     }
 }
@@ -458,4 +576,84 @@ TEST_F(SpriteBatchComponentGpu, InstancedMeshRotatedInstancesSnapTheirPivot){
     instances.needUpdateInstances = true;
     ASSERT_TRUE(settle());
     EXPECT_EQ(differing(image(), reference), 0u);
+}
+
+// An Instanced Mesh Sprite with a library:sprite instance= feature (FLASH): its instances carry no
+// FX amounts, so its variant takes no 'Sfx' (it would read an unbound i_spriteFx: undefined on
+// Vulkan, invalid on Metal and D3D11) and the flash is the material's, as the Sprites alone draw it
+TEST_F(SpriteBatchComponentGpu, InstancedMeshFlashReadsNoInstanceFx){
+    JASPER_REQUIRE_GPU();
+    auto flash = [](Sprite& s){
+        MeshComponent& mesh = s.getComponent<MeshComponent>();
+        mesh.submeshes[0].material.shader = "library:sprite";
+        mesh.submeshes[0].material.shaderFeatures = {"FLASH"};
+        mesh.submeshes[0].material.shaderParams = {{"flashColor", Vector4(1.0f, 1.0f, 1.0f, 1.0f)}, {"flashAmount", Vector4(0.5f, 0.0f, 0.0f, 0.0f)}};
+        mesh.needReload = true;
+    };
+    for (int i = 0; i < 3; i++){
+        Sprite& s = frameSprite();
+        flash(s);
+        s.setPosition(30.0f + (float)i * 60.0f, 100.0f, 0.0f);
+    }
+    ASSERT_TRUE(settle());
+    const std::vector<uint8_t> reference = image();
+    sprites.clear();
+    Sprite& base = frameSprite();
+    flash(base);
+    scene.addComponent<InstancedMeshComponent>(base.getEntity(), {});
+    InstancedMeshComponent& instances = scene.getComponent<InstancedMeshComponent>(base.getEntity());
+    for (int i = 0; i < 3; i++){
+        InstanceData instance;
+        instance.position = Vector3(30.0f + (float)i * 60.0f, 100.0f, 0.0f);
+        instances.instances.push_back(instance);
+    }
+    instances.needUpdateInstances = true;
+    ASSERT_TRUE(settle());
+    const std::vector<uint8_t> instanced = image();
+    const MeshComponent& mesh = base.getComponent<MeshComponent>();
+    EXPECT_EQ(mesh.batchAttributes & MeshBatchAttribute_SpriteFx, 0) << "no a_spriteFx on an Instanced Mesh sprite";
+    EXPECT_EQ(mesh.submeshes[0].shaderProperties & ShaderPool::getSpriteBatchProperty(ShaderType::MESH, ShaderPool::SpriteBatchInput::FX), 0u)
+        << "no 'Sfx' with an Instanced Mesh";
+    EXPECT_GT(lit(reference), 300u);
+    EXPECT_EQ(differing(instanced, reference), 0u);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// R17: a SpriteInstanceBatch another producer owns (S50's tilemap chunks) draws as the instances of
+// the GameObject it is attached to: one draw per page run, that GameObject's Transform its model
+// matrix (moving it moves them all), its bounds the batch's
+TEST_F(SpriteBatchComponentGpu, AttachedBatchDrawsAsItsGameObject){
+    JASPER_REQUIRE_GPU();
+    Sprite& owner = frameSprite();
+    SpriteInstanceBatch chunk;
+    chunk.reserve(4);
+    chunk.setCount(3);
+    for (uint32_t i = 0; i < 3; i++){
+        InstanceRenderData& instance = chunk.instances()[i];
+        instance.instanceMatrix = Matrix4();
+        instance.instanceMatrix[3][0] = 20.0f + (float)i * 40.0f;
+        instance.instanceMatrix[3][1] = 40.0f;
+        instance.color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+        instance.textureRect = Rect(0.0f, 0.0f, 0.5f, 1.0f);
+    }
+    const SpritePageRun run{0, 3, 0};
+    chunk.setPageRuns(std::span<const SpritePageRun>(&run, 1));
+    chunk.markChanged(0.0f, 0.0f, 16.0f, 16.0f);
+    RenderSystem& render = *scene.getSystem<RenderSystem>();
+    render.attachInstanceBatch(owner.getEntity(), &chunk);
+    ASSERT_TRUE(settle());
+    const std::vector<uint8_t> first = image();
+    EXPECT_EQ(batchStats().draws, 1u);
+    EXPECT_EQ(batchStats().instances, 3u);
+    EXPECT_GT(lit(first), 3u * 200u);
+    EXPECT_GT(owner.getComponent<MeshComponent>().aabb.getMaximum().x, 100.0f) << "the batch's bounds";
+    owner.setPosition(0.0f, 100.0f, 0.0f);
+    const std::vector<uint8_t> moved = image();
+    EXPECT_EQ(lit(moved), lit(first));
+    EXPECT_GT(differing(moved, first), 0u) << "the GameObject's Transform is the model";
+    render.detachInstanceBatch(owner.getEntity());
+    ASSERT_TRUE(settle());
+    image();
+    EXPECT_EQ(batchStats().draws, 0u);
+    EXPECT_NO_ENGINE_ERRORS();
 }

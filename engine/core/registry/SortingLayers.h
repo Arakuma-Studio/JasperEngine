@@ -43,9 +43,18 @@ namespace jasperengine{
         // negative id is dropped with a warning.
         static void setLayers(const std::vector<SortingLayerInfo>& layers);
         static const std::vector<SortingLayerInfo>& getLayers();
-        // A list of names: names already in the table keep their ids, new ones take the next
-        // free id (MCP tags_and_layers.sorting_layers, ids kept by name)
+        // A list of names: names already in the table keep their ids, new ones take new ids
+        // (getNextId onward: an id once given is never given again, so a removed layer's
+        // renderers never land on a later layer)
         static std::vector<SortingLayerInfo> fromNames(const std::vector<std::string>& names);
+        // The same for entries that may name their id (a rename keeps it: MCP's {id, name}); an
+        // entry with id -1 goes by its name as in fromNames. An id the table does not have is
+        // refused: false and `error` names it
+        static bool resolve(const std::vector<SortingLayerInfo>& entries, std::vector<SortingLayerInfo>& out, std::string& error);
+        // The id the next new layer takes: past every id the table ever held (project.yaml keeps
+        // it once a layer was removed); setNextId never lowers it below the ids held
+        static int32_t getNextId();
+        static void setNextId(int32_t id);
 
         // Unity SortingLayer.NameToID: -1 when no layer has the name
         static int32_t nameToId(const std::string& name);
@@ -81,6 +90,7 @@ namespace jasperengine{
             TransparencySortMode mode = TransparencySortMode::DEFAULT;
             Vector3 axis = Vector3(0.0f, 1.0f, 0.0f);
             uint32_t revision = 1;
+            int32_t nextId = 1;
         };
         // function-local, so a scene built during static initialization still sees it
         static Table& table();

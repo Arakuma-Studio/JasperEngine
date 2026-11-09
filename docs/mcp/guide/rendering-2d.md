@@ -18,8 +18,9 @@ UI (RectTransform subtrees) keeps its place and Hierarchy order. A 3D camera's t
 compares Sorting Layer and Order in Layer before `sortPriority` and the distance.
 
 - Add layers with `set_project_settings {"tags_and_layers.sorting_layers": ["Background",
-  "Default", "Characters", "Foreground"]}`. Pass the whole list. A name already listed keeps its
-  layer, so renaming in a list makes a new one. `Default` must stay in the list.
+  "Default", "Characters", "Foreground"]}`. Pass the whole list. It reads back as `[{id, name}]`;
+  a name already listed keeps its layer. To rename a layer, pass its entry as `{id, name}` with
+  the new name: its renderers stay on it. `Default` must stay in the list.
 - Set a renderer's layer and order with `set_properties`, on the Sprite's or Mesh's `mesh`, or on
   `particlesystem`, `points`, `linerenderer` or `trailrenderer`:
   `{"sortingLayer": "Foreground", "sortingOrder": 5}`. `sortingLayer` takes a name or an id and

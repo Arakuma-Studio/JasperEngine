@@ -22,6 +22,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -260,4 +261,54 @@ TEST_F(SpriteSortTest, ParticleSystemsAreSortItems){
     component.sortingLayer = 3;
     scene.addComponent<ParticleSystemComponent>(particles, component);
     EXPECT_EQ(order(), (std::vector<std::string>{"particles", "sprite-front"}));
+}
+
+// R6: with a Sorting Group in the 3D transparent queue, an item alone and a whole group are units
+// of one total order (priority, distance far first, sequence): X (12 m, priority 1), Y (8 m,
+// priority 0) and a group G at 10 m once compared Y < X < G < Y, undefined for std::sort
+TEST(SpriteSortQueue, GroupsAndItemsAloneAreOneStrictOrder){
+    auto alone = [](uint32_t order, float distance, int priority){
+        RenderSystem::TransparentRenderData data{};
+        data.order = order;
+        data.distanceToCamera = distance;
+        data.waterSortDistance = distance;
+        data.sortPriority = priority;
+        data.unitPriority = priority;
+        data.unitDistance = distance;
+        data.unitSeq = order;
+        return data;
+    };
+    auto member = [](uint32_t order, float distance, uint32_t group, float groupDistance, uint64_t memberKey){
+        RenderSystem::TransparentRenderData data{};
+        data.order = order;
+        data.distanceToCamera = distance;
+        data.waterSortDistance = distance;
+        data.sortGroup = group;
+        data.memberKey = memberKey;
+        data.unitDistance = groupDistance;
+        data.unitSeq = (1ull << 32) | group;
+        return data;
+    };
+    const std::vector<RenderSystem::TransparentRenderData> items = {
+        alone(0, 12.0f, 1),                                       // X
+        alone(1, 8.0f, 0),                                        // Y
+        member(2, 9.0f, 1, 10.0f, RenderSystem::makeSortKey(1, 0, false, 0.0f)),  // G's members
+        member(3, 11.0f, 1, 10.0f, RenderSystem::makeSortKey(0, 0, false, 0.0f)),
+    };
+    const RenderSystem::TransparentGroupComparison less;
+    for (const auto& a : items){
+        EXPECT_FALSE(less(a, a));
+        for (const auto& b : items){
+            if (less(a, b)) EXPECT_FALSE(less(b, a)) << a.order << " " << b.order;
+            for (const auto& c : items){
+                if (less(a, b) && less(b, c)) EXPECT_TRUE(less(a, c)) << a.order << " < " << b.order << " < " << c.order;
+            }
+        }
+    }
+    std::vector<RenderSystem::TransparentRenderData> sorted = items;
+    std::sort(sorted.begin(), sorted.end(), less);
+    std::vector<uint32_t> order;
+    for (const auto& data : sorted) order.push_back(data.order);
+    // priority 0 first: the group (10 m) before Y (8 m), its members by their own layer; X last
+    EXPECT_EQ(order, (std::vector<uint32_t>{3, 2, 1, 0}));
 }

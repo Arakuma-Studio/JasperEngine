@@ -1,6 +1,6 @@
 """S52 AC11 (docs/specs/S52-sprite-instancing.md R30-R33) on the harness' display: Project Settings >
 Tags and Layers > Sorting Layers through its widgets (add with the name field and +, rename inline,
-reorder with the arrows, remove with -, a used layer asking first), each one undo step of the
+reorder with the arrows and by dragging a row, remove with -, a used layer asking first), each one undo step of the
 project; the renderers' Sorting Layer and Order in Layer rows edit two selected sprites at once
 and undo as one step; Add Component > Sorting Group, then undo. Screenshots of the Tags and Layers
 panel and of a sorted scene go to JASPER_SHOTS_DIR, else the test's scratch folder (evidence,
@@ -22,7 +22,8 @@ S: dict = {}
 
 
 async def layers(ed: Editor) -> list:
-    return (await ed.call("get_project_settings", keys=["tags_and_layers.sorting_layers"]))["settings"]["tags_and_layers.sorting_layers"]
+    got = (await ed.call("get_project_settings", keys=["tags_and_layers.sorting_layers"]))["settings"]["tags_and_layers.sorting_layers"]
+    return [layer["name"] for layer in got]
 
 
 def as_rect(probe: list) -> dict:
@@ -124,6 +125,16 @@ async def test_sorting_layers_list(ed: Editor):
         ed.check_eq(await layers(ed), ["Foreground", "Default"], "moved up")
         await ed.call("undo", scope="project")
         ed.check_eq(await layers(ed), ["Default", "Foreground"], "the move undone")
+
+        # reorder by dragging a row's handle onto another row
+        await helper.frames(4)
+        start = helper.centre(await item(ed, helper, "sorting_layers.row.1"))
+        end = helper.centre(await item(ed, helper, "sorting_layers.row.0"))
+        await helper.drag(start, end)
+        await helper.frames(4)
+        ed.check_eq(await layers(ed), ["Foreground", "Default"], "dragged onto the first row")
+        await ed.call("undo", scope="project")
+        ed.check_eq(await layers(ed), ["Default", "Foreground"], "the drag undone")
 
         # remove: a used layer asks first, its renderers then draw on Default
         await click(ed, helper, "sorting_layers.remove.1")

@@ -33,6 +33,7 @@ void SortingLayers::rebuildValues(Table& t){
         if (t.layers[i].id == DEFAULT_SORTING_LAYER_ID)
             t.defaultValue = (uint16_t)i;
     }
+    t.nextId = std::max(t.nextId, maxId + 1);
     t.values.assign((size_t)maxId + 1, t.defaultValue);
     for (size_t i = 0; i < t.layers.size(); i++)
         t.values[(size_t)t.layers[i].id] = (uint16_t)i;
@@ -78,24 +79,61 @@ const std::vector<SortingLayerInfo>& SortingLayers::getLayers(){
 }
 
 std::vector<SortingLayerInfo> SortingLayers::fromNames(const std::vector<std::string>& names){
-    const std::vector<SortingLayerInfo>& current = table().layers;
-    int32_t nextId = 1;
-    for (const SortingLayerInfo& layer : current)
-        nextId = std::max(nextId, layer.id + 1);
+    std::vector<SortingLayerInfo> entries;
+    entries.reserve(names.size());
+    for (const std::string& name : names)
+        entries.push_back({-1, name});
     std::vector<SortingLayerInfo> result;
-    result.reserve(names.size() + 1);
-    for (const std::string& raw : names){
-        const std::string name = TagManager::trimName(raw);
+    std::string error;
+    resolve(entries, result, error);
+    return result;
+}
+
+bool SortingLayers::resolve(const std::vector<SortingLayerInfo>& entries, std::vector<SortingLayerInfo>& out, std::string& error){
+    out.clear();
+    out.reserve(entries.size() + 1);
+    // the ids the entries name keep their layers (a rename); a name then keeps its layer only
+    // when no entry claimed that id
+    std::vector<int32_t> claimed;
+    for (const SortingLayerInfo& entry : entries){
+        if (entry.id < 0)
+            continue;
+        if (!isValid(entry.id)){
+            error = "no Sorting Layer has id " + std::to_string(entry.id) + " (leave the id out for a new layer)";
+            return false;
+        }
+        claimed.push_back(entry.id);
+    }
+    int32_t nextId = getNextId();
+    for (const SortingLayerInfo& entry : entries){
+        const std::string name = TagManager::trimName(entry.name);
         if (name.empty())
             continue;
+        if (entry.id >= 0){
+            out.push_back({entry.id, entry.id == DEFAULT_SORTING_LAYER_ID ? std::string("Default") : name});
+            continue;
+        }
         if (name == "Default"){
-            result.push_back({DEFAULT_SORTING_LAYER_ID, name});
+            out.push_back({DEFAULT_SORTING_LAYER_ID, name});
             continue;
         }
         const int32_t existing = nameToId(name);
-        result.push_back({existing >= 0 ? existing : nextId++, name});
+        const bool free = existing >= 0 && std::find(claimed.begin(), claimed.end(), existing) == claimed.end();
+        out.push_back({free ? existing : nextId++, name});
     }
-    return result;
+    return true;
+}
+
+int32_t SortingLayers::getNextId(){
+    return table().nextId;
+}
+
+void SortingLayers::setNextId(int32_t id){
+    Table& t = table();
+    int32_t maxId = 0;
+    for (const SortingLayerInfo& layer : t.layers)
+        maxId = std::max(maxId, layer.id);
+    t.nextId = std::clamp(id, maxId + 1, MAX_SORTING_LAYER_ID + 1);
 }
 
 int32_t SortingLayers::nameToId(const std::string& name){
@@ -157,6 +195,7 @@ uint32_t SortingLayers::getRevision(){
 
 void SortingLayers::reset(){
     setLayers({});
+    table().nextId = 1;
     setTransparencySortMode(TransparencySortMode::DEFAULT);
     setTransparencySortAxis(Vector3(0.0f, 1.0f, 0.0f));
 }

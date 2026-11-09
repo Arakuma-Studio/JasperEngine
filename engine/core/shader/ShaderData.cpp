@@ -155,6 +155,8 @@ int ShaderData::getAttrIndex(AttributeType type){
         attrstr = "a_snapPivot";
     }else if (type == AttributeType::INSTANCESPRITEFX){
         attrstr = "i_spriteFx";
+    }else if (type == AttributeType::INSTANCESNAPPIVOT){
+        attrstr = "i_snapPivot";
     }else if (type >= AttributeType::OBJECTMODEL0 && type <= AttributeType::OBJECTEXTRA){
         static const char* const objectNames[] = {
             "i_objectModel0", "i_objectModel1", "i_objectModel2",

@@ -8,7 +8,9 @@
 // - Purpose: instances of one Sprite drawn with the Sprite's own HAS_INSTANCING variant: each
 //   instance is an InstanceRenderData (the per-instance matrix, colour and texture rect the
 //   instanced variants read as i_matrix_col1..4, i_color, i_textureRect, 96 bytes) and, once
-//   enableFx() was called, a Vector4 of the four FX slots (i_spriteFx, 16 bytes).
+//   enableFx() was called, a Vector4 of the four FX slots (i_spriteFx, 16 bytes); with pivots on
+//   (a snapping scene), the instance's pivot (i_snapPivot, 8 bytes): a rotated instance snaps
+//   at its position, as its Sprite drawn alone does, not at its frame's offset.
 // - Producers: the Sprite Batch component (SpriteBatchComponent, scripts' bulk streams) and S50's
 //   tilemap chunks. A producer writes instances() / fx() after setCount, sets the page runs, and
 //   calls markChanged; the renderer uploads when the revision moved past the one it uploaded
@@ -20,6 +22,7 @@
 #include "buffer/ExternalBuffer.h"
 #include "component/InstancedMeshComponent.h"
 #include "math/AABB.h"
+#include "math/Vector2.h"
 #include "math/Vector4.h"
 #include "texture/Texture.h"
 
@@ -63,6 +66,10 @@ namespace jasperengine{
         // the FX stream from now on (a variant with i_spriteFx: the mesh reloads)
         void enableFx();
         bool hasFx() const { return fxEnabled; }
+        // the pivot stream (empty while off; a change of it reloads the mesh)
+        std::span<Vector2> pivots(){ return pivotsEnabled ? std::span<Vector2>(cpuPivots.data(), count) : std::span<Vector2>(); }
+        void setPivotsEnabled(bool enabled);
+        bool hasPivots() const { return pivotsEnabled; }
 
         // bumps the revision and refreshes the bounds from the instances' matrices (unit quad
         // corners: (x0, y0) .. (x1, y1) of the mesh the instances draw)
@@ -81,6 +88,7 @@ namespace jasperengine{
         // GPU side (RenderSystem): the instance layout every load binds, and the FX stream's
         ExternalBuffer& getInstanceBuffer(){ return instanceBuffer; }
         ExternalBuffer& getFxBuffer(){ return fxBuffer; }
+        ExternalBuffer& getPivotBuffer(){ return pivotBuffer; }
         // creates the GPU buffers at the capacity (a load); false when sokol refused them
         bool createGpu();
         void destroyGpu();
@@ -93,6 +101,7 @@ namespace jasperengine{
         uint32_t getGpuCapacity() const { return gpuCapacity; }
         // the GPU side was made with the FX stream (a load binds it)
         bool gpuHasFx() const { return gpuFx; }
+        bool gpuHasPivots() const { return gpuPivots; }
 
     private:
         Storage storage = Storage::Retained;
@@ -101,6 +110,8 @@ namespace jasperengine{
         bool fxEnabled = false;
         std::vector<InstanceRenderData> cpuInstances;
         std::vector<Vector4> cpuFx;
+        bool pivotsEnabled = false;
+        std::vector<Vector2> cpuPivots;
         std::vector<SpritePageRun> pageRuns;
         std::vector<Texture> pageTextures;
         AABB bounds;
@@ -108,8 +119,10 @@ namespace jasperengine{
 
         ExternalBuffer instanceBuffer;
         ExternalBuffer fxBuffer;
+        ExternalBuffer pivotBuffer;
         uint32_t gpuCapacity = 0;
         bool gpuFx = false;
+        bool gpuPivots = false;
         uint64_t uploadedRevision = 0;
         uint64_t uploadFrame = 0;
     };

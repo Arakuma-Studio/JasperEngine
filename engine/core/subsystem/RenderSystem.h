@@ -658,6 +658,8 @@ namespace jasperengine{
 		bool pixelArt = false;
 		// the pixel-art batching inputs its mesh carries (MeshComponent::batchAttributes, S52)
 		uint8_t batchAttributes = 0;
+		// instanced by an Instanced Mesh (not a Sprite Batch): its instances carry no i_spriteFx
+		bool instancedMesh = false;
 	};
 
 	// A camera that draws through a Pixel Perfect Camera this frame (S41, RenderSystemPixelArt.cpp)
@@ -724,6 +726,15 @@ namespace jasperengine{
 			TRAIL
 		};
 
+		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)
+		enum class LodFadePass : uint8_t{
+			ALL,    // all: single meshes as planned, an instance view's plain and dominant copies
+			PLAIN,  // no fading draw: the depth pre-pass, an instanced mesh's first queue entry
+			FADE    // only the fading draws: an instanced mesh's second queue entry (its fade copies)
+		};
+
+	public:
+		// (public: their order is tested, RenderQueueOrderTest)
 		struct TransparentRenderData{
 			TransparentRenderType type;
 			// the terrain layer uniforms are looked up by entity, so the sorted draw keeps it
@@ -749,24 +760,19 @@ namespace jasperengine{
 			float waterSortDistance = 0.0f;
 			// 2D sorting (spec S52 R6), all 0 unless the scene sorts: Sorting Layer value and
 			// Order in Layer (the outermost enabled Sorting Group's for its members), the group
-			// (its sequence + 1, 0 outside one) and the distance it sorts at, the member's own
-			// layer and order inside it, and the batcher's bucket
+			// (its sequence + 1, 0 outside one), the member's own layer and order inside it, and
+			// the batcher's bucket. With a group in the queue, an item alone and a group are each
+			// one unit: unitPriority (a group's 0), unitDistance (far first) and unitSeq (an
+			// item's order, a group's sequence past every order) order the units
 			uint64_t sortKey = 0;
 			uint32_t sortGroup = 0;
-			float groupDistance = 0.0f;
 			uint64_t memberKey = 0;
 			uint64_t sortBucket = 0;
+			int unitPriority = 0;
+			float unitDistance = 0.0f;
+			uint64_t unitSeq = 0;
 		};
 
-		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)
-		enum class LodFadePass : uint8_t{
-			ALL,    // all: single meshes as planned, an instance view's plain and dominant copies
-			PLAIN,  // no fading draw: the depth pre-pass, an instanced mesh's first queue entry
-			FADE    // only the fading draws: an instanced mesh's second queue entry (its fade copies)
-		};
-
-	public:
-		// (public: their order is tested, RenderQueueOrderTest)
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
 		struct OpaqueRenderData{
 			Entity entity;
@@ -811,23 +817,38 @@ namespace jasperengine{
 		// submission order (a total order, so std::sort is deterministic)
 		struct TransparentRenderComparison{
 			bool operator()(const TransparentRenderData& lhs, const TransparentRenderData& rhs) const{
-				// Sorting Layer and Order in Layer first; a Sorting Group sorts at its own key and
-				// distance (far first), its members after among themselves (S52 R6)
+				// Sorting Layer and Order in Layer first (S52 R6; 0 when the scene does not sort)
 				if (lhs.sortKey != rhs.sortKey)
 					return lhs.sortKey < rhs.sortKey;
-				if (lhs.sortGroup != rhs.sortGroup){
-					if (lhs.groupDistance != rhs.groupDistance)
-						return lhs.groupDistance > rhs.groupDistance;
-					return lhs.sortGroup < rhs.sortGroup;
-				}
-				if (lhs.memberKey != rhs.memberKey)
-					return lhs.memberKey < rhs.memberKey;
 				if (lhs.sortPriority != rhs.sortPriority)
 					return lhs.sortPriority < rhs.sortPriority;
 				const int water = waterSortOrder(lhs.waterSortDistance, lhs.waterRank, lhs.distanceToCamera,
 				                                 rhs.waterSortDistance, rhs.waterRank, rhs.distanceToCamera);
 				if (water != 0)
 					return water < 0;
+				return lhs.order < rhs.order;
+			}
+		};
+		// the same with an enabled Sorting Group in the queue (S52 R6): within one key, the units
+		// (an item alone or a whole group) by (priority, distance far first, sequence), each a
+		// total order of its own; members only among themselves, by their own layer and order
+		struct TransparentGroupComparison{
+			bool operator()(const TransparentRenderData& lhs, const TransparentRenderData& rhs) const{
+				if (lhs.sortKey != rhs.sortKey)
+					return lhs.sortKey < rhs.sortKey;
+				if (lhs.unitPriority != rhs.unitPriority)
+					return lhs.unitPriority < rhs.unitPriority;
+				if (lhs.unitDistance != rhs.unitDistance)
+					return lhs.unitDistance > rhs.unitDistance;
+				if (lhs.unitSeq != rhs.unitSeq)
+					return lhs.unitSeq < rhs.unitSeq;
+				// (one group's members)
+				if (lhs.memberKey != rhs.memberKey)
+					return lhs.memberKey < rhs.memberKey;
+				if (lhs.sortPriority != rhs.sortPriority)
+					return lhs.sortPriority < rhs.sortPriority;
+				if (lhs.distanceToCamera != rhs.distanceToCamera)
+					return lhs.distanceToCamera > rhs.distanceToCamera;
 				return lhs.order < rhs.order;
 			}
 		};
@@ -3070,6 +3091,13 @@ namespace jasperengine{
 			int spriteFxOffset = -1;
 			int frameRectOffset = -1;
 			Vector4 spriteFx;
+			// the custom blocks' key section and the MeshComponent::customUniformWrites it was
+			// hashed at (0: not yet), so an unchanged material is not hashed every frame
+			mutable uint64_t customHash = 0;
+			mutable uint32_t customWritesSeen = 0;
+			mutable bool customHashValid = false;
+			// the writes the baked spriteFx was read at
+			uint32_t spriteFxWritesSeen = 0;
 			bool localValid = false;
 			// what the placement read
 			Matrix4 placedWith;
@@ -3528,15 +3556,29 @@ namespace jasperengine{
 		uint32_t getSortGatherCount() const { return sortGathers; }
 
 		// Sprite Batch (S52 R13-R14, RenderSystemSpriteBatch.cpp): this frame's instanced draws,
-		// instances drawn and bytes uploaded
+		// instances drawn and bytes uploaded, and the time its packing and uploads took (R27)
 		struct SpriteBatchStats{
 			uint64_t uploadBytes = 0;
 			uint32_t draws = 0;
 			uint32_t instances = 0;
+			double packMs = 0.0;
+			double uploadMs = 0.0;
 		};
 		const SpriteBatchStats& getSpriteBatchStats() const { return spriteBatchStats; }
 
+		// S52 R17: a SpriteInstanceBatch another producer owns (S50's tilemap chunks), drawn as the
+		// instances of a GameObject's MeshComponent: that GameObject's Transform is the batch's model
+		// matrix, its place in the Hierarchy and its renderer fields its sort item, the batch's
+		// bounds its bounds; uploaded when its revision moves. Not on a GameObject with a Sprite
+		// Batch or an Instanced Mesh. The producer keeps the batch alive until it detaches it.
+		void attachInstanceBatch(Entity entity, SpriteInstanceBatch* batch);
+		void detachInstanceBatch(Entity entity);
+		bool hasAttachedInstanceBatch(Entity entity) const { return attachedInstanceBatches.count(entity) != 0; }
+
 	private:
+		std::unordered_map<Entity, SpriteInstanceBatch*> attachedInstanceBatches;
+		std::unordered_map<Entity, uint64_t> attachedBoundsRevision;
+		void updateAttachedInstanceBatches();
 		// 2D sorting state (RenderSystemSorting.cpp)
 		struct SortItem{
 			uint64_t key = 0;
@@ -3562,7 +3604,8 @@ namespace jasperengine{
 		bool rendererSortFields(Entity entity, Signature signature, uint16_t& layerValue, int32_t& order, Vector3& point);
 		uint64_t entitySortKey(Entity entity, Signature signature, bool axis);
 		void gatherSortRange(size_t first, size_t end, size_t depth, uint32_t outerSequence, uint64_t outerKey, int32_t skipGroup);
-		void applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const Vector3& cameraPosition);
+		// true when an enabled Sorting Group is in the queue (sort with TransparentGroupComparison)
+		bool applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const Vector3& cameraPosition);
 
 		// Sprite Batch (RenderSystemSpriteBatch.cpp)
 		SpriteBatchStats spriteBatchStats;

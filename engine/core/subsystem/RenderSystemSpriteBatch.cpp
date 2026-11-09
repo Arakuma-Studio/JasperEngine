@@ -24,6 +24,7 @@
 #include "sprite/SpriteSheetSources.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <numeric>
 #include <cstring>
@@ -67,6 +68,11 @@ namespace{
 }
 
 SpriteInstanceBatch* RenderSystem::spriteInstancesOf(Entity entity){
+    if (!attachedInstanceBatches.empty()){
+        auto attached = attachedInstanceBatches.find(entity);
+        if (attached != attachedInstanceBatches.end())
+            return attached->second;
+    }
     SpriteBatchComponent* component = scene->findComponent<SpriteBatchComponent>(entity);
     if (!component)
         return nullptr;
@@ -85,12 +91,13 @@ void RenderSystem::addSpriteInstanceAttributes(ObjectRender& render, ShaderData&
             render.addAttribute(index, instances.getRender(), attr.second.getElements(), attr.second.getDataType(), instances.getStride(),
                                 attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
     }
-    if (batch.gpuHasFx()){
-        ExternalBuffer& fx = batch.getFxBuffer();
-        for (auto const& attr : fx.getAttributes()){
+    for (ExternalBuffer* stream : {batch.gpuHasFx() ? &batch.getFxBuffer() : nullptr, batch.gpuHasPivots() ? &batch.getPivotBuffer() : nullptr}){
+        if (!stream)
+            continue;
+        for (auto const& attr : stream->getAttributes()){
             const int index = shaderData.getAttrIndex(attr.first);
             if (index >= 0)
-                render.addAttribute(index, fx.getRender(), attr.second.getElements(), attr.second.getDataType(), fx.getStride(),
+                render.addAttribute(index, stream->getRender(), attr.second.getElements(), attr.second.getDataType(), stream->getStride(),
                                     attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
         }
     }
@@ -105,7 +112,68 @@ bool RenderSystem::spriteBatchWantsFx(const MeshComponent& mesh){
     return manifest && manifest->present && manifest->usesInstanceSlots(ShaderReference::getEnabledFeatures(shader, submesh.material.shaderFeatures));
 }
 
+void RenderSystem::attachInstanceBatch(Entity entity, SpriteInstanceBatch* batch){
+    if (!batch)
+        return detachInstanceBatch(entity);
+    attachedInstanceBatches[entity] = batch;
+    attachedBoundsRevision.erase(entity);
+    if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+        mesh->spriteInstanced = true;
+        mesh->needReload = true;
+    }
+}
+
+void RenderSystem::detachInstanceBatch(Entity entity){
+    auto attached = attachedInstanceBatches.find(entity);
+    if (attached == attachedInstanceBatches.end())
+        return;
+    attached->second->destroyGpu();
+    attachedInstanceBatches.erase(attached);
+    attachedBoundsRevision.erase(entity);
+    if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+        mesh->spriteInstanced = false;
+        mesh->needReload = true;
+    }
+}
+
+void RenderSystem::updateAttachedInstanceBatches(){
+    for (auto it = attachedInstanceBatches.begin(); it != attachedInstanceBatches.end();){
+        const Entity entity = it->first;
+        SpriteInstanceBatch* batch = it->second;
+        // a destroyed GameObject lets its batch go (the producer still owns it)
+        if (!scene->isEntityCreated(entity)){
+            batch->destroyGpu();
+            attachedBoundsRevision.erase(entity);
+            it = attachedInstanceBatches.erase(it);
+            continue;
+        }
+        ++it;
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!mesh)
+            continue;
+        if (!mesh->spriteInstanced){
+            mesh->spriteInstanced = true;
+            mesh->needReload = true;
+        }
+        batch->setPivotsEnabled(pixelSnapVariants);
+        if (mesh->loaded && batch->isGpuCreated() && (batch->getCapacity() > batch->getGpuCapacity() || batch->hasFx() != batch->gpuHasFx() ||
+                                                      batch->hasPivots() != batch->gpuHasPivots()))
+            mesh->needReload = true;
+        // the batch is culled and picked whole by its bounds, in its GameObject's space
+        uint64_t& seen = attachedBoundsRevision[entity];
+        if (seen != batch->getRevision()){
+            seen = batch->getRevision();
+            const AABB bounds = batch->getCount() > 0 ? batch->localBounds() : AABB::ZERO;
+            if (mesh->aabb != bounds){
+                mesh->aabb = bounds;
+                mesh->needUpdateAABB = true;
+            }
+        }
+    }
+}
+
 void RenderSystem::updateSpriteBatches(){
+    updateAttachedInstanceBatches();
     if (!scene->isComponentRegistered<SpriteBatchComponent>())
         return;
     auto batches = scene->getComponentArray<SpriteBatchComponent>();
@@ -130,14 +198,23 @@ void RenderSystem::updateSpriteBatches(){
         SpriteInstanceBatch& batch = *spriteInstancesOf(entity);
         batch.setStorage(component.mode == SpriteBatchMode::CLEAR_EACH_FRAME ? SpriteInstanceBatch::Storage::PerFrame
                                                                              : SpriteInstanceBatch::Storage::Retained);
-        // the GPU buffer holds the capacity, or the count past it: a larger one is made by a reload
-        batch.reserve(std::max(component.capacity, state.count));
+        // the GPU buffer holds the capacity, or past it half as much again as it had (a larger one is
+        // made by a reload: a batch filled one instance a frame reloads now and then, not each frame)
+        uint32_t room = std::max(component.capacity, batch.getCapacity());
+        if (state.count > room)
+            room = std::max(state.count, room + room / 2);
+        batch.reserve(room);
         if (spriteBatchWantsFx(*mesh))
             batch.enableFx();
-        if (mesh->loaded && batch.isGpuCreated() && (batch.getCapacity() > batch.getGpuCapacity() || batch.hasFx() != batch.gpuHasFx()))
+        // a snapping scene's instances snap at their own pivots (the 'Spv' instanced variant)
+        batch.setPivotsEnabled(pixelSnapVariants);
+        if (mesh->loaded && batch.isGpuCreated() && (batch.getCapacity() > batch.getGpuCapacity() || batch.hasFx() != batch.gpuHasFx() ||
+                                                     batch.hasPivots() != batch.gpuHasPivots()))
             mesh->needReload = true;
 
+        const auto packStart = std::chrono::steady_clock::now();
         packSpriteBatch(entity, component, state, batch, *sprite, *mesh, *transform);
+        spriteBatchStats.packMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - packStart).count();
 
         // the batch is culled and picked whole by its instances' bounds
         const AABB& bounds = state.count > 0 ? batch.localBounds() : AABB::ZERO;
@@ -289,7 +366,8 @@ void RenderSystem::packSpriteBatch(Entity entity, SpriteBatchComponent& componen
     const bool axisSort = component.sortInstances;
     const Vector3 axis = SortingLayers::getTransparencySortAxis();
     const bool world = component.space == SpriteBatchSpace::WORLD;
-    const uint32_t layout = (axisSort ? 1u : 0u) | (world ? 2u : 0u) | (steps90 ? 4u : 0u) | (axisSort ? SortingLayers::getRevision() << 3 : 0u);
+    const uint32_t layout = (axisSort ? 1u : 0u) | (world ? 2u : 0u) | (steps90 ? 4u : 0u) | (batch.hasPivots() ? 8u : 0u) |
+                            (axisSort ? SortingLayers::getRevision() << 4 : 0u);
     const bool modelChanged = world && std::memcmp(state.packedModel, &transform.modelMatrix, sizeof(state.packedModel)) != 0;
     if (state.packedRevision == state.revision && state.packedFrames == framesKey && state.packedLayout == layout && !modelChanged &&
             batch.getCount() == state.count)
@@ -318,6 +396,7 @@ void RenderSystem::packSpriteBatch(Entity entity, SpriteBatchComponent& componen
     batch.setCount(count);
     std::span<InstanceRenderData> instances = batch.instances();
     std::span<Vector4> fx = batch.fx();
+    std::span<Vector2> pivots = batch.pivots();
     std::vector<SpritePageRun>& runs = spriteBatchRuns;
     runs.clear();
     const int frameCount = (int)frames.size();
@@ -347,6 +426,12 @@ void RenderSystem::packSpriteBatch(Entity entity, SpriteBatchComponent& componen
         out.textureRect = frame.rect;
         if (!fx.empty())
             fx[n] = state.hasFx ? state.fx[i] : Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+        // the pivot a rotated instance snaps at: its position, as its Sprite alone snaps at its
+        // origin (the matrix's translation carries the frame's offset too)
+        if (!pivots.empty()){
+            const Vector3 pivot = world ? toLocal * state.positions[i] : state.positions[i];
+            pivots[n] = Vector2(pivot.x, pivot.y);
+        }
         if (!runs.empty() && runs.back().page == frame.page)
             runs.back().count++;
         else
@@ -361,10 +446,14 @@ bool RenderSystem::drawSpriteInstances(ObjectRender& render, Submesh& submesh, S
     if (batch.getCount() == 0 || !batch.isGpuCreated() || batch.getCount() > batch.getGpuCapacity())
         return false;
     const uint64_t commit = SokolSystem::getCommitCount();
-    if (batch.needsUpload(commit))
+    if (batch.needsUpload(commit)){
+        const auto uploadStart = std::chrono::steady_clock::now();
         spriteBatchStats.uploadBytes += batch.upload(commit);
+        spriteBatchStats.uploadMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - uploadStart).count();
+    }
     ExternalBuffer& instances = batch.getInstanceBuffer();
     ExternalBuffer& fx = batch.getFxBuffer();
+    ExternalBuffer& pivots = batch.getPivotBuffer();
     // a run on another page than the material's binds that page's texture for its draw
     std::pair<int, int> slot = {-1, -1};
     if (batch.getPageCount() > 0 && baseColorSlotType >= 0 && shader)
@@ -391,6 +480,8 @@ bool RenderSystem::drawSpriteInstances(ObjectRender& render, Submesh& submesh, S
         render.replaceVertexBuffer(instances.getRender(), instances.getRender(), (size_t)run.first * instances.getStride());
         if (batch.gpuHasFx())
             render.replaceVertexBuffer(fx.getRender(), fx.getRender(), (size_t)run.first * fx.getStride());
+        if (batch.gpuHasPivots())
+            render.replaceVertexBuffer(pivots.getRender(), pivots.getRender(), (size_t)run.first * pivots.getStride());
         render.draw(0, submesh.vertexCount, run.count);
         spriteBatchStats.draws++;
         spriteBatchStats.instances += run.count;
@@ -398,6 +489,8 @@ bool RenderSystem::drawSpriteInstances(ObjectRender& render, Submesh& submesh, S
     render.replaceVertexBuffer(instances.getRender(), instances.getRender(), 0);
     if (batch.gpuHasFx())
         render.replaceVertexBuffer(fx.getRender(), fx.getRender(), 0);
+    if (batch.gpuHasPivots())
+        render.replaceVertexBuffer(pivots.getRender(), pivots.getRender(), 0);
     if (lent && materialTexture)
         render.addTexture(slot, ShaderStageType::FRAGMENT, materialTexture);
     return true;

@@ -722,8 +722,12 @@ Recorded by the implementer (2026-11-08).
   engine, so another batchable shader can say it too.
 - **Order in Layer is stored as `int32_t`**, clamped to -32768..32767 when read and written: every
   integer row of the reflection, the Inspector and MCP is an `int`. The key keeps its 16 bits (D2).
-- **Sorting Layer ids** are 0..2^20 (the id-to-value lookup is a flat table); a list of names keeps
-  the ids of the names already in the table and gives new names the next free id. Unity's
+- **Sorting Layer ids** are 0..2^20 (the id-to-value lookup is a flat table). An id once given is
+  never given again: `SortingLayers::getNextId` only grows and project.yaml keeps it
+  (`sortingLayerNextId`, written once a layer was removed), so a removed layer's renderers draw on
+  Default instead of landing on a later layer. A list of names keeps the ids of the names already
+  in the table; `tags_and_layers.sorting_layers` reads `[{id, name}]` and takes names or
+  `{id, name}` entries, so a rename keeps the id (R1). Unity's
   `GetLayerValueFromID` is relative to Default; `SortingLayer.getLayerValue` is the layer's place in
   the list (Default may move), the "value" of R1.
 - **The suite of AC3/AC4 is `SpriteBatchComponentGpu`** (`SpriteBatchComponentGpuTest.cpp`):
@@ -746,7 +750,11 @@ Recorded by the implementer (2026-11-08).
   its own fields.
 - **3D transparent queue:** a member of a Sorting Group takes its outermost enabled group's layer,
   order and distance, then its own layer and order; a nested group is not an item of its own there
-  (it is in 2D passes).
+  (it is in 2D passes). With a group in the queue, an item alone and a whole group are units of one
+  total order, (priority, distance far first, sequence); a group's priority is 0 (its members'
+  priorities order them inside it). Without a group the queue sorts as before.
+- **Unity layer ids** compare as their 32 bits: TagManager writes `uniqueID` unsigned, a renderer's
+  `m_SortingLayerID` signed.
 - **Unknown layer ids** (R39) are one load-report line per scene, kind `fallback`, fate `info`
   (nothing is dropped: the ids stay).
 - **AC1's "draw trace recorded from the base commit"** is replaced by what makes it hold: with
@@ -764,8 +772,15 @@ Recorded by the implementer (2026-11-08).
   the mesh. A material that reads none has no stream (R27's 96 bytes; 112 with it).
 - **Clear Each Frame** uploads into the batch's own stream buffer once per frame it draws (not the
   frame's shared stream): the same cost, one buffer per batch.
-- **Capacity**: writing past it grows the GPU buffer (a mesh reload); the saved `capacity` is not
-  rewritten.
+- **Capacity**: writing past it grows the GPU buffer by half again (a mesh reload), so a batch
+  filled one instance a frame reloads now and then; the saved `capacity` is not rewritten.
+- **Snapped instances carry their pivot**: in a snapping scene a Sprite Batch adds an 8-byte
+  per-instance stream (`i_snapPivot`, the instance's position; 'Spv' on the instanced variant),
+  because the matrix's origin also carries the frame's offset (`R·S·ft`) and a trimmed or offset
+  frame turned off the grid would snap at the wrong point. R27's 96 bytes are 104 there.
+- **R17's producer entry** is `RenderSystem::attachInstanceBatch(entity, batch)`: the batch draws as
+  the instances of that GameObject's MeshComponent, whose Transform is its model matrix and whose
+  place in the Hierarchy and renderer fields are its sort item (no model matrix stored twice).
 - **`SpritePageRun` carries its page** (`{first, count, page}`; §6.5 had pairs), and
   `SpriteInstanceBatch::setPages` gives the pages' textures.
 - **World space** packs the instance matrices through the inverse of the GameObject's matrix (the
@@ -782,7 +797,7 @@ Recorded by the implementer (2026-11-08).
 - **'Sfx', 'Sfr', 'Spv' follow the mesh**: MeshSystem gives a Sprite the attributes its material and
   scene read (`MeshComponent::batchAttributes`: an enabled `instance=` feature, a `framerect=`
   feature, a snapping scene), the variant takes the bit only when the mesh carries the attribute.
-  MESH bits 46-48, DEPTH 20; shader cache v59. The export's shader list
+  MESH bits 46-48, DEPTH 20; shader cache v61 (main took v60 before the landing). The export's shader list
   (`ShaderVariantCollector`) computes the same inputs from the Sprite's material and Sprite Batch
   (`MeshSystem::spriteBatchAttributes`), so a scene saves the same list drawn or not.
 - **`custom_params` is a 64-bit FNV-1a hash** of the custom blocks (the engine-written members,
@@ -792,8 +807,19 @@ Recorded by the implementer (2026-11-08).
   `objectMatrices`), so a batched Steps90 sprite is placed as its draw alone.
 - **The run's snap mode** is set from its head through `passSnapModeOverride` (colour, depth and UI
   draws): the run's MVP is the origin cell's, always on the grid.
-- **InstancedMesh (D8)** writes exact zeros (`pixelart::exactGridZeros`, relative 1e-6) only in a
-  snapping scene; elsewhere its matrices are as before.
+- **InstancedMesh (D8), a deliberate behaviour change** (commit 4d5f2544f; its message did not say
+  so, and history is not rewritten): in a snapping scene an Instanced Mesh's matrices get exact
+  zeros (`pixelart::exactGridZeros`, relative 1e-6), and its instances turned off the grid now snap
+  their pivot (mode 2) where before every vertex snapped. Pinned by
+  `SpriteBatchComponentGpu.InstancedMeshRotatedInstancesSnapTheirPivot`. Elsewhere its matrices are
+  as before. An Instanced Mesh sprite takes no 'Sfx' (its instances have no FX amounts).
+- **'Spv' on every snapped sprite**, batching on or off: Engine.dynamicBatching can change while a
+  game runs, and the attribute (12 bytes a vertex, a snapping scene only) spares every sprite a
+  reload and a variant swap then; an export ships the twin for the same reason.
+- **GPU Instancing's "never both"** leaves out a small single-submesh mesh of a `@batchable` library
+  shader as it does one of the built-in shader: Dynamic Batching takes it.
+- **The custom-values key section** is hashed again only when the mesh's custom blocks were written
+  (`MeshComponent::customUniformWrites`), not every frame.
 
 ### MCP, docs and evidence
 

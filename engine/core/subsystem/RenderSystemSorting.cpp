@@ -9,8 +9,9 @@
 // Groups and FLATTEN layers depend on it), each run's renderers stable-sorted by (layer value,
 // Order in Layer, axis distance), the hierarchy index breaking ties; a Sorting Group is one item
 // whose members sort among themselves. The transparent queue of 3D passes compares the same keys
-// first (TransparentRenderComparison). Every draw carries its bucket to the batcher
-// (BatchItem::sortKey): layer value | order | outermost group's sequence + 1.
+// first (TransparentRenderComparison; TransparentGroupComparison with a Sorting Group in it).
+// Every draw carries its bucket to the batcher (BatchItem::sortKey): layer value | order |
+// outermost group's sequence + 1.
 
 #include "RenderSystem.h"
 
@@ -199,9 +200,9 @@ const std::vector<RenderSystem::SortedDraw>& RenderSystem::getSorted2DOrder(){
     return sortedOrder;
 }
 
-void RenderSystem::applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const Vector3& cameraPosition){
+bool RenderSystem::applyTransparentSortKeys(std::vector<TransparentRenderData>& renders, const Vector3& cameraPosition){
     if (!sortingActive || renders.empty())
-        return;
+        return false;
     auto transforms = scene->getComponentArray<Transform>();
     const size_t count = transforms->size();
     // the outermost enabled Sorting Group over each transform (the array is in hierarchy order:
@@ -226,6 +227,7 @@ void RenderSystem::applyTransparentSortKeys(std::vector<TransparentRenderData>& 
             }
         }
     }
+    bool grouped = false;
     for (TransparentRenderData& render : renders){
         const Signature signature = scene->getSignature(render.entity);
         uint16_t layerValue = 0;
@@ -240,16 +242,22 @@ void RenderSystem::applyTransparentSortKeys(std::vector<TransparentRenderData>& 
             const SortingGroupComponent& component = scene->getComponent<SortingGroupComponent>(groupEntity);
             render.sortKey = makeSortKey(SortingLayers::valueOf(component.sortingLayer), component.sortingOrder, false, 0.0f);
             render.sortGroup = sortGroupSequence[index];
-            render.groupDistance = (scene->getComponent<Transform>(groupEntity).worldPosition - cameraPosition).length();
             render.memberKey = own;
             render.sortBucket = (render.sortKey & 0xFFFFFFFF00000000ull) | render.sortGroup;
+            // the group is one unit: at its own distance, after every item alone of its distance
+            render.unitPriority = 0;
+            render.unitDistance = (scene->getComponent<Transform>(groupEntity).worldPosition - cameraPosition).length();
+            render.unitSeq = (1ull << 32) | render.sortGroup;
+            grouped = true;
         }else{
             render.sortKey = own;
             render.sortGroup = 0;
-            // (beside a group of the same key: its own distance against the group's)
-            render.groupDistance = render.distanceToCamera;
             render.memberKey = 0;
             render.sortBucket = own & 0xFFFFFFFF00000000ull;
+            render.unitPriority = render.sortPriority;
+            render.unitDistance = render.waterSortDistance;
+            render.unitSeq = render.order;
         }
     }
+    return grouped;
 }

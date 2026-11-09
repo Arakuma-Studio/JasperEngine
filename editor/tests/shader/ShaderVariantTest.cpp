@@ -150,8 +150,8 @@ TEST_F(ShaderVariantTest, SnappingScenesShipTheSnapPivotTwin){
 }
 
 // R24: the new inputs compile everywhere: the built-in sprite with 'Pxs' + 'Spv' (colour and depth),
-// library:sprite with FLASH, OUTLINE, PALETTE_SWAP and 'Sfx' + 'Sfr' + 'Pxs' + 'Spv', and its
-// instanced form (a Sprite Batch: 'Ist' + 'Sfx', i_spriteFx)
+// library:sprite with FLASH, OUTLINE, PALETTE_SWAP and 'Sfx' + 'Sfr' + 'Pxs' + 'Spv', and their
+// instanced forms (a Sprite Batch: 'Ist' + 'Sfx', i_spriteFx; 'Ist' + 'Spv', i_snapPivot)
 TEST_F(ShaderVariantTest, S52VariantsCompileForEveryBackend){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
     // unlit, uv1, vertex colour 4, texture rect: a sprite
@@ -170,6 +170,8 @@ TEST_F(ShaderVariantTest, S52VariantsCompileForEveryBackend){
         {ShaderType::MESH, sprite | kSfx | kSfr | pixelSnap | kSpv, libraryId, &sources},
         {ShaderType::MESH, sprite | instancing | kSfx | pixelSnap, libraryId, &sources},
         {ShaderType::MESH, sprite | instancing | pixelSnap, 0, nullptr},
+        {ShaderType::MESH, sprite | instancing | pixelSnap | kSpv, 0, nullptr},
+        {ShaderType::MESH, sprite | instancing | kSfx | pixelSnap | kSpv, libraryId, &sources},
     };
     for (ShaderBackend backend : ShaderPool::getShaderBackends()){
         for (const Variant& variant : variants){
@@ -182,6 +184,9 @@ TEST_F(ShaderVariantTest, S52VariantsCompileForEveryBackend){
             EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), "") << name;
             if ((variant.properties & (variant.type == ShaderType::DEPTH ? kDepthSpv : kSpv)) && !(variant.properties & instancing)){
                 EXPECT_GE(data.getAttrIndex(AttributeType::SNAPPIVOT), 0) << name << " reads no a_snapPivot";
+            }
+            if (variant.type == ShaderType::MESH && (variant.properties & kSpv) && (variant.properties & instancing)){
+                EXPECT_GE(data.getAttrIndex(AttributeType::INSTANCESNAPPIVOT), 0) << name << " reads no i_snapPivot";
             }
             if ((variant.properties & kSfx) && !(variant.properties & instancing)){
                 EXPECT_GE(data.getAttrIndex(AttributeType::SPRITEFX), 0) << name << " reads no a_spriteFx";

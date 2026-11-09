@@ -209,6 +209,9 @@ in vec3 a_position;
 #if defined(HAS_SNAP_PIVOT) && defined(PIXEL_SNAP) && !defined(HAS_INSTANCING)
     in vec3 a_snapPivot;
 #endif
+#if defined(HAS_SNAP_PIVOT) && defined(PIXEL_SNAP) && defined(HAS_INSTANCING)
+    in vec2 i_snapPivot;
+#endif
 
 #ifdef SURFACE_POSITION
     out vec3 v_position;
@@ -540,7 +543,12 @@ void main() {
 
     gl_Position = pbrParams.mvpMatrix * pos;
     #ifdef PIXEL_SNAP
-        #ifdef HAS_INSTANCING
+        #if defined(HAS_INSTANCING) && defined(HAS_SNAP_PIVOT)
+            // S52 'Spv' on a Sprite Batch: the instance's own pivot (its matrix's origin carries
+            // its frame's offset)
+            vec4 snapPivot = pbrParams.mvpMatrix * vec4(i_snapPivot, i_matrix_col4.z, 1.0);
+            float snapMode = pixelSnapInstanceMode(pbrParams.pixelSnapDraw.x, i_matrix_col1, i_matrix_col2);
+        #elif defined(HAS_INSTANCING)
             vec4 snapPivot = pbrParams.mvpMatrix * i_matrix_col4;
             float snapMode = pixelSnapInstanceMode(pbrParams.pixelSnapDraw.x, i_matrix_col1, i_matrix_col2);
         #elif defined(HAS_SNAP_PIVOT)

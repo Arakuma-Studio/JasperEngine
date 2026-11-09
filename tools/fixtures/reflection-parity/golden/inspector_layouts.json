@@ -7559,22 +7559,6 @@
    "read_only": false
   },
   {
-   "component": "mesh",
-   "group": "",
-   "kind": "Enum",
-   "label": "Sorting Layer",
-   "path": "sortingLayer",
-   "read_only": false
-  },
-  {
-   "component": "mesh",
-   "group": "",
-   "kind": "Int",
-   "label": "Order in Layer",
-   "path": "sortingOrder",
-   "read_only": false
-  },
-  {
    "component": "sprite",
    "group": "",
    "kind": "Enum",

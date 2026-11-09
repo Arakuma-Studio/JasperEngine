@@ -3,9 +3,9 @@
 
 // S52's budgets (docs/specs/S52-sprite-instancing.md R26-R29, AC15), desktop: 2,000 sprites in 10
 // Sorting Layers with Custom Axis gather and sort in 0.2 ms, defaults gather nothing (a counter);
-// 10,000 moving Sprite Batch instances pack and upload in 0.5 ms as one draw of 96 bytes an
-// instance (112 with FX), a static batch uploads nothing, Lua-free C++ setPositions of 10,000 is
-// part of it; 1,000 snapped library:sprite sprites with FLASH animating on 100 draw in 2 runs at
+// 10,000 moving Sprite Batch instances pack and upload in 0.5 ms (measured alone: the stats'
+// packMs + uploadMs) as one draw of 96 bytes an instance (112 with FX), a static batch uploads
+// nothing, C++ setPositions of 10,000 in 1 ms (Lua's: LuaSpriteBatchBench); 1,000 snapped library:sprite sprites with FLASH animating on 100 draw in 2 runs at
 // most and the flash writes no GPU vertex buffer. Times are [bench] lines, enforced through
 // perfSlack() (JASPER_TEST_PERF_SLACK); counts are always asserted. Mobile and web are measured by
 // hand (docs/specs/evidence/s52/).
@@ -132,7 +132,7 @@ TEST(SpriteBatchBenchGpu, TenThousandMoving){
     ASSERT_EQ(batch.setPositions(positions), "");
     ASSERT_TRUE(GpuEnvironment::runFrames([&scene](){ return scene.getSystem<RenderSystem>()->isAllLoaded(); }));
     RenderSystem& render = *scene.getSystem<RenderSystem>();
-    std::vector<double> setTimes, frameTimes;
+    std::vector<double> setTimes, frameTimes, packUploadTimes;
     for (int f = 0; f < 20; f++){
         place((float)f);
         auto start = std::chrono::steady_clock::now();
@@ -141,6 +141,7 @@ TEST(SpriteBatchBenchGpu, TenThousandMoving){
         start = std::chrono::steady_clock::now();
         GpuEnvironment::drawFrames(1);
         frameTimes.push_back(benchMs(start));
+        packUploadTimes.push_back(render.getSpriteBatchStats().packMs + render.getSpriteBatchStats().uploadMs);
         EXPECT_EQ(render.getSpriteBatchStats().draws, 1u);
         EXPECT_EQ(render.getSpriteBatchStats().instances, 10000u);
         EXPECT_EQ(render.getSpriteBatchStats().uploadBytes, 10000u * 96u);
@@ -149,10 +150,12 @@ TEST(SpriteBatchBenchGpu, TenThousandMoving){
     GpuEnvironment::drawFrames(2);
     EXPECT_EQ(render.getSpriteBatchStats().uploadBytes, 0u);
     const double setMedian = benchMedian(setTimes);
-    std::printf("[bench] Sprite Batch setPositions of 10,000 (C++): %.3f ms median; frame with the pack and upload: %.3f ms median "
-                "(budget 0.5 for the pack and upload)\n", setMedian, benchMedian(frameTimes));
+    const double packUploadMedian = benchMedian(packUploadTimes);
+    std::printf("[bench] Sprite Batch, 10,000 moving: setPositions (C++) %.3f ms, pack and upload %.3f ms (budget 0.5), "
+                "whole frame %.3f ms median\n", setMedian, packUploadMedian, benchMedian(frameTimes));
     if (testsupport::perfSlack() > 0.0){
         EXPECT_LE(setMedian, 1.0 * testsupport::perfSlack());
+        EXPECT_LE(packUploadMedian, 0.5 * testsupport::perfSlack());
     }
     Engine::removeScene(&scene);
 }

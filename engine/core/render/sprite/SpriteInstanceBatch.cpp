@@ -30,6 +30,13 @@ SpriteInstanceBatch::SpriteInstanceBatch(){
     fxBuffer.setRenderAttributes(true);
     fxBuffer.setInstanceBuffer(true);
     fxBuffer.setUsage(BufferUsage::STREAM);
+
+    pivotBuffer.clear();
+    pivotBuffer.addAttribute(AttributeType::INSTANCESNAPPIVOT, 2, 0, true);
+    pivotBuffer.setStride(sizeof(Vector2));
+    pivotBuffer.setRenderAttributes(true);
+    pivotBuffer.setInstanceBuffer(true);
+    pivotBuffer.setUsage(BufferUsage::STREAM);
 }
 
 SpriteInstanceBatch::~SpriteInstanceBatch(){
@@ -43,6 +50,8 @@ void SpriteInstanceBatch::reserve(uint32_t value){
     cpuInstances.resize(capacity);
     if (fxEnabled)
         cpuFx.resize(capacity, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+    if (pivotsEnabled)
+        cpuPivots.resize(capacity, Vector2(0.0f, 0.0f));
 }
 
 void SpriteInstanceBatch::setCount(uint32_t value){
@@ -58,6 +67,16 @@ void SpriteInstanceBatch::enableFx(){
         return;
     fxEnabled = true;
     cpuFx.assign(capacity, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+}
+
+void SpriteInstanceBatch::setPivotsEnabled(bool enabled){
+    if (pivotsEnabled == enabled)
+        return;
+    pivotsEnabled = enabled;
+    if (enabled)
+        cpuPivots.assign(capacity, Vector2(0.0f, 0.0f));
+    else
+        cpuPivots.clear();
 }
 
 void SpriteInstanceBatch::markChanged(float x0, float y0, float x1, float y1){
@@ -107,6 +126,11 @@ bool SpriteInstanceBatch::createGpu(){
         gpuFx = false;
         return false;
     }
+    gpuPivots = pivotsEnabled;
+    if (gpuPivots && !pivotBuffer.getRender()->createBuffer(room * (unsigned int)sizeof(Vector2), nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM)){
+        destroyGpu();
+        return false;
+    }
     gpuCapacity = room;
     uploadedRevision = 0;
     uploadFrame = 0;
@@ -118,8 +142,11 @@ void SpriteInstanceBatch::destroyGpu(){
         instanceBuffer.getRender()->destroyBuffer();
     if (fxBuffer.getRender()->isCreated())
         fxBuffer.getRender()->destroyBuffer();
+    if (pivotBuffer.getRender()->isCreated())
+        pivotBuffer.getRender()->destroyBuffer();
     gpuCapacity = 0;
     gpuFx = false;
+    gpuPivots = false;
     uploadedRevision = 0;
     uploadFrame = 0;
 }
@@ -146,6 +173,11 @@ size_t SpriteInstanceBatch::upload(uint64_t frame){
         const unsigned int fxBytes = count * (unsigned int)sizeof(Vector4);
         if (fxBuffer.getRender()->updateBuffer(fxBytes, cpuFx.data()))
             written += fxBytes;
+    }
+    if (gpuPivots && pivotsEnabled){
+        const unsigned int pivotBytes = count * (unsigned int)sizeof(Vector2);
+        if (pivotBuffer.getRender()->updateBuffer(pivotBytes, cpuPivots.data()))
+            written += pivotBytes;
     }
     uploadedRevision = revision;
     uploadFrame = frame;

@@ -3631,7 +3631,13 @@ void ProjectSettingsWindow::drawSortingLayersSettings() {
         ImGui::AlignTextToFramePadding();
         // the handle: drag a row onto another to move it there
         ImGui::Selectable((ICON_FA_GRIP_VERTICAL " Layer " + std::to_string(i)).c_str(), false, ImGuiSelectableFlags_None);
-        UIProbe::item("sorting_layers.row." + std::to_string(i));
+        {
+            // (a Selectable's rect reaches past its cell by half the item spacing: the probe takes
+            // its inside, which the cell's clip contains)
+            const ImVec2 half(ImGui::GetStyle().ItemSpacing.x * 0.5f, ImGui::GetStyle().ItemSpacing.y * 0.5f);
+            const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+            UIProbe::rect("sorting_layers.row." + std::to_string(i), min.x + half.x, min.y + half.y, max.x - half.x, max.y - half.y);
+        }
         if (ImGui::BeginDragDropSource()) {
             const int from = (int)i;
             ImGui::SetDragDropPayload("JE_SORTING_LAYER", &from, sizeof(from));

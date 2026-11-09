@@ -555,6 +555,9 @@ namespace jasperengine{
         // ShaderGlobals::getVersion() when the custom blocks of the submeshes whose materials
         // bind globals (Material::shaderGlobalBindings) were last written
         uint64_t globalsVersionSeen = 0;
+        // bumped each time the submeshes' custom blocks are written: Dynamic Batching keys a
+        // batchable library shader's values by it, not by hashing them every frame (S52)
+        uint32_t customUniformWrites = 0;
 
         // the skin's palette, one matrix per joint (MeshSystem sizes it at the model load); empty on a
         // mesh without a skin, which then has no palette resource either

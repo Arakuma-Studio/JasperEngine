@@ -2819,6 +2819,11 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             }
             root["sortingLayers"] = layersNode;
         }
+        // past the ids listed once a layer was removed: a later layer never takes a removed id
+        int32_t maxId = 0;
+        for (const SortingLayerInfo& layer : sortingLayers) maxId = std::max(maxId, layer.id);
+        if (SortingLayers::getNextId() > maxId + 1)
+            root["sortingLayerNextId"] = SortingLayers::getNextId();
         if (project->getTransparencySortMode() == TransparencySortMode::CUSTOM_AXIS)
             root["transparencySortMode"] = "custom_axis";
         const Vector3 axis = project->getTransparencySortAxis();
@@ -3642,6 +3647,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setSortingLayers(sortingLayers);
+        int nextId = 0;
+        if (node["sortingLayerNextId"] && YAML::convert<int>::decode(node["sortingLayerNextId"], nextId))
+            SortingLayers::setNextId(nextId);
         TransparencySortMode mode = TransparencySortMode::DEFAULT;
         if (node["transparencySortMode"] && node["transparencySortMode"].IsScalar()) {
             const std::string name = node["transparencySortMode"].as<std::string>();

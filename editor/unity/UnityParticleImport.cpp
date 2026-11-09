@@ -1131,9 +1131,15 @@ namespace {
         return readBool(module, "inWorldSpace") ? particles::ValueSpace::World : particles::ValueSpace::Local;
     }
 
+    // a Unity Sorting Layer id as its 32 bits: TagManager writes uniqueID unsigned, a renderer's
+    // m_SortingLayerID signed (3184598343 and -1110369953 are one layer)
+    uint32_t unitySortingLayerBits(const YAML::Node& value){
+        return value ? (uint32_t)std::strtoll(value.Scalar().c_str(), nullptr, 10) : 0u;
+    }
+
     // a Unity Sorting Layer's name by its unique id (ProjectSettings/TagManager.asset m_SortingLayers),
     // "" when the project does not list it
-    std::string unitySortingLayerName(Context& ctx, int64_t uniqueId){
+    std::string unitySortingLayerName(Context& ctx, uint32_t uniqueId){
         YamlFile tags;
         std::string error;
         if (!tags.load(ctx.project.root() / "ProjectSettings" / "TagManager.asset", error))
@@ -1143,7 +1149,7 @@ namespace {
             if (!layers || !layers.IsSequence())
                 continue;
             for (const YAML::Node& layer : layers){
-                if (layer["uniqueID"] && std::strtoll(layer["uniqueID"].Scalar().c_str(), nullptr, 10) == uniqueId && layer["name"])
+                if (layer["uniqueID"] && unitySortingLayerBits(layer["uniqueID"]) == uniqueId && layer["name"])
                     return layer["name"].Scalar();
             }
         }
@@ -1499,7 +1505,7 @@ namespace {
         // S52 R41: Unity's Order in Layer and Sorting Layer are the system's own (effects
         // imported earlier keep their sortPriority, which sorts after them); the layer by name
         c.sortingOrder = std::clamp(readInt(r, "m_SortingOrder"), -32768, 32767);
-        const int64_t unityLayer = r["m_SortingLayerID"] ? std::strtoll(r["m_SortingLayerID"].Scalar().c_str(), nullptr, 10) : 0;
+        const uint32_t unityLayer = unitySortingLayerBits(r["m_SortingLayerID"]);
         if (unityLayer != 0){
             const std::string name = unitySortingLayerName(ctx, unityLayer);
             const int32_t id = name.empty() ? -1 : SortingLayers::nameToId(name);

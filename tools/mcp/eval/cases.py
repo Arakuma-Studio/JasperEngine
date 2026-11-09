@@ -3103,7 +3103,7 @@ CASES = [
                          "tags_and_layers.sorting_layers, then the renderer's sortingLayer); without the setting and the doc agents "
                          "moved GameObjects in the hierarchy or changed z, which 2D cameras ignore.",
         "text_at_issue": "jasper://docs/rendering-2d; "
-                         "tags_and_layers.sorting_layers: 'Sorting Layer names in draw order, first drawn first; must include "
+                         "tags_and_layers.sorting_layers: 'Sorting Layers in draw order, first drawn first, as [{id, name}]; must include "
                          "\"Default\"'",
         "source": "S52 R34, R36 (new MCP text); no failure on record",
         "prompt": "In our 2D scene the Tree GameObjects draw behind the Player sprite. Make every tree draw in front of the "
@@ -3116,8 +3116,8 @@ CASES = [
             {"tool": "find_entities", "result": ok("3 GameObjects: Tree (12), Tree (13), Tree (14).",
                                                   {"entities": [{"id": 12, "name": "Tree"}, {"id": 13, "name": "Tree"},
                                                                 {"id": 14, "name": "Tree"}]})},
-            {"tool": "get_project_settings", "result": ok("tags_and_layers.sorting_layers: [\"Default\"]",
-                                                         {"values": {"tags_and_layers.sorting_layers": ["Default"]}})},
+            {"tool": "get_project_settings", "result": ok("tags_and_layers.sorting_layers: [{\"id\": 0, \"name\": \"Default\"}]",
+                                                         {"values": {"tags_and_layers.sorting_layers": [{"id": 0, "name": "Default"}]}})},
             {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
                                                          {"changed": ["tags_and_layers.sorting_layers"]})},
             {"tool": "set_properties", "result": ok("Set 1 property on 3 GameObjects.", {"entities": [{"id": 12}, {"id": 13}, {"id": 14}]})},
@@ -3144,8 +3144,8 @@ CASES = [
             {"tool": "set_properties", "result": err(
                 "Property sortingLayer: no Sorting Layer is named \"Foreground\"; add it with set_project_settings "
                 "tags_and_layers.sorting_layers")},
-            {"tool": "get_project_settings", "result": ok("tags_and_layers.sorting_layers: [\"Default\"]",
-                                                         {"values": {"tags_and_layers.sorting_layers": ["Default"]}})},
+            {"tool": "get_project_settings", "result": ok("tags_and_layers.sorting_layers: [{\"id\": 0, \"name\": \"Default\"}]",
+                                                         {"values": {"tags_and_layers.sorting_layers": [{"id": 0, "name": "Default"}]}})},
             {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
                                                          {"changed": ["tags_and_layers.sorting_layers"]})},
         ],
@@ -3206,5 +3206,76 @@ CASES = [
         "checks": {"calls": [{"tool": "set_properties", "args": {"values": {"mesh": {"sortingOrder": "*"}}}}],
                    "must_not_call": ["fork_shader", {"tool": "edit_sprite_atlas"}]},
         "max_turns": 14,
+    },
+    {
+        "id": "guard_transparency_sort_axis",
+        "kind": "guard",
+        "what_happened": "New setting (S52): a top-down 2D game wants lower characters in front of higher ones within one "
+                         "Sorting Layer; the Custom Axis does it in one setting, where agents otherwise wrote a script setting "
+                         "every sprite's Order in Layer from its y each frame.",
+        "text_at_issue": "graphics.transparency_sort_mode: 'custom_axis: in 2D cameras, renderers of one Sorting Layer and Order "
+                         "in Layer draw by graphics.transparency_sort_axis (a larger dot(axis, position) first)'; "
+                         "graphics.transparency_sort_axis: 'The Custom Axis, default [0, 1, 0] (a higher y draws first: top-down)'",
+        "source": "S52 R4 (new setting text); no failure on record",
+        "files": GAME_FILES,
+        "prompt": "This is a top-down 2D game. Characters lower on the screen should be drawn in front of characters higher up, "
+                  "like in most top-down RPGs. Set that up for the whole project.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "graphics.transparency_sort_mode: \"default\" (default | custom_axis: in 2D cameras, renderers of one Sorting Layer "
+                "and Order in Layer draw by graphics.transparency_sort_axis (a larger dot(axis, position) first)); "
+                "graphics.transparency_sort_axis: [0, 1, 0] (the Custom Axis, default [0, 1, 0] (a higher y draws first: top-down))",
+                {"values": {"graphics.transparency_sort_mode": "default", "graphics.transparency_sort_axis": [0, 1, 0]}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["graphics.transparency_sort_mode"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"graphics.transparency_sort_mode": "custom_axis"}}}],
+                   "must_not_call": [{"tool": "write_file", "args": {"content": "re:sortingOrder"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_sorting_layer_rename_by_name",
+        "kind": "bad",
+        "what_happened": "Renaming a Sorting Layer, agents passed the new name list, which made a new layer and left the "
+                         "renderers of the old one on Default; an {id, name} entry keeps the layer and its renderers (S52).",
+        "text_at_issue": "tags_and_layers.sorting_layers: '... names, or {id, name} to rename a layer (it keeps its renderers)'",
+        "source": "S52 R1, R34 (review finding: a rename by names moved renderers to Default)",
+        "prompt": "Rename the Sorting Layer \"Front\" to \"Foreground\". Sprites already on it must stay on it.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "tags_and_layers.sorting_layers: [{\"id\": 0, \"name\": \"Default\"}, {\"id\": 3, \"name\": \"Front\"}] "
+                "(Sorting Layers in draw order, first drawn first, as [{id, name}]; must include \"Default\". Pass the complete "
+                "list: names, or {id, name} to rename a layer (it keeps its renderers); an unlisted layer is removed (its "
+                "renderers draw on Default).)",
+                {"values": {"tags_and_layers.sorting_layers": [{"id": 0, "name": "Default"}, {"id": 3, "name": "Front"}]}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["tags_and_layers.sorting_layers"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings",
+                              "args": {"values": {"tags_and_layers.sorting_layers": "re:(?s)3.*Foreground|Foreground.*3"}}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_sprite_batch_without_sprite",
+        "kind": "bad",
+        "what_happened": "Agents added a Sprite Batch to an empty GameObject and then filled it from Lua; it draws its "
+                         "GameObject's Sprite, so add_component refuses it and the error names the fix (S52).",
+        "text_at_issue": "add_component error: 'A Sprite Batch goes on a GameObject with a Sprite (add a Sprite first).'",
+        "source": "S52 R10 (new error text); paraphrased from the design review",
+        "prompt": "GameObject 40 \"Coins\" is an empty GameObject in the open scene. Make it draw many coins from one Sprite "
+                  "Batch, using the texture sprites/coin.png. Don't write the script yet.",
+        "mocks": [
+            {"tool": "add_component", "args": {"component": "re:(?i)^sprite$"}, "result": ok(
+                "Added Sprite to GameObject 40 \"Coins\".", {"entity": {"id": 40}})},
+            {"tool": "add_component", "after": "add_component", "result": ok("Added Sprite Batch to GameObject 40 \"Coins\".",
+                                                                             {"entity": {"id": 40}})},
+            {"tool": "add_component", "result": err("A Sprite Batch goes on a GameObject with a Sprite (add a Sprite first).")},
+            {"tool": "set_properties", "result": ok("Set 1 property on GameObject 40 \"Coins\".", {"entity": {"id": 40}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)^sprite$"}},
+                             {"tool": "add_component", "args": {"component": "re:(?i)sprite.?batch"}}],
+                   "max_errors": {"add_component": 1},
+                   "must_not_call": ["create_entity"]},
+        "max_turns": 12,
     },
 ]
