@@ -56,6 +56,25 @@ TEST(ColorOps, OutlineWidthTwoDiamond) {
     EXPECT_EQ(rows[2], "22122");
 }
 
+TEST(ColorOps, OutlineWidthsAndShapesPerHandMadeMasks) {
+    // a pixel in the middle: the outline is the neighbourhood itself (width and shape)
+    auto outline = [](int width, const char* shape) {
+        draw::SpriteDoc sprite = s47test::makeSprite(9, 9);
+        const s47test::Run run = s47test::apply(sprite, json::array({{{"op", "pixel"}, {"points", {{4, 4}}}, {"color", 1}},
+                                                                      {{"op", "outline"}, {"color", 2}, {"width", width}, {"shape", shape}}}));
+        EXPECT_TRUE(run.ok) << run.problem.message;
+        return s47test::canvasRows(sprite);
+    };
+    EXPECT_EQ(outline(1, "circle")[3], "....2....") << "w 1 circle: floor(sqrt(1.5^2 - 0)) = 1, the diamond's reach";
+    EXPECT_EQ(outline(1, "circle")[4], "...212...");
+    EXPECT_EQ(outline(2, "square")[2], "..22222..");
+    EXPECT_EQ(outline(2, "square")[4], "..22122..");
+    EXPECT_EQ(outline(3, "diamond")[1], "....2....");
+    EXPECT_EQ(outline(3, "diamond")[4], ".2221222.");
+    EXPECT_EQ(outline(3, "circle")[1], "...222...") << "w 3 circle: reach 3 at row 0, floor(sqrt(3.5^2-9)) = 1 at row 3";
+    EXPECT_EQ(outline(3, "circle")[4], ".2221222.");
+}
+
 TEST(ColorOps, HueShiftMatchesShadingFormulas) {
     ShadeParams params;
     params.hueShift = true;

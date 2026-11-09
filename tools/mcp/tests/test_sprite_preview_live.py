@@ -98,6 +98,7 @@ async def test_live_view(ed: Editor):
     # a newer step on top: Undo is disabled and leaves the file alone
     second = await ok(ed, "edit_sprite", sprite=PATH, ops=[{"op": "pixel", "points": [[3, 3]], "color": 1}])
     await ed.call("create_entity", type="empty", name="Newer step")
+    await ed.call("run_command", id="window.spritePreview")   # it may have gone behind the Scene tab
     await ui.frames(3)
     undo = await ui.item("spritePreview.agentEdit.undo")
     await ui.click(undo)

@@ -6,9 +6,8 @@ from __future__ import annotations
 import base64
 import time
 
-import pngdiff
 from harness import Editor
-from sprite_draw_util import enable, images, ok
+from sprite_draw_util import decode_png, enable, images, ok
 
 CI = True
 EDITOR = {"create": True, "name": "SpriteRender", "xvfb": "harness"}
@@ -25,7 +24,7 @@ def px(image, x, y):
 
 async def render(ed: Editor, **args):
     data, imgs = await images(ed, "render_sprite", sprite=PATH, **args)
-    return data, pngdiff.decode(imgs[0])
+    return data, decode_png(imgs[0])
 
 
 async def test_setup(ed: Editor):
@@ -108,11 +107,12 @@ async def test_context_returns_the_view_around_the_game_object(ed: Editor):
         if info.get("import_state") == "imported":
             break
         await ed.call("wait", seconds=0.2)
+    await ed.call("frame_entity", entity=created["sprite"])
     await ed.call("wait", frames=5)
     data, imgs = await images(ed, "render_sprite", sprite=PATH, frames=[1], context={"entity": created["sprite"], "view": "scene"})
     ed.check(len(imgs) == 2, f"a second image: {len(imgs)}")
-    w, h, pixels = pngdiff.decode(imgs[1])
+    w, h, pixels = decode_png(imgs[1])
     ed.check(w > 0 and h > 0, f"context image {w}x{h}")
     ed.check(data["context"]["view"] == "scene" and data["context"]["scale"] >= 1, f"{data.get('context')}")
     red = sum(1 for i in range(0, len(pixels), 4) if pixels[i] > 180 and pixels[i + 1] < 90 and pixels[i + 2] < 90)
-    ed.check(red > 0, "the sprite's red pixel shows in the view")
+    ed.check(red > 0, f"the sprite's red pixel shows in the view ({w}x{h}, context {data.get('context')})")

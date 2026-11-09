@@ -43,3 +43,34 @@ async def images(ed: Editor, tool: str, **args):
     if r.is_error:
         ed.fail(f"{tool}: {r.text}")
     return r.structured, [img for img, _ in r.images]
+
+
+def decode_png(data: bytes):
+    """(width, height, rgba bytes) of a PNG render_sprite wrote: colour type 3 or 6, 8-bit, filter 0"""
+    import struct
+    import zlib
+    pos, width, height, color_type, idat, plte, trns = 8, 0, 0, 0, [], b"", b""
+    while pos + 8 <= len(data):
+        length = struct.unpack(">I", data[pos:pos + 4])[0]
+        kind, chunk = data[pos + 4:pos + 8], data[pos + 8:pos + 8 + length]
+        if kind == b"IHDR":
+            width, height, _, color_type = struct.unpack(">IIBB", chunk[:10])
+        elif kind == b"PLTE":
+            plte = chunk
+        elif kind == b"tRNS":
+            trns = chunk
+        elif kind == b"IDAT":
+            idat.append(chunk)
+        pos += 12 + length
+    raw = zlib.decompress(b"".join(idat))
+    out = bytearray(width * height * 4)
+    if color_type == 3:
+        for y in range(height):
+            row = raw[y * (width + 1) + 1:(y + 1) * (width + 1)]
+            for x, i in enumerate(row):
+                out[(y * width + x) * 4:(y * width + x) * 4 + 4] = bytes((plte[i * 3], plte[i * 3 + 1], plte[i * 3 + 2], trns[i] if i < len(trns) else 255))
+    else:
+        stride = width * 4
+        for y in range(height):
+            out[y * stride:(y + 1) * stride] = raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)]
+    return width, height, bytes(out)

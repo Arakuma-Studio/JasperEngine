@@ -4,6 +4,11 @@ draw, the tools hidden until the group is enabled, and the CLI's schema check.""
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+from pathlib import Path
+
 import harness
 from harness import Editor
 from sprite_draw_util import digest, enable, err, images, ok
@@ -168,6 +173,40 @@ async def test_call_cli_validates_the_op_names_and_the_handler_the_fields(ed: Ed
     e = await err(ed, "edit_sprite", sprite=path, ops=[{"op": "pixel", "pointz": [[0, 0]], "color": 1}])
     ed.check(e["kind"] == "bad_op_field" and "points" in e["fix"], f"a misspelled field names the op's fields: {e}")
     ed.check(digest(ed.project / path) == before, "the file bytes stay")
+
+
+async def test_cli_refuses_an_unknown_op_before_starting_an_editor(ed: Editor):
+    work = ed.project.parent / "cli-work"
+    work.mkdir(exist_ok=True)
+    (work / "settings.yaml").write_text("")
+    proc = subprocess.run(harness.editor_command() + ["call", "--dry-run", "edit_sprite", "--sprite", "x.aseprite", "--ops", json.dumps([{"op": "pixle"}])],
+                          cwd=str(work), capture_output=True, text=True, timeout=60)
+    ed.check(proc.returncode == 2 and "pixle" in proc.stderr, f"fails before any editor: {proc.returncode} {proc.stderr}")
+
+
+async def test_every_structure_op_writes_a_file_aseprite_opens(ed: Editor):
+    """A sprite through every structure kind; JASPER_SHOTS_DIR keeps it for the real-Aseprite check"""
+    path = "assets/sprites/full.aseprite"
+    await ok(ed, "create_sprite", path=path, size=[16, 16], frames=2, layers=["back", "front"], palette=["#ff0000", "#00ff00", "#0000ff"])
+    r = await ok(ed, "edit_sprite", sprite=path, ops=[
+        {"op": "rect", "rect": [2, 2, 8, 8], "color": 1, "fill": True, "layer": "back"},
+        {"op": "ellipse", "rect": [4, 4, 8, 8], "color": 2, "layer": "front", "frame": 2},
+        {"op": "layer", "action": "add", "name": "fx"},
+        {"op": "pixel", "points": [[1, 1]], "color": 3, "layer": "fx"},
+        {"op": "frame", "action": "add", "link": True},
+        {"op": "frame", "action": "duplicate", "from": 1},
+        {"op": "tag", "name": "walk", "from": 1, "to": 3, "direction": "pingpong", "repeat": 2},
+        {"op": "slice", "name": "hit", "rect": [1, 1, 6, 6], "pivot": [3, 3]},
+        {"op": "palette", "action": "add", "colors": ["#ffff00"]},
+        {"op": "cel", "action": "set", "frame": 2, "layer": "back", "opacity": 128},
+        {"op": "canvas", "action": "resize", "size": [20, 20], "anchor": "center"},
+    ])
+    ed.check(r["changed"]["pixels"] > 0 and r["structure"]["frames"], f"{r['changed']}")
+    shots = os.environ.get("JASPER_SHOTS_DIR")
+    if shots:
+        Path(shots).mkdir(parents=True, exist_ok=True)
+        (Path(shots) / "full.aseprite").write_bytes((ed.project / path).read_bytes())
+        (Path(shots) / "hero.aseprite").write_bytes((ed.project / HERO).read_bytes())
 
 
 async def test_schema_declares_the_ops(ed: Editor):
