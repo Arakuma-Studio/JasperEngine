@@ -191,5 +191,5 @@ TEST(DrawOps, MirroredShapeKeepsWhatLandsBackOnTheCanvas) {
     // the mirror of an off-canvas part of the stroke lands on the canvas: clipping must not lose it
     draw::SpriteDoc sprite = s47test::makeSprite(8, 1);
     S47_APPLY(sprite, json::array({{{"op", "rect"}, {"rect", {-2, 0, 3, 1}}, {"color", 1}, {"fill", true}}}), json{{"x", 2.0}});
-    EXPECT_EQ(s47test::canvasRows(sprite)[0], "1.11.1..") << "row -2..0 and its mirror 4..6 about x=2";
+    EXPECT_EQ(s47test::canvasRows(sprite)[0], "1...111.") << "x -2..0 and their mirrors 6, 5, 4 about x = 2";
 }

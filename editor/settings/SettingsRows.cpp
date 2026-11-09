@@ -3517,7 +3517,6 @@ std::vector<Setting> mcpSettingsTable() {
             s.key = "preferences.pixel_art.agent_edit_highlight";
             s.type = "bool";
             s.preference = true;
-            s.userOnly = true;
             s.description = "Pixel Art: outline the pixels an agent changed in the Sprite Preview, fading over 3 s.";
             s.get = [](SettingsContext&) { return Json(AppSettings::getPixelArtPreferences().agentEditHighlight); };
             s.set = [](SettingsContext&, const Json& value, bool apply, std::string& error) {

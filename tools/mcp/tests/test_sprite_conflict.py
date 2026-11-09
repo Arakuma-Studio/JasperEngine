@@ -139,11 +139,13 @@ async def test_a_half_written_save_keeps_the_session_and_its_warning(ed: Editor)
 async def test_undo_to_id_reports_the_steps_own_refusal(ed: Editor):
     path = "assets/sprites/toid.aseprite"
     await ok(ed, "create_sprite", path=path, size=[8, 8], palette=["#ff0000", "#00ff00"])
-    r = await ok(ed, "edit_sprite", sprite=path, ops=[{"op": "pixel", "points": [[0, 0]], "color": 1}])
-    other = (ed.project / path).read_bytes() + b"\0"
+    a = await ok(ed, "edit_sprite", sprite=path, ops=[{"op": "pixel", "points": [[0, 0]], "color": 1}])
+    await ok(ed, "edit_sprite", sprite=path, ops=[{"op": "pixel", "points": [[1, 0]], "color": 2}])
+    target = ed.project / path
     await asyncio.sleep(0.05)
-    (ed.project / path).write_bytes((ed.project / PATH).read_bytes() if (ed.project / PATH).exists() else other)
+    target.write_bytes((ed.project / PATH).read_bytes())
     await ed.call("wait", frames=4)
-    raw_r = await ed.call_raw("undo", {"scope": "timeline", "to_id": r["undo"]["id"]})
-    ed.check(raw_r.is_error or (raw_r.structured or {}).get("refused"), f"refused: {raw_r.structured}")
-    ed.check("changed outside the editor" in raw_r.text, f"names why, not a child scene cycle: {raw_r.text}")
+    # undoing to the older step needs the newest one undone first, which the outside save refuses
+    raw = await ed.call_raw("undo", {"scope": "timeline", "to_id": a["undo"]["id"]})
+    ed.check(raw.is_error or (raw.structured or {}).get("refused"), f"refused: {raw.structured}")
+    ed.check("changed outside the editor" in raw.text, f"names why, not a child scene cycle: {raw.text}")

@@ -184,7 +184,7 @@ Json spriteJson(Project* project, draw::SpriteSession& session) {
     AssetDatabase::Resolution found = project->resolveAsset(session.path, "", AssetType::Unknown);
     if (found.found() && project->getAssetIndex().isReady()) {
         for (const DepEdge& edge : project->getAssetIndex().referencesTo(found.guid, session.path, false, 64)) {
-            if (edge.entity == 0 || edge.component.find("Sprite") == std::string::npos) continue;
+            if (edge.entityPath.empty() || edge.component.find("Sprite") == std::string::npos) continue;
             usedBy.push_back({{"file", project->getAssetIndex().referrerPath(edge.referrer)}, {"object", edge.entityPath}});
         }
     }

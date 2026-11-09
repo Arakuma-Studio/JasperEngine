@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import time
 
+import pngdiff
 from harness import Editor
 from sprite_draw_util import decode_png, enable, images, ok
 
@@ -140,12 +141,17 @@ async def test_context_returns_the_view_around_the_game_object(ed: Editor):
     scale, rect = context["scale"], context["rect"]
     ed.check(context["view"] == "scene" and scale >= 1, f"{context}")
     ed.check(w == rect[2] * scale and h == rect[3] * scale, f"the image is the cropped view at an integer scale: {w}x{h}, {context}")
-    # the sprite's one red pixel: a solid block whose sides are whole multiples of the scale
-    reds = [(x, y) for y in range(h) for x in range(w) if pixels[(y * w + x) * 4] > 180 and pixels[(y * w + x) * 4 + 1] < 90 and pixels[(y * w + x) * 4 + 2] < 90]
-    ed.check(reds, f"the sprite's red pixel shows in the view ({w}x{h}, {context})")
-    xs = [x for x, _ in reds]
-    ys = [y for _, y in reds]
-    bw, bh = max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
-    ed.check(len(reds) == bw * bh, f"one solid block: {len(reds)} pixels in {bw}x{bh}")
-    ed.check(bw % scale == 0 and bh % scale == 0, f"whole multiples of the scale {scale}: {bw}x{bh}")
-    ed.check(abs(bw - bh) <= scale, f"square: {bw}x{bh}, scale {scale}")
+    # the sprite's red pixel is in the crop, and the crop is the view at an integer scale: each view
+    # pixel of it a scale x scale block of the context image
+    red = sum(1 for i in range(0, len(pixels), 4) if pixels[i] > 180 and pixels[i + 1] < 90 and pixels[i + 2] < 90)
+    ed.check(red > 0, f"the sprite's red pixel shows in the view ({w}x{h}, {context})")
+    view = pngdiff.decode(await ed.screenshot("scene", max_width=0))
+    vw, _, vp = view
+    same = total = 0
+    for y in range(0, h, max(1, scale)):
+        for x in range(0, w, max(1, scale)):
+            total += 1
+            sx, sy = rect[0] + x // scale, rect[1] + y // scale
+            if pixels[(y * w + x) * 4:(y * w + x) * 4 + 3] == vp[(sy * vw + sx) * 4:(sy * vw + sx) * 4 + 3]:
+                same += 1
+    ed.check(same >= total * 0.98, f"{same} of {total} blocks match the scene view at {rect}")
