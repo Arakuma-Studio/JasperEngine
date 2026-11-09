@@ -229,6 +229,13 @@ namespace {
         return preview;
     }
 
+    // a line over the canvas, legible on the checker
+    void canvasNote(ImDrawList* drawList, ImVec2 at, ImU32 color, const std::string& text) {
+        const ImVec2 size = ImGui::CalcTextSize(text.c_str());
+        drawList->AddRectFilled(ImVec2(at.x - 4.0f, at.y - 2.0f), ImVec2(at.x + size.x + 4.0f, at.y + size.y + 2.0f), IM_COL32(20, 20, 22, 200), 3.0f);
+        drawList->AddText(at, color, text.c_str());
+    }
+
     bool drawGlyphAtlas(TitleDesignerState& state, ImDrawList* drawList, ImVec2 min, ImVec2 max, const CanvasXform& xform) {
         GlyphPreview& p = glyphPreview();
         if (!state.isOpen()) return false;
@@ -254,18 +261,18 @@ namespace {
         // its scheduler runs in the render phase even while no scene draws a title this frame
         requestEngineFrame([] { TitleArtSystem::runRuntimeFrame(true); });
         if (!p.error.empty()) {
-            drawList->AddText(ImVec2(min.x + 12.0f, min.y + 30.0f), IM_COL32(240, 170, 50, 255), p.error.c_str());
+            canvasNote(drawList, ImVec2(min.x + 12.0f, min.y + 30.0f), IM_COL32(240, 170, 50, 255), p.error);
             return true;
         }
         if (!p.live) return false;
         const ta::TitleArtLiveStatus status = ta::TitleArtRuntime::status(*p.live);
         TextureRender* texture = ta::TitleArtRuntime::display(*p.live);
         const ta::TitleDisplayImage& front = p.live->front();
-        if (status.failed) drawList->AddText(ImVec2(min.x + 12.0f, min.y + 30.0f), IM_COL32(240, 120, 90, 255), status.error.c_str());
+        if (status.failed) canvasNote(drawList, ImVec2(min.x + 12.0f, min.y + 30.0f), IM_COL32(240, 120, 90, 255), status.error);
         if (!texture || !front.valid()) {
             // what it is waiting for: "queued", "shaders", "rendering 3/7" (S82 R71)
-            drawList->AddText(ImVec2(min.x + 12.0f, min.y + 30.0f), IM_COL32(200, 200, 200, 255),
-                              ("Glyph Atlas: " + (status.pending.empty() ? std::string("waiting") : status.pending)).c_str());
+            canvasNote(drawList, ImVec2(min.x + 12.0f, min.y + 30.0f), IM_COL32(220, 220, 220, 255),
+                       "Glyph Atlas: " + (status.pending.empty() ? std::string("waiting") : status.pending));
             return true;
         }
         const ta::TitleArtDoc& doc = *p.live->document();
@@ -275,8 +282,8 @@ namespace {
         drawList->AddImage(Backend::getImGuiTexture(texture), xform.toScreen({left, top}), xform.toScreen({left + frame.width, top - frame.height}));
         drawList->PopClipRect();
         if (!p.live->glyphAtlasPlan().fallback.empty()) {
-            drawList->AddText(ImVec2(min.x + 12.0f, max.y - 44.0f), IM_COL32(240, 170, 50, 255),
-                              ("Renders as Realtime: " + p.live->glyphAtlasPlan().fallback).c_str());
+            canvasNote(drawList, ImVec2(min.x + 12.0f, max.y - 44.0f), IM_COL32(240, 170, 50, 255),
+                       "Renders as Realtime: " + p.live->glyphAtlasPlan().fallback);
         }
         return true;
     }
