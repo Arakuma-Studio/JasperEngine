@@ -58,9 +58,9 @@ readback of the result).
 |---|---|---|---|
 | `gold_big_bonus_bake_ms` | 41.9 | 1,989 (earlier run) | 1,500 (server A GPU) |
 | `cold_environment_1024_ms` | 1,796 | 18,174 (earlier run) | 400 |
-| Realtime High, one re-render | 35.7 ms (70 passes) | 598.7 ms | §6.7: RTX 3080 Ti <= 4 ms GPU, <= 80 passes |
-| Realtime Medium | 34.9 ms (41 passes) | 200.0 ms | <= 48 passes |
-| Realtime Low | 35.0 ms (7 passes) | 505.4 ms | <= 7 passes |
+| Realtime High, one re-render | 35.7-42.1 ms (70 passes) | 598.7 ms | §6.7: RTX 3080 Ti <= 4 ms GPU, <= 80 passes |
+| Realtime Medium | 34.9-40.5 ms (41 passes) | 200.0 ms | <= 48 passes |
+| Realtime Low | 35.0-40.2 ms (7 passes) | 505.4 ms | <= 7 passes |
 
 The Realtime figures on the RTX are flat across tiers: they are dominated by the readback and the job's
 CPU side, not by GPU time, so they do not show §6.7's GPU budgets (which need S15's GPU timings); the pass

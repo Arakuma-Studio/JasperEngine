@@ -1566,7 +1566,7 @@ rest of S82 lands in 6B.
       the tier's k (2 against 3) and bevel segments (<= 8 against 24) move the edges' antialiasing, so AC9's mean holds and
       its 1 % does not at High; the test bounds it at 2/255 and 3 %.
     - **Realtime tier bench** (`Title3DBakeBench.RealtimeTiers`, "BIG BONUS" Gold 3D at 280 px, about 30 % of 1080p, one
-      re-render with its readback, median of 5): RTX 3080 Ti (GL) High 35.7 ms (70 passes), Medium 34.9 ms (41), Low 35.0 ms
-      (7); llvmpipe High 598.7 ms, Medium 200.0 ms, Low 505.4 ms (MSAA 4 on the compressed target is expensive on a CPU
-      rasteriser). The RTX figures are wall clock with a synchronous readback (about 35 ms whatever the tier), not GPU time:
+      re-render with its readback, median of 5): RTX 3080 Ti (GL) High 35.7-42.1 ms (70 passes), Medium 34.9-40.5 ms (41), Low 35.0-40.2 ms
+      (7), two runs; llvmpipe High 598.7 ms, Medium 200.0 ms, Low 505.4 ms (MSAA 4 on the compressed target is expensive on a CPU
+      rasteriser). The RTX figures are wall clock with a synchronous readback (35-42 ms whatever the tier), not GPU time:
       §6.7's 4 ms needs S15's GPU timings, which this test does not read. The pass counts are within §6.7 (<= 80, 48, 7).
