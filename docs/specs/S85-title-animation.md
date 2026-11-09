@@ -1372,8 +1372,15 @@ rest of S82 lands in 6B.
     `test_title_animation_goldens.py` with `JASPER_MCP_TITLE_ANIM_UPDATE_GOLDEN=1`. AC8 is
     `TitleAnimComposeGpu.LayerSplitEqualsRender` over one fixture. `TitleAnimBench.Scene30` measures
     30 players with their companion uniforms, without the ECS loop: there is no headless Scene.
-    The bench runs in the unit-test build, not on server E's Release build. AC11, AC12 and AC21
-    (exported player, GPU lane, Android and web gates) have not been run.
+    The bench runs in the unit-test build, not on server E's Release build.
+    AC11 is `test_title_animation_export.py` (a prebuilt player, `JASPER_SLOW_BUILD=1`): compared
+    within 24/255 on 1 % of the pixels, not the AC's 2/255 on 0.1 %: the build ships the flipbooks
+    cooked (`je-cooked/`, a lossy block format), measured 0.55-0.77 % of pixels over 2/255, worst
+    60/255 on edges. The module list names the full player's modules; the `lite2d` player is what the
+    build reports as fitting, without `titleart`. AC21's `titleanim` scene was not added to the web
+    gate or the Android render gate: it needs an editor-baked flipbook and a font committed to a web
+    test project (`tools/test-projects/title-art` has neither) and a golden from the emulator on H;
+    the `title-art` web gate and the Android build cover the module. AC12 is the GPU lane on host H.
 24. **S81/S86 fix:** S86's one-new-draw-a-frame rule reports a skipped pass through
     `lastRunDeferred()`, which the Glyph Atlas and compose jobs never read, so a process's first
     render could be blank and a page copy could cache a blank cell. At the merge with W4's
