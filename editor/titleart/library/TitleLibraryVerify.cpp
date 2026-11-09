@@ -129,6 +129,11 @@ bool titlelibrary::thumbnailDocument(const LibraryItemInfo& item, const Thumbnai
     titleart::TitleArtDoc doc = titleart::makeNewTitleArt(o);
     Json ops = Json::array();
     if (item.kind == LibraryKind::Look) {
+        // a look with no font pair (effects-only) still shows its kanji sample: the pack's default face
+        const Json raw = TitleLibrary::get().itemJson(item);
+        if (!raw.contains("font") && findPackFont("dela-gothic-one")) {
+            ops.push_back(Json{{"op", "set"}, {"layer", "Title"}, {"values", Json{{"font", Json{{"path", "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf"}, {"guid", ""}}}}}});
+        }
         ops.push_back(Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", item.ref}, {"apply_font", true}, {"keep_color_scheme", false}});
     } else if (item.kind == LibraryKind::ColorScheme) {
         const std::string look = str(TitleLibrary::get().manifest(), "scheme_preview_look", "casino/outline-gold");

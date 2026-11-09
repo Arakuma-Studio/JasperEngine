@@ -1554,8 +1554,11 @@ namespace {
                 if (handled.count(it.key())) continue;
                 if (!dropped(c.child(it.key()), "look", it.key())) error(c.child(it.key()), "no mapping and no `dropped` entry");
             }
-            if (p.contains("fontId") && p["fontId"].is_string()) {
-                Json pair = fontPair(p["fontId"].get<std::string>(), c.child("fontId"));
+            // a factory look without a font is shown in Pachislop's default face (DEFAULT_FONT_ID): the
+            // pair says so, or a 確定 thumbnail would have nothing to draw kanji with
+            const std::string lookFont = p.contains("fontId") && p["fontId"].is_string() ? p["fontId"].get<std::string>() : std::string("dela-gothic-one");
+            {
+                Json pair = fontPair(lookFont, c.child("fontId"));
                 if (!pair.is_null()) look["font"] = pair;
             }
             Json lighting;
