@@ -720,12 +720,12 @@ Recorded by the implementation (branch `feature/s51-pixel-fonts`).
     fails naming the largest that fits, and the glyph grid shows the glyphs that fit (it says how
     many). The guide's "Unity names -> engine names" heading is "Unity names" (the guide's headroom
     for the group's name).
-15. **R20's styled rebuild is over budget.** A styled Text draws a back quad and a face quad per
-    glyph, both with vertex colours, so its rebuild writes about three times the plain rebuild's
-    vertex data. On a 16-vCPU build box (release) a 200-character rebuild takes 0.051 ms; a styled
-    one with a cache hit takes 0.134 ms, against a budget of 0.05 ms. `BitmapFontBench` logs both
-    and gates them only under `JASPER_TEST_PERF_SLACK`. Closing the gap needs a quad writer that
-    fills the interleaved buffer directly, not through `Buffer::addVector*`.
+15. **R20's styled rebuild is just over budget.** A rebuild sizes the buffer once and writes its
+    vertices in place, looks glyphs up through an ASCII table, lays each line out in one pass, and
+    an unchanged styled text skips the cache acquire. On box A (16 vCPU, release, the box shared)
+    a 200-character rebuild takes 0.026 ms (budget 0.05) and a styled one with a cache hit 0.057
+    and 0.058 ms in two runs (budget 0.05): it writes twice the quads of the plain rebuild, both
+    with vertex colours. `BitmapFontBench` logs both and gates them under `JASPER_TEST_PERF_SLACK`.
 16. **BMFont channels (R3).** `chnl=0` reads as all channels, as `chnl=15`: libGDX Hiero writes 0
     (fixture `engine/tests/core/fixtures/fonts/bm_hiero.fnt`).
 17. **Scene preload (R19).** A compiled game's scene resources list its Texts' bitmap fonts
