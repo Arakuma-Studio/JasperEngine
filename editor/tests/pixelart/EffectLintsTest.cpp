@@ -110,11 +110,12 @@ TEST(EffectLints, LoopSeamComparesTheWrapWithTheTypicalStep) {
 }
 
 TEST(EffectLints, LoopSeamFailsOverTwiceTheThreshold) {
+    // a bar growing one 30 px row a frame: each step changes 30 px (threshold 60), the wrap 270
     std::vector<PixelImage> frames;
-    for (int i = 0; i < 6; i++) frames.push_back(box(64, 64, 10, 10, 4, 4, kRed));
-    frames.back() = box(64, 64, 20, 20, 30, 30, kRed);   // 900 + 16 px changed vs a threshold of 12
+    for (int i = 0; i < 10; i++) frames.push_back(box(64, 64, 10, 10, 30, i + 1, kRed));
     const LintResult r = lintLoopSeam(frameView(frames), true);
-    EXPECT_EQ(r.threshold, 12);
+    EXPECT_EQ(r.threshold, 60);
+    EXPECT_EQ(r.measured, 270);
     EXPECT_EQ(r.status, LintStatus::Fail);
 }
 

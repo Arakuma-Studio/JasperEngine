@@ -10,6 +10,7 @@ Screenshots of each step go to $JE_EVIDENCE_DIR (else the scratch directory).
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -93,9 +94,23 @@ async def test_contact_sheet_capture_and_save(ed: Editor):
     await shot(ed, "2-contact-sheet-captured")
 
     before = {e["id"] for e in (await ed.call("get_undo_history", scope="project", limit=500))["entries"]}
-    await ui.click_item("Save As...##cs_save", "Contact Sheet")
-    status = await ed.call("editor_status")
-    ed.check(status.get("dialog", {}).get("kind") == "file_picker", f"Save As... asks where: {status.get('dialog')}")
+    save = await ui.find("Save As...##cs_save", "Contact Sheet")
+    ed.check(save is not None, "its Save As... button")
+    x, y = ui.centre(save["rect"])
+    ui.xdo("mousemove", str(x), str(y))
+    await ui.frames(4)
+    # not ui.click: its frame pacer is refused once the picker holds the editor
+    ui.xdo("mousedown", "1")
+    await ui.frames(2)
+    ui.xdo("mouseup", "1")
+    picker = None
+    for _ in range(80):
+        r = await ed.call_raw("editor_status", {})
+        picker = (r.structured or {}).get("dialog")
+        if picker and picker["kind"] == "file_picker":
+            break
+        await asyncio.sleep(0.25)
+    ed.check(picker and picker["kind"] == "file_picker", f"Save As... asks where: {picker}")
     target = ed.project / "assets" / "sheets" / "hero_sheet.png"
     target.parent.mkdir(parents=True, exist_ok=True)
     await ed.call("respond_dialog", values={"path": str(target)})

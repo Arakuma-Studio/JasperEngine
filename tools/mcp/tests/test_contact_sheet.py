@@ -16,8 +16,10 @@ tools/fixtures/pixel-fx copied in:
 
 from __future__ import annotations
 
+import os
 import shutil
 import time
+from pathlib import Path
 
 import pngdiff
 from harness import REPO, Editor, over_budget
@@ -51,11 +53,15 @@ def pixel(rgba: bytes, width: int, x: int, y: int) -> tuple[int, int, int, int]:
     return tuple(rgba[i:i + 4])
 
 
-async def sheet(ed: Editor, **args):
+async def sheet(ed: Editor, evidence: str = "", **args):
     r = await ed.call_raw("capture_contact_sheet", args, timeout=300)
     ed.check(not r.is_error, f"capture_contact_sheet failed: {r.text}")
     ed.check(r.images, "the sheet comes back as an image")
     png = r.images[0][0]
+    if evidence and os.environ.get("JE_EVIDENCE_DIR"):
+        folder = Path(os.environ["JE_EVIDENCE_DIR"]) / "contact-sheet"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{evidence}.png").write_bytes(png)
     width, height, rgba = pngdiff.decode(png)
     return r.value, png, width, height, rgba
 
@@ -100,7 +106,7 @@ async def test_setup(ed: Editor):
 
 
 async def test_grid_scale_labels_and_backdrops(ed: Editor):
-    value, png, width, height, rgba = await sheet(ed, target={"entity": S["hero"]}, frames=6, columns=3, scale=4, margin=4,
+    value, png, width, height, rgba = await sheet(ed, "grid", target={"entity": S["hero"]}, frames=6, columns=3, scale=4, margin=4,
                                                   backdrops=["dark", "light"])
     # the frame: the 8x8 sprite and twice the margin each side
     ed.check_eq(value["cell"], [24, 24])
@@ -201,7 +207,8 @@ async def test_one_shot_end_and_spill(ed: Editor):
     row = check_of(ed, leftover, "one_shot_end")
     ed.check_eq(row["status"], "WARN", f"a particle left at t = duration: {row}")
     ed.check(row["measured"] > 0 and row["fix_hint"], f"measured and fix_hint: {row}")
-    spilled = (await sheet(ed, target={"particles": "assets/fx/burst_spill.particles"}, frames=8, lint=["spill"]))[0]
+    spilled = (await sheet(ed, "spill", target={"particles": "assets/fx/burst_spill.particles"}, frames=8, lint=["spill"],
+                           backdrops=["dark", "sky", "ground"]))[0]
     row = check_of(ed, spilled, "spill")
     ed.check_eq(row["status"], "WARN", f"a burst flying 38 px from its emitter spills past 24: {row}")
     ed.check("spans" in row["limited_by"] and "past the margin" in row["limited_by"], f"the message gives the spans: {row}")
@@ -212,7 +219,8 @@ async def test_one_shot_end_and_spill(ed: Editor):
 async def test_loop_seam(ed: Editor):
     jump = await sprite(ed, "Jumper", HERO_PNG, 8, at=(-4.0, 0.0))
     smooth = await sprite(ed, "Glider", HERO_PNG, 8, at=(-4.0, 3.0))
-    red = (await sheet(ed, target={"entity": jump, "animation": "assets/anim/slide_jump.anim"}, frames=8, lint=["loop_seam"]))[0]
+    red = (await sheet(ed, "loop_seam", target={"entity": jump, "animation": "assets/anim/slide_jump.anim"}, frames=8,
+                       lint=["loop_seam"]))[0]
     ed.check_eq(red["loop"], True, "a looping clip loops")
     row = check_of(ed, red, "loop_seam")
     ed.check_eq(row["status"], "WARN", f"the slide jumps back 14 px: {row}")
@@ -253,7 +261,8 @@ async def test_determinism_in_play(ed: Editor):
     await ed.call("save_scene", scene=S["scene"], path="assets/scenes/Sheets")
     await ed.call("play", action="start", scene=S["scene"], fixed_fps=60, auto_pause=True)
     try:
-        value = (await sheet(ed, target={"entity": "Random"}, mode="scene", frames=3, duration=0.2, lint=["determinism"]))[0]
+        value = (await sheet(ed, "scene_play", target={"entity": "Random"}, mode="scene", frames=3, duration=0.2,
+                             lint=["determinism"]))[0]
         row = check_of(ed, value, "determinism")
         ed.check_eq(row["status"], "FAIL", f"an unseeded random start differs between two fresh loads: {row}")
         ed.check_eq(value["verdict"], "needs_person")
@@ -262,7 +271,7 @@ async def test_determinism_in_play(ed: Editor):
         ed.check(state.get("time", {}).get("held", True), f"the game is still paused after the capture: {state}")
     finally:
         await ed.call("play", action="stop")
-    await ed.call("delete_entity", scene=S["scene"], entity=red)
+    await ed.call("delete_entities", scene=S["scene"], entities=[red])
     fixed = await sprite(ed, "Seeded", HERO_PNG, 128, at=(0.0, -3.0))
     await ed.call("create_script", kind="lua", name="SeededStart", content=(FIXTURE / "scripts" / "SeededStart.lua").read_text(), entity=fixed)
     await ed.call("save_scene", scene=S["scene"])
