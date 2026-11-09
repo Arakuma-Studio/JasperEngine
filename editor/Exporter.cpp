@@ -1170,7 +1170,11 @@ void editor::Exporter::runExport() {
     struct GeneratedExportGuard {
         Project* project;
         explicit GeneratedExportGuard(Project* p) : project(p) { if (project) project->beginGeneratedExport(); }
-        ~GeneratedExportGuard() { if (project) project->endGeneratedExport(); }
+        ~GeneratedExportGuard() {
+            if (project) project->endGeneratedExport();
+            // the editor's own regeneration after the export ships every tier again (T3 R34)
+            Generator::exportTerrainTiers = terraincore::TERRAIN_ALL_TIERS;
+        }
     } generatedGuard(project);
 
     if (project && !checkRootsPinned()) return;
@@ -1255,6 +1259,7 @@ void editor::Exporter::runExport() {
     if (!clearGenerated()) return;
     holdForTest();
     if (isCancelled()) { setError("Build cancelled"); return; }
+    prepareTerrainExportTiers();
     if (!loadAndSaveAllScenes()) return;
     if (!checkMissingAssets()) return;
     resolveShaderKeys();
@@ -1354,25 +1359,28 @@ void editor::Exporter::runExport() {
 
 // Runs after loadAndSaveAllScenes(): saving a scene refreshes its cached keys, so
 // scenes that were closed or outdated have contributed before the overrides apply.
+// T3 R34: the tiers of the platforms this export targets, which the keys and the game take. Before
+// the scenes are saved too: that save writes the generated main.cpp this export copies.
+void editor::Exporter::prepareTerrainExportTiers() {
+    std::vector<int> platforms;
+    if (config.mode == ExportMode::Desktop) platforms = {static_cast<int>(Platform::Linux)};
+    else if (config.mode == ExportMode::Web) platforms = {static_cast<int>(Platform::Web)};
+    else if (config.mode == ExportMode::Player) {
+        const std::string name = buildPlatformName(config.platform);
+        for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+            if (name == Project::getShadowTierPlatformName(platform)) platforms.push_back(platform);
+        }
+    }
+    project->setTerrainExportPlatforms(platforms);
+    Generator::exportTerrainTiers = project->getShippedTerrainTiers();
+}
+
 void editor::Exporter::resolveShaderKeys() {
     if (!project) {
         return;
     }
 
-    // T3 R34: the tiers of the platforms this export targets, which the keys and the game take
-    {
-        std::vector<int> platforms;
-        if (config.mode == ExportMode::Desktop) platforms = {static_cast<int>(Platform::Linux)};
-        else if (config.mode == ExportMode::Web) platforms = {static_cast<int>(Platform::Web)};
-        else if (config.mode == ExportMode::Player) {
-            const std::string name = buildPlatformName(config.platform);
-            for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
-                if (name == Project::getShadowTierPlatformName(platform)) platforms.push_back(platform);
-            }
-        }
-        project->setTerrainExportPlatforms(platforms);
-        Generator::exportTerrainTiers = project->getShippedTerrainTiers();
-    }
+    prepareTerrainExportTiers();
 
     std::set<ShaderKey> keys;
     // forks whose files are gone: their saved, added or recorded variants can't be built

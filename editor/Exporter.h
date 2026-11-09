@@ -356,6 +356,7 @@ namespace jasperengine::editor {
         bool isCancelled() const;
 
         void resolveShaderKeys();
+        void prepareTerrainExportTiers();
         bool loadShaderWarmup();
 
         fs::path getExportProjectRoot() const;
