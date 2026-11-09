@@ -1435,3 +1435,19 @@ rest of S82 lands in 6B.
     `presentation` is manifest data and needs no language.
 18. **Implementation: S84's member mapping.** S84's `PachislopPort` and `pachislop-map.json` are
     not in this tree (S84 works in parallel); see the Pachislop import's own deviation below.
+19. **Implementation (Pachislop import): `PachislopMembers` applies S84 §6.7.1's member rules from
+    the schema** and reads `pachislop-map.json` (fields, fonts) from the library directory
+    (`JASPERENGINE_TITLEART_LIBRARY_DIR`, else `<editor exe>/titleart`) when it exists, because S84's
+    `PachislopPort` is not in this tree. It moves to `PachislopPort` when S84 lands; S84 must stage
+    the font pack in that directory.
+20. **Implementation (Pachislop import): the mapper writes the document tree** and then runs
+    `TitleArtOps::applyCommitInvariants`, rather than one op per field. Effects created by the
+    migration steps carry only the parameters they set, the rest coming from S83's defaults on
+    mapping; their ids are deterministic.
+21. **Not ported from Pachislop:** `outwardBands.test.ts` (it tests S86's mesher),
+    `contentEffectsOfLook` (S84's look conversion) and the generator-preset case. The comp's 3D
+    scene and the 2D reflection-map presets each become one "approximated" note; trace smooth and
+    despeckle are multiplied by 100 (fraction to percent).
+22. **Implementation: the v4 glyph-scale compensation uses `TitleTextLayout`**, not Pachislop's
+    layout, so the v4/v11-twin fixture has no scaled characters and the compensation has its own
+    test. `v11_all_kinds` embeds the whole Oswald OFL font (272 KB), not a subset.
