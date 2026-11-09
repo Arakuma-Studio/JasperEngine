@@ -34,6 +34,8 @@ namespace {
     constexpr float ERODE_TALUS = 0.7f;
     // A stamp above this many texels is worth running on the job system (R38)
     constexpr int64_t PARALLEL_TEXELS = 64 * 1024;
+    // T1 R48: a commit's report measures this many tiles or more on the job system's workers
+    constexpr size_t PARALLEL_STAT_TILES = 32;
     constexpr int MAX_BLEND_MAPS_SCANNED = 64;
 
     constexpr MapId HEIGHT_MAP{MapKind::Height, 0};
@@ -1646,33 +1648,64 @@ namespace {
             result.changed.push_back(report);
         }
 
-        // Over the texels that changed, from the transaction's own before and after
+        // Over the texels that changed, from the transaction's own before and after: each tile's on the
+        // workers, then summed in the tiles' order, so the mean is the same double sum as one walk's
         HeightStats& stats = result.stats;
         double sum = 0.0;
         int64_t count = 0;
-        overlay.visitTiles([&](MapId map, TexelRect rect, std::span<const uint8_t> before, std::span<const uint8_t> after) {
-            if (map.kind != MapKind::Height) return;
-            const MapFormat format = overlay.format(map);
+        const std::vector<OverlayMapStore::TileView> views = overlay.tileViews();
+        struct TileStats {
+            bool valid = false;
+            float minBefore = 0.0f, maxBefore = 0.0f, minAfter = 0.0f, maxAfter = 0.0f, maxDelta = 0.0f;
+            std::vector<float> deltas;
+        };
+        std::vector<TileStats> perTile(views.size());
+        auto measure = [&](size_t index) {
+            const OverlayMapStore::TileView& view = views[index];
+            if (view.map.kind != MapKind::Height) return;
+            const MapFormat format = overlay.format(view.map);
             const int stride = bytesPerTexel(format);
-            const size_t texels = static_cast<size_t>(rect.area());
+            const size_t texels = static_cast<size_t>(view.rect.area());
+            TileStats& tile = perTile[index];
             for (size_t i = 0; i < texels; i++) {
-                if (std::memcmp(before.data() + i * stride, after.data() + i * stride, stride) == 0) continue;
-                const float was = decodeChannel(before.data() + i * stride, format.bitsPerChannel) * maxHeight;
-                const float now = decodeChannel(after.data() + i * stride, format.bitsPerChannel) * maxHeight;
-                if (!stats.valid) {
-                    stats.valid = true;
-                    stats.minBefore = stats.maxBefore = was;
-                    stats.minAfter = stats.maxAfter = now;
+                if (std::memcmp(view.before.data() + i * stride, view.after.data() + i * stride, stride) == 0) continue;
+                const float was = decodeChannel(view.before.data() + i * stride, format.bitsPerChannel) * maxHeight;
+                const float now = decodeChannel(view.after.data() + i * stride, format.bitsPerChannel) * maxHeight;
+                if (!tile.valid) {
+                    tile.valid = true;
+                    tile.minBefore = tile.maxBefore = was;
+                    tile.minAfter = tile.maxAfter = now;
                 }
-                stats.minBefore = std::min(stats.minBefore, was);
-                stats.maxBefore = std::max(stats.maxBefore, was);
-                stats.minAfter = std::min(stats.minAfter, now);
-                stats.maxAfter = std::max(stats.maxAfter, now);
-                stats.maxDelta = std::max(stats.maxDelta, std::fabs(now - was));
-                sum += now - was;
-                count++;
+                tile.minBefore = std::min(tile.minBefore, was);
+                tile.maxBefore = std::max(tile.maxBefore, was);
+                tile.minAfter = std::min(tile.minAfter, now);
+                tile.maxAfter = std::max(tile.maxAfter, now);
+                tile.maxDelta = std::max(tile.maxDelta, std::fabs(now - was));
+                tile.deltas.push_back(now - was);
             }
-        });
+        };
+        if (views.size() >= PARALLEL_STAT_TILES) {
+            jobs::parallelFor(views.size(), measure);
+        } else {
+            for (size_t i = 0; i < views.size(); i++) measure(i);
+        }
+        for (const TileStats& tile : perTile) {
+            if (!tile.valid) continue;
+            if (!stats.valid) {
+                stats.valid = true;
+                stats.minBefore = tile.minBefore;
+                stats.maxBefore = tile.maxBefore;
+                stats.minAfter = tile.minAfter;
+                stats.maxAfter = tile.maxAfter;
+            }
+            stats.minBefore = std::min(stats.minBefore, tile.minBefore);
+            stats.maxBefore = std::max(stats.maxBefore, tile.maxBefore);
+            stats.minAfter = std::min(stats.minAfter, tile.minAfter);
+            stats.maxAfter = std::max(stats.maxAfter, tile.maxAfter);
+            stats.maxDelta = std::max(stats.maxDelta, tile.maxDelta);
+            for (float delta : tile.deltas) sum += delta;
+            count += static_cast<int64_t>(tile.deltas.size());
+        }
         if (count > 0) stats.meanDelta = static_cast<float>(sum / static_cast<double>(count));
     }
 

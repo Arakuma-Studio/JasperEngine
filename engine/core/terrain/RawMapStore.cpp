@@ -115,13 +115,17 @@ WriteResult RawMapStore::write(MapId map, TexelRect rect, std::span<const float>
     const float* source = in.data();
     for (int y = rect.y; y < rect.bottom(); y++) {
         uint8_t* stored = entry->pixels + offsetOf(*entry, rect.x, y);
+        // the row's first and last changed texels: one dirty rectangle a row, not one a texel (T1 R48)
+        int first = -1, last = -1;
         for (int x = rect.x; x < rect.right(); x++) {
             if (encodeTexel(map, format, source, stored)) {
-                entry->dirty = unite(entry->dirty, TexelRect{x, y, 1, 1});
+                if (first < 0) first = x;
+                last = x;
             }
             stored += stride;
             source += count;
         }
+        if (first >= 0) entry->dirty = unite(entry->dirty, TexelRect{first, y, last - first + 1, 1});
     }
     return WriteResult{true, "", 0};
 }
@@ -147,10 +151,11 @@ WriteResult RawMapStore::writeBytes(MapId map, TexelRect rect, std::span<const u
     for (int y = 0; y < rect.h; y++) {
         uint8_t* target = entry->pixels + offsetOf(*entry, rect.x, rect.y + y);
         const uint8_t* source = in.data() + rowBytes * y;
-        for (int x = 0; x < rect.w; x++) {
-            if (std::memcmp(target + x * stride, source + x * stride, stride) != 0) {
-                entry->dirty = unite(entry->dirty, TexelRect{rect.x + x, rect.y + y, 1, 1});
-            }
+        if (std::memcmp(target, source, rowBytes) != 0) {
+            int first = 0, last = rect.w - 1;
+            while (std::memcmp(target + first * stride, source + first * stride, stride) == 0) first++;
+            while (std::memcmp(target + last * stride, source + last * stride, stride) == 0) last--;
+            entry->dirty = unite(entry->dirty, TexelRect{rect.x + first, rect.y + y, last - first + 1, 1});
         }
         std::memcpy(target, source, rowBytes);
     }

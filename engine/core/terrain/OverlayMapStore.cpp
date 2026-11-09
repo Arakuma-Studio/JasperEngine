@@ -3,6 +3,8 @@
 
 #include "terrain/OverlayMapStore.h"
 
+#include "jobs/JobSystem.h"
+
 #include <algorithm>
 #include <cstring>
 
@@ -10,6 +12,10 @@ using namespace jasperengine;
 using namespace jasperengine::terrain;
 
 namespace {
+
+    // T1 R48: past this many tiles, encoding them and finding their changes run on the job system
+    constexpr size_t PARALLEL_TILES = 32;
+
 
     // floor(value / TILE_SIZE) for a signed texel
     int tileOf(int value) {
@@ -80,31 +86,6 @@ void OverlayMapStore::fillCreatedBytes(const MapState& mapState, TexelRect rect,
     }
 }
 
-OverlayMapStore::Tile* OverlayMapStore::ensureTile(MapState& mapState, int tileX, int tileY, const MapFormat& format) {
-    auto found = mapState.tiles.find({tileX, tileY});
-    if (found != mapState.tiles.end()) return &found->second;
-
-    const TexelRect rect = tileRect(tileX, tileY, format.bounds);
-    if (rect.empty()) return nullptr;
-
-    Tile tile;
-    tile.rect = rect;
-    const int count = floatChannels(mapState.id, format);
-    tile.values.resize(static_cast<size_t>(rect.area()) * count);
-    tile.before.resize(static_cast<size_t>(rect.area()) * bytesPerTexel(format));
-    if (mapState.created) {
-        fillCreatedBytes(mapState, rect, tile.before);
-    } else if (!baseStore->readBytes(mapState.id, rect, tile.before)) {
-        return nullptr;
-    }
-    const int stride = bytesPerTexel(format);
-    const size_t texels = static_cast<size_t>(rect.area());
-    for (size_t i = 0; i < texels; i++) {
-        decodeTexel(mapState.id, format, tile.before.data() + i * stride, tile.values.data() + i * count);
-    }
-    return &mapState.tiles.emplace(std::make_pair(tileX, tileY), std::move(tile)).first->second;
-}
-
 TerrainFrame OverlayMapStore::frame() const {
     return baseStore->frame();
 }
@@ -160,69 +141,176 @@ WriteResult OverlayMapStore::write(MapId map, TexelRect rect, std::span<const fl
     if (rect.empty()) return WriteResult{true, "", 0};
 
     MapState* mapState = findState(map);
+    const bool created = mapState && mapState->created;
+    const int stride = bytesPerTexel(format);
+
+    // the tiles the rectangle reaches, the ones the transaction holds already found now
+    struct Part {
+        int tileX, tileY;
+        TexelRect part;
+        Tile* tile = nullptr;
+        Tile made;
+        std::vector<float> current;     // the base's values over the part, as the check reads them
+        bool same = false;
+    };
+    std::vector<Part> parts;
     const int firstX = tileOf(rect.x), lastX = tileOf(rect.right() - 1);
     const int firstY = tileOf(rect.y), lastY = tileOf(rect.bottom() - 1);
     for (int tileY = firstY; tileY <= lastY; tileY++) {
         for (int tileX = firstX; tileX <= lastX; tileX++) {
             const TexelRect part = intersect(tileRect(tileX, tileY, format.bounds), rect);
             if (part.empty()) continue;
-
-            Tile* tile = nullptr;
+            Part entry{tileX, tileY, part};
             if (mapState) {
                 auto found = mapState->tiles.find({tileX, tileY});
-                if (found != mapState->tiles.end()) tile = &found->second;
+                if (found != mapState->tiles.end()) entry.tile = &found->second;
             }
-            if (!tile) {
-                // copy-on-first-touch: a tile whose values do not change is never made, so an
-                // edit over a large rectangle holds only what it really changed
-                scratch.resize(static_cast<size_t>(part.area()) * count);
-                bool same = false;
-                if (mapState && mapState->created) {
-                    same = false;
-                } else if (baseStore->read(map, part, scratch)) {
-                    same = true;
-                    for (int y = part.y; y < part.bottom() && same; y++) {
-                        const float* source = in.data() + (static_cast<size_t>(y - rect.y) * rect.w + (part.x - rect.x)) * count;
-                        const float* current = scratch.data() + static_cast<size_t>(y - part.y) * part.w * count;
-                        for (int i = 0; i < part.w * count; i++) {
-                            if (detClamp01(source[i]) != current[i]) {
-                                same = false;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (same) continue;
-                if (!mapState) mapState = &state(map);
-                tile = ensureTile(*mapState, tileX, tileY, format);
-                if (!tile) return WriteResult{false, "could not read the base map", 0};
-            }
-
-            for (int y = part.y; y < part.bottom(); y++) {
-                const float* source = in.data() + (static_cast<size_t>(y - rect.y) * rect.w + (part.x - rect.x)) * count;
-                float* target = tile->values.data() + (static_cast<size_t>(y - tile->rect.y) * tile->rect.w + (part.x - tile->rect.x)) * count;
-                for (int i = 0; i < part.w * count; i++) {
-                    target[i] = detClamp01(source[i]);
-                }
-            }
-            mapState->dirty = unite(mapState->dirty, part);
-            mapState->unflushed = unite(mapState->unflushed, part);
+            parts.push_back(std::move(entry));
         }
+    }
+
+    // copy-on-first-touch: a tile whose values do not change is never made, so an edit over a large
+    // rectangle holds only what it really changed. The base is read here, for each new tile its values
+    // as the check reads them and its bytes as the tile keeps them; the tiles are checked and decoded
+    // on the job system's workers (T1 R48)
+    if (!created) {
+        for (Part& entry : parts) {
+            if (entry.tile) continue;
+            entry.current.resize(static_cast<size_t>(entry.part.area()) * count);
+            // a base that cannot give its values makes the tile, whose bytes it is asked for next
+            if (!baseStore->read(map, entry.part, entry.current)) entry.current.clear();
+        }
+    }
+    auto check = [&](size_t index) {
+        Part& entry = parts[index];
+        if (entry.tile || created || entry.current.empty()) return;
+        const TexelRect& part = entry.part;
+        entry.same = true;
+        for (int y = part.y; y < part.bottom() && entry.same; y++) {
+            const float* source = in.data() + (static_cast<size_t>(y - rect.y) * rect.w + (part.x - rect.x)) * count;
+            const float* current = entry.current.data() + static_cast<size_t>(y - part.y) * part.w * count;
+            for (int i = 0; i < part.w * count; i++) {
+                if (detClamp01(source[i]) != current[i]) {
+                    entry.same = false;
+                    break;
+                }
+            }
+        }
+    };
+    auto decode = [&](size_t index) {
+        Part& entry = parts[index];
+        if (entry.tile || entry.same) return;
+        Tile& tile = entry.made;
+        tile.values.resize(static_cast<size_t>(tile.rect.area()) * count);
+        const size_t texels = static_cast<size_t>(tile.rect.area());
+        for (size_t i = 0; i < texels; i++) {
+            decodeTexel(map, format, tile.before.data() + i * stride, tile.values.data() + i * count);
+        }
+    };
+    auto store = [&](size_t index) {
+        Part& entry = parts[index];
+        if (!entry.tile) return;
+        Tile& tile = *entry.tile;
+        const TexelRect& part = entry.part;
+        for (int y = part.y; y < part.bottom(); y++) {
+            const float* source = in.data() + (static_cast<size_t>(y - rect.y) * rect.w + (part.x - rect.x)) * count;
+            float* target = tile.values.data() + (static_cast<size_t>(y - tile.rect.y) * tile.rect.w + (part.x - tile.rect.x)) * count;
+            for (int i = 0; i < part.w * count; i++) {
+                target[i] = detClamp01(source[i]);
+            }
+        }
+        tile.afterValid = false;
+    };
+    const bool parallel = parts.size() >= PARALLEL_TILES;
+    auto each = [&](auto&& work) {
+        if (parallel) {
+            jobs::parallelFor(parts.size(), work);
+        } else {
+            for (size_t i = 0; i < parts.size(); i++) work(i);
+        }
+    };
+    each(check);
+    // the new tiles' stored bytes, from the base or the created map's fill
+    for (Part& entry : parts) {
+        if (entry.tile || entry.same) continue;
+        Tile& tile = entry.made;
+        tile.rect = tileRect(entry.tileX, entry.tileY, format.bounds);
+        tile.before.resize(static_cast<size_t>(tile.rect.area()) * stride);
+        if (created) {
+            fillCreatedBytes(*mapState, tile.rect, tile.before);
+        } else if (!baseStore->readBytes(map, tile.rect, tile.before)) {
+            return WriteResult{false, "could not read the base map", 0};
+        }
+    }
+    each(decode);
+    for (Part& entry : parts) {
+        if (entry.tile || entry.same) continue;
+        if (!mapState) mapState = &state(map);
+        entry.tile = &mapState->tiles.emplace(std::make_pair(entry.tileX, entry.tileY), std::move(entry.made)).first->second;
+    }
+    each(store);
+    for (const Part& entry : parts) {
+        if (!entry.tile) continue;
+        mapState->dirty = unite(mapState->dirty, entry.part);
+        mapState->unflushed = unite(mapState->unflushed, entry.part);
     }
     return WriteResult{true, "", 0};
 }
 
-bool OverlayMapStore::tileAfterBytes(const MapState& mapState, const Tile& tile, std::vector<uint8_t>& after) const {
-    const MapFormat& format = mapState.created ? mapState.format : baseStore->format(mapState.id);
-    after = tile.before;
-    const int count = floatChannels(mapState.id, format);
-    const int stride = bytesPerTexel(format);
-    const size_t texels = static_cast<size_t>(tile.rect.area());
-    bool changed = false;
-    for (size_t i = 0; i < texels; i++) {
-        changed |= encodeTexel(mapState.id, format, tile.values.data() + i * count, after.data() + i * stride);
+const std::vector<uint8_t>& OverlayMapStore::tileAfter(const MapState& mapState, const Tile& tile, bool* changed) const {
+    if (!tile.afterValid) {
+        const MapFormat& format = mapState.created ? mapState.format : baseStore->format(mapState.id);
+        tile.after = tile.before;
+        const int count = floatChannels(mapState.id, format);
+        const int stride = bytesPerTexel(format);
+        const size_t texels = static_cast<size_t>(tile.rect.area());
+        bool differs = false;
+        for (size_t i = 0; i < texels; i++) {
+            differs |= encodeTexel(mapState.id, format, tile.values.data() + i * count, tile.after.data() + i * stride);
+        }
+        tile.afterChanged = differs;
+        tile.afterValid = true;
     }
-    return changed;
+    if (changed) *changed = tile.afterChanged;
+    return tile.after;
+}
+
+void OverlayMapStore::encodeTiles() const {
+    struct Stale {
+        const MapState* mapState;
+        const Tile* tile;
+    };
+    std::vector<Stale> stale;
+    for (const std::unique_ptr<MapState>& mapState : maps) {
+        for (const auto& [key, tile] : mapState->tiles) {
+            if (!tile.afterValid) stale.push_back(Stale{mapState.get(), &tile});
+        }
+    }
+    if (stale.empty()) return;
+    // the base's format asked once a map, here, not by the workers
+    for (const std::unique_ptr<MapState>& mapState : maps) {
+        mapState->encodeFormat = mapState->created ? mapState->format : baseStore->format(mapState->id);
+    }
+    auto encode = [&](size_t index) {
+        const MapState& mapState = *stale[index].mapState;
+        const Tile& tile = *stale[index].tile;
+        const MapFormat& format = mapState.encodeFormat;
+        tile.after = tile.before;
+        const int count = floatChannels(mapState.id, format);
+        const int stride = bytesPerTexel(format);
+        const size_t texels = static_cast<size_t>(tile.rect.area());
+        bool differs = false;
+        for (size_t i = 0; i < texels; i++) {
+            differs |= encodeTexel(mapState.id, format, tile.values.data() + i * count, tile.after.data() + i * stride);
+        }
+        tile.afterChanged = differs;
+        tile.afterValid = true;
+    };
+    if (stale.size() >= PARALLEL_TILES) {
+        jobs::parallelFor(stale.size(), encode);
+    } else {
+        for (size_t i = 0; i < stale.size(); i++) encode(i);
+    }
 }
 
 bool OverlayMapStore::readBytes(MapId map, TexelRect rect, std::span<uint8_t> out) const {
@@ -239,11 +327,10 @@ bool OverlayMapStore::readBytes(MapId map, TexelRect rect, std::span<uint8_t> ou
     }
     if (!mapState || mapState->tiles.empty()) return true;
 
-    std::vector<uint8_t> after;
     for (const auto& [key, tile] : mapState->tiles) {
         const TexelRect part = intersect(tile.rect, rect);
         if (part.empty()) continue;
-        tileAfterBytes(*mapState, tile, after);
+        const std::vector<uint8_t>& after = tileAfter(*mapState, tile);
         for (int y = part.y; y < part.bottom(); y++) {
             const uint8_t* source = after.data() + (static_cast<size_t>(y - tile.rect.y) * tile.rect.w + (part.x - tile.rect.x)) * stride;
             uint8_t* target = out.data() + (static_cast<size_t>(y - rect.y) * rect.w + (part.x - rect.x)) * stride;
@@ -393,24 +480,46 @@ std::unique_ptr<TerrainStoreUndoHook> OverlayMapStore::takeUndoHook() {
 }
 
 std::vector<OverlayMapStore::MapChange> OverlayMapStore::changes() const {
+    encodeTiles();
     std::vector<MapChange> result;
-    std::vector<uint8_t> after;
     for (const std::unique_ptr<MapState>& mapState : maps) {
         const MapFormat format = mapState->created ? mapState->format : baseStore->format(mapState->id);
         const int stride = bytesPerTexel(format);
+        std::vector<const Tile*> tiles;
+        for (const auto& [key, tile] : mapState->tiles) {
+            if (tile.afterChanged) tiles.push_back(&tile);
+        }
+        // each tile's changed rectangle and count, a row's first and last changed texels at a time;
+        // united and summed after, which no order changes
+        std::vector<MapChange> parts(tiles.size());
+        auto scan = [&](size_t index) {
+            const Tile& tile = *tiles[index];
+            MapChange& part = parts[index];
+            const size_t rowBytes = static_cast<size_t>(tile.rect.w) * stride;
+            for (int y = 0; y < tile.rect.h; y++) {
+                const uint8_t* after = tile.after.data() + rowBytes * y;
+                const uint8_t* before = tile.before.data() + rowBytes * y;
+                if (std::memcmp(after, before, rowBytes) == 0) continue;
+                int first = -1, last = -1;
+                for (int x = 0; x < tile.rect.w; x++) {
+                    if (std::memcmp(after + x * stride, before + x * stride, stride) == 0) continue;
+                    if (first < 0) first = x;
+                    last = x;
+                    part.texels++;
+                }
+                part.rect = unite(part.rect, TexelRect{tile.rect.x + first, tile.rect.y + y, last - first + 1, 1});
+            }
+        };
+        if (tiles.size() >= PARALLEL_TILES) {
+            jobs::parallelFor(tiles.size(), scan);
+        } else {
+            for (size_t i = 0; i < tiles.size(); i++) scan(i);
+        }
         MapChange change;
         change.map = mapState->id;
-        for (const auto& [key, tile] : mapState->tiles) {
-            if (!tileAfterBytes(*mapState, tile, after)) continue;
-            for (int y = 0; y < tile.rect.h; y++) {
-                for (int x = 0; x < tile.rect.w; x++) {
-                    const size_t offset = (static_cast<size_t>(y) * tile.rect.w + x) * stride;
-                    if (std::memcmp(after.data() + offset, tile.before.data() + offset, stride) != 0) {
-                        change.rect = unite(change.rect, TexelRect{tile.rect.x + x, tile.rect.y + y, 1, 1});
-                        change.texels++;
-                    }
-                }
-            }
+        for (const MapChange& part : parts) {
+            change.rect = unite(change.rect, part.rect);
+            change.texels += part.texels;
         }
         if (change.texels > 0) result.push_back(change);
     }
@@ -434,12 +543,13 @@ std::vector<MapId> OverlayMapStore::removedMaps() const {
 }
 
 WriteResult OverlayMapStore::commit() {
+    // each tile encoded once, on the workers, for the checks and the writes both
+    encodeTiles();
     // Everything that can refuse answers before the first byte moves
-    std::vector<uint8_t> after;
     for (const std::unique_ptr<MapState>& mapState : maps) {
         if (mapState->created) continue;
         for (const auto& [key, tile] : mapState->tiles) {
-            if (!tileAfterBytes(*mapState, tile, after)) continue;
+            if (!tile.afterChanged) continue;
             std::string why;
             if (!baseStore->canWrite(mapState->id, tile.rect, &why)) {
                 return WriteResult{false, why.empty() ? "the store refused the write" : why, 0};
@@ -476,8 +586,8 @@ WriteResult OverlayMapStore::commit() {
             madeMaps.push_back(mapState->id);
         }
         for (const auto& [key, tile] : mapState->tiles) {
-            if (!tileAfterBytes(*mapState, tile, after)) continue;
-            WriteResult wrote = baseStore->writeBytes(mapState->id, tile.rect, after);
+            if (!tile.afterChanged) continue;
+            WriteResult wrote = baseStore->writeBytes(mapState->id, tile.rect, tile.after);
             if (!wrote.ok) {
                 rollback();
                 return wrote;
@@ -505,15 +615,13 @@ void OverlayMapStore::discard() {
 }
 
 WriteResult OverlayMapStore::flushToBase() {
-    std::vector<uint8_t> after;
     for (const std::unique_ptr<MapState>& mapState : maps) {
         if (mapState->created || mapState->removed || mapState->unflushed.empty()) continue;
         const TexelRect unflushed = mapState->unflushed;
         mapState->unflushed = TexelRect{};
         for (auto& [key, tile] : mapState->tiles) {
             if (intersect(tile.rect, unflushed).empty()) continue;
-            tileAfterBytes(*mapState, tile, after);
-            const WriteResult wrote = baseStore->writeBytes(mapState->id, tile.rect, after);
+            const WriteResult wrote = baseStore->writeBytes(mapState->id, tile.rect, tileAfter(*mapState, tile));
             if (!wrote.ok) return wrote;
             tile.shown = true;
         }
@@ -531,6 +639,7 @@ WriteResult OverlayMapStore::rewind() {
             for (size_t i = 0; i < texels; i++) {
                 decodeTexel(mapState->id, format, tile.before.data() + i * stride, tile.values.data() + i * count);
             }
+            tile.afterValid = false;
             if (!tile.shown) continue;
             const WriteResult wrote = baseStore->writeBytes(mapState->id, tile.rect, tile.before);
             if (!wrote.ok) return wrote;
@@ -575,18 +684,26 @@ bool OverlayMapStore::readBeforeBytes(MapId map, TexelRect rect, std::span<uint8
 
 void OverlayMapStore::clearAll() {
     maps.clear();
-    scratch.clear();
-    scratch.shrink_to_fit();
 }
 
 void OverlayMapStore::visitTiles(const TileVisitor& visitor) const {
-    std::vector<uint8_t> after;
+    encodeTiles();
     for (const std::unique_ptr<MapState>& mapState : maps) {
         for (const auto& [key, tile] : mapState->tiles) {
-            tileAfterBytes(*mapState, tile, after);
-            visitor(mapState->id, tile.rect, tile.before, after);
+            visitor(mapState->id, tile.rect, tile.before, tile.after);
         }
     }
+}
+
+std::vector<OverlayMapStore::TileView> OverlayMapStore::tileViews() const {
+    encodeTiles();
+    std::vector<TileView> views;
+    for (const std::unique_ptr<MapState>& mapState : maps) {
+        for (const auto& [key, tile] : mapState->tiles) {
+            views.push_back(TileView{mapState->id, tile.rect, tile.before, tile.after});
+        }
+    }
+    return views;
 }
 
 size_t OverlayMapStore::tileCount() const {
@@ -601,7 +718,7 @@ size_t OverlayMapStore::memoryBytes() const {
     size_t bytes = 0;
     for (const std::unique_ptr<MapState>& mapState : maps) {
         for (const auto& [key, tile] : mapState->tiles) {
-            bytes += tile.values.size() * sizeof(float) + tile.before.size();
+            bytes += tile.values.size() * sizeof(float) + tile.before.size() + tile.after.capacity();
         }
     }
     return bytes;
