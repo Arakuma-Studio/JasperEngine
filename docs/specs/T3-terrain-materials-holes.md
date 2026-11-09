@@ -772,4 +772,11 @@ a fourth blend map has no slot. Base Map macro multiplies with a neutral at 0.5 
   integer, so `flatOnly[3]` left the cliff block; the colour slice is the layer's index; a hex layer's
   rotation shares the stochastic cell size's slot, as a layer with both takes Stochastic Tiling. The other
   values stay exact. A data texture would have taken a seventeenth texture from the normal-mapped variants.
+- **Layers with no map draw their Tint.** The spec does not say what a layer with only a Tint draws; the Inspector and the
+  Terrain window show that Tint on every PBR layer, and it already drew beside a layer with any map. A terrain whose
+  layers had no map at all got no detail array, so no blend map weighted anything and it drew its base material alone
+  (upstream's painted path did the same). Such a terrain now gets an array of one white texel per colour slice, as a
+  missing map gets beside others, so its layers draw their Tint on every backend with no new uniform or binding. A
+  terrain with no layer still has no array (`TerrainMaterialsGpu.TintOnlyLayersDraw`,
+  `TerrainDetailBuilder.LayersWithNoMapGetWhiteSlices`). `terrain_painted_lights` was drawn with that bug and is redrawn.
 - Implementers record further deviations here.

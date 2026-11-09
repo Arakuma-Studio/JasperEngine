@@ -168,3 +168,27 @@ TEST(TerrainDetailBuilder, CookedKeyIsAPathOfItsOwn){
     EXPECT_NE(key, cookedSliceIndexKey("surface|a.png|b.png|c.png|"));
     EXPECT_EQ(key, cookedSliceIndexKey("surface|a.png|b.png||")) << "shared maps dedupe";
 }
+
+// Layers with no map at all still get their colour slices, white, which their Tint colours; a map that
+// cannot be read stays a failure
+TEST(TerrainDetailBuilder, LayersWithNoMapGetWhiteSlices){
+    TerrainComponent terrain;
+    terrain.surfaceLayers.resize(2);
+    terrain.surfaceLayers[0].pbr = true;
+    const DetailPlan plan = planDetailArray(terrain);
+    EXPECT_FALSE(plan.anySource);
+    ASSERT_EQ(plan.colorSlices, 3);
+
+    DetailPixels pixels;
+    ASSERT_TRUE(buildDetailPixels(terrain, plan, DetailBuildOptions(), pixels));
+    EXPECT_EQ(pixels.width, 1);
+    EXPECT_EQ(pixels.height, 1);
+    EXPECT_EQ(pixels.slices, 3);
+    ASSERT_FALSE(pixels.levels.empty());
+    EXPECT_EQ(pixels.levels[0], std::vector<uint8_t>(3 * 4, 0xFF));
+
+    test::TempDir dir;
+    terrain.surfaceLayers[1].colorTexture = Texture(dir.file("missing.png").generic_string());
+    DetailPixels unread;
+    EXPECT_FALSE(buildDetailPixels(terrain, planDetailArray(terrain), DetailBuildOptions(), unread));
+}

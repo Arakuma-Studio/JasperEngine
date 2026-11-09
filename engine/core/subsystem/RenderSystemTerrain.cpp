@@ -179,7 +179,9 @@ uint64_t RenderSystem::getTerrainDefineBits(const MeshShaderEnvironment& environ
 // the editor's file pick-up), and when the tier changes its largest size.
 RenderSystem::TerrainDetailArray* RenderSystem::getTerrainDetailArray(Entity entity, TerrainComponent& terrainComponent){
     const terraincore::DetailPlan plan = terraincore::planDetailArray(terrainComponent);
-    if (!plan.anySource){
+    // Only a terrain with no layer goes without: layers with no map at all still draw their Tint over
+    // white slices, as they do beside a layer that has maps
+    if (plan.colorSlices == 0){
         destroyTerrainDetailArray(entity);
         return NULL;
     }
