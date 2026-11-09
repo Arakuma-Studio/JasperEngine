@@ -68,6 +68,27 @@ async def test_rows_parts_and_tiers(ed: Editor):
         ed.check_eq(r["state"]["preview_as"], mode, f"Preview As {mode}")
 
 
+async def test_material_link_is_one_step(ed: Editor):
+    """AC33 (S86 R54): the material picker's Link commits one step "Link Material" on a 3D material,
+    through the same op agents use."""
+    await setup(ed)
+    path = "assets/designer3d/link.titleart"
+    await create_3d(ed, path)
+    ui = Ui(ed)
+    await focus(ed, path=path, select="Title/face", panel="properties", search="")
+    await ed.call("editor_status")
+    link = "\uf127##matlink"
+    item = await ui.reveal(link, "Title Designer", frames=120)
+    ed.check(item is not None, "the face page has the Link button")
+    await ui.click_item(link, "Title Designer")
+    await ui.click_item("New Link")
+    steps = await top_steps(ed, 1)
+    ed.check(steps and "Link Material" in steps[0], f"one Link Material step: {steps}")
+    # the same op an agent uses undoes it: only a linked material can be unlinked
+    await ed.call("edit_title", path=path, bake="never",
+                  ops=[{"op": "unlink_material", "layer": "Title", "material": "style_3d.face"}])
+
+
 async def test_gizmo_ring_drag_is_one_step(ed: Editor):
     """AC14/AC33 (S86 R56): a drag on the free-rotate ring commits one step "Rotate 3D Layer" that
     turns the layer in 3D; Esc during a drag adds nothing."""
