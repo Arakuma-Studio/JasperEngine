@@ -42,9 +42,11 @@ namespace {
             editor::test::ensureEngine();
         }
 
-        // the scene's export keys, after MeshSystem built its sprites
-        std::set<ShaderKey> collect(Scene& scene){
-            scene.getSystem<MeshSystem>()->update(0.0);
+        // the scene's export keys, after MeshSystem built its sprites (or, `drawn` false, as a
+        // scene just loaded for an export has them)
+        std::set<ShaderKey> collect(Scene& scene, bool drawn = true){
+            if (drawn)
+                scene.getSystem<MeshSystem>()->update(0.0);
             ShaderVariantContent content;
             content.registry = &scene;
             content.entities = scene.getEntityList();
@@ -108,6 +110,24 @@ TEST_F(ShaderVariantTest, S52BitsForTheFeaturesThatReadThem){
     EXPECT_GT(withBits(keys, ShaderType::MESH, kSfx), 0u) << names(keys);
     EXPECT_GT(withBits(keys, ShaderType::MESH, kSfr), 0u) << names(keys);
     EXPECT_EQ(withBits(keys, ShaderType::MESH, kSpv), 0u) << "no Pixel Perfect Camera, no snap pivot:" << names(keys);
+}
+
+// the export's list does not depend on a draw: a scene loaded and never updated lists the same
+// 'Sfx' / 'Sfr' keys (MeshSystem::spriteBatchAttributes from the material, not the mesh's fields)
+TEST_F(ShaderVariantTest, S52BitsWithoutADraw){
+    Scene scene;
+    Camera camera(&scene);
+    camera.setType(CameraType::CAMERA_ORTHO);
+    camera.activate();
+    Sprite flash(&scene);
+    flash.setSize(16, 16);
+    MeshComponent& mesh = flash.getComponent<MeshComponent>();
+    mesh.submeshes[0].material.shader = "library:sprite";
+    mesh.submeshes[0].material.shaderFeatures = {"FLASH", "OUTLINE"};
+    const std::set<ShaderKey> loaded = collect(scene, false);
+    EXPECT_EQ(mesh.batchAttributes, 0u) << "nothing drew it";
+    EXPECT_GT(withBits(loaded, ShaderType::MESH, kSfx), 0u) << names(loaded);
+    EXPECT_GT(withBits(loaded, ShaderType::MESH, kSfr), 0u) << names(loaded);
 }
 
 TEST_F(ShaderVariantTest, SnappingScenesShipTheSnapPivotTwin){

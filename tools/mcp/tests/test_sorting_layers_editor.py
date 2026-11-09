@@ -129,7 +129,7 @@ async def test_sorting_layers_list(ed: Editor):
         await click(ed, helper, "sorting_layers.remove.1")
         ed.check_eq(await layers(ed), ["Default", "Foreground"], "a used layer is not removed at once")
         # (the question draws under the row, at the panel's end: scrolled to)
-        await helper.wheel(helper.centre(await item(ed, helper, "sorting_layers.row.0")), 10)
+        await helper.wheel(helper.centre(await item(ed, helper, "sorting_layers.up.0")), 10)
         await click(ed, helper, "sorting_layers.confirm_remove")
         ed.check_eq(await layers(ed), ["Default"], "removed once confirmed")
         await ed.call("undo", scope="project")
