@@ -5,6 +5,7 @@
 // types.ts) by SafEight, used with the author's permission, renamed snake_case (§6.1).
 
 #include "TitleArtSchema.h"
+#include "ColorScheme.h"
 #include "TitleArtIO.h"
 #include "TitleEffectRegistry.h"
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
@@ -1120,6 +1121,7 @@ namespace {
 void jasperengine::titleart::registerProgramMembers(TitleArtSchema& schema) {
     // each later title spec adds one call here (S81, S84-S87), after S80's table
     registerS81Members(schema);
+    registerColorSchemeMembers(schema);
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
     registerTitle3DMembers(schema);
 #endif

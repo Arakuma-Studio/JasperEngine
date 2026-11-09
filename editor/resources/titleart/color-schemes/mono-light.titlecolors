@@ -1,0 +1,130 @@
+{
+  "format": "jasperengine.titlecolors",
+  "version": 1,
+  "id": "mono-light",
+  "revision": 1,
+  "name": {
+    "en": "Mono Light",
+    "ja": "モノ（白）"
+  },
+  "description": {
+    "en": "Flat white face with black keylines: high contrast monochrome.",
+    "ja": "平らな白の面と黒の縁：高コントラストのモノクロ。"
+  },
+  "family_hint": [
+    "minimal",
+    "sports"
+  ],
+  "tags": [
+    "white",
+    "black",
+    "monochrome",
+    "flat",
+    "minimal"
+  ],
+  "synonyms": {
+    "en": [
+      "black and white",
+      "monochrome",
+      "white"
+    ],
+    "ja": [
+      "白黒",
+      "モノクロ",
+      "白",
+      "shiro",
+      "monokuro"
+    ]
+  },
+  "paints": {
+    "face": {
+      "material_3d": {
+        "roughness": 0.7
+      }
+    },
+    "dark": {
+      "fill": {
+        "color": "#111111"
+      },
+      "material_3d": {
+        "color": "#111111",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "accents": [
+      {
+        "fill": {
+          "color": "#111111"
+        },
+        "material_3d": {
+          "color": "#111111",
+          "roughness": 0.7
+        }
+      },
+      {
+        "material_3d": {
+          "roughness": 0.7
+        }
+      }
+    ],
+    "base": {
+      "fill": {
+        "color": "#000000"
+      },
+      "material_3d": {
+        "color": "#000000",
+        "metallic": 1,
+        "roughness": 0.4,
+        "env_multiplier": 0.6
+      }
+    },
+    "side_3d": {
+      "color": "#b3b3b3",
+      "roughness": 0.7
+    }
+  },
+  "glow_gradient": {
+    "stops": [
+      {
+        "color": "#ffffff"
+      },
+      {
+        "pos": 1,
+        "color": "#ffffff"
+      }
+    ]
+  },
+  "light_ramp": [
+    "#202020",
+    "#404040",
+    "#808080",
+    "#c0c0c0"
+  ],
+  "orb": {
+    "ramp": {
+      "stops": [
+        {
+          "color": "#ffffff"
+        },
+        {
+          "pos": 0.55,
+          "color": "#ffffff"
+        },
+        {
+          "pos": 1,
+          "color": "#ffffff"
+        }
+      ]
+    }
+  },
+  "swatch": [
+    "#ffffff",
+    "#111111",
+    "#ffffff"
+  ],
+  "provenance": {
+    "source": "jasperengine"
+  }
+}
