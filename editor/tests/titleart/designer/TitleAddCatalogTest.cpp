@@ -144,6 +144,26 @@ TEST(TitleAddCatalogTest, StyleSettingsSwitchTheirMember) {
 
 // R17: with parts selected the effects go to the parts; style settings and following generators
 // are the whole layer's and are not offered
+// a row's side text stops short of the cost badge (it ran under it)
+TEST(TitleAddCatalogTest, SideTextIsCutToFitOnCharacterBoundaries) {
+    // one unit per whole character: a cut inside a character's bytes draws no glyph for it
+    const auto measure = [](const std::string& text) {
+        float n = 0.0f;
+        for (size_t i = 0; i < text.size();) {
+            const unsigned char c = (unsigned char)text[i];
+            const size_t length = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : 4;
+            if (i + length <= text.size()) n += 1.0f;
+            i += length;
+        }
+        return n;
+    };
+    EXPECT_EQ(fitAddEntryText("short", 10.0f, measure), "short");
+    EXPECT_EQ(fitAddEntryText("a longer description", 10.0f, measure), "a longe...");
+    const std::string cut = fitAddEntryText("\xE3\x81\x8B\xE3\x81\x99\xE3\x82\x8C\xE3\x81\x9F\xE5\xAD\x97", 4.0f, measure);
+    EXPECT_EQ(cut, "\xE3\x81\x8B...") << "a Japanese description is cut between characters";
+    EXPECT_EQ(fitAddEntryText("anything", 2.0f, measure), "");
+}
+
 TEST(TitleAddCatalogTest, PartsTarget) {
     AddTarget target = textTarget();
     target.parts = {NodeRef{NodeKind::Part, "t1", "face", {}}};

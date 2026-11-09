@@ -362,3 +362,22 @@ bool jasperengine::editor::titledesigner::addEntryMatches(const AddEntry& entry,
     }
     return false;
 }
+
+std::string jasperengine::editor::titledesigner::fitAddEntryText(const std::string& text, float maxWidth,
+                                                                 const std::function<float(const std::string&)>& measure) {
+    if (measure(text) <= maxWidth) return text;
+    static const std::string dots = "...";
+    if (measure(dots) > maxWidth) return std::string();
+    // the byte offsets where a character ends, then the longest prefix that fits with the dots
+    std::vector<size_t> ends{0};
+    for (size_t i = 0; i < text.size(); i++) {
+        if (i + 1 == text.size() || ((unsigned char)text[i + 1] & 0xC0) != 0x80) ends.push_back(i + 1);
+    }
+    size_t low = 0, high = ends.size() - 1;
+    while (low < high) {
+        const size_t middle = (low + high + 1) / 2;
+        if (measure(text.substr(0, ends[middle]) + dots) <= maxWidth) low = middle;
+        else high = middle - 1;
+    }
+    return text.substr(0, ends[low]) + dots;
+}

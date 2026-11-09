@@ -154,13 +154,16 @@ void TitleDesignerWindow::drawAddPalette() {
         // the note (or the description) and the cost badge on the row (S83 R41)
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const float y = rowStart.y;
-        const std::string side = !e.note.empty() ? e.note : e.description.substr(0, 46);
-        dl->AddText(ImVec2(rowStart.x + 210.0f - (e.depth > 0 ? 14.0f : 0.0f), y), ImGui::GetColorU32(ImGuiCol_TextDisabled), side.c_str());
+        const float sideX = rowStart.x + (210.0f - (e.depth > 0 ? 14.0f : 0.0f)) * scale;
+        const float badgeX = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("C0").x - 6.0f * scale;
+        // the side text stops short of the badge, whether or not this row has one (the column lines up)
+        const std::string side = fitAddEntryText(!e.note.empty() ? e.note : e.description, badgeX - 8.0f * scale - sideX,
+                                                 [](const std::string& text) { return ImGui::CalcTextSize(text.c_str()).x; });
+        dl->AddText(ImVec2(sideX, y), ImGui::GetColorU32(ImGuiCol_TextDisabled), side.c_str());
         if (!e.cost.empty()) {
             CostBadge badge;
             badge.cls = e.cost;
-            const float bx = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("C0").x - 6.0f;
-            dl->AddText(ImVec2(bx, y), ImGui::ColorConvertFloat4ToU32(costBadgeColor(badge)), e.cost.c_str());
+            dl->AddText(ImVec2(badgeX, y), ImGui::ColorConvertFloat4ToU32(costBadgeColor(badge)), e.cost.c_str());
         }
         if (e.depth > 0) ImGui::Unindent(14.0f);
         ImGui::PopID();

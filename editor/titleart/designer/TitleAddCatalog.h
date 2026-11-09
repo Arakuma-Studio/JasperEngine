@@ -20,6 +20,7 @@
 
 #include "TitleDesignerState.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -66,5 +67,9 @@ namespace jasperengine::editor::titledesigner {
 
     // the query (English or Japanese, folded) matches the entry
     bool addEntryMatches(const AddEntry& entry, const std::string& query);
+
+    // `text` as it fits `maxWidth` by `measure`, cut on a character boundary with "..." (a row's
+    // side text must not run under its cost badge); empty when not even the dots fit
+    std::string fitAddEntryText(const std::string& text, float maxWidth, const std::function<float(const std::string&)>& measure);
 
 }
