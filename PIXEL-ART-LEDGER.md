@@ -175,7 +175,7 @@ never build or run them.
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
 | S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | implementing |
-| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | landing (batch 2) |
+| S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | in review |
 | S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | implementing |
@@ -244,6 +244,13 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: **Batch 2: S49 Pixel Particles merged into `main` and pushed** (branch `9da5e1936`).
+  - At landing I added the shader cache v60 for S49's particle shaders: S49 had changed shaders
+    without bumping it. S43's pin became "v59 or later", with a new S49 pin.
+  - Verified on box B: S49's gate (above); web, android and Vulkan 97/97 (`Particles*`,
+    `Analytic*`, `Palette*`, `PixelPerfect*`); and after the bump, `WERROR` editor tests plus the
+    pins and `ShaderKey*` (21/21).
+  - S48 (v60 on its branch) and S52 (v59 on its branch) are renumbered when they land.
 - 2026-11-09: S49 merged `main` at `9da5e1936`.
   - `main` had already drawn sub-emitters (BF23 F1), so S49 kept `main`'s renderer and moved its
     pixel, Analytic and Hold Frames draws onto it.
