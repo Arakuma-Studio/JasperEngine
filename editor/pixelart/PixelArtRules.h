@@ -26,6 +26,7 @@ namespace jasperengine::editor::pixelart::rules {
     RuleResult fontAntialiasing(const PixelArtCheckInput& input, std::vector<Finding>& findings);
     RuleResult particlesGrid(const PixelArtCheckInput& input, std::vector<Finding>& findings);
     RuleResult antiAliasing(const PixelArtCheckInput& input, std::vector<Finding>& findings);
+    RuleResult renderScale(const PixelArtCheckInput& input, std::vector<Finding>& findings);
     RuleResult spriteVariants(const PixelArtCheckInput& input, std::vector<Finding>& findings);
 
     // the font analysis setFontAnalyzer installed, or the vector-font reading
@@ -35,7 +36,8 @@ namespace jasperengine::editor::pixelart::rules {
     nlohmann::json cameraJson(const PixelArtCheckInput& input, const PixelArtScene& scene);
 
     // the preset's project part for this project (R2 rows 1-6 with the options a project already
-    // satisfies kept): the changes pixel_art_mode's fix and the preset share
+    // satisfies kept, and every Device Tier's Render Scale cap below 1 raised to 1): the changes
+    // pixel_art_mode's fix and the preset share
     std::vector<FixChange> projectPresetChanges(const PixelArtProjectInfo& project, int baseWidth, int baseHeight, Scaling scaling,
                                                 int pixelsPerUnit, int windowScale);
 
@@ -44,6 +46,8 @@ namespace jasperengine::editor::pixelart::rules {
     // canvas): integer_scale's fix, and particles_grid's when nothing snaps; empty for a
     // perspective camera. label: the option's label
     std::vector<FixChange> cameraFixChanges(const PixelArtCheckInput& input, const PixelArtScene& scene, std::string& label);
+    // every Device Tier Render Scale cap below 1 set to 1 (render_scale's project fix, the preset's)
+    std::vector<FixChange> renderScaleCapChanges(const PixelArtProjectInfo& project);
 
     // "nearest", "linear", ...: TextureFilter as set_properties names it
     const char* filterName(TextureFilter filter);

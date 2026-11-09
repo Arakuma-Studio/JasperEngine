@@ -80,7 +80,8 @@ namespace {
     uint32_t newScene(const std::string& name) {
         Project* p = project();
         if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
-        return p->createNewScene(name, SceneType::SCENE_2D);
+        p->createNewScene(name, SceneType::SCENE_2D);
+        return p->getSelectedSceneId();
     }
 
     Entity sprite(uint32_t sceneId, const std::string& name, Vector3 position, TextureFilter filter = TextureFilter::NEAREST) {

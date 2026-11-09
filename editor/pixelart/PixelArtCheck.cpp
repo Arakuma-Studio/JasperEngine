@@ -36,6 +36,7 @@ namespace {
             {"font_antialiasing", rules::fontAntialiasing},
             {"particles_grid", rules::particlesGrid},
             {"anti_aliasing", rules::antiAliasing},
+            {"render_scale", rules::renderScale},
             {"sprite_variants", rules::spriteVariants},
             {"cleanup_outputs", nullptr},
         };

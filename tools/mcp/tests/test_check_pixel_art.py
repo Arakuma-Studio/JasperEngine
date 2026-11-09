@@ -102,6 +102,9 @@ async def test_seeded_findings(ed: Editor):
     ed.check(f and f["status"] == "WARN" and f["measured"]["render_mode"] == "stretched_billboard", f"particles_grid: {f}")
     aa = by_rule(result).get("anti_aliasing", [])
     ed.check(aa and aa[0]["measured"]["fxaa"] is True, f"anti_aliasing FXAA: {aa}")
+    rs = [x for x in by_rule(result).get("render_scale", []) if x["target"]["kind"] == "project"]
+    ed.check(rs and rs[0]["status"] == "FAIL" and rs[0]["measured"]["device_tiers"].get("desktop.low") == 0.5,
+             f"render_scale: the default Device Tiers blur the scene without a Pixel Perfect Camera: {rs}")
     scale = [x for x in by_rule(result).get("integer_scale", []) if x["target"].get("path", "").endswith("Fixed.scene")]
     ed.check(scale and scale[0]["status"] == "FAIL", f"integer_scale on the fixed-resolution scene: {scale}")
     laptop = scale and scale[0]["measured"]["screens"]["1366x768"]

@@ -161,6 +161,9 @@ async def build_2d_pixel_art(ed: Editor) -> None:
                                                    "graphics.scaling_mode": "integer", "graphics.pixels_per_unit": 1,
                                                    "graphics.default_filter_mode": "point", "player.window_width": 1280,
                                                    "player.window_height": 720})
+    # every Device Tier at full resolution: a lower Render Scale stretches the art back bilinear (render_scale)
+    await ed.call("set_project_settings", values={f"quality.device_tiers.{group}.{tier}": {"render_scale": 1}
+                                                   for group in ("desktop", "mobile", "web") for tier in ("low", "medium")})
     sid = await main_scene(ed, "2D")
     art = await ed.call("generate_placeholder_art", path="sprites/player.png", width=16, height=16, shape="rounded_rect",
                         corner_radius=3, color="#F2B33D", outline_color="#5C3B0A", outline_width=1)

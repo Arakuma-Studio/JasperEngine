@@ -26,6 +26,7 @@
 
 #include "component/MeshComponent.h"
 #include "component/UIComponent.h"
+#include "device/DeviceSettings.h"
 
 #include <algorithm>
 #include <fstream>
@@ -111,6 +112,8 @@ namespace {
                     if (name == "fxaa_enabled") post.fxaaEnabled = change.to.get<bool>();
                     else if (name == "msaa_samples") post.msaaSamples = change.to.get<int>();
                     else if (name == "blur_enabled") post.blurEnabled = change.to.get<bool>();
+                    else if (name == "render_scale") post.renderScale = change.to.get<float>();
+                    else if (name == "dynamic_resolution_enabled") post.dynamicResolutionEnabled = change.to.get<bool>();
                     postChanged = true;
                 }
                 continue;
@@ -332,11 +335,20 @@ std::vector<std::string> jasperengine::editor::pixelart::staleChanges(Project& p
             for (const FixChange& change : option.changes)
                 current[{change.target, change.field}].push_back(change.from);
     const PixelArtProjectInfo& p = input.project;
-    const std::map<std::string, Json> settings = {
+    std::map<std::string, Json> settings = {
         {"pixel_art.enabled", p.modeEnabled}, {"graphics.canvas_width", p.canvasWidth}, {"graphics.canvas_height", p.canvasHeight},
         {"graphics.scaling_mode", rules::scalingName(p.scaling)}, {"graphics.pixels_per_unit", p.pixelsPerUnit},
         {"graphics.default_filter_mode", textureFilterModeName(p.defaultFilterMode)},
         {"player.window_width", p.windowWidth}, {"player.window_height", p.windowHeight}};
+    // a Device Tier's Render Scale cell (render_scale's fix compares only that cell)
+    const DeviceSettings& devices = project.getDeviceSettings();
+    for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++){
+        for (int t = 0; t < DEVICE_TIER_COUNT; t++){
+            const std::optional<float>& cell = devices.tier((DevicePlatformGroup)g, (DeviceTier)t).get(DeviceOverride::RenderScale);
+            settings[std::string("quality.device_tiers.") + DeviceNames::group((DevicePlatformGroup)g) + "." + DeviceNames::tier((DeviceTier)t)] =
+                Json{{"render_scale", cell ? number(*cell) : Json(nullptr)}};
+        }
+    }
     std::vector<std::string> stale;
     for (const FixChange& change : changes){
         if (change.target == "project"){

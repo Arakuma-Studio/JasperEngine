@@ -187,9 +187,18 @@ namespace jasperengine::editor::pixelart {
         bool fxaa = false;
         int msaaSamples = 1;
         bool blur = false;
+        float renderScale = 1.0f;
+        bool dynamicResolution = false;
         std::vector<PixelArtDrawable> drawables;
         // library:sprite variants (sprite_variants): material identity -> distinct variants
         std::map<std::string, std::set<std::string>> spriteVariants;
+    };
+
+    // a Device Tier whose Render Scale cap is below 1 (S56): its devices draw the frame smaller
+    // and stretch it back bilinear
+    struct PixelArtRenderScaleCap {
+        std::string group, tier;               // "desktop", "low"
+        float scale = 1.0f;
     };
 
     struct PixelArtProjectInfo {
@@ -205,6 +214,8 @@ namespace jasperengine::editor::pixelart {
         std::string defaultPalette;            // assets-relative .palette, "" none
         // Project Settings > Textures (max sizes, qualities, power-of-two strategy) the import resolves against
         TextureProjectSettings textureSettings;
+        // Project Settings > Quality > Device Tiers: the Render Scale caps below 1, by group then tier
+        std::vector<PixelArtRenderScaleCap> renderScaleCaps;
     };
 
     // A font a Text draws or `paths` names (S51's analyzeFontForPixelArt plugs in through

@@ -548,3 +548,51 @@ TEST(PixelArtCheck, ParticlesWithoutAPixelPerfectCameraAreFixable){
     EXPECT_EQ(a.field, b.field);
     EXPECT_EQ(a.to, b.to);
 }
+
+TEST(PixelArtCheck, RenderScale){
+    // S56's default Device Tiers: Low draws at 0.5, Medium at 0.85, stretched back bilinear
+    PixelArtCheckInput input = cleanInput();
+    for (const char* group : {"desktop", "mobile", "web"}){
+        input.project.renderScaleCaps.push_back({group, "low", 0.5f});
+        input.project.renderScaleCaps.push_back({group, "medium", 0.85f});
+    }
+    const CheckResult result = run(input, {"render_scale"});
+    const Finding* f = findingOf(result, "render_scale");
+    ASSERT_TRUE(f);
+    EXPECT_EQ(f->status, RuleStatus::Warn) << "under a Pixel Perfect Camera the caps draw none of the art";
+    EXPECT_EQ(f->measured["device_tiers"]["desktop.low"], 0.5);
+    ASSERT_EQ(f->options.front().changes.size(), 6u);
+    const FixChange& low = f->options.front().changes.front();
+    EXPECT_EQ(low.target, "project");
+    EXPECT_EQ(low.field, "quality.device_tiers.desktop.low");
+    EXPECT_EQ(low.from, (Json{{"render_scale", 0.5}}));
+    EXPECT_EQ(low.to, (Json{{"render_scale", 1}}));
+    // a pixel-art scene without one: those devices blur it
+    PixelArtCheckInput bare = input;
+    bare.scenes.front().camera.hasComponent = false;
+    EXPECT_EQ(statusOf(bare, "render_scale"), RuleStatus::Fail);
+    // the scene's own render scale or dynamic resolution
+    PixelArtCheckInput scaled = cleanInput();
+    scaled.scenes.front().camera.hasComponent = false;
+    scaled.scenes.front().renderScale = 0.75f;
+    scaled.scenes.front().dynamicResolution = true;
+    const CheckResult own = run(scaled, {"render_scale"});
+    const Finding* sceneFinding = findingOf(own, "render_scale");
+    ASSERT_TRUE(sceneFinding);
+    EXPECT_EQ(sceneFinding->status, RuleStatus::Fail);
+    ASSERT_EQ(sceneFinding->options.front().changes.size(), 2u);
+    EXPECT_EQ(sceneFinding->options.front().changes[0].field, "post_processing.render_scale");
+    EXPECT_EQ(sceneFinding->options.front().changes[1].field, "post_processing.dynamic_resolution_enabled");
+    // red control: every tier at full resolution
+    EXPECT_EQ(statusOf(cleanInput(), "render_scale"), RuleStatus::Pass);
+    // the preset's project part raises the caps too (pixel_art_mode's fix)
+    PixelArtCheckInput off = input;
+    off.project.modeEnabled = false;
+    off.project.scaling = Scaling::LETTERBOX;
+    const Finding* mode = findingOf(run(off, {"pixel_art_mode"}), "pixel_art_mode");
+    ASSERT_TRUE(mode);
+    size_t caps = 0;
+    for (const FixChange& change : mode->options.front().changes)
+        caps += change.field.rfind("quality.device_tiers.", 0) == 0 ? 1 : 0;
+    EXPECT_EQ(caps, 6u);
+}

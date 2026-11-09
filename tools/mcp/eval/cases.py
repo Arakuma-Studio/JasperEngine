@@ -3108,18 +3108,18 @@ CASES = [
                   "Find what is wrong with the pixel-art setup and fix all of it.",
         "mocks": [
             {"tool": "check_pixel_art", "args": {"fix": ["all"], "output": True}, "result": ok(
-                "Pixel art check: fixable, 2 FAIL, 1 WARN (12 rules). Applied 3 fix(es) as \"Fix Pixel Art (3)\"; after: "
+                "Pixel art check: fixable, 2 FAIL, 1 WARN (13 rules). Applied 3 fix(es) as \"Fix Pixel Art (3)\"; after: "
                 "clean, 0 FAIL, 0 WARN.",
                 {"verdict": "fixable", "applied": {"undo_step": {"id": 9, "name": "Fix Pixel Art (3)"}, "changed": ["project"]},
                  "after": {"verdict": "clean", "counts": {"fail": 0, "warn": 0}}})},
             {"tool": "check_pixel_art", "args": {"fix": ["all"]}, "result": ok(
-                "Pixel art check: fixable, 2 FAIL, 1 WARN (12 rules). Fix plan: 3 fix(es), 6 change(s); nothing changed. "
+                "Pixel art check: fixable, 2 FAIL, 1 WARN (13 rules). Fix plan: 3 fix(es), 6 change(s); nothing changed. "
                 "Preview only, nothing changed: the same call with output: true applies these 6 change(s) as one undo step.",
                 {"verdict": "fixable", "fix_plan": [{"key": "filtering:scenes/Main.scene#/Hero:mesh.submeshes[0].material.baseColorTexture",
                                                      "option": "default", "label": "Set both filters of /Hero to Nearest", "changes": []}],
                  "next": "Preview only, nothing changed: the same call with output: true applies these 6 change(s) as one undo step."})},
             {"tool": "check_pixel_art", "result": ok(
-                "Pixel art check: fixable, 2 FAIL, 1 WARN (12 rules). check_pixel_art {fix: [\"all\"]} previews 3 fix(es); "
+                "Pixel art check: fixable, 2 FAIL, 1 WARN (13 rules). check_pixel_art {fix: [\"all\"]} previews 3 fix(es); "
                 "add output: true to apply.",
                 {"verdict": "fixable", "counts": {"fail": 2, "warn": 1, "fixable": 3, "needs_person": 0},
                  "findings": [{"id": "F1", "rule": "integer_scale", "status": "FAIL", "message": "Main scales its pixels by a fraction on some screens."},
@@ -3143,7 +3143,7 @@ CASES = [
         "prompt": "Run the pixel-art check on our project and get it to pass.",
         "mocks": [
             {"tool": "check_pixel_art", "result": ok(
-                "Pixel art check: needs_person, 1 FAIL, 0 WARN (12 rules). The findings need a person: report them (needs_person) "
+                "Pixel art check: needs_person, 1 FAIL, 0 WARN (13 rules). The findings need a person: report them (needs_person) "
                 "instead of changing scale or art.",
                 {"verdict": "needs_person", "counts": {"fail": 1, "warn": 0, "fixable": 0, "needs_person": 1},
                  "findings": [{"id": "F1", "key": "texel_size:scenes/Main.scene#/Boss", "rule": "texel_size", "status": "FAIL",

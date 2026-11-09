@@ -129,8 +129,9 @@ The design and its acceptance record are in `docs/specs/S42-pixel-art-mode.md`.
 | Check on Import, Check on Play, Check Screens | When the check runs in Pixel Art Mode, and the screen sizes it lays each scene out on. |
 
 **Apply Pixel Art Preset...** previews every change that converts a project (base resolution,
-integer scaling, Pixels Per Unit, Point filtering, a window at 4x the base, a Pixel Perfect Camera
-on each 2D scene, lossless pixel-art textures and point-filtered references) with its current and
+integer scaling, Pixels Per Unit, Point filtering, a window at 4x the base, every Device Tier's
+Render Scale at 1 so low-end devices do not draw the art smaller and stretch it back blurry, a
+Pixel Perfect Camera on each 2D scene, lossless pixel-art textures and point-filtered references) with its current and
 new value, and applies them as one undo step.
 
 **Texture import settings** have a **Pixel Art** checkbox (and a Presets > Pixel Art entry). It

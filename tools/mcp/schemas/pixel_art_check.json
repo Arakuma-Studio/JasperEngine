@@ -23,7 +23,7 @@
         "required": ["id", "status", "checked", "findings"],
         "properties": {
           "id": {"enum": ["pixel_art_mode", "integer_scale", "filtering", "mipmaps_compression", "palette", "texel_size", "off_grid",
-                          "rotation", "font_antialiasing", "particles_grid", "anti_aliasing", "sprite_variants", "cleanup_outputs"]},
+                          "rotation", "font_antialiasing", "particles_grid", "anti_aliasing", "render_scale", "sprite_variants", "cleanup_outputs"]},
           "status": {"enum": ["PASS", "WARN", "FAIL"]},
           "checked": {"type": "integer", "minimum": 0},
           "findings": {"type": "integer", "minimum": 0}

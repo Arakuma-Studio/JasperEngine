@@ -13,6 +13,7 @@ point-filtered lossless sprites on whole pixels. pixel-art-bad seeds one failure
     rotation             Rotated by 37 degrees
     font_antialiasing    Label: a vector font
     particles_grid       Sparks: stretched billboards
+    render_scale         the default Device Tiers (Low draws at 0.5, Medium at 0.85)
     anti_aliasing        FXAA on (Main)
     integer_scale        scenes/Fixed: fixed resolution 640x360 under letterbox (fit) scaling
     palette              OffPalette: colours a remap fixes, against the Default Palette
@@ -97,6 +98,9 @@ async def build_clean(ed: Editor) -> None:
                                                    "graphics.scaling_mode": "integer", "graphics.pixels_per_unit": 1,
                                                    "graphics.default_filter_mode": "point", "player.window_width": 1280,
                                                    "player.window_height": 720})
+    # every Device Tier at full resolution: a lower Render Scale stretches the art back bilinear (render_scale)
+    await ed.call("set_project_settings", values={f"quality.device_tiers.{group}.{tier}": {"render_scale": 1}
+                                                   for group in ("desktop", "mobile", "web") for tier in ("low", "medium")})
     sid = await scene(ed, "Main", first=True)
     await ed.call("edit_build_scenes", action="set_start", scene=sid)
     hero = await art(ed, "sprites/hero.png", "#ff0000")

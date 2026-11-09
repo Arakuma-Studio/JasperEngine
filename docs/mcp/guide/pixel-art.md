@@ -63,6 +63,7 @@ The CLI runs the same rules on the saved project: `jasperengine-editor check --p
 | `font_antialiasing` | vector or bitmap font, size, alpha | font size; vector fonts need a person |
 | `particles_grid` | filter, render mode, sizes, snapping | Default Filter Mode point, the camera's snapping |
 | `anti_aliasing` | FXAA, MSAA, blur | turn them off |
+| `render_scale` | Device Tier and scene render scales below 1 | render scale 1 |
 | `sprite_variants` | library:sprite shader variants (budget 24) | needs a person |
 
 ## Camera and snapping

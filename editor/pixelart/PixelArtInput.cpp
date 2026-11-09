@@ -16,6 +16,7 @@
 #include "util/FileUtils.h"
 
 #include "component/CameraComponent.h"
+#include "device/DeviceSettings.h"
 #include "component/ImageComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ParticleSystemComponent.h"
@@ -342,6 +343,8 @@ namespace {
         out.fxaa = post.fxaaEnabled;
         out.msaaSamples = post.msaaSamples;
         out.blur = post.blurEnabled && post.blurIntensity > 0.0f;
+        out.renderScale = post.renderScale;
+        out.dynamicResolution = post.dynamicResolutionEnabled;
         for (const ChildSceneRef& child : sp.childScenes)
             facts.layers.push_back(child.id);
 
@@ -639,6 +642,11 @@ PixelArtCheckInput jasperengine::editor::pixelart::inputFromProject(Project& pro
     info.screens = settings.screens();
     info.upscaleMode = settings.upscaleMode;
     info.textureSettings = textureProjectSettingsOf(project);
+    const DeviceSettings& devices = project.getDeviceSettings();
+    for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++)
+        for (int t = 0; t < DEVICE_TIER_COUNT; t++)
+            if (const std::optional<float>& cap = devices.tier((DevicePlatformGroup)g, (DeviceTier)t).get(DeviceOverride::RenderScale); cap && *cap < 1.0f)
+                info.renderScaleCaps.push_back({DeviceNames::group((DevicePlatformGroup)g), DeviceNames::tier((DeviceTier)t), *cap});
 
     // the palettes: the Default Palette now, Palette Swap sources as drawables name them
     const std::string defaultPalette = defaultPalettePath(project);

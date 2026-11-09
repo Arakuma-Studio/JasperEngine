@@ -583,6 +583,17 @@ Recorded at implementation (`feature/s42-pixel-art-mode`); the code is what is t
   its own camera is judged by it. S52 (Sprite Batch) is not in this base: its drawables come in
   through `pixelart::registerDrawableCollector` (PixelArtInput.h), called for every scene read, as
   S46's rule comes in through `registerRule`.
+- **R10 `render_scale` (added after S51's deviation 19).** S56's Device Tiers cap the render scale
+  (Low 0.5, Medium 0.85 by default) and the uber pass stretches the frame back with a linear filter,
+  so a pixel-art scene without a Pixel Perfect Camera (whose fixed resolution the cap never reaches)
+  blurs on those devices. A rule after `anti_aliasing` flags, in a pixel-art project, every Device
+  Tier cap below 1 (FAIL when a pixel-art scene has no enabled Pixel Perfect Camera, else WARN) and
+  a pixel-art scene's own render scale below 1 or dynamic resolution (FAIL); the fixes set the tier
+  cells (`quality.device_tiers.<group>.<tier>` `{render_scale: 1}`, the setting the tier system
+  reads) and the scene's post-processing. The preset's project part (and so `pixel_art_mode`'s fix)
+  raises the caps too, as an R2 row of its own; the 2d-pixel-art template and the pixel-art fixture
+  have them at 1. Pixel Art Mode itself changes no setting (D1): the rule reports what it would
+  blur. A tier skip in the engine was not taken: the runtime does not know the editor's mode.
 - **R2: fixed-resolution scenes.** The preset gives a fixed-resolution scene's new Pixel Perfect
   Camera the preset's base resolution as its reference (the scene's own fixed size was the old
   base); `integer_scale`'s fix on its own keeps R10's "reference = the fixed resolution".

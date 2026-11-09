@@ -382,6 +382,16 @@ std::vector<FixChange> jasperengine::editor::pixelart::rules::projectPresetChang
     }
     change("player.window_width", p.windowWidth, baseWidth * scale);
     change("player.window_height", p.windowHeight, baseHeight * scale);
+    const std::vector<FixChange> caps = renderScaleCapChanges(p);
+    out.insert(out.end(), caps.begin(), caps.end());
+    return out;
+}
+
+std::vector<FixChange> jasperengine::editor::pixelart::rules::renderScaleCapChanges(const PixelArtProjectInfo& project){
+    std::vector<FixChange> out;
+    for (const PixelArtRenderScaleCap& cap : project.renderScaleCaps)
+        out.push_back({"project", "quality.device_tiers." + cap.group + "." + cap.tier, {{"render_scale", number(cap.scale)}},
+                       {{"render_scale", 1}}});
     return out;
 }
 
@@ -1013,6 +1023,60 @@ RuleResult jasperengine::editor::pixelart::rules::antiAliasing(const PixelArtChe
         finding.options.push_back(option("default", "Turn off the smoothing (FXAA off, MSAA 1)", changes));
         findings.push_back(std::move(finding));
     }
+    return result;
+}
+
+// ---------------------------------------------------------------- render_scale
+
+RuleResult jasperengine::editor::pixelart::rules::renderScale(const PixelArtCheckInput& input, std::vector<Finding>& findings){
+    RuleResult result;
+    bool content = input.project.modeEnabled;
+    bool blurred = false;    // a pixel-art scene the caps reach: no Pixel Perfect Camera's fixed resolution
+    for (const PixelArtScene& scene : input.scenes){
+        if (!scene.pixelArt)
+            continue;
+        content = true;
+        result.checked++;
+        if (hasCameraComponent(scene))
+            continue;
+        blurred = true;
+        if (scene.renderScale >= 1.0f && !scene.dynamicResolution)
+            continue;
+        std::vector<FixChange> changes;
+        if (scene.renderScale < 1.0f)
+            changes.push_back({scene.path, "post_processing.render_scale", number(scene.renderScale), 1});
+        if (scene.dynamicResolution)
+            changes.push_back({scene.path, "post_processing.dynamic_resolution_enabled", true, false});
+        Finding finding = makeFinding("render_scale", scene.path, RuleStatus::Fail, {{"kind", "scene"}, {"path", scene.path}},
+                                      {{"render_scale", number(scene.renderScale)}, {"dynamic_resolution", scene.dynamicResolution}},
+                                      {{"render_scale", 1}, {"dynamic_resolution", false}},
+                                      scene.name + " draws below its resolution (" +
+                                          std::string(scene.dynamicResolution ? "dynamic resolution" : "render scale " + formatDouble(scene.renderScale)) +
+                                          ") and stretches the image back bilinear: the pixels blur.");
+        finding.options.push_back(option("default", "Render " + scene.name + " at full resolution (render scale 1, no dynamic resolution)", changes));
+        findings.push_back(std::move(finding));
+    }
+    if (!content || input.project.renderScaleCaps.empty())
+        return result;
+    result.checked++;
+    Json caps = Json::object();
+    std::string lowest;
+    float lowestScale = 1.0f;
+    for (const PixelArtRenderScaleCap& cap : input.project.renderScaleCaps){
+        caps[cap.group + "." + cap.tier] = number(cap.scale);
+        if (cap.scale < lowestScale){
+            lowestScale = cap.scale;
+            lowest = cap.group + " " + cap.tier;
+        }
+    }
+    // with every pixel-art scene under a Pixel Perfect Camera (a fixed resolution) the caps draw
+    // nothing of the art: a warning only
+    Finding finding = makeFinding("render_scale", "project", blurred ? RuleStatus::Fail : RuleStatus::Warn, {{"kind", "project"}},
+                                  {{"device_tiers", caps}}, {{"device_tiers", "render_scale 1 on every tier"}},
+                                  "Device Tiers draw the frame at a render scale below 1 (" + lowest + " " + formatDouble(lowestScale) +
+                                      ") and stretch it back bilinear: pixel art blurs on those devices.");
+    finding.options.push_back(option("default", "Set every Device Tier's Render Scale to 1", renderScaleCapChanges(input.project)));
+    findings.push_back(std::move(finding));
     return result;
 }
 
