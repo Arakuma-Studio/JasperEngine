@@ -35,25 +35,6 @@ namespace {
     // A stamp above this many texels is worth running on the job system (R38)
     constexpr int64_t PARALLEL_TEXELS = 64 * 1024;
 
-    // A float buffer whose growth leaves the values to what fills it whole next: a block's read, its
-    // filter and its output (T1 R47: a radius-512 stamp zeroed 8 MB a call that it then overwrote)
-    class FloatScratch {
-    public:
-        std::span<float> resize(size_t count) {
-            if (count > capacity) {
-                values.reset(new float[count]);
-                capacity = count;
-            }
-            return std::span<float>(values.get(), count);
-        }
-        float* data() { return values.get(); }
-        float& operator[](size_t index) { return values[index]; }
-        const float& operator[](size_t index) const { return values[index]; }
-
-    private:
-        std::unique_ptr<float[]> values;
-        size_t capacity = 0;
-    };
     // T1 R48: a commit's report measures this many tiles or more on the job system's workers
     constexpr size_t PARALLEL_STAT_TILES = 32;
     constexpr int MAX_BLEND_MAPS_SCANNED = 64;
@@ -709,9 +690,11 @@ namespace {
         const int border = std::max(margin, op.filter.active() ? 2 : 0);
         saved.clear();
 
-        FloatScratch source;
-        FloatScratch weights;
-        FloatScratch out;
+        OpScratch own;
+        OpScratch& scratch = options.scratch ? *options.scratch : own;
+        FloatScratch& source = scratch.source;
+        FloatScratch& weights = scratch.weights;
+        FloatScratch& out = scratch.out;
 
         for (int cellY = grid.firstY; cellY < rect.bottom() && !failed(); cellY += grid.stepY) {
             if (manyBlocks) forgetBorders(cellY, border);
@@ -741,6 +724,9 @@ namespace {
                 prepare(block);
 
                 const std::span<float> outValues = out.resize(static_cast<size_t>(blockRect.area()) * channels);
+                // the rows reach the buffers through these, not through the scratch the caller may own
+                float* const outData = outValues.data();
+                const float* const weightData = filtered ? weights.data() : nullptr;
                 const bool heights = map.kind == MapKind::Height;
 
                 std::vector<Counters> rowCounters(static_cast<size_t>(blockRect.h));
@@ -758,7 +744,7 @@ namespace {
                     for (int x = blockRect.x; x < blockRect.right(); x++) {
                         const size_t column = static_cast<size_t>(x - blockRect.x);
                         const float* current = block.at(x, y);
-                        float* next = out.data() + (rowStart + column) * channels;
+                        float* next = outData + (rowStart + column) * channels;
                         for (int c = 0; c < channels; c++) {
                             next[c] = current[c];
                         }
@@ -768,7 +754,7 @@ namespace {
                         if (base <= 0.0f) continue;
                         rowCount.touched++;
 
-                        const float filterWeight = filtered ? weights[rowStart + column] : 1.0f;
+                        const float filterWeight = filtered ? weightData[rowStart + column] : 1.0f;
                         if (filterWeight <= 0.0f) {
                             rowCount.filteredOut++;
                             continue;
@@ -1690,13 +1676,19 @@ namespace {
             const MapFormat format = overlay.format(view.map);
             const int stride = bytesPerTexel(format);
             TileStats& tile = perTile[index];
+            tile.deltas.reserve(static_cast<size_t>(view.written.area()));
+            // a 16-bit map's texels compared in place: a memcmp call a texel cost a runtime edit's report
+            // more than its kernel (T1 R52)
+            const bool twoBytes = stride == 2;
             // in the tile's order; only where a write reached can a texel differ
             for (int y = view.written.y; y < view.written.bottom(); y++) {
                 for (int x = view.written.x; x < view.written.right(); x++) {
                     const size_t i = static_cast<size_t>(y - view.rect.y) * view.rect.w + (x - view.rect.x);
-                    if (std::memcmp(view.before.data() + i * stride, view.after.data() + i * stride, stride) == 0) continue;
-                    const float was = decodeChannel(view.before.data() + i * stride, format.bitsPerChannel) * maxHeight;
-                    const float now = decodeChannel(view.after.data() + i * stride, format.bitsPerChannel) * maxHeight;
+                    const uint8_t* before = view.before.data() + i * stride;
+                    const uint8_t* after = view.after.data() + i * stride;
+                    if (twoBytes ? before[0] == after[0] && before[1] == after[1] : std::memcmp(before, after, stride) == 0) continue;
+                    const float was = decodeChannel(before, format.bitsPerChannel) * maxHeight;
+                    const float now = decodeChannel(after, format.bitsPerChannel) * maxHeight;
                     if (!tile.valid) {
                         tile.valid = true;
                         tile.minBefore = tile.maxBefore = was;

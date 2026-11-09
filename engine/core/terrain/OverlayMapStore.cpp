@@ -114,20 +114,30 @@ bool OverlayMapStore::read(MapId map, TexelRect rect, std::span<float> out) cons
     }
     if (!mapState || mapState->tiles.empty() || rect.empty()) return true;
 
+    // the held tiles over the base's values; a large read copies them on the workers (T1 R47: a
+    // radius-512 stamp's read spent half a millisecond here)
+    std::vector<const Tile*> held;
     const int firstX = tileOf(rect.x), lastX = tileOf(rect.right() - 1);
     const int firstY = tileOf(rect.y), lastY = tileOf(rect.bottom() - 1);
     for (int tileY = firstY; tileY <= lastY; tileY++) {
         for (int tileX = firstX; tileX <= lastX; tileX++) {
             auto found = mapState->tiles.find({tileX, tileY});
-            if (found == mapState->tiles.end()) continue;
-            const Tile& tile = found->second;
-            const TexelRect part = intersect(tile.rect, rect);
-            for (int y = part.y; y < part.bottom(); y++) {
-                const float* source = tile.values.data() + (static_cast<size_t>(y - tile.rect.y) * tile.rect.w + (part.x - tile.rect.x)) * count;
-                float* target = out.data() + (static_cast<size_t>(y - rect.y) * rect.w + (part.x - rect.x)) * count;
-                std::memcpy(target, source, static_cast<size_t>(part.w) * count * sizeof(float));
-            }
+            if (found != mapState->tiles.end()) held.push_back(&found->second);
         }
+    }
+    auto copy = [&](size_t index) {
+        const Tile& tile = *held[index];
+        const TexelRect part = intersect(tile.rect, rect);
+        for (int y = part.y; y < part.bottom(); y++) {
+            const float* source = tile.values.data() + (static_cast<size_t>(y - tile.rect.y) * tile.rect.w + (part.x - tile.rect.x)) * count;
+            float* target = out.data() + (static_cast<size_t>(y - rect.y) * rect.w + (part.x - rect.x)) * count;
+            std::memcpy(target, source, static_cast<size_t>(part.w) * count * sizeof(float));
+        }
+    };
+    if (held.size() >= PARALLEL_TILES) {
+        jobs::parallelFor(held.size(), copy);
+    } else {
+        for (size_t i = 0; i < held.size(); i++) copy(i);
     }
     return true;
 }
@@ -502,7 +512,10 @@ std::vector<OverlayMapStore::MapChange> OverlayMapStore::changes() const {
                 if (std::memcmp(after, before, rowBytes) == 0) continue;
                 int first = -1, last = -1;
                 for (int x = span.x - tile.rect.x; x < span.right() - tile.rect.x; x++) {
-                    if (std::memcmp(after + x * stride, before + x * stride, stride) == 0) continue;
+                    // a 16-bit map's texel compared in place, not by a memcmp call (T1 R52)
+                    const uint8_t* a = after + x * stride;
+                    const uint8_t* b = before + x * stride;
+                    if (stride == 2 ? a[0] == b[0] && a[1] == b[1] : std::memcmp(a, b, stride) == 0) continue;
                     if (first < 0) first = x;
                     last = x;
                     part.texels++;

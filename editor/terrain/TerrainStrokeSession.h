@@ -76,6 +76,8 @@ namespace jasperengine::editor{
         bool applyRamp(float x, float z, float strength);
 
         terrain::OverlayMapStore transaction;
+        // T1 R47: the stamps' block buffers, kept for the stroke
+        terrain::OpScratch scratch;
         terrain::MapId map;
         terrain::MapFormat format;
         float terrainSize;

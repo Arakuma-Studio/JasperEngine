@@ -170,6 +170,7 @@ bool editor::TerrainStrokeSession::applyRamp(float x, float z, float strength){
     op.strength = std::clamp(strength, 0.0f, 1.0f);
     OpOptions options;
     options.inPlace = true;
+    options.scratch = &scratch;
     return applyOps(transaction, std::span<const Op>(&op, 1), options).ok;
 }
 
@@ -192,6 +193,7 @@ bool editor::TerrainStrokeSession::applyStamp(float x, float z, float seconds){
         op.strength = brush.strength;
         OpOptions options;
         options.inPlace = true;
+        options.scratch = &scratch;
         const bool ok = applyOps(transaction, std::span<const Op>(&op, 1), options).ok;
         // a stamp whose droplets rounded to none draws no seed, as the kernel draws none for it
         if (ok && droplets > 0) erodeSeed++;
@@ -201,6 +203,7 @@ bool editor::TerrainStrokeSession::applyStamp(float x, float z, float seconds){
     op.strength = op.type == OpType::CutHoles || op.type == OpType::FillHoles ? 1.0f : std::clamp(deposit, 0.0f, 1.0f);
     OpOptions options;
     options.inPlace = true;
+    options.scratch = &scratch;
     return applyOps(transaction, std::span<const Op>(&op, 1), options).ok;
 }
 
