@@ -92,6 +92,12 @@ std::vector<std::shared_ptr<efx::EffectCapture>>& activeCaptures() {
     return runs;
 }
 
+// the job of the capture this tool started and that has not ended, for the "already running" error
+std::string& runningJobId() {
+    static std::string id;
+    return id;
+}
+
 struct Args {
     std::unique_ptr<efx::CaptureTarget> target;
     std::string scope;
@@ -412,6 +418,12 @@ bool parseArgs(const CallPtr& call, Args& a, std::vector<Problem>& problems) {
         if (!readInt(args, "frames", 1, kMaxFrames, frames, problems)) return false;
         times = efx::sheetTimes(frames, duration, loop);
     }
+    std::string tooLarge;
+    if (!efx::captureFitsLimits(*a.target, (int)times.size(), tooLarge)) {
+        problems.push_back(problem("capture_too_large", "target.transition_options", tooLarge,
+                                   "lower target.transition_options' width, height or pixel_size, or ask for fewer frames"));
+        return false;
+    }
     a.capture.times = times;
     a.capture.duration = duration;
     a.capture.loop = loop;
@@ -547,6 +559,9 @@ ToolResult finishCapture(McpContext& ctx, const std::shared_ptr<Args>& a, const 
         for (const Json& row : rows) text += "\n" + qa::rowLine(row);
         next = qa::guidance(stop, status == "FAIL", kFixRounds, "capture again with lint", kClosing);
         if (!stop && status == "WARN") next = "Fix what each WARN's fix_hint says, then capture again with lint. " + next;
+        const bool reloaded = a->capture.sceneId != 0 &&
+                              (a->capture.lintIds.empty() || std::find(a->capture.lintIds.begin(), a->capture.lintIds.end(), "determinism") != a->capture.lintIds.end());
+        if (reloaded) next = "The determinism check reloaded the played scene for its two fresh captures, so the game's state restarted. " + next;
     }
     if (a->write) {
         McpWriteScope writeScope;
@@ -582,6 +597,14 @@ void captureContactSheetTool(const CallPtr& call) {
         failCall(call, "Can't capture the contact sheet:", problems);
         return;
     }
+    if (efx::EffectCapture::anyRunning()) {
+        const std::string jobId = runningJobId();
+        problems.push_back(problem("capture_running", "", "another capture is still running" + (jobId.empty() ? std::string(" (in the Contact Sheet window)") : " (job " + jobId + ")"),
+                                   jobId.empty() ? std::string("wait for it to end (the Contact Sheet window, or get_job), then call again")
+                                                 : "wait for job " + jobId + " with get_job, or cancel_job it, then call again"));
+        failCall(call, "Can't capture the contact sheet:", problems);
+        return;
+    }
     auto run = std::make_shared<efx::EffectCapture>(a->capture, std::move(a->target));
     activeCaptures().push_back(run);
     JobPtr job = ctx.jobs().create("capture_contact_sheet", "Contact sheet of " + run->getTarget().label() + (a->write ? "" : " (preview)"));
@@ -591,9 +614,11 @@ void captureContactSheetTool(const CallPtr& call) {
         if (auto r = weak.lock()) r->cancel();
     });
     job->setProgress(0.0, "capturing");
+    runningJobId() = job->id();
     const std::optional<UndoOrigin> origin = call->attributed() ? std::optional<UndoOrigin>(call->getUndoOrigin()) : std::nullopt;
     McpContext* context = &ctx;
     run->setOnFinished([weak, job, reply, a, origin, context]() {
+        runningJobId().clear();
         auto r = weak.lock();
         if (!r) return;
         if (r->isFailed()) {
@@ -660,8 +685,8 @@ void registerPixelFxTools(McpRegistry& registry) {
         {"path", string("")},
         {"max_width", integer("")}
     }, {"target"});
-    tool.annotations.readOnly = true;
-    tool.annotations.idempotent = true;
+    // not readOnly or idempotent: output: true writes a file, and determinism in Play reloads the played scene
+    tool.activity = ToolActivity::Read;
     tool.writesFiles = [](const Json& args) { return args.is_object() && args.value("output", false); };
     // scene mode needs Play; a preview never edits the game
     tool.allowedWhilePlaying = true;
