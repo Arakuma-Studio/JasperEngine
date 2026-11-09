@@ -237,6 +237,18 @@ TEST(EffectLints, TransitionRimsOfConstantWidthPass) {
     EXPECT_EQ(lintTransitionEdges({&wipe}, rim, false).status, LintStatus::Skip);
 }
 
+TEST(EffectLints, TransitionRimIsMeasuredInArtPixels) {
+    const std::vector<Rgba8> rim = {{kRim[0], kRim[1], kRim[2], 255}};
+    const PixelImage art = fieldFrame(96, 96, 2, [](double x, double y) { return std::hypot(x - 48.0, y - 48.0) - 24.0; });
+    PixelImage scaled(96 * 3, 96 * 3);
+    for (int y = 0; y < scaled.height(); y++) {
+        for (int x = 0; x < scaled.width(); x++) scaled.set(x, y, art.at(x / 3, y / 3));
+    }
+    const LintResult pass = lintTransitionEdges({&scaled}, rim, true, 3);
+    EXPECT_EQ(pass.status, LintStatus::Pass) << pass.message;
+    EXPECT_EQ(pass.measured, 0);
+}
+
 TEST(EffectLints, TransitionRimThatChangesWidthWarns) {
     const std::vector<Rgba8> rim = {{kRim[0], kRim[1], kRim[2], 255}};
     // a wipe whose rim is 3 px (x 27..29); in the top half its inner column is ink: 2 px there

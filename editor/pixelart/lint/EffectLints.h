@@ -100,7 +100,7 @@ namespace jasperengine::editor::pixelart::lint {
         IntPoint at;                      // where the narrowest or widest differs from the most common width
     };
     RimMeasure measureRim(const PixelImage& frame, std::span<const jasperengine::pixelart::Rgba8> rimColors);
-    LintResult lintTransitionEdges(const FrameView& frames, std::span<const jasperengine::pixelart::Rgba8> rimColors, bool transition);
+    LintResult lintTransitionEdges(const FrameView& frames, std::span<const jasperengine::pixelart::Rgba8> rimColors, bool transition, int artPixel = 1);
 
     // ---- all of them over one capture
     struct EffectLintInput {
@@ -125,6 +125,7 @@ namespace jasperengine::editor::pixelart::lint {
         double hitStopSeconds = -1.0;
         std::string hitStopSkipReason;
         bool transition = false;
+        int artPixel = 1;                  // frame pixels per art pixel of a transition's capture
         std::vector<jasperengine::pixelart::Rgba8> rimColors;
     };
     // `only`: ids to run (empty: every one); unknown ids are the caller's to refuse (isEffectLintId)
