@@ -256,6 +256,12 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S47's review found 9 blockers (crashes on oversized renders and huge coordinates, two
+  file corruptions, linked cels edited twice, a false external-save warning, tests that cannot
+  fail) plus should-fixes; all went back to S47's implementer on box D. S48's fixes run on box B on
+  a tree with `origin/main` merged (shader cache now v64, terrain took v63). S50's last shared
+  build failed on 7 unfinished files; their fixes are in the next round on box C.
+
 - 2026-11-09: S48's review found one blocker (a use-after-free of the transition's centre scene
   across `loadScene`), 12 should-fixes and 3 nits; all went back to S48's implementer. S47 passed
   its lighter gate at `699b39535` (`WERROR` build, unit 217/217, MCP 150 passed and 3 skipped, real
