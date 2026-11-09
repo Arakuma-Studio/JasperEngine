@@ -166,3 +166,60 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/BitmapFontInspector.cpp
     ${EDITOR_DIR}/window/InspectorPixelFont.cpp
 )
+
+# S48 (Pixel FX)'s effect and rule lints, copied verbatim from feature/s48-pixel-fx (8531847fc):
+# S46's lint() calls its off_palette, partial_alpha and flicker. S48 owns the file; at merge its
+# version wins (docs/specs/S46-pixel-art-cleanup.md, Deviations).
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/lint/EffectLints.cpp
+)
+jasperengine_skip_unity_build(
+    REASON "S48's lint module: file-local helpers (drawn, skipped, hexOf) shared in name with the palette and particle tools"
+    SOURCES
+        ${EDITOR_DIR}/pixelart/lint/EffectLints.cpp
+)
+
+# S46 (Pixel Art Cleanup): the craft lints and lint() (shared with S47 and S42), the C++ port of
+# ritmo's pixel fixer, the session layer, fix_pixel_art/lint_pixel_art, the CLI, the validator's
+# cleanup_outputs rule, the import step and the Pixel Art Cleanup window
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/lint/CraftLints.cpp
+    ${EDITOR_DIR}/pixelart/lint/PixelLint.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupGrid.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSample.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupPalette.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSpecks.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupOutline.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupReduce.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupLost.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupBackground.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupEdits.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupPipeline.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSynthetic.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSheet.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupAnimation.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSheetOutput.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupRecipe.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupReport.cpp
+)
+# the cleanup and the lints decide on doubles and S43's colours: the same bits on every platform
+set_source_files_properties(
+    ${EDITOR_DIR}/pixelart/lint/CraftLints.cpp
+    ${EDITOR_DIR}/pixelart/lint/PixelLint.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupGrid.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSample.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupPalette.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSpecks.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupOutline.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupReduce.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupLost.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupBackground.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupEdits.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupPipeline.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSynthetic.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSheet.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupAnimation.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupSheetOutput.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupRecipe.cpp
+    ${EDITOR_DIR}/pixelart/cleanup/CleanupReport.cpp
+    PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_EDITOR_PIXELART_FLAGS}")
