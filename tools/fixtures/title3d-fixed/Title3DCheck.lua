@@ -17,6 +17,7 @@ function Title3DCheck:onUpdate()
         return
     end
     Log.print("[gate] title3d ready: tier=" .. stats.tier .. " cooked=" .. tostring(stats.cooked) .. " triangles=" .. stats.triangles)
+    Log.print("[gate] title3d budget=" .. TitleArt.getFrameBudget())
 end
 
 return Title3DCheck

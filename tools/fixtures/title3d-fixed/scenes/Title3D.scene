@@ -1,6 +1,6 @@
 formatVersion: 7
-guid: 9ba44126c5a745ac3dab9d1a3bbe109d
-id: 817273482
+guid: bf38a3576304e7a1f945ab419a9ac709
+id: 1255658311
 name: Title3D
 scene:
   backgroundColor: [0.525, 0.525, 0.525, 1]
@@ -50,6 +50,22 @@ shaderKeys:
     properties: 25
   - type: titleart
     properties: 42
+  - type: titlelit
+    properties: 131073
+  - type: titlelit
+    properties: 393217
+  - type: title3dpost
+    properties: 1
+  - type: title3dpost
+    properties: 2
+  - type: title3dpost
+    properties: 3
+  - type: titleenv
+    properties: 2
+  - type: titleenv
+    properties: 3
+  - type: titleenv
+    properties: 4
 entities:
   - type: Entity
     entity: 1001
@@ -112,7 +128,7 @@ entities:
       titleart:
         enabled: true
         title: assets/titles/logo.titleart
-        titleGuid: 52c6afa7a85ab244d48fa6c6d453b730
+        titleGuid: c327204e68addb1d11571afcd4b1c6ae
         renderMode: realtime
         prebakeInitialState: false
-        liveTime: 0.044970546
+        liveTime: 0.057365134

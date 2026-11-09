@@ -1,7 +1,7 @@
 {
   "format": "jasperengine.titleart",
   "version": 1,
-  "guid": "52c6afa7a85ab244d48fa6c6d453b730",
+  "guid": "c327204e68addb1d11571afcd4b1c6ae",
   "name": "",
   "canvas": {
     "width": 400,
@@ -19,7 +19,7 @@
   "material_links": {},
   "layers": [
     {
-      "id": "deb5e12a",
+      "id": "2b1756db",
       "type": "text",
       "name": "Title",
       "visible": true,
@@ -507,7 +507,7 @@
         "side": null,
         "bands": [
           {
-            "id": "7095c454",
+            "id": "f28e78a5",
             "name": "Bright Ring",
             "enabled": true,
             "grow": 1.5,
