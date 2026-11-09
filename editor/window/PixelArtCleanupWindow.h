@@ -133,6 +133,8 @@ namespace jasperengine::editor {
         // a run of the current recipe now (no debounce): blocking tests and the footer's Write use it
         void runNow();
         bool isRunning() const { return job != nullptr; }
+        // blocks until the running job has finished, without adopting its result (the next show does)
+        void waitForRunningJob();
         bool hasResult() const { return shown != nullptr; }
         // the recipe changed since the shown result
         bool isStale() const;
@@ -306,6 +308,8 @@ namespace jasperengine::editor {
         ImVec2 screenToView(const ImVec2& p) const;
         // the source rectangle of a cell of the output (frameIndex -1: a single picture)
         bool cellRect(int frameIndex, int ax, int ay, double& x0, double& y0, double& x1, double& y1) const;
+        // a cell of the output in view space (frameIndex -1: a single picture; else a sheet's frame)
+        bool cellRectInView(int frameIndex, int ax, int ay, double& x0, double& y0, double& x1, double& y1) const;
         // a lint spot in view space
         bool lintSpotRect(const pixelart::lint::LintSpot& spot, double& x0, double& y0, double& x1, double& y1) const;
 

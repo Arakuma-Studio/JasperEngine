@@ -112,6 +112,7 @@ namespace jasperengine::editor::pixelart::cleanup {
                 outcome.error = error;
                 return outcome;
             }
+            outcome.verdict = verdictName(verdict);
             // R33: needs_person on a source other than the one the recipe was saved from
             Recipe recorded;
             std::vector<PixelProblem> problems;

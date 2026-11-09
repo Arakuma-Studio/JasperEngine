@@ -70,6 +70,8 @@ void addStepFields(const TextureSourceAnalysis& analysis, Json& json){
         json["stepState"] = analysis.stepState;
     if (!analysis.stepGuard.empty())
         json["stepGuard"] = analysis.stepGuard;
+    if (!analysis.stepVerdict.empty())
+        json["stepVerdict"] = analysis.stepVerdict;
 }
 }
 
@@ -93,6 +95,7 @@ bool TextureSourceAnalysis::fromJson(const Json& json, TextureSourceAnalysis& ou
     out.singleChannel = json.value("singleChannel", false);
     out.stepState = json.value("stepState", std::string());
     out.stepGuard = json.value("stepGuard", std::string());
+    out.stepVerdict = json.value("stepVerdict", std::string());
     out.bytes = json.value("bytes", (uint64_t)0);
     return out.width > 0 && out.height > 0;
 }

@@ -301,9 +301,8 @@ async def show_art_folder(ed: Editor, ui: ui_input.Ui) -> dict:
     return await until_project(ed, lambda s: entry(s, "hero_clean.png") and entry(s, "hero.png"), "the art folder lists hero and its output")
 
 
-async def test_project_window_and_inspector_entries(ed: Editor):
-    """R43, R32: an image offers Pixel Art Cleanup..., an output also Re-run; the output's Source changed badge; the
-    Inspector's section: Open in Cleanup Window, Enabled as one project step."""
+async def test_project_window_entries(ed: Editor):
+    """R43, R32: an image offers Pixel Art Cleanup..., an output also Re-run; the output's Source changed badge."""
     ui = ui_of(ed)
     state = await show_art_folder(ed, ui)
 
@@ -330,7 +329,13 @@ async def test_project_window_and_inspector_entries(ed: Editor):
     else:
         ed.fail("Re-run Pixel Art Cleanup reported on the Console")
 
-    # the source changes: the output's badge goes stale
+    # an .aseprite output carries its recipe in its .meta: the same badge
+    written = await ed.call_raw("fix_pixel_art", {"source": HERO, "format": "aseprite", "output": True})
+    ed.check(not written.is_error, written.text)
+    await ed.call("sync_files", paths=[f"{ART}/hero_clean.aseprite"], full=False)
+    await show_art_folder(ed, ui)
+
+    # the source changes: the outputs' badges go stale
     (ed.project / HERO).write_bytes(upscale(sprite(), seed=99))
     await ed.call("sync_files", paths=[HERO], full=False)
     for _ in range(200):
@@ -339,9 +344,19 @@ async def test_project_window_and_inspector_entries(ed: Editor):
         await ui_input.frames(ed, 2)
     else:
         ed.fail("the output's Source changed badge shows")
+    for _ in range(200):
+        if await ed.ui_rect("project.generatedStale.hero_clean.aseprite", timeout=0.5):
+            break
+        await ui_input.frames(ed, 2)
+    else:
+        ed.fail("the .aseprite output's Source changed badge shows")
     await shot(ed, "6-source-changed-badge")
 
-    # the Inspector's section for the source
+
+async def test_inspector_section(ed: Editor):
+    """R43, R33: the Inspector's section of the source: Open in Cleanup Window, Enabled as one project step."""
+    ui = ui_of(ed)
+    state = await show_art_folder(ed, ui)
     await ui.key("Escape")
     state = await project_state(ed)
     await ui.click(ui.centre(entry(state, "hero.png")))
@@ -365,3 +380,245 @@ async def test_project_window_and_inspector_entries(ed: Editor):
             break
         await ui_input.frames(ed, 2)
     ed.check("pixelCleanup" not in meta.read_text(), "one project undo takes it back")
+
+
+async def recipe_where(ed: Editor, predicate, what: str, tries: int = 40) -> dict:
+    """Copy Recipe until the copied recipe satisfies predicate"""
+    ui = ui_of(ed)
+    recipe: dict = {}
+    for _ in range(tries):
+        await ui.click_revealed("Copy Recipe", WINDOW)
+        text = (await window_state(ed))["copied_recipe"]
+        if text:
+            recipe = json.loads(text)
+            if predicate(recipe):
+                return recipe
+        await ui_input.frames(ed, 2)
+    ed.fail(f"{what}: {recipe}")
+
+
+async def test_palette_lock_toggle(ed: Editor):
+    """R42 Palette: a swatch's lock toggle records the colour in recipe.palette.locked"""
+    ui = ui_of(ed)
+    await open_on(ed, HERO)
+    await ui.click_revealed("Palette", WINDOW)
+    button = await ui.reveal("###cleanup_lock_1", WINDOW, frames=120)
+    await ui.click(ui.centre(button["rect"]))
+    recipe = await recipe_where(ed, lambda r: 1 in r["palette"].get("locked", []), "the lock is in the recipe")
+    ed.check(recipe["palette"]["colors"], f"a lock keeps concrete colours: {recipe['palette']}")
+
+
+async def test_add_to_palette_from_lost_colors(ed: Editor):
+    """R42 Lost Colors: Add to Palette appends the lost colour; its cells are no longer lost"""
+    ui = ui_of(ed)
+    output = f"{ART}/accent_clean.png"
+    await open_on(ed, output)
+    await ui.click_revealed("Lost Colors", WINDOW)
+    await ui.find("###cleanup_lost_0", WINDOW, frames=120)
+    before = await recipe_where(ed, lambda r: r["palette"]["colors"], "the output's palette")
+    count = len(before["palette"]["colors"])
+    await ui.click_revealed("Add to Palette", WINDOW)
+    recipe = await recipe_where(ed, lambda r: len(r["palette"]["colors"]) == count + 1, "the colour joins the palette")
+    ed.check_eq(len(recipe["palette"]["colors"]), count + 1, "one colour added")
+    for _ in range(200):
+        if await ui.find("###cleanup_lost_0", WINDOW, frames=2) is None:
+            return
+        await ui_input.frames(ed, 4)
+    ed.fail("the added colour's cells stay lost")
+
+
+async def test_save_as_import_step(ed: Editor):
+    """R43, R33: Save as Import Step writes import.pixelCleanup as one project step"""
+    ui = ui_of(ed)
+    await open_on(ed, HERO)
+    before = await ed.call("get_undo_history", scope="project", limit=200)
+    known = {entry["id"] for entry in before["entries"]}
+    await ui.click_revealed("Save as Import Step", WINDOW)
+    meta = ed.project / f"{HERO}.meta"
+    for _ in range(300):
+        if "pixelCleanup" in meta.read_text():
+            break
+        await ui_input.frames(ed, 2)
+    ed.check("pixelCleanup" in meta.read_text(), "the .meta has import.pixelCleanup")
+    history = await ed.call("get_undo_history", scope="project", limit=200)
+    added = [entry for entry in history["entries"] if entry["id"] not in known]
+    ed.check_eq(len(added), 1, f"one project-history step: {[entry['name'] for entry in added]}")
+    ed.check("Save as Import Step" in added[0]["name"], f"its name: {added[0]['name']}")
+    await ed.call("undo", scope="project")
+    for _ in range(300):
+        if "pixelCleanup" not in meta.read_text():
+            return
+        await ui_input.frames(ed, 2)
+    ed.fail("one undo takes the import step out")
+
+
+async def test_needs_person_write_asks_first(ed: Editor):
+    """R30, R42: Write on needs_person asks through the alert modal; No writes nothing, Yes writes"""
+    ui = ui_of(ed)
+    # most of the sprite in a colour its palette lacks: lost_share trips, the verdict needs a person
+    wide = f"{ART}/lost.png"
+    rows = sprite()
+    for y in range(4, 20):
+        for x in range(4, 20):
+            rows[y][x] = COLORS[4]
+    (ed.project / wide).write_bytes(upscale(rows, seed=21))
+    await ed.call("sync_files", paths=[wide], full=False)
+    palette = ["#%02x%02x%02x" % c[:3] for c in COLORS[:4]]
+    written = await ed.call_raw("fix_pixel_art", {"source": wide, "palette": palette, "output": True, "force": True})
+    ed.check(not written.is_error, written.text)
+    output = f"{ART}/lost_clean.png"
+    await ed.call("sync_files", paths=[output], full=False)
+    await open_on(ed, output, "Needs a Person")
+    (ed.project / output).unlink()
+    await ed.call("sync_files", paths=[output], full=False)
+
+    async def asked() -> dict:
+        for _ in range(120):
+            dialog = (await ed.call("editor_status")).get("dialog")
+            if dialog and dialog.get("title") == "Write Result Anyway?":
+                return dialog
+            await ui_input.frames(ed, 2)
+        ed.fail("Write on needs_person asks first")
+
+    await ui.click_revealed("Write", WINDOW)
+    dialog = await asked()
+    ed.check_in("no", dialog.get("choices"), f"{dialog}")
+    r = await ed.call_raw("respond_dialog", {"choice": "no"})
+    ed.check(not r.is_error, r.text)
+    await ui_input.frames(ed, 6)
+    ed.check(not (ed.project / output).exists(), "No writes nothing")
+
+    await ui.click_revealed("Write", WINDOW)
+    await asked()
+    r = await ed.call_raw("respond_dialog", {"choice": "yes"})
+    ed.check(not r.is_error, r.text)
+    for _ in range(300):
+        if (ed.project / output).exists():
+            return
+        await ui_input.frames(ed, 2)
+    ed.fail("Yes writes the output")
+
+
+async def test_arrow_keys_step_through_lint_spots(ed: Editor):
+    """R42 Lints: the arrow keys step through the spots, the view centred on each"""
+    ui = ui_of(ed)
+    await open_on(ed, HERO)
+    await source_view(ed)
+    await ui.click_revealed("Lints", WINDOW)
+    state = await until_state(ed, lambda s: len(s["spots"]) >= 2 and s["spots"][0]["lint"] == s["spots"][1]["lint"], "a lint with two spots")
+    first, second = state["spots"][0], state["spots"][1]
+
+    def at(spot: dict):
+        return lambda s: abs(s["center"][0] - spot["x"]) <= 1.0 and abs(s["center"][1] - spot["y"]) <= 1.0
+
+    await ui.click_revealed(f"###cleanup_lint_{first['lint']}", WINDOW)
+    await until_state(ed, at(first), "a click centres the first spot")
+    await ui.key("Right")
+    await until_state(ed, at(second), "Right steps to the next spot")
+    await ui.key("Left")
+    await until_state(ed, at(first), "Left steps back")
+
+
+async def boxes_of(ed: Editor) -> list[dict]:
+    recipe = await recipe_where(ed, lambda r: isinstance(r.get("sheet"), dict) and r["sheet"].get("frames"), "the sheet's boxes")
+    return recipe["sheet"]["frames"]
+
+
+def box_screen(state: dict, box: dict, fx: float, fy: float) -> dict:
+    """window coordinates of a point of a frame box (fx, fy: 0-1 across it) in the Source view"""
+    b = box["box"]
+    return {"x": state["image_min"][0] + (b["x"] + b["width"] * fx) * state["zoom"],
+            "y": state["image_min"][1] + (b["y"] + b["height"] * fy) * state["zoom"]}
+
+
+async def open_sheet_frames(ed: Editor) -> ui_input.Ui:
+    ui = ui_of(ed)
+    await open_on(ed, SHEET)
+    await ui.click_revealed("Frames", WINDOW)
+    await source_view(ed)
+    await ui.find("###cleanup_play", WINDOW, frames=120)
+    return ui
+
+
+async def test_frames_boxes_move_resize_add_exclude(ed: Editor):
+    """R42 Frames: a box moves and resizes by dragging, a drag on empty space adds one, a double-click excludes"""
+    ui = await open_sheet_frames(ed)
+    boxes = await boxes_of(ed)
+    ed.check_eq(len(boxes), 4, f"four boxes: {boxes}")
+    state = await window_state(ed)
+    zoom = state["zoom"]
+
+    start = dict(boxes[0]["box"])
+    p = box_screen(state, boxes[0], 0.5, 0.5)
+    await ui.drag(ui.at(p), ui.at({"x": p["x"] + 6 * zoom, "y": p["y"] + 3 * zoom}), steps=10)
+    moved = (await recipe_where(ed, lambda r: r["sheet"]["frames"][0]["box"]["x"] != start["x"], "the box moves"))["sheet"]["frames"][0]["box"]
+    ed.check_eq((moved["x"], moved["y"], moved["width"], moved["height"]), (start["x"] + 6, start["y"] + 3, start["width"], start["height"]),
+                "moved as a whole")
+
+    last = dict(boxes[3]["box"])
+    p = box_screen(state, boxes[3], 1.0, 1.0)
+    await ui.drag(ui.at(p), ui.at({"x": p["x"] + 4 * zoom, "y": p["y"] + 2 * zoom}), steps=10)
+    resized = (await recipe_where(ed, lambda r: r["sheet"]["frames"][3]["box"]["width"] != last["width"], "the box resizes"))["sheet"]["frames"][3]["box"]
+    ed.check_eq((resized["x"], resized["y"], resized["width"], resized["height"]), (last["x"], last["y"], last["width"] + 4, last["height"] + 2),
+                "the corner resizes it")
+
+    top = min(b["box"]["y"] for b in boxes)
+    ed.check(top * zoom >= 16, f"an empty strip above the boxes: {boxes}")
+    a = {"x": state["image_min"][0] + 6 * zoom, "y": state["image_min"][1] + 1 * zoom}
+    z = {"x": a["x"] + 24 * zoom, "y": a["y"] + (top - 3) * zoom}
+    await ui.drag(ui.at(a), ui.at(z), steps=10)
+    added = await recipe_where(ed, lambda r: len(r["sheet"]["frames"]) == 5, "a drag on empty space adds a box")
+    box = added["sheet"]["frames"][4]["box"]
+    ed.check(abs(box["x"] - 6) <= 1 and abs(box["y"] - 1) <= 1 and abs(box["width"] - 24) <= 2, f"where it was drawn: {box}")
+    ed.check(4 in added["sheet"]["animations"][0]["frames"], f"it joins the selected animation: {added['sheet']['animations']}")
+
+    state = await window_state(ed)
+    current = added["sheet"]["frames"]
+    await ui.double_click(ui.at(box_screen(state, current[1], 0.5, 0.5)))
+    excluded = await recipe_where(ed, lambda r: not r["sheet"]["frames"][1]["include"], "a double-click excludes the box")
+    ed.check(excluded["sheet"]["frames"][0]["include"], "only that box")
+    await shot(ed, "7-frames-edited")
+
+
+async def test_split_here_and_join_with_next(ed: Editor):
+    """R42 Frames: Split Here cuts the animation at the player's frame; Join With Next puts it back"""
+    ui = await open_sheet_frames(ed)
+    start = (await recipe_where(ed, lambda r: isinstance(r.get("sheet"), dict) and r["sheet"].get("animations"), "the animations"))["sheet"]["animations"]
+    ed.check_eq(len(start), 1, f"{start}")
+    frames = start[0]["frames"]
+    slider = await ui.find("##cleanup_frame", WINDOW, frames=120)
+    rect = slider["rect"]
+    await ui.click(ui.at(rect, (rect["width"] - 3, rect["height"] / 2)))
+    await ui_input.frames(ed, 4)
+    await ui.click_revealed("Split Here", WINDOW)
+    split = await recipe_where(ed, lambda r: len(r["sheet"]["animations"]) == 2, "Split Here makes two animations")
+    ed.check_eq(split["sheet"]["animations"][0]["frames"], frames[:-1], "the head keeps the frames before")
+    ed.check_eq(split["sheet"]["animations"][1]["frames"], frames[-1:], "the tail starts at the player's frame")
+    await ui.click_revealed("Join With Next", WINDOW)
+    joined = await recipe_where(ed, lambda r: len(r["sheet"]["animations"]) == 1, "Join With Next merges them")
+    ed.check_eq(joined["sheet"]["animations"][0]["frames"], frames, "back in order")
+
+
+async def test_nudge_with_alt_arrows(ed: Editor):
+    """R42 Frames: Alt+Arrows nudge the player's frame by one pixel"""
+    ui = await open_sheet_frames(ed)
+    await until_state(ed, lambda s: s["tab"] == "frames", "the Frames tab is on")
+    await ui.click(ui.centre((await ui.find("###cleanup_play", WINDOW, frames=60))["rect"]))
+    await ui.click(ui.centre((await ui.find("###cleanup_play", WINDOW, frames=60))["rect"]))
+    await ui.key("alt+Right")
+    await ui.key("alt+Down")
+    recipe = await recipe_where(ed, lambda r: any(f.get("nudge", {}).get("x") == 1 and f.get("nudge", {}).get("y") == 1 for f in r["sheet"]["frames"]),
+                                "the nudge is in the recipe")
+    nudged = [f for f in recipe["sheet"]["frames"] if f["nudge"]["x"] or f["nudge"]["y"]]
+    ed.check_eq(len(nudged), 1, f"one frame moved: {nudged}")
+
+
+async def test_drag_and_drop_from_the_project_window(ed: Editor):
+    """R42: an image dropped from the Project window on the window becomes its source"""
+    ui = ui_of(ed)
+    await open_on(ed, HERO)
+    state = await show_art_folder(ed, ui)
+    canvas = await ui.find("##cleanup_canvas", WINDOW)
+    ed.check(canvas is not None, "the canvas is drawn")
+    await ui.drag(ui.centre(entry(state, "accent.png")), ui.centre(canvas["rect"]), steps=16)
+    await until_state(ed, lambda s: s["source"] == ACCENT, "the dropped image becomes the source")

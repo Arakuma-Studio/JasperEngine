@@ -81,6 +81,7 @@ namespace {
         outcome.width = width;
         outcome.height = height;
         outcome.rgba.assign(static_cast<size_t>(width) * height * 4, 0xff);
+        outcome.verdict = "fixable";
         return outcome;
     }
 
@@ -128,6 +129,7 @@ TEST(CleanupImportCook, TheCookIsOfTheFixedPixelsAtTheirSize) {
     EXPECT_EQ(plan.analysis.width, 8);
     EXPECT_EQ(plan.analysis.height, 4);
     EXPECT_EQ(plan.analysis.stepState, "applied");
+    EXPECT_EQ(plan.analysis.stepVerdict, "fixable");
     const TextureCookResult cooked = TextureCooker::cook(bench.cache, request, nullptr);
     ASSERT_TRUE(cooked.ok) << cooked.error;
     EXPECT_EQ(cooked.record.logicalWidth, 8);
@@ -231,6 +233,7 @@ TEST(CleanupImportCook, ARealFixableImageIsFixedAtItsSpriteSize) {
     const TextureCookStep step = cu::importCookStep(recipe);
     TextureCookStep::Outcome outcome = step.run(image.pixels().data(), image.width(), image.height(), "any-hash");
     EXPECT_TRUE(outcome.applied) << outcome.error << outcome.guard;
+    EXPECT_EQ(outcome.verdict, "fixable");
     EXPECT_EQ(outcome.width, 16);
     EXPECT_EQ(outcome.height, 16);
 }

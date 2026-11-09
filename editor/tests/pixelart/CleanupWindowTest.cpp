@@ -7,7 +7,9 @@
 
 #include <gtest/gtest.h>
 
+#include "jobs/JobSystem.h"
 #include "pixelart/cleanup/CleanupRecipe.h"
+#include "pixelart/cleanup/CleanupSynthetic.h"
 #include "window/PixelArtCleanupWindow.h"
 
 #include <cmath>
@@ -17,11 +19,28 @@ using namespace jasperengine::editor;
 namespace cu = jasperengine::editor::pixelart::cleanup;
 
 namespace jasperengine::editor {
+    namespace lint = pixelart::lint;
     struct PixelArtCleanupWindowTestAccess {
         static const pixelart::PixelImage& compare(const PixelArtCleanupWindow& w) { return w.shown->compare; }
         static const pixelart::PixelImage& result(const PixelArtCleanupWindow& w) { return w.shown->image; }
         static void tick(PixelArtCleanupWindow& w) { w.tick(); }
         static bool dirty(const PixelArtCleanupWindow& w) { return w.dirty; }
+        static const void* shown(const PixelArtCleanupWindow& w) { return w.shown.get(); }
+        static void predict(PixelArtCleanupWindow& w, double lastMs, double fullMs) {
+            w.lastRunMs = lastMs;
+            w.lastFullRunMs = fullMs;
+        }
+        static void waitForJob(PixelArtCleanupWindow& w) { w.waitForRunningJob(); }
+        static void adopt(PixelArtCleanupWindow& w, cu::Prepared&& prepared, const std::string& name) {
+            w.adopt(std::move(prepared), name, true);
+        }
+        static bool spotRect(const PixelArtCleanupWindow& w, const lint::LintSpot& spot, double& x0, double& y0, double& x1, double& y1) {
+            return w.lintSpotRect(spot, x0, y0, x1, y1);
+        }
+        static bool cellInView(const PixelArtCleanupWindow& w, int frame, int ax, int ay, double& x0, double& y0, double& x1, double& y1) {
+            return w.cellRectInView(frame, ax, ay, x0, y0, x1, y1);
+        }
+        static const std::vector<cu::AtlasRect>& atlas(const PixelArtCleanupWindow& w) { return w.shown->atlasRects; }
         static void stroke(PixelArtCleanupWindow& w, int x, int y, bool area) {
             w.beginStroke(x, y, area);
             w.painting = false;
@@ -165,4 +184,165 @@ TEST(CleanupWindow, ReopeningARunningWindowDropsThePreviousEdits) {
     window.openDemo();
     EXPECT_EQ(window.undoDepth(), 0u);
     EXPECT_TRUE(window.getRecipe().moved.empty());
+}
+
+namespace {
+
+    // the job system the window's background runs need, for this test only when none is up
+    struct JobsUp {
+        bool started = false;
+        JobsUp() {
+            if (!jasperengine::jobs::hasSystem()) {
+                jasperengine::jobs::initialize({});
+                started = true;
+            }
+        }
+        ~JobsUp() {
+            if (started) jasperengine::jobs::shutdown();
+        }
+    };
+
+}
+
+TEST(CleanupWindow, ARunPredictedWithinTheBudgetIsInline) {
+    PixelArtCleanupWindow window(nullptr);
+    window.openDemo();
+    window.runNow();
+    const void* first = Access::shown(window);
+    ASSERT_NE(first, nullptr);
+    Access::predict(window, 5.0, 5.0);
+    window.applyEdit([](cu::Recipe& r) { r.crop = true; });
+    Access::tick(window);
+    EXPECT_FALSE(window.isRunning());
+    EXPECT_NE(Access::shown(window), first);
+    EXPECT_FALSE(window.isStale());
+}
+
+TEST(CleanupWindow, ARunPredictedOverTheBudgetIsAJobAndThePreviousResultStaysUntilItFinishes) {
+    JobsUp jobs;
+    PixelArtCleanupWindow window(nullptr);
+    window.openDemo();
+    window.runNow();
+    const void* previous = Access::shown(window);
+    ASSERT_NE(previous, nullptr);
+    Access::predict(window, 500.0, 500.0);
+    window.applyEdit([](cu::Recipe& r) { r.crop = true; });
+    Access::tick(window);
+    ASSERT_TRUE(window.isRunning());
+    EXPECT_EQ(Access::shown(window), previous);
+    EXPECT_TRUE(window.isStale());
+    Access::waitForJob(window);
+    // finished, not adopted yet: the frame loop adopts it
+    EXPECT_EQ(Access::shown(window), previous);
+    Access::tick(window);
+    EXPECT_FALSE(window.isRunning());
+    EXPECT_NE(Access::shown(window), previous);
+    EXPECT_FALSE(window.isStale());
+}
+
+TEST(CleanupWindow, AGridEditIsPredictedFromTheLastFullRun) {
+    JobsUp jobs;
+    PixelArtCleanupWindow window(nullptr);
+    window.openDemo();
+    window.runNow();
+    const void* previous = Access::shown(window);
+    // the last run was fast, the last full run was not: only a non-grid change stays inline
+    Access::predict(window, 5.0, 500.0);
+    window.applyEdit([](cu::Recipe& r) { r.follow = cu::Follow::Straight; });
+    Access::tick(window);
+    ASSERT_TRUE(window.isRunning());
+    EXPECT_EQ(Access::shown(window), previous);
+    Access::waitForJob(window);
+    Access::tick(window);
+    EXPECT_NE(Access::shown(window), previous);
+}
+
+TEST(CleanupWindow, ASheetLintSpotLandsOnItsCellOfTheSourceFrame) {
+    // a spot is on the clip's canvas (anchor, padding): the source cell is the frame's own
+    const std::vector<cu::Rgba8> palette = cu::sweetie16();
+    std::vector<cu::PixelArt> sprites;
+    for (uint32_t seed = 3; seed < 7; seed++) sprites.push_back(cu::makeSprite(12, 12, palette, seed, true));
+    cu::Prepared prepared;
+    prepared.frames = {cu::fakeSheet(sprites, 6).image};
+    prepared.spec.person = true;
+    prepared.spec.format = cu::OutputFormat::Png;
+    prepared.spec.sheet = cu::SheetArg::On;
+    prepared.recipe.removeBackground = true;
+    PixelArtCleanupWindow window(nullptr);
+    Access::adopt(window, std::move(prepared), "(sheet)");
+    window.runNow();
+    ASSERT_TRUE(window.hasResult());
+    ASSERT_TRUE(window.result()->animation.has_value());
+    const cu::AnimationOutcome& animation = *window.result()->animation;
+    const std::vector<const cu::ClipOutcome*> clips = cu::exportedClips(animation);
+    ASSERT_FALSE(clips.empty());
+    ASSERT_FALSE(clips.front()->placed.empty());
+    const cu::ClipFrame& placed = clips.front()->placed.front();
+    const cu::FixedFrame& fixed = animation.frames[static_cast<size_t>(placed.index)];
+    const auto firstOpaque = [](const cu::PixelArt& art, int& x, int& y) {
+        for (int i = 0; i < static_cast<int>(art.indices.size()); i++) {
+            if (art.indices[static_cast<size_t>(i)] != cu::TRANSPARENT) {
+                x = i % art.width;
+                y = i / art.width;
+                return true;
+            }
+        }
+        return false;
+    };
+    int px = 0, py = 0, ax = 0, ay = 0;
+    ASSERT_TRUE(firstOpaque(placed.art, px, py));
+    ASSERT_TRUE(firstOpaque(fixed.art, ax, ay));
+    ASSERT_TRUE(px != ax || py != ay) << "padding places the art away from (0, 0), so the offset matters";
+    jasperengine::editor::pixelart::lint::LintSpot spot;
+    spot.frame = 1;
+    spot.x = px;
+    spot.y = py;
+    double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
+    ASSERT_TRUE(Access::spotRect(window, spot, x0, y0, x1, y1));
+    EXPECT_DOUBLE_EQ(x0, fixed.box.x + fixed.outcome.grid.xs[static_cast<size_t>(ax)]);
+    EXPECT_DOUBLE_EQ(y0, fixed.box.y + fixed.outcome.grid.ys[static_cast<size_t>(ay)]);
+    EXPECT_DOUBLE_EQ(x1, fixed.box.x + fixed.outcome.grid.xs[static_cast<size_t>(ax) + 1]);
+}
+
+TEST(CleanupWindow, ASheetLostCellInTheResultViewIsOnItsFrameInTheAtlas) {
+    const std::vector<cu::Rgba8> palette = cu::sweetie16();
+    std::vector<cu::PixelArt> sprites;
+    for (uint32_t seed = 3; seed < 7; seed++) sprites.push_back(cu::makeSprite(12, 12, palette, seed, true));
+    cu::Prepared prepared;
+    prepared.frames = {cu::fakeSheet(sprites, 6).image};
+    prepared.spec.person = true;
+    prepared.spec.format = cu::OutputFormat::Png;
+    prepared.spec.sheet = cu::SheetArg::On;
+    prepared.recipe.removeBackground = true;
+    PixelArtCleanupWindow window(nullptr);
+    Access::adopt(window, std::move(prepared), "(sheet)");
+    window.runNow();
+    ASSERT_TRUE(window.hasResult());
+    ASSERT_TRUE(window.result()->animation.has_value());
+    window.setView(PixelArtCleanupWindow::View::Result);
+    const cu::AnimationOutcome& animation = *window.result()->animation;
+    const cu::ClipFrame& placed = cu::exportedClips(animation).front()->placed.front();
+    const cu::FixedFrame& fixed = animation.frames[static_cast<size_t>(placed.index)];
+    const auto firstOpaque = [](const cu::PixelArt& art, int& x, int& y) {
+        for (int i = 0; i < static_cast<int>(art.indices.size()); i++) {
+            if (art.indices[static_cast<size_t>(i)] != cu::TRANSPARENT) {
+                x = i % art.width;
+                y = i / art.width;
+                return true;
+            }
+        }
+        return false;
+    };
+    int px = 0, py = 0, ax = 0, ay = 0;
+    ASSERT_TRUE(firstOpaque(placed.art, px, py));
+    ASSERT_TRUE(firstOpaque(fixed.art, ax, ay));
+    const cu::AtlasRect* rect = nullptr;
+    for (const cu::AtlasRect& candidate : Access::atlas(window)) {
+        if (candidate.clip == 0 && candidate.frame == 0) rect = &candidate;
+    }
+    ASSERT_NE(rect, nullptr);
+    double x0 = 0.0, y0 = 0.0, x1 = 0.0, y1 = 0.0;
+    ASSERT_TRUE(Access::cellInView(window, placed.index, ax, ay, x0, y0, x1, y1));
+    EXPECT_DOUBLE_EQ(x0, rect->x + px);
+    EXPECT_DOUBLE_EQ(y0, rect->y + py);
 }

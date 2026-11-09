@@ -99,6 +99,7 @@ namespace {
         }
         if (analysis){
             analysis->stepState = outcome.applied ? "applied" : outcome.guard.empty() ? "failed" : "guarded";
+            analysis->stepVerdict = outcome.verdict;
             analysis->stepGuard = outcome.applied ? std::string() : outcome.guard.empty() ? outcome.error : outcome.guard;
         }
         if (!outcome.applied){
@@ -228,6 +229,7 @@ bool TextureCooker::plan(TextureCookCache& cache, const TextureCookRequest& requ
             }
             analyze(faces, count, analysis);
             analysis.stepState = stepResult.stepState;
+            analysis.stepVerdict = stepResult.stepVerdict;
             analysis.stepGuard = stepResult.stepGuard;
             for (TextureData& face : faces)
                 face.releaseImageData();

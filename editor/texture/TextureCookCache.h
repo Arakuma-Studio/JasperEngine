@@ -50,6 +50,7 @@ namespace jasperengine::editor {
         // applied, else of the source; "" no step, "applied", "guarded", or "failed" with why
         std::string stepState;
         std::string stepGuard;
+        std::string stepVerdict;            // "clean", "fixable", "needs_person"; "" when it did not run
 
         bool hasAlpha(TextureAlphaSource source) const;
         Json toJson() const;

@@ -3099,6 +3099,8 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
 
     if (!fileEntry.isDirectory) {
         fileEntry.extension = path.extension().string();
+        // an .aseprite cleanup output (its recipe is in its .meta) has the same badge
+        if (SpriteSheetPool::isAsepritePath(name)) updatePixelArtCleanupBadge(fileEntry, path);
         if (Util::isImageFile(fileEntry.extension)){
             fileEntry.type = FileType::IMAGE;
             // a Sprite Normal Map output (its recipe; read again only when the file changed)

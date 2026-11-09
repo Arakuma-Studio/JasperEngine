@@ -144,6 +144,18 @@ namespace {
         }
     }
 
+    // The top row's leftmost opaque pixel: a frame's art and its placed copy share it, shifted
+    bool firstOpaqueCell(const cu::PixelArt& art, int& x, int& y) {
+        for (int i = 0; i < static_cast<int>(art.indices.size()); i++) {
+            if (art.indices[static_cast<size_t>(i)] != cu::TRANSPARENT) {
+                x = i % art.width;
+                y = i / art.width;
+                return true;
+            }
+        }
+        return false;
+    }
+
     // What the Recipe's grid-related choices are: when they change, every cached step is redone (R39)
     std::string fullRunKey(const cu::Recipe& recipe) {
         char text[192];
@@ -610,6 +622,10 @@ void PixelArtCleanupWindow::cancelJob() {
     job.reset();
 }
 
+void PixelArtCleanupWindow::waitForRunningJob() {
+    if (job && job->task.isValid()) job->task.wait();
+}
+
 void PixelArtCleanupWindow::runNow() {
     if (!prepared) return;
     if (job) {
@@ -904,21 +920,60 @@ bool PixelArtCleanupWindow::cellRect(int frameIndex, int ax, int ay, double& x0,
     return false;
 }
 
+bool PixelArtCleanupWindow::cellRectInView(int frameIndex, int ax, int ay, double& x0, double& y0, double& x1, double& y1) const {
+    if (!shown) return false;
+    if (!resultSpace()) return cellRect(frameIndex, ax, ay, x0, y0, x1, y1);
+    const cu::Result& result = shown->result;
+    if (!result.animation) {
+        x0 = ax - shown->cropX;
+        y0 = ay - shown->cropY;
+        x1 = x0 + 1;
+        y1 = y0 + 1;
+        return true;
+    }
+    // a sheet's Result is its atlas: the frame's cell, on its placed canvas, on its rectangle
+    int clipIndex = 0;
+    for (const cu::ClipOutcome* clip : cu::exportedClips(*result.animation)) {
+        for (int position = 0; position < static_cast<int>(clip->placed.size()); position++) {
+            const cu::ClipFrame& placed = clip->placed[static_cast<size_t>(position)];
+            if (placed.index != frameIndex) continue;
+            int placedX = 0, placedY = 0, fixedX = 0, fixedY = 0;
+            if (frameIndex < 0 || frameIndex >= static_cast<int>(result.animation->frames.size()) || !firstOpaqueCell(placed.art, placedX, placedY) ||
+                !firstOpaqueCell(result.animation->frames[static_cast<size_t>(frameIndex)].art, fixedX, fixedY)) {
+                return false;
+            }
+            for (const cu::AtlasRect& rect : shown->atlasRects) {
+                if (rect.clip != clipIndex || rect.frame != position) continue;
+                x0 = rect.x + ax + placedX - fixedX;
+                y0 = rect.y + ay + placedY - fixedY;
+                x1 = x0 + 1;
+                y1 = y0 + 1;
+                return true;
+            }
+            return false;
+        }
+        clipIndex++;
+    }
+    return false;
+}
+
 bool PixelArtCleanupWindow::lintSpotRect(const pixelart::lint::LintSpot& spot, double& x0, double& y0, double& x1, double& y1) const {
     if (!shown) return false;
     const cu::Result& result = shown->result;
     if (result.animation) {
         // an exported frame: numbered from 1 across the exported clips, in order
         int remaining = spot.frame - 1;
+        int clipIndex = 0;
         for (const cu::ClipOutcome* clip : cu::exportedClips(*result.animation)) {
             if (remaining >= static_cast<int>(clip->placed.size())) {
                 remaining -= static_cast<int>(clip->placed.size());
+                clipIndex++;
                 continue;
             }
             const cu::ClipFrame& placed = clip->placed[static_cast<size_t>(remaining)];
             if (resultSpace()) {
                 for (const cu::AtlasRect& rect : shown->atlasRects) {
-                    if (rect.clip == clip->animation && rect.frame == remaining) {
+                    if (rect.clip == clipIndex && rect.frame == remaining) {
                         x0 = rect.x + spot.x, y0 = rect.y + spot.y;
                         x1 = x0 + 1, y1 = y0 + 1;
                         return true;
@@ -926,7 +981,15 @@ bool PixelArtCleanupWindow::lintSpotRect(const pixelart::lint::LintSpot& spot, d
                 }
                 return false;
             }
-            return cellRect(placed.index, spot.x, spot.y, x0, y0, x1, y1);
+            // a spot is on the clip's canvas: back to the frame's own cells (anchor, padding, nudge)
+            int ax = spot.x, ay = spot.y;
+            int placedX, placedY, fixedX, fixedY;
+            if (placed.index >= 0 && placed.index < static_cast<int>(result.animation->frames.size()) && firstOpaqueCell(placed.art, placedX, placedY) &&
+                firstOpaqueCell(result.animation->frames[static_cast<size_t>(placed.index)].art, fixedX, fixedY)) {
+                ax += fixedX - placedX;
+                ay += fixedY - placedY;
+            }
+            return cellRect(placed.index, ax, ay, x0, y0, x1, y1);
         }
         return false;
     }
@@ -1105,7 +1168,8 @@ void PixelArtCleanupWindow::drawEmptyState(const ImVec2& area) {
     ImGui::TextColored(Theme::Colors::SubtleText, "%s", hint);
     ImGui::SetCursorPosX(start.x + (area.x - buttonWidth * 2.0f - ImGui::GetStyle().ItemSpacing.x) * 0.5f);
     if (ImGui::Button("Open Image...", ImVec2(buttonWidth, 0))) {
-        const std::string chosen = FileDialogs::openFileDialog(project ? FileUtils::pathToUtf8(project->getAssetsPath()) : std::string(), FILE_DIALOG_IMAGE);
+        const std::string chosen = FileDialogs::openFileDialogFiltered(project ? FileUtils::pathToUtf8(project->getAssetsPath()) : std::string(), "Images and Aseprite",
+                                                                       "png,jpg,jpeg,bmp,tga,psd,gif,aseprite,ase");
         if (!chosen.empty()) {
             std::string error;
             if (!open(fs::u8path(chosen), error)) setStatus(error, true);
@@ -1299,13 +1363,7 @@ void PixelArtCleanupWindow::drawHighlights(ImDrawList* draw, bool canvasHovered)
         highlightText = "lost:" + std::to_string(hoverLostShown);
         for (const std::array<int, 2>& cell : lost.at) {
             double x0, y0, x1, y1;
-            if (!cellRect(lost.frame < 0 ? -1 : lost.frame - 1, cell[0], cell[1], x0, y0, x1, y1)) continue;
-            if (resultSpace() && !shown->result.animation) {
-                x0 = cell[0] - shown->cropX;
-                y0 = cell[1] - shown->cropY;
-                x1 = x0 + 1;
-                y1 = y0 + 1;
-            }
+            if (!cellRectInView(lost.frame < 0 ? -1 : lost.frame - 1, cell[0], cell[1], x0, y0, x1, y1)) continue;
             outlineHighlight(draw, x0, y0, x1, y1, magenta);
             include(x0, y0, x1, y1);
         }
@@ -1824,7 +1882,9 @@ void PixelArtCleanupWindow::drawPaletteTab() {
             ImGui::ColorButton("##swatch", ImVec4(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, 1.0f), ImGuiColorEditFlags_NoTooltip, ImVec2(size, size));
             ImGui::SameLine();
             const bool isLocked = std::find(locked.begin(), locked.end(), i) != locked.end();
-            if (ImGui::SmallButton(isLocked ? ICON_FA_LOCK : ICON_FA_LOCK_OPEN)) {
+            char lockLabel[48];
+            std::snprintf(lockLabel, sizeof(lockLabel), "%s###cleanup_lock_%d", isLocked ? ICON_FA_LOCK : ICON_FA_LOCK_OPEN, i);
+            if (ImGui::SmallButton(lockLabel)) {
                 const std::optional<cu::RecipePalette> palette = shown->result.resolved.palette;
                 applyEdit([&, i, isLocked](cu::Recipe& r) {
                     if (!r.palette) {
@@ -1884,13 +1944,7 @@ void PixelArtCleanupWindow::drawLostColorsTab() {
         const float avail = ImGui::GetContentRegionAvail().x;
         if (ImGui::Selectable(label, false, ImGuiSelectableFlags_AllowOverlap, ImVec2(avail - Theme::dpi(160.0f), size)) && !entry.at.empty()) {
             double x0, y0, x1, y1;
-            if (cellRect(entry.frame < 0 ? -1 : entry.frame - 1, entry.at[0][0], entry.at[0][1], x0, y0, x1, y1)) {
-                if (resultSpace() && !shown->result.animation) {
-                    x0 = entry.at[0][0] - shown->cropX;
-                    y0 = entry.at[0][1] - shown->cropY;
-                    x1 = x0 + 1;
-                    y1 = y0 + 1;
-                }
+            if (cellRectInView(entry.frame < 0 ? -1 : entry.frame - 1, entry.at[0][0], entry.at[0][1], x0, y0, x1, y1)) {
                 focusOn((x0 + x1) * 0.5, (y0 + y1) * 0.5, true);
             }
         }
@@ -2174,7 +2228,15 @@ void PixelArtCleanupWindow::drawFramesTab() {
         }
         ImGui::SameLine();
         if (ImGui::SmallButton("Split Here")) {
-            const int at = frame;
+            // the player counts the included frames: where its frame sits among all of them
+            int at = frame;
+            if (i == animationSelected && currentResult && currentResult->animation && i < static_cast<int>(currentResult->animation->clips.size())) {
+                const auto& placed = currentResult->animation->clips[static_cast<size_t>(i)].placed;
+                if (frame >= 0 && frame < static_cast<int>(placed.size())) {
+                    const auto where = std::find(animation.frames.begin(), animation.frames.end(), placed[static_cast<size_t>(frame)].index);
+                    if (where != animation.frames.end()) at = static_cast<int>(where - animation.frames.begin());
+                }
+            }
             applyEdit([&](cu::Recipe& r) {
                 cu::Sheet& edit = givenSheet(r, currentResult);
                 cu::SheetAnimation& original = edit.animations[static_cast<size_t>(i)];

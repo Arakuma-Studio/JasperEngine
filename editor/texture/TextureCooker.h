@@ -38,6 +38,7 @@ namespace jasperengine::editor {
             std::vector<uint8_t> rgba;      // straight RGBA8, rows top first, when applied
             std::string guard;              // not applied: why a person must look (a guard's id)
             std::string error;              // not applied: the step could not run (a broken recipe)
+            std::string verdict;            // what the step found ("clean", "fixable", "needs_person"), "" when it did not run
         };
         // the source's straight RGBA8 pixels, rows top first, and its file's SHA-256
         std::function<Outcome(const uint8_t* rgba, int width, int height, const std::string& sourceSha256)> run;

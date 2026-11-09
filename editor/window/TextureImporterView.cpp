@@ -917,8 +917,13 @@ void TextureImporterView::drawPixelArtCleanup(const std::string& assetPath){
     TextureCookState state;
     if (enabled && TextureCookQueue::get().getState(assetPath, TextureFamily::Desktop, state) && state.status == TextureCookStatus::Cooked){
         const std::string& stepState = state.plan.analysis.stepState;
-        if (stepState == "applied")
-            ImGui::TextColored(ImVec4(0.3f, 0.72f, 0.36f, 1.0f), ICON_FA_CIRCLE_CHECK " Fixed pixels cooked");
+        if (stepState == "applied"){
+            // the verdict badge (R43): what the cook found on this source
+            const std::string& verdict = state.plan.analysis.stepVerdict;
+            const ImVec4 color = verdict == "clean" ? ImVec4(0.3f, 0.72f, 0.36f, 1.0f) : verdict == "needs_person" ? ImVec4(0.9f, 0.64f, 0.2f, 1.0f) : ImVec4(0.27f, 0.55f, 0.9f, 1.0f);
+            const char* label = verdict == "clean" ? "Clean" : verdict == "needs_person" ? "Needs a Person" : "Fixable";
+            ImGui::TextColored(color, ICON_FA_CIRCLE_CHECK " %s: fixed pixels cooked", label);
+        }
         else if (stepState == "guarded")
             ImGui::TextColored(ImVec4(0.9f, 0.64f, 0.2f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " Cleanup needs a person (%s): the raw source was cooked", state.plan.analysis.stepGuard.c_str());
         else if (stepState == "failed")
