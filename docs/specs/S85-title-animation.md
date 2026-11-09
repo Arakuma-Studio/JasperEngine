@@ -1370,6 +1370,16 @@ rest of S82 lands in 6B.
     (the spec's Animation Update) and Drive Animation.
 21. **R43 tangent edits replace the keys (not `ClipTangents`).** The Curves tab edits Hermite keys
     through `CurveEditor` and writes the whole track on release as Free tangents.
+23. **Test scope differs from §7.** Documents are built inside the tests instead of
+    `tools/fixtures/title-art-anim/`; no image goldens at fixed times (filmstrips are checked as
+    numbers, the panel and poses by screenshots a person looked at); `TitleAnimBench.Sample64` uses
+    title-level tracks and drives (no staggered glyph tracks or reseeds), `.Scene30` and AC8's
+    `LayerSplitEqualsRender` do not exist (Deviation 15), and AC16's clip tracks have no test of
+    their own.
+24. **S81/S86 fix:** the Glyph Atlas job asks for all its draw states with
+    `TitleFirstDraws::allowGroup` before drawing. S86's one-new-draw-a-frame rule reports a skipped
+    pass through `lastRunDeferred()`, which this job never read, so a process's first Glyph Atlas
+    render could be blank and a page copy could cache a blank cell.
 22. **S80 additions this spec needed:** `SchemaMember::omitDefault`, `TitleArtSchema::setFinish`,
     `estimatedTotalUs`, `TitleArtRenderHost::runToEnd`/`readImage`, the checks' `renderAnimation`,
     `renderMode` and `assetExists` context members, and `CanvasPoseSource` in S82's hooks (the
