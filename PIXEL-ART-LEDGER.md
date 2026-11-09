@@ -244,6 +244,11 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: The batch-3 `htmlui-tests` Vulkan baseline on `main`: 4 of the 6 fail there too
+  (LatticeRender shadows, SharedMeshBuffers ×2, TestScriptEvents touch). Two fail only with S51
+  (`FullPathGoldenTest.UIParticleSystemsClippedByAPanel`,
+  `DebugOverlayTest.GesturesResetOnFocusLossPauseAndCancel`) and were sent back to S51 to
+  root-cause before landing.
 - 2026-11-09: Batch 3 (S51) checks on box B: web pass, android pass, Vulkan font/palette/pixel
   98/98.
   - `htmlui-tests` Vulkan: 3,394 passed, 6 failed (SharedMeshBuffers ×2, LatticeRender shadows,
