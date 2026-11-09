@@ -79,7 +79,8 @@ namespace {
 
     const TitleOpFile* fileEnding(const TitleCreateResult& r, const std::string& suffix) {
         for (const TitleOpFile& f : r.files) {
-            if (f.path.size() >= suffix.size() && f.path.compare(f.path.size() - suffix.size(), suffix.size(), suffix) == 0) return &f;
+            const std::string filePath = f.path.generic_string();
+            if (filePath.size() >= suffix.size() && filePath.compare(filePath.size() - suffix.size(), suffix.size(), suffix) == 0) return &f;
         }
         return nullptr;
     }
@@ -262,8 +263,8 @@ TEST_F(PsdImportTest, ApplyAndImportStyleOps) {
                                                          {"style", "Bitmap Pattern"}}, options);
     ASSERT_TRUE(bitmap.ok) << bitmap.error();
     ASSERT_EQ(bitmap.files.size(), 1u);
-    EXPECT_NE(bitmap.files[0].path.find("logo_assets"), std::string::npos);
-    EXPECT_NE(bitmap.files[0].path.find("patterns"), std::string::npos);
+    EXPECT_NE(bitmap.files[0].path.generic_string().find("logo_assets"), std::string::npos);
+    EXPECT_NE(bitmap.files[0].path.generic_string().find("patterns"), std::string::npos);
     EXPECT_EQ(bitmap.doc.root["layers"][0]["style"]["face"]["pattern"]["kind"], "custom");
     TitleOpsResult bad = TitleArtOps::apply(doc, Json{{"op", "apply_ps_style"}, {"layer", "Title"}, {"file", fixture("styles.asl")}, {"style", "Nope"}},
                                             options);
