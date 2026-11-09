@@ -1817,7 +1817,7 @@ Json McpValues::textureToJson(Project* project, SceneProject* scene, const Textu
     }
     if (texture.empty() || texture.isFramebuffer()) return nullptr;
 
-    static const Texture defaults;
+    static const Texture defaults = Stream::savedTexture();
     const bool defaultSampler = texture.getMinFilter() == defaults.getMinFilter() &&
                                 texture.getMagFilter() == defaults.getMagFilter() &&
                                 texture.getWrapU() == defaults.getWrapU() &&
@@ -1878,7 +1878,7 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
     };
 
     if (value.is_null() || (value.is_string() && value.get<std::string>().empty())) {
-        out = Texture();
+        out = Stream::savedTexture();
         return true;
     }
     // a link id as a scene file keeps it: "camera|<entity id>", "fluid|<entity id>", "video|<entity id>"
@@ -1898,7 +1898,7 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
     if (value.is_string()) {
         std::string stored;
         if (!storedPath(value, stored)) return false;
-        out = Texture(stored);
+        out = Stream::savedTexture(stored);
         return true;
     }
     if (!value.is_object()) {
@@ -1963,10 +1963,10 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
     if (value.contains("path")) {
         std::string stored;
         if (!storedPath(value["path"], stored)) return false;
-        out = Texture(stored);
+        out = Stream::savedTexture(stored);
     } else if (value.contains("cube")) {
         const Json& cube = value["cube"];
-        out = Texture();
+        out = Stream::savedTexture();
         if (cube.is_string()) {
             std::string stored;
             if (!storedPath(cube, stored)) return false;
@@ -1985,7 +1985,7 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
         error = "an embedded texture (\"id\") can't be assigned; give an image path instead.";
         return false;
     } else {
-        out = Texture();
+        out = Stream::savedTexture();
     }
     auto applyEnum = [&](const char* key, const EnumOptions& options, auto setter) {
         if (!value.contains(key)) return true;

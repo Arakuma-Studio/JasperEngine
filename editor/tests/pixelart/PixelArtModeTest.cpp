@@ -7,12 +7,14 @@
 
 #include <gtest/gtest.h>
 
+#include "Engine.h"
 #include "Project.h"
 #include "Stream.h"
 #include "Workspace.h"
 #include "pixelart/PixelArtMode.h"
 #include "pixelart/PixelArtSettings.h"
 #include "support/EditorTestSupport.h"
+#include "texture/Texture.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -145,4 +147,24 @@ TEST(PixelArtMode, FixturesResaveWithoutS42Keys){
     }
     std::printf("[S42] re-saved %zu fixture projects\n", projects);
     EXPECT_GT(projects, 5u);
+}
+
+TEST(PixelArtMode, SavedReferencesStayBilinearWhilePlaying){
+    // Play applies Default Filter Mode point: textures the game makes start NEAREST (R3)...
+    Engine::setDefaultTextureFilter(TextureFilter::NEAREST);
+    EXPECT_EQ(Texture().getMinFilter(), TextureFilter::NEAREST);
+    // ...but what a scene's data reads and writes keeps its own defaults: a Text's font atlas
+    // sampler (keys left out when they are the defaults) decodes bilinear, and a bilinear one
+    // still leaves its keys out
+    Texture atlas;
+    Stream::decodeAtlasSampler(YAML::Node(YAML::NodeType::Map), atlas);
+    EXPECT_EQ(atlas.getMinFilter(), TextureFilter::LINEAR);
+    EXPECT_EQ(atlas.getMagFilter(), TextureFilter::LINEAR);
+    const YAML::Node encoded = Stream::encodeAtlasSampler(atlas);
+    EXPECT_FALSE(encoded["minFilter"]) << YAML::Dump(encoded);
+    // a reference without filter keys (a camera link) decodes bilinear too
+    const Texture linked = Stream::decodeTexture(YAML::Load("{textureType: 2D, source: camera, camera: 7}"));
+    EXPECT_EQ(linked.getMinFilter(), TextureFilter::LINEAR);
+    EXPECT_EQ(Stream::savedTexture().getMagFilter(), TextureFilter::LINEAR);
+    Engine::setDefaultTextureFilter(TextureFilter::LINEAR);
 }

@@ -291,7 +291,7 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
 
 YAML::Node editor::Stream::encodeAtlasSampler(const Texture& texture) {
     YAML::Node node;
-    const Texture defaults;
+    const Texture defaults = savedTexture();
     const bool samplerSet = texture.getMinFilter() != defaults.getMinFilter() || texture.getMagFilter() != defaults.getMagFilter() ||
         texture.getWrapU() != defaults.getWrapU() || texture.getWrapV() != defaults.getWrapV() ||
         texture.getAlphaBorder() != defaults.getAlphaBorder();
@@ -308,7 +308,7 @@ YAML::Node editor::Stream::encodeAtlasSampler(const Texture& texture) {
 
 void editor::Stream::decodeAtlasSampler(const YAML::Node& node, Texture& texture) {
     // a key left out (or a null node) is a new texture's value
-    const Texture defaults;
+    const Texture defaults = savedTexture();
     const bool map = node.IsMap();
     texture.setMinFilter(map && node["minFilter"] ? stringToTextureFilter(node["minFilter"].as<std::string>()) : defaults.getMinFilter());
     texture.setMagFilter(map && node["magFilter"] ? stringToTextureFilter(node["magFilter"].as<std::string>()) : defaults.getMagFilter());

@@ -2,7 +2,8 @@
 runtime setting. With graphics.default_filter_mode point, a Sprite a Lua script makes in Play and
 gives a texture (Sprite:setTexture) samples it NEAREST; in the default (bilinear) project the same
 script reads LINEAR (the red control). The generated main of a compiled game sets it
-(Engine::setDefaultTextureFilter), the prebuilt player's config carries it, and Lua reads it.
+(Engine::setDefaultTextureFilter), the prebuilt player's config carries it, and Lua reads it. Saved
+references keep their own filters: after Play and Stop with point, a scene saves as it did before.
 """
 
 from __future__ import annotations
@@ -63,3 +64,27 @@ async def test_default_filter_mode_reaches_runtime_textures(ed: Editor):
 
     await ed.call("set_project_settings", values={"graphics.default_filter_mode": "bilinear"})
     ed.check("defaultFilterMode" not in (ed.project / "project.yaml").read_text(), "bilinear (the default) is not written")
+
+
+async def test_stop_leaves_edit_data(ed: Editor):
+    """a Text's font atlas sampler is saved without its default keys: Stop under point must not read it NEAREST"""
+    await ed.call("set_project_settings", values={"graphics.default_filter_mode": "point"})
+    made = await ed.call("create_scene", name="Stop", type="2D", path="scenes/Stop")
+    scene = made["scene"]["id"]
+    await ed.call("create_entity", scene=scene, type="text", name="Label", values={"text": {"text": "HELLO"}})
+    await ed.call("save_scene", scene=scene)
+    path = next(p for p in ed.project.rglob("Stop.scene"))
+    saved = path.read_text()
+    await ed.call("play", action="start", scene=scene)
+    try:
+        await ed.call("wait", frames=10)
+    finally:
+        await ed.call("play", action="stop")
+    await ed.call("save_scene", scene=scene)
+    after = path.read_text()
+    # Play may add the shader keys it compiled; the samplers are what Stop must not touch
+    def samplers(text: str) -> list[str]:
+        return [line.strip() for line in text.splitlines() if "Filter" in line or "wrap" in line]
+    ed.check("nearest" not in after, f"no sampler turned NEAREST by Stop: {samplers(after)}")
+    ed.check_eq(samplers(after), samplers(saved), "the samplers save as before Play")
+    await ed.call("set_project_settings", values={"graphics.default_filter_mode": "bilinear"})

@@ -1559,9 +1559,23 @@ namespace {
     }
 }
 
+Texture editor::Stream::savedTexture() {
+    Texture texture;
+    texture.setMinFilter(TextureFilter::LINEAR);
+    texture.setMagFilter(TextureFilter::LINEAR);
+    return texture;
+}
+
+Texture editor::Stream::savedTexture(const std::string& path) {
+    Texture texture(path);
+    texture.setMinFilter(TextureFilter::LINEAR);
+    texture.setMagFilter(TextureFilter::LINEAR);
+    return texture;
+}
+
 Texture editor::Stream::decodeTexture(const YAML::Node& node) {
     StreamLoad::checkNestedKeys(node, NestedKind::Texture);
-    Texture texture;
+    Texture texture = savedTexture();
     if (node.IsMap()) { // Check if node has data
         const std::string textureType = node["textureType"] ? node["textureType"].as<std::string>() : std::string();
         const std::string source = node["source"] ? node["source"].as<std::string>() : std::string();
@@ -5633,7 +5647,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
 
     // Not merged: encodeMaterial omits an empty texture, so an absent key means none
     auto texture = [&node](const char* name) {
-        return node[name] ? decodeTexture(node[name]) : Texture();
+        return node[name] ? decodeTexture(node[name]) : savedTexture();
     };
     material.baseColorTexture = texture("baseColorTexture");
     material.emissiveTexture = texture("emissiveTexture");

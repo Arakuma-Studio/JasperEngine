@@ -3988,6 +3988,22 @@ editor::SceneProject* editor::Project::loadSceneProbe(uint32_t sceneId) {
     }
 }
 
+editor::SceneProject* editor::Project::loadSceneFileProbe(const fs::path& file) {
+    SceneProject source;
+    source.filepath = file;
+    source.name = file.stem().string();
+    source.id = allocateSceneId();
+    if (source.id == NULL_PROJECT_SCENE) {
+        return nullptr;
+    }
+    try {
+        return createRuntimeCloneFromSource(&source);
+    } catch (const std::exception& e) {
+        Out::warning("Scene file '%s' could not be read: %s", file.generic_string().c_str(), e.what());
+        return nullptr;
+    }
+}
+
 void editor::Project::releaseSceneProbe(SceneProject* probe) {
     if (!probe) {
         return;
@@ -6756,6 +6772,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
                                    const std::map<uint32_t, std::set<ShaderKey>>& playShaderKeys) {
     bool saveMainOnStop = false;
     bool keepMainModified = false;
+    // before the snapshots are decoded: textures made from here on are edit-mode ones (S42 R3)
+    Engine::setDefaultTextureFilter(TextureFilter::LINEAR);
 
     for (const auto& entry : runtimeScenes) {
         SceneProject* sceneProject = runtimeOf(entry);

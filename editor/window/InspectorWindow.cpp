@@ -1453,7 +1453,7 @@ void editor::InspectorWindow::drawTextureSettingsPopup(const char* popupId, Comp
         ImGui::EndPopup();
         return;
     }
-    const Texture defaults = textureProp.def ? *static_cast<Texture*>(textureProp.def) : Texture();
+    const Texture defaults = textureProp.def ? *static_cast<Texture*>(textureProp.def) : Stream::savedTexture();
 
     // SVG rasterization scale is only relevant for vector sources.
     bool isSvg = TextureData::hasSvgExtension(current->getPath().c_str());
