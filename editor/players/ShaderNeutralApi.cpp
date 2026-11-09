@@ -85,7 +85,9 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"NavMeshSurface", 0x1a7f7cc4u},
         {"NavAreaOverride", 0x29479b88u},
         {"NavGrid", 0x5911c33cu},
-        {"Animator", 0x0fc1a132u},
+        // (S74's isIKReached, setIKSoften, setIKHingeAxis, setIKTwist, setIKAimOffset reviewed: an IK
+        // constraint's shape and its last solve, bones only)
+        {"Animator", 0x0abd4236u},
         {"AnimationPlayer", 0xc4bf72c9u},
         {"PoseAnimator", 0xe172172au},
         {"AnimationEvent", 0x3191cc4eu},
