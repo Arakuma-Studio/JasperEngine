@@ -178,7 +178,7 @@ never build or run them.
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | landing (batch 3) |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | review fixes |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | accepted; merging main |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -244,6 +244,11 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S52's review fixes are done at `8243584e2`.
+  - Gate on box A: editor 154, core 165, Vulkan 74, 107 MCP tests; red controls for the fixes.
+  - The 10k pack+upload takes 1.26 ms against 0.5 ms (shared box, software rendering), accepted
+    through `perfSlack` as needing a bench machine.
+  - S52 is merging `main` for the next batch, taking shader cache v61.
 - 2026-11-09: S42's review fixes are done at `16ca3d6af`.
   - Includes the new `render_scale` rule; the preset raises the Low/Medium tier render scale
     to 1.
