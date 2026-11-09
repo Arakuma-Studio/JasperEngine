@@ -1109,9 +1109,12 @@ void getAssetInfoTool(const CallPtr& call) {
                              {"roughness", McpValues::number(preset.roughness)}, {"fade_in", McpValues::number(preset.fadeIn)},
                              {"fade_out", McpValues::number(preset.fadeOut)},
                              {"position_influence", McpValues::toJson(preset.positionInfluence)},
-                             {"rotation_influence", McpValues::toJson(preset.rotationInfluence)}};
+                             {"rotation_influence", McpValues::toJson(preset.rotationInfluence)},
+                             {"units", camera::shakeUnitsName(preset.units)}, {"tick", McpValues::number(preset.tick)}};
             data["peak"] = {{"position", McpValues::toJson(peaks.position)}, {"rotation", McpValues::toJson(peaks.rotation)},
                             {"duration", McpValues::number(duration)}};
+            // a preset in art pixels peaks in pixels (S48)
+            if (preset.units == camera::ShakeUnits::Pixels) data["peak"]["pixels"] = McpValues::toJson(peaks.pixels);
             if (!parsed.warnings.empty()) data["warnings"] = parsed.warnings;
             char summary[160];
             std::snprintf(summary, sizeof(summary), "; %s shake, strength %g, roughness %g; peak rotation %.2f deg",

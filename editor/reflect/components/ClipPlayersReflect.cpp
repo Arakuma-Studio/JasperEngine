@@ -28,11 +28,13 @@ namespace {
         // clamped to 0..1 by its decode and updateEntity
         JE_FIELD(PoseAnimatorComponent, weight, .flags = Clamped, .updateFlags = UpdateFlags_PoseAnimator_Reload, .min = 0.0f, .max = 1.0f,
                  .tooltip = "Blend over what the other animation wrote this frame."),
+        JE_FIELD(PoseAnimatorComponent, poseFrameRate, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .max = 120.0f, .label = "Pose Frame Rate",
+                 .tooltip = "Frames per second the pose holds on (0: smooth). Each track steps from its previous key, so every key shows; held drawings.", .drawer = "poseFrameRate"),
     };
 
     const ComponentCodec kPoseAnimatorCodec = JE_STREAM_CODEC(PoseAnimatorComponent, encodePoseAnimatorComponent, decodePoseAnimatorComponent);
 
-    constexpr const char* kPoseAnimatorKnownKeys[] = {"animation", "autoplay", "speed", "weight"};
+    constexpr const char* kPoseAnimatorKnownKeys[] = {"animation", "autoplay", "speed", "weight", "poseFrameRate"};
 
     // ---------------------------------------------------------------- Animation Player
 
@@ -102,12 +104,14 @@ namespace {
         JE_FIELD(AnimationPlayerComponent, playAutomatically),
         JE_FIELD(AnimationPlayerComponent, speed),
         JE_FIELD(AnimationPlayerComponent, defaultFadeTime, .unit = Unit::Seconds),
+        JE_FIELD(AnimationPlayerComponent, poseFrameRate, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f, .max = 120.0f, .label = "Pose Frame Rate",
+                 .tooltip = "Frames per second the poses hold on (0: smooth). Each track steps from its previous key, so every key shows; fades step too, events fire at their true times.", .drawer = "poseFrameRate"),
     };
 
     const ComponentCodec kAnimationPlayerCodec = JE_STREAM_CODEC(AnimationPlayerComponent, encodeAnimationPlayerComponent,
                                                                  decodeAnimationPlayerComponent);
 
-    constexpr const char* kAnimationPlayerKnownKeys[] = {"controller", "clips", "defaultClip", "defaultFadeTime", "enabled", "layers", "playAutomatically", "speed"};
+    constexpr const char* kAnimationPlayerKnownKeys[] = {"controller", "clips", "defaultClip", "defaultFadeTime", "enabled", "layers", "playAutomatically", "speed", "poseFrameRate"};
 
 }
 

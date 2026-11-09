@@ -258,6 +258,10 @@ ShakeInstanceHandle CameraShake::shakeAt(const Vector3& position, float radius, 
     return shakeEveryGlobal(preset, options, true, position, radius);
 }
 
+ShakeInstanceHandle CameraShake::kick(float amplitudePx, float seconds){
+    return shake(ShakeSource(camera::makeKickPreset(amplitudePx, seconds)));
+}
+
 void CameraShake::addTrauma(float amount){
     forEachGlobalShaker([&](Scene* scene, Entity entity){
         CameraControlSystem::addTrauma(scene->getComponent<CameraShakerComponent>(entity), amount);

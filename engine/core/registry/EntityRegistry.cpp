@@ -64,6 +64,7 @@
 #include "component/RotationTweenComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
+#include "component/HitStopExemptComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -217,6 +218,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<WaterWakeComponent>(ComponentOrder::Insertion, "WaterWakeComponent");
     // pixel art (S41)
     registerComponent<PixelPerfectCameraComponent>(ComponentOrder::Insertion, "PixelPerfectCameraComponent");
+    // S48 Pixel FX
+    registerComponent<HitStopExemptComponent>(ComponentOrder::Insertion, "HitStopExemptComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

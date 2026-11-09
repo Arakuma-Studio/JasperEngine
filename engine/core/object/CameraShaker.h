@@ -83,6 +83,12 @@ namespace jasperengine{
         void setTraumaFrequency(float frequency);
         float getTraumaFrequency() const;
 
+        // S48 R22: whole art pixels and no roll; ticks of 1 / tickRate s (0: every frame)
+        void setPixelSnap(bool snap);
+        bool isPixelSnap() const;
+        void setTickRate(float hz);
+        float getTickRate() const;
+
         static std::string modeToString(CameraShakeMode mode);
         static bool modeFromString(const std::string& text, CameraShakeMode& out);
     };

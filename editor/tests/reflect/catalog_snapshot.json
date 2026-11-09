@@ -14432,6 +14432,7 @@
    "known_keys": [
     "animation",
     "autoplay",
+    "poseFrameRate",
     "speed",
     "weight"
    ],
@@ -14444,6 +14445,11 @@
     ],
     "autoplay": [
      0,
+     0,
+     true
+    ],
+    "poseFrameRate": [
+     2,
      0,
      true
     ],
@@ -14466,6 +14472,11 @@
     ],
     "autoplay": [
      0,
+     0,
+     true
+    ],
+    "poseFrameRate": [
+     2,
      0,
      true
     ],
@@ -14499,6 +14510,7 @@
     "enabled",
     "layers",
     "playAutomatically",
+    "poseFrameRate",
     "speed"
    ],
    "name": "AnimationPlayerComponent",
@@ -14530,6 +14542,11 @@
     ],
     "playAutomatically": [
      0,
+     0,
+     true
+    ],
+    "poseFrameRate": [
+     2,
      0,
      true
     ],
@@ -14632,6 +14649,11 @@
     ],
     "playAutomatically": [
      0,
+     0,
+     true
+    ],
+    "poseFrameRate": [
+     2,
      0,
      true
     ],
@@ -17565,6 +17587,7 @@
     "eventMode",
     "exposedBones",
     "ik",
+    "poseFrameRate",
     "retarget",
     "rootMotionBone",
     "sendEventsToScripts",
@@ -17612,6 +17635,11 @@
     "ik": [
      15,
      35184372088832,
+     true
+    ],
+    "poseFrameRate": [
+     2,
+     0,
      true
     ],
     "retarget": [
@@ -17848,6 +17876,11 @@
     ],
     "ik[].weightParameter": [
      1,
+     0,
+     true
+    ],
+    "poseFrameRate": [
+     2,
      0,
      true
     ],
@@ -19329,9 +19362,11 @@
     "enabled",
     "global",
     "mode",
+    "pixelSnap",
     "positionScale",
     "rotationScale",
     "startPreset",
+    "tickRate",
     "traumaDecay",
     "traumaFrequency",
     "traumaMaxAngle",
@@ -19356,6 +19391,11 @@
      0,
      true
     ],
+    "pixelSnap": [
+     0,
+     0,
+     true
+    ],
     "positionScale": [
      2,
      0,
@@ -19368,6 +19408,11 @@
     ],
     "startPreset": [
      1,
+     0,
+     true
+    ],
+    "tickRate": [
+     2,
      0,
      true
     ],
@@ -19418,6 +19463,11 @@
      0,
      true
     ],
+    "pixelSnap": [
+     0,
+     0,
+     true
+    ],
     "positionScale": [
      2,
      0,
@@ -19430,6 +19480,11 @@
     ],
     "startPreset": [
      1,
+     0,
+     true
+    ],
+    "tickRate": [
+     2,
      0,
      true
     ],
@@ -21579,6 +21634,46 @@
    "type": 94,
    "type_of_key": 94,
    "type_of_name": 94
+  },
+  {
+   "display_name": "Hit Stop Exempt",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef818c",
+   "key": "hitstopexempt",
+   "known_keys": [
+    "enabled",
+    "includeChildren"
+   ],
+   "name": "HitStopExemptComponent",
+   "properties_of_default": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeChildren": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeChildren": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 95,
+   "type_of_key": 95,
+   "type_of_name": 95
   }
  ],
  "ease_options": [
@@ -21896,6 +21991,11 @@
     0,
     true
    ],
+   "poseFrameRate": [
+    2,
+    0,
+    true
+   ],
    "speed": [
     2,
     0,
@@ -22105,6 +22205,11 @@
    ],
    "ik[N].weightParameter": [
     1,
+    0,
+    true
+   ],
+   "poseFrameRate": [
+    2,
     0,
     true
    ],
@@ -22699,6 +22804,11 @@
     0,
     true
    ],
+   "pixelSnap": [
+    0,
+    0,
+    true
+   ],
    "positionScale": [
     2,
     0,
@@ -22711,6 +22821,11 @@
    ],
    "startPreset": [
     1,
+    0,
+    true
+   ],
+   "tickRate": [
+    2,
     0,
     true
    ],
@@ -23322,6 +23437,18 @@
    ],
    "turbulence": [
     2,
+    0,
+    true
+   ]
+  },
+  "HitStopExemptComponent": {
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "includeChildren": [
+    0,
     0,
     true
    ]
@@ -26835,6 +26962,11 @@
    ],
    "autoplay": [
     0,
+    0,
+    true
+   ],
+   "poseFrameRate": [
+    2,
     0,
     true
    ],

@@ -427,21 +427,21 @@ void anim::RigClipCursors::resize(size_t groups){
     locations.assign(groups, Location());
 }
 
-void anim::sampleClip(const RigClipBinding& binding, const AnimatorRig& rig, float clipTime, RigClipCursors& cursors, Pose& out){
+void anim::sampleClip(const RigClipBinding& binding, const AnimatorRig& rig, float clipTime, RigClipCursors& cursors, Pose& out,
+                      float stepFps, int smoothBone){
     if (!binding.clip) return;
     const std::vector<AnimationClip::Track>& tracks = binding.clip->getTracks();
     if (cursors.cursors.size() != binding.groups.size()) cursors.resize(binding.groups.size());
+    const bool held = stepFps > 0.0f && std::isfinite(stepFps);
+    const bool smooth = held && smoothBone >= 0;
+    if (smooth && cursors.smoothLocations.size() != binding.groups.size()) cursors.smoothLocations.resize(binding.groups.size());
 
     // one key search per group (sampleTrack's rule: exactly the first key at or before it, the
     // last key at or after it)
-    for (size_t g = 0; g < binding.groups.size(); g++){
-        const AnimationClip::Track& track = tracks[binding.groups[g].track];
-        RigClipCursors::Location& location = cursors.locations[g];
-        const float time = trackTime(track, clipTime);
+    auto locate = [](const AnimationClip::Track& track, float time, KeyCursor& cursor, RigClipCursors::Location& location){
         const size_t last = track.keyCount - 1;
         location.base = 0;
         location.at = KeyLocation();
-        KeyCursor& cursor = cursors.cursors[g];
         if (std::isnan(time) || time <= track.times[0]){
             cursor.index = 0;
         }else if (time >= track.times[last]){
@@ -449,6 +449,16 @@ void anim::sampleClip(const RigClipBinding& binding, const AnimatorRig& rig, flo
             cursor.index = last;
         }else{
             location.at = locateKey(track.times, track.keyCount, track.easings, track.keyCount, time, &cursor);
+        }
+    };
+    for (size_t g = 0; g < binding.groups.size(); g++){
+        const AnimationClip::Track& track = tracks[binding.groups[g].track];
+        const float time = trackTime(track, clipTime);
+        locate(track, held ? holdPoseTime(track.times, track.keyCount, time, stepFps) : time, cursors.cursors[g], cursors.locations[g]);
+        if (smooth){
+            // (the cursor is only a search hint: a local one keeps the held search's)
+            KeyCursor cursor = cursors.cursors[g];
+            locate(track, time, cursor, cursors.smoothLocations[g]);
         }
     }
 
@@ -460,7 +470,9 @@ void anim::sampleClip(const RigClipBinding& binding, const AnimatorRig& rig, flo
     for (const RigClipBinding::Target& target : binding.targets){
         if (target.index < 0) continue;
         const AnimationClip::Track& track = tracks[target.track];
-        const RigClipCursors::Location& location = cursors.locations[(size_t)target.group];
+        // the root bone's translation stays smooth under a Pose Frame Rate (S48 R23)
+        const RigClipCursors::Location& location = (smooth && target.index == smoothBone && target.channel == ClipChannel::Position)
+            ? cursors.smoothLocations[(size_t)target.group] : cursors.locations[(size_t)target.group];
         const KeyLocation& at = location.at;
         const size_t base = location.base;
         const bool cubic = at.index > 0 && track.hasTangents();

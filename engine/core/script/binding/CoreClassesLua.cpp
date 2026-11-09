@@ -2342,7 +2342,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("graphicBackend", &Engine::getGraphicBackend)
         .addStaticProperty("openGL", &Engine::isOpenGL)
         .addStaticProperty("framerate", &Engine::getFramerate)
-        .addStaticProperty("deltatime", &Engine::getDeltatime)
+        // seconds of this frame times timeScale (inside a Hit Stop Exempt GameObject's callbacks:
+        // without the hit-stop)
+        .addStaticProperty("deltatime", &Engine::getScriptDeltatime)
         // the frame delta before timeScale, and its sum (Time.unscaledDeltaTime / unscaledTime)
         .addStaticProperty("unscaledDeltatime", &Engine::getUnscaledDeltatime)
         .addStaticProperty("unscaledTime", &Engine::getUnscaledTime)

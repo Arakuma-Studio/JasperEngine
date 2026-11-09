@@ -2840,6 +2840,15 @@ for _cls, _who, _example in (
         'overloads': [([('position', 'Vector3'), ('radius', 'number'), ('preset', _SHAKE_PRESET),
                         ('options?', 'ShakeOptions')], 'ShakeInstance')]}
 
+# S48 Hit-Stop: HitStop.play takes an options table (HitStopOptions, engine/core/script/binding/stubs/CameraShake.lua)
+OVERRIDES[('HitStop', 'play')] = {
+    'doc': ['Freezes (or slows, `opts.timeScale` 0..1) the game for `seconds` of unscaled time: Time.deltaTime,',
+            'physics, game timers, actions, tweens, animations, scaled particles and shakes. `opts.exclude` keeps',
+            'GameObjects running, `opts.only` freezes just those, `opts.shake` shakes through the freeze.',
+            'Overlapping calls keep the longer remaining time and the lower scale.',
+            '`HitStop.play(0.08, {shake = "pixel_hit"})`'],
+    'overloads': [([('seconds', 'number'), ('opts?', 'HitStopOptions')], '')]}
+
 # HTML UI (phase 1, p1-lua): the element API's lua_CFunctions (they take Lua functions and
 # option tables, and raise errors with no C++ object alive)
 _LISTENER = 'fun(event: UIEvent)'

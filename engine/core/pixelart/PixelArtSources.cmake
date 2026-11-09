@@ -12,6 +12,7 @@ set(JASPERENGINE_PIXELART_SRCS
     core/pixelart/PixelColor.cpp
     # S48 Pixel FX
     core/pixelart/PixelFxKey.cpp
+    core/pixelart/HitStop.cpp
 )
 
 if(MSVC)

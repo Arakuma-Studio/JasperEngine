@@ -2725,3 +2725,19 @@ entities:
         rotationMode: on_grid
         subpixelSmoothing: true
         letterboxColor: [0.6333333, 0.43333334, 0.5555556, 1]
+  - type: Entity
+    entity: 1096
+    name: HitStopExemptComponent
+    components:
+      transform:
+        position: [95, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      hitstopexempt:
+        enabled: false
+        includeChildren: false

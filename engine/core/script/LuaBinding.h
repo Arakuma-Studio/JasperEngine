@@ -98,6 +98,8 @@ namespace jasperengine {
         static void registerNavigationComponentClasses(lua_State *L);
         static void registerSplineClasses(lua_State *L);
         static void registerPixelArtClasses(lua_State *L);
+        // S48: HitStop and HitStopExempt (HitStopClassesLua.cpp)
+        static void registerHitStopClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);

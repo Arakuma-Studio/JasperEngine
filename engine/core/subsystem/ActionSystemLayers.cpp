@@ -518,7 +518,8 @@ void ActionSystem::evaluateLayeredPlayer(Entity entity, AnimationPlayerComponent
         input.clip = state.bindings.clip.get();
         input.bindings = &state.bindings;
         input.time = playerdetail::sampleTimeOf(player, state);
-        input.weight = state.weight;
+        input.weight = playerdetail::blendWeightOf(player, state);
+        input.stepFps = player.poseFrameRate;
         input.layer = runtime.stateLayer(state);
         input.trackMask = state.trackMask.empty() ? nullptr : state.trackMask.data();
         input.trackSlots = state.trackSlots.data();
@@ -621,7 +622,7 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                 if (!rest.hasTransform || track.channel == ClipChannel::Morph || track.channel == ClipChannel::Lattice){
                     playerdetail::completeRest(scene, target, rest, track.channel);
                 }
-                if (!anim::sampleTrack(track, state.time, sample, &bindings.cursors[i])) continue;
+                if (!anim::sampleTrack(track, state.time, sample, &bindings.cursors[i], state.stepFps)) continue;
                 const anim::TrackSample* reference = (additive && state.reference) ? &state.reference[i] : nullptr;
                 if (additive && (!reference || !reference->valid)) continue;
 

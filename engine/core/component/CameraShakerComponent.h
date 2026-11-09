@@ -54,6 +54,14 @@ namespace jasperengine{
         Vector3 traumaMaxAngle = Vector3(3.0f, 3.0f, 5.0f);    // degrees at trauma 1
         float traumaFrequency = 15.0f;      // noise speed (MilkShake roughness units)
 
+        // S48 R22, pixel art: the applied offset is rounded to whole art pixels (the S41 grid
+        // with a Pixel Perfect Camera, else the camera's screen pixels) and the roll is dropped;
+        // inert on a 3D (perspective) shaker
+        bool pixelSnap = false;
+        // Hz: the applied offset changes only on ticks of 1 / tickRate s of the shake's clock
+        // (0: every frame)
+        float tickRate = 0.0f;
+
         // runtime (not serialized): instances, trauma, applied offset, transform-mode base
         std::shared_ptr<camera::ShakerRuntime> runtime;
     };

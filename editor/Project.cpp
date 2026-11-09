@@ -144,6 +144,7 @@
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
+#include "pixelart/HitStop.h"
 #include "sprite/SpriteAtlasBuilder.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
@@ -6133,6 +6134,8 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setMouseMode(MouseMode::NORMAL);
     // a game (or the MCP server) may have changed the game clock and the foliage distance
     Engine::setTimeScale(1.0f);
+    // and a hit-stop may still be running (S48)
+    ::jasperengine::pixelart::HitStop::reset();
     Engine::resetFoliageDistanceScale();
     Engine::setFixedDeltatime(0.0);
     Engine::setSimulationHeld(false);

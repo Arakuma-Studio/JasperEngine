@@ -172,9 +172,16 @@ namespace jasperengine::pose {
         int poseCount() const { return dataLoaded ? (int)data.poses.size() : 0; }
         int findPose(const std::string& name) const;
         bool stepped() const { return data.settings.stepRate > 0.0f; }
+        // the key boundaries of the timeline (each transition's start and arrival), sorted:
+        // Pose Frame Rate counts its steps from them (built on first use)
+        mutable std::vector<float> keyBoundaries;
+        // the component's Pose Frame Rate (PoseAnimatorSystem sets it each update): a live
+        // transition steps on it too when the animation has no step rate of its own
+        float poseFrameRate = 0.0f;
 
-        // the playback pose at `time`
-        void samplePlayback(float time, HumanPose& out) const;
+        // the playback pose at `time`; `poseFrameRate` > 0 holds it on whole steps counted
+        // from the last key boundary (a transition's start or arrival, S48 R23)
+        void samplePlayback(float time, HumanPose& out, float poseFrameRate = 0.0f) const;
 
         // Starts a live transition from the displayed pose to key `request.key`; false when the
         // key does not exist (or nothing is loaded yet). Every bone eases with the phase 1 ease

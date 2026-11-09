@@ -377,6 +377,14 @@ Ported, each file keeping the original notice next to ours:
 The CIEDE2000 test pairs (`engine/tests/core/pixelart/PixelColorTest.cpp`) are Sharma, Wu and Dalal's
 published data (2005).
 
+## Pixel FX game feel (S48)
+
+Ported, each function keeping the original notice next to ours:
+
+| Code | Taken from | Licence |
+|---|---|---|
+| The kick shake (`camera::kickOffset`, `engine/core/camera/ShakeInstance.cpp`) and the held-pose time (`anim::holdPoseTime`, `engine/core/animation/KeyframeSampling.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/core/act.js` (`get shake()`, `poseAt`), which credits Hollow Crown's skills for the freeze, the shake and the 12 fps held poses | MIT, Copyright (c) 2026 Patch; Copyright (c) 2026 rehan-remade (Hollow Crown) |
+
 ## Ideas re-implemented, no code copied
 
 [ozz-animation](https://github.com/guillaumeblanc/ozz-animation) (MIT, 0.17.0 `744eb9d`, (c) Guillaume Blanc): `editor/animation/ClipReduction.*` re-implements the idea of its `AnimationOptimizer` and `decimate.h` (a hierarchical error metric and Ramer-Douglas-Peucker decimation), with the changes of `docs/specs/S77-clip-quality.md` D5. No ozz source ships here.

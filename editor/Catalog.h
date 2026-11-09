@@ -232,12 +232,14 @@ namespace jasperengine::editor{
         WaterExcluderComponent,
         WaterWakeComponent,
         // pixel art (S41): integer scaling, Pixels Per Unit and the pixel-snap rule of a camera
-        PixelPerfectCameraComponent
+        PixelPerfectCameraComponent,
+        // pixel art (S48): keeps a GameObject running through a hit-stop
+        HitStopExemptComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::PixelPerfectCameraComponent;
+    constexpr ComponentType LastComponentType = ComponentType::HitStopExemptComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

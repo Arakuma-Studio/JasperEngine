@@ -6230,6 +6230,9 @@ YAML::Node editor::Stream::encodeCameraShakerComponent(const CameraShakerCompone
     node["traumaMaxOffset"] = encodeVector3(shaker.traumaMaxOffset);
     node["traumaMaxAngle"] = encodeVector3(shaker.traumaMaxAngle);
     encodeFinite(node, "traumaFrequency", shaker.traumaFrequency);
+    // S48: written only when set (an old scene re-saves byte for byte)
+    if (shaker.pixelSnap) node["pixelSnap"] = YamlNumbers::text(true);
+    if (shaker.tickRate != 0.0f) encodeFinite(node, "tickRate", shaker.tickRate);
     return node;
 }
 
@@ -6254,6 +6257,8 @@ CameraShakerComponent editor::Stream::decodeCameraShakerComponent(const YAML::No
     if (node["traumaMaxOffset"]) shaker.traumaMaxOffset = decodeVector3(node["traumaMaxOffset"]);
     if (node["traumaMaxAngle"]) shaker.traumaMaxAngle = decodeVector3(node["traumaMaxAngle"]);
     if (node["traumaFrequency"]) shaker.traumaFrequency = std::max(0.0f, decodeFinite(node["traumaFrequency"], shaker.traumaFrequency));
+    if (node["pixelSnap"]) shaker.pixelSnap = YamlNumbers::as<bool>(node["pixelSnap"]);
+    if (node["tickRate"]) shaker.tickRate = std::max(0.0f, decodeFinite(node["tickRate"], shaker.tickRate));
     return shaker;
 }
 

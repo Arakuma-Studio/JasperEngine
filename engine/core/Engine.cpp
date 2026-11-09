@@ -77,6 +77,7 @@
 #include "pool/ShakePresetPool.h"
 #include "pool/PhysicsMaterialPool.h"
 #include "pixelart/PaletteSwap.h"
+#include "pixelart/HitStop.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "native/NativeBridge.h"
@@ -511,7 +512,8 @@ Scene* Engine::getLastScene(){
 
 bool Engine::advanceGameClocks(Scheduler& scheduler, double frameTime) {
     if (paused || simulationHeld || gameEventsPaused) return false;
-    scheduler.advance(TimeDomain::Game, frameTime * timeScale);
+    // a hit-stop freezes the game timers with the game delta
+    scheduler.advance(TimeDomain::Game, frameTime * timeScale * pixelart::HitStop::getWorldFactor());
     scheduler.advance(TimeDomain::Unscaled, frameTime);
     scheduler.advance(TimeDomain::Frames, 1.0);
     return true;
@@ -1117,6 +1119,10 @@ double Engine::getFrameCpuTime(){
 
 float Engine::getDeltatime(){
     return deltatime;
+}
+
+float Engine::getScriptDeltatime(){
+    return (float)pixelart::HitStop::getScriptDeltaTime();
 }
 
 void Engine::beginFrameStats(){
@@ -2381,12 +2387,15 @@ void Engine::runFrame(bool draw){
     if (fixedDeltatime > 0.0){
         frameTime = fixedDeltatime;
     }
-    deltatime = simulationHeld ? 0.0 : frameTime * timeScale;
     // the unscaled delta (Time.unscaledDeltaTime, realtime waits): it runs at time scale 0 (a
     // pause menu animates) and stops with the game: a held simulation, a paused app, or the game
     // events paused (the editor's Play pause, edit time)
     // (getUnscaledDeltatime(): also 0 while Engine::pauseGameEvents(true), the editor's Play pause)
     unscaledDeltatime = (paused || simulationHeld || !onUpdate.isEnabled()) ? 0.0 : frameTime;
+    // S48's Hit-Stop counts down on that unscaled delta and scales the game delta for the part
+    // of the frame it covers (pixelart/HitStop.h); idle, its factor is 1
+    const double unfrozenDeltatime = simulationHeld ? 0.0 : frameTime * timeScale;
+    deltatime = unfrozenDeltatime * pixelart::HitStop::beginFrame(unscaledDeltatime, unfrozenDeltatime);
     // the UI clock: the same, but it keeps running while only the game events are paused (HTML
     // UI documents animate in edit mode and in a paused Play)
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
@@ -2394,7 +2403,8 @@ void Engine::runFrame(bool draw){
     // (scaled ones hold at time scale 0; both hold while the app or the simulation is held, and on
     // the deterministic driver while its pump holds: what a Play's pause lasted is not in the mix)
     const bool audioHeld = paused || simulationHeld || (!onUpdate.isEnabled() && AudioSystem::getOutputMode() == AudioOutputMode::Deterministic);
-    AudioMixer::update(audioHeld ? 0.0 : deltatime, audioHeld ? 0.0 : frameTime);
+    // (a hit-stop does not reach the audio: its scaled values follow the unfrozen delta)
+    AudioMixer::update(audioHeld ? 0.0 : unfrozenDeltatime, audioHeld ? 0.0 : frameTime);
 
     // timers: what other threads posted, then the real clock (runs paused or loading too)
     Scheduler& scheduler = Scheduler::game();

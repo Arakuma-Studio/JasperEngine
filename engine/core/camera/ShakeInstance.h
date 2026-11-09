@@ -27,6 +27,10 @@
 //   noise clock tau advances by dt * frequency; position max offset (x) (N(tau + 11, sT),
 //   N(sT, tau + 23), N(tau + 37, sT + 5)) * k, rotation max angle (x) (N(tau + 41, sT + 3),
 //   N(sT + 7, tau + 53), N(tau + 61, sT + 9)) * k.
+// - S48 R22: a Kick preset is pixelfx's hit shake (ShakePreset.h), stepped on its own clock
+//   (paused like the noise clock); a preset with a tick rate holds its offset between ticks of
+//   its clock; a preset in pixel units reports its position in ShakeOffset::pixels, which the
+//   shaker converts through the art grid.
 
 #ifndef SHAKE_INSTANCE_H
 #define SHAKE_INSTANCE_H
@@ -49,17 +53,25 @@ namespace jasperengine::camera{
         Stopped
     };
 
-    // a shake's offset: position in units, rotation in Euler degrees (applied Z, then X, then Y)
+    // a shake's offset: position in units, rotation in Euler degrees (applied Z, then X, then Y),
+    // and the position of the presets in pixel units, in art pixels (S48)
     struct JASPERENGINE_API ShakeOffset{
         Vector3 position = Vector3(0, 0, 0);
         Vector3 rotation = Vector3(0, 0, 0);
+        Vector3 pixels = Vector3(0, 0, 0);
 
         ShakeOffset& operator+=(const ShakeOffset& other){
             position += other.position;
             rotation += other.rotation;
+            pixels += other.pixels;
             return *this;
         }
     };
+
+    // pixelfx's kick offset (act.js) at `remaining` of `length` seconds: k = strength *
+    // remaining / length, f = floor(remaining * tick), (sin(2.4 f) k, cos(3.7 f) k 0.7), each
+    // rounded when `round` (pixel units)
+    JASPERENGINE_API Vector3 kickOffset(float strength, float remaining, float length, float tick, bool round);
 
     // MilkShake's getNoise: (perlin(x, y) - 0.5) * 2, in [-1, 1]
     JASPERENGINE_API float shakeNoise(float x, float y);
@@ -88,6 +100,15 @@ namespace jasperengine::camera{
         bool paused = false;
         float pauseAmount = 0.0f;       // 0 running .. 1 paused
         float pauseFadeTime = 0.0f;
+
+        // S48: a kick's clock, and a ticked preset's held offset
+        float kickTime = 0.0f;
+        float tickClock = 0.0f;
+        bool hasHeld = false;
+        ShakeOffset held;
+
+        // the offset of the state, in the preset's units (position)
+        ShakeOffset rawOffset() const;
 
     public:
         float strengthScale = 1.0f;
