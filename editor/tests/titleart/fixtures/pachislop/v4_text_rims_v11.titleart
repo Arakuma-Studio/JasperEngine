@@ -545,7 +545,7 @@
               "corner": 4,
               "slant": 0
             },
-            "offset": [1, -1],
+            "offset": [1, 1],
             "material": {
               "fill": {
                 "kind": "solid",

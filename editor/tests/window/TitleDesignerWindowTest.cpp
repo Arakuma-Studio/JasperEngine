@@ -531,6 +531,7 @@ TEST(TitleDesignerWindowDeathTest, LettersGizmo) {
 // back. Red control: the window not taking Tab leaves the focus on the toolbar.
 TEST(TitleDesignerWindowDeathTest, TabCyclesRegions) {
     IN_EDITOR("tab", {
+        titlelibrary::registerTitleLibrary();   // the Library region is the editor's real one (S84's provider)
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         const fs::path file = newTitle(w, "tab");
         ASSERT_TRUE(window->open(file, nullptr));
