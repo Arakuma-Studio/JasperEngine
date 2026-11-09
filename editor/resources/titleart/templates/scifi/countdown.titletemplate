@@ -146,7 +146,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "c13b15e7",
+          "id": "662d0ef3",
           "type": "contour_lines",
           "enabled": true,
           "params": {
@@ -456,7 +456,7 @@
         },
         "rims": [
           {
-            "id": "5b286134",
+            "id": "c13b15e7",
             "enabled": true,
             "width": 4.4,
             "join": "miter",
@@ -668,7 +668,7 @@
             }
           },
           {
-            "id": "662d0ef3",
+            "id": "5b286134",
             "enabled": true,
             "width": 0.8,
             "join": "miter",

@@ -110,6 +110,10 @@
   "dimension": "2d",
   "applies": "style",
   "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
   "style": {
     "face": {
       "fill": {

@@ -99,6 +99,10 @@
   "dimension": "3d",
   "applies": "style",
   "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
   "style_3d": {
     "mode": "inflate",
     "depth": 4,

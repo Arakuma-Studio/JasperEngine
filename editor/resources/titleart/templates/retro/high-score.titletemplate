@@ -146,7 +146,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "c13b15e7",
+          "id": "6435e99a",
           "type": "drop_shadow",
           "enabled": true,
           "params": {
@@ -161,7 +161,7 @@
           "from_look": false
         },
         {
-          "id": "5b286134",
+          "id": "da8e5e19",
           "type": "pixelate",
           "enabled": true,
           "params": {
@@ -485,7 +485,7 @@
         },
         "rims": [
           {
-            "id": "662d0ef3",
+            "id": "c13b15e7",
             "enabled": true,
             "width": 1,
             "join": "miter",
@@ -697,7 +697,7 @@
             }
           },
           {
-            "id": "6435e99a",
+            "id": "5b286134",
             "enabled": true,
             "width": 3,
             "join": "miter",
@@ -909,7 +909,7 @@
             }
           },
           {
-            "id": "da8e5e19",
+            "id": "662d0ef3",
             "enabled": true,
             "width": 1,
             "join": "miter",

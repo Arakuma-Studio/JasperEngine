@@ -155,7 +155,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "5b286134",
+          "id": "6435e99a",
           "type": "outline",
           "enabled": true,
           "params": {
@@ -169,7 +169,7 @@
           "from_look": false
         },
         {
-          "id": "662d0ef3",
+          "id": "da8e5e19",
           "type": "outer_glow",
           "enabled": true,
           "params": {
@@ -204,7 +204,7 @@
           "from_look": false
         },
         {
-          "id": "6435e99a",
+          "id": "23162bf9",
           "type": "light_glow",
           "enabled": true,
           "params": {
@@ -233,7 +233,10 @@
         "owner": ""
       },
       "text": "STEEL FORCE",
-      "font": null,
+      "font": {
+        "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
+        "guid": ""
+      },
       "face_index": 0,
       "fallback_fonts": [],
       "variations": {},
@@ -658,7 +661,7 @@
         "side": null,
         "bands": [
           {
-            "id": "",
+            "id": "5b286134",
             "name": "",
             "enabled": true,
             "grow": 0.3,
@@ -807,7 +810,7 @@
             }
           },
           {
-            "id": "",
+            "id": "662d0ef3",
             "name": "",
             "enabled": true,
             "grow": 5,
@@ -952,7 +955,7 @@
       }
     },
     {
-      "id": "23162bf9",
+      "id": "1bf41dab",
       "type": "generator",
       "name": "Lens Flare",
       "visible": true,
@@ -1017,7 +1020,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "da8e5e19",
+          "id": "67e09885",
           "type": "outer_glow",
           "enabled": true,
           "params": {
@@ -1058,7 +1061,10 @@
         "owner": ""
       },
       "text": "RISE",
-      "font": null,
+      "font": {
+        "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
+        "guid": ""
+      },
       "face_index": 0,
       "fallback_fonts": [],
       "variations": {},

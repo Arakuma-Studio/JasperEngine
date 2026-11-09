@@ -147,7 +147,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "5b286134",
+          "id": "da8e5e19",
           "type": "outline",
           "enabled": true,
           "params": {
@@ -161,7 +161,7 @@
           "from_look": false
         },
         {
-          "id": "662d0ef3",
+          "id": "23162bf9",
           "type": "outer_glow",
           "enabled": true,
           "params": {
@@ -196,7 +196,7 @@
           "from_look": false
         },
         {
-          "id": "6435e99a",
+          "id": "30d9a585",
           "type": "light_glow",
           "enabled": true,
           "params": {
@@ -679,7 +679,7 @@
         "side": null,
         "bands": [
           {
-            "id": "",
+            "id": "5b286134",
             "name": "",
             "enabled": true,
             "grow": 1.6,
@@ -825,7 +825,7 @@
             "side": null
           },
           {
-            "id": "",
+            "id": "662d0ef3",
             "name": "",
             "enabled": true,
             "grow": 0.3,
@@ -974,7 +974,7 @@
             }
           },
           {
-            "id": "",
+            "id": "6435e99a",
             "name": "",
             "enabled": true,
             "grow": 5,
@@ -1119,7 +1119,7 @@
       }
     },
     {
-      "id": "da8e5e19",
+      "id": "4ef58b7f",
       "type": "group",
       "name": "Title FX",
       "visible": true,
@@ -1564,7 +1564,7 @@
             "side": null,
             "bands": [
               {
-                "id": "",
+                "id": "21dab417",
                 "name": "",
                 "enabled": true,
                 "grow": 2,
@@ -1786,7 +1786,7 @@
           }
         },
         {
-          "id": "23162bf9",
+          "id": "53168118",
           "type": "generator",
           "name": "Glints",
           "visible": true,

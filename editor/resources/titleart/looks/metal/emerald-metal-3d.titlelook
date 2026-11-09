@@ -98,6 +98,10 @@
   "dimension": "3d",
   "applies": "style",
   "ref_size": 200,
+  "font": {
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
+  },
   "style_3d": {
     "depth": 11.5,
     "curve_segments": 10,

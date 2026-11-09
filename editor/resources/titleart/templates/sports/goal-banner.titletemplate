@@ -124,7 +124,7 @@
       "follow": ""
     },
     {
-      "id": "662d0ef3",
+      "id": "6435e99a",
       "type": "generator",
       "name": "Speed Lines",
       "visible": true,
@@ -221,7 +221,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "c13b15e7",
+          "id": "5b286134",
           "type": "motion_trail",
           "enabled": true,
           "params": {
@@ -514,7 +514,7 @@
         },
         "rims": [
           {
-            "id": "6435e99a",
+            "id": "c13b15e7",
             "enabled": true,
             "width": 5.2,
             "join": "miter",
@@ -740,7 +740,7 @@
       "style_3d": null
     },
     {
-      "id": "5b286134",
+      "id": "662d0ef3",
       "type": "generator",
       "name": "Fire",
       "visible": true,

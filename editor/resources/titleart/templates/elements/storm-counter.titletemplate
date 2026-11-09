@@ -124,7 +124,7 @@
       "follow": ""
     },
     {
-      "id": "c13b15e7",
+      "id": "da8e5e19",
       "type": "group",
       "name": "Title FX",
       "visible": true,
@@ -146,7 +146,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "5b286134",
+          "id": "23162bf9",
           "type": "light_glow",
           "enabled": true,
           "params": {
@@ -203,7 +203,10 @@
             "owner": ""
           },
           "text": "×999",
-          "font": null,
+          "font": {
+            "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
+            "guid": ""
+          },
           "face_index": 0,
           "fallback_fonts": [],
           "variations": {},
@@ -480,7 +483,7 @@
             },
             "rims": [
               {
-                "id": "da8e5e19",
+                "id": "c13b15e7",
                 "enabled": true,
                 "width": 1.2,
                 "join": "miter",
@@ -713,7 +716,7 @@
                 }
               },
               {
-                "id": "23162bf9",
+                "id": "5b286134",
                 "enabled": true,
                 "width": 1.6,
                 "join": "miter",
@@ -946,7 +949,7 @@
                 }
               },
               {
-                "id": "30d9a585",
+                "id": "662d0ef3",
                 "enabled": true,
                 "width": 3,
                 "join": "miter",
@@ -1179,7 +1182,7 @@
                 }
               },
               {
-                "id": "21dab417",
+                "id": "6435e99a",
                 "enabled": true,
                 "width": 1.4,
                 "join": "miter",
@@ -1426,7 +1429,7 @@
           "style_3d": null
         },
         {
-          "id": "6435e99a",
+          "id": "21dab417",
           "type": "generator",
           "name": "Lightning",
           "visible": true,
@@ -1475,7 +1478,7 @@
           "follow": "2829115a"
         },
         {
-          "id": "662d0ef3",
+          "id": "30d9a585",
           "type": "generator",
           "name": "Lightning",
           "visible": true,

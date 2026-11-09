@@ -124,7 +124,7 @@
       "follow": ""
     },
     {
-      "id": "5b286134",
+      "id": "6435e99a",
       "type": "group",
       "name": "Title FX",
       "visible": true,
@@ -152,7 +152,7 @@
       },
       "children": [
         {
-          "id": "662d0ef3",
+          "id": "da8e5e19",
           "type": "generator",
           "name": "Magic Circle",
           "visible": true,
@@ -174,7 +174,7 @@
           "masks": [],
           "effects": [
             {
-              "id": "6435e99a",
+              "id": "23162bf9",
               "type": "outer_glow",
               "enabled": true,
               "params": {
@@ -314,7 +314,7 @@
           "masks": [],
           "effects": [
             {
-              "id": "c13b15e7",
+              "id": "662d0ef3",
               "type": "outer_glow",
               "enabled": true,
               "params": {
@@ -625,7 +625,7 @@
             },
             "rims": [
               {
-                "id": "da8e5e19",
+                "id": "c13b15e7",
                 "enabled": true,
                 "width": 1.2,
                 "join": "miter",
@@ -837,7 +837,7 @@
                 }
               },
               {
-                "id": "23162bf9",
+                "id": "5b286134",
                 "enabled": true,
                 "width": 4,
                 "join": "miter",

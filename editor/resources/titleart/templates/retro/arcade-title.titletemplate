@@ -121,7 +121,7 @@
       "follow": ""
     },
     {
-      "id": "5b286134",
+      "id": "6435e99a",
       "type": "group",
       "name": "Title FX",
       "visible": true,
@@ -458,7 +458,7 @@
             },
             "rims": [
               {
-                "id": "23162bf9",
+                "id": "5b286134",
                 "enabled": true,
                 "width": 1.4,
                 "join": "miter",
@@ -670,7 +670,7 @@
                 }
               },
               {
-                "id": "30d9a585",
+                "id": "662d0ef3",
                 "enabled": true,
                 "width": 3.8,
                 "join": "miter",
@@ -896,7 +896,7 @@
           "style_3d": null
         },
         {
-          "id": "662d0ef3",
+          "id": "da8e5e19",
           "type": "generator",
           "name": "Glints",
           "visible": true,
@@ -960,7 +960,7 @@
           "follow": "2829115a"
         },
         {
-          "id": "6435e99a",
+          "id": "23162bf9",
           "type": "generator",
           "name": "Light Streaks",
           "visible": true,
@@ -1037,7 +1037,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "da8e5e19",
+          "id": "4ef58b7f",
           "type": "pixelate",
           "enabled": true,
           "params": {
@@ -1325,7 +1325,7 @@
         },
         "rims": [
           {
-            "id": "21dab417",
+            "id": "30d9a585",
             "enabled": true,
             "width": 4,
             "join": "miter",
@@ -1537,7 +1537,7 @@
             }
           },
           {
-            "id": "4ef58b7f",
+            "id": "21dab417",
             "enabled": true,
             "width": 4,
             "join": "miter",

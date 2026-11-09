@@ -606,7 +606,7 @@
         "side": null,
         "bands": [
           {
-            "id": "",
+            "id": "5b286134",
             "name": "",
             "enabled": true,
             "grow": 6,
@@ -746,7 +746,7 @@
             "side": null
           },
           {
-            "id": "",
+            "id": "662d0ef3",
             "name": "",
             "enabled": true,
             "grow": 1.5,
@@ -968,7 +968,7 @@
       }
     },
     {
-      "id": "6435e99a",
+      "id": "4ef58b7f",
       "type": "generator",
       "name": "Glints",
       "visible": true,
@@ -1032,7 +1032,7 @@
       "follow": "c13b15e7"
     },
     {
-      "id": "5b286134",
+      "id": "30d9a585",
       "type": "group",
       "name": "Title FX",
       "visible": true,
@@ -1351,7 +1351,7 @@
             },
             "rims": [
               {
-                "id": "30d9a585",
+                "id": "6435e99a",
                 "enabled": true,
                 "width": 1,
                 "join": "miter",
@@ -1563,7 +1563,7 @@
                 }
               },
               {
-                "id": "21dab417",
+                "id": "da8e5e19",
                 "enabled": true,
                 "width": 2,
                 "join": "miter",
@@ -1805,7 +1805,7 @@
                 }
               },
               {
-                "id": "4ef58b7f",
+                "id": "23162bf9",
                 "enabled": true,
                 "width": 2,
                 "join": "miter",
@@ -2061,7 +2061,7 @@
           "style_3d": null
         },
         {
-          "id": "23162bf9",
+          "id": "67e09885",
           "type": "generator",
           "name": "Gold Dust",
           "visible": true,
@@ -2083,7 +2083,7 @@
           "masks": [],
           "effects": [
             {
-              "id": "da8e5e19",
+              "id": "53168118",
               "type": "outer_glow",
               "enabled": true,
               "params": {
@@ -2191,7 +2191,7 @@
           "follow": "2829115a"
         },
         {
-          "id": "662d0ef3",
+          "id": "21dab417",
           "type": "generator",
           "name": "Glints",
           "visible": true,

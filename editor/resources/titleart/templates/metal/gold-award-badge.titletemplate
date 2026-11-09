@@ -147,7 +147,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "5b286134",
+          "id": "da8e5e19",
           "type": "outline",
           "enabled": true,
           "params": {
@@ -161,7 +161,7 @@
           "from_look": false
         },
         {
-          "id": "662d0ef3",
+          "id": "23162bf9",
           "type": "outer_glow",
           "enabled": true,
           "params": {
@@ -196,7 +196,7 @@
           "from_look": false
         },
         {
-          "id": "6435e99a",
+          "id": "30d9a585",
           "type": "light_glow",
           "enabled": true,
           "params": {
@@ -679,7 +679,7 @@
         "side": null,
         "bands": [
           {
-            "id": "",
+            "id": "5b286134",
             "name": "",
             "enabled": true,
             "grow": 1.6,
@@ -825,7 +825,7 @@
             "side": null
           },
           {
-            "id": "",
+            "id": "662d0ef3",
             "name": "",
             "enabled": true,
             "grow": 0.3,
@@ -974,7 +974,7 @@
             }
           },
           {
-            "id": "",
+            "id": "6435e99a",
             "name": "",
             "enabled": true,
             "grow": 5,
@@ -1119,7 +1119,7 @@
       }
     },
     {
-      "id": "23162bf9",
+      "id": "58471d23",
       "type": "generator",
       "name": "Glints",
       "visible": true,
@@ -1205,7 +1205,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "da8e5e19",
+          "id": "1bf41dab",
           "type": "outer_glow",
           "enabled": true,
           "params": {
@@ -1538,7 +1538,7 @@
         },
         "rims": [
           {
-            "id": "30d9a585",
+            "id": "21dab417",
             "enabled": true,
             "width": 1.4,
             "join": "miter",
@@ -1801,7 +1801,7 @@
             }
           },
           {
-            "id": "21dab417",
+            "id": "4ef58b7f",
             "enabled": true,
             "width": 1.6,
             "join": "miter",
@@ -2034,7 +2034,7 @@
             }
           },
           {
-            "id": "4ef58b7f",
+            "id": "53168118",
             "enabled": true,
             "width": 0.8,
             "join": "miter",
@@ -2297,7 +2297,7 @@
             }
           },
           {
-            "id": "53168118",
+            "id": "67e09885",
             "enabled": true,
             "width": 1.2,
             "join": "miter",

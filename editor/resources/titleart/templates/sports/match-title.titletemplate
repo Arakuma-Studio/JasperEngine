@@ -134,7 +134,7 @@
       "follow": ""
     },
     {
-      "id": "5b286134",
+      "id": "30d9a585",
       "type": "generator",
       "name": "Stadium Rays",
       "visible": true,
@@ -638,7 +638,7 @@
         "side": null,
         "bands": [
           {
-            "id": "",
+            "id": "5b286134",
             "name": "",
             "enabled": true,
             "grow": 5,
@@ -778,7 +778,7 @@
             "side": null
           },
           {
-            "id": "",
+            "id": "662d0ef3",
             "name": "",
             "enabled": true,
             "grow": 1.5,
@@ -1000,7 +1000,7 @@
       }
     },
     {
-      "id": "662d0ef3",
+      "id": "21dab417",
       "type": "generator",
       "name": "Lens Flare",
       "visible": true,

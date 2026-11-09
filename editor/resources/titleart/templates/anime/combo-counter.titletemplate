@@ -124,7 +124,7 @@
       "follow": ""
     },
     {
-      "id": "c13b15e7",
+      "id": "6435e99a",
       "type": "generator",
       "name": "Speed Lines",
       "visible": true,
@@ -485,7 +485,7 @@
         },
         "rims": [
           {
-            "id": "5b286134",
+            "id": "c13b15e7",
             "enabled": true,
             "width": 1.5,
             "join": "miter",
@@ -697,7 +697,7 @@
             }
           },
           {
-            "id": "662d0ef3",
+            "id": "5b286134",
             "enabled": true,
             "width": 4,
             "join": "miter",
@@ -909,7 +909,7 @@
             }
           },
           {
-            "id": "6435e99a",
+            "id": "662d0ef3",
             "enabled": true,
             "width": 1,
             "join": "miter",

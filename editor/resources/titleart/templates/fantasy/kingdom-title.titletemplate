@@ -134,7 +134,7 @@
       "follow": ""
     },
     {
-      "id": "da8e5e19",
+      "id": "53168118",
       "type": "generator",
       "name": "God Rays",
       "visible": true,
@@ -200,7 +200,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "5b286134",
+          "id": "da8e5e19",
           "type": "inner_shadow",
           "enabled": true,
           "params": {
@@ -521,7 +521,7 @@
         },
         "rims": [
           {
-            "id": "23162bf9",
+            "id": "5b286134",
             "enabled": true,
             "width": 1,
             "join": "miter",
@@ -733,7 +733,7 @@
             }
           },
           {
-            "id": "30d9a585",
+            "id": "662d0ef3",
             "enabled": true,
             "width": 3,
             "join": "miter",
@@ -969,7 +969,7 @@
             }
           },
           {
-            "id": "21dab417",
+            "id": "6435e99a",
             "enabled": true,
             "width": 2,
             "join": "miter",
@@ -1217,7 +1217,7 @@
       "masks": [],
       "effects": [
         {
-          "id": "662d0ef3",
+          "id": "21dab417",
           "type": "inner_shadow",
           "enabled": true,
           "params": {
@@ -1232,7 +1232,7 @@
           "from_look": false
         },
         {
-          "id": "6435e99a",
+          "id": "4ef58b7f",
           "type": "drop_shadow",
           "enabled": true,
           "params": {
@@ -1517,7 +1517,7 @@
         },
         "rims": [
           {
-            "id": "4ef58b7f",
+            "id": "23162bf9",
             "enabled": true,
             "width": 1.2,
             "join": "miter",
@@ -1729,7 +1729,7 @@
             }
           },
           {
-            "id": "53168118",
+            "id": "30d9a585",
             "enabled": true,
             "width": 4,
             "join": "miter",
