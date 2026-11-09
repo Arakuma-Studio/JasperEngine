@@ -9,6 +9,7 @@
 
 #include <cmath>
 
+using namespace jasperengine::editor;
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::lint;
 using jasperengine::pixelart::Rgba8;

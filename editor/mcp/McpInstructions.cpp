@@ -52,8 +52,8 @@ Text cut before "## Other areas"? read_file jasper://guide.
 3. Play the start scene; look: screenshot, get_runtime_entity / eval_lua, send_input / wait.
 4. Read the Console since your last cursor (read_console since); fix and repeat. Never claim a
    script works without playing it and reading the Console.
-A long call past timeout_seconds returns a job id: get_job. An error says what was wrong and lists
-the valid choices: fix the arguments, don't repeat the call.
+A call past timeout_seconds returns a job id: get_job. An error lists the valid choices: fix the
+arguments, don't repeat the call.
 
 ## Building scenes
 Place what a scene uses in the editor; scripts reach it through script properties and spawn
@@ -123,8 +123,8 @@ layouts. Read jasper://docs/html-ui first.
 
 ## Other areas
 2D (points, y up; 64 per m), cameras (useTarget ignores rotation), animation (edit_animation),
-post-processing (apply_post_processing_preset), atmosphere (apply_atmosphere_preset), shadows (a
-light's softShadows, the scene's shadows_quality), reflections (SSR replaces probe reflections;
+post-processing (apply_post_processing_preset), atmosphere (apply_atmosphere_preset), shadows (light
+softShadows, scene shadows_quality), reflections (SSR replaces probe reflections;
 check with ssr_debug_mode 7), profiling (get_frame_times), navigation (get_navigation_info), sound
 (analyze_audio), shipping (build_project), palettes (edit_palette, apply_palette), pixel-fx
 (capture_contact_sheet), data safety (allow_data_loss), meshes (inspect_models,

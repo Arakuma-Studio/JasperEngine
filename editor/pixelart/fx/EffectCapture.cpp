@@ -22,6 +22,7 @@
 #include "registry/EntityCloner.h"
 #include "render/OffscreenDraw.h"
 #include "render/RenderUtil.h"
+#include "subsystem/RenderSystem.h"
 #include "texture/Framebuffer.h"
 
 #include <algorithm>
@@ -238,6 +239,7 @@ struct EffectCapture::Impl {
     uint64_t stepsDone = 0;
     bool stepPending = false;
     bool reloadIssued = false;
+    bool reloadFailed = false;
     std::shared_ptr<void> advance;
     bool warmedPlay = false;
 };
@@ -318,7 +320,8 @@ void EffectCapture::finish(const std::string& failure) {
             in.determinismFirst = &output.determinism[0];
             in.determinismSecond = &output.determinism[1];
         } else {
-            in.determinismSkipReason = settings.lints ? "two fresh captures were not made" : "lints were not asked for";
+            in.determinismSkipReason = d.reloadFailed ? "the played scene could not be loaded again for a fresh capture"
+                                       : settings.lints ? "two fresh captures were not made" : "lints were not asked for";
         }
         in.determinismTime = 0.37 * settings.duration;
         if (d.shown.empty()) {
@@ -493,7 +496,13 @@ bool EffectCapture::advance(double budgetMs) {
             }
             if (pass.reload && !d.reloadIssued) {
                 // a fresh capture: the game's scene loaded again, counted from its first frame
-                SceneManager::loadScene(SceneManager::getCurrentSceneId());
+                // the scene the game loaded last, else the played one (registered under its id)
+                const uint32_t current = SceneManager::getCurrentSceneId() != 0 ? SceneManager::getCurrentSceneId() : settings.sceneId;
+                if (!SceneManager::loadScene(current)) {
+                    d.reloadFailed = true;
+                    while (d.pass < d.passes.size() && d.passes[d.pass].reload) d.pass++;
+                    continue;
+                }
                 d.reloadIssued = true;
                 d.stepsDone = 0;
                 project->step(settings.sceneId);
@@ -580,11 +589,17 @@ bool EffectCapture::advance(double budgetMs) {
                 s->scene->setBackgroundColor(clear.x, clear.y, clear.z, 1.0f);
                 Entity camera = source->mainCamera != NULL_ENTITY ? source->mainCamera : source->scene->getCamera();
                 auto found = map.find(camera);
-                if (found == map.end()) {
+                if (found != map.end()) {
+                    s->cameraEntity = found->second;
+                } else if (camera != NULL_ENTITY && source->scene->isEntityCreated(camera)) {
+                    // the scene's default camera (no GameObject of its own): copied on its own
+                    const std::vector<Entity> made = EntityCloner::clone(source->scene, EntityCloner::collectHierarchy(source->scene, camera), s->scene);
+                    if (!made.empty()) s->cameraEntity = made.front();
+                }
+                if (s->cameraEntity == NULL_ENTITY) {
                     finish("The target's scene has no camera to capture through.");
                     return true;
                 }
-                s->cameraEntity = found->second;
                 s->scene->setCamera(s->cameraEntity);
                 output.sceneColor = jasperengine::pixelart::Rgba8{(uint8_t)std::lround(std::clamp(clear.x, 0.0f, 1.0f) * 255.0f),
                                                                   (uint8_t)std::lround(std::clamp(clear.y, 0.0f, 1.0f) * 255.0f),
@@ -688,6 +703,7 @@ bool EffectCapture::advance(double budgetMs) {
             }
             std::vector<uint8_t> rgba;
             if (!s.warmed) {
+                s.scene->getSystem<RenderSystem>()->update(0);
                 if (drawOffscreen(CONTACT_SHEET_VIEW_ID, d.target, {layer}, s.warmed, rgba, d.waiting) == OffscreenDraw::Wait) return false;
             }
             const double previousPin = Engine::getPinnedShaderTime();
@@ -725,6 +741,8 @@ bool EffectCapture::advance(double budgetMs) {
             target->seek(s.scene, s.made, t);
             s.drawPending = true;
         }
+        // the objects load what the first draw asked for on an update (ParticleEffectPreview's drawScene)
+        s.scene->getSystem<RenderSystem>()->update(0);
         const double previousPin = Engine::getPinnedShaderTime();
         Engine::setPinnedShaderTime(pass.times[d.frame]);
         std::vector<uint8_t> rgba;

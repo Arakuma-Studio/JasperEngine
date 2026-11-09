@@ -56,6 +56,8 @@ async def test_contact_sheet_setup(ed: Editor):
     STATE["scene"], STATE["hero"] = scene, made["entity_id"]
     await ed.call("select_scene", scene=scene)
     await ed.call("select_entities", scene=scene, entities=[])
+    await ed.call("focus_window", window="game")
+    await ui_of(ed).frames(4)
 
 
 async def test_contact_sheet_button_needs_a_selection(ed: Editor):
