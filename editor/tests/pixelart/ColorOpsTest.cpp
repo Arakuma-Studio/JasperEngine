@@ -65,7 +65,7 @@ TEST(ColorOps, OutlineWidthsAndShapesPerHandMadeMasks) {
         EXPECT_TRUE(run.ok) << run.problem.message;
         return s47test::canvasRows(sprite);
     };
-    EXPECT_EQ(outline(1, "circle")[3], "....2....") << "w 1 circle: floor(sqrt(1.5^2 - 0)) = 1, the diamond's reach";
+    EXPECT_EQ(outline(1, "circle")[3], "...222...") << "w 1 circle reaches 1 at the row above: floor(sqrt(1.5^2 - 1)) = 1";
     EXPECT_EQ(outline(1, "circle")[4], "...212...");
     EXPECT_EQ(outline(2, "square")[2], "..22222..");
     EXPECT_EQ(outline(2, "square")[4], "..22122..");

@@ -181,7 +181,7 @@ async def test_cli_refuses_an_unknown_op_before_starting_an_editor(ed: Editor):
     (work / "settings.yaml").write_text("")
     proc = subprocess.run(harness.editor_command() + ["call", "--dry-run", "edit_sprite", "--sprite", "x.aseprite", "--ops", json.dumps([{"op": "pixle"}])],
                           cwd=str(work), capture_output=True, text=True, timeout=60)
-    ed.check(proc.returncode == 2 and "pixle" in proc.stderr, f"fails before any editor: {proc.returncode} {proc.stderr}")
+    ed.check(proc.returncode == 2 and "must be one of" in proc.stderr, f"fails before any editor: {proc.returncode} {proc.stderr}")
 
 
 async def test_every_structure_op_writes_a_file_aseprite_opens(ed: Editor):
