@@ -1,0 +1,6 @@
+{
+  "_about": "Per-item JSON merge patches (RFC 7386) the Pachislop port applies last (docs/specs/S84-title-library.md R20, §6.7.4): the tuning done after the port, so a re-run keeps it. Keyed by kind (looks, templates, color_schemes), then by the item's ref; every entry needs a `tuned` record in review.json.",
+  "looks": {},
+  "templates": {},
+  "color_schemes": {}
+}
