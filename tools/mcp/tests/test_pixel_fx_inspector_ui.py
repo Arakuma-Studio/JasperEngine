@@ -45,8 +45,8 @@ async def test_glitch_rows(ed: Editor):
     await ui.click_revealed("Glitch", INSPECTOR)
     await ui.frames()
     ed.check(await glitch_enabled(ed, sid), "the Glitch row's checkbox turns it on")
-    for row in ("RGB Split", "Tear Shift", "Burst Rate", "Seed"):
-        ed.check(await ui.find(row, INSPECTOR, frames=20) is not None, f"its {row} row shows")
+    for row in ("glitch_rgb_split", "glitch_tear_shift", "glitch_burst_rate", "glitch_seed"):
+        ed.check(await ui.find("##pp_" + row, INSPECTOR, frames=20) is not None, f"its {row} row shows")
     ed.check(await ui.find("Burst now", INSPECTOR, frames=6) is None, "no Burst now while stopped")
     await ed.screenshot("editor", path=str(ed.scratch.root / "glitch-rows.png"), max_width=1600)
     keep("glitch-rows.png", (ed.scratch.root / "glitch-rows.png").read_bytes())
@@ -74,7 +74,7 @@ async def test_game_view_transition_button(ed: Editor):
     sid = (await ed.call("create_scene", name="TransitionButton", type="3d"))["scene"]["id"]
     await ed.call("select_scene", scene=sid)
     await ed.call("set_project_settings", values={"graphics.screen_transitions.color": "#ff00ff",
-                                                  "graphics.screen_transitions.duration": 3.0})
+                                                  "graphics.screen_transitions.duration": 20.0})
     ui = ui_input.Ui(ed)
     await ed.call("focus_window", window="game")
     await ui.frames(10)
@@ -82,22 +82,38 @@ async def test_game_view_transition_button(ed: Editor):
     await ui.click_item("##GameTransition", GAME)
     await ui.frames()
     await ui.click_item("Fade")
-    # the cover runs 45 % of 3 s on the editor's clock; at the hold every pixel is the ink
-    await asyncio.sleep(1.6)
-    await ui.frames(6)
-    shot = await ed.call_raw("screenshot", {"view": "game", "max_width": 0})
-    ed.check(not shot.is_error and shot.images, f"a Game view screenshot: {shot.text[:200]}")
-    png = shot.images[0][0]
-    (ed.scratch.root / "transition-preview.png").write_bytes(png)
-    keep("transition-preview.png", png)
-    width, height, rgba = pngdiff.decode(png)
-    ink = sum(1 for i in range(0, width * height * 4, 4) if rgba[i] > 240 and rgba[i + 1] < 15 and rgba[i + 2] > 240)
-    ed.check(ink > width * height // 2, f"the edit-mode Game view shows the transition: {ink} of {width * height} pixels are the ink")
-    await asyncio.sleep(2.0)
-    await ui.frames(6)
-    shot = await ed.call_raw("screenshot", {"view": "game", "max_width": 0})
-    width, height, rgba = pngdiff.decode(shot.images[0][0])
-    ink = sum(1 for i in range(0, width * height * 4, 4) if rgba[i] > 240 and rgba[i + 1] < 15 and rgba[i + 2] > 240)
-    ed.check(ink == 0, f"revealed again: {ink} ink pixels")
+
+    def ink_pixels(png: bytes) -> tuple[int, int]:
+        width, height, rgba = pngdiff.decode(png)
+        ink = sum(1 for i in range(0, width * height * 4, 4) if rgba[i] > 240 and rgba[i + 1] < 15 and rgba[i + 2] > 240)
+        return ink, width * height
+
+    async def shot() -> bytes:
+        await ui.frames(3)
+        taken = await ed.call_raw("screenshot", {"view": "game", "max_width": 0})
+        ed.check(not taken.is_error and taken.images, f"a Game view screenshot: {taken.text[:200]}")
+        return taken.images[0][0]
+
+    # the editor's clock: polled until the cover holds (the duration is long: 45 % covering), then
+    # until the view is revealed again
+    covered = None
+    for _ in range(60):
+        png = await shot()
+        ink, total = ink_pixels(png)
+        if ink > total * 0.9:
+            covered = png
+            break
+        await asyncio.sleep(0.5)
+    ed.check(covered is not None, f"the edit-mode Game view shows the transition covering it (last: {ink} of {total} ink pixels)")
+    (ed.scratch.root / "transition-preview.png").write_bytes(covered)
+    keep("transition-preview.png", covered)
+    revealed = False
+    for _ in range(120):
+        ink, total = ink_pixels(await shot())
+        if ink == 0:
+            revealed = True
+            break
+        await asyncio.sleep(0.5)
+    ed.check(revealed, f"revealed again: {ink} ink pixels")
     await ed.call("set_project_settings", values={"graphics.screen_transitions.color": "#0b0a10",
                                                   "graphics.screen_transitions.duration": 0.6})
