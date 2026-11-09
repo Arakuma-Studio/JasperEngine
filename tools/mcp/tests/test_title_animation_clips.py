@@ -34,7 +34,9 @@ async def test_a_clip_scrubs_the_drive_animation(ed: Editor):
                   values={"animationplayer": {"clips": [{"clip": CLIP}], "playAutomatically": True}})
     await ed.call("save_scene", scene=sid)
 
-    await ed.call("play", action="start", scene=sid)
+    # game time, not wall time: on a loaded machine 8 free-running frames already pass the clip's
+    # 1 s end, where the driven time clamps; 28 frames at 1/30 s stay inside it
+    await ed.call("play", action="start", scene=sid, fixed_fps=30, auto_pause=True)
     try:
         await ed.call("wait", frames=8)
         early = await ed.call("get_title", entity="Logo", scene=sid)
@@ -43,4 +45,4 @@ async def test_a_clip_scrubs_the_drive_animation(ed: Editor):
         ed.check(early["animation_time"] < later["animation_time"], f"the clip advances the driven time: {early['animation_time']} -> {later['animation_time']}")
         ed.check(later["animation_time"] <= 1.0, str(later["animation_time"]))
     finally:
-        await ed.call("play", action="stop")
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
