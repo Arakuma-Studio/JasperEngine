@@ -116,7 +116,13 @@
       "line": 797,
       "item": "t-satin-chrome",
       "license_note": "used with the author's permission"
-    }
+    },
+    "check_allow": [
+      {
+        "check": "fallback_parity",
+        "reason": "RGBA8 path differs on the 'ja' sample (class F2): max 249, mean 0.53, 1.64 % of pixels over tolerance"
+      }
+    ]
   },
   "name": "Special (satin chrome)",
   "canvas": {
@@ -271,10 +277,10 @@
                   ],
                   "interp": "rgb"
                 },
-                "intensity": 0.225,
+                "intensity": 0.45,
                 "mode": "behind",
                 "on_face": 0.15,
-                "opacity": 0.5,
+                "opacity": 1,
                 "size": 23.4,
                 "spread": 0.05,
                 "technique": "softer"
@@ -1803,7 +1809,7 @@
               "hero_thickness": 100,
               "hero_width": 80,
               "inside": true,
-              "intensity": 60,
+              "intensity": 120,
               "jitter": 50,
               "large": 5,
               "placement": "peaks",

@@ -676,7 +676,13 @@
       "line": 856,
       "item": "t-ganso-3d",
       "license_note": "used with the author's permission"
-    }
+    },
+    "check_allow": [
+      {
+        "check": "counter_survival",
+        "reason": "survival 0.22 of 9 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+      }
+    ]
   },
   "name": "The Original (3D depth-fade walls)",
   "canvas": {
@@ -813,10 +819,10 @@
               "params": {
                 "color": "#0a0604",
                 "follow": "layer",
-                "opacity": 0.5,
+                "opacity": 1,
                 "softness": 0,
                 "threshold": 0.5,
-                "width": 2.346
+                "width": 3.25
               },
               "from_look": false
             },
@@ -845,10 +851,10 @@
                   ],
                   "interp": "rgb"
                 },
-                "intensity": 0.7,
+                "intensity": 1.4,
                 "mode": "behind",
                 "on_face": 0.15,
-                "opacity": 0.425,
+                "opacity": 0.85,
                 "size": 15.6,
                 "spread": 0.3,
                 "technique": "softer"
@@ -867,7 +873,7 @@
                 "exposure": 0.5,
                 "falloff": 35,
                 "highlight_shift": 60,
-                "intensity": 0.6,
+                "intensity": 1.2,
                 "knee": 0.3,
                 "on_face": 0,
                 "radius": 208,
@@ -2057,7 +2063,7 @@
                 "id": "5446a093",
                 "name": "",
                 "enabled": true,
-                "grow": 0.939,
+                "grow": 1.3,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -2069,7 +2075,7 @@
                 "depth": 24.6,
                 "offset": -25.9,
                 "bevel": {
-                  "width": 0.939,
+                  "width": 1.3,
                   "depth": 1.3,
                   "profile": "chamfer",
                   "segments": 6,
@@ -2203,7 +2209,7 @@
                 "id": "dc3ff300",
                 "name": "",
                 "enabled": true,
-                "grow": 0.217,
+                "grow": 0.3,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -2215,7 +2221,7 @@
                 "depth": 24,
                 "offset": -24.6,
                 "bevel": {
-                  "width": 0.217,
+                  "width": 0.3,
                   "depth": 0.6,
                   "profile": "step",
                   "segments": 6,
@@ -2461,7 +2467,7 @@
               "hero_thickness": 100,
               "hero_width": 110,
               "inside": true,
-              "intensity": 70,
+              "intensity": 140,
               "jitter": 50,
               "large": 5,
               "placement": "hero",

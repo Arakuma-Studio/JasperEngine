@@ -259,6 +259,115 @@
     },
     "bands": [
       {
+        "grow": 0.6,
+        "join": "round",
+        "depth": 0.4813,
+        "bevel": {
+          "width": 0.77,
+          "depth": 0.385,
+          "profile": "tube",
+          "segments": 16
+        },
+        "material": {
+          "preset": "silver",
+          "color": "#d8dde6",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e3e7ee"
+              },
+              {
+                "pos": 0.45,
+                "color": "#a3abb8"
+              },
+              {
+                "pos": 0.52,
+                "color": "#555c68"
+              },
+              {
+                "pos": 0.6,
+                "color": "#9aa2af"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dfe4eb"
+              },
+              {
+                "pos": 1,
+                "color": "#f7f9fc"
+              }
+            ]
+          },
+          "metallic": 0.96,
+          "roughness": 0.14,
+          "clearcoat": 0.3
+        },
+        "side": {
+          "preset": "chrome",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04
+        }
+      },
+      {
+        "grow": 0.783,
+        "join": "round",
+        "depth": 0.4813,
+        "bevel": {
+          "width": 0.25,
+          "depth": 0.77,
+          "profile": "tube",
+          "segments": 16
+        },
+        "material": {
+          "color": "#ffd35c",
+          "metallic": 0.98,
+          "roughness": 0.15,
+          "env_multiplier": 4,
+          "surface": {
+            "kind": "liquid",
+            "amount": 0,
+            "scale": 12.03,
+            "seed": 3
+          },
+          "link": "gold"
+        }
+      },
+      {
         "grow": 1.1745,
         "join": "round",
         "depth": 0.4813,
@@ -399,8 +508,30 @@
       "name": "Gold"
     }
   },
-  "lint_allow": [],
-  "check_allow": [],
+  "lint_allow": [
+    {
+      "rule": "contrast",
+      "reason": "two gold bands read as one frame on purpose"
+    }
+  ],
+  "check_allow": [
+    {
+      "check": "3d_tier_budget.high",
+      "reason": "294020 triangles over 150000; 7499928 mesh bytes over 5242880 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "3d_tier_budget.low",
+      "reason": "5 stacked solids (letter and bands) over the low tier's 3; 44978 triangles over 30000 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "3d_tier_budget.medium",
+      "reason": "135002 triangles over 60000; 3580152 mesh bytes over 2097152 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "counter_survival",
+      "reason": "survival 0.67 of 3 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

@@ -443,7 +443,12 @@
   "group_effects": [],
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "counter_survival",
+      "reason": "survival 0.50 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

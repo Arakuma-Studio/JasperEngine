@@ -128,7 +128,13 @@
       "line": 692,
       "item": "t-chance",
       "license_note": "used with the author's permission"
-    }
+    },
+    "check_allow": [
+      {
+        "check": "counter_survival",
+        "reason": "survival 0.00 of 2 counters on the 'ja' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+      }
+    ]
   },
   "name": "Chance (green / blue)",
   "canvas": {
@@ -266,7 +272,7 @@
                 "angle": 90,
                 "color": "#002a10",
                 "distance": 9,
-                "opacity": 0.24,
+                "opacity": 0.6,
                 "size": 21,
                 "spread": 0.1,
                 "use_global_light": true
@@ -304,10 +310,10 @@
                   ],
                   "interp": "rgb"
                 },
-                "intensity": 0.24,
+                "intensity": 0.6,
                 "mode": "behind",
                 "on_face": 0.15,
-                "opacity": 0.32,
+                "opacity": 0.8,
                 "size": 33,
                 "spread": 0.05,
                 "technique": "softer"
@@ -322,7 +328,7 @@
           },
           "text": "チャンス",
           "font": {
-            "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf",
+            "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
             "guid": ""
           },
           "face_index": 0,
@@ -603,7 +609,7 @@
               {
                 "id": "1e681fbc",
                 "enabled": true,
-                "width": 0.714,
+                "width": 1.3,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -836,7 +842,7 @@
               {
                 "id": "226cddaf",
                 "enabled": true,
-                "width": 1.043,
+                "width": 1.9,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1069,7 +1075,7 @@
               {
                 "id": "7b7a492a",
                 "enabled": true,
-                "width": 1.976,
+                "width": 3.6,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1314,7 +1320,7 @@
               {
                 "id": "6d016f15",
                 "enabled": true,
-                "width": 1.317,
+                "width": 2.4,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1588,7 +1594,7 @@
                 "angle": 90,
                 "color": "#001040",
                 "distance": 4.5,
-                "opacity": 0.24,
+                "opacity": 0.6,
                 "size": 10.5,
                 "spread": 0.1,
                 "use_global_light": true
@@ -1626,10 +1632,10 @@
                   ],
                   "interp": "rgb"
                 },
-                "intensity": 0.24,
+                "intensity": 0.6,
                 "mode": "behind",
                 "on_face": 0.15,
-                "opacity": 0.32,
+                "opacity": 0.8,
                 "size": 16.5,
                 "spread": 0.05,
                 "technique": "softer"
@@ -1644,7 +1650,7 @@
           },
           "text": "CHANCE",
           "font": {
-            "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf",
+            "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
             "guid": ""
           },
           "face_index": 0,
@@ -1925,7 +1931,7 @@
               {
                 "id": "15888341",
                 "enabled": true,
-                "width": 0.714,
+                "width": 1.3,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -2158,7 +2164,7 @@
               {
                 "id": "199f78c6",
                 "enabled": true,
-                "width": 1.043,
+                "width": 1.9,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -2391,7 +2397,7 @@
               {
                 "id": "282c7bdb",
                 "enabled": true,
-                "width": 1.976,
+                "width": 3.6,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -2636,7 +2642,7 @@
               {
                 "id": "c19d2648",
                 "enabled": true,
-                "width": 1.317,
+                "width": 2.4,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {

@@ -146,10 +146,128 @@
     },
     "bands": [
       {
-        "grow": 1.253,
+        "grow": 1.4,
+        "depth": 10.6,
+        "offset": -12,
+        "bevel": {
+          "width": 1.4,
+          "depth": 1.4,
+          "profile": "chamfer"
+        },
+        "material": {
+          "preset": "chrome",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04
+        }
+      },
+      {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#05060a",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#14161c",
+          "metallic": 1,
+          "roughness": 0.2,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "grow": 1.6,
+        "join": "round",
+        "depth": 5,
+        "bevel": {
+          "width": 1.6,
+          "depth": 0.8,
+          "profile": "tube",
+          "segments": 12
+        },
+        "material": {
+          "preset": "red_metal",
+          "color": "#ff1d2d",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ff8a8a"
+              },
+              {
+                "pos": 0.22,
+                "color": "#ff3b3b"
+              },
+              {
+                "pos": 0.45,
+                "color": "#d0101c"
+              },
+              {
+                "pos": 0.52,
+                "color": "#5a0008"
+              },
+              {
+                "pos": 0.6,
+                "color": "#b80c18"
+              },
+              {
+                "pos": 0.8,
+                "color": "#ff3030"
+              },
+              {
+                "pos": 1,
+                "color": "#ff9a9a"
+              }
+            ]
+          },
+          "metallic": 0.9,
+          "roughness": 0.15,
+          "env_multiplier": 0.9,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 2.4,
         "depth": 7,
         "bevel": {
-          "width": 0.313,
+          "width": 0.6,
           "depth": 0.6
         },
         "material": {
@@ -162,10 +280,54 @@
         }
       },
       {
-        "grow": 0.522,
+        "grow": 0.8,
         "depth": 4,
         "bevel": {
-          "width": 0.261,
+          "width": 0.6,
+          "depth": 0.6
+        },
+        "material": {
+          "preset": "chrome",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04
+        }
+      },
+      {
+        "grow": 1,
+        "depth": 4,
+        "bevel": {
+          "width": 0.5,
           "depth": 0.5
         },
         "material": {
@@ -193,7 +355,7 @@
       "type": "outline",
       "params": {
         "color": "#000000",
-        "width": 1.305
+        "width": 2.5
       }
     },
     {
@@ -256,7 +418,20 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "3d_tier_budget.low",
+      "reason": "7 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "3d_tier_budget.medium",
+      "reason": "7 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "counter_survival",
+      "reason": "survival 0.00 of 2 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

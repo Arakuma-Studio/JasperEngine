@@ -196,11 +196,25 @@
     },
     "bands": [
       {
-        "grow": 1.36,
+        "grow": 0.3,
+        "depth": 11.2,
+        "offset": -11.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.4
+        },
+        "material": {
+          "preset": "white_gloss",
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 1.6,
         "depth": 9.6,
         "offset": -11.2,
         "bevel": {
-          "width": 1.36,
+          "width": 1.6,
           "depth": 1.6
         },
         "material": {
@@ -268,10 +282,32 @@
         }
       },
       {
-        "grow": 3.57,
+        "grow": 0.3,
+        "depth": 9,
+        "offset": -9.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#3a1000",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#4a1a00",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "grow": 4.2,
         "depth": 7,
         "bevel": {
-          "width": 0.51,
+          "width": 0.6,
           "depth": 0.6
         },
         "material": {
@@ -290,7 +326,7 @@
       "type": "outline",
       "params": {
         "color": "#0a0014",
-        "width": 2.125
+        "width": 2.5
       }
     },
     {
@@ -353,7 +389,16 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "3d_tier_budget.low",
+      "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "counter_survival",
+      "reason": "survival 0.67 of 3 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

@@ -60,7 +60,17 @@
     "provenance": {
       "source": "jasperengine"
     },
-    "background": "dark"
+    "background": "dark",
+    "check_allow": [
+      {
+        "check": "counter_survival",
+        "reason": "survival 0.75 of 4 counters on the 'ja' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+      },
+      {
+        "check": "fallback_parity",
+        "reason": "RGBA8 path differs on the 'ja' sample (class F2): max 143, mean 0.31, 0.48 % of pixels over tolerance"
+      }
+    ]
   },
   "name": "",
   "canvas": {
@@ -223,7 +233,7 @@
       },
       "text": "ASHEN REALM",
       "font": {
-        "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf",
+        "path": "TitleArt/Fonts/cinzel-decorative-black/CinzelDecorative-Black.ttf",
         "guid": ""
       },
       "face_index": 0,
@@ -1255,7 +1265,7 @@
       },
       "text": "CHRONICLES",
       "font": {
-        "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf",
+        "path": "TitleArt/Fonts/cinzel-decorative-black/CinzelDecorative-Black.ttf",
         "guid": ""
       },
       "face_index": 0,

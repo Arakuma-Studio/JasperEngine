@@ -65,10 +65,10 @@
     },
     "rims": [
       {
-        "width": 1.262
+        "width": 1.3
       },
       {
-        "width": 3.787,
+        "width": 3.9,
         "plate": {
           "kind": "box",
           "slant": 12

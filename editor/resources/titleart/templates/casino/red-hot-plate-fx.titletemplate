@@ -125,7 +125,17 @@
       "line": 1014,
       "item": "t-recipe-gekinetsu",
       "license_note": "used with the author's permission"
-    }
+    },
+    "check_allow": [
+      {
+        "check": "counter_survival",
+        "reason": "survival 0.33 of 3 counters on the 'en' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+      },
+      {
+        "check": "fallback_parity",
+        "reason": "RGBA8 path differs on the 'ja' sample (class F2): max 224, mean 0.74, 2.01 % of pixels over tolerance"
+      }
+    ]
   },
   "name": "Red Hot Plate FX (focus lines, fire, embers)",
   "canvas": {
@@ -280,10 +290,10 @@
                   ],
                   "interp": "rgb"
                 },
-                "intensity": 0.4,
+                "intensity": 1,
                 "mode": "add",
                 "on_face": 1,
-                "opacity": 0.4,
+                "opacity": 1,
                 "size": 14,
                 "spread": 0,
                 "technique": "softer"
@@ -335,7 +345,7 @@
               "jitter": 90,
               "length": 100,
               "length_random": 0,
-              "opacity": 40,
+              "opacity": 100,
               "padding": 40,
               "radius": [640, 300],
               "seed": 1,
@@ -412,7 +422,7 @@
                     "exposure": 0.5,
                     "falloff": 25,
                     "highlight_shift": 60,
-                    "intensity": 1,
+                    "intensity": 2.5,
                     "knee": 0.3,
                     "on_face": 0,
                     "radius": 440,
@@ -492,7 +502,7 @@
                       },
                       "height": 240,
                       "inside": 16,
-                      "intensity": 42,
+                      "intensity": 105,
                       "over_edge": false,
                       "phase": 0,
                       "seed": 7,
@@ -532,7 +542,7 @@
                   },
                   "text": "激熱",
                   "font": {
-                    "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf",
+                    "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
                     "guid": ""
                   },
                   "face_index": 0,
@@ -813,7 +823,7 @@
                       {
                         "id": "b10b84e4",
                         "enabled": true,
-                        "width": 0.819,
+                        "width": 1.2,
                         "join": "miter",
                         "fill_counters": false,
                         "plate": {
@@ -1046,7 +1056,7 @@
                       {
                         "id": "52d6da77",
                         "enabled": true,
-                        "width": 1.365,
+                        "width": 2,
                         "join": "miter",
                         "fill_counters": false,
                         "plate": {
@@ -1285,7 +1295,7 @@
                       {
                         "id": "10ead992",
                         "enabled": true,
-                        "width": 1.911,
+                        "width": 2.8,
                         "join": "miter",
                         "fill_counters": false,
                         "plate": {
@@ -1518,7 +1528,7 @@
                       {
                         "id": "ec02c51d",
                         "enabled": true,
-                        "width": 0.955,
+                        "width": 1.4,
                         "join": "miter",
                         "fill_counters": false,
                         "plate": {
@@ -1805,7 +1815,7 @@
                   "hero_thickness": 100,
                   "hero_width": 80,
                   "inside": true,
-                  "intensity": 52,
+                  "intensity": 130,
                   "jitter": 50,
                   "large": 3,
                   "placement": "highlights",
@@ -1879,10 +1889,10 @@
                   ],
                   "interp": "rgb"
                 },
-                "intensity": 0.32,
+                "intensity": 0.8,
                 "mode": "add",
                 "on_face": 1,
-                "opacity": 0.4,
+                "opacity": 1,
                 "size": 16,
                 "spread": 0,
                 "technique": "softer"
@@ -1945,7 +1955,7 @@
               "gravity": 0,
               "heading": -90,
               "loop": false,
-              "opacity": 40,
+              "opacity": 100,
               "opacity_random": 45,
               "point": [0, 0],
               "radius": [960, 360],

@@ -40,8 +40,11 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "zen-kaku-gothic-new-black",
-    "ja": "zen-kaku-gothic-new-black"
+    "latin": "orbitron",
+    "ja": "train-one",
+    "variations": {
+      "wght": 700
+    }
   },
   "style": {
     "face": {
@@ -51,7 +54,7 @@
     },
     "rims": [
       {
-        "width": 4.273,
+        "width": 4.4,
         "material": {
           "fill": {
             "color": "#123a5a"
@@ -59,7 +62,7 @@
         }
       },
       {
-        "width": 0.777,
+        "width": 0.8,
         "material": {
           "fill": {
             "color": "#2ad8ff"

@@ -40,8 +40,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "zen-kaku-gothic-new-black",
-    "ja": "zen-kaku-gothic-new-black"
+    "latin": "titan-one",
+    "ja": "dela-gothic-one"
   },
   "style": {
     "face": {
@@ -98,7 +98,7 @@
     },
     "rims": [
       {
-        "width": 1.01,
+        "width": 1.5,
         "material": {
           "bevel": {
             "enabled": true,
@@ -107,7 +107,7 @@
         }
       },
       {
-        "width": 2.693,
+        "width": 4,
         "material": {
           "fill": {
             "kind": "linear",
@@ -166,8 +166,11 @@
         }
       },
       {
-        "width": 1.347,
-        "offset": [0, -2],
+        "width": 2,
+        "offset": [
+          0,
+          -2
+        ],
         "material": {
           "fill": {
             "color": "#002a10"

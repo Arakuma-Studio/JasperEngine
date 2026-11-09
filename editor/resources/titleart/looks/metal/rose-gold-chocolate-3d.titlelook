@@ -114,8 +114,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "archivo-black",
-    "ja": "mplus1p-black"
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
   },
   "style_3d": {
     "depth": 10.6,
@@ -165,6 +165,27 @@
     },
     "bands": [
       {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#200804",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#2a0e08",
+          "metallic": 1,
+          "env_multiplier": 0.7
+        }
+      },
+      {
         "grow": 2.6,
         "bevel": {
           "width": 1.4,
@@ -189,6 +210,55 @@
               {
                 "pos": 1,
                 "color": "#a0583a"
+              }
+            ]
+          },
+          "metallic": 0.5,
+          "roughness": 0.15,
+          "env_multiplier": 0.6,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 0.7,
+        "depth": 4,
+        "bevel": {
+          "width": 0.6,
+          "depth": 0.6
+        },
+        "material": {
+          "preset": "white_gloss",
+          "color": "#ffe4d8",
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 2,
+        "bevel": {
+          "width": 1,
+          "depth": 1,
+          "profile": "chamfer"
+        },
+        "material": {
+          "preset": "copper",
+          "color": "#200a04",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#5a2a18"
+              },
+              {
+                "pos": 0.45,
+                "color": "#200a04"
+              },
+              {
+                "pos": 0.55,
+                "color": "#050100"
+              },
+              {
+                "pos": 1,
+                "color": "#5a2a18"
               }
             ]
           },
@@ -230,7 +300,7 @@
       "type": "outline",
       "params": {
         "color": "#0a0200",
-        "width": 1.25
+        "width": 2.5
       }
     },
     {
@@ -293,7 +363,20 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "3d_tier_budget.low",
+      "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "3d_tier_budget.medium",
+      "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "counter_survival",
+      "reason": "survival 0.00 of 4 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

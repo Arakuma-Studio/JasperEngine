@@ -203,15 +203,6 @@
           "layer": "Title",
           "look": "retro/crt-scanline",
           "apply_font": true
-        },
-        {
-          "op": "set",
-          "layer": "Title",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
-            }
-          }
         }
       ]
     },
@@ -304,15 +295,6 @@
           "layer": "Title",
           "look": "retro/16bit-gradient",
           "apply_font": true
-        },
-        {
-          "op": "set",
-          "layer": "Title",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf"
-            }
-          }
         }
       ],
       "background": "dark"

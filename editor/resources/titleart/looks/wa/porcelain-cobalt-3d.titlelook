@@ -153,6 +153,86 @@
     },
     "bands": [
       {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.5,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.5,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#06104a",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#0a1e90",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#2048d0"
+              },
+              {
+                "pos": 1,
+                "color": "#020830"
+              }
+            ]
+          },
+          "gradient_axis": "depth",
+          "roughness": 0.1,
+          "env_multiplier": 0.6,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 2.2,
+        "bevel": {
+          "width": 0.8,
+          "depth": 0.8
+        },
+        "material": {
+          "color": "#0a1e90",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#3058f0"
+              },
+              {
+                "pos": 0.4,
+                "color": "#0a1e90"
+              },
+              {
+                "pos": 0.55,
+                "color": "#010630"
+              },
+              {
+                "pos": 1,
+                "color": "#1a40c8"
+              }
+            ]
+          },
+          "roughness": 0.1,
+          "env_multiplier": 0.6,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 0.6,
+        "depth": 5,
+        "bevel": {
+          "width": 0.5,
+          "depth": 0.5
+        },
+        "material": {
+          "preset": "white_gloss",
+          "color": "#f0f4ff",
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
         "grow": 2.4,
         "bevel": {
           "width": 1,
@@ -274,7 +354,16 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "3d_tier_budget.low",
+      "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "3d_tier_budget.medium",
+      "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

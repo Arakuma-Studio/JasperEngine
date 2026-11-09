@@ -62,7 +62,7 @@
     },
     "rims": [
       {
-        "width": 5.2,
+        "width": 0.5,
         "material": {
           "fill": {
             "color": "#b8c8d8"

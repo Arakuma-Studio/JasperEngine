@@ -41,8 +41,11 @@
   "ref_size": 200,
   "background": "dark",
   "font": {
-    "latin": "archivo-black",
-    "ja": "mplus1p-black"
+    "latin": "teko",
+    "ja": "dela-gothic-one",
+    "variations": {
+      "wght": 700
+    }
   },
   "style": {
     "face": {

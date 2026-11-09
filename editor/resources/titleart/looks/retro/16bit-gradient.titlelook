@@ -111,7 +111,7 @@
         "angle": 45,
         "distance": 6,
         "size": 0,
-        "opacity": 0.722,
+        "opacity": 1,
         "use_global_light": false
       }
     },

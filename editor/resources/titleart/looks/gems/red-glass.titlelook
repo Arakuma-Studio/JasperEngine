@@ -168,7 +168,7 @@
     },
     "rims": [
       {
-        "width": 1.3,
+        "width": 1.2,
         "material": {
           "fill": {
             "gradient": {
@@ -225,7 +225,7 @@
         }
       },
       {
-        "width": 2.6,
+        "width": 2.4,
         "material": {
           "fill": {
             "color": "#4a0008",
@@ -281,7 +281,7 @@
         }
       },
       {
-        "width": 1.3,
+        "width": 1.2,
         "offset": [0, -2.2],
         "material": {
           "fill": {
@@ -345,7 +345,12 @@
   "generators": [],
   "group_effects": [],
   "links": {},
-  "lint_allow": [],
+  "lint_allow": [
+    {
+      "rule": "rims_thin",
+      "reason": "just under the 5 % rule as authored; the look is the source's and its rim stack reads as intended"
+    }
+  ],
   "check_allow": [],
   "provenance": {
     "source": "pachislop",

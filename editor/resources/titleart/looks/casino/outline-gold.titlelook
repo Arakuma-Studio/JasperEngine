@@ -102,8 +102,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "archivo-black",
-    "ja": "mplus1p-black"
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
   },
   "style": {
     "face": {

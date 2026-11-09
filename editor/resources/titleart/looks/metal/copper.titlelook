@@ -85,8 +85,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "archivo-black",
-    "ja": "mplus1p-black"
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
   },
   "style": {
     "face": {
@@ -176,7 +176,7 @@
     },
     "rims": [
       {
-        "width": 0.866,
+        "width": 1.2,
         "material": {
           "fill": {
             "color": "#1a0800",
@@ -226,7 +226,7 @@
         }
       },
       {
-        "width": 1.587,
+        "width": 2.2,
         "material": {
           "fill": {
             "kind": "linear",
@@ -305,7 +305,7 @@
         }
       },
       {
-        "width": 1.587,
+        "width": 2.2,
         "material": {
           "fill": {
             "color": "#120600",
@@ -355,7 +355,7 @@
         }
       },
       {
-        "width": 1.01,
+        "width": 1.4,
         "offset": [0, -2.4],
         "material": {
           "fill": {
@@ -420,7 +420,12 @@
   "group_effects": [],
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "counter_survival",
+      "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

@@ -151,24 +151,6 @@
               "field": "text"
             }
           ]
-        },
-        {
-          "op": "set",
-          "layer": "Title",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
-            }
-          }
-        },
-        {
-          "op": "set",
-          "layer": "Subtitle",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
-            }
-          }
         }
       ],
       "background": "dark"

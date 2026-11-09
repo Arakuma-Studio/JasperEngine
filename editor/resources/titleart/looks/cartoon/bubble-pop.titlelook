@@ -40,8 +40,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "archivo-black",
-    "ja": "mplus1p-black"
+    "latin": "titan-one",
+    "ja": "mochiy-pop-one"
   },
   "style": {
     "face": {
@@ -86,7 +86,10 @@
         }
       },
       {
-        "offset": [0, -3],
+        "offset": [
+          0,
+          -3
+        ],
         "material": {
           "fill": {
             "color": "#0a1a40"

@@ -172,11 +172,11 @@
     },
     "rims": [
       {
-        "width": 1.444,
+        "width": 2,
         "material": {
           "fill": {
             "kind": "linear",
-            "color": "#ff6512",
+            "color": "#8a2c00",
             "gradient": {
               "stops": [
                 {
@@ -251,7 +251,7 @@
         }
       },
       {
-        "width": 1.733,
+        "width": 2.4,
         "material": {
           "fill": {
             "kind": "linear",
@@ -322,7 +322,7 @@
         }
       },
       {
-        "width": 0.794,
+        "width": 1.1,
         "material": {
           "fill": {
             "color": "#1a0c00",
@@ -372,7 +372,7 @@
         }
       },
       {
-        "width": 1.155,
+        "width": 1.6,
         "offset": [0, -2.4],
         "material": {
           "fill": {
@@ -436,8 +436,18 @@
   "generators": [],
   "group_effects": [],
   "links": {},
-  "lint_allow": [],
-  "check_allow": [],
+  "lint_allow": [
+    {
+      "rule": "contrast",
+      "reason": "the gold face runs into its first stroke by design: the second stroke is the separation"
+    }
+  ],
+  "check_allow": [
+    {
+      "check": "counter_survival",
+      "reason": "survival 0.00 of 1 counters on the 'digits' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

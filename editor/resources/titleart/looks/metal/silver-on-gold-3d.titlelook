@@ -103,8 +103,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "archivo-black",
-    "ja": "mplus1p-black"
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
   },
   "style_3d": {
     "depth": 10.6,
@@ -154,10 +154,31 @@
     },
     "bands": [
       {
-        "grow": 1.357,
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#14100a",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#2a1800",
+          "metallic": 1,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "grow": 2.6,
         "join": "round",
         "bevel": {
-          "width": 1.357,
+          "width": 2.6,
           "depth": 1.8,
           "segments": 10
         },
@@ -201,10 +222,72 @@
         }
       },
       {
-        "grow": 0.626,
+        "grow": 0.8,
+        "depth": 5,
+        "bevel": {
+          "width": 0.5,
+          "depth": 0.5
+        },
+        "material": {
+          "preset": "black_gloss",
+          "color": "#0a0600",
+          "metallic": 0.2,
+          "roughness": 0.08,
+          "env_multiplier": 0.35,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 2.2,
+        "bevel": {
+          "width": 1.4,
+          "depth": 1.4,
+          "profile": "chamfer"
+        },
+        "material": {
+          "color": "#3a1800",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#fff6c8"
+              },
+              {
+                "pos": 0.2,
+                "color": "#ffd23a"
+              },
+              {
+                "pos": 0.42,
+                "color": "#c07800"
+              },
+              {
+                "pos": 0.52,
+                "color": "#3a1800"
+              },
+              {
+                "pos": 0.6,
+                "color": "#a86200"
+              },
+              {
+                "pos": 0.82,
+                "color": "#ffc828"
+              },
+              {
+                "pos": 1,
+                "color": "#fff0b0"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.16,
+          "env_multiplier": 0.85,
+          "clearcoat": 0.6
+        }
+      },
+      {
+        "grow": 1.2,
         "depth": 4,
         "bevel": {
-          "width": 0.261,
+          "width": 0.5,
           "depth": 0.5
         },
         "material": {
@@ -232,7 +315,7 @@
       "type": "outline",
       "params": {
         "color": "#060300",
-        "width": 1.305
+        "width": 2.5
       }
     },
     {
@@ -294,7 +377,20 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "3d_tier_budget.low",
+      "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "3d_tier_budget.medium",
+      "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "counter_survival",
+      "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

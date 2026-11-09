@@ -120,15 +120,6 @@
           "generator": "particles",
           "name": "Confetti",
           "preset": "confetti"
-        },
-        {
-          "op": "set",
-          "layer": "Title",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
-            }
-          }
         }
       ]
     },
@@ -321,15 +312,6 @@
           "layer": "Title",
           "look": "cartoon/candy-stripe",
           "apply_font": true
-        },
-        {
-          "op": "set",
-          "layer": "Title",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
-            }
-          }
         }
       ]
     }

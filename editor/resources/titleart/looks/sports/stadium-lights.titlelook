@@ -96,7 +96,10 @@
       "blend": "add",
       "opacity": 1,
       "params": {
-        "position": [-260, 100]
+        "position": [
+          -260,
+          100
+        ]
       },
       "effects": []
     },

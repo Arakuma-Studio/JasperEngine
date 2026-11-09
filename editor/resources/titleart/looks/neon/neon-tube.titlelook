@@ -120,7 +120,7 @@
     },
     "rims": [
       {
-        "width": 2.971,
+        "width": 1.6,
         "join": "round",
         "material": {
           "fill": {
@@ -180,7 +180,7 @@
         }
       },
       {
-        "width": 2.229,
+        "width": 1.2,
         "join": "round",
         "material": {
           "fill": {
@@ -262,7 +262,12 @@
   "generators": [],
   "group_effects": [],
   "links": {},
-  "lint_allow": [],
+  "lint_allow": [
+    {
+      "rule": "rims_thin",
+      "reason": "a thin tube is the look"
+    }
+  ],
   "check_allow": [],
   "provenance": {
     "source": "pachislop",

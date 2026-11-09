@@ -41,8 +41,8 @@
   "ref_size": 200,
   "background": "dark",
   "font": {
-    "latin": "archivo-black",
-    "ja": "mplus1p-black"
+    "latin": "creepster",
+    "ja": "dela-gothic-one"
   },
   "style": {
     "face": {

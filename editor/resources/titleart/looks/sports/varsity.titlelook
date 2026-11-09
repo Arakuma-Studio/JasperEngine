@@ -40,8 +40,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "zen-kaku-gothic-new-black",
-    "ja": "zen-kaku-gothic-new-black"
+    "latin": "archivo-black",
+    "ja": "dela-gothic-one"
   },
   "style": {
     "face": {
@@ -51,10 +51,9 @@
     },
     "rims": [
       {
-        "width": 1.554
+        "width": 2
       },
       {
-        "width": 2.331,
         "material": {
           "fill": {
             "color": "#0a1f44"
@@ -62,8 +61,11 @@
         }
       },
       {
-        "width": 1.165,
-        "offset": [0, -1.5],
+        "width": 1.5,
+        "offset": [
+          0,
+          -1.5
+        ],
         "material": {
           "fill": {
             "color": "#0a1f44"

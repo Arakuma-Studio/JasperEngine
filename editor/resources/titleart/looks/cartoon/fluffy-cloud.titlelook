@@ -41,8 +41,8 @@
   "ref_size": 200,
   "background": "dark",
   "font": {
-    "latin": "zen-kaku-gothic-new-black",
-    "ja": "zen-kaku-gothic-new-black"
+    "latin": "mochiy-pop-one",
+    "ja": "mochiy-pop-one"
   },
   "style": {
     "face": {
@@ -54,7 +54,7 @@
     },
     "rims": [
       {
-        "width": 5.05,
+        "width": 5.2,
         "join": "round",
         "material": {
           "fill": {

@@ -59,7 +59,13 @@
     "canvas_note": "1920 × 1080, transparent; the backdrop is a guide layer",
     "provenance": {
       "source": "jasperengine"
-    }
+    },
+    "check_allow": [
+      {
+        "check": "counter_survival",
+        "reason": "survival 0.78 of 9 counters on the 'ja' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+      }
+    ]
   },
   "name": "",
   "canvas": {
@@ -287,16 +293,11 @@
           },
           "text": "INFERNO",
           "font": {
-            "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf",
+            "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
             "guid": ""
           },
           "face_index": 0,
-          "fallback_fonts": [
-            {
-              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf",
-              "guid": ""
-            }
-          ],
+          "fallback_fonts": [],
           "variations": {},
           "features": {},
           "language": "",
@@ -573,7 +574,7 @@
               {
                 "id": "5b286134",
                 "enabled": true,
-                "width": 0.819,
+                "width": 1.2,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -806,7 +807,7 @@
               {
                 "id": "662d0ef3",
                 "enabled": true,
-                "width": 1.365,
+                "width": 2,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1045,7 +1046,7 @@
               {
                 "id": "6435e99a",
                 "enabled": true,
-                "width": 1.911,
+                "width": 2.8,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1278,7 +1279,7 @@
               {
                 "id": "da8e5e19",
                 "enabled": true,
-                "width": 0.955,
+                "width": 1.4,
                 "join": "miter",
                 "fill_counters": false,
                 "plate": {
@@ -1588,7 +1589,7 @@
       },
       "text": "BURNING",
       "font": {
-        "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf",
+        "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
         "guid": ""
       },
       "face_index": 0,

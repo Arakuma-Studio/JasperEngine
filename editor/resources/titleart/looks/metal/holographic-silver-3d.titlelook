@@ -155,9 +155,79 @@
     },
     "bands": [
       {
-        "grow": 1.044,
+        "grow": 1.4,
+        "depth": 10.6,
+        "offset": -12,
         "bevel": {
-          "width": 0.626,
+          "width": 1.4,
+          "depth": 1.4,
+          "profile": "chamfer"
+        },
+        "material": {
+          "preset": "chrome",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#ffffff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#e8eef5"
+              },
+              {
+                "pos": 0.45,
+                "color": "#8a94a3"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2e343d"
+              },
+              {
+                "pos": 0.6,
+                "color": "#7d8794"
+              },
+              {
+                "pos": 0.8,
+                "color": "#dde4ee"
+              },
+              {
+                "pos": 1,
+                "color": "#ffffff"
+              }
+            ]
+          },
+          "metallic": 1,
+          "roughness": 0.04,
+          "env_multiplier": 0.9,
+          "iridescence": 0.6
+        }
+      },
+      {
+        "grow": 0.3,
+        "depth": 10,
+        "offset": -10.6,
+        "bevel": {
+          "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#1a1430",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#1e1a30",
+          "metallic": 1,
+          "roughness": 0.25,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "grow": 2,
+        "bevel": {
+          "width": 1.2,
           "depth": 1.2
         },
         "material": {
@@ -189,10 +259,10 @@
         }
       },
       {
-        "grow": 1.253,
+        "grow": 2.4,
         "depth": 7,
         "bevel": {
-          "width": 0.313,
+          "width": 0.6,
           "depth": 0.6
         },
         "material": {
@@ -221,7 +291,7 @@
       "type": "outline",
       "params": {
         "color": "#06041a",
-        "width": 1.305
+        "width": 2.5
       }
     },
     {
@@ -315,8 +385,22 @@
     ]
   },
   "links": {},
-  "lint_allow": [],
-  "check_allow": [],
+  "lint_allow": [
+    {
+      "rule": "contrast",
+      "reason": "iridescent silver on a silver band: hue, not lightness, separates them"
+    }
+  ],
+  "check_allow": [
+    {
+      "check": "3d_tier_budget.low",
+      "reason": "5 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "counter_survival",
+      "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

@@ -124,24 +124,6 @@
               "field": "text"
             }
           ]
-        },
-        {
-          "op": "set",
-          "layer": "Title",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf"
-            }
-          }
-        },
-        {
-          "op": "set",
-          "layer": "Subtitle",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf"
-            }
-          }
         }
       ],
       "background": "dark"

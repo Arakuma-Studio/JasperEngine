@@ -139,24 +139,6 @@
               "field": "text"
             }
           ]
-        },
-        {
-          "op": "set",
-          "layer": "Title",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
-            }
-          }
-        },
-        {
-          "op": "set",
-          "layer": "Subtitle",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
-            }
-          }
         }
       ]
     },
@@ -368,15 +350,6 @@
           "generator": "glints",
           "name": "Glints",
           "follow": "Title"
-        },
-        {
-          "op": "set",
-          "layer": "Title",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
-            }
-          }
         }
       ]
     }

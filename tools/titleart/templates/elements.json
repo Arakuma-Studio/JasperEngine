@@ -124,24 +124,6 @@
               "field": "text"
             }
           ]
-        },
-        {
-          "op": "set",
-          "layer": "Title",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf"
-            }
-          }
-        },
-        {
-          "op": "set",
-          "layer": "Subtitle",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf"
-            }
-          }
         }
       ]
     },
@@ -269,15 +251,6 @@
             "gen.gravity": 60,
             "gen.loop": true
           }
-        },
-        {
-          "op": "set",
-          "layer": "Title",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/zen-kaku-gothic-new-black/ZenKakuGothicNew-Black.ttf"
-            }
-          }
         }
       ]
     },
@@ -377,15 +350,6 @@
           "name": "Lightning",
           "preset": "bolts",
           "follow": "Title"
-        },
-        {
-          "op": "set",
-          "layer": "Title",
-          "values": {
-            "font": {
-              "path": "TitleArt/Fonts/mplus1p-black/MPLUS1p-Black.ttf"
-            }
-          }
         }
       ]
     }

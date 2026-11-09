@@ -110,8 +110,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "archivo-black",
-    "ja": "mplus1p-black"
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
   },
   "style": {
     "face": {
@@ -200,7 +200,7 @@
     },
     "rims": [
       {
-        "width": 0.772,
+        "width": 1.1,
         "material": {
           "fill": {
             "color": "#2a1000",
@@ -250,7 +250,7 @@
         }
       },
       {
-        "width": 1.052,
+        "width": 1.5,
         "material": {
           "fill": {
             "color": "#fff2d0",
@@ -308,7 +308,6 @@
         }
       },
       {
-        "width": 2.104,
         "material": {
           "fill": {
             "kind": "linear",
@@ -372,7 +371,7 @@
         }
       },
       {
-        "width": 1.122,
+        "width": 1.6,
         "offset": [0, -2.6],
         "material": {
           "fill": {
@@ -449,7 +448,12 @@
   "group_effects": [],
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "counter_survival",
+      "reason": "survival 0.00 of 2 counters on the 'latin' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",

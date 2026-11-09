@@ -40,8 +40,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "archivo-black",
-    "ja": "mplus1p-black"
+    "latin": "playfair-black-italic",
+    "ja": "zen-old-mincho-black"
   },
   "style": {
     "face": {

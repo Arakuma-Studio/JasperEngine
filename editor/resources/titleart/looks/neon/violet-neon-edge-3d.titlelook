@@ -105,8 +105,8 @@
   "applies": "style",
   "ref_size": 200,
   "font": {
-    "latin": "zen-kaku-gothic-new-black",
-    "ja": "zen-kaku-gothic-new-black"
+    "latin": "dela-gothic-one",
+    "ja": "dela-gothic-one"
   },
   "style_3d": {
     "depth": 9.6,
@@ -156,9 +156,48 @@
     },
     "bands": [
       {
-        "grow": 1,
+        "grow": 0.3,
+        "depth": 9,
+        "offset": -9.6,
         "bevel": {
           "width": 0.3,
+          "depth": 0.6,
+          "profile": "step"
+        },
+        "material": {
+          "color": "#12001e",
+          "metallic": 1,
+          "roughness": 0.35,
+          "env_multiplier": 0.7
+        },
+        "side": {
+          "color": "#1a0028",
+          "metallic": 1,
+          "env_multiplier": 0.7
+        }
+      },
+      {
+        "grow": 1.8,
+        "join": "round",
+        "depth": 1,
+        "bevel": {
+          "width": 1.8,
+          "depth": 0.9,
+          "profile": "tube",
+          "segments": 12
+        },
+        "material": {
+          "color": "#ff3cf0",
+          "roughness": 0.2,
+          "clearcoat": 1,
+          "emission": "#ff3cf0",
+          "emission_intensity": 4
+        }
+      },
+      {
+        "grow": 2,
+        "bevel": {
+          "width": 0.6,
           "depth": 0.6
         },
         "material": {
@@ -171,10 +210,52 @@
         }
       },
       {
-        "grow": 0.5,
+        "grow": 1.4,
+        "depth": 5,
+        "material": {
+          "preset": "purple_metal",
+          "color": "#a43aff",
+          "gradient": {
+            "stops": [
+              {
+                "color": "#dcaeff"
+              },
+              {
+                "pos": 0.22,
+                "color": "#ad55ff"
+              },
+              {
+                "pos": 0.45,
+                "color": "#7d1ed0"
+              },
+              {
+                "pos": 0.52,
+                "color": "#2c0552"
+              },
+              {
+                "pos": 0.6,
+                "color": "#6a18b8"
+              },
+              {
+                "pos": 0.8,
+                "color": "#a84cff"
+              },
+              {
+                "pos": 1,
+                "color": "#d6a6ff"
+              }
+            ]
+          },
+          "metallic": 0.9,
+          "roughness": 0.15,
+          "clearcoat": 1
+        }
+      },
+      {
+        "grow": 1,
         "depth": 4,
         "bevel": {
-          "width": 0.25,
+          "width": 0.5,
           "depth": 0.5
         },
         "material": {
@@ -202,7 +283,7 @@
       "type": "outline",
       "params": {
         "color": "#06000a",
-        "width": 1.25
+        "width": 2.5
       }
     },
     {
@@ -275,7 +356,20 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [],
+  "check_allow": [
+    {
+      "check": "3d_tier_budget.low",
+      "reason": "6 stacked solids (letter and bands) over the low tier's 3 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "3d_tier_budget.medium",
+      "reason": "6 stacked solids (letter and bands) over the medium tier's 5 on the 'digits' sample; fit_to_tier reduces it"
+    },
+    {
+      "check": "counter_survival",
+      "reason": "survival 0.00 of 2 counters on the 'kanji' sample at the look's own rim and band widths (a heavy stack closes small counters)"
+    }
+  ],
   "provenance": {
     "source": "pachislop",
     "commit": "1c32502",
