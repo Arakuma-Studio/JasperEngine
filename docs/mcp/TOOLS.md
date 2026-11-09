@@ -4851,7 +4851,7 @@ The eyedropper's exact read: the Game or Scene view's pixel at x, y (pixels from
 
 Group: `particles` (listed once `tool_groups` enables it, callable either way)
 
-Add (or re-enable) a module of an effect, with optional fields: emission, shape, startVelocity, velocityOverLifetime, limitVelocity, forceOverLifetime, colorOverLifetime, colorBySpeed, sizeOverLifetime, sizeBySpeed, rotationOverLifetime, rotationBySpeed, externalForces, noise, orbit, collision, subEmitters, textureSheetAnimation, trails, customData, setOverAge.
+Add (or re-enable) a module of an effect, with optional fields: emission, shape, startVelocity, velocityOverLifetime, limitVelocity, forceOverLifetime, colorOverLifetime, colorBySpeed, sizeOverLifetime, sizeBySpeed, rotationOverLifetime, rotationBySpeed, externalForces, noise, orbit, collision, subEmitters, textureSheetAnimation, trails, customData, setOverAge, pixelArt.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -4872,6 +4872,7 @@ Bake an effect's run into a sprite sheet PNG (columns x rows frames, straight al
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
+| `aseprite` | boolean |  | Also <output>.json, Aseprite json-hash. |
 | `cell_size` | integer (16..1024) |  | Pixels. Default: `128`. |
 | `columns` | integer (1..16) |  | Default: `4`. |
 | `entity` | integer or string |  | A GameObject and its subtree. |
@@ -4879,11 +4880,12 @@ Bake an effect's run into a sprite sheet PNG (columns x rows frames, straight al
 | `overwrite` | boolean |  |  |
 | `path` | string |  | A .particles asset. |
 | `rows` | integer (1..16) |  | Default: `4`. |
+| `scale` | integer (1..8) |  | pixel view: screen pixels a base pixel. |
 | `scene` | integer or string |  |  |
 | `seconds` | number (0..60) |  | Default: one play. |
 | `seed` | integer (0..2147483647) |  |  |
 | `timeout_seconds` | number (1..3600) |  | Default: `120`. |
-| `view` | `"front"` \| `"three_quarter"` \| `"side"` \| `"top"` |  | Default: `"front"`. |
+| `view` | `"front"` \| `"three_quarter"` \| `"side"` \| `"top"` \| `"pixel"` |  | pixel: the base-pixel grid (cells: base pixels x scale). Default: `"front"`. |
 | `wait` | boolean |  | Default: `true`. |
 
 
@@ -4893,13 +4895,14 @@ Bake an effect's run into a sprite sheet PNG (columns x rows frames, straight al
 
 Group: `particles` (listed once `tool_groups` enables it, callable either way)
 
-Seek a Particle System to time (seconds) and capture the view (camera: scene or game) as an image; the system stays paused there.
+Seek a Particle System to time (seconds) and capture the view (camera: scene or game) as an image; the system stays paused there. frames, scale, background or checks draw the effect alone instead: a labelled contact sheet of frames times to time_end (default one loop) at an integer scale, with pixel-art lint results.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `camera` | `"scene"` \| `"game"` |  | Default: `"scene"`. |
 | `entity` | integer or string | yes |  |
 | `max_width` | integer (0..4096) |  | Default: `768`. |
+| `path` | string |  |  |
 | `save_path` | string |  | Also write the PNG here. |
 | `scene` | integer or string |  |  |
 | `time` | number | yes | Seconds. |
@@ -4939,7 +4942,7 @@ A new .particles asset from a create_particles preset or an effect JSON (the key
 | `effect` | object |  | The whole effect (modules keyed by type). |
 | `overwrite` | boolean |  |  |
 | `path` | string | yes | The new file (.particles). |
-| `preset` | `"fire"` \| `"smoke"` \| `"sparks"` \| `"explosion"` \| `"snow"` \| `"rain"` \| `"magic"` \| `"none"` |  |  |
+| `preset` | `"fire"` \| `"smoke"` \| `"sparks"` \| `"explosion"` \| `"snow"` \| `"rain"` \| `"magic"` \| `"none"` \| `"pixel_spark"` \| `"pixel_smoke"` \| `"pixel_fire"` \| `"pixel_ember"` \| `"pixel_grit"` \| `"pixel_debris"` \| `"pixel_light_flash"` \| `"pixel_smoke_loop"` \| `"pixel_ember_loop"` |  |  |
 
 
 ### `edit_particle_effect`
@@ -5019,12 +5022,13 @@ Run an effect (path, or entity: its subtree) deterministically in a private scen
 | `platform` | `"mobile"` \| `"web"` \| `"desktop"` |  | Default: `"mobile"`. |
 | `reference` | string |  | Image shown as the last cell. |
 | `save_path` | string |  | Also write the PNG. |
+| `scale` | integer |  |  |
 | `scene` | integer or string |  |  |
 | `seconds` | number (0..60) |  | Default: one play. |
 | `seed` | integer (0..2147483647) |  |  |
 | `timeout_seconds` | number (1..3600) |  | Default: `120`. |
 | `times` | array of number |  | Seconds, instead of frames. |
-| `view` | `"three_quarter"` \| `"front"` \| `"side"` \| `"top"` |  | Default: `"three_quarter"`. |
+| `view` | `"three_quarter"` \| `"front"` \| `"side"` \| `"top"` \| `"pixel"` |  | Default: `"three_quarter"`. |
 | `wait` | boolean |  | Default: `true`. |
 
 
