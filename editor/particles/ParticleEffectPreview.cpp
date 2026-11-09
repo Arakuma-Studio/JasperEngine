@@ -15,6 +15,7 @@
 #include "particles/ParticleEffectLibrary.h"
 #include "particles/ParticleMeshes.h"
 #include "render/ObjectRender.h"
+#include "render/OffscreenDraw.h"
 #include "render/RenderUtil.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/ParticleSystemState.h"
@@ -294,37 +295,21 @@ namespace {
         layer.postProcessing = false;
         layer.disableFog = true;
 
-        if (!s.warmed){
-            // the first draw adds this camera's pipelines; the objects load them on the next update
-            if (!render.isAllLoaded()){
-                waitingFor = "the scene's loading";
-                return Drawn::Wait;
-            }
-            Engine::drawView(PARTICLE_PREVIEW_VIEW_ID, &s.target, {layer});
-            s.warmed = true;
-            waitingFor = "the first draw's pipelines";
-            return Drawn::Wait;
-        }
-        if (!render.isAllLoaded()){
-            waitingFor = "the scene's loading";
-            return Drawn::Wait;
-        }
-        for (size_t i = 0; i < s.systems.size(); i++){
-            particles::ParticleSystemState* state = s.state(i);
-            if (state && !renderReady(state->render, state->runtime)){
-                waitingFor = "the textures and shaders of " + s.names[i];
-                return Drawn::Wait;
-            }
-        }
-        // a pipeline still being made draws nothing: never read that back
-        const uint32_t waitingBefore = ObjectRender::getWaitingDrawCount();
-        Engine::drawView(PARTICLE_PREVIEW_VIEW_ID, &s.target, {layer});
-        if (ObjectRender::getWaitingDrawCount() != waitingBefore){
-            waitingFor = "pipelines being compiled";
-            return Drawn::Wait;
-        }
         std::vector<uint8_t> rgba;
-        if (!GraphicUtils::readFramebufferRGBA(&s.target, rgba) || !out.assign(size, size, std::move(rgba))){
+        const OffscreenDraw drawn = drawOffscreen(PARTICLE_PREVIEW_VIEW_ID, s.target, {layer}, s.warmed, rgba, waitingFor, [&](std::string& why){
+            for (size_t i = 0; i < s.systems.size(); i++){
+                particles::ParticleSystemState* state = s.state(i);
+                if (state && !renderReady(state->render, state->runtime)){
+                    why = "the textures and shaders of " + s.names[i];
+                    return false;
+                }
+            }
+            return true;
+        });
+        if (drawn == OffscreenDraw::Wait){
+            return Drawn::Wait;
+        }
+        if (!out.assign(size, size, std::move(rgba))){
             waitingFor = "the read-back";
             return Drawn::Wait;
         }

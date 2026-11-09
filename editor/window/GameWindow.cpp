@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
+#include "window/ContactSheetWindow.h"
 #include "audio/AudioCapture.h"
 #include "render/SystemRender.h"
 #include "util/UIProbe.h"
@@ -82,6 +83,8 @@ namespace {
     }
 
 }
+
+editor::GameWindow::~GameWindow() = default;
 
 editor::GameWindow::GameWindow(Project* project, PlayInput* playInput)
     : project(project), playInput(playInput) {
@@ -543,6 +546,8 @@ void editor::GameWindow::show() {
     const uint32_t sceneId = getTargetSceneId();
     const bool sessionActive = project->getPlaySessionSceneId() != NULL_PROJECT_SCENE;
 
+    if (contactSheet) contactSheet->show();
+
     if (!windowOpen) {
         if (wasVisible) playInput->release(sceneId);
         maximizedShown = false;
@@ -828,6 +833,21 @@ void editor::GameWindow::drawToolbar() {
 
     ImGui::SameLine(0, Theme::dpi(12.0f));
     drawDeviceTierMenu();
+
+    // S48 R40: the shown scene's one selected GameObject drawn at N times on backdrops, with checks
+    ImGui::SameLine(0, Theme::dpi(12.0f));
+    {
+        const uint32_t shownId = getTargetSceneId();
+        const std::vector<Entity> selected = project->getSelectedEntities(shownId);
+        ImGui::BeginDisabled(selected.size() != 1);
+        if (ImGui::Button("Contact Sheet...##GameContactSheet")) {
+            if (!contactSheet) contactSheet = std::make_unique<ContactSheetWindow>(project);
+            contactSheet->open(shownId, selected.front());
+        }
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip(selected.size() == 1 ? "Capture the selected GameObject at fixed times into a labelled contact sheet, with effect checks"
+                                                   : "Select one GameObject of the shown scene to capture it");
+    }
 
     // Right side toggles, as icons when the view is too narrow for their names
     const char* debuggerLabel = "HTML UI Debugger##GameHtmlUiDebugger";

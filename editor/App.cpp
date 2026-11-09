@@ -151,6 +151,7 @@
 #include "render/preview/PoseRender.h"
 #include "render/preview/VatPreviewRender.h"
 #include "particles/ParticleEffectPreview.h"
+#include "pixelart/fx/EffectCapture.h"
 #include "procmat/ProceduralRun.h"
 #include "util/FileUtils.h"
 #include "io/UserSettings.h"
@@ -2503,6 +2504,7 @@ void editor::App::setup() {
     // a queued offscreen pose render keeps the loop drawing until processFrame serves it
     PoseRender::setFrameRequester([this]() { requestRedraw(); });
     ParticleEffectPreview::setFrameRequester([this]() { requestRedraw(); });
+    pixelart::fx::EffectCapture::setFrameRequester([this]() { requestRedraw(); });
     procmat::ProceduralRun::setFrameRequester([this]() { requestRedraw(); });
     ProceduralMaterialWindow::setFrameRequester([this]() { requestRedraw(); });
 
@@ -4310,6 +4312,9 @@ void editor::App::engineRender(){
     // particle previews and filmstrips (preview_particle_effect, the Particle Effect window): their
     // private scenes step and draw here, whether a view shows or not
     ParticleEffectPreview::processFrame();
+    // contact sheet captures (capture_contact_sheet, the Contact Sheet dialog): their scratch scenes
+    // step and draw here too
+    pixelart::fx::EffectCapture::processFrame();
     // Procedural Material evaluations and their lit balls (preview_procedural_material, bake_procedural_material):
     // the evaluator draws its own passes here, outside any render pass
     procmat::ProceduralRun::processFrame();
@@ -5192,6 +5197,7 @@ void editor::App::shutdownBackgroundWork() {
     setWakeCallback(nullptr);
     PoseRender::setFrameRequester(nullptr);
     ParticleEffectPreview::setFrameRequester(nullptr);
+    pixelart::fx::EffectCapture::setFrameRequester(nullptr);
     procmat::ProceduralRun::setFrameRequester(nullptr);
     ProceduralMaterialWindow::setFrameRequester(nullptr);
 }
@@ -5207,6 +5213,7 @@ void editor::App::engineViewDestroyed(){
     PoseRender::releaseGpu();
     VatPreviewView::releaseGpu();
     ParticleEffectPreview::releaseGpu();
+    pixelart::fx::EffectCapture::releaseGpu();
     procmat::ProceduralRun::releaseGpu();
     ProceduralMaterialWindow::releaseGpu();
     // Closing during project loading can leave uploads committed before any scene frame

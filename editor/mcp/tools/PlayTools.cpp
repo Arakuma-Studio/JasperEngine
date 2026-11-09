@@ -1178,6 +1178,16 @@ struct LuaSerializer {
 
 namespace w3 {
 
+GameAdvance::GameAdvance(McpContext& c) : ctx(&c) {
+    state().time.advancers++;
+    applyHold(c);
+}
+
+GameAdvance::~GameAdvance() {
+    state().time.advancers = std::max(0, state().time.advancers - 1);
+    applyHold(*ctx);
+}
+
 Json luaToJson(Project* project, lua_State* L, int index, int maxDepth, size_t maxItems) {
     LuaSerializer serializer{L, project, maxDepth, maxItems};
     serializer.iteratePairs = true;

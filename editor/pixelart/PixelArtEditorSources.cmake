@@ -123,3 +123,21 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ApplyPaletteDialog.cpp
     ${EDITOR_DIR}/widget/PaletteSwatchAdapter.cpp
 )
+
+# S48 (Pixel FX): the effect and rule lints, contact sheets and their captures, the Contact Sheet
+# dialog and capture_contact_sheet
+list(APPEND JASPERENGINE_EDITOR_SOURCES
+    ${EDITOR_DIR}/pixelart/lint/EffectLints.cpp
+    ${EDITOR_DIR}/pixelart/fx/ContactSheet.cpp
+    ${EDITOR_DIR}/pixelart/fx/EffectCapture.cpp
+    ${EDITOR_DIR}/render/OffscreenDraw.cpp
+    ${EDITOR_DIR}/window/ContactSheetWindow.cpp
+    ${EDITOR_DIR}/mcp/tools/PixelFxTools.cpp
+)
+jasperengine_skip_unity_build(
+    REASON "S48's capture and tool modules: file-local problem/failCall/target helpers shared in name with the palette and particle tools"
+    SOURCES
+        ${EDITOR_DIR}/pixelart/fx/EffectCapture.cpp
+        ${EDITOR_DIR}/mcp/tools/PixelFxTools.cpp
+        ${EDITOR_DIR}/window/ContactSheetWindow.cpp
+)
