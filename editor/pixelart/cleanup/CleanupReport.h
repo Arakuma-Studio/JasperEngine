@@ -121,7 +121,7 @@ namespace jasperengine::editor::pixelart::cleanup {
 
     // Checks a picture: with grid Auto, a picture without a grid of fake pixels is taken as pixel
     // art at its own size and only linted; otherwise it is fixed with the recipe, and the fix judged
-    Checked checkImage(const RgbaImage& image, const Recipe& recipe, const ReportOptions& options = {});
+    Checked checkImage(const RgbaImage& image, const Recipe& recipe, const ReportOptions& options = {}, PipelineCache* cache = nullptr);
 
     // Pixel art at its own size (lints on `art`; partial alpha from `source` when given)
     Report reportOfArt(const PixelArt& art, const ReportOptions& options = {}, const RgbaImage* source = nullptr,

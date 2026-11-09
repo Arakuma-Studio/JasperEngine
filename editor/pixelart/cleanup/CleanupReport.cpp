@@ -463,9 +463,9 @@ namespace jasperengine::editor::pixelart::cleanup {
         return report;
     }
 
-    Checked checkImage(const RgbaImage& image, const Recipe& recipe, const ReportOptions& options) {
+    Checked checkImage(const RgbaImage& image, const Recipe& recipe, const ReportOptions& options, PipelineCache* cache) {
         Checked checked;
-        std::optional<Outcome> found = runRecipe(image, recipe);
+        std::optional<Outcome> found = runRecipe(image, recipe, cache);
         const ArtOfImage own = artOfImage(image, (int)recipe.alphaCutoff);
         // A picture of many colours is never "already pixel art", whatever its grid says (D6: a
         // photo must not read as clean)
@@ -476,7 +476,7 @@ namespace jasperengine::editor::pixelart::cleanup {
             resolved.grid.kind = GridKind::Cells;
             resolved.grid.spec = {1, 1, 0, 0};
             resolved.sample.inset = 0;
-            checked.outcome = runRecipe(image, resolved);
+            checked.outcome = runRecipe(image, resolved, cache);
             const std::optional<RecipePalette>& palette = checked.outcome && checked.outcome->palette ? checked.outcome->palette : recipe.palette;
             checked.report = reportOfArt(own.art, options, &image, palette);
             if (checked.outcome) {
