@@ -78,7 +78,7 @@ async def test_used_by_names_the_scene_and_object(ed: Editor):
         await ed.call("wait", seconds=0.2)
     ed.check(created, "the Sprite was made once the sheet imported")
     # the dependency graph reads saved files
-    await ed.call("save_scene", scene=main)
+    await ed.call("save_scene", scene=main, path="assets/sprites_used.scene")
     used = []
     while time.monotonic() < deadline and not used:
         used = (await ok(ed, "get_sprite", sprite=path)).get("used_by", [])
