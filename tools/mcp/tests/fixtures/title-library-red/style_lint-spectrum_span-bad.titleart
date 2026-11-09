@@ -1,0 +1,75 @@
+{
+  "format": "jasperengine.titleart",
+  "version": 1,
+  "guid": "84000000000000000000000000000000",
+  "canvas": {
+    "width": 1280,
+    "height": 640
+  },
+  "layers": [
+    {
+      "id": "00000001",
+      "type": "text",
+      "name": "Title",
+      "text": "HE\nRO",
+      "size": 200,
+      "transform": {
+        "position": [
+          0,
+          0
+        ]
+      },
+      "style": {
+        "face": {
+          "fill": {
+            "kind": "linear",
+            "gradient": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#ff0000"
+                },
+                {
+                  "pos": 0.33,
+                  "color": "#00ff00"
+                },
+                {
+                  "pos": 0.66,
+                  "color": "#0000ff"
+                },
+                {
+                  "pos": 1,
+                  "color": "#ff00ff"
+                }
+              ]
+            },
+            "span": "layer"
+          }
+        },
+        "rims": [
+          {
+            "width": 6,
+            "material": {
+              "fill": {
+                "kind": "solid",
+                "color": "#000000"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "exposed": [
+    {
+      "name": "text",
+      "type": "text",
+      "targets": [
+        {
+          "layer": "00000001",
+          "field": "text"
+        }
+      ]
+    }
+  ]
+}
