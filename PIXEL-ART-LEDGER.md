@@ -168,7 +168,7 @@ never build or run them.
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
 | S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | merged and pushed |
-| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | accepted; merging main |
+| S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | ready for batch 4 |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
@@ -244,6 +244,12 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Log
 
+- 2026-11-09: S42 merged `main` at `9c7f0b34b` and wired the S49 `particles_grid` hook.
+  - `pixel_art` group: 3 tools, 3,191 characters.
+  - Gate on box B: `WERROR`, core 85, editor 205, 168 MCP tests. The failures are `main`'s
+    (Animator hash, `procmat-baked`), plus `check_fanout`: `Transform.h` rebuilds 152 units
+    against 150, apparently on `main`, now added to the main-green fix.
+  - S42 is ready for batch 4 with S52 (merging) and the main-green fix.
 - 2026-11-09: Box D deadlocked for ~1h40m. An S48 sub-task started a detached job from inside a
   box job, so it inherited the box lock's file descriptor and then waited on the same lock. S48
   cleared it. `rbox` now runs `flock -o`, so no child can hold the lock, and the brief forbids
