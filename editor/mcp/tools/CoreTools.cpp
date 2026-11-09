@@ -355,7 +355,7 @@ void undoRedo(const CallPtr& call, bool undo) {
             CommandHistory* stepHistory = done[i].project ? project->getProjectCommandHistory() : CommandHandle::get(done[i].sceneId);
             if (stepHistory && !stepHistory->lastUndoProblem().empty()) report.problems.push_back(stepHistory->lastUndoProblem());
         }
-        if (!moved && why.empty() && next && next.history && !next.history->lastRefusal().empty()) {
+        if (!moved && next && next.history && !next.history->lastRefusal().empty()) {
             report.refusedWhy = next.history->lastRefusal();
         }
         return moved;

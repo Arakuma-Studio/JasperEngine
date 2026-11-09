@@ -44,6 +44,7 @@ namespace jasperengine::editor::pixelart::draw::detail {
         PixelImage original;       // as it was when the batch (or the last structure op) first touched it
         PixelImage current;
         std::set<int> frames;      // the frames the ops addressed through it, from 0
+        bool written = false;      // the cel holds changes of an earlier flush
     };
 
     class EditState {

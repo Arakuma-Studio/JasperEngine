@@ -113,7 +113,12 @@ namespace jasperengine::editor {
             why = problem.message;
             return false;
         }
+        const std::string previous = session->revision;
         SpriteDocCache::get().adoptWrite(*session, std::move(fresh), bytes, revision);
+        // an undo moves the file for everyone who was looking at it: not a change behind their back (R34)
+        for (auto& [client, seen] : session->lastSeen) {
+            if (seen == previous) seen = revision;
+        }
         return true;
     }
 

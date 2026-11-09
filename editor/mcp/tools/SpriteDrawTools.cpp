@@ -1103,6 +1103,8 @@ void createSpriteTool(const CallPtr& call) {
         failProblem(call, {"write_failed", "path", "couldn't write " + given + ": " + why, "check the folder is writable"});
         return;
     }
+    // an overwrite replaced whatever the session remembered: not an outside save (R34.3)
+    draw::SpriteDocCache::get().forget(absolute);
     std::shared_ptr<draw::SpriteSession> session = draw::SpriteDocCache::get().open(project, absolute.generic_string(), problem);
     if (!session) {
         failProblem(call, problem);

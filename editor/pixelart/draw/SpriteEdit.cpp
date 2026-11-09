@@ -674,11 +674,8 @@ namespace jasperengine::editor::pixelart::draw {
                     y1 = std::max(y1, y);
                 }
             }
-            if (x1 < 0) {
-                // back to the cel as it was (an earlier flush may have written changes since undone)
-                ase::Cel* rec = doc.celRecord(c.layer, c.srcFrame);
-                if (!rec) return;
-            }
+            // nothing differs and nothing was written: the cel keeps its image and its provenance
+            if (x1 < 0 && !c.written) return;
             ase::Cel* rec = doc.celRecord(c.layer, c.srcFrame);
             if (rec && rec->linkedFrame >= 0) rec = nullptr;   // never: srcFrame holds the image
             IntRect bounds = x1 < 0 ? IntRect{} : IntRect{x0, y0, x1 - x0 + 1, y1 - y0 + 1};
@@ -708,6 +705,7 @@ namespace jasperengine::editor::pixelart::draw {
             rec->y = bounds.y;
             rec->image = std::make_shared<const PixelImage>(std::move(image));
             rec->tilemap.reset();
+            c.written = true;
         }
 
         void EditState::record(Canvas& c) {
