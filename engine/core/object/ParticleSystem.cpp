@@ -313,13 +313,13 @@ namespace {
             if (v.name == name){
                 if (v.value != value){
                     v.value = value;
-                    particles.needReload = true;
+                    particles.exposedChanged = true;
                 }
                 return true;
             }
         }
         particles.exposedValues.push_back({name, value});
-        particles.needReload = true;
+        particles.exposedChanged = true;
         return true;
     }
 

@@ -21,6 +21,7 @@
 #include "subsystem/TitleArtSystem.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "pixelart/BitmapFont.h"
 
 namespace jasperengine::editor::reflect {
 
@@ -262,11 +263,15 @@ namespace {
 
     constexpr uint64_t kText = UpdateFlags_Text;
 
+    // a bitmap font's rows (S51 R22): pixel outline neighbours; a vector font's: SDF softness, dilate
+    // (the bitmap rows are the Text drawer's own: InspectorPixelFont.cpp)
+    bool textIsVector(const void* text) { return !::jasperengine::pixelart::isBitmapFontPath(static_cast<const TextComponent*>(text)->font[0]); }
+
     constexpr FieldDesc kTextFields[] = {
         JE_FIELD(TextComponent, font, .updateFlags = UpdateFlags_Text_Atlas, .asset = AssetKind::Font, .uiOrder = 1),
         JE_FIELD(TextComponent, text, .updateFlags = kText, .drawer = "multiline"),
         JE_FIELD(TextComponent, fontSize, .updateFlags = UpdateFlags_Text_Atlas, .unit = Unit::Pixels, .step = 1.0f, .label = "FontSize",
-                 .uiOrder = 2),
+                 .visibleIf = &textIsVector, .uiOrder = 2),
         JE_FIELD(TextComponent, multiline, .updateFlags = kText, .uiOrder = 3),
         JE_FIELD(TextComponent, maxTextSize, .updateFlags = kText, .step = 1.0f, .label = "Max. text size", .group = "Advanced settings",
                  .uiOrder = 10),
@@ -276,13 +281,18 @@ namespace {
         JE_FIELD(TextComponent, pivotCentered, .updateFlags = kText, .label = "Center", .group = "Pivot"),
         // upstream (ui-scaling-text): outline, shadow and visible characters, written only when set;
         // the widths read finite and not below 0, the visible characters not below -1 (its decode)
-        JE_FIELD(TextComponent, outlineWidth, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Outline"),
+        JE_FIELD(TextComponent, outlineWidth, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Outline",
+                 .visibleIf = &textIsVector),
         JE_FIELD(TextComponent, outlineColor, .flags = OmitIfDefault | ColorLinear, .updateFlags = kText, .group = "Outline"),
+        // S51 R10: drawn by the Text drawer's Pixel Font rows (a 4 / 8 choice)
+        JE_FIELD(TextComponent, outlineNeighbors, .ops = &ops::OutlineNeighbors, .flags = OmitIfDefault | Hidden, .updateFlags = kText, .label = "Neighbors", .tooltip = "A bitmap font's pixel outline: 4 (plus) or 8 (square) neighbours.", .group = "Outline"),
         JE_FIELD(TextComponent, shadowEnabled, .flags = OmitIfDefault, .updateFlags = kText, .label = "Shadow", .group = "Shadow"),
         JE_FIELD(TextComponent, shadowColor, .flags = OmitIfDefault | ColorLinear, .updateFlags = kText, .group = "Shadow"),
-        JE_FIELD(TextComponent, shadowOffset, .flags = OmitIfDefault, .updateFlags = kText, .group = "Shadow"),
-        JE_FIELD(TextComponent, shadowSoftness, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Shadow"),
-        JE_FIELD(TextComponent, shadowDilate, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Shadow"),
+        JE_FIELD(TextComponent, shadowOffset, .flags = OmitIfDefault, .updateFlags = kText, .group = "Shadow", .visibleIf = &textIsVector),
+        JE_FIELD(TextComponent, shadowSoftness, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Shadow",
+                 .visibleIf = &textIsVector),
+        JE_FIELD(TextComponent, shadowDilate, .ops = &ops::NonNegativeFiniteFloat, .flags = OmitIfDefault, .updateFlags = kText, .min = 0.0f, .group = "Shadow",
+                 .visibleIf = &textIsVector),
         JE_FIELD(TextComponent, visibleCharacters, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault, .updateFlags = kText, .min = -1.0f,
                  .tooltip = "Characters past it are not drawn (-1: all)."),
     };

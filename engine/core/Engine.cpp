@@ -34,6 +34,7 @@
 #include "audio/AudioMixer.h"
 #if JASPERENGINE_SOUND_LAYER
 #include "audio/MusicPlayer.h"
+#include "object/sound/Audio.h"
 #endif
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -51,6 +52,8 @@
 #include "component/ScriptComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/UIComponent.h"
+#include "component/CameraComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/PanelComponent.h"
 #include "component/ScrollbarComponent.h"
 #include "component/InputFieldComponent.h"
@@ -67,6 +70,7 @@
 #include "pool/TextureDataPool.h"
 #include "pool/ShaderPool.h"
 #include "pool/FontPool.h"
+#include "pixelart/BitmapFontPool.h"
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
 #include "pool/MeshBufferPool.h"
@@ -74,6 +78,7 @@
 #include "pool/AnimatorAssetPool.h"
 #include "pool/ShakePresetPool.h"
 #include "pool/PhysicsMaterialPool.h"
+#include "pixelart/PaletteSwap.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "native/NativeBridge.h"
@@ -136,6 +141,12 @@ int Engine::preferredCanvasHeight;
 Rect Engine::viewRect;
 
 Scaling Engine::scalingMode = Scaling::FITWIDTH;
+int Engine::pixelsPerUnit = 1;
+TextureFilter Engine::defaultTextureFilter = TextureFilter::LINEAR;
+PixelPerfectViewRequest Engine::pixelPerfectRequest;
+pixelart::PixelPerfectLayout Engine::pixelPerfectLayout;
+int Engine::pixelPerfectForcedScale = 0;
+Vector2 Engine::viewShift = Vector2(0, 0);
 AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
 bool Engine::atmosphereQualityOverridden = false;
 AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
@@ -273,9 +284,11 @@ void Engine::setScene(Scene* scene){
     if (Engine::isAsyncThread())
         drawSemaphore.acquire();
 
+    bool mainChanged = false;
     {
         std::lock_guard<std::mutex> lock(sceneListMutex);
 
+        mainChanged = mainScene != scene;
         if (mainScene){
             scenes.erase(std::remove(scenes.begin(), scenes.end(), mainScene), scenes.end());
         }
@@ -289,6 +302,10 @@ void Engine::setScene(Scene* scene){
             mainScene = scene;
         }
     }
+
+    // a Pixel Perfect Camera's view is its main scene's: a new main scene sets its own (S41)
+    if (mainChanged)
+        setPixelPerfectView(PixelPerfectViewRequest());
 
     // includeScene() runs scene->load(), which can re-enter the scene list, so it stays
     // outside sceneListMutex. Same reasoning in addSceneLayer and executeSceneOnce.
@@ -376,6 +393,7 @@ void Engine::removeScene(Scene* scene){
         drawSemaphore.acquire();
 
     bool unlinked = false;
+    bool mainRemoved = false;
 
     {
         std::lock_guard<std::mutex> lock(sceneListMutex);
@@ -390,6 +408,7 @@ void Engine::removeScene(Scene* scene){
 
             if (mainScene == scene){
                 mainScene = NULL;
+                mainRemoved = true;
             }
 
             // A scene removed explicitly must not remain in the one-shot registry.
@@ -400,6 +419,9 @@ void Engine::removeScene(Scene* scene){
 
     if (unlinked)
         scene->getSystem<UISystem>()->resetButtonStates();
+    // its Pixel Perfect Camera's view goes with the main scene (S41)
+    if (mainRemoved)
+        setPixelPerfectView(PixelPerfectViewRequest());
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();
@@ -578,6 +600,103 @@ void Engine::setScalingMode(Scaling scalingMode){
 
 Scaling Engine::getScalingMode(){
     return scalingMode;
+}
+
+void Engine::setPixelsPerUnit(int pixelsPerUnit){
+    Engine::pixelsPerUnit = std::clamp(pixelsPerUnit, 1, 256);
+}
+
+int Engine::getPixelsPerUnit(){
+    return pixelsPerUnit;
+}
+
+void Engine::setDefaultTextureFilter(TextureFilter filter){
+    // a mipmap filter as the default would ask every unmipmapped texture for levels it lacks
+    Engine::defaultTextureFilter = filter == TextureFilter::NEAREST ? TextureFilter::NEAREST : TextureFilter::LINEAR;
+}
+
+TextureFilter Engine::getDefaultTextureFilter(){
+    return defaultTextureFilter;
+}
+
+void Engine::setPixelPerfectView(const PixelPerfectViewRequest& request){
+    if (request == pixelPerfectRequest)
+        return;
+    pixelPerfectRequest = request;
+    if (viewLoaded)
+        systemViewChanged();
+}
+
+bool Engine::getPixelPerfectRequest(Scene* scene, Entity cameraEntity, PixelPerfectViewRequest& request){
+    if (!scene || !scene->isComponentRegistered<PixelPerfectCameraComponent>())
+        return false;
+    const PixelPerfectCameraComponent* component = scene->findComponent<PixelPerfectCameraComponent>(cameraEntity);
+    const CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
+    if (!component || !camera || !component->enabled || camera->type == CameraType::CAMERA_PERSPECTIVE)
+        return false;
+    request.active = true;
+    request.referenceWidth = (int)component->referenceWidth;
+    request.referenceHeight = (int)component->referenceHeight;
+    request.mode = component->upscaleMode;
+    request.smoothing = component->subpixelSmoothing;
+    request.pixelsPerUnit = pixelsPerUnit;
+    return true;
+}
+
+const PixelPerfectViewRequest& Engine::getPixelPerfectView(){
+    return pixelPerfectRequest;
+}
+
+const pixelart::PixelPerfectLayout& Engine::getPixelPerfectLayout(){
+    return pixelPerfectLayout;
+}
+
+pixelart::PixelPerfectLayout Engine::computePixelPerfectView(const PixelPerfectViewRequest& request, int screenWidth, int screenHeight,
+                                                             int forcedScale){
+    const int referenceWidth = request.referenceWidth > 0 ? request.referenceWidth : preferredCanvasWidth;
+    const int referenceHeight = request.referenceHeight > 0 ? request.referenceHeight : preferredCanvasHeight;
+    return pixelart::computePixelPerfectLayout(screenWidth, screenHeight, referenceWidth, referenceHeight, request.mode, forcedScale,
+                                               request.smoothing, request.pixelsPerUnit);
+}
+
+void Engine::setPixelPerfectForcedScale(int scale){
+    scale = std::max(0, scale);
+    if (scale == pixelPerfectForcedScale)
+        return;
+    pixelPerfectForcedScale = scale;
+    if (viewLoaded && pixelPerfectRequest.active)
+        systemViewChanged();
+}
+
+int Engine::getPixelPerfectForcedScale(){
+    return pixelPerfectForcedScale;
+}
+
+void Engine::setViewShift(Vector2 shift){
+    viewShift = shift;
+}
+
+Vector2 Engine::getViewShift(){
+    return viewShift;
+}
+
+void Engine::applyPixelPerfectView(int screenWidth, int screenHeight){
+    if (!pixelPerfectRequest.active){
+        pixelPerfectLayout = pixelart::PixelPerfectLayout();
+        viewShift = Vector2(0, 0);
+        return;
+    }
+    const pixelart::PixelPerfectLayout layout = computePixelPerfectView(pixelPerfectRequest, screenWidth, screenHeight, pixelPerfectForcedScale);
+    if (layout.baseWidth <= 0 || layout.baseHeight <= 0)
+        return;
+    if (layout.cropped && !pixelPerfectLayout.cropped)
+        Log::warn("Pixel Perfect Camera: the screen (%ix%i) is smaller than the reference (%ix%i): the image is cropped",
+                  screenWidth, screenHeight, layout.baseWidth, layout.baseHeight);
+    pixelPerfectLayout = layout;
+    // the canvas is in whole units: B / PPU, rounded when the PPU does not divide the base
+    canvasWidth = std::max(1, (int)std::lround(layout.canvasWidth));
+    canvasHeight = std::max(1, (int)std::lround(layout.canvasHeight));
+    viewRect = layout.viewport;
 }
 
 void Engine::setDefaultCanvasScaler(const CanvasScalerSettings& settings){
@@ -799,8 +918,8 @@ void Engine::systemFocusChanged(bool focused){
             systemKeyUp(key, false, 0);
     }
     const Vector2 mouse = Input::getMousePosition();
-    float screenX = viewRect.getX();
-    float screenY = viewRect.getY();
+    float screenX = viewRect.getX() + viewShift.x;
+    float screenY = viewRect.getY() + viewShift.y;
     if (canvasWidth != 0)
         screenX += (mouse.x / (float)canvasWidth) * viewRect.getWidth();
     if (canvasHeight != 0)
@@ -838,8 +957,8 @@ void Engine::setMousePosition(float x, float y){
     if (!viewLoaded)
         return;
 
-    float screenX = viewRect.getX();
-    float screenY = viewRect.getY();
+    float screenX = viewRect.getX() + viewShift.x;
+    float screenY = viewRect.getY() + viewShift.y;
     if (canvasWidth != 0)
         screenX += (x / (float)canvasWidth) * viewRect.getWidth();
     if (canvasHeight != 0)
@@ -1215,8 +1334,14 @@ void Engine::updateGpuCreation(){
     drawSemaphore.release();
 }
 
+// The main thread runs the render queue a loading thread fills, so it never takes that role: in the
+// scope it would wait for itself (a script's init, which runs before the view starts the queue; a
+// second commit before a frame ran the first; a scene change inside a frame, which holds the draw
+// semaphore). There a scope changes nothing, on every backend.
 void Engine::startAsyncThread(){
     #ifndef NO_THREAD_SUPPORT
+        if (jobs::isMainThread())
+            return;
         getAsyncThreadDepthStorage()++;
     #else
         Log::warn("Threads are not available");
@@ -1224,11 +1349,16 @@ void Engine::startAsyncThread(){
 }
 
 void Engine::commitThreadQueue(){
+    // the main thread queues nothing (outside a scope it makes its GPU objects at once)
+    if (jobs::isMainThread())
+        return;
     SystemRender::commitQueue();
 }
 
 void Engine::endAsyncThread(){
     #ifndef NO_THREAD_SUPPORT
+        if (jobs::isMainThread())
+            return;
         unsigned int& asyncThreadDepth = getAsyncThreadDepthStorage();
         if (asyncThreadDepth == 0){
             Log::warn("Engine::endAsyncThread called without matching startAsyncThread");
@@ -1457,6 +1587,7 @@ void Engine::clearPools(){
     TextureDataPool::clear();
     ShaderPool::clear();
     FontPool::clear();
+    pixelart::BitmapFontPool::clear();
     ModelPool::clear();
     MeshLodPool::clear();
     MeshBufferPool::clear();
@@ -1465,6 +1596,9 @@ void Engine::clearPools(){
     AnimatorAssetPool::clear();
     ShakePresetPool::clear();
     PhysicsMaterialPool::clear();
+    // the Palette Swap textures, then the palettes they were made from (S43)
+    pixelart::PaletteSwapCache::clear();
+    pixelart::PaletteLibrary::clear();
 }
 
 void Engine::clearUnusedPools(){
@@ -1474,6 +1608,7 @@ void Engine::clearUnusedPools(){
     TextureDataPool::clearUnused();
     ShaderPool::clearUnused();
     FontPool::clearUnused();
+    pixelart::BitmapFontPool::clearUnused();
     ModelPool::clearUnused();
     MeshLodPool::clearUnused();
     MeshBufferPool::clearUnused();
@@ -1529,6 +1664,10 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     Log::onMessageReceived.removeByTagSubstring(substring);
     Device::onThermalStateChanged.removeByTagSubstring(substring);
     Device::onLowMemory.removeByTagSubstring(substring);
+#if JASPERENGINE_SOUND_LAYER
+    Audio::onMusicBeat.removeByTagSubstring(substring);
+    Audio::onMusicSection.removeByTagSubstring(substring);
+#endif
     DebugOverlay::removeCommandsByTag(substring);
 
     // a released script instance's tag is "_<address>_": the input sources it owned go too
@@ -1577,6 +1716,11 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     Log::onMessageReceived.clear();
     Device::onThermalStateChanged.clear();
     Device::onLowMemory.clear();
+#if JASPERENGINE_SOUND_LAYER
+    // here too, not only in MusicPlayer::reset: the editor's Stop runs that after the C++ script library is unloaded
+    Audio::onMusicBeat.clear();
+    Audio::onMusicSection.clear();
+#endif
     DebugOverlay::removeOwnedCommands();
 
     if (includeLifecycle) {
@@ -1611,6 +1755,20 @@ void Engine::computeViewLayout(int screenWidth, int screenHeight, int preferredW
                                int& canvasWidth, int& canvasHeight, Rect& viewRect){
     canvasWidth = preferredWidth;
     canvasHeight = preferredHeight;
+
+    // the Pixel Perfect Camera's layout without one: the preferred canvas is the base, PPU 1
+    if (scalingMode == Scaling::INTEGER || scalingMode == Scaling::INTEGER_EXPAND){
+        const pixelart::PixelPerfectLayout layout = pixelart::computePixelPerfectLayout(screenWidth, screenHeight, preferredWidth,
+            preferredHeight, scalingMode == Scaling::INTEGER ? PixelUpscaleMode::INTEGER : PixelUpscaleMode::INTEGER_EXPAND, 0, false, 1);
+        if (layout.baseWidth > 0 && layout.baseHeight > 0){
+            canvasWidth = layout.baseWidth;
+            canvasHeight = layout.baseHeight;
+            viewRect = layout.viewport;
+        }else{
+            viewRect.setRect(0, 0, (float)screenWidth, (float)screenHeight);
+        }
+        return;
+    }
 
     //When canvas size is changed
     if (screenWidth != 0 && screenHeight != 0){
@@ -1687,6 +1845,8 @@ void Engine::refreshCanvas(bool notify){
     computeViewLayout(System::instance().getScreenWidth(), System::instance().getScreenHeight(),
                       preferredCanvasWidth, preferredCanvasHeight, scalingMode,
                       Engine::canvasWidth, Engine::canvasHeight, viewRect);
+    // a Pixel Perfect Camera's layout replaces it (S41 R3)
+    applyPixelPerfectView(System::instance().getScreenWidth(), System::instance().getScreenHeight());
 
     for (Scene* scene : getScenesSnapshot()){
         scene->updateCameraSize();
@@ -1976,6 +2136,8 @@ void Engine::systemViewChanged(){
 
     computeViewLayout(screenWidth, screenHeight, preferredCanvasWidth, preferredCanvasHeight, scalingMode,
                       Engine::canvasWidth, Engine::canvasHeight, viewRect);
+    // a Pixel Perfect Camera's layout replaces it (S41 R3)
+    applyPixelPerfectView(screenWidth, screenHeight);
 
     if (framebuffer){
         const unsigned int fbWidth = static_cast<unsigned int>(std::max(screenWidth, 0));
@@ -2598,6 +2760,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.atmosphereQuality = layer.atmosphereQuality;
         desc.shadows = layer.shadows;
         desc.drawMode = (ViewDrawMode)layer.drawMode;
+        desc.snapPreviewScale = layer.snapPreviewScale;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);
@@ -2988,16 +3151,25 @@ std::vector<Scene*> Engine::getInputScenes(bool keys){
 
 bool Engine::transformCoordPos(float& x, float& y){
 
-    x = (x - viewRect.getX()) / viewRect.getWidth();
-    y = (y - viewRect.getY()) / viewRect.getHeight();
+    // the sub-pixel smoothing's shift of the drawn image (S41 R12)
+    x = (x - viewShift.x - viewRect.getX()) / viewRect.getWidth();
+    y = (y - viewShift.y - viewRect.getY()) / viewRect.getHeight();
     
-    x = (float)Engine::getCanvasWidth() * x;
-    y = (float)Engine::getCanvasHeight() * y;
+    // a Pixel Perfect Camera's canvas is its base image over the Pixels Per Unit, which the
+    // integer canvas rounds (R6): the camera spans the exact one
+    float canvasWidth = (float)Engine::getCanvasWidth();
+    float canvasHeight = (float)Engine::getCanvasHeight();
+    if (pixelPerfectRequest.active && pixelPerfectLayout.canvasWidth > 0.0f && pixelPerfectLayout.canvasHeight > 0.0f){
+        canvasWidth = pixelPerfectLayout.canvasWidth;
+        canvasHeight = pixelPerfectLayout.canvasHeight;
+    }
+    x = canvasWidth * x;
+    y = canvasHeight * y;
     
     if (allowEventsOutCanvas || mouseMode == MouseMode::CAPTURED)
         return true;
     
-    return ((x >= 0) && (x <= Engine::getCanvasWidth()) && (y >= 0) && (y <= Engine::getCanvasHeight()));
+    return ((x >= 0) && (x <= canvasWidth) && (y >= 0) && (y <= canvasHeight));
 }
 
 // ---- input. Order per pointer event (phase-1 spec §3.6.1, §3.15): HTML UI screen documents,
@@ -3998,8 +4170,8 @@ void Engine::setTextInputArea(const Rect& canvasRect){
     // the inverse of transformCoordPos: canvas to the platform's screen pixels
     const float scaleX = viewRect.getWidth() / canvasWidth;
     const float scaleY = viewRect.getHeight() / canvasHeight;
-    System::instance().setTextInputArea(viewRect.getX() + canvasRect.getX() * scaleX,
-                                        viewRect.getY() + canvasRect.getY() * scaleY,
+    System::instance().setTextInputArea(viewRect.getX() + viewShift.x + canvasRect.getX() * scaleX,
+                                        viewRect.getY() + viewShift.y + canvasRect.getY() * scaleY,
                                         canvasRect.getWidth() * scaleX,
                                         canvasRect.getHeight() * scaleY);
 }

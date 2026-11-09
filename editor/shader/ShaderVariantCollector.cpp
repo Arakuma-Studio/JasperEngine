@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderVariantCollector.h"
+#include "component/CameraComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 
 #include "Engine.h"
@@ -11,9 +12,9 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/FluidSimulationComponent.h"
-#include "component/SpriteComponent.h"
 #include "component/TitleArtRendererComponent.h"
 #include "titleart/runtime/TitleArtExportKeys.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/TextEffectComponent.h"
 #include "component/TextComponent.h"
 #include "component/FogComponent.h"
@@ -28,6 +29,7 @@
 #include "util/FbxImporter.h"
 #include "component/ParticleSystemComponent.h"
 #include "particles/ParticleCompiler.h"
+#include "particles/ParticleEffectLibrary.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "component/PointsComponent.h"
 #include "component/ReflectionProbeComponent.h"
@@ -39,6 +41,7 @@
 #include "render/LightingTiers.h"
 #include "device/QualityResolver.h"
 #include "component/SkyboxComponent.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
@@ -107,6 +110,20 @@ namespace {
         if (!manifest || !manifest->present)
             return false;
         return (manifest->resolveRequire(ShaderReference::getEnabledFeatures(shader, features)) & ShaderRequire_SceneDepth) != 0;
+    }
+
+    // an effect's soft particles, or its sub-emitter children's (they draw in the same pass)
+    bool effectReadsSceneDepth(const particles::ParticleEffectDocument& effect, int depth){
+        if (readsSceneDepth(effect.renderer.shader, effect.renderer.shaderFeatures))
+            return true;
+        if (depth >= particles::kMaxSubEmitterDepth || !effect.subEmittersModule.present || !effect.subEmittersModule.enabled)
+            return false;
+        for (const particles::SubEmitterEntry& entry : effect.subEmitters){
+            const particles::EffectAsset& asset = particles::ParticleEffectLibrary::get(entry.effect);
+            if (asset.document && effectReadsSceneDepth(*asset.document, depth + 1))
+                return true;
+        }
+        return false;
     }
 
     // RenderSystem::loadPostProcess: a pass of the chain (enabled or not: a script may turn it
@@ -207,7 +224,7 @@ namespace {
             // a particle system's soft particles (library:particles SOFT)
             if (const ParticleSystemComponent* particles = registry->findComponent<ParticleSystemComponent>(entity)){
                 if (const particles::ParticleEffectDocument* effect = ParticleSubsystem::getDocument(*particles)){
-                    if (readsSceneDepth(effect->renderer.shader, effect->renderer.shaderFeatures)){
+                    if (effectReadsSceneDepth(*effect, 1)){
                         facts |= FACT_SCENE_DEPTH;
                     }
                 }
@@ -456,7 +473,9 @@ namespace {
         return probes;
     }
 
-    const ModelProbe& probeModel(const std::string& filename, bool mergeStaticMeshes){
+    // placed: a copy a system places (MeshSystem::loadPlacedModel: foliage), loaded the way it is,
+    // so the variants shipped are the ones the copy asks for
+    const ModelProbe& probeModel(const std::string& filename, bool mergeStaticMeshes, bool placed = false){
         // The file as the engine opens it, for its modification time: an FBX's import, which
         // also changes when only its textures do
         const std::filesystem::path path(editor::FbxImporter::isFbxFile(filename) ? MeshSystem::getImportedModelPath(filename)
@@ -466,7 +485,7 @@ namespace {
         const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(path, timeError);
         const uintmax_t size = std::filesystem::file_size(path, sizeError);
 
-        const std::string key = MeshSystem::getModelFilenameKey(filename) + (mergeStaticMeshes ? "|merged" : "");
+        const std::string key = MeshSystem::getModelFilenameKey(filename) + (mergeStaticMeshes ? "|merged" : "") + (placed ? "|placed" : "");
         auto cached = modelProbes().find(key);
         if (cached != modelProbes().end() && !timeError && !sizeError &&
                 cached->second.writeTime == writeTime && cached->second.size == size){
@@ -490,7 +509,8 @@ namespace {
 
         std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
         const bool obj = FileData::getFilePathExtension(filename) == "obj";
-        probe.loaded = obj ? meshSystem->loadOBJ(entity, filename, false) : meshSystem->loadGLTF(entity, filename, false, false, false);
+        probe.loaded = placed ? meshSystem->loadPlacedModel(entity, filename)
+            : obj ? meshSystem->loadOBJ(entity, filename, false) : meshSystem->loadGLTF(entity, filename, false, false, false);
 
         if (probe.loaded){
             probe.vatMesh = scene.getComponent<MeshComponent>(entity).vatMesh;
@@ -570,6 +590,9 @@ namespace {
         void collect(const editor::ShaderVariantContent& content){
             EntityRegistry* registry = content.registry;
             std::unordered_set<Entity> modelMeshes;
+            // S41: a camera of the scene snaps through a Pixel Perfect Camera (a script may turn it
+            // off: the plain variants come along)
+            const bool scenePixelSnap = scenePixelSnaps(registry);
 
             // Model meshes first: their geometry and materials come from the file
             for (Entity entity : content.entities){
@@ -597,6 +620,22 @@ namespace {
                         const TitleArtRendererComponent* title = registry->isComponentRegistered<TitleArtRendererComponent>()
                                                                  ? registry->findComponent<TitleArtRendererComponent>(entity) : nullptr;
                         if (title && registry->findComponent<SpriteComponent>(entity)) lentBaseColor = true;
+                                                pixelSnapKeys = scenePixelSnap && (registry->findComponent<SpriteComponent>(entity) ||
+                                                           registry->findComponent<TilemapComponent>(entity));
+                        // S52: a Sprite's batching inputs and its Sprite Batch as MeshSystem::update gives
+                        // them (not the mesh's fields: a scene not drawn yet has none), and a snapped one
+                        // carries its snap pivot ('Spv': per vertex, or per instance in a Sprite Batch;
+                        // not with an Instanced Mesh)
+                        if (registry->findComponent<SpriteComponent>(entity)){
+                            const SpriteBatchComponent* spriteBatch = registry->isComponentRegistered<SpriteBatchComponent>()
+                                                                      ? registry->findComponent<SpriteBatchComponent>(entity) : nullptr;
+                            const bool instancedMesh = registry->findComponent<InstancedMeshComponent>(entity) != nullptr;
+                            spriteInstancedKeys = spriteBatch && spriteBatch->enabled && !instancedMesh;
+                            spriteAttributes = MeshSystem::spriteBatchAttributes(*mesh, false, scene->getDefaultCustomShader(ShaderType::MESH));
+                            if (instancedMesh)
+                                spriteAttributes &= (uint8_t)~MeshBatchAttribute_SpriteFx;
+                            snapPivotKeys = pixelSnapKeys && !instancedMesh;
+                        }
                         collectMesh(registry, entity, *mesh);
                         // and with a Live Effect, its title_fx_sprite variant (S81 R33)
                         if (title && registry->findComponent<SpriteComponent>(entity) && mesh->numSubmeshes > 0){
@@ -612,6 +651,10 @@ namespace {
                             live.customShader = savedShader;
                             live.submeshes[0].material.shaderFeatures = savedFeatures;
                         }
+                        pixelSnapKeys = false;
+                        snapPivotKeys = false;
+                        spriteInstancedKeys = false;
+                        spriteAttributes = 0;
                         lentBaseColor = false;
                     }
                 }
@@ -619,6 +662,7 @@ namespace {
                     collectFoliage(*terrain);
                 }
                 if (const UIComponent* ui = registry->findComponent<UIComponent>(entity)){
+                    pixelSnapKeys = scenePixelSnap;
                     collectUI(*ui, registry->findComponent<TextComponent>(entity),
                               registry->isComponentRegistered<TextEffectComponent>() && registry->findComponent<TextEffectComponent>(entity));
                     // a Title Art Renderer's Live Effects draw its Image with library:title_fx (S81 R33)
@@ -631,6 +675,7 @@ namespace {
                             }
                         }
                     }
+                    pixelSnapKeys = false;
                 }
                 // an HTML UI document draws geometry, gradients and its layer/filter passes
                 // (RmlRenderer) (asked first: an editor built without the document component's
@@ -648,7 +693,9 @@ namespace {
                     collectPoints(points);
                 }
                 if (const ParticleSystemComponent* particles = registry->findComponent<ParticleSystemComponent>(entity)){
+                    pixelSnapKeys = scenePixelSnap;
                     collectParticles(*particles);
+                    pixelSnapKeys = false;
                 }
                 // the hairline, or the ribbon variant a width loads (pixel widths, a base texture)
                 if (const LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
@@ -669,6 +716,26 @@ namespace {
         // the mesh being collected is a 3D mesh that may get detail levels (not a terrain,
         // sprite, tilemap or polygon: RenderSystem::updateMeshLods)
         bool meshHasLevels = false;
+        // the drawable being collected also draws pixel-snapped ('Pxs', S41)
+        bool pixelSnapKeys = false;
+        // and, a Sprite, with its snap pivot then ('Spv', S52)
+        bool snapPivotKeys = false;
+        // a Sprite's S52 inputs: its Sprite Batch draws it instanced; what its shader reads per vertex
+        bool spriteInstancedKeys = false;
+        uint8_t spriteAttributes = 0;
+
+        static bool scenePixelSnaps(EntityRegistry* registry){
+            if (!registry->isComponentRegistered<PixelPerfectCameraComponent>())
+                return false;
+            auto components = registry->getComponentArray<PixelPerfectCameraComponent>();
+            for (size_t i = 0; i < components->size(); i++){
+                const PixelPerfectCameraComponent& component = components->getComponentFromIndex(i);
+                const CameraComponent* camera = registry->findComponent<CameraComponent>(components->getEntity(i));
+                if (component.enabled && component.pixelSnapping && camera && camera->type != CameraType::CAMERA_PERSPECTIVE)
+                    return true;
+            }
+            return false;
+        }
         const std::vector<MeshShaderEnvironment>& environments;
         // the post colour bit's states, for the points, lines and sky (meshes: environments)
         const std::vector<bool>& postColor;
@@ -684,6 +751,14 @@ namespace {
 
         // A custom shader that fails to build falls back to the built-in variant at runtime
         void insertKeys(ShaderType type, uint64_t properties, uint16_t customId){
+            // the pixel-snapped twin of a snapping scene's drawable (its depth program too)
+            const uint64_t pixelSnapBit = pixelSnapKeys ? ShaderPool::getPixelSnapProperty(type) : 0;
+            if (pixelSnapBit && !(properties & pixelSnapBit)){
+                insertKeys(type, properties | pixelSnapBit, customId);
+                const uint64_t pivotBit = snapPivotKeys ? ShaderPool::getSpriteBatchProperty(type, ShaderPool::SpriteBatchInput::SNAP_PIVOT) : 0;
+                if (pivotBit)
+                    insertKeys(type, properties | pixelSnapBit | pivotBit, customId);
+            }
             // a mesh's post colour bit comes with its environment; the others take it here
             const uint64_t postColorBit = type == ShaderType::MESH ? 0 : ShaderPool::getPostColorProperty(type);
             for (bool postColorOn : postColor){
@@ -715,6 +790,8 @@ namespace {
             // mesh's or the scene's, with its features; the depth pass's library program
             const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
             SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
+            inputs.instanced = instmesh || spriteInstancedKeys;
+            inputs.batchAttributes = spriteAttributes;
 
             const std::string depthShaderSrc = RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader);
             const uint16_t depthShaderId = ShaderPool::registerCustomShader(depthShaderSrc);
@@ -922,7 +999,7 @@ namespace {
                 if (layer.meshPath.empty()){
                     continue;
                 }
-                const ModelProbe& probe = probeModel(layer.meshPath, true);
+                const ModelProbe& probe = probeModel(layer.meshPath, true, true);
                 if (!probe.loaded){
                     continue;
                 }
@@ -956,13 +1033,16 @@ namespace {
             }
         }
 
-        // what RenderSystem::loadParticles draws with: the effect's quads, meshes and trails,
-        // with and without the scene fog
         void collectParticles(const ParticleSystemComponent& particles){
-            const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(particles);
-            if (!document)
-                return;
-            const std::shared_ptr<particles::CompiledEffect> effect = particles::ParticleCompiler::compile(*document);
+            if (const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(particles))
+                collectParticleEffect(*document, 1);
+        }
+
+        // what RenderSystem::loadParticleEmitter draws with: the effect's quads, meshes and trails,
+        // with and without the scene fog, and its sub-emitter children's own (as many levels as
+        // EmitterRuntime::bindSubEmitters binds)
+        void collectParticleEffect(const particles::ParticleEffectDocument& document, int depth){
+            const std::shared_ptr<particles::CompiledEffect> effect = particles::ParticleCompiler::compile(document);
             if (!effect->valid)
                 return;
             for (bool fog : {false, true}){
@@ -971,6 +1051,13 @@ namespace {
                 if (set.quads) insertKeys(ShaderType::PARTICLES, set.quadProperties, id);
                 if (set.meshes) insertKeys(ShaderType::PARTICLES, set.meshProperties, id);
                 if (set.trails) insertKeys(ShaderType::PARTICLES, set.trailProperties, id);
+            }
+            if (!effect->program.subEmitters || depth >= particles::kMaxSubEmitterDepth)
+                return;
+            for (const particles::SubEmitterEntry& entry : document.subEmitters){
+                const particles::EffectAsset& asset = particles::ParticleEffectLibrary::get(entry.effect);
+                if (asset.document)
+                    collectParticleEffect(*asset.document, depth + 1);
             }
         }
 
@@ -1425,8 +1512,23 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
     bool bloom = false;
     bool blur = false;
     bool halation = false;
+    // a Pixel Perfect Camera's Stretch Fill: the sharp bilinear upscale alone and with each set of
+    // the post-processing's features (S41 R11)
+    bool stretchFill = false;
+    if (scene->isComponentRegistered<PixelPerfectCameraComponent>()){
+        auto pixelCameras = scene->getComponentArray<PixelPerfectCameraComponent>();
+        for (size_t i = 0; i < pixelCameras->size(); i++){
+            const PixelPerfectCameraComponent& pixelCamera = pixelCameras->getComponentFromIndex(i);
+            stretchFill = stretchFill || (pixelCamera.enabled && pixelCamera.upscaleRenderTexture &&
+                                          pixelCamera.upscaleMode == PixelUpscaleMode::STRETCH_FILL);
+        }
+    }
+    if (stretchFill)
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, UBER_SHARP_BILINEAR));
     for (uint32_t features : plausibleUberFeatures(scene->getPostProcessing(), scriptsSetPostProcessing, scriptPostProcessingFields)){
         keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, features));
+        if (stretchFill)
+            keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, features | UBER_SHARP_BILINEAR));
         bloom = bloom || (features & UBER_BLOOM);
         blur = blur || (features & UBER_BLUR);
         // halation without bloom runs its own prefilter and down pass (S13)

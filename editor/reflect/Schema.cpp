@@ -15,6 +15,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <string_view>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -78,6 +79,10 @@ Json reflect::detail::intSchema(const FieldDesc& field) {
     Json schema{{"type", "integer"}};
     addRange(schema, field);
     return schema;
+}
+
+Json reflect::detail::outlineNeighborsSchema(const FieldDesc&) {
+    return Json{{"type", "integer"}, {"enum", Json::array({4, 8})}};
 }
 
 Json reflect::detail::colorWriteSchema(const FieldDesc& field) {
@@ -205,6 +210,11 @@ Json reflect::detail::customSchema(const FieldDesc&) {
 
 Json reflect::fieldSchema(const StructDesc& owner, const FieldDesc& field) {
     Json schema = field.ops->schema ? field.ops->schema(field) : Json::object();
+    // a Sorting Layer reads as {id, name} and takes either, or the bare id or name (McpValues)
+    if (field.drawer && std::string_view(field.drawer) == "sortingLayer") {
+        schema = Json{{"type", Json::array({"integer", "string", "object"})}, {"minimum", 0},
+                      {"properties", Json{{"id", Json{{"type", "integer"}, {"minimum", 0}}}, {"name", Json{{"type", "string"}}}}}};
+    }
     schema["description"] = description(field);
     if (!(field.flags & NoDefault)) {
         const Json def = defaultJson(field, defaultValue(owner, field));

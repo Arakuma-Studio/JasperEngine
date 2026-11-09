@@ -42,6 +42,7 @@ namespace jasperengine{
 namespace jasperengine{
     enum class ActionState;
     enum class AnchorPreset;
+    enum class SpriteDrawMode;
     enum class BuoyancyColumns;
     enum class CloudsPreset;
     enum class Collider2DType;
@@ -258,6 +259,7 @@ namespace jasperengine::editor {
         static const EnumTable<MaterialStencilOp>& materialStencilOp();
         static const EnumTable<ParticleEmitterShape>& particleEmitterShape();
         static const EnumTable<PivotPreset>& pivotPreset();
+        static const EnumTable<SpriteDrawMode>& spriteDrawMode();
         static const EnumTable<PrimitiveType>& primitiveType();
         static const EnumTable<ProgressbarType>& progressbarType();
         static const EnumTable<RigidbodyMotionQuality>& rigidbodyMotionQuality();

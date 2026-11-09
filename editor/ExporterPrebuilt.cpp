@@ -217,6 +217,9 @@ bool editor::Exporter::resolvePlayer() {
     if (config.allowPlayerMismatch && player->engineVersion != PlayerRuntimes::editorVersion())
         warn("W-PLAYER-MISMATCH", "player " + id + " is for editor " + player->engineVersion + ", this is " + PlayerRuntimes::editorVersion() +
                                   " (--allow-player-mismatch; publish verify refuses the build)");
+    else if (config.allowPlayerMismatch && !::jasperengine::cook::readsContentFormat(player->contentFormatVersion, ::jasperengine::cook::contentFormatVersion()))
+        warn("W-PLAYER-MISMATCH", "player " + id + " reads content format " + player->contentFormatVersion + ", this editor writes " +
+                                  ::jasperengine::cook::contentFormatVersion() + ": it skips what is newer (--allow-player-mismatch; publish verify refuses the build)");
     return true;
 }
 
@@ -618,12 +621,16 @@ bool editor::Exporter::writeGameConfig() {
     game.canvasWidth = project->getCanvasWidth();
     game.canvasHeight = project->getCanvasHeight();
     game.scaling = project->getScalingMode();
+    game.pixelsPerUnit = project->getPixelsPerUnit();
+    game.defaultFilterPoint = project->getDefaultFilterMode() == TextureFilterMode::Point;
+    game.bitmapTextCacheMiB = project->getBitmapTextCacheMiB();
     game.textureStrategy = project->getTextureStrategy();
     const LoadingSettings& loading = project->getLoadingSettings();
     game.loadingScene = loading.sceneId;
     game.loadingDelay = loading.delay;
     game.loadingTimeout = loading.timeout;
     game.asyncLoading = loading.asyncLoading;
+    game.particleWorldBudget = project->getParticleWorldBudget();
     const ThreadingProjectSettings& threading = project->getThreadingSettings();
     game.threading.workers = threading.workers;
     game.threading.reservedFrameWorkers = threading.reservedFrameWorkers;
@@ -648,6 +655,9 @@ bool editor::Exporter::writeGameConfig() {
     game.device = project->getDeviceSettings();
     game.tags = project->getTags();
     game.layerNames = project->getLayerNames();
+    if (project->getSortingLayers().size() > 1) game.sortingLayers = project->getSortingLayers();
+    game.transparencySortMode = project->getTransparencySortMode();
+    game.transparencySortAxis = project->getTransparencySortAxis();
     for (int layer = 0; layer < MAX_LAYERS; layer++) {
         game.collision3D[layer] = project->getLayerCollisionMatrix3D()[layer];
         game.collision2D[layer] = project->getLayerCollisionMatrix2D()[layer];

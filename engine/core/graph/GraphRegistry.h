@@ -17,13 +17,18 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace jasperengine::graph {
 
     struct ParamDesc {
         std::string name;
-        std::string kind;                    // float, int, bool, string, enum, vector2, vector3, color, asset, any
+        // float, int, bool, string, enum, vector2, vector3, color ({r, g, b, a} or [r, g, b, a],
+        // as shown: sRGB), asset ({guid, path}), gradient ({points: [{pos, r, g, b, a}],
+        // interpolation 0 constant, 1 linear, 2 and 3 smooth}), curve ({points: [{x, y, ls, rs}]},
+        // the slopes left and right of each point), any
+        std::string kind;
         Json defaultValue;
         std::optional<double> min;
         std::optional<double> max;
@@ -34,6 +39,7 @@ namespace jasperengine::graph {
         std::string id;
         std::string category;
         std::string displayName;
+        std::vector<std::string> aliases;    // other names a search finds it by
         std::vector<Port> ports;             // the static ports (passthrough unused)
         std::vector<ParamDesc> params;
         // set for dynamic-port types: the ports a node with these params has; such nodes store
@@ -59,6 +65,10 @@ namespace jasperengine::graph {
         int kindVersion = 1;
         std::vector<Migration> migrations;   // ascending toVersion
         bool acyclic = false;
+        // Unknown parameters and node types and out-of-range values are errors, so edit_graph
+        // refuses them. Off, they stay S23's forward compatibility: what a newer build wrote is
+        // kept and at most warned about. Either way load() never refuses a file for them.
+        bool strictParams = false;
         std::vector<NodeTypeDesc> nodeTypes;
         std::vector<PortTypeDesc> portTypes;
         // kind-specific issues, after the generic ones
@@ -76,6 +86,8 @@ namespace jasperengine::graph {
 
         std::shared_ptr<const GraphKindDesc> kind(const std::string& id) const;
         std::shared_ptr<const GraphKindDesc> kindForExtension(const std::string& extension) const;
+        // The kind whose extension ends this path, whatever its letter case; null for none
+        std::shared_ptr<const GraphKindDesc> kindForFile(std::string_view path) const;
         std::vector<std::string> kindIds() const;
 
         static const NodeTypeDesc* nodeType(const GraphKindDesc& kind, const std::string& typeId);

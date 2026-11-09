@@ -52,6 +52,7 @@ namespace jasperengine::editor {
         ToggleJobsMemory,
         ToggleMeshAudit,
         ToggleBuildReport,
+        ToggleAnimationStatistics,
         ToggleProfiler,
         ToggleFrameDebugger,
         ToggleUndoHistory,
@@ -143,6 +144,7 @@ namespace jasperengine::editor {
         AssetsReanalyzeAudio,          // S36: the Project selection's cached measurements dropped
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
+        AssetsCreateProceduralMaterial,
         AddCameraShakerToMainCamera,  // GameObject > Add Camera Shaker to Main Camera
         // the Doriax catch-up's project-window: the one Create list, Duplicate, Maximize On Play
         AssetsCreateCppSource,
@@ -151,6 +153,18 @@ namespace jasperengine::editor {
         AssetsCreatePhysicsMaterial2D,
         AssetsDuplicate,
         ToggleMaximizeOnPlay,
+        ToggleParticleEffect,         // Window > Visual Effects > Particle Effect (S91)
+        ToggleGraphEditor,            // Window > Assets > Graph Editor (S90)
+        ToggleSpritePreview,          // Window > 2D > Sprite Preview (S44)
+        // S43: Window > 2D > Palette (payload: a .palette to open), Assets > Create > Palette
+        TogglePalette,
+        AssetsCreatePalette,
+        // S45: Assets > Create > 2D > Sprite Atlas (and from the selection), Assets > Convert Inline Sprite Frames...
+        AssetsCreateSpriteAtlas,
+        AssetsCreateSpriteAtlasFromSelection,
+        AssetsConvertInlineSpriteFrames,
+        // S42: Window > 2D > Pixel Art Check
+        TogglePixelArtCheck,
         AssetsCreateTitleArt,         // Assets > Create > Title Art (S80)
         TitleArtBakeAll               // the command palette's "Title Art: Bake All" (S80 §6.13)
     };

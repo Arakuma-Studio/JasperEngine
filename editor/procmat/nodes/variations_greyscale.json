@@ -1,0 +1,49 @@
+{
+ "code": [],
+ "description": "Generates variations for its input",
+ "format": 1,
+ "functions": [],
+ "id": "variations_greyscale",
+ "inputs": [
+  {
+   "default": "1.0",
+   "description": "The input image",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Variations",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a variation of the input",
+   "expr": "$in.variation($uv, $seed+$v#)",
+   "label": "Output1",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "Seed modifier for output 1",
+   "label": "",
+   "max": 1,
+   "min": 0,
+   "name": "v#",
+   "short_description": "Seed modifier",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Variations",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/variations_greyscale.mmg"
+ },
+ "type_version": 1
+}

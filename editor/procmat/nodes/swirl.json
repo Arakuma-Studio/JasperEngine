@@ -1,0 +1,90 @@
+{
+ "code": [],
+ "description": "Applies a swirl to its input",
+ "format": 1,
+ "functions": [
+  "swirl_tile_false",
+  "swirl_tile_true"
+ ],
+ "id": "swirl",
+ "inputs": [
+  {
+   "default": "vec4($uv, 0.0, 1.0)",
+   "description": "The input image",
+   "label": "",
+   "name": "i#",
+   "short_description": "Input#",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Swirl",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the swirled image",
+   "expr": "$i#(swirl_tile_$tile($uv, vec2(0.5+$cx, 0.5+$cy), $radius, $angle*0.01745329251))",
+   "label": "Output#",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The position of the swirl center",
+   "label": "Center X",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "cx",
+   "short_description": "Center.x",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The position of the swirl center",
+   "label": "Center Y",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "cy",
+   "short_description": "Center.y",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The angle of the swirl",
+   "label": "Angle",
+   "max": 360,
+   "min": -360,
+   "name": "angle",
+   "short_description": "Angle",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "description": "The radius of the swirl",
+   "label": "Radius",
+   "max": 0.5,
+   "min": 0,
+   "name": "radius",
+   "short_description": "Radius",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": false,
+   "label": "Tile",
+   "name": "tile",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Swirl",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/swirl.mmg"
+ },
+ "type_version": 1
+}

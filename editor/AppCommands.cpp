@@ -11,6 +11,7 @@
 #include "window/TitleArtInterchangeWindows.h"
 #include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
+#include "window/GraphEditorWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/MainToolbar.h"
@@ -23,11 +24,15 @@
 #include "window/TitleDesignerWindow.h"
 #include "titleart/anim/TitleAnimationPanel.h"
 #include "window/TerrainEditWindow.h"
+#include "window/ApplyPaletteDialog.h"
+#include "window/PaletteWindow.h"
+#include "window/PixelArtCheckWindow.h"
 
 #include "AppMenuCommand.h"
 #include "Backend.h"
 #include "Out.h"
 #include "Engine.h"
+#include "pixelart/PixelPerfectEditor.h"
 #include "util/Util.h"
 #include "window/PlayInput.h"
 #include "animation/AnimationClipAppHooks.h"
@@ -35,6 +40,7 @@
 #include "pose/PoseViewportLogic.h"
 #include "window/AnimationWindowClip.h"
 #include "window/PoseAnimationWindow.h"
+#include "window/SpritePreviewWindow.h"
 #include "navigation/NavigationEditor.h"
 #include "navigation/NavPathTester.h"
 #include "sceneview/SceneViewController.h"
@@ -50,6 +56,7 @@
 #include "widget/CurveField.h"
 #include "widget/GradientField.h"
 #include "window/InputActionsWindow.h"
+#include "window/AnimationStatisticsWindow.h"
 #include "window/JobsMemoryWindow.h"
 #include "window/vcs/VcsUi.h"
 
@@ -237,6 +244,7 @@ void editor::App::registerCommands(){
     }
     enable("assets.createAnimationClip", []() { return static_cast<bool>(animationClipAppHooks().createClipAsset); });
     enable("assets.createSoundEventFromClips", [this]() { return projectWindow->hasAudioSelection(); });
+    enable("assets.createSpriteAtlasFromSelection", [this]() { return projectWindow->hasSpriteSelection(); });
     bind("soundEvent.audition", [this](const CommandArgs&) { inspectorWindow->requestSoundEventAudition(); },
          [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()); });
     bind("soundEvent.matchLevels", [this](const CommandArgs&) { inspectorWindow->requestSoundEventMatchLevels(); },
@@ -314,6 +322,17 @@ void editor::App::registerCommands(){
     };
     onView("sceneView.hideSelection", [](SceneViewController& view, SceneProject& scene) { view.hideSelection(scene); });
     onView("sceneView.showAll", [](SceneViewController& view, SceneProject& scene) { view.showAll(scene); });
+    // S41: the Pixel Zoom's 1x and Game (a 2D scene drawn through a Pixel Perfect Camera)
+    auto pixelScene = [this]() {
+        const SceneProject* scene = project.getSelectedScene();
+        return scene && scene->sceneRender && scene->sceneType == SceneType::SCENE_2D && pixelart::scenePixelViews(&project, scene);
+    };
+    bind("sceneView.pixelZoom1x", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, 1.0f);
+    }, pixelScene, noDrag);
+    bind("sceneView.pixelZoomGame", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, sceneWindow->gamePixelZoom(*scene));
+    }, pixelScene, noDrag);
     onView("sceneView.togglePickLock", [](SceneViewController& view, SceneProject& scene) { view.togglePickLockSelection(scene); });
     onView("sceneView.measure", [](SceneViewController& view, SceneProject& scene) { view.setMeasuring(scene, !view.isMeasuring(scene.id)); });
     // the Path Tester (S75 R25): in the selected scene's view, edit or play
@@ -407,6 +426,7 @@ void editor::App::registerCommands(){
     // ---- Animation window (clip mode) and Pose Animation window: their own commands
     AnimationWindowClip::bindCommands(catalog, [this]() { return animationWindow->getClipMode(); });
     poseAnimationWindow->bindCommands(catalog, [this]() { return poseKeysActive(); }, [this]() { return poseKeysFromSceneView(); });
+    spritePreviewWindow->bindCommands(catalog, [this]() { return spritePreviewWindow->isFocused(); });
 
     // ---- The Sound Browser, while it has focus: keys typed into its search stay text
     auto browser = [&bind, this](const char* id, std::function<void()> run, bool whileTyping = false) {
@@ -514,7 +534,22 @@ void editor::App::registerPanelClaims(){
     // its selected state, sub-state machine, transition or layer
     claims.add({"Animator", [this]() { return animatorWindow->isFocused(); },
                 {{Verb::Delete, {{}, [this]() { return animatorWindow->canDelete(); }, [this]() { animatorWindow->removeSelection(); }}}}});
+    // its selected nodes or wire; Copy and Paste carry nodes as JSON text
+    // (any graph window: the Graph Editor or a graph kind's own)
+    // the graph window that held the keys when the claim was found may have lost them by the time the
+    // menu asks (a click in its pane moves the focus mid-frame): each verb asks again, a no-op without one
+    claims.add({"Graph Editor", []() { return GraphEditorWindow::focused() != nullptr; },
+                {{Verb::Delete, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && w->canDelete(); },
+                                 []() { if (auto* w = GraphEditorWindow::focused()) w->removeSelection(); }}},
+                 {Verb::Copy, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && !w->selectedNodes().empty(); },
+                               []() { if (auto* w = GraphEditorWindow::focused()) w->copySelection(); }}},
+                 {Verb::Paste, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && w->canPaste(); },
+                                []() { if (auto* w = GraphEditorWindow::focused()) w->paste(); }}},
+                 {Verb::Duplicate, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && !w->selectedNodes().empty(); },
+                                    []() { if (auto* w = GraphEditorWindow::focused()) w->duplicateSelection(); }}},
+                 {Verb::Frame, {{}, nullptr, []() { if (auto* w = GraphEditorWindow::focused()) w->frameSelected(); }}}}});
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
+    claims.add({"Animation Statistics", [this]() { return animationStatisticsWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },
                 {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},
                  {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")},
@@ -617,7 +652,10 @@ editor::ShortcutState editor::App::shortcutState() const{
     // the Animation panel's keys are its own while it has the focus (Delete deletes keys, not layers)
     if (titledesigner::titleAnimationPanelFocused()) state.panels.push_back(ShortcutContext::TitleAnimation);
     else if (titleDesignerWindow->isFocused()) state.panels.push_back(ShortcutContext::TitleDesigner);
+    if (paletteWindow->takesKeys() || applyPaletteDialog->takesKeys()) state.panels.push_back(ShortcutContext::Palette);
+    if (pixelArtCheckWindow->takesKeys()) state.panels.push_back(ShortcutContext::PixelArtCheck);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
+    if (spritePreviewWindow->isFocused()) state.panels.push_back(ShortcutContext::SpritePreview);
     return state;
 }
 

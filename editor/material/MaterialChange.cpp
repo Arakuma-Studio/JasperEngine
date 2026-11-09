@@ -58,6 +58,7 @@ bool editor::addMaterialChangeCommands(MultiPropertyCmd& multi, Project* project
     field("shaderTextures", from.shaderTextures, to.shaderTextures);
     field("shaderFeatures", from.shaderFeatures, to.shaderFeatures);
     field("shaderGlobalBindings", from.shaderGlobalBindings, to.shaderGlobalBindings);
+    field("shaderPalettes", from.shaderPalettes.get(), to.shaderPalettes.get());
     field("baseColorFactor", from.baseColorFactor, to.baseColorFactor);
     field("metallicFactor", from.metallicFactor, to.metallicFactor);
     field("roughnessFactor", from.roughnessFactor, to.roughnessFactor);

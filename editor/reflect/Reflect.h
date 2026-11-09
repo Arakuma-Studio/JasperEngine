@@ -50,6 +50,7 @@ namespace jasperengine::editor::reflect {
         None, Texture, Cubemap, Font, Material, Model, Audio, Script, Prefab, Shader, UIDocument, Scene, Any,
         PoseAnimation, AnimationClip, AnimatorController, VertexAnimation, AvatarMask, SoundEvent, NavMesh, NavGrid, ParticleEffect,
         ModelOrPrefab,  // by the path's extension (a spline pool's entry)
+        Palette,        // a .palette (S43)
         TitleArt        // a .titleart (S81's Title Art Renderer)
     };
 

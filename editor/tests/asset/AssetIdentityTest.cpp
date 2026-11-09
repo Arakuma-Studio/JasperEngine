@@ -48,6 +48,7 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <random>
 #include <set>
@@ -288,7 +289,38 @@ TEST(AssetTypes, TableDecidesTracking) {
     EXPECT_EQ(AssetTypes::assetPathForMeta("a/hero.png.meta"), fs::path("a/hero.png"));
 }
 
+// BF23 F24: every file the texture cook takes has an identity
+TEST(AssetTypes, ExrIsATexture) {
+    const AssetTypeInfo* exr = AssetTypes::find("assets/env.exr", "assets");
+    ASSERT_NE(exr, nullptr);
+    EXPECT_EQ(exr->type, AssetType::Texture);
+    EXPECT_EQ(exr->identity, AssetIdentity::Sidecar);
+    EXPECT_NE(AssetTypes::find("assets/env.EXR", "assets"), nullptr);
+}
+
 // ==================================================================== AssetDatabase
+
+// BF23 F24: an .exr of an existing project, one its database did not track, gains its sidecar on
+// the next scan and answers to the path old references hold
+TEST(AssetDatabase, ExistingExrGainsASidecar) {
+    AssetTestDir dir;
+    write(dir.path / "assets/a.png", "png content");
+    {
+        AssetDatabase database;
+        database.open(dir.path, "assets");
+        database.waitForBackgroundWork();
+    }
+    write(dir.path / "assets/env.exr", "exr content");
+    AssetDatabase database;
+    database.open(dir.path, "assets");
+    database.waitForBackgroundWork();
+    const Guid guid = database.getAssetGuid("assets/env.exr");
+    EXPECT_FALSE(guid.isNull());
+    EXPECT_TRUE(fs::exists(dir.path / "assets/env.exr.meta"));
+    const AssetDatabase::Resolution reference = database.lookupPath("assets/env.exr");
+    EXPECT_TRUE(reference.found()) << "a reference by path resolves";
+    EXPECT_EQ(reference.guid, guid);
+}
 
 // AC1: two machines upgrading the same commit write the same identities
 TEST(AssetIdentity, UpgradeIsDeterministic) {
@@ -817,6 +849,24 @@ TEST(AssetDatabase, StaleScanIsDropped) {
     EXPECT_FALSE(database.getAssetGuid("assets/b.png").isNull());
     const AssetDatabase::DiskScan now = database.scanDisk();
     EXPECT_TRUE(database.refresh(now).empty());
+}
+
+// An importer's settings written to a sidecar before the asset got its GUID (S45: a texture's Sprite
+// Mode set while it was being imported) survive the GUID's write
+TEST(AssetDatabase, SettingsWrittenBeforeTheGuidSurvive) {
+    AssetTestDir dir;
+    write(dir.path / "assets/walk.png", "w");
+    write(dir.path / "assets/walk.png.meta", "metaVersion: 1\nimport:\n  spriteSheet:\n    mode: multiple\n");
+    AssetDatabase database;
+    database.setBackgroundHashing(false);
+    database.open(dir.path, "assets");
+    database.importAssets(dir.path / "assets/walk.png");
+    EXPECT_FALSE(database.getAssetGuid("assets/walk.png").isNull());
+    std::ifstream in(dir.path / "assets/walk.png.meta");
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    EXPECT_NE(text.find("guid:"), std::string::npos) << text;
+    EXPECT_NE(text.find("spriteSheet"), std::string::npos) << "the settings are kept: " << text;
+    EXPECT_NE(text.find("mode: multiple"), std::string::npos) << text;
 }
 
 // ==================================================================== links and hard links (S68)

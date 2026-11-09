@@ -1,0 +1,249 @@
+{
+ "connections": [
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "buffer",
+   "to_port": 0
+  },
+  {
+   "from": "blend",
+   "from_port": 0,
+   "to": "colorize",
+   "to_port": 0
+  },
+  {
+   "from": "buffer",
+   "from_port": 0,
+   "to": "blend",
+   "to_port": 0
+  },
+  {
+   "from": "colorize",
+   "from_port": 0,
+   "to": "_2",
+   "to_port": 0
+  },
+  {
+   "from": "_2",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "buffer",
+   "from_port": 0,
+   "to": "gaussian_blur_x",
+   "to_port": 0
+  },
+  {
+   "from": "gaussian_blur_x",
+   "from_port": 0,
+   "to": "buffer_2",
+   "to_port": 0
+  },
+  {
+   "from": "buffer_2",
+   "from_port": 0,
+   "to": "gaussian_blur_y",
+   "to_port": 0
+  },
+  {
+   "from": "gaussian_blur_y",
+   "from_port": 0,
+   "to": "blend",
+   "to_port": 1
+  }
+ ],
+ "description": "Generates an ambient occlusion map from a height map",
+ "format": 1,
+ "id": "occlusion",
+ "inputs": [
+  {
+   "description": "The input heightmap",
+   "group_size": 0,
+   "label": "Input",
+   "name": "port0",
+   "type": "f"
+  }
+ ],
+ "kind": "graph",
+ "name": "Occlusion",
+ "nodes": [
+  {
+   "id": "buffer_2",
+   "parameters": {
+    "lod": 0,
+    "size": 8
+   },
+   "seed": 61344,
+   "seed_locked": true,
+   "type": "buffer"
+  },
+  {
+   "id": "buffer",
+   "parameters": {
+    "lod": 0,
+    "size": 8
+   },
+   "seed": 53030,
+   "seed_locked": true,
+   "type": "buffer"
+  },
+  {
+   "id": "blend",
+   "parameters": {
+    "amount": 1,
+    "blend_type": 11
+   },
+   "seed": -19751,
+   "type": "blend"
+  },
+  {
+   "id": "colorize",
+   "parameters": {
+    "gradient": {
+     "interpolation": 1,
+     "points": [
+      {
+       "a": 1,
+       "b": 1,
+       "g": 1,
+       "pos": 0,
+       "r": 1
+      },
+      {
+       "a": 1,
+       "b": 0,
+       "g": 0,
+       "pos": 1,
+       "r": 0
+      }
+     ],
+     "type": "Gradient"
+    }
+   },
+   "seed": 33856,
+   "seed_locked": true,
+   "type": "colorize"
+  },
+  {
+   "id": "_2",
+   "parameters": {
+    "g": 1.5
+   },
+   "seed": 41185,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "0.0",
+      "label": "",
+      "name": "in",
+      "type": "f"
+     }
+    ],
+    "instance": [],
+    "outputs": [
+     {
+      "expr": "pow($in($uv), $g)",
+      "type": "f"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 1,
+      "label": "",
+      "max": 2,
+      "min": 0,
+      "name": "g",
+      "step": 0.1,
+      "type": "float"
+     }
+    ]
+   }
+  },
+  {
+   "id": "gaussian_blur_x",
+   "parameters": {
+    "sigma": 50,
+    "size": 8
+   },
+   "seed": 13758,
+   "type": "gaussian_blur_x"
+  },
+  {
+   "id": "gaussian_blur_y",
+   "parameters": {
+    "sigma": 50,
+    "size": 8
+   },
+   "seed": 15390,
+   "type": "gaussian_blur_y"
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The generated occlusion map",
+   "group_size": 0,
+   "label": "Output",
+   "name": "port0",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 8,
+   "description": "The resolution of the input height map",
+   "first": 4,
+   "label": "Grid size",
+   "last": 13,
+   "links": [
+    {
+     "node": "buffer",
+     "param": "size"
+    },
+    {
+     "node": "buffer_2",
+     "param": "size"
+    },
+    {
+     "node": "gaussian_blur_x",
+     "param": "size"
+    },
+    {
+     "node": "gaussian_blur_y",
+     "param": "size"
+    }
+   ],
+   "name": "param0",
+   "short_description": "Size",
+   "type": "size"
+  },
+  {
+   "default": 1.5,
+   "description": "The strength of the occlusion map effect",
+   "label": "Strength",
+   "links": [
+    {
+     "node": "_2",
+     "param": "g"
+    }
+   ],
+   "max": 2,
+   "min": 0,
+   "name": "param2",
+   "short_description": "Strength",
+   "step": 0.1,
+   "type": "float"
+  }
+ ],
+ "short_description": "Occlusion",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/occlusion.mmg"
+ },
+ "type_version": 1
+}

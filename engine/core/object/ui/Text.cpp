@@ -12,6 +12,10 @@
 #include "Log.h"
 #include "util/Color.h"
 #include "util/STBText.h"
+#include "pixelart/BitmapFont.h"
+#include "pixelart/BitmapText.h"
+#include "pixelart/BitmapFontPool.h"
+#include "pixelart/FontPixelReport.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 
@@ -232,6 +236,8 @@ float Text::getAlpha() const{
 float Text::getAscent() const{
     TextComponent& textcomp = getComponent<TextComponent>();
 
+    if (textcomp.bitmapText)
+        return textcomp.bitmapText->getAscent(textcomp.pixelUnit);
     if (!textcomp.stbtext)
         return 0;
     else
@@ -241,6 +247,9 @@ float Text::getAscent() const{
 float Text::getDescent() const{
     TextComponent& textcomp = getComponent<TextComponent>();
 
+    // a bitmap font's descent: what its line holds below the baseline
+    if (textcomp.bitmapText)
+        return -(float)(textcomp.bitmapText->getFont()->getLineHeight() - textcomp.bitmapText->getFont()->getBaseline()) * textcomp.pixelUnit;
     if (!textcomp.stbtext)
         return 0;
     else
@@ -250,6 +259,8 @@ float Text::getDescent() const{
 float Text::getLineGap() const{
     TextComponent& textcomp = getComponent<TextComponent>();
 
+    if (textcomp.bitmapText)
+        return 0;
     if (!textcomp.stbtext)
         return 0;
     else
@@ -259,6 +270,8 @@ float Text::getLineGap() const{
 int Text::getLineHeight() const{
     TextComponent& textcomp = getComponent<TextComponent>();
 
+    if (textcomp.bitmapText)
+        return (int)std::lround((float)textcomp.bitmapText->getFont()->getLineHeight() * textcomp.pixelUnit);
     if (!textcomp.stbtext)
         return 0;
     else
@@ -284,6 +297,8 @@ Vector2 Text::getCharPosition(unsigned int index) const{
 float Text::getCharWidth(uint32_t codepoint) const{
     TextComponent& textcomp = getComponent<TextComponent>();
 
+    if (textcomp.bitmapText)
+        return (float)textcomp.bitmapText->getFont()->advanceOf(codepoint) * textcomp.pixelUnit;
     if (!textcomp.stbtext)
         return 0;
     else
@@ -514,6 +529,39 @@ int Text::getColorWrite() const{
 
 // colours and offsets reach the shader each frame; a width the atlas padding does not cover
 // rebuilds the atlas (UISystem::getTextOptions)
+void Text::setOutlineNeighbors(int neighbors){
+    TextComponent& textcomp = getComponent<TextComponent>();
+    const int value = neighbors == 4 ? 4 : 8;
+    if (textcomp.outlineNeighbors != value){
+        textcomp.outlineNeighbors = value;
+        textcomp.needUpdateText = true;
+    }
+}
+
+int Text::getOutlineNeighbors() const{
+    return getComponent<TextComponent>().outlineNeighbors;
+}
+
+int Text::getPixelScale() const{
+    const TextComponent& textcomp = getComponent<TextComponent>();
+    if (!pixelart::isBitmapFontPath(textcomp.font[0]))
+        return 0;
+    if (textcomp.bitmapText)
+        return pixelart::pixelScaleFor(textcomp.fontSize, textcomp.bitmapText->getFont()->getNativeSize());
+    // not loaded yet: the font's own native size
+    std::shared_ptr<pixelart::BitmapFont> font = pixelart::BitmapFontPool::get(textcomp.font[0]);
+    return font ? pixelart::pixelScaleFor(textcomp.fontSize, font->getNativeSize()) : 0;
+}
+
+unsigned int Text::getEffectiveFontSize() const{
+    const TextComponent& textcomp = getComponent<TextComponent>();
+    const int k = getPixelScale();
+    if (k == 0)
+        return textcomp.fontSize;
+    std::shared_ptr<pixelart::BitmapFont> font = textcomp.bitmapText ? textcomp.bitmapText->getFont() : pixelart::BitmapFontPool::get(textcomp.font[0]);
+    return font ? (unsigned int)(k * font->getNativeSize()) : textcomp.fontSize;
+}
+
 void Text::setOutlineWidth(float outlineWidth){
     TextComponent& textcomp = getComponent<TextComponent>();
     if (textcomp.outlineWidth != outlineWidth){

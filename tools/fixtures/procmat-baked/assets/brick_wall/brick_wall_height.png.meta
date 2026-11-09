@@ -1,0 +1,8 @@
+metaVersion: 1
+guid: 11384bf5b27286cf926a41b96e11b4be
+import:
+  textureImporter:
+    version: 1
+    type: single_channel
+    channel: r
+    srgb: false

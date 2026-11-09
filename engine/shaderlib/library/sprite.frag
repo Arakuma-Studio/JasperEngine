@@ -6,6 +6,7 @@
 // @description "Sprite, tilemap and polygon effects on the sprite's own texture and colour: outline, hue shift, hit flash, grayscale, colour replace, overlay and glow; lit by 2D lights, with the material's Normal Texture as the normal map. Alpha blended, both faces, no shadows; with the Premultiplied blend mode the texture is read as premultiplied."
 // @require uv1 color normalmap
 // @state blend=alpha zwrite=off cull=off shadows=off
+// @batchable framerect=OUTLINE,OVERLAY
 // @feature OUTLINE "Outline"
 // @feature HUE_SHIFT "Hue shift"
 // @feature FLASH "Hit flash"
@@ -13,12 +14,14 @@
 // @feature COLOR_REPLACE "Colour replace"
 // @feature OVERLAY "Overlay (hard light)"
 // @feature GLOW "Glow"
+// @feature PALETTE_SWAP "Palette Swap"
+// @feature PALETTE_CYCLE "Palette Cycling"
 // @property outlineColor color (1, 1, 1, 1) "Outline colour" feature=OUTLINE
 // @property outlineWidth range(0, 8) 1 "Outline width (texels)" feature=OUTLINE
 // @property hueShift range(0, 360) 120 "Hue shift (degrees)" feature=HUE_SHIFT
 // @property hueSpeed float 0 "Hue cycle speed (degrees per second)" feature=HUE_SHIFT
 // @property flashColor color (1, 1, 1, 1) "Flash colour" feature=FLASH
-// @property flashAmount range(0, 1) 0.75 "Flash amount" feature=FLASH
+// @property flashAmount range(0, 1) 0.75 "Flash amount" feature=FLASH instance=fx.y
 // @property grayscaleAmount range(0, 1) 1 "Grayscale amount" feature=GRAYSCALE
 // @property replaceColorR color (0.9, 0.2, 0.2, 1) "Replacement for the mask's red (alpha: strength)" feature=COLOR_REPLACE
 // @property replaceColorG color (0.2, 0.8, 0.3, 1) "Replacement for the mask's green (alpha: strength)" feature=COLOR_REPLACE
@@ -31,10 +34,14 @@
 // @property glowPower range(0.1, 8) 2 "Glow falloff power" feature=GLOW
 // @texture u_replaceMaskTexture black "Replace mask (RGB selects the replacement colour)" feature=COLOR_REPLACE
 // @texture u_overlayTexture white "Overlay texture" feature=OVERLAY
+// @palette u_palette "Palette" feature=PALETTE_SWAP,PALETTE_CYCLE
+// @property paletteRow int 0 "Active palette (0: original)" feature=PALETTE_SWAP instance=fx.x
+// @property paletteCycleSpeed float 1 "Cycling speed" feature=PALETTE_CYCLE
 
 // Sprites keep the engine's own material: the texture and colour of the Sprite (or Tilemap,
-// MeshPolygon), its texture rect (atlas frame), the vertex and instance colours. The
-// effects run on straight-alpha linear colour in this order: colour replace, hue shift,
+// MeshPolygon), its texture rect (atlas frame), the vertex and instance colours. Palette
+// Swap and Palette Cycling come first, on the raw texel (its exact bytes, before the tint:
+// includes/palette.glsl); the other effects run on straight-alpha linear colour in this order: colour replace, hue shift,
 // grayscale, overlay, flash, outline (behind the sprite), the material's alpha mode, 2D
 // lights (shaped by the material's Normal Texture when it has one: @require normalmap), glow. With OUTLINE or OVERLAY the texture is read inside the current frame only.
 // The blend mode is the material's (alpha by default): with Premultiplied (BLEND_PREMULTIPLIED)
@@ -42,6 +49,9 @@
 // output (finalizeStraightColor), as are the other modes' outputs. No shadows by default:
 // the sprite's shape is its texture's alpha, and without a depth program a shadow would be
 // the whole quad (as Unity's sprites, which cast none either).
+// Dynamic Batching draws it (@batchable): the Palette Swap row and the flash amount are read with
+// their FX slot added (includes/sprite_fx.glsl), the frame rect of OUTLINE and OVERLAY comes per
+// vertex (sprite.vert).
 
 #if (defined(OUTLINE) || defined(OVERLAY)) && defined(HAS_UV_SET1)
     #define SPRITE_FRAME_RECT
@@ -51,7 +61,7 @@
     #define SURFACE_POSITION
 #endif
 
-#if defined(HUE_SHIFT) || defined(FLASH) || defined(GRAYSCALE) || defined(OUTLINE) || defined(COLOR_REPLACE) || defined(OVERLAY) || defined(GLOW)
+#if defined(HUE_SHIFT) || defined(FLASH) || defined(GRAYSCALE) || defined(OUTLINE) || defined(COLOR_REPLACE) || defined(OVERLAY) || defined(GLOW) || defined(PALETTE_SWAP) || defined(PALETTE_CYCLE)
 uniform u_fs_customParams {
     float time; // engine-written seconds
     #ifdef OUTLINE
@@ -84,6 +94,13 @@ uniform u_fs_customParams {
         float glowScale;
         float glowPower;
     #endif
+    #ifdef PALETTE_SWAP
+        float paletteRow;
+    #endif
+    #ifdef PALETTE_CYCLE
+        float paletteCycleSpeed;
+        float sceneTime; // engine-written: the scene clock, which holds while the game is paused
+    #endif
 } customParams;
 #endif
 
@@ -111,6 +128,8 @@ out vec4 g_finalColor;
 #include "includes/output.glsl"
 #include "includes/color_fx.glsl"
 #include "includes/base_color_fs.glsl"
+#include "includes/palette.glsl"
+#include "includes/sprite_fx.glsl"
 #ifdef USE_LIGHT2D
     #include "includes/lighting2d.glsl"
 #endif
@@ -177,6 +196,22 @@ void main() {
     #endif
 
     vec4 texel = spriteTexel(uv);
+    #if defined(PALETTE_SWAP) || defined(PALETTE_CYCLE)
+        // the authored bytes, before the tint: a white tint keeps the exact palette
+        #ifdef PALETTE_SWAP
+            float paletteRow = customParams.paletteRow + spriteFx(x);
+        #else
+            float paletteRow = 0.0;
+        #endif
+        #ifdef PALETTE_CYCLE
+            float paletteCycleSpeed = customParams.paletteCycleSpeed;
+            float paletteTime = customParams.sceneTime;
+        #else
+            float paletteCycleSpeed = 0.0;
+            float paletteTime = 0.0;
+        #endif
+        texel = paletteSwapTexel(texel, paletteRow, paletteTime, paletteCycleSpeed);
+    #endif
     vec4 tint = pbrParams.baseColorFactor * v_color;
     vec4 color = vec4(sRGBToLinear(texel.rgb), texel.a) * tint;
 
@@ -214,7 +249,7 @@ void main() {
     #endif
 
     #ifdef FLASH
-        color.rgb = mix(color.rgb, customParams.flashColor.rgb, customParams.flashAmount * customParams.flashColor.a);
+        color.rgb = mix(color.rgb, customParams.flashColor.rgb, (customParams.flashAmount + spriteFx(y)) * customParams.flashColor.a);
     #endif
 
     float spriteAlpha = color.a;

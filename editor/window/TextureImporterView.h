@@ -16,6 +16,7 @@
 
 #include "texture/TextureCookQueue.h"
 #include "texture/Texture.h"
+#include "window/dialog/TextureSlicerToolDialog.h"
 
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
@@ -43,6 +44,13 @@ namespace jasperengine::editor {
         bool hasPendingEdits() const { return !touched.empty(); }
 
     private:
+        // S45 R31: the texture's Sprite Mode (Single / Grid / Multiple), Slice..., its frames, the
+        // name@WxH grid, the atlas packing it (TextureSpriteMode.cpp)
+        void drawSpriteMode(const std::string& assetPath);
+        TextureSlicerToolDialog slicer;
+        std::string spriteModeKey;                  // the path and the texture's and meta's times it was read at
+        std::shared_ptr<const void> spriteModeCache;
+
         struct PreviewImage {
             int width = 0, height = 0;
             std::vector<uint8_t> rgba;     // display-ready RGBA8
@@ -85,6 +93,13 @@ namespace jasperengine::editor {
 
         void drawPreview(const TextureCookState* state);
         void drawGeneral(const ResolvedTextureSettings& resolved);
+        // S42 R7, R17, R20: a lossy override of a pixel-art texture, a sheet over 2048 x 2048, and
+        // Apply to N References when references drifted from the Filter Mode
+        void drawPixelArtNotes(const TextureImportSettings& settings);
+        size_t referenceCount = 0;          // Apply to N References: N, read twice a second
+        std::string referenceChangesPath;
+        double referenceChangesAt = -1.0;
+        bool previewOneX = false;
         void drawAdvanced(const ResolvedTextureSettings& resolved);
         void drawMipMaps(const ResolvedTextureSettings& resolved);
         void drawPlatform(const ResolvedTextureSettings& resolved);

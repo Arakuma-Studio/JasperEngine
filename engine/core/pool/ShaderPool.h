@@ -38,6 +38,10 @@ namespace jasperengine{
         bool customData = false;     // CUSTOM_DATA: the Custom Data stream
         bool receiveShadows = false; // RECEIVE_SHADOWS: the main light's shadow
         bool fog = false;            // HAS_FOG: the scene fog
+        // S49: the Pixel Art module or Render Mode Pixel (PARTICLE_PIXEL: the grid, the shapes,
+        // the dither); Analytic simulation (PARTICLE_ANALYTIC: each particle from its slot)
+        bool pixel = false;
+        bool analytic = false;
     };
 
     class JASPERENGINE_API ShaderPool{
@@ -158,6 +162,13 @@ namespace jasperengine{
         // phase 4's in-shader tier) of a shader type, 0 for a type that never applies it (UI,
         // depth, effects)
         static uint64_t getPostColorProperty(ShaderType shaderType);
+        // 'Pxs': the pixel-snapped vertex stage of MESH, DEPTH, UI and PARTICLES (S41); 0 for the others
+        static uint64_t getPixelSnapProperty(ShaderType shaderType);
+        // S52's pixel-art batching inputs (after 'Pxs'): MESH 'Sfx' (the FX slots, a_spriteFx /
+        // i_spriteFx), 'Sfr' (the frame rect, a_frameRect), 'Spv' (the snap pivot, a_snapPivot;
+        // DEPTH too); 0 for a type without it
+        enum class SpriteBatchInput { FX, FRAME_RECT, SNAP_PIVOT };
+        static uint64_t getSpriteBatchProperty(ShaderType shaderType, SpriteBatchInput input);
         // the mesh variant bit of the High and Ultra shadow filters (USE_SHADOWS_HQ: the Vogel
         // disk, PCSS and the raw-depth view of the atlas; docs/rendering/shadows.md), set on a
         // variant that receives shadows when the shadow tier is High or above (MESH bit 33)

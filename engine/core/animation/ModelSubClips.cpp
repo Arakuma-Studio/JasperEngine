@@ -7,10 +7,12 @@
 
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipBinding.h"
+#include "animation/ModelClipSettings.h"
 #include "io/File.h"
 #include "io/FileData.h"
 #include "pool/AnimationClipPoolTesting.h"
 #include "pool/ModelPool.h"
+#include "sprite/AsepriteClips.h"
 #include "subsystem/MeshSystem.h"
 
 #include "tiny_gltf.h"
@@ -36,6 +38,8 @@ namespace{
     }
 
     const char* const modelExtensions[] = {".gltf", ".glb", ".fbx"};
+    // containers of read-only sub-clips that are not models: an Aseprite file's tags (S44)
+    const char* const clipContainerExtensions[] = {".aseprite", ".ase"};
 
     // loadGLTF's entity name of a node
     std::string nodeName(const tinygltf::Model& model, size_t index){
@@ -435,6 +439,11 @@ bool anim::parseSubClipReference(const std::string& reference, SubClipReference&
         size_t at = text.find(marker);
         if (at != std::string::npos) split = std::min(split, at + marker.size() - 1);
     }
+    for (const char* extension : clipContainerExtensions){
+        std::string marker = std::string(extension) + "#";
+        size_t at = text.find(marker);
+        if (at != std::string::npos) split = std::min(split, at + marker.size() - 1);
+    }
     if (split == std::string::npos || split + 1 >= reference.size()) return false;
     out.model = reference.substr(0, split);
     out.clip = reference.substr(split + 1);
@@ -698,6 +707,8 @@ bool anim::readModelFile(const std::string& modelPath, const std::function<bool(
 }
 
 void anim::dropModelFileParse(const std::string& modelPath){
+    // its <model>.clips is read again with it
+    dropModelClipSettings(modelPath);
     const std::string key = modelPath.empty() ? std::string() : MeshSystem::getModelFilenameKey(modelPath);
     ParseCache& cache = parseCache();
     std::shared_ptr<const tinygltf::Model> dropped;    // freed after the unlock
@@ -772,6 +783,7 @@ bool anim::readModelFileNodes(const std::string& modelPath, std::vector<ModelNod
 
 bool anim::listModelFileClips(const std::string& modelPath, std::vector<ModelClipInfo>& out, std::string* error){
     out.clear();
+    if (isAsepriteClipContainer(modelPath)) return listAsepriteClips(modelPath, out, error);
     return withModelFile(modelPath, error, [&](const tinygltf::Model& model){
         out = listModelClips(model);
         return true;
@@ -794,6 +806,10 @@ bool anim::buildModelSubClip(const std::string& reference, ClipData& out,
         if (error) *error = "\"" + reference + "\" is not a model sub-clip (<model>#<animation>)";
         return false;
     }
+    if (isAsepriteClipContainer(parsed.model)) return buildAsepriteClip(parsed.model, parsed.clip, out, warnings, error);
+    // the model's <model>.clips (S77 R28): the same file and the same reading in the editor and a
+    // player, so Play matches an export. Read before the model, not under its mutex
+    const std::shared_ptr<const ModelClipSettings> settings = modelClipSettings(parsed.model);
     return withModelFile(parsed.model, error, [&](const tinygltf::Model& model){
         int index = findModelClip(model, parsed.clip);
         if (index < 0){
@@ -802,6 +818,12 @@ bool anim::buildModelSubClip(const std::string& reference, ClipData& out,
         }
         if (!buildSubClip(model, index, out, warnings, error)) return false;
         out.source.path = parsed.model;
+        if (settings){
+            const std::vector<std::string> names = animationNames(model);
+            if (const ModelClipSetting* setting = (size_t)index < names.size() ? settings->find(names[(size_t)index]) : nullptr){
+                applyModelClipSetting(*setting, out);
+            }
+        }
         return true;
     });
 }

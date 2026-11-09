@@ -1413,6 +1413,42 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("CROP", Scaling::CROP)
         .addVariable("STRETCH", Scaling::STRETCH)
         .addVariable("NATIVE", Scaling::NATIVE)
+        .addVariable("INTEGER", Scaling::INTEGER)
+        .addVariable("INTEGER_EXPAND", Scaling::INTEGER_EXPAND)
+        .endNamespace();
+
+    // the Pixel Perfect Camera's choices (S41)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PixelUpscaleMode")
+        .addVariable("INTEGER", PixelUpscaleMode::INTEGER)
+        .addVariable("INTEGER_EXPAND", PixelUpscaleMode::INTEGER_EXPAND)
+        .addVariable("STRETCH_FILL", PixelUpscaleMode::STRETCH_FILL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PixelRotation")
+        .addVariable("CAMERA", PixelRotation::CAMERA)
+        .addVariable("STEPS_90", PixelRotation::STEPS_90)
+        .addVariable("ON_GRID", PixelRotation::ON_GRID)
+        .endNamespace();
+
+    // 2D sorting and Sprite Batch (S52)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SpriteSortPoint")
+        .addVariable("CENTER", SpriteSortPoint::CENTER)
+        .addVariable("PIVOT", SpriteSortPoint::PIVOT)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SpriteBatchMode")
+        .addVariable("RETAINED", SpriteBatchMode::RETAINED)
+        .addVariable("CLEAR_EACH_FRAME", SpriteBatchMode::CLEAR_EACH_FRAME)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SpriteBatchSpace")
+        .addVariable("LOCAL", SpriteBatchSpace::LOCAL)
+        .addVariable("WORLD", SpriteBatchSpace::WORLD)
         .endNamespace();
 
     // the Canvas Scaler (Unity's CanvasScaler.ScaleMode, ScreenMatchMode, Unit)
@@ -1967,6 +2003,25 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("FILMIC", FilmGrainType::FILMIC)
         .endNamespace();
 
+    // Palette Quantize (S43)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PaletteDither")
+        .addVariable("NONE", PaletteDither::NONE)
+        .addVariable("BAYER2", PaletteDither::BAYER2)
+        .addVariable("BAYER4", PaletteDither::BAYER4)
+        .addVariable("BAYER8", PaletteDither::BAYER8)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PaletteDistance")
+        .addVariable("OKLAB", PaletteDistance::OKLAB)
+        .addVariable("RGB", PaletteDistance::RGB)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PalettePrecision")
+        .addVariable("NORMAL", PalettePrecision::NORMAL)
+        .addVariable("HIGH", PalettePrecision::HIGH)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("FilmGateMask")
         .addVariable("NONE", FilmGateMask::NONE)
@@ -2272,6 +2327,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("preferredCanvasHeight", &Engine::getPreferredCanvasHeight)
         .addStaticProperty("viewRect", &Engine::getViewRect)
         .addStaticProperty("scalingMode", &Engine::getScalingMode, &Engine::setScalingMode)
+        .addStaticFunction("getPixelsPerUnit", &Engine::getPixelsPerUnit)
+        .addStaticFunction("setDefaultTextureFilter", &Engine::setDefaultTextureFilter)
+        .addStaticFunction("getDefaultTextureFilter", &Engine::getDefaultTextureFilter)
         .addStaticProperty("textureStrategy", &Engine::getTextureStrategy, &Engine::setTextureStrategy)
         .addStaticFunction("setTextureQuality", &Engine::setTextureQuality)
         .addStaticFunction("getTextureQuality", &Engine::getTextureQuality)
@@ -2488,6 +2546,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("dynamicResolutionEnabled", &PostProcessingSettings::dynamicResolutionEnabled, &PostProcessingSettings::dynamicResolutionEnabled)
         .addProperty("dynamicResolutionMinScale", &PostProcessingSettings::dynamicResolutionMinScale, &PostProcessingSettings::dynamicResolutionMinScale)
         .addProperty("dynamicResolutionTargetFps", &PostProcessingSettings::dynamicResolutionTargetFps, &PostProcessingSettings::dynamicResolutionTargetFps)
+        // Palette Quantize (S43)
+        .addProperty("paletteEnabled", &PostProcessingSettings::paletteEnabled, &PostProcessingSettings::paletteEnabled)
+        .addProperty("palette", &PostProcessingSettings::palette, &PostProcessingSettings::palette)
+        .addProperty("paletteDither", &PostProcessingSettings::paletteDither, &PostProcessingSettings::paletteDither)
+        .addProperty("paletteDitherStrength", &PostProcessingSettings::paletteDitherStrength, &PostProcessingSettings::paletteDitherStrength)
+        .addProperty("paletteDistance", &PostProcessingSettings::paletteDistance, &PostProcessingSettings::paletteDistance)
+        .addProperty("palettePrecision", &PostProcessingSettings::palettePrecision, &PostProcessingSettings::palettePrecision)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

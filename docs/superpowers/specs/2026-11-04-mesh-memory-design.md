@@ -794,3 +794,94 @@ Recorded during the implementation (branch `dc/mesh-memory`).
     (`InstancingGoldenGpu.CloneOfAnInstancedMeshLeavesTheOriginalsBatches`). `HeapTrim.ReturnsFreedPagesOnGlibc`
     checks the resident bytes only without a sanitizer, and Android has its own case. The `MeshMemory` ceilings grow
     by half under MSVC's checked iterators.
+
+## Follow-ups (2026-11-07)
+
+Branch `fu/mesh-memory` (docs/doriax-catchup/FOLLOWUPS.md).
+
+1. **Android heap trim compiled.** `tools/build.sh android` (every ABI, `minSdkVersion 21`, NDK 28.2.13676358)
+   builds with the Android branch of `HeapTrim.cpp`; nothing needed fixing. The NDK's clang also compiled
+   `HeapTrim.cpp` and `HeapTrimTest.cpp` (`-Wall -Wextra -Werror`, `-fsyntax-only`) for arm64-v8a, armeabi-v7a,
+   x86_64 and x86 at API 21, and `M_PURGE` is defined in the NDK's `<malloc.h>` (-101), so the branch is not the
+   no-op fallback. The built libraries import `dlsym` and not `mallopt`, so they still load on Android 5 to 7
+   (no `mallopt` in libc before API 26). Unit tests are not built for Android, so `HeapTrim.PurgesFromAndroid9`
+   was compiled, not run; nothing in the branch can run on Linux (it is `__ANDROID__` only and its effect is the
+   device allocator's), so no Linux test was added.
+2. **MSVC size ceilings.** The `MeshMemory` ceilings were checked against MSVC's x64 layouts without MSVC: libclang
+   read the real headers for x86-64 Linux and wrote a header-free copy of every record the six asserted types
+   hold (59 records: bases, vptrs, bitfields, arrays, alignment), with each `std::` type an opaque block of the
+   MSVC STL's size from microsoft/STL's `stl/inc` (`_Container_base12` adds a proxy pointer under checked
+   iterators; `std::deque` always has one). Compiled for x86-64 Linux with libstdc++'s sizes, every copy came out
+   at its real size; then for `x86_64-pc-windows-msvc` (`-fms-compatibility`, Microsoft layout rules) and for
+   MinGW (`x86_64-w64-windows-gnu`):
+
+   | type | ceiling | Linux | MSVC Release | MSVC Debug | MinGW |
+   |---|---|---|---|---|---|
+   | SokolObject | 896 | 816 | 760 | 792 | 792 |
+   | ObjectRender | 896 | 832 | 776 | 808 | 808 |
+   | Submesh | 9,472 | 8,632 | 7,944 | 8,560 | 8,168 |
+   | MeshComponent | 2,048 | 1,760 | 1,584 | 1,696 | 1,648 |
+   | SpriteComponent | 384 | 320 | 296 | 344 | 296 |
+   | TilemapComponent | 384 | 152 | 152 | 184 | 152 |
+
+   SpriteComponent was 72 B (80 MSVC Debug) under a 256 ceiling until pixel-art's S44 gave it its tag playback
+   (`playingTag`, `tagFrames` and five scalars, `c3c73e186`): its ceiling is now 384, the Linux 320 with room as the
+   others have, MSVC Debug's 344 under it. A sprite's mesh with its arrays is 10,264 B under MSVC Debug (ceiling 11,264). MSVC's `std::map` (16 B, 24
+   checked) is much smaller than libstdc++'s (48), which outweighs the checked iterators' proxies, so every
+   configuration fits the Linux ceilings: the "half again under MSVC's checked iterators" of deviation 16 is
+   gone (its premise was wrong) and the ceilings are the same everywhere. `test_jobs_memory.py`'s
+   `element_bytes <= 2048` holds on Windows for the same reason. Still to run on Windows: `MeshMemory.*` in a
+   Debug and a Release MSVC build of the core unit tests (the layouts above are computed, not measured).
+3. **The 421 pixels of the first clone test: not reproduced.** That test (never committed) compared the frame
+   before a clone of an instanced box with the frame after the clone was destroyed, and 421 pixels differed with
+   and without the cloner's batch reset, so the comparison was dropped. It was rerun in every form found: the
+   frame each of 6 frames after the clone, after the clone loaded, each of 6 frames after the destroy, settled
+   after it, a clone and destroy in the same frame, and GPU Instancing off and on again, all against the
+   settled frame. On this branch and on the review-fix tree itself (`f05176f82`), with the cloner fix and with it
+   reverted, alone and after the whole `InstancingGoldenGpu` suite twice (`--gtest_repeat=2`), every comparison
+   showed 0 differing pixels. The image is the same with or without the fix because a clone sharing the
+   original's batch variants only takes the original's draws out of their batch, and single draws match batched
+   ones pixel for pixel (`BatchedFrameMatchesUnbatched`). The early test's code is lost, so what made its 421
+   pixels cannot be named; none of the frames it could have compared differs. `CloneOfAnInstancedMeshLeavesTheOriginalsBatches`
+   now also asserts that the frame after the clone is gone is the frame before it, writing both images when not,
+   so a difference of that kind shows again if it ever returns. That assertion is a pin, not a regression test:
+   it passes with the cloner fix reverted (the test's batch-variant checks fail there).
+4. **S55's batch render objects out of line.** Blocked until `fix/submesh-drop` landed (`2b893484f`, every
+   submesh culled by its own bounds), then built on it. `SubmeshBatchVariants` (`MeshComponent.h`) holds what
+   `Submesh` held inline for S55: both render objects, both shaders, their property words and ids. `Submesh::batch`
+   is a `std::shared_ptr` to it, null unless GPU Instancing is on and the submesh can batch:
+   `RenderSystem::requestSubmeshBatchShaders` makes it (or releases it when there is nothing to batch, which is
+   how GPU Instancing turning off frees it), `loadSubmeshBatchVariants` does nothing without it, and
+   `releaseSubmeshBatchVariants` and `destroyMesh` let it go. A copy of a component shares its source's variants
+   until its own load, which then makes new ones instead of writing the source's. The struct owns its GPU objects:
+   its destructor, run by the last holder, destroys both pipelines and removes both shaders' pool entries
+   (posted to the main thread through `MainThreadQueue` when the last holder goes on another thread), so a copy
+   game code keeps (`MeshComponent proto = ...`) frees the variants it copied when it goes, and neither holder
+   destroys what the other still draws. The cloner resets the pointer.
+   `MeshComponent::arrayHeapBytes` counts the variants a mesh holds. Sizes (Linux; MSVC Release / Debug computed as
+   in item 2): `Submesh` 8,664 -> 6,960 B on the merged tree (6,392 / 6,944), `SubmeshBatchVariants` 1,720 B (1,600 / 1,664) only while
+   instancing, a sprite's mesh with its arrays 10,432 -> 8,728 B (1,704 B a submesh drawn without instancing). The `MeshMemory` ceilings follow: `Submesh`
+   7,680, a sprite's mesh 9,472. Tests: `MeshMemory.SizeofCeilings` and `SpriteCostsAnOrderOfMagnitudeLess` (red
+   with the change reverted), `InstancingGoldenGpu.BatchVariantsHeldOnlyWhileInstancing` (none held with GPU
+   Instancing off, the arrays' heap bytes lower by exactly the variants, made again on, the same frame).
+5. **Review of item 4.** Ownership as above (a kept copy leaked its variants' pipelines and pool shaders when
+   the live mesh made new ones: `InstancingGoldenGpu.BatchVariantsFreedByTheirLastHolder`, red without the
+   destructor). `destroyMesh` with the assets kept releases the variants whole for a submesh past
+   `numSubmeshes` (left from a larger load: it draws nothing). Undo and redo of `MeshChangeCmd` and the restore
+   paths of `ModelLoadCmd` assign a decoded component over a loaded one, which left all of that component's GPU
+   objects alive (render, depth and G-buffer pipelines, buffers, shader pool entries, textures) on every undo and
+   redo, as before this program. `ModelClearCmd`'s `releaseMeshResources` (`prepareMeshForDataReload` and the
+   material textures) is now `ProjectUtils::releaseMeshResources`, called before each of those assignments
+   (`MeshChangeCmd` execute and undo, `ModelLoadCmd` undo and its synchronous-failure restore); the commands do
+   nothing else differently. The editor unit tests have no renderer (a mesh never loads there), so the test is an
+   MCP one: `test_mesh_undo_resources.py` counts the device's alive pipelines, buffers, images and shaders
+   (`get_render_stats`) across three undo/redo rounds of `set_mesh_geometry` and of `set_model`, each landing on
+   the counts of its state. Measured with the changes reverted: `set_mesh_geometry` kept one shader pool entry of
+   the replaced mesh alive and one buffer more every round; `set_model` showed no growth (a model's buffers and
+   pipelines are shared through the model's pool and the pipeline cache, and its first load of a file keeps one
+   image that does not grow), so that case is a pin. The per-round buffer was not the command's: S55's
+   position-only shadow indices (R5) made a GPU index buffer that nothing destroyed (a `BufferRender` handle
+   frees nothing), so every reload or destroy of a mesh whose shadow indices paid off leaked one. `ShadowIndexBuffer`
+   now owns it like `SubmeshBatchVariants` (non-copyable, destroyed by its last holder, posted to the main thread
+   from another): `InstancingGoldenGpu.ShadowIndicesFreedWithTheirMesh` reloads a shadow-casting box three times
+   and the alive buffers stay put (red without it).

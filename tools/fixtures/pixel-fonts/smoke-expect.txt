@@ -1,0 +1,5 @@
+# tools/smoke-test.sh: lines the exported game logs (tools/fixtures/make_pixel_fonts_fixture.py)
+[gate] pixel_fonts hud 9 px, 95 glyphs, SCORE 120 x2
+[gate] pixel_fonts builtin 9 px, 159 glyphs
+[gate] pixel_fonts Title x2 (18)
+[gate] pixel_fonts Styled outline 1 neighbors 4

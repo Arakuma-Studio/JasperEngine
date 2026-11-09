@@ -1016,7 +1016,7 @@ float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponen
 
 void AtmosphereRenderer::bindPostColor(ObjectRender& render, ShaderData& data){
     applyBlock(render, data, "u_fs_postColor", sizeof(post_color_t), &rs->passPostColors[POST_BLEND_OWN]);
-    bindTexture(render, data, "u_postColorLut", rs->postTailLut.isCreated() ? &rs->postTailLut : &RenderSystem::emptyWhite);
+    bindTexture(render, data, "u_postColorLut", rs->currentPostColorLut());
 }
 
 void AtmosphereRenderer::drawComposites(const PassPlan& plan, PipelineType pipelineType, int msaaSamples, const Rect& viewport,

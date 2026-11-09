@@ -14,7 +14,8 @@
 //   mutex and never changed once kept (see dropModelFileParse).
 // - Invariants:
 //   * a reference splits at the first '#' that follows a ".gltf", ".glb" or ".fbx" extension
-//     (case-insensitive): model file names may contain '#'.
+//     (case-insensitive): model file names may contain '#'. An ".aseprite"/".ase" file is a
+//     container too (its tag clips, sprite/AsepriteClips.h): the list and the builder go there.
 //   * names: the glTF name, "Animation <i>" when empty (i 0-based, as loadGLTF names its
 //     animation entities); the k-th later duplicate of a name is "<name> <k>" (k from 2), where
 //     the loader's entities keep the duplicate name. Everything that lists a model's clips
@@ -25,7 +26,8 @@
 //   * the pool key of a sub-clip is "<normalized model path>#<animation index>", never the name.
 //   * track paths mirror buildGLTFNodeHierarchy: node.name or "Node <i>", parent = the node that
 //     lists it as a child, parentless nodes directly under the model root, "#k" = the count of
-//     lower-index siblings with the same name. Frame rate 30, wrap Once, source {kind "model"}.
+//     lower-index siblings with the same name. Frame rate 30, wrap Once, source {kind "model"};
+//     buildModelSubClip then applies the clip's entry of "<model>.clips" (ModelClipSettings.h).
 //   * accessor reads are bounds-checked and strided (byteStride); sparse accessors are rejected
 //     with a warning.
 

@@ -121,6 +121,7 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode AnimationApproximated{DiagArea::CSS, 21};
         inline constexpr DiagCode FontSource{DiagArea::CSS, 22};
         inline constexpr DiagCode UnknownFontFamily{DiagArea::CSS, 23};
+        inline constexpr DiagCode BitmapFontEffect{DiagArea::CSS, 24};   // S51 R15
         // SEL
         inline constexpr DiagCode UnsupportedSelector{DiagArea::SEL, 1};
         inline constexpr DiagCode SelectorRewritten{DiagArea::SEL, 2};

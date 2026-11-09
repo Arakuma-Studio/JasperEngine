@@ -206,7 +206,7 @@ nothing ops, did-you-mean errors); `synthesize_texture` (preview, then the same 
 - **R2. Migrations.** `TitleArtMigrations` runs the ordered table before decode; a newer version is
   refused for editing and rendering with `version_newer`; older versions load and are rewritten only
   by the next commit (§6.1 rules 1-4).
-- **R3. Asset type.** `AssetType::TitleArt = 29` (appended after S37's `SoundEvent = 28`; 24-27 are reserved for the pixel art program; `assetTypeName` `"title_art"`;
+- **R3. Asset type.** `AssetType::TitleArt = 30` (appended after S90's `ProceduralMaterial = 29`; 24-27 are the pixel art program's; `assetTypeName` `"title_art"`;
   `assetTypeFromName`'s bound moved to it), row `{TitleArt, InFile, Assets, false, false}` for
   `.titleart`, `Util::isTitleArtFile`. The Font row gains `.ttc`.
 - **R4. Dependency edges.** `AssetIndex` extracts a `.titleart`'s references (fonts, fallback
@@ -1359,7 +1359,7 @@ contour LUT).
 
 | Place | Change |
 |---|---|
-| `engine/core/asset/AssetType.h` | `TitleArt = 29` appended, `assetTypeName` → `"title_art"`, `assetTypeFromName`'s bound → `TitleArt`; test `AssetTypeTest.NamesRoundTripEveryValue` iterates to the last value so the next append cannot repeat the trap |
+| `engine/core/asset/AssetType.h` | `TitleArt = 30` appended, `assetTypeName` → `"title_art"`, `assetTypeFromName`'s bound → `TitleArt`; test `AssetTypeTest.NamesRoundTripEveryValue` iterates to the last value so the next append cannot repeat the trap |
 | `editor/asset/AssetTypes.cpp` | `{{TitleArt, InFile, Assets, false, false}, {".titleart"}}`; Font row `{".ttf", ".otf", ".ttc"}` |
 | `editor/util/Util.h` | `isTitleArtFile`, in the combined asset test |
 | `editor/asset/DepEdge.h` | `TitleArtAsset` (a font, image, SVG or map a document reads; `field` = JSON path) and `TitleArtOutput` (a baked PNG); names `"title_art_asset"`, `"title_art_output"` |

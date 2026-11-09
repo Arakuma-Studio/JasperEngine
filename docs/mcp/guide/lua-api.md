@@ -521,6 +521,8 @@ parents to the first script that defines it (otherwise the game gets Escape or B
 | `setCanvasSize(w, h)` | static fn | |
 | `viewRect` | ro | `Rect` |
 | `scalingMode` | rw | `Scaling.*` |
+| `getPixelsPerUnit()` | static fn | the project's Pixels Per Unit (1-256, default 1: a world unit is a pixel); sprites and tilemaps with `pixelsPerUnit` 0 take it |
+| `setDefaultTextureFilter(f)`, `getDefaultTextureFilter()` | static fn | the filter every Texture made from now on starts with (`TextureFilter.NEAREST` or `LINEAR`; the project's Default Filter Mode at start): a `Sprite:setTexture` of pixel art stays crisp; saved references keep theirs |
 | `setAtmosphereQuality(q)`, `getAtmosphereQuality()`, `resetAtmosphereQuality()` | fn | the volumetric fog and clouds tier (`AtmosphereQuality.*`): overrides the project's per-platform one until reset |
 | `textureStrategy` | rw | `TextureStrategy.*` |
 | `setTextureQuality(q)`, `getTextureQuality()` | static fn | 0 (full) to 3 (an eighth): top mips dropped from streamable textures at load (Unity's Global Mipmap Limit); sprites and UI keep theirs. The export sets the platform's from Project Settings > Texture |
@@ -1962,12 +1964,41 @@ Color/texture via Mesh: `Primitive(self.scene, self.entity):setColor(1, 0, 0, 1)
 | `textureRect` | rw `Rect`; `setTextureRect(x, y, w, h)` |
 | `textureScaleFactor` | rw |
 | `pivotPreset` | rw `PivotPreset.*` |
+| `pixelsPerUnit` | rw: texels per world unit, 0 = the project's (`Engine.getPixelsPerUnit()`); `width`/`height` stay pixels |
+| `pixelRotation` | rw `PixelRotation.*`: under a Pixel Perfect Camera, `CAMERA` (its policy), `STEPS_90` or `ON_GRID` |
+| `sortingLayerId`, `sortingLayerName`, `sortingOrder` | rw: 2D draw order (4.9.3) |
+| `spriteSortPoint` | rw `SpriteSortPoint.CENTER` or `PIVOT`: what Custom Axis sorting measures |
+| `worldSize` | ro `Vector2`: the quad in world units |
 | `enabled` | rw |
 | frames: `addFrame(...)`, `removeFrame(idOrName)`, `setFrame(idOrName)` | methods |
 | `startAnimation(framesTable, framesTimeTable, loop)`, `startAnimation(startFrame, endFrame, intervalMs, loop)`, `startAnimation(name, intervalMs, loop)` | methods |
 | `pauseAnimation()`, `stopAnimation()` | methods |
 | `getShadowCaster2D()`, `removeShadowCaster2D()` | methods |
+| sheet sprites: `sheet` (rw path: an `.aseprite` file, a texture or a `.spriteatlas`; setting it shows frame 0), `frame` (rw index, 0-based), `frameName` (rw), `frameCount` | properties |
+| `drawMode` | rw `SpriteDrawMode.SIMPLE` / `SLICED` (a bordered frame as 9 parts at the sprite's size) |
+| `getSheet()` -> `SpriteSheet` or nil | method |
+| `playTag(name, speed)`, `stopTag()`; `tag` (name or nil), `isTagPlaying` | tags at the sheet's durations, direction and repeat (no clip events) |
+| `getTag(name)` -> `{name, from, to, direction, repeat, durationMs, color, userData}`, `getTags()` | methods |
+| `getSlice(name)` -> `{name, rect, center, pivot, visible, userData}` on the shown frame in local units, `getSlices()`, `getUserData()` | methods |
 | plus Mesh: `color`, `alpha`, `setColor`, `setTexture`, ... | |
+
+`SpriteSheet.load(path)` (any sheet: an `.aseprite` file, a texture, a `.spriteatlas`; nil and a logged error when there is none) gives `path`, `frameCount`,
+`pageCount`, `frameNames`, `tags`, `slices`, `properties` and `findFrame(name)` (-1 when absent),
+`getFrame(nameOrIndex)`, `getTag(name)`, `getSlice(name, frame)` (pixels, y down).
+
+```lua
+local hero = Sprite(self.scene, self.entity)
+hero.sheet = "assets/sprites/hero.aseprite"
+hero:playTag("walk")
+local hurt = hero:getSlice("hurt")
+if hurt and hurt.visible then
+    print(hero.tag, hero.frame, hurt.rect.width)
+end
+local sheet = SpriteSheet.load("assets/sprites/hero.aseprite")
+if sheet then
+    print(sheet.frameCount, sheet:findFrame("hero 3"), sheet:getTag("walk").durationMs)
+end
+```
 
 ### 4.6 SpriteAnimation (Action)
 
@@ -2289,6 +2320,8 @@ controller does not have warn once and do nothing.
 | `montageJumpToSection(name)`, `montageSetNextSection(from, to)` | |
 | `setIKTarget(constraint, position [, weight])`, `clearIKTarget(constraint)`, `setIKWeight(constraint, w)` | world space; a script target wins over the constraint's GameObject |
 | `setLookAt(position [, weight])` | the first look_at constraint |
+| `isIKReached(constraint)` | the last solve left the end within 1 mm of its target (look_at: the aim within 0.1 degree; foot_ik: on ground it found), measured on the final pose: false for a partial weight, a soft limit, a clamp, a target out of reach, weight 0, a disabled or culled Animator, an unknown name |
+| `setIKSoften(constraint, soften)`, `setIKHingeAxis(constraint, axis)`, `setIKTwist(constraint, degrees)`, `setIKAimOffset(constraint, offset)` | the constraint's fields: `soften` 0..1 (0: a hard limit), `axis` the middle bone's local hinge (`Vector3(0, 0, 0)`: auto), `offset` the eyes from the last bone |
 | `hasBone(slotOrPath)`, `getBonePosition(slotOrPath)`, `getBoneRotation(slotOrPath)` | world space, from the last evaluated pose; humanoid slots (`"left_hand"`) or paths |
 | `speed`, `applyRootMotion` | rw |
 | `getDeltaPosition()`, `getDeltaRotation()` | the last update's root motion (world space) |
@@ -2330,6 +2363,80 @@ far)`, `setType(t)`, `setTarget(x, y, z)`, `disableTarget()`, `isUsingTarget()`,
 A camera looks at its target by default (`isUsingTarget()`): the GameObject's rotation is
 ignored until `disableTarget()`. Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch),
 cos(pitch)cos(yaw)) * distance, then `setTarget(target)`.
+`camera:getPixelPerfectCamera()` returns its Pixel Perfect Camera, nil without one (4.9.2).
+
+### 4.9.2 PixelPerfectCamera (EntityHandle)
+
+Pixel art on a camera (`jasper://docs/pixel-art`): one base resolution scaled by a whole number,
+every sprite, tile, UI element and particle on whole base pixels.
+
+- `PixelPerfectCamera(scene, cameraEntity)`: the camera's component, added when it has none.
+- rw: `enabled`, `referenceResolution` (`Vector2`, `(0, 0)` = the project canvas), `upscaleMode`
+  (`PixelUpscaleMode.INTEGER`, `INTEGER_EXPAND`, `STRETCH_FILL`), `upscaleRenderTexture`,
+  `pixelSnapping`, `rotationMode` (`PixelRotation.STEPS_90`, `ON_GRID`), `subpixelSmoothing`,
+  `letterboxColor` (`Vector4`).
+- ro, the layout of this frame: `pixelRatio` (k), `baseResolution`, `targetResolution`
+  (`Vector2`), `viewport` (`Rect`, screen pixels), `snappedPosition` (`Vector3`, where the camera
+  draws from), `subpixelOffset` (`Vector2`, base pixels), `cropped`.
+- `worldToPixel(Vector3)` -> `Vector2` base pixels of the image (unsnapped), `pixelToWorld(Vector2)`
+  -> `Vector3`, `roundToPixel(Vector3)` -> the world position on whole pixels (the snap rule).
+- Zoom by changing `referenceResolution` (a new target each change).
+
+```lua run
+local cam = Camera(scene)
+cam:setType(CameraType.CAMERA_ORTHO)
+assert(cam:getPixelPerfectCamera() == nil)
+local ppc = PixelPerfectCamera(scene, cam.entity)
+ppc.referenceResolution = Vector2(320, 180)
+ppc.upscaleMode = PixelUpscaleMode.INTEGER_EXPAND
+ppc.rotationMode = PixelRotation.ON_GRID
+ppc.subpixelSmoothing = true
+assert(cam:getPixelPerfectCamera() ~= nil)
+assert(ppc.referenceResolution.x == 320)
+local p = ppc:roundToPixel(Vector3(10.5, 4.25, 0))
+assert(p.x == 11 and p.y == 4)
+assert(Engine.getPixelsPerUnit() >= 1)
+local filter = Engine.getDefaultTextureFilter()
+Engine.setDefaultTextureFilter(TextureFilter.NEAREST)
+assert(Engine.getDefaultTextureFilter() == TextureFilter.NEAREST)
+Engine.setDefaultTextureFilter(filter)
+```
+
+### 4.9.3 SortingLayer, SortingGroup, SpriteBatch
+
+2D draw order and bulk sprites (`jasper://docs/rendering-2d`).
+
+- `SortingLayer` (static, a dot): `layers` (ro, `{id, name, value}` in draw order), `nameToId(name)`
+  (-1 unknown), `idToName(id)` ("" unknown), `getLayerValue(id)` (its place; an unknown id is
+  Default's).
+- rw on `Sprite`, `Mesh`, `ParticleSystem`, `Points`, `LineRenderer`, `TrailRenderer`:
+  `sortingLayerId`, `sortingLayerName` (an unknown layer raises `unknown_sorting_layer`),
+  `sortingOrder` (-32768 to 32767).
+- `SortingGroup(scene, entity)`: the GameObject's group, added when it has none; rw `enabled`,
+  `sortingLayerId`, `sortingLayerName`, `sortingOrder`.
+- `SpriteBatch(scene, entity)` on a Sprite: its Sprite Batch, added when it has none. rw `enabled`,
+  `mode` (`SpriteBatchMode.RETAINED`, `CLEAR_EACH_FRAME`), `space` (`SpriteBatchSpace.LOCAL`,
+  `WORLD`), `capacity`, `sortInstances`; ro `count`, `frameCount`. `frameId(name)`;
+  `setPositions(xy [, stride 2|3])`, `setRotations(radians)`, `setScales(s [, stride 1|2])`,
+  `setFrames(indices or names)`, `setColors(rgba)`, `setFx(slot, amounts)` (slot `"palette"`,
+  `"flash"`, `"fade"`, `"dissolve"`): flat tables, validated once, typed errors (`length`,
+  `frame_range`, `unknown_frame`, `fx_slot`) that change nothing; `add(x, y [, frame])` -> index,
+  `set(i, x, y)`, `setFrame(i, frame)`, `remove(i)` (the last takes its index), `clear()`.
+
+```lua run
+local sprite = Sprite(scene)
+sprite:addFrame("a", 0, 0, 8, 8)
+sprite.sortingOrder = 3
+assert(sprite.sortingLayerName == "Default")
+assert(SortingLayer.getLayerValue(sprite.sortingLayerId) >= 0)
+local batch = SpriteBatch(scene, sprite.entity)
+batch:setPositions({0, 0, 16, 0})
+batch:setFrames({"a", 0})
+assert(batch.count == 2)
+assert(batch:add(32, 0) == 2)
+local group = SortingGroup(scene, sprite.entity)
+group.sortingOrder = 1
+```
 
 ### 4.9.1 CameraShake, CameraShaker, ShakeInstance, CameraFollow
 
@@ -2461,7 +2568,8 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 
 | Class | rw properties | methods |
 |---|---|---|
-| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all) | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
+| `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all); bitmap fonts (`jasper://docs/pixel-fonts`): `outlineNeighbors` (4 or 8), ro `pixelScale` (0 for a vector font), `effectiveFontSize` | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
+| `BitmapFont` | `BitmapFont.load(path)` (nil and the reason when it does not load); ro `nativeSize`, `lineHeight`, `baseline`, `glyphCount`, `colored` | `hasGlyph(char)`, `advance(char)`, `measure(text[, scale])` -> width, height (whole pixels, a Text's layout) |
 | `TextEffect(scene, entity)` (adds the component) | `enabled`, `autoPlay`, `loop`, `useUnscaledTime` (default true), `startIndex`, `length` (-1 to the end), `forWords`; events `onComplete`, `onCharacterRevealed(index)` | `getLayer(i)` (1..4, a `TextEffectLayerRef` whose fields write through: `type` (`TextEffectType.Wave`/`Bounce`/`Shake`/`Pulse`/`Typewriter`/`FadeIn`/`Grow`/`Unfold`/`Rainbow`/`Gradient`/`None`), `enabled`, `amplitude`, `duration`, `spread`, `phaseStep`, `frequency`, `charactersPerSecond`, `fadeTime`, `gradient` (list of `TextEffectGradientStop` {`color` sRGB Vector4, `position`}), `mix` (`TextEffectMix.Multiply`/`Add`/`Replace`), `saturation`, `lightness`), `setLayer(i, layerOrTable)`, `play()`, `stop()` (plain text), `finish()`, `restart()`, `isFinished()`, `isPlaying()` (`jasper://docs/ui`) |
 | `Image` | `color` (Vector4), `alpha`, `textureScaleFactor`, `flipY`, `patchMarginLeft/Right/Top/Bottom` | `setTexture(path)`, `setColor(r,g,b[,a])`, `setPatchMargin(m)` / `(l,r,t,b)`, `getUIComponent()` |
 | `Button` (Image) | `label`, `labelColor`, `labelFont`, `labelFontSize`, `colorNormal`, `colorHovered`, `colorPressed`, `colorSelected`, `colorDisabled`, `disabled`, `interactable`, `color` (with a tinting transition: Normal's), `onClick`; `transition` (`ButtonTransition.*`), `fadeDuration`, `scaleHovered/Pressed/Selected`; `navigationMode` (`NavigationMode.*`), `wrapAround`, `selectOnUp/Down/Left/Right` (GameObject or nil), `selectOnEnable`; ro `selected`, `state` (`SelectionState.*`) | `getButtonComponent()`, `getLabelObject()`, `setTextureNormal/Hovered/Pressed/Selected/Disabled(path)`, `setTexture(path)` (with a swapping transition: Normal's), `setColorNormal(r,g,b[,a])` (and Hovered/Pressed/Selected/Disabled), `setLabelColor(r,g,b,a)`, `select()`, `findSelectableOnUp/Down/Left/Right()` (jasper://docs/ui) |
@@ -2842,7 +2950,7 @@ t seconds), `step(ticks)`, `sendTrigger(name)` (the effect's Trigger sub-emitter
 at every play), `effect` (a .particles path; "" plays the inline effect), `useUnscaledTime` (the
 GameObject's own: it ticks with the unscaled frame time and plays at `Engine.timeScale` 0, a pause
 menu or UI particles; the effect's `ps.main.useUnscaledTime` does the same for every system playing
-it). ro: `isPlaying`, `isPaused`, `isEmitting`, `particleCount`, `time`.
+it). ro: `isPlaying`, `isPaused`, `isEmitting`, `particleCount` (with its sub-emitter children), `time`.
 
 Events, one batch per frame on the main thread after the simulation (plain tables, 1-based):
 `onCollision(fn)` (position, normal, velocity, particleId, killed; at most the Collision
@@ -2856,6 +2964,27 @@ ps:play()
 ps:onCollision(function(events)
     print(#events .. " hits, first at " .. events[1].position.y)
 end)
+```
+
+Pixel particles (S49): `ps.pixelArt` is the Pixel Art module's view (`snap`, `pixelSizes`,
+`integerSize`, `fade` (`ParticleFade.Dither` / `Cutout` / `Alpha`), `ditherSize`, `holdFrameRate`,
+`secondaryOffset`, `wobbleAmplitude`, `flickerBelow`, ...); `ps.renderer.renderMode =
+ParticleSystemRenderMode.Pixel` with `ps.renderer.pixelShape` (`ParticlePixelShape.Dot` ... `Glow`).
+A module's colour (`ps.colorOverLifetime.color`, `ps.main.startColor`) is a live
+`ParticleSystemGradient`: it reads as a MinMaxGradient, and `:setRamp(palettePath, rampName[,
+steps])` makes it a Palette Ramp of that system (a MinMaxGradient value has `setRamp` too, and rw
+`ramp`, `rampSteps`, `rampReverse`, `rampBias`). rw `ps.simulationMode` (`ParticleSimulationMode.Simulated`
+/ `Analytic`; a change restarts the system); `ps:getAnalyticParticle(slot, time)` is the CPU twin of an
+Analytic particle (`alive`, `index`, `age`, `life`, `position`, `velocity`, `rotation`, `size`,
+`color`, `rampStep`; nil for a Simulated system). An Analytic system raises no `onParticleDeath`,
+`onCollision` or sub-emitter events (adding a listener warns `analytic_no_events`).
+
+```lua
+local ps = ParticleSystem(scene)
+ps.renderer.renderMode = ParticleSystemRenderMode.Pixel
+ps.renderer.pixelShape = ParticlePixelShape.Disc
+ps.pixelArt.fade = ParticleFade.Dither
+ps.colorOverLifetime.color:setRamp("palettes/fx.palette", "fire")
 ```
 
 Deprecated (the old Action API, kept for old scripts: they edit the inline effect and warn
@@ -3285,7 +3414,7 @@ gate.area = 0 ; gate:remove()
 | `TangentMode` | `Free`, `Auto`, `Linear`, `Constant`, `ClampedAuto` |
 | `GradientMode` | `Blend`, `Fixed` |
 | `MinMaxCurveMode` | `Constant`, `TwoConstants`, `Curve`, `TwoCurves` |
-| `MinMaxGradientMode` | `Color`, `Gradient`, `TwoColors`, `TwoGradients` |
+| `MinMaxGradientMode` | `Color`, `Gradient`, `TwoColors`, `TwoGradients`, `RandomColor`, `Ramp` |
 | `ActionState` | `Running`, `Paused`, `Stopped` |
 | `AudioSourceState` | `Playing`, `Paused`, `Stopped` |
 | `AudioSourceAttenuation` | `NO_ATTENUATION`, `INVERSE_DISTANCE`, `LINEAR_DISTANCE`, `EXPONENTIAL_DISTANCE` |
@@ -3310,7 +3439,12 @@ gate.area = 0 ; gate:remove()
 | `AtmosphereQualityOverride` | `PROJECT`, `LOW`, `MEDIUM` |
 | `RotationOrder` | `XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX` |
 | `RayFilter` | `BODY_2D`, `BODY_3D`, `BOUNDS` |
-| `Scaling` | `FITWIDTH`, `FITHEIGHT`, `LETTERBOX`, `CROP`, `STRETCH`, `NATIVE` |
+| `Scaling` | `FITWIDTH`, `FITHEIGHT`, `LETTERBOX`, `CROP`, `STRETCH`, `NATIVE`, `INTEGER`, `INTEGER_EXPAND` |
+| `PixelUpscaleMode` | `INTEGER`, `INTEGER_EXPAND`, `STRETCH_FILL` |
+| `PixelRotation` | `CAMERA`, `STEPS_90`, `ON_GRID` |
+| `SpriteSortPoint` | `CENTER`, `PIVOT` |
+| `SpriteBatchMode` | `RETAINED`, `CLEAR_EACH_FRAME` |
+| `SpriteBatchSpace` | `LOCAL`, `WORLD` |
 | `Platform` | `MacOS`, `iOS`, `Web`, `Android`, `Linux`, `Windows` |
 | `CursorType` | `ARROW`, `IBEAM`, `CROSSHAIR`, `POINTING_HAND`, `RESIZE_EW`, `RESIZE_NS`, `RESIZE_NWSE`, `RESIZE_NESW`, `RESIZE_ALL`, `NOT_ALLOWED`, `WAIT`, `PROGRESS`, `HELP`, `GRAB`, `GRABBING` |
 | `MouseMode` | `NORMAL`, `HIDDEN`, `CAPTURED`, `CONFINED` |

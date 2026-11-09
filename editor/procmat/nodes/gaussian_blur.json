@@ -1,0 +1,325 @@
+{
+ "connections": [
+  {
+   "from": "switch",
+   "from_port": 0,
+   "to": "switch_2",
+   "to_port": 1
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 1
+  },
+  {
+   "from": "gaussian_blur_x",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 0
+  },
+  {
+   "from": "gaussian_blur_y",
+   "from_port": 0,
+   "to": "switch_2",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 1,
+   "to": "gaussian_blur_x",
+   "to_port": 1
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 1,
+   "to": "gaussian_blur_y",
+   "to_port": 1
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "buffer_4",
+   "to_port": 0
+  },
+  {
+   "from": "buffer_4",
+   "from_port": 0,
+   "to": "gaussian_blur_x",
+   "to_port": 0
+  },
+  {
+   "from": "switch",
+   "from_port": 0,
+   "to": "buffer_5",
+   "to_port": 0
+  },
+  {
+   "from": "buffer_5",
+   "from_port": 0,
+   "to": "gaussian_blur_y",
+   "to_port": 0
+  },
+  {
+   "from": "switch_2",
+   "from_port": 0,
+   "to": "buffer_2",
+   "to_port": 0
+  },
+  {
+   "from": "buffer_2",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  }
+ ],
+ "description": "Applies a gaussian blur on its input",
+ "format": 1,
+ "id": "gaussian_blur",
+ "inputs": [
+  {
+   "description": "The input image",
+   "group_size": 0,
+   "label": "Input",
+   "name": "input",
+   "type": "rgba"
+  },
+  {
+   "description": "A map that controls the strength of the blur filter",
+   "group_size": 0,
+   "label": "Strength map",
+   "name": "amount",
+   "type": "f"
+  }
+ ],
+ "kind": "graph",
+ "name": "Gaussian Blur",
+ "nodes": [
+  {
+   "id": "switch",
+   "parameters": {
+    "choices": 2,
+    "outputs": 1,
+    "source": 0
+   },
+   "seed": 19598,
+   "type": "switch"
+  },
+  {
+   "id": "switch_2",
+   "parameters": {
+    "choices": 2,
+    "outputs": 1,
+    "source": 0
+   },
+   "seed": 11659,
+   "type": "switch"
+  },
+  {
+   "id": "gaussian_blur_x",
+   "parameters": {
+    "sigma": 4.8,
+    "size": 11
+   },
+   "seed": 5439,
+   "type": "gaussian_blur_x"
+  },
+  {
+   "id": "gaussian_blur_y",
+   "parameters": {
+    "sigma": 4.8,
+    "size": 11
+   },
+   "seed": 12279,
+   "seed_locked": true,
+   "type": "gaussian_blur_y"
+  },
+  {
+   "id": "buffer_4",
+   "parameters": {
+    "f32": false,
+    "filter": false,
+    "mipmap": false,
+    "size": 11
+   },
+   "seed": 0.0,
+   "type": "buffer",
+   "version": 2
+  },
+  {
+   "id": "buffer_5",
+   "parameters": {
+    "f32": false,
+    "filter": false,
+    "mipmap": false,
+    "size": 11
+   },
+   "seed": 0.0,
+   "type": "buffer",
+   "version": 2
+  },
+  {
+   "id": "buffer_2",
+   "parameters": {
+    "f32": false,
+    "filter": false,
+    "mipmap": false,
+    "size": 11
+   },
+   "seed": 0.0,
+   "type": "buffer",
+   "version": 2
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the generated blurred image",
+   "group_size": 0,
+   "label": "Output",
+   "name": "port0",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 11,
+   "description": "The resolution of the input image",
+   "first": 4,
+   "label": "Grid size:",
+   "last": 12,
+   "links": [
+    {
+     "node": "gaussian_blur_x",
+     "param": "size"
+    },
+    {
+     "node": "gaussian_blur_y",
+     "param": "size"
+    },
+    {
+     "node": "buffer_4",
+     "param": "size"
+    },
+    {
+     "node": "buffer_5",
+     "param": "size"
+    },
+    {
+     "node": "buffer_2",
+     "param": "size"
+    }
+   ],
+   "name": "param0",
+   "short_description": "Size",
+   "type": "size"
+  },
+  {
+   "default": 4.8,
+   "description": "The strength of the blur filter",
+   "label": "Sigma:",
+   "links": [
+    {
+     "node": "gaussian_blur_x",
+     "param": "sigma"
+    },
+    {
+     "node": "gaussian_blur_y",
+     "param": "sigma"
+    }
+   ],
+   "max": 50,
+   "min": 0,
+   "name": "param1",
+   "short_description": "Sigma",
+   "step": 0.1,
+   "type": "float"
+  },
+  {
+   "configurations": {
+    "Both": [
+     {
+      "node": "switch",
+      "param": "source",
+      "value": 0
+     },
+     {
+      "node": "switch_2",
+      "param": "source",
+      "value": 0
+     }
+    ],
+    "X": [
+     {
+      "node": "switch",
+      "param": "source",
+      "value": 0
+     },
+     {
+      "node": "switch_2",
+      "param": "source",
+      "value": 1
+     }
+    ],
+    "Y": [
+     {
+      "node": "switch",
+      "param": "source",
+      "value": 1
+     },
+     {
+      "node": "switch_2",
+      "param": "source",
+      "value": 0
+     }
+    ]
+   },
+   "default": 0,
+   "description": "Apply the blur filter horizontally, vertically or in both directions",
+   "label": "Direction:",
+   "name": "param2",
+   "short_description": "Direction",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Both",
+     "value": "Both"
+    },
+    {
+     "name": "X",
+     "value": "X"
+    },
+    {
+     "name": "Y",
+     "value": "Y"
+    }
+   ]
+  },
+  {
+   "default": false,
+   "label": "32 bits",
+   "links": [
+    {
+     "node": "buffer_4",
+     "param": "f32"
+    },
+    {
+     "node": "buffer_5",
+     "param": "f32"
+    },
+    {
+     "node": "buffer_2",
+     "param": "f32"
+    }
+   ],
+   "name": "param3",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Gaussian blur",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/gaussian_blur.mmg"
+ },
+ "type_version": 1
+}

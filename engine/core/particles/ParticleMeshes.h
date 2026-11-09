@@ -34,6 +34,10 @@ namespace jasperengine {
             // a primitive of unit size around the origin: Quad and Plane 1 x 1 (Quad in XY facing
             // +Z, Plane in XZ facing +Y), Cube 1, Sphere / Cylinder / Capsule / Torus 1 across
             static void primitive(PrimitiveMesh primitive, ParticleMeshData& out);
+            // the Renderer's Ring: a flat ring in XY facing +Z between the two radii over `arcDegrees`
+            // (from +X towards +Y), `segments` around the whole circle; U along the arc, V from the
+            // outer edge (0) to the inner (1). An inner radius of 0 makes a disc.
+            static void ring(float outerRadius, float innerRadius, float arcDegrees, int segments, ParticleMeshData& out);
             // mesh `index` of a model file (glTF: its primitives in order; OBJ: its shapes)
             static bool model(const std::string& path, int index, ParticleMeshData& out, std::string* error = nullptr);
             // submesh `index` of a GameObject's mesh (its loaded vertices)

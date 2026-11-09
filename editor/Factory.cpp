@@ -31,6 +31,7 @@
 #include "component/SkyboxComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
+#include "subsystem/MeshSystem.h"
 #include "component/TerrainComponent.h"
 #include "component/TextComponent.h"
 #include "component/TilemapComponent.h"
@@ -556,6 +557,19 @@ std::string editor::Factory::formatMaterialShaderLibrary(int indentSpaces, const
         code << ind << target << ".shaderFeatures = " << formatShaderFeatures(material.shaderFeatures) << ";\n";
     if (!material.shaderGlobalBindings.empty())
         code << ind << target << ".shaderGlobalBindings = " << formatShaderGlobalBindings(material.shaderGlobalBindings) << ";\n";
+    // Palette Swap bindings (S43): the paths as the editor resolved them
+    for (const auto& [uniform, binding] : material.shaderPalettes.get()) {
+        code << ind << "{\n";
+        code << ind << "    jasperengine::pixelart::PaletteBinding binding;\n";
+        code << ind << "    binding.source = " << formatString(binding.source.path) << ";\n";
+        for (const jasperengine::pixelart::PaletteTarget& paletteTarget : binding.targets) {
+            code << ind << "    binding.targets.push_back(jasperengine::pixelart::PaletteTarget{AssetRef(" << formatString(paletteTarget.palette.path) << "), "
+                 << formatString(paletteTarget.variant) << "});\n";
+        }
+        if (!binding.useVariants) code << ind << "    binding.useVariants = false;\n";
+        code << ind << "    " << target << ".shaderPalettes.edit().push_back({" << formatString(uniform) << ", binding});\n";
+        code << ind << "}\n";
+    }
     if (material.blendMode != MaterialBlendMode::AUTO)
         code << ind << target << ".blendMode = " << formatBlendMode(material.blendMode) << ";\n";
     if (material.cullMode != MaterialCullMode::AUTO)
@@ -1216,6 +1230,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.staticShadowCaster = true;\n";
     code << ind << "mesh.lodEnabled = " << formatBool(mesh.lodEnabled) << ";\n";
     code << ind << "mesh.lodBias = " << formatFloat(mesh.lodBias) << ";\n";
+    if (mesh.sortingLayer != 0) code << ind << "mesh.sortingLayer = " << mesh.sortingLayer << ";\n";
+    if (mesh.sortingOrder != 0) code << ind << "mesh.sortingOrder = " << mesh.sortingOrder << ";\n";
     if (!mesh.allowGpuInstancing)
         code << ind << "mesh.allowGpuInstancing = false;\n";
     // the fade settings only away from their defaults (spec S54 R9)
@@ -1275,7 +1291,24 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.submeshes[" << idx << "].material.alphaMode = static_cast<MaterialAlphaMode>(" << static_cast<int>(mesh.submeshes[s].material.alphaMode) << ");\n";
         code << ind << "mesh.submeshes[" << idx << "].material.emissiveFactor = " << formatVector3(mesh.submeshes[s].material.emissiveFactor) << ";\n";
 
-        code << formatTexture(indentSpaces, mesh.submeshes[s].material.baseColorTexture, "mesh.submeshes[" + idx + "].material.baseColorTexture", projectPath);
+        // a sheet sprite's page is its sheet's (S44 R48), resolved by the game
+        const SpriteComponent* sheetSprite = scene->findComponent<SpriteComponent>(entity);
+        if (s == 0 && sheetSprite && sheetSprite->sheet.empty() && sheetSprite->inlineAtlas){
+            // a legacy sprite drawn from an atlas page (S45 R8): its source texture
+            Texture source = mesh.submeshes[0].material.baseColorTexture;
+            source.setPath(MeshSystem::spriteSourceTexture(*sheetSprite, mesh));
+            code << formatTexture(indentSpaces, source, "mesh.submeshes[0].material.baseColorTexture", projectPath);
+        }else if (s != 0 || !sheetSprite || sheetSprite->sheet.empty()){
+            code << formatTexture(indentSpaces, mesh.submeshes[s].material.baseColorTexture, "mesh.submeshes[" + idx + "].material.baseColorTexture", projectPath);
+        }else{
+            // its sampler (pixel art's Nearest), the page coming from the sheet
+            const Texture& page = mesh.submeshes[0].material.baseColorTexture;
+            const std::string var = "mesh.submeshes[0].material.baseColorTexture";
+            code << ind << var << ".setMinFilter(" << formatTextureFilter(page.getMinFilter()) << ");\n";
+            code << ind << var << ".setMagFilter(" << formatTextureFilter(page.getMagFilter()) << ");\n";
+            code << ind << var << ".setWrapU(" << formatTextureWrap(page.getWrapU()) << ");\n";
+            code << ind << var << ".setWrapV(" << formatTextureWrap(page.getWrapV()) << ");\n";
+        }
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.emissiveTexture, "mesh.submeshes[" + idx + "].material.emissiveTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.metallicRoughnessTexture, "mesh.submeshes[" + idx + "].material.metallicRoughnessTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.occlusionTexture, "mesh.submeshes[" + idx + "].material.occlusionTexture", projectPath);
@@ -1312,10 +1345,12 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
 
         code << ind << "mesh.submeshes[" << idx << "].primitiveType = " << formatPrimitiveType(mesh.submeshes[s].primitiveType) << ";\n";
         if (!hasGeneratedGeometry)
-            code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(mesh.submeshes[s].vertexCount) << ";\n";
+            code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(MeshSystem::loadedVertexCount(mesh, mesh.submeshes[s])) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].faceCulling = " << formatBool(mesh.submeshes[s].faceCulling) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].textureShadow = " << formatBool(mesh.submeshes[s].textureShadow) << ";\n";
-        code << ind << "mesh.submeshes[" << idx << "].textureRect = " << formatRect(mesh.submeshes[s].textureRect) << ";\n";
+        const SpriteComponent* rectSprite = s == 0 ? scene->findComponent<SpriteComponent>(entity) : nullptr;
+        const Rect savedRect = rectSprite ? MeshSystem::spriteSourceRect(*rectSprite, mesh) : mesh.submeshes[s].textureRect;
+        code << ind << "mesh.submeshes[" << idx << "].textureRect = " << formatRect(savedRect) << ";\n";
         // a sprite or tilemap sets it once its texture loads: a mesh whose buffers load first would
         // pick a variant without the texture rect (the cooked scenes keep it too, Stream)
         if (mesh.submeshes[s].hasTextureRect)
@@ -1628,8 +1663,22 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
     code << ind << "sprite.flipY = " << formatBool(sprite.flipY) << ";\n";
     code << ind << "sprite.pivotPreset = " << formatPivotPreset(sprite.pivotPreset) << ";\n";
     code << ind << "sprite.textureScaleFactor = " << formatFloat(sprite.textureScaleFactor) << ";\n";
+    if (sprite.drawMode != SpriteDrawMode::SIMPLE) {
+        code << ind << "sprite.drawMode = SpriteDrawMode::SLICED;\n";
+    }
+    // S41: exported only away from their defaults
+    if (sprite.pixelsPerUnit != 0.0f)
+        code << ind << "sprite.pixelsPerUnit = " << formatFloat(sprite.pixelsPerUnit) << ";\n";
+    if (sprite.pixelRotation != PixelRotation::CAMERA)
+        code << ind << "sprite.pixelRotation = " << (sprite.pixelRotation == PixelRotation::STEPS_90 ? "PixelRotation::STEPS_90" : "PixelRotation::ON_GRID") << ";\n";
+    if (sprite.spriteSortPoint != SpriteSortPoint::CENTER)
+        code << ind << "sprite.spriteSortPoint = SpriteSortPoint::PIVOT;\n";
     // as authored, in pixels or normalised: the game normalises a frame when it shows it
-    // (MeshSystem::setSpriteFrameRect), once its texture's size is known
+    // (MeshSystem::setSpriteFrameRect), once its texture's size is known; the list sized first
+    // (S45 R8: no fixed capacity)
+    if (sprite.numFramesRect > 0) {
+        code << ind << "sprite.framesRect.resize(" << sprite.numFramesRect << ");\n";
+    }
     for (unsigned int i = 0; i < sprite.numFramesRect; i++) {
         if (!sprite.framesRect[i].name.empty()) {
             code << ind << "sprite.framesRect[" << i << "].name = " << formatString(sprite.framesRect[i].name) << ";\n";
@@ -1638,6 +1687,12 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
     }
     if (sprite.numFramesRect > 0) {
         code << ind << "sprite.numFramesRect = " << sprite.numFramesRect << ";\n";
+    }
+    // a sheet sprite (S44): the sheet, its frame and that frame's name
+    if (!sprite.sheet.empty()) {
+        code << ind << "sprite.sheet = " << formatString(sprite.sheet.path) << ";\n";
+        code << ind << "sprite.frame = " << sprite.frame << ";\n";
+        code << ind << "sprite.frameName = " << formatString(sprite.frameName) << ";\n";
     }
     if (!sprite.enabled) code << ind << "sprite.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "SpriteComponent", "sprite", assignExisting);
@@ -1655,6 +1710,8 @@ std::string editor::Factory::createTilemapComponent(int indentSpaces, EntityRegi
     code << ind << "tilemap.automaticFlipY = " << formatBool(tilemap.automaticFlipY) << ";\n";
     code << ind << "tilemap.flipY = " << formatBool(tilemap.flipY) << ";\n";
     code << ind << "tilemap.textureScaleFactor = " << formatFloat(tilemap.textureScaleFactor) << ";\n";
+    if (tilemap.pixelsPerUnit != 0.0f)
+        code << ind << "tilemap.pixelsPerUnit = " << formatFloat(tilemap.pixelsPerUnit) << ";\n";
     code << ind << "tilemap.reserveTiles = " << formatUInt(tilemap.reserveTiles) << ";\n";
     for (unsigned int i = 0; i < tilemap.numTilesRect; i++) {
         if (!tilemap.tilesRect[i].name.empty()) {
@@ -1992,6 +2049,7 @@ std::string editor::Factory::createRigidbody2DComponent(int indentSpaces, Entity
         if (collider.receiver != defCollider.receiver) {
             code << ind << target << ".receiver = " << formatEntity(collider.receiver, entityVarNames) << ";\n";
         }
+        if (!collider.slice.empty()) code << ind << target << ".slice = " << formatString(collider.slice) << ";\n";
     }
 
     if (!body.enabled) code << ind << "rigidbody2d.enabled = false;\n";
@@ -3239,6 +3297,9 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     for (const std::string& controller : resources.controllers) {
         out << ind2 << "resources.controllers.push_back(" << formatString(controller) << ");\n";
     }
+    for (const std::string& font : resources.bitmapFonts) {
+        out << ind2 << "resources.bitmapFonts.push_back(" << formatString(font) << ");\n";
+    }
     out << ind2 << "return resources;\n";
     out << ind << "}\n";
 
@@ -3582,6 +3643,8 @@ std::string editor::Factory::createParticleSystemComponent(int indentSpaces, Ent
     if (p.playOnAwake != defaults.playOnAwake) code << ind << "particles.playOnAwake = " << formatBool(p.playOnAwake) << ";\n";
     if (p.seed != defaults.seed) code << ind << "particles.seed = " << formatUInt(p.seed) << ";\n";
     if (p.playbackSpeed != defaults.playbackSpeed) code << ind << "particles.playbackSpeed = " << formatFloat(p.playbackSpeed) << ";\n";
+    if (p.sortingLayer != 0) code << ind << "particles.sortingLayer = " << p.sortingLayer << ";\n";
+    if (p.sortingOrder != 0) code << ind << "particles.sortingOrder = " << p.sortingOrder << ";\n";
     if (p.useUnscaledTime != defaults.useUnscaledTime) code << ind << "particles.useUnscaledTime = " << formatBool(p.useUnscaledTime) << ";\n";
     for (const ParticleExposedValue& v : p.exposedValues)
         code << ind << "particles.exposedValues.push_back({" << formatString(v.name) << ", " << formatVector4(v.value) << "});\n";
@@ -3749,6 +3812,8 @@ std::string editor::Factory::createPointsComponent(int indentSpaces, EntityRegis
 
     code << ind << "PointsComponent pointscomp;\n";
     code << ind << "pointscomp.maxPoints = " << formatUInt(p.maxPoints) << ";\n";
+    if (p.sortingLayer != 0) code << ind << "pointscomp.sortingLayer = " << p.sortingLayer << ";\n";
+    if (p.sortingOrder != 0) code << ind << "pointscomp.sortingOrder = " << p.sortingOrder << ";\n";
     code << ind << "pointscomp.transparent = " << formatBool(p.transparent) << ";\n";
     code << ind << "pointscomp.autoTransparency = " << formatBool(p.autoTransparency) << ";\n";
     if (!p.customShader.empty())
@@ -3805,6 +3870,8 @@ std::string editor::Factory::createLineRendererComponent(int indentSpaces, Entit
     unsigned int maxLines = std::max(l.maxLines, static_cast<unsigned int>(l.lines.size()));
     code << ind << "LineRendererComponent linescomp;\n";
     code << ind << "linescomp.maxLines = " << formatUInt(maxLines) << ";\n";
+    if (l.sortingLayer != 0) code << ind << "linescomp.sortingLayer = " << l.sortingLayer << ";\n";
+    if (l.sortingOrder != 0) code << ind << "linescomp.sortingOrder = " << l.sortingOrder << ";\n";
     if (!l.customShader.empty())
         code << ind << "linescomp.customShader = " << formatString(l.customShader) << ";\n";
     if (!l.shaderUniforms.empty())
@@ -3860,6 +3927,8 @@ std::string editor::Factory::createTrailRendererComponent(int indentSpaces, Enti
     if (t.minVertexDistance != defaults.minVertexDistance) code << ind << "trailcomp.minVertexDistance = " << formatFloat(t.minVertexDistance) << ";\n";
     if (t.emitting != defaults.emitting) code << ind << "trailcomp.emitting = " << (t.emitting ? "true" : "false") << ";\n";
     if (t.autodestruct != defaults.autodestruct) code << ind << "trailcomp.autodestruct = " << (t.autodestruct ? "true" : "false") << ";\n";
+    if (t.sortingLayer != 0) code << ind << "trailcomp.sortingLayer = " << t.sortingLayer << ";\n";
+    if (t.sortingOrder != 0) code << ind << "trailcomp.sortingOrder = " << t.sortingOrder << ";\n";
     formatRibbonFields(code, ind, "trailcomp", t, defaults);
     if (!t.customShader.empty())
         code << ind << "trailcomp.customShader = " << formatString(t.customShader.path) << ";\n";

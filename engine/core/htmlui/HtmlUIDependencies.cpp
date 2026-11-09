@@ -135,7 +135,7 @@ namespace {
             return HtmlUIReference::LOTTIE;
         if (ext == "webm" || ext == "mkv" || ext == "mp4" || ext == "m4v" || ext == "mov" || ext == "ogv")
             return HtmlUIReference::VIDEO;
-        if (ext == "ttf" || ext == "otf" || ext == "ttc" || ext == "woff" || ext == "woff2")
+        if (ext == "ttf" || ext == "otf" || ext == "ttc" || ext == "woff" || ext == "woff2" || ext == "bitmapfont" || ext == "fnt")
             return HtmlUIReference::FONT;
         if (ext == "html" || ext == "htm" || ext == "rml")
             return HtmlUIReference::TEMPLATE;

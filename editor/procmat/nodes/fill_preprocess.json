@@ -1,0 +1,44 @@
+{
+ "code": [],
+ "description": "",
+ "format": 1,
+ "functions": [
+  "flood_fill_preprocess"
+ ],
+ "id": "fill_preprocess",
+ "inputs": [
+  {
+   "default": "0.0",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Fill preprocess",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "flood_fill_preprocess($uv, $in($uv), $s)",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 10,
+   "first": 0,
+   "label": "",
+   "last": 12,
+   "name": "s",
+   "type": "size"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/fill_preprocess.mmg"
+ },
+ "type_version": 1
+}

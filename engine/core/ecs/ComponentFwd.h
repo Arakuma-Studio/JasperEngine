@@ -57,6 +57,7 @@ namespace jasperengine{
     struct OnScreenStickComponent;
     struct PanelComponent;
     struct ParticleSystemComponent;
+    struct PixelPerfectCameraComponent;
     struct PointsComponent;
     struct PolygonComponent;
     struct PoseAnimatorComponent;
@@ -78,6 +79,8 @@ namespace jasperengine{
     struct ScriptComponent;
     struct ScrollbarComponent;
     struct ShadowCaster2DComponent;
+    struct SortingGroupComponent;
+    struct SpriteBatchComponent;
     struct SkyboxComponent;
     struct SplineAnimateComponent;
     struct SplineComponent;

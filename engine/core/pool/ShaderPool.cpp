@@ -705,6 +705,33 @@ uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
     return getVatProperty(shaderType, false) | getVatProperty(shaderType, true);
 }
 
+// The pixel-snapped vertex stages (S41, includes/pixel_snap.glsl): 'Pxs' after each type's last
+// bit; set for the drawables of a scene whose camera has a Pixel Perfect Camera snapping
+uint64_t ShaderPool::getPixelSnapProperty(ShaderType shaderType){
+    switch (shaderType) {
+        case ShaderType::MESH:      return shaderPropertyBit(45);
+        case ShaderType::DEPTH:     return shaderPropertyBit(19);
+        case ShaderType::UI:        return shaderPropertyBit(5);
+        case ShaderType::PARTICLES: return shaderPropertyBit(11);
+        default:                    return 0;
+    }
+}
+
+// S52: appended after S41's 'Pxs' (MESH 46-48, DEPTH 20), each set only for a variant whose
+// mesh carries the input (RenderSystem::getSubmeshShaderVariant)
+uint64_t ShaderPool::getSpriteBatchProperty(ShaderType shaderType, SpriteBatchInput input){
+    if (shaderType == ShaderType::MESH){
+        switch (input){
+            case SpriteBatchInput::FX:         return shaderPropertyBit(46);
+            case SpriteBatchInput::FRAME_RECT: return shaderPropertyBit(47);
+            case SpriteBatchInput::SNAP_PIVOT: return shaderPropertyBit(48);
+        }
+    }
+    if (shaderType == ShaderType::DEPTH && input == SpriteBatchInput::SNAP_PIVOT)
+        return shaderPropertyBit(20);
+    return 0;
+}
+
 uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return shaderPropertyBit(31);
@@ -720,10 +747,10 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 45;
-        case ShaderType::DEPTH:  return 19;
+        case ShaderType::MESH:   return 49;
+        case ShaderType::DEPTH:  return 21;
         case ShaderType::GBUFFER: return 19;
-        case ShaderType::UI:     return 5;
+        case ShaderType::UI:     return 6;
         case ShaderType::POINTS: return 5;
         // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
         case ShaderType::LINES:  return 6;
@@ -734,7 +761,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::SSR_BLUR: return 0;
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
-        case ShaderType::BLIT:   return 18;
+        case ShaderType::BLIT:   return 20;  // RenderSystem::UBER_FEATURE_COUNT (PostProcessingTiers.S13Bits checks it)
         case ShaderType::BLOOM:  return 4;
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
@@ -748,7 +775,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // the source's texture type: 2D (none), array, cube or 3D
         case ShaderType::PASS_PREVIEW: return 3;
         // ShaderPool::getParticlesProperties
-        case ShaderType::PARTICLES: return 11;
+        case ShaderType::PARTICLES: return 14;
         case ShaderType::HTMLUI_PRIM: return 0;
         // 'Oir': the OIT resolve, else the contact shadows' mask
         case ShaderType::LIGHTING_PASS: return 1;
@@ -838,6 +865,13 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // every light of the scene directional (getDirectionalOnlyProperty): the built-in Lit
             // without the point and spot paths and their resources
             case 44: return shortName ? "Dlo" : "Directional Lights Only";
+            // the pixel-snap rule on the vertices (S41, PIXEL_SNAP: includes/pixel_snap.glsl)
+            case 45: return shortName ? "Pxs" : "Pixel Snap";
+            // S52's pixel-art batching inputs (getSpriteBatchProperty): a batchable sprite's FX
+            // slots (HAS_SPRITE_FX), its frame rect (HAS_FRAME_RECT) and snap pivot (HAS_SNAP_PIVOT)
+            case 46: return shortName ? "Sfx" : "Sprite FX";
+            case 47: return shortName ? "Sfr" : "Sprite Frame Rect";
+            case 48: return shortName ? "Spv" : "Snap Pivot";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -866,6 +900,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 17: return shortName ? "Vab" : "Vertex Animation Bones";
             // automatic GPU instancing (includes/object_depth_params.glsl, S55)
             case 18: return shortName ? "Aui" : "Auto Instancing";
+            // as MESH 42: the depth program snaps as its colour pass does (S41)
+            case 19: return shortName ? "Pxs" : "Pixel Snap";
+            // as MESH 48 (S52)
+            case 20: return shortName ? "Spv" : "Snap Pivot";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -904,6 +942,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 3: return shortName ? "Vc4" : "Vertex Color 4";
             // a Text with outline or shadow: signed-distance glyphs
             case 4: return shortName ? "Sdf" : "Font SDF";
+            // images, nine-slices and text of a pixel-perfect camera (S41)
+            case 5: return shortName ? "Pxs" : "Pixel Snap";
         }
     } else if (shaderType == ShaderType::HTMLUI) {
         switch (bit) {
@@ -962,6 +1002,11 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 8: return shortName ? "Rsh" : "Receive Shadows";
             case 9: return "Fog";
             case 10: return shortName ? "Pcl" : "Post Color";
+            // centres (and 90-degree quads' corners) on the pixel grid (S41)
+            case 11: return shortName ? "Pxs" : "Pixel Snap";
+            // pixel particles (S49): the grid, the shapes and the dither; Analytic simulation
+            case 12: return shortName ? "Pxl" : "Pixel";
+            case 13: return shortName ? "Ana" : "Analytic";
         }
     } else if (shaderType == ShaderType::LINES) {
         switch (bit) {
@@ -997,6 +1042,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 15: return shortName ? "Fdm" : "Film Damage";
             case 16: return shortName ? "Gln" : "Film Grain Lens";
             case 17: return shortName ? "Gfm" : "Film Grain Filmic";
+            // the Pixel Perfect Camera's Stretch Fill (S41 R11, UBER_SHARP_BILINEAR)
+            case 18: return shortName ? "Psb" : "Pixel Sharp Bilinear";
+            // Palette Quantize (S43 R19, UBER_PALETTE)
+            case 19: return shortName ? "Pal" : "Palette Quantize";
         }
     } else if (shaderType == ShaderType::BLOOM) {
         // the pass of the bloom and blur chain (bloom.frag); 0 is the dual-filter downsample
@@ -2031,6 +2080,8 @@ uint64_t ShaderPool::getParticlesProperties(const ParticlesShaderFlags& flags){
     prop |= flags.customData     ? (1 <<  7) : 0;
     prop |= flags.receiveShadows ? (1 <<  8) : 0;
     prop |= flags.fog            ? (1 <<  9) : 0;
+    prop |= flags.pixel          ? (1 << 12) : 0;
+    prop |= flags.analytic       ? (1 << 13) : 0;
 
     return prop;
 }

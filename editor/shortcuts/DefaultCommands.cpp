@@ -142,8 +142,10 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     // Escape in the Game view does it too (Unity), the key still reaching the game
     b.add("playmode.releaseCursor", "Release Game Cursor", C::Global).description =
         "Give a cursor the running game captured back to the editor; click the Game view to return it";
-    b.menu("playmode.maximizeOnPlay", "Maximize On Play", AppMenuCommand::ToggleMaximizeOnPlay, C::Global, "F11").description =
-        "Fill the editor with the Game view while playing (the Game view toolbar's toggle)";
+    CommandDef& maximize = b.menu("playmode.maximizeOnPlay", "Maximize On Play", AppMenuCommand::ToggleMaximizeOnPlay, C::Global, "F11");
+    maximize.description = "Fill the editor with the Game view while playing (the Game view toolbar's toggle)";
+    // macOS takes F11 for Show Desktop: Control+Cmd+F, the Mac's full-screen key, comes first there
+    maximize.macPrimary = chord("Ctrl+Super+F");
 
     b.group = "Assets";
     b.menu("assets.createFolder", "Create Folder", AppMenuCommand::AssetsCreateFolder);
@@ -168,6 +170,14 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.importSoundEssentials", "Import Sound Essentials", AppMenuCommand::AssetsImportSoundEssentials).description =
         "Import the 40 built-in CC0 clips into sounds/essentials (one undo step)";
     b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
+    b.menu("assets.createPalette", "Create Palette", AppMenuCommand::AssetsCreatePalette).description =
+        "A new palette (black and white): edit it in Window > 2D > Palette";
+    b.menu("assets.createProceduralMaterial", "Create Procedural Material", AppMenuCommand::AssetsCreateProceduralMaterial).description =
+        "A .procmat graph (a noise on a Material Output), opened in the Procedural Material window";
+    // S45
+    b.menu("assets.createSpriteAtlas", "Create Sprite Atlas", AppMenuCommand::AssetsCreateSpriteAtlas);
+    b.menu("assets.createSpriteAtlasFromSelection", "Create Sprite Atlas from Selection", AppMenuCommand::AssetsCreateSpriteAtlasFromSelection);
+    b.menu("assets.convertInlineSpriteFrames", "Convert Inline Sprite Frames...", AppMenuCommand::AssetsConvertInlineSpriteFrames);
     b.menu("assets.createPhysicsMaterial", "Create Physics Material", AppMenuCommand::AssetsCreatePhysicsMaterial);
     b.menu("assets.createPhysicsMaterial2D", "Create Physics Material 2D", AppMenuCommand::AssetsCreatePhysicsMaterial2D);
     b.menu("assets.createTitleArt", "Create Title Art", AppMenuCommand::AssetsCreateTitleArt);
@@ -246,10 +256,17 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
     b.menu("window.soundBrowser", "Sound Browser", AppMenuCommand::ToggleSoundBrowser);
+    b.menu("window.graphEditor", "Graph Editor", AppMenuCommand::ToggleGraphEditor);
     b.menu("window.audioCaptures", "Audio Captures", AppMenuCommand::ToggleAudioCaptures);
     b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
+    b.menu("window.particleEffect", "Particle Effect", AppMenuCommand::ToggleParticleEffect).description =
+        "An effect as a whole: outline, timing, a preview stage and its modules";
     b.menu("audioMixer.resetLoudness", "Reset Integrated Loudness", AppMenuCommand::ResetLoudness).description =
         "Start the Audio Mixer's integrated loudness and true-peak hold over";
+    b.menu("window.palette", "Palette", AppMenuCommand::TogglePalette).description =
+        "Pixel-art palettes: swatches, ramps, variants and how a texture uses them";
+    b.menu("window.pixelArtCheck", "Pixel Art Check", AppMenuCommand::TogglePixelArtCheck).description =
+        "The pixel-art rules on the project: findings, measured values and one-click fixes";
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
     b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
@@ -258,6 +275,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.titleDesigner", "Title Designer", AppMenuCommand::ToggleTitleDesigner).description =
         "Design Title Art: stylized titles and logos";
     b.menu("window.physicsPlacement", "Physics Placement", AppMenuCommand::TogglePhysicsPlacement);
+    b.menu("window.spritePreview", "Sprite Preview", AppMenuCommand::ToggleSpritePreview).description =
+        "Play an .aseprite file's tags, with onion skin, slices and its import side by side";
     b.menu("window.missingAssets", "Missing Assets", AppMenuCommand::ToggleMissingAssets);
     b.menu("window.assetReferences", "References", AppMenuCommand::ToggleAssetReferences);
     b.menu("window.frameDebugger", "Frame Debugger", AppMenuCommand::ToggleFrameDebugger);
@@ -265,6 +284,7 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.jobsMemory", "Jobs & Memory", AppMenuCommand::ToggleJobsMemory);
     b.menu("window.meshAudit", "Mesh Optimization Audit", AppMenuCommand::ToggleMeshAudit);
     b.menu("window.buildReport", "Build Report", AppMenuCommand::ToggleBuildReport);
+    b.menu("window.animationStatistics", "Animation Statistics", AppMenuCommand::ToggleAnimationStatistics);
     b.menu("window.mcpActivity", "MCP Server", AppMenuCommand::ToggleMcpActivity);
     b.menu("window.vcs.commit", "Commit", AppMenuCommand::ToggleVcsCommit);
     b.menu("window.vcs.history", "History", AppMenuCommand::ToggleVcsHistory);
@@ -311,6 +331,11 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("sceneView.hideSelection", "Hide Selection", C::SceneView, "H").description =
         "Hide the selection in the Scene view (again: show it)";
     b.add("sceneView.showAll", "Show All", C::SceneView, "Alt+H").description = "Show every GameObject hidden in the Scene view";
+    // S41 R21: a 2D scene drawn through a Pixel Perfect Camera
+    b.add("sceneView.pixelZoom1x", "Pixel Zoom 1x", C::SceneView, "Alt+1").description =
+        "Pixel Zoom: one art pixel per screen pixel (a 2D scene with a Pixel Perfect Camera)";
+    b.add("sceneView.pixelZoomGame", "Pixel Zoom Game", C::SceneView, "Alt+2").description =
+        "Pixel Zoom: the Game view's pixel scale (a 2D scene with a Pixel Perfect Camera)";
     b.add("sceneView.togglePickLock", "Toggle Pick Lock", C::SceneView, "L").description =
         "Lock the selection against picking in the Scene view, or unlock it";
     b.add("sceneView.measure", "Measure", C::SceneView, "M").description =
@@ -421,6 +446,34 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("pose.paste", "Paste Pose", C::PoseAnimation, "Ctrl+V");
     b.add("pose.add", "Add Pose", C::PoseAnimation, "N");
     b.add("pose.globalEdit", "Global Edit", C::PoseAnimation, "E").description = "Edit every pose at once";
+
+    // The Sprite Preview window (docs/specs/S44-aseprite-import.md R31): while it has focus; , and .
+    // step as in Aseprite
+    b.group = "Sprite Preview";
+    b.add("spritePreview.playPause", "Play / Pause", C::SpritePreview, "Space");
+    b.add("spritePreview.previousFrame", "Previous Frame", C::SpritePreview, ",").repeat = true;
+    b.add("spritePreview.nextFrame", "Next Frame", C::SpritePreview, ".").repeat = true;
+    b.add("spritePreview.firstFrame", "First Frame", C::SpritePreview, "Home").description = "The first frame of the tag (or of the file)";
+    b.add("spritePreview.lastFrame", "Last Frame", C::SpritePreview, "End").description = "The last frame of the tag (or of the file)";
+    b.add("spritePreview.zoomIn", "Zoom In", C::SpritePreview, "=", "NumpadAdd").repeat = true;
+    b.add("spritePreview.zoomOut", "Zoom Out", C::SpritePreview, "-", "NumpadSubtract").repeat = true;
+
+    // The Pixel Art Check window (S42 R19): while it has focus
+    b.group = "Pixel Art Check";
+    b.add("pixelArtCheck.run", "Run Pixel Art Check", C::PixelArtCheck, "F5").description =
+        "Check the pixel-art rules again on the window's scope";
+    b.add("pixelArtCheck.fixSelected", "Fix Selected Finding", C::PixelArtCheck).description =
+        "Apply the selected finding's fix (one undo step)";
+    b.add("pixelArtCheck.fixAll", "Fix All Pixel Art Findings", C::PixelArtCheck).description =
+        "Preview every fix of the check, then apply them as one undo step";
+    // The Palette window (S43): while it, or its Apply Palette dialog, has focus
+    b.group = "Palette";
+    b.add("palette.delete", "Delete Colours", C::Palette, "Delete", "Backspace");
+    b.add("palette.duplicate", "Duplicate Colours", C::Palette, "Ctrl+D");
+    b.add("palette.moveLeft", "Move Colours Left", C::Palette, "Alt+Left").repeat = true;
+    b.add("palette.moveRight", "Move Colours Right", C::Palette, "Alt+Right").repeat = true;
+    b.add("palette.flickerCompare", "Flicker Compare", C::Palette, "Space").description =
+        "Apply Palette: the After half shows Before, and back";
 
     b.group = "Project";
     b.add("project.copy", "Copy Assets", C::Project, "Ctrl+C");

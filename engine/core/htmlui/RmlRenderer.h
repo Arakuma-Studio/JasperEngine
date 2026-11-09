@@ -375,6 +375,7 @@ namespace jasperengine {
             HtmlUITexture::Sample sample = HtmlUITexture::Sample::RGBA;
             int whiteX = -1, whiteY = -1;
             float distanceRange = 0.0f;
+            bool nearest = false;           // bitmap faces' pages (S51 R15): magnified as blocks
             std::shared_ptr<uint64_t> drawFrame;
             // the page's texels and their generation: uploaded again (in place) when it changes
             std::shared_ptr<const GlyphAtlas> atlas;

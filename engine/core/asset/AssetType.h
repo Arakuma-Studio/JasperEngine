@@ -37,12 +37,17 @@ namespace jasperengine {
         AvatarMask = 21,            // a .mask avatar mask (S21)
         AnimationMontage = 22,      // a .montage animation montage (S21)
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
-        // 24 to 27 are the pixel art program's (docs/specs/S41-S52)
+        // 24 to 27 are the pixel art program's (docs/specs/S41-S52: Palette 24, AsepriteSprite 25,
+        // SpriteAtlas 26, Tileset 27), each written explicitly whatever order they land in
+        Palette = 24,               // a .palette palette (S43)
+        AsepriteSprite = 25,        // an .aseprite / .ase file (S44): its sheet, frames, clips and slices are sub-assets
+        SpriteAtlas = 26,           // a .spriteatlas Sprite Atlas (S45; its GUID in its JSON)
         SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
-        TitleArt = 29               // a .titleart Title Art document (S80; its GUID in its JSON)
+        ProceduralMaterial = 29,    // a .procmat node graph baked in the editor (S90; its GUID in its JSON; never ships)
+        TitleArt = 30               // a .titleart Title Art document (S80; its GUID in its JSON)
     };
-    // the last value (assetTypeFromName's bound; AssetTypeTest iterates to it)
-    constexpr AssetType LAST_ASSET_TYPE = AssetType::TitleArt;
+    // the highest value present (a sibling's reserved value below it may still be missing)
+    inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::TitleArt);
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
     inline const char* assetTypeName(AssetType type) {
@@ -70,7 +75,11 @@ namespace jasperengine {
             case AssetType::AvatarMask: return "avatar_mask";
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
+            case AssetType::Palette: return "palette";
+            case AssetType::AsepriteSprite: return "aseprite_sprite";
+            case AssetType::SpriteAtlas: return "sprite_atlas";
             case AssetType::SoundEvent: return "sound_event";
+            case AssetType::ProceduralMaterial: return "procedural_material";
             case AssetType::TitleArt: return "title_art";
             case AssetType::Unknown: break;
         }
@@ -78,9 +87,10 @@ namespace jasperengine {
     }
 
     inline AssetType assetTypeFromName(std::string_view name) {
-        for (uint8_t value = 1; value <= static_cast<uint8_t>(LAST_ASSET_TYPE); value++) {
+        // values without a name (a reserved one not added yet) read "unknown" and never match
+        for (uint8_t value = 1; value <= kLastAssetType; value++) {
             const AssetType type = static_cast<AssetType>(value);
-            if (name == assetTypeName(type)) {
+            if (name != "unknown" && name == assetTypeName(type)) {
                 return type;
             }
         }

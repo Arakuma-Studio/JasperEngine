@@ -144,6 +144,41 @@ TEST_F(DrawBatcherTest, ReorderStaysInsideItsSortBucket){
     ASSERT_EQ(recorder.runs.size(), 3u);
 }
 
+// S52 R7: a run holds one sort bucket (a Sorting Layer, an Order in Layer, a Sorting Group): an
+// object of the same key in the next bucket opens a run, counted as sort_bucket
+TEST_F(DrawBatcherTest, ARunHoldsOneSortBucket){
+    batcher.beginPass(BatchMode::STRICT, 1);
+    add(1, key(10), 0, 0, 7);
+    add(2, key(10), 2, 0, 7);
+    add(3, key(10), 4, 0, 9);
+    batcher.flush();
+    ASSERT_EQ(recorder.runs.size(), 2u);
+    EXPECT_EQ(recorder.runs[0].items, 2u);
+    EXPECT_EQ(recorder.runs[1].items, 1u);
+    EXPECT_EQ(batcher.getStats().breaks[(size_t)BatchBreak::SORT_BUCKET], 1u);
+    EXPECT_STREQ(getBatchBreakName(BatchBreak::SORT_BUCKET), "sort_bucket");
+}
+
+// S52 §6.4: the new reasons keep stable names, two key parts and two reasons to draw alone
+TEST_F(DrawBatcherTest, PixelArtReasonsHaveStableNames){
+    EXPECT_STREQ(getBatchBreakName(BatchBreak::PIXEL_SNAP), "pixel_snap");
+    EXPECT_STREQ(getBatchBreakName(BatchBreak::CUSTOM_PARAMS), "custom_params");
+    EXPECT_STREQ(getBatchBreakName(BatchBreak::INELIGIBLE_PIXEL_SNAP_PIVOT), "ineligible_pixel_snap_pivot");
+    EXPECT_STREQ(getBatchBreakName(BatchBreak::INELIGIBLE_FRAME_RECT), "ineligible_frame_rect");
+    EXPECT_FALSE(isIneligibleBreak(BatchBreak::PIXEL_SNAP));
+    EXPECT_FALSE(isIneligibleBreak(BatchBreak::CUSTOM_PARAMS));
+    EXPECT_TRUE(isIneligibleBreak(BatchBreak::INELIGIBLE_PIXEL_SNAP_PIVOT));
+    EXPECT_TRUE(isIneligibleBreak(BatchBreak::INELIGIBLE_FRAME_RECT));
+    EXPECT_TRUE(isIneligibleBreak(BatchBreak::DISABLED));
+    // a key section of the new reasons names the difference
+    BatchKey a = key(10);
+    BatchKey b = key(10);
+    const uint8_t one = 1, two = 2;
+    a.addSection(BatchBreak::PIXEL_SNAP, &one, 1);
+    b.addSection(BatchBreak::PIXEL_SNAP, &two, 1);
+    EXPECT_EQ(a.compare(b), BatchBreak::PIXEL_SNAP);
+}
+
 TEST_F(DrawBatcherTest, GroupJoinsAnyRunOfItsKey){
     batcher.beginPass(BatchMode::GROUP, 16);
     add(1, key(10), 0, 0);

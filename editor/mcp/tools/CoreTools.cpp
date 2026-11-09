@@ -4,6 +4,7 @@
 // Core: batch, get_job, cancel_job, undo / redo, editor_status, respond_dialog, tool_groups,
 // get_job_system_stats, set_job_system_config, get_memory_stats
 #include "McpTools.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
 #include "window/StatusBar.h"
 
 #include "mcp/McpAutoSync.h"
@@ -38,6 +39,7 @@
 #include "util/SystemFonts.h"
 #include "AppSettings.h"
 #include "window/CodeEditor.h"
+#include "window/ParticleEffectWindow.h"
 #include "window/ProjectWindow.h"
 #include "window/AssetPanels.h"
 
@@ -547,6 +549,8 @@ Json jobSystemStatsJson(int windowFrames) {
 void getJobSystemStatsTool(const CallPtr& call) {
     const int window = std::max(1, std::min(120, call->args().value("window_frames", 60)));
     Json data = jobSystemStatsJson(window);
+    // S44 R25: a project without .aseprite files starts no import job
+    data["aseprite"] = {{"imports_started", pixelart::aseprite::AsepriteImporter::get().jobsStarted()}};
     call->ok("Job system: " + std::to_string(data["workers"].get<int>()) + " worker(s), Background gate " +
              std::to_string(data["gate"]["taken"].get<int>()) + "/" + std::to_string(data["gate"]["max"].get<int>()) +
              ", " + std::to_string(data["asset_jobs"].get<uint32_t>()) + " asset job(s) queued or running.", data);
@@ -712,6 +716,15 @@ void reportEditorStatus(const CallPtr& call) {
     if (SearchPalette* palette = app.getSearchPalette()) {
         const SearchPalette::UiState state = palette->uiState();
         ui["search_palette"] = {{"open", state.open}, {"query", state.query}, {"results", state.results}, {"selected", state.selected}};
+    }
+    if (ParticleEffectWindow* particleEffect = app.getParticleEffectWindow()) {
+        const ParticleEffectWindow::UiState state = particleEffect->uiState();
+        char stateHash[17];
+        std::snprintf(stateHash, sizeof(stateHash), "%016llx", static_cast<unsigned long long>(state.stateHash));
+        ui["particle_effect"] = {{"open", state.open}, {"focused", state.focused}, {"effect", state.effect}, {"subtree_root", state.subtreeRoot},
+                                 {"time", state.time}, {"seed", state.seed}, {"playing", state.playing}, {"speed", state.speed},
+                                 {"resimulating", state.resimulating}, {"nodes", state.nodes}, {"hidden", state.hidden},
+                                 {"selected", state.selected}, {"live", state.live}, {"state_hash", stateHash}};
     }
     {
         const ui::CurveWindow::UiState state = ui::CurveWindow::get().uiState();

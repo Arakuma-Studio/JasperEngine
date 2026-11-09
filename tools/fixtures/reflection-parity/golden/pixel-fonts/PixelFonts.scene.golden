@@ -1,0 +1,237 @@
+formatVersion: 8
+guid: a582e7540dde078b3c101ebbaee92d23
+id: 1868004712
+name: PixelFonts
+scene:
+  backgroundColor: [0.05, 0.05, 0.1, 1]
+  shadowQuality: auto
+  meshLodEnabled: true
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: off
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  litQuality: high
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_ui
+mainCamera: 0
+shaderKeys:
+  - type: ui
+    properties: 2
+  - type: ui
+    properties: 8
+  - type: ui
+    properties: 9
+  - type: ui
+    properties: 18
+  - type: blit
+  - type: blit
+    properties: 4096
+entities:
+  - type: Entity
+    entity: 1001
+    name: Title
+    components:
+      transform:
+        position: [10, 10, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [2, 0, 0]
+          max: [76, 14, 0]
+        texture:
+          minFilter: nearest
+          magFilter: nearest
+          wrapU: repeat
+          wrapV: repeat
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+      recttransform:
+        width: 76
+        height: 20
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 76
+        anchorOffsetBottom: 20
+        positionOffset: [10, 10]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        ignoreScissor: false
+        ignoreEvents: false
+      text:
+        font: [assets/fonts/hud.bitmapfont]
+        fontGuid: [aba3ffcc308232512e541372b8d95532]
+        text: SCORE 120
+        fontSize: 18
+        multiline: true
+        maxTextSize: 100
+        fixedWidth: false
+        fixedHeight: false
+        pivotBaseline: false
+        pivotCentered: false
+      script:
+        scripts:
+          - type: lua
+            path: PixelFontsCheck.lua
+            pathGuid: 8e206896ebcb65b95fa87f055d5480cf
+            className: PixelFontsCheck
+            enabled: true
+  - type: Entity
+    entity: 1002
+    name: Styled
+    components:
+      transform:
+        position: [10, 40, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 72
+        aabb:
+          min: [-3, -3, 0]
+          max: [87, 30, 0]
+        texture:
+          minFilter: nearest
+          magFilter: nearest
+          wrapU: repeat
+          wrapV: repeat
+        color: [1, 0.85, 0.2, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+      recttransform:
+        width: 84
+        height: 30
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 84
+        anchorOffsetBottom: 30
+        positionOffset: [10, 40]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        ignoreScissor: false
+        ignoreEvents: false
+      text:
+        font: [builtin:pixel]
+        text: Hp 99!
+        fontSize: 27
+        multiline: true
+        maxTextSize: 100
+        fixedWidth: false
+        fixedHeight: false
+        pivotBaseline: false
+        pivotCentered: false
+        outlineWidth: 1
+        outlineNeighbors: 4
+  - type: Entity
+    entity: 1003
+    name: Colored
+    components:
+      transform:
+        position: [10, 90, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 42
+        aabb:
+          min: [2, 0, 0]
+          max: [60, 14, 0]
+        texture:
+          minFilter: nearest
+          magFilter: nearest
+          wrapU: repeat
+          wrapV: repeat
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+      recttransform:
+        width: 60
+        height: 20
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 60
+        anchorOffsetBottom: 20
+        positionOffset: [10, 90]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        ignoreScissor: false
+        ignoreEvents: false
+      text:
+        font: [assets/fonts/colored.bitmapfont]
+        fontGuid: [528e0f4967d60f7c0dc86cb95d53754b]
+        text: ABC 123
+        fontSize: 18
+        multiline: true
+        maxTextSize: 100
+        fixedWidth: false
+        fixedHeight: false
+        pivotBaseline: false
+        pivotCentered: false

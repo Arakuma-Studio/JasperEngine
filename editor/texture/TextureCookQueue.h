@@ -85,6 +85,18 @@ namespace jasperengine::editor {
     TextureProjectSettings textureProjectSettingsOf(const Project& project);
     // Every texture source of the project, asset-relative (cookable ones only when asked)
     std::vector<std::string> projectTextureSources(const Project& project, bool cookableOnly);
+    // A texture added while Pixel Art Mode is on (S42 R1): its inferred settings written now rather
+    // than at its first cook, with pixelArt: true when it infers to sprite or UI, or when nothing
+    // uses it yet and it looks like pixel art (looksLikePixelArt). Only an added file gets this:
+    // the cook queue's own inference never writes pixelArt, so images a project already had stay
+    // as S14 imports them. False when it has settings already, no sidecar yet, or is not cookable.
+    // Main thread; not an undo step.
+    bool writeImportSettingsNow(Project& project, const std::string& assetPath);
+    // An image nothing references reads as pixel art (S42 R1) when a folder of its path is named
+    // for sprites or tiles ("sprites", "tiles", "tilesets", "pixelart" ...), or when it is small
+    // (both sides <= 512) with at most 256 colours among its visible texels; a photo or a painted
+    // background is neither.
+    bool looksLikePixelArt(const std::filesystem::path& absolute, const std::string& assetPath);
 
     // One texture × family of a batch
     struct TextureBatchItem {
@@ -122,6 +134,13 @@ namespace jasperengine::editor {
         void sourceChanged(const std::string& assetPath);
         // A sidecar write (SetAssetMetaCmd): reloads the texture's settings, invalidates on change
         void settingsChanged(const std::string& assetPath);
+        // The engine found a texture it reads on the CPU cooked GPU-only (CookedTextures::
+        // requireCpuReadable: a terrain's heights, a foliage layer's density): it is cooked again,
+        // in memory, CPU-readable. Any thread; applied by update().
+        void requireCpuReadable(const std::string& assetPath);
+        // whether an open scene reads the texture on the CPU now (its terrains' height and
+        // density maps): its cooks are CPU-readable while one does, as an export's are. Main thread.
+        bool isReadOnCpu(const std::string& assetPath) const;
         // stops every queued and running cook (the status bar's cancel)
         void cancelAll();
 
@@ -191,6 +210,8 @@ namespace jasperengine::editor {
         std::vector<std::shared_ptr<Job>> running;
         std::vector<std::shared_ptr<SwapIn>> swaps;
         std::deque<std::pair<std::string, std::string>> metaWrites;   // assetPath, YAML of inferred settings
+        std::vector<std::string> cpuRequests;   // found cooked GPU-only by a CPU reader, for update()
+        std::set<std::string> cpuRecooks;       // their next cook goes CPU-readable
         uint64_t sequence = 0;              // request order among equal priorities
         int progressDone = 0;
         int progressTotal = 0;
@@ -203,9 +224,13 @@ namespace jasperengine::editor {
         void startSwap(const std::string& assetPath);
         void collectSwaps();
         void writeInferredSettings();
+        void applyCpuRequests();
         void scanProject();
         std::filesystem::path absoluteOf(const std::string& assetPath) const;
         std::string assetPathOf(const std::filesystem::path& absolute) const;
+        // a file the editor derived into .jasperengine (an .aseprite import's pages): its owner decides
+        // how it is compressed, so the view never cooks it
+        bool isEditorDerived(const std::string& assetPath) const;
         void cancelJobs(bool wait);
     };
 

@@ -1472,6 +1472,7 @@ set(JASPERENGINE_SRCS
     core/animation/PropertyBindings.cpp
     core/animation/HumanoidClip.cpp
     core/animation/KeyframeSampling.cpp
+    core/animation/ModelClipSettings.cpp
     core/animation/ModelSubClips.cpp
     core/animation/VertexAnimation.cpp
     core/pose/HumanBones.cpp
@@ -1501,6 +1502,20 @@ set(JASPERENGINE_SRCS
     core/ecs/ChangeTracking.cpp
     core/ecs/CommandBuffer.cpp
     core/ecs/SystemScheduler.cpp
+    # pixel art (S41: the pixel-snap rule, the integer layout, the rotation policy)
+    core/pixelart/PixelPerfectLayout.cpp
+    core/pixelart/PixelRotation.cpp
+    core/pixelart/PixelsPerUnit.cpp
+    core/pixelart/PixelSnap.cpp
+    # pixel fonts (S51: bitmap fonts, their layout, the styled glyph cache, the built-in font)
+    core/pixelart/BitmapFont.cpp
+    core/pixelart/BitmapFontParsers.cpp
+    core/pixelart/BitmapFontPool.cpp
+    core/pixelart/BitmapText.cpp
+    core/pixelart/BitmapTextCache.cpp
+    core/pixelart/BitmapTextRaster.cpp
+    core/pixelart/BuiltinPixelFont.cpp
+    core/pixelart/FontPixelReport.cpp
     core/picking/BinnedSah.cpp
     core/picking/MeshBvh.cpp
     core/picking/MeshBvhSimd_avx2.cpp
@@ -1521,6 +1536,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlFile.cpp
     core/htmlui/RmlFontEffects.cpp
     core/htmlui/RmlFontEngine.cpp
+    core/htmlui/RmlFontEngineBitmap.cpp
     core/htmlui/RmlFontMsdf.cpp
     core/htmlui/RmlRenderer.cpp
     core/htmlui/RmlRendererBatch.cpp
@@ -1579,6 +1595,15 @@ set(JASPERENGINE_SRCS
     core/htmlui/effects/EffectValue.cpp
     core/asset/AssetMap.cpp
     core/asset/Guid.cpp
+    core/asset/ImportedAssets.cpp
+    # sprite sheets (S44): the record, its IO, the pool, frame geometry
+    core/sprite/SpriteSheetIO.cpp
+    core/sprite/SpriteSheetPool.cpp
+    core/sprite/SpriteFrameGeometry.cpp
+    core/render/sprite/SpriteInstanceBatch.cpp
+    core/sprite/AsepriteClips.cpp
+    # S45: texture sheets, name@WxH, .spriteatlas and the atlas remap
+    core/sprite/SpriteSheetSources.cpp
     core/graph/Graph.cpp
     core/graph/GraphRegistry.cpp
     core/io/AssetIOService.cpp
@@ -1633,6 +1658,9 @@ set(JASPERENGINE_SRCS
     core/object/CameraShaker.cpp
     core/object/EntityHandle.cpp
     core/object/Light.cpp
+    core/object/PixelPerfectCamera.cpp
+    core/object/SortingGroup.cpp
+    core/object/SpriteBatch.cpp
     core/object/Light2D.cpp
     core/object/LineRenderer.cpp
     core/object/TrailRenderer.cpp
@@ -1709,6 +1737,7 @@ set(JASPERENGINE_SRCS
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp
+    core/registry/SortingLayers.cpp
     core/physics/ContactTracker.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
@@ -1778,6 +1807,8 @@ set(JASPERENGINE_SRCS
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
     core/script/binding/SplineClassesLua.cpp
+    core/script/binding/PixelArtClassesLua.cpp
+    core/script/binding/SortingClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp
@@ -1835,9 +1866,13 @@ set(JASPERENGINE_SRCS
     core/subsystem/RenderSystemShadows.cpp
     core/subsystem/RenderSystemBatch.cpp
     core/subsystem/RenderSystemLighting.cpp
+    core/subsystem/RenderSystemPixelArt.cpp
+    core/subsystem/RenderSystemSorting.cpp
+    core/subsystem/RenderSystemSpriteBatch.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
     core/subsystem/UISystemNavigation.cpp
+    core/subsystem/UISystemBitmapText.cpp
     core/subsystem/UIDocumentSystem.cpp
     core/subsystem/UIDocumentSystemRender.cpp
     core/subsystem/UIDocumentSystemInput.cpp
@@ -2020,6 +2055,9 @@ endif()
 # Splines (S18): the core, geometry and layouts (no contraction, bit-identical output)
 include(core/spline/SplineSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_SPLINE_SRCS})
+# Pixel art (S43): colour maths and palettes (no contraction, bit-identical output)
+include(core/pixelart/PixelArtSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PIXELART_SRCS})
 if(JASPERENGINE_HTMLUI)
     include(libs/lucide/lucide.cmake)
 endif()
@@ -2667,6 +2705,21 @@ if(JASPERENGINE_HTMLUI_TESTS)
 endif()
 if(JASPERENGINE_TESTS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_subdirectory(tests/core)
+endif()
+
+# je-bench-anim as WebAssembly, run under node by tools/perf/bench-anim-wasm.sh (docs/perf/animator.md,
+# S77 R11); JASPERENGINE_WASM_SIMD says whether the pose kernels are built with -msimd128
+option(JASPERENGINE_WASM_BENCH "Build je-bench-anim for Emscripten and node" OFF)
+if(JASPERENGINE_WASM_BENCH AND EMSCRIPTEN AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/tests/core/bench/AnimBench.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/core/support/AllocationCounter.cpp)
+    target_link_libraries(je-bench-anim PRIVATE jasperengine)
+    target_include_directories(je-bench-anim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests/core/support)
+    target_compile_definitions(je-bench-anim PRIVATE JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/..")
+    jasperengine_apply_cxx_standard(je-bench-anim)
+    set_target_properties(je-bench-anim PROPERTIES
+        SUFFIX ".js"
+        LINK_FLAGS "--profiling-funcs -s ENVIRONMENT=node -s NODERAWFS=1 -s EXIT_RUNTIME=1 -s INITIAL_MEMORY=256MB -s STACK_SIZE=4MB ${ALLOW_MEMORY_GROWTH} ${USE_WEBGL2}")
 endif()
 
 if(JASPERENGINE_ECS_BENCH)

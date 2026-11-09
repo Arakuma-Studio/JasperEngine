@@ -19,6 +19,7 @@
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimatorAssetDocument.h"
 #include "audio/SoundEventDocument.h"
+#include "graph/GraphDocument.h"
 #include "animation/ModelSubClips.h"
 #include "vat/VatAssetFiles.h"
 #include "vat/VatDocument.h"
@@ -700,6 +701,8 @@ void editor::Project::remapClipFilePath(const std::filesystem::path& oldPath, co
     // the database moved the clips' GUIDs with AssetOps (applyClipAssetChanges relinked their
     // references); open documents (clips, a model's sub-clips) go with their files
     AnimationClipDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
+    // and open graphs (the Graph Editor's)
+    GraphDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
     AnimationClipDocument::filesChanged({oldPath.lexically_normal(), newPath.lexically_normal()}, this);
     VatDocument::filesChanged({oldPath.lexically_normal(), newPath.lexically_normal()}, this);
 }

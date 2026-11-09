@@ -5,11 +5,15 @@
 // references of loaded documents by GUID, the identity keys written into scenes, prefabs and
 // materials, and the in-memory edges of documents with unsaved edits.
 
+#include "pixelart/PixelArtInput.h"
+#include "pixelart/PixelArtMode.h"
+#include "texture/TextureCookQueue.h"
 #include "Project.h"
 #include "component/MeshComponent.h"
 
 #include "Out.h"
 #include "DocumentFile.h"
+#include "util/FileUtils.h"
 #include "Stream.h"
 #include "PrefabStage.h"
 #include "asset/AssetFileWrite.h"
@@ -187,14 +191,8 @@ void editor::Project::bindMaterialAssetRefs(Material& material) {
         // a path picked on Windows holds '\': a separator, as on every platform (Stream::portablePath)
         const std::string hint = AssetIndex::toProjectRelative(roots, site.base, Stream::portablePath(ref.path));
         AssetDatabase::Resolution found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
-        std::error_code ec;
-        if (!found.found() && !hint.empty() && fs::is_regular_file(projectPath / hint, ec)) {
-            // written a moment ago (a fork_shader, a tool's file) and not seen by a refresh yet;
-            // what else the database learns waits for the next refresh, as resolvePrefabPath does
-            std::vector<AssetDatabase::Change> changes = assetDatabase.importAssets(hint);
-            pendingAssetChanges.insert(pendingAssetChanges.end(), changes.begin(), changes.end());
-            found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
-        }
+        // written a moment ago (a fork_shader, a tool's file) and not seen by a refresh yet
+        if (!found.found() && importUnseenAsset(hint)) found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
         if (found.found()) {
             // the GUID, and the path in the database's form, as the scene resolver writes it
             // (resolveAssetRefs): the file opens anywhere, not only where it was picked
@@ -202,6 +200,33 @@ void editor::Project::bindMaterialAssetRefs(Material& material) {
             ref.path = AssetIndex::fromProjectRelative(roots, site.base, found.path);
         }
     });
+}
+
+bool editor::Project::importUnseenAsset(const std::string& relative) {
+    std::error_code ec;
+    if (relative.empty() || !assetDatabase.isOpen() || assetDatabase.lookupPath(relative).found() || !fs::is_regular_file(projectPath / relative, ec)) {
+        return false;
+    }
+    // what else the database learns waits for the next refresh, as resolvePrefabPath does
+    std::vector<AssetDatabase::Change> changes = assetDatabase.importAssets(relative);
+    pendingAssetChanges.insert(pendingAssetChanges.end(), changes.begin(), changes.end());
+    return assetDatabase.lookupPath(relative).found();
+}
+
+editor::AssetDatabase::Resolution editor::Project::resolveAsset(const std::string& asset, const std::string& hint, AssetType expected) {
+    const auto lookup = [&]() {
+        if (Guid::isValidText(asset)) return assetDatabase.resolve(Guid::parse(asset), hint, expected, expected != AssetType::Prefab);
+        const std::string path = normalizeToProjectRelative(asset).generic_string();
+        AssetDatabase::Resolution found = assetDatabase.lookupPath(path);
+        if (!found.found()) found = assetDatabase.resolve(Guid(), path, expected, false);
+        return found;
+    };
+    AssetDatabase::Resolution found = lookup();
+    if (found.found()) return found;
+    // a GUID names no path: only a walk can find a file the database has not seen
+    if (Guid::isValidText(asset)) refreshAssetDatabase(true);
+    else if (!importUnseenAsset(normalizeToProjectRelative(asset).generic_string())) return found;
+    return lookup();
 }
 
 void editor::Project::refreshAssetHints() {
@@ -287,6 +312,27 @@ Guid editor::Project::prepareDocumentIdentity(YAML::Node& root, const fs::path& 
     }
     root = ordered;
     return guid;
+}
+
+std::string editor::Project::materialFileText(const fs::path& file, const Material& material) {
+    Material bound = material;
+    bindMaterialAssetRefs(bound);
+    YAML::Node root = Stream::encodeMaterial(bound);
+    // a file the database has not scanned yet (copied in from outside) keeps the GUID it came with
+    AssetDatabase::AssetInfo known;
+    if (!assetDatabase.getInfo(normalizeToProjectRelative(file), known)) {
+        std::error_code ec;
+        if (fs::exists(file, ec)) {
+            try {
+                const YAML::Node existing = DocumentFiles::read(file, DocumentKind::Material).root;
+                if (existing["guid"]) root["guid"] = existing["guid"];
+            } catch (const std::exception&) {
+                // unreadable: a new identity, as a new file gets
+            }
+        }
+    }
+    prepareDocumentIdentity(root, file);
+    return FileUtils::withLineEndings(file, DocumentFiles::materialText(root, file) + "\n");
 }
 
 editor::SaveResult editor::Project::writeMaterialFile(const fs::path& relativePath, const Material& material,
@@ -415,5 +461,31 @@ void editor::Project::onAssetFilesChanged(const std::vector<AssetDatabase::Chang
         // references follow their assets' GUIDs: moved ones get the new hints, a file put
         // back resolves again
         refreshAssetHints();
+    }
+    // Pixel Art Mode (S42 R1): an added image is pixel art from its import, drawn or not yet
+    if (pixelArtSettings.enabled) {
+        for (const AssetDatabase::Change& change : changes) {
+            if (change.type != AssetDatabase::Change::Type::Added) continue;
+            const fs::path absolute = getProjectPath() / change.path;
+            if (isInsideAssetsPath(absolute)) writeImportSettingsNow(*this, normalizeToAssetsRelative(absolute).generic_string());
+        }
+    }
+    // what the pixel-art check kept of closed scenes follows the files' stamps; files added, moved
+    // or removed (references resolve by GUID) and prefabs (instances in those scenes) it cannot see
+    if (std::any_of(changes.begin(), changes.end(), [](const AssetDatabase::Change& change) {
+            return change.type != AssetDatabase::Change::Type::Modified || change.path.extension() == ".prefab"; })) {
+        pixelart::forgetInputCache();
+    }
+    // the Pixel Art Check window checks again after imports (S42 R19)
+    pixelart::PixelArtMode::get().notifyAssets();
+    // Pixel Art Mode's Check on Import (S42 R1): registered only while the mode is on
+    if (pixelart::PixelArtMode::get().importHookRegistered()) {
+        std::vector<std::string> textures;
+        for (const AssetDatabase::Change& change : changes) {
+            if (change.type == AssetDatabase::Change::Type::Removed) continue;
+            const std::string relative = change.path.generic_string();
+            if (isTextureSource(relative)) textures.push_back(relative);
+        }
+        if (!textures.empty()) pixelart::PixelArtMode::get().assetsChanged(this, textures);
     }
 }

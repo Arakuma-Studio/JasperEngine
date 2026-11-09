@@ -1,0 +1,167 @@
+{
+ "code": [],
+ "description": "Generates pattern from common waveform shapes",
+ "format": 1,
+ "functions": [
+  "mix_add",
+  "mix_max",
+  "mix_min",
+  "mix_mul",
+  "mix_pow",
+  "mix_xor",
+  "wave_bounce",
+  "wave_constant",
+  "wave_sawtooth",
+  "wave_sine",
+  "wave_square",
+  "wave_triangle"
+ ],
+ "id": "pattern",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Pattern",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "A grayscale image that combines the horizontal and vertical patterns",
+   "expr": "mix_$(mix)(wave_$(x_wave)($(x_scale)*$uv.x), wave_$(y_wave)($(y_scale)*$uv.y))",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The operation used to combine the horizontal and the vertical patterns",
+   "label": "Combiner",
+   "name": "mix",
+   "short_description": "Combine",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Multiply",
+     "value": "mul"
+    },
+    {
+     "name": "Add",
+     "value": "add"
+    },
+    {
+     "name": "Max",
+     "value": "max"
+    },
+    {
+     "name": "Min",
+     "value": "min"
+    },
+    {
+     "name": "Xor",
+     "value": "xor"
+    },
+    {
+     "name": "Pow",
+     "value": "pow"
+    }
+   ]
+  },
+  {
+   "default": 5,
+   "description": "Pattern generated along the X axis",
+   "label": "X",
+   "name": "x_wave",
+   "short_description": "X Pattern",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Sine",
+     "value": "sine"
+    },
+    {
+     "name": "Triangle",
+     "value": "triangle"
+    },
+    {
+     "name": "Square",
+     "value": "square"
+    },
+    {
+     "name": "Sawtooth",
+     "value": "sawtooth"
+    },
+    {
+     "name": "Constant",
+     "value": "constant"
+    },
+    {
+     "name": "Bounce",
+     "value": "bounce"
+    }
+   ]
+  },
+  {
+   "default": 4,
+   "description": "Repetitions of the pattern along X axis",
+   "label": "2:",
+   "max": 32,
+   "min": 0,
+   "name": "x_scale",
+   "short_description": "X Repeat",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 5,
+   "description": "Pattern generated along the Y axis",
+   "label": "Y",
+   "name": "y_wave",
+   "short_description": "Y Pattern",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Sine",
+     "value": "sine"
+    },
+    {
+     "name": "Triangle",
+     "value": "triangle"
+    },
+    {
+     "name": "Square",
+     "value": "square"
+    },
+    {
+     "name": "Sawtooth",
+     "value": "sawtooth"
+    },
+    {
+     "name": "Constant",
+     "value": "constant"
+    },
+    {
+     "name": "Bounce",
+     "value": "bounce"
+    }
+   ]
+  },
+  {
+   "default": 4,
+   "description": "Repetitions of the pattern along Y axis",
+   "label": "3:",
+   "max": 32,
+   "min": 0,
+   "name": "y_scale",
+   "short_description": "Y Repeat",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  }
+ ],
+ "short_description": "Pattern",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/pattern.mmg"
+ },
+ "type_version": 1
+}

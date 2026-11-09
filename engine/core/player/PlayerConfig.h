@@ -13,6 +13,7 @@
 #include "Engine.h"
 #include "navigation/NavTypes.h"
 #include "registry/PhysicsLayers.h"
+#include "registry/SortingLayers.h"
 #include "render/AtmosphereQuality.h"
 #include "render/LightingTiers.h"
 #include "render/shadow/ShadowTiers.h"
@@ -71,6 +72,12 @@ namespace jasperengine::player {
         unsigned int canvasHeight = 480;
         Scaling scaling = Scaling::FITWIDTH;
         TextureStrategy textureStrategy = TextureStrategy::NONE;
+        // Project Settings > Graphics > Pixels Per Unit (S41)
+        int pixelsPerUnit = 1;
+        // Project Settings > Graphics > Default Filter Mode is Point (S42 R3)
+        bool defaultFilterPoint = false;
+        // Project Settings > Graphics > Bitmap Text Cache (S51), 0 = the platform's default
+        int bitmapTextCacheMiB = 0;
 
         // loading
         uint32_t loadingScene = 0;         // 0: none
@@ -79,6 +86,7 @@ namespace jasperengine::player {
         bool asyncLoading = false;
 
         ThreadingSettings threading;
+        uint32_t particleWorldBudget = 0;   // 0: the platform's default
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::MEDIUM, AtmosphereQuality::LOW};
         // Quality > Foliage Distance (desktop, mobile, web)
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
@@ -100,6 +108,10 @@ namespace jasperengine::player {
         DeviceSettings device;
         std::vector<std::string> tags;
         std::vector<std::string> layerNames;
+        // Sorting Layers and Graphics > Transparency Sort (spec S52 R40); empty: Default alone
+        std::vector<SortingLayerInfo> sortingLayers;
+        TransparencySortMode transparencySortMode = TransparencySortMode::DEFAULT;
+        Vector3 transparencySortAxis = Vector3(0.0f, 1.0f, 0.0f);
         std::array<uint32_t, MAX_LAYERS> collision3D{};
         std::array<uint32_t, MAX_LAYERS> collision2D{};
 

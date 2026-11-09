@@ -2443,6 +2443,19 @@ OVERRIDES.update({
         'overloads': [([('interval', 'number'), ('fn', 'fun(timer: Timer): boolean?'), ('opts?', 'TimerOptions')], 'Timer')]},
 })
 
+# pixel fonts (GameObjectClassesLua.cpp, docs/specs/S51-pixel-fonts.md R29): load returns the font or
+# nil and the reason; measure returns two integers
+OVERRIDES.update({
+    ('BitmapFont', 'load'): {
+        'doc': ['A bitmap font (.bitmapfont, .fnt or "builtin:pixel") and its metrics, in whole font pixels;',
+                '`nil, error` when it does not load.'],
+        'overloads': [([('path', 'string')], 'BitmapFont?, string?')]},
+    ('BitmapFont', 'measure'): {
+        'doc': ['The width and height of the text (newlines split lines) in whole pixels at `scale` (default 1):',
+                'the layout a Text draws.'],
+        'overloads': [([('text', 'string'), ('scale?', 'integer')], 'integer, integer')]},
+})
+
 # audio-mixer (ECSClassesLua.cpp, GameObjectClassesLua.cpp): option tables ({unscaled = true}),
 # `nil` results and table results; AudioTimeOptions / AudioFadeOutOptions are in
 # engine/core/script/binding/stubs/Audio.lua
@@ -2726,7 +2739,7 @@ PROPERTY_OVERRIDES = {
         'main', 'emission', 'shape', 'velocityOverLifetime', 'limitVelocityOverLifetime', 'inheritVelocity',
         'forceOverLifetime', 'colorOverLifetime', 'colorBySpeed', 'sizeOverLifetime', 'sizeBySpeed',
         'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'collision', 'trails',
-        'customData', 'externalForces', 'renderer')},
+        'customData', 'externalForces', 'renderer', 'pixelArt')},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
     # ui-multitouch: the GameObjects of a PointerEventData (nil: none)
@@ -3144,6 +3157,23 @@ OVERRIDES[('NavMeshAgent', 'samplePathPosition')] = {
     'overloads': [([('areaMask', 'integer'), ('maxDistance', 'number')], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('NavMeshAgent', 'path')] = ('NavMeshPath', False)
 PROPERTY_OVERRIDES[('NavMeshAgent', 'nextOffMeshLinkData')] = ('OffMeshLinkData', False)
+
+# Palettes (docs/specs/S43-palettes.md R42): Palette.new and setPaletteTarget read the Lua stack
+OVERRIDES[('Palette', 'new')] = {
+    'doc': ['A palette made at runtime from colours ("#rrggbb", "#rrggbbaa" or Vector4, linear), for',
+            'setPaletteTarget; it lives while a Palette or a material holds it.'],
+    'overloads': [([('colors', '(string|Vector4)[]')], 'Palette')]}
+for _owner in ('Sprite', 'Tilemap', 'MeshPolygon'):
+    OVERRIDES[(_owner, 'setPaletteTarget')] = {
+        'doc': ['Sets the palette a Palette Swap row draws with (row 1 and up; 0 is the original): a Palette',
+                '(Palette.load, Palette.new) or a .palette path. Errors on a row the material does not have.'],
+        'overloads': [([('row', 'integer'), ('palette', 'Palette|string')], '')]}
+    PROPERTY_OVERRIDES[(_owner, 'palette')] = ('string|integer', False)
+OVERRIDES[('Palette', 'getRamp')] = {
+    'doc': ['The colours of the named ramp, dark to light (linear); empty for an unknown ramp.'],
+    'overloads': [([('name', 'string')], 'Vector4[]')]}
+PROPERTY_OVERRIDES[('Palette', 'variants')] = ('string[]', True)
+PROPERTY_OVERRIDES[('Palette', 'ramps')] = ('string[]', True)
 
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)
 HTML_UI_CLASS_DOCS = {

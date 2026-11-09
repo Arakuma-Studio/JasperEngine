@@ -135,6 +135,7 @@ std::filesystem::path AppSettings::configFilePath;
 YAML::Node AppSettings::settingsData;
 YAML::Node AppSettings::loadedSettings;
 bool AppSettings::autosaveEnabled = true;
+bool AppSettings::networkOffline = false;
 int AppSettings::autosaveIntervalSeconds = AppSettings::defaultAutosaveInterval;
 std::vector<hub::RecentProject> AppSettings::recentProjects;
 std::filesystem::path AppSettings::lastProjectPath;
@@ -369,6 +370,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             externalToolPaths.clear();
             for (const auto& item : settingsData["externalTools"]) {
                 if (item.second.IsScalar()) externalToolPaths[item.first.as<std::string>()] = item.second.as<std::string>();
+                // a tool with its own section (externalTools.aseprite.path, S44 §6.8): "<tool>.path"
+                else if (item.second.IsMap() && item.second["path"] && item.second["path"].IsScalar())
+                    externalToolPaths[item.first.as<std::string>() + ".path"] = item.second["path"].as<std::string>();
             }
         }
         if (settingsData["emsdk"] && settingsData["emsdk"]["path"]) {
@@ -438,6 +442,11 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             }
         }
 
+        // Network: the editor's own requests (Lospec)
+        if (settingsData["network"] && settingsData["network"]["offline"]) {
+            networkOffline = settingsData["network"]["offline"].as<bool>();
+        }
+
         // Load editor viewport settings
         if (settingsData["editor"]) {
             auto editorNode = settingsData["editor"];
@@ -486,7 +495,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["textureSynthesis"]) panelVisibility.textureSynthesis = panelsNode["textureSynthesis"].as<bool>();
                 if (panelsNode["audioMixer"]) panelVisibility.audioMixer = panelsNode["audioMixer"].as<bool>();
+                if (panelsNode["particleEffect"]) panelVisibility.particleEffect = panelsNode["particleEffect"].as<bool>();
                 if (panelsNode["soundBrowser"]) panelVisibility.soundBrowser = panelsNode["soundBrowser"].as<bool>();
+                if (panelsNode["graphEditor"]) panelVisibility.graphEditor = panelsNode["graphEditor"].as<bool>();
                 if (panelsNode["vertexAnimationBaker"]) panelVisibility.vertexAnimationBaker = panelsNode["vertexAnimationBaker"].as<bool>();
                 if (panelsNode["physicsPlacement"]) panelVisibility.physicsPlacement = panelsNode["physicsPlacement"].as<bool>();
                 if (panelsNode["spriteNormals"]) panelVisibility.spriteNormals = panelsNode["spriteNormals"].as<bool>();
@@ -498,6 +509,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 auto gameNode = editorNode["game_view"];
                 if (gameNode["aspect"]) gameViewSettings.aspect = gameNode["aspect"].as<int>();
                 if (gameNode["scale"]) gameViewSettings.scale = gameNode["scale"].as<float>();
+                if (gameNode["pixelScale"]) gameViewSettings.pixelScale = std::clamp(gameNode["pixelScale"].as<int>(), 0, 8);
                 if (gameNode["maximize_on_play"]) gameViewSettings.maximizeOnPlay = gameNode["maximize_on_play"].as<bool>();
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
                 if (gameNode["atmosphere_quality"]) gameViewSettings.atmosphereQuality = std::clamp(gameNode["atmosphere_quality"].as<int>(), -1, 3);
@@ -708,7 +720,11 @@ bool AppSettings::saveSettings() {
         // Preferences > External Tools
         if (!externalToolPaths.empty()) {
             YAML::Node toolsNode;
-            for (const auto& [tool, path] : externalToolPaths) toolsNode[tool] = path;
+            for (const auto& [tool, path] : externalToolPaths) {
+                const size_t dot = tool.find('.');
+                if (dot == std::string::npos) toolsNode[tool] = path;
+                else toolsNode[tool.substr(0, dot)][tool.substr(dot + 1)] = path;
+            }
             settingsData["externalTools"] = toolsNode;
         } else {
             settingsData.remove("externalTools");
@@ -776,6 +792,10 @@ bool AppSettings::saveSettings() {
         codeNode["font_size"] = codeEditorFontSize;
         settingsData["code_editor"] = codeNode;
 
+        YAML::Node networkNode;
+        networkNode["offline"] = networkOffline;
+        settingsData["network"] = networkNode;
+
         // Editor viewport settings
         YAML::Node editorNode;
         editorNode["multi_viewport"] = multiViewportEnabled;
@@ -803,7 +823,9 @@ bool AppSettings::saveSettings() {
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["textureSynthesis"] = panelVisibility.textureSynthesis;
         panelsNode["audioMixer"] = panelVisibility.audioMixer;
+        panelsNode["particleEffect"] = panelVisibility.particleEffect;
         panelsNode["soundBrowser"] = panelVisibility.soundBrowser;
+        panelsNode["graphEditor"] = panelVisibility.graphEditor;
         panelsNode["vertexAnimationBaker"] = panelVisibility.vertexAnimationBaker;
         panelsNode["physicsPlacement"] = panelVisibility.physicsPlacement;
         panelsNode["spriteNormals"] = panelVisibility.spriteNormals;
@@ -814,6 +836,7 @@ bool AppSettings::saveSettings() {
         YAML::Node gameNode;
         gameNode["aspect"] = gameViewSettings.aspect;
         gameNode["scale"] = gameViewSettings.scale;
+        if (gameViewSettings.pixelScale != 0) gameNode["pixelScale"] = gameViewSettings.pixelScale;
         gameNode["maximize_on_play"] = gameViewSettings.maximizeOnPlay;
         gameNode["stats"] = gameViewSettings.showStats;
         gameNode["atmosphere_quality"] = gameViewSettings.atmosphereQuality;
@@ -1774,6 +1797,14 @@ int AppSettings::getAutosaveIntervalSeconds() {
 
 void AppSettings::setAutosaveIntervalSeconds(int seconds) {
     autosaveIntervalSeconds = std::clamp(seconds, minAutosaveInterval, maxAutosaveInterval);
+}
+
+bool AppSettings::isNetworkOffline() {
+    return networkOffline;
+}
+
+void AppSettings::setNetworkOffline(bool offline) {
+    networkOffline = offline;
 }
 
 } // namespace jasperengine::editor

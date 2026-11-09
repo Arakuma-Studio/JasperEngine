@@ -1,6 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "render/SceneRender2D.h"
+#include "pixelart/PixelPerfectEditor.h"
+#include "pixelart/PixelSnap.h"
 #include "SceneRender.h"
 #include "LayerViewCamera.h"
 #include "component/AudioSourceComponent.h"
@@ -11,6 +14,7 @@
 #include "component/NavMeshModifierComponent.h"
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
+#include "component/SpriteComponent.h"
 #include "component/TextComponent.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
@@ -49,6 +53,7 @@ extern unsigned int bulb_icon_png_len;
 #include "util/FluidEditorTools.h"
 #include "pose/PoseViewport.h"
 #include "component/ParticleSystemComponent.h"
+#include "component/TilemapComponent.h"
 #include "particles/ParticleCompiler.h"
 #include "subsystem/ParticleSubsystem.h"
 
@@ -697,6 +702,8 @@ void editor::SceneRender::activateGame(Framebuffer* target){
     scene->getSystem<RenderSystem>()->setDrawEditorOverlays(false);
     scene->getSystem<RenderSystem>()->setDisableFaceCulling(false);
     scene->getSystem<RenderSystem>()->setDisableFog(false);
+    // and draws its post-processing: the edit-mode Scene view leaves it off unless it shows it
+    scene->getSystem<RenderSystem>()->setDisablePostProcessing(false);
 
     Engine::removeAllSceneLayers(false);
     engineLayersActive = false;
@@ -771,6 +778,10 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
                       displaySettings.disableFog, (float)width, (float)height,
                       displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing, displaySettings.disableClouds});
     layers.back().drawMode = previewing ? 0 : (uint8_t)displaySettings.drawMode;
+    // S41 R21: Snap Preview, the drawables snapped on this view's own grid of art pixels (a scene
+    // without a snapping Pixel Perfect Camera has no snapped variants: nothing changes)
+    if (!previewing && displaySettings.pixelSnapPreview && zoom > 0.0f && dynamic_cast<SceneRender2D*>(this))
+        layers.back().snapPreviewScale = 1.0f / (zoom * (float)Engine::getPixelsPerUnit());
 
     if (gameLayers){
         // The game's layer scenes (a HUD) cover its canvas, framed in this view at the
@@ -1782,6 +1793,10 @@ Vector2 editor::SceneRender::lockObject2DAspectRatio(const Vector2& startSize, c
 }
 
 void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float origY, Project* project, size_t sceneId, std::vector<Entity> selEntities, bool disableSelection, bool invertRotationSnap, bool preserveAspectRatio){
+    // S41 R21 Pixel Move Snap: a 2D scene drawn through a Pixel Perfect Camera moves and sizes
+    // on whole art pixels; Ctrl (the snap modifier) drags freely, on-grid being the norm there
+    const bool pixelMoveSnap = displaySettings.pixelMoveSnap && !invertRotationSnap && dynamic_cast<SceneRender2D*>(this) &&
+                               pixelart::scenePixelViews(project, project ? project->getScene((uint32_t)sceneId) : nullptr);
     ownerMouseRay = screenToRay(x, y);
     mouseRay = editLayer.active ? gizmoRay(x, y) : ownerMouseRay;
 
@@ -2038,6 +2053,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     }
 
                     Vector3 newPos;
+                    // (snapped to whole art pixels below: Pixel Move Snap)
                     if (tools.getGizmoSideSelected() == GizmoSideSelected::XYZ){
                         newPos = gizmoStartPosition + (gizmoRMatrix * deltaPos);
                     }else if (tools.getGizmoSideSelected() == GizmoSideSelected::X){
@@ -2052,6 +2068,11 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                         newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(deltaPos.x, 0, deltaPos.z));
                     }else if (tools.getGizmoSideSelected() == GizmoSideSelected::YZ){
                         newPos = gizmoStartPosition + (gizmoRMatrix * Vector3(0, deltaPos.y, deltaPos.z));
+                    }
+                    // S41 R21 Pixel Move Snap: whole art pixels (Ctrl held: free)
+                    if (pixelMoveSnap){
+                        newPos.x = jasperengine::pixelart::snapWorld(newPos.x, Engine::getPixelsPerUnit());
+                        newPos.y = jasperengine::pixelart::snapWorld(newPos.y, Engine::getPixelsPerUnit());
                     }
 
                     if (selectedLinePointIndex >= 0 && entity == selectedLinePointEntity){
@@ -2512,6 +2533,12 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                         }
                     }
 
+                    // S41 R21 Pixel Move Snap: the position on whole art pixels (Ctrl held: free)
+                    if (pixelMoveSnap){
+                        newPos.x = jasperengine::pixelart::snapWorld(newPos.x, Engine::getPixelsPerUnit());
+                        newPos.y = jasperengine::pixelart::snapWorld(newPos.y, Engine::getPixelsPerUnit());
+                    }
+
                     Matrix4 gizmoMatrix = Matrix4::translateMatrix(newPos) * gizmoRMatrix * Matrix4::scaleMatrix(Vector3(1,1,1));
                     Matrix4 objMatrix = gizmoMatrix * objectMatrixOffset[entity];
 
@@ -2519,7 +2546,16 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                         objMatrix = transformParent->modelMatrix.inverse() * objMatrix;
                     }
 
-                    Vector2 size = objectSizeOffset[entity] + sizeDeltaLocal;
+                    // a sprite's and a tilemap's sizes are pixels: the drag's world units times their
+                    // Pixels Per Unit (S41 R6), whole pixels under Pixel Move Snap
+                    float sizePixelsPerUnit = 1.0f;
+                    if (SpriteComponent* sprite = target->findComponent<SpriteComponent>(entity))
+                        sizePixelsPerUnit = resolvePixelsPerUnit(sprite->pixelsPerUnit);
+                    else if (TilemapComponent* tilemapSize = target->findComponent<TilemapComponent>(entity))
+                        sizePixelsPerUnit = resolvePixelsPerUnit(tilemapSize->pixelsPerUnit);
+                    Vector2 size = objectSizeOffset[entity] + sizeDeltaLocal * sizePixelsPerUnit;
+                    if (pixelMoveSnap)
+                        size = Vector2(std::round(size.x), std::round(size.y));
                     Vector3 pos = Vector3(objMatrix[3][0], objMatrix[3][1], objMatrix[3][2]);
 
                     if (size.x < 0) size.x = 0;

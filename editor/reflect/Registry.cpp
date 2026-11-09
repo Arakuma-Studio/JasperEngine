@@ -112,6 +112,9 @@ namespace {
         &kAudioSnapshotDesc,
         &kWaterExcluderDesc,
         &kWaterWakeDesc,
+        &kPixelPerfectCameraDesc,
+        &kSortingGroupDesc,
+        &kSpriteBatchDesc,
         &kTitleArtRendererDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
@@ -213,6 +216,9 @@ namespace {
         &kAudioSnapshotDesc,
         &kWaterExcluderDesc,
         &kWaterWakeDesc,
+        &kPixelPerfectCameraDesc,
+        &kSortingGroupDesc,
+        &kSpriteBatchDesc,
         &kTitleArtRendererDesc,
     };
 
@@ -312,6 +318,9 @@ namespace {
         &kAudioSnapshotDesc,
         &kWaterExcluderDesc,
         &kWaterWakeDesc,
+        &kPixelPerfectCameraDesc,
+        &kSortingGroupDesc,
+        &kSpriteBatchDesc,
         &kTitleArtRendererDesc,
     };
 
@@ -341,6 +350,10 @@ namespace {
         &enums::kOnScreenStickAxes, &enums::kOnScreenVisibility, &enums::kJointAnchorSpace, &enums::kCollisionDetection2D, &enums::kSleepMode2D, &enums::kRigidbodyInterpolation, &enums::kJointBreakAction,
         &enums::kJointMotion, &enums::kJointSwingType, &enums::kAlphaTweenTarget, &enums::kTransparencyMode, &enums::kCapsuleCastShadows,
         &enums::kCapsuleDirection,
+        // pixel art (S41)
+        &enums::kPixelUpscaleMode, &enums::kPixelRotation,
+        // 2D sorting and Sprite Batch (S52)
+        &enums::kSpriteSortPoint, &enums::kSpriteBatchMode, &enums::kSpriteBatchSpace,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

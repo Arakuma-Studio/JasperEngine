@@ -9,11 +9,13 @@
 // cooked files instead of compiled in.
 
 #include "JasperEngine.h"
+#include "pixelart/BitmapTextCache.h"
 
 #include "PlatformConfig.h"
 #include "io/Data.h"
 #include "io/FileData.h"
 #include "io/ResourcePack.h"
+#include "particles/ParticleWorld.h"
 #include "player/ContentManifest.h"
 #include "player/Launch.h"
 #include "player/PlayerConfig.h"
@@ -308,6 +310,9 @@ JASPERENGINE_INIT void init() {
         Engine::setThreadingSettings(game.threading);
     Engine::setCanvasSize(game.canvasWidth, game.canvasHeight);
     Engine::setScalingMode(game.scaling);
+    Engine::setPixelsPerUnit(game.pixelsPerUnit);
+    if (game.defaultFilterPoint) Engine::setDefaultTextureFilter(TextureFilter::NEAREST);
+    pixelart::BitmapTextCache::get().setBudgetMiB(game.bitmapTextCacheMiB);
     Engine::setTextureStrategy(game.textureStrategy);
     Engine::setAtmosphereQualityDefaults(game.atmosphereQuality[0], game.atmosphereQuality[1], game.atmosphereQuality[2]);
     Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);
@@ -325,6 +330,9 @@ JASPERENGINE_INIT void init() {
     // the Device Tier the GPU gets applies from here on (spec S56)
     Device::configure(game.device);
     if (!game.tags.empty()) TagManager::setTags(game.tags);
+    if (!game.sortingLayers.empty()) SortingLayers::setLayers(game.sortingLayers);
+    SortingLayers::setTransparencySortMode(game.transparencySortMode);
+    SortingLayers::setTransparencySortAxis(game.transparencySortAxis);
     for (size_t layer = 0; layer < game.layerNames.size(); layer++)
         if (!game.layerNames[layer].empty()) TagManager::setLayerName(static_cast<int>(layer), game.layerNames[layer]);
     for (int layer = 0; layer < MAX_LAYERS; layer++) {
@@ -358,6 +366,7 @@ JASPERENGINE_INIT void init() {
         });
     }
 
+    if (game.particleWorldBudget != 0) particles::ParticleWorld::setProjectBudget(game.particleWorldBudget);
     if (game.asyncLoading) Engine::setAsyncLoading(true);
     if (game.loadingScene != 0 && game.findScene(game.loadingScene)) SceneManager::setLoadingScene(game.loadingScene);
     if (game.loadingDelay != 0.0f) SceneManager::setLoadingDelay(game.loadingDelay);

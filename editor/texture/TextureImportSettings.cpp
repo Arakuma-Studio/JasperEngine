@@ -4,6 +4,7 @@
 #include "TextureImportSettings.h"
 
 #include "command/type/SetAssetMetaCmd.h"
+#include "render/Render.h"
 
 #include <algorithm>
 #include <cmath>
@@ -33,13 +34,15 @@ namespace {
         {TextureEffort::Fast, "fast"}, {TextureEffort::Normal, "normal"}, {TextureEffort::Best, "best"}};
     const EnumName<MipFilter> filterNames[] = {
         {MipFilter::Box, "box"}, {MipFilter::Triangle, "triangle"}, {MipFilter::Mitchell, "mitchell"},
-        {MipFilter::CatmullRom, "catmull_rom"}};
+        {MipFilter::CatmullRom, "catmull_rom"}, {MipFilter::Nearest, "nearest"}};
     const EnumName<TextureAlphaSource> alphaSourceNames[] = {
         {TextureAlphaSource::Input, "input"}, {TextureAlphaSource::FromGray, "from_gray"}, {TextureAlphaSource::None, "none"}};
     const EnumName<TextureChannel> channelNames[] = {
         {TextureChannel::R, "r"}, {TextureChannel::G, "g"}, {TextureChannel::B, "b"}, {TextureChannel::A, "a"},
         {TextureChannel::Luma, "luma"}};
     const EnumName<TextureShape> shapeNames[] = {{TextureShape::Tex2D, "2d"}, {TextureShape::Cube, "cube"}};
+    const EnumName<TextureFilterMode> filterModeNames[] = {
+        {TextureFilterMode::Point, "point"}, {TextureFilterMode::Bilinear, "bilinear"}, {TextureFilterMode::Trilinear, "trilinear"}};
     const EnumName<TextureImportType> typeNames[] = {
         {TextureImportType::Default, "default"}, {TextureImportType::Normal, "normal"}, {TextureImportType::Sprite, "sprite"},
         {TextureImportType::UI, "ui"}, {TextureImportType::Lightmap, "lightmap"},
@@ -85,7 +88,7 @@ namespace {
     const char* const sectionKeys[] = {
         "version", "type", "inferredFrom", "shape", "srgb", "alphaSource", "alphaIsTransparency", "readable", "maxSize",
         "resizeFilter", "mipmaps", "mipFilter", "mipLimit", "preserveCoverage", "alphaCutoff", "flipGreen", "channel",
-        "quality", "effort", "streamable", "shipSource", "platforms"};
+        "quality", "effort", "streamable", "shipSource", "platforms", "pixelArt", "alphaClip", "filterMode", "pixelsPerUnit"};
 
     bool isKnownKey(const std::string& key){
         return std::find_if(std::begin(sectionKeys), std::end(sectionKeys), [&](const char* k){ return key == k; }) != std::end(sectionKeys);
@@ -171,6 +174,20 @@ const char* editor::mipFilterName(MipFilter filter){ return nameOf(filterNames, 
 const char* editor::alphaSourceName(TextureAlphaSource source){ return nameOf(alphaSourceNames, source); }
 const char* editor::textureChannelName(TextureChannel channel){ return nameOf(channelNames, channel); }
 const char* editor::textureShapeName(TextureShape shape){ return nameOf(shapeNames, shape); }
+const char* editor::textureFilterModeName(TextureFilterMode mode){ return nameOf(filterModeNames, mode); }
+bool editor::textureFilterModeFromName(const std::string& name, TextureFilterMode& mode){ return valueOf(filterModeNames, name, mode); }
+
+void editor::textureFilterModeFilters(TextureFilterMode mode, TextureFilter& minFilter, TextureFilter& magFilter){
+    switch (mode){
+        case TextureFilterMode::Point: minFilter = TextureFilter::NEAREST; magFilter = TextureFilter::NEAREST; return;
+        case TextureFilterMode::Trilinear: minFilter = TextureFilter::LINEAR_MIPMAP_LINEAR; magFilter = TextureFilter::LINEAR; return;
+        case TextureFilterMode::Bilinear: default: minFilter = TextureFilter::LINEAR; magFilter = TextureFilter::LINEAR; return;
+    }
+}
+
+TextureFilter editor::textureFilterModeEngineFilter(TextureFilterMode mode){
+    return mode == TextureFilterMode::Point ? TextureFilter::NEAREST : TextureFilter::LINEAR;
+}
 
 const char* editor::textureFamilyLabel(TextureFamily family){
     switch (family){
@@ -186,7 +203,8 @@ const std::vector<std::string>& editor::textureEnumValues(const std::string& fie
     static const std::map<std::string, std::vector<std::string>> values = {
         {"type", namesOf(typeNames)}, {"shape", namesOf(shapeNames)}, {"alphaSource", namesOf(alphaSourceNames)},
         {"resizeFilter", namesOf(filterNames)}, {"mipFilter", namesOf(filterNames)}, {"channel", namesOf(channelNames)},
-        {"quality", namesOf(qualityNames)}, {"effort", namesOf(effortNames)}, {"platform", namesOf(familyNames)}};
+        {"quality", namesOf(qualityNames)}, {"effort", namesOf(effortNames)}, {"platform", namesOf(familyNames)},
+        {"filterMode", namesOf(filterModeNames)}};
     static const std::vector<std::string> none;
     auto it = values.find(field);
     return it == values.end() ? none : it->second;
@@ -205,7 +223,12 @@ bool TextureImportSettings::defaultAlphaIsTransparency(TextureImportType type){
 }
 
 TextureImportType TextureImportSettings::resolvedType() const{
-    return type.value_or(TextureImportType::Default);
+    // Pixel Art without a written type is a sprite (S42 R4)
+    return type.value_or(resolvedPixelArt() ? TextureImportType::Sprite : TextureImportType::Default);
+}
+
+TextureFilterMode TextureImportSettings::resolvedFilterMode(TextureFilterMode projectDefault) const{
+    return filterMode.value_or(resolvedPixelArt() ? TextureFilterMode::Point : projectDefault);
 }
 
 bool TextureImportSettings::parse(const YAML::Node& node, TextureImportSettings& out, std::string* errorOut){
@@ -243,6 +266,10 @@ bool TextureImportSettings::parse(const YAML::Node& node, TextureImportSettings&
     r.enumeration("effort", effortNames, out.effort);
     r.boolean("streamable", out.streamable);
     r.boolean("shipSource", out.shipSource);
+    r.boolean("pixelArt", out.pixelArt);
+    r.boolean("alphaClip", out.alphaClip);
+    r.enumeration("filterMode", filterModeNames, out.filterMode);
+    r.integer("pixelsPerUnit", out.pixelsPerUnit, 1, 256);
     if (const YAML::Node platforms = node["platforms"]){
         if (!platforms.IsMap()){
             r.fail("platforms", "expected a map of desktop, mobile, android_etc2, web");
@@ -311,6 +338,10 @@ YAML::Node TextureImportSettings::serialize() const{
     if (effort) node["effort"] = nameOf(effortNames, *effort);
     if (streamable) node["streamable"] = *streamable;
     if (shipSource) node["shipSource"] = *shipSource;
+    if (pixelArt) node["pixelArt"] = *pixelArt;
+    if (alphaClip) node["alphaClip"] = *alphaClip;
+    if (filterMode) node["filterMode"] = nameOf(filterModeNames, *filterMode);
+    if (pixelsPerUnit) node["pixelsPerUnit"] = *pixelsPerUnit;
     YAML::Node platformsNode(YAML::NodeType::Map);
     for (size_t f = 0; f < kTextureFamilyCount; f++){
         const TexturePlatformSettings& p = platforms[f];
@@ -356,22 +387,27 @@ ResolvedTextureSettings TextureImportSettings::resolve(TextureFamily family, con
     r.shape = shape.value_or(TextureShape::Tex2D);
     r.srgb = srgb.value_or(defaultSrgb(r.type));
     r.alphaSource = alphaSource.value_or(TextureAlphaSource::Input);
-    r.alphaIsTransparency = alphaIsTransparency.value_or(defaultAlphaIsTransparency(r.type));
+    // Pixel Art (S42 R4): absent fields take point-sampled, unmipmapped, lossless, nearest-resized,
+    // binary-alpha defaults; explicit fields and platform overrides still win
+    const bool pixel = resolvedPixelArt();
+    r.alphaIsTransparency = alphaIsTransparency.value_or(pixel || defaultAlphaIsTransparency(r.type));
     r.readable = readable.value_or(false);
     r.maxSize = (overrides && p.maxSize) ? *p.maxSize : maxSize.value_or(project.defaultMaxSize[(size_t)family]);
-    r.resizeFilter = resizeFilter.value_or(MipFilter::Mitchell);
-    r.mipmaps = mipmaps.value_or(defaultMipmaps(r.type));
-    r.mipFilter = mipFilter.value_or(MipFilter::Mitchell);
+    r.resizeFilter = resizeFilter.value_or(pixel ? MipFilter::Nearest : MipFilter::Mitchell);
+    r.mipmaps = mipmaps.value_or(!pixel && defaultMipmaps(r.type));
+    r.mipFilter = mipFilter.value_or(pixel ? MipFilter::Nearest : MipFilter::Mitchell);
     r.mipLimit = mipLimit.value_or(0);
     r.preserveCoverage = preserveCoverage.value_or(false);
     r.alphaCutoff = alphaCutoff.value_or(0.5f);
+    r.alphaClip = alphaClip.value_or(pixel);
     r.flipGreen = flipGreen.value_or(false);
     r.channel = channel.value_or(TextureChannel::R);
-    r.quality = (overrides && p.quality) ? *p.quality : quality.value_or(project.defaultQuality[(size_t)family]);
+    r.quality = (overrides && p.quality) ? *p.quality
+                                         : quality.value_or(pixel ? TextureCookQuality::None : project.defaultQuality[(size_t)family]);
     r.effort = (overrides && p.effort) ? *p.effort : effort.value_or(TextureEffort::Normal);
     // sprites and UI never lose mips to the quality setting or the budget (R12)
     const bool layoutType = r.type == TextureImportType::Sprite || r.type == TextureImportType::UI;
-    r.streamable = !layoutType && r.mipmaps && streamable.value_or(true);
+    r.streamable = !layoutType && r.mipmaps && streamable.value_or(!pixel);
     r.format = (overrides && p.format) ? *p.format : std::string();
     r.rdo = (overrides && p.rdo) ? *p.rdo : -1.0f;
     r.strategy = project.strategy;
@@ -391,6 +427,7 @@ TextureProcessing ResolvedTextureSettings::processing() const{
     p.mipLimit = mipLimit;
     p.preserveCoverage = preserveCoverage;
     p.alphaCutoff = alphaCutoff;
+    p.alphaClip = alphaClip;
     p.flipGreen = flipGreen;
     p.channel = channel;
     p.keepSourceChannels = cpuReadable;
@@ -425,8 +462,12 @@ std::string ResolvedTextureSettings::canonical() const{
         << ",\"format\":\"" << format << "\""
         << ",\"rdo\":" << formatNumber(rdo)
         << ",\"cpuReadable\":" << (cpuReadable ? 1 : 0)
-        << ",\"strategy\":" << (int)strategy
-        << "}";
+        << ",\"strategy\":" << (int)strategy;
+    // fields added after the key's first version print only when they differ from what every
+    // older texture resolves to, so those keep their cook keys (S42 R8)
+    if (alphaClip)
+        out << ",\"alphaClip\":1";
+    out << "}";
     return out.str();
 }
 

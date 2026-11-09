@@ -486,6 +486,7 @@ const FieldEntry kStruct_Material_fields[] = {
     JE_RF(Material, shaderTextures, 0x234b0c73u, Custom),
     JE_RF(Material, shaderFeatures, 0xa354685cu, Custom),
     JE_RF(Material, shaderGlobalBindings, 0xf2e1a5eeu, Custom),
+    JE_RF(Material, shaderPalettes, 0xbf00e75bu, Custom),
     JE_RF(Material, blendMode, 0xe5aaad6eu, Enum),
     JE_RF(Material, cullMode, 0x468be231u, Enum),
     JE_RF(Material, depthWrite, 0xf0420936u, Enum),
@@ -628,6 +629,7 @@ const FieldEntry kStruct_Collider2D_fields[] = {
     JE_RF(Collider2D, sensorEvents, 0x45592808u, Bool),
     JE_RF(Collider2D, material, 0x23926496u, String),
     JE_RF_ENTITY(Collider2D, receiver, 0xdc436802u, Entity),
+    JE_RF(Collider2D, slice, 0xd4adaecfu, String),
 };
 const StructTable kStruct_Collider2D{"Collider2D", kStruct_Collider2D_fields, std::size(kStruct_Collider2D_fields)};
 void Codec<Collider2D>::write(Writer& w, const Collider2D& value) { writeStruct(w, kStruct_Collider2D, &value); }
@@ -832,10 +834,14 @@ const FieldEntry kStruct_AnimatorIKConstraint_fields[] = {
     JE_RF_ENTITY(AnimatorIKConstraint, pole, 0xcae83e49u, Entity),
     JE_RF(AnimatorIKConstraint, polePosition, 0xea09b23eu, Vector3),
     JE_RF(AnimatorIKConstraint, usePole, 0xa4714304u, Bool),
+    JE_RF(AnimatorIKConstraint, soften, 0x3aea6f3cu, Float),
+    JE_RF(AnimatorIKConstraint, hingeAxis, 0x2b2cafe7u, Vector3),
+    JE_RF(AnimatorIKConstraint, twist, 0x0b2adfbeu, Float),
     JE_RF(AnimatorIKConstraint, iterations, 0x52a370efu, Int),
     JE_RF(AnimatorIKConstraint, tolerance, 0x5a7fbef6u, Float),
     JE_RF(AnimatorIKConstraint, forwardAxis, 0x02abfcb5u, Vector3),
     JE_RF(AnimatorIKConstraint, clampAngle, 0x82637075u, Float),
+    JE_RF(AnimatorIKConstraint, aimOffset, 0x574a44efu, Vector3),
     JE_RF(AnimatorIKConstraint, pelvis, 0xbae76adau, String),
     JE_RF(AnimatorIKConstraint, footHeight, 0x6bafcc40u, Float),
     JE_RF(AnimatorIKConstraint, rayStart, 0x3c1444fbu, Float),
@@ -911,6 +917,8 @@ const FieldEntry kBody_MeshComponent_fields[] = {
     JE_RF(MeshComponent, lodEnabled, 0xe14c9cceu, Bool),
     JE_RF(MeshComponent, lodBias, 0xa7883134u, Float),
     JE_RF(MeshComponent, allowGpuInstancing, 0x6e2e5003u, Bool),
+    JE_RF(MeshComponent, sortingLayer, 0x3b86e957u, Int),
+    JE_RF(MeshComponent, sortingOrder, 0x0084eb92u, Int),
     JE_RF(MeshComponent, lodFadeMode, 0xb8aa480cu, Enum),
     JE_RF(MeshComponent, lodAnimateCrossFading, 0x34cb1489u, Bool),
     JE_RF(MeshComponent, lodFadeTransitionWidth, 0x1f4ff698u, Float),
@@ -931,6 +939,8 @@ const StructTable kBody_MeshComponent{"mesh", kBody_MeshComponent_fields, std::s
 const FieldEntry kBody_LineRendererComponent_fields[] = {
     JE_RF(LineRendererComponent, enabled, 0x8c1a6dbfu, Bool),
     JE_RF(LineRendererComponent, maxLines, 0xa25a462fu, UInt),
+    JE_RF(LineRendererComponent, sortingLayer, 0x7822d743u, Int),
+    JE_RF(LineRendererComponent, sortingOrder, 0x2fcb6d86u, Int),
     JE_RF(LineRendererComponent, customShader, 0x9c75b4dcu, AssetPath),
     JE_RF(LineRendererComponent, shaderUniforms, 0x8c21c9e2u, Custom),
     JE_RF(LineRendererComponent, shaderTextures, 0xa7f787fbu, Custom),
@@ -1018,6 +1028,8 @@ const StructTable kBody_TerrainComponent{"terrain", kBody_TerrainComponent_field
 const FieldEntry kBody_PointsComponent_fields[] = {
     JE_RF(PointsComponent, enabled, 0xd90c5469u, Bool),
     JE_RF(PointsComponent, maxPoints, 0xa447d921u, UInt),
+    JE_RF(PointsComponent, sortingLayer, 0x1cf0c161u, Int),
+    JE_RF(PointsComponent, sortingOrder, 0x805f5eacu, Int),
     JE_RF(PointsComponent, transparent, 0x0f08ab2au, Bool),
     JE_RF(PointsComponent, autoTransparency, 0x50eddcb9u, Bool),
     JE_RF(PointsComponent, texture, 0x2b8df5f3u, Texture),
@@ -1537,6 +1549,8 @@ const FieldEntry kBody_ParticleSystemComponent_fields[] = {
     JE_RF(ParticleSystemComponent, playOnAwake, 0x3067463eu, Bool),
     JE_RF(ParticleSystemComponent, seed, 0x75e55be5u, UInt),
     JE_RF(ParticleSystemComponent, playbackSpeed, 0x87a6362cu, Float),
+    JE_RF(ParticleSystemComponent, sortingLayer, 0x2763c589u, Int),
+    JE_RF(ParticleSystemComponent, sortingOrder, 0xfa4cece4u, Int),
     JE_RF(ParticleSystemComponent, useUnscaledTime, 0x54d44b97u, Bool),
     JE_RF(ParticleSystemComponent, exposedValues, 0xfac14eb6u, Custom),
     JE_RF_ENTITIES(ParticleSystemComponent, collisionPlanes, 0x5027e34bu, Array),
@@ -1627,6 +1641,13 @@ const FieldEntry kBody_SpriteComponent_fields[] = {
     JE_RF(SpriteComponent, flipY, 0xbacad8a4u, Bool),
     JE_RF(SpriteComponent, textureScaleFactor, 0x1909ab5eu, Float),
     JE_RF(SpriteComponent, pivotPreset, 0xc80217ddu, Enum),
+    JE_RF(SpriteComponent, sheet, 0xff7f8fc1u, AssetPath),
+    JE_RF(SpriteComponent, frame, 0x6548e6a7u, Int),
+    JE_RF(SpriteComponent, frameName, 0x10ccd084u, String),
+    JE_RF(SpriteComponent, drawMode, 0x68130ab3u, Enum),
+    JE_RF(SpriteComponent, pixelsPerUnit, 0xd42e8cc4u, Float),
+    JE_RF(SpriteComponent, pixelRotation, 0x236ae730u, Enum),
+    JE_RF(SpriteComponent, spriteSortPoint, 0x2a8adfe7u, Enum),
     JE_RF(SpriteComponent, numFramesRect, 0x533d2142u, UInt),
     JE_RF(SpriteComponent, framesRect, 0x64888c2au, Array),
 };
@@ -1644,6 +1665,7 @@ const FieldEntry kBody_TextComponent_fields[] = {
     JE_RF(TextComponent, pivotCentered, 0xeba1acf4u, Bool),
     JE_RF(TextComponent, outlineWidth, 0x5563a8d2u, Float),
     JE_RF(TextComponent, outlineColor, 0x6b800909u, Vector4),
+    JE_RF(TextComponent, outlineNeighbors, 0x15f6a8cdu, Int),
     JE_RF(TextComponent, shadowEnabled, 0x346dc7b5u, Bool),
     JE_RF(TextComponent, shadowColor, 0xb74840bbu, Vector4),
     JE_RF(TextComponent, shadowOffset, 0x06e6418fu, Vector2),
@@ -1678,6 +1700,7 @@ const FieldEntry kBody_TilemapComponent_fields[] = {
     JE_RF(TilemapComponent, automaticFlipY, 0x66dfd1a6u, Bool),
     JE_RF(TilemapComponent, flipY, 0x357fc631u, Bool),
     JE_RF(TilemapComponent, textureScaleFactor, 0x1543f1a5u, Float),
+    JE_RF(TilemapComponent, pixelsPerUnit, 0xde152a5du, Float),
     JE_RF(TilemapComponent, reserveTiles, 0x82fb6b88u, UInt),
     JE_RF(TilemapComponent, numTilesRect, 0x677b6dc6u, UInt),
     JE_RF(TilemapComponent, tilesRect, 0x83fb4258u, Array),
@@ -2242,6 +2265,8 @@ const FieldEntry kBody_TrailRendererComponent_fields[] = {
     JE_RF(TrailRendererComponent, emitting, 0xd733dd59u, Bool),
     JE_RF(TrailRendererComponent, autodestruct, 0x07628c03u, Bool),
     JE_RF(TrailRendererComponent, sortPriority, 0xa529dd3au, Int),
+    JE_RF(TrailRendererComponent, sortingLayer, 0x3b5b03d7u, Int),
+    JE_RF(TrailRendererComponent, sortingOrder, 0x00590612u, Int),
     JE_RF(TrailRendererComponent, customShader, 0x1fd5ec80u, AssetPath),
     JE_RF(TrailRendererComponent, shaderUniforms, 0x04ea570eu, Custom),
     JE_RF(TrailRendererComponent, shaderTextures, 0x187d06d7u, Custom),
@@ -2432,56 +2457,34 @@ const FieldEntry kBody_WaterWakeComponent_fields[] = {
 };
 const StructTable kBody_WaterWakeComponent{"waterwake", kBody_WaterWakeComponent_fields, std::size(kBody_WaterWakeComponent_fields)};
 
-const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
-    JE_RF(TitleArtRendererComponent, enabled, 0x2940eb11u, Bool),
-    JE_RF(TitleArtRendererComponent, title, 0x274a7ac6u, AssetPath),
-    JE_RF(TitleArtRendererComponent, renderMode, 0x5ef14ed3u, Enum),
-    JE_RF(TitleArtRendererComponent, overrides, 0x700e9409u, Array),
-    JE_RF(TitleArtRendererComponent, language, 0xeddbbcbau, String),
-    JE_RF(TitleArtRendererComponent, pivotFromTitle, 0x3b25fd4au, Bool),
-    JE_RF(TitleArtRendererComponent, uiScale, 0xece0fb18u, Float),
-    JE_RF(TitleArtRendererComponent, pixelsPerUnit, 0x607847beu, Float),
-    JE_RF(TitleArtRendererComponent, resolutionScale, 0x678e8488u, Float),
-    JE_RF(TitleArtRendererComponent, priority, 0x563a6d68u, Int),
-    JE_RF(TitleArtRendererComponent, renderWhenHidden, 0x8f5afbccu, Bool),
-    JE_RF(TitleArtRendererComponent, prebakeInitialState, 0xd0114565u, Bool),
-    JE_RF(TitleArtRendererComponent, transition, 0x94135a73u, Enum),
-    JE_RF(TitleArtRendererComponent, transitionDuration, 0xe5c04ac7u, Float),
-    JE_RF(TitleArtRendererComponent, additionalCharacters, 0x41e10ba1u, String),
-    JE_RF(TitleArtRendererComponent, atlasPageSize, 0x6f83f7c5u, Int),
-    JE_RF(TitleArtRendererComponent, atlasMaxPages, 0xc2052205u, Int),
-    JE_RF(TitleArtRendererComponent, qualityTier, 0x4068c6e5u, String),
-    JE_RF(TitleArtRendererComponent, runtimeEnvironments, 0xe2b2abf2u, Array),
-    JE_RF(TitleArtRendererComponent, liveTime, 0x6bc5ba13u, Float),
-    JE_RF(TitleArtRendererComponent, liveUnscaledTime, 0x85bfbd8au, Bool),
-    JE_RF(TitleArtRendererComponent, sweepEnabled, 0x27274359u, Bool),
-    JE_RF(TitleArtRendererComponent, sweepPosition, 0xe589397bu, Float),
-    JE_RF(TitleArtRendererComponent, sweepWidth, 0x11436d24u, Float),
-    JE_RF(TitleArtRendererComponent, sweepAngle, 0xb532596bu, Float),
-    JE_RF(TitleArtRendererComponent, sweepSoftness, 0x084a67ebu, Float),
-    JE_RF(TitleArtRendererComponent, sweepColor, 0x93319b9fu, Vector4),
-    JE_RF(TitleArtRendererComponent, sweepAuto, 0x5f89e1dfu, Bool),
-    JE_RF(TitleArtRendererComponent, sweepSpeed, 0x335a0863u, Float),
-    JE_RF(TitleArtRendererComponent, sweepInterval, 0x94dac011u, Float),
-    JE_RF(TitleArtRendererComponent, glowEnabled, 0x7b24955au, Bool),
-    JE_RF(TitleArtRendererComponent, glowPulse, 0xc56d714au, Float),
-    JE_RF(TitleArtRendererComponent, glowColor, 0xcc286034u, Vector4),
-    JE_RF(TitleArtRendererComponent, tintEnabled, 0x03ba7ceeu, Bool),
-    JE_RF(TitleArtRendererComponent, tintColor, 0xfd588c88u, Vector4),
-    JE_RF(TitleArtRendererComponent, tintAmount, 0x47c1b439u, Float),
-    JE_RF(TitleArtRendererComponent, glintsEnabled, 0x7295f1beu, Bool),
-    JE_RF(TitleArtRendererComponent, glintAmount, 0xf520f618u, Float),
-    JE_RF(TitleArtRendererComponent, glintSize, 0xa1be8c4du, Float),
-    JE_RF(TitleArtRendererComponent, glintRate, 0x6466fd06u, Float),
-    JE_RF(TitleArtRendererComponent, glintSeed, 0x871c3b41u, UInt),
-    JE_RF(TitleArtRendererComponent, glintColor, 0xbeee64bbu, Vector4),
-    JE_RF(TitleArtRendererComponent, playAutomatically, 0xac579117u, Bool),
-    JE_RF(TitleArtRendererComponent, defaultAnimation, 0x0fdb5e95u, String),
-    JE_RF(TitleArtRendererComponent, animationSpeed, 0x7c0a3fa1u, Float),
-    JE_RF(TitleArtRendererComponent, animationUnscaledTime, 0x134a2c36u, Bool),
-    JE_RF(TitleArtRendererComponent, driveAnimation, 0xb93fb9c6u, String),
+const FieldEntry kBody_PixelPerfectCameraComponent_fields[] = {
+    JE_RF(PixelPerfectCameraComponent, enabled, 0x5f55db78u, Bool),
+    JE_RF(PixelPerfectCameraComponent, referenceWidth, 0xec604284u, UInt),
+    JE_RF(PixelPerfectCameraComponent, referenceHeight, 0x8cfdacb3u, UInt),
+    JE_RF(PixelPerfectCameraComponent, upscaleMode, 0x450a5fd7u, Enum),
+    JE_RF(PixelPerfectCameraComponent, upscaleRenderTexture, 0xb491256fu, Bool),
+    JE_RF(PixelPerfectCameraComponent, pixelSnapping, 0x97e12055u, Bool),
+    JE_RF(PixelPerfectCameraComponent, rotationMode, 0xf779ad8au, Enum),
+    JE_RF(PixelPerfectCameraComponent, subpixelSmoothing, 0xdd22b981u, Bool),
+    JE_RF(PixelPerfectCameraComponent, letterboxColor, 0x7cab54bfu, Vector4),
 };
-const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
+const StructTable kBody_PixelPerfectCameraComponent{"pixelperfectcamera", kBody_PixelPerfectCameraComponent_fields, std::size(kBody_PixelPerfectCameraComponent_fields)};
+
+const FieldEntry kBody_SortingGroupComponent_fields[] = {
+    JE_RF(SortingGroupComponent, enabled, 0x64da6ed9u, Bool),
+    JE_RF(SortingGroupComponent, sortingLayer, 0x07d91e91u, Int),
+    JE_RF(SortingGroupComponent, sortingOrder, 0xb7a2ea5cu, Int),
+};
+const StructTable kBody_SortingGroupComponent{"sortinggroup", kBody_SortingGroupComponent_fields, std::size(kBody_SortingGroupComponent_fields)};
+
+const FieldEntry kBody_SpriteBatchComponent_fields[] = {
+    JE_RF(SpriteBatchComponent, enabled, 0x36e1fbdbu, Bool),
+    JE_RF(SpriteBatchComponent, mode, 0xf2c528e5u, Enum),
+    JE_RF(SpriteBatchComponent, space, 0x333e9508u, Enum),
+    JE_RF(SpriteBatchComponent, capacity, 0xbe29fba2u, UInt),
+    JE_RF(SpriteBatchComponent, sortInstances, 0xb551f71eu, Bool),
+};
+const StructTable kBody_SpriteBatchComponent{"spritebatch", kBody_SpriteBatchComponent_fields, std::size(kBody_SpriteBatchComponent_fields)};
 
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
@@ -2592,7 +2595,9 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(AudioSnapshotComponent, "audiosnapshot", 0x57737429u),
     JE_RF_COMPONENT(WaterExcluderComponent, "waterexcluder", 0xf9df46e8u),
     JE_RF_COMPONENT(WaterWakeComponent, "waterwake", 0xbbb4fdc0u),
-    JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
+    JE_RF_COMPONENT(PixelPerfectCameraComponent, "pixelperfectcamera", 0xc6cced7fu),
+    JE_RF_COMPONENT(SortingGroupComponent, "sortinggroup", 0xc8581eb6u),
+    JE_RF_COMPONENT(SpriteBatchComponent, "spritebatch", 0xb9349884u),
     JE_RF_COMPONENTS_END
 };
 

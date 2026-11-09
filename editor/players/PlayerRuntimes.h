@@ -92,8 +92,9 @@ namespace jasperengine::editor {
         static std::filesystem::path installRoot(const std::filesystem::path& override = {});
 
         static std::vector<PlayerInfo> list(const std::filesystem::path& override = {});
-        // the runtime of that id this editor may use (R10: its engineVersion, a content format of
-        // the same major), else nullopt with why; allowMismatch takes any engine version
+        // the runtime of that id this editor may use (R10: its engineVersion, and a content format
+        // of the same major that reads this editor's minor), else nullopt with why; allowMismatch
+        // takes any engine version and an older minor
         static std::optional<PlayerInfo> find(const std::string& id, const std::filesystem::path& override, bool allowMismatch,
                                               std::string& error);
         // every installed runtime this editor may use of a <platform>-<arch>-<backend>-<flavour>

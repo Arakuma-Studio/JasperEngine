@@ -40,6 +40,7 @@ SITES = {
     ("layout/LayoutManager.cpp", "exportPopup"): "test_layout_save_to_file_opens_a_picker",
     ("window/GameWindow.cpp", "Add Game View Resolution"): "test_add_game_resolution",
     ("window/HumanoidConvertDialog.cpp", "Convert to Humanoid Clip###HumanoidConvert"): "not driven: needs a clip of a skinned model; convert_animation_clip does the same for agents",
+    ("window/ReduceKeysDialog.cpp", "Reduce Keys###ReduceKeys"): "not driven: test_animation_quality_ui.py drives it (a clip with a rig); optimize_animation does the same for agents",
     ("window/dialog/ShaderForkDialog.cpp", "popupName"): "test_shader_fork",
     ("window/dialog/ExportWindowShipping.cpp", "Keystore Passwords##ExportKeystore"): "not driven: needs a signing keystore and the Android SDK",
     ("window/dialog/ExportWindowShipping.cpp", "Upload to Steam##PublishUpload"): "not driven: needs a release folder and SteamCMD",
@@ -92,6 +93,11 @@ SITES = {
     ("window/dialog/ProjectSettingsWindow.cpp", "Privacy Manifest Preview"): "not driven: a read-only preview from Player > iOS/macOS > Privacy Manifest > Preview; native_plugins privacy_manifest gives agents the same manifest",
     ("window/TitleDesignerProperties.cpp", "Expose as Parameter###exposedialog"): "not driven: a Title Designer row's context menu; edit_title's expose op does the same for agents (TitleDesignerWindowDeathTest.ExposeDialogIsAnEditorModal answers it)",
     ("window/TitleDesignerLibrary.cpp", "Replace the whole title?###replacetitle"): "not driven: a Library template applied to a document with content needs S84's provider; edit_title replaces a title for agents",
+    ("window/AsepriteImporterView.cpp", "Extract Clips##aseprite_extract"): "test_aseprite_extract_clips",
+    ("pixelart/aseprite/AsepriteEditorHooks.cpp", "Aseprite Not Found##aseprite_open"): "test_aseprite_not_found",
+    ("window/dialog/SpriteConversionDialog.cpp", "title"): "test_sprite_conversion_dialog",
+    ("window/PixelArtCheckWindow.cpp", "kPreviewName"): "not driven here: it needs findings; test_pixel_art_check_window.py's test_fix_all_preview_counts_the_plan opens and answers it",
+    ("window/dialog/PixelArtPresetDialog.cpp", "POPUP_NAME"): "not driven here: a button of Project Settings > Pixel Art opens it; test_pixel_art_check_window.py's test_preset_dialog answers it",
 }
 # InspectorWindow's error boxes share one shape: they open when a file picker's answer is refused
 INSPECTOR_BOXES = 11
@@ -175,9 +181,10 @@ async def test_sites_table_is_complete(ed: Editor):
     ed.check_eq(dict(sorted(found.items())), dict(sorted(listed.items())), "every modal site is in the table, with its count")
     # the spec's 71 sites, S36's Placeholder Sound and the Model Import prompt (73); the project
     # window's folder prompt and its three nested boxes became one name dialog (errors inline), and
-    # Change Asset Directories came: 71; mobile-shipping's Privacy Manifest Preview: 72; S82's
-    # Expose as Parameter and Replace the whole title: 74
-    ed.check_eq(sum(found.values()), 74, "the 74 sites")
+    # Change Asset Directories came: 71; mobile-shipping's Privacy Manifest Preview: 72; S44's Extract
+    # Clips and Aseprite Not Found: 74; S45's Convert Inline Sprite Frames: 75; S77's Reduce Keys: 76;
+    # S42's Fix All and Apply Pixel Art Preset: 78; S82's Expose as Parameter and Replace the whole title: 80
+    ed.check_eq(sum(found.values()), 80, "the 80 sites")
     for site, how in SITES.items():
         if not how.startswith("not driven"):
             for name in how.split(", "):
@@ -735,6 +742,25 @@ async def test_texture_slicer(ed: Editor):
     await ed.call("respond_dialog", choice="cancel")
     ed.check_eq(await dialog(ed), None, "closed")
 
+    # a texture's stored Sprite Mode: the Slicer opens on it and Slice keeps its pivot (S45 R12)
+    (ed.project / "grid.png").write_bytes(png(64, 32))
+    (ed.project / "grid.png.meta").write_text("guid: 5a1ce5a1ce5a1ce5a1ce5a1ce5a1ce5a\nimport:\n  spriteSheet: {version: 1, mode: grid, grid: {cell: [32, 32], offset: [0, 0], "
+                                             "spacing: [0, 0], count: 0, skipEmpty: false, prefix: g_}, pivot: bottom_center}\n")
+    await ed.call("sync_files", paths=["grid.png", "grid.png.meta"])
+    made = await ed.call("set_sprite_frames", create={"name": "GridSprite"}, sheet="grid.png", frame=0)
+    await ed.call("select_entities", entities=[made["sprite"]["id"]])
+    await ed.call("focus_window", window="inspector")
+    await helper.frames(4)
+    button = await helper.reveal("\uf58d Slicer Tool", "Inspector")
+    await helper.click(helper.centre(button["rect"]))
+    d = await frame_dialog(ed)
+    ed.check(d and "pivot" in fields(d), f"the Sprite Mode fields: {d}")
+    ed.check_eq(fields(d)["pivot"]["value"], "Bottom Center", f"the stored pivot is shown: {fields(d)['pivot']}")
+    await ed.call("respond_dialog", choice="yes")
+    await helper.frames(4)
+    meta = (ed.project / "grid.png.meta").read_text()
+    ed.check("bottom_center" in meta, f"Slice kept the pivot: {meta}")
+
 
 @clean
 async def test_shader_fork(ed: Editor):
@@ -789,3 +815,104 @@ async def test_headless_modal_is_answerable_after_idling(ed: Editor):
         r = await other.call("respond_dialog", choice="cancel")
         ed.check("dialog" not in r, f"answered after idling: {r}")
         ed.check((await other.call("editor_status")).get("dialog") is None, "closed")
+
+
+async def imported_aseprite(ed: Editor, name: str) -> None:
+    """S44's character (two tag clips) at the project's root, its import done"""
+    shutil.copy(REPO / "editor" / "tests" / "fixtures" / "aseprite" / "s44-mcp" / "hero_idle.aseprite", ed.project / name)
+    await ed.call("sync_files", paths=[name])
+    state = None
+    for _ in range(200):
+        info = await ed.call("get_asset_info", path=name)
+        state = info.get("aseprite", info).get("import_state")
+        if state in ("imported", "failed"):
+            break
+        await ed.call("wait", seconds=0.1)
+    ed.check_eq(state, "imported", f"{name} imports")
+
+
+async def aseprite_inspector_button(ed: Editor, helper: ui_input.Ui, name: str, label: str) -> None:
+    """the Project window's `name` selected, so the Inspector (in front) shows the Aseprite Importer:
+    `label` clicked"""
+    # (the tests before may have left GameObjects selected, which the Inspector would show instead)
+    await ed.call("select_entities", entities=[])
+    # its sections' headers: a click the Project window takes before it has laid out its entries
+    # selects nothing, so again
+    anchor = None
+    for _ in range(4):
+        await ed.call("focus_window", window="project")
+        await select_entry(ed, helper, name)
+        await ed.call("focus_window", window="inspector")
+        for header in ("Texture", "Layers", "General"):
+            anchor = await helper.find(header, "Inspector", frames=20)
+            if anchor:
+                break
+        if anchor:
+            break
+    ed.check(anchor, f"the Inspector shows the Aseprite Importer for {name}")
+    # the buttons end the importer, below the fold of a small Inspector: ImGui draws (and
+    # find_ui_item finds) only what is in view, so it scrolls down until they are
+    button = None
+    for _ in range(40):
+        button = await helper.find(label, "Inspector", frames=2)
+        if button:
+            break
+        await helper.wheel(helper.centre(anchor["window_rect"]), 3)
+    ed.check(button, f"{label} comes into view in the Inspector")
+    await helper.click(helper.centre(button["rect"]))
+
+
+@clean
+async def test_aseprite_extract_clips(ed: Editor):
+    """S44: the Aseprite Importer's Extract Clips... lists the .anim files it writes; cancel writes
+    nothing, ok writes one per tag clip"""
+    helper = ui(ed)
+    await imported_aseprite(ed, "HeroClips.aseprite")
+    clips = [ed.project / "HeroClips walk.anim", ed.project / "HeroClips Idle.anim"]
+    await aseprite_inspector_button(ed, helper, "HeroClips.aseprite", "Extract Clips...")
+    d = await wait_dialog(ed, "Extract Clips")
+    ed.check(d, f"Extract Clips is reported: {await dialog(ed)}")
+    ed.check(set(d.get("choices", [])) >= {"ok", "cancel"}, f"Extract (ok) and Cancel: {d}")
+    ed.check("HeroClips walk.anim" in d.get("message", "") and "HeroClips Idle.anim" in d["message"], f"says what it writes: {d}")
+    await ed.call("respond_dialog", choice="cancel")
+    ed.check_eq(await frame_dialog(ed), None, "cancel closes it")
+    ed.check(not any(c.exists() for c in clips), "and writes nothing")
+
+    await aseprite_inspector_button(ed, helper, "HeroClips.aseprite", "Extract Clips...")
+    ed.check(await wait_dialog(ed, "Extract Clips"), "reopened")
+    r = await ed.call("respond_dialog", choice="ok")
+    ed.check("dialog" not in r, f"completed: {r}")
+    for _ in range(40):
+        if all(c.exists() for c in clips):
+            break
+        await ed.call("wait", seconds=0.1)
+    ed.check(all(c.exists() for c in clips), f"ok writes the tag clips: {root_entries(ed)}")
+
+
+@clean
+async def test_aseprite_not_found(ed: Editor):
+    """S44: Open in Aseprite with no Aseprite installed asks to locate it; the reply says where to get
+    it, cancel closes it"""
+    helper = ui(ed)
+    await imported_aseprite(ed, "HeroOpen.aseprite")
+    await aseprite_inspector_button(ed, helper, "HeroOpen.aseprite", "Open in Aseprite")
+    d = await wait_dialog(ed, "Aseprite Not Found")
+    ed.check(d, f"Aseprite Not Found is reported: {await dialog(ed)}")
+    ed.check(set(d.get("choices", [])) >= {"locate", "cancel"}, f"Locate... and Close (cancel): {d}")
+    ed.check("aseprite.org" in d.get("message", ""), f"says where to get it: {d}")
+    r = await ed.call_raw("create_entity", {"name": "Refused", "type": "empty"})
+    ed.check(r.is_error and "Aseprite Not Found" in r.text, f"an edit is refused while it is open: {r.text[:300]}")
+    await ed.call("respond_dialog", choice="cancel")
+    ed.check_eq(await frame_dialog(ed), None, "cancel closes it")
+
+
+@clean
+async def test_sprite_conversion_dialog(ed: Editor):
+    """S45: Assets > Convert Inline Sprite Frames... lists the legacy sprites (a dry run) and is
+    answered by agents: Convert All and Close (cancel), cancel closes it, nothing converted"""
+    d = await open_modal(ed, "assets.convertInlineSpriteFrames", None)
+    ed.check(d and "Convert Inline Sprite Frames" in d.get("title", ""), f"the dialog: {d}")
+    ed.check({"convert_all", "cancel"} <= set(d.get("choices", [])), f"Convert All and Close: {d}")
+    ed.check("legacy sprite" in d.get("message", ""), f"says what it lists: {d}")
+    await ed.call("respond_dialog", choice="cancel")
+    ed.check_eq(await frame_dialog(ed), None, "cancel closes it")

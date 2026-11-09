@@ -1,0 +1,39 @@
+{
+ "code": [],
+ "description": "Draws a uniform grayscale image",
+ "format": 1,
+ "functions": [],
+ "id": "uniform_greyscale",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Grayscale Uniform",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "A uniform image of the selected value",
+   "expr": "$(color)",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.5,
+   "description": "The value of the uniform grayscale image",
+   "label": "",
+   "max": 1,
+   "min": 0,
+   "name": "color",
+   "short_description": "Value",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/uniform_greyscale.mmg"
+ },
+ "type_version": 1
+}

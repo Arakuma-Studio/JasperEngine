@@ -1,0 +1,8 @@
+guid: 0123456789abcdef0123456789abcdef
+import:
+  spriteSheet:
+    version: 1
+    mode: multiple
+    frames:
+      - {name: panel, rect: [0, 0, 12, 12], border: [4, 4, 4, 4]}
+    pivot: center

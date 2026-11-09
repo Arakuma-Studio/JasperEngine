@@ -55,7 +55,7 @@ namespace {
 
     // a .gltf (+ .bin) with the triangle on the given nodes and scene roots
     // morph: the primitive also has a morph target (the normals' view as its POSITION
-    // displacements), which the bake rejects
+    // displacements), which a placed copy bakes in (an ordinary load rejects the bake)
     fs::path writeGltf(const std::string& name, const nlohmann::json& nodes, const nlohmann::json& roots, bool morph = false) {
         const fs::path dir = fs::temp_directory_path() / "jasperengine-editor-tests-gltf";
         fs::create_directories(dir);
@@ -303,10 +303,10 @@ TEST_F(GltfMeshOffset, FoliageBakesTheWholeNodeTransform) {
     Scene scene;
     std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
 
-    // loadFoliageMesh's load. Nested: Root * Offset * Mesh, (2x + 1, 2y + 2, 2z + 6), as merged nodes bake
+    // loadPlacedModel's load. Nested: Root * Offset * Mesh, (2x + 1, 2y + 2, 2z + 6), as merged nodes bake
     const fs::path nested = writeGltf("foliage-nested", nestedNodes, {0});
     Model chunk(&scene);
-    ASSERT_TRUE(meshSystem->loadGLTF(chunk.getEntity(), nested.string(), false, true, false, true));
+    ASSERT_TRUE(meshSystem->loadPlacedModel(chunk.getEntity(), nested.string()));
     expectVector(scene.getComponent<Transform>(chunk.getEntity()).position, Vector3(0, 0, 0), "chunk position");
     const MeshComponent& nestedMesh = scene.getComponent<MeshComponent>(chunk.getEntity());
     expectPositions(nestedMesh, {Vector3(1, 2, 6), Vector3(3, 2, 6), Vector3(1, 4, 6)});
@@ -317,26 +317,26 @@ TEST_F(GltfMeshOffset, FoliageBakesTheWholeNodeTransform) {
     };
     const fs::path root = writeGltf("foliage-root", rootNodes, {0});
     Model rootChunk(&scene);
-    ASSERT_TRUE(meshSystem->loadGLTF(rootChunk.getEntity(), root.string(), false, true, false, true));
+    ASSERT_TRUE(meshSystem->loadPlacedModel(rootChunk.getEntity(), root.string()));
     const MeshComponent& rootMesh = scene.getComponent<MeshComponent>(rootChunk.getEntity());
     expectPositions(rootMesh, {Vector3(0, 0, 3), Vector3(-1, 0, 3), Vector3(0, 1, 3)});
     EXPECT_EQ(rootMesh.windingOrder, WindingOrder::CW);
     EXPECT_FALSE(rootMesh.mirroredWinding) << "the mirror is baked into the vertices";
 
-    // a mesh that cannot be baked (a morph target) under a mirrored root keeps its vertices,
-    // and the winding of what is applied to them: nothing
+    // a mesh with a blend shape bakes too: the copy draws it at rest, its default weights (none
+    // here) in the vertices with the node's transform and its winding
     const fs::path morph = writeGltf("foliage-morph", rootNodes, {0}, true);
     Model morphChunk(&scene);
-    ASSERT_TRUE(meshSystem->loadGLTF(morphChunk.getEntity(), morph.string(), false, true, false, true));
+    ASSERT_TRUE(meshSystem->loadPlacedModel(morphChunk.getEntity(), morph.string()));
     const MeshComponent& morphMesh = scene.getComponent<MeshComponent>(morphChunk.getEntity());
-    expectPositions(morphMesh, {Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(0, 1, 0)});
-    EXPECT_EQ(morphMesh.windingOrder, WindingOrder::CCW);
+    expectPositions(morphMesh, {Vector3(0, 0, 3), Vector3(-1, 0, 3), Vector3(0, 1, 3)});
+    EXPECT_EQ(morphMesh.windingOrder, WindingOrder::CW);
 
     // a file without node transforms is not baked (and renders as before)
     const nlohmann::json plainNodes = {{{"name", "Mesh"}, {"mesh", 0}}};
     const fs::path plain = writeGltf("foliage-plain", plainNodes, {0});
     Model plainChunk(&scene);
-    ASSERT_TRUE(meshSystem->loadGLTF(plainChunk.getEntity(), plain.string(), false, true, false, true));
+    ASSERT_TRUE(meshSystem->loadPlacedModel(plainChunk.getEntity(), plain.string()));
     const MeshComponent& plainMesh = scene.getComponent<MeshComponent>(plainChunk.getEntity());
     expectPositions(plainMesh, {Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(0, 1, 0)});
     EXPECT_EQ(plainMesh.windingOrder, WindingOrder::CCW);

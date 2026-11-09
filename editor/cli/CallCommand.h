@@ -38,6 +38,10 @@ namespace jasperengine::editor::cli {
         // failure unless `continueOnError`; the highest exit code
         static int runCalls(const std::string& project, const std::vector<std::pair<std::string, nlohmann::json>>& calls,
                             bool continueOnError, std::vector<CallResult>& results, const char* executableName);
+        // After run(): the editor it started for --project stopped, or did not open the project within the
+        // spawn timeout, before any tool ran (exit 3 says only "connection"; this is the part of it where no
+        // editor came up at all)
+        static bool spawnFailed();
     };
 
 }

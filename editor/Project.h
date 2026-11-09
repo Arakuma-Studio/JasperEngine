@@ -14,6 +14,7 @@
 #include "Configs.h"
 #include "util/Prefab.h"
 #include "LoadReport.h"
+#include "registry/SortingLayers.h"
 #include "StreamMigrations.h"
 #include "SceneBackup.h"
 #include "io/ScopedFileLock.h"
@@ -32,12 +33,15 @@
 #include "util/CxxStandards.h"
 #include "util/Util.h"
 #include "physics/PlacementSettings.h"
+#include "particles/ParticleQaSettings.h"
+#include "procmat/ProcMatQaSettings.h"
 #include "navigation/NavigationProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
 #include "render/LightingTiers.h"
 #include "device/DeviceSettings.h"
 #include "texture/TextureImportSettings.h"
 #include "titleart/TitleArtSettings.h"
+#include "pixelart/PixelArtSettings.h"
 #include "model/ModelImportSettings.h"
 #include "vcs/VcsTypes.h"
 #include "util/PlatformRules.h"
@@ -912,8 +916,17 @@ namespace jasperengine::editor{
         // none) and the deadzone of AXIS and VECTOR2 actions without their own
         std::filesystem::path inputActionsAsset;
         float inputDeadzone = 0.15f;
+        // Pixel Art: the palette used where none is named (S43 R4b), project-relative, empty for none
+        std::filesystem::path defaultPalette;
         PlayerCrashSettings playerCrash;
         int htmlUiMsaaSamples;
+        // graphics.pixelsPerUnit (S41): texels per world unit of the sprites and tilemaps that take it
+        int pixelsPerUnit = 1;
+        // Project Settings > Pixel Art (S42) and graphics.defaultFilterMode (bilinear or point)
+        pixelart::PixelArtSettings pixelArtSettings;
+        TextureFilterMode defaultFilterMode = TextureFilterMode::Bilinear;
+        // graphics.bitmapTextCacheMiB (S51 R12): the styled glyph cache's budget, 0 = the platform's
+        int bitmapTextCacheMiB = 0;
         HtmlUiRenderSettings htmlUiRender;
         // graphics.gpu_instancing, quality.shadow_lod_bias (spec S55)
         DrawSubmissionSettings drawSubmission;
@@ -974,6 +987,8 @@ namespace jasperengine::editor{
         // Project Settings > Player > Strip Engine Code (docs/specs/S34-player-size.md R7): builds leave
         // out the engine modules the project cannot reach (export: stripEngineCode, default on)
         bool stripEngineCode = true;
+        // S45 R18: "enabled" | "enabled_for_builds" | "disabled"
+        std::string spriteAtlasMode = "enabled";
         ApplicationSettings applicationSettings;
         PresentationSettings presentationSettings;
         LocalizationSettings localizationSettings;
@@ -993,6 +1008,9 @@ namespace jasperengine::editor{
         uint32_t startSceneId;
         LoadingSettings loadingSettings;
         ThreadingProjectSettings threadingSettings;
+        uint32_t particleWorldBudget = 0;
+        ParticleQaSettings particleQa;
+        procmat::ProcMatQaSettings procMatQa;
         ShaderCreationProjectSettings shaderCreationSettings;
         AudioSettings audioSettings;
         DebugSettings debugSettings;
@@ -1420,8 +1438,6 @@ namespace jasperengine::editor{
         static bool visitAssetPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
         // The Animation Player clips of visitAssetPathsInRegistry (their path and GUID are not an AssetRef)
         static bool visitClipPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
-        // The files of those references, for SceneManager::preloadScene()
-        static SceneResources collectResourcesInRegistry(EntityRegistry* registry);
         // Same for Lua script entries; C++ ones are build inputs kept project-relative.
         static bool visitLuaPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
         bool visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform,
@@ -1545,8 +1561,12 @@ namespace jasperengine::editor{
     private:
         // see getInspectedAsset()
         std::filesystem::path inspectedAsset;
+        SceneProject* materialAssetScene = nullptr;
 
     public:
+        // The files a registry's components reference, for SceneManager::preloadScene() (the
+        // generated scene's resources; public for the tests of what a scene preloads)
+        static SceneResources collectResourcesInRegistry(EntityRegistry* registry);
         // Unity's activeObject (animation clips spec 9.R30): the asset the Inspector shows, set by
         // the Project window when a single asset is clicked (T2b), cleared by any scene selection
         // change (T2c); empty = the Inspector shows the scene selection. Absolute path.
@@ -1576,6 +1596,10 @@ namespace jasperengine::editor{
         static constexpr std::array<AtmosphereQuality, 3> defaultAtmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
         static constexpr std::array<float, 3> defaultFoliageDistanceScale = {1.0f, 1.0f, 1.0f};
         static constexpr int defaultHtmlUiMsaaSamples = 4;
+        static constexpr int defaultPixelsPerUnit = 1;
+        static constexpr int minPixelsPerUnit = 1;
+        static constexpr int maxPixelsPerUnit = 256;
+        static constexpr int maxBitmapTextCacheMiB = 64;
         // htmlUiGlyphAtlasMiB: 0 (the platform's default) or this range
         static constexpr int minHtmlUiGlyphAtlasMiB = 4;
         static constexpr int maxHtmlUiGlyphAtlasMiB = 256;
@@ -1720,6 +1744,10 @@ namespace jasperengine::editor{
         // Project Settings > Input (docs/mcp/guide/input.md): the default Input Actions asset
         // (InputActions::loadDefault at Play and at game start) and the default deadzone
         static constexpr float defaultInputDeadzone = 0.15f;
+        // the Default Palette (Project Settings, palettes.default; S43 R4b)
+        void setDefaultPalette(const std::filesystem::path& palette) { defaultPalette = palette; }
+        std::filesystem::path& getDefaultPalette() { return defaultPalette; }
+        const std::filesystem::path& getDefaultPalette() const { return defaultPalette; }
         void setInputActionsAsset(const std::filesystem::path& asset);
         std::filesystem::path& getInputActionsAsset();
         const std::filesystem::path& getInputActionsAsset() const;
@@ -1733,6 +1761,21 @@ namespace jasperengine::editor{
         // them), applied to the editor's documents at once and written into exports
         void setHtmlUiMsaaSamples(int samples);
         int getHtmlUiMsaaSamples() const;
+        // Pixels Per Unit (S41, 1-256, clamped): applied to the editor's scenes at once and written into exports
+        void setPixelsPerUnit(int pixelsPerUnit);
+        int getPixelsPerUnit() const;
+        // Project Settings > Pixel Art (S42 R1, R18): turning Pixel Art Mode on or off changes
+        // nothing else; it registers or removes the mode's import and Play hooks
+        void setPixelArtSettings(const pixelart::PixelArtSettings& settings);
+        const pixelart::PixelArtSettings& getPixelArtSettings() const { return pixelArtSettings; }
+        // Graphics > Default Filter Mode (S42 R3: Bilinear or Point): what references start with
+        // when assigned without import settings, and what the game's runtime-made Textures use
+        void setDefaultFilterMode(TextureFilterMode mode);
+        TextureFilterMode getDefaultFilterMode() const { return defaultFilterMode; }
+        // Bitmap Text Cache (S51 R12): MiB of styled bitmap glyphs, 0 = 2 MiB on Android, iOS and
+        // HTML5 and 8 MiB on desktop; applied at once and written into exports
+        void setBitmapTextCacheMiB(int mib);
+        int getBitmapTextCacheMiB() const;
         static bool isValidHtmlUiMsaaSamples(int samples);
         // HTML UI rendering (S16): htmlUiGlyphAtlasMiB (clamped into its range, 0 = the
         // platform's default), htmlUiSdfPrimitives, htmlUiTransformAwareText; applied to the
@@ -1833,6 +1876,15 @@ namespace jasperengine::editor{
         const std::vector<std::string>& getTags() const;
         // MAX_LAYERS entries, index = layer; empty for built-in and unnamed layers
         const std::vector<std::string>& getLayerNames() const;
+
+        // Project Settings > Tags and Layers > Sorting Layers and Graphics > Transparency Sort Mode /
+        // Axis (spec S52 R1, R4): the engine's SortingLayers holds them (the Inspector, Play and
+        // the render systems read it); setSortingLayers keeps what SortingLayers accepts
+        void setSortingLayers(const std::vector<SortingLayerInfo>& layers);
+        const std::vector<SortingLayerInfo>& getSortingLayers() const;
+        void setTransparencySort(TransparencySortMode mode, const Vector3& axis);
+        TransparencySortMode getTransparencySortMode() const;
+        Vector3 getTransparencySortAxis() const;
 
         // Project Settings > Physics and Physics 2D > Layer Collision Matrix. Kept symmetric
         // (a pair collides only when both rows say so) and applied to the engine's
@@ -1982,6 +2034,10 @@ namespace jasperengine::editor{
         void setPackContent(bool enabled) { packContent = enabled; }
         bool isStripEngineCode() const { return stripEngineCode; }
         void setStripEngineCode(bool enabled) { stripEngineCode = enabled; }
+        // Project Settings > 2D > Sprite Atlas > Mode (S45 R18); a change re-resolves which atlases
+        // the editor draws from
+        const std::string& getSpriteAtlasMode() const { return spriteAtlasMode; }
+        void setSpriteAtlasMode(const std::string& mode);
         // S30: what the generated main.cpp gives SceneManager::registerScene, for game.json
         void collectInvolvedScenesForExport(uint32_t sceneId, std::vector<uint32_t>& involvedSceneIds) {
             collectInvolvedScenes(sceneId, involvedSceneIds);
@@ -2034,6 +2090,17 @@ namespace jasperengine::editor{
         void setStartSceneId(uint32_t sceneId);
 
         LoadingSettings& getLoadingSettings();
+        // Project Settings > Graphics > World Particle Budget (0: the platform's default)
+        static constexpr unsigned int maxParticleWorldBudget = 1u << 24;
+        uint32_t getParticleWorldBudget() const;
+        void setParticleWorldBudget(uint32_t budget);
+        // Project Settings > Graphics > Particle Checks (S91 R28)
+        const ParticleQaSettings& getParticleQaSettings() const { return particleQa; }
+        void setParticleQaSettings(const ParticleQaSettings& settings) { particleQa = settings; }
+        // Project Settings > Graphics > Material Checks (S90 R36)
+        const procmat::ProcMatQaSettings& getProcMatQaSettings() const { return procMatQa; }
+        void setProcMatQaSettings(const procmat::ProcMatQaSettings& settings) { procMatQa = settings; }
+
         const ThreadingProjectSettings& getThreadingSettings() const;
         // Stores them and applies what applies live (the reserve, the web pump budget) to
         // the editor's job system; the worker and reader counts apply on the next launch
@@ -2170,6 +2237,13 @@ namespace jasperengine::editor{
         // and was not generated here
         bool writeVersionControlMetadata();
         void deleteSceneProject(SceneProject* sceneProject);
+        // A closed scene read from its file into a scene of its own, neither opened nor drawn (the
+        // pixel-art validator's view of the build list, S42 D3); release it with
+        // releaseSceneProbe. Null when the scene is open, unknown or unreadable.
+        SceneProject* loadSceneProbe(uint32_t sceneId);
+        // the same for a scene file the project does not list (the Pixel Art Check's Project scope)
+        SceneProject* loadSceneFileProbe(const std::filesystem::path& file);
+        void releaseSceneProbe(SceneProject* probe);
         void loadSceneProjectData(SceneProject* sceneProject, const YAML::Node& sceneNode);
         bool saveProject(bool userCalled = false, std::function<void()> callback = nullptr);
         // project.yaml; refused (RefusedDegraded) while its load report has dropped issues
@@ -2251,6 +2325,9 @@ namespace jasperengine::editor{
         // The .material files submeshes are linked to (project-relative). Their changes on
         // disk reach the links through the hot reload (editor/reload, S05).
         std::vector<std::string> getLinkedMaterialFiles() const;
+        // Each linked .material as its file says now (Stop: the Play snapshot holds their values from
+        // before an edit made while playing)
+        void reapplyLinkedMaterialFiles();
         // `relativePath` was read again: every submesh linked to it takes `material`
         void applyLinkedMaterialFile(const std::string& relativePath, const Material& material);
 
@@ -2637,6 +2714,12 @@ namespace jasperengine::editor{
         // asset only by path (a tool's or a paste's new values) get the asset's GUID, so the
         // file follows the asset when it moves (R13 rewrites no referrer)
         void bindMaterialAssetRefs(Material& material);
+        // What resolve_asset answers: an asset by GUID or project-relative path, as the database has it. A miss
+        // only looks at the disk again: a path the database has not seen (written a moment ago) is imported
+        // alone, a GUID it does not know takes a refresh. A hit touches nothing.
+        AssetDatabase::Resolution resolveAsset(const std::string& asset, const std::string& hint, AssetType expected);
+        // A file on disk at `projectRelative` the database has not seen yet is imported now, alone; true when it was
+        bool importUnseenAsset(const std::string& projectRelative);
         // The identity keys (guid, formerGuids) a scene, prefab or material file is written
         // with, put at the top of its root; returns the GUID (a new one for a new file)
         Guid prepareDocumentIdentity(YAML::Node& root, const std::filesystem::path& relativePath);
@@ -2645,6 +2728,11 @@ namespace jasperengine::editor{
         // unless the policy accepts the loss
         SaveResult writeMaterialFile(const std::filesystem::path& relativePath, const Material& material,
                                      DegradedSavePolicy policy = DegradedSavePolicy::Refuse, std::string* error = nullptr);
+        // The text of a .material with its identity, for an undoable write of it
+        std::string materialFileText(const std::filesystem::path& file, const Material& material);
+        // The Inspector's scene for a .material's rows: getScene answers to its id, no scene list
+        // holds it, so nothing else ever draws, saves or closes it
+        void setMaterialAssetScene(SceneProject* sceneProject) { materialAssetScene = sceneProject; }
         // The edges of the loaded documents, unsaved edits included (the index overlay)
         void collectMemoryEdges(std::unordered_map<Guid, std::vector<DepEdge>>& edges);
         // After assets moved: the path hints of the loaded documents follow their GUIDs

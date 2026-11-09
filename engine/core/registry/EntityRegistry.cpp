@@ -64,6 +64,9 @@
 #include "component/RotateTracksComponent.h"
 #include "component/RotationTweenComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
+#include "component/SortingGroupComponent.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -215,6 +218,11 @@ EntityRegistry::EntityRegistry() {
     registerComponent<AudioSnapshotComponent>(ComponentOrder::Insertion, "AudioSnapshotComponent");
     registerComponent<WaterExcluderComponent>(ComponentOrder::Insertion, "WaterExcluderComponent");
     registerComponent<WaterWakeComponent>(ComponentOrder::Insertion, "WaterWakeComponent");
+    // pixel art (S41)
+    registerComponent<PixelPerfectCameraComponent>(ComponentOrder::Insertion, "PixelPerfectCameraComponent");
+    // 2D sorting and Sprite Batch (S52)
+    registerComponent<SortingGroupComponent>(ComponentOrder::Insertion, "SortingGroupComponent");
+    registerComponent<SpriteBatchComponent>(ComponentOrder::Insertion, "SpriteBatchComponent");
     // S81 R58: after the last one, so no ComponentType moves
     registerComponent<TitleArtRendererComponent>(ComponentOrder::Insertion, "TitleArtRendererComponent");
     // complete: markChangedComponent may look into it

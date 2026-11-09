@@ -45,14 +45,29 @@ namespace jasperengine::editor::reload {
     // Whether a fork's entry points or #include closure hold one of `changed` (project- or
     // assets-relative); a fork whose sources no longer resolve counts as reached
     bool shaderSourcesReach(Project* project, const std::string& fork, int shaderType, const std::set<std::string>& changed);
+    // .aseprite/.ase: imported again on a worker; the sheet, pages, clips and previews swap in
+    // once the new pages are loaded (S44 R22)
+    void reloadAseprite(Context& ctx, const std::vector<std::filesystem::path>& files);
     // gltf/glb/obj/fbx: meshes, skins, morphs, animations of an unchanged hierarchy
     void reloadModels(Context& ctx, const std::vector<std::filesystem::path>& files);
     // .particles effects: read again; every Particle System playing one rebinds (S20 R1)
     void reloadParticleEffects(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // What a .particles file says wrong as it is now: errors and unknown fields
+    void addParticleEffectFileProblems(Project& project, const std::filesystem::path& path, Json& problems);
+    // graph files: another program's checked (their problems reported); open documents (the Graph
+    // Editor's) reload for those and for `documents` (the editor's own writes: write_file; removed
+    // files, whoever removed them); a full reload has every open document look at its file
+    void reloadGraphs(Context& ctx, const std::vector<std::filesystem::path>& external, const std::vector<std::filesystem::path>& documents);
+    void addGraphFileProblems(Project& project, const std::filesystem::path& path, Json& problems);
+    // .palette files (S43 R3): Palette Swap, Palette Quantize and the ramp strips made from them
+    void reloadPalettes(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Audio: a new sample for the next plays
     void reloadAudio(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Fonts: a new pool entry; the texts using it rebuild their atlas
     void reloadFonts(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // bitmap fonts (S51 AC23): a changed .bitmapfont, .fnt or page PNG drops the pooled fonts that
+    // read it; the Texts using them load again on their next update
+    void reloadBitmapFonts(Context& ctx, const std::vector<std::filesystem::path>& files);
     // .poseanim, .humanoid, .anim and .vat files (and models, for their sub-clips and a .vat's
     // mesh): the open pose, clip and Vertex Animation documents reload, the clip and Vertex
     // Animation pools drop what the players and Vertex Animators use; the load errors and warnings

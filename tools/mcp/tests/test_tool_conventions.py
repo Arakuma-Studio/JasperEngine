@@ -25,6 +25,7 @@ EDITOR = {"create": True, "name": "Tool Conventions CI"}
 
 import re
 
+import harness
 from harness import Editor, tool_meta
 
 ALLOWED_KEYWORDS = {"type", "enum", "required", "properties", "additionalProperties", "items", "minItems",
@@ -44,6 +45,8 @@ VERBS = {
     "verify", "enable", "disable", "validate", "convert", "cook", "paint", "place", "fill", "flatten", "profile",
     "test", "load", "reload", "simulate", "step", "pick", "show", "hide", "group", "ungroup", "align", "snap",
     "discard", "wait", "resolve", "retarget", "raycast", "reimport", "render", "control",
+    # S77: optimize_animation (bake would mislead next to bake_vertex_animation, cook is texture language)
+    "optimize",
     # S28: dismiss_crash_notice (marks a report handled, not a close), debug_crash (crashes on purpose)
     "dismiss", "debug",
     # S19: visualize_navigation (the spec's name: overlay flags and a Scene view image)
@@ -191,3 +194,20 @@ async def test_red_controls():
     }
     for label, tool in cases.items():
         assert tool_problems(tool, groups), f"red control {label!r} passed the checker"
+
+
+async def test_focus_window_names(ed: Editor):
+    """F14: every window focus_window handles is in its schema's enum, and its refusal lists it."""
+    source = (harness.REPO / "editor" / "mcp" / "tools" / "ViewTools.cpp").read_text()
+    start = source.index("void focusWindowTool(")
+    refusal = source.index('call->fail("window must be one of:', start)
+    handled = set(re.findall(r'window == "(\w+)"', source[start:refusal]))
+    ed.check(len(handled) > 15 and "animator" in handled, f"the names read from the handler: {sorted(handled)}")
+    tool = next(t for t in await ed.tools(groups="all") if t.name == "focus_window")
+    listed = set(tool.input_schema["properties"]["window"]["enum"])
+    ed.check_eq(sorted(handled - listed), [], "handled names missing from the enum")
+    ed.check_eq(sorted(listed - handled), [], "enum names nothing handles")
+    message = source[refusal:source.index(";", refusal)]
+    ed.check_eq(sorted(n for n in handled if not re.search(r"\b" + n + r"\b", message)), [], "names missing from its refusal")
+    r = await ed.call_raw("focus_window", {"window": "animator"})
+    ed.check(not r.is_error, f"focus_window animator: {r.text[:300]}")

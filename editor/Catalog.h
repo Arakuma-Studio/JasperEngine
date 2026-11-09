@@ -231,6 +231,11 @@ namespace jasperengine::editor{
         AudioSnapshotComponent,
         WaterExcluderComponent,
         WaterWakeComponent,
+        // pixel art (S41): integer scaling, Pixels Per Unit and the pixel-snap rule of a camera
+        PixelPerfectCameraComponent,
+        // 2D sorting and bulk sprites (S52): Unity's Sorting Group, and instances of a Sprite
+        SortingGroupComponent,
+        SpriteBatchComponent,
         // shows a .titleart through its Image or Sprite (S81 R1)
         TitleArtRendererComponent
     };

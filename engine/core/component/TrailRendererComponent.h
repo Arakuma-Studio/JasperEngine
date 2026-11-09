@@ -75,6 +75,10 @@ namespace jasperengine{
         bool autodestruct = false;
         // transparent queue order (Unity's sorting order), lower first
         int sortPriority = 0;
+        // Sorting Layer (a SortingLayers id) and Order in Layer (spec S52 R2): the 2D draw order
+        // and the transparent queue's first keys; 0 and 0 draw as before
+        int32_t sortingLayer = 0;
+        int32_t sortingOrder = 0;   // Order in Layer, -32768..32767
 
         // shader: as LineRendererComponent (the built-in line shader's ribbon variant, a
         // library lines shader or a fork); AUTO blend is alpha, AUTO depth write off

@@ -1,4 +1,4 @@
-formatVersion: 7
+formatVersion: 8
 guid: 25e1614af9e2418a7e7919404bb13615
 id: 4155373791
 name: 2D
@@ -54,6 +54,10 @@ shaderKeys:
     properties: 13
   - type: mesh
     properties: 3075
+  - type: mesh
+    properties: 70368744180739
+  - type: mesh
+    properties: 140737488358403
   - type: sky
   - type: depth
   - type: depth
@@ -133,6 +137,9 @@ shaderKeys:
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,FLASH
   - type: mesh
+    properties: 70368744180739
+    customShader: library:sprite#BLEND_ALPHA,FLASH
+  - type: mesh
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,GLOW
   - type: mesh
@@ -145,7 +152,13 @@ shaderKeys:
     properties: 3075
     customShader: library:sprite#BLEND_ALPHA,OUTLINE
   - type: mesh
+    properties: 140737488358403
+    customShader: library:sprite#BLEND_ALPHA,OUTLINE
+  - type: mesh
     properties: 3075
+    customShader: library:sprite#BLEND_ALPHA,OVERLAY
+  - type: mesh
+    properties: 140737488358403
     customShader: library:sprite#BLEND_ALPHA,OVERLAY
   - type: mesh
     properties: 3075

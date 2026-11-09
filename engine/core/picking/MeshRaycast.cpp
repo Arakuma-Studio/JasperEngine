@@ -16,6 +16,8 @@
 #include "component/UIComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "util/STBText.h"
+#include "pixelart/BitmapFont.h"
+#include "pixelart/BitmapText.h"
 
 #include <algorithm>
 #include <cmath>
@@ -331,6 +333,7 @@ namespace {
             Vector2 center(0, 0);
             if (const TextComponent* text = scene->findComponent<TextComponent>(leaf.entity)){
                 if (text->pivotBaseline && text->stbtext) center.y = (float)text->stbtext->getAscent();
+                if (text->pivotBaseline && text->bitmapText) center.y = text->bitmapText->getAscent(text->pixelUnit);
                 if (text->pivotCentered) center.x = layout->width / 2.0f;
             }
             const Matrix4 inverse = transform.modelMatrix.inverse();

@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Ember",
+  "author": "pixelfx",
+  "description": "pixelfx's 'ember' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "ember"},
+  "columns": 7,
+  "colors": ["#1a0a0e", "#3d1012", "#701a14", "#a8301a", "#e0561e", "#ff8a2a", "#ffc46a"],
+  "ramps": [
+    {"name": "ember", "colors": [0, 1, 2, 3, 4, 5, 6]}
+  ]
+}

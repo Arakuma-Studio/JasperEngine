@@ -17,6 +17,8 @@
 #include "window/dialog/ScriptCreateDialog.h"
 #include "util/ScriptAttach.h"
 #include "window/dialog/ShaderForkDialog.h"
+#include "window/AsepriteImporterView.h"
+#include "window/SheetPreviewTextures.h"
 #include "window/TextureImporterView.h"
 #include "window/ModelImporterView.h"
 #include "window/dialog/ComponentAddDialog.h"
@@ -53,9 +55,15 @@ namespace jasperengine{
 namespace jasperengine::particles {
     struct ParticleEffectDocument;
 }
+
+namespace jasperengine::anim {
+    struct AnimatorDebugSnapshot;
+}
 #include <tuple>
 
 namespace jasperengine::editor{
+
+    class BitmapFontInspector;
 
     namespace reflect {
         struct EnumDesc;
@@ -65,10 +73,12 @@ namespace jasperengine::editor{
 
     class SceneWindow;
     class CommandHistory;
+    struct PostProcessingPreset;
     class ForkShaderCmd;
     class MultiPropertyCmd;
     class AnimationClipDocument;
     class AnimatorAssetDocument;
+    class SpriteAtlasInspector;
     struct InspectorClipState;
     struct InspectorClipStateDeleter{
         void operator()(InspectorClipState* state) const;
@@ -157,6 +167,10 @@ namespace jasperengine::editor{
         float curveValueMin = 0.0f;
         float curveValueMax = 1.0f;
         std::vector<EnumEntry>* enumEntries = nullptr;
+        // Enum rows: one more item after a separator that runs this instead of choosing a value
+        // (the Sorting Layer's "Add Sorting Layer...", which opens Tags and Layers)
+        const char* enumExtraLabel = nullptr;
+        std::function<void()> enumExtraAction = nullptr;
         std::vector<int>* sliderValues = nullptr;
         std::function<void()> onValueChanged = nullptr;
         // Some texture properties only accept file/data-backed images.
@@ -209,6 +223,12 @@ namespace jasperengine::editor{
         std::unique_ptr<TextureImporterView> textureImporter;
         // and its model files (S53)
         std::unique_ptr<ModelImporterView> modelImporter;
+        std::unique_ptr<AsepriteImporterView> asepriteImporter;
+        // .bitmapfont, .fnt and TTF/OTF files (S51 R23; shared_ptr: declared, not defined, here)
+        std::shared_ptr<BitmapFontInspector> bitmapFontInspector;
+        // (shared: the type stays out of this header, which App.h includes; its sprite:: names would
+        // make `sprite` a namespace in every source that includes App.h)
+        std::shared_ptr<SpriteAtlasInspector> spriteAtlasInspector;
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;
@@ -232,6 +252,25 @@ namespace jasperengine::editor{
         std::set<std::string> usedPreviewIds;
 
         std::map<std::string, MaterialRender> materialRenders;
+        // the inspected .material: its values on a mesh no scene list holds, so the rows work on
+        // it as on any mesh, made on first use
+        struct MaterialAssetView {
+            SceneProject host;
+            Entity entity = NULL_ENTITY;
+            std::filesystem::path path;
+            std::filesystem::file_time_type time;
+            std::uintmax_t size = 0;
+            std::string error;
+            Material inFile;        // as the file holds it
+            Material inLinked;      // as the linked submeshes hold it
+            // each scene's unsaved mark before the edit reached the linked submeshes
+            std::map<uint32_t, bool> scenesModified;
+            Project* project = nullptr;
+            ~MaterialAssetView();
+        };
+        std::unique_ptr<MaterialAssetView> materialAsset;
+        int materialAssetFrame = -10;
+        int particleAssetFrame = -10;
         std::map<std::string, DirectionRender> directionRenders;
 
         MeshPreviewRender shapePreviewRender;
@@ -369,6 +408,7 @@ namespace jasperengine::editor{
         bool usePlayerClipFiles(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index, const std::vector<std::string>& files);
         void drawAnimationPlayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawAnimatorLive(const anim::AnimatorDebugSnapshot& snapshot);
         void drawAnimationPlayerClips(ComponentType cpType, SceneProject* sceneProject, Entity entity);
         void drawPlayerClipNameRow(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index);
         void drawPlayerDefaultClipRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
@@ -451,6 +491,14 @@ namespace jasperengine::editor{
         void drawAudioClipAsset(const std::filesystem::path& asset);
         // a .physicsmaterial: friction, bounciness and their combine modes (InspectorPhysics2D.cpp)
         void drawPhysicsMaterialAsset(const std::filesystem::path& asset);
+        // A .material as the Project window's selection (InspectorMaterialPbr.cpp): the rows of a
+        // submesh's material, on a mesh of a scene of its own. An edit reaches the linked submeshes
+        // as it is made and the file once its gesture ends, as one project undo step
+        void drawMaterialAsset(const std::filesystem::path& asset);
+        void readMaterialAsset(const std::filesystem::path& asset);
+        void writeMaterialAsset();
+        // the view stops: an edit still held goes to the file, nothing is held for later
+        void leaveMaterialAsset();
         // a .physicsmaterial path field (drop from the Project window, pick, clear) with undo
         bool physicsMaterialRow(ComponentType cpType, const std::string& property, const std::string& label,
                                 SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& help = "");
@@ -736,6 +784,15 @@ namespace jasperengine::editor{
         // (its own undo step) and true while dragging (merged until released)
         bool drawShaderPropertyValue(const ShaderManifestProperty& property, const std::string& id, const Vector4& value,
                                      Vector4& edited, bool& continuous, float itemWidth = -1.0f);
+        // A material's Palette Swap rows (S43 R35, under the manifest rows of materialPrefix
+        // "submeshes[N].material."), for each @palette slot that is on: Source Palette with
+        // Detect, Use Variants, Extra Targets, Active Palette (paletteRow), Cycling Speed
+        // (paletteCycleSpeed), and the warnings (the binding's build errors, a lossy texture with
+        // its Fix, the colours that will not swap with Show)
+        void drawShaderPaletteRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& shader,
+                                   const ShaderManifest& manifest, const std::string& materialPrefix,
+                                   const std::vector<std::string>& features, const ShaderUniformValues& params,
+                                   const std::function<void()>& onValueChanged);
         // A submesh material's Shader row and manifest rows; true when the built-in PBR rows
         // apply (built-in Lit or a fork)
         bool drawMaterialShaderRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
@@ -784,6 +841,10 @@ namespace jasperengine::editor{
         // every selected submesh as one undo step
         void drawMaterialPresetRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
                                    unsigned int submesh, const RowSettings& settingsMaterial);
+        // Every row of a submesh's material (the Mesh component's, and a .material's in
+        // drawMaterialAsset); onValueChanged runs after each edit
+        void drawSubmeshMaterialRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                     int s, const std::function<void()>& onValueChanged);
 
         // Scene-level variant: edits a scene default shader property (e.g. "default_mesh_shader"),
         // used by every component of that type whose customShader is empty.
@@ -819,6 +880,12 @@ namespace jasperengine::editor{
                                         const PostProcessingSettings::Field& field, const char* label,
                                         const std::string& help, bool indent);
         void drawPostProcessingCost(SceneProject* sceneProject, const PostProcessingSettings& settings);
+        // Palette Quantize's Palette cell (S43 R36): the palette field (a built-in is copied into
+        // the project), its swatches, "Baking..." while the renderer bakes its table, and the
+        // warning when the effect is on without a palette
+        void drawPostProcessingPaletteField(SceneProject* sceneProject, const PostProcessingSettings& settings);
+        // Applies a preset as one undo step (a built-in palette it names copied in with it)
+        void applyPostProcessingPreset(SceneProject* sceneProject, const PostProcessingPreset& preset);
 
         // ---- Fluid Simulation (InspectorFluid.cpp): Post-processing-style groups, presets, the
         // preview bar (FluidSystem::setPreview), the Scene view's Paint Dye toggle and the stats
@@ -895,12 +962,33 @@ namespace jasperengine::editor{
         void drawTitleArtRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the Pixel Perfect Camera (InspectorPixelArt.cpp, S41)
+        void drawPixelPerfectCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // 2D sorting and Sprite Batch (InspectorSorting.cpp, S52 R31-R33): a renderer's "Sorting
+        // Layer" (the project's layers, then Add Sorting Layer...) and "Order in Layer" rows, inside
+        // a table begun by the caller; cpType is the component holding the two fields
+        void drawSortingRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawSortingGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawSpriteBatchComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        std::vector<std::string> sortingLayerNames;
+        std::vector<EnumEntry> sortingLayerEntries;
         // "Inherited alpha 0.25 · not interactable · click-through (Canvas Group: Panel)" and a
         // Select button, when the entity is under a Canvas Group
         void drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity);
         void drawSafeAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAudioSnapshotComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // a sheet sprite's frame, Open in Aseprite, slice colliders, sprite properties (S44)
+        void drawSheetSpriteSection(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        // S45 (InspectorSpriteSheet.cpp): the frame picker, Native Size, the Slicer writing a
+        // texture's Sprite Mode, the legacy frames' Convert to Sprite Sheet
+        void drawSheetFramePicker(ComponentType cpType, SceneProject* sceneProject, Entity entity, const SpriteSheetData& sheet);
+        void drawSpriteNativeSize(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        void openSpriteSlicer(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& texture);
+        void drawLegacyFramesHeader(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        SheetPreviewTextures sheetThumbnails;
+        char sheetFrameSearch[96] = "";
+        std::string legacyConvertError;
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -939,6 +1027,8 @@ namespace jasperengine::editor{
                              SceneProject* sceneProject, const std::vector<Entity>& entities, bool visible = true);
         void drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // its table's rows, then a bitmap font's Pixel Font rows (S51 R22, InspectorPixelFont.cpp)
+        void drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPoseAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -1053,6 +1143,16 @@ namespace jasperengine::editor{
         void setOpen(bool open);
         bool isOpen() const;
         void focusNameInput();
+        // opened if closed, and focused on its next draw
+        void requestFocus();
+        // the Inspector drew a .material or a .particles this frame or the last: the edit keys
+        // and undo are the project's, not the selected GameObject's
+        bool showsProjectAsset() const;
+        // the Project window opened the .particles it has selected: the Inspector takes it again
+        // even if the same file was picked before
+        void showPickedParticleAgain() { lastProjectParticleFile.clear(); }
+        // the project closes: the .material view and its scene go, what it held written first
+        void resetMaterialAsset();
         // Component > Add... (main menu): opens the Add Component dialog for the selection
         void requestAddComponent();
         // Add Component's own path (the Search palette's components): one undo step per

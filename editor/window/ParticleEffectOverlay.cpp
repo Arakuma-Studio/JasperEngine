@@ -3,14 +3,25 @@
 
 #include "ParticleEffectOverlay.h"
 
+#include "EditorHost.h"
+#include "Out.h"
 #include "Project.h"
 #include "Theme.h"
+#include "component/CameraComponent.h"
 #include "component/ParticleSystemComponent.h"
+#include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
+#include "object/Camera.h"
+#include "render/SceneRender.h"
 #include "subsystem/ParticleSubsystem.h"
+#include "subsystem/ParticleSystemState.h"
+#include "util/FileUtils.h"
+#include "util/ProjectFileWrites.h"
 
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
+#include <cstdio>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -51,6 +62,40 @@ std::vector<Entity> ParticleEffectOverlay::targets(Project* project, SceneProjec
         }
     }
     return result;
+}
+
+// R34: the base-pixel grid (1 / PPU) around each previewed emitter, in an orthographic Scene view
+// zoomed in 4x or more
+void ParticleEffectOverlay::drawPixelGrid(Project* project, SceneProject* sceneProject, const std::vector<Entity>& systems, const ImVec2& canvasMin,
+                                          const ImVec2& canvasSize) {
+    if (!gizmos().pixelGrid || !sceneProject->sceneRender) return;
+    Camera* camera = sceneProject->sceneRender->getCamera();
+    if (!camera) return;
+    const CameraComponent& view = camera->getComponent<CameraComponent>();
+    if (view.type == CameraType::CAMERA_PERSPECTIVE) return;
+    const float ppu = (float)std::max(project->getPixelsPerUnit(), 1);
+    const float unitsHigh = std::fabs(view.topClip - view.bottomClip);
+    if (unitsHigh <= 0.0f) return;
+    const float zoom = canvasSize.y / unitsHigh / ppu;   // screen pixels per base pixel
+    if (zoom < 4.0f) return;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    auto toScreen = [&](const Vector3& world) {
+        const Vector4 clip = view.viewProjectionMatrix * Vector4(world.x, world.y, world.z, 1.0f);
+        const float w = std::fabs(clip.w) > 1e-6f ? clip.w : 1.0f;
+        return ImVec2(canvasMin.x + (clip.x / w * 0.5f + 0.5f) * canvasSize.x, canvasMin.y + (0.5f - clip.y / w * 0.5f) * canvasSize.y);
+    };
+    const ImU32 colour = IM_COL32(255, 255, 255, 40);
+    for (Entity entity : systems) {
+        const Transform* transform = sceneProject->scene->findComponent<Transform>(entity);
+        if (!transform) continue;
+        const float cx = std::floor(transform->worldPosition.x * ppu), cy = std::floor(transform->worldPosition.y * ppu);
+        const float z = transform->worldPosition.z;
+        const int reach = 24;
+        for (int k = -reach; k <= reach; k++) {
+            drawList->AddLine(toScreen(Vector3((cx + k) / ppu, (cy - reach) / ppu, z)), toScreen(Vector3((cx + k) / ppu, (cy + reach) / ppu, z)), colour);
+            drawList->AddLine(toScreen(Vector3((cx - reach) / ppu, (cy + k) / ppu, z)), toScreen(Vector3((cx + reach) / ppu, (cy + k) / ppu, z)), colour);
+        }
+    }
 }
 
 void ParticleEffectOverlay::update(Project* project, SceneProject* sceneProject, double dt) {
@@ -166,9 +211,13 @@ void ParticleEffectOverlay::draw(Project* project, SceneProject* sceneProject, c
     uint32_t live = 0;
     double simulateMs = 0.0, renderMs = 0.0, time = 0.0;
     double range = 1.0;
+    bool anyPixel = false, anyAnalytic = false, allAnalytic = !now.empty();
     for (size_t i = 0; i < now.size(); i++) {
         const ParticleSystemStats stats = particles->getStats(now[i]);
         live += stats.live;
+        anyPixel = anyPixel || stats.pixel;
+        anyAnalytic = anyAnalytic || stats.analytic;
+        allAnalytic = allAnalytic && stats.analytic;
         simulateMs += stats.simulateMicros / 1000.0;
         renderMs += stats.renderMicros / 1000.0;
         if (i == 0) time = stats.time;
@@ -208,13 +257,14 @@ void ParticleEffectOverlay::draw(Project* project, SceneProject* sceneProject, c
         if (ImGui::DragFloat("##speed", &speed, 0.01f, 0.0f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)) setSpeed(sceneProject->id, speed);
 
         ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted("Playback Time");
+        ImGui::TextUnformatted(allAnalytic ? "Analytic: exact" : "Playback Time");
+        if (allAnalytic && ImGui::IsItemHovered()) ImGui::SetTooltip("An Analytic effect is computed at the time: the scrub is exact and instant");
         ImGui::SameLine(labelWidth);
         ImGui::SetNextItemWidth(-FLT_MIN);
         float scrub = (float)std::min(time, range);
         if (ImGui::SliderFloat("##time", &scrub, 0.0f, (float)range, "%.2f s")) seek(project, sceneProject, scrub);
 
-        ImGui::Text("Particles  %u", live);
+        ImGui::Text("Particles  %u%s%s", live, anyPixel ? "  [pixel]" : "", anyAnalytic ? "  [analytic]" : "");
         ImGui::Text("Simulate  %.2f ms   Render  %.2f ms", simulateMs, renderMs);
 
         ImGui::AlignTextToFramePadding();
@@ -229,8 +279,17 @@ void ParticleEffectOverlay::draw(Project* project, SceneProject* sceneProject, c
         bool gizmoChanged = ImGui::Checkbox("Show Bounds", &g.bounds);
         gizmoChanged = ImGui::Checkbox("Show Colliders", &g.colliders) || gizmoChanged;
         gizmoChanged = ImGui::Checkbox("Show Force Fields", &g.forceFields) || gizmoChanged;
+        gizmoChanged = ImGui::Checkbox("Pixel Grid", &g.pixelGrid) || gizmoChanged;
+        ImGui::SetItemTooltip("The base-pixel grid (1 / Pixels Per Unit) around the emitters, when the Scene view is zoomed in 4x or more");
         if (gizmoChanged) sceneProject->needUpdateRender = true;
+        if (ImGui::Button(ICON_FA_ELLIPSIS "##particle_overlay_more")) ImGui::OpenPopup("##particle_overlay_menu");
+        if (ImGui::BeginPopup("##particle_overlay_menu")) {
+            // the effect's sprite sheet: the Particle Effect window's Record (S91), its Pixel Grid for pixel art
+            if (ImGui::MenuItem("Bake to Sprite Sheet...", nullptr, false, !now.empty())) getEditorHost().openParticleEffectSubtree(sceneProject->id, now.front());
+            ImGui::EndPopup();
+        }
     }
     ImGui::EndChild();
     ImGui::PopStyleColor();
+    drawPixelGrid(project, sceneProject, now, canvasMin, canvasSize);
 }

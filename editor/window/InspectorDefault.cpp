@@ -16,11 +16,11 @@
 #include "Theme.h"
 #include "component/FogComponent.h"
 #include "component/ModelComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "command/CommandHandle.h"
 #include "command/type/ReflectedValueCmd.h"
 #include "reflect/Enums.h"
 #include "reflect/Reflect.h"
-#include "subsystem/RenderSystem.h"
 #include "external/IconsFontAwesome6.h"
 
 #include "imgui.h"
@@ -393,6 +393,7 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::VolumetricCloudsComponent: return &InspectorWindow::drawVolumetricCloudsComponent;
         case ComponentType::ReflectionProbeComponent: return &InspectorWindow::drawReflectionProbeComponent;
         case ComponentType::UIDocumentComponent: return &InspectorWindow::drawUIDocumentComponent;
+        case ComponentType::TextComponent: return &InspectorWindow::drawTextComponent;
         case ComponentType::CameraComponent: return &InspectorWindow::drawCameraComponent;
         case ComponentType::AudioSourceComponent: return &InspectorWindow::drawAudioComponent;
         case ComponentType::AudioSnapshotComponent: return &InspectorWindow::drawAudioSnapshotComponent;
@@ -457,6 +458,11 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::TouchAreaComponent: return &InspectorWindow::drawTouchAreaComponent;
         case ComponentType::RagdollComponent: return &InspectorWindow::drawRagdollComponent;
         case ComponentType::CanvasGroupComponent: return &InspectorWindow::drawCanvasGroupComponent;
+        // pixel art (InspectorPixelArt.cpp)
+        case ComponentType::PixelPerfectCameraComponent: return &InspectorWindow::drawPixelPerfectCameraComponent;
+        // 2D sorting and Sprite Batch (InspectorSorting.cpp)
+        case ComponentType::SortingGroupComponent: return &InspectorWindow::drawSortingGroupComponent;
+        case ComponentType::SpriteBatchComponent: return &InspectorWindow::drawSpriteBatchComponent;
         default: return nullptr;
     }
 }

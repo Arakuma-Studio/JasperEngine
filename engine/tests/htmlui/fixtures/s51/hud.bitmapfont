@@ -1,0 +1,5 @@
+{
+  "format": "jasperengine.bitmapfont",
+  "version": 1,
+  "source": {"type": "grid", "image": "hud@6x9.png"}
+}

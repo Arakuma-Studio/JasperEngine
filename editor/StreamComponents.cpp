@@ -34,8 +34,11 @@
 #include "component/ScriptComponent.h"
 #include "component/LineRendererComponent.h"
 #include "subsystem/MeshSystem.h"
+#include "sprite/SpriteSheetPool.h"
+#include "sprite/SpriteSheet.h"
 #include "reflect/Reflect.h"
 #include "log/Logger.h"
+#include "StreamPreserved.h"
 #include "StreamSchema.h"
 #include "Catalog.h"
 #include "util/ProjectUtils.h"
@@ -80,7 +83,12 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     // past the count, what the generator will start from (the first slot exists before it ran)
     static const Submesh unbuilt{};
     for(unsigned int i = 0; i < std::max(mesh.numSubmeshes, numSubmeshes); i++) {
-        submeshesNode.push_back(encodeSubmesh(i == 0 || i < mesh.numSubmeshes ? mesh.submeshes[i] : unbuilt, embedTextureData, encodeGeneratedValues));
+        const bool built = i == 0 || i < mesh.numSubmeshes;
+        const Submesh& submesh = built ? mesh.submeshes[i] : unbuilt;
+        // the count the mesh's load gives, so a save does not depend on whether a frame loaded it
+        std::optional<unsigned int> vertexCount;
+        if (encodeGeneratedValues) vertexCount = built ? MeshSystem::loadedVertexCount(mesh, submesh) : submesh.vertexCount;
+        submeshesNode.push_back(encodeSubmesh(submesh, embedTextureData, vertexCount));
     }
     node["submeshes"] = submeshesNode;
 
@@ -134,6 +142,7 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["receiveShadows"] = YamlNumbers::text(mesh.receiveShadows);
     node["lodEnabled"] = YamlNumbers::text(mesh.lodEnabled);
     node["lodBias"] = YamlNumbers::text(mesh.lodBias);
+    encodeSortingFields(node, mesh.sortingLayer, mesh.sortingOrder);
     // the fade settings (spec S54 R9) only away from their defaults (MeshComponent's), so a
     // scene saved before them re-saves byte for byte
     if (mesh.lodFadeMode != LodFadeMode::CROSS_FADE)
@@ -258,6 +267,7 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["receiveShadows"]) mesh.receiveShadows = YamlNumbers::as<bool>(node["receiveShadows"]);
     if (node["lodEnabled"]) mesh.lodEnabled = YamlNumbers::as<bool>(node["lodEnabled"]);
     mesh.lodBias = decodeFinite(node["lodBias"], mesh.lodBias);
+    decodeSortingFields(node, mesh.sortingLayer, mesh.sortingOrder);
     // (omitted when at their defaults)
     mesh.lodFadeMode = node["lodFadeMode"] ? decodeEnum(node, "lodFadeMode", StreamSchema::lodFadeMode()) : LodFadeMode::CROSS_FADE;
     mesh.lodAnimateCrossFading = node["lodAnimateCrossFading"] ? YamlNumbers::as<bool>(node["lodAnimateCrossFading"]) : true;
@@ -288,7 +298,7 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
 
 YAML::Node editor::Stream::encodeAtlasSampler(const Texture& texture) {
     YAML::Node node;
-    const Texture defaults;
+    const Texture defaults = savedTexture();
     const bool samplerSet = texture.getMinFilter() != defaults.getMinFilter() || texture.getMagFilter() != defaults.getMagFilter() ||
         texture.getWrapU() != defaults.getWrapU() || texture.getWrapV() != defaults.getWrapV() ||
         texture.getAlphaBorder() != defaults.getAlphaBorder();
@@ -305,7 +315,7 @@ YAML::Node editor::Stream::encodeAtlasSampler(const Texture& texture) {
 
 void editor::Stream::decodeAtlasSampler(const YAML::Node& node, Texture& texture) {
     // a key left out (or a null node) is a new texture's value
-    const Texture defaults;
+    const Texture defaults = savedTexture();
     const bool map = node.IsMap();
     texture.setMinFilter(map && node["minFilter"] ? stringToTextureFilter(node["minFilter"].as<std::string>()) : defaults.getMinFilter());
     texture.setMagFilter(map && node["magFilter"] ? stringToTextureFilter(node["magFilter"].as<std::string>()) : defaults.getMagFilter());
@@ -404,6 +414,16 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
     return ui;
 }
 
+void editor::Stream::encodeSortingFields(YAML::Node& node, int32_t sortingLayer, int32_t sortingOrder) {
+    if (sortingLayer != 0) node["sortingLayer"] = sortingLayer;
+    if (sortingOrder != 0) node["sortingOrder"] = sortingOrder;
+}
+
+void editor::Stream::decodeSortingFields(const YAML::Node& node, int32_t& sortingLayer, int32_t& sortingOrder) {
+    sortingLayer = node["sortingLayer"] ? std::max(0, YamlNumbers::as<int32_t>(node["sortingLayer"])) : 0;
+    sortingOrder = node["sortingOrder"] ? std::clamp(YamlNumbers::as<int32_t>(node["sortingOrder"]), -32768, 32767) : 0;
+}
+
 YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) {
     YAML::Node node;
     node["enabled"] = YamlNumbers::text(sprite.enabled);
@@ -413,6 +433,24 @@ YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) 
     node["flipY"] = YamlNumbers::text(sprite.flipY);
     node["textureScaleFactor"] = YamlNumbers::text(sprite.textureScaleFactor);
     node["pivotPreset"] = pivotPresetToString(sprite.pivotPreset);
+    // S45 R6: optional, written only when not Simple (an older editor keeps it as unknown data)
+    if (sprite.drawMode != SpriteDrawMode::SIMPLE) node["drawMode"] = StreamSchema::spriteDrawMode().toString(sprite.drawMode);
+    // S41: written only away from their defaults (a scene of before is unchanged)
+    if (sprite.pixelsPerUnit != 0.0f)
+        node["pixelsPerUnit"] = YamlNumbers::text(sprite.pixelsPerUnit);
+    if (sprite.pixelRotation != PixelRotation::CAMERA)
+        node["pixelRotation"] = sprite.pixelRotation == PixelRotation::STEPS_90 ? "steps_90" : "on_grid";
+    // S52: Center is the default (Unity's)
+    if (sprite.spriteSortPoint != SpriteSortPoint::CENTER)
+        node["spriteSortPoint"] = "pivot";
+
+    // a sheet sprite (S44 R48): the sheet decides its frames; the inline ones are not saved
+    if (!sprite.sheet.empty()) {
+        encodeAssetRef(node, "sheet", sprite.sheet);
+        node["frame"] = YamlNumbers::integerText(sprite.frame);
+        node["frameName"] = sprite.frameName;
+        return node;
+    }
 
     YAML::Node framesNode;
     for (unsigned int i = 0; i < sprite.numFramesRect; i++) {
@@ -444,6 +482,37 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     if (node["flipY"]) sprite.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) sprite.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["pivotPreset"]) sprite.pivotPreset = decodeEnum(node, "pivotPreset", StreamSchema::pivotPreset());
+    if (node["drawMode"]) sprite.drawMode = decodeEnum(node, "drawMode", StreamSchema::spriteDrawMode());
+    if (node["sheet"]) {
+        const AssetRef sheet = decodeAssetRef(node, "sheet");
+        if (sheet.path != sprite.sheet.path) {
+            sprite.sheetData.reset();
+            sprite.builtFrame = -1;
+        }
+        sprite.sheet = sheet;
+        sprite.resolveFrameName = true;
+        sprite.needUpdateSprite = true;
+    }
+    if (node["frame"]) sprite.frame = YamlNumbers::as<int>(node["frame"]);
+    if (node["frameName"]) sprite.frameName = node["frameName"].as<std::string>();
+    // R48: a saved frame name the sheet no longer has falls back to the saved index, said in the
+    // load report (the sheet is the import the editor already has; none yet: nothing to check)
+    if (!sprite.sheet.empty() && !sprite.frameName.empty() && node["frameName"]) {
+        if (std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite.sheet.path)) {
+            if (sheet->findFrame(sprite.frameName) < 0 && sheet->frameCount() > 0) {
+                const int shown = std::clamp(sprite.frame, 0, sheet->frameCount() - 1);
+                StreamLoad::fallbackValue(node["frameName"], "the sheet " + sprite.sheet.path + " has no frame \"" + sprite.frameName +
+                                          "\": frame " + std::to_string(shown) + " (\"" + sheet->frames[static_cast<size_t>(shown)].name + "\") is shown");
+            }
+        }
+    }
+    if (node["pixelsPerUnit"]) sprite.pixelsPerUnit = std::max(0.0f, YamlNumbers::as<float>(node["pixelsPerUnit"]));
+    if (node["pixelRotation"]){
+        const std::string rotation = node["pixelRotation"].IsScalar() ? node["pixelRotation"].Scalar() : std::string();
+        sprite.pixelRotation = rotation == "steps_90" ? PixelRotation::STEPS_90 : (rotation == "on_grid" ? PixelRotation::ON_GRID : PixelRotation::CAMERA);
+    }
+    sprite.spriteSortPoint = (node["spriteSortPoint"] && node["spriteSortPoint"].IsScalar() && node["spriteSortPoint"].Scalar() == "pivot")
+        ? SpriteSortPoint::PIVOT : SpriteSortPoint::CENTER;
 
     if (node["framesRect"]) {
         const YAML::Node& framesNode = node["framesRect"];
@@ -478,6 +547,9 @@ YAML::Node editor::Stream::encodeTilemapComponent(const TilemapComponent& tilema
     node["automaticFlipY"] = tilemap.automaticFlipY;
     node["flipY"] = tilemap.flipY;
     node["textureScaleFactor"] = tilemap.textureScaleFactor;
+    // S41: written only away from its default
+    if (tilemap.pixelsPerUnit != 0.0f)
+        node["pixelsPerUnit"] = tilemap.pixelsPerUnit;
     node["reserveTiles"] = tilemap.reserveTiles;
 
     YAML::Node tilesRectNode;
@@ -512,6 +584,7 @@ TilemapComponent editor::Stream::decodeTilemapComponent(const YAML::Node& node, 
     if (node["flipY"]) tilemap.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) tilemap.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["reserveTiles"]) tilemap.reserveTiles = YamlNumbers::as<unsigned int>(node["reserveTiles"]);
+    if (node["pixelsPerUnit"]) tilemap.pixelsPerUnit = std::max(0.0f, YamlNumbers::as<float>(node["pixelsPerUnit"]));
 
     if (node["tilesRect"]) {
         const YAML::Node& tilesRectNode = node["tilesRect"];
@@ -1245,6 +1318,10 @@ YAML::Node editor::Stream::encodeRigidbody2DComponent(const Rigidbody2DComponent
         if (collider.receiver != NULL_ENTITY) {
             shapeNode["receiver"] = collider.receiver;
         }
+        // S44: written only when set (an older editor keeps it as unknown data)
+        if (!collider.slice.empty()) {
+            shapeNode["slice"] = collider.slice;
+        }
 
         YAML::Node pointsNode;
         for (const Vector2& point : collider.points) {
@@ -1332,6 +1409,8 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
             if (shapeNode["maskBits"]) collider.maskBits = YamlNumbers::as<uint16_t>(shapeNode["maskBits"]);
             if (shapeNode["groupIndex"]) collider.groupIndex = YamlNumbers::as<int16_t>(shapeNode["groupIndex"]);
             collider.receiver = shapeNode["receiver"] ? YamlNumbers::as<Entity>(shapeNode["receiver"]) : NULL_ENTITY;
+            collider.slice = shapeNode["slice"] ? shapeNode["slice"].as<std::string>() : std::string();
+            collider.sliceVisible = false;
 
             // "vertices": files of before
             const YAML::Node pointsNode = shapeNode["points"] ? shapeNode["points"] : shapeNode["vertices"];
@@ -1786,6 +1865,7 @@ YAML::Node editor::Stream::encodeParticleSystemComponent(const ParticleSystemCom
     node["playOnAwake"] = particles.playOnAwake;
     node["seed"] = particles.seed;
     node["playbackSpeed"] = particles.playbackSpeed;
+    encodeSortingFields(node, particles.sortingLayer, particles.sortingOrder);
     // written only when on, so a file from before it stays as it was
     if (particles.useUnscaledTime) node["useUnscaledTime"] = true;
     if (!particles.exposedValues.empty()){
@@ -1827,6 +1907,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     if (node["playOnAwake"]) particles.playOnAwake = YamlNumbers::as<bool>(node["playOnAwake"]);
     if (node["seed"]) particles.seed = YamlNumbers::as<uint32_t>(node["seed"]);
     if (node["playbackSpeed"]) particles.playbackSpeed = YamlNumbers::as<float>(node["playbackSpeed"]);
+    decodeSortingFields(node, particles.sortingLayer, particles.sortingOrder);
     // absent: off, over an old component too (it is written only when on)
     particles.useUnscaledTime = node["useUnscaledTime"] ? YamlNumbers::as<bool>(node["useUnscaledTime"]) : false;
     // written only when not empty: absent is none (over an old component too)
@@ -2303,6 +2384,7 @@ YAML::Node editor::Stream::encodePointsComponent(const PointsComponent& points) 
     node["enabled"] = points.enabled;
 
     node["maxPoints"] = points.maxPoints;
+    encodeSortingFields(node, points.sortingLayer, points.sortingOrder);
     node["transparent"] = points.transparent;
     node["autoTransparency"] = points.autoTransparency;
     node["texture"] = encodeTexture(points.texture);
@@ -2345,6 +2427,7 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
     if (oldPoints) { points = *oldPoints; }
 
     if (node["maxPoints"]) points.maxPoints = YamlNumbers::as<unsigned int>(node["maxPoints"]);
+    decodeSortingFields(node, points.sortingLayer, points.sortingOrder);
     if (node["transparent"]) points.transparent = YamlNumbers::as<bool>(node["transparent"]);
     if (node["autoTransparency"]) points.autoTransparency = YamlNumbers::as<bool>(node["autoTransparency"]);
     if (node["texture"]) points.texture = decodeTexture(node["texture"]);
@@ -2403,6 +2486,7 @@ YAML::Node editor::Stream::encodeLineRendererComponent(const LineRendererCompone
     node["enabled"] = lines.enabled;
 
     node["maxLines"] = lines.maxLines;
+    encodeSortingFields(node, lines.sortingLayer, lines.sortingOrder);
 
     YAML::Node linesNode;
     for (const LineData& line : lines.lines) {
@@ -2436,6 +2520,7 @@ LineRendererComponent editor::Stream::decodeLineRendererComponent(const YAML::No
     if (oldLines) { lines = *oldLines; }
 
     if (node["maxLines"]) lines.maxLines = YamlNumbers::as<unsigned int>(node["maxLines"]);
+    decodeSortingFields(node, lines.sortingLayer, lines.sortingOrder);
 
     if (node["lines"]) {
         lines.lines.clear();

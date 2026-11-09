@@ -1,0 +1,78 @@
+{ "frames": [
+   {
+    "filename": "file-tests-props 0.aseprite",
+    "frame": { "x": 0, "y": 0, "w": 64, "h": 64 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 64, "h": 64 },
+    "sourceSize": { "w": 64, "h": 64 },
+    "duration": 100
+   },
+   {
+    "filename": "file-tests-props 1.aseprite",
+    "frame": { "x": 64, "y": 0, "w": 64, "h": 64 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 64, "h": 64 },
+    "sourceSize": { "w": 64, "h": 64 },
+    "duration": 100
+   },
+   {
+    "filename": "file-tests-props 2.aseprite",
+    "frame": { "x": 128, "y": 0, "w": 64, "h": 64 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 64, "h": 64 },
+    "sourceSize": { "w": 64, "h": 64 },
+    "duration": 100
+   },
+   {
+    "filename": "file-tests-props 3.aseprite",
+    "frame": { "x": 192, "y": 0, "w": 64, "h": 64 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 64, "h": 64 },
+    "sourceSize": { "w": 64, "h": 64 },
+    "duration": 100
+   },
+   {
+    "filename": "file-tests-props 4.aseprite",
+    "frame": { "x": 256, "y": 0, "w": 64, "h": 64 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 64, "h": 64 },
+    "sourceSize": { "w": 64, "h": 64 },
+    "duration": 100
+   },
+   {
+    "filename": "file-tests-props 5.aseprite",
+    "frame": { "x": 320, "y": 0, "w": 64, "h": 64 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 64, "h": 64 },
+    "sourceSize": { "w": 64, "h": 64 },
+    "duration": 100
+   }
+ ],
+ "meta": {
+  "app": "http://www.aseprite.org/",
+  "version": "1.3.18.6-dev",
+  "image": "file-tests-props_sheet.png",
+  "format": "I8",
+  "size": { "w": 384, "h": 64 },
+  "scale": "1",
+  "frameTags": [
+   { "name": "Tag", "from": 1, "to": 3, "direction": "forward", "color": "#000000ff", "properties": {"a": "[unsupported type]", "b": {"a": "text", "b": 35.567, "c": "[unsupported type]"}, "ext": {"a": {"a": "[unsupported type]", "b": 43985943434}}} }
+  ],
+  "layers": [
+   { "name": "Tilemap 1", "opacity": 255, "blendMode": "normal" },
+   { "name": "Layer 3", "opacity": 255, "blendMode": "normal", "properties": {"a": "i'm the layer 3", "ext": {"a": 100}} },
+   { "name": "Layer 2", "opacity": 255, "blendMode": "normal" },
+   { "name": "Layer 1", "opacity": 255, "blendMode": "normal", "cels": [{ "frame": 3, "properties": {"a": "[unsupported type]", "b": {"a": "4", "b": "5", "c": "6"}, "ext": {"a": "[unsupported type]"}} }] }
+  ],
+  "slices": [
+   { "name": "Slice 2", "color": "#0000ffff", "keys": [{ "frame": 0, "bounds": {"x": 16, "y": 0, "w": 16, "h": 16 }, "center": {"x": 4, "y": 4, "w": 8, "h": 8 } }] },
+   { "name": "Slice 1", "color": "#0000ffff", "properties": {"a": "[unsupported type]", "b": "[unsupported type]", "ext": {"a": "[unsupported type]"}}, "keys": [{ "frame": 0, "bounds": {"x": 32, "y": 32, "w": 16, "h": 16 } }] }
+  ]
+ }
+}

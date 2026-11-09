@@ -15,6 +15,7 @@
 #include "window/AssetCreateMenu.h"
 
 #include <iostream>
+#include <map>
 #include "io/watch/FileWatcher.h"
 
 #include <filesystem>
@@ -61,6 +62,7 @@ namespace jasperengine::editor {
         ANIMATOR_ASSET,     // .controller (the Animator window), .mask, .montage (the Inspector)
         VERTEX_ANIMATION,   // .vat (the Inspector's asset view / the baker; an icon, no thumbnail)
         PHYSICS_MATERIAL,   // .physicsmaterial (the Inspector's asset view; an icon)
+        PALETTE,            // .palette (the Palette window; a thumbnail of its swatches)
         TITLE_ART           // .titleart (the Inspector's summary; the Title Designer, S82): its fresh output or a render
     };
 
@@ -180,6 +182,9 @@ namespace jasperengine::editor {
         Texture animationClipIcon;
         Texture physicsMaterialIcon;
         std::vector<uint8_t> physicsMaterialIconPixels;
+        // .palette files until their swatch thumbnail is made (S43 R37)
+        Texture paletteIcon;
+        std::vector<uint8_t> paletteIconPixels;
         std::vector<uint8_t> animationClipIconPixels;
         // and a crowd of three figures for .vat files (vertex animation spec 5.3)
         Texture vertexAnimationIcon;
@@ -355,6 +360,9 @@ namespace jasperengine::editor {
         // frames a material thumbnail waited for its shader variant or textures (main thread)
         int materialRenderWaits = 0;
         fs::path materialRenderWaitPath;
+        // the materials given up on (a texture that never loads), by the file's time then: what
+        // they drew is a stand-in, so no thumbnail is written and only a change asks again
+        std::map<std::string, fs::file_time_type> abandonedMaterialThumbnails; // guarded by thumbnailMutex
 
         fs::path pendingModelPath;
         bool hasPendingModelRender = false; // guarded by thumbnailMutex
@@ -414,7 +422,15 @@ namespace jasperengine::editor {
         // Sprite Normal Map: a generated PNG's badge and tooltip (its recipe, the watcher's
         // staleness), and the image context menu's items
         void updateSpriteNormalsBadge(FileEntry& file, const fs::path& path);
+        // a PNG a Procedural Material baked (its jasper.procmat recipe): the badge, yellow once the graph
+        // changed since (S90 R16), and what the tooltip says
+        void updateProceduralBakeBadge(FileEntry& file, const fs::path& path);
+        // both badges of an image, from scratch: the sprite-normals one, else the bake's
+        void updateImageBadges(FileEntry& file, const fs::path& path);
         void drawSpriteNormalsMenuItems(const FileEntry& file, const fs::path& imagePath);
+        // S43 R37: a palette's Export menu, a texture's Apply Palette... / Reduce Colours... /
+        // Extract Palette, a foreign palette file's Import as Palette
+        void drawPaletteMenuItems(const FileEntry& file, const fs::path& filePath);
         void collectSearchResults();
 
         // ---- S25 (ProjectWindowSearch.cpp)
@@ -473,6 +489,7 @@ namespace jasperengine::editor {
         // search the folder it started from (else the project root)
         fs::path listingFolder() const;
         // the Create items for a folder (Project window spec 6.6), as menu items
+        void createPixelParticleEffect(const std::string& preset, const std::filesystem::path& directory);
         void renderCreateItems(const fs::path& directory);
         void renderTreeContextMenu(const fs::path& folder);
         void startNewItem(AssetCreateKind kind, const fs::path& directory);
@@ -496,6 +513,9 @@ namespace jasperengine::editor {
         // state a thumbnail step waits on changed: wakes cancelThumbnailWork's wait, schedules a step
         void notifyThumbnailWork();
         ImTextureID getThumbnailTexture(const std::string& thumbnailPath, int& outWidth, int& outHeight);
+        // S44 R34: an .aseprite file's frame 0 from its import (its frames in turn when animate):
+        // the page texture, the frame's size and UVs; null before the first import
+        ImTextureID getAsepriteThumbnail(const fs::path& filePath, bool animate, int& outWidth, int& outHeight, ImVec2& uv0, ImVec2& uv1);
         void evictThumbnailTexture(const std::string& thumbnailKey);
         void enforceThumbnailCacheLimit();
         void clearThumbnailTextures();
@@ -593,6 +613,7 @@ namespace jasperengine::editor {
         void assetsCreateShakePreset(const fs::path& directory);
         // Assets > Create > Title Art (S80 R7): "New Title Art.titleart", baked at once
         void assetsCreateTitleArt(const fs::path& directory);
+        void assetsCreateProceduralMaterial(const fs::path& directory);
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
         void assetsCreateAudioMixer(const fs::path& directory);
@@ -600,6 +621,10 @@ namespace jasperengine::editor {
         // a shuffle event of the selected audio files
         void assetsCreateSoundEventFromClips();
         bool hasAudioSelection() const;
+        // S45: a .spriteatlas (empty, or packing the selected textures and .aseprite files)
+        void assetsCreateSpriteAtlas(const fs::path& directory);
+        void assetsCreateSpriteAtlasFromSelection();
+        bool hasSpriteSelection() const;
         // the sound commands (ProjectWindowSound.cpp)
         void assetsImportSoundEssentials();
         void assetsCreatePlaceholderSound(const fs::path& directory);
@@ -607,10 +632,13 @@ namespace jasperengine::editor {
         // Unity's Create > Physics Material / Physics Material 2D (the 2D preset: friction 0.4,
         // geometric mean / maximum)
         void assetsCreatePhysicsMaterial(bool preset2D, const fs::path& directory);
+        // Create > Palette: "New Palette.palette" (black and white) in `directory`, one project undo
+        // step, then renamed in place (S43 R37)
+        void assetsCreatePalette(const fs::path& directory);
         void assetsShowInFileManager();
         // The files selected in the folder view (absolute), for editor-script menu items
         std::vector<fs::path> getSelectedFiles() const;
-        // queued / cooking / failed over a texture's icon (S14 R23)
+        // queued / cooking / failed over a texture's icon (S14 R23), importing / failed over an .aseprite file's (S44 R34)
         void drawTextureCookBadge(ImDrawList* drawList, const FileEntry& file, ImVec2 min, ImVec2 max);
         void assetsOpenSelected();
         void assetsRenameSelected();

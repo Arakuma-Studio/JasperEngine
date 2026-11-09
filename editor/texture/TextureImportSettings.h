@@ -18,11 +18,13 @@
 #pragma once
 
 #include "texture/MipChain.h"
+#include "texture/TextureFilterMode.h"
 #include "texture/TexturePrepare.h"
 
 #include "yaml-cpp/yaml.h"
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -98,6 +100,7 @@ namespace jasperengine::editor {
         int mipLimit = 0;
         bool preserveCoverage = false;
         float alphaCutoff = 0.5f;
+        bool alphaClip = false;         // S42 R6: binary alpha at alphaCutoff
         bool flipGreen = false;
         TextureChannel channel = TextureChannel::R;
         TextureCookQuality quality = TextureCookQuality::Normal;
@@ -142,6 +145,13 @@ namespace jasperengine::editor {
         std::optional<TextureEffort> effort;
         std::optional<bool> streamable;
         std::optional<bool> shipSource;
+        // S42 R4, R6, R7: the Pixel Art switch (absent fields resolve to the Pixel Art defaults),
+        // binary alpha, and what an assignment copies onto a reference (Filter Mode) and onto a
+        // Sprite or Tilemap (Pixels Per Unit, 1...256)
+        std::optional<bool> pixelArt;
+        std::optional<bool> alphaClip;
+        std::optional<TextureFilterMode> filterMode;
+        std::optional<int> pixelsPerUnit;
         std::array<TexturePlatformSettings, kTextureFamilyCount> platforms;
         // keys this version does not know, kept as they were
         YAML::Node unknown;
@@ -157,6 +167,11 @@ namespace jasperengine::editor {
 
         TextureImportType resolvedType() const;
         ResolvedTextureSettings resolve(TextureFamily family, const TextureProjectSettings& project) const;
+        bool resolvedPixelArt() const { return pixelArt.value_or(false); }
+        // absent: Point under Pixel Art, else the project's Default Filter Mode
+        TextureFilterMode resolvedFilterMode(TextureFilterMode projectDefault) const;
+        // absent: the project's Pixels Per Unit
+        int resolvedPixelsPerUnit(int projectPixelsPerUnit) const { return pixelsPerUnit.value_or(projectPixelsPerUnit); }
         // the type's own default of a field (what an absent value means)
         static bool defaultSrgb(TextureImportType type);
         static bool defaultMipmaps(TextureImportType type);

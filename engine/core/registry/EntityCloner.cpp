@@ -51,6 +51,9 @@
 #include "component/RotationTweenComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/AudioSnapshotComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
+#include "component/SortingGroupComponent.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/TitleArtRendererComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
@@ -245,16 +248,8 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
         submesh.render = ObjectRender();
         submesh.depthRender = ObjectRender();
         submesh.gbufferRender = ObjectRender();
-        // the batch variants too (spec S55): the clone's load destroys what they hold, which
-        // were the original's pipelines
-        submesh.batchRender = ObjectRender();
-        submesh.batchDepthRender = ObjectRender();
-        submesh.batchShader.reset();
-        submesh.batchDepthShader.reset();
-        submesh.batchShaderProperties = 0;
-        submesh.batchDepthShaderProperties = 0;
-        submesh.batchShaderId = 0;
-        submesh.batchDepthShaderId = 0;
+        // the batch variants too (spec S55): the clone's load makes its own
+        submesh.batch.reset();
         // the clone's load makes its own extra pass (sharing it would let the clone write the
         // original's parameter blocks, and leave its pipelines to whichever is freed last)
         submesh.extraPass.reset();
@@ -474,6 +469,7 @@ template<>
 void prepare<TextComponent>(TextComponent& text, Entity, CloneContext&) {
     text.loaded = false;
     text.stbtext.reset();
+    text.bitmapText.reset();
     text.atlasVersion = 0;
     text.needReloadAtlas = false;
     text.needUpdateText = true;
@@ -936,6 +932,22 @@ void prepare<AudioSnapshotComponent>(AudioSnapshotComponent& snapshot, Entity, C
 }
 
 template<>
+void prepare<PixelPerfectCameraComponent>(PixelPerfectCameraComponent& camera, Entity, CloneContext&) {
+    // the copy's layout is made by the next render update
+    const PixelPerfectCameraComponent defaults;
+    camera.layout = defaults.layout;
+    camera.snappedPosition = defaults.snappedPosition;
+    camera.subpixelOffset = defaults.subpixelOffset;
+    camera.active = false;
+}
+
+template<>
+void prepare<SpriteBatchComponent>(SpriteBatchComponent& batch, Entity, CloneContext&) {
+    // instances are runtime data scripts fill: a copy starts empty, with GPU buffers of its own
+    batch.state.reset();
+}
+
+template<>
 void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, CloneContext& ctx) {
     layout.panel = ctx.remap(layout.panel);
     layout.needUpdateSizes = true;
@@ -1313,6 +1325,9 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<PixelPerfectCameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SortingGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SpriteBatchComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LightComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<Light2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ShadowCaster2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

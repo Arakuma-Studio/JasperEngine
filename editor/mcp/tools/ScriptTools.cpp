@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // W4: Lua/C++ scripts, compile check, code editor sync
+#include "sprite/SpriteSheetPool.h"
+#include "sprite/SpriteSheetSources.h"
 #include "camera/ShakePreset.h"
 #include "io/watch/LinkedFolders.h"
 #include "media/VideoFormats.h"
@@ -42,7 +44,6 @@
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
 #include "script/LuaBinding.h"
-#include "subsystem/RenderSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Material.h"
 #include "texture/Texture.h"
@@ -62,6 +63,7 @@
 #include "window/dialog/ScriptCreateDialog.h"
 #include "util/ScriptTemplates.h"
 
+#include "graph/GraphRegistry.h"
 #include "lua.hpp"
 #include "util/FileUtils.h"
 
@@ -116,6 +118,10 @@ std::string extensionOf(const fs::path& path) {
 std::string assetType(const fs::path& path) {
     const std::string p = path.string();
     if (Util::isImageFile(p)) return "texture";
+    // Aseprite files (S44): the sprite, its import settings and outputs
+    if (SpriteSheetPool::isAsepritePath(p)) return "aseprite_sprite";
+    // Sprite Atlases (S45)
+    if (SpriteSheetSources::isAtlasPath(p)) return "sprite_atlas";
     if (Util::isColorLutFile(p)) return "color_lut";
     if (Util::isParticleEffectFile(p)) return "particle_effect";
     if (Util::isModelFile(p)) return "model";
@@ -145,12 +151,12 @@ std::string assetType(const fs::path& path) {
 bool isTextFile(const fs::path& path) {
     static const std::set<std::string> text = {
         ".lua", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".hxx", ".inl",
-        ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg",
+        ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg", ".bitmapfont",
         ".glsl", ".vert", ".frag", ".hlsl", ".cmake", ".xml", ".gltf", ".obj", ".mtl", ".svg", ".tsx", ".tmx",
-        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake", ".titleart", ".soundevent"
+        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake", ".titleart", ".soundevent", ".particles"
     };
     if (path.filename() == "CMakeLists.txt" || path.filename() == "AGENTS.md") return true;
-    return text.count(extensionOf(path)) > 0;
+    return text.count(extensionOf(path)) > 0 || graph::GraphRegistry::get().kindForFile(FileUtils::pathToUtf8(path));
 }
 
 bool isEditorOwnedFile(Project* project, const fs::path& absolute, std::string& why) {

@@ -1160,6 +1160,10 @@ std::string SokolSystem::getDeviceName(){
     return sg_isvalid() ? std::string(sgj_device_name()) : std::string();
 }
 
+bool SokolSystem::isCpuDevice(){
+    return sg_isvalid() && sgj_device_is_cpu();
+}
+
 std::string SokolSystem::getApiVersion(){
     return sg_isvalid() ? std::string(sgj_api_version()) : std::string();
 }

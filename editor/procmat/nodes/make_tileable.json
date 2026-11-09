@@ -1,0 +1,59 @@
+{
+ "code": [],
+ "description": "Creates a tileable version of its input image by moving different parts around to hide seams.",
+ "format": 1,
+ "functions": [],
+ "id": "make_tileable",
+ "inputs": [
+  {
+   "default": "vec4(1.0)",
+   "description": "The image to be made tileable",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgba"
+  }
+ ],
+ "instance": [
+  "vec4 make_tileable_$(name)(vec2 uv, float w, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tvec4 a = $in(uv);",
+  "\tvec4 b = $in(fract(uv+vec2(0.5)));",
+  "\tfloat coef_ab = sin(1.57079632679*clamp((length(uv-vec2(0.5))-0.5+w)/w, 0.0, 1.0));",
+  "\tvec4 c = $in(fract(uv+vec2(0.25)));",
+  "\tfloat coef_abc = sin(1.57079632679*clamp((min(min(length(uv-vec2(0.0, 0.5)), length(uv-vec2(0.5, 0.0))), min(length(uv-vec2(1.0, 0.5)), length(uv-vec2(0.5, 1.0))))-w)/w, 0.0, 1.0));",
+  "\treturn mix(c, mix(a, b, coef_ab), coef_abc);",
+  "}",
+  ""
+ ],
+ "kind": "shader",
+ "name": "Make Tileable",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "A tileable version of the input image",
+   "expr": "make_tileable_$(name)($uv, 0.5*$w, _seed_variation_, _controlled_variation_)",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.1,
+   "description": "Width of the transition areas between parts of the input image",
+   "label": "",
+   "max": 0.25,
+   "min": 0,
+   "name": "w",
+   "short_description": "Width",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/make_tileable.mmg"
+ },
+ "type_version": 1
+}

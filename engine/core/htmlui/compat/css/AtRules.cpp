@@ -172,7 +172,9 @@ namespace {
 
     bool usableFormat(const std::string& format){
         return format == "truetype" || format == "opentype" || format == "ttf" || format == "otf" || format == "ttc" ||
-               format == "collection" || format == "truetype-variations" || format == "opentype-variations";
+               format == "collection" || format == "truetype-variations" || format == "opentype-variations" ||
+               // a bitmap font (S51 R15): the engine's own .bitmapfont and AngelCode BMFont
+               format == "bitmapfont" || format == "fnt";
     }
 
     std::string extensionOf(const std::string& url){
@@ -313,12 +315,12 @@ namespace {
             std::string list;
             for (const std::string& s : skipped)
                 list += (list.empty() ? "" : ", ") + s;
-            session.sink->reportAs(Severity::Info, codes::FontSource, srcRef, "font sources in " + list + " format are skipped (the engine reads TTF/OTF)");
+            session.sink->reportAs(Severity::Info, codes::FontSource, srcRef, "font sources in " + list + " format are skipped (the engine reads TTF/OTF and bitmap fonts)");
         }
         if (!chosen){
             // its own subject: the Info about skipped formats has the same code and location
             session.sink->reportAs(Severity::Warning, codes::FontSource, srcRef.valid() ? srcRef : rule.ref,
-                                   "@font-face '" + family + "' has no TrueType/OpenType source; the rule is dropped",
+                                   "@font-face '" + family + "' has no TrueType/OpenType or bitmap font source; the rule is dropped",
                                    "convert the font to TTF (remote fonts are imported as TTF by the editor)", std::string(), family);
             return;
         }
@@ -330,6 +332,8 @@ namespace {
         while (!assetPath.empty() && assetPath[0] == '/')
             assetPath.erase(0, 1);
         session.result->declaredFontFamilies.push_back(family);
+        if (chosen->format == "bitmapfont" || chosen->format == "fnt")
+            session.result->bitmapFontFamilies.push_back(family);
         writer.atRule("@font-face {", rule.ref);
         writer.atRule("font-family: " + family + ";", familyRef);
         writer.atRule("src: " + assetPath + ";", srcRef);

@@ -305,7 +305,8 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
                     edge.kind = DepEdgeKind::Other;
                     edge.field = field;
                     edge.expected = kind == particles::ParticleModules::AssetKind::Model ? AssetType::Model
-                                  : (kind == particles::ParticleModules::AssetKind::Effect ? AssetType::ParticleEffect : AssetType::Texture);
+                                  : kind == particles::ParticleModules::AssetKind::Effect ? AssetType::ParticleEffect
+                                  : kind == particles::ParticleModules::AssetKind::SoundEvent ? AssetType::SoundEvent : kind == particles::ParticleModules::AssetKind::Palette ? AssetType::Palette : AssetType::Texture;
                     edge.target = Guid::parse(guid);
                     edge.targetPath = toProjectRelative(roots, AssetPathBase::Assets, path);
                     if (edge.target.isNull()) {

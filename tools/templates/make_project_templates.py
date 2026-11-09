@@ -94,8 +94,12 @@ INFO = {
            "category": "Core", "order": 1, "accentColor": "#3F8F6B"},
     "2d": {"name": "2D", "description": "A 2D scene with a sprite moved by the arrow keys or WASD, on a 1280x720 letterboxed canvas.",
            "category": "Core", "order": 2, "accentColor": "#C27C2C"},
+    # S42 R21: Pixel Art Mode on, a 320x180 base drawn at whole scales, a Pixel Perfect Camera and lossless art
+    "2d-pixel-art": {"name": "2D Pixel Art", "description": "Pixel Art Mode: a 320x180 base at whole-number scales, a Pixel Perfect "
+                     "Camera, point-filtered lossless art and a sprite moved by the arrow keys or WASD.",
+                     "category": "Core", "order": 3, "accentColor": "#3D8FB0", "pixelArt": True},
     "ui": {"name": "UI", "description": "A main menu in HTML and CSS with Play and Quit buttons wired in Lua, on a 1920x1080 canvas.",
-           "category": "Core", "order": 3, "accentColor": "#9B4F96"},
+           "category": "Core", "order": 4, "accentColor": "#9B4F96"},
 }
 
 
@@ -150,13 +154,41 @@ async def build_2d(ed: Editor) -> None:
     await ed.call("create_script", kind="lua", name="PlayerMove", directory="scripts", content=PLAYER_MOVE, scene=sid, entity=player)
 
 
+async def build_2d_pixel_art(ed: Editor) -> None:
+    # the preset's project settings, then what Pixel Art Mode gives new things: the scene's Main
+    # Camera with a Pixel Perfect Camera, the art imported as pixel art, the reference point-filtered
+    await ed.call("set_project_settings", values={"pixel_art.enabled": True, "graphics.canvas_width": 320, "graphics.canvas_height": 180,
+                                                   "graphics.scaling_mode": "integer", "graphics.pixels_per_unit": 1,
+                                                   "graphics.default_filter_mode": "point", "player.window_width": 1280,
+                                                   "player.window_height": 720})
+    # every Device Tier at full resolution: a lower Render Scale stretches the art back bilinear (render_scale)
+    await ed.call("set_project_settings", values={f"quality.device_tiers.{group}.{tier}": {"render_scale": 1}
+                                                   for group in ("desktop", "mobile", "web") for tier in ("low", "medium")})
+    sid = await main_scene(ed, "2D")
+    art = await ed.call("generate_placeholder_art", path="sprites/player.png", width=16, height=16, shape="rounded_rect",
+                        corner_radius=3, color="#F2B33D", outline_color="#5C3B0A", outline_width=1)
+    player = (await ed.call("create_entity", scene=sid, type="sprite", name="Player", position=[152, 82, 0],
+                            values={"sprite": {"width": 16, "height": 16},
+                                    "mesh": {"submeshes[0].material.baseColorTexture": art["path"]}}))["entity_id"]
+    await ed.call("create_script", kind="lua", name="PlayerMove", directory="scripts", content=PLAYER_MOVE, scene=sid, entity=player)
+    # the art's import settings are written by the first cook: wait for them before the copy
+    for _ in range(100):
+        meta = (ed.project / "sprites" / "player.png.meta")
+        if meta.exists() and "pixelArt" in meta.read_text():
+            break
+        await ed.call("wait", frames=10)
+    checked = await ed.call("check_pixel_art")
+    if checked.get("verdict") != "clean":
+        raise SystemExit(f"2d-pixel-art is not clean: {json.dumps(checked)[:2000]}")
+
+
 async def build_ui(ed: Editor) -> None:
     await ed.call("set_project_settings", values={"graphics.canvas_width": 1920, "graphics.canvas_height": 1080})
     sid = await main_scene(ed, "UI")
     await ed.call("create_ui_document", scene=sid, html="ui/main_menu.html", name="Main Menu", template="main_menu", script=True)
 
 
-BUILDERS = {"empty": build_empty, "3d": build_3d, "2d": build_2d, "ui": build_ui}
+BUILDERS = {"empty": build_empty, "3d": build_3d, "2d": build_2d, "2d-pixel-art": build_2d_pixel_art, "ui": build_ui}
 
 
 def png_size(data: bytes) -> tuple[int, int]:

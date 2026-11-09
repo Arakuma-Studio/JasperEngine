@@ -69,10 +69,13 @@ jasperengine_skip_unity_build(
     SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorBlendTreeTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorHumanoidTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorPropertyThreadTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorRetargetTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorStateMachineTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorSystemTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/ClipIOTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/ClipMemoryTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/ProfilerAnimationTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/HumanoidModelTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/KeyframeSamplingTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/SubClipPoolTest.cpp
@@ -98,6 +101,7 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/render/ObjectRenderShaderGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/ParticlesGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/RenderGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/SpriteSheetRenderGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/render/WaterFeaturesGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/spline/SplineCornerTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp
@@ -107,8 +111,28 @@ jasperengine_skip_unity_build(
     REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/platform/X11VisibilityTest.cpp)
 
+# S90: the Procedural Material evaluator is the editor's, but its GPU suites need the headless device
+# only this tree has (procmat/*GpuTest.cpp). It uses the engine's render layer and nothing of the editor.
+set(CORE_TEST_PROCMAT_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/NodeLibrary.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProcMatExpander.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralMaterialKind.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/PassPlanner.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralGpuEvaluator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralCpuEvaluator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralTieredEvaluator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProcMatThumbnails.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/ProceduralDevice.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/SpirvInterpreter.cpp)
+jasperengine_skip_unity_build(
+    REASON "the editor's own sources: its unity units do not hold them"
+    SOURCES ${CORE_TEST_PROCMAT_SOURCES})
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/../../../editor/procmat/SpirvInterpreter.cpp PROPERTIES
+    INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/../../libs/shadercompiler/libs/glslang)
+
 jasperengine_add_test_target(jasperengine-core-tests
-    SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
+    SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER} ${CORE_TEST_PROCMAT_SOURCES}
         # the animation clip tests' asset root (a temporary directory around each of them)
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimTestEnvironment.cpp
         # the vertex animation tests' asset root, and their asset and GLB fixtures
@@ -198,6 +222,19 @@ jasperengine_skip_unity_build(
     REASON "ProfilerCompileOutTest compiles the profiling macros with the profiler off"
     SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/profiler/ProfilerCompileOutTest.cpp)
 
+# PixelColorDeterminism.UnoptimisedBuildMatches (S43 AC5): the pixel-art colour maths built a
+# second time without optimisation, in a namespace of its own, against the engine's optimised copy
+set(PIXELART_O0_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/pixelart/PixelColorO0.cpp)
+target_sources(jasperengine-core-tests PRIVATE ${PIXELART_O0_SOURCE})
+if(MSVC)
+    set_source_files_properties(${PIXELART_O0_SOURCE} PROPERTIES COMPILE_OPTIONS "/Od;/fp:precise")
+else()
+    set_source_files_properties(${PIXELART_O0_SOURCE} PROPERTIES COMPILE_OPTIONS "-O0;-ffp-contract=off")
+endif()
+jasperengine_skip_unity_build(
+    REASON "PixelColorO0.cpp compiles engine/core/pixelart/PixelColor.cpp again in a renamed namespace"
+    SOURCES ${PIXELART_O0_SOURCE})
+
 # the logger's backtraces name the test functions (LoggerTest.ErrorCarriesBacktrace): dladdr
 # sees the executable's symbols
 set_target_properties(jasperengine-core-tests PROPERTIES ENABLE_EXPORTS ON)
@@ -212,6 +249,7 @@ add_executable(je-bench-nav ${CMAKE_CURRENT_SOURCE_DIR}/bench/NavBench.cpp ${COR
 # je-bench-splines: the spline budgets (S18 R18-R21, docs/perf/splines.md)
 add_executable(je-bench-splines ${CMAKE_CURRENT_SOURCE_DIR}/bench/SplineBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/bench/AnimBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
+target_compile_definitions(je-bench-anim PRIVATE JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 # je-bench-audio: the loudness budgets (S38 R16-R17)
 add_executable(je-bench-audio ${CMAKE_CURRENT_SOURCE_DIR}/bench/AudioMeterBench.cpp)
 foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio)

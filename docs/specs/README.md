@@ -12,7 +12,7 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
   `std::span`, designated initializers, `<bit>`, ranges where they compile on all our toolchains:
   GCC 11 (the Ubuntu 22.04 container), Clang/Xcode, MSVC, Android NDK, Emscripten).
 - **Platforms are non-negotiable.** Everything that runs in a game must work on all our graphics
-  backends (GL 3.3 core, GLES3/WebGL2, Metal, D3D11, Vulkan via sokol-gfx) and all export targets
+  backends (GL 4.1 core, GLES3/WebGL2, Metal, D3D11, Vulkan via sokol-gfx) and all export targets
   (Windows, Linux, macOS, Android, iOS, HTML5). No feature may *require* compute shaders, SSBOs,
   bindless, indirect draws or 64-bit atomics. A desktop-only fast path is allowed only with a
   working fallback that produces equivalent results.
@@ -134,6 +134,7 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S74 | Navigation fixes: upstream Recast/Detour patches, bake failure feedback, crowd path status without a synchronous search, link auto update, carving obstacle registry and count budget, Recast diagnostics, height range guard, editor/MCP defects | 5 (navigation) |
 | S75 | Navigation diagnostics: path failure reasons, islands and coverage, locate, walkability probe, one findings list (window, CLI, export, MCP), bake report, Path Tester, diagnostic overlays | 5 (navigation) |
 | S76 | Navigation gameplay API: random points, wall distance, move along surface, path cost and area crossings, per-query and per-agent area costs, runtime area overrides (doors, bridges), link activated/occupied, agent path/root-motion/stuck API, Lua handles for obstacles, links and modifiers | 5 (navigation) |
+| S77 | Clip quality: clip memory and stats, Animator property-write race, tiered slerp, key reduction with a measured bound, `check_animation` and `optimize_animation`, model clip settings, IK accuracy and debug (ideas after ozz-animation, nothing vendored) | follow-ups |
 | S80 | Title Art core: `.titleart` document v1, member schema, shared renderer (2D) with RGBA8 fallback, text and fonts core, layers, compositor and 18 blend modes, core effects and the effect/generator registry, bake with sidecar and stale detection, float readback, `title_art` MCP group and `diff_images`, the program's hooks, module and budget rules | 6 (title art) |
 | S81 | Title Art runtime: Title Art Renderer component, Render Mode Baked / Realtime / Glyph Atlas, time-sliced scheduler, live layers (`library:title_fx`), Lua `TitleArt`, clip rows and events, `titleart` module wiring and sub-options, export (font subsetting, Characters, embedding, credits) | 6B (title art) |
 | S82 | Title Designer: the window, Layers, Properties with live search, canvas and 2D/3D gizmos, text editing with IME, Library panel UI, History, style lint UI, font picker (Google Fonts, system fonts, `.woff`/`.woff2`) | 6B (title art) |
@@ -142,3 +143,6 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S85 | Title animation: named animations in `.titleart`, field classes per Render Mode, Animation Presets, flipbooks, Lua play API, clips and the Animation panel | 6C (title art) |
 | S86 | 3D titles: extrude, inflate, bevels and bands, Title Lit materials (chrome, gold, glass, gems), HDR title environments, 3D glints and AO, Baked image/GLB and Realtime 3D quality tiers | 6B (title art) |
 | S87 | Title localisation and interchange: languages, translations, fit and per-language bakes; Pachislop, Photoshop style/PSD and SVG import; PNG, PSD, SVG, sheet, atlas and KTX2 export | 6C (title art) |
+| BF23 | Fixes from the authoring audit: sub-emitter drawing, silent agent failures in the graph and particle tools, Animator window bugs, doc drift; lands before S90 and S91 | Authoring (fixes first) |
+| S90 | Procedural Material: `.procmat` node graphs baked in the editor to 8-bit textures and a `.material`, evaluated on GPU, then software renderer, then a CPU SPIR-V interpreter; node library ported as data from Material Maker behind a licence deny-list | Authoring (spec-first) |
+| S91 | Effect authoring on S20: Particle Effect window, timing bars, `preview_particle_effect` filmstrip and checks, sub-emitter drawing, distortion, ring renderer, triggers, dynamic parameters, sprite-sheet bake; ideas only from Effekseer | Authoring (spec-first) |

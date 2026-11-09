@@ -2,19 +2,23 @@
 // SPDX-License-Identifier: MIT
 
 // A mesh holds as many submeshes and buffers as its model has (mesh-memory spec): no capacity in a
-// game or the editor. The main thread gives each mesh node of a model its own mesh; off the main
-// thread the nodes bake into one mesh (MeshSystem::loadGLTF's flatten path: a preview, a game's
-// loading thread), which held at most 16 submeshes and 30 buffers before and left the rest out.
+// game or the editor. The main thread and a game's loading thread give each mesh node of a model its
+// own mesh (S65); a preview off the main thread bakes the nodes into one mesh (MeshSystem::loadGLTF's
+// flatten path), which held at most 16 submeshes and 30 buffers before and left the rest out.
 // Whole primitives either way (a primitive without some of its buffers drew with no position and
 // made a pipeline with a hole in its attributes). glcore and Vulkan.
 
 #include "Engine.h"
 #include "Scene.h"
+#include "component/CameraComponent.h"
 #include "component/MeshComponent.h"
+#include "component/Transform.h"
 #include "object/Camera.h"
 #include "object/Light.h"
 #include "object/Model.h"
 #include "render/ObjectRender.h"
+#include "render/SystemRender.h"
+#include "render/VisibleList.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 
@@ -282,4 +286,110 @@ TEST(ModelCapacityGpu, APreviewOffTheMainThreadKeepsEveryPrimitive){
         expectWholePrimitives(mesh, "AnisotropyStrengthTest");
     });
     EXPECT_EQ(log.count(D_LOG_WARN, "left out"), 0u);
+}
+
+namespace {
+
+    // an OBJ of `count` plates side by side along x in [-3, 3], a material each: one mesh of
+    // `count` submeshes (MeshSystem::loadOBJ), in the reverse of the order they were allocated
+    std::string writeObjPlates(TempDir& dir, int count){
+        std::ofstream obj(dir.file("plates.obj"));
+        std::ofstream mtl(dir.file("plates.mtl"));
+        obj << "mtllib plates.mtl\nvn 0 1 0\n";
+        for (int p = 0; p < count; p++){
+            const float step = 6.0f / (float)count;
+            const float x0 = -3.0f + step * (float)p, x1 = x0 + step * 0.8f;
+            mtl << "newmtl plate" << p << "\nKd " << 0.2f + 0.8f * (float)p / (float)count << " 0.8 0.3\nNs 0\nd 1\n";
+            obj << "v " << x0 << " 0 -1\nv " << x1 << " 0 -1\nv " << x1 << " 0 1\nv " << x0 << " 0 1\n";
+            const int v = p * 4;
+            obj << "usemtl plate" << p << "\nf " << v + 1 << "//1 " << v + 3 << "//1 " << v + 2 << "//1\nf " << v + 1 << "//1 " << v + 4 << "//1 " << v + 3 << "//1\n";
+        }
+        return dir.file("plates.obj").generic_string();
+    }
+
+    // the runs of pixels unlike the background along the middle row of the target: the plates
+    // cross it at z = 0, seen from a camera in the plane x = its target's x
+    int platesOnTheMiddleRow(){
+        Framebuffer& target = GpuEnvironment::target();
+        const std::vector<uint8_t> rgba = readTarget();
+        const int width = (int)target.getWidth();
+        const int row = (int)target.getHeight() / 2;
+        if (rgba.size() < (size_t)(row + 1) * width * 4)
+            return -1;
+        const uint8_t* background = &rgba[(size_t)row * width * 4];
+        int runs = 0;
+        bool inside = false;
+        for (int x = 0; x < width; x++){
+            const uint8_t* pixel = &rgba[((size_t)row * width + x) * 4];
+            int largest = 0;
+            for (int c = 0; c < 3; c++)
+                largest = std::max(largest, std::abs((int)pixel[c] - (int)background[c]));
+            const bool plate = largest > 24;
+            runs += (plate && !inside) ? 1 : 0;
+            inside = plate;
+        }
+        return runs;
+    }
+
+}
+
+// A pass culls a mesh's submeshes by their own bounds (spec S55 R4). Submeshes are allocated one by
+// one (mesh-memory), so their bounds are not a stride apart: read that way, the cull tested other
+// memory and dropped submeshes on screen, a different set each run (an OBJ of 24 materials drew
+// without some of its plates), and kept submeshes off screen.
+TEST(ModelCapacityGpu, EverySubmeshIsCulledByItsOwnBounds){
+    JASPER_REQUIRE_GPU();
+    ASSERT_TRUE(SystemRender::isDrawBatching()) << "the visible lists cull only with GPU Instancing on";
+    TempDir dir;
+    const int plates = 24;
+    const std::string file = writeObjPlates(dir, plates);
+
+    Scene scene;
+    Camera camera(&scene);
+    camera.setType(CameraType::CAMERA_PERSPECTIVE);
+    camera.setPosition(0.0f, 7.0f, 3.0f);
+    camera.setTarget(0.0f, 0.0f, 0.0f);
+    camera.activate();
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(0.0f, -1.0f, 0.0f);
+    sun.setShadows(false);
+    Engine::setScene(&scene);
+    // (off the engine however the test ends)
+    struct Removal { Scene* scene; ~Removal(){ Engine::removeScene(scene); } } removal{&scene};
+    Model model(&scene);
+    ASSERT_TRUE(model.loadModel(file)) << file;
+    Scene* current = &scene;
+    ASSERT_TRUE(GpuEnvironment::runFrames([current](){
+        return current->getSystem<RenderSystem>()->isAllLoaded();
+    }));
+    GpuEnvironment::drawFrames(3);
+    const MeshComponent& mesh = scene.getComponent<MeshComponent>(model.getEntity());
+    ASSERT_EQ(mesh.numSubmeshes, (unsigned int)plates);
+
+    // every plate on screen draws
+    EXPECT_EQ(platesOnTheMiddleRow(), plates);
+    EXPECT_EQ(Engine::getFrameStats().culled, 0u);
+    EXPECT_EQ(Engine::getFrameStats().visible, (uint32_t)plates);
+
+    // the camera moved right: the plates out of its frustum are culled, the others kept
+    camera.setPosition(5.0f, 7.0f, 3.0f);
+    camera.setTarget(5.0f, 0.0f, 0.0f);
+    GpuEnvironment::drawFrames(3);
+    const CameraComponent& view = scene.getComponent<CameraComponent>(camera.getEntity());
+    VisibleFrustum frustum;
+    frustum.planes = view.frustumPlanes;
+    frustum.farClip = view.farClip;
+    const Matrix4& modelMatrix = scene.getComponent<Transform>(model.getEntity()).modelMatrix;
+    uint32_t outside = 0;
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        AABB world = mesh.submeshes[s].localBounds;
+        world.transform(modelMatrix);
+        outside += VisibleList::isInside(frustum, world) ? 0u : 1u;
+    }
+    ASSERT_GT(outside, 0u) << "the view should leave plates out";
+    ASSERT_LT(outside, (uint32_t)plates);
+    EXPECT_EQ(Engine::getFrameStats().culled, outside);
+    EXPECT_EQ(Engine::getFrameStats().visible, plates - outside);
+    EXPECT_NO_ENGINE_ERRORS();
 }

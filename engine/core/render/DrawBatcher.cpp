@@ -46,6 +46,10 @@ const char* jasperengine::getBatchBreakName(BatchBreak reason){
         case BatchBreak::INELIGIBLE_FLUID: return "ineligible_fluid";
         case BatchBreak::INELIGIBLE_NOT_READY: return "ineligible_not_ready";
         case BatchBreak::DISABLED: return "disabled";
+        case BatchBreak::PIXEL_SNAP: return "pixel_snap";
+        case BatchBreak::CUSTOM_PARAMS: return "custom_params";
+        case BatchBreak::INELIGIBLE_PIXEL_SNAP_PIVOT: return "ineligible_pixel_snap_pivot";
+        case BatchBreak::INELIGIBLE_FRAME_RECT: return "ineligible_frame_rect";
         case BatchBreak::COUNT: break;
     }
     return "unknown";
@@ -176,11 +180,11 @@ BatchRun& DrawBatcher::place(const BatchKey& key, const BatchHead& head, const B
         reason = newest.key.compare(key);
         if (reason == BatchBreak::NONE && !fits(newest))
             reason = BatchBreak::RUN_VERTEX_LIMIT;
-        if (reason == BatchBreak::NONE){
-            if (newest.sortKey != item.sortKey)
-                newest.sortKey = UINT64_MAX; // a run spanning buckets: nothing may jump over it
+        // a run holds one bucket (S52 R7: Sorting Layers are where batches break, as in Unity)
+        if (reason == BatchBreak::NONE && newest.sortKey != item.sortKey)
+            reason = BatchBreak::SORT_BUCKET;
+        if (reason == BatchBreak::NONE)
             return join(newest);
-        }
 
         if (mode == BatchMode::GROUP){
             for (size_t r = 0; r + 1 < openRuns; r++){

@@ -9,12 +9,17 @@
 #include "pool/ShaderPool.h"
 #include "render/SceneRender.h"
 #include "spritenormals/SpriteNormalsWatcher.h"
+#include "pixelart/PixelArtMode.h"
 #include "window/AnimationWindow.h"
 #include "window/AnimatorWindow.h"
 #include "window/AssetPanels.h"
+#include "window/ApplyPaletteDialog.h"
 #include "window/AudioMixerWindow.h"
+#include "window/ParticleEffectWindow.h"
 #include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
+#include "window/GraphEditorWindow.h"
+#include "window/ProceduralMaterialWindow.h"
 #include "window/AvatarWindow.h"
 #include "window/CodeEditor.h"
 #include "window/GameWindow.h"
@@ -23,6 +28,8 @@
 #include "window/InspectorWindow.h"
 #include "window/LoadingWindow.h"
 #include "window/MainToolbar.h"
+#include "window/PaletteWindow.h"
+#include "window/PixelArtCheckWindow.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/PlayInput.h"
 #include "window/PoseAnimationWindow.h"
@@ -32,15 +39,18 @@
 #include "window/TitleDesignerWindow.h"
 #include "window/InspectorWindowTitleArt.h"
 #include "titleart/designer/TitleCanvasView.h"
+#include "window/SpritePreviewWindow.h"
 #include "window/StatusBar.h"
 #include "window/SystemsWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
+#include "sprite/SpriteAtlasBuilder.h"
 #include "component/TilemapComponent.h"
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
 #include "particles/ParticleEffectLibrary.h"
+#include "pixelart/PaletteSwap.h"
 #include "util/ParticleMigrationReport.h"
 #include "AppMenuCommand.h"
 #include "util/NumericExpression.h"
@@ -80,6 +90,8 @@
 #include "window/MeshAuditWindow.h"
 #include "window/BuildReportWindow.h"
 #include "window/ImporterFields.h"
+#include "window/AnimationStatisticsWindow.h"
+#include "window/ReduceKeysDialog.h"
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "profiler/FrameTimes.h"
@@ -113,6 +125,8 @@
 #include "window/BookmarksWindow.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "pixelart/aseprite/AsepriteEditorHooks.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
 
 #include "util/CrashHandler.h"
 #include "util/EditorDiagnostics.h"
@@ -148,6 +162,8 @@
 #include "util/ProjectChecks.h"
 #include "titleart/TitleArtDocument.h"
 #include "titleart/TitlePreviewQueue.h"
+#include "particles/ParticleEffectPreview.h"
+#include "procmat/ProceduralRun.h"
 #include "util/FileUtils.h"
 #include "io/UserSettings.h"
 #include "io/UserSettingsStore.h"
@@ -249,8 +265,17 @@ editor::App::App(){
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     audioMixerWindow = new AudioMixerWindow(&project);
+    particleEffectWindow = new ParticleEffectWindow(&project);
     soundBrowserWindow = new SoundBrowserWindow(&project);
+    graphEditorWindow = new GraphEditorWindow(&project);
+    proceduralMaterialWindow = new ProceduralMaterialWindow(&project);
     audioCapturesWindow = new AudioCapturesWindow(&project);
+    applyPaletteDialog = new ApplyPaletteDialog(&project);
+    paletteWindow = new PaletteWindow(&project, projectWindow, applyPaletteDialog);
+    pixelArtCheckWindow = new PixelArtCheckWindow(&project, projectWindow);
+    // S42 R19, R25: the window checks again after imports; a Console summary opens it on its finding
+    pixelart::PixelArtMode::get().setAssetsListener([this]() { pixelArtCheckWindow->assetsChanged(); });
+    pixelart::PixelArtMode::get().setOpenAction([this](const std::string& key) { pixelArtCheckWindow->focusFinding(key); });
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
@@ -266,6 +291,8 @@ editor::App::App(){
     });
     spriteNormalsWatcher = new SpriteNormalsWatcher(&project);
     SpriteNormalsWatcher::setActive(spriteNormalsWatcher);
+    spritePreviewWindow = new SpritePreviewWindow(&project, projectWindow);
+    pixelart::aseprite::asepriteEditorHooks().openSpritePreview = [this](const std::string& p) { spritePreviewWindow->open(p); };
     mcpActivityWindow = new mcp::McpActivityWindow();
     systemsWindow = new SystemsWindow(&project);
     missingAssetsWindow = new MissingAssetsWindow(&project);
@@ -273,6 +300,7 @@ editor::App::App(){
     jobsMemoryWindow = new JobsMemoryWindow();
     meshAuditWindow = new MeshAuditWindow(&project);
     buildReportWindow = new BuildReportWindow(&project);
+    animationStatisticsWindow = new AnimationStatisticsWindow(&project);
     profilerWindow = new ProfilerWindow(this);
     frameDebuggerWindow = new FrameDebuggerWindow(this);
     undoHistoryWindow = new UndoHistoryWindow(&project);
@@ -479,16 +507,35 @@ std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* 
             }
             continue;
         }
-        const std::string submenu = entry.submenu;
+        // "Effects/Pixel": a submenu inside "Effects" (S49)
+        const std::string full = entry.submenu;
+        const std::string submenu = full.substr(0, full.find('/'));
         if (std::find(shownSubmenus.begin(), shownSubmenus.end(), submenu) != shownSubmenus.end()) continue;
         shownSubmenus.push_back(submenu);
         if (lastKind == 0) items.push_back(menuSeparator());
         lastKind = 1;
 
         std::vector<editor::PlatformMenuItem> children;
+        std::vector<std::string> nested;
         for (size_t j = i; j < entries.size(); j++) {
             const CreateMenuEntry& child = entries[j];
-            if (!child.submenu || submenu != child.submenu || !offered(child)) continue;
+            if (!child.submenu || !offered(child)) continue;
+            const std::string childMenu = child.submenu;
+            if (childMenu.rfind(submenu + "/", 0) == 0) {
+                const std::string inner = childMenu.substr(submenu.size() + 1);
+                if (std::find(nested.begin(), nested.end(), inner) != nested.end()) continue;
+                nested.push_back(inner);
+                std::vector<editor::PlatformMenuItem> innerItems;
+                for (size_t k = j; k < entries.size(); k++) {
+                    const CreateMenuEntry& item = entries[k];
+                    if (!item.submenu || childMenu != item.submenu || !offered(item)) continue;
+                    if (item.separatorBefore && !innerItems.empty()) innerItems.push_back(menuSeparator());
+                    innerItems.push_back(entryItem(k));
+                }
+                children.push_back(menuSubmenu(inner, std::move(innerItems), canCreate));
+                continue;
+            }
+            if (submenu != childMenu) continue;
             if (child.separatorBefore && !children.empty()) children.push_back(menuSeparator());
             children.push_back(entryItem(j));
         }
@@ -671,15 +718,21 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     for (const AssetCreateItem& item : assetCreateItems()) {
         // Animation Clip: once the clip asset task set its hook
         if (item.kind == AssetCreateKind::AnimationClip && !animationClipAppHooks().createClipAsset) continue;
+        // Sprite Atlas and Palette: in Create > 2D below
+        if (item.kind == AssetCreateKind::SpriteAtlas || item.kind == AssetCreateKind::Palette) continue;
         if (item.separatorBefore) assetsCreateItems.push_back(menuSeparator());
         assetsCreateItems.push_back(catalogItem(item.commandId, item.label));
     }
     assetsCreateItems.push_back(menuSeparator());
+    assetsCreateItems.push_back(menuSubmenu("2D", {catalogItem("assets.createSpriteAtlas", "Sprite Atlas"),
+                                                   catalogItem("assets.createSpriteAtlasFromSelection", "Sprite Atlas from Selection"),
+                                                   catalogItem("assets.createPalette", "Palette")}));
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
     assetsCreateItems.push_back(catalogItem("assets.createNativePlugin", "Native Plugin..."));
 
     menu.menus.push_back(menuSubmenu("Assets", {
         menuSubmenu("Create", assetsCreateItems),
+        catalogItem("assets.convertInlineSpriteFrames", "Convert Inline Sprite Frames..."),
         catalogItem("assets.showInFileManager"),
         catalogItem("assets.open"),
         catalogItem("assets.rename", "Rename"),
@@ -757,6 +810,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.audioCaptures", windowMenuLabel(AudioCapturesWindow::WINDOW_NAME)),
             catalogItem("window.soundBrowser", windowMenuLabel(SoundBrowserWindow::WINDOW_NAME))
         }),
+        menuSubmenu("Visual Effects", {
+            catalogItem("window.particleEffect", windowMenuLabel(ParticleEffectWindow::WINDOW_NAME))
+        }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
         menuSubmenu("AI", {
@@ -764,7 +820,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         menuSubmenu("Assets", {
             catalogItem("window.missingAssets", windowMenuLabel(MissingAssetsWindow::WINDOW_NAME)),
-            catalogItem("window.assetReferences", windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
+            catalogItem("window.assetReferences", windowMenuLabel(AssetReferencesWindow::WINDOW_NAME)),
+            catalogItem("window.graphEditor", windowMenuLabel(GraphEditorWindow::WINDOW_NAME))
         }),
         menuSubmenu("Analysis", {
             catalogItem("window.profiler", windowMenuLabel(ProfilerWindow::WINDOW_NAME)),
@@ -772,12 +829,18 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.systems", windowMenuLabel(SystemsWindow::WINDOW_NAME)),
             catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME)),
             catalogItem("window.meshAudit", windowMenuLabel(MeshAuditWindow::WINDOW_NAME)),
-            catalogItem("window.buildReport", windowMenuLabel(BuildReportWindow::WINDOW_NAME))
+            catalogItem("window.buildReport", windowMenuLabel(BuildReportWindow::WINDOW_NAME)),
+            catalogItem("window.animationStatistics", windowMenuLabel(AnimationStatisticsWindow::WINDOW_NAME))
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
         catalogItem("window.titleDesigner", windowMenuLabel(TitleDesignerWindow::WINDOW_NAME)),
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
+        menuSubmenu("2D", {
+            catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
+            catalogItem("window.palette", windowMenuLabel(PaletteWindow::WINDOW_NAME)),
+            catalogItem("window.pixelArtCheck", windowMenuLabel(PixelArtCheckWindow::WINDOW_NAME))
+        }),
         menuSubmenu("MCP", {
             catalogItem("window.mcpActivity", windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
         }),
@@ -1031,6 +1094,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleBuildReport:
             showEditorWindow(buildReportWindow);
             break;
+        case AppMenuCommand::ToggleAnimationStatistics:
+            showEditorWindow(animationStatisticsWindow);
+            break;
         case AppMenuCommand::ToggleUndoHistory:
             showEditorWindow(undoHistoryWindow);
             break;
@@ -1049,6 +1115,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleSoundBrowser:
             soundBrowserWindow->open();
             break;
+        case AppMenuCommand::ToggleGraphEditor:
+            graphEditorWindow->setOpen(true);
+            graphEditorWindow->requestFocus();
+            break;
         case AppMenuCommand::ToggleAudioCaptures:
             audioCapturesWindow->open();
             break;
@@ -1058,12 +1128,24 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleAudioMixer:
             audioMixerWindow->open();
             break;
+        case AppMenuCommand::TogglePalette:
+            paletteWindow->open(FileUtils::pathFromUtf8(command.payload));
+            break;
+        case AppMenuCommand::TogglePixelArtCheck:
+            pixelArtCheckWindow->open();
+            break;
+        case AppMenuCommand::ToggleParticleEffect:
+            showEditorWindow(particleEffectWindow);
+            break;
         case AppMenuCommand::ToggleSpriteNormals:
             spriteNormalsWindow->open();
             break;
         case AppMenuCommand::ToggleTitleDesigner:
             titleDesignerWindow->setOpen(true);
             titleDesignerWindow->requestFocus();
+            break;
+        case AppMenuCommand::ToggleSpritePreview:
+            spritePreviewWindow->open();
             break;
         case AppMenuCommand::ToggleVertexAnimationBaker:
             vertexAnimationBakerWindow->open();
@@ -1117,7 +1199,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             layouts.requestSwitch(LayoutPresets::DEFAULT_NAME);
             break;
         case AppMenuCommand::ProjectSettings:
-            projectSettingsWindow.open(&project);
+            // the payload names a page ("Pixel Art"): run_command opens it there
+            projectSettingsWindow.open(&project, command.payload.empty() ? nullptr : command.payload.c_str());
             break;
         case AppMenuCommand::EditorSettings:
             editorSettingsWindow.open(&project);
@@ -1247,6 +1330,21 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateShakePreset:
             projectWindow->createAsset(AssetCreateKind::ShakePreset, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreatePalette:
+            projectWindow->createAsset(AssetCreateKind::Palette, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateProceduralMaterial:
+            projectWindow->createAsset(AssetCreateKind::ProceduralMaterial, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateSpriteAtlas:
+            projectWindow->createAsset(AssetCreateKind::SpriteAtlas, projectWindow->createTargetDirectory());
+            break;
+        case AppMenuCommand::AssetsCreateSpriteAtlasFromSelection:
+            projectWindow->assetsCreateSpriteAtlasFromSelection();
+            break;
+        case AppMenuCommand::AssetsConvertInlineSpriteFrames:
+            spriteConversionDialog.open(&project);
             break;
         case AppMenuCommand::AssetsCreatePhysicsMaterial:
             projectWindow->createAsset(AssetCreateKind::PhysicsMaterial, projectWindow->createTargetDirectory());
@@ -2201,7 +2299,6 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PoseAnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
-    ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
     ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Left, 0.0f, &dock_id_left_top, &dock_id_middle_top);
@@ -2213,12 +2310,18 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(TextureSynthesisWindow::WINDOW_NAME, dock_id_middle_top);
     // the Audio Mixer's strips want the width of the views
     ImGui::DockBuilderDockWindow(AudioMixerWindow::WINDOW_NAME, dock_id_middle_top);
+    // the Particle Effect window: a preview and its timing, as wide as the views
+    ImGui::DockBuilderDockWindow(ParticleEffectWindow::WINDOW_NAME, dock_id_middle_top);
     // the baker too (its preview), so the Inspector entries that open it stay in view
     ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
     // the Sprite Normal Map window: a preview too
     ImGui::DockBuilderDockWindow(SpriteNormalsWindow::WINDOW_NAME, dock_id_middle_top);
     // the Title Designer: preview-first, beside Scene and Game (S82 R2)
     ImGui::DockBuilderDockWindow(TitleDesignerWindow::WINDOW_NAME, dock_id_middle_top);
+    // a graph wants the width of the views
+    ImGui::DockBuilderDockWindow(GraphEditorWindow::WINDOW_NAME, dock_id_middle_top);
+    ImGui::DockBuilderDockWindow(ProceduralMaterialWindow::WINDOW_NAME, dock_id_middle_top);
+    ImGui::DockBuilderDockWindow(SpritePreviewWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2242,7 +2345,7 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(PlayModeChangesWindow::WINDOW_NAME, 5);
     stampPanelDockOrder(SystemsWindow::WINDOW_NAME, 6);
     stampPanelDockOrder(AnimatorWindow::WINDOW_NAME, 7);
-    stampPanelDockOrder(BookmarksWindow::WINDOW_NAME, 7);
+    stampPanelDockOrder(BookmarksWindow::WINDOW_NAME, 8);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
     // persists in the ini and lets getCentralDockId() recover this node on the
@@ -2468,6 +2571,9 @@ void editor::App::setup() {
 
     // a queued offscreen pose render keeps the loop drawing until processFrame serves it
     PoseRender::setFrameRequester([this]() { requestRedraw(); });
+    ParticleEffectPreview::setFrameRequester([this]() { requestRedraw(); });
+    procmat::ProceduralRun::setFrameRequester([this]() { requestRedraw(); });
+    ProceduralMaterialWindow::setFrameRequester([this]() { requestRedraw(); });
 
     // Title Art (S80 R6, R34, R50): a changed document (commit, undo, redo, outside edit, a font
     // or image it reads) rebakes with Auto Bake and its thumbnail is drawn again
@@ -2518,6 +2624,10 @@ void editor::App::setup() {
     setupLayouts();
     // the command catalog and the user's rebindings (shortcuts.yaml, next to settings.yaml)
     registerCommands();
+    // the Palette context's commands (a later add takes the user's stored binding too)
+    paletteWindow->bindCommands(CommandCatalog::editor());
+    pixelArtCheckWindow->bindCommands(CommandCatalog::editor());
+    applyPaletteDialog->bindCommands(CommandCatalog::editor());
 
     // Separate from the window scale: the layout keeps the scale it was built at,
     // while the window is measured on whichever monitor it closes on.
@@ -2874,12 +2984,12 @@ void editor::App::show(){
         // A Physics Placement gesture of the selected scene keeps the keys on the scene while it
         // runs (the timeline's undo cancels it first: CommandHistory::beforeChange)
         const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
-        // the Animator window edits project assets (its selection in the Inspector too)
-        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() ||
-                (focusedWindowName() == InspectorWindow::WINDOW_NAME && animatorWindow->inspectorShowsSelection())) {
-            lastFocusedWindow = LastFocusedWindow::Resources;
-        } else if (animatorWindow->isFocused()) {
-            // the Animator window's edits are project steps (its controller file)
+        // the Animator, Particle Effect and graph windows edit project assets (their selection in the Inspector too)
+        // the Sprite Preview's Exclude from Import is a project step (the file's .meta)
+        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animationStatisticsWindow->isFocused() || animatorWindow->isFocused() ||
+                particleEffectWindow->isFocused() || spritePreviewWindow->isFocused() || GraphEditorWindow::focused() ||
+                (focusedWindowName() == InspectorWindow::WINDOW_NAME &&
+                 (animatorWindow->inspectorShowsSelection() || GraphEditorWindow::anyInspectorShowsSelection() || inspectorWindow->showsProjectAsset()))) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
@@ -2943,10 +3053,13 @@ void editor::App::show(){
     ImGui::DockSpaceOverViewport(dockspace_id, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
 
     showAlert();
+    // Open in Aseprite (S44 R32): a request waiting on detection, the Aseprite Not Found dialog
+    pixelart::aseprite::updateAsepriteOpen();
 
     sceneSaveDialog.show();
     // the importers' edits not applied, asked about before a selection change, Play or the close
     ImporterPrompt::draw();
+    spriteConversionDialog.show();
     projectSaveDialog.show();
     dataSafetyDialogs.show(project);
     exportWindow.show();
@@ -2978,17 +3091,25 @@ void editor::App::show(){
     animatorWindow->show();
     avatarWindow->show();
     HumanoidConvertDialog::draw(&project);
+    ReduceKeysDialog::draw(&project);
     poseAnimationWindow->show();
-    animatorWindow->show();
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
     PoseViewport::frame(&project);
     terrainEditWindow->show();
     textureSynthesisWindow->show();
     audioMixerWindow->show();
+    particleEffectWindow->show();
     soundBrowserWindow->show();
     audioCapturesWindow->show();
+    // also the tick of its workers (Lospec, Usage, From Texture) with the window closed
+    paletteWindow->show();
+    pixelArtCheckWindow->show();
+    applyPaletteDialog->show();
+    // the Graph Editor and every graph kind's own window
+    GraphEditorWindow::showAll();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
+    spritePreviewWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
     titleDesignerWindow->show();
@@ -3004,6 +3125,7 @@ void editor::App::show(){
     jobsMemoryWindow->show();
     meshAuditWindow->show();
     buildReportWindow->show();
+    animationStatisticsWindow->show();
     profilerWindow->show();
     frameDebuggerWindow->show();
     undoHistoryWindow->show();
@@ -3036,6 +3158,7 @@ void editor::App::show(){
     ui::CurveWindow::get().show();
     ui::GradientWindow::get().show();
     ui::ColorPickerWindow::get().setProjectPath(project.getProjectPath());
+    ui::ColorPickerWindow::get().setProject(&project);
     ui::ColorPickerWindow::get().show();
 
     loadingWindow->show();
@@ -3461,6 +3584,7 @@ void editor::App::toggleRecording() {
 
 void editor::App::playStarting(uint32_t) {
     recorder::RecorderSession::get().onPlayStarting(recorderWindow.settings());
+    if (pixelart::PixelArtMode::get().playHookRegistered()) pixelart::PixelArtMode::get().playStarting(&project);
 }
 
 void editor::App::setupRecorder() {
@@ -3633,9 +3757,18 @@ void editor::App::updateHubCreation() {
             // the template's project, renamed, saved, with the VCS files (R18; loadProject copied
             // the engine API in)
             project.setName(done.name);
+            // S42 R21: the New Project form's Base Resolution of a pixel-art template
+            if (done.info.pixelArt && done.info.baseWidth > 0 && done.info.baseHeight > 0) {
+                project.setCanvasSize(done.info.baseWidth, done.info.baseHeight);
+                project.setWindowSize(done.info.baseWidth * 4, done.info.baseHeight * 4);
+            }
             VcsProjectSettings vcs = project.getVcsProjectSettings();
             vcs.lfs = true;   // S29 R21: a new project's binaries are LFS objects
             project.setVcsProjectSettings(vcs, false);
+            // S77 R38: a new project places a model of many clips without an Animation entity per clip
+            ModelProjectSettings models = project.getModelSettings();
+            models.animationEntities = AnimationEntitiesMode::Auto;
+            project.setModelSettings(models);
             project.saveProject();
             project.writeVersionControlMetadata();
             const std::filesystem::path start = done.dir / (done.info.startScene + ".scene");
@@ -3904,6 +4037,14 @@ void editor::App::pollExternalChanges(){
         ModelCookQueue& models = ModelCookQueue::get();
         if (models.getProject() != &project) models.attach(&project);
         wake = models.update() || wake;
+        // .aseprite imports (S44): run on the Background lane, swapped in here
+        pixelart::aseprite::AsepriteImporter& imports = pixelart::aseprite::AsepriteImporter::get();
+        if (imports.getProject() != &project) imports.attach(&project);
+        wake = imports.update() || wake;
+        // Sprite Atlas builds (S45): packed on the Background lane, swapped in here
+        sprite::SpriteAtlasBuilder& atlases = sprite::SpriteAtlasBuilder::get();
+        if (atlases.getProject() != &project) atlases.attach(&project);
+        wake = atlases.update() || wake;
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -3958,8 +4099,8 @@ void editor::App::engineRender(){
     // a frame that began drawing (EditorFrame: frameReady): PoseRender::renderNow may draw
     // from here on, main-thread tasks included, until the end of this function
     struct PoseFrameScope {
-        PoseFrameScope() { PoseRender::setInEditorFrame(true); }
-        ~PoseFrameScope() { PoseRender::setInEditorFrame(false); }
+        PoseFrameScope() { PoseRender::setInEditorFrame(true); ParticleEffectPreview::setInEditorFrame(true); }
+        ~PoseFrameScope() { PoseRender::setInEditorFrame(false); ParticleEffectPreview::setInEditorFrame(false); }
     } poseFrameScope;
 
     processMainThreadTasks();
@@ -3973,6 +4114,8 @@ void editor::App::engineRender(){
     NavigationEditor::get().update(&project);
     // generated normal maps whose sources changed (badges, the opt-in auto-regenerate)
     spriteNormalsWatcher->tick();
+    // Pixel Art Mode's checks on import and at Play (S42 R1, R25): nothing while the mode is off
+    pixelart::PixelArtMode::get().tick(&project);
     project.updateGeneratedSources();
     // clip previews (the Animation window's clip mode, MCP preview_animation) advance every frame
     if (animationClipAppHooks().frame) {
@@ -4261,6 +4404,16 @@ void editor::App::engineRender(){
     }
     // the Vertex Animation Baker's preview views (private scenes too, drawn the same way)
     VatPreviewView::processFrame();
+    // particle previews and filmstrips (preview_particle_effect, the Particle Effect window): their
+    // private scenes step and draw here, whether a view shows or not
+    ParticleEffectPreview::processFrame();
+    // Procedural Material evaluations and their lit balls (preview_procedural_material, bake_procedural_material):
+    // the evaluator draws its own passes here, outside any render pass
+    procmat::ProceduralRun::processFrame();
+    // the Procedural Material windows' previews and node images: passes of their own, drawn here
+    if (ProceduralMaterialWindow::processFrame()) {
+        requestRedraw();
+    }
     // the Title Designer's canvas (a private scene; it draws only on change, S82 R66)
     editor::titledesigner::TitleCanvasView::processFrame();
     // Title Art: every preview of the editor within one budget (S80 R45), then Auto Bake's slice
@@ -4508,6 +4661,23 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
     Rect viewRect;
     Engine::computeViewLayout(width, height, (int)project.getCanvasWidth(), (int)project.getCanvasHeight(), project.getScalingMode(),
                               canvasWidth, canvasHeight, viewRect);
+    // a Pixel Perfect Camera on the game camera lays the view out as Play does (S41 R20); its layer
+    // scenes draw on the same viewport and canvas
+    PixelPerfectViewRequest pixelRequest;
+    if (Engine::getPixelPerfectRequest(sceneProject.scene, cameraEntity, pixelRequest)) {
+        // Use Project Canvas is the project's canvas (the Engine's is the editor's view here)
+        if (pixelRequest.referenceWidth <= 0 || pixelRequest.referenceHeight <= 0) {
+            pixelRequest.referenceWidth = (int)project.getCanvasWidth();
+            pixelRequest.referenceHeight = (int)project.getCanvasHeight();
+        }
+        const jasperengine::pixelart::PixelPerfectLayout layout = Engine::computePixelPerfectView(pixelRequest, width, height,
+                                                                                    Engine::getPixelPerfectForcedScale());
+        if (layout.baseWidth > 0) {
+            viewRect = layout.viewport;
+            canvasWidth = std::max(1, (int)std::lround(layout.canvasWidth));
+            canvasHeight = std::max(1, (int)std::lround(layout.canvasHeight));
+        }
+    }
 
     // a UI scene's camera covers its Canvas Scaler UI size (what it is laid out at), any other the canvas
     auto layerCanvas = [&](SceneProject* layerScene, Entity layerCamera, float& layerWidth, float& layerHeight) {
@@ -4614,6 +4784,9 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
     Engine::systemDraw();
     renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
+    // the game camera's Pixel Perfect Camera laid this pass out; the editor's views lay out
+    // without it (their next systemViewChanged would apply it over the editor's canvas)
+    Engine::setPixelPerfectView(PixelPerfectViewRequest());
     Engine::setCanvasSize(editCanvasWidth, editCanvasHeight);
     Engine::setScalingMode(editScaling);
 
@@ -5128,6 +5301,9 @@ void editor::App::shutdownBackgroundWork() {
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
     PoseRender::setFrameRequester(nullptr);
+    ParticleEffectPreview::setFrameRequester(nullptr);
+    procmat::ProceduralRun::setFrameRequester(nullptr);
+    ProceduralMaterialWindow::setFrameRequester(nullptr);
 }
 
 void editor::App::engineViewDestroyed(){
@@ -5141,6 +5317,9 @@ void editor::App::engineViewDestroyed(){
     PoseRender::releaseGpu();
     VatPreviewView::releaseGpu();
     editor::titledesigner::TitleCanvasView::releaseGpu();
+    ParticleEffectPreview::releaseGpu();
+    procmat::ProceduralRun::releaseGpu();
+    ProceduralMaterialWindow::releaseGpu();
     // Closing during project loading can leave uploads committed before any scene frame
     // consumes them. Drain that batch before shutdown waits to flush the queue.
     SystemRender::executeQueue();
@@ -5194,6 +5373,10 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
         animatorWindow->clearSceneState(sceneId);
     }
 
+    if (particleEffectWindow) {
+        particleEffectWindow->clearSceneState(sceneId);
+    }
+
     if (avatarWindow) {
         avatarWindow->clearSceneState(sceneId);
     }
@@ -5204,6 +5387,7 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 }
 
 void editor::App::prepareForProjectSwitch() {
+    inspectorWindow->resetMaterialAsset();
     // the Project Hub's picture of the project closing (S27 R21)
     writeHubThumbnail();
     // the project's working layout, before another project's replaces it (S25 R19)
@@ -5224,16 +5408,25 @@ void editor::App::prepareForProjectSwitch() {
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
     audioMixerWindow->resetForProjectSwitch();
+    particleEffectWindow->resetForProjectSwitch();
     soundBrowserWindow->resetForProjectSwitch();
+    GraphEditorWindow::prepareAllForProjectSwitch();
     audioCapturesWindow->resetForProjectSwitch();
+    // a Lospec fetch is cancelled; the palette, its selection and the dialogs are forgotten
+    paletteWindow->resetForProjectSwitch();
+    pixelArtCheckWindow->resetForProjectSwitch();
+    applyPaletteDialog->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
     titleDesignerWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();
     editor::spritenormals::SpriteNormalsRun::cancelRunning();
+    spritePreviewWindow->resetForProjectSwitch();
     // a running bake or import is cancelled, its source and result forgotten
     vertexAnimationBakerWindow->resetForProjectSwitch();
     editor::texsynth::projectSwitching();
+    // a Procedural Material preview or bake stops: its result belongs to the project it began in
+    procmat::ProceduralRun::projectSwitching();
     // physics gestures are cancelled, the sessions and the decomposition cache dropped
     physicsPlacementWindow->resetForProjectSwitch();
     projectWindow->cancelThumbnailWork();
@@ -5252,6 +5445,9 @@ void editor::App::prepareForProjectSwitch() {
     inputActionsWindow->reset();
     // the next project's .particles files are other files under the same paths
     particles::ParticleEffectLibrary::clear();
+    // and its palettes (S43): the swap textures first, they were made from them
+    jasperengine::pixelart::PaletteSwapCache::clear();
+    jasperengine::pixelart::PaletteLibrary::clear();
     ParticleMigrationReport::clear();
     dockspaceNeedsRebuild = true;
 }
@@ -5738,7 +5934,34 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      engine-written WATER_INTERACTION_PARAMS at the end of water.frag's custom block.
     // v53: draw-perf's directional-only Lit: MESH 'Dlo' (44; DIRECTIONAL_LIGHTS_ONLY in
     //      includes/lights.glsl and punctual.glsl)
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v53";
+    // v54: SSR follow-ups: the G-buffer's 16-bit normal (color[3] RGBA8, octEncode16), the
+    //      composite inside the colour pass under the transparents and its tone curve
+    //      (the composite's USE_POST_COLOR over a linear store: the colour pass's own
+    //      post-processing colour with an identity LUT)
+    // v55: PCSS on GLES3/WebGL2 and painted terrains (doriax-catchup pcss-gles): the raw-depth
+    //      shadow view in every 'Shq' variant, a GLES3 one compiled again with SHADOW_RAW_VIEW_OFF
+    //      where it would be the 17th fragment texture;
+    //      and water-uniforms: library:water and the painted Terrain ('Tpb') read their lights'
+    //      records from u_lightRecords (includes/lights.glsl LIGHTS_FS_RECORDS) and, with both
+    //      requires, the planar reflection's values come from u_fs_environment
+    // v56: lit-uniforms: a lit variant over its backend's fragment uniforms (GLES3 224 vectors,
+    //      desktop GL 256, 8 blocks) reads its lights, capsules and 2D lights from u_lightRecords
+    //      (LIGHTS_FS_RECORDS, the records form's tail in u_fs_objectLights; ShaderVariantCompiler::compile)
+    // v57: S41's pixel snap: the frame block's pixelSnap and pixelSnapOffset (last, in the 'Pxs'
+    //      vertex stages only), includes/pixel_snap.glsl in the mesh, depth, UI and particle
+    //      vertex stages; MESH 'Pxs' bit 45, DEPTH 19, UI 5, PARTICLES 11, BLIT 'Psb' 18.
+    // v58: S91's library:particles DISTORTION (scene colour, u_distortionTexture, distortionStrength
+    //      in u_fs_customParams).
+    // v59: S43's palettes: library:sprite's PALETTE_SWAP and PALETTE_CYCLE (includes/palette.glsl,
+    //      the custom block's paletteRow, paletteCycleSpeed and sceneTime), the uber pass's
+    //      Palette Quantize (BLIT 'Pal' 19, includes/bayer.glsl).
+    // v60: S49's pixel particles: library:particles' Pixel render mode (PARTICLES 'Pxl' 12) and
+    //      Analytic simulation (PARTICLES 'Ana' 13, particles_analytic_vs.glsl, its uniform block).
+    // v61: S52's pixel-art batching (after S49's v60): library:sprite @batchable
+    //      (instance=fx.x/fx.y read through includes/sprite_fx.glsl, a_frameRect), MESH 'Sfx' 46,
+    //      'Sfr' 47, 'Spv' 48, DEPTH 'Spv' 20, the instanced snap's per-instance mode
+    //      (pixelSnapInstanceMode).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v61";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -5889,8 +6112,21 @@ void editor::App::openConsole(){
     showEditorWindow(consoleWindow);
 }
 
+void editor::App::openPaletteWindow(const std::string& palettePath, const std::string& texturePath){
+    // the material inspector's Show: the palette's Usage of the sprite's texture (project-relative)
+    paletteWindow->showUsage(FileUtils::pathFromUtf8(palettePath), FileUtils::pathFromUtf8(texturePath));
+}
+
 void editor::App::openAudioMixerWindow(const std::filesystem::path& mixer){
     audioMixerWindow->open(mixer);
+}
+
+void editor::App::openParticleEffect(const std::string& assetPath){
+    particleEffectWindow->openEffect(assetPath);
+}
+
+void editor::App::openParticleEffectSubtree(uint32_t sceneId, uint32_t root){
+    particleEffectWindow->openSubtree(sceneId, (Entity)root);
 }
 
 void editor::App::openTextureSynthesis(const std::filesystem::path& image, bool editRecipe){
@@ -5942,10 +6178,12 @@ namespace {
                       editor::ProjectWindow* projectWindow, editor::ConsoleWindow* console, editor::AnimationWindow* animation,
                       editor::TerrainEditWindow* terrain, editor::mcp::McpActivityWindow* mcpActivity, editor::SystemsWindow* systems,
                       editor::MissingAssetsWindow* missing, editor::AssetReferencesWindow* references, editor::JobsMemoryWindow* jobs,
-                      editor::ProfilerWindow* profiler, editor::FrameDebuggerWindow* frameDebugger, editor::UndoHistoryWindow* undo,
+                      editor::AnimationStatisticsWindow* animationStatistics, editor::ProfilerWindow* profiler, editor::FrameDebuggerWindow* frameDebugger, editor::UndoHistoryWindow* undo,
                       editor::PlayModeChangesWindow* playChanges, editor::GameWindow* game, editor::BookmarksWindow* bookmarks,
                       editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
-                      editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator) {
+                      editor::PoseAnimationWindow* poseAnimation, editor::VertexAnimationBakerWindow* vertexAnimationBaker, editor::AnimatorWindow* animator,
+                      editor::AudioMixerWindow* audioMixer, editor::ParticleEffectWindow* particleEffect,
+                      editor::GraphEditorWindow* graphEditor, editor::ProceduralMaterialWindow* proceduralMaterial) {
         visit(editor::GameWindow::WINDOW_NAME, game);
         visit(editor::InspectorWindow::WINDOW_NAME, inspector);
         visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
@@ -5958,6 +6196,7 @@ namespace {
         visit(editor::MissingAssetsWindow::WINDOW_NAME, missing);
         visit(editor::AssetReferencesWindow::WINDOW_NAME, references);
         visit(editor::JobsMemoryWindow::WINDOW_NAME, jobs);
+        visit(editor::AnimationStatisticsWindow::WINDOW_NAME, animationStatistics);
         visit(editor::ProfilerWindow::WINDOW_NAME, profiler);
         visit(editor::FrameDebuggerWindow::WINDOW_NAME, frameDebugger);
         visit(editor::UndoHistoryWindow::WINDOW_NAME, undo);
@@ -5968,6 +6207,10 @@ namespace {
         visit(editor::PoseAnimationWindow::WINDOW_NAME, poseAnimation);
         visit(editor::AnimatorWindow::WINDOW_NAME, animator);
         visit(editor::VertexAnimationBakerWindow::WINDOW_NAME, vertexAnimationBaker);
+        visit(editor::AudioMixerWindow::WINDOW_NAME, audioMixer);
+        visit(editor::ParticleEffectWindow::WINDOW_NAME, particleEffect);
+        visit(editor::GraphEditorWindow::WINDOW_NAME, graphEditor);
+        visit(editor::ProceduralMaterialWindow::WINDOW_NAME, proceduralMaterial);
     }
 
 }
@@ -5983,9 +6226,10 @@ std::map<std::string, bool> editor::App::panelStates() const{
     std::map<std::string, bool> panels;
     forEachPanel([&panels](const char* name, auto* window) { panels[name] = window->isOpen(); },
                  hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
-                 mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
+                 mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, animationStatisticsWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
+                 audioMixerWindow, particleEffectWindow, graphEditorWindow, proceduralMaterialWindow);
     return panels;
 }
 
@@ -5995,9 +6239,10 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
         auto it = panels.find(name);
         if (it != panels.end()) window->setOpen(it->second);
     }, hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
-       mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
+       mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, animationStatisticsWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, vertexAnimationBakerWindow, animatorWindow,
+                 audioMixerWindow, particleEffectWindow, graphEditorWindow, proceduralMaterialWindow);
 }
 
 void editor::App::applyDefaultLayout(){
@@ -6010,6 +6255,10 @@ void editor::App::applyDefaultLayout(){
     animatorWindow->setOpen(false);
     terrainEditWindow->setOpen(false);
     textureSynthesisWindow->setOpen(false);
+    audioMixerWindow->setOpen(false);
+    particleEffectWindow->setOpen(false);
+    graphEditorWindow->setOpen(false);
+    proceduralMaterialWindow->setOpen(false);
     vertexAnimationBakerWindow->setOpen(false);
     physicsPlacementWindow->setOpen(false);
     mcpActivityWindow->setOpen(false);
@@ -6189,7 +6438,9 @@ void editor::App::applyPanelVisibilitySettings() {
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     audioMixerWindow->setOpen(visibility.audioMixer);
+    particleEffectWindow->setOpen(visibility.particleEffect);
     soundBrowserWindow->setOpen(visibility.soundBrowser);
+    graphEditorWindow->setOpen(visibility.graphEditor);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
     titleDesignerWindow->restoreFromSettings();
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
@@ -6211,7 +6462,9 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.audioMixer = audioMixerWindow->isOpen();
+    visibility.particleEffect = particleEffectWindow->isOpen();
     visibility.soundBrowser = soundBrowserWindow->isOpen();
+    visibility.graphEditor = graphEditorWindow->isOpen();
     visibility.spriteNormals = spriteNormalsWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();

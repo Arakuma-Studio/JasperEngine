@@ -1,5 +1,10 @@
 # 05 — Scripting & Extensibility: JasperEngine (OURS) vs OpenEngine (THEIRS)
 
+> **Note (2026-11-04, BF23 F28).** This report is historical and stays as written; decisions taken since:
+> imgui-node-editor and imnodes in the shader graph recommendation were rejected by
+> `docs/specs/S21-animation.md` D14 (our own `editor/window/widget/GraphCanvas`), and "no node-graph
+> framework" predates `docs/specs/S23-scripting.md`'s graph model (`engine/core/graph/Graph.h`).
+
 Scope: scripting languages, bindings, hot reload, lifecycle and API, debugging, visual and node graphs, plugins and packages, IDE integration, sandboxing.
 
 Paths:

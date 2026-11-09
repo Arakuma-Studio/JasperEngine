@@ -9,6 +9,7 @@
 #include "particles/ParticleKernels.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -21,6 +22,8 @@ using namespace jasperengine;
 using namespace jasperengine::particles;
 
 namespace {
+
+    std::atomic<uint64_t> gPackCount{0};
 
     // a hint to start loading what a later iteration reads
     inline void prefetchRead(const void* p){
@@ -59,6 +62,8 @@ namespace {
         ParticleInstance* instances = nullptr;
         ParticleMeshInstance* mesh = nullptr;
         ParticleCustomInstance* custom = nullptr;
+        ParticlePixelInstance* pixel = nullptr;
+        double time = 0.0;              // the emitter's seconds (Flicker)
         uint16_t* keys = nullptr;
         uint8_t* meshIndex = nullptr;   // the mesh of each record (more than one mesh)
     };
@@ -122,7 +127,11 @@ namespace {
             const bool interp = job.alpha < 1.0f;
             const f4 alpha = K::k(job.alpha);
             const f4 back = K::k((1.0f - job.alpha) * job.tick);
-            const bool colorWork = rp.colorOverLifetime || rp.colorBySpeed || rp.storedColor;
+            const PixelParams& pix = rp.pixel;
+            const bool colorWork = rp.colorOverLifetime || rp.colorBySpeed || rp.storedColor || pix.fadeCurve || pix.exactColor;
+            const uint32_t phaseKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::PixelArt, 1);
+            const uint32_t wobbleXKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::PixelArt, 2);
+            const uint32_t wobbleYKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::PixelArt, 3);
             uint32_t written = outBegin;
             const uint32_t flipKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::Main, 60);
             const uint32_t rowKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::TextureSheetAnimation, 3);
@@ -156,6 +165,23 @@ namespace {
                     pz = B::madd(B::sub(pz, qz), alpha, qz);
                     L.age = B::max(B::sub(L.age, back), B::zero());
                     L.normAge = B::mul(L.age, L.invLife);
+                }
+                if (pix.flickerBelow > 0.0f){
+                    keepBits &= ~flickerHidden(job, L, phaseKey);
+                    if (!keepBits)
+                        continue;
+                }
+                if (pix.wobble){
+                    // A sin(2 pi f age + phase) base pixels along the screen, before the shader snaps (R7)
+                    const f4 tau = K::k(6.28318530717958647692f);
+                    const f4 phx = pix.wobbleRandomPhase ? B::mul(K::rand01(wobbleXKey, L.spawn), tau) : B::zero();
+                    const f4 phy = pix.wobbleRandomPhase ? B::mul(K::rand01(wobbleYKey, L.spawn), tau) : B::zero();
+                    const f4 ox = B::mul(K::sin(B::madd(B::mul(L.age, K::k(pix.wobbleFrequency[0])), tau, phx)), K::k(pix.wobbleAmplitude[0]));
+                    const f4 oy = B::mul(K::sin(B::madd(B::mul(L.age, K::k(pix.wobbleFrequency[1])), tau, phy)), K::k(pix.wobbleAmplitude[1]));
+                    const RenderView& v = *job.view;
+                    px = B::add(px, B::add(B::mul(ox, K::k(v.pixelRight[0])), B::mul(oy, K::k(v.pixelUp[0]))));
+                    py = B::add(py, B::add(B::mul(ox, K::k(v.pixelRight[1])), B::mul(oy, K::k(v.pixelUp[1]))));
+                    pz = B::add(pz, B::add(B::mul(ox, K::k(v.pixelRight[2])), B::mul(oy, K::k(v.pixelUp[2]))));
                 }
                 f4 vx = K::ld(ctx.ch[ChVelX], i), vy = K::ld(ctx.ch[ChVelY], i), vz = K::ld(ctx.ch[ChVelZ], i);
                 if (ctx.ch[ChAnimVelX]){
@@ -226,7 +252,22 @@ namespace {
                         K::gradient(rp.speedColor, L, m);
                         for (int k = 0; k < 4; k++) c[k] = B::mul(c[k], m[k]);
                     }
+                    if (pix.fadeCurve)
+                        c[3] = B::mul(c[3], M::clamp01(K::curve(pix.fadeOverLifetime, L)));
                     color = encodeColor(c[0], c[1], c[2], c[3]);
+                    if (pix.exactColor){
+                        // a palette ramp's step drawn as its own bytes (R13): the rgb is not re-encoded
+                        u4 rgb;
+                        if (pix.rampSource == 2){
+                            alignas(16) uint32_t idx[4];
+                            K::rampIndex(pix.ramp, L, idx);
+                            const uint32_t* bytes = reinterpret_cast<const uint32_t*>(ctx.pool + pix.ramp.lut1);
+                            rgb = B::iset(bytes[idx[0]], bytes[idx[1]], bytes[idx[2]], bytes[idx[3]]);
+                        }else{
+                            rgb = K::ldu(ctx.ch[ChStartColor], i);
+                        }
+                        color = B::ior(B::iand(rgb, B::iset1(0x00ffffffu)), B::iand(color, B::iset1(0xff000000u)));
+                    }
                 }
 
                 // rotation
@@ -310,9 +351,27 @@ namespace {
                 const u4 velZW = pair(half(vz), half(rp.mesh ? sz : K::k(rp.emissive)));
                 const u4 xb = B::castu(px), yb = B::castu(py), zb = B::castu(pz);
 
+                alignas(16) uint32_t pixelWords[4] = {0, 0, 0, 0};
+                if (job.pixel){
+                    // x the ramp step, y the age, z the phase, w the flags (R10)
+                    alignas(16) uint32_t steps[4] = {255u, 255u, 255u, 255u};
+                    if (pix.rampSource)
+                        K::rampIndex(pix.ramp, L, steps);
+                    alignas(16) uint32_t ages[4], phases[4], rest[4] = {0, 0, 0, 0};
+                    B::storeu4(ages, B::cvtt(B::add(B::mul(M::clamp01(L.normAge), K::k(255.0f)), K::k(0.5f))));
+                    B::storeu4(phases, B::cvtt(B::mul(K::rand01(phaseKey, L.spawn), K::k(256.0f))));
+                    if (ctx.ch[ChSettled])
+                        B::storeu4(rest, B::cvtt(K::ld(ctx.ch[ChSettled], i)));
+                    for (int l = 0; l < 4; l++)
+                        pixelWords[l] = std::min(steps[l], 255u) | (std::min(ages[l], 255u) << 8) | ((phases[l] & 255u) << 16) |
+                                        ((rest[l] ? (uint32_t)kPixelFlagRest : 0u) << 24);
+                }
+
                 // four whole billboard records: transposed straight into the instances (with their
                 // sort keys when the view sorts)
                 if (keepBits == 0xfu && !job.mesh && !job.custom && !job.meshIndex){
+                    if (job.pixel)
+                        std::memcpy(&job.pixel[written], pixelWords, sizeof(pixelWords));
                     if (job.keys){
                         alignas(16) uint32_t keys[4];
                         B::storeu4(keys, sortKeys(job, L, px, py, pz));
@@ -397,6 +456,8 @@ namespace {
                     }
                     if (job.keys)
                         job.keys[written] = (uint16_t)keyBits[l];
+                    if (job.pixel)
+                        std::memcpy(&job.pixel[written], &pixelWords[l], sizeof(uint32_t));
                     if (job.meshIndex)
                         job.meshIndex[written] = (uint8_t)meshPick[l];
                     written++;
@@ -505,15 +566,41 @@ namespace {
             return B::cvtt(B::mul(B::sub(K::k(1.0f), q), K::k(65535.0f)));
         }
 
-        // how many of [begin, end) thinning keeps
+        // the lanes Flicker hides now (pixelfx EMBER): less than flickerBelow of the life left and
+        // sin(2 pi rate time + phase) < 0, the phase the particle's own; L's age interpolated
+        static uint32_t flickerHidden(const PackJob& job, const typename K::Lane& L, uint32_t phaseKey){
+            const PixelParams& pix = job.prog->render.pixel;
+            const f4 left = B::sub(K::k(1.0f), L.normAge);
+            const float base = (float)std::fmod(job.time * (double)pix.flickerRate, 1.0);
+            const f4 cycle = B::madd(K::rand01(phaseKey, L.spawn), K::k(1.0f), K::k(base));
+            const f4 s = K::sin(B::mul(cycle, K::k(6.28318530717958647692f)));
+            return B::movemask(B::iand(B::cmplt(left, K::k(pix.flickerBelow)), B::cmplt(s, B::zero())));
+        }
+
+        // how many of [begin, end) thinning and Flicker keep
         static uint32_t countKept(const PackJob& job, const KernelContext& ctx, uint32_t begin, uint32_t end){
-            if (job.keepThreshold >= 1.0f)
+            const PixelParams& pix = job.prog->render.pixel;
+            const bool flicker = pix.flickerBelow > 0.0f;
+            if (job.keepThreshold >= 1.0f && !flicker)
                 return end - begin;
+            const uint32_t phaseKey = ctx.seed ^ randomSalt((uint32_t)ModuleId::PixelArt, 1);
+            const f4 back = K::k((1.0f - job.alpha) * job.tick);
             uint32_t n = 0;
             for (uint32_t i = begin; i < end; i += 4){
                 const uint32_t valid = end - i >= 4 ? 0xfu : ((1u << (end - i)) - 1u);
-                const f4 r = K::rand01(job.thinKey, K::ldu(ctx.ch[ChSpawnIndex], i));
-                const uint32_t bits = B::movemask(B::cmplt(r, K::k(job.keepThreshold))) & valid;
+                uint32_t bits = valid;
+                if (job.keepThreshold < 1.0f){
+                    const f4 r = K::rand01(job.thinKey, K::ldu(ctx.ch[ChSpawnIndex], i));
+                    bits &= B::movemask(B::cmplt(r, K::k(job.keepThreshold)));
+                }
+                if (flicker && bits){
+                    typename K::Lane L(ctx, i);
+                    if (job.alpha < 1.0f){
+                        L.age = B::max(B::sub(L.age, back), B::zero());
+                        L.normAge = B::mul(L.age, L.invLife);
+                    }
+                    bits &= ~flickerHidden(job, L, phaseKey);
+                }
                 n += (uint32_t)((bits & 1u) + ((bits >> 1) & 1u) + ((bits >> 2) & 1u) + ((bits >> 3) & 1u));
             }
             return n;
@@ -532,8 +619,11 @@ namespace {
         job.emitter = &emitter;
         job.prog = prog;
         job.view = &view;
-        job.alpha = emitter.interpolation();
+        // Hold Frames draws the state of the step as it is, without interpolation (S49 R5)
+        job.alpha = rp.pixel.holdFrameRate > 0.0f ? 1.0f : emitter.interpolation();
         job.tick = emitter.lastTickSeconds();
+        job.time = emitter.time();
+        gPackCount.fetch_add(1, std::memory_order_relaxed);
         job.keepThreshold = std::clamp(view.keep, 0.0f, 1.0f);
         job.thinKey = emitter.seedValue() ^ randomSalt((uint32_t)ModuleId::Renderer, 7);
         const bool sort = view.sort && rp.sort != SortMode::None;
@@ -582,7 +672,7 @@ namespace {
         jobs::JobSystem& js = jobs ? *jobs : jobs::system();
         // thinning keeps a varying number per chunk: count first, then pack at the offsets
         offsets[0] = 0;
-        if (job.keepThreshold < 1.0f){
+        if (job.keepThreshold < 1.0f || rp.pixel.flickerBelow > 0.0f){
             uint32_t* kept = arena.allocateArrayForOverwrite<uint32_t>(chunks);
             js.parallelFor(chunks, [&](size_t c){
                 const uint32_t b = (uint32_t)c * chunk;
@@ -598,6 +688,7 @@ namespace {
         job.instances = static_cast<ParticleInstance*>(arena.allocate(sizeof(ParticleInstance) * total, 16));
         job.mesh = rp.mesh ? static_cast<ParticleMeshInstance*>(arena.allocate(sizeof(ParticleMeshInstance) * total, 16)) : nullptr;
         job.custom = rp.customData ? static_cast<ParticleCustomInstance*>(arena.allocate(sizeof(ParticleCustomInstance) * total, 16)) : nullptr;
+        job.pixel = rp.pixel.needsStream() ? static_cast<ParticlePixelInstance*>(arena.allocate(sizeof(ParticlePixelInstance) * total, 16)) : nullptr;
         job.keys = sort ? arena.allocateArrayForOverwrite<uint16_t>(total) : nullptr;
         job.meshIndex = (rp.mesh && rp.meshCount > 1) ? arena.allocateArrayForOverwrite<uint8_t>(total) : nullptr;
         js.parallelFor(chunks, [&](size_t c){
@@ -608,6 +699,7 @@ namespace {
         result.instances = job.instances;
         result.mesh = job.mesh;
         result.custom = job.custom;
+        result.pixel = job.pixel;
         result.meshFirst[0] = 0;
         result.meshCount[0] = total;
         if (!sort && !job.meshIndex)
@@ -655,6 +747,11 @@ namespace {
             for (uint32_t i = 0; i < total; i++) cu[i] = job.custom[order[i]];
             result.custom = cu;
         }
+        if (job.pixel){
+            ParticlePixelInstance* px = static_cast<ParticlePixelInstance*>(arena.allocate(sizeof(ParticlePixelInstance) * total, 16));
+            for (uint32_t i = 0; i < total; i++) px[i] = job.pixel[order[i]];
+            result.pixel = px;
+        }
         return result;
     }
 
@@ -666,6 +763,55 @@ PackResult ParticleRenderPrep::packWith(bool scalar, const EmitterRuntime& emitt
 
 PackResult ParticleRenderPrep::pack(const EmitterRuntime& emitter, const RenderView& view, memory::Arena& arena, jobs::JobSystem* jobs){
     return packWith(forceScalarKernels(), emitter, view, arena, jobs);
+}
+
+PackResult HeldPack::get(const EmitterRuntime& emitter, const RenderView& view, memory::Arena& arena, jobs::JobSystem* jobs, float rate){
+    const double now = std::floor(emitter.time() * (double)rate + 1.0e-9);
+    if (now != step || emitter.generation() != generation || emitter.effect() != effect){
+        const PackResult fresh = ParticleRenderPrep::pack(emitter, view, arena, jobs);
+        step = now;
+        generation = emitter.generation();
+        effect = emitter.effect();
+        instances.assign(fresh.instances, fresh.instances + fresh.count);
+        if (fresh.pixel)
+            pixels.assign(fresh.pixel, fresh.pixel + fresh.count);
+        else
+            pixels.clear();
+    }
+    PackResult held;
+    held.count = (uint32_t)instances.size();
+    held.instances = instances.data();
+    held.pixel = pixels.empty() ? nullptr : pixels.data();
+    held.meshCount[0] = held.count;
+    return held;
+}
+
+HeldPack& HeldPacks::of(uint64_t view){
+    uses++;
+    for (Entry& e : entries){
+        if (e.view == view){
+            e.lastUse = uses;
+            return e.pack;
+        }
+    }
+    if (entries.size() < kMaxViews){
+        entries.push_back(Entry());
+        entries.back().view = view;
+        entries.back().lastUse = uses;
+        return entries.back().pack;
+    }
+    Entry* oldest = &entries[0];
+    for (Entry& e : entries){
+        if (e.lastUse < oldest->lastUse) oldest = &e;
+    }
+    oldest->view = view;
+    oldest->lastUse = uses;
+    oldest->pack.clear();
+    return oldest->pack;
+}
+
+uint64_t ParticleRenderPrep::packCount(){
+    return gPackCount.load(std::memory_order_relaxed);
 }
 
 void ParticleRenderPrep::radixSort16Sequence(const uint16_t* keys, uint32_t* out, uint32_t* scratch, uint16_t* keyScratch, uint32_t count){

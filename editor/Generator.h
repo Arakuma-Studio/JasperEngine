@@ -5,6 +5,7 @@
 
 #include "audio/AudioQaSettings.h"
 #include "render/GpuCreation.h"
+#include "registry/SortingLayers.h"
 #include <array>
 #include <functional>
 #include <string>
@@ -232,6 +233,10 @@ namespace jasperengine::editor {
         unsigned int maxBodies3D = 8192;
         unsigned int maxBodyPairs3D = 8192;
         unsigned int maxContactConstraints3D = 8192;
+        // Sorting Layers and Graphics > Transparency Sort (spec S52 R40)
+        std::vector<SortingLayerInfo> sortingLayers;
+        TransparencySortMode transparencySortMode = TransparencySortMode::DEFAULT;
+        Vector3 transparencySortAxis = Vector3(0.0f, 1.0f, 0.0f);
     };
 
     // A script build's state, published by every Generator (Play, compile_scripts, C++ reload,
@@ -313,6 +318,12 @@ namespace jasperengine::editor {
         BuildErrorLog buildErrors;
         // the project's UI Scale, emitted by configure (setUIScale before it)
         CanvasScalerSettings uiScale;
+        // the project's Pixels Per Unit (S41), emitted by configure when it is not 1
+        int pixelsPerUnit = 1;
+        // the project's Default Filter Mode is Point (S42 R3), emitted by configure
+        bool defaultFilterPoint = false;
+        // the styled bitmap glyph cache's MiB (S51), emitted when it is not 0
+        int bitmapTextCacheMiB = 0;
 
         static fs::path getGeneratedPath(const fs::path& projectInternalPath);
         static std::string getEditorPluginAbiCheck();
@@ -389,6 +400,12 @@ namespace jasperengine::editor {
         static constexpr unsigned int MAX_SUPPORTED_PARALLEL_BUILD_JOBS = 65536;
         static unsigned int getAutomaticParallelBuildJobs();
         static unsigned int getMaxParallelBuildJobs();
+        // cmake --build's --parallel for the tree configured at buildPath: `jobs`, but 1 under a
+        // Visual Studio generator. There each project's cl already compiles `jobs` files at once
+        // (/MP<jobs> from the configure's JASPERENGINE_PARALLEL_BUILD_JOBS), and --parallel is
+        // MSBuild's /m, how many projects build at once: both at `jobs` run up to jobs x jobs
+        // compilers while the engine's libraries build side by side.
+        static unsigned int buildStepParallelJobs(const fs::path& buildPath, unsigned int jobs);
         // prefabGuid: the asset GUID of a prefab path, empty for a missing prefab (Factory::createPrefab).
         // baked: each prefab's instance as the editor makes it (Project::bakePrefabsForExport),
         // what its build_prefab_* source is generated from
@@ -397,12 +414,15 @@ namespace jasperengine::editor {
         void writeSceneSource(Scene* scene, uint32_t sceneId, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources);
         void clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) const;
-        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings(), const HtmlUiRenderSettings& htmlUiRender = HtmlUiRenderSettings(), PbrTier mobilePbrTier = PbrTier::REDUCED, const ShaderCreationProjectSettings& shaderCreation = ShaderCreationProjectSettings(), bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = {}, const AudioSettings& audioSettings = AudioSettings(), const DebugSettings& debugSettings = DebugSettings());
+        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings(), const HtmlUiRenderSettings& htmlUiRender = HtmlUiRenderSettings(), PbrTier mobilePbrTier = PbrTier::REDUCED, const ShaderCreationProjectSettings& shaderCreation = ShaderCreationProjectSettings(), bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = {}, const AudioSettings& audioSettings = AudioSettings(), const DebugSettings& debugSettings = DebugSettings(), uint32_t particleWorldBudget = 0);
         // main.cpp's init lines of Project Settings > Input: the default deadzone (when not 0.15)
         // and InputActions::loadDefault of the actions asset (none: the engine keeps Unity's
         // Input Manager defaults)
         // the Canvas Scaler project default the next configure() writes into the generated main
         void setUIScale(const CanvasScalerSettings& settings) { uiScale = settings; }
+        void setPixelsPerUnit(int value) { pixelsPerUnit = value; }
+        void setDefaultFilterPoint(bool point) { defaultFilterPoint = point; }
+        void setBitmapTextCacheMiB(int value) { bitmapTextCacheMiB = value; }
         static std::string inputSettingsInitSource(const std::string& actionsAsset, float deadzone);
         // Project Settings > Graphics > Shader Globals in the generated main.cpp: the declarations
         // (with their defaults) before any scene loads; "" when the project declares none

@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Neon",
+  "author": "pixelfx",
+  "description": "pixelfx's 'neon' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "neon"},
+  "columns": 8,
+  "colors": ["#1a0516", "#3d0a33", "#701560", "#b0228f", "#f53cd1", "#ff86e6", "#ffd2f6", "#ffffff"],
+  "ramps": [
+    {"name": "neon", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}
