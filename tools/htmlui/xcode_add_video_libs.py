@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Adds the HTML UI's <video> (docs/html-ui/phase-6-video.md §3.2.2) to the Xcode workspace, the way
+# Adds the HTML UI's video and web-font codecs to the Xcode workspace, the way
 # tools/htmlui/xcode_add_lexbor.py adds lexbor (CMake builds the libraries from their own
 # CMakeLists.txt, the Xcode project lists everything explicitly):
 #
@@ -50,7 +50,7 @@ PROJECT = lx.PROJECT
 PREFIX = "56494445"  # "VIDE"
 PLATFORMS = lx.PLATFORMS
 LUNASVG_INCLUDE = lx.LUNASVG_INCLUDE
-SKIP_CONFIG_OWNERS = re.compile(r"^(lunasvg|rmlui|lexbor|dav1d|opus|webm)-")
+SKIP_CONFIG_OWNERS = re.compile(r"^(lunasvg|rmlui|lexbor|dav1d|opus|webm|brotlidec|woff2)-")
 CXX_ONLY = lx.CXX_ONLY
 
 
@@ -166,6 +166,20 @@ def libraries():
             "defines": [],
             "includes": [inc("libwebm")],
             "public_include": inc("libwebm"), "public_define": None,
+        },
+        {
+            "name": "brotlidec", "dir": "brotli", "c": "gnu99", "cxx": False,
+            "sources": cmake_sources(os.path.join(LIBS, "brotli", "CMakeLists.txt")),
+            "defines": ["BROTLI_BUILD_PORTABLE"],
+            "includes": [inc("brotli/c/include")],
+            "public_include": inc("brotli/c/include"), "public_define": None,
+        },
+        {
+            "name": "woff2", "dir": "woff2", "c": None, "cxx": True,
+            "sources": cmake_sources(os.path.join(LIBS, "woff2", "CMakeLists.txt")),
+            "defines": [],
+            "includes": [inc("woff2/include"), inc("woff2/src"), inc("brotli/c/include")],
+            "public_include": inc("woff2/include"), "public_define": None,
         },
     ]
 
@@ -601,8 +615,8 @@ def main():
     if duplicates:
         raise SystemExit("duplicate object ids: " + ", ".join(duplicates))
 
-    summary = "dav1d %d, opus %d, webm %d sources per target; %d media files; %d engine configurations; binding in %d phases" % (
-        len(libs[0]["sources"]), len(libs[1]["sources"]), len(libs[2]["sources"]), media, len(configs), phases)
+    summary = ", ".join("%s %d" % (lib["name"], len(lib["sources"])) for lib in libs)
+    summary += " sources per target; %d media files; %d engine configurations; binding in %d phases" % (media, len(configs), phases)
     if not project.added and not stale:
         print("Xcode project has the video libraries (" + summary + ")")
         return 0
