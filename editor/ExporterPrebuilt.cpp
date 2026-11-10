@@ -656,6 +656,7 @@ bool editor::Exporter::writeGameConfig() {
     game.mobilePbrTier = project->getMobilePbrTier();
     game.dynamicBatching = project->isDynamicBatching();
     game.lightMode = project->getLightMode();
+    game.transitions = project->getTransitionDefaults();
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) game.shadowTiers[platform] = ShadowTiers::getPlatformTier(platform);
     game.device = project->getDeviceSettings();
     for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) game.terrainQualityTiers[platform] = static_cast<int>(project->getTerrainQualityTier(platform));

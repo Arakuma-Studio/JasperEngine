@@ -472,6 +472,16 @@ holds only the copies a project makes of them) are colour data, credited here an
 | `resurrect-64` | Kerrie Lake | [Lospec: Resurrect 64](https://lospec.com/palette-list/resurrect-64) | free to use, credited |
 | `aap-64` | Adigun A. Polack | [Lospec: AAP-64](https://lospec.com/palette-list/aap-64) | free to use, credited |
 
+The agent sprite drawing tools (`editor/pixelart/draw/`, docs/specs/S47-agent-sprite-drawing.md) take their design from
+[tenten](https://github.com/debuffjp/tenten) by debuff (MIT) and port these algorithms, keeping the headers in the sources:
+[Pixelorama](https://github.com/Orama-Interactive/Pixelorama) (MIT, Copyright (c) 2019-present Orama Interactive and contributors): the
+pixel-perfect line (`src/Classes/Drawers.gd`), the scanline flood fill (`src/Classes/FloodFillObject.gd`, from Allegro 4.2.1's `flood.c` by
+Shawn Hargreaves), Zingl's ellipse and rounded rectangles (`src/Autoload/DrawingAlgos.gd`), the outline neighbourhoods
+(`src/Shaders/Effects/OutlineInline.gdshaderinc`), hue-shift shading (`src/Tools/DesignTools/Shading.gd`) and the rotxel and nearest
+rotations; [cleanEdge](https://torcado.com/cleanEdge/) by torcado (MIT, Copyright (c) 2022 torcado) and
+[OmniScale](https://github.com/libretro/glsl-shaders) by Lior Halphon (MIT, Copyright (c) 2015-2016 Lior Halphon, no-AA version by deakcor),
+ported to the CPU as the rotations of `edit_sprite`.
+
 Test data: the Endesga 32 files under `editor/tests/fixtures/palettes/` (`lospec-endesga-32.*`) and
 the recorded Lospec answers under `tools/mcp/tests/fixtures/lospec-mirror/` are Lospec's own
 downloads of the palettes above. The palette importers follow GIMP's `gimppalette-load.c` layout as
@@ -490,9 +500,25 @@ Ported, each file keeping the original notice next to ours:
 | CIELAB D65, CIEDE2000 and the cached nearest-colour matcher (`engine/core/pixelart/PixelColor.cpp`); Apply Palette's lost-colour groups (`editor/pixelart/ApplyPalette.cpp`) | [ritmo](https://github.com/typeonce-dev/ritmo) `packages/tools/src/pixel/core/color.ts`, `lost.ts` | MIT, Copyright (c) 2026 Sandro Maglione |
 | `fitRamp` and `rampAt` (`engine/core/pixelart/PixelColor.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/core/color.js` `fit` and `at` | MIT, Copyright (c) 2026 Patch |
 | The ordered pair-mix dither (`PaletteMatcher::ditherPair`, Palette Quantize's table) | Joel Yliluoma, "Arbitrary-palette positional dithering algorithm" (the algorithm, no code) | — |
+| S48's screen transitions (`engine/core/pixelart/ScreenTransition.cpp`, `engine/shaderlib/transition.frag`: the cover/hold/reveal structure, the kinds, the field rule for constant-width rims) and their default ember ramp; the Glitch burst structure (`engine/core/pixelart/Glitch.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/fx/transitions/` (`_lib.js` `field`, `iris.js`, `crt-off.js`, `pixel-dissolve.js`, `burn-away.js`), `src/core/color.js` `PAL.ember`, `src/fx/scifi/glitch.js` (the techniques, written fresh; no Sprite Fusion particle code) | MIT, Copyright (c) 2026 Patch |
 
 The CIEDE2000 test pairs (`engine/tests/core/pixelart/PixelColorTest.cpp`) are Sharma, Wu and Dalal's
 published data (2005).
+
+## Pixel FX game feel (S48)
+
+Ported, each function keeping the original notice next to ours:
+
+| Code | Taken from | Licence |
+|---|---|---|
+| The kick shake (`camera::kickOffset`, `engine/core/camera/ShakeInstance.cpp`) and the held-pose time (`anim::holdPoseTime`, `engine/core/animation/KeyframeSampling.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) `src/core/act.js` (`get shake()`, `poseAt`), which credits Hollow Crown's skills for the freeze, the shake and the 12 fps held poses | MIT, Copyright (c) 2026 Patch; Copyright (c) 2026 rehan-remade (Hollow Crown) |
+
+## Pixel FX contact sheets and effect lints (S48)
+
+| Code | Taken from | Licence |
+|---|---|---|
+| The contact sheet's backdrops (`editor/pixelart/fx/ContactSheet.cpp`: dark, ground, sky, light, black and their colours) and its grid | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `src/core/scene.js` `backdrop`, `tools/lib/fxlib.mjs` `contactSheet` | MIT, Copyright (c) 2026 Patch |
+| The spill, one-shot end, loop seam, determinism and slow-frame rules (`editor/pixelart/lint/EffectLints.cpp`) | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `tools/check.mjs` | MIT, Copyright (c) 2026 Patch |
 
 ## Pixel particles (S49)
 
@@ -501,6 +527,16 @@ Ported or copied, each file keeping the original notices next to ours:
 | Code or data | Taken from | Licence |
 |---|---|---|
 | The pixel shapes (Cross, Streak, Puff, Shard, Chunk, Glow: `engine/core/particles/ParticlePixel.cpp`, `engine/shaderlib/includes/particles_pixel.glsl`), the dithered fade, the presets' constants (`editor/pixelart/particles/*.particles`), and the closed-form flight and seamless cycle of Analytic particles (`engine/core/particles/AnalyticParticles.cpp`, `engine/shaderlib/includes/particles_analytic_vs.glsl`) | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 `src/core/sim.js`, `painter.js`, `particles.js`; `sim.js` adapts Sprite Fusion's [pixel art VFX](https://www.spritefusion.com/pixel-art-vfx) | MIT, Copyright (c) 2026 Patch and Copyright (c) 2026 Hugo Duprez |
+
+## Pixel Art Cleanup (S46)
+
+Ported, each file keeping the original notice next to ours:
+
+| Code | Taken from | Licence |
+|---|---|---|
+| The pixel fixer (`editor/pixelart/cleanup/Cleanup{Grid,Sample,Palette,Specks,Outline,Reduce,Lost,Background,Edits,Pipeline,Sheet,Animation,SheetOutput,Recipe,Report,Synthetic}.*`) and its ported tests (`editor/tests/pixelart/Cleanup*Test.cpp`) | [ritmo](https://github.com/typeonce-dev/ritmo) `103c46b11218`, `packages/tools/src/pixel/core/` and `packages/tools/test/` | MIT, Copyright (c) 2026 Sandro Maglione |
+| The outline repair and stroke-preserving shrink within that port (`CleanupOutline.*`, `CleanupReduce.*`) | ritmo's `outline.ts` and `reduce.ts`, which follow [ToPixel](https://github.com/daisuqe/ToPixel) | MIT, Copyright (c) 2026 Sandro Maglione; ToPixel as its authors publish it |
+| The craft and rule lints (`editor/pixelart/lint/CraftLints.*`) | ritmo `packages/tools/src/pixel/core/lint.ts`, `packages/tools/src/fx/core/craft.ts`, `check.ts` | MIT, Copyright (c) 2026 Sandro Maglione |
 
 ## Ideas re-implemented, no code copied
 

@@ -16,6 +16,7 @@
 // Imported pages once per import, a Source frame once per frame and layer set.
 
 #include "pixelart/PixelImage.h"
+#include "pixelart/draw/SpriteEdit.h"
 #include "sprite/SpriteSheet.h"
 
 #include "jobs/Task.h"
@@ -28,8 +29,13 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
+
+namespace jasperengine::editor::pixelart::draw {
+    struct SpriteEdited;
+}
 
 namespace jasperengine::editor::pixelart::aseprite {
     struct Document;
@@ -165,6 +171,22 @@ namespace jasperengine::editor {
         uint64_t sourceGpuRevision = 0;            // togglesRevision they were composed with
         const void* sourceGpuDocument = nullptr;
         std::vector<Texture> retired;              // destroyed next frame (ImGui draws after show())
+
+        // ---- agent edits (S47 R41): the changed rects, outlined and fading, and the status line
+        struct AgentEdit {
+            std::vector<pixelart::draw::DirtyRect> rects;
+            std::string by, summary, revision;
+            bool showLine = false;         // an agent's edit (an undo or redo only outlines)
+            double at = 0.0;               // the steady clock of the edit
+            uint64_t undoId = 0;           // the history step (0 when the event is an undo or redo)
+        };
+        std::optional<AgentEdit> agentEdit;
+        std::string loadedRevision;     // the revision `loaded` holds, when known
+        double ageTickDue = 0.0;        // when the "N s ago" line last armed its wake-up
+        std::string externalSaveNotice;
+        void onSpriteEdited(const pixelart::draw::SpriteEdited& event);
+        void adoptDocumentFromSession();
+        void drawAgentEditLine();
 
         // ---- upkeep
         void followProjectSelection();

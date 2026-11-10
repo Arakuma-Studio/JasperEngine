@@ -7,6 +7,7 @@
 // lines. Every edit is a property command on the Catalog paths MCP uses too.
 
 #include "InspectorWindow.h"
+#include "component/MeshComponent.h"
 #include "PaletteAssetField.h"
 #include "widget/ColorPickerWindow.h"
 
@@ -26,6 +27,7 @@
 #include "material/MaterialChange.h"
 #include "material/MaterialPresets.h"
 #include "pixelart/Palette.h"
+#include "pixelart/PixelArtMode.h"
 #include "pixelart/PaletteAssets.h"
 #include "pixelart/PaletteMaterial.h"
 #include "pixelart/PaletteSwap.h"
@@ -109,6 +111,7 @@ namespace {
             case ShaderTextureDefault::RIPPLES: return "Default (built-in ripples)";
             case ShaderTextureDefault::NOISE: return "Default (built-in noise)";
             case ShaderTextureDefault::PARTICLE: return "Default (built-in particle)";
+            case ShaderTextureDefault::RAMP_GREY: return "Default (grey ramp)";
         }
         return "Default";
     }
@@ -701,6 +704,22 @@ bool editor::InspectorWindow::drawShaderPropertyValue(const ShaderManifestProper
             }
             break;
         }
+        case ShaderPropertyKind::CHOICE: {
+            // a pick from its names (S48 D3), stored as the index: one undo step a pick
+            const int index = std::clamp((int)value.x, 0, std::max(0, (int)property.choices.size() - 1));
+            const char* preview = property.choices.empty() ? "" : property.choices[(size_t)index].c_str();
+            if (ImGui::BeginCombo(id.c_str(), preview)) {
+                for (size_t i = 0; i < property.choices.size(); i++) {
+                    if (ImGui::Selectable(property.choices[i].c_str(), (int)i == index) && (int)i != index) {
+                        edited = Vector4((float)i, 0.0f, 0.0f, 0.0f);
+                        changed = true;
+                        continuous = false;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            break;
+        }
         default: {
             const int components = property.kind == ShaderPropertyKind::VECTOR2 ? 2
                                  : property.kind == ShaderPropertyKind::VECTOR3 ? 3
@@ -776,6 +795,9 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
             paletteSlotOn = paletteSlotOn || slot.isEnabled(enabledDefines);
     }
 
+    // library:sprite's Pixel FX helpers (S48 R37): thumbnails and Preview rows on a Sprite's material
+    const bool spriteShader = ShaderReference::getBase(shader) == "library:sprite";
+
     // ---- features and keywords (compile-time: a change builds another variant, off the UI thread)
     for (const ShaderManifestFeature& feature : manifest->features) {
         ImGui::PushID(("feature_" + feature.define).c_str());
@@ -785,6 +807,9 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         if (ImGui::Checkbox(("##feature_" + feature.define).c_str(), &enabled)) {
             std::vector<std::string> changed = features;
             ShaderLibraryValues::setFeature(changed, shader, feature.define, enabled);
+            // a Pixel Art Mode project's outline is the pixel one (S48 R38), in the same undo step
+            if (enabled && feature.define == "OUTLINE")
+                pixelart::PixelArtMode::pickPixelOutline(changed, shader, project->getPixelArtSettings().enabled);
             setFeatures(changed);
             // ticking Palette Swap on fills an empty Source when one project palette covers the
             // sprite (R18): the rows start Detect once the slot shows
@@ -810,17 +835,20 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         } else if (hovered) {
             ImGui::SetTooltip("%s", featureTip.c_str());
         }
+        // a Sprite's material: the feature alone on its frame (S48 R37)
+        if (spriteShader)
+            drawSpriteFxThumbnail(sceneProject, entity, cpType, paramsProperty, feature.define);
         ImGui::PopID();
     }
     for (const ShaderManifestKeywords& group : manifest->keywords) {
+        // a group scoped by a feature (S48 D3) shows only with it
+        const std::string chosen = manifest->getKeywordChoice(group, features);
+        if (chosen.empty())
+            continue;
         ImGui::PushID(("keywords_" + group.group).c_str());
         prefabRowProperty = featuresProperty;
         propertyHeader(rowLabel(group.label, group.group));
-        std::string current = group.values.empty() ? std::string() : group.values[0];
-        for (const std::string& value : group.values) {
-            if (ShaderLibraryValues::isFeatureEnabled(features, shader, group.group + "_" + value))
-                current = value;
-        }
+        std::string current = chosen.substr(group.group.size() + 1);
         ImGui::SetNextItemWidth(-1);
         if (ImGui::BeginCombo(("##keywords_" + group.group).c_str(), current.c_str())) {
             for (const std::string& value : group.values) {
@@ -842,13 +870,10 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         ImGui::PopID();
     }
 
-    // a row's feature= ("!<DEFINE>": shown while that define is off)
+    // a row's feature= ("!<DEFINE>": shown while that define is off; "A,B": while one is on)
+    const std::vector<std::string> enabledDefines = manifest->resolveFeatures(features);
     auto featureOn = [&](const std::string& feature) {
-        if (feature.empty())
-            return true;
-        if (feature[0] == '!')
-            return !ShaderLibraryValues::isFeatureEnabled(features, shader, feature.substr(1));
-        return ShaderLibraryValues::isFeatureEnabled(features, shader, feature);
+        return ShaderManifest::isRowShown(feature, enabledDefines);
     };
 
     // members that follow a global shader value: a material's or a component's bindings (an
@@ -945,6 +970,9 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         if (bindingsRef)
             drawGlobalLinkButton(property.member, components, bindings, setBindings);
         ImGui::PopID();
+        // a Sprite's animated Pixel FX amount: its Preview row (S48 R37)
+        if (spriteShader)
+            drawSpriteFxPreviewRow(sceneProject, entity, cpType, paramsProperty, property);
     }
 
     // ---- textures
@@ -1962,20 +1990,30 @@ void editor::InspectorWindow::drawMaterialPresetRow(ComponentType cpType, SceneP
                 const uint32_t sceneId = sceneProject->id;
                 auto* multi = new MultiPropertyCmd();
                 bool changed = false;
+                bool wroteCopy = false;
                 for (Entity entity : entities) {
                     MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
                     if (!mesh || submesh >= mesh->numSubmeshes)
                         continue;
                     const Material& from = mesh->submeshes[submesh].material;
                     // judged by the shader the submesh draws with (the mesh's or the scene's when it names none)
-                    changed |= addMaterialChangeCommands(*multi, project, sceneId, entity, submesh, from,
-                                                         applyMaterialPreset(preset, from, meshShaderFor(scene, entity)),
-                                                         settingsMaterial.onValueChanged);
+                    Material to = applyMaterialPreset(preset, from, meshShaderFor(scene, entity));
+                    // a Pixel FX preset's built-in ramp: the project's copy of its palette (S43, written if missing)
+                    bool wrote = false;
+                    std::string error;
+                    if (!resolvePresetPalettes(*project, to, wrote, error))
+                        Out::error("Preset %s: %s", preset.name.c_str(), error.c_str());
+                    wroteCopy = wroteCopy || wrote;
+                    changed |= addMaterialChangeCommands(*multi, project, sceneId, entity, submesh, from, to, settingsMaterial.onValueChanged);
                 }
-                if (changed)
+                if (changed) {
                     CommandHandle::get(sceneId)->addCommandNoMerge(multi);
-                else
+                    // the palette copy and the material edit undo together
+                    if (wroteCopy)
+                        editor::pixelart::linkPaletteCopy(*project, sceneId);
+                } else {
                     delete multi;
+                }
             }
             if (!preset.description.empty() && ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s", preset.description.c_str());

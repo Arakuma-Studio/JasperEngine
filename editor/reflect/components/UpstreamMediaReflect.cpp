@@ -96,10 +96,14 @@ namespace {
         JE_FIELD(CameraShakerComponent, traumaMaxOffset),
         JE_FIELD(CameraShakerComponent, traumaMaxAngle),
         JE_FIELD(CameraShakerComponent, traumaFrequency, .min = 0.0f),
+        JE_FIELD(CameraShakerComponent, pixelSnap, .flags = OmitIfDefault | CodegenIfChanged, .label = "Pixel Snap",
+                 .tooltip = "Rounds the shake to whole art pixels (the Pixel Perfect Camera's grid, else screen pixels) and drops the roll. 2D only."),
+        JE_FIELD(CameraShakerComponent, tickRate, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Hertz, .min = 0.0f, .max = 240.0f, .label = "Tick Rate",
+                 .tooltip = "The shake moves only on ticks of 1 / Tick Rate seconds (0: every frame). 2D only."),
     };
     const ComponentCodec kCameraShakerCodec = JE_STREAM_CODEC(CameraShakerComponent, encodeCameraShakerComponent, decodeCameraShakerComponent);
     constexpr const char* kCameraShakerKnownKeys[] = {"enabled", "global", "mode", "positionScale", "rotationScale", "startPreset",
-        "traumaDecay", "traumaFrequency", "traumaMaxAngle", "traumaMaxOffset", "traumaPower", "unscaledTime"};
+        "traumaDecay", "traumaFrequency", "traumaMaxAngle", "traumaMaxOffset", "traumaPower", "unscaledTime", "pixelSnap", "tickRate"};
 
     // ---------------------------------------------------------------- Camera Follow
 

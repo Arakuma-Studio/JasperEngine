@@ -1229,6 +1229,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/shader/ShaderListCache.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryMatrix.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryDoc.cpp
+    # S48: library:sprite's texture reads (frame_cost, SpriteVariants.TapBudget)
+    ${EDITOR_DIR}/shader/SpriteTaps.cpp
     ${EDITOR_DIR}/texture/AstcEncoder.cpp
     ${EDITOR_DIR}/texture/BasisEncoder.cpp
     ${EDITOR_DIR}/texture/BC7TransparentEndpointRepair.cpp
@@ -1296,6 +1298,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ProjectWindowSound.cpp
     ${EDITOR_DIR}/window/InspectorPixelArt.cpp
     ${EDITOR_DIR}/window/InspectorSorting.cpp
+    ${EDITOR_DIR}/window/InspectorPixelFx.cpp
     ${EDITOR_DIR}/window/InspectorVideo.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/InspectorVcs.cpp
@@ -1547,6 +1550,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DrawSubmissionSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/SortingLayersCmd.cpp
+    # S48 Screen Transitions
+    ${EDITOR_DIR}/command/type/TransitionSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DeviceSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteFileCmd.cpp
     ${EDITOR_DIR}/command/type/SetMainCameraCmd.cpp

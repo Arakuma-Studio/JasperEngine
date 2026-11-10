@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 57cefad0837d5b9b
+digest adfa3006f922f663
 --- 0
 exposure: 10
 tonemap: agx
@@ -63,6 +63,10 @@ dynamicResolutionMinScale: 1
 palette: textures/a.png
 paletteDither: bayer2
 paletteDistance: rgb
+glitchIntensity: 0.6283189
+glitchRgbSplit: 8
+glitchTears: 0
+glitchBurstLength: 1
 --- 1
 exposure: 10
 tint: 1e-45
@@ -104,6 +108,11 @@ dynamicResolutionMinScale: 1
 palette: textures/a.png
 paletteDither: bayer2
 paletteDistance: rgb
+glitchTears: 8
+glitchInterlace: 1
+glitchBurstRate: 0
+glitchFps: 1
+glitchSeed: 5
 --- 2
 tonemap: neutral
 tint: -1
@@ -167,6 +176,14 @@ palette: ui/menu.html
 paletteDither: bayer8
 paletteDistance: rgb
 palettePrecision: high
+glitchEnabled: true
+glitchIntensity: 0
+glitchRgbSplit: 8
+glitchTears: 0
+glitchTearShift: 1e-45
+glitchInterlace: 1
+glitchBurstRate: -0
+glitchSeed: 3
 --- 3
 exposure: -10
 tonemap: neutral
@@ -210,6 +227,11 @@ dynamicResolutionTargetFps: 20
 palette: textures/a.png
 paletteDither: bayer2
 palettePrecision: high
+glitchEnabled: true
+glitchRgbSplit: 8
+glitchTears: 0
+glitchTearShift: 32
+glitchBurstRate: 8
 --- 4
 exposure: 10
 tonemap: agx
@@ -273,6 +295,16 @@ paletteDither: bayer8
 paletteDitherStrength: -0
 paletteDistance: rgb
 palettePrecision: high
+glitchEnabled: true
+glitchIntensity: 0
+glitchRgbSplit: -0
+glitchTears: 0
+glitchTearShift: 32
+glitchInterlace: 1
+glitchBurstRate: 0
+glitchBurstLength: 0.05
+glitchFps: 60
+glitchSeed: 3
 --- 5
 exposure: -10
 tonemap: neutral
@@ -322,6 +354,12 @@ dynamicResolutionMinScale: 1
 palette: ui/menu.html
 paletteDither: bayer2
 paletteDitherStrength: 0.042260047
+glitchRgbSplit: 1e-45
+glitchTears: 2
+glitchInterlace: 1
+glitchBurstRate: 0.2961261
+glitchBurstLength: 0.05
+glitchFps: 1
 --- 6
 exposure: 1e-45
 temperature: -1
@@ -389,6 +427,14 @@ paletteDither: bayer8
 paletteDitherStrength: 0
 paletteDistance: rgb
 palettePrecision: high
+glitchRgbSplit: 0.18676522
+glitchTears: 8
+glitchTearShift: 0
+glitchInterlace: 0
+glitchBurstRate: -0
+glitchBurstLength: 0.05
+glitchFps: 1
+glitchSeed: 7
 --- 7
 exposure: 1e-45
 tonemap: agx
@@ -433,3 +479,6 @@ halationThreshold: 1e-45
 halationRadius: 1
 halationTint: [0, 0, 0]
 paletteDistance: rgb
+glitchTearShift: 0
+glitchInterlace: 0
+glitchBurstLength: 0.05

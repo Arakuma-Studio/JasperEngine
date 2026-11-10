@@ -1048,7 +1048,7 @@ A panel of frosted glass: the blurred scene behind it, tinted. Needs the scene b
 <a id="librarysprite"></a>
 ### Sprite (`library:sprite`)
 
-Sprite, tilemap and polygon effects on the sprite's own texture and colour: outline, hue shift, hit flash, grayscale, colour replace, overlay and glow; lit by 2D lights, with the material's Normal Texture as the normal map. Alpha blended, both faces, no shadows; with the Premultiplied blend mode the texture is read as premultiplied.
+Sprite, tilemap and polygon effects on the sprite's own texture and colour: outline (smooth, or pixel with 4 or 8 neighbours, an inline and a colour from a ramp or the art, sel-out), hue shift, hit flash, grayscale, colour replace, overlay, glow, palette swap and cycling, and the Pixel FX dither fade, dissolve, ramp recolour and drop shadow; lit by 2D lights, with the material's Normal Texture as the normal map. Fixed order: palette swap, colour replace, hue shift, ramp recolour, grayscale, overlay, flash, dissolve, inline, outline (behind), drop shadow (behind the outline), alpha mode, 2D lights, glow, dither fade. A pixel outline or a drop shadow grows the sprite's quad so nothing is cut at the frame edge. Alpha blended, both faces, no shadows; with the Premultiplied blend mode the texture is read as premultiplied.
 
 - **Type**: mesh (a material's shader); category 2D.
 - **Lighting**: none.
@@ -1076,11 +1076,36 @@ Sprite, tilemap and polygon effects on the sprite's own texture and colour: outl
 | `glowPower` | range 0.1 to 8 | 2 | Glow falloff power (with `GLOW`) |
 | `paletteRow` | int | 0 | Active palette (0: original) (with `PALETTE_SWAP`) |
 | `paletteCycleSpeed` | float | 1 | Cycling speed (with `PALETTE_CYCLE`) |
+| `outlineColorFrom` | choice: Colour, Ramp darkest, Selective | Colour | Outline colour from (with `OUTLINE_STYLE_PIXEL4` or `OUTLINE_STYLE_PIXEL8`) |
+| `outlineRampSteps` | range 1 to 4 | 1 | Selective: ramp steps darker (with `OUTLINE_STYLE_PIXEL4` or `OUTLINE_STYLE_PIXEL8`) |
+| `inlineWidth` | range 0 to 2 | 0 | Inline width (texels) (with `OUTLINE_STYLE_PIXEL4` or `OUTLINE_STYLE_PIXEL8`) |
+| `inlineColor` | colour | (0, 0, 0, 1) | Inline colour (with `OUTLINE_STYLE_PIXEL4` or `OUTLINE_STYLE_PIXEL8`) |
+| `ditherFadeAmount` | range 0 to 1 | 0 | Dither fade (1: gone) (with `DITHER_FADE`) |
+| `ditherMatrix` | choice: Bayer 4x4, Bayer 8x8 | Bayer 4x4 | Dither matrix (with `DITHER_FADE`) |
+| `ditherSpace` | choice: Sprite texels, Screen pixels | Sprite texels | Dither space (with `DITHER_FADE`) |
+| `dissolveProgress` | range 0 to 1 | 0 | Dissolve progress (1: gone) (with `DISSOLVE`) |
+| `dissolveDirection` | vector2 | (0, 1) | Dissolve direction (texels, y up; 0: noise only) (with `DISSOLVE`) |
+| `dissolveNoise` | range 0 to 1 | 0.35 | Dissolve noise (with `DISSOLVE`) |
+| `dissolveNoiseScale` | range 1 to 32 | 4 | Dissolve noise cell (texels) (with `DISSOLVE`) |
+| `dissolveJitter` | range 0 to 0.3 | 0.08 | Dissolve jitter (with `DISSOLVE`) |
+| `dissolveEdgeWidth` | range 0 to 8 | 2 | Edge band (whole texels) (with `DISSOLVE`) |
+| `dissolveScorchWidth` | range 0 to 16 | 3 | Scorch band (texels) (with `DISSOLVE`) |
+| `dissolveEdgeGlow` | HDR colour | (0, 0, 0, 1) | Edge glow (HDR, black: off) (with `DISSOLVE`) |
+| `dissolveSeed` | int | 0 | Dissolve seed (with `DISSOLVE`) |
+| `rampAmount` | range 0 to 1 | 1 | Ramp amount (dithered) (with `RAMP_RECOLOR`) |
+| `rampLow` | float | 1 | Ramp step for luma 0 (negative: from the end) (with `RAMP_RECOLOR`) |
+| `rampHigh` | float | -1 | Ramp step for luma 1 (negative: from the end) (with `RAMP_RECOLOR`) |
+| `rampBevel` | range 0 to 1 | 0 | Ramp bevel (with `RAMP_RECOLOR`) |
+| `rampPulse` | float | 0 | Ramp pulse (steps per second) (with `RAMP_RECOLOR`) |
+| `shadowOffset` | vector2 | (1, -1) | Shadow offset (texels, y up) (with `DROP_SHADOW`) |
+| `shadowColor` | colour | (0, 0, 0, 0.5) | Shadow colour (with `DROP_SHADOW`) |
+| `shadowColorFrom` | choice: Colour, Ramp darkest | Colour | Shadow colour from (with `DROP_SHADOW`) |
 
 | Texture | Default | Description |
 |---|---|---|
 | `u_replaceMaskTexture` | black | Replace mask (RGB selects the replacement colour) (with `COLOR_REPLACE`) |
 | `u_overlayTexture` | white | Overlay texture (with `OVERLAY`) |
+| `u_fxRampTexture` | built-in grey ramp | Ramp (an N x 1 strip, or <palette>.palette#ramp:<name>) (with `DISSOLVE` or `RAMP_RECOLOR` or `OUTLINE_STYLE_PIXEL4` or `OUTLINE_STYLE_PIXEL8` or `DROP_SHADOW`) |
 
 | Feature | Default | Description |
 |---|---|---|
@@ -1093,6 +1118,19 @@ Sprite, tilemap and polygon effects on the sprite's own texture and colour: outl
 | `GLOW` | off | Glow |
 | `PALETTE_SWAP` | off | Palette Swap |
 | `PALETTE_CYCLE` | off | Palette Cycling |
+| `DITHER_FADE` | off | Dither Fade |
+| `DISSOLVE` | off | Dissolve |
+| `RAMP_RECOLOR` | off | Ramp Recolour |
+| `DROP_SHADOW` | off | Drop Shadow |
+
+| Keyword group | Values (first is the default) | Description |
+|---|---|---|
+| `OUTLINE_STYLE` | `OUTLINE_STYLE_SMOOTH`, `OUTLINE_STYLE_PIXEL4`, `OUTLINE_STYLE_PIXEL8` | Outline style (with `OUTLINE`; the first value adds no define) |
+
+| Quad growth | Texels | Description |
+|---|---|---|
+| with `OUTLINE_STYLE_PIXEL4` or `OUTLINE_STYLE_PIXEL8` | `outlineWidth` | a sprite's quad grows by it so nothing drawn around the art is cut at the frame edge |
+| with `DROP_SHADOW` | `shadowOffset` | a sprite's quad grows by it so nothing drawn around the art is cut at the frame edge |
 
 <a id="librarysprite_mask"></a>
 ### Sprite mask (`library:sprite_mask`)

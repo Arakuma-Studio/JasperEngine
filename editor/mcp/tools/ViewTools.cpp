@@ -16,6 +16,7 @@
 #include "window/SpriteNormalsWindow.h"
 #include "window/TitleDesignerWindow.h"
 #include "titleart/anim/TitleAnimationPanel.h"
+#include "window/PixelArtCleanupWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
@@ -1806,13 +1807,16 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "sprite_normals") {
         app.getSpriteNormalsWindow()->open();
         imguiName = SpriteNormalsWindow::WINDOW_NAME;
+    } else if (window == "pixel_art_cleanup") {
+        app.getPixelArtCleanupWindow()->open();
+        imguiName = PixelArtCleanupWindow::WINDOW_NAME;
     } else if (window == "title_designer") {
         imguiName = TitleDesignerWindow::WINDOW_NAME;
         if (!focusTitleDesigner(call, app.getTitleDesignerWindow())) return;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, particle_effect, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
-                   "vertex_animation_baker, sprite_normals, title_designer, graph_editor.");
+                   "vertex_animation_baker, sprite_normals, pixel_art_cleanup, title_designer, graph_editor.");
         return;
     }
     // A window opened just now exists after its next draw.
@@ -2305,7 +2309,7 @@ void registerViewTools(McpRegistry& registry) {
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "particle_effect", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
                                        "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals",
-                                       "title_designer", "graph_editor"})},
+                                       "pixel_art_cleanup", "title_designer", "graph_editor"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "Categories the filter hides.")},

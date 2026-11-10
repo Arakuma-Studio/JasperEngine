@@ -144,6 +144,7 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kVoxelVolumeDesc;
     // TerrainWorldReflect.cpp (T4)
     extern const ComponentDesc kTerrainWorldDesc;
+    extern const ComponentDesc kHitStopExemptDesc;
     // editor/titleart/runtime/TitleArtRendererReflect.cpp (S81)
     extern const ComponentDesc kTitleArtRendererDesc;
 

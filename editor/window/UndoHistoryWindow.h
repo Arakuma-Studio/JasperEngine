@@ -49,6 +49,7 @@ namespace jasperengine::editor {
         void drawOtherScenes(uint32_t sceneId);
         void drawFooter(uint32_t sceneId);
         void jump(uint32_t sceneId, uint64_t entryId);
+        std::string refusalOf(const UndoTimeline::EntryView& view) const;
         void drawTooltip(const UndoTimeline::EntryView& view) const;
     };
 

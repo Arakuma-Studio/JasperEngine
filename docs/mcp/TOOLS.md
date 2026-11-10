@@ -61,6 +61,8 @@ Conventions shared by every tool (explained once in the server instructions, not
 - [Particles: effects and playback](#particles-effects-and-playback) (12): `add_particle_module`, `bake_particle_sheet`, `capture_particles`, `control_particles`, `create_particle_effect`, `edit_particle_effect`, `get_particle_effect`, `get_particle_migration_report`, `get_particle_stats`, `preview_particle_effect`, `remove_particle_module`, `set_particle_effect`
 - [Pixel art: palettes](#pixel-art-palettes) (2): `apply_palette`, `edit_palette`
 - [Pixel art: the validator](#pixel-art-the-validator) (1): `check_pixel_art`
+- [Pixel art: effect contact sheets and checks](#pixel-art-effect-contact-sheets-and-checks) (1): `capture_contact_sheet`
+- [Pixel art: cleanup and lints](#pixel-art-cleanup-and-lints) (2): `fix_pixel_art`, `lint_pixel_art`
 - [Search, shortcuts, layouts, labels, saved searches and bookmarks](#search-shortcuts-layouts-labels-saved-searches-and-bookmarks) (8): `edit_asset_labels`, `edit_bookmarks`, `edit_layout_presets`, `edit_saved_searches`, `list_shortcuts`, `run_command`, `search_editor`, `set_shortcut`
 - [Navigation: navmeshes, agents, crowds and grids](#navigation-navmeshes-agents-crowds-and-grids) (6): `bake_navigation`, `get_navigation_info`, `paint_nav_grid`, `query_navigation`, `set_navigation_settings`, `visualize_navigation`
 - [Git/SVN status, diffs, commits, locks](#gitsvn-status-diffs-commits-locks) (10): `commit_files`, `diff_file`, `diff_scene`, `get_vcs_log`, `get_vcs_status`, `lock_files`, `revert_files`, `revert_to_baseline`, `sync_remote`, `unlock_files`
@@ -5398,6 +5400,86 @@ Pixel-art rules on scenes and textures (filtering, texel size, integer scale, gr
 | `scenes` | array of string |  |  |
 
 
+## Pixel art: effect contact sheets and checks
+
+### `capture_contact_sheet`
+
+*Capture Contact Sheet*
+
+Group: `pixel_art` (listed once `tool_groups` enables it, callable either way)
+
+Draws a GameObject (animation: an .anim on it; effect: a PixelFX effect), a .particles asset or a screen transition at N times into one labelled PNG, a row of frames per backdrop. isolated (default): the target alone; scene: through its camera (in Play, steps the paused game). lint: effect checks and a verdict. A preview until output: true writes path (one undo).
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `backdrops` | array of `"checker"` \| `"dark"` \| `"light"` \| `"sky"` \| `"ground"` \| `"black"` \| `"scene"` |  |  |
+| `columns` | integer |  |  |
+| `duration` | number |  |  |
+| `frames` | integer |  |  |
+| `labels` | boolean |  |  |
+| `lint` | boolean or array |  |  |
+| `loop` | boolean |  |  |
+| `margin` | integer |  |  |
+| `max_width` | integer |  |  |
+| `mode` | `"isolated"` \| `"scene"` |  |  |
+| `output` | boolean |  |  |
+| `path` | string |  |  |
+| `scale` | integer |  |  |
+| `target` | object {animation, effect, effect_options, entity, particles, scene, transition, transition_options} | yes |  |
+| `times` | array of number |  |  |
+
+
+## Pixel art: cleanup and lints
+
+### `fix_pixel_art`
+
+*Fix Pixel Art*
+
+Group: `pixel_art` (listed once `tool_groups` enables it, callable either way)
+
+Cleans AI or loose pixel art: finds the grid, reads each cell, snaps to a palette, slices sheets into clips; verdict clean, fixable or needs_person. Without output it previews (image, nothing written); the same arguments plus output:true write it; output:{import_step:true} instead makes the fix that texture's import step. Recipe keys: jasper://docs/pixel-art-cleanup. lint_pixel_art only checks.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `apply` | integer or string |  | On write: Sprite to give the result. |
+| `entity` | integer or string |  | Sprite as the source. |
+| `force` | boolean |  | Write a needs_person result, recorded as forced. |
+| `format` | `"png"` \| `"aseprite"` |  |  |
+| `image` | `"compare"` \| `"result"` \| `"grid"` \| `"lost"` \| `"lints"` \| `"none"` |  |  |
+| `max_width` | integer (256..2048) |  |  |
+| `output` | boolean or string or object |  |  |
+| `overwrite` | boolean |  |  |
+| `palette` | string or array |  |  |
+| `recipe` | object |  | Partial recipe; unknown keys fail. |
+| `rerun` | boolean |  | source is an output: re-run its stored recipe. |
+| `sheet` | `"auto"` \| `"off"` \| `"on"` |  |  |
+| `source` | string |  |  |
+| `timeout_seconds` | number (1..3600) |  | Seconds the run may take (default 60); past 1 s the call answers with the job. |
+
+
+### `lint_pixel_art`
+
+*Lint Pixel Art*
+
+Group: `pixel_art` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
+
+Checks an image, .aseprite (frames: tag or numbers; layer) or Sprite: craft lints and rule lints as PASS, WARN, FAIL or SKIP with the measured value, threshold and pixels, plus a verdict. Read-only. Never loosen a threshold to pass: fix the art (edit_sprite) or run fix_pixel_art.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `backdrops` | array of string |  |  |
+| `entity` | integer or string |  | Sprite as the source. |
+| `fail_on` | `"fail"` \| `"warn"` |  |  |
+| `frames` | string or array |  |  |
+| `image` | boolean |  | Frames with spots marked. |
+| `layer` | string |  |  |
+| `lints` | array of `"off_palette"` \| `"colors"` \| `"partial_alpha"` \| `"transparent_background"` \| `"size"` \| `"near_duplicates"` \| `"orphans"` \| `"jaggies"` \| `"doubles"` \| `"holes"` \| `"flicker"` \| `"contrast"` \| `"banding"` \| `"pillow_shading"` \| `"empty_frame"` \| `"one_frame"` \| `"frame_scale"` |  |  |
+| `loop` | boolean |  |  |
+| `palette` | string or array |  |  |
+| `rules` | object {max_colors, sizes, transparent_background} |  |  |
+| `source` | string |  |  |
+
+
 ## Search, shortcuts, layouts, labels, saved searches and bookmarks
 
 ### `edit_asset_labels`
@@ -5938,6 +6020,69 @@ Renders a .titleart with real alpha on backgrounds (checker, black, white, #rrgg
 
 ## Sprites: Aseprite import, atlases, drawing
 
+### `create_sprite`
+
+*Create Sprite*
+
+Group: `sprites` (listed once `tool_groups` enables it, callable either way)
+
+A new sprite file (.aseprite) with a palette, frames and layers, or from a .png/GIF/APNG. One undo step removes it.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `duration_ms` | integer (1..65535) |  | Default: `100`. |
+| `frames` | integer (1..256) |  | Default: `1`. |
+| `from` | string |  | A .png, .gif or APNG to take frames and colours from. |
+| `layers` | array of string |  | Layer names, bottom first. |
+| `mode` | `"indexed"` \| `"rgba"` |  |  |
+| `overwrite` | boolean |  |  |
+| `palette` | string or array |  | .palette path, built-in name or hex list; default the project's Default Palette. |
+| `path` | string | yes | Project-relative .aseprite or .ase path. |
+| `size` | array of integer |  | [w, h], 1-4096. |
+
+
+### `diff_sprite`
+
+*Diff Sprite*
+
+Group: `sprites` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
+
+What changed in a sprite file: against the previous edit_sprite, a revision, another file or another frame. Its rows paste back as a patch.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `against` | string or object {frame, sprite} |  | Default "previous". |
+| `frames` | integer or array or string |  | Default all. |
+| `grid` | boolean |  | Default: `true`. |
+| `image` | boolean |  |  |
+| `layer` | integer or string |  | Default "composite". |
+| `max_cells` | integer (0..1024) |  | Default: `64`. |
+| `rect` | array of integer |  | [x, y, w, h]. |
+| `sprite` | string | yes |  |
+
+
+### `edit_sprite`
+
+*Edit Sprite*
+
+Group: `sprites` (listed once `tool_groups` enables it, callable either way). Hints: destructive
+
+An atomic batch of drawing ops on a sprite file (.aseprite, .png; not a Sprite component): one undo step, an echo of the change. Op fields: jasper://docs/sprites.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `echo` | `"dirty"` \| `"composite"` \| `"none"` |  | Default: `"dirty"`. |
+| `echo_max` | integer (0..4096) |  | Default: `1024`. |
+| `expect_revision` | string |  | Fail unless this is the file's revision. |
+| `frame` | integer or array or string |  | Default frame, from 1. |
+| `image` | boolean |  |  |
+| `layer` | integer or string |  | Default layer. |
+| `lint` |  |  | true or lint ids. |
+| `ops` | array of object {op} | yes |  |
+| `sprite` | string | yes |  |
+| `symmetry` | object {diagonal, x, y} |  |  |
+
+
 ### `edit_sprite_atlas`
 
 *Edit Sprite Atlas*
@@ -5958,6 +6103,19 @@ Create a .spriteatlas, add or remove members (images, .aseprite files, folders),
 | `settings` | object |  |  |
 
 
+### `get_sprite`
+
+*Get Sprite*
+
+Group: `sprites` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
+
+A sprite file's (.aseprite, .png) structure: layers, frames from 1, tags, slices, palette, cels, revision; no pixels (read_sprite_pixels).
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `sprite` | string | yes | Project-relative path or GUID. |
+
+
 ### `get_sprite_atlas`
 
 *Get Sprite Atlas*
@@ -5974,6 +6132,48 @@ A .spriteatlas's settings, members, pages, frames (search: name, member:, page:)
 | `path` | string | yes |  |
 | `platform` | string |  |  |
 | `search` | string |  |  |
+
+
+### `read_sprite_pixels`
+
+*Read Sprite Pixels*
+
+Group: `sprites` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
+
+A sprite file's region as a text grid ('.'=0, 1-9, a-z=10-35, A-Z=36-61); max_pixels caps it (default 4096, tile larger areas). render_sprite to look at the whole.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `encoding` | `"auto"` \| `"chars"` \| `"hex2"` \| `"legend"` \| `"hex8"` |  |  |
+| `frame` | integer or array or string |  | From 1, list, tag or "all"; default 1; at most 16. |
+| `layer` | integer or string |  | Default "composite". |
+| `max_pixels` | integer (1..16384) |  | Default: `4096`. |
+| `rect` | array of integer |  | [x, y, w, h]. |
+| `sprite` | string | yes |  |
+
+
+### `render_sprite`
+
+*Render Sprite*
+
+Group: `sprites` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
+
+A sprite file's frames as one PNG at integer scale (nearest), a row per backdrop, with onion skin, labels and the last edit outlined. Scale 0 fits max_width.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `backdrops` | array of string |  | checker (default), dark, light, or hex; one row each. |
+| `columns` | integer (0..64) |  | Default auto, at most 8. |
+| `context` | object {entity, view} |  |  |
+| `frames` | integer or array or string |  | Default all (at most 64). |
+| `grid` | boolean |  | Pixel grid at scale 6 and up. |
+| `highlight` |  |  | last_edit, none (default) or [x, y, w, h]. |
+| `labels` | boolean |  | Default: `true`. |
+| `layers` | string or array |  | visible (default), all, or names. |
+| `max_width` | integer (128..2048) |  | Default: `1024`. |
+| `onion` | object {after, before, opacity} |  |  |
+| `scale` | integer (0..64) |  | Default: `0`. |
+| `sprite` | string | yes |  |
 
 
 ### `set_sprite_import_settings`

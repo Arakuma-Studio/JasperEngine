@@ -86,6 +86,9 @@ namespace jasperengine::editor {
         ShaderCreationProjectSettings m_shaderCreation;
         HtmlUiRenderSettings m_htmlUiRender;
         DrawSubmissionSettings m_drawSubmission;
+        // Graphics > Screen Transitions (S48 R41)
+        jasperengine::pixelart::TransitionDefaults m_transitions;
+        char m_transitionRampBuffer[512] = {0};
         // Quality > Device Tiers and the rest of the device settings (S56), and the platform
         // group the table shows
         DeviceSettings m_deviceSettings;

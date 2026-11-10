@@ -5,6 +5,7 @@
 #include "particles/PixelParticles.h"
 
 #include "Engine.h"
+#include "pixelart/HitStop.h"
 #include "Log.h"
 #include "Scene.h"
 #include "component/CameraComponent.h"
@@ -1102,7 +1103,8 @@ void ParticleSubsystem::update(double dt){
         uint32_t maxTicks = kMaxTicksPerFrame;
         // Unscaled Time (the effect's or the component's): Time.timeScale does not slow it (UI,
         // pause menus)
-        const double frameDt = (d.useUnscaledTime || particles.useUnscaledTime) ? unscaledDt : dt;
+        // (a hit-stop freezes the scaled ones, except a Hit Stop Exempt GameObject's, S48)
+        const double frameDt = (d.useUnscaledTime || particles.useUnscaledTime) ? unscaledDt : pixelart::HitStop::deltaFor(scene, entity, dt);
         task.dt = cullingStep(d.cullingMode, d.looping, visible, frameDt, d.tickRate, state.cull, maxTicks);
         task.maxTicks = maxTicks;
         state.culled = !visible;

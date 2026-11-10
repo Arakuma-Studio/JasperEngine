@@ -271,6 +271,18 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 |---|---|---|
 | Run Pixel Art Check | F5 | Pixel Art Check |
 
+## Pixel Art Cleanup
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Write Pixel Art Cleanup | Ctrl+Enter | Pixel Art Cleanup |
+| Next Lint Spot | Right / Down | Pixel Art Cleanup |
+| Previous Lint Spot | Left / Up | Pixel Art Cleanup |
+| Nudge Frame Left | Alt+Left | Pixel Art Cleanup |
+| Nudge Frame Right | Alt+Right | Pixel Art Cleanup |
+| Nudge Frame Up | Alt+Up | Pixel Art Cleanup |
+| Nudge Frame Down | Alt+Down | Pixel Art Cleanup |
+
 ## Palette
 
 | Command | Shortcut | Context |

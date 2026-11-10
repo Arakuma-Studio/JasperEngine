@@ -139,6 +139,18 @@ namespace jasperengine::editor::mcp::w3 {
     // The scene's GameObjects, plus what the running game created
     std::vector<Entity> liveEntities(Project* project, SceneProject* scene);
 
+    // Lets an auto_paused game run (play auto_pause holds it between calls) while it lives: a capture
+    // stepping the paused game with Project::step (capture_contact_sheet's scene mode, S48)
+    class GameAdvance {
+    public:
+        explicit GameAdvance(McpContext& ctx);
+        ~GameAdvance();
+        GameAdvance(const GameAdvance&) = delete;
+        GameAdvance& operator=(const GameAdvance&) = delete;
+    private:
+        McpContext* ctx = nullptr;
+    };
+
     // The Lua value at `index` as JSON, as eval_lua returns values (tables nested maxDepth deep, at
     // most maxItems entries each); userdata with a __pairs metamethod (HTML UI data-model proxies)
     // are walked like tables. For inspect_ui models.

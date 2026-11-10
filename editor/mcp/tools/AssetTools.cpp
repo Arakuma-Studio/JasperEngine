@@ -1126,9 +1126,12 @@ void getAssetInfoTool(const CallPtr& call) {
                              {"roughness", McpValues::number(preset.roughness)}, {"fade_in", McpValues::number(preset.fadeIn)},
                              {"fade_out", McpValues::number(preset.fadeOut)},
                              {"position_influence", McpValues::toJson(preset.positionInfluence)},
-                             {"rotation_influence", McpValues::toJson(preset.rotationInfluence)}};
+                             {"rotation_influence", McpValues::toJson(preset.rotationInfluence)},
+                             {"units", camera::shakeUnitsName(preset.units)}, {"tick", McpValues::number(preset.tick)}};
             data["peak"] = {{"position", McpValues::toJson(peaks.position)}, {"rotation", McpValues::toJson(peaks.rotation)},
                             {"duration", McpValues::number(duration)}};
+            // a preset in art pixels peaks in pixels (S48)
+            if (preset.units == camera::ShakeUnits::Pixels) data["peak"]["pixels"] = McpValues::toJson(peaks.pixels);
             if (!parsed.warnings.empty()) data["warnings"] = parsed.warnings;
             char summary[160];
             std::snprintf(summary, sizeof(summary), "; %s shake, strength %g, roughness %g; peak rotation %.2f deg",
@@ -2761,6 +2764,12 @@ void applyMaterialPresetTool(const CallPtr& call) {
             return;
         }
         material = applyMaterialPreset(*preset, material);
+        // a Pixel FX preset's built-in ramp: the project's copy of its palette (written if missing)
+        bool wroteCopy = false;
+        if (!resolvePresetPalettes(*project, material, wroteCopy, error)) {
+            call->fail(error);
+            return;
+        }
         material.name = rel;
         if (!materialWriteAllowed(call, file, rel)) return;
         if (!writeFilesUndoable(call->ctx(), {{file, materialFileContent(call->ctx().project(), file, material)}}, error)) {
@@ -2817,7 +2826,14 @@ void applyMaterialPresetTool(const CallPtr& call) {
                 unlinked.push_back(McpRefs::entityPath(sceneProject, entity) + " submesh " + std::to_string(s) + " (" + linked + ")");
             }
             // judged by the shader the submesh draws with (the mesh's or the scene's when it names none)
-            const Material to = applyMaterialPreset(*preset, from, meshShaderFor(sceneProject->scene, entity));
+            Material to = applyMaterialPreset(*preset, from, meshShaderFor(sceneProject->scene, entity));
+            // a Pixel FX preset's built-in ramp: the project's copy of its palette (written if missing)
+            bool wroteCopy = false;
+            if (!resolvePresetPalettes(*project, to, wroteCopy, error)) {
+                delete multi;
+                call->fail(error);
+                return;
+            }
             addMaterialChangeCommands(*multi, project, sceneProject->id, entity, s, from, to);
             applied.push_back({{"entity", McpRefs::entityJson(sceneProject, entity)}, {"submesh", s}, {"unlinked", !linked.empty()}});
         }

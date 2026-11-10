@@ -321,6 +321,22 @@ namespace jasperengine{
         PaletteDistance paletteDistance = PaletteDistance::OKLAB;
         PalettePrecision palettePrecision = PalettePrecision::NORMAL;
 
+        // Glitch (S48 R18): digital corruption in bursts, in the uber pass: torn rows shifted
+        // sideways, an RGB split and interlaced rows, all in source texels (art pixels with a
+        // Pixel Perfect Camera). The schedule is a pure function of floor(time * glitchFps) and
+        // the seed. glitchEnabled alone compiles the variant: at intensity 0 only scripted
+        // bursts (PixelFX.glitch) show
+        bool glitchEnabled = false;
+        float glitchIntensity = 1.0f;               // 0..1
+        float glitchRgbSplit = 2.0f;                // source texels 0..8
+        int glitchTears = 3;                        // rows torn per burst frame 0..8
+        float glitchTearShift = 8.0f;               // source texels 0..32
+        float glitchInterlace = 0.3f;               // chance per burst frame 0..1
+        float glitchBurstRate = 0.5f;               // bursts per second 0..8 (0: continuous at the intensity)
+        float glitchBurstLength = 0.25f;            // seconds 0.05..1
+        float glitchFps = 30.0f;                    // the corruption's frame rate 1..60
+        int glitchSeed = 0;                         // 0..65535
+
         bool operator==(const PostProcessingSettings& o) const;
         bool operator!=(const PostProcessingSettings& o) const { return !(*this == o); }
 

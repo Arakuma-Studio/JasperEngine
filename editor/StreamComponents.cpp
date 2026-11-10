@@ -3050,6 +3050,8 @@ YAML::Node editor::Stream::encodePoseAnimatorComponent(const PoseAnimatorCompone
     node["autoplay"] = animator.autoplay;
     encodeFinite(node, "speed", animator.speed);
     encodeFinite(node, "weight", animator.weight);
+    // S48: written only when set (an old scene re-saves byte for byte)
+    if (animator.poseFrameRate != 0.0f) encodeFinite(node, "poseFrameRate", animator.poseFrameRate);
     return node;
 }
 
@@ -3074,6 +3076,7 @@ PoseAnimatorComponent editor::Stream::decodePoseAnimatorComponent(const YAML::No
     animator.autoplay = given("autoplay") ? YamlNumbers::as<bool>(node["autoplay"]) : defaults.autoplay;
     animator.speed = given("speed") ? decodeFinite(node["speed"], defaults.speed) : defaults.speed;
     animator.weight = given("weight") ? std::clamp(decodeFinite(node["weight"], defaults.weight), 0.0f, 1.0f) : defaults.weight;
+    animator.poseFrameRate = given("poseFrameRate") ? std::max(0.0f, decodeFinite(node["poseFrameRate"], defaults.poseFrameRate)) : defaults.poseFrameRate;
 
     if (oldAnimator && oldAnimator->animation != animator.animation) {
         animator.needsLoad = true;
@@ -3123,6 +3126,8 @@ YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerC
     node["playAutomatically"] = YamlNumbers::text(player.playAutomatically);
     encodeFinite(node, "speed", player.speed);
     encodeFinite(node, "defaultFadeTime", player.defaultFadeTime);
+    // S48: written only when set (an old scene re-saves byte for byte)
+    if (player.poseFrameRate != 0.0f) encodeFinite(node, "poseFrameRate", player.poseFrameRate);
     return node;
 }
 
@@ -3262,6 +3267,7 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
     player.playAutomatically = boolean("playAutomatically", defaults.playAutomatically);
     player.speed = given("speed") ? decodeFinite(node["speed"], defaults.speed) : defaults.speed;
     player.defaultFadeTime = given("defaultFadeTime") ? std::max(0.0f, decodeFinite(node["defaultFadeTime"], defaults.defaultFadeTime)) : defaults.defaultFadeTime;
+    player.poseFrameRate = given("poseFrameRate") ? std::max(0.0f, decodeFinite(node["poseFrameRate"], defaults.poseFrameRate)) : defaults.poseFrameRate;
 
     if (oldPlayer && (oldPlayer->clips != player.clips || oldPlayer->layers != player.layers)) {
         player.needsLoad = true;

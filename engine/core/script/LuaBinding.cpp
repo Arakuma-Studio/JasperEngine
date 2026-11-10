@@ -127,6 +127,7 @@
 #include <memory>
 
 #include "profiler/Profile.h"
+#include "pixelart/HitStop.h"
 
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <execinfo.h>
@@ -567,6 +568,10 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
     lua_pushcclosure(L,
         [](lua_State* Linner) -> int {
             int nargs = lua_gettop(Linner);
+            // the GameObject of a scene script: Time.deltaTime inside it follows its Hit Stop
+            // exemption (S48)
+            Scene* ownerScene = nullptr;
+            Entity ownerEntity = NULL_ENTITY;
 
             if (lua_toboolean(Linner, lua_upvalueindex(3))) {
                 const int self = lua_upvalueindex(2);
@@ -599,6 +604,10 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
                 if (scene && entity > 0 && !isScriptActive(scene, static_cast<Entity>(entity), instance)) {
                     return 0;
                 }
+                if (scene && entity > 0) {
+                    ownerScene = scene;
+                    ownerEntity = static_cast<Entity>(entity);
+                }
             }
 
             lua_pushvalue(Linner, lua_upvalueindex(1)); // method
@@ -608,8 +617,14 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
                 lua_pushvalue(Linner, i);
             }
 
-            // lua_error below unwinds the script frames, get the traceback here
-            if (pcallWithTraceback(Linner, 1 + nargs, LUA_MULTRET) != LUA_OK) {
+            // lua_error below unwinds the script frames, get the traceback here (the scope
+            // ends before it: lua_error does not run destructors)
+            int status;
+            {
+                pixelart::HitStop::ScriptScope owner(ownerScene, ownerEntity);
+                status = pcallWithTraceback(Linner, 1 + nargs, LUA_MULTRET);
+            }
+            if (status != LUA_OK) {
                 return lua_error(Linner);
             }
             // Filters like preSolve2D read what the method returns
@@ -965,6 +980,10 @@ void LuaBinding::registerClasses(lua_State *L){
     // after the GameObject classes: Palette Swap's members on Sprite, Tilemap and MeshPolygon
     registerPixelArtClasses(L);
     registerSortingClasses(L);
+    registerHitStopClasses(L);
+    registerTransitionClasses(L);
+    // after the Transition classes: PixelFX (with glitch) reopened for play and set
+    registerPixelFxClasses(L);
     registerCrashClasses(L);
 #if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);

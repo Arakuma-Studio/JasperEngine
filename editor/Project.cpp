@@ -7,6 +7,8 @@
 #include "Project.h"
 #include "util/TitleArtLanguage.h"
 #include "foliage/TreeDataFile.h"
+#include "pixelart/Glitch.h"
+#include "pixelart/ScreenTransition.h"
 #include "util/ScriptPropertyCache.h"
 #include "util/ProjectChecks.h"
 #include "asset/ModelSubAssets.h"
@@ -161,6 +163,10 @@
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
+#include "pixelart/HitStop.h"
+#include "pixelart/PixelFxPlayer.h"
+#include "pixelart/particles/PixelParticlePresets.h"
+#include "particles/ParticleEffectCodec.h"
 #include "sprite/SpriteAtlasBuilder.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
@@ -1906,6 +1912,15 @@ const editor::DrawSubmissionSettings& editor::Project::getDrawSubmissionSettings
     return drawSubmission;
 }
 
+void editor::Project::setTransitionDefaults(const jasperengine::pixelart::TransitionDefaults& defaults){
+    jasperengine::pixelart::ScreenTransition::setDefaults(defaults);
+    transitionDefaults = jasperengine::pixelart::ScreenTransition::getDefaults();
+}
+
+const jasperengine::pixelart::TransitionDefaults& editor::Project::getTransitionDefaults() const{
+    return transitionDefaults;
+}
+
 void editor::Project::setDeviceSettings(const DeviceSettings& settings){
     deviceSettings = settings;
     Device::setProjectSettings(deviceSettings);
@@ -2464,6 +2479,20 @@ void editor::Project::openAssetDatabase() {
     });
     assetIndex.open(&assetDatabase, projectPath, getAssetRoots());
     AssetMap::setResolver(&assetResolver);
+    // S48: a PixelFX dissolve's embers may name a Pixel Particles preset ("ember"): its effect,
+    // built for this project's Pixels Per Unit and passed inline (S49's presets live in the editor)
+    jasperengine::pixelart::PixelFxPlayer::setEmberResolver([](const std::string& name) -> std::string {
+        const std::string preset = name.rfind("pixel_", 0) == 0 ? name : "pixel_" + name;
+        if (editor::pixelart::pixelParticlePresetLabel(preset).empty())
+            return std::string();
+        editor::pixelart::PixelPresetBuild build;
+        build.pixelsPerUnit = std::max(1, Engine::getPixelsPerUnit());
+        particles::ParticleEffectDocument document;
+        std::string error;
+        if (!editor::pixelart::buildPixelParticlePreset(preset, build, document, error))
+            return std::string();
+        return particles::ParticleEffectCodec::write(document);
+    });
     // S25: the labels are read again (the assets may have moved roots), the search index
     // follows, and this user's organisation file belongs to the project's root
     assetLabels.open(this);
@@ -4621,6 +4650,9 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     // a fluid a script makes (FluidSimulation in Lua or C++) needs its programs too
     if (scriptsMention("FluidSimulation"))
         ShaderVariantCollector::addFluidKeys(keys);
+    // S48's screen transition: a script playing one (Transition in Lua or ScreenTransition in C++)
+    if (scriptsMention("Transition"))
+        keys.insert(ShaderPool::getShaderKey(ShaderType::TRANSITION, 0));
 }
 
 bool editor::Project::scriptsMention(const char* text) const {
@@ -6372,6 +6404,8 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setMouseMode(MouseMode::NORMAL);
     // a game (or the MCP server) may have changed the game clock and the foliage distance
     Engine::setTimeScale(1.0f);
+    // and a hit-stop may still be running (S48)
+    ::jasperengine::pixelart::HitStop::reset();
     Engine::resetFoliageDistanceScale();
     Engine::setFixedDeltatime(0.0);
     Engine::setSimulationHeld(false);
@@ -6471,6 +6505,7 @@ void editor::Project::resetConfigs() {
     setBitmapTextCacheMiB(0);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
     setDrawSubmissionSettings(DrawSubmissionSettings());
+    setTransitionDefaults(jasperengine::pixelart::TransitionDefaults());
     setDeviceSettings(DeviceSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
@@ -6558,6 +6593,7 @@ void editor::Project::resetConfigs() {
     projectPath.clear();
     SoundEventLibrary::clear();
     AssetMap::setResolver(nullptr);
+    jasperengine::pixelart::PixelFxPlayer::setEmberResolver(nullptr);
     waitForAssetScan();
     assetSearchIndex.detach();
     assetLabels.close();
@@ -8448,6 +8484,7 @@ void editor::Project::configureGenerator() {
     generator.setFoliageQuality(foliageQuality, !foliageQualityDeclared);
     generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
+    generator.setTransitionDefaults(transitionDefaults);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
@@ -10493,6 +10530,10 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         cleanupPlaySession(session);
         // what the scripts that ran started (Coroutine.start, Timer.after)
         ScriptScheduler::clear();
+        // the PixelFX effects of the play and their callbacks (they may hold Lua)
+        jasperengine::pixelart::PixelFxPlayer::reset();
+        jasperengine::pixelart::ScreenTransition::reset();
+        jasperengine::pixelart::Glitch::stop();
         SceneManager::clearAll();
         PrefabManager::clearAll();
         ObjectManager::clearAll();
@@ -10653,6 +10694,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setFoliageQuality(foliageQuality, !foliageQualityDeclared);
     generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
+    generator.setTransitionDefaults(transitionDefaults);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
@@ -11570,6 +11612,11 @@ void editor::Project::stop(uint32_t sceneId) {
             Scheduler::game().clear();
             // every coroutine and timer of the play (unowned ones too), before the scripts go
             ScriptScheduler::clear();
+            // the PixelFX effects of the play and their callbacks (they may hold Lua)
+            jasperengine::pixelart::PixelFxPlayer::reset();
+            // a screen transition of the play and its callbacks (they may hold Lua), the scripted glitch
+            jasperengine::pixelart::ScreenTransition::reset();
+            jasperengine::pixelart::Glitch::stop();
             // the debug overlay and the console commands of the scripts, before the scripts go
             DebugOverlay::shutdown();
             debugSettingsInPlay = false;

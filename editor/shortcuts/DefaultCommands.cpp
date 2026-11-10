@@ -272,6 +272,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Pixel-art palettes: swatches, ramps, variants and how a texture uses them";
     b.menu("window.pixelArtCheck", "Pixel Art Check", AppMenuCommand::TogglePixelArtCheck).description =
         "The pixel-art rules on the project: findings, measured values and one-click fixes";
+    b.menu("window.pixelArtCleanup", "Pixel Art Cleanup", AppMenuCommand::TogglePixelArtCleanup).description =
+        "Recover AI or loose art as real pixels: a grid, a palette, verdicts and a split compare";
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
     b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
@@ -509,6 +511,27 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Apply the selected finding's fix (one undo step)";
     b.add("pixelArtCheck.fixAll", "Fix All Pixel Art Findings", C::PixelArtCheck).description =
         "Preview every fix of the check, then apply them as one undo step";
+    // The Pixel Art Cleanup window (S46)
+    b.group = "Pixel Art Cleanup";
+    b.add("pixelArtCleanup.write", "Write Pixel Art Cleanup", C::PixelArtCleanup, "Ctrl+Enter").description =
+        "Write the shown result (one undo step)";
+    {
+        // the Lints tab steps through spots; the Frames tab nudges the player's frame a pixel
+        CommandDef& next = b.add("pixelArtCleanup.nextSpot", "Next Lint Spot", C::PixelArtCleanup, "Right", "Down");
+        next.description = "Lints tab: pan and zoom to the next spot";
+        next.repeat = true;
+        CommandDef& previous = b.add("pixelArtCleanup.previousSpot", "Previous Lint Spot", C::PixelArtCleanup, "Left", "Up");
+        previous.description = "Lints tab: pan and zoom to the previous spot";
+        previous.repeat = true;
+        const struct { const char* id; const char* name; const char* chord; } nudges[] = {
+            {"pixelArtCleanup.nudgeLeft", "Nudge Frame Left", "Alt+Left"}, {"pixelArtCleanup.nudgeRight", "Nudge Frame Right", "Alt+Right"},
+            {"pixelArtCleanup.nudgeUp", "Nudge Frame Up", "Alt+Up"}, {"pixelArtCleanup.nudgeDown", "Nudge Frame Down", "Alt+Down"}};
+        for (const auto& nudge : nudges) {
+            CommandDef& def = b.add(nudge.id, nudge.name, C::PixelArtCleanup, nudge.chord);
+            def.description = "Frames tab: move the player's frame one pixel (one undo step)";
+            def.repeat = true;
+        }
+    }
     // The Palette window (S43): while it, or its Apply Palette dialog, has focus
     b.group = "Palette";
     b.add("palette.delete", "Delete Colours", C::Palette, "Delete", "Backspace");

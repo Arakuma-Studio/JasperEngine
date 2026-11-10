@@ -92,9 +92,12 @@ async def test_presets_sheets_and_checks(ed: Editor):
         ed.check_eq(grid["status"], "PASS", f"{name}: off_grid: {grid}")
         # measured on what the GPU drew (its sub-emitters' particles too: Debris draws nothing of its own)
         ed.check(grid["measured"]["drawn"] > 0, f"{name}: the cells show the effect: {grid}")
+        # S48's lints run on the pixel cells (S49 R38): measured or a SKIP that says why
         for check in S48_CHECKS:
-            ed.check_eq(checks[check]["status"], "SKIP", f"{name}: {check} is S48's")
-            ed.check_in("needs S48", checks[check]["limited_by"])
+            ed.check_in(checks[check]["status"], ("PASS", "WARN", "FAIL", "SKIP"), f"{name}: {check}")
+            ed.check("needs S48" not in (checks[check].get("limited_by") or ""), f"{name}: {check} runs S48's lint: {checks[check]}")
+        ed.check_in(checks["partial_alpha"]["status"], ("PASS", "SKIP"), f"{name}: the dithered pixels are whole (additive: SKIP): {checks['partial_alpha']}")
+        ed.check_eq(checks["determinism"]["status"], "SKIP", f"{name}: a preview is one run")
 
 
 async def test_off_grid_red_control(ed: Editor):

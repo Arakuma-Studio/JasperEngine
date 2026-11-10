@@ -181,6 +181,10 @@ namespace jasperengine::anim{
         float weight = 0.0f;
         float targetWeight = 0.0f;
         float fadeSpeed = 0.0f;
+        // S48 Pose Frame Rate: the weight the pose is blended with, taken on the steps of the
+        // player's clock (heldTick: the step it was taken on; -1 none yet)
+        float heldWeight = 0.0f;
+        int64_t heldTick = -1;
         bool enabled = false;
         bool playing = false;
         bool stopOnFadeOut = false;
@@ -363,6 +367,7 @@ namespace jasperengine::anim{
         ClipBindings* bindings = nullptr;
         float time = 0.0f;                  // the clip time
         float weight = 0.0f;
+        float stepFps = 0.0f;               // S48 Pose Frame Rate (0: smooth)
         int layer = 0;
         const float* trackMask = nullptr;   // per clip track; null: 1 everywhere
         const uint32_t* trackSlots = nullptr;   // per clip track (PoseSlot index, UINT32_MAX: none)

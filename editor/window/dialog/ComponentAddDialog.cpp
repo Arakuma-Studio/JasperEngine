@@ -173,6 +173,9 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::LatticeTracksComponent, "Lattice point keyframes"},
             {ComponentType::BoneComponent, "Skeleton bone of a model"},
         }},
+        {"Pixel Art", ICON_FA_TABLE_CELLS, {
+            {ComponentType::HitStopExemptComponent, "Keeps this GameObject (and its children) running through a hit-stop"},
+        }},
         {"Scripts", ICON_FA_CODE, {
             {ComponentType::ScriptComponent, "Runs C++ or Lua scripts"},
         }},

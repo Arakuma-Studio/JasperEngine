@@ -68,6 +68,8 @@ ShakeInstance::ShakeInstance(const ShakePreset& preset, int seed): preset(preset
     fadeInTime = preset.fadeIn;
     fadeOutTime = preset.fadeOut;
     state = ShakeState::FadingIn;
+    // a kick starts at full strength and decays by its own formula
+    if (preset.type == ShakeType::Kick) fade = 1.0f;
 }
 
 float ShakeInstance::getCurrentStrength() const{
@@ -90,12 +92,54 @@ void ShakeInstance::setFadeTimes(float fadeIn, float fadeOut){
     }
 }
 
-ShakeOffset ShakeInstance::getOffset() const{
+// Ported from pixelfx src/core/act.js (`get shake()`): MIT License, Copyright (c) 2026 Patch;
+// the shake is how Hollow Crown plays its skills, MIT License, Copyright (c) 2026 rehan-remade.
+Vector3 camera::kickOffset(float strength, float remaining, float length, float tick, bool round){
+    if (!(length > 0.0f) || !(remaining > 0.0f)) return Vector3(0, 0, 0);
+    const float k = strength * (std::min(remaining, length) / length);
+    const float f = std::floor(remaining * (tick > 0.0f ? tick : 60.0f));
+    float x = std::sin(f * 2.4f) * k;
+    float y = std::cos(f * 3.7f) * k * 0.7f;
+    if (round){
+        x = std::round(x);
+        y = std::round(y);
+    }
+    // round() of a small negative gives -0: the same pixel, written as 0
+    return Vector3(x + 0.0f, y + 0.0f, 0.0f);
+}
+
+ShakeOffset ShakeInstance::rawOffset() const{
     if (state == ShakeState::Stopped) return ShakeOffset();
+    if (preset.type == ShakeType::Kick){
+        ShakeOffset offset;
+        const Vector3 kick = kickOffset(preset.strength * strengthScale, preset.fadeOut - kickTime, preset.fadeOut, preset.tick,
+                                        preset.units == ShakeUnits::Pixels);
+        offset.position = Vector3(kick.x * preset.positionInfluence.x, kick.y * preset.positionInfluence.y, 0.0f);
+        return offset;
+    }
     return evaluateShake(preset, baseSeed, noiseTime, getCurrentStrength());
 }
 
+ShakeOffset ShakeInstance::getOffset() const{
+    ShakeOffset offset = (hasHeld && preset.type != ShakeType::Kick && preset.tick > 0.0f) ? held : rawOffset();
+    if (preset.units == ShakeUnits::Pixels){
+        offset.pixels = offset.position;
+        offset.position = Vector3(0, 0, 0);
+    }
+    return offset;
+}
+
 ShakeOffset ShakeInstance::update(float dt){
+    if (preset.type != ShakeType::Kick && preset.tick > 0.0f && state != ShakeState::Stopped){
+        // a ticked preset: a new offset on each tick of its clock, held in between
+        const float period = 1.0f / preset.tick;
+        if (!hasHeld || tickClock >= period){
+            held = rawOffset();
+            if (hasHeld) tickClock = std::fmod(tickClock, period);
+            hasHeld = true;
+        }
+        if (dt > 0.0f) tickClock += dt;
+    }
     ShakeOffset offset = getOffset();
     step(dt);
     return offset;
@@ -103,6 +147,17 @@ ShakeOffset ShakeInstance::update(float dt){
 
 void ShakeInstance::step(float dt){
     if (!(dt > 0.0f) || state == ShakeState::Stopped) return;
+
+    if (preset.type == ShakeType::Kick){
+        if (pauseFadeTime > 0.0f){
+            pauseAmount += (paused ? dt : -dt) / pauseFadeTime;
+        }
+        pauseAmount = clamp01(pauseAmount);
+        fade = 1.0f;
+        kickTime += (1.0f - pauseAmount) * dt;
+        if (kickTime >= preset.fadeOut) state = ShakeState::Stopped;
+        return;
+    }
 
     if (pauseFadeTime > 0.0f){
         pauseAmount += (paused ? dt : -dt) / pauseFadeTime;
@@ -132,6 +187,11 @@ void ShakeInstance::step(float dt){
 
 void ShakeInstance::stop(float fadeTime){
     if (state == ShakeState::Stopped) return;
+    // a kick has no fade: it ends where it is
+    if (preset.type == ShakeType::Kick){
+        state = ShakeState::Stopped;
+        return;
+    }
     fadeOutTime = fadeTime >= 0.0f ? fadeTime : preset.fadeOut;
     state = ShakeState::FadingOut;
 }
@@ -199,6 +259,10 @@ ShakeOffset camera::shakeOffsetPeaks(const std::vector<ShakeOffset>& samples){
         peaks.position = Vector3(std::max(peaks.position.x, std::fabs(sample.position.x)),
                                  std::max(peaks.position.y, std::fabs(sample.position.y)),
                                  std::max(peaks.position.z, std::fabs(sample.position.z)));
+        // a preset in pixel units peaks in pixels (S48)
+        peaks.pixels = Vector3(std::max(peaks.pixels.x, std::fabs(sample.pixels.x)),
+                               std::max(peaks.pixels.y, std::fabs(sample.pixels.y)),
+                               std::max(peaks.pixels.z, std::fabs(sample.pixels.z)));
         peaks.rotation = Vector3(std::max(peaks.rotation.x, std::fabs(sample.rotation.x)),
                                  std::max(peaks.rotation.y, std::fabs(sample.rotation.y)),
                                  std::max(peaks.rotation.z, std::fabs(sample.rotation.z)));

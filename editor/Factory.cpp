@@ -2616,6 +2616,8 @@ std::string editor::Factory::createCameraShakerComponent(int indentSpaces, Entit
     code << ind << "camerashaker.traumaMaxOffset = " << formatVector3(shaker.traumaMaxOffset) << ";\n";
     code << ind << "camerashaker.traumaMaxAngle = " << formatVector3(shaker.traumaMaxAngle) << ";\n";
     code << ind << "camerashaker.traumaFrequency = " << formatFloat(shaker.traumaFrequency) << ";\n";
+    if (shaker.pixelSnap) code << ind << "camerashaker.pixelSnap = true;\n";
+    if (shaker.tickRate != defaults.tickRate) code << ind << "camerashaker.tickRate = " << formatFloat(shaker.tickRate) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "CameraShakerComponent", "camerashaker", assignExisting);
     return code.str();
 }
@@ -2696,6 +2698,7 @@ std::string editor::Factory::createPoseAnimatorComponent(int indentSpaces, Entit
     code << ind << "poseanimator.autoplay = " << formatBool(animator.autoplay) << ";\n";
     code << ind << "poseanimator.speed = " << formatFloat(animator.speed) << ";\n";
     code << ind << "poseanimator.weight = " << formatFloat(animator.weight) << ";\n";
+    if (animator.poseFrameRate != 0.0f) code << ind << "poseanimator.poseFrameRate = " << formatFloat(animator.poseFrameRate) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "PoseAnimatorComponent", "poseanimator", assignExisting);
     return code.str();
 }
@@ -2746,6 +2749,7 @@ std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, En
     code << ind << "animationplayer.playAutomatically = " << formatBool(player.playAutomatically) << ";\n";
     code << ind << "animationplayer.speed = " << formatFloat(player.speed) << ";\n";
     code << ind << "animationplayer.defaultFadeTime = " << formatFloat(player.defaultFadeTime) << ";\n";
+    if (player.poseFrameRate != 0.0f) code << ind << "animationplayer.poseFrameRate = " << formatFloat(player.poseFrameRate) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "AnimationPlayerComponent", "animationplayer", assignExisting);
     return code.str();
 }

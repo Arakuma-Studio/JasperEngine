@@ -22,6 +22,8 @@ TEST(UberVariants, CompileForEveryBackend) {
     const std::vector<uint32_t> variants = {
         UBER_VHS, UBER_HALATION, UBER_FILM_DAMAGE, UBER_GRAIN | UBER_GRAIN_LENS, UBER_GRAIN | UBER_GRAIN_FILMIC,
         UBER_VHS | UBER_HALATION | UBER_FILM_DAMAGE | UBER_GRAIN | UBER_GRAIN_LENS | UBER_BLOOM | UBER_LUT | UBER_DITHER,
+        // S48's Glitch alone and with the pixel-art bits it meets (Stretch Fill, Palette Quantize)
+        UBER_GLITCH, UBER_GLITCH | UBER_SHARP_BILINEAR | UBER_PALETTE | UBER_PIXELATE,
         (1u << UBER_FEATURE_COUNT) - 1u,
     };
     for (ShaderBackend backend : ShaderPool::getShaderBackends()) {

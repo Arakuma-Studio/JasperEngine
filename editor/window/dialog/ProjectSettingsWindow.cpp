@@ -54,6 +54,7 @@
 #include "command/type/InputActionsCmd.h"
 #include "command/type/HtmlUiRenderSettingsCmd.h"
 #include "command/type/DrawSubmissionSettingsCmd.h"
+#include "command/type/TransitionSettingsCmd.h"
 #include "command/type/DeviceSettingsCmd.h"
 #include "device/Device.h"
 #include "command/type/ThreadingSettingsCmd.h"
@@ -1147,6 +1148,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_shaderCreation = project->getShaderCreationSettings();
     m_htmlUiRender = project->getHtmlUiRenderSettings();
     m_drawSubmission = project->getDrawSubmissionSettings();
+    m_transitions = project->getTransitionDefaults();
+    snprintf(m_transitionRampBuffer, sizeof(m_transitionRampBuffer), "%s", m_transitions.ramp.c_str());
     m_deviceSettings = project->getDeviceSettings();
     m_navigation = project->getNavigationSettings();
     m_titleArt = project->getTitleArtSettings();
@@ -2075,6 +2078,71 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                            "the same), applies constant uniforms once and sorts each pass's draws by state: fewer draw calls, "
                            "the largest CPU cost on WebGL2 and mobile. A Mesh opts out with Allow GPU Instancing. Off draws "
                            "every Mesh alone.");
+        }
+
+        // Screen Transitions (S48 R41): what Lua's Transition and the Game view's Transition button take
+        if (settingsui::sectionVisible("Screen Transitions")) {
+            ImGui::SeparatorText("Screen Transitions");
+            const jasperengine::pixelart::TransitionDefaults defaults;
+            if (settingsui::beginRow("graphics.screen_transitions.kind")) {
+                static const char* const kindNames[] = {"Iris", "Blinds", "Slash", "Pixel Dissolve", "CRT Off", "Burn Away", "Fade"};
+                int index = static_cast<int>(m_transitions.kind);
+                drawComboSetting("Default Kind", "##TransitionKind", kindNames, 7, index, static_cast<int>(defaults.kind),
+                    "The transition Transition.play (and the Game view's Transition button) uses when none is named.");
+                m_transitions.kind = static_cast<jasperengine::pixelart::TransitionKind>(index);
+            }
+            if (settingsui::beginRow("graphics.screen_transitions.duration")) {
+                if (projectBeginSettingsRow("Duration", m_transitions.duration != defaults.duration))
+                    m_transitions.duration = defaults.duration;
+                ImGui::SetNextItemWidth(-1);
+                ImGui::DragFloat("##TransitionDuration", &m_transitions.duration, 0.01f, 0.0f, 30.0f, "%.2f s");
+                endSettingsRow("Seconds of a whole transition: cover (45 %), hold (10 %) and reveal (45 %).");
+            }
+            if (settingsui::beginRow("graphics.screen_transitions.color")) {
+                if (projectBeginSettingsRow("Colour", m_transitions.color != defaults.color))
+                    m_transitions.color = defaults.color;
+                // the Color window; undoable with the other transition settings (TransitionSettingsCmd)
+                ui::ColorFieldOptions colorOptions;
+                colorOptions.alpha = false;
+                colorOptions.linearStorage = false;   // the ink is sRGB as picked
+                colorOptions.label = "Transition Colour";
+                Vector4 ink = m_transitions.color;
+                const ui::EditPhase phase = ui::colorField("##TransitionColor", ink, colorOptions);
+                if (phase == ui::EditPhase::Changing || phase == ui::EditPhase::Cancelled || phase == ui::EditPhase::Applied)
+                    m_transitions.color = Vector4(ink.x, ink.y, ink.z, m_transitions.color.w);
+                endSettingsRow("The ink the screen is covered in (sRGB, as picked).");
+            }
+            if (settingsui::beginRow("graphics.screen_transitions.ramp")) {
+                if (projectBeginSettingsRow("Ramp", m_transitions.ramp != defaults.ramp)) {
+                    m_transitions.ramp = defaults.ramp;
+                    m_transitionRampBuffer[0] = 0;
+                }
+                ImGui::SetNextItemWidth(-1);
+                if (ImGui::InputTextWithHint("##TransitionRamp", "built-in ember ramp", m_transitionRampBuffer, sizeof(m_transitionRampBuffer)))
+                    m_transitions.ramp = m_transitionRampBuffer;
+                endSettingsRow("The rims' colours: a palette ramp, \"<palette>.palette#ramp:<name>\" (empty: the built-in ember ramp).");
+            }
+            if (settingsui::beginRow("graphics.screen_transitions.rim")) {
+                if (projectBeginSettingsRow("Rim", m_transitions.rim != defaults.rim))
+                    m_transitions.rim = defaults.rim;
+                ImGui::SetNextItemWidth(-1);
+                ImGui::SliderInt("##TransitionRim", &m_transitions.rim, 0, 8, "%d art px");
+                endSettingsRow("The rim band's width in art pixels, the same along the whole edge.");
+            }
+            if (settingsui::beginRow("graphics.screen_transitions.pixel_size")) {
+                if (projectBeginSettingsRow("Pixel Size", m_transitions.pixelSize != defaults.pixelSize))
+                    m_transitions.pixelSize = defaults.pixelSize;
+                ImGui::SetNextItemWidth(-1);
+                ImGui::DragInt("##TransitionPixelSize", &m_transitions.pixelSize, 0.1f, 0, 64, m_transitions.pixelSize == 0 ? "Pixel Perfect Camera grid" : "%d px");
+                endSettingsRow("Screen pixels per art pixel; 0 follows the Pixel Perfect Camera's grid (1 without one).");
+            }
+            if (settingsui::beginRow("graphics.screen_transitions.cover_ui")) {
+                if (projectBeginSettingsRow("Cover UI", m_transitions.coverUI != defaults.coverUI))
+                    m_transitions.coverUI = defaults.coverUI;
+                ImGui::Checkbox("##TransitionCoverUI", &m_transitions.coverUI);
+                endSettingsRow("On: transitions cover every scene, the HUD and the loading scene too. Off: they draw right after the "
+                               "main scene, under its layer scenes (a HUD-driven loader stays visible).");
+            }
         }
 
         if (settingsui::beginRow("graphics.mobile_pbr_tier")) {
@@ -6192,6 +6260,12 @@ bool ProjectSettingsWindow::applySettings() {
     // undoable: the editor's scenes draw with them at once
     if (m_drawSubmission != m_project->getDrawSubmissionSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new DrawSubmissionSettingsCmd(m_project, m_drawSubmission));
+    }
+    // undoable: Lua's defaults and the Game view's preview take them at once
+    if (m_transitions != m_project->getTransitionDefaults()) {
+        auto* command = new TransitionSettingsCmd(m_project, m_transitions);
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
     }
     // undoable: the Device Tier table and the rest (the Game view simulates a tier with it)
     if (m_deviceSettings != m_project->getDeviceSettings()) {

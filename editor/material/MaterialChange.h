@@ -34,4 +34,11 @@ namespace jasperengine::editor {
     bool addMaterialChangeCommands(MultiPropertyCmd& multi, Project* project, uint32_t sceneId, Entity entity, unsigned int submesh,
                                    const Material& from, const Material& to, const std::function<void()>& onChanged = nullptr);
 
+    // A Pixel FX preset's ramp (S48 R38) names a built-in palette's ramp, "builtin:<id>#ramp:<name>":
+    // points each such shader texture at the project's copy of that palette ("<copy>#ramp:<name>",
+    // S43 R4a), writing the copy as a project step when there is none (pixelart::usePalette; wroteCopy
+    // tells, and pixelart::linkPaletteCopy makes it one undo step with the edit). False with error
+    // when a copy cannot be resolved or written.
+    bool resolvePresetPalettes(Project& project, Material& material, bool& wroteCopy, std::string& error);
+
 }

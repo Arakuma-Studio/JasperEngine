@@ -170,6 +170,7 @@ namespace jasperengine::editor {
         AssetsConvertInlineSpriteFrames,
         // S42: Window > 2D > Pixel Art Check
         TogglePixelArtCheck,
+        TogglePixelArtCleanup,
         AssetsCreateTitleArt,         // Assets > Create > Title Art (S80)
         TitleArtBakeAll               // the command palette's "Title Art: Bake All" (S80 §6.13)
     };

@@ -46,6 +46,11 @@ namespace jasperengine::editor {
         bool sixteenBit = false;
         bool singleChannel = false;
         uint64_t bytes = 0;                 // the source file
+        // a request with a TextureCookStep (S46 R33): the analysis is of the step's output when
+        // applied, else of the source; "" no step, "applied", "guarded", or "failed" with why
+        std::string stepState;
+        std::string stepGuard;
+        std::string stepVerdict;            // "clean", "fixable", "needs_person"; "" when it did not run
 
         bool hasAlpha(TextureAlphaSource source) const;
         Json toJson() const;
@@ -87,13 +92,16 @@ namespace jasperengine::editor {
         const std::filesystem::path& directory() const { return dir; }
 
         // SHA-256 of a source and its analysis, from the sources table while its size and
-        // mtime stay; `analyze` decodes it otherwise (false: the file cannot be read)
+        // mtime stay; `analyze` decodes it otherwise (false: the file cannot be read). `variant`
+        // names a step's analysis of the same file (S46 R33), remembered apart ("": the plain one)
         bool sourceHash(const std::filesystem::path& absolute, std::string& sha256, TextureSourceAnalysis& analysis,
-                        const std::function<bool(TextureSourceAnalysis&)>& analyze);
+                        const std::function<bool(TextureSourceAnalysis&)>& analyze, const std::string& variant = std::string());
         void saveSources();
 
+        // `stepKey` (TextureCookStep::key, "" none) joins the hash only when there is one, so a
+        // texture without a step keeps the key it always had
         static std::string key(const std::string& sourceSha256, const ResolvedTextureSettings& settings, TextureFamily family,
-                               const TextureFormatChoice& choice);
+                               const TextureFormatChoice& choice, const std::string& stepKey = std::string());
 
         std::filesystem::path artifactPath(const std::string& key, const char* suffix = ".ktx2") const;
         bool has(const std::string& key) const;

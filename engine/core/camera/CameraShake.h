@@ -104,6 +104,9 @@ namespace jasperengine{
         // (d: from the shaker's camera, x/y only in 2D); a shaker at d >= radius gets none
         static ShakeInstanceHandle shakeAt(const Vector3& position, float radius, const ShakeSource& preset);
         static ShakeInstanceHandle shakeAt(const Vector3& position, float radius, const ShakeSource& preset, const ShakeOptions& options);
+        // An unnamed pixel kick (S48 R22, pixelfx act.js) of `amplitudePx` art pixels decaying over
+        // `seconds`, on every global shaker
+        static ShakeInstanceHandle kick(float amplitudePx, float seconds);
         static void addTrauma(float amount);
         // every global shaker's shakes fade out over `fade` (default: their fade_out; 0: now)
         static void stopAll();

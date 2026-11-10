@@ -35,9 +35,9 @@ namespace jasperengine::editor {
     // posing its character; Curve, ColorPicker, SoundBrowser, AudioCaptures and TitleDesigner: those windows,
     // focused; SpritePreview: the Sprite Preview window; Palette: the Palette window or the Apply
     // Palette dialog, S43; PixelArtCheck: the Pixel Art Check window, S42; VoxelBrush: a Voxel Volume brush
-    // armed and the pointer over the Scene view, T6 R60; TerrainBrush: a Terrain brush armed, T1 R57). A new
+    // armed and the pointer over the Scene view, T6 R60; TerrainBrush: a Terrain brush armed, T1 R57; PixelArtCleanup: the Pixel Art Cleanup window, S46). A new
     // context goes at the end: parseShortcutContext walks up to the last one.
-    enum class ShortcutContext : uint8_t { Global, Editor, SceneView, Hierarchy, Project, Console, Animation, PoseAnimation, Curve, ColorPicker, SoundBrowser, AudioCaptures, SpritePreview, Palette, PixelArtCheck, VoxelBrush, TerrainBrush, TitleDesigner, TitleAnimation };
+    enum class ShortcutContext : uint8_t { Global, Editor, SceneView, Hierarchy, Project, Console, Animation, PoseAnimation, Curve, ColorPicker, SoundBrowser, AudioCaptures, SpritePreview, Palette, PixelArtCheck, VoxelBrush, TerrainBrush, PixelArtCleanup, TitleDesigner, TitleAnimation };
 
     const char* shortcutContextName(ShortcutContext context);       // "Global", "Scene View", ...
     const char* shortcutContextKey(ShortcutContext context);        // "global", "scene_view", ...

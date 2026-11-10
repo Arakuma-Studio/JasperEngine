@@ -1,0 +1,43 @@
+formatVersion: 1
+name: Pixel FX Game
+canvasWidth: 320
+canvasHeight: 180
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+foliageQuality:
+  desktop: high
+  mobile: low
+  web: low
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+graphics:
+  terrainQuality:
+    macos: high
+    ios: low
+    web: medium
+    android: low
+    linux: high
+    windows: high
+  compressTerrainLayers: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+versionControl:
+  lfs: true
+startSceneId: 2734926655
+mesh:
+  animationEntities: auto
+audio:
+  mixer: audio/Main.mixer
+  outputStage: linear
+  iosSessionCategory: ambient
+scenes:
+  - filepath: Main.scene
+    filepathGuid: a8426e39fe1a151682bf92b6e2876b84
+  - filepath: Level.scene
+    filepathGuid: 04f90028852efcf53a7fd217f4eae608

@@ -28,6 +28,7 @@
 #include "window/ApplyPaletteDialog.h"
 #include "window/PaletteWindow.h"
 #include "window/PixelArtCheckWindow.h"
+#include "window/PixelArtCleanupWindow.h"
 
 #include "AppMenuCommand.h"
 #include "Backend.h"
@@ -173,6 +174,11 @@ void editor::App::registerCommands(){
             case UndoTimeline::Target::Timeline:
                 break;
         }
+        // the Pixel Art Cleanup window's recipe edits are undone first (undoRedo)
+        if (lastFocusedWindow == LastFocusedWindow::PixelArtCleanup && pixelArtCleanupWindow &&
+            (undo ? pixelArtCleanupWindow->canUndo() : pixelArtCleanupWindow->canRedo())) {
+            return true;
+        }
         const uint32_t sceneId = project.getSelectedScene() ? project.getSelectedSceneId() : NULL_PROJECT_SCENE;
         return undo ? UndoTimeline::canUndo(sceneId) : UndoTimeline::canRedo(sceneId);
     };
@@ -286,7 +292,7 @@ void editor::App::registerCommands(){
     // nor while the Pose Animation window (or a Scene view posing its character) or the
     // Animation window editing a clip has the keys: their letters are theirs
     // (the Sprite Normal Map window, focused, has its letters too: handleShortcuts)
-    auto toolKeys = [this, noDrag]() { return noDrag() && !animationOrPoseOwnsLetterKeys() && !spriteNormalsWindow->isFocused() && !titleDesignerWindow->isFocused(); };
+    auto toolKeys = [this, noDrag]() { return noDrag() && !animationOrPoseOwnsLetterKeys() && !spriteNormalsWindow->isFocused() && !pixelArtCleanupWindow->isFocused() && !titleDesignerWindow->isFocused(); };
     auto tool = [this, &bind, toolKeys](const char* id, MainToolbar::Tool which) {
         bind(id, [this, which](const CommandArgs&) { mainToolbar->setTool(which); },
              [this, which]() { return mainToolbar->canUseTool(which); }, toolKeys);
@@ -618,6 +624,8 @@ void editor::App::registerPanelClaims(){
                  {Verb::Rename, own("titleDesigner.rename")}, {Verb::Frame, own("titleDesigner.frameSelected")}}});
     claims.add({"Sprite Normal Map", [this]() { return spriteNormalsWindow->isFocused(); },
                 {{Verb::Frame, {{}, nullptr, [this]() { spriteNormalsWindow->requestFit(); }}}}});
+    claims.add({"Pixel Art Cleanup", [this]() { return pixelArtCleanupWindow->isFocused(); },
+                {{Verb::Frame, {{}, nullptr, [this]() { pixelArtCleanupWindow->requestFit(); }}}}});
     // the Animation window editing a clip: the clip's keys
     claims.add({"Animation", [this]() { return clipWindowTakesKeys(); },
                 {{Verb::Delete, own("animation.delete")}, {Verb::Duplicate, own("animation.duplicate")}, {Verb::Copy, own("animation.copy")},
@@ -717,6 +725,7 @@ editor::ShortcutState editor::App::shortcutState() const{
     else if (titleDesignerWindow->isFocused()) state.panels.push_back(ShortcutContext::TitleDesigner);
     if (paletteWindow->takesKeys() || applyPaletteDialog->takesKeys()) state.panels.push_back(ShortcutContext::Palette);
     if (pixelArtCheckWindow->takesKeys()) state.panels.push_back(ShortcutContext::PixelArtCheck);
+    if (pixelArtCleanupWindow->takesKeys()) state.panels.push_back(ShortcutContext::PixelArtCleanup);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
     if (spritePreviewWindow->isFocused()) state.panels.push_back(ShortcutContext::SpritePreview);
     return state;

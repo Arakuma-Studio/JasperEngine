@@ -40,6 +40,7 @@
 namespace jasperengine{
 
     namespace camera{ struct ShakerRuntime; }
+    struct CameraComponent;
 
     // A Camera Follow's placement: the local values it writes this frame
     struct JASPERENGINE_API FollowPlacement{
@@ -84,6 +85,8 @@ namespace jasperengine{
         bool beginPreview(Entity entity);
 
     public:
+        // world units per art pixel for this shaker (S48 Pixel Snap, pixel-unit presets)
+        float pixelWorldSize(Entity entity, const CameraComponent* camera) const;
         CameraControlSystem(Scene* scene);
 
         // The start of a frame, before the scripts and animations (Engine::runFrame): a

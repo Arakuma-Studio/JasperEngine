@@ -111,6 +111,7 @@
 #include "util/Util.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "spritenormals/SpriteNormalsWatcher.h"
+#include "window/PixelArtCleanupEntry.h"
 #include "window/SpriteNormalsEntry.h"
 #include "window/SpriteNormalsWindow.h"
 #include "util/UIUtils.h"
@@ -2426,6 +2427,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         pixelart::aseprite::openInAsepriteOrFallback(project, paths, false);
                     }
                     uiBuilding.contextMenu.push_back({"Open in Aseprite", lastItemRect()});
+                    drawPixelArtCleanupMenuItems(currentPath / file.name);
                     ImGui::Separator();
                 }
 
@@ -2480,6 +2482,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         ImGui::SetItemTooltip("Reopen the settings this texture was synthesized with (Regenerate reproduces it)");
                     }
                     drawSpriteNormalsMenuItems(file, imagePath);
+                    drawPixelArtCleanupMenuItems(imagePath);
                     ImGui::Separator();
                 }
 
@@ -3132,6 +3135,8 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
 
     if (!fileEntry.isDirectory) {
         fileEntry.extension = path.extension().string();
+        // an .aseprite cleanup output (its recipe is in its .meta) has the same badge
+        if (SpriteSheetPool::isAsepritePath(name)) updatePixelArtCleanupBadge(fileEntry, path);
         if (Util::isImageFile(fileEntry.extension)){
             fileEntry.type = FileType::IMAGE;
             // a Sprite Normal Map output (its recipe; read again only when the file changed)
@@ -4490,6 +4495,32 @@ void editor::ProjectWindow::updateSpriteNormalsBadge(FileEntry& file, const fs::
 void editor::ProjectWindow::updateImageBadges(FileEntry& file, const fs::path& path) {
     updateSpriteNormalsBadge(file, path);
     if (!file.generated) updateProceduralBakeBadge(file, path);
+    if (!file.generated) updatePixelArtCleanupBadge(file, path);
+}
+
+void editor::ProjectWindow::updatePixelArtCleanupBadge(FileEntry& file, const fs::path& path) {
+    const cleanupentry::OutputStatus status = cleanupentry::outputStatus(project->getProjectPath(), path);
+    if (!status.isOutput) return;
+    file.generated = true;
+    file.generatedBy = cleanupentry::generatedText(status);
+    file.generatedStale = status.sourceChanged || status.sourceMissing;
+}
+
+void editor::ProjectWindow::drawPixelArtCleanupMenuItems(const fs::path& filePath) {
+    if (ImGui::MenuItem(ICON_FA_WAND_MAGIC_SPARKLES " Pixel Art Cleanup...")) {
+        editor::getEditorHost().openPixelArtCleanup(filePath);
+    }
+    uiBuilding.contextMenu.push_back({"Pixel Art Cleanup...", lastItemRect()});
+    ImGui::SetItemTooltip("Pixel Art Cleanup with this image: recover its pixels, then write a clean copy");
+    const cleanupentry::OutputStatus status = cleanupentry::outputStatus(project->getProjectPath(), filePath);
+    if (!status.isOutput) return;
+    if (ImGui::MenuItem(ICON_FA_ROTATE " Re-run Pixel Art Cleanup", nullptr, false, !status.sourceMissing)) {
+        editor::getEditorHost().rerunPixelArtCleanup(filePath);
+    }
+    uiBuilding.contextMenu.push_back({"Re-run Pixel Art Cleanup", lastItemRect()});
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("%s", status.sourceMissing ? ("Its source " + status.source + " is missing").c_str() : "Run the cleanup again from its source with the same recipe (one undo step)");
+    }
 }
 
 void editor::ProjectWindow::updateProceduralBakeBadge(FileEntry& file, const fs::path& path) {
@@ -4566,6 +4597,14 @@ void editor::ProjectWindow::show() {
             for (FileEntry& f : files) {
                 if (f.type == FileType::IMAGE) updateImageBadges(f, currentPath / f.name);
             }
+        }
+    }
+    // a cleanup output's source has no watcher: its badge is compared twice a second (stat only;
+    // cleanupentry hashes only what changed)
+    if (ImGui::GetTime() - pixelArtCleanupBadgesAt > 0.5) {
+        pixelArtCleanupBadgesAt = ImGui::GetTime();
+        for (FileEntry& f : files) {
+            if (f.generated && f.generatedBy.find("Pixel Art Cleanup") != std::string::npos) updatePixelArtCleanupBadge(f, currentPath / f.name);
         }
     }
     if (firstOpen) {

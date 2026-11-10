@@ -1123,6 +1123,55 @@ Rules:
   Hierarchy lists them under a "DontDestroyOnLoad" row in Play, MCP as the running scene
   "DontDestroyOnLoad" (`persistent: true`).
 
+### 2.8.1 Transition (static): screen transitions
+
+An engine overlay that covers the screen in an ink colour and reveals it again: it survives scene
+loads and covers the HUD's layer scenes and the loading scene (`jasper://docs/pixel-fx` has every
+kind and option). Kinds are names or `TransitionKind` values (`IRIS`, `BLINDS`, `SLASH`,
+`PIXEL_DISSOLVE`, `CRT_OFF`, `BURN_AWAY`, `FADE`); a left-out kind, duration or option comes from
+Project Settings > Graphics > Screen Transitions. Unscaled time.
+
+| Member | |
+|---|---|
+| `Transition.play(kind?, duration?, opts?)` | cover 45 %, hold 10 % (`opts.hold`), reveal 45 %; `opts.onCovered` at the hold. Returns a `TransitionHandle` |
+| `Transition.cover(...)` / `Transition.reveal(...)` | one phase each (cover holds until reveal or stop) |
+| `Transition.loadScene(scene, kind?, duration?, opts?)` | covers, loads, holds while loading, reveals; an unknown scene gives an invalid handle |
+| `Transition.stop()` | ends it, uncovered |
+| `Transition.active`, `covered`, `coverage`, `phase`, `kind` | read only (`phase`: none, cover, hold, reveal) |
+| `handle:isDone()`, `handle.progress`, `handle:stop()`, `handle.valid` | `Coroutine.waitFor(handle)` waits for it |
+
+```lua
+local handle = Transition.play(TransitionKind.FADE, 0.6, {color = "#000000", throughRamp = true})
+Coroutine.waitFor(handle)
+PixelFX.glitch(0.25, 1.0)   -- a burst of the scene's Glitch post effect (where it is enabled)
+```
+
+### 2.8.2 PixelFX (static): sprite effects over time
+
+Plays a `library:sprite` effect on a GameObject's own material (`jasper://docs/pixel-fx`): game time
+(a hit-stop holds it; Hit Stop Exempt keeps it running) unless `opts.unscaled`. A feature the material
+lacks is turned on in that GameObject's material (never a `.material` file) and the effect starts once
+its variant draws (`progress` 0 until then; the development build logs it once per material). One
+effect per feature: a new one replaces the running one.
+
+| Member | |
+|---|---|
+| `PixelFX.play(go, effect, duration, opts?)` | `effect`: `flash`, `fade_out`, `fade_in`, `blink`, `dissolve`, `undissolve`, `petrify`, `freeze`, `poison`, `outline_pulse`. Returns a `PixelFXHandle` |
+| `opts` | `ease` (`"linear"`, `"quad_out"`, ...), `unscaled`, `color` (`"#rrggbb"`), `count` (blink, outline_pulse; 3), `ramp` (a strip or `<palette>.palette#ramp:<name>`), `hold` (status looks), `embers` (dissolve: a Pixel Particles preset such as `"ember"`, or a `.particles` path), `emberRate` (40 a second), `onFinished` |
+| `PixelFX.set(go, name, value)` | a channel (`"flash"`, `"fade"`, `"dissolve"`, `"ramp"`) or any `library:sprite` property; stops that feature's effect |
+| `PixelFX.activeCount` | effects still playing |
+| `handle:isDone()`, `handle.progress`, `handle:stop()`, `handle.valid`, `handle.onFinished` | `Coroutine.waitFor(handle)` waits for it; `stop()` puts its value back at 0 |
+
+Every effect ends at its neutral 0 (the sprite as drawn) except `fade_out` and `dissolve`, which end
+gone (1).
+
+```lua
+local enemy = GameObject(self.scene, self.scene:findEntity("Enemy"))
+PixelFX.play(enemy, "flash", 0.15, {color = "#ffffff"})
+local burn = PixelFX.play(enemy, "dissolve", 0.9, {embers = "ember"})
+Coroutine.waitFor(burn)
+```
+
 ### 2.9 Scene (`self.scene`) - methods from EntityRegistry and Scene
 
 Entities are plain integers (`0` = none).
@@ -1482,7 +1531,7 @@ prefer `Time` in new code: its names are Unity's and they avoid the `Engine.upda
 
 | Name | Kind | Notes |
 |---|---|---|
-| `deltaTime` | ro | game seconds of this frame (times `timeScale`); inside `onFixedUpdate` (a fixed step) the fixed step `fixedDeltaTime` |
+| `deltaTime` | ro | game seconds of this frame (times `timeScale`, 0 during a hit-stop); inside `onFixedUpdate` (a fixed step) the fixed step `fixedDeltaTime`; inside a Hit Stop Exempt GameObject's callbacks the delta without the hit-stop |
 | `unscaledDeltaTime` | ro | the frame delta before `timeScale` (runs at time scale 0: pause menus); inside a fixed step `fixedUnscaledDeltaTime`; 0 while the app or the editor's Play is paused |
 | `fixedDeltaTime` | rw | game seconds per fixed step (physics, `onFixedUpdate`), default 1/60 |
 | `fixedUnscaledDeltaTime` | ro | `fixedDeltaTime / timeScale` (0 at time scale 0) |
@@ -1509,6 +1558,32 @@ prefer `Time` in new code: its names are Unity's and they avoid the `Engine.upda
 | `Engine.unscaledDeltatime`, `Engine.unscaledTime` | `Time.unscaledDeltaTime`, `Time.unscaledTime` |
 | `Engine.maxDeltatime` | `Time.maximumDeltaTime` |
 | `Engine.systemTime` | `Time.realtimeSinceStartup` (from engine start, not an absolute clock) |
+
+#### HitStop (static) and HitStopExempt
+
+Hit-stop (pixel-art game feel, `docs/pixel-fx.md`): the game freezes, or slows, for a moment on a
+hit. It counts down on unscaled time; `Time.deltaTime`, physics, game timers and `Coroutine.wait`,
+actions, tweens, animations, scaled particles, Camera Follow and scaled shakes stop. Unscaled time,
+audio, the HTML UI clock and anything with an unscaled switch run on.
+
+| `HitStop` | Notes |
+|---|---|
+| `play(seconds [, opts])` | from the next frame; `opts.timeScale` (0 frozen .. 1, default 0), `opts.exclude = {go...}` (they and their children keep running for this hit), `opts.only = {go...}` (only they and their children freeze; the world runs), `opts.shake` = a Shake Preset name or `{amplitude = pixels, seconds = s}` (a kick), shaking through the freeze on unscaled time. Overlapping calls keep the longer remaining time and the lower scale |
+| `stop()` | ends it now |
+| `active`, `remaining` | ro: a hit-stop runs; unscaled seconds left |
+| `unfrozenDeltaTime` | ro: this frame's delta without the hit-stop |
+
+`HitStopExempt(scene, entity)` adds the Hit Stop Exempt component when missing; rw `enabled`,
+`includeChildren` (default true). Its GameObject keeps running through a hit-stop: its
+animations, actions (a tween follows the GameObject it moves), particles, shakes, follow and its
+scripts' `Time.deltaTime` / `Engine.deltatime`. Rigidbodies run with the physics world.
+
+```lua
+HitStop.play(0.08, {shake = "pixel_hit"})              -- freeze 80 ms, shake 2 px meanwhile
+HitStop.play(0.12, {only = {GameObject.find("Hero")}}) -- only the hero freezes
+assert(HitStop.active)
+HitStop.stop()
+```
 
 ### 2.17 Coroutines and invoke (Coroutine, self:startCoroutine, self:invoke)
 
@@ -2061,7 +2136,8 @@ file plays without a restart.
 `setAnimation(path)` / `getAnimation()` (loads again), `play()`, `pause()`, `stop()` (time 0,
 shows pose 0), `isPlaying()`, `setTime(t)` / `getTime()` / `getLength()` (seconds),
 `setSpeed(s)` / `getSpeed()` (negative plays backwards), `setWeight(w)` / `getWeight()` (0..1
-blend over the Model's clips or rest pose), `autoplay` (rw), `getPoseCount()`, `getPoseName(i)`,
+blend over the Model's clips or rest pose), `autoplay` (rw), `poseFrameRate` (rw, fps, 0 smooth:
+held drawings, each pose on whole steps from its key), `getPoseCount()`, `getPoseName(i)`,
 `findPose(name)` (0-based; -1 when absent), `goToPose(indexOrName [, duration [, overshoot [,
 anticipation]]])` (live spring transition from the pose shown, then holds that pose; playback
 stops; returns false for an unknown pose), `isLoaded()`, `onFinish` (a function called when a
@@ -2107,6 +2183,7 @@ to play a sound from code use `Audio.play`, and react to clip events as below.
 | `addClip(path [, name [, options]])` | appends an entry (`name` empty or nil = the file stem / model clip name); false when the name is taken. `options`: `{retarget = bool (play a generic clip as a humanoid clip, from its source model), mirror = bool, footIK = bool, layer = int}` (other keys or types are an error) |
 | `removeClip(name)`, `getClipCount()`, `getClipName(i)` | `getClipName` is 0-based, `""` out of range |
 | `speed`, `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled` | rw; `speed` multiplies every state (negative plays backwards); `enabled = false`: time stops, nothing is written |
+| `poseFrameRate` | rw, fps (0 = smooth): every track holds on whole steps from its previous key (each key shows at its time), fades step too; events fire at their true times |
 | `isLoaded()` | every clip loaded and bound |
 | `getAnimatedProperties(name)` | the state's bound property tracks, `{"path:component.property", ...}` (debugging; empty while its clip loads). A clip animating a script field sets `self.<field>` (read it in `onUpdate`; a write of yours there is overwritten by the clip in the same frame, as in Unity) |
 | `onEvent` | rw, a function called with ONE `AnimationEvent` (below) per clip event |
@@ -2305,6 +2382,7 @@ controller does not have warn once and do nothing.
 | Member | Notes |
 |---|---|
 | `controller` | rw, the `.controller` path (assets-relative); a change reloads it, parameters and states of the same names carry over |
+| `poseFrameRate` | rw, fps (0 = smooth): held poses, every track on whole steps from its previous key, transitions step too; root motion, the root bone's translation and events stay at the true time |
 | `setFloat(name, v [, dampTime, deltaTime])`, `getFloat` | with damping: Unity's SmoothDamp towards `v` over `dampTime` s |
 | `setInteger`, `getInteger`, `setBool`, `getBool` | |
 | `setTrigger(name)`, `resetTrigger(name)` | a trigger stays set until a transition uses it |
@@ -2449,10 +2527,11 @@ Agents: `jasper://docs/camera`; users: `docs/camera.md`.
 
 A **preset** is a built-in name (`CameraShake.getPresetNames()`: `explosion`, `light_explosion`,
 `earthquake`, `punch`, `shock`, `electrocute`, `drunk`, `offroad`, `jumpscare_2d`, `eh_shake`,
-`entity_shake`, `invader_drunk`, `invaders_explosion`, `handheld`, `vibration`, `bump`), a
-`.shake` path relative to the assets folder, or a table `{type = "one_shot"|"sustained",
-strength, roughness, fadeIn, fadeOut, positionInfluence = Vector3, rotationInfluence = Vector3}`
-(missing keys: the `.shake` defaults). An unknown name logs one warning and shakes nothing.
+`entity_shake`, `invader_drunk`, `invaders_explosion`, `handheld`, `vibration`, `bump`, and in
+art pixels `pixel_hit`, `pixel_heavy`, `pixel_rumble`), a `.shake` path relative to the assets
+folder, or a table `{type = "one_shot"|"sustained"|"kick", strength, roughness, fadeIn, fadeOut,
+positionInfluence = Vector3, rotationInfluence = Vector3, units = "view"|"pixels", tick}`
+(missing keys: the `.shake` defaults; a kick decays over `fadeOut`). An unknown name logs one warning and shakes nothing.
 **options** (all optional): `{strength, roughness, seed, unscaled, fadeIn, fadeOut}`:
 `strength` / `roughness` scale the preset, the same `seed` shakes the same way, `unscaled`
 overrides the shaker's `unscaledTime`, the fades override the preset's.
@@ -2462,6 +2541,7 @@ overrides the shaker's `unscaledTime`, the fades override the preset's.
 | `shake(preset [, options])` | a `ShakeInstance` on every global Camera Shaker (Global on, enabled, active, every running scene); invalid with a warning when there is none |
 | `shakeAt(position, radius, preset [, options])` | the same, strength and roughness scaled by `max(0, 1 - d / radius)` (d from the shaker, x/y only in 2D); none at d >= radius |
 | `addTrauma(amount)` | every global shaker; trauma in [0, 1], shake = trauma ^ power, decaying linearly |
+| `kick(amplitudePx, seconds)` | a pixel kick (pixelfx's hit shake: whole pixels, decaying) on every global shaker; a `ShakeInstance` |
 | `stopAll([fade])` | every global shaker's shakes fade out over `fade` (default: their fade out; 0: now) |
 | `getPresetNames()` | the built-in names (a table) |
 
@@ -2476,6 +2556,8 @@ overrides the shaker's `unscaledTime`, the fades override the preset's.
 | `positionScale`, `rotationScale` | rw, gains (>= 0) |
 | `startPreset` | rw, played on start and on an enable unless the shake it started still plays (`""` = none) |
 | `traumaDecay`, `traumaPower` (1..4), `traumaMaxOffset` (Vector3, units), `traumaMaxAngle` (Vector3, degrees), `traumaFrequency` | rw |
+| `pixelSnap` | rw, the applied offset in whole art pixels and no roll (2D) |
+| `tickRate` | rw, Hz: the offset changes only on ticks (0: every frame) |
 | `offsetPosition`, `offsetRotation` | ro, the offset applied this frame (Vector3; rotation in Euler degrees) |
 
 | `ShakeInstance` (a handle) | Notes |

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Stream.h"
+#include "pixelart/PixelColor.h"
+#include "pixelart/ScreenTransition.h"
 #include "util/TitleArtLanguage.h"
 
 #include <unordered_map>
@@ -2840,6 +2842,26 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // graphics.bitmapTextCacheMiB (S51), only away from 0 (the platform's default)
         if (project->getBitmapTextCacheMiB() != 0)
             graphics["bitmapTextCacheMiB"] = project->getBitmapTextCacheMiB();
+        // graphics.screenTransitions (S48): the keys away from their defaults
+        {
+            const jasperengine::pixelart::TransitionDefaults& transitions = project->getTransitionDefaults();
+            const jasperengine::pixelart::TransitionDefaults defaults;
+            YAML::Node node;
+            if (transitions.kind != defaults.kind) node["kind"] = jasperengine::pixelart::transitionKindName(transitions.kind);
+            if (transitions.duration != defaults.duration) node["duration"] = transitions.duration;
+            if (transitions.color != defaults.color){
+                const jasperengine::pixelart::Rgba8 color{(uint8_t)std::lround(std::clamp(transitions.color.x, 0.0f, 1.0f) * 255.0f),
+                                                          (uint8_t)std::lround(std::clamp(transitions.color.y, 0.0f, 1.0f) * 255.0f),
+                                                          (uint8_t)std::lround(std::clamp(transitions.color.z, 0.0f, 1.0f) * 255.0f), 255};
+                node["color"] = jasperengine::pixelart::toHex(color, false);
+            }
+            if (transitions.ramp != defaults.ramp) node["ramp"] = transitions.ramp;
+            if (transitions.rim != defaults.rim) node["rim"] = transitions.rim;
+            if (transitions.pixelSize != defaults.pixelSize) node["pixelSize"] = transitions.pixelSize;
+            if (transitions.coverUI != defaults.coverUI) node["coverUI"] = transitions.coverUI;
+            if (node.size() > 0)
+                graphics["screenTransitions"] = node;
+        }
         if (graphics.size() > 0)
             root["graphics"] = graphics;
     }
@@ -3623,6 +3645,33 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                 drawSubmission.gpuInstancing = YamlNumbers::as<bool>(graphics["gpuInstancing"]);
         }
         project->setDrawSubmissionSettings(drawSubmission);
+    }
+
+    // graphics.screenTransitions (S48): projects saved before it, or a key left out, take the default
+    {
+        jasperengine::pixelart::TransitionDefaults transitions;
+        const YAML::Node graphics = node["graphics"];
+        const YAML::Node values = graphics && graphics.IsMap() ? graphics["screenTransitions"] : YAML::Node();
+        if (values && values.IsMap()){
+            if (values["kind"].IsDefined())
+                jasperengine::pixelart::transitionKindFromName(values["kind"].as<std::string>(), transitions.kind);
+            if (values["duration"].IsDefined())
+                transitions.duration = YamlNumbers::as<float>(values["duration"]);
+            if (values["color"].IsDefined()){
+                jasperengine::pixelart::Rgba8 color;
+                if (jasperengine::pixelart::parseHex(values["color"].as<std::string>(), color))
+                    transitions.color = Vector4(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, 1.0f);
+            }
+            if (values["ramp"].IsDefined())
+                transitions.ramp = values["ramp"].as<std::string>();
+            if (values["rim"].IsDefined())
+                transitions.rim = YamlNumbers::as<int>(values["rim"]);
+            if (values["pixelSize"].IsDefined())
+                transitions.pixelSize = YamlNumbers::as<int>(values["pixelSize"]);
+            if (values["coverUI"].IsDefined())
+                transitions.coverUI = YamlNumbers::as<bool>(values["coverUI"]);
+        }
+        project->setTransitionDefaults(transitions);
     }
 
     // graphics.shadowTier.<platform>: an absent platform takes its default tier
@@ -6534,6 +6583,9 @@ YAML::Node editor::Stream::encodeCameraShakerComponent(const CameraShakerCompone
     node["traumaMaxOffset"] = encodeVector3(shaker.traumaMaxOffset);
     node["traumaMaxAngle"] = encodeVector3(shaker.traumaMaxAngle);
     encodeFinite(node, "traumaFrequency", shaker.traumaFrequency);
+    // S48: written only when set (an old scene re-saves byte for byte)
+    if (shaker.pixelSnap) node["pixelSnap"] = YamlNumbers::text(true);
+    if (shaker.tickRate != 0.0f) encodeFinite(node, "tickRate", shaker.tickRate);
     return node;
 }
 
@@ -6558,6 +6610,8 @@ CameraShakerComponent editor::Stream::decodeCameraShakerComponent(const YAML::No
     if (node["traumaMaxOffset"]) shaker.traumaMaxOffset = decodeVector3(node["traumaMaxOffset"]);
     if (node["traumaMaxAngle"]) shaker.traumaMaxAngle = decodeVector3(node["traumaMaxAngle"]);
     if (node["traumaFrequency"]) shaker.traumaFrequency = std::max(0.0f, decodeFinite(node["traumaFrequency"], shaker.traumaFrequency));
+    if (node["pixelSnap"]) shaker.pixelSnap = YamlNumbers::as<bool>(node["pixelSnap"]);
+    if (node["tickRate"]) shaker.tickRate = std::max(0.0f, decodeFinite(node["tickRate"], shaker.tickRate));
     return shaker;
 }
 

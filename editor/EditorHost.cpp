@@ -146,6 +146,14 @@ void EditorHost::openSpriteNormalsForEntity(uint32_t, jasperengine::Entity, unsi
     Out::warning("Sprite Normal Map needs the editor window: use the generate_sprite_normals MCP tool or the generate-sprite-normals command");
 }
 
+void EditorHost::openPixelArtCleanup(const std::filesystem::path&) {
+    Out::warning("The Pixel Art Cleanup window needs the editor window: use the fix_pixel_art MCP tool or the fix-pixel-art command");
+}
+
+void EditorHost::rerunPixelArtCleanup(const std::filesystem::path&) {
+    Out::warning("Re-running a Pixel Art Cleanup needs the editor window: use fix_pixel_art {rerun: true} or fix-pixel-art --rerun");
+}
+
 void EditorHost::registerSaveSceneDialog(uint32_t, std::function<void(bool)> callback) {
     // nobody to ask where: nothing is saved
     if (callback) {

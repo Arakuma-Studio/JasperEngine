@@ -209,6 +209,9 @@ namespace jasperengine{
 
         void setSpeed(float speed);
         float getSpeed() const;
+        // S48 Pose Frame Rate (fps, 0 = smooth): poses held on whole steps from each key
+        void setPoseFrameRate(float fps);
+        float getPoseFrameRate() const;
         void setDefaultClip(const std::string& name);
         std::string getDefaultClip() const;
         void setDefaultFadeTime(float fade);

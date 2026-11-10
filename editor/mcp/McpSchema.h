@@ -32,6 +32,8 @@ namespace jasperengine::editor::mcp::schema {
     Json array(const Json& items, const std::string& description);
     // Any JSON value (property values of any type)
     Json any(const std::string& description);
+    // One of several shapes (the keyword subset's anyOf)
+    Json anyOf(const std::string& description, std::vector<Json> schemas);
 
     // [x,y] / [x,y,z] / [x,y,z,w] (an {x,y,z,w} object is accepted too, see McpValues)
     Json vec2(const std::string& description);

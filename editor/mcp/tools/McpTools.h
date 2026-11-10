@@ -82,6 +82,7 @@ namespace jasperengine::editor::mcp {
     // SpriteTools.cpp: the sprites group (S44's Aseprite import; S45 atlases, S47 drawing)
     void registerSpriteTools(McpRegistry& registry);
     void registerSpriteAtlasTools(McpRegistry& registry);
+    void registerSpriteDrawTools(McpRegistry& registry);   // S47
 
     // PlacementTools.cpp: puts back the preview poses a place_with_physics screenshot shows for a
     // few frames (App::stopTransientPreviews: before a save or Play)
@@ -170,6 +171,8 @@ namespace jasperengine::editor::mcp {
     void registerVcsTools(McpRegistry& registry);   // S29 (VcsTools.cpp)
     void registerPaletteTools(McpRegistry& registry);   // S43 (PaletteTools.cpp): edit_palette, apply_palette
     void registerPixelArtTools(McpRegistry& registry);   // S42 (PixelArtTools.cpp): check_pixel_art
+    void registerPixelFxTools(McpRegistry& registry);   // S48 (PixelFxTools.cpp): capture_contact_sheet
+    void registerPixelArtCleanupTools(McpRegistry& registry);   // S46 (PixelArtCleanupTools.cpp): fix_pixel_art, lint_pixel_art
 
     // list_assets search and saved searches (OrganisationTools.cpp): an R20 search over the asset
     // index, as {entries: [{path, type, guid?, labels?}], total, truncated, query}; *error for a bad re:

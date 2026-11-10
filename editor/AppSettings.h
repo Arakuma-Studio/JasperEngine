@@ -52,6 +52,12 @@ struct VersionControlSettings {
     bool operator!=(const VersionControlSettings& other) const { return !(*this == other); }
 };
 
+// Preferences > Pixel Art (settings.yaml "pixel_art", docs/specs/S47-agent-sprite-drawing.md R41)
+struct PixelArtPreferences {
+    bool agentEditHighlight = true;   // Highlight Agent Edits, in the Sprite Preview
+    bool operator==(const PixelArtPreferences& other) const { return agentEditHighlight == other.agentEditHighlight; }
+};
+
 // Preferences > Diagnostics (settings.yaml "diagnostics", docs/crash-diagnostics.md): the main
 // thread's hang watchdog and the notice of an abnormal previous session. Editor-wide.
 struct DiagnosticsSettings {
@@ -87,6 +93,7 @@ struct PanelVisibilitySettings {
     bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
     bool spriteNormals = false;
+    bool pixelArtCleanup = false;
     bool mcp = false;
     bool game = true;
     bool undoHistory = true;
@@ -108,6 +115,7 @@ struct PanelVisibilitySettings {
             && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
             && spriteNormals == other.spriteNormals
+            && pixelArtCleanup == other.pixelArtCleanup
             && mcp == other.mcp
             && game == other.game
             && undoHistory == other.undoHistory;
@@ -375,6 +383,7 @@ private:
     static bool undoReviewPlayChanges;
     static LoggingSettings loggingSettings;
     static DiagnosticsSettings diagnosticsSettings;
+    static PixelArtPreferences pixelArtPreferences;
 
     // Private methods
     static void ensureConfigDirectory();
@@ -593,6 +602,8 @@ public:
     static void setLoggingSettings(const LoggingSettings& settings);
     static void applyLoggingSettings();
     // Preferences > Diagnostics (clamped); set applies them to the running watchdog at once
+    static PixelArtPreferences getPixelArtPreferences();
+    static void setPixelArtPreferences(const PixelArtPreferences& settings);
     static DiagnosticsSettings getDiagnosticsSettings();
     static void setDiagnosticsSettings(const DiagnosticsSettings& settings);
     // Preferences > Version Control (clamped to their ranges); saved at once

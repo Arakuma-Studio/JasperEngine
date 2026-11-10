@@ -5,6 +5,7 @@
 // its bindings and bake, its follower and its tracks.
 
 #include "InspectorWindow.h"
+#include "component/MeshComponent.h"
 #include "component/LatticeFollowerComponent.h"
 #include "component/Transform.h"
 #include "reflect/Reflect.h"

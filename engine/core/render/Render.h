@@ -193,6 +193,9 @@ namespace jasperengine{
         // S57's fullscreen passes: the contact shadows' mask (contact_shadows.frag), 'Oir' the OIT
         // resolve (oit_resolve.frag)
         LIGHTING_PASS,
+        // S48's screen transition (transition.frag): one premultiplied fullscreen triangle over
+        // the finished frame (pixelart::ScreenTransition)
+        TRANSITION,
         TITLE_ART,            // Title Art's passes (S80): the program is the low property bits (titleart/render/TitlePasses.h)
         // 3D titles (S86, titleart/three_d/TitleTierFeatures.h): the Title Lit mesh shader (the TL_*
         // feature bits), the 3D post (the pass in the bits), the environment builder's passes, the

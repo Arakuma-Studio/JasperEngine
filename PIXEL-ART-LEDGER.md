@@ -172,11 +172,11 @@ never build or run them.
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | merged and pushed |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | merged and pushed |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | merged and pushed |
-| S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | implementing |
-| S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | in review |
-| S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | in review |
+| S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | merged and pushed |
+| S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | merged and pushed |
+| S48 | Pixel FX | 5B | S41, S43, S44, S52 | feature/s48-pixel-fx | merged and pushed |
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | merged and pushed |
-| S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | implementing |
+| S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | in review |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | merged and pushed |
 | S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | merged and pushed |
 
@@ -207,8 +207,8 @@ deadline of 2026-11-11 19:0x UTC:
 
 | Box | IP | box_id | Assigned |
 |---|---|---|---|
-| A | 5.161.240.186 | 205d9b263da5 | S46, S50 (earlier S51, S52) |
-| B | 5.161.235.8 | 32dda2ca7cd1 | S47, batch landings (earlier S42) |
+| A | 5.161.240.186 | 205d9b263da5 | destroyed 2026-11-10 after S46 landed (logs in `/tmp/je-logs/boxA-archive/`) |
+| B | 5.161.235.8 | 32dda2ca7cd1 | destroyed 2026-11-10 (idle after S47 and S48 runtime fixes; logs in `/tmp/je-logs/boxB-archive/`) |
 | C | 5.161.197.83 | 961a152cfd81 | S49 |
 | D | 5.161.197.6 | dd138a2601b3 | S48 (rented 2026-11-09, deadline 2026-11-12 00:01 UTC) |
 
@@ -244,6 +244,10 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 
 ## Follow-ups (owned by the coordinator)
 
+- S47 polish, within R41 as written: after an outside save the Sprite Preview's Undo stays enabled
+  although the step can't be undone. The click is refused safely, but the panel says only "The step
+  could not be undone" (the reason is in the status bar), and the "Edited by" line stays under the
+  warning.
 - `walkRefFields` (`editor/asset/AssetRefSchema.cpp:715`) dereferences a null `node.guid` when a
   reflected string field has `.asset` but no `<name>Guid` sibling, and nothing checks for the
   sibling when the table is built. S50 hit it and removed its own `.asset`; the next field declared
@@ -259,6 +263,80 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 - Destroy the build boxes A–D when the program ends.
 
 ## Log
+
+- 2026-11-10: S46 Pixel Art Cleanup merged (`713418ed7`), with the goldens S48's `pixel-fx-game`
+  fixture was missing, so `main` is green again on the shared-data suites. Gate on the merged tree,
+  box A: `WERROR` build; S46 suites plus the shared-data filter 364/365 before the goldens, then
+  shared-data 125/125 and shared MCP 87 passed, 0 failed, 3 skipped (`test_golden_resave_prefab_*`,
+  no TappyPlane) after them; S46 MCP files green on rerun (21/21 for the two fixed ones); tool budget
+  and `check_fanout` (`MeshComponent.h` 149 of 150) pass. Goldens were generated twice with matching
+  checksums; only the new files were committed. Every review item has a red run, except the window
+  close-path UI test, which can't go red, so a unit test covers it. `PixelLint`, `CraftLints` and
+  `EffectLints` on `main` are now S46's (with S48's `EffectLints`). Nothing under `engine/`, so web and
+  android don't apply. Eval cases at the end.
+
+- 2026-11-10: `main` is red: S48 landed `tools/fixtures/pixel-fx-game` without its world and
+  re-save goldens (its gate ran before the AC26 fixture joined the branch), so
+  `Stream.DerivedTransformWorldMatricesUnchanged` and `test_golden_resave_pixel_fx_game` fail. S46
+  generates them in its landing. S46's review fixes are done and merged with `main` at `a49cd299a`
+  (editor 364/365 and MCP 154/160, the failures being those goldens and two since fixed), including
+  a real slowdown: `near_duplicates` took 7.4 s on a 256×256 noise image, now linear. S50 found the
+  legacy Tilemap's mesh build writes its zero clamp back into stored tile positions (on `main`
+  already), so a drawn map lost negative positions on save or conversion; S50 fixes it.
+
+- 2026-11-10: S48 Pixel FX merged (`309dbc384`). Gate on the merged tree, box D: `WERROR` build;
+  core 179/179; editor 219/219 with the shared-data suites; MCP 182 passed, 0 failed, 3 skipped
+  (`test_golden_resave_prefab_*`, no TappyPlane); post-FX 3/3; GPU 37/37 on Vulkan and 37/37 on
+  GLES3; web and android builds; AC26 compiled smoke on GL, Vulkan and GLES3; editor-vs-export
+  comparison 4/4 (largest difference 0; red run `set` vs `idle`: 178, 2.85% over 24); web Debug gate
+  `pixel-fx`. Transition twin difference at most 1/255 on every backend. The finishing work found
+  one engine bug: the transition draw applied an empty bindings set, which sokol's validation
+  rejects in Debug and web Debug, so nothing drew there (`SokolObject.cpp`, red run 5 empty calls).
+  It also brings the S52 `SpriteBatch` Lua signatures and the alpha-0 `samePixel` fix. Shader cache
+  v64, Hit Stop Exempt component 99 and reflection-parity entity 1100, `UBER_GLITCH` bit 20. Open:
+  phone budgets (AC25/R34, no device), R35 inferred, eval cases at the end. One android failure
+  (`LogSink` undeclared) passed alone and on `main`; a concurrent `rbox` sync is the likely cause.
+
+- 2026-11-10: S50's review found one blocker (`edit_tilemap create` sets the Grid's cell size in
+  pixels instead of world units, so PPU ≠ 1 scenes are wrong) and 15 should-fixes: cell-rect overflow
+  past the region cap, off-screen chunks re-dirtied on every edit, offset mismatches between picking,
+  colliders and rendering, tilesets resolved by path only, Tileset Editor fields that never commit or
+  commit every frame, per-frame waste. Plus missing timing and export tests. All went back to S50's
+  implementer on box C. S48's web build passes; android and AC26 still running on box D.
+
+- 2026-11-10: S50 passed its lighter gate at `aee48ed46` on box C (`WERROR` build, core 264/264,
+  editor 303/303, MCP 233 passed, 1 failed, 3 skipped; `check_fanout` with `MeshComponent.h` at 150 of
+  150). The one failure is `test_lua_api_resource`: eight S52 `SpriteBatch` functions lack parser
+  signatures, also failing on the base, and S48 adds them. Real bugs found on the way: an AssetRef walk
+  segfault, a missing `Tcl` property count, one-byte enums read as four bytes, and Solid Terrains lost
+  in compiled builds. Independent review started. S48's merged tree: core 179/179, editor 219/219,
+  MCP 182 passed and 3 skipped, GPU 37/37 on Vulkan and on GLES3, twin difference at most 1/255 on
+  every backend; web, android and AC26 still running on box D.
+
+- 2026-11-10: S46's review found one blocker (the Cleanup window keeps keyboard focus after it closes,
+  so it keeps taking Ctrl+Z and tool keys) and about a dozen should-fixes: the verdict lints the
+  source instead of the output, re-runs overwrite files that aren't theirs, `.meta` paths accepted as
+  outputs, `.meta`-only edits not recooked, import memo waste. All went back to S46's implementer on
+  box A. S48's fix branches are merged with `main` and its final gate and batch checks are running on
+  box D; AC26's screenshot comparison stays in scope (smoke-test seconds, `parity.sh`, S51's export
+  comparison).
+
+- 2026-11-10: S46 passed its lighter gate at `df94fc993` on box A (`WERROR` build; editor 341/341;
+  MCP 143 passed and 3 skipped; tool budget core 98,997 of 99,000; performance budgets met; red runs
+  for every behaviour) and its independent review started. S46 changed `PixelLint`/`CraftLints`
+  after S47 landed its copies, so S46's versions replace them at landing. S48 takes the `lintFlicker`
+  alpha-0 fix. `check_fanout` has `MeshComponent.h` at 150 of 150.
+
+- 2026-11-10: box B destroyed, idle once S47 landed and S48's runtime fixes finished. D takes S48's
+  final gate and batch checks and goes after S48 lands; A (S46) and C (S50) stay to the end.
+
+- 2026-11-10: S47 Agent Sprite Drawing merged (`293a1ce45`), with `fix/main-neutral-hashes`
+  (terrain bound `Input.getPenPressure` and two `NavMeshSurface` fields without updating the reviewed
+  hashes, so `ShaderNeutralApi.NeutralClassesAreTheReviewedOnes` failed on `main`). Gate on the
+  merged tree, box D: `WERROR` build, MCP 168 passed and 3 skipped (`test_golden_resave_prefab_*`, no
+  TappyPlane), unit 248 run with only the hash test failing, then shared-data suites 125/125 with the
+  fix. Red runs on the old code: 13 MCP tests and 16 gtests. Nothing under `engine/`, so web and
+  android do not apply. The MCP eval is still to run, with the other pixel-art cases.
 
 - 2026-11-09: S47's review found 9 blockers (crashes on oversized renders and huge coordinates, two
   file corruptions, linked cels edited twice, a false external-save warning, tests that cannot

@@ -125,6 +125,11 @@ namespace jasperengine{
         AnimatorRetarget retarget = AnimatorRetarget::Auto;
         std::vector<AnimatorClipOverride> clipOverrides;
         std::vector<AnimatorIKConstraint> ik;
+        // S48 Pose Frame Rate (fps, 0 = smooth): every track holds its value on whole steps of
+        // 1 / fps from its previous key, the transitions' weights step on the same ticks; root
+        // motion and the root bone's translation stay at the true time, events fire at their
+        // true times
+        float poseFrameRate = 0.0f;
 
         // runtime only (not serialised)
         bool needsLoad = true;              // the controller or a setting that rebinds changed

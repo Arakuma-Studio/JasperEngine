@@ -240,6 +240,8 @@ namespace jasperengine::editor{
         VoxelVolumeComponent,
         // T4: a Terrain's tiles past one map, streamed round its focuses
         TerrainWorldComponent,
+        // pixel art (S48): keeps a GameObject running through a hit-stop
+        HitStopExemptComponent,
         // shows a .titleart through its Image or Sprite (S81 R1)
         TitleArtRendererComponent
     };

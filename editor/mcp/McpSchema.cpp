@@ -83,6 +83,10 @@ Json any(const std::string& description) {
     return described(Json::object(), description);
 }
 
+Json anyOf(const std::string& description, std::vector<Json> schemas) {
+    return described({{"anyOf", std::move(schemas)}}, description);
+}
+
 namespace {
 Json fixedVector(int size, const std::string& description) {
     return described({
