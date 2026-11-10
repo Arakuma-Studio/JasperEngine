@@ -1116,7 +1116,9 @@ void ParticleSubsystem::update(double dt){
             // paused by its culling (or a time scale of 0): nothing to simulate this frame (R15: a
             // culled emitter is nearly free); what a trigger asked to play plays now
             state.ticks = 0;
+#if JASPERENGINE_SOUND_LAYER
             playSounds(state.runtime, transform->worldPosition);
+#endif
             continue;
         }
         prepareInput(entity, particles, *transform, task.input);
@@ -1132,10 +1134,12 @@ void ParticleSubsystem::update(double dt){
     // world collisions query Jolt from the workers: never while it steps
     if (scene->getSystem<PhysicsSystem>()->isSteppingWorld3D()){
         Log::error("[Particles] the physics world is stepping: the particle simulation waits for the next frame");
+#if JASPERENGINE_SOUND_LAYER
         for (size_t t = 0; t < tasks.size(); t++){
             ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(taskEntities[t]);
             playSounds(particles.state->runtime, scene->getComponent<Transform>(taskEntities[t]).worldPosition);
         }
+#endif
         return;
     }
 #endif
@@ -1155,7 +1159,9 @@ void ParticleSubsystem::update(double dt){
         frameAlive += state.runtime.totalCount();
         updateBounds(state);
         dispatchEvents(particles);
+#if JASPERENGINE_SOUND_LAYER
         playSounds(state.runtime, scene->getComponent<Transform>(entity).worldPosition);
+#endif
     }
     checkStopActions();
 }
