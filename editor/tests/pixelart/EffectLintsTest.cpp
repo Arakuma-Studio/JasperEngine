@@ -130,6 +130,17 @@ TEST(EffectLints, DeterminismFailsOnAnyDifference) {
     EXPECT_EQ(lintDeterminism(&a, nullptr, 0.37).status, LintStatus::Skip);
 }
 
+// S46's report: a colour under alpha 0 is not seen, so frames that differ only there do not blink
+TEST(EffectLints, FlickerIgnoresTheColourUnderClearPixels) {
+    std::vector<PixelImage> frames(5, PixelImage(10, 10));
+    frames[0] = box(10, 10, 0, 0, 10, 10, kRed);
+    frames[4] = frames[0];
+    frames[2] = box(10, 10, 0, 0, 10, 10, PixelRgba{200, 40, 40, 0});
+    const LintResult r = lintFlicker(frameView(frames), false);
+    EXPECT_EQ(r.status, LintStatus::Pass) << r.message;
+    EXPECT_EQ(r.count, 0);
+}
+
 TEST(EffectLints, FlickerFindsOneFrameBlinks) {
     // a 10x10 sprite over 6 frames; in frame 3 a third of it blinks off and back
     std::vector<PixelImage> frames(6, box(10, 10, 0, 0, 10, 10, kRed));
