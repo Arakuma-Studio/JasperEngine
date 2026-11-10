@@ -250,7 +250,8 @@ void tilechunk::build(const TilemapChunkParams& params, ChunkCoord coord, Sprite
             out.runs.push_back({(uint32_t)n, 1u, shown.info->page});
     }
     batch.setPageRuns(out.runs);
-    batch.markChanged(0.0f, 0.0f, 1.0f, 1.0f);
+    // culled by its piece's bounds (chunkBounds, overhang included): the batch's own are not read
+    batch.markInstancesChanged();
 }
 
 bool tilechunk::updateAnimation(const TilemapChunkParams& params, SpriteInstanceBatch& batch, TilemapChunkBuild& build, int64_t ms, bool& changed){
@@ -313,8 +314,8 @@ bool tilechunk::updateAnimation(const TilemapChunkParams& params, SpriteInstance
         changed = true;
     }
     build.nextFrameMs = earliest;
-    // the rects moved, not the instances: the bounds stay
+    // the rects moved, not the instances
     if (changed)
-        batch.markRectsChanged();
+        batch.markInstancesChanged();
     return true;
 }

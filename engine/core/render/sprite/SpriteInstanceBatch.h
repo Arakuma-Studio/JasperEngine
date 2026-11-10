@@ -13,8 +13,9 @@
 //   at its position, as its Sprite drawn alone does, not at its frame's offset.
 // - Producers: the Sprite Batch component (SpriteBatchComponent, scripts' bulk streams) and S50's
 //   tilemap chunks. A producer writes instances() / fx() after setCount, sets the page runs, and
-//   calls markChanged; the renderer uploads when the revision moved past the one it uploaded
-//   (Retained), or every frame it draws (PerFrame), never when the batch is culled or empty.
+//   calls markChanged (or markInstancesChanged); the renderer uploads when the revision moved past
+//   the one it uploaded (Retained), or every frame it draws (PerFrame), never when the batch is
+//   culled or empty.
 // - Draws: one instanced draw per page run ([first, first + count) on one texture page), in order.
 // - Not thread-safe: the main thread.
 
@@ -76,9 +77,10 @@ namespace jasperengine{
         // bumps the revision and refreshes the bounds from the instances' matrices (unit quad
         // corners: (x0, y0) .. (x1, y1) of the mesh the instances draw)
         void markChanged(float x0, float y0, float x1, float y1);
-        // bumps the revision only: the instances' texture rects or colours changed, not their
-        // matrices, so the bounds stay (an animated tile's next frame)
-        void markRectsChanged();
+        // bumps the revision only, the bounds left as they are: the matrices did not move (an
+        // animated tile's next frame), or nobody reads them (a chunk list's piece is culled by its
+        // own bounds, SpriteInstanceChunk::bounds)
+        void markInstancesChanged();
         uint64_t getRevision() const { return revision; }
         const AABB& localBounds() const { return bounds; }
 

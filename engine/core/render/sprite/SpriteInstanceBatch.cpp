@@ -110,7 +110,7 @@ void SpriteInstanceBatch::markChanged(float x0, float y0, float x1, float y1){
     bounds = AABB(Vector3(lo[0], lo[1], lo[2]), Vector3(hi[0], hi[1], hi[2]));
 }
 
-void SpriteInstanceBatch::markRectsChanged(){
+void SpriteInstanceBatch::markInstancesChanged(){
     revision++;
 }
 

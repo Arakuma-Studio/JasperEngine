@@ -70,7 +70,7 @@ namespace jasperengine{
 
     namespace tilechunk{
 
-        // fills `batch` (setCount, instances, pivots when enabled, page runs, markChanged) with the
+        // fills `batch` (setCount, instances, pivots when enabled, page runs, markInstancesChanged) with the
         // chunk's instances, in the painter's order where tiles may overlap, else grouped by page
         JASPERENGINE_API void build(const TilemapChunkParams& params, ChunkCoord coord, SpriteInstanceBatch& batch, TilemapChunkBuild& out);
         // rewrites the texture rects of the animated instances whose frame changed at `ms`; false
