@@ -104,8 +104,10 @@ uniform u_fs_titleLit {
     vec4 axisX;         // xyz: the layer's +x in world space (surface relief, flakes)
     vec4 axisY;         // xyz: the layer's +y
     vec4 view2;
-    vec4 aoDepth;       // the AO prepass: x the title centre's view depth, y the title's radius
-    vec4 behind;        // x: log2(behind width x frame span), y: gem thickness (world), z: 1 = behind bound, w: 1 = origin top left
+    vec4 aoDepth;       // the AO prepass: x the title centre's view depth, y the title's radius, z 1 = packed
+                        // into RGBA8 (hd_packNormalDepth: no float targets)
+    vec4 behind;        // x: log2(behind width x frame span), y: gem thickness (world), z: 1 = behind bound (2: in the
+                        // compressed-light encoding), w: 1 = origin top left
     mat4 viewProj;      // the main pass's projection x view (the gem's exit point)
     mat4 viewProjInv;   // its inverse (the caps' rebuilt position)
     mat4 layerInv;      // world -> layer space (after the shear)
@@ -176,6 +178,7 @@ void main() {
     vec3 viewN = vec3(dot(tl.view0.xyz, N), dot(tl.view1.xyz, N), dot(tl.view2.xyz, N));
     float viewZ = -(dot(tl.view2.xyz, v_world) + tl.view2.w);
     frag_color = vec4(normalize(viewN), (viewZ - tl.aoDepth.x) / max(tl.aoDepth.y, 1e-4));
+    if (tl.aoDepth.z > 0.5) frag_color = hd_packNormalDepth(frag_color);
     return;
 #endif
 

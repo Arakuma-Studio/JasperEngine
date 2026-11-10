@@ -31,7 +31,9 @@ vec4 tlBehindChannel(vec3 N, vec3 V, float ior, float roughness) {
     vec2 uv = ndc * 0.5 + 0.5;
     if (tl.behind.w > 0.5) uv.y = 1.0 - uv.y;
     float lod = tl.behind.x * roughness * clamp(ior * 2.0 - 2.0, 0.0, 1.0);
-    return textureLod(sampler2D(u_tlBehind, u_tlBehind_smp), uv, lod);
+    vec4 seen = textureLod(sampler2D(u_tlBehind, u_tlBehind_smp), uv, lod);
+    // the copy without float targets holds the compressed-light encoding (behind.z 2)
+    return tl.behind.z > 1.5 ? hd_decodeLight(seen) : seen;
 }
 
 vec4 tlBehind(vec3 N, vec3 V, float ior, float dispersion, float roughness) {

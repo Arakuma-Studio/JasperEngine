@@ -4,9 +4,9 @@
 // S86 AC9, AC10 (partly), AC13 (CPU twin), AC15, AC27 (zero cost): a Dimension 3D layer through
 // the S80 renderer on the headless device. A gold 3D plate draws lit pixels where its 2D twin
 // does and nothing outside its region; the ramp's bend changes the image (red control: bend 0);
-// the compressed-light path agrees with the float path, and Gold 3D "BIG"'s glint runs without a
-// float target on every tier within AC9's mean (Title3DFallbackGpu; red control: the glint's
-// float targets before its 8-bit path); the debug views; AO (AC16) darkens the
+// the compressed-light path agrees with the float path, and Gold 3D "BIG" with its glint, and "BIG"
+// with a gem face and AO, render without a float target on every tier within AC9
+// (Title3DFallbackGpu; red control: the float targets the forced path took before); the debug views; AO (AC16) darkens the
 // crevices and keeps open faces; gems refract the layer's own opaque parts (AC11); a part's own
 // environment lights that part only; the glint (AC17) adds light past the letters on every tier
 // (red control: a threshold nothing passes); an environment build is spread over frames (the 21 s
@@ -96,6 +96,41 @@ namespace {
         return makeDoc({{"canvas", canvas(768, 384)}, {"layers", Json::array({layer})}});
     }
 
+    // "BIG" with a sapphire face (a gem: the behind copy refracts the gold bands) and AO on or off
+    std::shared_ptr<const TitleArtDoc> gemBig(bool ao = true) {
+        Json gold = materialPreset("gold");
+        Json bands = Json::array();
+        bands.push_back(Json{{"grow", 2.5}, {"depth", 10}, {"bevel", {{"width", 1.2}, {"depth", 1.2}, {"profile", "chamfer"}}}, {"material", gold}});
+        bands.push_back(Json{{"grow", 2.2}, {"depth", 6}, {"plate", {{"kind", "hull"}}}, {"material", materialPreset("black_gloss")}});
+        Json style = Json{{"depth", 12}, {"curve_segments", 10}, {"bevel", {{"width", 2.5}, {"depth", 2.5}, {"profile", "round"}}},
+                          {"face", materialPreset("sapphire")}, {"bands", bands}, {"ao", {{"enabled", ao}, {"radius", 6}, {"intensity", 1.5}}}};
+        Json layer = Json{{"id", "00000001"}, {"type", "text"}, {"name", "BIG"}, {"text", "BIG"}, {"font", fontRef(DELA_GOTHIC)},
+                          {"size", 200}, {"dimension", "3d"}, {"style_3d", style}};
+        return makeDoc({{"canvas", canvas(768, 384)}, {"layers", Json::array({layer})}});
+    }
+
+    // AC9's forced path: every float format off
+    constexpr uint32_t FORCED_RGBA8 = TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_R16F | TITLE_ART_TEST_NO_RGBA32F;
+
+    RenderRequest fallbackRequest(std::shared_ptr<const TitleArtDoc> doc, int tier, uint32_t flags) {
+        static TestAssetResolver assets;
+        RenderRequest r = requestOf(std::move(doc), flags);
+        r.tier = tier;
+        r.assets = &assets;
+        return r;
+    }
+
+    // a renderer that only rendered forced: no float target from the pool, none made beside it,
+    // its environments built on the CPU twin
+    void expectNoFloatTargets(const TitleArtRenderer& renderer) {
+        const Title3DStats* st = stats3D(renderer);
+        ASSERT_TRUE(st);
+        EXPECT_EQ(renderer.poolStats().floatAcquires, 0u) << "the forced render acquired a float target";
+        EXPECT_EQ(st->floatRenderTargets, 0u) << "the forced render made a float render target";
+        EXPECT_EQ(st->environmentBuilds, 0u) << "no environment built on the GPU";
+        EXPECT_GT(st->environmentCpuBuilds, 0u) << "the environment built on the CPU twin";
+    }
+
 }
 
 TEST_F(Title3DRendererGpu, AGold3DPlateDrawsLitPixels) {
@@ -143,41 +178,74 @@ TEST_F(Title3DRendererGpu, CompressedLightAgreesWithFloat) {
 
 TEST_F(Title3DFallbackGpu, TheGlintRunsWithoutFloatTargetsOnEveryTier) {
     // AC9, R30, R32: Gold 3D "BIG" with the glint on, at Bake and High (the full chain), Medium (the
-    // reduction) and Low (the sprites), with float targets and with TITLE_ART_TEST_NO_FLOAT_TARGETS:
-    // the forced render acquires no float target, the glint's included, runs the glint's passes (as
-    // many as the float render), shows its glint (it differs from the forced render without one) and
-    // agrees with the float render within mean 3/255. Red control: the glint's RGBA16F targets
-    // before it had its 8-bit path (the forced render acquired them)
+    // reduction) and Low (the sprites), with float targets and with TITLE_ART_TEST_NO_FLOAT_TARGETS
+    // (each on its own renderer): the forced render acquires no float target and makes no float
+    // render target (its environment built on the CPU twin and only sampled), runs the glint's
+    // passes (as many as the float render), shows its glint (it differs from the forced render
+    // without one) and agrees with the float render within mean 3/255. Red control: the glint's
+    // RGBA16F targets before it had its 8-bit path (the forced render acquired them)
     const RenderFeatures& f = SystemRender::getFeatures();
     if (!f.renderRGBA16F || !f.filterRGBA16F || !f.blendRGBA16F || !f.msaaRGBA16F) GTEST_SKIP() << "no float passes here";
-    static TestAssetResolver assets;
-    const uint32_t forced = TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_R16F | TITLE_ART_TEST_NO_RGBA32F;
     for (int tier : {0, 1, 2, 3}) {
         SCOPED_TRACE("tier " + std::to_string(tier));
-        auto renderer = geometryRenderer();
-        auto request = [&](bool glint, uint32_t flags) {
-            RenderRequest r = requestOf(goldBig(glint), flags);
-            r.tier = tier;
-            r.assets = &assets;
-            return r;
-        };
-        const Pixels floats = render(*renderer, request(true, 0));
-        const Title3DStats* st = stats3D(*renderer);
-        ASSERT_TRUE(st);
-        const uint64_t floatGlintPasses = st->glintPasses;
-        const uint64_t floatTargets = renderer->poolStats().floatAcquires;
-        EXPECT_GT(floatGlintPasses, 0u) << "the glint ran";
-        EXPECT_GT(floatTargets, 0u) << "the float render takes float targets";
-        const Pixels fallback = render(*renderer, request(true, forced));
-        EXPECT_EQ(renderer->poolStats().floatAcquires, floatTargets) << "the forced render took a float target";
-        EXPECT_EQ(st->glintPasses - floatGlintPasses, floatGlintPasses) << "the forced glint runs the same passes";
-        const Pixels fallbackOff = render(*renderer, request(false, forced));
+        auto floatRenderer = geometryRenderer();
+        auto forcedRenderer = geometryRenderer();
+        const Pixels floats = render(*floatRenderer, fallbackRequest(goldBig(true), tier, 0));
+        const Pixels fallback = render(*forcedRenderer, fallbackRequest(goldBig(true), tier, FORCED_RGBA8));
+        const Pixels fallbackOff = render(*forcedRenderer, fallbackRequest(goldBig(false), tier, FORCED_RGBA8));
+        const Title3DStats* fs = stats3D(*floatRenderer);
+        const Title3DStats* st = stats3D(*forcedRenderer);
+        ASSERT_TRUE(fs && st);
+        EXPECT_GT(fs->glintPasses, 0u) << "the glint ran";
+        EXPECT_GT(floatRenderer->poolStats().floatAcquires, 0u) << "the float render takes float targets";
+        expectNoFloatTargets(*forcedRenderer);
+        EXPECT_EQ(st->glintPasses, fs->glintPasses) << "the forced glint runs the same passes";
         const Difference d = compare(floats, fallback, 24.0);
         const Difference shown = compare(fallback, fallbackOff, 24.0);
         std::printf("[title3d-fallback] tier %d: glint on, float vs forced mean %.3f/255, %.4f %% over 24/255, max %.0f; glint shown on %.3f %% of px\n",
                     tier, d.mean, d.overFraction * 100, d.max, shown.overFraction * 100);
         EXPECT_LE(d.mean, 3.0);
         EXPECT_GT(shown.overFraction, 0.0) << "the forced render shows the glint";
+    }
+}
+
+TEST_F(Title3DFallbackGpu, AOAndGemsRenderWithoutFloatTargets) {
+    // AC9, R21, R30, R31: "BIG" with a sapphire face over gold bands and AO on, glint off, at Bake and
+    // High (where AO and the gem behind copy run) and Medium and Low: the forced render acquires no
+    // float target and makes no float render target (the AO prepass packed into RGBA8, the behind
+    // copy in the compressed-light encoding, the environment from the CPU twin) and agrees with the
+    // float render within AC9's glint-off criteria (mean 2/255, at most 1 % of px over 24/255). Red
+    // control: the AO targets, the behind copy and the environment cube in RGBA16F under the flag
+    const RenderFeatures& f = SystemRender::getFeatures();
+    if (!f.renderRGBA16F || !f.filterRGBA16F || !f.blendRGBA16F || !f.msaaRGBA16F) GTEST_SKIP() << "no float passes here";
+    for (int tier : {0, 1, 2, 3}) {
+        SCOPED_TRACE("tier " + std::to_string(tier));
+        auto floatRenderer = geometryRenderer();
+        auto forcedRenderer = geometryRenderer();
+        const Pixels floats = render(*floatRenderer, fallbackRequest(gemBig(), tier, 0));
+        const Pixels fallback = render(*forcedRenderer, fallbackRequest(gemBig(), tier, FORCED_RGBA8));
+        const Title3DStats* fs = stats3D(*floatRenderer);
+        const Title3DStats* st = stats3D(*forcedRenderer);
+        ASSERT_TRUE(fs && st);
+        if (tier <= 1) {
+            EXPECT_GT(fs->aoPasses, 0u);
+            EXPECT_GT(fs->behindCopies, 0u);
+            EXPECT_EQ(st->aoPasses, fs->aoPasses) << "the forced render runs the AO";
+            EXPECT_EQ(st->behindCopies, fs->behindCopies) << "the forced render makes the behind copy";
+        }
+        expectNoFloatTargets(*forcedRenderer);
+        if (tier <= 1) {
+            // both show on the forced path: the gem without its behind copy, the title without AO, differ
+            const Pixels noBehind = render(*forcedRenderer, fallbackRequest(gemBig(), tier, FORCED_RGBA8 | TITLE_ART_TEST_NO_BEHIND));
+            const Pixels noAO = render(*forcedRenderer, fallbackRequest(gemBig(false), tier, FORCED_RGBA8));
+            EXPECT_GT(compare(fallback, noBehind, 8.0).overFraction, 0.01) << "the forced gem refracts the bands";
+            EXPECT_GT(compare(fallback, noAO, 8.0).overFraction, 0.001) << "the forced AO darkens the crevices";
+        }
+        const Difference d = compare(floats, fallback, 24.0);
+        std::printf("[title3d-fallback] tier %d: AO and gems, float vs forced mean %.3f/255, %.4f %% over 24/255, max %.0f\n", tier, d.mean,
+                    d.overFraction * 100, d.max);
+        EXPECT_LE(d.mean, 2.0);
+        EXPECT_LE(d.overFraction, 0.01);
     }
 }
 
@@ -260,7 +328,6 @@ TEST_F(Title3DRendererGpu, AODarkensTheCrevicesAndKeepsOpenFaces) {
 TEST_F(Title3DRendererGpu, GemsRefractTheLayersOwnOpaqueParts) {
     // AC11: a sapphire face over its dark band: with the behind copy the face shows the band
     // refracted, without it (red control) the environment only
-    if (!SystemRender::getFeatures().renderRGBA16F || !SystemRender::getFeatures().filterRGBA16F) GTEST_SKIP() << "no float passes here";
     auto renderer = geometryRenderer();
     const Pixels seen = render(*renderer, requestOf(doc3D(plate3D(0.0, "sapphire"))));
     const Pixels envOnly = render(*renderer, requestOf(doc3D(plate3D(0.0, "sapphire")), TITLE_ART_TEST_NO_BEHIND));

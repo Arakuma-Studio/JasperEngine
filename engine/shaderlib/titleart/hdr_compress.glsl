@@ -11,6 +11,9 @@
 //   premultiplied light / HD_LIGHT instead (linear: its resolve averages light too); the main
 //   pass dithers it by half a sRGB code, which the k x k texels of a pixel average out.
 //
+// - The AO prepass without float targets: the view normal octahedral in 8 bits a component and
+//   the title-relative depth in 16 bits over +-HD_DEPTH radii, in RGBA8 (code 0: nothing drawn).
+//
 // Valid C++ over the shim of TitleToneMapTest (no GLSL-only syntax).
 
 const float HD_KNEE = 0.76;
@@ -67,4 +70,36 @@ vec4 hd_decode(vec4 texel, float mode) {
     if (mode > 1.5) return vec4(texel.x * HD_LIGHT, texel.y * HD_LIGHT, texel.z * HD_LIGHT, clamp(texel.w, 0.0, 1.0));
     if (mode > 0.5) return hd_decodeLight(texel);
     return texel;
+}
+
+// the depth range the packed AO prepass holds, title radii each way
+const float HD_DEPTH = 8.0;
+
+float hd_signNotZero(float v) {
+    return v >= 0.0 ? 1.0 : -1.0;
+}
+
+// (unit view normal, title-relative depth) -> RGBA8 codes (0..1)
+vec4 hd_packNormalDepth(vec4 nd) {
+    vec3 n = vec3(nd.x, nd.y, nd.z);
+    n = n / max(abs(n.x) + abs(n.y) + abs(n.z), 1e-6);
+    float ox = n.z >= 0.0 ? n.x : (1.0 - abs(n.y)) * hd_signNotZero(n.x);
+    float oy = n.z >= 0.0 ? n.y : (1.0 - abs(n.x)) * hd_signNotZero(n.y);
+    float t = clamp(nd.w / (2.0 * HD_DEPTH) + 0.5, 0.0, 1.0);
+    float code = floor(t * 65534.0 + 0.5) + 1.0;
+    float hi = floor(code / 256.0);
+    return vec4(floor((ox * 0.5 + 0.5) * 255.0 + 0.5) / 255.0, floor((oy * 0.5 + 0.5) * 255.0 + 0.5) / 255.0, hi / 255.0,
+                (code - hi * 256.0) / 255.0);
+}
+
+// RGBA8 codes -> (unit view normal, title-relative depth); a zero normal where nothing was drawn
+vec4 hd_unpackNormalDepth(vec4 p) {
+    float code = floor(p.z * 255.0 + 0.5) * 256.0 + floor(p.w * 255.0 + 0.5);
+    if (code < 0.5) return vec4(0.0);
+    float ox = p.x * 2.0 - 1.0, oy = p.y * 2.0 - 1.0;
+    float nz = 1.0 - abs(ox) - abs(oy);
+    float nx = nz >= 0.0 ? ox : (1.0 - abs(oy)) * hd_signNotZero(ox);
+    float ny = nz >= 0.0 ? oy : (1.0 - abs(ox)) * hd_signNotZero(oy);
+    float l = sqrt(nx * nx + ny * ny + nz * nz);
+    return vec4(nx / l, ny / l, nz / l, ((code - 1.0) / 65534.0 - 0.5) * 2.0 * HD_DEPTH);
 }
