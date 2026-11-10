@@ -208,4 +208,8 @@ article's *look* and its pitfalls caught early:
 
 ## Deviations
 
-None yet.
+- **R14 (WP-C):** "rounded up" is to whole world units from 10 units, to 0.01 below: a sprite at
+  100 pixels per unit is a few units wide, where a whole unit would double the height. The sprite's
+  size is a Sprite's drawn size (its pixels over its Pixels Per Unit) times the world scale; without
+  one (no Sprite, or no size yet), the largest frame of the result over the entity's or the
+  project's Pixels Per Unit.

@@ -12,12 +12,15 @@
 #include "component/MeshComponent.h"
 #include "command/type/WriteFilesCmd.h"
 #include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/Transform.h"
 #include "mcp/McpValues.h"
 #include "sprite/SpriteSheetBuilder.h"
 #include "sprite/SpriteSheetPool.h"
 #include "sprite/SpriteSheetSources.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "texsynth/SynthesisSession.h"
+#include "util/Ambient2D.h"
 #include "util/EntityPath.h"
 #include "util/ProjectChecks.h"
 #include "util/ProjectFileWrites.h"
@@ -1143,6 +1146,7 @@ namespace jasperengine::editor::spritenormals {
         if (!scene) return check;
         Scene* s = mutableScene(scene);
         check.ambientIntensity = s->getAmbientLight2DIntensity();
+        check.ambientBrightness = ambientLight2DBrightness(*s);
         auto lights = s->getComponentArray<Light2DComponent>();
         const size_t count = lights ? lights->size() : 0;
         for (size_t i = 0; i < count; i++) {
@@ -1154,8 +1158,45 @@ namespace jasperengine::editor::spritenormals {
         return check;
     }
 
+    int framePixels(const std::vector<Cell>& cells, int width, int height) {
+        if (cells.empty()) return std::max(width, height);
+        int side = 0;
+        for (const Cell& c : cells) side = std::max({side, c.width, c.height});
+        return side;
+    }
+
+    LowLights lowLights(const Scene* scene, Entity entity, int framePixels) {
+        LowLights out;
+        if (!scene) return out;
+        Scene* s = mutableScene(scene);
+        const bool hasEntity = entity != NULL_ENTITY && s->isEntityCreated(entity);
+        Vector3 scale(1.0f, 1.0f, 1.0f);
+        if (const Transform* t = hasEntity ? s->findComponent<Transform>(entity) : nullptr) scale = t->worldScale;
+        const float sx = std::fabs(scale.x), sy = std::fabs(scale.y);
+        const SpriteComponent* sprite = hasEntity ? s->findComponent<SpriteComponent>(entity) : nullptr;
+        if (sprite && sprite->width > 0 && sprite->height > 0) {
+            const Vector2 size = spriteWorldSize(*sprite);
+            out.spriteSize = std::max(size.x * sx, size.y * sy);
+        } else {
+            const TilemapComponent* tilemap = hasEntity ? s->findComponent<TilemapComponent>(entity) : nullptr;
+            const float ppu = resolvePixelsPerUnit(sprite ? sprite->pixelsPerUnit : tilemap ? tilemap->pixelsPerUnit : 0.0f);
+            out.spriteSize = static_cast<float>(framePixels) / ppu * std::max(sx, sy);
+        }
+        if (!(out.spriteSize > 0.0f) || !std::isfinite(out.spriteSize)) return out;
+        // whole units for a big sprite, hundredths for one of a few units (a high Pixels Per Unit)
+        const float step = out.spriteSize >= 10.0f ? 1.0f : 0.01f;
+        out.raiseTo = std::ceil(out.spriteSize / step - 1e-3f) * step;
+        auto lights = s->getComponentArray<Light2DComponent>();
+        for (size_t i = 0; lights && i < lights->size(); i++) {
+            const Light2DComponent* light = lights->findComponentFromIndex(i);
+            if (!light || !light->enabled || !(light->height > 0.0f) || light->height >= 0.5f * out.spriteSize) continue;
+            out.lights.push_back(lights->getEntity(i));
+        }
+        return out;
+    }
+
     std::vector<Problem> sceneWarnings(const Scene* scene, Entity entity, const Settings& settings, int normalWidth, int normalHeight,
-                                       const std::vector<Delay>& delays, bool willApply, unsigned submesh) {
+                                       const std::vector<Delay>& delays, bool willApply, unsigned submesh, int framePixels) {
         std::vector<Problem> warnings;
         int zero = 0;
         for (const Delay& d : delays) {
@@ -1169,9 +1210,24 @@ namespace jasperengine::editor::spritenormals {
                 add(warnings, "no_light_height", "", "No Light 2D in this scene has a height above 0, so normal maps don't change the lighting.",
                     "Set a Light 2D's Height (64 is a good start).");
             }
-            if (lights.ambientIntensity >= 0.8f) {
-                add(warnings, "ambient_high", "", "The scene's 2D ambient intensity is " + trimmed(lights.ambientIntensity) + ", which washes out normal maps.",
-                    "Lower Ambient Light 2D intensity to 0.2-0.4.");
+            const LowLights low = lowLights(scene, entity, framePixels > 0 ? framePixels : std::max(normalWidth, normalHeight));
+            if (!low.lights.empty()) {
+                const size_t named = std::min<size_t>(low.lights.size(), 3);
+                std::string names;
+                for (size_t i = 0; i < named; i++) names += (i ? ", \"" : "\"") + scene->getEntityName(low.lights[i]) + "\"";
+                if (low.lights.size() > named) names += " and " + std::to_string(low.lights.size() - named) + " more";
+                const bool one = low.lights.size() == 1;
+                add(warnings, "light_low", "",
+                    std::string(one ? "Light 2D " : "Light 2Ds ") + names + (one ? " sits" : " sit") + " lower than half the sprite's larger side (" +
+                        trimmed(low.spriteSize) + " world units), so " + (one ? "it lights" : "they light") + " it from the side only.",
+                    std::string("Set ") + (one ? "its" : "their") + " Height to at least " + trimmed(low.raiseTo) + " (the sprite's larger side).");
+            }
+            if (lights.ambientBrightness >= kBrightAmbient2D) {
+                add(warnings, "ambient_high", "",
+                    "The scene's 2D ambient brightness is " + trimmed(lights.ambientBrightness) +
+                        " (intensity times its brightest colour channel), which washes out normal maps.",
+                    "Darken Ambient Light 2D: colour (" + trimmed(kDarkAmbient2DColor[0]) + ", " + trimmed(kDarkAmbient2DColor[1]) + ", " +
+                        trimmed(kDarkAmbient2DColor[2]) + ") at intensity 1, or a lower intensity.");
             }
         }
         Scene* s = mutableScene(scene);

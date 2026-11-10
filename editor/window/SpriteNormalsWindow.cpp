@@ -1893,11 +1893,12 @@ void SpriteNormalsWindow::refreshWarnings(bool force) {
         scene = sp ? sp->scene : nullptr;
     }
     for (const sn::Problem& p : sn::sceneWarnings(scene, scene ? target.entity : NULL_ENTITY, settings, width, height, delays, getAssign(),
-                                                      scene ? target.submesh : 0u)) {
+                                                      scene ? target.submesh : 0u, sn::framePixels(shownCells(), width, height))) {
         if (p.kind == "size_mismatch" && unknownSize) continue;
         WarningRow row{p.kind, p.message, false, {}};
         if (p.kind == "no_light") row.fixes = {"Create Light 2D"};
         else if (p.kind == "no_light_height") row.fixes = {"Set Height 64", "Select Lights"};
+        else if (p.kind == "light_low") row.fixes = {"Raise Light(s)"};
         else if (p.kind == "filter_mismatch") row.fixes = {"Match Base Texture"};
         else if (p.kind == "size_mismatch") {
             row.error = true;
@@ -1954,7 +1955,7 @@ bool SpriteNormalsWindow::applyFix(const std::string& kind, const std::string& f
         }
         auto* create = new CreateEntityCmd(project, sp->id, "Light 2D", EntityCreationType::POINT_LIGHT_2D);
         create->addProperty<Vector3>(ComponentType::Transform, "position", Vector3(position.x - 0.5f * w, position.y + 0.5f * h, position.z));
-        create->addProperty<float>(ComponentType::Light2DComponent, "height", 64.0f);
+        create->addProperty<float>(ComponentType::Light2DComponent, "height", Light2DComponent::NEW_HEIGHT);
         create->setNoMerge();
         CommandHandle::get(sp->id)->addCommand(create);
         project->setSelectedEntity(sp->id, create->getEntity());
@@ -1966,7 +1967,7 @@ bool SpriteNormalsWindow::applyFix(const std::string& kind, const std::string& f
         int count = 0;
         for (Entity e : enabledLights(sp)) {
             if (sp->scene->getComponent<Light2DComponent>(e).height > 0.0f) continue;
-            multi->addPropertyCmd<float>(project, sp->id, e, ComponentType::Light2DComponent, "height", 64.0f);
+            multi->addPropertyCmd<float>(project, sp->id, e, ComponentType::Light2DComponent, "height", Light2DComponent::NEW_HEIGHT);
             count++;
         }
         if (count == 0) {
@@ -1974,6 +1975,23 @@ bool SpriteNormalsWindow::applyFix(const std::string& kind, const std::string& f
             error = "No Light 2D has height 0.";
             return false;
         }
+        multi->setNoMerge();
+        CommandHandle::get(sp->id)->addCommand(multi);
+        done = true;
+    } else if (kind == "light_low" && fix == "Raise Light(s)") {
+        SceneProject* sp = needTarget();
+        if (!sp) return false;
+        // the size the warning measured: the shown result's frames, else the source image
+        const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
+        const int width = r ? r->result().normal.width : (current < items.size() ? items[current].info.width : 0);
+        const int height = r ? r->result().normal.height : (current < items.size() ? items[current].info.height : 0);
+        const sn::LowLights low = sn::lowLights(sp->scene, target.entity, sn::framePixels(shownCells(), width, height));
+        if (low.lights.empty()) {
+            error = "No Light 2D sits low for this sprite.";
+            return false;
+        }
+        auto* multi = new MultiPropertyCmd();
+        for (Entity e : low.lights) multi->addPropertyCmd<float>(project, sp->id, e, ComponentType::Light2DComponent, "height", low.raiseTo);
         multi->setNoMerge();
         CommandHandle::get(sp->id)->addCommand(multi);
         done = true;

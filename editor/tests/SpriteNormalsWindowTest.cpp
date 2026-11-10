@@ -1125,6 +1125,34 @@ TEST(SpriteNormalsWindowDeathTest, WarningsAndFixes) {
     });
 }
 
+// S78 R14, R18: a light under half the sprite's larger side, raised to that side in one undo step
+TEST(SpriteNormalsWindowDeathTest, LightLowRaisesTheLights) {
+    IN_EDITOR("lightlow", {
+        SpriteNormalsWindow window(w.p);
+        std::string error;
+        ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
+        ASSERT_TRUE(settle(window));
+        // Hero is a 32 px Sprite: Height 64 is high enough; scaled 5 times it is 160 units, and 64 is low
+        w.sceneObject()->getComponent<Light2DComponent>(w.light).height = 64.0f;
+        Access::refreshWarningsNow(window);
+        EXPECT_EQ(row(window, "light_low"), nullptr);
+        w.sceneObject()->getComponent<Transform>(w.hero).worldScale = Vector3(5.0f, 5.0f, 1.0f);
+        Access::refreshWarningsNow(window);
+        const SpriteNormalsWindow::WarningRow* low = row(window, "light_low");
+        ASSERT_NE(low, nullptr);
+        EXPECT_NE(low->text.find("\"Light 2D\""), std::string::npos) << low->text;
+        EXPECT_EQ(low->fixes, std::vector<std::string>{"Raise Light(s)"});
+        const size_t before = w.scene()->position();
+        ASSERT_TRUE(window.applyFix("light_low", "Raise Light(s)", error)) << error;
+        EXPECT_FLOAT_EQ(w.sceneObject()->getComponent<Light2DComponent>(w.light).height, 160.0f);
+        EXPECT_EQ(w.scene()->position(), before + 1) << "one undo step";
+        EXPECT_EQ(row(window, "light_low"), nullptr);
+        EXPECT_FALSE(window.applyFix("light_low", "Raise Light(s)", error)) << "nothing low any more";
+        ASSERT_TRUE(w.scene()->undo());
+        EXPECT_FLOAT_EQ(w.sceneObject()->getComponent<Light2DComponent>(w.light).height, 64.0f);
+    });
+}
+
 TEST(SpriteNormalsWindowDeathTest, ProjectSwitchDuringARun) {
     IN_EDITOR("switch", {
         writePng(w.file("assets/big.png"), disk(1024, 1024));
