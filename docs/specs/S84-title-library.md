@@ -695,7 +695,9 @@ Placeholders are the document's exposed `text` parameters (S80 `exposed`), named
 title: S80 exposes the first text layer as `text`), `subtitle`, `kicker`, `counter`, `label`, `line_2`
 in that order of preference. The stored document holds the `ja` sample for Japanese-origin
 templates and the `en` sample otherwise; `apply_template` sets the language's sample (or the
-carried text) through the exposed targets. Backdrops are guide layers (never in outputs) unless they
+carried text) through the exposed targets. An optional `cjk` member after `placeholders`
+(`rim_scale`, `band_scale`, `highlight_scale`; a look's `cjk` takes the same three) applies to the
+template's layers that then hold Japanese text (Deviation 29). Backdrops are guide layers (never in outputs) unless they
 are part of the art, as in Pachislop.
 
 ### 6.4 The keep-and-replace contract
@@ -1917,12 +1919,13 @@ rest of S82 lands in 6B.
       edges as bright as the white line in the counters; base and rims stay black, so the look is unchanged.
     - `gems/diamond-3d`: the outline effect 2.5 -> 1.5 (the schema default); at 2.5 it closed the gaps the digits' bands
       enclose on `1234`. `gems/crystal-title`, built from it, follows.
-    - `casino/premium-black-gloss` still fails, en and ja pulling opposite ways: en's P and R counters are darker than the
-      bevel-lit letter around them (and Zen Old Mincho's M and I serifs touch at tracking -40, enclosing a gap the rims
-      fill); ja's handakuten counter is 6 x 6 px in the gate's 0.25 render and is filled by the four pinstripe rims at any
-      width (half the rims leave 2 of 25 px open), lighter than the letter. A lower face bevel highlight (0.15) passes ja and
-      fails en; en passes with the sample's I, U, M moved right by 4 % and the glow at 0.25, which ja does not need. No one
-      design change passes both; left for the owner (a per-language face, or a metric for counters below the rim width).
+    - `casino/premium-black-gloss`: en and ja pulled opposite ways (en's P and R counters darker than the bevel-lit
+      letter, ja's handakuten counter, 6 x 6 px at the gate's 0.25 render and filled by the pinstripes at any rim width,
+      lighter). English: at tracking -40 Zen Old Mincho's M and I serifs touched and enclosed a gap the rims filled; the
+      sample's I, U and M sit 4 % further right (a lighter face edge, bevel highlight 1.0, made that gap worse). Japanese:
+      templates now carry the per-script `cjk` member (§6.3, the look's: `rim_scale`, `band_scale`, and new
+      `highlight_scale` on the face bevel's highlight), applied to the layers that hold Japanese text;
+      `highlight_scale: 0.5`. Both samples measure 7.3.
     - Sample texts: `casino/new-machine-flyer` is NEW ARRIVAL again, on two lines (NEW / ARRIVAL fit the template
       unchanged). `metal/liquid-gold-vertical-kicker` keeps BREAK: LIMIT BREAK in one vertical column is taller than the
       2880 canvas, and in two columns the Latin reads across as BL / RI / EM / AI / KT.
@@ -1938,10 +1941,13 @@ rest of S82 lands in 6B.
       database learning a library apply's imported files only on the file watcher's later walk, which raced the check
       that followed the apply. A title step that writes files besides `.titleart` documents now refreshes the database
       before it returns (red control `TitleArtDocumentTest.FilesAStepImportsAreInTheAssetDatabaseWhenItReturns`).
-    - Found, not changed: `TitleLibraryBuiltins.Budgets` fails its apply_look budget (17 ms against 9) when a test that
-      opens a project (`TitleDesignerState*`) runs before it in the same process, with or without this stream's
-      changes: the library then follows that project and apply_look plans font imports against it.
-    - `calibration.json` regenerated after these fixes (830 renders, 30 red controls): counter_survival L 2.7
-      (`casino/premium-black-gloss`), R 0 (both bad twins now measure 0; the file had 6.5), T 8 outside the middle half,
-      so `test_title_library_calibration` still fails on it until premium-black-gloss passes; with the next-worst item
-      (8.5) the rule would put T between 2.1 and 6.4, not 8. The threshold is left at 8 for the owner.
+    - `TitleLibraryBuiltins.Budgets` failed its apply_look budget (9-17 ms against 9) depending on what ran before it
+      in the process: every apply_look read and SHA-256ed the look's 2.5 MB pack font up to three times, even with the
+      font already in the project, so the op cost the font's size and its timing followed the process's memory state
+      (measured 14.8 ms fresh, 4.1 ms after a project load in the same process; the low-level cause is inferred). Pack
+      hashes are cached by path, size and time and the bytes are read only to copy them: 1.4 ms in either order.
+    - counter_survival's threshold, recomputed by §6.14.3 on the 830 gate renders and the 30 red controls: R = 0 (the
+      same-colour rim and the flooded counter both measure delta E 0 on their failing counters; the 6.5 the file held
+      was the flooded fixture before its rim followed the lint), L = 7.3 (`casino/premium-black-gloss`, then 8.1
+      `gems/crystal-title`). The middle half is 1.8-5.5: 8 was outside it, on the library's side. T = 4 (mid-gap 3.65,
+      rounded); the red controls fail by 4. Deviation 24's "delta E 8" reads 4 from here.

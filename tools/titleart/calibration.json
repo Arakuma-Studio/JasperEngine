@@ -59,26 +59,26 @@
         },
         "templates": {
           "n": 142,
-          "min": 2.7,
-          "p5": 10.3,
+          "min": 7.3,
+          "p5": 10.5,
           "median": 45.8,
           "p95": 100,
           "max": 100
         }
       },
       "threshold": {
-        "delta_e": 8,
+        "delta_e": 4,
         "survival": 0.8
       },
       "metric": "delta_e",
       "higher_is_better": true,
-      "L": 2.7,
+      "L": 7.3,
       "L_item": "casino/premium-black-gloss",
       "R": 0,
-      "T": 8,
+      "T": 4,
       "separates": true,
-      "middle_half": false,
-      "suggested_T": 1.35
+      "middle_half": true,
+      "suggested_T": 3.65
     },
     "fallback_parity": {
       "library": {
@@ -214,7 +214,7 @@
           "n": 152,
           "min": 12.74,
           "p5": 21.88,
-          "median": 57.1,
+          "median": 55.91,
           "p95": 90.26,
           "max": 100
         }
