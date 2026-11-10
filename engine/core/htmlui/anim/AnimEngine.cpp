@@ -48,6 +48,14 @@ AnimEngine& AnimEngine::instance(){
     return *engine;
 }
 
+AnimEngine::ScopedTickPause::ScopedTickPause(){
+    ++AnimEngine::instance().tickPauseDepth;
+}
+
+AnimEngine::ScopedTickPause::~ScopedTickPause(){
+    --AnimEngine::instance().tickPauseDepth;
+}
+
 void AnimEngine::countTimer(int delta){
     liveTimers = (size_t)((long long)liveTimers + delta);
 }
@@ -65,7 +73,7 @@ void AnimEngine::tick(double uiTimeSeconds, double gameTimeSeconds){
 }
 
 void AnimEngine::tickMilliseconds(double uiTimeMs, double gameTimeMs){
-    if (updating)
+    if (updating || tickPauseDepth != 0)
         return;
     if (ticked && uiTimeMs == uiNow && gameTimeMs == lastGameSource)
         return;

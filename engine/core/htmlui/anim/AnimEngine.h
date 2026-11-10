@@ -28,6 +28,16 @@ namespace jasperengine {
     class JASPERENGINE_API AnimEngine {
     public:
         static AnimEngine& instance();
+
+        // Private document previews seek their own timers while updating RmlUi. Their clock
+        // must not tick animations belonging to the editor's other documents.
+        class JASPERENGINE_API ScopedTickPause {
+        public:
+            ScopedTickPause();
+            ~ScopedTickPause();
+            ScopedTickPause(const ScopedTickPause&) = delete;
+            ScopedTickPause& operator=(const ScopedTickPause&) = delete;
+        };
         // the one engine; not copyable (it owns its tweens: MSVC instantiates the copies of
         // an exported class)
         AnimEngine(const AnimEngine&) = delete;
@@ -80,6 +90,7 @@ namespace jasperengine {
         double lastGameSource = 0;
         bool ticked = false;
         bool updating = false;
+        unsigned int tickPauseDepth = 0;
         uint64_t nextListenerId = 1;
         std::vector<std::pair<uint64_t, std::function<void()>>> resetListeners;
     };
