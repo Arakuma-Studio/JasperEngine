@@ -158,6 +158,28 @@ TEST_F(UndoProjectTest, StopDecodesAMeshAPlayChanged) {
     EXPECT_TRUE(restored.needReload);
 }
 
+TEST_F(UndoProjectTest, StopKeepsAMeshWithNondefaultScalarSettings) {
+    scene->scene->addComponent<MeshComponent>(GAME, MeshComponent{});
+    MeshComponent& mesh = scene->scene->getComponent<MeshComponent>(GAME);
+    scene->scene->getSystem<MeshSystem>()->createBox(mesh, 1, 1, 1);
+    mesh.enabled = false;
+    mesh.receiveLights = false;
+    mesh.receiveIBL = false;
+    mesh.castShadows = false;
+    mesh.staticShadowCaster = true;
+    mesh.allowGpuInstancing = false;
+    mesh.lodBias = 0.75f;
+    mesh.sortingLayer = 17;
+    mesh.sortingOrder = -5;
+    const std::string before = encoded(GAME);
+    beginPlay();
+    scene->scene->getComponent<Transform>(GAME).position += Vector3(5, 5, 5);
+    mesh.needReload = false;
+    stopPlay();
+    EXPECT_FALSE(scene->scene->getComponent<MeshComponent>(GAME).needReload);
+    EXPECT_EQ(encoded(GAME), before);
+}
+
 TEST_F(UndoProjectTest, NoOpDropped) {
     const size_t before = history()->entries().size();
     EXPECT_TRUE(history()->addCommand(new PropertyCmd<Vector3>(project.get(), sceneId, SPAWNER, ComponentType::Transform,
