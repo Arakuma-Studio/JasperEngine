@@ -1487,4 +1487,21 @@ rest of S82 lands in 6B.
     ramped look, the gold and silver faces most), in the renderer and the GLB (white factor under the ramp texture); and
     direct and ambient light use three.js's units (irradiance x BRDF with the Lambert term diffuse / pi), not the engine's
     pi-scaled lobes, which made the lights pi times brighter than the references.
-
+31. **Implementation: the mesher meets §6.7's triangle and mesh-memory budgets itself** (R13 said tiers reduce segments; the
+    reductions alone could not): the inflate node caps allow about two triangles a node, so 40k nodes at Medium are 80k
+    triangles before the walls and bands, and `scifi/reactor-core-3d` on 大当り built 122,106 triangles at Medium whatever
+    its look set (`neon/tube-3d` HERO 62,998; `gems/treasure-banner`'s title 34,240 and 35,688 at Low, from its outward
+    bevel's ring refinement). `TitleMesher::build` rebuilds a mesh that is over its tier's limits, coarsening in this
+    order, each to a floor that keeps the look: the inflate grid (the step x sqrt(front / wanted), never coarser than
+    `INFLATE_MIN_NODES_PER_INSET` = 3 nodes across the largest inset; the front stays clipped to the exact outline, so the
+    silhouette does not move), the outward rings' finest step (x2, up to x8), the bevels' segments (down to 2), the curve
+    segments (x3/4, down to 3); it aims at 95 % of the limit and a step that takes off under 1 % ends its stage. Nothing
+    is simplified and no solid of the stack goes for triangles. The solid limit now drops the thinnest band first (the
+    least grow, the inner one of equals) and hands its grow to the next band out, so the silhouette and the outer rim keep
+    their place: `gems/treasure-banner`'s Ribbon at Low (3 solids, 4 authored) keeps its black outline and loses the 0.3 %
+    pinstripe between it and the gold rim (it lost the outline before). Measured (`TitleLibraryTierBudget`, counted, the
+    tier's reductions alone -> now): reactor-core 大当り Medium 122,106 -> 47,572 (3.41 -> 1.14 MB); tube-3d HERO Medium
+    62,998 -> 55,270; treasure-banner's title at Low 34,240 -> 22,560 (en), 35,688 -> 24,538 (ja), its rim band and
+    chamfer kept; every other tier and sample of these items was within budget and is unchanged. Red controls:
+    `MESHER_TEST_NO_TIER_BUDGET` (the reductions alone are over at 4 of the 30 layer-tiers), and the old band choice
+    moves the Ribbon's Low silhouette by 15 px.

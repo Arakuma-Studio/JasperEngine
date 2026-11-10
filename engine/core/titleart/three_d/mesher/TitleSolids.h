@@ -77,6 +77,10 @@ namespace jasperengine::titleart::three_d {
         int maxBevelSegments = 24;      // the tier's cap
         size_t inflateMaxNodes = 200000;
         double inflateStepScale = 1.0;  // Low: 1.5
+        // the tier budget's coarsening (TitleMesher): the inflate grid x this, never coarser than
+        // INFLATE_MIN_NODES_PER_INSET nodes across the inset; the outward rings' finest step x this
+        double inflateBudgetScale = 1.0;
+        double ringStepScale = 1.0;
         uint32_t testFlags = 0;         // MESHER_TEST_*
     };
 
