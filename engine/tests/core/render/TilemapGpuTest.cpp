@@ -453,6 +453,26 @@ TEST_F(TilemapGpu, IndividualRowsSortWithSprites) {
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// R29, AC12: 1,000 edits in one frame rebuild each touched chunk once, and a frame without edits
+// rebuilds nothing
+TEST_F(TilemapGpu, ThousandEditsRebuildEachChunkOnce) {
+    JASPER_REQUIRE_GPU();
+    TileCells& cells = layer->editCells();
+    for (int x = 0; x < 16; x++)
+        cells.setTile(CellCoord{x, 0}, 0);   // two chunks of 8 in view
+    ASSERT_TRUE(settle());
+    image(2);
+    TilemapSystem& system = *scene.getSystem<TilemapSystem>();
+    const TilemapLayerComponent& component = layer->getComponent<TilemapLayerComponent>();
+    for (int i = 0; i < 1000; i++)
+        layer->setCell(i % 16, (i / 16) % 8, i % 4);
+    image(1);
+    EXPECT_EQ(system.getRebuiltChunks(component), 2u);
+    image(1);
+    EXPECT_EQ(system.getRebuiltChunks(component), 0u);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 // R62: a disabled layer draws nothing and keeps its cells
 TEST_F(TilemapGpu, DisabledLayerDrawsNothing) {
     JASPER_REQUIRE_GPU();

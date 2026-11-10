@@ -295,6 +295,42 @@ async def test_brush_ops_equal_the_expected_cells(ed: Editor):
     ed.check(len({c[2] for c in a["cells"]}) == 2, f"both tiles appear: {a['cells'][:5]}")
 
 
+async def test_pick(ed: Editor):
+    """AC14 (R10): the Scene view picks a layer where it shows a tile (its cell, then the tile's image
+    above the cell), not over its empty cells"""
+    write_sheet(ed, "assets/art/tall.png", 16, 2, 1)
+    tall_png = ed.project / "assets/art/tall.png"
+    # 16 x 32 tiles: each reaches one cell above its own on a 16-unit Grid
+    width, height = 32, 32
+    data = bytearray()
+    for y in range(height):
+        for x in range(width):
+            data.extend([90 + (x // 16) * 80, 120, 60, 255])
+    tall_png.write_bytes(pngdiff.encode(width, height, bytes(data)))
+    tall = "assets/art/tall.tileset"
+    await ed.call("edit_tileset", path=tall, output=True, tile_size=[16, 32],
+                  sources=[{"texture": "assets/art/tall.png", "tile_size": [16, 32], "skip_empty": False}])
+    made = await ed.call("create_scene", name="Pick", type="2d", path="scenes/Pick")
+    sid = made["scene"]["id"]
+    await ed.call("select_scene", scene=sid)
+    flat = (await ed.call("edit_tilemap", scene=sid, create={"name": "Flat"}, tileset=TILESET, cell_size=[16, 16],
+                          ops=[{"op": "set", "cells": [[0, 0, 0]]}]))["tilemap"]["id"]
+    high = (await ed.call("edit_tilemap", scene=sid, create={"name": "High", "position": [200, 0, 0]}, tileset=tall, cell_size=[16, 16],
+                          ops=[{"op": "set", "cells": [[0, 0, 0]]}]))["tilemap"]["id"]
+    await ed.call("wait", frames=5)
+
+    async def hits_at(x: float, y: float) -> list[int]:
+        # a 2D scene's camera is placed by its view centre (and zoom), the centre being u, v = 0.5
+        await ed.call("set_scene_camera", scene=sid, center=[x, y], zoom=1)
+        got = await ed.call("pick_at", scene=sid, u=0.5, v=0.5)
+        return [h["entity"] for h in got["hits"]]
+
+    ed.check(flat in await hits_at(8, 8), "a tile picks its layer")
+    ed.check(flat not in await hits_at(40, 8), "an empty cell of the same layer does not")
+    ed.check(high in await hits_at(208, 24), "the tall tile's image above its cell picks the layer")
+    ed.check(high not in await hits_at(208, 40), "above the image, nothing")
+
+
 async def test_check_pixel_art_lists_a_bilinear_tile_page(ed: Editor):
     """AC10 (R74a): the validator reads each tile page through the layer's Mesh sampler"""
     # the validator reads pixel-art scenes only: the mode is what makes this scene one (R9)
