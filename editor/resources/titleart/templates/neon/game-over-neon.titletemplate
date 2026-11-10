@@ -219,7 +219,7 @@
                 "mode": "add",
                 "on_face": 0.15,
                 "opacity": 1,
-                "size": 22.4,
+                "size": 24,
                 "spread": 0.15,
                 "technique": "softer"
               },

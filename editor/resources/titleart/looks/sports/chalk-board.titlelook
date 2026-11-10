@@ -48,7 +48,9 @@
   "effects": [
     {
       "type": "chalk",
-      "params": {}
+      "params": {
+        "dust": 0.05
+      }
     }
   ],
   "part_effects": {},

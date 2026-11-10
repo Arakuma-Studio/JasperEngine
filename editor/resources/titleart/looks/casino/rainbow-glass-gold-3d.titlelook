@@ -125,7 +125,6 @@
   "style_3d": {
     "mode": "inflate",
     "depth": 0.4813,
-    "curve_segments": 12,
     "skew": [0.15, -0.27],
     "inflate": {
       "height": 1.2,
@@ -161,8 +160,7 @@
           }
         ]
       },
-      "smoothness": 10,
-      "detail": 4
+      "smoothness": 10
     },
     "face": {
       "gradient": {

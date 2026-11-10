@@ -217,6 +217,13 @@
           "layer": "Glitch Group",
           "type": "glitch",
           "preset": "digital"
+        },
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "fx:outer_glow.size": 24
+          }
         }
       ],
       "background": "dark"

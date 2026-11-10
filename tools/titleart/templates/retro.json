@@ -112,6 +112,13 @@
               "field": "text"
             }
           ]
+        },
+        {
+          "op": "set",
+          "layer": "Subtitle",
+          "values": {
+            "fx:pixelate.alpha_threshold": 0.55
+          }
         }
       ]
     },
@@ -203,6 +210,13 @@
           "layer": "Title",
           "look": "retro/crt-scanline",
           "apply_font": true
+        },
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "fx:chromatic_aberration.amount": 1.2
+          }
         }
       ]
     },

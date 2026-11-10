@@ -153,7 +153,7 @@
           "params": {
             "angle": 45,
             "color": "#000000",
-            "distance": 1.74,
+            "distance": 1.45,
             "opacity": 1,
             "size": 0,
             "spread": 0.1,
@@ -168,7 +168,7 @@
           "params": {
             "align": "canvas",
             "alpha_mode": "hard",
-            "alpha_threshold": 0.5,
+            "alpha_threshold": 0.55,
             "dither": "none",
             "dither_amount": 0.5,
             "gap": 0,

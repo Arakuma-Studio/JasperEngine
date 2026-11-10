@@ -327,6 +327,13 @@
           "layer": "Title",
           "look": "horror/burnt-ember",
           "apply_font": true
+        },
+        {
+          "op": "set",
+          "layer": "Particles",
+          "values": {
+            "follow": ""
+          }
         }
       ]
     }

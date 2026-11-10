@@ -76,7 +76,9 @@
       "scope": "layer",
       "blend": "add",
       "opacity": 1,
-      "params": {},
+      "params": {
+        "size": 40
+      },
       "effects": []
     }
   ],

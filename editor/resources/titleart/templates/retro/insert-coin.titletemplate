@@ -168,7 +168,7 @@
           "type": "chromatic_aberration",
           "enabled": true,
           "params": {
-            "amount": 1.4,
+            "amount": 1.2,
             "angle": 0,
             "center": [0, 0],
             "smooth": true,

@@ -2256,6 +2256,7 @@
         "mapped: generators through S83's map (sunburst -> sunburst)",
         "mapped: effects through S83's map (outerGlow -> outer_glow)",
         "mapped: effects through S83's map (adjust -> adjust)",
+        "mapped: tuned by overrides.json",
         "mapped: layers (4, groups nested by parentId), comp -> canvas, global_light and scene_3d",
         "approximated: the 2D reflection map `highway` reads S86's HDRI environment `highway` (the photo of the same place), not Pachislop's own low-resolution panorama",
         "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
@@ -2521,6 +2522,7 @@
       "item": "t-horyu-orb",
       "notes": [
         "mapped: background layers -> Fill generator layers",
+        "mapped: tuned by overrides.json",
         "mapped: layers (8, groups nested by parentId), comp -> canvas, global_light and scene_3d",
         "dropped: template.comp.dpi: the print resolution is S87's `dpi` member, not in this build; every Pachislop template has 72 (screen)",
         "dropped: template.layers[].fill.span: a background layer becomes a Fill generator, which always spans the canvas",
