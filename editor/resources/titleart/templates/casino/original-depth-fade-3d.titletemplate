@@ -680,7 +680,7 @@
   },
   "name": "The Original (3D depth-fade walls)",
   "canvas": {
-    "width": 1920,
+    "width": 2880,
     "height": 1080,
     "background": {
       "transparent": true,

@@ -147,7 +147,7 @@ namespace {
         d["requires"] = item.requirements;
         d["available"] = item.available;
         if (!item.available) d["reason"] = item.unavailableReason;
-        for (const char* key : {"lint_allow", "check_allow"}) if (identity.contains(key) && !identity[key].empty()) d[key] = fromOrdered(identity[key]);
+        for (const char* key : {"lint_allow", "check_allow", "background"}) if (identity.contains(key) && !identity[key].empty()) d[key] = fromOrdered(identity[key]);
         if (identity.contains("provenance")) d["provenance"] = fromOrdered(identity["provenance"]);
         d["scope"] = tl::libraryScopeName(item.scope);
         d["use"] = useOp(item.kind, item.ref);

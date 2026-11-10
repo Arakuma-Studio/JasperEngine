@@ -630,7 +630,7 @@
   },
   "name": "Super Red Hot (line scale)",
   "canvas": {
-    "width": 1920,
+    "width": 2400,
     "height": 1080,
     "background": {
       "transparent": true,

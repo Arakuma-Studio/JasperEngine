@@ -385,12 +385,7 @@
     ]
   },
   "links": {},
-  "lint_allow": [
-    {
-      "rule": "contrast",
-      "reason": "iridescent silver on a silver band: hue, not lightness, separates them"
-    }
-  ],
+  "lint_allow": [],
   "check_allow": [],
   "provenance": {
     "source": "pachislop",

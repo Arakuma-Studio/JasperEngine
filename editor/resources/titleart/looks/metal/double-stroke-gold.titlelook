@@ -436,12 +436,7 @@
   "generators": [],
   "group_effects": [],
   "links": {},
-  "lint_allow": [
-    {
-      "rule": "contrast",
-      "reason": "the gold face runs into its first stroke by design: the second stroke is the separation"
-    }
-  ],
+  "lint_allow": [],
   "check_allow": [],
   "provenance": {
     "source": "pachislop",

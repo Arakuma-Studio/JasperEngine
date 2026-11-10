@@ -41,7 +41,7 @@ async def test_rule_itself(ed: Editor):
 
 # the checks of §6.14.3 whose metric cannot separate the library from its red controls; each is a
 # recorded finding (spec Deviations), not a pass
-CANNOT_SEPARATE = {"legibility_contrast", "not_clipped", "style_lint.hard_shadow", "style_lint.rims_thin"}
+CANNOT_SEPARATE = {"not_clipped", "style_lint.hard_shadow", "style_lint.rims_thin"}
 # thresholds held on purpose where the calibration would move them (spec Deviation 25)
 PINNED = {"style_lint.contrast": "StyleLintTest.MatchesPachislop holds the lint to Pachislop's constants"}
 
@@ -59,8 +59,8 @@ async def test_thresholds_match_the_file(ed: Editor):
         report = await ed.call("check_title", path=path, backgrounds=["black", "white", "checker"], render_scale=0.25)
         for c in report["checks"]:
             file_entry = data["checks"].get(c["id"])
-            if file_entry is None or c.get("threshold") is None:
-                continue
+            if file_entry is None or c.get("threshold") is None or c["id"] == "fallback_parity":
+                continue     # fallback_parity's tolerance follows each document's fallback class
             ed.check_eq(file_entry.get("threshold"), c["threshold"], f"{c['id']}: the code's threshold is the calibrated one (re-run title-library calibrate)")
     for cid, entry in data["checks"].items():
         if "R" not in entry:

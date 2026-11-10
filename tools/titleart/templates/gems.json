@@ -139,6 +139,13 @@
               "field": "text"
             }
           ]
+        },
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "style_3d.bands[5].material.color": "#4a4a4a"
+          }
         }
       ]
     },
@@ -350,6 +357,14 @@
           "generator": "glints",
           "name": "Glints",
           "follow": "Title"
+        },
+        {
+          "op": "set",
+          "layer": "Glints",
+          "values": {
+            "gen.large": 3,
+            "gen.small": 3
+          }
         }
       ]
     }

@@ -172,7 +172,17 @@ std::shared_ptr<const TitleMesh> TitleMesher::build(const TitleMeshRequest& r) {
     options.inflateMaxNodes = tierGeometry.inflateNodeCap;
     options.inflateStepScale = tierGeometry.inflateStepScale;
     options.testFlags = r.testFlags;
-    const TitleSolids solids = buildTitleSolids(*shapes, r.style, r.blocks, options, &inflate);
+    // the tier's solid budget is met here, on every device: bands past it are not built (the
+    // authored style keeps them, Bake and higher tiers still draw them)
+    Title3D tierStyle = r.style;
+    const uint32_t maxSolids = titleTierLimits(r.tier).maxSolids;
+    uint32_t stack = 1;
+    for (Band3D& band : tierStyle.bands) {
+        if (!band.enabled) continue;
+        if (maxSolids && stack >= maxSolids) band.enabled = false;
+        else stack++;
+    }
+    const TitleSolids solids = buildTitleSolids(*shapes, tierStyle, r.blocks, options, &inflate);
     std::shared_ptr<TitleMesh> mesh = buildTitleMeshFromSolids(solids, r.wrap, r.source.size);
     mesh->tier = r.tier;
     mesh->sourceHash = key;

@@ -22,14 +22,34 @@
       "style": {
         "face": {
           "fill": {
-            "kind": "solid",
-            "color": "#c09040"
+            "kind": "linear",
+            "gradient": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#a89060"
+                },
+                {
+                  "pos": 1,
+                  "color": "#c8b078"
+                }
+              ]
+            }
           },
-          "bevel": {
+          "finish": {
             "enabled": true,
-            "depth": 0,
-            "highlight_opacity": 0,
-            "shadow_opacity": 0
+            "gradient": {
+              "stops": [
+                {
+                  "pos": 0,
+                  "color": "#a89060"
+                },
+                {
+                  "pos": 1,
+                  "color": "#c8b078"
+                }
+              ]
+            }
           }
         },
         "rims": [

@@ -14,6 +14,7 @@ Unavailable items are counted by reason, never skipped silently. Shard with
 JASPER_TITLE_LIBRARY_SHARD=<i>/<n> (the harness's -j runs one shard per editor)."""
 
 import hashlib
+import fnmatch
 import os
 import time
 
@@ -27,10 +28,6 @@ FAMILY_LOOKS = {"casino": 44, "metal": 31, "neon": 10, "elements": 10, "gems": 1
                 "horror": 10, "cartoon": 10, "retro": 10, "anime": 10, "sports": 10, "minimal": 10}
 FAMILY_TEMPLATES = {"casino": 33, "metal": 4}
 FAMILY_3D = {"minimal": 1}      # §6.8's catalogue gives Minimal one 3D look (spec Deviation 22)
-# the gate reports these but does not hold presets to them (spec Deviation 23): the tier budget
-# judges a placed title against a project's platforms, the RGBA8 fallback's divergence is S80's,
-# and the last three do not separate the library from their red controls (§6.14.3)
-NOT_GATED = ("3d_tier_budget", "fallback_parity", "legibility_contrast", "counter_survival", "not_clipped")
 
 S: dict = {}
 
@@ -73,6 +70,9 @@ async def test_content(ed: Editor):
 
 
 def shard(items: list) -> list:
+    only = [g for g in os.environ.get("JASPER_TITLE_LIBRARY_ONLY", "").split(",") if g]
+    if only:
+        items = [item for item in items if any(fnmatch.fnmatchcase(item[1], g) for g in only)]
     spec = os.environ.get("JASPER_TITLE_LIBRARY_SHARD", "")
     if "/" not in spec:
         return items
@@ -98,9 +98,10 @@ async def render_once(ed: Editor, path: str) -> bytes:
 
 async def test_gate(ed: Editor):
     await setup(ed)
-    counts = {"looks": [0, 0, 0], "color_schemes": [0, 0, 0], "templates": [0, 0, 0]}   # checked, unavailable, allowlisted
+    counts = {"looks": [0, 0], "color_schemes": [0, 0], "templates": [0, 0]}   # checked, unavailable
     reasons: dict = {}
-    reported: dict = {}
+    dropped: dict = {}
+    failures: list = []
     work = []
     for kind in [k for k in os.environ.get("JASPER_TITLE_LIBRARY_KINDS", "looks,color_schemes,templates").split(",") if k]:
         for r in await rows(ed, kind):
@@ -117,6 +118,9 @@ async def test_gate(ed: Editor):
                 work.append((kind, r["id"], text, language))
     n = 0
     for kind, ref, text, language in shard(work):
+        detail = await ed.call("list_title_library", kind=kind, id=ref)
+        if text == "大当り" and kind == "looks" and not detail.get("font"):
+            continue     # an effects-only look has no font of its own to judge kanji in
         n += 1
         path = f"assets/gate/{n}.titleart"
         create = {"template": ref, "language": language} if kind == "templates" else {"look": ref, "text": text}
@@ -125,32 +129,29 @@ async def test_gate(ed: Editor):
         await ed.call("edit_title", path=path, create=create, bake="never")
         if kind == "color_schemes":
             await ed.call("edit_title", path=path, ops=[{"op": "apply_color_scheme", "color_scheme": ref}])
-        detail = await ed.call("list_title_library", kind=kind, id=ref)
-        allow_checks = {a["check"] for a in detail.get("check_allow", [])}
-        allow_rules = {a["rule"] for a in detail.get("lint_allow", [])}
-        if allow_checks or allow_rules:
-            counts[kind][2] += 1
+        # the owner's rule: every item passes every check; no item carries an exception
+        ed.check(not detail.get("check_allow") and not detail.get("lint_allow"), f"{ref}: no exception lists: {detail.get('check_allow')} {detail.get('lint_allow')}")
+        # check first, as a fresh render would: the forced RGBA8 path after a same-size render is a
+        # separate open bug (test_fallback_parity_after_a_render, S84 Deviation 23)
+        # legibility is judged on the background the item is made for (no `background`: any)
+        backgrounds = {"dark": ["black", "checker"], "light": ["white", "checker"]}.get(detail.get("background"), ["black", "white", "checker"])
+        report = await ed.call("check_title", path=path, backgrounds=backgrounds, render_scale=0.25)
+        for check in report["checks"]:
+            cid = check["id"]
+            if cid.endswith(".bands_dropped"):
+                dropped[kind] = dropped.get(kind, 0) + 1
+            if check["status"] not in ("FAIL",):
+                continue
+            failures.append(f"{ref} ({text or language}): {cid} {check['status']}: {check.get('message', '')} measured {check.get('measured')}")
         a = await render_once(ed, path)
         b = await render_once(ed, path)
         ed.check_eq(hashlib.sha256(a).hexdigest(), hashlib.sha256(b).hexdigest(), f"{ref} ({text or language}): two renders are identical")
-        report = await ed.call("check_title", path=path, backgrounds=["black", "white", "checker"], render_scale=0.25)
-        for check in report["checks"]:
-            cid = check["id"]
-            if check["status"] not in ("FAIL",):
-                continue
-            if cid.startswith(NOT_GATED):
-                reported[cid.split(".")[0]] = reported.get(cid.split(".")[0], 0) + 1
-                continue
-            base = cid.split(".")[0]
-            rule = cid.split(".", 1)[1] if cid.startswith("style_lint.") else ""
-            if base in allow_checks or cid in allow_checks or rule in allow_rules:
-                continue
-            ed.check(False, f"{ref} ({text or language}): {cid} {check['status']}: {check.get('message', '')} measured {check.get('measured')}")
         counts[kind][0] += 1
-    print(f"[gate] checked/unavailable/allowlisted per kind: {counts}; unavailable by reason: {reasons}; not gated (FAIL counts): {reported}")
-    for kind, (checked, unavailable, allowed) in counts.items():
-        total = checked + unavailable
-        ed.check(allowed * 10 <= max(total, 10), f"{kind}: allowlists on at most 10 % of the items ({allowed} of {total})")
+    print(f"[gate] checked/unavailable per kind: {counts}; unavailable by reason: {reasons}; tier band drops reported: {dropped}")
+    # every failure at once, so one run is the whole gate's answer
+    for line in failures:
+        print(f"[gate] FAIL {line}")
+    ed.check(not failures, f"{len(failures)} check failures over {sum(c[0] for c in counts.values())} renders (listed above)")
 
 
 RED = __import__("pathlib").Path(__file__).resolve().parent / "fixtures" / "title-library-red"
@@ -185,6 +186,7 @@ async def test_red_controls(ed: Editor):
             await ed.call("edit_title", path=good_path, ops=fix.get("ops", []))
         good = await failing(ed, good_path)
         ed.check(check not in good, f"{name}: the twin passes {check}: {good.get(check)}")
-        extra = set(bad) - set(good) - {check}
+        # a fixture may name what its fault also is (a rim of the face's colour is the lint's contrast case too)
+        extra = set(bad) - set(good) - {check} - set(entry.get("also", []))
         ed.check(not {e for e in extra if e.split(".")[0] in ("style_lint", "color_scheme_match", "metal_range") or e == check.split(".")[0]},
                  f"{name}: the bad fixture fails only {check} beyond its twin: {sorted(extra)}")

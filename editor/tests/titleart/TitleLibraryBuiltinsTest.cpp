@@ -18,6 +18,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <iostream>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -240,6 +242,54 @@ TEST_F(TitleLibraryBuiltins, EverySchemeOnEveryLookIsIdempotent) {
     std::cout << "[idempotent] " << checked << " look x scheme pairs" << std::endl;
 }
 
+// AC21 (R40): the CPU budgets, measured on the committed library in this RelWithDebInfo build. A
+// shared build box is noisy, so the test holds three times each budget; the printed medians are
+// the numbers recorded in the spec.
+TEST_F(TitleLibraryBuiltins, Budgets) {
+    using Clock = std::chrono::steady_clock;
+    const auto ms = [](Clock::time_point from) { return std::chrono::duration<double, std::milli>(Clock::now() - from).count(); };
+    const auto median = [](std::vector<double> v) {
+        std::sort(v.begin(), v.end());
+        return v[v.size() / 2];
+    };
+    std::vector<double> index;
+    for (int i = 0; i < 5; i++) {
+        TitleLibrary::get().invalidate();
+        const auto t = Clock::now();
+        for (LibraryKind kind : {LibraryKind::Look, LibraryKind::ColorScheme, LibraryKind::Template}) TitleLibrary::get().items(kind);
+        index.push_back(ms(t));
+    }
+    // 16 rims on the layer, as R40 says
+    Json rims = Json::array();
+    for (int i = 0; i < 16; i++) rims.push_back(Json{{"op", "add_rim"}, {"layer", "Title"}, {"values", Json{{"width", 2}}}});
+    const TitleArtDoc doc16 = applyOps(textDoc(), rims).doc;
+    std::vector<double> look, scheme;
+    for (int i = 0; i < 21; i++) {
+        auto t = Clock::now();
+        const TitleOpsResult applied = applyOps(doc16, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/classic-gold"}});
+        look.push_back(ms(t));
+        ASSERT_TRUE(applied.ok);
+        t = Clock::now();
+        ASSERT_TRUE(applyOps(applied.doc, Json{{"op", "apply_color_scheme"}, {"color_scheme", "gold"}}).ok);
+        scheme.push_back(ms(t));
+    }
+    Json layers = Json::array();
+    for (int i = 0; i < 63; i++) layers.push_back(Json{{"op", "add_layer"}, {"type", "text"}, {"name", "Layer" + std::to_string(i)}, {"values", Json{{"text", "A"}}}});
+    const TitleArtDoc doc64 = applyOps(textDoc(), layers).doc;
+    std::vector<double> scheme64;
+    for (int i = 0; i < 11; i++) {
+        const auto t = Clock::now();
+        ASSERT_TRUE(applyOps(doc64, Json{{"op", "apply_color_scheme"}, {"color_scheme", "gold"}}).ok);
+        scheme64.push_back(ms(t));
+    }
+    std::cout << "AC21: index " << median(index) << " ms (R40 60), apply_look 16 rims " << median(look) << " ms (3), apply_color_scheme one layer " << median(scheme)
+              << " ms (2), 64 layers " << median(scheme64) << " ms (25)\n";
+    EXPECT_LE(median(index), 60.0 * 3);
+    EXPECT_LE(median(look), 3.0 * 3);
+    EXPECT_LE(median(scheme), 2.0 * 3);
+    EXPECT_LE(median(scheme64), 25.0 * 3);
+}
+
 TEST_F(TitleLibraryBuiltins, MatchesPachislop) {
     const fs::path repo = JASPER_TEST_REPO_DIR;
     const Json dump = readJson(repo / "tools/titleart/pachislop-port/dump/pachislop-1c32502.json");
@@ -249,6 +299,17 @@ TEST_F(TitleLibraryBuiltins, MatchesPachislop) {
         if (it.value().is_string()) ids[it.key()] = it.value().get<std::string>();
         else if (it.value().is_object() && it.value().contains("ref")) ids[it.key()] = it.value()["ref"].get<std::string>();
     }
+    std::set<std::string> tunedLooks;
+    const Json overrides = readJson(repo / "tools/titleart/pachislop-port/overrides.json");
+    for (const char* section : {"looks", "color_schemes"}) {
+        if (!overrides.contains(section)) continue;
+        for (auto it = overrides[section].begin(); it != overrides[section].end(); ++it) {
+            for (auto m = it.value().begin(); m != it.value().end(); ++m) {
+                if (m.key() != "check_allow" && m.key() != "lint_allow" && m.key() != "background") tunedLooks.insert(it.key());
+            }
+        }
+    }
+    int tunedSkipped = 0;
     int compared = 0;
     std::map<std::string, int> failuresByCase;
     std::vector<std::string> firstFailures;
@@ -261,6 +322,12 @@ TEST_F(TitleLibraryBuiltins, MatchesPachislop) {
         const bool orb = lookId.find("orb") != std::string::npos;
         TitleArtDoc doc = textDoc(is3D ? "BIG" : "確定");
         if (orb) continue;      // orb bodies are covered by OrbTint and the shape-layer port
+        // a look or colourway tuned after the port (overrides.json beyond the gate's metadata; its review record says `tuned`)
+        // is ours by design: Pachislop's output no longer describes it
+        if (tunedLooks.count(ids[lookId]) || tunedLooks.count(ids.count(colourway) ? ids[colourway] : colourway)) {
+            tunedSkipped++;
+            continue;
+        }
         Json ops = Json::array({Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", ids[lookId]}}, Json{{"op", "apply_color_scheme"}, {"layer", "Title"}, {"color_scheme", colourway}}});
         const TitleOpsResult r = applyOps(doc, ops);
         ASSERT_TRUE(r.ok) << lookId << "/" << colourway << ": " << r.error();
@@ -281,7 +348,7 @@ TEST_F(TitleLibraryBuiltins, MatchesPachislop) {
             if (firstFailures.size() < 40) firstFailures.push_back(lookId + "/" + colourway + ": " + diffs.front());
         }
     }
-    std::cout << "[colourways] " << compared << " cases compared, " << failuresByCase.size() << " differ" << std::endl;
+    std::cout << "[colourways] " << compared << " cases compared, " << failuresByCase.size() << " differ, " << tunedSkipped << " of tuned looks left out" << std::endl;
     std::string list;
     for (const std::string& f : firstFailures) list += "  " + f + "\n";
     EXPECT_TRUE(failuresByCase.empty()) << failuresByCase.size() << " of " << compared << " cases differ:\n" << list;

@@ -109,7 +109,7 @@
       "type": "drop_shadow",
       "params": {
         "angle": 45,
-        "distance": 6,
+        "distance": 5,
         "size": 0,
         "opacity": 1,
         "use_global_light": false
@@ -118,7 +118,8 @@
     {
       "type": "pixelate",
       "params": {
-        "size": 2
+        "size": 2,
+        "alpha_threshold": 0.55
       }
     }
   ],
@@ -126,12 +127,7 @@
   "generators": [],
   "group_effects": [],
   "links": {},
-  "lint_allow": [
-    {
-      "rule": "hard_shadow",
-      "reason": "pixel art has hard shadows"
-    }
-  ],
+  "lint_allow": [],
   "check_allow": [],
   "provenance": {
     "source": "jasperengine"

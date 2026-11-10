@@ -39,6 +39,7 @@
   "dimension": "2d",
   "applies": "style",
   "ref_size": 200,
+  "background": "dark",
   "font": {
     "latin": "cinzel-decorative-black",
     "ja": "zen-old-mincho-black"
@@ -84,7 +85,7 @@
         "width": 2.4,
         "material": {
           "fill": {
-            "color": "#f0f8ff"
+            "color": "#ced6dd"
           }
         }
       },

@@ -67,12 +67,18 @@ PAIRS = {
     "color_scheme_match": (doc(face={"fill": {"kind": "linear", "gradient": {"stops": [{"pos": 0, "color": "#e8f0a0"}, {"pos": 1, "color": "#5a6a10"}]}}, "finish": {"enabled": True, "gradient": {"stops": [{"pos": 0, "color": "#2a3000"}, {"pos": 1, "color": "#f0ffc0"}]}}},
                                rims=[rim(6, "#0a0604")], look={"id": "", "color_scheme": "gold", "owner": ""}),
                            None),
-    "metal_range": (doc(face={"fill": {"kind": "solid", "color": "#c09040"}, "bevel": {"enabled": True, "depth": 0, "highlight_opacity": 0, "shadow_opacity": 0}}, rims=[rim(6, "#0a0604")]),
+    # a metal that reads flat: a real ramp, but only about 1.5 L* once its finish is flat (the library's real metals span 18 and up)
+    "metal_range": (doc(face={"fill": {"kind": "linear", "gradient": {"stops": [{"pos": 0, "color": "#a89060"}, {"pos": 1, "color": "#c8b078"}]}},
+                             "finish": {"enabled": True, "gradient": {"stops": [{"pos": 0, "color": "#a89060"}, {"pos": 1, "color": "#c8b078"}]}}}, rims=[rim(6, "#0a0604")]),
                     doc(face={"fill": {"kind": "linear", "gradient": GOLD}, "bevel": {"enabled": True, "depth": 4}, "finish": {"enabled": True, "gradient": GOLD}}, rims=[rim(6, "#0a0604")])),
     "not_clipped": (doc(rims=[rim(6, "#000000")], position=(560, 0)), doc(rims=[rim(6, "#000000")])),
     "glyphs_present": (doc(text="HERO大", rims=[rim(6, "#000000")]), doc(rims=[rim(6, "#000000")])),
     "noop_effects": (doc(rims=[rim(6, "#000000")], effects=[{"id": "00000021", "type": "outer_glow", "params": {"opacity": 0}}]),
                      doc(rims=[rim(6, "#000000")], effects=[{"id": "00000021", "type": "outer_glow", "params": {"opacity": 0.8}}])),
+    # a rim of the face's own colour closes the counters: nothing tells them from the letter
+    # (a dark outline outside on both: legibility and the lint's contrast rule see the same on either side)
+    "counter_survival": (doc(face=solid("#f0c020"), rims=[rim(14, "#f0c020"), rim(6, "#201008")]),
+                         doc(face=solid("#f0c020"), rims=[rim(14, "#201008"), rim(6, "#201008")])),
     "legibility_contrast": (doc(face=solid("#101010")), doc(face=solid("#ffffff"), rims=[rim(6, "#000000")])),
 }
 
@@ -89,7 +95,13 @@ def main():
             entry["good"] = f"{name}-good.titleart"
         else:
             entry["good"] = None   # the twin is the bad one with its check's fix ops applied
+        if check == "counter_survival":
+            entry["also"] = ["style_lint.contrast"]     # the same rim merging with the face is the lint's contrast finding
         index[name] = entry
+    # a counter flooded by an effect of the face's colour, the second way to close one
+    flooded = doc(face=solid("#40a0f0"), rims=[rim(6, "#40a0f0")], effects=[{"id": "00000021", "type": "outline", "params": {"width": 16, "color": "#40a0f0", "opacity": 1}}])
+    (OUT / "counter_survival-bad-flooded.titleart").write_text(json.dumps(flooded, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    index["counter_survival-flooded"] = {"check": "counter_survival", "bad": "counter_survival-bad-flooded.titleart", "good": "counter_survival-good.titleart", "also": ["style_lint.contrast"]}
     (OUT / "index.json").write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {len(PAIRS)} red controls to {OUT}")
 

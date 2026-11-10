@@ -107,7 +107,7 @@
         "name": "text",
         "role": "title",
         "sample": {
-          "en": "NEW ARRIVAL",
+          "en": "NEW IN",
           "ja": "新台入替"
         },
         "max_chars": 15

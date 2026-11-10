@@ -12,6 +12,7 @@
 #include "TitleLibrary.h"
 #include "TitleLibraryFormats.h"
 
+#include "titleart/ColorScheme.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtSchema.h"
 #include "titleart/TitleEffectRegistry.h"
@@ -2215,9 +2216,14 @@ namespace {
                     if (n.find("not carried") != std::string::npos) log.dropped["colourway: " + n].first = "the colourway port does not carry it";
                     else pushUnique(log.approximated, n);
                 }
-                const Json scheme = Json::parse(text, nullptr, false);
+                Json scheme = Json::parse(text, nullptr, false);
                 if (scheme.is_discarded()) error(Ctx{"colourway", "colourway"}, "the colourway port wrote text that is not JSON");
-                else checkDenied(scheme);
+                else {
+                    // overrides.json's color_schemes section tunes a colourway as the other kinds' sections do
+                    titleart::ColorScheme tuned;
+                    if (applyOverrides(scheme) && titleart::parseColorScheme(scheme, tuned, nullptr)) text = titleart::writeColorSchemeText(tuned);
+                    checkDenied(scheme);
+                }
                 if (log.errors == 0) {
                     result.files[std::string(TITLE_LIBRARY_RESOURCES_PATH) + "/color-schemes/" + entry->ref + TITLE_COLORS_EXTENSION] = text;
                     result.colorSchemes++;

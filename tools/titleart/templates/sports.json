@@ -152,7 +152,8 @@
             }
           ]
         }
-      ]
+      ],
+      "background": "dark"
     },
     {
       "id": "sports/goal-banner",
@@ -345,7 +346,8 @@
           "look": "sports/scoreboard-led",
           "apply_font": true
         }
-      ]
+      ],
+      "background": "dark"
     }
   ]
 }

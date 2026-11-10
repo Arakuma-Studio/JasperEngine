@@ -44,7 +44,7 @@ namespace jasperengine::editor::titlelibrary {
     // a ramp whose hues spread wider than this is a spectrum: any hue matches it
     constexpr double COLOR_MATCH_SPECTRUM_SPAN = 180.0;
     // metal_range: the L* p95 - p5 a metal face needs, and what makes a 3D material metal
-    constexpr double METAL_MIN_L_RANGE = 4.0;
+    constexpr double METAL_MIN_L_RANGE = 9.0;
     constexpr double METAL_MIN_METALLIC = 0.5;
     // the factor the 3D fix raises the environment intensity by
     constexpr double METAL_ENVIRONMENT_RAISE = 1.5;

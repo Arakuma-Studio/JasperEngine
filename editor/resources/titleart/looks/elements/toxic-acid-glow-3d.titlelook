@@ -102,6 +102,9 @@
     "latin": "dela-gothic-one",
     "ja": "dela-gothic-one"
   },
+  "cjk": {
+    "band_scale": 0.8
+  },
   "style_3d": {
     "depth": 10.6,
     "curve_segments": 10,
@@ -206,7 +209,7 @@
           "roughness": 0.2,
           "clearcoat": 1,
           "emission": "#60ff00",
-          "emission_intensity": 3
+          "emission_intensity": 5
         }
       },
       {

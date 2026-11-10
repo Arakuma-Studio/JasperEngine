@@ -52,7 +52,7 @@
     "face": {
       "preset": "candy",
       "color": "#ff4aa0",
-      "metallic": 0.85,
+      "metallic": 0.49,
       "roughness": 0.35,
       "env_multiplier": 1.4,
       "specular_multiplier": 1.5,
@@ -96,12 +96,7 @@
   },
   "links": {},
   "lint_allow": [],
-  "check_allow": [
-    {
-      "check": "metal_range",
-      "reason": "translucent jelly: the sheen is the look, its face has no dark bands on purpose"
-    }
-  ],
+  "check_allow": [],
   "provenance": {
     "source": "jasperengine"
   }

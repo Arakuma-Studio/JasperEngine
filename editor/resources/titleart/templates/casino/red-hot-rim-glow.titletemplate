@@ -140,7 +140,7 @@
   },
   "name": "Red Hot Rim Glow (part effect, Hue/Saturation)",
   "canvas": {
-    "width": 1920,
+    "width": 2400,
     "height": 1080,
     "background": {
       "transparent": true,

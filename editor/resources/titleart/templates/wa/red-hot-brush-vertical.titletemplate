@@ -124,7 +124,7 @@
   "name": "Red Hot Brush (vertical)",
   "canvas": {
     "width": 1080,
-    "height": 1920,
+    "height": 2400,
     "background": {
       "transparent": true,
       "color": "#000000"

@@ -108,7 +108,7 @@
   },
   "name": "Red Hot (fire)",
   "canvas": {
-    "width": 1920,
+    "width": 2400,
     "height": 1080,
     "background": {
       "transparent": true,
@@ -226,7 +226,7 @@
             "exposure": 0.5,
             "falloff": 25,
             "highlight_shift": 60,
-            "intensity": 2.5,
+            "intensity": 2.3,
             "knee": 0.3,
             "on_face": 0,
             "radius": 374,

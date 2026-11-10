@@ -130,7 +130,7 @@
   },
   "name": "Confirm Zebra (clipping mask, Curves)",
   "canvas": {
-    "width": 1920,
+    "width": 2400,
     "height": 1080,
     "background": {
       "transparent": true,

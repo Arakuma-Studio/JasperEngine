@@ -1,33 +1,33 @@
 {
   "format": "jasperengine.titlelibrary.calibration",
   "version": 1,
-  "renders": 301,
-  "red_controls": 27,
+  "renders": 830,
+  "red_controls": 30,
   "checks": {
     "clipped_highlights": {
       "library": {
         "color_schemes": {
-          "n": 33,
+          "n": 99,
           "min": 0,
           "p5": 0,
-          "median": 0.1,
-          "p95": 6.8,
-          "max": 43.1
+          "median": 0.2,
+          "p95": 10.9,
+          "max": 43.9
         },
         "looks": {
-          "n": 195,
+          "n": 585,
           "min": 0,
           "p5": 0,
           "median": 0,
-          "p95": 55.2,
+          "p95": 56,
           "max": 100
         },
         "templates": {
-          "n": 73,
+          "n": 146,
           "min": 0,
           "p5": 0,
           "median": 1.5,
-          "p95": 29.6,
+          "p95": 32.5,
           "max": 90.7
         }
       },
@@ -42,42 +42,48 @@
     "counter_survival": {
       "library": {
         "color_schemes": {
-          "n": 33,
-          "min": 0,
-          "p5": 0,
-          "median": 1,
-          "p95": 1,
-          "max": 1
+          "n": 99,
+          "min": 8.8,
+          "p5": 9.4,
+          "median": 39.1,
+          "p95": 100,
+          "max": 100
         },
         "looks": {
-          "n": 195,
-          "min": 0,
-          "p5": 0,
-          "median": 1,
-          "p95": 1,
-          "max": 1
+          "n": 585,
+          "min": 6.3,
+          "p5": 12.1,
+          "median": 100,
+          "p95": 100,
+          "max": 102.4
         },
         "templates": {
-          "n": 71,
-          "min": 0,
-          "p5": 0,
-          "median": 1,
-          "p95": 1,
-          "max": 1
+          "n": 142,
+          "min": 2.7,
+          "p5": 9.3,
+          "median": 41.7,
+          "p95": 100,
+          "max": 100
         }
       },
       "threshold": {
+        "delta_e": 8,
         "survival": 0.8
       },
-      "metric": "survival",
+      "metric": "delta_e",
       "higher_is_better": true,
-      "L": 0,
-      "L_item": "cartoon/candy-stripe"
+      "L": 2.7,
+      "L_item": "casino/premium-black-gloss",
+      "R": 6.5,
+      "T": 8,
+      "separates": false,
+      "middle_half": false,
+      "suggested_T": 4.6
     },
     "fallback_parity": {
       "library": {
         "color_schemes": {
-          "n": 33,
+          "n": 99,
           "min": 0,
           "p5": 0,
           "median": 0,
@@ -85,19 +91,19 @@
           "max": 0
         },
         "looks": {
-          "n": 195,
+          "n": 585,
           "min": 0,
           "p5": 0,
-          "median": 7.716049e-06,
-          "p95": 0.01375772,
-          "max": 0.1109259
+          "median": 0,
+          "p95": 0.005740741,
+          "max": 0.1138503
         },
         "templates": {
-          "n": 73,
+          "n": 146,
           "min": 0,
           "p5": 0,
-          "median": 0.005177469,
-          "p95": 0.05898148,
+          "median": 0.0005709877,
+          "p95": 0.03065586,
           "max": 0.5252991
         }
       },
@@ -114,27 +120,27 @@
     "halo": {
       "library": {
         "color_schemes": {
-          "n": 33,
+          "n": 99,
           "min": 0.05,
-          "p5": 0.09,
+          "p5": 0.08,
           "median": 0.19,
-          "p95": 0.28,
-          "max": 0.28
+          "p95": 0.33,
+          "max": 0.34
         },
         "looks": {
-          "n": 195,
+          "n": 585,
           "min": 0,
           "p5": 0,
           "median": 0.13,
-          "p95": 0.71,
-          "max": 0.91
+          "p95": 0.74,
+          "max": 0.92
         },
         "templates": {
-          "n": 73,
+          "n": 146,
           "min": 0,
           "p5": 0,
           "median": 0.02,
-          "p95": 0.33,
+          "p95": 0.34,
           "max": 0.54
         }
       },
@@ -143,114 +149,114 @@
       },
       "metric": "halo_share",
       "higher_is_better": false,
-      "L": 0.91,
+      "L": 0.92,
       "L_item": "cartoon/sticker-white"
     },
     "legibility_contrast": {
       "library": {
         "color_schemes": {
-          "n": 33,
-          "min": 40.7,
+          "n": 99,
+          "min": 38.4,
           "p5": 41.6,
-          "median": 52.4,
-          "p95": 62.9,
-          "max": 66.3
+          "median": 54.2,
+          "p95": 64.6,
+          "max": 69.3
         },
         "looks": {
-          "n": 195,
-          "min": 0,
-          "p5": 7.9,
-          "median": 47.3,
-          "p95": 70.8,
-          "max": 86.2
+          "n": 585,
+          "min": 30.4,
+          "p5": 37,
+          "median": 56.8,
+          "p95": 93.2,
+          "max": 100
         },
         "templates": {
-          "n": 73,
-          "min": 0.8,
-          "p5": 19.8,
-          "median": 48,
-          "p95": 69.3,
-          "max": 81.5
+          "n": 146,
+          "min": 30.3,
+          "p5": 32.5,
+          "median": 52.7,
+          "p95": 87,
+          "max": 100
         }
       },
       "threshold": {
-        "delta_l": 30
+        "delta_l": 22
       },
       "metric": "delta_l",
       "higher_is_better": true,
-      "L": 0,
-      "L_item": "minimal/flat",
+      "L": 30.3,
+      "L_item": "neon/bar-sign-title",
       "R": 4.7,
-      "T": 30,
-      "separates": false,
-      "middle_half": false,
-      "suggested_T": 2.35
+      "T": 22,
+      "separates": true,
+      "middle_half": true,
+      "suggested_T": 17.5
     },
     "metal_range": {
       "library": {
         "color_schemes": {
-          "n": 33,
-          "min": 19.4,
-          "p5": 25.78,
-          "median": 67.6,
-          "p95": 89.38,
+          "n": 99,
+          "min": 18.62,
+          "p5": 20.48,
+          "median": 67.59,
+          "p95": 90.85,
           "max": 97.62
         },
         "looks": {
-          "n": 113,
-          "min": 15.64,
-          "p5": 19.46,
-          "median": 55.63,
-          "p95": 88.54,
+          "n": 339,
+          "min": 13.32,
+          "p5": 19.14,
+          "median": 55.09,
+          "p95": 91.83,
           "max": 97.62
         },
         "templates": {
-          "n": 79,
-          "min": 7.6,
-          "p5": 17.85,
-          "median": 57.14,
+          "n": 152,
+          "min": 12.74,
+          "p5": 21.88,
+          "median": 57.1,
           "p95": 90.26,
           "max": 100
         }
       },
       "threshold": {
-        "l_range_min": 4
+        "l_range_min": 9
       },
       "metric": "l_range",
       "higher_is_better": true,
-      "L": 7.6,
-      "L_item": "casino/reserve-flash-fx",
-      "R": 0,
-      "T": 4,
+      "L": 12.74,
+      "L_item": "casino/speech-frame-red",
+      "R": 1.45,
+      "T": 9,
       "separates": true,
       "middle_half": true,
-      "suggested_T": 3.8
+      "suggested_T": 7.095
     },
     "not_clipped": {
       "library": {
         "color_schemes": {
-          "n": 33,
-          "min": 420,
-          "p5": 420,
+          "n": 99,
+          "min": 412,
+          "p5": 412,
           "median": 420,
           "p95": 420,
           "max": 420
         },
         "looks": {
-          "n": 195,
+          "n": 585,
           "min": 0,
-          "p5": 28,
-          "median": 428,
+          "p5": 24,
+          "median": 424,
           "p95": 460,
           "max": 476
         },
         "templates": {
-          "n": 73,
-          "min": 0,
-          "p5": 0,
-          "median": 16,
-          "p95": 240,
-          "max": 356
+          "n": 146,
+          "min": -5,
+          "p5": -5,
+          "median": 84,
+          "p95": 308,
+          "max": 425
         }
       },
       "threshold": {
@@ -258,39 +264,39 @@
       },
       "metric": "min_margin_px",
       "higher_is_better": true,
-      "L": 0,
-      "L_item": "anime/impact-burst",
+      "L": -5,
+      "L_item": "casino/cut-in-band",
       "R": 0,
       "T": 8,
       "separates": false,
       "middle_half": false,
-      "suggested_T": 0
+      "suggested_T": -2.5
     },
     "rim_spikes": {
       "library": {
         "color_schemes": {
-          "n": 33,
+          "n": 99,
           "min": 0,
           "p5": 0,
           "median": 0,
-          "p95": 0,
-          "max": 0
+          "p95": 0.86,
+          "max": 0.86
         },
         "looks": {
-          "n": 195,
+          "n": 585,
           "min": 0,
           "p5": 0,
           "median": 0,
           "p95": 0,
-          "max": 1.33
+          "max": 3.29
         },
         "templates": {
-          "n": 73,
+          "n": 146,
           "min": 0,
           "p5": 0,
           "median": 0,
-          "p95": 0.94,
-          "max": 3.98
+          "p95": 1.26,
+          "max": 6.14
         }
       },
       "threshold": {
@@ -298,18 +304,26 @@
       },
       "metric": "spike_to_band",
       "higher_is_better": false,
-      "L": 3.98,
-      "L_item": "neon/game-over-neon"
+      "L": 6.14,
+      "L_item": "casino/super-red-hot"
     },
     "style_lint.contrast": {
       "library": {
         "color_schemes": {
-          "n": 1,
+          "n": 3,
           "min": 8.42,
           "p5": 8.42,
           "median": 8.42,
           "p95": 8.42,
           "max": 8.42
+        },
+        "looks": {
+          "n": 18,
+          "min": 2.53,
+          "p5": 2.53,
+          "median": 7.5,
+          "p95": 11.24,
+          "max": 11.24
         }
       },
       "threshold": {
@@ -317,18 +331,26 @@
       },
       "metric": "value",
       "higher_is_better": true,
-      "L": 8.42,
-      "L_item": "royal",
+      "L": 2.53,
+      "L_item": "casino/rainbow-glass-gold-3d",
       "R": 3.89,
       "T": 12,
-      "separates": true,
+      "separates": false,
       "middle_half": false,
-      "suggested_T": 6.155
+      "suggested_T": 3.21
     },
     "style_lint.hard_shadow": {
       "library": {
+        "looks": {
+          "n": 3,
+          "min": 0,
+          "p5": 0,
+          "median": 0,
+          "p95": 0,
+          "max": 0
+        },
         "templates": {
-          "n": 1,
+          "n": 2,
           "min": 0,
           "p5": 0,
           "median": 0,
@@ -342,7 +364,7 @@
       "metric": "value",
       "higher_is_better": true,
       "L": 0,
-      "L_item": "retro/high-score",
+      "L_item": "retro/16bit-gradient",
       "R": 1,
       "T": 4,
       "separates": false,
@@ -351,8 +373,16 @@
     },
     "style_lint.rims_thin": {
       "library": {
+        "looks": {
+          "n": 33,
+          "min": 0.2,
+          "p5": 0.2,
+          "median": 2.6,
+          "p95": 4.9,
+          "max": 4.9
+        },
         "templates": {
-          "n": 4,
+          "n": 8,
           "min": 1,
           "p5": 1,
           "median": 2.6,
@@ -365,13 +395,13 @@
       },
       "metric": "value",
       "higher_is_better": true,
-      "L": 1,
-      "L_item": "minimal/clean-title",
+      "L": 0.2,
+      "L_item": "metal/liquid-chrome",
       "R": 2,
       "T": 5,
       "separates": false,
       "middle_half": false,
-      "suggested_T": 1.5
+      "suggested_T": 1.1
     }
   }
 }

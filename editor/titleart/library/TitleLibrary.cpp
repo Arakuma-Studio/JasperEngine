@@ -14,6 +14,8 @@
 #include "zstd.h"
 
 #include <algorithm>
+#include <future>
+#include <thread>
 #include <cstring>
 #include <fstream>
 #include <set>
@@ -528,16 +530,39 @@ void TitleLibrary::indexBuiltins(LibraryKind kind, KindState& s) {
     s.builtins.clear();
     const std::string prefix = std::string(KIND_DIRS_BUILTIN[kindIndex(kind)]) + "/";
     const std::string extension = libraryExtension(kind);
-    for (const auto& [path, text] : builtinSource()) {
-        if (path.rfind(prefix, 0) != 0 || path.size() <= extension.size() || path.compare(path.size() - extension.size(), extension.size(), extension) != 0) {
-            continue;
-        }
+    struct Pending {
+        const std::string* path = nullptr;
+        const std::string* text = nullptr;
         LibraryItemInfo info;
-        info.ref = path.substr(prefix.size(), path.size() - prefix.size() - extension.size());
-        info.builtinPath = path;
-        if (!indexItem(kind, LibraryScope::BuiltIn, text, info)) continue;
-        info.readOnly = true;
-        s.builtins.push_back(std::move(info));
+        bool indexed = false;
+    };
+    std::vector<Pending> pending;
+    for (const auto& [path, text] : builtinSource()) {
+        if (path.rfind(prefix, 0) != 0 || path.size() <= extension.size() || path.compare(path.size() - extension.size(), extension.size(), extension) != 0) continue;
+        Pending p;
+        p.path = &path;
+        p.text = &text;
+        p.info.ref = path.substr(prefix.size(), path.size() - prefix.size() - extension.size());
+        p.info.builtinPath = path;
+        pending.push_back(std::move(p));
+    }
+    // parsing is most of the index (R40: 60 ms): the first item here, so the read-only registries it
+    // touches are built on this thread, then the rest across the cores
+    const auto index = [&](size_t from, size_t to) {
+        for (size_t i = from; i < to; i++) pending[i].indexed = indexItem(kind, LibraryScope::BuiltIn, *pending[i].text, pending[i].info);
+    };
+    if (!pending.empty()) index(0, 1);
+    const size_t workers = std::clamp<size_t>(std::thread::hardware_concurrency(), 1, 8);
+    std::vector<std::future<void>> running;
+    const size_t rest = pending.empty() ? 0 : pending.size() - 1;
+    for (size_t w = 0; w < workers && rest > 0; w++) {
+        running.push_back(std::async(std::launch::async, index, 1 + rest * w / workers, 1 + rest * (w + 1) / workers));
+    }
+    for (std::future<void>& f : running) f.get();
+    for (Pending& p : pending) {
+        if (!p.indexed) continue;
+        p.info.readOnly = true;
+        s.builtins.push_back(std::move(p.info));
     }
     s.builtinsIndexed = true;
 }

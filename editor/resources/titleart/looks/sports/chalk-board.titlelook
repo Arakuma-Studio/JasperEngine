@@ -39,6 +39,7 @@
   "dimension": "2d",
   "applies": "style",
   "ref_size": 200,
+  "background": "dark",
   "font": {
     "latin": "archivo-black",
     "ja": "zen-kaku-gothic-new-black"
@@ -47,7 +48,9 @@
   "effects": [
     {
       "type": "chalk",
-      "params": {}
+      "params": {
+        "dust": 0.05
+      }
     }
   ],
   "part_effects": {},

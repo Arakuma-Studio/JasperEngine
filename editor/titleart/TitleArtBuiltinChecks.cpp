@@ -12,6 +12,7 @@
 #include "TitleArtRenderHost.h"
 #include "runtime/TitleCharacterChecks.h"
 #include "texsynth/SynthImage.h"
+#include "titleart/TitleEffectRegistry.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtRefs.h"
 #include "titleart/TitleArtSchema.h"
@@ -516,6 +517,28 @@ namespace {
         out.push_back(std::move(r));
     }
 
+    // does anything but a generator reach the canvas edge in this layer? A group is judged by its
+    // children: its generators may bleed, its text may not
+    bool contentReachesEdge(const titleart::TitleArtDoc& doc, Renders& renders, const std::string& id, int cw, int ch) {
+        const TJson* layer = titleart::findLayer(doc.root, id);
+        if (!layer) return true;
+        const titleart::LayerType type = titleart::layerTypeOf(*layer);
+        if (type == titleart::LayerType::Generator) return false;
+        if (type == titleart::LayerType::Group && layer->contains("children")) {
+            for (const TJson& child : (*layer)["children"]) {
+                if (child.value("visible", true) && contentReachesEdge(doc, renders, str(child, "id"), cw, ch)) return true;
+            }
+            return false;
+        }
+        std::string error;
+        const TitleCheckImage* alone = renders.isolated(id, error);
+        if (!alone) return true;
+        const TitleRectI b = alphaBox(*alone, 3);
+        if (b.empty()) return false;
+        const TitleRectI c = toCanvas(*alone, b);
+        return c.x <= 0 || c.y <= 0 || c.x + c.width >= cw || c.y + c.height >= ch;
+    }
+
     void notClipped(TitleCheckContext& ctx, Out& out) {
         Renders& renders = rendersOf(ctx);
         std::string error;
@@ -562,16 +585,16 @@ namespace {
                 const TitleRectI c = toCanvas(*alone, b);
                 if (c.x <= 0 || c.y <= 0 || c.x + c.width >= cw || c.y + c.height >= ch) {
                     culprits.push_back(layerName(ctx.doc, id));
-                    const TJson* layer = titleart::findLayer(ctx.doc.root, id);
-                    if (!layer || titleart::layerTypeOf(*layer) != titleart::LayerType::Generator) generatorsOnly = false;
+                    const bool fillsCanvas = c.x <= 0 && c.y <= 0 && c.x + c.width >= cw && c.y + c.height >= ch;
+                    if (!fillsCanvas && contentReachesEdge(ctx.doc, renders, id, cw, ch)) generatorsOnly = false;
                 }
             }
             std::string sides, names;
             for (const std::string& s : touching) sides += (sides.empty() ? "" : ", ") + s;
             for (const std::string& n : culprits) names += (names.empty() ? "" : ", ") + n;
-            if (generatorsOnly && !culprits.empty()) {
+            if (generatorsOnly) {
                 r.status = TitleCheckStatus::Pass;
-                r.message = "only generators reach the canvas edge (" + names + "): they are full-bleed by design";
+                r.message = "only full-bleed layers (generators, a layer filling the canvas) reach the canvas edge" + (names.empty() ? std::string() : " (" + names + ")") + ": they are full-bleed by design";
                 r.measured["layers"] = culprits;
                 r.at.clear();
                 out.push_back(std::move(r));
@@ -628,6 +651,9 @@ namespace {
         out.push_back(std::move(r));
     }
 
+    // calibrated (S84 §6.14.3): red controls at most 4.7, the library at least 30.3 on its intended background
+    constexpr double LEGIBILITY_MIN_DELTA = 22.0;
+
     void legibility(TitleCheckContext& ctx, Out& out) {
         Renders& renders = rendersOf(ctx);
         std::string error;
@@ -664,7 +690,7 @@ namespace {
         }
         const size_t minBand = std::max<size_t>(16, bands[0].size() / 20);
         TitleCheckResult r = result(TitleCheckStatus::Pass, "", "CIE L* of the silhouette's bands composited on each background (outer ring inwards to 5 % of the height), the band that stands out most against the background");
-        r.threshold = TJson{{"delta_l", 30}};
+        r.threshold = TJson{{"delta_l", LEGIBILITY_MIN_DELTA}};
         if (bands[0].empty()) {
             r.status = TitleCheckStatus::Skip;
             r.message = "no opaque silhouette to measure";
@@ -696,7 +722,7 @@ namespace {
             }
         }
         r.measured = TJson{{"delta_l", measured}};
-        if (worst < 30.0) {
+        if (worst < LEGIBILITY_MIN_DELTA) {
             r.status = TitleCheckStatus::Fail;
             r.message = "the silhouette is hard to tell from the " + worstBg + " background (delta L* " + std::to_string(static_cast<int>(worst)) + ")";
             titleart::TitleColor bg;
@@ -751,21 +777,41 @@ namespace {
         return holes;
     }
 
-    // a hole the rims filled: mean L* of its pixels against the letter pixels around it (the plain
-    // mask's opaque pixels within 2 px)
-    bool counterReads(const TitleCheckImage& mask, const TitleCheckImage& styled, const std::vector<size_t>& hole) {
-        const auto lightness = [&](size_t i) {
+    struct CounterLab {
+        double L = 0.0, a = 0.0, b = 0.0;
+    };
+
+    // CIE Lab (D65) of a non-linear sRGB colour
+    CounterLab srgbToLab(double r, double g, double b) {
+        const double R = titleart::srgbToLinear(static_cast<float>(r)), G = titleart::srgbToLinear(static_cast<float>(g)), B = titleart::srgbToLinear(static_cast<float>(b));
+        const auto f = [](double t) { return t > 0.008856 ? std::cbrt(t) : 7.787 * t + 16.0 / 116.0; };
+        const double fx = f((0.4124 * R + 0.3576 * G + 0.1805 * B) / 0.95047);
+        const double fy = f(0.2126 * R + 0.7152 * G + 0.0722 * B);
+        const double fz = f((0.0193 * R + 0.1192 * G + 0.9505 * B) / 1.08883);
+        return {116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz)};
+    }
+
+    // calibrated (S84 §6.14.3): a counter survives when it is visibly distinct from the letter. The
+    // red controls (a rim of the face's colour, a counter flooded by an outline of it) measure at
+    // most 6.5; the library's counters that read as open start above 8
+    constexpr double COUNTER_MIN_DELTA_E = 8.0;
+    constexpr double COUNTER_OPEN_DELTA_E = 100.0;      // a transparent counter: the background shows
+
+    // how visible a counter is: delta E between the mean colour of the rendered counter and of the
+    // letter around it (the plain mask's opaque pixels within 2 px), both composited on `bg`
+    double counterContrast(const TitleCheckImage& mask, const TitleCheckImage& styled, const std::vector<size_t>& hole, const titleart::TitleColor& bg) {
+        CounterLab holeSum, letterSum;
+        const auto add = [&](CounterLab& sum, size_t i) {
             const uint8_t* p = styled.rgba.data() + i * 4;
-            return srgbToL(p[0] / 255.0, p[1] / 255.0, p[2] / 255.0);
+            const double a = p[3] / 255.0;
+            const CounterLab c = srgbToLab(p[0] / 255.0 * a + bg.r * (1 - a), p[1] / 255.0 * a + bg.g * (1 - a), p[2] / 255.0 * a + bg.b * (1 - a));
+            sum.L += c.L;
+            sum.a += c.a;
+            sum.b += c.b;
         };
         std::set<size_t> letter;
-        double holeSum = 0.0;
-        size_t holeCount = 0;
         for (size_t i : hole) {
-            if (styled.rgba[i * 4 + 3] >= 128) {
-                holeSum += lightness(i);
-                holeCount++;
-            }
+            add(holeSum, i);
             const int x = static_cast<int>(i % mask.width), y = static_cast<int>(i / mask.width);
             for (int dy = -2; dy <= 2; dy++) {
                 for (int dx = -2; dx <= 2; dx++) {
@@ -776,10 +822,10 @@ namespace {
                 }
             }
         }
-        if (holeCount == 0 || letter.empty()) return false;
-        double letterSum = 0.0;
-        for (size_t n : letter) letterSum += lightness(n);
-        return std::abs(holeSum / holeCount - letterSum / letter.size()) >= 12.0;
+        if (letter.empty() || hole.empty()) return 0.0;
+        for (size_t n : letter) add(letterSum, n);
+        const double h = static_cast<double>(hole.size()), l = static_cast<double>(letter.size());
+        return std::hypot(holeSum.L / h - letterSum.L / l, holeSum.a / h - letterSum.a / l, holeSum.b / h - letterSum.b / l);
     }
 
     void counterSurvival(TitleCheckContext& ctx, Out& out) {
@@ -789,8 +835,14 @@ namespace {
             if (titleart::layerTypeOf(layer) == titleart::LayerType::Text && layer.value("visible", true)) textLayers.push_back(str(layer, "id"));
             return textLayers.size() < 4;
         });
-        TitleCheckResult r = result(TitleCheckStatus::Pass, "", "holes of the plain text mask (no rims, no effects) still transparent in the styled layer, or filled with a colour that differs from the letter around them (delta L* >= 12)");
-        r.threshold = TJson{{"survival", 0.8}};
+        TitleCheckResult r = result(TitleCheckStatus::Pass, "", "holes of the plain text mask (no rims, no effects) still visible in the styled layer: transparent, or filled with a colour visibly unlike the letter around them (delta E on the background)");
+        r.threshold = TJson{{"survival", 0.8}, {"delta_e", COUNTER_MIN_DELTA_E}};
+        titleart::TitleColor background;
+        backgroundColor("black", background);
+        for (const std::string& name : ctx.options.backgrounds) {
+            if (backgroundColor(name, background)) break;
+        }
+        std::vector<double> contrasts;
         if (textLayers.empty()) {
             r.status = TitleCheckStatus::Skip;
             r.message = "no text layer";
@@ -807,6 +859,8 @@ namespace {
             plain.overrides.push_back({id, "style.rims", TJson::array()});
             plain.overrides.push_back({id, "effects", TJson::array()});
             plain.overrides.push_back({id, "part_effects", TJson::object()});
+            // a glass face is translucent and speckled: the mask needs the letter's silhouette
+            plain.overrides.push_back({id, "style.face.glass.enabled", false});
             std::string error;
             const TitleCheckImage* mask = renders.get("plain:" + id, plain, error);
             if (!mask) return renderFailed(out, error);
@@ -823,10 +877,11 @@ namespace {
                     const int x = static_cast<int>(i % mask->width), y = static_cast<int>(i / mask->width);
                     minX = std::min(minX, x); minY = std::min(minY, y); maxX = std::max(maxX, x); maxY = std::max(maxY, y);
                 }
-                // a flooded counter still reads when the fill differs from the letter around it
-                bool visible = open * 2 >= hole.size();
-                if (!visible) visible = counterReads(*mask, *styled, hole);
-                if (visible) layerSurvived++;
+                // a counter survives while it can be seen: open, or filled with something visibly
+                // unlike the letter around it (a rim of the face's own colour closes it)
+                const double contrast = open * 2 >= hole.size() ? COUNTER_OPEN_DELTA_E : counterContrast(*mask, *styled, hole, background);
+                contrasts.push_back(contrast);
+                if (contrast >= COUNTER_MIN_DELTA_E) layerSurvived++;
                 else r.at.push_back(toCanvas(*mask, {minX, minY, maxX - minX + 1, maxY - minY + 1}));
             }
             total += holes.size();
@@ -839,7 +894,10 @@ namespace {
             }
         }
         const double ratio = total == 0 ? 1.0 : static_cast<double>(survived) / total;
-        r.measured = TJson{{"survival", std::round(ratio * 100.0) / 100.0}, {"holes", total}, {"layers", perLayer}};
+        // the contrast of the counter that decides the verdict (survival >= 0.8 lets a fifth fall short)
+        std::sort(contrasts.begin(), contrasts.end());
+        const double deciding = contrasts.empty() ? COUNTER_OPEN_DELTA_E : contrasts[static_cast<size_t>(contrasts.size() * 0.2)];
+        r.measured = TJson{{"survival", std::round(ratio * 100.0) / 100.0}, {"holes", total}, {"layers", perLayer}, {"delta_e", std::round(deciding * 10.0) / 10.0}};
         if (total == 0) {
             r.message = "the text has no counters to keep";
         } else if (ratio < 0.8) {
@@ -1041,6 +1099,32 @@ namespace {
         out.push_back(std::move(r));
     }
 
+    // the class a whole document is held to (S83 §6.5): its least exact element's; a 3D layer's
+    // light is above 1 and compressed on the fallback, the F2 case
+    titleart::FallbackClass documentFallbackClass(const titleart::TitleArtDoc& doc) {
+        titleart::FallbackClass worst = titleart::FallbackClass::F0;
+        const titleart::TitleEffectRegistry& registry = titleart::TitleEffectRegistry::get();
+        auto raise = [&](titleart::FallbackClass c) { worst = std::max(worst, c); };
+        auto effects = [&](const TJson& list) {
+            if (!list.is_array()) return;
+            for (const TJson& e : list) {
+                if (!e.value("enabled", true)) continue;
+                if (const titleart::EffectDef* def = registry.effect(str(e, "type"))) raise(def->fallback);
+            }
+        };
+        titleart::forEachLayer(doc.root, [&](const TJson& layer, const TJson*, int) {
+            if (!layer.value("visible", true) || layer.value("guide", false)) return true;
+            if (layer.contains("effects")) effects(layer["effects"]);
+            if (layer.contains("part_effects") && layer["part_effects"].is_object()) for (const auto& part : layer["part_effects"].items()) effects(part.value());
+            if (layer.contains("generator") && layer["generator"].is_object()) {
+                if (const titleart::GeneratorDef* def = registry.generator(str(layer["generator"], "type"))) raise(def->fallback);
+            }
+            if (layer.value("dimension", std::string()) == "3d") raise(titleart::FallbackClass::F2);
+            return true;
+        });
+        return worst;
+    }
+
     void fallbackParity(TitleCheckContext& ctx, Out& out) {
         Renders& renders = rendersOf(ctx);
         std::string error;
@@ -1050,16 +1134,38 @@ namespace {
         forced.testFlags = titleart::TITLE_ART_TEST_NO_FLOAT_TARGETS | titleart::TITLE_ART_TEST_NO_R16F | titleart::TITLE_ART_TEST_NO_RGBA32F;
         const TitleCheckImage* rgba8 = renders.get("rgba8", forced, error);
         if (!rgba8) return renderFailed(out, error);
+        // the tolerance of the document's fallback class (S83 §6.5, what each effect's own test holds
+        // it to); a 3D layer's RGBA8 path compresses its light, S86 AC9's own criteria
+        const titleart::FallbackClass cls = documentFallbackClass(ctx.doc);
+        bool has3D = false;
+        titleart::forEachLayer(ctx.doc.root, [&](const TJson& layer, const TJson*, int) {
+            if (layer.value("visible", true) && !layer.value("guide", false) && layer.value("dimension", std::string()) == "3d") has3D = true;
+            return !has3D;
+        });
         ImageDiffOptions options;
         options.premultiplied = true;
-        options.tolerance = 8;
-        options.maxFraction = 0.005;
-        options.maxMean = 1.0;
-        options.maxDiff = 48;
+        options.tolerance = has3D ? 24 : 8;
+        options.maxFraction = has3D ? 0.01 : cls == titleart::FallbackClass::F0 ? 0.005 : cls == titleart::FallbackClass::F1 ? 0.02 : 0.05;
+        options.maxMean = has3D ? 3.0 : cls == titleart::FallbackClass::F0 ? 1.0 : cls == titleart::FallbackClass::F1 ? 1.5 : 3.0;
+        // Lightning's edge cells and Backlight's shape centre read the followed layer's 8-bit grid: a
+        // borderline cell flips between the paths, a few pixels differ by more than the max while
+        // the mean and the share hold (S83's own TitleGenGpuTest makes the same exception)
+        bool gridLayout = false;
+        titleart::forEachLayer(ctx.doc.root, [&](const TJson& layer, const TJson*, int) {
+            if (layer.contains("generator") && layer["generator"].is_object() && layer.value("visible", true)) {
+                const std::string type = str(layer["generator"], "type");
+                // Glints that follow a layer pick their stars from its 8-bit analysis grid the same way
+                // (HighlightFinder over readGrid): a star at a borderline cell moves between the paths
+                const bool follows = !str(layer, "follow").empty();
+                gridLayout = gridLayout || type == "lightning" || type == "backlight" || (type == "glints" && follows);
+            }
+            return true;
+        });
+        options.maxDiff = has3D || gridLayout ? 255 : cls == titleart::FallbackClass::F0 ? 48 : cls == titleart::FallbackClass::F1 ? 64 : 96;
         const ImageDiffResult diff = diffImages(asImage(*floatPath), asImage(*rgba8), options);
-        TitleCheckResult r = result(diff.ok ? TitleCheckStatus::Pass : TitleCheckStatus::Fail, "", "premultiplied comparison of the forced RGBA8 path with the float path");
-        r.measured = TJson{{"max", diff.max}, {"mean", diff.mean}, {"fraction_over", diff.fractionOver}};
-        r.threshold = TJson{{"max", 48}, {"mean", 1.0}, {"fraction_over_8", 0.005}};
+        TitleCheckResult r = result(diff.ok ? TitleCheckStatus::Pass : TitleCheckStatus::Fail, "", "premultiplied comparison of the forced RGBA8 path with the float path, to the tolerance of the document's fallback class");
+        r.measured = TJson{{"max", diff.max}, {"mean", diff.mean}, {"fraction_over", diff.fractionOver}, {"class", has3D ? "3D" : titleart::fallbackClassName(cls)}};
+        r.threshold = TJson{{"max", options.maxDiff}, {"mean", options.maxMean}, {has3D ? "fraction_over_24" : "fraction_over_8", options.maxFraction}};
         r.message = diff.ok ? "the RGBA8 path agrees with the float path" : (diff.sameSize ? "the RGBA8 path differs from the float path beyond §6.3's tolerance" : diff.error);
         if (!diff.ok && !diff.bbox.empty()) r.at.push_back(toCanvas(*floatPath, {diff.bbox.x, diff.bbox.y, diff.bbox.width, diff.bbox.height}));
         out.push_back(std::move(r));
@@ -1106,7 +1212,7 @@ namespace {
         {"not_flat", TitleCheckKind::Pixels, "The render is not blank or one colour", notFlat},
         {"not_clipped", TitleCheckKind::Pixels, "No ink or light at the canvas edge; margins of 8 px", notClipped},
         {"alpha_bounds", TitleCheckKind::Pixels, "Trim box, coverage 10..90 %, centre offset", alphaBoundsCheck},
-        {"legibility_contrast", TitleCheckKind::Pixels, "A band of the silhouette delta L* >= 30 on each background", legibility},
+        {"legibility_contrast", TitleCheckKind::Pixels, "A band of the silhouette delta L* >= 22 on each background the item is made for", legibility},
         {"counter_survival", TitleCheckKind::Pixels, "Letter counters still open in the render", counterSurvival},
         {"noop_effects", TitleCheckKind::Pixels, "Enabled effects that change nothing", noopEffects},
         {"clipped_highlights", TitleCheckKind::Pixels, "Ink clipped to white <= 5 %", clippedHighlights},

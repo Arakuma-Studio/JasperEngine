@@ -417,7 +417,7 @@
     {
       "type": "drop_shadow",
       "params": {
-        "opacity": 0.7,
+        "opacity": 0.45,
         "size": 16
       }
     }

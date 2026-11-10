@@ -233,7 +233,7 @@
           "before": "Title",
           "values": {
             "shape": "shield",
-            "size": 800,
+            "size": 640,
             "aspect": 0.82,
             "transform.position": [
               0,

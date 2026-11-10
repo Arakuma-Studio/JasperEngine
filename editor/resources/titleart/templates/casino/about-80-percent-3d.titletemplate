@@ -155,7 +155,7 @@
   },
   "name": "About 80% (small, big, small; 3D gold)",
   "canvas": {
-    "width": 1920,
+    "width": 2400,
     "height": 1080,
     "background": {
       "transparent": true,

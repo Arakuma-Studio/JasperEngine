@@ -112,6 +112,20 @@
               "field": "text"
             }
           ]
+        },
+        {
+          "op": "set",
+          "layer": "Subtitle",
+          "values": {
+            "fx:pixelate.alpha_threshold": 0.55
+          }
+        },
+        {
+          "op": "set",
+          "layer": "Light Streaks",
+          "values": {
+            "gen.brightness": 260
+          }
         }
       ]
     },
@@ -203,6 +217,13 @@
           "layer": "Title",
           "look": "retro/crt-scanline",
           "apply_font": true
+        },
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "fx:chromatic_aberration.amount": 1.2
+          }
         }
       ]
     },
@@ -296,7 +317,8 @@
           "look": "retro/16bit-gradient",
           "apply_font": true
         }
-      ]
+      ],
+      "background": "dark"
     }
   ]
 }

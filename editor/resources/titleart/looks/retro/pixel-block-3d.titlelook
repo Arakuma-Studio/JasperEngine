@@ -39,6 +39,7 @@
   "dimension": "3d",
   "applies": "style",
   "ref_size": 200,
+  "background": "dark",
   "font": {
     "latin": "press-start-2p",
     "ja": "dela-gothic-one"

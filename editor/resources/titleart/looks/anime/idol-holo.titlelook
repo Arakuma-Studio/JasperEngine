@@ -39,6 +39,7 @@
   "dimension": "2d",
   "applies": "style",
   "ref_size": 200,
+  "background": "dark",
   "font": {
     "latin": "mochiy-pop-one",
     "ja": "mplus1p-black"
@@ -75,7 +76,9 @@
       "scope": "layer",
       "blend": "add",
       "opacity": 1,
-      "params": {},
+      "params": {
+        "size": 40
+      },
       "effects": []
     }
   ],

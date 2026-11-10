@@ -39,6 +39,7 @@
   "dimension": "2d",
   "applies": "style",
   "ref_size": 200,
+  "background": "dark",
   "font": {
     "latin": "inter",
     "ja": "zen-kaku-gothic-new-black",
@@ -76,12 +77,7 @@
   "generators": [],
   "group_effects": [],
   "links": {},
-  "lint_allow": [
-    {
-      "rule": "rims_thin",
-      "reason": "a hairline frost edge on a glass face; a thicker rim reads as a frame"
-    }
-  ],
+  "lint_allow": [],
   "check_allow": [],
   "provenance": {
     "source": "jasperengine"

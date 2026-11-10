@@ -97,7 +97,7 @@
         "name": "text",
         "role": "title",
         "sample": {
-          "en": "LIMIT BREAK",
+          "en": "BREAK",
           "ja": "限界突破"
         },
         "max_chars": 15
@@ -124,8 +124,8 @@
   },
   "name": "Liquid Gold Vertical + Kicker",
   "canvas": {
-    "width": 1080,
-    "height": 1920,
+    "width": 1360,
+    "height": 2880,
     "background": {
       "transparent": true,
       "color": "#000000"

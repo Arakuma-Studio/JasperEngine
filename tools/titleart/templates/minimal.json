@@ -132,7 +132,8 @@
             }
           ]
         }
-      ]
+      ],
+      "background": "dark"
     },
     {
       "id": "minimal/chapter-card",
@@ -336,7 +337,8 @@
           "look": "minimal/ink-inset",
           "apply_font": true
         }
-      ]
+      ],
+      "background": "light"
     }
   ]
 }

@@ -272,7 +272,7 @@
         },
         "material": {
           "preset": "black_gloss",
-          "color": "#020203",
+          "color": "#1d1d1d",
           "metallic": 0.2,
           "roughness": 0.08,
           "env_multiplier": 0.35,

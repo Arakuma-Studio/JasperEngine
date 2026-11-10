@@ -137,7 +137,8 @@
             }
           ]
         }
-      ]
+      ],
+      "background": "dark"
     },
     {
       "id": "fantasy/quest-complete",

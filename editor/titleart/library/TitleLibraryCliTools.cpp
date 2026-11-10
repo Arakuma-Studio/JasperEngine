@@ -345,7 +345,7 @@ namespace {
     const CalibrationMetric* calibrationMetric(const std::string& id) {
         static const std::map<std::string, CalibrationMetric> METRICS = {
             {"legibility_contrast", {"delta_l", true, "delta_l"}},
-            {"counter_survival", {"survival", true, "survival"}},
+            {"counter_survival", {"delta_e", true, "delta_e"}},
             {"metal_range", {"l_range", true, "l_range_min"}},
             {"not_clipped", {"min_margin_px", true, "margin_px"}},
             {"clipped_highlights", {"clipped_pct", false, "clipped_pct_max"}},
@@ -399,7 +399,13 @@ namespace {
         for (LibraryKind kind : LIBRARY_KINDS) {
             for (const LibraryItemInfo& item : TitleLibrary::get().items(kind)) {
                 if (item.scope != LibraryScope::BuiltIn) continue;
-                if (!only.empty() && !globMatch(only, item.ref)) continue;
+                bool wanted = only.empty();
+                for (size_t from = 0; !wanted && from < only.size();) {     // a comma-separated list of globs
+                    const size_t comma = only.find(',', from);
+                    wanted = globMatch(only.substr(from, comma == std::string::npos ? std::string::npos : comma - from), item.ref);
+                    from = comma == std::string::npos ? only.size() : comma + 1;
+                }
+                if (!wanted) continue;
                 for (const ThumbnailSample& s : thumbnailSamples(item)) work.push_back({&item, s});
             }
         }
@@ -562,6 +568,7 @@ bool titlelibrary::buildTemplateFromRecipe(const Json& r, TitleTemplate& t, std:
                   {"description", r.value("description", Json::object())}, {"family", r.value("family", std::string("custom"))},
                   {"tags", r.value("tags", Json::array())}, {"synonyms", r.value("synonyms", Json::object())}, {"placeholders", placeholders},
                   {"canvas_note", r.value("canvas_note", std::string())}, {"provenance", r.value("provenance", Json{{"source", "jasperengine"}})}};
+    for (const char* key : {"background", "check_allow", "lint_allow"}) if (r.contains(key)) t.meta[key] = r[key];
     return true;
 }
 
@@ -807,7 +814,7 @@ int titlelibrary::runReviewSheetCommand(const std::vector<std::string>& args, co
 }
 
 int titlelibrary::runCalibrateCommand(const std::vector<std::string>& args, const char* executable) {
-    const Args a = parseArgs(args, {"--out", "--red", "--scratch", "--samples"}, {});
+    const Args a = parseArgs(args, {"--out", "--red", "--scratch", "--samples", "--only", "--checks"}, {});
     if (!a.error.empty()) {
         std::cerr << "title-library calibrate: " << a.error << "\n";
         return USAGE;
@@ -826,7 +833,7 @@ int titlelibrary::runCalibrateCommand(const std::vector<std::string>& args, cons
     std::vector<std::pair<const LibraryItemInfo*, ThumbnailSample>> work;
     // --samples latin: one render per item (HERO, or a template's English sample), for a machine without a GPU
     const std::string samples = a.values.count("--samples") ? a.values.at("--samples") : std::string("all");
-    for (const auto& w : thumbnailWork({})) {
+    for (const auto& w : thumbnailWork(a.values.count("--only") ? a.values.at("--only") : std::string())) {
         if (!w.first->available) continue;
         if (samples == "latin" && w.second.key != "latin" && w.second.key != "en") continue;
         work.push_back(w);
@@ -846,8 +853,26 @@ int titlelibrary::runCalibrateCommand(const std::vector<std::string>& args, cons
     }
     std::sort(redDocs.begin(), redDocs.end());
     // the gate's render size (§6.14.2)
-    for (const Planned& p : plan) s.calls.push_back(callLine("check_title", Json{{"path", "assets/" + p.doc}, {"backgrounds", Json::array({"black", "white", "checker"})}, {"render_scale", 0.25}}));
+    for (const Planned& p : plan) {
+        const Json raw = TitleLibrary::get().itemJson(*p.item);
+        const Json& identity = p.item->kind == LibraryKind::Template && raw.contains("template") ? raw["template"] : raw;
+        // legibility is judged on the backgrounds the look is made for (an empty `background` is any)
+        const std::string background = identity.value("background", std::string());
+        const Json backgrounds = background == "dark" ? Json::array({"black", "checker"}) : background == "light" ? Json::array({"white", "checker"}) : Json::array({"black", "white", "checker"});
+        Json arguments = Json{{"path", "assets/" + p.doc}, {"backgrounds", backgrounds}, {"render_scale", 0.25}};
+        if (a.values.count("--checks")) {      // only these checks (ids, comma separated): a tuning run's
+            Json ids = Json::array();
+            std::istringstream list(a.values.at("--checks"));
+            for (std::string id; std::getline(list, id, ',');) ids.push_back(id);
+            arguments["checks"] = ids;
+        }
+        s.calls.push_back(callLine("check_title", arguments));
+    }
     for (const std::string& d : redDocs) s.calls.push_back(callLine("check_title", Json{{"path", "assets/" + d}, {"backgrounds", Json::array({"black", "white", "checker"})}, {"render_scale", 0.25}}));
+    // which render each call is, for a person triaging the raw results beside it
+    Json planFile = Json::array();
+    for (const Planned& p : plan) planFile.push_back(Json{{"path", "assets/" + p.doc}, {"ref", p.item->ref}, {"kind", libraryKindName(p.item->kind)}, {"sample", p.sample.key}});
+    writeBytes(s.dir / "plan.json", planFile.dump() + "\n");
     std::vector<Json> results;
     if (!runBatch(executable, s, results, error)) {
         std::cerr << "title-library calibrate: " << error << "\n";

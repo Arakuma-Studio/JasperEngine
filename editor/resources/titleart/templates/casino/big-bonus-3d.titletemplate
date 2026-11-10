@@ -1160,7 +1160,7 @@
                 },
                 "material": {
                   "preset": "black_gloss",
-                  "color": "#050505",
+                  "color": "#262626",
                   "gradient": null,
                   "gradient_kind": "linear",
                   "gradient_angle": 90,
@@ -1570,7 +1570,7 @@
                 },
                 "material": {
                   "preset": "black_gloss",
-                  "color": "#0a0000",
+                  "color": "#484242",
                   "gradient": null,
                   "gradient_kind": "linear",
                   "gradient_angle": 90,

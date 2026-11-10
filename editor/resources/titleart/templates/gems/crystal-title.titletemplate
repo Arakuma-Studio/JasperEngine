@@ -1310,7 +1310,7 @@
             },
             "material": {
               "preset": "silver",
-              "color": "#d8dde6",
+              "color": "#f4faff",
               "gradient": {
                 "stops": [
                   {
@@ -1321,37 +1321,37 @@
                   },
                   {
                     "pos": 0.22,
-                    "color": "#e3e7ee",
+                    "color": "#fbffff",
                     "alpha": 1,
                     "mid": 0.5
                   },
                   {
                     "pos": 0.45,
-                    "color": "#a3abb8",
+                    "color": "#bec6d4",
                     "alpha": 1,
                     "mid": 0.5
                   },
                   {
                     "pos": 0.52,
-                    "color": "#555c68",
+                    "color": "#6d7581",
                     "alpha": 1,
                     "mid": 0.5
                   },
                   {
                     "pos": 0.6,
-                    "color": "#9aa2af",
+                    "color": "#b5bdca",
                     "alpha": 1,
                     "mid": 0.5
                   },
                   {
                     "pos": 0.8,
-                    "color": "#dfe4eb",
+                    "color": "#faffff",
                     "alpha": 1,
                     "mid": 0.5
                   },
                   {
                     "pos": 1,
-                    "color": "#f7f9fc",
+                    "color": "#fdffff",
                     "alpha": 1,
                     "mid": 0.5
                   }
@@ -1450,7 +1450,7 @@
             },
             "material": {
               "preset": "black_gloss",
-              "color": "#050505",
+              "color": "#4a4a4a",
               "gradient": null,
               "gradient_kind": "linear",
               "gradient_angle": 90,
