@@ -194,11 +194,11 @@ TEST_F(PachislopPortTest, DeniedTermInMappedNameFails) {
     Json dump = readJson(fixturePath());
     dump["looks"][0]["preset"]["style"]["face"].erase("sparkleDust");
     PortOptions tainted = *options;
-    tainted.map["names"]["looks"]["casino/outline-white"]["en"] = "Hokuto Outline White";
+    tainted.map["names"]["looks"]["casino/outline-white"]["en"] = "Hokuto Outline White";  // denied-term fixture
     const PortResult r = portDump(dump, tainted);
     EXPECT_FALSE(r.ok);
     EXPECT_TRUE(anyContains(r.errors, "name.en")) << joined(r.errors);
-    EXPECT_TRUE(anyContains(r.errors, "hokuto")) << joined(r.errors);
+    EXPECT_TRUE(anyContains(r.errors, "hokuto")) << joined(r.errors);  // denied-term fixture
 }
 
 TEST_F(PachislopPortTest, ReviewRecords) {

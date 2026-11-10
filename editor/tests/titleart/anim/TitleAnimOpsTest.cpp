@@ -294,7 +294,7 @@ TEST(TitleAnimPresetsTest, SaveAsPresetRoundTrip){
 
 TEST(TitleAnimPresetsTest, NoDeniedTermsInBuiltinIds){
     for (const TitleAnimPreset& p : TitleAnimPresets::all()){
-        for (const char* term : {"hokuto", "pachinko", "sammy", "sega", "konami", "nintendo", "disney"}){
+        for (const char* term : {"hokuto", "pachinko", "sammy", "sega", "konami", "nintendo", "disney"}){  // denied-term fixture
             EXPECT_EQ(p.id.find(term), std::string::npos) << p.id;
             std::string name = p.name;
             std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c){ return (char)std::tolower(c); });
