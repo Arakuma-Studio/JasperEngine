@@ -3364,6 +3364,19 @@ _PARAM_TYPE_OVERRIDES = {
 # are the Anime*Params classes of engine/core/script/binding/stubs/anime.lua
 _ANIME_TARGETS = 'AnimeTargets'
 OVERRIDES.update({
+    ('anime', 'splitText'): {
+        'doc': ['Splits the first matching element into animatable words, grapheme characters and layout lines.',
+                'Words default on. Split options accept {wrap = "clip"} for masked reveals; revert restores the original markup.'],
+        'overloads': [([('target', _ANIME_TARGETS), ('params?', 'AnimeSplitTextParams')], 'AnimeTextSplitter')]},
+    ('AnimeTextSplitter', 'split'): {
+        'doc': ['Rebuilds from the original markup. Retrieve chars, words and lines again afterwards.'],
+        'overloads': [([], 'AnimeTextSplitter')]},
+    ('AnimeTextSplitter', 'refresh'): {
+        'doc': ['Rebuilds after layout or style edits. Width and font layout changes also refresh automatically.'],
+        'overloads': [([], 'AnimeTextSplitter')]},
+    ('AnimeTextSplitter', 'revert'): {
+        'doc': ['Restores the original markup and disconnects automatic layout refresh.'],
+        'overloads': [([], 'AnimeTextSplitter')]},
     ('anime', 'animate'): {
         'doc': ['Animates `targets` (a CSS selector, a UIElement, a plain table, or a list of them) as',
                 '`params` says: properties to animate plus duration, delay, ease, loop, callbacks ... (Anime.js v4).'],

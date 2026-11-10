@@ -22,6 +22,7 @@
 
 #include "Log.h"
 #include "htmlui/anim/AnimLua.h"
+#include "htmlui/anim/AnimText.h"
 #include "htmlui/anim/Anime.h"
 #include "htmlui/anim/AnimCommon.h"
 #include "object/ui/UIDocument.h"
@@ -496,6 +497,18 @@ namespace {
     int luaAnimate(lua_State* L){
         if (!animateImpl(L))
             return lua_error(L);
+        return 1;
+    }
+
+    void splitTextImpl(lua_State* L){
+        AnimTargetList targets;
+        toTargets(L, 1, UIElement(), targets);
+        const AnimParam params = lua_type(L, 2) == LUA_TTABLE ? toParam(L, 2, "") : AnimParam::object();
+        if (!luabridge::push(L, Anime::splitText(targets, params))) lua_pushnil(L);
+    }
+
+    int luaSplitText(lua_State* L){
+        splitTextImpl(L);
         return 1;
     }
 
@@ -1214,6 +1227,18 @@ void LuaBinding::registerHtmlUIAnimeClasses(lua_State *L){
     }
 
     luabridge::getGlobalNamespace(L)
+        .beginClass<AnimText>("AnimeTextSplitter")
+        .addProperty("chars", &AnimText::getChars)
+        .addProperty("words", &AnimText::getWords)
+        .addProperty("lines", &AnimText::getLines)
+        .addProperty("target", &AnimText::getTarget)
+        .addProperty("ready", &AnimText::isReady)
+        .addFunction("split", &AnimText::split)
+        .addFunction("refresh", &AnimText::refresh)
+        .addFunction("revert", &AnimText::revert)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
         .beginClass<AnimEaseFunction>("AnimeEase")
         .addProperty("name", &AnimEaseFunction::getName)
         .addFunction("evaluate", &AnimEaseFunction::evaluate)
@@ -1325,6 +1350,7 @@ void LuaBinding::registerHtmlUIAnimeClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<Anime>("anime")
         .addStaticFunction("animate", &luaAnimate)
+        .addStaticFunction("splitText", &luaSplitText)
         .addStaticFunction("createTimeline", &luaCreateTimeline)
         .addStaticFunction("createTimer", &luaCreateTimer)
         .addStaticFunction("createSpring", &luaCreateSpring)

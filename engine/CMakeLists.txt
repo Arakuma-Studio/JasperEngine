@@ -1542,6 +1542,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/anim/AnimProperty.cpp
     core/htmlui/anim/AnimSpring.cpp
     core/htmlui/anim/AnimTargets.cpp
+    core/htmlui/anim/AnimText.cpp
     core/htmlui/anim/AnimTimeline.cpp
     core/htmlui/anim/AnimTimer.cpp
     core/htmlui/anim/AnimUtils.cpp

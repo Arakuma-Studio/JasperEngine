@@ -80,6 +80,21 @@ class LuaApiJson(unittest.TestCase):
     def test_nothing_unresolved(self):
         self.assertEqual(api()['unresolved'], [])
 
+    def test_anime_split_text_shapes(self):
+        classes = {c['name']: c for c in api()['classes']}
+        anime = classes['anime']
+        split = next((m for m in anime['methods'] if m['name'] == 'splitText'), None)
+        self.assertIsNotNone(split)
+        self.assertEqual(split['overloads'][0]['returns'], ['AnimeTextSplitter'])
+        self.assertEqual(split['overloads'][0]['params'][1]['type'], 'AnimeSplitTextParams')
+        splitter = classes['AnimeTextSplitter']
+        properties = {p['name']: p['type'] for p in splitter['properties']}
+        for name in ('chars', 'words', 'lines'):
+            self.assertEqual(properties[name], 'UIElement[]')
+        for name in ('split', 'refresh', 'revert'):
+            method = next(m for m in splitter['methods'] if m['name'] == name)
+            self.assertEqual(method['overloads'][0]['returns'], ['AnimeTextSplitter'])
+
     def test_round_trip_through_a_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, 'lua-api.json')

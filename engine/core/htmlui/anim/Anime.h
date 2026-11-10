@@ -31,6 +31,8 @@
 
 namespace jasperengine {
 
+    class AnimText;
+
     class JASPERENGINE_API Anime {
     public:
         static std::shared_ptr<AnimAnimation> animate(const AnimTargetList& targets, const AnimParam& params);
@@ -38,6 +40,7 @@ namespace jasperengine {
         static std::shared_ptr<AnimTimer> createTimer(const AnimParam& params = AnimParam::object());
         static std::shared_ptr<AnimSpring> createSpring(const AnimSpringParams& params = AnimSpringParams());
         static AnimParam stagger(const AnimParam& value, const AnimParam& params = AnimParam::object());
+        static std::shared_ptr<AnimText> splitText(const AnimTargetList& targets, const AnimParam& params = AnimParam::object());
     };
 
 }

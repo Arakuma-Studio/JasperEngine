@@ -4,6 +4,7 @@
 #include "htmlui/HtmlTextEffects.h"
 #include "HtmlUIContext.h"
 #include "audio/AudioMarkers.h"
+#include "anim/AnimText.h"
 
 #include "HtmlUI.h"
 #include "RmlRenderer.h"
@@ -345,6 +346,7 @@ void HtmlUIContext::update(){
         // S17: tooltips, drags, runtime diagnostics
         htmlui::WidgetsRuntime::update(context);
         context->Update();
+        if (AnimText::updateLayouts(context)) context->Update();
     }
     markUpdated();
 }
