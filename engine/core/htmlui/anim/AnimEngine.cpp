@@ -103,6 +103,7 @@ void AnimEngine::alignClockSources(double uiTimeSeconds, double gameTimeSeconds)
     uiNow = nextUi;
     lastGameSource = gameTimeSeconds * AnimConst::K;
     ticked = true;
+    flushValues();
 }
 
 double AnimEngine::now(AnimClock clock) const{
