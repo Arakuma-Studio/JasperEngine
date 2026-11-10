@@ -471,7 +471,7 @@
             "material": {
               "fill": {
                 "kind": "solid",
-                "color": "#123a5a",
+                "color": "#16205a",
                 "gradient": {
                   "stops": [
                     {
@@ -683,7 +683,7 @@
             "material": {
               "fill": {
                 "kind": "solid",
-                "color": "#2ad8ff",
+                "color": "#2a9cff",
                 "gradient": {
                   "stops": [
                     {

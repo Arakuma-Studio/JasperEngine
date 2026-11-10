@@ -1140,8 +1140,8 @@
     {
       "id": "giraffe",
       "kind": "color_scheme",
-      "verdict": "close",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges",
+      "verdict": "tuned",
+      "note": "counter_survival: the copper accent (the rim in the counter) darkened, as in look casino/outline-giraffe, so the counter stays visible against the gold face",
       "reviewer": "s84-agent",
       "date": "2026-11-09"
     },

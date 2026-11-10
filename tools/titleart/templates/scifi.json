@@ -328,6 +328,14 @@
           "layer": "Title",
           "look": "scifi/contour-light-guide",
           "apply_font": true
+        },
+        {
+          "op": "set",
+          "layer": "Title",
+          "values": {
+            "style.rims[0].material.fill.color": "#16205a",
+            "style.rims[1].material.fill.color": "#2a9cff"
+          }
         }
       ]
     }
