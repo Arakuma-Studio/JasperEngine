@@ -175,8 +175,10 @@ namespace jasperengine {
             int previousRegistryRef = 0;
             int previousPackageRef = 0;
             int previousPackageLoadedRef = 0;
+            int previousPreviewContextKey = 0;
         };
         static bool isPreviewContext(); // main thread, while a ScopedModuleCache is active
+        static int getPreviewContextKey(); // its module-cache registry reference; negative outside previews
 
 #ifdef JASPERENGINE_PHYSICS_3D
         // Calls `function(self, hit)` on each enabled Lua script of the entity that defines it

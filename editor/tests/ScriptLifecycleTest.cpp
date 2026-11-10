@@ -176,19 +176,24 @@ TEST_F(ScriptLifecycleTest, PrivatePreviewModulesPersistOnlyWithinTheirOwnScratc
     const int first = LuaBinding::createPreviewModuleCache();
     const int second = LuaBinding::createPreviewModuleCache();
     EXPECT_FALSE(LuaBinding::isPreviewContext());
+    EXPECT_LT(LuaBinding::getPreviewContextKey(), 0);
     {
         LuaBinding::ScopedModuleCache cache(first);
         EXPECT_TRUE(LuaBinding::isPreviewContext());
+        EXPECT_EQ(LuaBinding::getPreviewContextKey(), first);
         EXPECT_EQ(lua("return package.loaded == debug.getregistry()._LOADED and require('math') == math"), "true");
         EXPECT_EQ(lua("local m = require('PreviewModuleCounter'); m.n = m.n + 1; return m.n"), "1");
         {
             LuaBinding::ScopedModuleCache nested(second);
+            EXPECT_EQ(LuaBinding::getPreviewContextKey(), second);
             EXPECT_EQ(lua("local m = require('PreviewModuleCounter'); m.n = m.n + 1; return m.n"), "1");
         }
         EXPECT_TRUE(LuaBinding::isPreviewContext());
+        EXPECT_EQ(LuaBinding::getPreviewContextKey(), first);
         EXPECT_EQ(lua("return require('PreviewModuleCounter').n"), "1");
     }
     EXPECT_FALSE(LuaBinding::isPreviewContext());
+    EXPECT_LT(LuaBinding::getPreviewContextKey(), 0);
     EXPECT_EQ(lua("return require('PreviewModuleCounter').n"), "41");
     {
         LuaBinding::ScopedModuleCache cache(first);

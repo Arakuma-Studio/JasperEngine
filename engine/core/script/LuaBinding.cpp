@@ -144,6 +144,7 @@ uint64_t LuaBinding::luastateGeneration = 0;
 // modules the engine itself loads, anything after this is project code
 static std::set<std::string> baselineLuaModules;
 static unsigned int luaPreviewDepth = 0;
+static int luaPreviewContextKey = LUA_NOREF;
 
 // require() reads this registry table, package.loaded is only an alias to it
 static void collectLoadedModuleNames(lua_State* L, std::set<std::string>& out){
@@ -412,12 +413,15 @@ LuaBinding::ScopedModuleCache::ScopedModuleCache(int moduleCacheRef){
     lua_pop(L, 1);
     state = L;
     stateGeneration = LuaBinding::getLuaStateGeneration();
+    previousPreviewContextKey = luaPreviewContextKey;
+    luaPreviewContextKey = moduleCacheRef;
     ++luaPreviewDepth;
 }
 
 LuaBinding::ScopedModuleCache::~ScopedModuleCache(){
     if (!state) return;
     --luaPreviewDepth;
+    luaPreviewContextKey = previousPreviewContextKey;
     if (state != LuaBinding::getLuaState() || stateGeneration != LuaBinding::getLuaStateGeneration()) return;
     checkLuaThread();
     auto pushRef = [&](int ref){
@@ -444,6 +448,10 @@ LuaBinding::ScopedModuleCache::~ScopedModuleCache(){
 
 bool LuaBinding::isPreviewContext(){
     return luaPreviewDepth != 0;
+}
+
+int LuaBinding::getPreviewContextKey(){
+    return luaPreviewContextKey;
 }
 
 lua_State* LuaBinding::mainThread(lua_State* L){
