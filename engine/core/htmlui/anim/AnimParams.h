@@ -39,6 +39,7 @@ namespace jasperengine {
         int total = 0;
         const AnimTargetList* targets = nullptr;
         AnimTimeline* timeline = nullptr;    // stagger positions of Timeline::add
+        AnimRawValue previousValue;         // previous keyframe endpoint, for SVG morphTo
     };
 
     class JASPERENGINE_API AnimParam {

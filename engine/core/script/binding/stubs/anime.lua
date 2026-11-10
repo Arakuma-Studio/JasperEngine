@@ -170,3 +170,16 @@
 ---@class anime
 ---@field eases AnimeEases
 ---@field utils AnimeUtils
+---@field svg AnimeSvg
+
+---Properties returned by anime.createMotionPath, usable directly in anime.animate.
+---@class AnimeMotionPath
+---@field translateX AnimeStagger
+---@field translateY AnimeStagger
+---@field rotate AnimeStagger
+
+---Anime.js SVG module; the same functions are also available directly on anime.
+---@class AnimeSvg
+---@field createDrawable fun(targets: AnimeTargets, start?: number, finish?: number): UIElement[]
+---@field morphTo fun(target: AnimeTargets, precision?: number): AnimeStagger
+---@field createMotionPath fun(path: AnimeTargets, offset?: number): AnimeMotionPath|nil

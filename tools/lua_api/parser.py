@@ -3394,6 +3394,15 @@ OVERRIDES.update({
     ('anime', 'spring'): {
         'doc': ['Same as anime.createSpring.'],
         'overloads': [([('params?', 'AnimeSpringParams')], 'AnimeSpring')]},
+    ('anime', 'createDrawable'): {
+        'doc': ['SVG geometry targets with an animatable normalized `draw` range ("0 1", "0.5 1").'],
+        'overloads': [([('targets', _ANIME_TARGETS), ('start?', 'number'), ('end?', 'number')], 'UIElement[]')]},
+    ('anime', 'morphTo'): {
+        'doc': ['A function value morphing a path, polygon or polyline to `target`; precision defaults to .33.'],
+        'overloads': [([('target', _ANIME_TARGETS), ('precision?', 'number')], 'AnimeStagger')]},
+    ('anime', 'createMotionPath'): {
+        'doc': ['Function values for translateX, translateY and rotate along SVG geometry.'],
+        'overloads': [([('path', _ANIME_TARGETS), ('offset?', 'number')], 'AnimeMotionPath|nil')]},
     ('anime', 'stagger'): {
         'doc': ['A function value spreading `value` (or the range {from, to}) over the targets: for',
                 'delays, property values or timeline positions.'],
@@ -3416,7 +3425,7 @@ OVERRIDES.update({
         'overloads': [([('t', 'number')], 'number'), ([('...', 'number')], 'AnimeEase')]},
     ('AnimeStagger', '__call'): {
         'doc': ['The staggered value of the target at `index` (0-based, as Anime) of `total`.'],
-        'overloads': [([('target', 'any'), ('index', 'integer'), ('total?', 'integer')], 'number|string')]},
+        'overloads': [([('target', 'any'), ('index', 'integer'), ('total?', 'integer')], 'number|string|table')]},
     ('AnimeTimer', 'andThen'): {
         'doc': ['Calls `fn(self)` once completed (at once when already completed): Anime\'s then(),',
                 'renamed because `then` is a Lua keyword.'],

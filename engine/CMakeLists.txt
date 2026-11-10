@@ -1548,6 +1548,8 @@ set(JASPERENGINE_SRCS
     core/htmlui/anim/AnimTimeline.cpp
     core/htmlui/anim/AnimTimer.cpp
     core/htmlui/anim/AnimUtils.cpp
+    core/htmlui/anim/AnimSvg.cpp
+    core/htmlui/anim/AnimSvgPath.cpp
     core/htmlui/anim/AnimValue.cpp
     core/htmlui/anim/Anime.cpp
     core/htmlui/UIWorldRaycast.cpp

@@ -26,6 +26,12 @@ MANUAL_SYMBOLS = [
     ('anime', 'createSpring', 'StaticMethod',
      'anime.createSpring({bounce, duration} or {mass, stiffness, damping, velocity}) -> AnimeSpring; use as params.ease'),
     ('anime', 'spring', 'StaticMethod', 'anime.spring(params) -> AnimeSpring (same as anime.createSpring)'),
+    ('anime', 'createDrawable', 'StaticMethod',
+     'anime.createDrawable(targets, start=0, end=0) -> UIElement[]; animate draw="0 1" to reveal SVG strokes'),
+    ('anime', 'morphTo', 'StaticMethod',
+     'anime.morphTo(target, precision=.33) -> AnimeStagger; use as d or points property value'),
+    ('anime', 'createMotionPath', 'StaticMethod',
+     'anime.createMotionPath(path, offset=0) -> {translateX, translateY, rotate}; function values for animation properties'),
     ('anime', 'stagger', 'StaticMethod',
      'anime.stagger(value or {from, to}, {start, from = "first"|"center"|"last"|index, ease, grid, axis}) -> '
      'a per-target value for delay or a property'),
@@ -36,6 +42,7 @@ MANUAL_SYMBOLS = [
     ('anime', 'utils', 'Property',
      'anime.utils: set(targets, props), get(target, property), remove(targets), random, clamp, round, snap, wrap, '
      'mapRange, lerp, damp, roundPad, padStart, padEnd, shuffle, stagger'),
+    ('anime', 'svg', 'Property', 'anime.svg: createDrawable, morphTo, createMotionPath (also available directly on anime)'),
     ('anime', 'eases', 'Property', 'anime.eases.<name>: linear, in/out/inOut/outIn + Quad Cubic Quart Quint Sine Expo Circ Bounce Back Elastic'),
     ('AnimeTimeline', 'add', 'Method', 'AnimeTimeline:add(targets, params, position) -> AnimeTimeline; or add(timerParams, position)'),
     ('AnimeTimeline', 'set', 'Method', 'AnimeTimeline:set(targets, props, position) -> AnimeTimeline'),

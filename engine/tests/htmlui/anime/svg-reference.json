@@ -1,0 +1,134 @@
+{
+  "version": "4.5.0",
+  "draws": [
+    {
+      "draw": "0 0",
+      "dash": "0 1010",
+      "offset": 0
+    },
+    {
+      "draw": "0 .25",
+      "dash": "250 760",
+      "offset": 0
+    },
+    {
+      "draw": "0 .5",
+      "dash": "500 510",
+      "offset": 0
+    },
+    {
+      "draw": "0 1",
+      "dash": "1000 0",
+      "offset": 0
+    },
+    {
+      "draw": ".5 1",
+      "dash": "500 510",
+      "offset": -500
+    },
+    {
+      "draw": ".5 .5",
+      "dash": "0 1010",
+      "offset": -500
+    },
+    {
+      "draw": "1 0",
+      "dash": "-1000 2000",
+      "offset": -1000
+    }
+  ],
+  "morph": [
+    "M0 0 L33.333 0 L66.667 0 L100 0 ",
+    "M0 0 L0 66.66666666666666 L33.333 100 L100 100 "
+  ],
+  "times": [
+    0,
+    0.25,
+    0.5,
+    0.75,
+    1
+  ],
+  "motion": {
+    "0": [
+      {
+        "translateX": 0,
+        "translateY": 0,
+        "rotate": 90
+      },
+      {
+        "translateX": 0,
+        "translateY": 100,
+        "rotate": 90
+      },
+      {
+        "translateX": 0,
+        "translateY": 200,
+        "rotate": 45
+      },
+      {
+        "translateX": 100,
+        "translateY": 200,
+        "rotate": 0
+      },
+      {
+        "translateX": 200,
+        "translateY": 200,
+        "rotate": 0
+      }
+    ],
+    "0.25": [
+      {
+        "translateX": 0,
+        "translateY": 100,
+        "rotate": 90
+      },
+      {
+        "translateX": 0,
+        "translateY": 200,
+        "rotate": 45
+      },
+      {
+        "translateX": 100,
+        "translateY": 200,
+        "rotate": 0
+      },
+      {
+        "translateX": 0,
+        "translateY": 0,
+        "rotate": -135
+      },
+      {
+        "translateX": 0,
+        "translateY": 100,
+        "rotate": 90
+      }
+    ],
+    "-0.25": [
+      {
+        "translateX": 100,
+        "translateY": 200,
+        "rotate": 0
+      },
+      {
+        "translateX": 0,
+        "translateY": 0,
+        "rotate": -135
+      },
+      {
+        "translateX": 0,
+        "translateY": 100,
+        "rotate": 90
+      },
+      {
+        "translateX": 0,
+        "translateY": 200,
+        "rotate": 45
+      },
+      {
+        "translateX": 100,
+        "translateY": 200,
+        "rotate": 0
+      }
+    ]
+  }
+}

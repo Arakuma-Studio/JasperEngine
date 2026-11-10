@@ -588,6 +588,47 @@ namespace {
         return 1;
     }
 
+    int luaCreateDrawable(lua_State* L){
+        AnimTargetList targets;
+        toTargets(L, 1, UIElement(), targets);
+        const double start = lua_isnumber(L, 2) ? (double)lua_tonumber(L, 2) : 0;
+        const double end = lua_isnumber(L, 3) ? (double)lua_tonumber(L, 3) : 0;
+        const AnimTargetList drawable = Anime::createDrawable(targets, start, end);
+        lua_createtable(L, (int)drawable.size(), 0);
+        for (size_t i = 0; i < drawable.size(); ++i){
+            pushTarget(L, drawable[i]);
+            lua_rawseti(L, -2, (lua_Integer)i + 1);
+        }
+        return 1;
+    }
+
+    int luaMorphTo(lua_State* L){
+        AnimTargetList targets;
+        toTargets(L, 1, UIElement(), targets);
+        const double precision = lua_isnumber(L, 2) ? (double)lua_tonumber(L, 2) : 0.33;
+        const AnimParam value = Anime::morphTo(targets, precision);
+        if (!value.isFunction() || !luabridge::push(L, AnimStaggerFunction(value.asFunction())))
+            lua_pushnil(L);
+        return 1;
+    }
+
+    int luaCreateMotionPath(lua_State* L){
+        AnimTargetList targets;
+        toTargets(L, 1, UIElement(), targets);
+        const double offset = lua_isnumber(L, 2) ? (double)lua_tonumber(L, 2) : 0;
+        const AnimParam path = Anime::createMotionPath(targets, offset);
+        if (!path.isObject()){
+            lua_pushnil(L);
+            return 1;
+        }
+        lua_createtable(L, 0, 3);
+        for (const auto& member : path.getMembers()){
+            if (luabridge::push(L, AnimStaggerFunction(member.second.asFunction())))
+                lua_setfield(L, -2, member.first.c_str());
+        }
+        return 1;
+    }
+
     void pushEase(lua_State* L, const AnimEaseFunction& ease){
         if (!luabridge::push(L, ease))
             lua_pushnil(L);
@@ -663,6 +704,28 @@ namespace {
         return 1;
     }
 
+    void pushFunctionValue(lua_State* L, const AnimParam& value, int depth = 0){
+        if (depth > 16){ lua_pushnil(L); return; }
+        if (value.isNumber()) lua_pushnumber(L, value.asNumber());
+        else if (value.isString()) lua_pushlstring(L, value.asString().data(), value.asString().size());
+        else if (value.isBool()) lua_pushboolean(L, value.asBool());
+        else if (value.isArray()){
+            lua_createtable(L, (int)value.size(), 0);
+            for (size_t i = 0; i < value.size(); ++i){
+                pushFunctionValue(L, value.at(i), depth + 1);
+                lua_rawseti(L, -2, (lua_Integer)i + 1);
+            }
+        } else if (value.isObject()){
+            lua_createtable(L, 0, (int)value.size());
+            for (const auto& member : value.getMembers()){
+                pushFunctionValue(L, member.second, depth + 1);
+                lua_setfield(L, -2, member.first.c_str());
+            }
+        } else if (value.isEase()){
+            pushEase(L, AnimEaseFunction(value.asEase()));
+        } else lua_pushnil(L);
+    }
+
     // stagger(target, index, total): the value for a target (index 0-based, as Anime)
     void staggerCallImpl(lua_State* L){
         AnimStaggerFunction* stagger = userdataOf<AnimStaggerFunction>(L, 1);
@@ -682,14 +745,8 @@ namespace {
         args.index = (int)numberArg(L, 3, 0);
         args.total = total;
         args.targets = &all;
-        AnimParam result = stagger->getFunction()(args);
-        if (result.isNumber()){
-            lua_pushnumber(L, result.asNumber());
-        } else if (result.isString()){
-            lua_pushstring(L, result.asString().c_str());
-        } else {
-            lua_pushnil(L);
-        }
+        const AnimParam result = stagger->getFunction()(args);
+        pushFunctionValue(L, result);
     }
 
     int luaStaggerCall(lua_State* L){
@@ -1355,6 +1412,9 @@ void LuaBinding::registerHtmlUIAnimeClasses(lua_State *L){
         .addStaticFunction("createTimer", &luaCreateTimer)
         .addStaticFunction("createSpring", &luaCreateSpring)
         .addStaticFunction("spring", &luaCreateSpring)
+        .addStaticFunction("createDrawable", &luaCreateDrawable)
+        .addStaticFunction("morphTo", &luaMorphTo)
+        .addStaticFunction("createMotionPath", &luaCreateMotionPath)
         .addStaticFunction("stagger", &luaStagger)
         .addStaticFunction("cubicBezier", &luaCubicBezier)
         .addStaticFunction("steps", &luaSteps)
@@ -1365,6 +1425,15 @@ void LuaBinding::registerHtmlUIAnimeClasses(lua_State *L){
     // anime.eases and anime.utils: plain tables on the class table
     lua_getglobal(L, "anime");
     if (lua_istable(L, -1)){
+        lua_pushstring(L, "svg");
+        lua_createtable(L, 0, 3);
+        lua_pushcfunction(L, luaCreateDrawable);
+        lua_setfield(L, -2, "createDrawable");
+        lua_pushcfunction(L, luaMorphTo);
+        lua_setfield(L, -2, "morphTo");
+        lua_pushcfunction(L, luaCreateMotionPath);
+        lua_setfield(L, -2, "createMotionPath");
+        lua_rawset(L, -3);
         lua_pushstring(L, "eases");
         pushEasesTable(L);
         lua_rawset(L, -3);

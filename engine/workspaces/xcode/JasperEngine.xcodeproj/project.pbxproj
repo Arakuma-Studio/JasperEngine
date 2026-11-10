@@ -4913,6 +4913,12 @@
 		4A534E47EE9EA54C3185A372 /* AnimText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47528C50B8603EC720 /* AnimText.cpp */; };
 		4A534E4734D5BD6FF2D32F58 /* AnimText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47528C50B8603EC720 /* AnimText.cpp */; };
 		4A534E47A92F799C23F48FBD /* AnimText.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476C15278D6615B6CB /* AnimText.h */; };
+		4A534E4717D598AC10F249DE /* AnimSvg.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F9B236ED8B40BC80 /* AnimSvg.cpp */; };
+		4A534E47F53AC28DC55C1011 /* AnimSvg.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F9B236ED8B40BC80 /* AnimSvg.cpp */; };
+		4A534E475C90B7A4D26BECDC /* AnimSvgPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47595883CFC4CDDE43 /* AnimSvgPath.cpp */; };
+		4A534E479D0FB90893D573BB /* AnimSvgPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47595883CFC4CDDE43 /* AnimSvgPath.cpp */; };
+		4A534E4703756F290D4A4345 /* AnimSvg.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476F4078D26169F423 /* AnimSvg.h */; };
+		4A534E47249655C2E9EFCFAD /* AnimSvgPath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47ABD65217C8875602 /* AnimSvgPath.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9508,6 +9514,10 @@
 		56494445228B5722DBAE97B5 /* woff2_out.cc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = woff2_out.cc; sourceTree = "<group>"; };
 		4A534E47528C50B8603EC720 /* AnimText.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimText.cpp; sourceTree = "<group>"; };
 		4A534E476C15278D6615B6CB /* AnimText.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimText.h; sourceTree = "<group>"; };
+		4A534E47F9B236ED8B40BC80 /* AnimSvg.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimSvg.cpp; sourceTree = "<group>"; };
+		4A534E47595883CFC4CDDE43 /* AnimSvgPath.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimSvgPath.cpp; sourceTree = "<group>"; };
+		4A534E476F4078D26169F423 /* AnimSvg.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimSvg.h; sourceTree = "<group>"; };
+		4A534E47ABD65217C8875602 /* AnimSvgPath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimSvgPath.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -14027,6 +14037,10 @@
 				414E494D4500000000000041 /* Anime.cpp */,
 				4A534E47528C50B8603EC720 /* AnimText.cpp */,
 				4A534E476C15278D6615B6CB /* AnimText.h */,
+				4A534E47F9B236ED8B40BC80 /* AnimSvg.cpp */,
+				4A534E47595883CFC4CDDE43 /* AnimSvgPath.cpp */,
+				4A534E476F4078D26169F423 /* AnimSvg.h */,
+				4A534E47ABD65217C8875602 /* AnimSvgPath.h */,
 			);
 			path = anim;
 			sourceTree = "<group>";
@@ -16899,6 +16913,8 @@
 				4A534E47776C5558B9022F46 /* PixelFxPlayer.h in Headers */,
 				4A534E473B5B6414382696D5 /* ScreenTransition.h in Headers */,
 				4A534E47A92F799C23F48FBD /* AnimText.h in Headers */,
+				4A534E4703756F290D4A4345 /* AnimSvg.h in Headers */,
+				4A534E47249655C2E9EFCFAD /* AnimSvgPath.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19658,6 +19674,8 @@
 				4A534E478243FC9D5F3E0ECE /* TransitionClassesLua.cpp in Sources */,
 				4A534E4757083662175146BF /* PixelFxClassesLua.cpp in Sources */,
 				4A534E47EE9EA54C3185A372 /* AnimText.cpp in Sources */,
+				4A534E4717D598AC10F249DE /* AnimSvg.cpp in Sources */,
+				4A534E475C90B7A4D26BECDC /* AnimSvgPath.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20604,6 +20622,8 @@
 				4A534E47B8B81C0916259880 /* TransitionClassesLua.cpp in Sources */,
 				4A534E47882EFCB3A800CD7C /* PixelFxClassesLua.cpp in Sources */,
 				4A534E4734D5BD6FF2D32F58 /* AnimText.cpp in Sources */,
+				4A534E47F53AC28DC55C1011 /* AnimSvg.cpp in Sources */,
+				4A534E479D0FB90893D573BB /* AnimSvgPath.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

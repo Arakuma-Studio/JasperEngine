@@ -273,6 +273,18 @@ class Emitters(unittest.TestCase):
         self.assertIn('frameCount', {p['name'] for p in sheet['properties']})
         self.assertTrue(any(m['name'] == 'load' and m['static'] for m in sheet['methods']), 'SpriteSheet.load is static')
 
+    def test_svg_api_signatures(self):
+        classes = {c['name']: c for c in api()['classes']}
+        methods = {m['name']: m for m in classes['anime']['methods']}
+        expected = {'createDrawable': 'UIElement[]', 'morphTo': 'AnimeStagger', 'createMotionPath': 'AnimeMotionPath|nil'}
+        for name, result in expected.items():
+            self.assertIn(name, methods)
+            self.assertTrue(methods[name]['static'])
+            overload = methods[name]['overloads'][0]
+            self.assertEqual(overload['returns'], [result])
+            self.assertEqual(overload['params'][0]['type'], 'AnimeTargets')
+            self.assertTrue(all(parameter['optional'] for parameter in overload['params'][1:]))
+
     def test_pixel_particles(self):
         """S49 R40 (AC12): ps.pixelArt, ps.simulationMode, ps:getAnalyticParticle, and setRamp on a
         module's colour (ParticleSystemGradient, live) and on a MinMaxGradient value"""
