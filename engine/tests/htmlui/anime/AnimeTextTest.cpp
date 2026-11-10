@@ -291,7 +291,8 @@ TEST_F(AnimeTextTest, ResetRestoresGeneratedTreesAndDestroyedDocumentsAreSafe){
     EXPECT_EQ(label.getTextContent(), "hola");
     EXPECT_FALSE(splitter->isReady());
     splitter = split(AnimParam::object({{"chars", true}}));
-    document->unload();
-    updateDocuments(fixture->getScene());
+    fixture.reset();
+    document = nullptr;
+    AnimText::updateLayouts(nullptr);
     EXPECT_NO_THROW(splitter->revert());
 }
