@@ -208,4 +208,20 @@ article's *look* and its pitfalls caught early:
 
 ## Deviations
 
-None yet.
+- **R9 (WP-B), the blur's k:** the gap blur uses k = max(1, S / 128), S the shorter side of the cell's
+  pixels above the cutoff (an opaque tile's k), because the items' thickness k needs the gaps first.
+- **R9 (WP-B), the auto radius:** with gaps on, every stone (a part of the shape between gaps) gets its
+  own auto radius from its own thickness and shorter side, as an island does; one radius from the
+  largest stone left the smaller ones domes without a flat face.
+- **R12 (WP-B):** "no pixel or every pixel" is one condition: a cell whose pixels above the quantile have
+  a median less than 0.02 (Oklab L) above it (flat or evenly lit) gets no gaps and the warning.
+- **R13 (WP-B):** boxy looks at each frame's largest island with a shorter side of 3 px or more (specks
+  and 1-2 px lines are no boxes).
+- **R18 (WP-B), "every fix undoable":** the Sprite Normal Map window keeps no undo history of its
+  settings (every setting change, the earlier Switch to OpenGL fix included, is a live edit that the
+  preset's reset arrows take back); the boxy and gaps_unmatched fixes are setting changes like them.
+- **R19, R21 (WP-B):** the window's Light Steps control is Off or 1..16 and `params.light_steps`
+  defaults to 0; the "Scene" choice and the scene's value as the default come with the integration of
+  WP-A's `SceneSettings::light2DSteps`.
+- **Tests (WP-B):** `jasperengine-spritenormals-tests` links the engine library: the texsynth sources it
+  compiles call the engine's atomic file writes and named threads.
