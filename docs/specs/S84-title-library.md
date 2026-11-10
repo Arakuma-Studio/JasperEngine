@@ -1909,11 +1909,11 @@ rest of S82 lands in 6B.
     at the same size draws Speed Lines as a full-canvas white at alpha 152 (`test_fallback_parity_after_a_render`, red);
     the gate checks before it renders. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
     into the edited document); fixed, and Save As's buttons were below the Library strip's edge; moved beside its title.
-29. **AC21's `apply_look`: the commit invariants' link sync.** Profiled with scoped timers (build box 2): of 5.3 ms on 16
+30. **AC21's `apply_look`: the commit invariants' link sync.** Profiled with scoped timers (build box 2): of 5.3 ms on 16
     rims, 3.1 were the import plan reading and hashing the look's pack files on every apply (fixed on ta/lib-looks,
     007742f38: hashes cached, bytes read only to copy), and S80's link sync copied and dumped the previous document's
     materials on every batch; it now does so only when a link has two members (1.13 -> 0.24 ms of the invariants).
-30. **AC21's baker within 20 min: 1364 s -> 1234 s cold, 1040 s warm** (build box 2: 16 shared cores, the image's 8-CPU
+31. **AC21's baker within 20 min: 1364 s -> 1234 s cold, 1040 s warm** (build box 2: 16 shared cores, the image's 8-CPU
     quota, llvmpipe; load average 1-9 from other worktrees; 830 thumbnails byte-identical to the 1364 s run). Profiled:
     `time` gave 136 CPU-min over 22.7 min (llvmpipe already fills 6 of the 8 CPUs), `perf` 76 % of the samples in
     llvmpipe's shaders and 14 % in LLVM compiling them on the editors' main threads, the engine under 2 %. So more editors

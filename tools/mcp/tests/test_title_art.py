@@ -450,7 +450,7 @@ async def test_render_title(ed: Editor):
 
 
 async def test_render_title_keep_false(ed: Editor):
-    """S84 Deviation 30: options.keep false keeps no copy for compare rev:n (the baker's renders skip
+    """S84 Deviation 31: options.keep false keeps no copy for compare rev:n (the baker's renders skip
     the second, canonical render); the default keeps it; keep is a boolean."""
     await setup(ed)
     path = "assets/titles/keep.titleart"

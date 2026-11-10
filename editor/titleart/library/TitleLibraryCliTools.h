@@ -11,7 +11,7 @@
 // - Mesa caches the shaders llvmpipe compiles under the passwd entry's home unless MESA_SHADER_CACHE_DIR
 //   or XDG_CACHE_HOME say otherwise, so in a container whose HOME is the build's (a build box's image)
 //   every run compiled every shader again: the headless editors get $HOME/.cache/mesa_shader_cache
-//   (Mesa's own default where HOME is the user's home; S84 Deviation 30).
+//   (Mesa's own default where HOME is the user's home; S84 Deviation 31).
 // - Exit codes: 0 ok, 1 findings (stale thumbnails, verify findings, a failed render, over budget),
 //   2 usage or I/O errors.
 // - Thread-safety: the CLI's main thread.
