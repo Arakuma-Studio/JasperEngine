@@ -66,7 +66,8 @@ async def sprite_pixels(ed: Editor, sid, label: str) -> list[tuple[int, int, int
 
 
 async def test_light_steps_setting(ed: Editor):
-    made = await ed.call("create_scene", name="Steps", type="2D")
+    # (the first call waits for the new project's load, its engine API copy minutes long on a busy disk)
+    made = await ed.call("create_scene", name="Steps", type="2D", timeout=900)
     sid = S["scene"] = made["scene"]["id"]
     ed.check_eq(await steps(ed, sid), 0, "off by default")
     await ed.call("set_scene_settings", scene=sid, settings={"light_2d_steps": 6})
