@@ -1861,39 +1861,41 @@ rest of S82 lands in 6B.
 20. **Implementation: `apply_color_scheme` stays idempotent with material links.** When rings a link made
     equal cannot be explained by one count of accents, each keeps the kind of paint that produced it and
     the link sync settles the colours (a look with linked bands on a scheme whose accents are dark).
-21. **Not measured here:** AC21's benches and sizes on lane machine H (the R40 budgets) and AC25's UI test; the
-    baker's and the gate's run times are the build box's llvmpipe. AC20's `TitleLibraryPreviewsTest` is
-    replaced as Deviation 13 says.
+21. **AC21 measured on build box 2 (RelWithDebInfo, 16 shared cores, llvmpipe); not on lane machine H, which was
+    unreachable:** index 23.8 ms (60; built-ins now parse across the cores), `apply_look` on 16 rims 5.0 ms (**over 3**),
+    `apply_color_scheme` 1.5 ms per layer and 12.7 ms for 64 layers (2, 25), `list_title_library` catalogue 24.1 ms and
+    rows 22.7 ms including an MCP round trip of 25.9 ms (30), the baker 1353 s (**over 20 min** on this box), the embedded
+    archive 267 KB (1.5 MiB), thumbnails 12.4 MB (16 MiB). Not measured: tile GPU times on H, the player switch, the export
+    size delta. AC25 runs as `test_title_library_ui.py` (tile click with one undo step, Ctrl+Z, a 3D tile converting,
+    Revert to Look, Save As Look, the three tabs). AC20's `TitleLibraryPreviewsTest` is replaced as Deviation 13 says.
 22. **Spec conflict: Minimal holds one 3D look.** R23 and AC14 ask for two 3D looks per family, §6.8's catalogue
     gives Minimal one (`minimal/matte-3d`) and §6.6 fixes its count at 10. The catalogue stands; `test_content`
     holds Minimal to one. Adding a second needs a catalogue change (and 195 becomes 196, or a 2D look goes).
-23. **Owner's rule: every item passes every check, no exception lists.** The gate refuses `check_allow` and `lint_allow`
-    and enforces every check. **It is not green yet:** over all 830 sample renders of the 301 items, 66 items still have a
-    FAIL: `counter_survival` 45 (12 looks, 15 templates, 18 schemes, which take it from their base look),
-    `fallback_parity` 17, `metal_range` 3, `3d_tier_budget` 5 (triangles, not the stack), `legibility_contrast` 2. What changed the numbers:
-    - `3d_tier_budget`: the solid limit is for the layer's stack (what `fit_to_tier` reduces), the check counted every island.
-      It now compares the stack, and every 3D item was cut to a stack of 3 at most (letter and two bands).
-    - `counter_survival`: a glass face no longer speckles the mask; a translucent fill (glow, shadow) does not close a counter.
-      Most real closures came from the port's default font, Dela Gothic One: 39 items moved to M PLUS 1p Black or Zen Kaku
-      Gothic New Black, and 40 had rims, bands and outlines thinned (to 0.4 at most).
-    - `legibility_contrast` is judged on the background an item declares (`background: dark|light`, 46 looks, 11 templates).
-    - `fallback_parity` uses each document's fallback class and S86 AC9 for 3D, and skips the max for lightning and
-      backlight as S83's own generator test does. 31 items had their light effects lowered (to 0.4 at most).
-    - `not_clipped`: 19 ported canvases grew; generators, groups of them and canvas-filling layers are full-bleed.
-    The tuning was scripted on measured failures, not reviewed look by look: the library's appearance changed and needs a
-    person's review.
-    **Open bug:** after `render_title` on a document, `fallback_parity` on the same document reads mean 80.65 for
-    `sports/goal-banner` (0.31 without that render, and on a fresh path). Keying 2D node-cache entries by the test flags
-    did not change it, so the cause is unknown; `test_fallback_parity_after_a_render` holds the red case.
-24. **Check metrics and options:** `legibility_contrast` reads the bands of the silhouette from the outer ring inwards to
-    5 % of the height (a black outline on black passes on the band inside it); a filled counter whose colour differs from
-    the letter by delta L* >= 12 survives; `check_title` gained `render_scale` (the gate's 0.25, §6.14.2), without which 12
-    heavy 3D templates failed with `out_of_target_memory`; `3d_environment_missing` no longer warns for an HDRI the loader
-    has. Item metadata gained `background` (default any; old files load).
-25. **`metal_range` 30 -> 12 L\*, `legibility_contrast` 30 -> 22:** both from §6.14.3's rule on measurements taken before the
-    last tuning round (metal: red control 1.45, real metals 18 and up; legibility: red 4.7, library 30.3). Neither sits in
-    the middle half on the final numbers (`calibration.json`: L 3.83 and 19.6), because the failing items count until fixed.
-    `style_lint.contrast` stays 12 (`StyleLintTest.MatchesPachislop`).
+23. **Owner's rule: every item passes every check, with no exception lists; the gate refuses `check_allow` and
+    `lint_allow`. It is not green: 9 of 301 items still fail** (830 sample renders):
+    - fallback_parity: `elements/electric-blue`, `elements/storm-counter` (bloom over Lightning clamps on the RGBA8 path),
+      `casino/confirm-giraffe-3d` (the 3D glint's picks);
+    - 3d_tier_budget: `scifi/reactor-core-3d` and `neon/tube-3d` at Medium (the inflate mesher's own floor: 113k and
+      60.0k triangles whatever the look sets), `gems/treasure-banner` at Low;
+    - counter_survival: `casino/premium-black-gloss` and `gems/diamond-3d` (passing needs a grey rim on a black design);
+      `casino/red-hot-rim-glow` passes alone and fails only late in an 860-render batch (render state carried between
+      documents, cause not found).
+    What was fixed, by cause: the tier budget measured islands instead of the stack, and the mesher now builds at most the
+    tier's stack (bands past it are reported per tier as `3d_tier_budget.<tier>.bands_dropped`, a warning); fallback parity
+    uses each document's class and S86 AC9 for 3D, and skips the max for grid-read layouts (Lightning, Backlight, following
+    Glints, as S83's own test does for the first two); counter_survival is visible contrast (below); legibility is judged on
+    the item's declared background (46 looks, 11 templates). About 45 items were tuned as data, each with a targeted change, and reviewed on
+    before-and-after sheets of every family in both samples: no look lost its identity; the colour scheme mono-dark did, and
+    is restored (it fails counter_survival again); two template sample texts were shortened to fit ("NEW IN", "BREAK").
+24. **counter_survival is visible contrast** (owner's decision): a counter survives when it is open or its fill is at least
+    delta E 8 from the letter around it, on the item's background; a rim of the face's colour and a counter flooded by an
+    outline of it are the red controls (6.5 at most). Latin keeps its design; a look's `cjk` member thins rims and bands
+    only on Japanese text where kanji still needs it. Other metric changes: legibility reads the silhouette's bands;
+    `check_title` gained `render_scale` (the gate's 0.25); `3d_environment_missing` no longer warns for an HDRI it has.
+25. **Thresholds from §6.14.3 on the final numbers:** `metal_range` 30 -> 9 L* (red 1.45, library 12.7), `legibility_contrast`
+    30 -> 22 (red 4.7, library 30.3), `counter_survival` 8 delta E (red 6.5; the library still holds 2.7 until the items above
+    pass), `style_lint.contrast` stays 12 for Pachislop parity. The style lint still warns on 13 looks (hairline rims, two
+    contrasts, one hard shadow): warnings, not gate failures, listed for the owner.
 26. **Thumbnails are posterized** (RGB 3 bits, alpha 2 bits, adaptive PNG filters) to fit 830 files in 12.5 MB of
     the 16 MiB budget (R32); the 3D template `casino/big-win-3d` renders at 0.33 of its canvas for this reason
     (0.67 ran out of target memory).
@@ -1901,3 +1903,7 @@ rest of S82 lands in 6B.
     `Monoton` (declared in `OFL.txt` only) and `MedievalSharp` (declared in ID 13) would have shipped subsets under a reserved
     name. Detection now reads IDs 0 and 13 and a small table of the pack's fonts whose names do not declare it;
     `TitleFontSubset.ReservedNamesOfThePackFonts` holds all three plus an ID-0 font.
+28. **Open renderer bugs found by the gate:** after `render_title` on a document, the forced RGBA8 render of the same document
+    at the same size draws Speed Lines as a full-canvas white at alpha 152 (`test_fallback_parity_after_a_render`, red);
+    the gate checks before it renders. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
+    into the edited document); fixed, and Save As's buttons were below the Library strip's edge; moved beside its title.

@@ -299,6 +299,16 @@ TEST_F(TitleLibraryBuiltins, MatchesPachislop) {
         if (it.value().is_string()) ids[it.key()] = it.value().get<std::string>();
         else if (it.value().is_object() && it.value().contains("ref")) ids[it.key()] = it.value()["ref"].get<std::string>();
     }
+    std::set<std::string> tunedLooks;
+    const Json overrides = readJson(repo / "tools/titleart/pachislop-port/overrides.json");
+    if (overrides.contains("looks")) {
+        for (auto it = overrides["looks"].begin(); it != overrides["looks"].end(); ++it) {
+            for (auto m = it.value().begin(); m != it.value().end(); ++m) {
+                if (m.key() != "check_allow" && m.key() != "lint_allow" && m.key() != "background") tunedLooks.insert(it.key());
+            }
+        }
+    }
+    int tunedSkipped = 0;
     int compared = 0;
     std::map<std::string, int> failuresByCase;
     std::vector<std::string> firstFailures;
@@ -311,6 +321,12 @@ TEST_F(TitleLibraryBuiltins, MatchesPachislop) {
         const bool orb = lookId.find("orb") != std::string::npos;
         TitleArtDoc doc = textDoc(is3D ? "BIG" : "確定");
         if (orb) continue;      // orb bodies are covered by OrbTint and the shape-layer port
+        // a look tuned after the port (overrides.json beyond the gate's metadata; its review record says `tuned`)
+        // is ours by design: Pachislop's output no longer describes it
+        if (tunedLooks.count(ids[lookId])) {
+            tunedSkipped++;
+            continue;
+        }
         Json ops = Json::array({Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", ids[lookId]}}, Json{{"op", "apply_color_scheme"}, {"layer", "Title"}, {"color_scheme", colourway}}});
         const TitleOpsResult r = applyOps(doc, ops);
         ASSERT_TRUE(r.ok) << lookId << "/" << colourway << ": " << r.error();
@@ -331,7 +347,7 @@ TEST_F(TitleLibraryBuiltins, MatchesPachislop) {
             if (firstFailures.size() < 40) firstFailures.push_back(lookId + "/" + colourway + ": " + diffs.front());
         }
     }
-    std::cout << "[colourways] " << compared << " cases compared, " << failuresByCase.size() << " differ" << std::endl;
+    std::cout << "[colourways] " << compared << " cases compared, " << failuresByCase.size() << " differ, " << tunedSkipped << " of tuned looks left out" << std::endl;
     std::string list;
     for (const std::string& f : firstFailures) list += "  " + f + "\n";
     EXPECT_TRUE(failuresByCase.empty()) << failuresByCase.size() << " of " << compared << " cases differ:\n" << list;

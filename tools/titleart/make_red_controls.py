@@ -99,7 +99,7 @@ def main():
             entry["also"] = ["style_lint.contrast"]     # the same rim merging with the face is the lint's contrast finding
         index[name] = entry
     # a counter flooded by an effect of the face's colour, the second way to close one
-    flooded = doc(face=solid("#40a0f0"), rims=[rim(2, "#40a0f0")], effects=[{"id": "00000021", "type": "outline", "params": {"width": 16, "color": "#40a0f0", "opacity": 1}}])
+    flooded = doc(face=solid("#40a0f0"), rims=[rim(6, "#40a0f0")], effects=[{"id": "00000021", "type": "outline", "params": {"width": 16, "color": "#40a0f0", "opacity": 1}}])
     (OUT / "counter_survival-bad-flooded.titleart").write_text(json.dumps(flooded, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     index["counter_survival-flooded"] = {"check": "counter_survival", "bad": "counter_survival-bad-flooded.titleart", "good": "counter_survival-good.titleart", "also": ["style_lint.contrast"]}
     (OUT / "index.json").write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")

@@ -28,7 +28,7 @@
         },
         "rims": [
           {
-            "width": 2,
+            "width": 6,
             "material": {
               "fill": {
                 "kind": "solid",
