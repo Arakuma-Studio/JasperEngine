@@ -990,7 +990,7 @@
             "type": "light_streaks",
             "params": {
               "angle": 0,
-              "brightness": 300,
+              "brightness": 260,
               "chroma": 2.7,
               "core_color": "#ffffff",
               "core_width": 20,

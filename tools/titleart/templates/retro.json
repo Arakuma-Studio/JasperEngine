@@ -119,6 +119,13 @@
           "values": {
             "fx:pixelate.alpha_threshold": 0.55
           }
+        },
+        {
+          "op": "set",
+          "layer": "Light Streaks",
+          "values": {
+            "gen.brightness": 260
+          }
         }
       ]
     },
