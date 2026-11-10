@@ -10,11 +10,10 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using graph::Json;
 
 namespace{
 
-    bool number(const Json& object, const char* key, float& out){
+    bool number(const graph::Json& object, const char* key, float& out){
         auto it = object.find(key);
         if (it == object.end() || !it->is_number()) return false;
         out = it->get<float>();
@@ -22,14 +21,14 @@ namespace{
     }
 
     // a whole number at `key`, `fallback` when it is missing or of another type (a file holds anything)
-    int wholeOr(const Json& object, const char* key, int fallback){
+    int wholeOr(const graph::Json& object, const char* key, int fallback){
         if (!object.is_object()) return fallback;
         auto it = object.find(key);
         return it != object.end() && it->is_number() ? (int)it->get<double>() : fallback;
     }
 
     // a float stored as JSON without float noise ("0.3" stays 0.3, not 0.30000001192...)
-    Json rounded(float value){
+    graph::Json rounded(float value){
         return std::round((double)value * 1e6) / 1e6;
     }
 
@@ -41,7 +40,7 @@ void graphvalues::dragRange(const std::optional<double>& min, const std::optiona
     hi = max.value_or(far);
 }
 
-bool graphvalues::colorFrom(const Json& value, Vector4& out){
+bool graphvalues::colorFrom(const graph::Json& value, Vector4& out){
     if (value.is_object()){
         float r, g, b, a = 1.0f;
         if (!number(value, "r", r) || !number(value, "g", g) || !number(value, "b", b)) return false;
@@ -61,13 +60,13 @@ bool graphvalues::colorFrom(const Json& value, Vector4& out){
     return false;
 }
 
-Json graphvalues::colorJson(const Vector4& color, const Json& like){
+graph::Json graphvalues::colorJson(const Vector4& color, const graph::Json& like){
     if (like.is_array()){
-        Json out = Json::array({rounded(color.x), rounded(color.y), rounded(color.z)});
+        graph::Json out = graph::Json::array({rounded(color.x), rounded(color.y), rounded(color.z)});
         if (like.size() != 3) out.push_back(rounded(color.w));
         return out;
     }
-    Json out = like.is_object() ? like : Json::object();
+    graph::Json out = like.is_object() ? like : graph::Json::object();
     out["r"] = rounded(color.x);
     out["g"] = rounded(color.y);
     out["b"] = rounded(color.z);
@@ -75,10 +74,10 @@ Json graphvalues::colorJson(const Vector4& color, const Json& like){
     return out;
 }
 
-bool graphvalues::gradientFrom(const Json& value, Gradient& out){
+bool graphvalues::gradientFrom(const graph::Json& value, Gradient& out){
     if (!value.is_object() || !value.contains("points") || !value["points"].is_array() || value["points"].empty()) return false;
     Gradient gradient;
-    for (const Json& point : value["points"]){
+    for (const graph::Json& point : value["points"]){
         if (!point.is_object()) return false;
         float pos, r, g, b, a = 1.0f;
         if (!number(point, "pos", pos) || !number(point, "r", r) || !number(point, "g", g) || !number(point, "b", b)) return false;
@@ -92,7 +91,7 @@ bool graphvalues::gradientFrom(const Json& value, Gradient& out){
     return true;
 }
 
-bool graphvalues::gradientJson(const Gradient& gradient, const Json& like, Json& out, std::string& error){
+bool graphvalues::gradientJson(const Gradient& gradient, const graph::Json& like, graph::Json& out, std::string& error){
     std::vector<float> times;
     for (const GradientColorKey& key : gradient.colorKeys) times.push_back(key.time);
     for (const GradientAlphaKey& key : gradient.alphaKeys) times.push_back(key.time);
@@ -104,8 +103,8 @@ bool graphvalues::gradientJson(const Gradient& gradient, const Json& like, Json&
         error = "a gradient holds at most " + std::to_string(RAMP_KEYS_MAX) + " keys (colour and alpha keys at different places count apart)";
         return false;
     }
-    out = like.is_object() ? like : Json::object();
-    Json points = Json::array();
+    out = like.is_object() ? like : graph::Json::object();
+    graph::Json points = graph::Json::array();
     for (float t : times){
         const Vector3 color = gradient.evaluateEncoded(t);
         points.push_back({{"pos", rounded(t)}, {"r", rounded(color.x)}, {"g", rounded(color.y)}, {"b", rounded(color.z)},
@@ -119,10 +118,10 @@ bool graphvalues::gradientJson(const Gradient& gradient, const Json& like, Json&
     return true;
 }
 
-bool graphvalues::curveFrom(const Json& value, Curve& out){
+bool graphvalues::curveFrom(const graph::Json& value, Curve& out){
     if (!value.is_object() || !value.contains("points") || !value["points"].is_array() || value["points"].empty()) return false;
     Curve curve;
-    for (const Json& point : value["points"]){
+    for (const graph::Json& point : value["points"]){
         if (!point.is_object()) return false;
         CurveKey key;
         float ls = 0.0f, rs = 0.0f;
@@ -138,14 +137,14 @@ bool graphvalues::curveFrom(const Json& value, Curve& out){
     return true;
 }
 
-bool graphvalues::curveJson(const Curve& curve, const Json& like, Json& out, std::string& error){
+bool graphvalues::curveJson(const Curve& curve, const graph::Json& like, graph::Json& out, std::string& error){
     const size_t had = like.is_object() && like.contains("points") && like["points"].is_array() ? like["points"].size() : 0;
     if (curve.keys.size() > std::max(RAMP_KEYS_MAX, had)){
         error = "a curve holds at most " + std::to_string(RAMP_KEYS_MAX) + " keys";
         return false;
     }
-    out = like.is_object() ? like : Json::object();
-    Json points = Json::array();
+    out = like.is_object() ? like : graph::Json::object();
+    graph::Json points = graph::Json::array();
     for (const CurveKey& key : curve.keys){
         // an infinite tangent (a step) has no slope a file can hold: flat
         const float ls = std::isfinite(key.inTangent) ? key.inTangent : 0.0f;
