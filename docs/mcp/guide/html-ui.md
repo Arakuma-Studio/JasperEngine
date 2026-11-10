@@ -1207,8 +1207,10 @@ Each split option accepts a boolean or `{ wrap = "clip", class = "my-class" }`. 
 `hidden` wrapper uses `overflow: hidden`, so translated glyphs emerge from inside their line.
 `splitter:revert()` restores the original markup and accessibility attributes.
 `splitter:refresh()` rebuilds from that original content after layout or style changes; a
-width, font-size or line-height change also refreshes automatically. Refresh replaces the
-wrappers: retrieve the arrays again and restart animations targeting them. To adopt newly
+width, font-size or line-height change also refreshes automatically. With `lines = false`,
+automatic layout refresh preserves character/word elements and their animations. Regrouping
+lines or calling `refresh()` explicitly replaces wrappers: retrieve the arrays again and
+restart animations targeting them. To adopt newly
 authored text, revert first, edit the text, then call `anime.splitText` again.
 
 ### Drawing and following SVG shapes
