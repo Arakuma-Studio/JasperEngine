@@ -116,3 +116,18 @@ TEST(AnimeClock, PreviewCollectsPausedRootsAndZeroDurationWithoutChildren){
     for (const auto& timer : captured) EXPECT_EQ(timer->getParent(), nullptr);
     engine.reset();
 }
+
+TEST(AnimeClock, ManualPreviewSeekFlushesAdditiveValuesWithoutClockTicks){
+    AnimEngine& engine = AnimEngine::instance();
+    engine.reset();
+    engine.tick(1, 1);
+    auto target = std::make_shared<AnimObjectTarget>(std::initializer_list<std::pair<const std::string, AnimRawValue>>{{"v", AnimRawValue(0.0)}});
+    auto animation = Anime::animate({target}, AnimParam::object({{"v", 100}, {"duration", 1000}, {"ease", "linear"},
+                                                               {"composition", "blend"}, {"autoplay", false}}));
+    animation->seek(500);
+    engine.flushValues();
+    EXPECT_NEAR(target->getNumber("v"), 50, 1e-9);
+    EXPECT_DOUBLE_EQ(engine.now(AnimClock::UI), 1000);
+    EXPECT_DOUBLE_EQ(engine.now(AnimClock::GAME), 0);
+    engine.reset();
+}

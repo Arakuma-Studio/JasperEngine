@@ -169,9 +169,13 @@ void AnimEngine::update(){
         keepNext.reset();
         keep.reset();
     }
+    flushValues();
+    updating = false;
+}
+
+void AnimEngine::flushValues(){
     AnimComposer::updateAdditive();
     AnimProperty::flush();
-    updating = false;
 }
 
 size_t AnimEngine::getActiveCount() const{

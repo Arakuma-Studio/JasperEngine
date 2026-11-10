@@ -56,6 +56,8 @@ namespace jasperengine {
         // A recorder's first frame starts after asynchronous scene loading. Align the input
         // clocks without treating that load as animation time; existing progress is preserved.
         void alignClockSources(double uiTimeSeconds, double gameTimeSeconds);
+        // Manual preview seeks also need additive composition and deferred element writes.
+        void flushValues();
 
         // cancels and drops every timer, the additive state and the element targets' state,
         // and calls the reset listeners (the Lua binding frees its registry refs there)
