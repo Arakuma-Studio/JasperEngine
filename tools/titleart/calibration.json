@@ -44,14 +44,14 @@
         "color_schemes": {
           "n": 99,
           "min": 8.8,
-          "p5": 9.4,
+          "p5": 10.4,
           "median": 39.1,
           "p95": 100,
           "max": 100
         },
         "looks": {
           "n": 585,
-          "min": 6.3,
+          "min": 8.5,
           "p5": 12.1,
           "median": 100,
           "p95": 100,
@@ -59,26 +59,26 @@
         },
         "templates": {
           "n": 142,
-          "min": 2.7,
-          "p5": 9.3,
-          "median": 41.7,
+          "min": 7.3,
+          "p5": 10.5,
+          "median": 45.8,
           "p95": 100,
           "max": 100
         }
       },
       "threshold": {
-        "delta_e": 8,
+        "delta_e": 4,
         "survival": 0.8
       },
       "metric": "delta_e",
       "higher_is_better": true,
-      "L": 2.7,
+      "L": 7.3,
       "L_item": "casino/premium-black-gloss",
-      "R": 6.5,
-      "T": 8,
-      "separates": false,
-      "middle_half": false,
-      "suggested_T": 4.6
+      "R": 0,
+      "T": 4,
+      "separates": true,
+      "middle_half": true,
+      "suggested_T": 3.65
     },
     "fallback_parity": {
       "library": {
@@ -157,7 +157,7 @@
         "color_schemes": {
           "n": 99,
           "min": 38.4,
-          "p5": 41.6,
+          "p5": 41.4,
           "median": 54.2,
           "p95": 64.6,
           "max": 69.3
@@ -166,15 +166,15 @@
           "n": 585,
           "min": 30.4,
           "p5": 37,
-          "median": 56.8,
+          "median": 56.7,
           "p95": 93.2,
           "max": 100
         },
         "templates": {
           "n": 146,
           "min": 30.3,
-          "p5": 32.5,
-          "median": 52.7,
+          "p5": 32.6,
+          "median": 53,
           "p95": 87,
           "max": 100
         }
@@ -198,7 +198,7 @@
           "n": 99,
           "min": 18.62,
           "p5": 20.48,
-          "median": 67.59,
+          "median": 65.14,
           "p95": 90.85,
           "max": 97.62
         },
@@ -214,7 +214,7 @@
           "n": 152,
           "min": 12.74,
           "p5": 21.88,
-          "median": 57.1,
+          "median": 55.91,
           "p95": 90.26,
           "max": 100
         }

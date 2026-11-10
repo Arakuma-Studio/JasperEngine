@@ -402,6 +402,13 @@ uint64_t TitlePlanner::layerHash(const std::string& id, uint64_t LayerHashes::*m
     return it != docHashes.layers.end() ? it->second.*member : 0;
 }
 
+uint64_t TitlePlanner::drawnHash(const DrawNode& node) const {
+    uint64_t h = layerHash(node.layerId, &LayerHashes::node);
+    for (const DrawNode& c : node.children) h = hashCombine(hashCombine(h, fnv1a64("child")), drawnHash(c));
+    for (const DrawNode& c : node.clipped) h = hashCombine(hashCombine(h, fnv1a64("clipped")), drawnHash(c));
+    return h;
+}
+
 TitleFrame TitlePlanner::frameOf(const TitleRectI& rect) const {
     TitleFrame frame = TitleFrame::canvas(document->canvasWidth(), document->canvasHeight(), scale);
     frame.region = rect;
@@ -870,8 +877,9 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk) {
             key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(position), sizeof(position))));
             const int r[4] = {rect.x, rect.y, rect.width, rect.height};
             key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(r), sizeof(r))));
-            // a clip group shows its clipped layers as they are now
-            for (const DrawNode& c : node.clipped) key = hashCombine(key, layerHash(c.layerId, &LayerHashes::node));
+            // a group or clip group shows the children and clipped layers drawn now: the layer's
+            // content hash chains all of its children, an isolated render draws only some
+            key = hashCombine(key, drawnHash(node));
         }
         if (auto hit = livePlanned(node.layerId) ? nullptr : svc.cache.find(key)) {
             const bool moves = leaf2D && !clip;

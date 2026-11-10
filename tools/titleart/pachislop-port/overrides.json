@@ -1014,7 +1014,38 @@
             }
           }
         ]
-      }
+      },
+      "effects": [
+        {
+          "type": "outline",
+          "params": {
+            "width": 1.5
+          }
+        },
+        {
+          "type": "outer_glow",
+          "params": {
+            "color": "#e8f4ff",
+            "intensity": 1.4,
+            "opacity": 0.85,
+            "size": 12,
+            "spread": 0.3
+          }
+        },
+        {
+          "type": "light_glow",
+          "params": {
+            "exposure": 0.5,
+            "falloff": 35,
+            "intensity": 1.5,
+            "knee": 0.3,
+            "radius": 160,
+            "threshold": 0.5,
+            "tint_amount": 0.7,
+            "tint_outer": "#e8f4ff"
+          }
+        }
+      ]
     },
     "metal/black-chrome-red-line-3d": {
       "style_3d": {
@@ -15512,12 +15543,52 @@
             "name": "text",
             "role": "title",
             "sample": {
-              "en": "NEW IN",
+              "en": "NEW\nARRIVAL",
               "ja": "新台入替"
             },
             "max_chars": 15
           }
         ]
+      }
+    },
+    "casino/premium-black-gloss": {
+      "template": {
+        "placeholders": [
+          {
+            "name": "text",
+            "role": "title",
+            "sample": {
+              "en": "PREMIUM",
+              "ja": "プレミアム"
+            },
+            "max_chars": 11,
+            "chars": {
+              "en": {
+                "4": {
+                  "offset": [
+                    4,
+                    0
+                  ]
+                },
+                "5": {
+                  "offset": [
+                    4,
+                    0
+                  ]
+                },
+                "6": {
+                  "offset": [
+                    4,
+                    0
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "cjk": {
+          "highlight_scale": 0.5
+        }
       }
     }
   },

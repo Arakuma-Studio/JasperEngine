@@ -82,6 +82,13 @@ namespace {
     }
 
     void afterWrite(const std::vector<fs::path>& changed) {
+        // the files a step imports or removes beside the document (a library apply's fonts, their
+        // .meta, environments) are resolved through the asset database by the next render or
+        // check: it learns them now, not on the file watcher's later walk (which raced that read)
+        Registry& reg = registry();
+        bool assets = false;
+        for (const fs::path& path : changed) assets = assets || !Util::isTitleArtFile(FileUtils::pathToUtf8(path));
+        if (assets && reg.project) reg.project->refreshAssetDatabase(true);
         TitleArtDocument::filesChanged(changed);
         if (registry().filesWrittenHook) registry().filesWrittenHook(changed);
         TitleArtDocument::notifyChanged(changed);

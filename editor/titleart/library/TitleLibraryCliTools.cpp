@@ -568,7 +568,7 @@ bool titlelibrary::buildTemplateFromRecipe(const Json& r, TitleTemplate& t, std:
                   {"description", r.value("description", Json::object())}, {"family", r.value("family", std::string("custom"))},
                   {"tags", r.value("tags", Json::array())}, {"synonyms", r.value("synonyms", Json::object())}, {"placeholders", placeholders},
                   {"canvas_note", r.value("canvas_note", std::string())}, {"provenance", r.value("provenance", Json{{"source", "jasperengine"}})}};
-    for (const char* key : {"background", "check_allow", "lint_allow"}) if (r.contains(key)) t.meta[key] = r[key];
+    for (const char* key : {"background", "cjk", "check_allow", "lint_allow"}) if (r.contains(key)) t.meta[key] = r[key];
     return true;
 }
 

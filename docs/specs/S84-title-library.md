@@ -695,7 +695,9 @@ Placeholders are the document's exposed `text` parameters (S80 `exposed`), named
 title: S80 exposes the first text layer as `text`), `subtitle`, `kicker`, `counter`, `label`, `line_2`
 in that order of preference. The stored document holds the `ja` sample for Japanese-origin
 templates and the `en` sample otherwise; `apply_template` sets the language's sample (or the
-carried text) through the exposed targets. Backdrops are guide layers (never in outputs) unless they
+carried text) through the exposed targets. An optional `cjk` member after `placeholders`
+(`rim_scale`, `band_scale`, `highlight_scale`; a look's `cjk` takes the same three) applies to the
+template's layers that then hold Japanese text (Deviation 29). Backdrops are guide layers (never in outputs) unless they
 are part of the art, as in Pachislop.
 
 ### 6.4 The keep-and-replace contract
@@ -1907,3 +1909,45 @@ rest of S82 lands in 6B.
     at the same size draws Speed Lines as a full-canvas white at alpha 152 (`test_fallback_parity_after_a_render`, red);
     the gate checks before it renders. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
     into the edited document); fixed, and Save As's buttons were below the Library strip's edge; moved beside its title.
+29. **Follow-up of 23 (ta/lib-looks):**
+    - The "render state carried between documents" was the renderer's node cache: a group drawn for an isolated layer was
+      keyed by the group's content hash, which chains every child, so an isolated render after the full one got the whole
+      group back (and a full render after an isolated one got the one layer). `casino/red-hot-rim-glow` ja's isolated echo
+      layer held the main layer drawn over its counters. Group and clip nodes now key by what they draw
+      (`TitlePlanner::drawnHash`; red control `TitleArtRendererGpu.IsolationKeysTheGroupNode`). It passes in every order.
+    - `mono-dark`: the face takes a dark ramp (#000 -> #111 -> #2e2e2e): the black face's bevel no longer lights the letter
+      edges as bright as the white line in the counters; base and rims stay black, so the look is unchanged.
+    - `gems/diamond-3d`: the outline effect 2.5 -> 1.5 (the schema default); at 2.5 it closed the gaps the digits' bands
+      enclose on `1234`. `gems/crystal-title`, built from it, follows.
+    - `casino/premium-black-gloss`: en and ja pulled opposite ways (en's P and R counters darker than the bevel-lit
+      letter, ja's handakuten counter, 6 x 6 px at the gate's 0.25 render and filled by the pinstripes at any rim width,
+      lighter). English: at tracking -40 Zen Old Mincho's M and I serifs touched and enclosed a gap the rims filled; the
+      sample's I, U and M sit 4 % further right (a lighter face edge, bevel highlight 1.0, made that gap worse). Japanese:
+      templates now carry the per-script `cjk` member (§6.3, the look's: `rim_scale`, `band_scale`, and new
+      `highlight_scale` on the face bevel's highlight), applied to the layers that hold Japanese text;
+      `highlight_scale: 0.5`. Both samples measure 7.3.
+    - Sample texts: `casino/new-machine-flyer` is NEW ARRIVAL again, on two lines (NEW / ARRIVAL fit the template
+      unchanged). `metal/liquid-gold-vertical-kicker` keeps BREAK: LIMIT BREAK in one vertical column is taller than the
+      2880 canvas, and in two columns the Latin reads across as BL / RI / EM / AI / KT.
+    - The style lint warns on 17 looks and the scheme `royal` (and on five templates through the looks they apply), all
+      by design and left: hairline rims are the look of `minimal/outline-thin`, `minimal/frosted-glass`,
+      `retro/vector-green`, `metal/liquid-chrome`, `neon/hollow-neon`, `neon/neon-tube`, `wa/dry-brush-ink` (0.2-2.8 %);
+      `gems/blue-glass`, `gems/red-glass`, `casino/rainbow-glass-gold`, `metal/gradient-map-gold` sit at 4.6-4.9 % of
+      a 5 % threshold (Pachislop's widths); the contrasts are gold-on-gold strokes separated by their bevels
+      (`metal/double-stroke-gold`, `casino/rainbow-glass-gold`) and 3D bands the lighting separates
+      (`casino/gold-on-red-stack-3d`, `casino/rainbow-glass-gold-3d`, `elements/ice-crystal-glass-3d`,
+      `metal/holographic-silver-3d`); `retro/16bit-gradient`'s hard shadow is the pixel-art style.
+    - A font "sometimes missing" in a full gate run (`cartoon/sticker-white`: missing font LilitaOne) was the asset
+      database learning a library apply's imported files only on the file watcher's later walk, which raced the check
+      that followed the apply. A title step that writes files besides `.titleart` documents now refreshes the database
+      before it returns (red control `TitleArtDocumentTest.FilesAStepImportsAreInTheAssetDatabaseWhenItReturns`).
+    - `TitleLibraryBuiltins.Budgets` failed its apply_look budget (9-17 ms against 9) depending on what ran before it
+      in the process: every apply_look read and SHA-256ed the look's 2.5 MB pack font up to three times, even with the
+      font already in the project, so the op cost the font's size and its timing followed the process's memory state
+      (measured 14.8 ms fresh, 4.1 ms after a project load in the same process; the low-level cause is inferred). Pack
+      hashes are cached by path, size and time and the bytes are read only to copy them: 1.4 ms in either order.
+    - counter_survival's threshold, recomputed by §6.14.3 on the 830 gate renders and the 30 red controls: R = 0 (the
+      same-colour rim and the flooded counter both measure delta E 0 on their failing counters; the 6.5 the file held
+      was the flooded fixture before its rim followed the lint), L = 7.3 (`casino/premium-black-gloss`, then 8.1
+      `gems/crystal-title`). The middle half is 1.8-5.5: 8 was outside it, on the library's side. T = 4 (mid-gap 3.65,
+      rounded); the red controls fail by 4. Deviation 24's "delta E 8" reads 4 from here.

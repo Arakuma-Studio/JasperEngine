@@ -792,9 +792,9 @@ namespace {
     }
 
     // calibrated (S84 §6.14.3): a counter survives when it is visibly distinct from the letter. The
-    // red controls (a rim of the face's colour, a counter flooded by an outline of it) measure at
-    // most 6.5; the library's counters that read as open start above 8
-    constexpr double COUNTER_MIN_DELTA_E = 8.0;
+    // red controls (a rim of the face's colour, a counter flooded by an outline of it) measure 0,
+    // the library's worst counter 8.1: the threshold sits mid-gap (S84 Deviation 29)
+    constexpr double COUNTER_MIN_DELTA_E = 4.0;
     constexpr double COUNTER_OPEN_DELTA_E = 100.0;      // a transparent counter: the background shows
 
     // how visible a counter is: delta E between the mean colour of the rendered counter and of the
