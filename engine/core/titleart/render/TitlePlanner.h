@@ -124,6 +124,8 @@ namespace jasperengine::titleart {
         const TitleRectI& region() const { return outRegion; }   // output px
         const TitleArtHashes& hashes() const { return docHashes; }
         uint64_t layerHash(const std::string& id, uint64_t LayerHashes::*member) const;
+        // a drawn node's layers as the draw tree holds them (an isolated layer's group draws only it)
+        uint64_t drawnHash(const DrawNode& node) const;
         TitleFrame frameOf(const TitleRectI& rect) const;
         TitlePlacement placementOf(const Json& layer) const;
 

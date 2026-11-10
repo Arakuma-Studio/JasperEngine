@@ -361,6 +361,14 @@ uint64_t TitlePlanner::layerHash(const std::string& id, uint64_t LayerHashes::*m
     return it != docHashes.layers.end() ? it->second.*member : 0;
 }
 
+uint64_t TitlePlanner::drawnHash(const DrawNode& node) const {
+    uint64_t h = layerHash(node.layerId, &LayerHashes::node);
+    for (const DrawNode& c : node.children) h = hashCombine(h, drawnHash(c));
+    h = hashCombine(h, fnv1a64("clipped"));
+    for (const DrawNode& c : node.clipped) h = hashCombine(h, drawnHash(c));
+    return h;
+}
+
 TitleFrame TitlePlanner::frameOf(const TitleRectI& rect) const {
     TitleFrame frame = TitleFrame::canvas(document->canvasWidth(), document->canvasHeight(), scale);
     frame.region = rect;
@@ -821,8 +829,12 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk, float 
             key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(position), sizeof(position))));
             const int r[4] = {rect.x, rect.y, rect.width, rect.height};
             key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(r), sizeof(r))));
-            // a clip group shows its clipped layers as they are now
-            for (const DrawNode& c : node.clipped) key = hashCombine(key, layerHash(c.layerId, &LayerHashes::node));
+            // a group shows the children the draw tree holds, not every child of the document (the
+            // ancestors of an isolated layer draw it alone), and a clip group its clipped layers as
+            // they are now
+            for (const DrawNode& c : node.children) key = hashCombine(key, drawnHash(c));
+            key = hashCombine(key, fnv1a64("clipped"));
+            for (const DrawNode& c : node.clipped) key = hashCombine(key, drawnHash(c));
         }
         if (auto hit = svc.cache.find(key)) {
             const bool moves = leaf2D && !clip;

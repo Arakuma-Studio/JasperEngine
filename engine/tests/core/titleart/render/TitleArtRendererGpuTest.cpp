@@ -6,7 +6,7 @@
 // a one-shot render, determinism across fresh ids, the cache cascade's pass counts with every
 // cached result equal to a fresh one, regions of interest and peak target memory, device loss,
 // render variants (overrides, kept splits, glyph cells), an idle renderer holding nothing, what
-// may move a cached node and a following generator's layer.
+// may move a cached node, a following generator's layer and an isolated layer's group.
 // The layers' text and geometry come from the tests' analytic provider (TitleRenderTestSupport.h).
 
 #include "TitleRenderTestEffects.h"
@@ -513,4 +513,25 @@ TEST_F(TitleArtRendererGpu, GeneratorGetsItsFollowedLayer) {
     bool cycle = false;
     for (const TitleProblem& p : job->problems()) cycle = cycle || p.code == "follow_cycle";
     EXPECT_TRUE(cycle) << "follow_cycle is reported";
+}
+
+TEST_F(TitleArtRendererGpu, AnIsolatedLayersGroupDrawsOnlyIt) {
+    // R14: a group's node shows the children the draw tree holds. The ancestors of an isolated
+    // layer draw it alone, so the canvas rendered first must not serve the isolated render from
+    // the group's cached node (red: the group's key folded every child of the document, so a
+    // render of the canvas gave casino/red-hot-rim-glow's isolated echo the whole group and
+    // counter_survival failed only after one). The small disc lies inside the box: both of the
+    // group's draws hold the same rect.
+    Json group{{"id", "00000010"}, {"type", "group"}, {"name", "Logo"},
+               {"children", Json::array({shapeLayer("00000001", "rect", 100, solidFace("#2040ff")),
+                                         shapeLayer("00000002", "ellipse", 40, solidFace("#ff2020"))})}};
+    auto doc = makeDoc({{"canvas", canvas(320, 160)}, {"layers", Json::array({group})}});
+    RenderRequest alone = requestOf(doc);
+    alone.isolateLayer = "00000001";
+    auto fresh = makeRenderer();
+    const Pixels expected = render(*fresh, alone);
+    auto renderer = makeRenderer();
+    const Pixels whole = render(*renderer, requestOf(doc));
+    ASSERT_FALSE(identical(whole, expected)) << "the disc shows in the canvas, not in the box alone";
+    EXPECT_TRUE(identical(render(*renderer, alone), expected)) << "the box alone after the canvas differs from the box alone";
 }
