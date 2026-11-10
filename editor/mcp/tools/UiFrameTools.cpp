@@ -13,6 +13,7 @@
 #include "htmlui/HtmlUIClock.h"
 #include "htmlui/HtmlUIDependencies.h"
 #include "htmlui/anim/AnimEngine.h"
+#include "htmlui/anim/AnimLua.h"
 #include "htmlui/anim/AnimTargets.h"
 #include "io/watch/FileWatchService.h"
 #include "mcp/McpCall.h"
@@ -281,24 +282,30 @@ private:
         AnimTargets::ScopedSceneTargets selectors(scratch.get());
         if (scriptsStarted) LuaBinding::cleanupLuaScripts(scratch.get());
         scriptsStarted = false;
-        collectRoots();
-        for (const auto& root : roots) {
-            root.timer->cancel();
-            AnimEngine::instance().detachRoot(*root.timer);
-        }
+        auto discardRoots = [&]() {
+            collectRoots();
+            for (size_t i = 0; i < roots.size(); i++) {
+                const auto timer = roots[i].timer;
+                // A cancel callback may create another root. Drain those roots too, with a
+                // bound on user cleanup callbacks so an endless cancellation chain terminates.
+                if (i < 4096) timer->cancel();
+                else timer->paused = true;
+                AnimEngine::instance().detachRoot(*timer);
+                collectRoots();
+            }
+            if (roots.size() > 4096) Log::error("UI preview cleanup created over 4096 animation roots; reuse a timeline in cancellation callbacks.");
+            roots.clear();
+            ownedRoots.clear();
+        };
+        discardRoots();
         documents.clear();
         scratch.reset();
         // onUnload may have created a timer too; it belongs to this discarded document.
-        collectRoots();
-        for (const auto& root : roots) {
-            root.timer->cancel();
-            AnimEngine::instance().detachRoot(*root.timer);
-        }
-        roots.clear();
+        discardRoots();
+        AnimLua::releasePreviewRefs(moduleCache);
         LuaBinding::releaseLuaRef(moduleCache);
         moduleCache = LUA_NOREF;
         seenModules.clear();
-        ownedRoots.clear();
         warmed = false;
         sampled = false;
         sought = false;
