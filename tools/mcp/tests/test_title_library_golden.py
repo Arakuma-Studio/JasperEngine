@@ -81,7 +81,7 @@ async def case(ed: Editor, name: str, create: dict, ops: list | None, report: li
     report.append((name, s))
     ok = s["max"] <= LIMITS["max"] and s["mean"] <= LIMITS["mean"] and s["fraction_over"] <= LIMITS["fraction_over"]
     if not ok:
-        diff = ed.scratch / f"golden-{name.replace('/', '_')}.png"
+        diff = ed.scratch.root / f"golden-{name.replace('/', '_')}.png"
         diff.write_bytes(first)
     ed.check(ok, f"{name}: {s} beyond {LIMITS}")
 
