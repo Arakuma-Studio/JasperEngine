@@ -41,6 +41,12 @@ namespace jasperengine::htmlui::compat {
         // CSS Shapes interpolation, resolved against this frame's reference box. Different
         // shape kinds, reference boxes, polygon fill rules or vertex counts are discrete.
         bool interpolate(const BasicShape& to, float alpha, float width, float height, Rml::Element* element, BasicShape& result) const;
+        Rml::Units unitDependencies() const;
+
+    private:
+        struct Interpolation;
+        std::shared_ptr<const Interpolation> interpolation;
+        bool resolveInterpolation(float width, float height, Rml::Element* element, BasicShape& result) const;
     };
 
     // html-shape("<basic-shape>"): the shape rasterized (LunaSVG) at the reference box's size x

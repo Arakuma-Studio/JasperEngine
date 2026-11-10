@@ -89,6 +89,8 @@ TEST(CompatBasicShape, InterpolatesPolygonAndResolvesPercentagesAgainstEachRefer
     EXPECT_NE(small.toSvg(100, 50).find("points=\"10,10 100,25 50,50\""), std::string::npos);
     const BasicShape large = mixedShape("polygon(0 0,100% 0,0 100%)", "polygon(20px 20px,100% 100%,100% 100%)", .5f, 200, 100);
     EXPECT_NE(large.toSvg(200, 100).find("points=\"10,10 200,50 100,100\""), std::string::npos);
+    // The layout may change between animation sampling and generation of the decorator data.
+    EXPECT_NE(small.toSvg(200, 100).find("points=\"10,10 200,50 100,100\""), std::string::npos);
 }
 
 TEST(CompatBasicShape, IncompatibleShapesAreDiscrete){

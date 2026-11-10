@@ -298,16 +298,7 @@ namespace {
         }
 
         Rml::Units GetUnitDependencies() const override{
-            ShapeAnimationParts parts;
-            if (!shapeAnimationParts(shape, parts)) return Rml::Unit::UNKNOWN;
-            Rml::Units units = Rml::Unit::UNKNOWN;
-            for (const auto* tokens : {&parts.values, &parts.position, &parts.radii}){
-                for (const auto& token : *tokens){
-                    Length length;
-                    if (parseLength(token, length)) units = units | length.unit;
-                }
-            }
-            return units;
+            return shape.unitDependencies();
         }
 
         BasicShape shape;
@@ -330,6 +321,26 @@ namespace {
 }
 
 // ---------------------------------------------------------------- BasicShape
+
+struct BasicShape::Interpolation {
+    BasicShape from, to;
+    float alpha;
+};
+
+Rml::Units BasicShape::unitDependencies() const{
+    if (interpolation)
+        return interpolation->from.unitDependencies() | interpolation->to.unitDependencies();
+    ShapeAnimationParts parts;
+    if (!shapeAnimationParts(*this, parts)) return Rml::Unit::UNKNOWN;
+    Rml::Units units = Rml::Unit::UNKNOWN;
+    for (const auto* tokens : {&parts.values, &parts.position, &parts.radii}){
+        for (const auto& token : *tokens){
+            Length length;
+            if (parseLength(token, length)) units = units | length.unit;
+        }
+    }
+    return units;
+}
 
 bool BasicShape::parse(const std::string& input, BasicShape& shape, std::string* error){
     shape = BasicShape();
@@ -358,8 +369,11 @@ bool BasicShape::parse(const std::string& input, BasicShape& shape, std::string*
 }
 
 bool BasicShape::interpolate(const BasicShape& to, float alpha, float width, float height, Rml::Element* element, BasicShape& result) const{
+    BasicShape fromResolved, toResolved;
+    if (!resolveInterpolation(width, height, element, fromResolved) || !to.resolveInterpolation(width, height, element, toResolved))
+        return false;
     ShapeAnimationParts a, b;
-    if (box != to.box || !shapeAnimationParts(*this, a) || !shapeAnimationParts(to, b) || a.name != b.name ||
+    if (box != to.box || !shapeAnimationParts(fromResolved, a) || !shapeAnimationParts(toResolved, b) || a.name != b.name ||
         a.fillRule != b.fillRule || a.values.size() != b.values.size())
         return false;
     const Resolver resolver{element, width, height};
@@ -409,10 +423,30 @@ bool BasicShape::interpolate(const BasicShape& to, float alpha, float width, flo
         }
     }
     result.text += ")";
+    // Animation sampling precedes layout. Keep the component endpoints so GenerateElementData
+    // resolves percentages again against the final box, including a size animated in this frame.
+    result.interpolation = std::make_shared<Interpolation>(Interpolation{*this, to, alpha});
+    return true;
+}
+
+bool BasicShape::resolveInterpolation(float width, float height, Rml::Element* element, BasicShape& result) const{
+    if (!interpolation){
+        result = *this;
+        return true;
+    }
+    if (!interpolation->from.interpolate(interpolation->to, interpolation->alpha, width, height, element, result))
+        return false;
+    result.interpolation.reset();
     return true;
 }
 
 std::string BasicShape::toSvg(float width, float height, Rml::Element* element, std::string* error) const{
+    if (interpolation){
+        BasicShape resolved;
+        if (!resolveInterpolation(width, height, element, resolved))
+            return std::string();
+        return resolved.toSvg(width, height, element, error);
+    }
     if (!(width > 0.0f) || !(height > 0.0f)){
         fail(error, "the reference box is empty");
         return std::string();
