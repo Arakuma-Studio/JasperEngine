@@ -37,7 +37,7 @@ namespace {
     double svgLengthInUserUnits(const std::string& text, double reference, double fontSize){
         char* end = nullptr;
         const double value = std::strtod(text.c_str(), &end);
-        if (end == text.c_str() || !std::isfinite(value)) return 0;
+        if (end == text.c_str() || !std::isfinite(value)) return std::nan("");
         while (std::isspace((unsigned char)*end)) ++end;
         std::string unit(end);
         while (!unit.empty() && std::isspace((unsigned char)unit.back())) unit.pop_back();
@@ -49,7 +49,7 @@ namespace {
         if (unit == "mm") return value * 96 / 25.4;
         if (unit == "pt") return value * 96 / 72;
         if (unit == "pc") return value * 16;
-        return value;
+        return unit.empty() || unit == "px" ? value : std::nan("");
     }
 
     double svgGeometryFontSize(Rml::Element* element){
@@ -79,7 +79,10 @@ namespace {
             const auto& local = current->GetLocalStyleProperties();
             auto property = local.find(Rml::PropertyId::FontSize);
             if (property != local.end()) value = property->second.ToString();
-            if (!value.empty()) size = std::max(0.0, svgLengthInUserUnits(value, size, size));
+            if (!value.empty()){
+                const double resolved = svgLengthInUserUnits(value, size, size);
+                size = std::isfinite(resolved) && resolved >= 0 ? resolved : 12;
+            }
         }
         return size;
     }
@@ -111,8 +114,10 @@ namespace {
         const char* vertical[] = {"y", "y1", "y2", "cy", "ry", "height"};
         const auto resolve = [&](const char* name, double reference){
             auto found = attributes.find(name);
-            if (found != attributes.end())
-                found->second = AnimMath::toString(svgLengthInUserUnits(found->second, reference, font));
+            if (found != attributes.end()){
+                const double resolved = svgLengthInUserUnits(found->second, reference, font);
+                found->second = AnimMath::toString(std::isfinite(resolved) ? resolved : 0);
+            }
         };
         for (const char* name : horizontal) resolve(name, width);
         for (const char* name : vertical) resolve(name, height);
