@@ -24,6 +24,7 @@
 #include "titleart/localisation/TitleLanguageNames.h"
 #include "titleart/localisation/TitleLanguageReport.h"
 #include "util/TitleArtLanguage.h"
+#include "window/EditorModal.h"
 
 #include "imgui.h"
 
@@ -146,7 +147,8 @@ namespace {
         Dialogs& d = dialogs();
         if (d.editOpen && !ImGui::IsPopupOpen("Edit Languages###titleEditLanguages")) ImGui::OpenPopup("Edit Languages###titleEditLanguages");
         ImGui::SetNextWindowSize(ImVec2(620.0f, 520.0f), ImGuiCond_Appearing);
-        if (!ImGui::BeginPopupModal("Edit Languages###titleEditLanguages", &d.editOpen)) return;
+        if (!EditorModal::begin("Edit Languages###titleEditLanguages", &d.editOpen)) return;
+        EditorModal::message("The document's languages: its source, the languages it holds, and adding or removing one");
         const ta::TitleArtDoc& doc = state.committed();
         const std::string source = ta::titleSourceLanguage(doc.root);
         const bool editable = state.editable();
@@ -233,7 +235,7 @@ namespace {
             ImGui::EndTable();
         }
         if (!d.removeCode.empty()) ImGui::OpenPopup("Remove Language?###titleRemoveLanguage");
-        if (ImGui::BeginPopupModal("Remove Language?###titleRemoveLanguage", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Remove Language?###titleRemoveLanguage", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
             int lost = 0;
             std::function<void(const ta::Json&)> count = [&](const ta::Json& list) {
                 for (const ta::Json& layer : list) {
@@ -242,15 +244,18 @@ namespace {
                 }
             };
             count(doc.root["layers"]);
-            ImGui::Text("Remove %s and its %d translation(s)? (Undo brings them back.)", titleLanguageLabel(d.removeCode).c_str(), lost);
-            if (ImGui::Button("Remove")) {
+            const std::string question = "Remove " + titleLanguageLabel(d.removeCode) + " and its " + std::to_string(lost) +
+                                         " translation(s)? (Undo brings them back.)";
+            EditorModal::message(question);
+            ImGui::TextUnformatted(question.c_str());
+            if (EditorModal::button("Remove", "yes")) {
                 commit(state, ta::Json{{"op", "remove_language"}, {"code", d.removeCode}}, "Remove Language " + d.removeCode);
                 if (state.language() == d.removeCode) state.setLanguage({});
                 d.removeCode.clear();
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel")) {
+            if (EditorModal::button("Cancel", "cancel")) {
                 d.removeCode.clear();
                 ImGui::CloseCurrentPopup();
             }
@@ -301,7 +306,8 @@ namespace {
         ImGui::EndChild();
         ImGui::EndDisabled();
         if (!lastError().empty()) ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", lastError().c_str());
-        if (ImGui::Button("Close")) {
+        if (!lastError().empty()) EditorModal::error(lastError());
+        if (EditorModal::button("Close", "ok")) {
             d.editOpen = false;
             ImGui::CloseCurrentPopup();
         }

@@ -29,6 +29,7 @@
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
 #include "window/InspectorWindowTitleArt.h"
+#include "window/EditorModal.h"
 #include "window/TitleDesignerWindow.h"
 #include "window/dialog/EditorSettingsWindow.h"
 
@@ -117,10 +118,12 @@ namespace {
         ImportState& s = importState();
         if (s.dialog && !ImGui::IsPopupOpen("Import Title Art###titleImport")) ImGui::OpenPopup("Import Title Art###titleImport");
         ImGui::SetNextWindowSize(ImVec2(560.0f, 0.0f), ImGuiCond_Appearing);
-        if (ImGui::BeginPopupModal("Import Title Art###titleImport", &s.dialog)) {
+        if (EditorModal::begin("Import Title Art###titleImport", &s.dialog)) {
+            EditorModal::message("Import a Pachislop project, a layered PSD or an SVG as a new Title Art");
             ImGui::TextWrapped("A Pachislop project (.pslot.json), a layered Photoshop file (.psd, .psb) or an SVG becomes a new Title Art: "
                                "its fonts and pictures go to <name>_assets beside it.");
             ImGui::SetNextItemWidth(-90.0f);
+            EditorModal::pathField("source", s.source, sizeof(s.source));
             ImGui::InputText("##titleImportSource", s.source, sizeof(s.source));
             ImGui::SameLine();
             if (ImGui::Button("Browse...")) {
@@ -129,13 +132,15 @@ namespace {
             }
             ImGui::TextUnformatted("Destination folder (in the assets)");
             ImGui::SetNextItemWidth(-1.0f);
+            EditorModal::field("folder", s.folder, sizeof(s.folder));
             ImGui::InputText("##titleImportFolder", s.folder, sizeof(s.folder));
+            EditorModal::error(s.error);
             if (!s.error.empty()) ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.4f, 1.0f), "%s", s.error.c_str());
             ImGui::BeginDisabled(!s.source[0] || !project);
-            if (ImGui::Button("Import")) runImport(project);
+            if (EditorModal::button("Import", "ok")) runImport(project);
             ImGui::EndDisabled();
             ImGui::SameLine();
-            if (ImGui::Button("Cancel")) {
+            if (EditorModal::button("Cancel", "cancel")) {
                 s.dialog = false;
                 ImGui::CloseCurrentPopup();
             }
