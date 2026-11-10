@@ -412,7 +412,7 @@
                     "exposure": 0.5,
                     "falloff": 25,
                     "highlight_shift": 60,
-                    "intensity": 2.5,
+                    "intensity": 2.2,
                     "knee": 0.3,
                     "on_face": 0,
                     "radius": 440,

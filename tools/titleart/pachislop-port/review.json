@@ -853,9 +853,9 @@
       "id": "casino/big-bonus-3d",
       "kind": "template",
       "verdict": "tuned",
-      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter",
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter The red metal band (band 4) keeps its original dark mid stops: lifting them made the RGBA8 path differ on 4.2 % of pixels (fallback_parity), and the counters survive without it (counter_survival 9.4 delta E, 3 of 3).",
       "reviewer": "s84-agent",
-      "date": "2026-11-09"
+      "date": "2026-11-10"
     },
     {
       "id": "casino/big-bonus-3d-groups",
@@ -1013,9 +1013,9 @@
       "id": "casino/red-hot-plate-fx",
       "kind": "template",
       "verdict": "tuned",
-      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped).",
-      "reviewer": "s84-agent",
-      "date": "2026-11-09"
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges Canvas grown so the art no longer touches its edge (not_clipped). Also tuned for fallback_parity: light_glow intensity 2.5 -> 2.2 brings the share of differing pixels under 5 % (4.94 %); the bloom over the fire is where the RGBA8 path differs (inferred from the code: the fire above 1.0 is clamped there). Before and after renders compared: no visible change",
+      "reviewer": "s84-fix-parity",
+      "date": "2026-11-10"
     },
     {
       "id": "casino/red-hot-rim-glow",
