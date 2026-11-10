@@ -464,6 +464,34 @@ NumericResult NumericExpression::evaluate(std::string_view textIn, double curren
     return result;
 }
 
+NumericResult NumericExpression::evaluateWith(std::string_view textIn, const std::vector<std::pair<std::string, double>>& variables){
+    const std::string text(textIn);
+    if (trim(text).empty()) return failure("Nothing to evaluate", 1);
+    // the values live here while the expression is compiled and evaluated
+    std::vector<double> values;
+    values.reserve(variables.size());
+    for (const auto& [name, value] : variables) values.push_back(value);
+    std::vector<te_variable> table = {
+        {"min", reinterpret_cast<const void*>(&fnMin), TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
+        {"max", reinterpret_cast<const void*>(&fnMax), TE_FUNCTION2 | TE_FLAG_PURE, nullptr},
+        {"clamp", reinterpret_cast<const void*>(&fnClamp), TE_FUNCTION3 | TE_FLAG_PURE, nullptr},
+        {"round", reinterpret_cast<const void*>(&fnRound), TE_FUNCTION1 | TE_FLAG_PURE, nullptr},
+        {"lerp", reinterpret_cast<const void*>(&fnLerp), TE_FUNCTION3 | TE_FLAG_PURE, nullptr},
+        {"tau", reinterpret_cast<const void*>(&fnTau), TE_FUNCTION0 | TE_FLAG_PURE, nullptr},
+    };
+    for (size_t i = 0; i < variables.size(); i++) table.push_back({variables[i].first.c_str(), &values[i], TE_VARIABLE, nullptr});
+    int errorAt = 0;
+    te_expr* expression = te_compile(text.c_str(), table.data(), static_cast<int>(table.size()), &errorAt);
+    if (!expression) return failure("Syntax error or unknown name", std::max(1, errorAt));
+    const double value = te_eval(expression);
+    te_free(expression);
+    if (!std::isfinite(value)) return failure("The result is not a number", 0);
+    NumericResult result;
+    result.ok = true;
+    result.value = value;
+    return result;
+}
+
 bool NumericExpression::evaluateForObjects(const std::string& text, const std::vector<double>& current, NumericContext context,
                                            std::vector<double>& out){
     out.clear();

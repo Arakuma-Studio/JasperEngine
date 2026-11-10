@@ -1,0 +1,59 @@
+{
+ "code": [],
+ "description": "Adjusts the Brightness and Contrast of its input",
+ "format": 1,
+ "functions": [],
+ "id": "brightness_contrast",
+ "inputs": [
+  {
+   "default": "vec4(0.5 ,0.5, 0.5, 1.0)",
+   "description": "The input image",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Brightness/Contrast",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the image with modified Brightness and Contrast",
+   "expr": "vec4(clamp($in($uv).rgb*$contrast+vec3($brightness)+0.5-$contrast*0.5, vec3(0.0), vec3(1.0)), $in($uv).a)",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The Brightness adjustment",
+   "label": "Brightness",
+   "max": 1,
+   "min": -1,
+   "name": "brightness",
+   "short_description": "Brightness",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The Contrast adjustment",
+   "label": "Contrast",
+   "max": 2,
+   "min": 0,
+   "name": "contrast",
+   "short_description": "Contrast",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Brightness/Contrast",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/brightness_contrast.mmg"
+ },
+ "type_version": 1
+}

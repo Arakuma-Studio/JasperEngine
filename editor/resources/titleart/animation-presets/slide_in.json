@@ -1,0 +1,74 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "slide_in",
+  "name": "Slide In",
+  "group": "in",
+  "role": "intro",
+  "duration": 0.5,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Slides in from one side and fades in.",
+  "params": [
+    {
+      "name": "from",
+      "label": "From",
+      "type": "enum",
+      "default": "left",
+      "options": [
+        "left",
+        "right",
+        "top",
+        "bottom"
+      ]
+    },
+    {
+      "name": "distance",
+      "label": "Distance (%)",
+      "type": "number",
+      "default": 120,
+      "min": 0,
+      "max": 400
+    }
+  ],
+  "tracks": [
+    {
+      "target": "title",
+      "field": "transform.position",
+      "relative": true,
+      "keys": [
+        [
+          0,
+          [
+            "(from_right-from_left)*W*distance/100",
+            "(from_top-from_bottom)*H*distance/100"
+          ],
+          "back_out"
+        ],
+        [
+          "D",
+          [
+            0,
+            0
+          ]
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "opacity",
+      "keys": [
+        [
+          0,
+          0
+        ],
+        [
+          "0.5*D",
+          1
+        ]
+      ]
+    }
+  ],
+  "markers": []
+}

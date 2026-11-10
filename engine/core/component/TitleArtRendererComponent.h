@@ -51,6 +51,9 @@ namespace jasperengine{
         AssetRef title;                  // the .titleart, project-relative (GUID tracked by the editor)
         TitleArtRenderMode renderMode = TitleArtRenderMode::BAKED;
         std::vector<TitleArtOverride> overrides;   // "overrides.<name>" properties
+        // S87 R12: the language this title shows ("" = Auto: TitleArt.setLanguage, the device, the
+        // project default, the document's source); a language the title lacks resolves to its best match
+        std::string language;
 
         // size and placement
         bool pivotFromTitle = true;
@@ -97,12 +100,22 @@ namespace jasperengine{
         uint32_t glintSeed = 0;
         Vector4 glintColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 
+        // S85's animations (docs/specs/S85-title-animation.md §6.5, R27)
+        bool playAutomatically = true;   // play defaultAnimation (else the document's default) when enabled
+        std::string defaultAnimation;    // a name, "" the document's `animation.default`
+        float animationSpeed = 1.0f;     // 0..10, multiplies every animation
+        bool animationUnscaledTime = false;
+        std::string driveAnimation;      // a name: a clip or an Animator sets animationTime, the title shows that time
+        float animationTime = 0.0f;      // the base animation's time (keyable; a write seeks)
+
         // runtime, never saved: the system's handle (state, hashes, the module's instance)
         std::shared_ptr<titleart::TitleArtInstance> runtime;
         // a field the system reads changed (the title, the mode, an override): resolve again
         bool needUpdate = true;
         // a clip track wrote sweepPosition this frame: sweepAuto stays off for it (R34)
         bool sweepPositionKeyed = false;
+        // a clip track or a script wrote animationTime this frame: it seeks (S85 R27)
+        bool animationTimeKeyed = false;
     };
 
 }

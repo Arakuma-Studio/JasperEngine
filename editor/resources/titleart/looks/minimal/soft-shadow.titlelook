@@ -39,6 +39,13 @@
   "applies": "effects",
   "ref_size": 200,
   "background": "dark",
+  "font": {
+    "latin": "inter",
+    "ja": "zen-kaku-gothic-new-black",
+    "variations": {
+      "wght": 800
+    }
+  },
   "effects": [
     {
       "type": "drop_shadow",

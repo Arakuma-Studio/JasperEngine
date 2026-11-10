@@ -10,7 +10,7 @@
 
 // The valid values of a Terrain detail layer (Unity's Details; TerrainComponent::foliageLayers),
 // shared by edit_terrain_details, set_properties on foliageLayers and the scene decoder
-namespace jasperengine::editor::terrain {
+namespace jasperengine::editor::terraindetail {
 
     struct DetailRange {
         const char* key;                        // the tool's snake_case field

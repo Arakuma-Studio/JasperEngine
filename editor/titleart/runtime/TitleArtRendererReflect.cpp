@@ -67,12 +67,15 @@ namespace {
     }
 
     constexpr const char* kLive = "Live Effects";
+    constexpr const char* kAnimation = "Animation";
 
     constexpr FieldDesc kTitleArtFields[] = {
         JE_FIELD(TitleArtRendererComponent, enabled),
         JE_FIELD(TitleArtRendererComponent, title, .ops = &ops::AssetRefIfSet, .asset = AssetKind::TitleArt, .label = "Title Art", .uiOrder = 1),
         JE_FIELD(TitleArtRendererComponent, renderMode, .enumDesc = &kTitleArtRenderMode, .flags = OmitIfDefault, .uiOrder = 2),
         JE_FIELD(TitleArtRendererComponent, overrides, .flags = OmitIfDefault | NullIfEmpty | NotListed | Hidden, .label = "Parameters", .uiOrder = 3),
+        JE_FIELD(TitleArtRendererComponent, language, .flags = OmitIfDefault,
+                 .tooltip = "The language this title shows; empty is Auto (TitleArt.setLanguage, the device, the project default)", .uiOrder = 4),
         JE_FIELD(TitleArtRendererComponent, pivotFromTitle, .flags = OmitIfDefault, .uiOrder = 10),
         JE_FIELD(TitleArtRendererComponent, uiScale, .flags = OmitIfDefault, .min = 0.01f, .max = 100.0f, .step = 0.01f, .label = "UI Scale", .uiOrder = 11),
         JE_FIELD(TitleArtRendererComponent, pixelsPerUnit, .flags = OmitIfDefault, .min = 0.0f, .max = 100000.0f, .step = 1.0f,
@@ -130,6 +133,16 @@ namespace {
                  .label = "Glint Rate", .group = kLive, .uiOrder = 60),
         JE_FIELD(TitleArtRendererComponent, glintSeed, .flags = OmitIfDefault, .label = "Glint Seed", .group = kLive, .uiOrder = 61),
         JE_FIELD(TitleArtRendererComponent, glintColor, .flags = OmitIfDefault | ColorLinear | Hdr, .label = "Glint Color", .group = kLive, .uiOrder = 62),
+        // S85's animations (docs/specs/S85-title-animation.md §6.5, R49)
+        JE_FIELD(TitleArtRendererComponent, playAutomatically, .flags = OmitIfDefault, .label = "Play Automatically", .group = kAnimation, .uiOrder = 70),
+        JE_FIELD(TitleArtRendererComponent, defaultAnimation, .flags = OmitIfDefault, .label = "Default Animation", .group = kAnimation, .uiOrder = 71),
+        JE_FIELD(TitleArtRendererComponent, animationSpeed, .flags = OmitIfDefault | Clamped, .min = 0.0f, .max = 10.0f, .step = 0.01f,
+                 .label = "Animation Speed", .group = kAnimation, .uiOrder = 72),
+        JE_FIELD(TitleArtRendererComponent, animationUnscaledTime, .flags = OmitIfDefault, .label = "Animation Update", .group = kAnimation,
+                 .uiOrder = 73),
+        JE_FIELD(TitleArtRendererComponent, driveAnimation, .flags = OmitIfDefault, .label = "Drive Animation", .group = kAnimation, .uiOrder = 74),
+        JE_FIELD(TitleArtRendererComponent, animationTime, .flags = NoSave | Hidden | NoCodegen, .unit = Unit::Seconds, .min = 0.0f, .step = 0.01f,
+                 .label = "Animation Time", .group = kAnimation, .uiOrder = 75),
     };
 
     // the state stays with the component (Lua's events, the live render, what it drives of its

@@ -102,10 +102,12 @@ namespace jasperengine::titleart {
         int newSlot(const TargetKey& key);
         int entrySlot(const std::shared_ptr<TitleCacheEntry>& entry);
         // a GPU pass writing `slot` inside `scissor` (its rows); `fill` sets the pass's program
-        // inputs from the state (textures of other slots) and returns false with an error
+        // inputs from the state (textures of other slots) and returns false with an error;
+        // `variant` the property bits above the program number (TitleElementVariant.h)
         using PassFill = std::function<bool(TitleJobState& state, TitleGpuPass& pass, std::string& error)>;
         void pass(const std::string& label, const std::string& layerId, int slot, const TitleRectI& scissor, TitleRenderProgram program,
-                  PassFill fill, BlendMode blend = BlendMode::NONE, bool clear = false, float costWeight = 1.0f, bool splittable = true);
+                  PassFill fill, BlendMode blend = BlendMode::NONE, bool clear = false, float costWeight = 1.0f, bool splittable = true,
+                  uint32_t variant = 0);
         void clearSlot(const std::string& label, const std::string& layerId, int slot, const float color[4]);
         void cpu(const std::string& label, const std::string& layerId, uint32_t us, std::function<bool(TitleJobState&, std::string&)> run);
         // an effect's or generator's `apply` / `render` as one step of `passes` estimated passes
@@ -124,7 +126,8 @@ namespace jasperengine::titleart {
         const TitleRectI& region() const { return outRegion; }   // output px
         const TitleArtHashes& hashes() const { return docHashes; }
         uint64_t layerHash(const std::string& id, uint64_t LayerHashes::*member) const;
-        // a drawn node's layers as the draw tree holds them (an isolated layer's group draws only it)
+        // what a drawn node holds: its node hash with its drawn children and clipped layers, so a
+        // group drawn for an isolated layer (or a content filter) keys apart from the whole group
         uint64_t drawnHash(const DrawNode& node) const;
         TitleFrame frameOf(const TitleRectI& rect) const;
         TitlePlacement placementOf(const Json& layer) const;
@@ -156,9 +159,19 @@ namespace jasperengine::titleart {
         float lightAccumulation(const DrawNode& node) const;
         TitlePx adjustOnto(TitlePx acc, const DrawNode& node, const TitlePx* clipMask);
         // src x opacity (x the clip mask's alpha) blended into dst by `mode` (TitleBlend values, 18 = disjoint)
+        // S85's layer tint (a multiply) and flash (colour x amount added under the layer's alpha),
+        // linear; applied as the layer composes onto its parent (identity: no work)
+        struct LayerColor {
+            float tint[3] = {1.0f, 1.0f, 1.0f};
+            float flash[3] = {0.0f, 0.0f, 0.0f};
+            bool active() const {
+                return tint[0] != 1.0f || tint[1] != 1.0f || tint[2] != 1.0f || flash[0] != 0.0f || flash[1] != 0.0f || flash[2] != 0.0f;
+            }
+        };
+        static LayerColor layerColorOf(const Json& layer);
         // (colourScale: src's colour alone multiplied, Normal and Add only: into a light accumulator)
         void blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, const TitlePx* clipMask, const std::string& layerId,
-                       float colourScale = 1.0f);
+                       const LayerColor* color = nullptr, float colourScale = 1.0f);
         TitlePx copyOf(TitlePx src, const std::string& layerId);
         TitlePx clearedLike(const TitleRectI& rect, const std::string& layerId);
         struct Effects {
@@ -168,8 +181,9 @@ namespace jasperengine::titleart {
         // inputAlpha: what `input`'s alpha is a function of (0: not known), the key the effects'
         // alpha-only results are kept under (EffectContext::inputAlphaKey)
         // inputLight: `input`'s colour holds light x 1 / inputLight (Content::light), read back by the first effect
+        // liveStack: a layer's own stack (unit()), whose inputs S81's live compose keeps and starts from
         Effects applyEffects(const std::string& stackId, const Json& effects, TitlePx input, bool keepInput, TitlePx inputInk,
-                             bool wantInk, const Json* layer, uint64_t inputAlpha = 0, float inputLight = 1.0f);
+                             bool wantInk, const Json* layer, uint64_t inputAlpha = 0, float inputLight = 1.0f, bool liveStack = false);
         bool holdsLight(const DrawNode& node);
         bool contentLight(const DrawNode& node);
 
@@ -231,11 +245,25 @@ namespace jasperengine::titleart {
         std::vector<std::string> title3DParts(const Json& layer);
         // an image asset of a 3D material or environment (base texture, matcap), uploaded at planning
         std::shared_ptr<TitleCacheEntry> title3DAsset(const Json& ref, const std::string& layerId, const std::string& path);
+        // the meshes the planned 3D layers draw (the job's meshReports)
+        std::vector<TitleMeshReport> title3DMeshReports() const;
 #endif
 
         // ---- generators ----
         // (lightScale: GeneratorContext::lightScale)
         TitlePx generator(const DrawNode& node, float lightScale = 1.0f);
+
+        // ---- S81's live compose (RenderRequest::keepLive, liveInputs; Compositor.cpp) ----
+        // the layer is one a live input names, or an ancestor of one: planned, never a node cache hit
+        bool livePlanned(const std::string& layerId) const { return liveLayers.count(layerId) > 0; }
+        bool wantsLive(const std::string& name) const;
+        // keeps a copy of `px` as the live input `name` (TitleSplits::live)
+        void keepLive(const std::string& name, TitlePx px, const std::string& layerId);
+        // the request's live input `name` placed in `rect` (invalid when the request has none)
+        TitlePx liveInput(const std::string& name, const TitleRectI& rect);
+        // the layer a live input belongs to ("fx:<id>@<n>", "content:<id>", "follow:<id>"...)
+        static std::string layerOfLive(const std::string& name);
+        uint32_t liveInputsUsed = 0;
 
         // ---- the effect context's helpers (FieldPasses.cpp) ----
         // the signed distance of `src`'s alpha / red coverage (frames: y-up element masks)
@@ -266,11 +294,14 @@ namespace jasperengine::titleart {
         std::map<const DrawNode*, TitleRectI> rects;    // node rects (the trees below keep the nodes alive)
         std::map<const DrawNode*, TitleRectI> reachRects;   // the same before the ROI grid: content and reach
         TitleRectI glyphReach;                          // a glyph cell's content and reach (RenderRequest::glyphCell)
+        TitleRectI glyphFrontReach;                     // its face's: the ink alone (the layer's effects go to the back part)
         std::map<std::string, TitleContentPlan> contentPlans;
         std::map<std::string, std::shared_ptr<void>> title3DPlans;     // S86: per layer, its Title3DPlan
         TitleElementFilter elementFilter;               // the glyph cell's, for its layer only
         std::string filteredLayer;
         std::vector<std::unique_ptr<std::vector<DrawNode>>> trees;
+        std::set<std::string> liveLayers;               // livePlanned()
+        std::map<std::string, std::shared_ptr<TitleCacheEntry>> liveKeeps;     // filled by their keep steps
         // the node being planned: set when one of its effects or its generator says it read canvas
         // positions (TitleEffectContext.h), so its cached pixels are not moved with the layer
         std::shared_ptr<bool> canvasReads;

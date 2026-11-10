@@ -1,16 +1,30 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "TerrainQualityPanel.h"
+#include "Engine.h"
+#include "mcp/TerrainMaterialInfo.h"
+#include "animation/BoneOverlay.h"
+#include "pixelart/PixelArtAssign.h"
+#include "window/BitmapFontInspector.h"
+#include "pixelart/PixelPerfectEditor.h"
 #include "animation/AnimatorEditorHooks.h"
+#include "graph/GraphEditorHooks.h"
 #include "component/ShadowCaster2DComponent.h"
+#include "component/Transform.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/TextEffectComponent.h"
 #include "component/TitleArtRendererComponent.h"
 #include "EditorModal.h"
+#include "window/TerrainEditWindow.h"
+#include "terrainworld/TerrainWorldPanel.h"
+#include "component/TerrainWorldComponent.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
 
@@ -54,6 +68,7 @@
 #include "component/VideoPlayerComponent.h"
 #include "util/FluidEditorTools.h"
 #include "util/UIProbe.h"
+#include "procmat/ProceduralBake.h"
 #include "util/ScriptAttach.h"
 #include "component/ScriptComponent.h"
 #include "util/ProjectChecks.h"
@@ -147,6 +162,13 @@
 #include "component/AnimationPlayerComponent.h"
 #include "action/Action.h"
 #include "pool/TexturePool.h"
+#include "pixelart/aseprite/AsepriteEditorHooks.h"
+#include "pixelart/aseprite/AsepriteSpriteSetup.h"
+#include "sprite/SpriteSheetPool.h"
+#include "subsystem/MeshSystem.h"
+#include "sprite/SpriteSheetSources.h"
+#include "window/SpriteAtlasInspector.h"
+#include "command/CommandHistory.h"
 #include "yaml-cpp/yaml.h"
 #include "soloud.h"
 #include "soloud_wav.h"
@@ -211,6 +233,7 @@ static std::vector<float> rotationValue(const Quaternion& value) {
 static std::vector<editor::EnumEntry>& entriesPrimitiveType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kPrimitiveType);
 static std::vector<editor::EnumEntry>& entriesMaterialAlphaMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kMaterialAlphaMode);
 static std::vector<editor::EnumEntry>& entriesPivotPreset = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kPivotPreset);
+static std::vector<editor::EnumEntry>& entriesSpriteDrawMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kSpriteDrawMode);
 static std::vector<editor::EnumEntry>& entriesLightType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLightType);
 static std::vector<editor::EnumEntry>& entriesShadowCaster2DShape = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kShadowCaster2DShape);
 static std::vector<editor::EnumEntry>& entriesLightShading = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLightShading);
@@ -860,6 +883,11 @@ void editor::InspectorWindow::focusNameInput(){
     nameFocusFrames = 3; // the field activates a frame after SetKeyboardFocusHere
 }
 
+void editor::InspectorWindow::requestFocus(){
+    setOpen(true);
+    focusRequested = true;
+}
+
 void editor::InspectorWindow::requestAddComponent(){
     setOpen(true);
     focusRequested = true;
@@ -1325,6 +1353,31 @@ void editor::InspectorWindow::drawFontFallbacksPopup(const char* popupId, Compon
 }
 
 
+
+namespace {
+
+using namespace jasperengine::editor;
+
+// S42 R7: an image assigned in the Inspector starts with its import's Filter Mode, and a Sprite or
+// Tilemap takes the import's Pixels Per Unit in the same undo step
+editor::Command* textureAssignmentCmd(editor::Project* project, editor::SceneProject* sceneProject, Entity entity, ComponentType cpType,
+                              const std::string& id, Texture texture, std::function<void()> onValueChanged = nullptr) {
+    editor::pixelart::applyAssignmentFilters(*project, texture);
+    const editor::pixelart::AssignmentDefaults defaults = editor::pixelart::assignmentDefaults(*project, texture.getPath());
+    const bool spriteTexture = cpType == ComponentType::MeshComponent && id == "submeshes[0].material.baseColorTexture";
+    const bool sprite = spriteTexture && sceneProject->scene->findComponent<SpriteComponent>(entity);
+    const bool tilemap = spriteTexture && sceneProject->scene->findComponent<TilemapComponent>(entity);
+    if (!defaults.pixelsPerUnit || (!sprite && !tilemap))
+        return new editor::PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, onValueChanged);
+    auto* multi = new editor::MultiPropertyCmd();
+    multi->addPropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, onValueChanged);
+    multi->addPropertyCmd<float>(project, sceneProject->id, entity, sprite ? ComponentType::SpriteComponent : ComponentType::TilemapComponent,
+                                 "pixelsPerUnit", (float)*defaults.pixelsPerUnit);
+    return multi;
+}
+
+}
+
 void editor::InspectorWindow::applyCameraTexture(Entity cameraEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
     Scene* scene = sceneProject->scene;
     CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
@@ -1417,7 +1470,7 @@ void editor::InspectorWindow::drawTextureSettingsPopup(const char* popupId, Comp
         ImGui::EndPopup();
         return;
     }
-    const Texture defaults = textureProp.def ? *static_cast<Texture*>(textureProp.def) : Texture();
+    const Texture defaults = textureProp.def ? *static_cast<Texture*>(textureProp.def) : Stream::savedTexture();
 
     // SVG rasterization scale is only relevant for vector sources.
     bool isSvg = TextureData::hasSvgExtension(current->getPath().c_str());
@@ -1554,7 +1607,7 @@ void editor::InspectorWindow::dragDropResourcesTexture(ComponentType cpType, std
                                 markTextureUpdate(sceneProject->scene, entity, cpType, id);
                                 continue;
                             }
-                            cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture);
+                            cmd = textureAssignmentCmd(project, sceneProject, entity, cpType, id, texture);
                             CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                             if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
                                 finishProperty = true;
@@ -3977,7 +4030,26 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }else{
             if (suggestions)
                 ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemInnerSpacing.x));
-            inputChanged = ImGui::InputText(("##input_string_"+id).c_str(), buffer.data(), buffer.size());
+            if (settings.stringChoices){
+                // a fixed set of values: the row's value is one of them (another shows as it is)
+                std::string shown = dif ? std::string("-") : newValue;
+                for (const auto& [choice, name] : *settings.stringChoices)
+                    if (!dif && choice == newValue) shown = name;
+                if (ImGui::BeginCombo(("##input_string_"+id).c_str(), shown.c_str())){
+                    for (const auto& [choice, name] : *settings.stringChoices){
+                        if (ImGui::Selectable(name.c_str(), !dif && choice == newValue) && (dif || choice != newValue)){
+                            for (Entity& entity : entities){
+                                cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, choice, settings.onValueChanged);
+                                submitRowCommand(sceneProject, cpType, id);
+                            }
+                            finishProperty = true;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+            }else{
+                inputChanged = ImGui::InputText(("##input_string_"+id).c_str(), buffer.data(), buffer.size());
+            }
         }
 
         if (inputChanged){
@@ -4008,6 +4080,47 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 }
                 ImGui::EndPopup();
             }
+        }
+
+    }else if (type == RowPropertyType::StringSet && settings.stringChoices){
+        std::vector<std::string> first;
+        bool dif = false, any = false;
+        const std::vector<std::string>* defaults = nullptr;
+        for (Entity& entity : entities){
+            PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
+            defaults = static_cast<const std::vector<std::string>*>(prop.def);
+            const std::vector<std::string>& current = *static_cast<std::vector<std::string>*>(prop.ref);
+            if (any && current != first) dif = true;
+            if (!any) first = current;
+            any = true;
+        }
+        const bool defChanged = defaults && first != *defaults;
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
+            for (Entity& entity : entities){
+                cmd = new PropertyCmd<std::vector<std::string>>(project, sceneProject->id, entity, cpType, id, *defaults, settings.onValueChanged);
+                submitRowCommand(sceneProject, cpType, id);
+                finishProperty = true;
+            }
+        }
+        std::string shown;
+        for (const std::string& value : first) shown += (shown.empty() ? "" : ", ") + value;
+        if (dif) shown = "-";
+        else if (shown.empty()) shown = "None";
+        if (ImGui::BeginCombo(("##input_set_"+id).c_str(), shown.c_str())){
+            for (const auto& [choice, name] : *settings.stringChoices){
+                bool on = std::find(first.begin(), first.end(), choice) != first.end();
+                if (ImGui::Selectable(name.c_str(), on, ImGuiSelectableFlags_DontClosePopups)){
+                    std::vector<std::string> next = first;
+                    if (on) next.erase(std::remove(next.begin(), next.end(), choice), next.end());
+                    else next.push_back(choice);
+                    for (Entity& entity : entities){
+                        cmd = new PropertyCmd<std::vector<std::string>>(project, sceneProject->id, entity, cpType, id, next, settings.onValueChanged);
+                        submitRowCommand(sceneProject, cpType, id);
+                    }
+                    finishProperty = true;
+                }
+            }
+            ImGui::EndCombo();
         }
 
     }else if (type == RowPropertyType::Bool){
@@ -4491,6 +4604,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         colorOptions.label = label.c_str();
         colorOptions.mixed = dif;
         const ui::EditPhase colorPhase = ui::colorField((label+"##color_"+id).c_str(), newValue, colorOptions);
+        UIProbe::item("inspector.color." + id);
         if (colorPhase == ui::EditPhase::Begin){
             ui::ColorPickerWindow::beginEdit(CommandHandle::get(project->getSelectedSceneId()), label.c_str());
         }else if (colorPhase == ui::EditPhase::Changing){
@@ -4632,7 +4746,29 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
         if (dif)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-        if (ImGui::Combo(("##combo_" + id).c_str(), &item_current, names.data(), static_cast<int>(names.size()))) {
+        bool chosen = false;
+        if (settings.enumExtraLabel) {
+            // a value not among the entries (a removed Sorting Layer) shows as its number
+            const bool known = !enumEntries->empty() && (*enumEntries)[(size_t)item_current].value == *value;
+            const std::string preview = known ? std::string(names[(size_t)item_current]) : std::to_string(*value);
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::BeginCombo(("##combo_" + id).c_str(), preview.c_str())) {
+                for (size_t i = 0; i < names.size(); i++) {
+                    const bool selected = known && (int)i == item_current;
+                    if (ImGui::Selectable(names[i], selected) && !selected) {
+                        item_current = (int)i;
+                        chosen = true;
+                    }
+                }
+                ImGui::Separator();
+                if (ImGui::Selectable(settings.enumExtraLabel) && settings.enumExtraAction)
+                    settings.enumExtraAction();
+                ImGui::EndCombo();
+            }
+        } else {
+            chosen = ImGui::Combo(("##combo_" + id).c_str(), &item_current, names.data(), static_cast<int>(names.size()));
+        }
+        if (chosen) {
             int newValue = (*enumEntries)[item_current].value;
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
@@ -4949,7 +5085,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 }else{
                     Texture texture(FileUtils::pathToGenericUtf8(relative));
                     for (Entity& entity : entities){
-                        cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, settings.onValueChanged);
+                        cmd = textureAssignmentCmd(project, sceneProject, entity, cpType, id, texture, settings.onValueChanged);
                         submitRowCommand(sceneProject, cpType, id);
                         finishProperty = true;
                     }
@@ -6429,6 +6565,11 @@ void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* 
     if (posedBones){
         ImGui::TextColored(Theme::Colors::WarningText, "Posed by the Pose Animation window (read-only)");
     }
+    // Write Bones: Exposed leaves this Transform at rest while the bone moves in the pose
+    if (sceneProject && sceneProject->scene && entities.size() == 1 && sceneProject->scene->findComponent<BoneComponent>(entities[0]) &&
+            isUnwrittenAnimatorBone(sceneProject->scene, entities[0])){
+        ImGui::TextColored(Theme::Colors::WarningText, "Not written to this GameObject (Write Bones: Exposed)");
+    }
 
     // a Lattice Follower's driven channels: LatticeSystem puts them back every frame, so they
     // are shown read-only (Unity's driven properties); the Scene view's tools move the rest
@@ -7720,6 +7861,108 @@ void editor::InspectorWindow::drawShaderFilesPopup(const std::string& popupName,
     ImGui::EndPopup();
 }
 
+void editor::InspectorWindow::drawSubmeshMaterialRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                                      int s, const std::function<void()>& onValueChanged){
+    RowSettings settingsFactor;
+    settingsFactor.stepSize = 0.01f;
+    settingsFactor.secondColSize = 4 * ImGui::GetFontSize();
+    settingsFactor.child = true;
+
+    RowSettings settingsMaterial;
+    settingsMaterial.child = true;
+    settingsMaterial.onValueChanged = onValueChanged;
+
+    settingsFactor.onValueChanged = settingsMaterial.onValueChanged;
+
+    RowSettings settingsAlphaMode = settingsMaterial;
+    settingsAlphaMode.enumEntries = &entriesMaterialAlphaMode;
+
+    // with the Sprite Normal Map wand when the Base Texture is an image (both Normal Texture rows)
+    RowSettings settingsNormalTexture = normalTextureRowSettings(settingsMaterial, sceneProject, entities, (unsigned int)s);
+    settingsNormalTexture.help = "Tangent-space normal map, OpenGL convention (green up). On sprites, tilemaps and polygons it answers "
+                                 "Light 2Ds whose Height is above 0; same size and frame layout as the Base Texture.";
+
+    // the shader (built-in Lit, a library shader or a custom file) and its own rows
+    beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_shader");
+    // one-click setups of the shader, extra pass and state (shader library phase 2)
+    drawMaterialPresetRow(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
+    const bool pbrRows = drawMaterialShaderRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
+    endTable();
+
+    if (pbrRows){
+    beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_options");
+    propertyRow(RowPropertyType::Color4L, cpType, "submeshes["+std::to_string(s)+"].material.baseColorFactor", "Base Color", sceneProject, entities, settingsMaterial);
+    propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.baseColorTexture", "Base Texture", sceneProject, entities,settingsMaterial);
+    propertyRow(RowPropertyType::Enum, cpType, "submeshes["+std::to_string(s)+"].material.alphaMode", "Alpha Mode", sceneProject, entities, settingsAlphaMode);
+    propertyRow(RowPropertyType::Float_0_1, cpType, "submeshes["+std::to_string(s)+"].material.alphaCutoff", "Alpha Cutoff", sceneProject, entities, settingsFactor);
+    propertyRow(RowPropertyType::Float_0_1, cpType, "submeshes["+std::to_string(s)+"].material.foliageTransmission", "Leaf Transmission", sceneProject, entities, settingsFactor);
+    propertyRow(RowPropertyType::Float_0_1, cpType, "submeshes["+std::to_string(s)+"].material.metallicFactor", "Metallic Factor", sceneProject, entities, settingsFactor);
+    propertyRow(RowPropertyType::Float_0_1, cpType, "submeshes["+std::to_string(s)+"].material.roughnessFactor", "Roughness Factor", sceneProject, entities, settingsFactor);
+    propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.metallicRoughnessTexture", "Met. Roug. Texture", sceneProject, entities, settingsMaterial);
+    propertyRow(RowPropertyType::Color3L, cpType, "submeshes["+std::to_string(s)+"].material.emissiveFactor", "Emissive Factor", sceneProject, entities, settingsMaterial);
+    RowSettings settingsEmission = settingsFactor;
+    settingsEmission.help = "Multiplies the Emissive Factor (KHR_materials_emissive_strength): above 1 for emission brighter than the base colour range.";
+    propertyRow(RowPropertyType::FloatPositive, cpType, "submeshes["+std::to_string(s)+"].material.emissiveStrength", "Emission Intensity", sceneProject, entities, settingsEmission);
+    propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.emissiveTexture", "Emissive Texture", sceneProject, entities, settingsMaterial);
+    propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.occlusionTexture", "Occlusion Texture", sceneProject, entities, settingsMaterial);
+    propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsNormalTexture);
+
+    // Stochastic Tiling of these maps (includes/pbr.glsl), its values while it is on
+    const std::string materialPrefix = "submeshes[" + std::to_string(s) + "].material.";
+    RowSettings settingsStochastic = settingsMaterial;
+    settingsStochastic.help = "Hides the repetition of the material's tiled maps: hexagonal cells each read them at a random offset "
+                              "and blend at their borders, every map alike (shadows and reflections too). Up to three reads per "
+                              "map where cells meet. Suits organic textures (grass, rock, sand); bricks and tiles lose their grid. "
+                              "The textures must repeat. Not on sprites, tilemaps or terrains (their layers have their own).";
+    propertyRow(RowPropertyType::Bool, cpType, materialPrefix + "stochasticTiling", "Stochastic Tiling", sceneProject, entities, settingsStochastic);
+    const Material& firstMaterial = sceneProject->scene->getComponent<MeshComponent>(entities[0]).submeshes[s].material;
+    if (firstMaterial.stochasticTiling){
+        RowSettings settingsParam = settingsFactor;
+        settingsParam.indent = true;
+        settingsParam.help = "Width of one cell in texture repeats (0.25-4). Smaller cells hide the repetition better but cut up large features of the texture.";
+        // the ranges MCP takes: 0.25-4, the others 0-1
+        settingsParam.floatMin = 0.25f;
+        settingsParam.floatMax = 4.0f;
+        settingsParam.logarithmic = true;
+        propertyRow(RowPropertyType::FloatPositive, cpType, materialPrefix + "stochasticCellSize", "Cell Size", sceneProject, entities, settingsParam);
+        settingsParam.floatMin = 0.0f;
+        settingsParam.floatMax = 1.0f;
+        settingsParam.logarithmic = false;
+        settingsParam.help = "How narrow the blend between neighbouring cells is: low blends wide and soft, high keeps more of each cell whole.";
+        propertyRow(RowPropertyType::Float_0_1, cpType, materialPrefix + "stochasticBlendSharpness", "Blend Sharpness", sceneProject, entities, settingsParam);
+        settingsParam.help = "Keeps the texture's contrast where cells blend, which a plain blend washes out. Too high shows the cell borders. 0 blends linearly.";
+        propertyRow(RowPropertyType::Float_0_1, cpType, materialPrefix + "stochasticContrast", "Contrast", sceneProject, entities, settingsParam);
+        settingsParam.help = "Turns each cell by a random angle, up to +-180 degrees at 1. Leave at 0 for textures with a direction (planks, stripes, light baked in) "
+                             "and for normal maps whose average normal leans.";
+        propertyRow(RowPropertyType::Float_0_1, cpType, materialPrefix + "stochasticRotation", "Rotation", sceneProject, entities, settingsParam);
+        drawStochasticRotationWarning(cpType, sceneProject, entities, materialPrefix + "stochasticRotation", firstMaterial.stochasticRotation,
+                                      firstMaterial.normalTexture, settingsMaterial.onValueChanged);
+    }
+    endTable();
+    drawMaterialAdvancedSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
+    }else{
+        // a library shader with @require normalmap reads the material's own Normal Texture
+        // (the 2D lights' normal map): the one PBR row it keeps
+        Scene* materialScene = sceneProject->scene;
+        MeshComponent& firstMesh = materialScene->getComponent<MeshComponent>(entities[0]);
+        const std::string drawnShader = RenderSystem::getSubmeshShader(firstMesh, firstMesh.submeshes[s],
+                                                                       materialScene->getDefaultCustomShader(ShaderType::MESH));
+        std::shared_ptr<const ShaderManifest> drawnManifest = drawnShader.empty() ? nullptr : ShaderManifests::get(drawnShader);
+        const std::vector<std::string> features = ShaderReference::getEnabledFeatures(drawnShader, firstMesh.submeshes[s].material.shaderFeatures);
+        if (Catalog::shaderReadsMaterialNormalMap(drawnManifest.get(), features)){
+            beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_normal_map");
+            propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsNormalTexture);
+            endTable();
+        }
+    }
+
+    separatorText("Surface");
+    drawMaterialSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial, pbrRows);
+
+    separatorText("Extra pass");
+    drawMaterialExtraPassRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
+}
+
 void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     // a model made of parts draws its parts' meshes: its own (empty) one changes nothing
     std::vector<Entity> parts;
@@ -8038,6 +8281,7 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
     instancingSettings.help = "Let this mesh draw in one instanced draw with the opaque meshes of the same mesh, material and shader "
                               "while Project Settings > Graphics > GPU Instancing is on (the image stays the same). Turn off to draw it alone.";
     propertyRow(RowPropertyType::Bool, cpType, "allowGpuInstancing", "Allow GPU Instancing", sceneProject, entities, instancingSettings);
+    drawSortingRows(cpType, sceneProject, entities);
 
     RowSettings reflectionProbeSettings;
     reflectionProbeSettings.help = "Draw this mesh into Reflection Probe captures. Turn off to keep a GameObject out of its own reflection.";
@@ -8164,17 +8408,10 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
         endTable();
 
         if (materialOpened){
-            RowSettings settingsFactor;
-            settingsFactor.stepSize = 0.01f;
-            settingsFactor.secondColSize = 4 * ImGui::GetFontSize();
-            settingsFactor.child = true;
-
-            RowSettings settingsMaterial;
-            settingsMaterial.child = true;
-            settingsMaterial.onValueChanged = [this, sceneProject, entities, s]() {
+            drawSubmeshMaterialRows(cpType, sceneProject, entities, s, [this, sceneProject, entities, s]() {
                 for (const Entity& entity : entities) {
                     MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
-                    if (!mesh || s >= mesh->numSubmeshes) {
+                    if (!mesh || s >= (int)mesh->numSubmeshes) {
                         continue;
                     }
 
@@ -8186,97 +8423,7 @@ void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, Scen
                     std::string relativePath = std::filesystem::path(material.name).lexically_normal().generic_string();
                     markMaterialDirty(sceneProject->id, entity, s, relativePath);
                 }
-            };
-
-            settingsFactor.onValueChanged = settingsMaterial.onValueChanged;
-
-            RowSettings settingsAlphaMode = settingsMaterial;
-            settingsAlphaMode.enumEntries = &entriesMaterialAlphaMode;
-
-            // with the Sprite Normal Map wand when the Base Texture is an image (both Normal Texture rows)
-            RowSettings settingsNormalTexture = normalTextureRowSettings(settingsMaterial, sceneProject, entities, (unsigned int)s);
-            settingsNormalTexture.help = "Tangent-space normal map, OpenGL convention (green up). On sprites, tilemaps and polygons it answers "
-                                         "Light 2Ds whose Height is above 0; same size and frame layout as the Base Texture.";
-
-            // the shader (built-in Lit, a library shader or a custom file) and its own rows
-            beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_shader");
-            // one-click setups of the shader, extra pass and state (shader library phase 2)
-            drawMaterialPresetRow(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
-            const bool pbrRows = drawMaterialShaderRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
-            endTable();
-
-            if (pbrRows){
-            beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_options");
-            propertyRow(RowPropertyType::Color4L, cpType, "submeshes["+std::to_string(s)+"].material.baseColorFactor", "Base Color", sceneProject, entities, settingsMaterial);
-            propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.baseColorTexture", "Base Texture", sceneProject, entities,settingsMaterial);
-            propertyRow(RowPropertyType::Enum, cpType, "submeshes["+std::to_string(s)+"].material.alphaMode", "Alpha Mode", sceneProject, entities, settingsAlphaMode);
-            propertyRow(RowPropertyType::Float_0_1, cpType, "submeshes["+std::to_string(s)+"].material.alphaCutoff", "Alpha Cutoff", sceneProject, entities, settingsFactor);
-            propertyRow(RowPropertyType::Float_0_1, cpType, "submeshes["+std::to_string(s)+"].material.foliageTransmission", "Leaf Transmission", sceneProject, entities, settingsFactor);
-            propertyRow(RowPropertyType::Float_0_1, cpType, "submeshes["+std::to_string(s)+"].material.metallicFactor", "Metallic Factor", sceneProject, entities, settingsFactor);
-            propertyRow(RowPropertyType::Float_0_1, cpType, "submeshes["+std::to_string(s)+"].material.roughnessFactor", "Roughness Factor", sceneProject, entities, settingsFactor);
-            propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.metallicRoughnessTexture", "Met. Roug. Texture", sceneProject, entities, settingsMaterial);
-            propertyRow(RowPropertyType::Color3L, cpType, "submeshes["+std::to_string(s)+"].material.emissiveFactor", "Emissive Factor", sceneProject, entities, settingsMaterial);
-            RowSettings settingsEmission = settingsFactor;
-            settingsEmission.help = "Multiplies the Emissive Factor (KHR_materials_emissive_strength): above 1 for emission brighter than the base colour range.";
-            propertyRow(RowPropertyType::FloatPositive, cpType, "submeshes["+std::to_string(s)+"].material.emissiveStrength", "Emission Intensity", sceneProject, entities, settingsEmission);
-            propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.emissiveTexture", "Emissive Texture", sceneProject, entities, settingsMaterial);
-            propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.occlusionTexture", "Occlusion Texture", sceneProject, entities, settingsMaterial);
-            propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsNormalTexture);
-
-            // Stochastic Tiling of these maps (includes/pbr.glsl), its values while it is on
-            const std::string materialPrefix = "submeshes[" + std::to_string(s) + "].material.";
-            RowSettings settingsStochastic = settingsMaterial;
-            settingsStochastic.help = "Hides the repetition of the material's tiled maps: hexagonal cells each read them at a random offset "
-                                      "and blend at their borders, every map alike (shadows and reflections too). Up to three reads per "
-                                      "map where cells meet. Suits organic textures (grass, rock, sand); bricks and tiles lose their grid. "
-                                      "The textures must repeat. Not on sprites, tilemaps or terrains (their layers have their own).";
-            propertyRow(RowPropertyType::Bool, cpType, materialPrefix + "stochasticTiling", "Stochastic Tiling", sceneProject, entities, settingsStochastic);
-            const Material& firstMaterial = sceneProject->scene->getComponent<MeshComponent>(entities[0]).submeshes[s].material;
-            if (firstMaterial.stochasticTiling){
-                RowSettings settingsParam = settingsFactor;
-                settingsParam.indent = true;
-                settingsParam.help = "Width of one cell in texture repeats (0.25-4). Smaller cells hide the repetition better but cut up large features of the texture.";
-                // the ranges MCP takes: 0.25-4, the others 0-1
-                settingsParam.floatMin = 0.25f;
-                settingsParam.floatMax = 4.0f;
-                settingsParam.logarithmic = true;
-                propertyRow(RowPropertyType::FloatPositive, cpType, materialPrefix + "stochasticCellSize", "Cell Size", sceneProject, entities, settingsParam);
-                settingsParam.floatMin = 0.0f;
-                settingsParam.floatMax = 1.0f;
-                settingsParam.logarithmic = false;
-                settingsParam.help = "How narrow the blend between neighbouring cells is: low blends wide and soft, high keeps more of each cell whole.";
-                propertyRow(RowPropertyType::Float_0_1, cpType, materialPrefix + "stochasticBlendSharpness", "Blend Sharpness", sceneProject, entities, settingsParam);
-                settingsParam.help = "Keeps the texture's contrast where cells blend, which a plain blend washes out. Too high shows the cell borders. 0 blends linearly.";
-                propertyRow(RowPropertyType::Float_0_1, cpType, materialPrefix + "stochasticContrast", "Contrast", sceneProject, entities, settingsParam);
-                settingsParam.help = "Turns each cell by a random angle, up to +-180 degrees at 1. Leave at 0 for textures with a direction (planks, stripes, light baked in) "
-                                     "and for normal maps whose average normal leans.";
-                propertyRow(RowPropertyType::Float_0_1, cpType, materialPrefix + "stochasticRotation", "Rotation", sceneProject, entities, settingsParam);
-                drawStochasticRotationWarning(cpType, sceneProject, entities, materialPrefix + "stochasticRotation", firstMaterial.stochasticRotation,
-                                              firstMaterial.normalTexture, settingsMaterial.onValueChanged);
-            }
-            endTable();
-            drawMaterialAdvancedSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
-            }else{
-                // a library shader with @require normalmap reads the material's own Normal Texture
-                // (the 2D lights' normal map): the one PBR row it keeps
-                Scene* materialScene = sceneProject->scene;
-                MeshComponent& firstMesh = materialScene->getComponent<MeshComponent>(entities[0]);
-                const std::string drawnShader = RenderSystem::getSubmeshShader(firstMesh, firstMesh.submeshes[s],
-                                                                               materialScene->getDefaultCustomShader(ShaderType::MESH));
-                std::shared_ptr<const ShaderManifest> drawnManifest = drawnShader.empty() ? nullptr : ShaderManifests::get(drawnShader);
-                const std::vector<std::string> features = ShaderReference::getEnabledFeatures(drawnShader, firstMesh.submeshes[s].material.shaderFeatures);
-                if (Catalog::shaderReadsMaterialNormalMap(drawnManifest.get(), features)){
-                    beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_normal_map");
-                    propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsNormalTexture);
-                    endTable();
-                }
-            }
-
-            separatorText("Surface");
-            drawMaterialSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial, pbrRows);
-
-            separatorText("Extra pass");
-            drawMaterialExtraPassRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
+            });
         }
 
         beginTable(cpType, getLabelSize("Texture Shadow"), "submeshes_settings");
@@ -9137,6 +9284,82 @@ void editor::InspectorWindow::drawImageComponent(ComponentType cpType, SceneProj
     endTable();
 }
 
+void editor::InspectorWindow::drawSheetSpriteSection(ComponentType cpType, SceneProject* sceneProject, Entity entity){
+    namespace ase = pixelart::aseprite;
+    const SpriteComponent& sprite = sceneProject->scene->getComponent<SpriteComponent>(entity);
+    std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite.sheet.path);
+    const bool isAseprite = SpriteSheetPool::isAsepritePath(sprite.sheet.path);
+    separatorText("Sprite Sheet");
+    if (!sheet || sheet->frames.empty()) {
+        const bool importing = isAseprite && ase::AsepriteImporter::get().isPending(sprite.sheet.path);
+        ImGui::TextColored(Theme::Colors::WarningText, "%s", importing ? "Importing..." : "The sheet has no frames (see the Console).");
+        return;
+    }
+    const int count = sheet->frameCount();
+    drawSheetFramePicker(cpType, sceneProject, entity, *sheet);
+    ImGui::TextDisabled("%d frames, %d tags, %d slices", count, (int)sheet->tags.size(), (int)sheet->slices.size());
+
+    // a texture sheet: its Slicer (S45 R12); an atlas or a packed source: where it is drawn from
+    if (SpriteSheetSources::isTexturePath(sprite.sheet.path)) {
+        // and the Sprite Normal Map of its frames, side by side
+        const float sheetHalf = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        if (ImGui::Button(ICON_FA_GRIP " Slicer Tool", ImVec2(sheetHalf, 0))) openSpriteSlicer(cpType, sceneProject, entity, sprite.sheet.path);
+        UIProbe::item("inspector.sprite.slicerTool");
+        ImGui::SameLine();
+        spritenormalsentry::normalMapButton(sceneProject, entity, ImGui::GetContentRegionAvail().x);
+        spritenormalsentry::normalMapHint(sceneProject, entity);
+    }
+    if (SpriteSheetSources::isPacked(sprite.sheet.path)) {
+        ImGui::TextDisabled(ICON_FA_TABLE_CELLS " Drawn from a Sprite Atlas page");
+    }
+    const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+    if (isAseprite) {
+        if (ImGui::Button(ICON_FA_PEN_TO_SQUARE " Open in Aseprite", ImVec2(half, 0))) {
+            ase::openInAsepriteOrFallback(project, {sprite.sheet.path}, true);
+        }
+        ImGui::SameLine();
+    }
+    ImGui::BeginDisabled(sheet->slices.empty());
+    if (ImGui::Button(ICON_FA_VECTOR_SQUARE " Create Colliders from Slices", ImVec2(isAseprite ? -FLT_MIN : half, 0))) {
+        std::vector<Command*> commands;
+        std::vector<std::string> names;
+        pixelart::PixelProblem problem;
+        if (!ase::sliceColliderCommands(project, sceneProject->id, entity, commands, names, problem)) {
+            Out::warning("Create Colliders from Slices: %s", problem.message.c_str());
+        } else if (ase::runAsOneStep(sceneProject->id, std::move(commands))) {
+            Out::info("Created %d slice collider(s) on \"%s\"", (int)names.size(), sceneProject->scene->getEntityName(entity).c_str());
+        }
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("A Rigidbody 2D collider per slice, following the slice's box on every frame (Is Trigger when its user data says sensor: true)");
+    }
+    const nlohmann::json& ud = sheet->userData;
+    const bool hasProperties = ud.is_object() && ud.contains("properties") && ud["properties"].is_object() && !ud["properties"].empty();
+    if (hasProperties) {
+        if (ImGui::Button(ICON_FA_LIST_CHECK " Apply Sprite Properties", ImVec2(-FLT_MIN, 0))) {
+            CommandHistory* history = CommandHandle::get(sceneProject->id);
+            const size_t mark = history->mark();
+            std::vector<std::string> applied;
+            std::vector<pixelart::PixelProblem> problems;
+            const bool ok = ase::applySpriteProperties(project, sceneProject->id, entity, *sheet, [history](Command* command) {
+                command->setNoMerge();
+                return history->addCommand(command);
+            }, applied, problems);
+            if (ok) {
+                history->groupSince(mark);
+            } else {
+                while (history->position() > mark && history->canUndo() && history->undo()) {}
+            }
+            for (const pixelart::PixelProblem& p : problems) Out::warning("Apply Sprite Properties: %s: %s", p.field.c_str(), p.message.c_str());
+            if (ok) Out::info("Applied %d sprite propert%s", (int)applied.size(), applied.size() == 1 ? "y" : "ies");
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Sets the Aseprite file's user properties named <component>.<property> (light2d.intensity...) on this GameObject");
+        }
+    }
+}
+
 void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     // S81 R2: a Title Art Renderer lends the Sprite its picture and, with a Live Effect, its shader
     if (sceneProject->scene->isComponentRegistered<TitleArtRendererComponent>() &&
@@ -9154,14 +9377,47 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
     RowSettings settingsPivot;
     settingsPivot.enumEntries = &entriesPivotPreset;
 
-    beginTable(cpType, getLabelSize("Texture Scale"));
+    RowSettings settingsSheet;
+    settingsSheet.help = "A texture, an .aseprite file or a .spriteatlas: the Sprite shows one of its frames (an atlas packing it draws it from its page)";
+    RowSettings settingsDrawMode;
+    settingsDrawMode.enumEntries = &entriesSpriteDrawMode;
+    settingsDrawMode.help = "Sliced: a frame with a border as 9 quads at Width x Height, corners unscaled";
+    // S41: texels per world unit (0: the project's) and the rotation policy under a Pixel Perfect Camera
+    RowSettings settingsPpu;
+    settingsPpu.secondColSize = 6 * ImGui::GetFontSize();
+    settingsPpu.help = "Texels per world unit. 0 = the Sprite Sheet's, else Project (" + std::to_string(project->getPixelsPerUnit()) + ").";
+    RowSettings settingsPixelRotation;
+    settingsPixelRotation.enumEntries = enumEntries(reflect::enums::kPixelRotation);
+    settingsPixelRotation.help = "Under a Pixel Perfect Camera: the camera's rotation policy, 90 Degree Steps or Rotate On Grid.";
+
+    const bool singleSheetSprite = entities.size() == 1 && !sceneProject->scene->getComponent<SpriteComponent>(entities[0]).sheet.empty();
+    beginTable(cpType, getLabelSize("Pixels Per Unit"));
+    propertyRow(RowPropertyType::Asset, cpType, "sheet", "Sprite", sceneProject, entities, settingsSheet);
+    propertyRow(RowPropertyType::Enum, cpType, "drawMode", "Draw Mode", sceneProject, entities, settingsDrawMode);
+    endTable();
+    if (singleSheetSprite) drawSpriteNativeSize(cpType, sceneProject, entities[0]);
+    beginTable(cpType, getLabelSize("Pixels Per Unit"), "sprite_size");
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Enum, cpType, "pivotPreset", "Pivot", sceneProject, entities, settingsPivot);
     propertyRow(RowPropertyType::Float, cpType, "textureScaleFactor", "Texture Scale", sceneProject, entities, settingsTexScale);
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
+    propertyRow(RowPropertyType::Enum, cpType, "pixelRotation", "Pixel Rotation", sceneProject, entities, settingsPixelRotation);
+    // S52: the point Custom Axis sorting measures (Sorting Layer and Order in Layer are the Mesh
+    // Renderer's rows, drawn with it)
+    RowSettings settingsSortPoint;
+    settingsSortPoint.enumEntries = enumEntries(reflect::enums::kSpriteSortPoint);
+    settingsSortPoint.help = "What Transparency Sort Mode Custom Axis measures: the sprite's bounds' centre or its pivot.";
+    propertyRow(RowPropertyType::Enum, cpType, "spriteSortPoint", "Sprite Sort Point", sceneProject, entities, settingsSortPoint);
 
     endTable();
+
+    // a sheet sprite (S44): its frame by name, and what its .aseprite file brings
+    if (entities.size() == 1 && !sceneProject->scene->getComponent<SpriteComponent>(entities[0]).sheet.empty()) {
+        drawSheetSpriteSection(cpType, sceneProject, entities[0]);
+        return;
+    }
 
     // --- Frames Rect Section ---
     if (entities.size() == 1) {
@@ -9174,65 +9430,19 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
             }
         }
 
-        separatorText("Sprite Frames");
+        // a legacy sprite drawn from an atlas page shows its source texture's frames (S45 R8)
+        if (meshComp && meshComp->numSubmeshes > 0) previewTexture.setPath(MeshSystem::spriteSourceTexture(sprite, *meshComp));
+        drawLegacyFramesHeader(cpType, sceneProject, entities[0]);
 
         // Frame count from numFramesRect
         int activeFrameCount = (int)sprite.numFramesRect;
 
-        // Sprite slicer tool button
-        // the Slicer Tool and the Sprite Normal Map (this texture with these frames), side by side
+        // the Slicer Tool (S45 R12: it writes the texture's Sprite Mode and makes this a sheet
+        // sprite) and the Sprite Normal Map (this texture with these frames), side by side
         const float spriteFramesHalf = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        const std::string slicedTexture = previewTexture.getPath();
         if (ImGui::Button(ICON_FA_GRIP " Slicer Tool", ImVec2(spriteFramesHalf, 0))) {
-            textureSlicerToolDialog.open(
-                previewTexture,
-                static_cast<int>(sprite.width),
-                static_cast<int>(sprite.height),
-                [this, sceneProject, entities, cpType, previewTexture](const TextureSlicerToolDialog::SliceResult& result) {
-                    editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
-
-                    // Clear existing frames beyond new count
-                    SpriteComponent& sprite = sceneProject->scene->getComponent<SpriteComponent>(entities[0]);
-                    for (unsigned int i = (unsigned int)result.rects.size(); i < sprite.numFramesRect; i++) {
-                        std::string prefix = "framesRect[" + std::to_string(i) + "]";
-                        multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entities[0], cpType,
-                            prefix + ".name", std::string(""));
-                        multiCmd->addPropertyCmd<Vector4>(project, sceneProject->id, entities[0], cpType,
-                            prefix + ".rect", Vector4(0, 0, 0, 0));
-                    }
-
-                    // Set new frames from slicer result
-                    for (size_t i = 0; i < result.rects.size(); i++) {
-                        std::string prefix = "framesRect[" + std::to_string(i) + "]";
-                        multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entities[0], cpType,
-                            prefix + ".name", result.rects[i].name);
-                        multiCmd->addPropertyCmd<Vector4>(project, sceneProject->id, entities[0], cpType,
-                            prefix + ".rect", Vector4(result.rects[i].rect.getX(), result.rects[i].rect.getY(),
-                                result.rects[i].rect.getWidth(), result.rects[i].rect.getHeight()));
-                    }
-
-                    // Update numFramesRect
-                    unsigned int newCount = (unsigned int)result.rects.size();
-                    multiCmd->addPropertyCmd<unsigned int>(project, sceneProject->id, entities[0], cpType,
-                        "numFramesRect", newCount);
-
-                    // Apply first frame to sprite mesh
-                    MeshComponent* meshComp = sceneProject->scene->findComponent<MeshComponent>(entities[0]);
-                    int sheetWidth = !previewTexture.empty() ? previewTexture.getWidth() : (int)sprite.width;
-                    int sheetHeight = !previewTexture.empty() ? previewTexture.getHeight() : (int)sprite.height;
-                    if (meshComp && meshComp->numSubmeshes > 0 && !result.rects.empty() && sheetWidth > 0 && sheetHeight > 0) {
-                        const Rect& firstFrameRect = result.rects[0].rect;
-                        multiCmd->addPropertyCmd<Vector4>(project, sceneProject->id, entities[0], ComponentType::MeshComponent,
-                            "submeshes[0].textureRect", Vector4(
-                                firstFrameRect.getX() / (float)sheetWidth,
-                                firstFrameRect.getY() / (float)sheetHeight,
-                                firstFrameRect.getWidth() / (float)sheetWidth,
-                                firstFrameRect.getHeight() / (float)sheetHeight));
-                    }
-
-                    multiCmd->setNoMerge();
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-                }
-            );
+            openSpriteSlicer(cpType, sceneProject, entities[0], slicedTexture);
         }
         ImGui::SameLine();
         spritenormalsentry::normalMapButton(sceneProject, entities[0], ImGui::GetContentRegionAvail().x);
@@ -10039,11 +10249,16 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
     settingsTexScale.secondColSize = 6 * ImGui::GetFontSize();
     settingsTexScale.help = "Increase or decrease texture area by a factor";
 
-    beginTable(cpType, getLabelSize("Reserve Tiles"));
+    RowSettings settingsPpu;
+    settingsPpu.secondColSize = 6 * ImGui::GetFontSize();
+    settingsPpu.help = "Texels per world unit. 0 = Project (" + std::to_string(project->getPixelsPerUnit()) + ").";
+
+    beginTable(cpType, getLabelSize("Pixels Per Unit"));
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Float, cpType, "textureScaleFactor", "Texture Scale", sceneProject, entities, settingsTexScale);
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
     propertyRow(RowPropertyType::UInt, cpType, "reserveTiles", "Reserve Tiles", sceneProject, entities, settingsInt);
     endTable();
 
@@ -10530,6 +10745,69 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
     }
 }
 
+// T3 R40: Quality, its features, the cost strip and what they took from the base material
+void editor::InspectorWindow::drawTerrainQualitySection(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities){
+    TerrainComponent& terrain = sceneProject->scene->getComponent<TerrainComponent>(entities[0]);
+    const terraincore::TerrainQuality tier = mcp::terrainEffectiveTier(terrain).quality;
+
+    separatorText("Quality");
+    RowSettings qualitySettings;
+    qualitySettings.enumEntries = enumEntries(reflect::enums::kTerrainQualitySetting);
+    static std::string autoLabel;
+    autoLabel = std::string("Auto (Project: ") + terraincore::terrainQualityName(terraincore::TerrainQualitySettings::getPlatformTier(static_cast<int>(Engine::getPlatform()))) + ")";
+    if (!qualitySettings.enumEntries->empty()){
+        qualitySettings.enumEntries->front().name = autoLabel.c_str();
+    }
+    RowSettings shadowSettings;
+    shadowSettings.enumEntries = enumEntries(reflect::enums::kTerrainOffscreenShadows);
+    RowSettings macroSettings;
+    macroSettings.enumEntries = enumEntries(reflect::enums::kTerrainMacroMode);
+
+    const auto greyed = [&](const char* feature){
+        const std::string reason = terrainFeatureGreyReason(feature, tier);
+        if (!reason.empty()){
+            ImGui::TextDisabled("%s", reason.c_str());
+        }
+        return !reason.empty();
+    };
+
+    beginTable(cpType, getLabelSize("Limit Layers Per Pixel"), "terrain_quality");
+    propertyRow(RowPropertyType::Enum, cpType, "quality", "Quality", sceneProject, entities, qualitySettings);
+    propertyRow(RowPropertyType::Bool, cpType, "limitLayersPerPixel", "Limit Layers Per Pixel", sceneProject, entities);
+    propertyRow(RowPropertyType::Enum, cpType, "offscreenShadows", "Off-screen Shadows", sceneProject, entities, shadowSettings);
+    propertyRow(RowPropertyType::Enum, cpType, "macroMode", "Macro Variation", sceneProject, entities, macroSettings);
+    if (terrain.macroMode != TerrainMacroMode::OFF){
+        propertyRow(RowPropertyType::Float_0_1, cpType, "macroStrength", "Strength", sceneProject, entities);
+    }
+    if (terrain.macroMode == TerrainMacroMode::NOISE){
+        propertyRow(RowPropertyType::FloatPositive, cpType, "macroScale", "Scale", sceneProject, entities);
+        propertyRow(RowPropertyType::Float_0_1, cpType, "macroSlopeFade", "Slope Fade", sceneProject, entities);
+        propertyRow(RowPropertyType::Vector3, cpType, "macroTintA", "Tint A", sceneProject, entities);
+        propertyRow(RowPropertyType::Vector3, cpType, "macroTintB", "Tint B", sceneProject, entities);
+    }
+    propertyRow(RowPropertyType::Bool, cpType, "resampleEnabled", "Distance Resampling", sceneProject, entities);
+    if (terrain.resampleEnabled){
+        propertyRow(RowPropertyType::FloatPositive, cpType, "resampleNear", "Near", sceneProject, entities);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "resampleFar", "Far", sceneProject, entities);
+        propertyRow(RowPropertyType::Float_0_1, cpType, "resampleReduction", "Reduction", sceneProject, entities);
+    }
+    propertyRow(RowPropertyType::Float_0_1, cpType, "heightBlendSharpness", "Height Blend Sharpness", sceneProject, entities);
+    propertyRow(RowPropertyType::Bool, cpType, "macroNormal", "Macro Normal Map", sceneProject, entities);
+    endTable();
+
+    if (terrain.limitLayersPerPixel) greyed("limit");
+    if (terrain.resampleEnabled) greyed("resample");
+    if (terrain.macroNormal) greyed("macroNormal");
+
+    static int shownTier = -1;
+    drawTerrainCostStrip(terrain, shownTier);
+    if (MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entities[0]); mesh && mesh->numSubmeshes > 0){
+        for (const std::string& warning : terrainQualityWarnings(terrain, mesh->submeshes[0].material)){
+            ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "%s", warning.c_str());
+        }
+    }
+}
+
 void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     TerrainComponent& terrain = sceneProject->scene->getComponent<TerrainComponent>(entities[0]);
 
@@ -10544,13 +10822,23 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
         }
     }
 
-    separatorText("Maps");
-    beginTable(cpType, getLabelSize("Height Map"), "terrain_maps");
-    propertyRow(RowPropertyType::Texture, cpType, "heightMap", "Height Map", sceneProject, entities, textureSettings);
-    endTable();
+    // T4 R40: a World's maps, sizes and LOD are its tiles' and its asset's
+    const bool world = terrain.world != nullptr;
+    if (entities.size() == 1 && !world && !sceneProject->scene->findComponent<TerrainWorldComponent>(entities[0])){
+        // R33: the Terrain becomes a World at its place; it stays, inactive
+        if (ImGui::Button("Convert to Terrain World...", ImVec2(-1, 0))){
+            ConvertTerrainWorldDialog::instance().open(project, sceneProject->id, entities[0]);
+        }
+    }
+    if (!world){
+        separatorText("Maps");
+        beginTable(cpType, getLabelSize("Height Map"), "terrain_maps");
+        propertyRow(RowPropertyType::Texture, cpType, "heightMap", "Height Map", sceneProject, entities, textureSettings);
+        endTable();
+    }
 
     // The Terrain window owns adding and removing these, so here they are only listed
-    if (!terrain.blendMaps.empty()){
+    if (!terrain.blendMaps.empty() && !world){
         separatorText("Blend Maps");
         beginTable(cpType, getLabelSize("Blend Map 1"), "terrain_blendmaps");
         for (size_t i = 0; i < terrain.blendMaps.size(); i++){
@@ -10664,15 +10952,17 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
     settingsLevels.intMin = 1;
     settingsLevels.intMax = 9;
 
-    separatorText("Mesh Resolution");
-    beginTable(cpType, getLabelSize("Root Grid Size"), "terrain_shape");
-    propertyRow(RowPropertyType::FloatPositive, cpType, "terrainSize", "Size", sceneProject, entities, settingsFloat);
-    propertyRow(RowPropertyType::FloatPositive, cpType, "maxHeight", "Max Height", sceneProject, entities, settingsFloat);
-    propertyRow(RowPropertyType::FloatPositive, cpType, "resolution", "Resolution", sceneProject, entities, settingsGridResolution);
-    propertyRow(RowPropertyType::Int, cpType, "rootGridSize", "Root Grid Size", sceneProject, entities, settingsRootGrid);
-    propertyRow(RowPropertyType::Int, cpType, "levels", "Levels", sceneProject, entities, settingsLevels);
-    propertyRow(RowPropertyType::Vector2, cpType, "offset", "Offset", sceneProject, entities);
-    endTable();
+    if (!world){
+        separatorText("Mesh Resolution");
+        beginTable(cpType, getLabelSize("Root Grid Size"), "terrain_shape");
+        propertyRow(RowPropertyType::FloatPositive, cpType, "terrainSize", "Size", sceneProject, entities, settingsFloat);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "maxHeight", "Max Height", sceneProject, entities, settingsFloat);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "resolution", "Resolution", sceneProject, entities, settingsGridResolution);
+        propertyRow(RowPropertyType::Int, cpType, "rootGridSize", "Root Grid Size", sceneProject, entities, settingsRootGrid);
+        propertyRow(RowPropertyType::Int, cpType, "levels", "Levels", sceneProject, entities, settingsLevels);
+        propertyRow(RowPropertyType::Vector2, cpType, "offset", "Offset", sceneProject, entities);
+        endTable();
+    }
 
     separatorText("Texturing");
     beginTable(cpType, getLabelSize("Detail Tiles"), "terrain_tiling");
@@ -10680,6 +10970,11 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
     propertyRow(RowPropertyType::FloatPositive, cpType, "textureDetailTiles", "Detail Tiles", sceneProject, entities, settingsResolution);
     endTable();
 
+    drawTerrainQualitySection(cpType, sceneProject, entities);
+
+    if (world){
+        return;
+    }
     separatorText("Ranges");
     beginTable(cpType, getLabelSize("Auto Ranges"), "terrain_ranges_auto");
     propertyRow(RowPropertyType::Bool, cpType, "autoSetRanges", "Auto Ranges", sceneProject, entities);
@@ -11205,6 +11500,7 @@ const char* editor::InspectorWindow::rowPropertyTypeName(RowPropertyType type){
         case RowPropertyType::IntSlider: return "IntSlider";
         case RowPropertyType::Direction: return "Direction";
         case RowPropertyType::Enum: return "Enum";
+        case RowPropertyType::StringSet: return "StringSet";
         case RowPropertyType::Ease: return "Ease";
         case RowPropertyType::Custom: return "Custom";
         case RowPropertyType::LocalEntity: return "LocalEntity";
@@ -13168,6 +13464,9 @@ void editor::InspectorWindow::runDeferredCommands(){
 
 void editor::InspectorWindow::show(){
     runDeferredCommands();
+    if (materialAsset && !materialAsset->path.empty() && ImGui::GetFrameCount() > materialAssetFrame + 1) {
+        leaveMaterialAsset();
+    }
 
     // Flush any debounced material file writes
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);
@@ -13240,10 +13539,39 @@ void editor::InspectorWindow::show(){
         const std::filesystem::path inspectedImage = inspectedFiles.size() == 1
             ? (inspectedFiles[0].is_absolute() ? inspectedFiles[0] : project->getProjectPath() / inspectedFiles[0]).lexically_normal()
             : std::filesystem::path();
+        // a sheet named <name>@WxH.png: the Create Bitmap Font banner (S51 R24)
+        if (!inspectedImage.empty() && Util::isImageFile(inspectedImage.string()) && BitmapFontInspector::drawFontSheetBanner(project, inspectedImage)) {
+            ImGui::Separator();
+        }
         if (!inspectedImage.empty() && Util::isImageFile(inspectedImage.string()) && drawSpriteNormalsAsset(inspectedImage)) {
             ImGui::Separator();
         }
-        const bool drewAssets = textureImporter->draw(project->getInspectedAssets());
+        // a PNG a Procedural Material baked: where from, and whether the graph changed since (S90 R16)
+        if (!inspectedImage.empty() && Util::isImageFile(inspectedImage.string())) {
+            if (const std::optional<procmat::BakeStatus> bake = procmat::cachedBakeStatus(project->getProjectPath(), inspectedImage)) {
+                ImGui::TextWrapped("Baked from %s: %s, %d px, seed %u, %s (%s).", bake->recipe.graphPath.c_str(), bake->recipe.output.c_str(),
+                                   bake->recipe.size, bake->recipe.seed, bake->recipe.tier.c_str(), bake->recipe.device.c_str());
+                if (bake->state != procmat::BakeState::Fresh) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::WarningText);
+                    ImGui::TextWrapped("Stale: %s. Bake it again.", bake->reason.c_str());
+                    ImGui::PopStyleColor();
+                    UIProbe::rect("inspector.procmatStale", ImGui::GetItemRectMin().x, ImGui::GetItemRectMin().y, ImGui::GetItemRectMax().x,
+                                  ImGui::GetItemRectMax().y);
+                }
+                ImGui::Separator();
+            }
+        }
+        bool drewAssets = textureImporter->draw(project->getInspectedAssets());
+        // .aseprite files: the Aseprite Importer (S44 R30)
+        if (!drewAssets) {
+            if (!asepriteImporter) asepriteImporter = std::make_unique<AsepriteImporterView>(project);
+            drewAssets = asepriteImporter->draw(project->getInspectedAssets());
+        }
+        if (!drewAssets) {
+            // S45: a .spriteatlas
+            if (!spriteAtlasInspector) spriteAtlasInspector = std::make_shared<SpriteAtlasInspector>(project);
+            drewAssets = spriteAtlasInspector->draw(project->getInspectedAssets());
+        }
         if (assetsLocked) ImGui::EndDisabled();
         if (drewAssets) {
             ImGui::End();
@@ -13253,6 +13581,13 @@ void editor::InspectorWindow::show(){
     // a state, transition or layer clicked in the Animator window: drawn instead of the scene
     // selection until the selection or the inspected asset changes (S21 R23)
     if (animatorEditorHooks().drawSelection && animatorEditorHooks().drawSelection()) {
+        stopSoundPreview();
+        stopActionPreviewIfActive();
+        ImGui::End();
+        return;
+    }
+    // and a node clicked in a graph window (S90 R26): its parameters
+    if (graphEditorHooks().drawSelection && graphEditorHooks().drawSelection()) {
         stopSoundPreview();
         stopActionPreviewIfActive();
         ImGui::End();
@@ -13775,6 +14110,9 @@ void editor::InspectorWindow::show(){
             }
 
             ImGui::SeparatorText("Fixed Resolution");
+            // R4: a Pixel Perfect Camera on the main camera drives the target instead
+            if (const std::string note = pixelart::fixedResolutionNote(sceneProject); !note.empty())
+                ImGui::TextDisabled("%s", note.c_str());
 
             if (ImGui::BeginTable("scene_fixed_resolution_table", 2, tableFlags)) {
                 ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Enabled"));

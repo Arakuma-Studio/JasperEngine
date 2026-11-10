@@ -49,6 +49,13 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kOnScreenStickMode;
     extern const EnumDesc kOnScreenStickAxes;
     extern const EnumDesc kOnScreenVisibility;
+    // pixel art (PixelArtReflect.cpp, S41)
+    extern const EnumDesc kPixelUpscaleMode;
+    extern const EnumDesc kPixelRotation;
+    // 2D sorting and Sprite Batch (SortingReflect.cpp, S52)
+    extern const EnumDesc kSpriteSortPoint;
+    extern const EnumDesc kSpriteBatchMode;
+    extern const EnumDesc kSpriteBatchSpace;
     extern const EnumDesc kJointAnchorSpace;
     extern const EnumDesc kCollisionDetection2D;
     extern const EnumDesc kSleepMode2D;
@@ -80,11 +87,18 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kMaterialDepthTest;
     extern const EnumDesc kMaterialDepthWrite;
     extern const EnumDesc kMaterialLighting;
+    extern const EnumDesc kTerrainQualitySetting;
+    extern const EnumDesc kTerrainOffscreenShadows;
+    extern const EnumDesc kTerrainMacroMode;
+    extern const EnumDesc kTerrainCliffProjection;
     extern const EnumDesc kMaterialPassOrder;
     extern const EnumDesc kMaterialStencilCompare;
     extern const EnumDesc kMaterialStencilOp;
     extern const EnumDesc kParticleEmitterShape;
     extern const EnumDesc kPivotPreset;
+    extern const EnumDesc kTerrainTreeWindMask;
+    extern const EnumDesc kTerrainTreeCollision;
+    extern const EnumDesc kSpriteDrawMode;
     extern const EnumDesc kPrimitiveType;
     extern const EnumDesc kProgressbarType;
     extern const EnumDesc kReflectionProbeMode;
@@ -117,6 +131,10 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kNavGridLayout;
     extern const EnumDesc kNavGridMovement;
     extern const EnumDesc kNavGridSource;
+    // the Voxel Volume's (editor/reflect/components/VoxelReflect.cpp)
+    extern const EnumDesc kVoxelQuality;
+    extern const EnumDesc kVoxelNavigationUpdate;
+    extern const EnumDesc kVoxelTerrainCut;
     // the spline components' (editor/reflect/components/SplinesReflect.cpp)
     extern const EnumDesc kSplineType;
     extern const EnumDesc kSplineTangentMode;

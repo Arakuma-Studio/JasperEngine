@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "duration": 1,
+  "looping": false,
+  "tickRate": 120,
+  "maxParticles": 64,
+  "modules": [
+    {"type": "main", "startLifetime": {"mode": "twoConstants", "constant": 0.5, "constantMax": 0.9},
+     "startSpeed": {"mode": "twoConstants", "constant": 120, "constantMax": 260}, "startSize": 1, "startColor": [1, 1, 1, 1]},
+    {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 24}]},
+    {"type": "shape", "shape": "cone", "angle": 35, "radius": 0.5, "emitFrom": "base"},
+    {"type": "limitVelocity", "dampen": 0, "drag": 2.2, "multiplyBySize": false},
+    {"type": "forceOverLifetime", "y": -427.5, "space": "world"},
+    {"type": "colorOverLifetime", "color": {"mode": "ramp", "ramp": "builtin:pixelfx-effects#ramp:hot"}},
+    {"type": "collision", "collisionType": "planes", "planes": [{"point": [0, -16, 0], "normal": [0, 1, 0]}],
+     "bounce": 0.642857, "dampen": 0.3, "radiusScale": 0},
+    {"type": "pixelArt", "fade": "cutout", "secondaryOffset": 1,
+     "fadeOverLifetime": {"mode": "curve", "curve": [[0, 1, 0, 0], [0.85, 1, 0, -100], [0.86, 0, -100, 0], [1, 0, 0, 0]]}},
+    {"type": "renderer", "renderMode": "pixel", "pixelShape": "streak", "streakWidth": 1, "streakLengthScale": 0.022,
+     "streakMaxLength": 9, "streakHeadFraction": 0.45}
+  ]
+}

@@ -7,6 +7,7 @@
 // (setPatternUniforms) and src/engine/layer2d/reflectionMaps.ts (the panorama blur) by SafEight,
 // used with the author's permission.
 
+#include "TitleElementVariant.h"
 #include "TitleFields.h"
 #include "TitlePlanner.h"
 
@@ -673,14 +674,17 @@ TitlePx TitlePlanner::title2D(const DrawNode& node, const std::vector<std::strin
         std::vector<int> fieldSlots;
         // draws one element's ELEMENT pass into the stack: blended in fixed function, or (RGBA16F
         // without float blending) into a scratch target composed by the BLEND program
-        auto drawIntoStack = [&](const std::string& label, std::function<bool(TitleJobState&, TitleGpuPass&, std::string&)> fill, bool punch) {
+        // `variant` the element's program variant (TitleElementVariant.h; the knockout's is 0)
+        auto drawIntoStack = [&](const std::string& label, std::function<bool(TitleJobState&, TitleGpuPass&, std::string&)> fill, bool punch,
+                                 uint32_t variant) {
+            if (req.testFlags & TITLE_ART_TEST_ELEMENT_WHOLE) variant = TITLE_ELEMENT_WHOLE;
             if (blends) {
                 pass(label, id, stack.slot, {0, 0, W, H}, TitleRenderProgram::Element, fill,
-                     punch ? BlendMode::ERASE_PREMULTIPLIED : BlendMode::PREMULTIPLIED, false, 3.0f);
+                     punch ? BlendMode::ERASE_PREMULTIPLIED : BlendMode::PREMULTIPLIED, false, 3.0f, true, variant);
                 return;
             }
             const int scratch = newSlot(TitleBuffer::Accumulator, W, H);
-            pass(label, id, scratch, {0, 0, W, H}, TitleRenderProgram::Element, fill, BlendMode::NONE, false, 3.0f);
+            pass(label, id, scratch, {0, 0, W, H}, TitleRenderProgram::Element, fill, BlendMode::NONE, false, 3.0f, true, variant);
             const int backdrop = newSlot(TitleBuffer::Accumulator, W, H);
             const int stackS = stack.slot;
             pass("stack backdrop", id, backdrop, {0, 0, W, H}, TitleRenderProgram::Copy, [stackS, W, H](TitleJobState& s, TitleGpuPass& p, std::string&) {
@@ -720,7 +724,7 @@ TitlePx TitlePlanner::title2D(const DrawNode& node, const std::vector<std::strin
                     p.tex[0] = s.texture(coverage);
                     p.params.set(29, 1.0f);
                     return true;
-                }, true);
+                }, true, 0);
             }
             if (!drawn) continue;
             const Json& mat = *e.material;
@@ -1127,7 +1131,7 @@ TitlePx TitlePlanner::title2D(const DrawNode& node, const std::vector<std::strin
                 if (glyphS >= 0) p.raw[3] = s.texture(glyphS);
                 if (burstS >= 0) p.raw[4] = s.texture(burstS);
                 return true;
-            }, false);
+            }, false, titleElementVariant(values));
         }
         for (int slot : fieldSlots) release(slot);
         auto entry = std::make_shared<TitleCacheEntry>();

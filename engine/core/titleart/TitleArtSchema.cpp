@@ -8,6 +8,7 @@
 #include "ColorScheme.h"
 #include "TitleArtIO.h"
 #include "TitleEffectRegistry.h"
+#include "TitleTranslations.h"
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
 #include "three_d/Title3DSchema.h"
 #endif
@@ -30,6 +31,8 @@ namespace jasperengine::titleart {
     // the program's registration functions: one line per spec that adds members (S81 `runtime`,
     // S85 `transform.stretch`, S86 `style_3d`, S87 `translations`...), called after S80's table
     void registerProgramMembers(TitleArtSchema& schema);
+    // S85's members (anim/TitleAnimIO.cpp)
+    void registerTitleAnimMembers(TitleArtSchema& schema);
 
 }
 
@@ -1123,6 +1126,8 @@ namespace {
 void jasperengine::titleart::registerProgramMembers(TitleArtSchema& schema) {
     // each later title spec adds one call here (S81, S84-S87), after S80's table
     registerS81Members(schema);
+    registerTitleAnimMembers(schema);
+    registerTitleLanguageMembers(schema);
     registerColorSchemeMembers(schema);
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
     registerTitle3DMembers(schema);
@@ -1274,6 +1279,13 @@ bool TitleArtSchema::removeKind(std::string_view name) {
     if (it == kinds.end()) return false;
     kinds.erase(it);
     reindex();
+    return true;
+}
+
+bool TitleArtSchema::setFinish(std::string_view kindName, void (*finish)(Json& object, const std::string& path, NormalizeContext& context)) {
+    SchemaKind* k = mutableKind(kindName);
+    if (!k || k->finish) return false;
+    k->finish = finish;
     return true;
 }
 
@@ -1538,6 +1550,14 @@ FieldLookup titleart::lookupField(Json& object, const SchemaKind& rootKind, cons
     if (path.empty()) return fail(0, "bad_path", "the path is empty", {});
 
     Json* current = &object;
+    // a read (createEntries off) never adds a key: a sparse member a level has not set stays
+    // absent, and reads as null
+    static thread_local Json absent;
+    auto slotOf = [&](const std::string& key) -> Json& {
+        if (createEntries || !current->is_object() || current->contains(key)) return (*current)[key];
+        absent = Json();
+        return absent;
+    };
     const SchemaKind* kind = schema.variantOf(rootKind, object);
     if (!kind) return fail(0, "unknown_type", "the object's type is not one this build knows", {});
     // inside effect / generator params: the definition's params
@@ -1552,7 +1572,7 @@ FieldLookup titleart::lookupField(Json& object, const SchemaKind& rootKind, cons
             for (const ParamDef& p : *params) keys.push_back(p.key);
             if (!param) return fail(i, "bad_path", "'" + s.key + "' is not a parameter here", keys);
             appendKey(s.key, false);
-            Json& slot = (*current)[s.key];
+            Json& slot = slotOf(s.key);
             params = nullptr;
             if (last) {
                 result.ok = true;
@@ -1578,7 +1598,7 @@ FieldLookup titleart::lookupField(Json& object, const SchemaKind& rootKind, cons
             return fail(i, "bad_path", "'" + s.key + "' is not a member of " + kind->label, memberKeys(schema, *kind));
         }
         appendKey(s.key, false);
-        Json& slot = (*current)[s.key];
+        Json& slot = slotOf(s.key);
         if (last) {
             result.ok = true;
             result.value = &slot;

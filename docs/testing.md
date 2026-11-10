@@ -14,6 +14,9 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | `jasperengine-htmlui-editor-tests` | the HTML UI importers against a local HTTP fixture server | `tools/build.sh htmlui-editor-tests` | `build/test-results/htmlui-editor.xml` |
 | MCP tests | the editor's MCP server, driven like an agent (`tools/mcp/tests/test_*.py`) | `tools/build.sh linux`, then `tools/build.sh mcp-tests -j 2` | `build/test-results/mcp.json` |
 | Benchmarks | the job system's and the allocators' budgets (S06 R23-R26): `je-bench-jobs`, `je-bench-memory`, gated by `tools/perf/check_bench.py` against `tools/perf/bench-thresholds.json` | `docs/jobs-memory.md` (on an otherwise idle machine) | their `--json` files |
+| Foliage (T5) | placement, cull, tree store, rules (`Foliage*`, `TreeStore*`: core CPU), the system (`FoliageSystemCore`, `FoliageTreesCore`, `FoliageRuntime`), the draws (`FoliageGpu`: goldens in `engine/tests/core/render/golden/foliage_*`), `je-bench-foliage`, `tools/mcp/tests/test_foliage*.py`; `docs/specs/checklists/T5.md` by hand | `UNIT_SUITE=core UNIT_TEST_ARGS=--gtest_filter='Foliage*:TreeStore*' tools/build.sh unit-tests`; `MCP_SUITE=all tools/build.sh mcp-tests -k foliage -j 2` | `docs/perf/foliage.md` |
+| Terrain budgets (T1) | the stamps, whole-map ops, queries, refit and runtime edits (`je-bench-terrain`, gated by `tools/perf/check_bench.py`), the delta step (`TerrainDeltaBench`: editor, budgets under `JASPER_TEST_PERF_SLACK`), the player's growth (`tools/perf/terrain_size.py`); pen tablets by hand, `docs/specs/checklists/T1.md` | `cmake --build <core-tests tree> --target je-bench-terrain`, run it with `--json`, then `check_bench.py`; `UNIT_SUITE=editor UNIT_TEST_ARGS=--gtest_filter='TerrainDeltaBench.*' tools/build.sh unit-tests` | `docs/perf/terrain.md` |
+| Animator benchmark on WebAssembly | `je-bench-anim` under node in the web image, with and without `-msimd128` (S77 R11); `tools/perf/check_bench.py` gates the owner's budgets as `je-bench-anim-wasm` | `tools/perf/bench-anim-wasm.sh`, results read in `docs/perf/animator.md` | `build/test-results/anim-wasm/` |
 | Smoke test | export, build and run a project, then open it in the editor; screenshots | `tools/smoke-test.sh tools/fixtures/post-processing` | `build/smoke/` |
 | Upgrade from origin/main | a game an origin/main editor made (`tools/test-projects/upgrade-from-main`) opened, migrated, played, exported for Linux and the web in this editor, against the old editor's transcripts ([upgrading-from-main.md](upgrading-from-main.md)) | `tools/build.sh linux`, then `tools/ci/upgrade_from_main/check.sh` (the editor part also in the MCP suite: `test_upgrade_from_main.py`) | `build/upgrade-from-main/check/report.md` |
 | Web gate | the web build in headless Chrome (WebGL2 on SwiftShader) | `tools/build.sh web`, then `tools/build.sh web-gate` | `build/test-results/web/` |
@@ -21,7 +24,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Crash diagnostics | the crash handler's report folders, sessions, hook and ring, the hang watchdog (`HangWatchdog.*`, `Crash*` in `jasperengine-core-tests`, which start `jasperengine-crash-test`, `engine/tests/crash/CrashTestMain.cpp`), the symbolication tool, the web crash hooks | `tools/build.sh unit-tests`; `python3 -I tools/crash/test_symbolicate.py <jasperengine-crash-test>`; `WEB_PROJECT=crash-diagnostics tools/build.sh web`, then `GATE=crash-diagnostics tools/build.sh web-gate` | as above |
 | Android packaging | what Build makes for Android, run for real: APK and App Bundle from the prebuilt player, the bundletool download (real URL), the debug and release keys, wrong passwords, `publish prepare`, then both installed on the emulator and their screens compared with the golden | `tools/ci/android_packaging.sh` (needs `tools/build.sh linux`, the Android player; KVM: server A) | `build/android-packaging/` |
 | iOS packaging | what Build makes for iOS on a Mac: the Xcode project through `xcodebuild`, installed and launched on a simulator device of its own (no window), a device build as far as signing, the IPA path without a developer account, `publish prepare` | `tools/ci/ios_packaging.sh` (needs the editor on a Mac with Xcode, `tools/players/ios_player.sh`; `IOS_PACKAGING_GOLDEN=1` compares the screen with `tools/fixtures/unified-lighting/golden/ios/screen.png`, from an iPhone 17 simulator) | `build/ios-packaging/` |
-| Tool checks | the shader lint, the CI scripts' own tests, the presets, the HTML UI golden ledger, the exported projects' `jasperengine.py`, C++ scripts linking Box2D and Jolt (run it on Windows and macOS by hand: nothing else checks those), the Android Gradle files | `python3 tools/ci/test_check_shader_lod.py` (with `python3 tools/check_shader_lod.py`: no implicit derivatives in a shader loop with a per-fragment exit or branch), `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_jasperengine_py.py`, `python3 tools/ci/check-script-physics-link.py <editor>`, `python3 tools/ci/test_check_gradle_warnings.py` (and `tools/build.sh android` runs `check_gradle_warnings.py` on its Gradle log: a deprecation in our Gradle files fails the build), `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `python3 tools/check-editor-modals.py` (`--self-test`), `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
+| Tool checks | the shader lint, the CI scripts' own tests, the presets, the HTML UI golden ledger, the exported projects' `jasperengine.py`, C++ scripts linking Box2D and Jolt (run it on Windows and macOS by hand: nothing else checks those), the Android Gradle files | `python3 tools/ci/test_check_shader_lod.py` (with `python3 tools/check_shader_lod.py`: no implicit derivatives in a shader loop with a per-fragment exit or branch), `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_jasperengine_py.py`, `python3 tools/ci/check-script-physics-link.py <editor>`, `python3 tools/ci/test_check_gradle_warnings.py` (and `tools/build.sh android` runs `check_gradle_warnings.py` on its Gradle log: a deprecation in our Gradle files fails the build), `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `python3 tools/check-editor-modals.py` (`--self-test`), `tools/build.sh exec linux tools/ci/check-presets.sh`, `python3 tools/procmat/test_import_mm_nodes.py` (S90's node importer: licences, the deny-list, what is data) | stdout |
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
 worktree of a checkout makes rebuilds cheap.
@@ -47,6 +50,7 @@ tools/build.sh unit-tests                                   # both binaries
 UNIT_SUITE=core tools/build.sh unit-tests                   # one of them (core or editor)
 UNIT_TEST_ARGS='--gtest_filter=Matrix4.*' tools/build.sh unit-tests
 GRAPHIC_BACKEND=vulkan UNIT_SUITE=core tools/build.sh unit-tests   # GPU suites on lavapipe
+GRAPHIC_BACKEND=gles3 UNIT_SUITE=core tools/build.sh unit-tests    # GPU suites in an OpenGL ES 3.2 context (llvmpipe, linux-backends image)
 WERROR=1 tools/build.sh unit-tests
 RUN=0 tools/build.sh unit-tests                             # build only
 ```
@@ -70,6 +74,7 @@ recording, nothing when unset (`tools/mcp/tests/test_recorder_integrity.py`).
 `JASPER_MESH_LOAD_HOLD_FILE=<path>` holds the first load (the binding) of the meshes of a scene that
 loaded a model in the background while that file exists, so what else loads the same model meanwhile
 (a Project window thumbnail's preview) comes first (`tools/mcp/tests/test_model_texture_bind.py`).
+`JASPER_TEST_MATERIAL_THUMBNAIL_STUCK=<project-relative file>` keeps a material thumbnail loading while that file exists (`test_material_thumbnail.py`).
 `JASPER_TEST_STAGING_HOLD=<path>` holds a Project Hub import or template copy with part of its files in
 its staging folder while that file exists, after creating `<path>.held`: the tests kill the editor
 there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/test_crash_leftovers.py`).
@@ -114,6 +119,7 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   in the last unfiltered run (`build/test-results/mcp-file-seconds.json`); files with no time yet
   go first. So no long file starts last and alone. Each file has its own process, editor and
   scratch directory, so the order changes nothing a test sees.
+- `SMOKE_METHOD=build SMOKE_PLAY=1 tools/smoke-test.sh tools/fixtures/title3d-fixed`: a Compile build with only the engine modules the project needs (`jasperengine-editor build --method compile`): a fixed-text Realtime 3D title without the mesher, checked against the editor's frame.
 - `tools/smoke-test.sh <project>`: see its header. It also checks that the exported project
   configures as a user's game does: no presets file, no warnings as errors, no sanitizer.
   A hang watchdog report fails it, with one exception: on a project's first editor open, when every
@@ -134,13 +140,21 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   web`) checks the logger's browser console sink and a Lua `Timer` that way.
 - `GATE=mesh-raycast` (after `WEB_PROJECT=mesh-raycast tools/build.sh web`) times 10,000
   MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17).
-- The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13) and `terrain`, a
+- The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13), `pcss` (PCSS's two views
+  of the shadow atlas in one WebGL2 draw, the Ultra tier's contact hardening) and `terrain`, a
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
-  renderer uploads it as R32F or R16F there).
+  renderer uploads it as R32F or R16F there). `terrain-edit` runs the op sequences of
+  `TerrainGolden.*` in WebAssembly and fails when their digest differs from the one the native
+  core suite pins (T1 AC5). `foliage` hashes T5's placement fixture the same way, then fills a new
+  ring after a camera jump with one thread, within 4 ms a frame at the p99 (T5 AC1, AC4).
 - `GATE=web-keys-audio` (after `WEB_PROJECT=web-keys-audio tools/build.sh web`) runs Chrome with the
   desktop autoplay policy (`chrome_flags` in the baseline): the page's audio is suspended until the
   first key press (`keys`: trusted CDP key events, `eval_before_input` before them, `eval` after),
   and Meta, ContextMenu and events without a code reach the game as their engine keys.
+- `GATE=pixel-perfect` (after
+  `WEB_PROJECT=pixel-perfect tools/build.sh web`) runs at a device scale factor of 2 and checks that
+  a Pixel Perfect Camera sizes the canvas backing store at its CSS size times `devicePixelRatio` and
+  draws it pixelated (S41 AC13).
 
 ### Compiled and prebuilt game builds (MCP, `JASPER_SLOW_BUILD=1`)
 
@@ -232,6 +246,18 @@ A new test that needs a game that runs builds it prebuilt. One that needs what o
 game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, native plugins a player cannot carry, no runtime
 shader compiler, compiler output) compiles, and joins the table above with its reason.
 
+### The noise golden tool
+
+`jasperengine-noise-golden` (`tools/noise/golden`: noise, graph and the table, no engine) is the self-check of
+T2's one golden table: `cmake -S tools/noise/golden -B build/noise-golden -G Ninja -DCMAKE_BUILD_TYPE=Release`,
+then `build/noise-golden/jasperengine-noise-golden --all-backends --report -`. It prints
+`noise-golden <target> <backend> <cases> pass|FAIL table=<hash>`, exits 1 on any mismatch, and `--self-test` must
+exit 1. `tools/build.sh exec android tools/noise/cross_check.sh` runs it on the four Android ABIs (ARM under
+qemu-user); `--red-contract` must fail. `WEB_PROJECT=noise tools/build.sh web`, then `GATE=noise tools/build.sh web-gate`,
+runs the same table on the web, also with `WASM_SIMD=0`. `python3 tools/noise/check_kernels.py [--self-test]` is
+the lint for this area, which `tools/check-changed` does not run. A difference is a kernel bug, never a new
+table; record each platform's report in `docs/perf/noise.md`.
+
 ### Linked folders in a web game (S68 AC2)
 
 `tools/mcp/tests/test_linked_folders_export.py` builds and runs a Desktop game with
@@ -313,14 +339,14 @@ then screenshots the device (`adb exec-out screencap`) and checks it with
 each run checked on its own in `--out/<scene>/`; `{scene}` in an expectation is the run's scene.
 The gate's project is `tools/test-projects/render-gate`: a lit 3D scene (`lit3d`), 2D and UI
 (`ui2d`: a textured Image, Polygons, a Text), an HTML UI document (`htmlui`) and Title Art
-Renderers (`titleart`, S81; run it also with `debug.jasperengine.titleart_rgba8=1` against the same
-golden), goldens in its `golden/`:
+Renderers (`titleart`, S81; run it also with `--setprop debug.jasperengine.titleart_rgba8=1` against
+the same golden), goldens in its `golden/`:
 
 ```sh
 ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android
 tools/android-emulator-test.sh build/android-render-gate/app-debug.apk \
     --expect-file tools/test-projects/render-gate/android-expect.txt \
-    --scene lit3d --scene ui2d --scene htmlui --golden tools/test-projects/render-gate/golden
+    --scene lit3d --scene ui2d --scene htmlui --scene titleart --golden tools/test-projects/render-gate/golden
 ```
 
 `ANDROID_ABIS=x86_64` builds only the emulator's ABI (a quarter of the build).
@@ -395,9 +421,11 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
 ```
 
 - Lints with triggers: a changed MCP test file runs `tools/ci/check-mcp-ci-suite.py`; a changed
-  component header, `PhysicsSystem.h` or `Engine.h`/`.cpp` runs `tools/check_event_clears.py` (every
-  `FunctionSubscribe` event is in its holder's `forEachEvent` and every holder in `ComponentEvents.h`,
-  so the clears at Stop reach it; `tools/build.sh linux` runs it too).
+  engine source (not `engine/libs`, `engine/tests`) runs `tools/check_event_clears.py` (every
+  `FunctionSubscribe` member is in its holder's `forEachEvent`, every component holder in
+  `ComponentEvents.h`, every other holder in the lint's `WALKS` or `TRANSIENT`, and every static
+  event in Engine's clears, so the clears at Stop reach it; `Ease` members count; `tools/build.sh
+  linux` runs it too).
 - The change: committed since the base, staged, unstaged and untracked files. A checkout without
   the stream's history reads its diff from `build/.rb-changes.json` (with every file's sha256: a
   diff that does not match the files is refused).
@@ -529,6 +557,7 @@ Lane files run on one display per chunk, two at a time; a file holding one test 
 | `editor/<area>/X.cpp` | `editor/tests/<area>/XTest.cpp` | `jasperengine-editor-tests` |
 | the HTML UI | `engine/tests/htmlui/` | `jasperengine-htmlui-tests` |
 | `engine/core/<area>/X.cpp` that a test drives through editor scenes (the editor's static `App`, physics worlds, model loads) | `editor/tests/engine/<area>/XTest.cpp` | `jasperengine-editor-tests` |
+| editor code that needs a GPU device (S90's evaluator, `editor/procmat/`) | `engine/tests/core/procmat/*GpuTest.cpp`, the editor sources listed in `engine/tests/core/CMakeLists.txt` | `jasperengine-core-tests` (only that tree has a headless device) |
 | an MCP tool or agent-facing behaviour | `tools/mcp/tests/test_<area>.py`, with `CI = True` | MCP suite |
 
 Both unit-test targets glob `*Test.cpp` under their directory, so a new file needs no CMake
@@ -576,7 +605,7 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   logger's drain thread or the workers may); `perfSlack()` is the factor wall-clock budgets are
   enforced with: `JASPER_TEST_PERF_SLACK`, unset (0) by default and under a sanitizer, where the
   budgets are only printed. `*Bench` suites (`LoggerBench`, `SchedulerBench`, `SignalBench`, S10's
-  `ShadowBench`), `SchedulerTest.Process10kUnder2ms` and S12's `AtmosphereNoise` bake budgets check
+  `ShadowBench`, S03's `AtomicFileBench` Document write), `SchedulerTest.Process10kUnder2ms` and S12's `AtmosphereNoise` bake budgets check
   their budgets that way and print `[bench]` lines (S34's `LuaBindingBench` prints the cost of a call
   through the Lua bindings, with no budget: builds are compared with it on the benchmark server); the
   editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24),
@@ -890,6 +919,20 @@ library without them.
 The Chrome for Testing headless shell in `docker/web.Dockerfile` and `uv` in
 `docker/linux.Dockerfile` are pinned by version and sha256 and bumped by hand, as are the MCP
 harness's packages (`tools/mcp/requirements.txt`).
+
+## Known gaps
+
+What the suites do not cover today, and what closing each gap would take. Each needs money, a
+device or a decision; recorded by BF23 (`docs/specs/BF23-authoring-audit-fixes.md`, section 4).
+
+| Gap | Evidence | What it would take |
+|---|---|---|
+| No native compile check for generated HLSL and MSL | There is no CI, and `tools/check-changed` has no `fxc`, `dxc` or `metal` step | A check someone runs on a Windows and a macOS machine |
+| Nothing runs on Windows or macOS unless a person does | `AGENTS.md`: there is no CI | A machine for each, or accepting it |
+| Particle goldens run on glcore and Vulkan only | `docs/specs/S20-particles.md`, "Goldens" under Deviations | Devices for Metal, D3D11 and GLES3 |
+| Mobile particle performance rows are unmeasured | `docs/perf/particles.md`, "Not measured here" | A person with reference phones |
+| S20's "Web: est. X ms" hint was never built | `docs/specs/S20-particles.md` (Risks), no match in `editor/window/InspectorParticles.cpp` | Delivered by S91's `cost` table |
+| The agent guide has 451 bytes free above its headroom, and S35, S90 and S91 all want some | `tool_budget.py --check`, measured 2026-11-04: 6,241 of 8,192 bytes, 1,951 left, 1,500 required | The second to land moves its own detail out, per `docs/mcp/conventions.md`. Measure with `tool_budget.py --groups all` |
 
 ## Record (S02)
 

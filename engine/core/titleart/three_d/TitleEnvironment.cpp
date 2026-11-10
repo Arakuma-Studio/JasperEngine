@@ -10,6 +10,9 @@
 #include "jobs/JobSystem.h"
 #include "texture/Ktx2.h"
 #include "texture/TexturePrepare.h"
+#include "io/Data.h"
+#include "titleart/TitleArtDoc.h"
+#include "stb_image.h"
 
 #include <algorithm>
 #include <cmath>
@@ -424,6 +427,30 @@ std::shared_ptr<const TitleHdri> titleart::loadTitleHdri(const std::string& slug
     if (hdri && (hdri->width <= 0 || hdri->height <= 0 || hdri->rgba.size() != (size_t)hdri->width * hdri->height * 4)) hdri = nullptr;
     if (hdri) r.loaded[slug] = hdri;
     return hdri;
+}
+
+std::shared_ptr<const TitleHdri> titleart::loadTitleHdriFromDirectory(const std::string& slug, const std::string& dir) {
+    // the manifest names each slug's file (tools/titleart/fetch_hdris.py writes it)
+    Data manifestFile;
+    if (manifestFile.open((dir + "/manifest.json").c_str()) != FILEDATA_OK) return nullptr;
+    const Json manifest = Json::parse(manifestFile.readString(), nullptr, false);
+    if (!manifest.is_object() || !manifest.contains("environments") || !manifest["environments"].is_object()) return nullptr;
+    for (const auto& [env, entry] : manifest["environments"].items()) {
+        if (!entry.is_object() || entry.value("slug", std::string()) != slug) continue;
+        Data file;
+        if (file.open((dir + "/" + entry.value("file", std::string())).c_str()) != FILEDATA_OK) return nullptr;
+        int w = 0, h = 0, n = 0;
+        float* pixels = stbi_loadf_from_memory(file.getMemPtr(), (int)file.length(), &w, &h, &n, 4);
+        if (!pixels) return nullptr;
+        auto hdri = std::make_shared<TitleHdri>();
+        hdri->width = w;
+        hdri->height = h;
+        hdri->rgba.resize((size_t)w * h * 4);
+        for (size_t i = 0; i < hdri->rgba.size(); i++) hdri->rgba[i] = floatToHalf(pixels[i]);
+        stbi_image_free(pixels);
+        return hdri;
+    }
+    return nullptr;
 }
 
 float titleart::titleHdriYaw(const std::string& preset) {

@@ -8,6 +8,7 @@
 
 #include "JasperEngineGameController.h"
 #include "Engine.h"
+#include "Input.h"
 #include "window/PlayInput.h"
 #include "Platform.h"
 #include "util/FrameLimiter.h"
@@ -285,13 +286,45 @@ void confinePointerToWindow() {
     WindowMac::confinePointerToWindow();
 }
 
+// Backend::penPressure: outside MacBackendData, which exists only between init and shutdown
+float nativePenPressure = -1.0f;
+
+// A mouse or tablet event's pen pressure: a tablet's point (also a mouse event's subtype), 0 for a
+// pen coming into proximity, -1 for a mouse, a puck or a pen leaving (MacInputRouter's
+// macPenPressure is the players')
+float eventPenPressure(NSEvent* event) {
+    // subtype throws on the events that have none: only mouse events reach it
+    const bool proximity = event.type == NSEventTypeTabletProximity ||
+        (event.type != NSEventTypeTabletPoint && event.subtype == NSEventSubtypeTabletProximity);
+    if (proximity) {
+        const bool pen = event.pointingDeviceType == NSPointingDeviceTypePen ||
+                         event.pointingDeviceType == NSPointingDeviceTypeEraser;
+        return event.isEnteringProximity && pen ? 0.0f : -1.0f;
+    }
+    if (event.type == NSEventTypeTabletPoint || event.subtype == NSEventSubtypeTabletPoint)
+        return std::clamp(static_cast<float>(event.pressure), 0.0f, 1.0f);
+    return -1.0f;
+}
+
+void updatePenPressure(NSEvent* event) {
+    nativePenPressure = eventPenPressure(event);
+    // a game in Play reads it too
+    Input::setPenPressure(nativePenPressure);
+}
+
 void handleBackendEvent(NSEvent* event) {
     if (!backend) return;
     switch (event.type) {
+        case NSEventTypeTabletPoint:
+        case NSEventTypeTabletProximity:
+            updatePenPressure(event);
+            requestRedraw();
+            break;
         case NSEventTypeMouseMoved:
         case NSEventTypeLeftMouseDragged:
         case NSEventTypeRightMouseDragged:
         case NSEventTypeOtherMouseDragged:
+            updatePenPressure(event);
             if (WindowMac::isCursorCaptured()) {
                 backend->rawMouseX += event.deltaX;
                 backend->rawMouseY += event.deltaY;
@@ -306,6 +339,9 @@ void handleBackendEvent(NSEvent* event) {
         case NSEventTypeRightMouseUp:
         case NSEventTypeOtherMouseDown:
         case NSEventTypeOtherMouseUp:
+            updatePenPressure(event);
+            requestRedraw();
+            break;
         case NSEventTypeScrollWheel:
         case NSEventTypeKeyDown:
         case NSEventTypeKeyUp:
@@ -367,6 +403,9 @@ void applyShortcut(NSMenuItem* menuItem, const std::string& shortcut) {
             start, plus == std::string::npos ? std::string::npos : plus - start);
         if (token == "Ctrl" || token == "Cmd")
             modifiers |= NSEventModifierFlagCommand;
+        // the Control key (Chord::format names ImGuiMod_Super so on macOS)
+        else if (token == "Control" || token == "Super")
+            modifiers |= NSEventModifierFlagControl;
         else if (token == "Shift")
             modifiers |= NSEventModifierFlagShift;
         else if (token == "Alt" || token == "Option")
@@ -940,7 +979,8 @@ int editor::Backend::init(int argc, char* argv[]) {
             NSEventMaskLeftMouseUp | NSEventMaskRightMouseDown |
             NSEventMaskRightMouseUp | NSEventMaskOtherMouseDown |
             NSEventMaskOtherMouseUp | NSEventMaskScrollWheel |
-            NSEventMaskKeyDown | NSEventMaskKeyUp | NSEventMaskFlagsChanged;
+            NSEventMaskKeyDown | NSEventMaskKeyUp | NSEventMaskFlagsChanged |
+            NSEventMaskTabletPoint | NSEventMaskTabletProximity;
         backend->eventMonitor = [NSEvent
             addLocalMonitorForEventsMatchingMask:eventMask
                                          handler:^NSEvent*(NSEvent* event) {
@@ -1226,6 +1266,10 @@ void editor::Backend::closeWindow() {
     if (!backend) return;
     backend->shouldClose = true;
     postWakeEvent();
+}
+
+float editor::Backend::penPressure() {
+    return nativePenPressure;
 }
 
 bool editor::Backend::isRunningOnWayland() {

@@ -342,6 +342,10 @@ namespace jasperengine {
 
         static void setPointerLockState(PointerLockState state);
 
+        // the latest pointer input's pen pressure, 0..1 (clamped), or a negative value (and NaN)
+        // when it came from a mouse or a finger
+        static void setPenPressure(float pressure);
+
         // text typed (code points), for getInputString (Unity's inputString): backspace is "\b",
         // return "\n"; other control characters are left out
         static void addInputCharacter(uint32_t codepoint);
@@ -352,8 +356,8 @@ namespace jasperengine {
         // (numTouches, getTouches) until the platform's touch cancel or lift removes them, which
         // then adds no second Canceled
         static void releaseAll();
-        // releaseAll and a clean slate (levels, windows, deltas, text, touches, taps, the input
-        // clock): the editor's Play start and stop
+        // releaseAll and a clean slate (levels, windows, deltas, text, touches, taps, the pen
+        // pressure, the input clock): the editor's Play start and stop
         static void reset();
 
         // ---- Engine and editor only
@@ -460,6 +464,10 @@ namespace jasperengine {
         static InputControlEdges getTouchEdges(int pointer);
 
         static PointerLockState getPointerLockState();
+
+        // 0..1 while the latest pointer input is a pen or stylus, -1 when it is a mouse or a
+        // finger (and until a pen is used): a level, read at any time
+        static float getPenPressure();
 
         static bool isGamepadConnected(int id);
         static std::string getGamepadName(int id);

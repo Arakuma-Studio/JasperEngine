@@ -19,10 +19,14 @@
 
 #include "Log.h"
 #include "Scene.h"
+#include "component/ParticleSystemComponent.h"
 #include "object/ParticleSystem.h"
+#include "particles/AnalyticParticles.h"
 #include "particles/ParticleModules.h"
+#include "subsystem/ParticleSystemState.h"
 
 #include <cmath>
+#include <optional>
 #include <string>
 
 using namespace jasperengine;
@@ -38,6 +42,16 @@ namespace {
         Entity entity = NULL_ENTITY;
         std::string module;
     };
+
+    // a colour field of a module (ps.colorOverLifetime.color): reads and writes go to the effect
+    // now, so :setRamp() on it changes the system (S49 R40); it answers as a MinMaxGradient does
+    struct ParticleSystemGradient {
+        Scene* scene = nullptr;
+        Entity entity = NULL_ENTITY;
+        std::string path;    // "colorOverLifetime.color"
+    };
+
+    bool gradientOf(const ParticleSystemGradient& view, MinMaxGradient& out);
 
     ParticleSystem systemOf(const ParticleSystemModule& m){
         return ParticleSystem(m.scene, m.entity);
@@ -207,6 +221,12 @@ namespace {
                 return true;
             }
             case FieldType::MinMaxGradient:
+                if (value.isInstance<ParticleSystemGradient>()){
+                    MinMaxGradient g;
+                    if (!gradientOf(value.unsafe_cast<ParticleSystemGradient>(), g)){ why = "the colour's Particle System is gone"; return false; }
+                    *(MinMaxGradient*)v = g;
+                    return true;
+                }
                 if (value.isInstance<MinMaxGradient>()){
                     *(MinMaxGradient*)v = value.unsafe_cast<MinMaxGradient>();
                     return true;
@@ -322,7 +342,63 @@ namespace {
             Log::error("ParticleSystem.%s has no field '%s' (docs/mcp/guide/particles.md lists them)", self.module.c_str(), name.c_str());
             return luabridge::LuaRef(L);
         }
+        if (r.field->type == FieldType::MinMaxGradient)
+            return luabridge::LuaRef(L, ParticleSystemGradient{self.scene, self.entity, path});
         return toLua(L, *r.field, r.storage);
+    }
+
+    // the colour a gradient view names, now
+    bool gradientOf(const ParticleSystemGradient& view, MinMaxGradient& out){
+        if (!view.scene || !view.scene->isEntityCreated(view.entity) || !view.scene->findComponent<ParticleSystemComponent>(view.entity))
+            return false;
+        ParticleEffectDocument document = ParticleSystem(view.scene, view.entity).getEffectDocument();
+        const ParticleModules::Resolved r = ParticleModules::resolve(document, view.path);
+        if (!r.field || r.field->type != FieldType::MinMaxGradient)
+            return false;
+        out = *(const MinMaxGradient*)r.storage;
+        return true;
+    }
+
+    bool setGradientOf(const ParticleSystemGradient& view, const MinMaxGradient& value){
+        if (!view.scene || !view.scene->isEntityCreated(view.entity) || !view.scene->findComponent<ParticleSystemComponent>(view.entity))
+            return false;
+        ParticleSystem system(view.scene, view.entity);
+        ParticleEffectDocument document = system.getEffectDocument();
+        const ParticleModules::Resolved r = ParticleModules::resolve(document, view.path);
+        if (!r.field || r.field->type != FieldType::MinMaxGradient)
+            return false;
+        *(MinMaxGradient*)r.storage = value;
+        if (r.module) r.module->setPresent(document, true);
+        system.setEffectDocument(document);
+        return true;
+    }
+
+    // MinMaxGradient:setRamp(palette, ramp[, steps]): a Palette Ramp of "<palette>#ramp:<ramp>"
+    void applyRamp(MinMaxGradient& g, const std::string& palette, const std::string& ramp, int steps){
+        g.mode = GradientValueMode::Ramp;
+        g.ramp = palette + "#ramp:" + ramp;
+        g.rampColors.clear();
+        g.rampSteps = steps;
+    }
+
+    luabridge::LuaRef gradientIndex(ParticleSystemGradient& self, const luabridge::LuaRef& key, lua_State* L){
+        if (!key.isString()) return luabridge::LuaRef(L);
+        const std::string name = key.unsafe_cast<std::string>();
+        if (name == "setRamp" || name == "evaluate" || name == "value" || name.rfind("__", 0) == 0) return luabridge::LuaRef(L);
+        MinMaxGradient g;
+        if (!gradientOf(self, g)) return luabridge::LuaRef(L);
+        luabridge::LuaRef value(L, g);
+        return value[name];
+    }
+
+    luabridge::LuaRef gradientNewIndex(ParticleSystemGradient& self, const luabridge::LuaRef& key, const luabridge::LuaRef& v, lua_State* L){
+        if (!key.isString()) return luabridge::LuaRef(L);
+        MinMaxGradient g;
+        if (!gradientOf(self, g)) return luabridge::LuaRef(L);
+        luabridge::LuaRef value(L, g);
+        value[key.unsafe_cast<std::string>()] = v;
+        setGradientOf(self, value.unsafe_cast<MinMaxGradient>());
+        return luabridge::LuaRef(L);
     }
 
     luabridge::LuaRef moduleNewIndex(ParticleSystemModule& self, const luabridge::LuaRef& key, const luabridge::LuaRef& value, lua_State* L){
@@ -465,6 +541,34 @@ void LuaBinding::registerParticleClasses(lua_State* L){
         .addNewIndexMetaMethod(&moduleNewIndex)
         .endClass();
 
+    // a module's colour field, live (S49 R40): reads as a MinMaxGradient, :setRamp writes it back
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ParticleSystemGradient>("ParticleSystemGradient")
+        .addFunction("setRamp", +[](ParticleSystemGradient* self, const std::string& palette, const std::string& ramp, std::optional<int> steps) -> bool {
+            MinMaxGradient g;
+            if (!gradientOf(*self, g)) return false;
+            const int n = steps.value_or(0);
+            if (n != 0 && (n < 2 || n > kMaxRampColors)){
+                Log::error("ParticleSystemGradient:setRamp: steps is 0 (the ramp as it is) or 2 to 32");
+                return false;
+            }
+            applyRamp(g, palette, ramp, n);
+            return setGradientOf(*self, g);
+        })
+        .addFunction("evaluate", +[](ParticleSystemGradient* self, float time, std::optional<float> random) -> Vector4 {
+            MinMaxGradient g;
+            return gradientOf(*self, g) ? g.evaluate(time, random.value_or(0.0f)) : Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+        })
+        // a copy, detached from the system
+        .addFunction("value", +[](ParticleSystemGradient* self) -> MinMaxGradient {
+            MinMaxGradient g;
+            gradientOf(*self, g);
+            return g;
+        })
+        .addIndexMetaMethod(&gradientIndex)
+        .addNewIndexMetaMethod(&gradientNewIndex)
+        .endClass();
+
     // the module proxies on ParticleSystem (Unity's names), and Unity's control with children
     luabridge::getGlobalNamespace(L)
         .beginClass<ParticleSystem>("ParticleSystem")
@@ -488,6 +592,44 @@ void LuaBinding::registerParticleClasses(lua_State* L){
         .addProperty("customData", +[](const ParticleSystem* self) { return moduleOf(self, "customData"); })
         .addProperty("externalForces", +[](const ParticleSystem* self) { return moduleOf(self, "externalForces"); })
         .addProperty("renderer", +[](const ParticleSystem* self) { return moduleOf(self, "renderer"); })
+        // pixel particles (S49): the Pixel Art module, the simulation mode, the Analytic twin
+        .addProperty("pixelArt", +[](const ParticleSystem* self) { return moduleOf(self, "pixelArt"); })
+        .addProperty("simulationMode",
+            +[](const ParticleSystem* self) -> std::string {
+                return self->getEffectDocument().simulationMode == SimulationMode::Analytic ? "analytic" : "simulated";
+            },
+            +[](ParticleSystem* self, const std::string& mode) {
+                if (mode != "simulated" && mode != "analytic"){
+                    Log::error("ParticleSystem.simulationMode: ParticleSimulationMode.Simulated or .Analytic");
+                    return;
+                }
+                ParticleEffectDocument document = self->getEffectDocument();
+                document.simulationMode = mode == "analytic" ? SimulationMode::Analytic : SimulationMode::Simulated;
+                self->setEffectDocument(document);
+                // the other mode starts over (R40)
+                self->restart();
+            })
+        // the CPU twin of an Analytic particle (slot, emitter time); nil for a Simulated system
+        .addFunction("getAnalyticParticle", +[](ParticleSystem* self, int slot, double time, lua_State* L) -> luabridge::LuaRef {
+            const ParticleSystemComponent* particles = self->getScene()->findComponent<ParticleSystemComponent>(self->getEntity());
+            const ParticleSystemState* state = particles ? particles->state.get() : nullptr;
+            if (!state || !state->runtime.isAnalytic() || slot < 0)
+                return luabridge::LuaRef(L);
+            const AnalyticParticle p = AnalyticParticles::evaluateAt(*state->runtime.analytic(), (uint32_t)slot, time);
+            luabridge::LuaRef t = luabridge::newTable(L);
+            t["alive"] = p.alive;
+            t["index"] = (double)p.index;
+            t["age"] = p.age;
+            t["life"] = p.life;
+            t["position"] = p.position;
+            t["velocity"] = p.velocity;
+            t["rotation"] = p.rotation;
+            t["size"] = p.size;
+            t["color"] = Vector4((float)(p.color & 255u) / 255.0f, (float)((p.color >> 8) & 255u) / 255.0f,
+                                 (float)((p.color >> 16) & 255u) / 255.0f, (float)(p.color >> 24) / 255.0f);
+            t["rampStep"] = p.rampStep == 255 ? -1 : (int)p.rampStep;
+            return t;
+        })
         // Unity's Clear(withChildren = true)
         .addFunction("clear", +[](ParticleSystem* self, lua_State* L) {
             self->clear(lua_gettop(L) < 2 || lua_isnil(L, 2) || lua_toboolean(L, 2) != 0);
@@ -517,7 +659,14 @@ void LuaBinding::registerParticleClasses(lua_State* L){
     enumNamespace(L, "ParticleSystemAnimationTimeMode", {{"Lifetime", "lifetime"}, {"FPS", "fps"}, {"Speed", "speed"}});
     enumNamespace(L, "ParticleSystemRenderMode", {{"Billboard", "billboard"}, {"Stretch", "stretchedBillboard"},
                                                   {"HorizontalBillboard", "horizontalBillboard"}, {"VerticalBillboard", "verticalBillboard"},
-                                                  {"Mesh", "mesh"}, {"None", "none"}});
+                                                  {"Mesh", "mesh"}, {"None", "none"}, {"FacingCameraPosition", "facingCameraPosition"},
+                                                  {"WorldOriented", "worldOriented"}, {"LocalOriented", "localOriented"},
+                                                  {"VelocityAligned", "velocityAligned"}, {"Pixel", "pixel"}});
+    // pixel particles (S49)
+    enumNamespace(L, "ParticlePixelShape", {{"Dot", "dot"}, {"Cross", "cross"}, {"Disc", "disc"}, {"Ring", "ring"}, {"Streak", "streak"},
+                                            {"Puff", "puff"}, {"Shard", "shard"}, {"Chunk", "chunk"}, {"Glow", "glow"}});
+    enumNamespace(L, "ParticleFade", {{"Dither", "dither"}, {"Cutout", "cutout"}, {"Alpha", "alpha"}});
+    enumNamespace(L, "ParticleSimulationMode", {{"Simulated", "simulated"}, {"Analytic", "analytic"}});
     enumNamespace(L, "ParticleSystemSortMode", {{"None", "none"}, {"Distance", "byDistance"}, {"OldestInFront", "oldestInFront"},
                                                 {"YoungestInFront", "youngestInFront"}, {"Depth", "byDepth"}});
     enumNamespace(L, "ParticleSystemRenderSpace", {{"View", "view"}, {"World", "world"}, {"Local", "local"}, {"Facing", "facing"}, {"Velocity", "velocity"}});

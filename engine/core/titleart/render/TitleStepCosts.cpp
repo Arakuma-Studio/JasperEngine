@@ -23,7 +23,9 @@ namespace {
 
 }
 
-TitleStepCosts::TitleStepCosts(std::function<double()> clockUs) : clock(std::move(clockUs)) {
+TitleStepCosts::TitleStepCosts(std::function<double()> clockUs, double priorRatio) : clock(std::move(clockUs)) {
+    // what a fresh model predicts with until it measures (the first measurement replaces it)
+    machine.ratio = std::clamp(priorRatio, MIN_RATIO, MAX_RATIO);
     if (!clock) {
         clock = [] {
             using namespace std::chrono;

@@ -1,0 +1,60 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "typewriter",
+  "name": "Typewriter",
+  "group": "in",
+  "role": "intro",
+  "duration": -1,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "The letters appear one by one, with an optional tick on each.",
+  "params": [
+    {
+      "name": "cps",
+      "label": "Characters per Second",
+      "type": "number",
+      "default": 20,
+      "min": 1,
+      "max": 120
+    },
+    {
+      "name": "tick",
+      "label": "Tick",
+      "type": "sound",
+      "default": null
+    }
+  ],
+  "tracks": [
+    {
+      "target": "main_text",
+      "field": "glyph.opacity",
+      "stagger": {
+        "each": "1/cps"
+      },
+      "keys": [
+        [
+          0,
+          0,
+          "step"
+        ],
+        [
+          0.001,
+          1
+        ]
+      ]
+    }
+  ],
+  "markers": [
+    {
+      "name": "onTick",
+      "sound": "$tick",
+      "when": "tick",
+      "generate": {
+        "kind": "ticks",
+        "each": "1/cps"
+      }
+    }
+  ]
+}

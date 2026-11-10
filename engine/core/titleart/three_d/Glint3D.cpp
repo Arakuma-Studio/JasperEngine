@@ -174,18 +174,34 @@ Glint3D::Glint3D() : impl(std::make_unique<Impl>()) {}
 
 Glint3D::~Glint3D() = default;
 
+namespace {
+
+    std::vector<uint32_t> glintProgramsOf(GlintMode mode) {
+        std::vector<uint32_t> keys = {BRIGHT, BLUR, HIGHPASS};
+        if (mode == GlintMode::Sprites) keys.push_back(0);
+        else keys.insert(keys.end(), {DOWN, STREAK, ADD, TAME, PINCH, DENSITY});
+        return keys;
+    }
+
+}
+
+std::vector<ShaderKey> Glint3D::programKeys(GlintMode mode) {
+    std::vector<ShaderKey> keys;
+    if (mode == GlintMode::Off) return keys;
+    for (uint32_t k : glintProgramsOf(mode)) keys.push_back(ShaderPool::getShaderKey(k == 0 ? ShaderType::TITLE_GLINT_SPRITE : ShaderType::TITLE_GLINT, k));
+    return keys;
+}
+
 bool Glint3D::ready(GlintMode mode, std::string* error) {
     if (mode == GlintMode::Off) return true;
-    std::vector<uint32_t> keys = {BRIGHT, BLUR, HIGHPASS};
-    if (mode == GlintMode::Sprites) keys.push_back(0);
-    else keys.insert(keys.end(), {DOWN, STREAK, ADD, TAME, PINCH, DENSITY});
+    const std::vector<uint32_t> keys = glintProgramsOf(mode);
     for (uint32_t k : keys) {
         if (!impl->shaderReady(k, error)) return false;
     }
     return true;
 }
 
-bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutput& out, std::string& error) {
+bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutput& out, TitleDrawGate& gate, std::string& error) {
     Impl& im = *impl;
     const Glint3DParams& g = in.params;
     const bool mobile = in.mode == GlintMode::Mobile;
@@ -254,15 +270,19 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
         }
         auto* t = static_cast<SokolTitleTarget*>(dst);
         set4(block.p3, 1.0 / t->key().width, 1.0 / t->key().height);
-        im.camera.setColorActions(additive ? LoadAction::LOAD : LoadAction::DONTCARE, StoreAction::STORE);
-        im.camera.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
-        im.camera.setLabel("title 3d glint");
-        im.camera.startRenderPass(&t->framebuffer());
         PipelineState state;
         state.target.color = t->key().format;
         state.target.depth = DepthStencilFormat::NONE;
         state.target.sampleCount = 1;
         state.blend = additive ? BlendMode::ADDITIVE_PREMULTIPLIED : BlendMode::NONE;
+        // a program's first draw after another's this frame: the chain stops (TitleFirstDraws)
+        const TitleDrawGate::Result pass = gate.check(Impl::typeOf(program), program, state);
+        if (pass == TitleDrawGate::Result::Stop) return false;
+        if (pass == TitleDrawGate::Result::Skip) return true;
+        im.camera.setColorActions(additive ? LoadAction::LOAD : LoadAction::DONTCARE, StoreAction::STORE);
+        im.camera.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
+        im.camera.setLabel("title 3d glint");
+        im.camera.startRenderPass(&t->framebuffer());
         bool drawn = false;
         if (p->object.beginDraw(state)) {
             if (p->src.first >= 0) p->object.addTexture(p->src, ShaderStageType::FRAGMENT, src ? src : &im.placeholder);
@@ -360,15 +380,18 @@ bool Glint3D::render(const Glint3DInput& in, TitleTargetPool& pool, Glint3DOutpu
         set4(fs.shape, rays, angle, lengthOut, std::max(0.75, detail * grid / outPxX * 0.25));
         set4(fs.bloom, std::max(0.75, POINT_BLOOM_SIGMA * detail * grid / outPxX), POINT_BLOOM * 0.25, STREAK_PEAK / std::max(1.0, sigma));
         auto* t = out.light.as<SokolTitleTarget>();
-        im.camera.setColorActions(LoadAction::LOAD, StoreAction::STORE);
-        im.camera.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
-        im.camera.setLabel("title 3d glint sprites");
-        im.camera.startRenderPass(&t->framebuffer());
         PipelineState state;
         state.target.color = ColorFormat::RGBA16F;
         state.target.depth = DepthStencilFormat::NONE;
         state.target.sampleCount = 1;
         state.blend = BlendMode::ADDITIVE_PREMULTIPLIED;
+        const TitleDrawGate::Result pass = gate.check(ShaderType::TITLE_GLINT_SPRITE, 0, state);
+        if (pass == TitleDrawGate::Result::Stop) return false;
+        if (pass == TitleDrawGate::Result::Skip) return true;
+        im.camera.setColorActions(LoadAction::LOAD, StoreAction::STORE);
+        im.camera.setDepthStencilActions(LoadAction::DONTCARE, StoreAction::DONTCARE);
+        im.camera.setLabel("title 3d glint sprites");
+        im.camera.startRenderPass(&t->framebuffer());
         if (sp->object.beginDraw(state)) {
             if (sp->peaks.first >= 0) sp->object.addTexture(sp->peaks, ShaderStageType::VERTEX, textureOf(peaks));
             sp->object.applyUniformBlock(sp->vsBlock, sizeof(SpriteVs), &vs);

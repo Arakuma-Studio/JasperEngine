@@ -396,6 +396,10 @@ void attach(Session& session, int port, const std::string& path, const std::stri
                           {"version", instance ? Json(instance->version) : Json(nullptr)}};
 }
 
+// the last call's editor was one it started, which stopped or never answered before it had the project
+// open (a project another editor holds is not that: it started and refused): CallCommand::spawnFailed
+bool lastSpawnFailed = false;
+
 // `mcp --project DIR --headless`, in a scratch working directory with an empty settings.yaml
 void spawn(Session& session, const std::string& project, const char* executableName) {
     session.scratch = makeScratchDirectory();
@@ -403,8 +407,13 @@ void spawn(Session& session, const std::string& project, const char* executableN
     cache.durability = io::Durability::Cache;
     io::writeFileAtomic(session.scratch / "settings.yaml", "", cache);
     const fs::path exe = executablePath(executableName);
-    auto client = std::make_unique<StdioClient>(exe, std::vector<std::string>{"mcp", "--project", project, "--headless"},
-                                                session.scratch);
+    std::unique_ptr<StdioClient> client;
+    try {
+        client = std::make_unique<StdioClient>(exe, std::vector<std::string>{"mcp", "--project", project, "--headless"}, session.scratch);
+    } catch (const ClientError&) {
+        lastSpawnFailed = true;
+        throw;
+    }
     session.spawned = client.get();
     session.editor = Json{{"url", nullptr}, {"pid", client->pid()}, {"project", project}, {"spawned", true}, {"version", nullptr}};
     if (!session.quiet) {
@@ -423,6 +432,7 @@ void spawn(Session& session, const std::string& project, const char* executableN
         throw Failure{Connection, tail.substr(locked, end == std::string::npos ? std::string::npos : end - locked) +
                                   " (attach to that editor with --port, or close it)"};
     }
+    lastSpawnFailed = true;
     throw Failure{error.exitCode, std::string(error.what())};
 }
 
@@ -509,6 +519,8 @@ void connect(Session& session, const Options& o, const char* executableName) {
 
 struct CallOutcome {
     int exit = Ok;
+    // the call succeeded and the exit code is the tool's own (cli_exit)
+    bool toolExit = false;
     std::string tool;
     std::string text;
     Json structured;
@@ -543,6 +555,17 @@ Json saveImage(const Options& o, const std::string& tool, const Json& item) {
     return Json{{"path", path.string()}, {"mime_type", mime}, {"bytes", bytes.size()}};
 }
 
+// A successful result's own exit code: structuredContent.cli_exit, 1 to 125 (apply_palette
+// measure_only's verdict: 3 fixable, 4 needs_person). It shares numbers with the CLI's own codes;
+// the --json envelope's code ("tool_exit") tells them apart.
+void applyToolExit(CallOutcome& out, const Json& structured) {
+    if (out.exit != Ok || !structured.is_object() || !structured.contains("cli_exit") || !structured["cli_exit"].is_number_integer()) return;
+    const long long code = structured["cli_exit"].get<long long>();
+    if (code < 1 || code > 125) return;
+    out.exit = static_cast<int>(code);
+    out.toolExit = true;
+}
+
 CallOutcome outcomeOf(const Options& o, const std::string& tool, const Json& response) {
     CallOutcome out;
     out.tool = tool;
@@ -574,15 +597,17 @@ CallOutcome outcomeOf(const Options& o, const std::string& tool, const Json& res
         out.exit = ToolError;
         out.error = text;
     }
+    applyToolExit(out, out.structured);
     return out;
 }
 
 Json envelope(const CallOutcome& out, const Json& editor) {
-    const char* code = codeName(out.exit);
+    const char* code = out.toolExit ? "tool_exit" : codeName(out.exit);
+    const bool ok = out.exit == Ok || out.toolExit;
     return Json{
-        {"ok", out.exit == Ok}, {"exit_code", out.exit}, {"code", code ? Json(code) : Json(nullptr)},
+        {"ok", ok}, {"exit_code", out.exit}, {"code", code ? Json(code) : Json(nullptr)},
         {"tool", out.tool}, {"text", out.text}, {"structured", out.structured}, {"images", out.images},
-        {"error", out.error.empty() && out.exit == Ok ? Json(nullptr) : Json(out.error.empty() ? out.text : out.error)},
+        {"error", out.error.empty() && ok ? Json(nullptr) : Json(out.error.empty() ? out.text : out.error)},
         {"editor", editor.is_null() ? Json(nullptr) : editor}
     };
 }
@@ -592,7 +617,7 @@ void print(const Options& o, const CallOutcome& out, const Json& editor) {
         std::cout << envelope(out, editor).dump(-1, ' ', false, Json::error_handler_t::replace) << std::endl;
         return;
     }
-    std::ostream& stream = out.exit == Ok ? std::cout : std::cerr;
+    std::ostream& stream = out.exit == Ok || out.toolExit ? std::cout : std::cerr;
     if (o.structured && !out.structured.is_null()) {
         stream << out.structured.dump(2, ' ', false, Json::error_handler_t::replace) << std::endl;
     } else if (!out.text.empty()) {
@@ -647,6 +672,8 @@ CallOutcome waitForJob(Session& session, const Options& o, CallOutcome started) 
         if (status != "succeeded") {
             polled.exit = ToolError;
             polled.error = "job " + jobId + " " + status + (polled.text.empty() ? "" : ": " + polled.text);
+        } else if (polled.structured.contains("result")) {
+            applyToolExit(polled, polled.structured["result"]);
         }
         return polled;
     }
@@ -770,7 +797,8 @@ void printUsage(const std::string& exe, const Catalog& catalog) {
         << "  --image-dir D    where images are written (default .): <tool>-<n>.png\n"
         << "  --wait-job       wait for a job the call started (get_job) and print its end\n\n"
         << "Without --url/--port/--project, JASPER_MCP_URL or the only running editor is used.\n"
-        << "Exit codes: 0 ok, 1 the tool reported an error, 2 usage, 3 connection or timeout, 4 internal.\n\n";
+        << "Exit codes: 0 ok, 1 the tool reported an error, 2 usage, 3 connection or timeout, 4 internal; a successful\n"
+        << "result's cli_exit is the exit code instead (apply_palette --measure-only: 3 fixable, 4 needs_person).\n\n";
     std::map<std::string, std::vector<std::string>> groups;
     std::vector<std::string> order;
     for (const Json& tool : catalog.tools) {
@@ -1009,7 +1037,7 @@ int runBatch(const std::vector<std::string>& args, const char* executableName) {
             CallOutcome out = outcomeOf(o, line.tool, toolCall(session, o, line.tool, line.arguments));
             print(o, out, session.editor);
             worst = std::max(worst, out.exit);
-            if (out.exit != Ok && !o.continueOnError) break;
+            if (out.exit != Ok && !out.toolExit && !o.continueOnError) break;
         }
         return worst;
     } catch (const UsageError& e) {
@@ -1126,7 +1154,51 @@ int runEditors(const std::vector<std::string>& args, const char* executableName)
 
 } // namespace
 
+int CallCommand::runCalls(const std::string& project, const std::vector<std::pair<std::string, Json>>& calls, bool continueOnError,
+                          std::vector<CallResult>& results, const char* executableName) {
+    Options o;
+    o.project = project;
+    o.quiet = true;
+    o.timeout = 3600.0;
+    results.clear();
+    try {
+        Session session;
+        connect(session, o, executableName);
+        int worst = Ok;
+        for (const auto& [tool, arguments] : calls) {
+            CallOutcome out = outcomeOf(o, tool, toolCall(session, o, tool, arguments));
+            CallResult r;
+            r.tool = tool;
+            r.exit = out.exit;
+            r.ok = out.exit == Ok;
+            r.text = out.exit == Ok ? out.text : (out.error.empty() ? out.text : out.error);
+            r.structured = out.structured;
+            results.push_back(std::move(r));
+            worst = std::max(worst, out.exit);
+            if (out.exit != Ok && !continueOnError) break;
+        }
+        return worst;
+    } catch (const Failure& f) {
+        CallResult r;
+        r.exit = f.code;
+        r.text = f.message;
+        results.push_back(std::move(r));
+        return f.code;
+    } catch (const std::exception& e) {
+        CallResult r;
+        r.exit = Internal;
+        r.text = std::string("internal error: ") + e.what();
+        results.push_back(std::move(r));
+        return Internal;
+    }
+}
+
+bool CallCommand::spawnFailed() {
+    return lastSpawnFailed;
+}
+
 int CallCommand::run(int argc, char** argv, const char* executableName) {
+    lastSpawnFailed = false;
     attachConsole();
     const std::string subcommand = argc > 0 ? argv[0] : "call";
     const std::vector<std::string> args = argList(argc, argv);

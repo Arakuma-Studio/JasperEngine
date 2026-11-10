@@ -20,12 +20,16 @@
 #include "command/CommandHistory.h"
 #include "shortcuts/CommandCatalog.h"
 #include "shortcuts/DefaultCommands.h"
+#include "titleart/interchange/TitleImport.h"
 #include "titleart/TitleArtDocument.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitlePreviewQueue.h"
 #include "titleart/designer/TitleCanvasView.h"
+#include "titleart/fx/FxGeneratorChecks.h"
+#include "titleart/designer/TitleAddCatalog.h"
 #include "titleart/designer/TitleDesignerHooks.h"
 #include "titleart/designer/TitleTextEdit.h"
+#include "titleart/library/TitleLibraryRegistration.h"
 #include "window/EditorModal.h"
 #include "window/InspectorWindowTitleArt.h"
 #include "window/ProjectWindow.h"
@@ -102,6 +106,14 @@ namespace jasperengine::editor {
             return out;
         }
         static void setSystemCjk(W& w, std::function<int()> found) { w.systemCjkOverride = std::move(found); }
+        static bool addEntry(W& w, const AddEntry& entry, std::string* error) { return w.addEntry(entry, error); }
+        static bool previewAddEntry(W& w, const AddEntry& entry) { return w.previewAddEntry(entry); }
+        static AddTarget addTarget(W& w) { return w.addTarget(); }
+        static bool effectCost(W& w, const std::string& layer, int index, CostBadge& out) { return w.effectCost(layer, std::string(), index, out); }
+        static const std::vector<std::string>& forceOpen(W& w) { return w.forceOpenSections; }
+        static std::vector<ta::FieldOverride> liveOverrides(W& w) { return w.liveOverrides(nullptr); }
+        static TitleInContext* inContext(W& w) { return w.inContext ? &*w.inContext : nullptr; }
+        static titleart::TitleRect stageRect(W& w) { return w.stageRect(); }
     };
 
 }
@@ -345,6 +357,38 @@ TEST(TitleDesignerWindowDeathTest, SearchJumpClearsTheField) {
     });
 }
 
+// S87 R34: an SVG dropped on the Designer comes in through import_svg: from outside the assets it
+// is copied beside the document, from inside it is referenced where it is.
+TEST(TitleDesignerWindowDeathTest, DroppedSvgComesInThroughImportSvg) {
+    IN_EDITOR("dropsvg", {
+        registerTitleInterchange();
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        const fs::path file = newTitle(w, "dropsvg");
+        ASSERT_TRUE(window->open(file, nullptr));
+        const char* svg = R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#ff0000"/></svg>)";
+        const fs::path outside = fs::temp_directory_path() / ("je_dropped_badge_" + std::to_string(::getpid()) + ".svg");
+        std::ofstream(outside) << svg;
+        const auto vectors = [&]() {
+            int count = 0;
+            ta::forEachLayer(window->designer().committed().root, [&](const ta::Json& l, const ta::Json*, int) {
+                if (ta::layerTypeOf(l) == ta::LayerType::Vector) count++;
+                return true;
+            });
+            return count;
+        };
+        std::string error;
+        ASSERT_TRUE(window->dropFiles({outside.string()}, std::string(), &error)) << error;
+        EXPECT_EQ(vectors(), 1);
+        EXPECT_TRUE(fs::exists(file.parent_path() / "dropsvg_assets" / outside.filename())) << "copied beside the document";
+        const fs::path inside = file.parent_path() / "inside.svg";
+        std::ofstream(inside) << svg;
+        ASSERT_TRUE(window->dropFiles({inside.string()}, std::string(), &error)) << error;
+        EXPECT_EQ(vectors(), 2);
+        EXPECT_FALSE(fs::exists(file.parent_path() / "dropsvg_assets" / "inside.svg")) << "a file in the assets stays where it is";
+        fs::remove(outside);
+    });
+}
+
 // AC19 / R44 (the document half; pixels are the MCP test's): a Look previewed then applied gives
 // the previewed document byte for byte, as one step named after the item; a preview is no step.
 // Red control: a preview built by a second path (applyOps with other options) differs.
@@ -400,44 +444,46 @@ TEST(TitleDesignerWindowDeathTest, ExposeDialogIsAnEditorModal) {
     });
 }
 
-// R40, R41, D18: with no Library provider registered the strip is in view with the starter Looks,
-// and a Look's hover preview is the document its click commits. Red control: the window without
-// its starter Library (library() returning only a registered provider) shows no strip and has
-// nothing to apply.
-TEST(TitleDesignerWindowDeathTest, StarterLibraryInViewByDefault) {
-    IN_EDITOR("starter", {
+// R40, R41, D18: S84's real Library is the strip's only provider: in view by default with its real
+// Looks and Color Schemes, and a Look's hover preview is the document its click commits. Red
+// control: registering no provider (the removed starter set's old fallback gone) leaves no strip
+// and nothing to apply.
+TEST(TitleDesignerWindowDeathTest, RealLibraryInViewByDefault) {
+    IN_EDITOR("library", {
+        titlelibrary::registerTitleLibrary();
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
-        const fs::path file = newTitle(w, "starter");
+        const fs::path file = newTitle(w, "library");
         ASSERT_TRUE(window->open(file, nullptr));
         for (int i = 0; i < 3; i++) Access::drawFrame(*window);
-        EXPECT_EQ(window->state()["library"].value("provider", std::string()), "starter");
+        EXPECT_EQ(window->state()["library"].value("provider", std::string()), "registered");
         EXPECT_TRUE(window->state()["library"].value("shown", false)) << "the strip is in view by default";
         TitleLibraryProvider* library = Access::library(*window);
         ASSERT_NE(library, nullptr);
         const std::vector<LibraryItem> looks = library->items(LibraryTab::Looks);
-        ASSERT_FALSE(looks.empty());
+        ASSERT_GT(looks.size(), 100u) << "S84's built-in Looks, not a starter set";
         EXPECT_FALSE(library->items(LibraryTab::ColorSchemes).empty());
-        auto gold = std::find_if(looks.begin(), looks.end(), [](const LibraryItem& i) { return i.id == "starter_gold"; });
+        auto gold = std::find_if(looks.begin(), looks.end(), [](const LibraryItem& i) { return i.id == "metal/black-gold"; });
         ASSERT_NE(gold, looks.end());
         ASSERT_TRUE(window->select({"Title"}));
         CommandHistory* history = w.p->getProjectCommandHistory();
         const size_t position = history->position();
         ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, *gold, true));
         EXPECT_EQ(history->position(), position) << "a preview is no step";
-        const std::string previewed = ta::writeTitleArt(window->designer().shown());
+        const ta::Json previewedLayer = *layerById(window->designer().shown(), titleLayer(*window));
         ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, *gold, false));
-        EXPECT_EQ(history->top()->name(), "Apply Look Casino Gold");
-        EXPECT_EQ(readAll(file), previewed) << "the committed document is the previewed one";
+        EXPECT_EQ(history->top()->name(), "Apply Look " + gold->name);
         const ta::Json* layer = layerById(window->designer().committed(), titleLayer(*window));
         ASSERT_NE(layer, nullptr);
-        EXPECT_EQ((*layer)["style"]["rims"].size(), 3u);
-        const ta::Json effects = layer->value("effects", ta::Json::array());
-        EXPECT_TRUE(std::any_of(effects.begin(), effects.end(), [](const ta::Json& e) { return e.value("type", std::string()) == "outer_glow"; }));
+        EXPECT_FALSE((*layer)["style"]["rims"].empty());
+        EXPECT_EQ(previewedLayer["style"]["rims"].size(), (*layer)["style"]["rims"].size()) << "the preview runs the ops the click commits";
+        EXPECT_EQ(previewedLayer["effects"].size(), (*layer)["effects"].size());
+        const size_t rims = (*layer)["style"]["rims"].size();
+        const size_t effects = (*layer)["effects"].size();
         // applying it again replaces, never stacks
         ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, *gold, false));
         layer = layerById(window->designer().committed(), titleLayer(*window));
-        EXPECT_EQ((*layer)["style"]["rims"].size(), 3u);
-        EXPECT_EQ((*layer)["effects"].size(), 2u);
+        EXPECT_EQ((*layer)["style"]["rims"].size(), rims);
+        EXPECT_EQ((*layer)["effects"].size(), effects);
     });
 }
 
@@ -485,6 +531,7 @@ TEST(TitleDesignerWindowDeathTest, LettersGizmo) {
 // back. Red control: the window not taking Tab leaves the focus on the toolbar.
 TEST(TitleDesignerWindowDeathTest, TabCyclesRegions) {
     IN_EDITOR("tab", {
+        titlelibrary::registerTitleLibrary();   // the Library region is the editor's real one (S84's provider)
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         const fs::path file = newTitle(w, "tab");
         ASSERT_TRUE(window->open(file, nullptr));
@@ -726,5 +773,179 @@ TEST(TitleDesignerWindowDeathTest, LintWording) {
             for (const char* word : {"good", "approved", "looks great"}) EXPECT_EQ(f.message.find(word), std::string::npos) << f.message;
         }
         Access::drawFrame(*window);
+    });
+}
+
+// S83 R17/§6.10 through the window: the palette's state lists §6.10's rail; a recipe, a style
+// setting and a following generator each add one step named after them; a style setting opens
+// its section; the preview of an entry is the document its commit makes (R44)
+TEST(TitleDesignerWindowDeathTest, AddPaletteEntries) {
+    IN_EDITOR("add", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        ASSERT_TRUE(window->open(newTitle(w, "add"), nullptr));
+        ASSERT_TRUE(window->select({"Title"}));
+        window->openAddPalette("effects", "power glow");
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        const ta::Json add = window->state().value("add", ta::Json::object());
+        bool lightGlow = false;
+        for (const ta::Json& id : add.value("entries", ta::Json::array())) lightGlow = lightGlow || id == "fx:light_glow";
+        EXPECT_TRUE(lightGlow) << add.dump();
+        window->closeAddPalette();
+        for (int i = 0; i < 2; i++) Access::drawFrame(*window);
+        EXPECT_FALSE(window->state().contains("add")) << "closed";
+
+        CommandHistory* history = w.p->getProjectCommandHistory();
+        const std::vector<AddEntry> entries = buildAddEntries("", Access::addTarget(*window));
+        auto entry = [&](const std::string& id) {
+            for (const AddEntry& e : entries) {
+                if (e.id == id) return e;
+            }
+            ADD_FAILURE() << "no entry " << id;
+            return AddEntry();
+        };
+        // the preview equals the commit (the same ops, the same id seed)
+        const AddEntry recipe = entry("recipe:long_shadow");
+        ASSERT_TRUE(Access::previewAddEntry(*window, recipe));
+        const std::string previewed = ta::writeTitleArt(window->designer().shown());
+        size_t position = history->position();
+        std::string error;
+        ASSERT_TRUE(Access::addEntry(*window, recipe, &error)) << error;
+        EXPECT_EQ(history->position(), position + 1);
+        EXPECT_EQ(history->top()->name(), "Add Effect Long Shadow to Title");
+        EXPECT_EQ(ta::writeTitleArt(window->designer().committed()), previewed) << "R44: committed = previewed";
+        ASSERT_EQ(window->designer().primary().kind, NodeKind::Effect) << "the new effect is selected";
+
+        ASSERT_TRUE(window->select({"Title"}));
+        ASSERT_TRUE(Access::addEntry(*window, entry("style:dry_brush"), &error)) << error;
+        EXPECT_EQ(history->top()->name(), "Turn On Dry Brush (\xE3\x81\x8B\xE3\x81\x99\xE3\x82\x8C)");
+        EXPECT_EQ(Access::forceOpen(*window), (std::vector<std::string>{"Appearance", "Erode"}));
+        EXPECT_EQ(window->designer().primary().kind, NodeKind::Layer) << "a style setting selects its layer, never an effect row";
+
+        ASSERT_TRUE(window->select({"Title"}));
+        position = history->position();
+        ASSERT_TRUE(Access::addEntry(*window, entry("follow:fire:behind"), &error)) << error;
+        EXPECT_EQ(history->position(), position + 1);
+        EXPECT_EQ(history->top()->name(), "Add Layer Flames Behind");
+        const std::vector<std::string> layers = window->designer().selectedLayers();
+        ASSERT_EQ(layers.size(), 1u);
+        const ta::Json* fire = layerById(window->designer().committed(), layers[0]);
+        ASSERT_NE(fire, nullptr);
+        EXPECT_EQ(ta::layerTypeOf(*fire), ta::LayerType::Generator) << "a generator entry adds a layer row";
+        EXPECT_EQ(fire->value("follow", std::string()), titleLayer(*window));
+        // S83 R41: the generator layer and the text's stack have cost classes
+        CostBadge badge;
+        EXPECT_TRUE(Access::effectCost(*window, layers[0], -1, badge));
+        EXPECT_FALSE(badge.cls.empty());
+        EXPECT_TRUE(Access::effectCost(*window, titleLayer(*window), 0, badge)) << "the Long Shadow effect";
+        EXPECT_NE(badge.tooltip.find("mobile"), std::string::npos) << badge.tooltip;
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+    });
+}
+
+// S83 R43: a following generator whose layer is deleted shows the row warning; S83 D10: Preview
+// Live plays the live params as render overrides, never as edits
+TEST(TitleDesignerWindowDeathTest, FollowMissingAndPreviewLive) {
+    IN_EDITOR("follow", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        ASSERT_TRUE(window->open(newTitle(w, "follow"), nullptr));
+        ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "add_layer", "type": "text", "name": "Other", "values": {"text": "B"}},
+            {"op": "add_layer", "type": "generator", "generator": "fire", "follow": "Other"}])"), "Add Layers"));
+        ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "remove_layer", "layer": "Other"}])"), "Delete Layer"));
+        ASSERT_TRUE(window->setPanel("layers"));
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        // (the Layers row and the generator page read the same problems)
+        EXPECT_FALSE(titleFollowProblems(window->designer().committed()).empty());
+
+        ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "add_effect", "layer": "Title", "type": "light_glow"}])"), "Add Effect"));
+        const ta::Json* title = layerById(window->designer().committed(), titleLayer(*window));
+        ASSERT_NE(title, nullptr);
+        const std::string effect = (*title)["effects"][0].value("id", std::string());
+        const std::string before = ta::writeTitleArt(window->designer().committed());
+        window->setLivePreview(titleLayer(*window), effect, true);
+        const std::vector<ta::FieldOverride> overrides = Access::liveOverrides(*window);
+        EXPECT_FALSE(overrides.empty()) << "Light Glow's live params play";
+        for (const ta::FieldOverride& o : overrides) EXPECT_EQ(o.path.rfind("effects[0].params.", 0), 0u) << o.path;
+        EXPECT_TRUE(window->state()["live_previews"].size() == 1);
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        EXPECT_EQ(ta::writeTitleArt(window->designer().committed()), before) << "Preview Live changes no document byte";
+        window->setLivePreview(titleLayer(*window), effect, false);
+        EXPECT_TRUE(Access::liveOverrides(*window).empty());
+    });
+}
+
+// S86 R50-R51 through S82's hooks: a Dimension 3D layer's page has S86's rows (indexed by the
+// property search) and a 2D one has none; its parts are Face, Bevel, Side and Band N; the
+// Realtime tiers and S81's Glyph Atlas are Preview As modes
+TEST(TitleDesignerWindowDeathTest, ThreeDRowsPartsAndModes) {
+    IN_EDITOR("threed", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        ASSERT_TRUE(window->open(newTitle(w, "threed"), nullptr));
+        ASSERT_TRUE(window->select({"Title"}));
+        auto hits = [&](const std::string& query) { return Access::search(*window, query); };
+        auto contains = [](const std::vector<std::string>& paths, const std::string& path) {
+            return std::find(paths.begin(), paths.end(), path) != paths.end();
+        };
+        EXPECT_FALSE(contains(hits("lock environment"), "style_3d.env_lock")) << "a 2D layer has no 3D rows";
+        CommandHistory* history = w.p->getProjectCommandHistory();
+        ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "set_dimension", "layer": "Title", "dimension": "3d"},
+            {"op": "add_band", "layer": "Title", "preset": "bright_ring"}])"), "Set Dimension 3D"));
+        ASSERT_TRUE(window->select({"Title"}));
+        EXPECT_TRUE(contains(hits("lock environment"), "style_3d.env_lock"));
+        EXPECT_TRUE(contains(hits("bevel width"), "style_3d.bevel.width"));
+        EXPECT_TRUE(contains(hits("glint threshold"), "style_3d.glint.threshold"));
+        EXPECT_TRUE(contains(hits("tone mapping"), "style_3d.lighting.tone_mapping"));
+        // the band's page
+        std::string error;
+        ASSERT_TRUE(window->select({"Title/band#0"}, &error)) << error;
+        EXPECT_EQ(window->state()["selection"][0], "Title/band#0");
+        EXPECT_TRUE(contains(hits("grow"), "style_3d.bands[0].grow"));
+        EXPECT_TRUE(contains(hits("roughness"), "style_3d.bands[0].material.roughness"));
+        ASSERT_TRUE(window->select({"Title/face"}));
+        EXPECT_TRUE(contains(hits("roughness"), "style_3d.face.roughness"));
+        for (const char* panel : {"properties", "layers"}) {
+            ASSERT_TRUE(window->setPanel(panel));
+            for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        }
+        // the document's 3D Scene and Runtime (S81)
+        ASSERT_TRUE(window->select({}));
+        EXPECT_TRUE(contains(hits("exposure"), "scene_3d.exposure"));
+        EXPECT_TRUE(contains(hits("custom file"), "runtime.characters.custom_file"));
+        // Preview As
+        for (const char* mode : {"realtime_high", "realtime_medium", "realtime_low", "glyph_atlas", "realtime"}) {
+            EXPECT_TRUE(window->setPreviewAs(mode, &error)) << mode << ": " << error;
+            EXPECT_EQ(window->state()["preview_as"], mode);
+            for (int i = 0; i < 2; i++) Access::drawFrame(*window);
+        }
+        // a material applied the way the picker commits it is one named step
+        const size_t position = history->position();
+        ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "apply_material", "layer": "Title", "part": "face", "preset": "gold"}])"), "Apply Material Gold"));
+        EXPECT_EQ(history->position(), position + 1);
+        EXPECT_EQ(history->top()->name(), "Apply Material Gold");
+    });
+}
+
+// R30, AC16: In Context puts the title's bake frame on the instance's screen rectangle
+TEST(TitleDesignerWindowDeathTest, InContextPlacement) {
+    IN_EDITOR("incontext", {
+        TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
+        const fs::path file = newTitle(w, "incontext");
+        TitleInContext context;
+        context.document = file;
+        context.screenWidth = 1280;
+        context.screenHeight = 720;
+        context.x = 100.0f;
+        context.y = 50.0f;
+        context.width = 480.0f;
+        context.height = 270.0f;
+        context.located = true;
+        context.snapshotRgba.assign((size_t)1280 * 720 * 4, 40);
+        std::string error;
+        ASSERT_TRUE(window->openInContext(context, &error)) << error;
+        EXPECT_EQ(window->state()["background"], "in_context");
+        const titleart::TitleRect stage = Access::stageRect(*window);
+        EXPECT_DOUBLE_EQ(stage.width, 1280.0) << "the stage is the instance's screen";
+        EXPECT_DOUBLE_EQ(stage.height, 720.0);
+        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        ASSERT_NE(Access::inContext(*window), nullptr);
     });
 }

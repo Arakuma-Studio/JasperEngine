@@ -63,6 +63,18 @@ namespace jasperengine::titleart {
     };
 
     struct TitleMesh;
+    struct TitleCacheEntry;
+
+    // S81's live compose (docs/specs/S81-title-art-runtime.md R9, S83 D10): the names of the
+    // inputs a render keeps for it and a later live frame starts from
+    // the stack input of a layer's effect (`effect`: its index in the layer's `effects`)
+    inline std::string titleLiveStackKey(const std::string& layerId, int effect) { return "fx:" + layerId + "@" + std::to_string(effect); }
+    // a layer's pixels before its effects (the effects' `content`)
+    inline std::string titleLiveContentKey(const std::string& layerId) { return "content:" + layerId; }
+    // a generator layer's followed layer, cut to its target, styled and without its own effects
+    inline std::string titleLiveFollowKey(const std::string& generatorId) { return "follow:" + generatorId; }
+    inline std::string titleLiveFollowContentKey(const std::string& generatorId) { return "follow_content:" + generatorId; }
+    using TitleLiveInputs = std::map<std::string, std::shared_ptr<TitleCacheEntry>>;
 
     struct RenderRequest {
         std::shared_ptr<const TitleArtDoc> doc;     // immutable snapshot (what-if copies are snapshots too)
@@ -72,7 +84,21 @@ namespace jasperengine::titleart {
         OutputContent content = OutputContent::All;
         std::vector<std::string> contentLayers;     // OutputContent::Layers: these layer ids
         std::vector<FieldOverride> overrides;       // applied to the snapshot copy (applyFieldOverrides)
+        // S87: the language to draw ("" = the source): the snapshot copy is the document resolved
+        // for it (TitleTranslations.h), then the overrides, then fit (TitleFit.h); a monolingual
+        // document without fit is drawn as it is
+        std::string language;
         std::vector<std::string> keepSplits;        // layer ids whose own composite is kept as a split
+        // S81 R9: the live inputs (titleLive*Key) to keep (TitleSplits::live); their layers and
+        // ancestors are planned, never read from the node cache
+        std::vector<std::string> keepLive;
+        // a live frame: those inputs, read instead of planning the content and the effects (or
+        // the followed layer) before them; an input whose rectangle no longer matches is planned
+        // as usual (TitleSplits::liveInputsUsed tells)
+        TitleLiveInputs liveInputs;
+        // the Glow content's light times this before the output (check_title's fx_hdr_on_8bit
+        // reads light above 1 / lightScale as full codes)
+        float lightScale = 1.0f;
         std::optional<GlyphCellRequest> glyphCell;
         int tier = 0;                               // 0 = bake quality; S86's TitleTier for Realtime 3D
         // the device tier S83's effects and generators draw for (D11, D12, §6.7's mobile tier:

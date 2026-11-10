@@ -1968,6 +1968,15 @@ OVERRIDES = {
     },
 }
 
+# T4 R47: a Terrain World's waits, bound through lua_State* (their arguments read by hand)
+OVERRIDES[('TerrainWorld', 'waitForArea')] = {
+    'doc': ['In an engine coroutine, waits until isAreaReady holds: true, or false at the timeout or when the world stops.'],
+    'overloads': [([('x', 'number'), ('z', 'number'), ('radius', 'number'), ('level', 'string'), ('timeoutSeconds?', 'number')], 'boolean')]}
+OVERRIDES[('TerrainWorld', 'onAreaReady')] = {
+    'doc': ['Calls callback once, in the update phase, when the area is ready.'],
+    'overloads': [([('x', 'number'), ('z', 'number'), ('radius', 'number'), ('level', 'string'), ('callback', 'fun()')], '')]}
+OVERRIDES[('TerrainWorld', 'getStats')] = {'overloads': [([], 'TerrainWorldStats')]}
+
 OVERRIDES[('Screen', 'setExtraInsets')] = {
     'doc': ['Space the game keeps free per edge on top of the device insets (a banner ad): every safe-area',
             'consumer includes it (Screen.safeArea, the Safe Area component, HTML env()). `unit` is',
@@ -2081,6 +2090,31 @@ for _renderer, _what in (('LineRenderer', 'polyline point'), ('TrailRenderer', '
         'overloads': [([('index', 'integer')], 'Vector3')]}
 
 # Particle Systems of version 2 (particles spec 6.6, docs/mcp/guide/particles.md)
+# T2's noise API: lua_CFunctions take optional arguments C++ signatures cannot state (docs/scripting/noise.md)
+for _name, _doc in (('perlin', 'Perlin noise, -1..1.'), ('simplex', 'Simplex noise, -1..1.'), ('value', 'Value noise, -1..1.')):
+    OVERRIDES[('Noise', _name)] = {'doc': [_doc + ' An omitted seed is 0.'],
+                                   'overloads': [([('x', 'number'), ('z', 'number'), ('seed?', 'integer')], 'number')]}
+    OVERRIDES[('Noise', _name + '3')] = {'doc': [_doc + ' An omitted seed is 0.'],
+                                         'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('seed?', 'integer')], 'number')]}
+OVERRIDES[('Noise', 'cellular')] = {'doc': ['Cellular noise: a distance, or -1..1 for cell_value. An omitted seed is 0.'],
+                                    'overloads': [([('x', 'number'), ('z', 'number'), ('seed?', 'integer'), ('cellularReturn?', 'NoiseCellularReturn')], 'number')]}
+OVERRIDES[('Noise', 'cellular3')] = {'doc': ['Cellular noise: a distance, or -1..1 for cell_value. An omitted seed is 0.'],
+                                     'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('seed?', 'integer'), ('cellularReturn?', 'NoiseCellularReturn')], 'number')]}
+_FRACTAL_PARAMS = [('x', 'number'), ('z', 'number'), ('seed?', 'integer'), ('octaves?', 'integer'), ('lacunarity?', 'number'), ('gain?', 'number'), ('basis?', 'NoiseBasis')]
+OVERRIDES[('Noise', 'fbm')] = {'doc': ["FBm, in the basis' range: 4 octaves, lacunarity 2 and gain 0.5 by default."], 'overloads': [(_FRACTAL_PARAMS, 'number')]}
+OVERRIDES[('Noise', 'ridged')] = {'doc': ['Ridged fractal, 0..1: 4 octaves, lacunarity 2 and gain 0.5 by default.'], 'overloads': [(_FRACTAL_PARAMS, 'number')]}
+OVERRIDES[('NoiseGraph', 'load')] = {'doc': ['A compiled Noise Graph, or nil after logging the issues. A graph with an erosion or Terrain Height node does not load in a game.'],
+                                     'overloads': [([('path', 'string')], 'NoiseGraph?')]}
+OVERRIDES[('NoiseGraph', 'rangeOf')] = {'doc': ["An output's analytic range: min, max. The default output is height, else the first."],
+                                        'overloads': [([('output?', 'string')], 'number, number')]}
+OVERRIDES[('NoiseGraph', 'sample')] = {'doc': ['The output at one point. An error, naming the node, on a graph with a grid-only node: use sampleGrid.'],
+                                       'overloads': [([('x', 'number'), ('z', 'number'), ('seed?', 'integer'), ('output?', 'string')], 'number')]}
+OVERRIDES[('NoiseGraph', 'sample3')] = {'doc': ['The output at one 3D point. An error, naming the node, on a graph with a grid-only node: use sampleGrid.'],
+                                        'overloads': [([('x', 'number'), ('y', 'number'), ('z', 'number'), ('seed?', 'integer'), ('output?', 'string')], 'number')]}
+OVERRIDES[('NoiseGraph', 'sampleGrid')] = {'doc': ['A grid of at most 4,000,000 points, on this thread.'], 'overloads': [([('args', 'NoiseGridArgs')], 'NoiseGrid')]}
+OVERRIDES[('NoiseGraph', 'sampleGridAsync')] = {'doc': ['The same bits as sampleGrid on small jobs, which keep the frame and work without worker threads.'],
+                                                'overloads': [([('args', 'NoiseGridArgs')], 'NoiseGridTask')]}
+OVERRIDES[('NoiseGridTask', 'result')] = {'doc': ['The grid once done; nil before, or after cancel.'], 'overloads': [([], 'NoiseGrid?')]}
 OVERRIDES[('ParticleSystemModule', 'setBursts')] = {
     'doc': ['ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01, probability = 1}, ...}): replaces',
             'the bursts (count a number or a MinMaxCurve; cycles 0 repeats forever). Version 2 systems only.'],
@@ -2443,6 +2477,19 @@ OVERRIDES.update({
         'overloads': [([('interval', 'number'), ('fn', 'fun(timer: Timer): boolean?'), ('opts?', 'TimerOptions')], 'Timer')]},
 })
 
+# pixel fonts (GameObjectClassesLua.cpp, docs/specs/S51-pixel-fonts.md R29): load returns the font or
+# nil and the reason; measure returns two integers
+OVERRIDES.update({
+    ('BitmapFont', 'load'): {
+        'doc': ['A bitmap font (.bitmapfont, .fnt or "builtin:pixel") and its metrics, in whole font pixels;',
+                '`nil, error` when it does not load.'],
+        'overloads': [([('path', 'string')], 'BitmapFont?, string?')]},
+    ('BitmapFont', 'measure'): {
+        'doc': ['The width and height of the text (newlines split lines) in whole pixels at `scale` (default 1):',
+                'the layout a Text draws.'],
+        'overloads': [([('text', 'string'), ('scale?', 'integer')], 'integer, integer')]},
+})
+
 # audio-mixer (ECSClassesLua.cpp, GameObjectClassesLua.cpp): option tables ({unscaled = true}),
 # `nil` results and table results; AudioTimeOptions / AudioFadeOutOptions are in
 # engine/core/script/binding/stubs/Audio.lua
@@ -2696,6 +2743,19 @@ OVERRIDES.update({
         'doc': ['Sizes the Image (or the Sprite) to the title\'s pixels, as the Inspector\'s Set Native Size. Raises',
                 'when the title has no image yet.'],
         'overloads': [([], '')]},
+    ('TitleArt', 'getMeshStats'): {
+        'doc': ['The mesh the 3D layer at `layerPath` (names joined by "/", or its id) drew in the last render: triangles,',
+                'vertices, solids, buildMs, tier, overBudget and cooked (an export\'s mesh); nil before its first render. Raises',
+                'on a Baked title or a path that names no 3D layer (listing them).'],
+        'overloads': [([('layerPath', 'string')],
+                       '{triangles: integer, vertices: integer, solids: integer, buildMs: number, tier: string, overBudget: boolean, cooked: boolean}?')]},
+    ('TitleArt', 'setLanguage'): {
+        'doc': ['S87: the language of every Title Art Renderer whose Language is Auto ("" = back to the device\'s',
+                'languages). Raises on a tag that is not BCP 47 ("de", "pt-BR", "zh-Hant"); nothing changes then.'],
+        'overloads': [([('code', 'string')], '')]},
+    ('TitleArt', 'getLanguages'): {
+        'doc': ['The languages this title offers: its source first, then the languages it ships.'],
+        'overloads': [([], 'string[]')]},
     ('TitleArt', 'play'): {
         'doc': ['Plays the title\'s animation `name`. False (warned once) while titles have no animations (S85).'],
         'overloads': [([('name', 'string'), ('options?', '{speed?: number, loop?: boolean, unscaled?: boolean}')], 'boolean')]},
@@ -2713,7 +2773,7 @@ PROPERTY_OVERRIDES = {
         'main', 'emission', 'shape', 'velocityOverLifetime', 'limitVelocityOverLifetime', 'inheritVelocity',
         'forceOverLifetime', 'colorOverLifetime', 'colorBySpeed', 'sizeOverLifetime', 'sizeBySpeed',
         'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'collision', 'trails',
-        'customData', 'externalForces', 'renderer')},
+        'customData', 'externalForces', 'renderer', 'pixelArt')},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
     # ui-multitouch: the GameObjects of a PointerEventData (nil: none)
@@ -2740,6 +2800,8 @@ PROPERTY_OVERRIDES = {
     ('TitleArt', 'colorSchemes'): ('string[]', True),
     ('TitleArt', 'parameterNames'): ('string[]', True),
     ('TitleArt', 'animations'): ('string[]', True),
+    # S87: the static language event
+    ('TitleArt', 'onLanguageChanged'): ('FunctionSubscribe', False),
     # the joint's bodies (std::optional<GameObject> lambdas): nil = the world
     ('Joint2D', 'bodyA'): ('GameObject|nil', False),
     ('Joint2D', 'bodyB'): ('GameObject|nil', False),
@@ -2755,6 +2817,9 @@ PROPERTY_OVERRIDES = {
     ('Button', 'onClick'): ('FunctionSubscribe', False),
     ('BaseEventData', 'target'): ('GameObject?', False),
     ('BaseEventData', 'selectedObject'): ('GameObject?', False),
+    # T5 R33: write-only handlers (the getter is nil), docs/scripting/foliage.md
+    ('Terrain', 'onTreeHit'): ('fun(hit: table)|nil', False),
+    ('Terrain', 'onTreeRemoved'): ('fun(id: integer, pose: table)|nil', False),
 }
 
 # physics-contacts: the callbacks' values. Their GameObject / body / receiver getters are
@@ -3063,6 +3128,19 @@ OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
             'the hit (position, normal, distance).'],
     'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('NavMeshAgent', 'currentOffMeshLinkData')] = ('OffMeshLinkData', False)
+
+# T1 R75: the terrain writes, raw functions taking and returning tables (docs/scripting/terrain.md)
+OVERRIDES[('Terrain', 'applyOps')] = {
+    'doc': ['Runs edit_terrain\'s op tables (world X and Z, world heights), all or nothing; needs Allow Runtime',
+            'Edits. Returns the result: changed, ops, stats, warnings. docs/scripting/terrain.md.'],
+    'overloads': [([('ops', 'table[]')], 'table')]}
+OVERRIDES[('Terrain', 'getHeights')] = {
+    'doc': ['w * h terrain-local heights of the height map\'s texel rectangle, row by row.'],
+    'overloads': [([('x', 'integer'), ('y', 'integer'), ('w', 'integer'), ('h', 'integer')], 'number[]')]}
+OVERRIDES[('Terrain', 'setHeights')] = {
+    'doc': ['Writes w * h terrain-local heights to the height map\'s texel rectangle; needs Allow Runtime Edits.',
+            'Returns the result table, as applyOps.'],
+    'overloads': [([('x', 'integer'), ('y', 'integer'), ('w', 'integer'), ('h', 'integer'), ('values', 'number[]')], 'table')]}
 # S75 navigation diagnostics: path reasons, isReachable's reason, locate, coverage, islands, the bake report
 OVERRIDES[('NavigationSystem', 'isReachable')] = {
     'doc': ['Whether a Complete path joins the points, then why not ("none" when it does): rejected at once',
@@ -3129,6 +3207,23 @@ OVERRIDES[('NavMeshAgent', 'samplePathPosition')] = {
     'overloads': [([('areaMask', 'integer'), ('maxDistance', 'number')], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('NavMeshAgent', 'path')] = ('NavMeshPath', False)
 PROPERTY_OVERRIDES[('NavMeshAgent', 'nextOffMeshLinkData')] = ('OffMeshLinkData', False)
+
+# Palettes (docs/specs/S43-palettes.md R42): Palette.new and setPaletteTarget read the Lua stack
+OVERRIDES[('Palette', 'new')] = {
+    'doc': ['A palette made at runtime from colours ("#rrggbb", "#rrggbbaa" or Vector4, linear), for',
+            'setPaletteTarget; it lives while a Palette or a material holds it.'],
+    'overloads': [([('colors', '(string|Vector4)[]')], 'Palette')]}
+for _owner in ('Sprite', 'Tilemap', 'MeshPolygon'):
+    OVERRIDES[(_owner, 'setPaletteTarget')] = {
+        'doc': ['Sets the palette a Palette Swap row draws with (row 1 and up; 0 is the original): a Palette',
+                '(Palette.load, Palette.new) or a .palette path. Errors on a row the material does not have.'],
+        'overloads': [([('row', 'integer'), ('palette', 'Palette|string')], '')]}
+    PROPERTY_OVERRIDES[(_owner, 'palette')] = ('string|integer', False)
+OVERRIDES[('Palette', 'getRamp')] = {
+    'doc': ['The colours of the named ramp, dark to light (linear); empty for an unknown ramp.'],
+    'overloads': [([('name', 'string')], 'Vector4[]')]}
+PROPERTY_OVERRIDES[('Palette', 'variants')] = ('string[]', True)
+PROPERTY_OVERRIDES[('Palette', 'ramps')] = ('string[]', True)
 
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)
 HTML_UI_CLASS_DOCS = {

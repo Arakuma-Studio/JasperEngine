@@ -23,6 +23,7 @@
 #include "Export.h"
 #include "render/CameraRender.h"
 #include "render/ObjectRender.h"
+#include "render/PipelineState.h"
 #include "render/TextureRender.h"
 #include "shader/ShaderBuildTypes.h"
 #include "texture/Framebuffer.h"
@@ -130,15 +131,21 @@ namespace jasperengine::titleart {
         // the longest pass (its draw holds the driver's compile of a new variant) and its program
         double slowestPassMs = 0.0;
         uint32_t slowestProgram = 0;
-        bool slowestWasFirstDraw = false;   // its (program, state) key drew for the first time
+        bool slowestWasFirstDraw = false;   // its (program, state, sampled textures) key drew for the first time
+        // the longest build of a program (its shader's compile and link, on the render thread on a
+        // software GL: the other compile a frame can hold) and which
+        double slowestBuildMs = 0.0;
+        uint32_t slowestBuildProgram = 0;
     };
 
     // The first draw of a program in a pipeline state makes the driver compile that variant on the
-    // render thread (llvmpipe's LLVM JIT: 4-5 s for a title art program; a GL worker context, S32,
-    // takes it off the render thread on hardware, not on a software rasteriser). Title Art lets one
-    // new (program, state) draw per frame: the others wait for a later frame (their steps run
-    // again), so a render that meets many new programs spreads their compiles over frames instead
-    // of holding one frame for all of them. Main thread.
+    // render thread (llvmpipe's LLVM JIT: up to about 1 s for a title art program, 4-5 s for the
+    // whole ELEMENT program before its variants, TitleElementVariant.h; a GL worker context,
+    // S32, takes it off the render thread on hardware, not on a software rasteriser). Title Art lets
+    // one new (program, state) draw per frame: the others wait for a later frame (their steps run
+    // again; a 3D layer's render stops at the draw and runs again), so a render that meets many new
+    // programs spreads their compiles over frames instead of holding one frame for all of them.
+    // Main thread.
     struct TitleFirstDrawStats {
         uint64_t granted = 0;       // new (program, state) keys let through
         uint64_t deferred = 0;      // draws sent to a later frame
@@ -146,12 +153,11 @@ namespace jasperengine::titleart {
     };
     class JASPERENGINE_API TitleFirstDraws {
     public:
-        // true when `key` drew before, or no new key went this frame (then this one goes now)
+        // true when `key` (titleDrawKey) drew before, or no new key went this frame (then this one
+        // goes now: the caller draws it at once)
         static bool allow(uint64_t key);
         // `key` drew before
         static bool drew(uint64_t key);
-        // the keys of one step that draws them all at once (a 3D layer's render): as one new key
-        static bool allowGroup(const std::vector<uint64_t>& keys);
         // no new key went this frame
         static bool available();
         static const TitleFirstDrawStats& stats();
@@ -174,6 +180,26 @@ namespace jasperengine::titleart {
         };
     };
 
+    // The first draws of one render that draws everything in one call (a 3D layer's): the render
+    // stops at the frame's second new program and runs again on a later frame. While it is only
+    // meeting programs (`warming`, after a stop), a draw of a program that drew before is skipped,
+    // so a run costs its one compile and not the passes before it (llvmpipe rasterizes a 3D main
+    // pass for seconds); once a warming run reaches the end, one complete run draws the image.
+    class JASPERENGINE_API TitleDrawGate {
+    public:
+        enum class Result { Draw, Skip, Stop };
+        // what a draw of the program in `state` does in this run
+        Result check(ShaderType type, uint64_t properties, const PipelineState& state);
+        // a run starts / has ended: the end's answer is true when the run did not draw the image
+        // (it stopped, or it was warming), so the caller runs again on a later frame
+        void begin();
+        bool end();
+        bool stopped() const { return stop; }
+
+    private:
+        bool warming = false, stop = false, skipped = false;
+    };
+
     class JASPERENGINE_API TitleGpu {
     public:
         TitleGpu();
@@ -191,6 +217,10 @@ namespace jasperengine::titleart {
         // lastRunDeferred() says so, and the step runs again on a later frame (TitleFirstDraws)
         bool run(const TitleGpuPass& pass, std::string& error);
         bool lastRunDeferred() const { return deferredRun; }
+        // how many passes went to a later frame so far: a chain of passes that must all draw for
+        // its result to exist (a Glyph Atlas page copy, its compose) compares this across the chain
+        // and draws the whole chain again on a later frame
+        uint64_t deferrals() const { return deferredCount; }
         // a target cleared to a colour (one clear pass)
         bool clear(TitleTarget* target, const float color[4], std::string& error);
 
@@ -206,11 +236,15 @@ namespace jasperengine::titleart {
         CameraRender pass;
         TitleGpuStats counters;
         bool deferredRun = false;
+        uint64_t deferredCount = 0;
 
         bool ensurePlaceholder();
     };
 
     // the program's ShaderPool key (TitleRenderJob::shaderKeys)
     JASPERENGINE_API ShaderKey titleRenderProgramKey(uint32_t program);
+
+    // a draw's TitleFirstDraws key: its program (shader type and properties) in a pipeline state
+    JASPERENGINE_API uint64_t titleDrawKey(ShaderType type, uint64_t properties, const PipelineState& state);
 
 }

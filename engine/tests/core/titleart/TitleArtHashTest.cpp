@@ -146,3 +146,14 @@ TEST_F(TitleArtHashTest, AGeneratorsParamsAreItsContent) {
     EXPECT_NE(after.content, before.content) << "a param edit is new pixels, not a cache hit";
     EXPECT_EQ(after.placement, before.placement);
 }
+
+TEST_F(TitleArtHashTest, AGeneratorsParamsChangeItsNodeCacheKey) {
+    // the node cache keys by `content`: a new param value must not hit the old pixels
+    const TitleArtParseResult parsed = parseTitleArt(R"({"format": "jasperengine.titleart", "version": 1, "layers": [
+        {"id": "00000001", "type": "generator", "generator": {"type": "pattern_fill", "params": {"rotation": 10}}}]})");
+    ASSERT_TRUE(parsed.ok);
+    TitleArtDoc changed = parsed.doc;
+    Json* layer = findLayer(changed.root, "00000001");
+    ASSERT_TRUE(setTitleArtField(*layer, "layer", "gen.rotation", Json(20)).ok);
+    EXPECT_NE(hashTitleArt(changed).layers.at("00000001").content, hashTitleArt(parsed.doc).layers.at("00000001").content);
+}

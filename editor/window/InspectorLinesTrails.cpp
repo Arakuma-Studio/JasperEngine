@@ -12,6 +12,7 @@
 // rows are propertyRow's Curve / Gradient types (S27's Curve and Gradient fields).
 
 #include "InspectorWindow.h"
+#include "component/Transform.h"
 
 #include "Catalog.h"
 #include "Theme.h"
@@ -23,7 +24,6 @@
 #include "external/IconsFontAwesome6.h"
 #include "render/SceneRender.h"
 #include "shader/ShaderManifest.h"
-#include "subsystem/RenderSystem.h"
 #include "util/FileDialogs.h"
 #include "util/Util.h"
 #include "App.h"
@@ -125,8 +125,9 @@ void editor::InspectorWindow::drawLineRibbonRows(ComponentType cpType, SceneProj
     propertyRow(RowPropertyType::Vector2, cpType, "textureScale", "Texture Scale", sceneProject, entities, scaleSettings);
 
     RowSettings sortSettings;
-    sortSettings.help = "Order among the transparent renderers (Unity's Order in Layer): lower draws first.";
+    sortSettings.help = "Order among the transparent renderers of one Sorting Layer and Order in Layer: lower draws first.";
     propertyRow(RowPropertyType::Int, cpType, "sortPriority", "Sort Priority", sceneProject, entities, sortSettings);
+    drawSortingRows(cpType, sceneProject, entities);
 }
 
 // The base texture of the built-in line shader (shaderTextures' u_baseTexture): a shader with a

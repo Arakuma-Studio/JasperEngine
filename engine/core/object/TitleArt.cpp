@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArt.h"
+#include "util/TitleArtLanguage.h"
+
+#include "titleanim/TitleAnimPlayer.h"
 
 #include "Log.h"
 #include "Scene.h"
+#include "System.h"
 #include "subsystem/TitleArtSystem.h"
 
 #include <algorithm>
@@ -182,6 +186,27 @@ void TitleArt::setPriority(int priority){
     if (TitleArtRendererComponent* c = component()) c->priority = std::max(-100, std::min(100, priority));
 }
 
+std::string TitleArt::getQualityTier() const{
+    const TitleArtRendererComponent* c = component();
+    return c ? c->qualityTier : std::string("auto");
+}
+
+bool TitleArt::setQualityTier(const std::string& tier, std::string* error){
+    TitleArtRendererComponent* c = component();
+    if (!c) return fail("TitleArt: GameObject '" + getName() + "' has no Title Art Renderer.", error);
+    if (tier != "auto" && tier != "high" && tier != "medium" && tier != "low"){
+        return fail("TitleArt '" + getName() + "': qualityTier \"" + tier + "\" is not auto, high, medium or low.", error);
+    }
+    c->qualityTier = tier;
+    return true;
+}
+
+bool TitleArt::getMeshStats(const std::string& layerPath, titleart::TitleArtMeshStats& out, bool& found, std::string* error) const{
+    std::string message;
+    if (!TitleArtSystem::meshStats(getScene(), getEntity(), layerPath, out, found, message)) return fail(message, error);
+    return true;
+}
+
 void TitleArt::refresh(){
     if (component()) TitleArtSystem::refresh(getScene(), getEntity());
 }
@@ -243,20 +268,103 @@ void TitleArt::setGlintSeed(unsigned int seed){
 // ---- S85 ----
 
 std::vector<std::string> TitleArt::getAnimations() const{
-    return {};
+    return component() ? TitleArtSystem::animationNames(getScene(), getEntity()) : std::vector<std::string>();
 }
 
 bool TitleArt::isPlaying() const{
-    return false;
+    titleanim::TitleAnimPlayer* player = component() ? TitleArtSystem::animationPlayer(getScene(), getEntity()) : nullptr;
+    return player && player->isPlaying();
 }
 
-bool TitleArt::play(const std::string& name, float, bool, bool){
-    // R44: S85 defines what plays; until it lands every name is unknown (false and a warning)
-    if (component()) Log::warn("TitleArt '%s': no Title Art animation '%s' (the title has none)", getName().c_str(), name.c_str());
-    return false;
+bool TitleArt::play(const std::string& name){
+    return play(name, titleanim::TitleAnimPlayOptions());
+}
+
+bool TitleArt::play(const std::string& name, const titleanim::TitleAnimPlayOptions& options){
+    return component() && TitleArtSystem::playAnimation(getScene(), getEntity(), name, options);
+}
+
+bool TitleArt::playOverlay(const std::string& name){
+    return playOverlay(name, titleanim::TitleAnimPlayOptions());
+}
+
+bool TitleArt::playOverlay(const std::string& name, const titleanim::TitleAnimPlayOptions& options){
+    return component() && TitleArtSystem::playAnimation(getScene(), getEntity(), name, options, true);
 }
 
 void TitleArt::stop(){
+    if (component()) TitleArtSystem::stopAnimation(getScene(), getEntity(), "");
+}
+
+bool TitleArt::stop(const std::string& name){
+    return component() && TitleArtSystem::stopAnimation(getScene(), getEntity(), name);
+}
+
+void TitleArt::reset(){
+    if (component()) TitleArtSystem::resetAnimation(getScene(), getEntity());
+}
+
+bool TitleArt::isPaused() const{
+    titleanim::TitleAnimPlayer* player = component() ? TitleArtSystem::animationPlayer(getScene(), getEntity()) : nullptr;
+    return player && player->isPaused();
+}
+
+void TitleArt::setPaused(bool paused){
+    if (titleanim::TitleAnimPlayer* player = component() ? TitleArtSystem::animationPlayer(getScene(), getEntity()) : nullptr) player->setPaused(paused);
+}
+
+bool TitleArt::isAnimationPlaying(const std::string& name) const{
+    titleanim::TitleAnimPlayer* player = component() ? TitleArtSystem::animationPlayer(getScene(), getEntity()) : nullptr;
+    return player && player->isPlaying(name);
+}
+
+bool TitleArt::prepare(const std::string& name){
+    return component() && TitleArtSystem::prepareAnimation(getScene(), getEntity(), name);
+}
+
+bool TitleArt::isAnimationReady(const std::string& name) const{
+    return component() && TitleArtSystem::isAnimationReady(getScene(), getEntity(), name);
+}
+
+bool TitleArt::sample(const std::string& name, double time){
+    return component() && TitleArtSystem::sampleAnimation(getScene(), getEntity(), name, time);
+}
+
+double TitleArt::getDuration(const std::string& name) const{
+    return component() ? TitleArtSystem::animationDuration(getScene(), getEntity(), name) : -1.0;
+}
+
+std::string TitleArt::getAnimation() const{
+    titleanim::TitleAnimPlayer* player = component() ? TitleArtSystem::animationPlayer(getScene(), getEntity()) : nullptr;
+    return player && player->baseAnimation() ? player->baseName() : std::string();
+}
+
+float TitleArt::getAnimationTime() const{
+    TitleArtRendererComponent* c = component();
+    return c ? c->animationTime : 0.0f;
+}
+
+void TitleArt::setAnimationTime(float seconds){
+    if (TitleArtRendererComponent* c = component()){
+        c->animationTime = std::isfinite(seconds) ? std::max(0.0f, seconds) : 0.0f;
+        c->animationTimeKeyed = true;
+        if (titleanim::TitleAnimPlayer* player = TitleArtSystem::animationPlayer(getScene(), getEntity())) player->seek(c->animationTime);
+    }
+}
+
+float TitleArt::getAnimationSpeed() const{
+    TitleArtRendererComponent* c = component();
+    return c ? c->animationSpeed : 1.0f;
+}
+
+void TitleArt::setAnimationSpeed(float speed){
+    if (TitleArtRendererComponent* c = component()) c->animationSpeed = std::isfinite(speed) ? std::max(0.0f, std::min(10.0f, speed)) : 1.0f;
+}
+
+FunctionSubscribe<void(const AnimationEvent&)>& TitleArt::getOnAnimationEvent(){
+    static FunctionSubscribe<void(const AnimationEvent&)> none;
+    TitleArtRendererComponent* c = component();
+    return c ? TitleArtSystem::instanceOf(*c).onAnimationEvent : none;
 }
 
 // ---- events ----
@@ -283,6 +391,70 @@ FunctionSubscribe<void(const std::string&)>& TitleArt::getOnAnimationFinished(){
     static FunctionSubscribe<void(const std::string&)> none;
     TitleArtRendererComponent* c = component();
     return c ? TitleArtSystem::instanceOf(*c).onAnimationFinished : none;
+}
+
+// ---- languages (S87) ----
+
+std::string TitleArt::getLanguage() const{
+    TitleArtRendererComponent* c = component();
+    return c ? c->language : std::string();
+}
+
+void TitleArt::setLanguage(const std::string& code){
+    TitleArtRendererComponent* c = component();
+    if (!c) return;
+    // a tag the title lacks is no error: it resolves to its best match (getResolvedLanguage)
+    c->language = TitleArtLanguage::canonicalize(code);
+}
+
+std::string TitleArt::getResolvedLanguage() const{
+    TitleArtRendererComponent* c = component();
+    return c ? TitleArtSystem::instanceOf(*c).resolvedLanguage : std::string();
+}
+
+std::vector<std::string> TitleArt::getLanguages() const{
+    TitleArtRendererComponent* c = component();
+    return c ? TitleArtSystem::instanceOf(*c).languages : std::vector<std::string>();
+}
+
+bool TitleArt::isLanguageReady() const{
+    TitleArtRendererComponent* c = component();
+    if (!c) return false;
+    const titleart::TitleArtInstance& instance = TitleArtSystem::instanceOf(*c);
+    // a change made this frame reaches the system at its next update: a script that asks right
+    // after setLanguage must not read the old language's "ready"
+    if (!instance.languages.empty() && (instance.languageGeneration != TitleArtLanguage::generation() || instance.languageAsked != c->language)){
+        const std::string& source = instance.languages.front();
+        std::string picked = TitleArtLanguage::resolve(TitleArtLanguage::candidates(c->language, System::instance().getPreferredLocales(), source),
+                                                       instance.languages);
+        if (picked.empty()) picked = source;
+        if (picked != instance.shownLanguage) return false;
+    }
+    return instance.languageReady;
+}
+
+FunctionSubscribe<void(const std::string&)>& TitleArt::getOnLanguageReady(){
+    static FunctionSubscribe<void(const std::string&)> none;
+    TitleArtRendererComponent* c = component();
+    return c ? TitleArtSystem::instanceOf(*c).onLanguageReady : none;
+}
+
+bool TitleArt::setGlobalLanguage(const std::string& code, std::string* error){
+    getOnLanguageChanged();     // the listener exists before the first change
+    return TitleArtLanguage::setGlobal(code, error);
+}
+
+std::string TitleArt::getGlobalLanguage(){
+    return TitleArtLanguage::global();
+}
+
+FunctionSubscribe<void(const std::string&)>& TitleArt::getOnLanguageChanged(){
+    static FunctionSubscribe<void(const std::string&)>* event = []{
+        auto* e = new FunctionSubscribe<void(const std::string&)>();
+        TitleArtLanguage::addListener([e](const std::string& code){ e->call(code); });
+        return e;
+    }();
+    return *event;
 }
 
 void TitleArt::setFrameBudget(double ms){

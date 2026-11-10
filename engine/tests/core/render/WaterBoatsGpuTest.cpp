@@ -259,8 +259,9 @@ TEST_F(WaterBoatsGpu, OpaqueTilesStayInstanced){
     const Submesh& first = scene.getComponent<MeshComponent>(tiles[0]->getEntity()).submeshes[0];
     const uint64_t waterBits = ShaderPool::getWaterExclusionProperty() | ShaderPool::getWaterWakeProperty();
     EXPECT_EQ(first.shaderProperties & waterBits, 0u);
-    EXPECT_NE(first.batchShaderProperties & ShaderPool::getAutoInstancingProperty(ShaderType::MESH), 0u);
-    EXPECT_EQ(first.batchShaderProperties & waterBits, 0u);
+    ASSERT_TRUE(first.batch) << "an opaque water tile holds no batch variants";
+    EXPECT_NE(first.batch->shaderProperties & ShaderPool::getAutoInstancingProperty(ShaderType::MESH), 0u);
+    EXPECT_EQ(first.batch->shaderProperties & waterBits, 0u);
     const DrawBatchStats tiled = SystemRender::getDrawBatchStats();
     std::printf("[gpu] opaque water tiles: %u instanced draws for %u draws\n", tiled.instancedDraws, tiled.batchedInstances);
     EXPECT_EQ(tiled.instancedDraws, 1u);

@@ -5,6 +5,7 @@
 
 #include "Scene.h"
 #include "animation/CanvasGroupTracks.h"
+#include "sprite/SpriteSheet.h"
 #include "component/AudioSourceComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/BuoyancyComponent.h"
@@ -17,6 +18,9 @@
 #include "component/NavMeshModifierComponent.h"
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
+#include "component/SortingGroupComponent.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/SplineComponent.h"
 #include "component/SplineExtrudeComponent.h"
@@ -57,11 +61,13 @@
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "component/TextEffectComponent.h"
 #include "component/TitleArtRendererComponent.h"
 #include "subsystem/TitleArtSystem.h"
 #include "component/TilemapComponent.h"
 #include "component/TrailRendererComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
@@ -397,21 +403,27 @@ namespace {
 
     // ---- sprite frame (Unity's m_Sprite swap): Sprite::setFrame(int) ----
 
-    // the frame whose rect the sprite shows (-1: none of them)
+    // the frame whose rect the sprite shows (-1: none of them); a sheet sprite's frame is its index
+    // into the sheet (S44 R50: no rect comparison)
     bool readSpriteFrame(Scene* scene, Entity entity, const PropertyParams&, float* out){
         SpriteComponent* sprite = scene ? scene->findComponent<SpriteComponent>(entity) : nullptr;
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
         if (!sprite || !mesh) return false;
+        if (!sprite->sheet.empty()){
+            out[0] = (float)sprite->frame;
+            return true;
+        }
         out[0] = -1.0f;
-        const Rect shown = sprite->needUpdateFrameRect ? sprite->pendingFrameRect : mesh->submeshes[0].textureRect;
+        const Rect shown = sprite->needUpdateFrameRect ? sprite->pendingFrameRect : MeshSystem::spriteSourceRect(*sprite, *mesh);
         const Texture& texture = mesh->submeshes[0].material.baseColorTexture;
+        float textureW = (float)texture.getWidth(), textureH = (float)texture.getHeight();
+        MeshSystem::spriteSourceSize(*sprite, *mesh, textureW, textureH);
         for (unsigned int id = 0; id < sprite->numFramesRect; id++){
             Rect rect = sprite->framesRect[id].rect;
             if (!shown.isNormalized() || rect.isNormalized()){
                 // compare like with like
-            }else if (texture.getWidth() > 0 && texture.getHeight() > 0){
-                rect = Rect(rect.getX() / texture.getWidth(), rect.getY() / texture.getHeight(),
-                            rect.getWidth() / texture.getWidth(), rect.getHeight() / texture.getHeight());
+            }else if (textureW > 0 && textureH > 0){
+                rect = Rect(rect.getX() / textureW, rect.getY() / textureH, rect.getWidth() / textureW, rect.getHeight() / textureH);
             }
             const float eps = 1e-4f;
             if (std::fabs(rect.getX() - shown.getX()) < eps && std::fabs(rect.getY() - shown.getY()) < eps &&
@@ -429,6 +441,12 @@ namespace {
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
         if (!sprite || !mesh) return false;
         const long id = std::lround(in[0]);
+        if (!sprite->sheet.empty()){
+            // before the sheet loads any index is kept (the sprite clamps it once it knows the count)
+            if (id < 0 || (sprite->sheetData && id >= (long)sprite->sheetData->frames.size())) return false;
+            sprite->frame = (int)id;
+            return true;
+        }
         if (id < 0 || (unsigned long)id >= sprite->numFramesRect) return false;
         MeshSystem::setSpriteFrameRect(*mesh, *sprite, sprite->framesRect[(size_t)id].rect);
         return true;
@@ -436,11 +454,18 @@ namespace {
     bool hasSprite(EntityRegistry* registry, Entity entity, const PropertyParams&){
         return registry && registry->findComponent<SpriteComponent>(entity) && registry->findComponent<MeshComponent>(entity);
     }
-    // the texture rect a frame write replaces
+    // the texture rect a frame write replaces (a sheet sprite: its frame index, the rest unused)
     bool snapshotSpriteRect(Scene* scene, Entity entity, const PropertyParams&, float* out){
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
         if (!mesh) return false;
-        const Rect& rect = mesh->submeshes[0].textureRect;
+        if (SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity); sprite && !sprite->sheet.empty()){
+            out[0] = (float)sprite->frame;
+            out[1] = out[2] = out[3] = 0.0f;
+            return true;
+        }
+        // a legacy sprite drawn from an atlas page: its source's rect (S45 R8)
+        SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity);
+        const Rect rect = sprite ? MeshSystem::spriteSourceRect(*sprite, *mesh) : mesh->submeshes[0].textureRect;
         out[0] = rect.getX(); out[1] = rect.getY(); out[2] = rect.getWidth(); out[3] = rect.getHeight();
         return true;
     }
@@ -448,6 +473,10 @@ namespace {
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
         SpriteComponent* sprite = scene ? scene->findComponent<SpriteComponent>(entity) : nullptr;
         if (!mesh || !sprite) return false;
+        if (!sprite->sheet.empty()){
+            sprite->frame = std::max(0, (int)std::lround(in[0]));
+            return true;
+        }
         MeshSystem::setSpriteFrameRect(*mesh, *sprite, Rect(in[0], in[1], in[2], in[3]));
         return true;
     }
@@ -458,6 +487,11 @@ namespace {
     // sweepAuto off for the frame (R34: the track writes after the system)
     void titleArtSweepKeyed(Scene*, Entity, TitleArtRendererComponent& title){
         title.sweepPositionKeyed = true;
+    }
+
+    // S85 R27: a written animationTime seeks the base animation (or, with driveAnimation, drives it)
+    void titleArtAnimationTimeKeyed(Scene*, Entity, TitleArtRendererComponent& title){
+        title.animationTimeKeyed = true;
     }
 
     // the document's Exposed parameter of an "overrides.<name>" row, null when it has none
@@ -517,14 +551,14 @@ namespace {
     template<typename C>
     Row enabledRow(const char* component){
         return {component, "enabled", "Enabled", "m_Enabled", B, 1, true, false, ID, false,
-                &hasComponent<C>, &readEnabled<C>, &writeEnabled<C>, nullptr, nullptr};
+                &hasComponent<C>, &readEnabled<C>, &writeEnabled<C>, nullptr, nullptr, true};
     }
 
     template<typename C, typename T, T C::*Field, DirtyFn<C> Dirty = nullptr>
     Row fieldRow(const char* component, const char* property, const char* label, const char* unity, PropertyKind kind,
                  PropertyDisplay display = ID, bool interpolateInt = false){
         return {component, property, label, unity, kind, anim::kindWidth(kind), anim::kindIsDiscrete(kind) && !interpolateInt,
-                interpolateInt, display, false, &hasComponent<C>, &readField<C, T, Field>, &writeField<C, T, Field, Dirty>, nullptr, nullptr};
+                interpolateInt, display, false, &hasComponent<C>, &readField<C, T, Field>, &writeField<C, T, Field, Dirty>, nullptr, nullptr, true};
     }
 
     template<typename C, typename T, T C::*Field>
@@ -538,7 +572,7 @@ namespace {
     template<typename T, T Material::*Field>
     Row materialRow(const char* property, const char* label, const char* unity, PropertyKind kind, PropertyDisplay display = ID){
         return {"mesh", property, label, unity, kind, anim::kindWidth(kind), false, false, display, false,
-                &hasSubmesh, &readMaterial<T, Field>, &writeMaterial<T, Field>, nullptr, nullptr};
+                &hasSubmesh, &readMaterial<T, Field>, &writeMaterial<T, Field>, nullptr, nullptr, true};
     }
 
     template<typename C>
@@ -583,7 +617,7 @@ namespace {
         static const char* const groupLabels[] = {"Alpha", "Interactable", "Blocks Raycasts", "Ignore Parent Groups", "Enabled"};
         for (size_t i = 0; i < groupCount; i++){
             Row row = {"canvasgroup", group[i].property, i < 5 ? groupLabels[i] : group[i].property, group[i].unityName,
-                       group[i].isBool ? B : F, 1, group[i].isBool, false, ID, false, &hasComponent<CanvasGroupComponent>, nullptr, nullptr, nullptr, nullptr};
+                       group[i].isBool ? B : F, 1, group[i].isBool, false, ID, false, &hasComponent<CanvasGroupComponent>, nullptr, nullptr, nullptr, nullptr, true};
             rows.push_back(row);
         }
 
@@ -597,7 +631,7 @@ namespace {
         rows.push_back(materialRow<float, &Material::roughnessFactor>("submeshes[N].material.roughnessFactor", "Roughness Factor", "material._Glossiness", F));
         rows.push_back(materialRow<float, &Material::alphaCutoff>("submeshes[N].material.alphaCutoff", "Alpha Cutoff", "material._Cutoff", F));
         rows.push_back({"mesh", "submeshes[N].textureRect", "Texture Rect", "material._MainTex_ST", V4, 4, false, false, ID, false,
-                        &hasSubmesh, &readTextureRect, &writeTextureRect, nullptr, nullptr});
+                        &hasSubmesh, &readTextureRect, &writeTextureRect, nullptr, nullptr, true});
         rows.push_back({"mesh", "submeshes[N].material.shaderParams.<member>", "Shader Param", "material.<_Property>", PropertyKind::None, 0, false, false, ID, false,
                         &hasShaderParam, &readShaderParam, &writeShaderParam, nullptr, nullptr});
         rows.push_back(enabledRow<MeshComponent>("mesh"));
@@ -609,7 +643,7 @@ namespace {
         // lights (the Light Lua setters: range and cones update the shadow camera)
         rows.push_back(fieldRow<LightComponent, Vector3, &LightComponent::color>("light", "color", "Color", "m_Color", C3, SRGB));
         rows.push_back({"light", "intensity", "Intensity", "m_Intensity", F, 1, false, false, ID, false,
-                        &hasComponent<LightComponent>, &readField<LightComponent, float, &LightComponent::intensity>, &writeLightIntensity, nullptr, nullptr});
+                        &hasComponent<LightComponent>, &readField<LightComponent, float, &LightComponent::intensity>, &writeLightIntensity, nullptr, nullptr, true});
         rows.push_back(fieldRow<LightComponent, float, &LightComponent::range, &shadowCameraDirty>("light", "range", "Range", "m_Range", F));
         rows.push_back(fieldRow<LightComponent, float, &LightComponent::innerConeCos, &shadowCameraDirty>("light", "innerConeCos", "Inner Cone", "m_InnerSpotAngle", F, PropertyDisplay::ConeDegrees));
         rows.push_back(fieldRow<LightComponent, float, &LightComponent::outerConeCos, &shadowCameraDirty>("light", "outerConeCos", "Outer Cone", "m_SpotAngle", F, PropertyDisplay::ConeDegrees));
@@ -652,12 +686,17 @@ namespace {
         rows.push_back(enabledRow<ModelComponent>("model"));
         rows.push_back(enabledRow<TilemapComponent>("tilemap"));
         rows.push_back(enabledRow<TerrainComponent>("terrain"));
+        rows.push_back(enabledRow<VoxelVolumeComponent>("voxelvolume"));
+        rows.push_back(enabledRow<TerrainWorldComponent>("terrainworld"));
         rows.push_back(enabledRow<PointsComponent>("points"));
         rows.push_back(enabledRow<LineRendererComponent>("linerenderer"));
         rows.push_back(enabledRow<TrailRendererComponent>("trailrenderer"));
         rows.push_back(enabledRow<ParticleSystemComponent>("particlesystem"));
         rows.push_back(enabledRow<InstancedMeshComponent>("instancedmesh"));
-        rows.push_back(enabledRow<Rigidbody2DComponent>("rigidbody2d"));
+        // (a loaded body leaves or joins the Box2D world in the write: the main thread's)
+        Row rigidbody2dEnabled = enabledRow<Rigidbody2DComponent>("rigidbody2d");
+        rigidbody2dEnabled.workerSafe = false;
+        rows.push_back(rigidbody2dEnabled);
         rows.push_back(enabledRow<RigidbodyComponent>("rigidbody"));
         rows.push_back(enabledRow<Joint2DComponent>("joint2d"));
         rows.push_back(enabledRow<Joint3DComponent>("joint3d"));
@@ -678,6 +717,9 @@ namespace {
         rows.push_back(enabledRow<VideoPlayerComponent>("videoplayer"));
         rows.push_back(enabledRow<SafeAreaComponent>("safearea"));
         rows.push_back(enabledRow<CapsuleShadowCasterComponent>("capsuleshadowcaster"));
+        rows.push_back(enabledRow<PixelPerfectCameraComponent>("pixelperfectcamera"));
+        rows.push_back(enabledRow<SortingGroupComponent>("sortinggroup"));
+        rows.push_back(enabledRow<SpriteBatchComponent>("spritebatch"));
         // oe-port's components with the Inspector's enabled checkbox (their Lua setters, where they
         // have one, only set the flag)
         rows.push_back(enabledRow<ForceFieldComponent>("forcefield"));
@@ -700,10 +742,12 @@ namespace {
         rows.push_back(enabledRow<AnimatorComponent>("animator"));
 
         // the Title Art Renderer (S81 R40): its live layers' values and its numeric Exposed
-        // parameters; S85 adds titleart.animationTime
+        // parameters; S85's titleart.animationTime and animationSpeed
         using TA = TitleArtRendererComponent;
         rows.push_back(enabledRow<TA>("titleart"));
         rows.push_back(fieldRow<TA, float, &TA::liveTime>("titleart", "liveTime", "Live Time", "", F));
+        rows.push_back(fieldRow<TA, float, &TA::animationTime, &titleArtAnimationTimeKeyed>("titleart", "animationTime", "Animation Time", "", F));
+        rows.push_back(fieldRow<TA, float, &TA::animationSpeed>("titleart", "animationSpeed", "Animation Speed", "", F));
         rows.push_back(fieldRow<TA, float, &TA::sweepPosition, &titleArtSweepKeyed>("titleart", "sweepPosition", "Sweep Position", "", F));
         rows.push_back(fieldRow<TA, float, &TA::sweepWidth>("titleart", "sweepWidth", "Sweep Width", "", F));
         rows.push_back(fieldRow<TA, float, &TA::sweepSoftness>("titleart", "sweepSoftness", "Sweep Softness", "", F));

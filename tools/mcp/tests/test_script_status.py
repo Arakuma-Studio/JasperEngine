@@ -130,9 +130,8 @@ async def test_settings_round_trip(ed: Editor):
 
 async def test_scripting_tool_group(ed: Editor):
     """The S23 tools are the "scripting" group (S31): hidden from the default listing, listed once
-    enabled, callable by name either way"""
-    names = ("reload_scripts", "get_script_status", "set_script_settings", "list_editor_menus", "run_editor_menu", "eval_expression",
-             "list_graph_kinds", "list_graph_node_types", "get_graph", "validate_graph", "edit_graph")
+    enabled, callable by name either way. The graph tools moved to "graphs" (S90 R32)."""
+    names = ("reload_scripts", "get_script_status", "set_script_settings", "list_editor_menus", "run_editor_menu", "eval_expression")
     default = {t.name for t in await ed.tools(groups=None)}
     for name in names:
         ed.check(name not in default, f"{name} is hidden until scripting is enabled")

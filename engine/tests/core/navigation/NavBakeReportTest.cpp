@@ -25,7 +25,7 @@ TEST_F(NavBakeReportTest, SourcesAndIslands){
     plane(*scene, Vector3(), 30.0f, 30.0f);
     box(*scene, Vector3(4.0f, 0.5f, 4.0f), Vector3(2.0f, 1.0f, 2.0f));
     const Heightmap heights = hills(33, 5);
-    terrain(*scene, Vector3(60.0f, 0.0f, 0.0f), 32.0f, 2.0f, heights);
+    navtest::terrain(*scene, Vector3(60.0f, 0.0f, 0.0f), 32.0f, 2.0f, heights);
     const Entity crate = box(*scene, Vector3(-4.0f, 0.5f, -4.0f), Vector3(1.0f, 1.0f, 1.0f));
     scene->addComponent<NavMeshObstacleComponent>(crate, NavMeshObstacleComponent());
     const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");

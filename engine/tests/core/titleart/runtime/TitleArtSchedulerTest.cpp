@@ -3,12 +3,20 @@
 
 // The Realtime scheduler with fake render jobs and a fake clock (docs/specs/S81-title-art-runtime.md
 // AC4: R12, R13, R14, R15, R17, R19): frame budgets, order, hidden titles, coalescing, the
-// cache, retries.
+// cache, retries; and the measured cost model (S80 Deviation 54) on a device slower than the
+// desktop estimates say: no late starts, predictions that converge.
 
 #include <gtest/gtest.h>
 
+#include "device/QualityResolver.h"
+#include "diag/HangWatchdog.h"
+#include "subsystem/TitleArtRuntime.h"
+#include "subsystem/TitleArtSystem.h"
+#include "titleart/render/TitleRenderJob.h"
+#include "titleart/render/TitleStepCosts.h"
 #include "titleart/runtime/TitleArtLive.h"
 #include "titleart/runtime/TitleArtScheduler.h"
+#include "titleart/runtime/TitleLiveCompose.h"
 
 #include <memory>
 #include <string>
@@ -145,6 +153,27 @@ TEST_F(TitleArtSchedulerTest, NoFrameRunsPastTheBudgetButTheGuaranteedStep) {
     const TitleFrameReport over = frame({b.get()}, fakeFactory(slow, 3, 5000), 2000, clock);
     EXPECT_EQ(over.steps, 1u);
     EXPECT_EQ(over.overBudgetSteps, 1u);
+}
+
+// The Title Designer's Glyph Atlas preview stalled at "rendering 35/44": the frame guard counted
+// commits, and the editor commits only when a view redraws. No commit here, only the main loop.
+TEST_F(TitleArtSchedulerTest, TheRuntimeFrameAdvancesOnTheMainLoopWithoutACommit) {
+    auto log = std::make_shared<FakeLog>();
+    TitleArtScheduler& scheduler = TitleArtScheduler::get();
+    scheduler.setJobFactoryForTesting(fakeFactory(log, 8, 100000));
+    auto live = makeLive();
+    live->setState(stateOf("preview"), 1, {});
+    scheduler.add(live.get());
+    for (int frame = 0; frame < 5; frame++){
+        diag::heartbeat();
+        TitleArtSystem::runRuntimeFrame(true);
+    }
+    EXPECT_EQ(log->stepped.size(), 5u) << "one step over the budget per main-loop frame";
+    // R13: whoever asks second in a frame gets nothing
+    TitleArtSystem::runRuntimeFrame(true);
+    EXPECT_EQ(log->stepped.size(), 5u);
+    scheduler.remove(live.get());
+    scheduler.setJobFactoryForTesting(nullptr);
 }
 
 TEST_F(TitleArtSchedulerTest, PlatformFactorScalesEstimates) {
@@ -304,4 +333,178 @@ TEST_F(TitleArtSchedulerTest, QualityTierFollowsTheDeviceTier) {
     EXPECT_STREQ(titleQualityTierFor(DeviceTier::Medium), "medium");
     EXPECT_STREQ(titleQualityTierFor(DeviceTier::High), "high");
     EXPECT_STREQ(titleQualityTierFor(DeviceTier::Ultra), "high");
+}
+
+namespace {
+
+    // S80's TitleRenderJob as the scheduler sees it (RendererJob's part that matters here)
+    class StepListJob : public TitleJob {
+    public:
+        explicit StepListJob(std::unique_ptr<TitleRenderJob> j): job(std::move(j)){}
+        bool step(const StepBudget& budget, StepReport* report) override{ return job->step(budget, report); }
+        bool done() const override{ return job->done(); }
+        bool failed() const override{ return job->failed(); }
+        bool waiting() const override{ return job->waiting(); }
+        float progress() const override{ return job->progress(); }
+        uint32_t nextStepCostUs() const override{ return job->nextStepCostUs(); }
+        void splitOversizedSteps(uint32_t maxUs) override{ job->splitOversizedSteps(maxUs); }
+        uint32_t passesDone() const override{ return job->passesDone(); }
+        uint32_t passesTotal() const override{ return job->passesTotal(); }
+        const std::string& error() const override{ return job->error(); }
+        bool allocationFailure() const override{ return false; }
+        bool floatTargetFailure() const override{ return false; }
+        const char* pathName() const override{ return "rgba16f"; }
+        TitleDisplayImage takeImage() override{
+            TitleDisplayImage image;
+            image.width = 1;
+            image.height = 1;
+            image.bytes = 4;
+            return image;
+        }
+        std::vector<ShaderKey> shaderKeys() const override{ return {}; }
+        void useCosts(TitleStepCosts* model) override{ job->useCosts(model); }
+
+    private:
+        std::unique_ptr<TitleRenderJob> job;
+    };
+
+    // a render on a device that runs each kind of step slower than its desktop estimate by the
+    // kind's own factor (a software rasterizer's blurs far more than its composites); `clock`
+    // is the device's time in us
+    std::unique_ptr<TitleRenderJob> slowDeviceRender(std::shared_ptr<double> clock){
+        struct Kind {
+            const char* label;
+            StepKind kind;
+            int width, height;
+            uint32_t cpuUs;
+            double slowdown;
+        };
+        // the slowest kind first: kinds never measured are predicted by the machine's ratio
+        const Kind kinds[] = {{"blur", StepKind::Gpu, 200, 100, 0, 40.0},
+                              {"compose", StepKind::Gpu, 100, 100, 0, 8.0},
+                              {"mask", StepKind::Cpu, 0, 0, 200, 3.0}};
+        TitleStepList list;
+        for (int i = 0; i < 40; i++){
+            const Kind& k = kinds[i % 3];
+            TitleRenderStep step;
+            step.kind = k.kind;
+            step.label = k.label;
+            step.scissor = {0, 0, k.width, k.height};
+            step.cpuUs = k.cpuUs;
+            const uint32_t estimate = TitleRenderJob::estimateUs(step);
+            const double slowdown = k.slowdown;
+            step.run = [clock, estimate, slowdown](const TitleRectI&, std::string&){
+                *clock += estimate * slowdown;
+                return true;
+            };
+            list.add(std::move(step));
+        }
+        return std::make_unique<TitleRenderJob>(std::move(list));
+    }
+
+    struct SlowDeviceRun {
+        int frames = 0;
+        int lateFrames = 0;         // frames of more than one step that went over the budget (device time)
+        uint32_t reportedLate = 0;  // the scheduler's own count
+        double worstFrameUs = 0.0;
+    };
+
+    // six renders of a title through the scheduler at `budgetUs`, with `costs` (null: the static
+    // estimates, what the scheduler did before)
+    SlowDeviceRun runOnSlowDevice(std::shared_ptr<double> clock, TitleStepCosts* costs, uint32_t budgetUs){
+        TitleScheduleContext context;
+        context.factory = [clock](const TitleJobSpec&) -> std::unique_ptr<TitleJob> {
+            return std::make_unique<StepListJob>(slowDeviceRender(clock));
+        };
+        context.budgetUs = budgetUs;
+        context.costs = costs;
+        auto live = makeLive();
+        SlowDeviceRun run;
+        TitleLiveLimits limits;
+        double seconds = 0.0;
+        for (int render = 0; render < 6; render++){
+            live->setState(stateOf("render " + std::to_string(render)), 100 + render, {});
+            while (live->hasWork() && run.frames < 10000){
+                const double start = *clock;
+                const TitleFrameReport report = TitleArtScheduler::schedule({live.get()}, context);
+                const double took = *clock - start;
+                if (report.steps > 1 && took > budgetUs) run.lateFrames++;
+                run.reportedLate += report.lateStarts;
+                run.worstFrameUs = std::max(run.worstFrameUs, report.steps > 1 ? took : 0.0);
+                size_t cache = 0;
+                seconds += 1.0 / 60.0;
+                live->endFrame(seconds, 1.0 / 60.0, limits, cache);
+                run.frames++;
+            }
+        }
+        return run;
+    }
+
+}
+
+TEST_F(TitleArtSchedulerTest, MeasuredCostsKeepASlowDevicesFramesWithinBudget) {
+    // S80 Deviation 54 for the runtime (S81 R15): the device's own measurements, not the desktop
+    // estimates, decide what fits a frame
+    constexpr uint32_t budget = 2000;
+    auto clock = std::make_shared<double>(0.0);
+    TitleStepCosts costs([clock]{ return *clock; });
+    const SlowDeviceRun measured = runOnSlowDevice(clock, &costs, budget);
+    EXPECT_EQ(measured.lateFrames, 0) << "no frame of several steps went over the budget (worst " << measured.worstFrameUs << " us)";
+    EXPECT_EQ(measured.reportedLate, 0u);
+    EXPECT_GT(costs.observations(), 2 * TitleStepCosts::ERROR_WINDOW);
+    EXPECT_LT(costs.recentError(), costs.firstError()) << "the predictions converge on the device";
+    EXPECT_LT(costs.recentError(), 0.05);
+    EXPECT_GT(measured.frames, 6) << "the renders were sliced";
+
+    // the control: the same renders by the static estimates start steps late on this device
+    auto clock2 = std::make_shared<double>(0.0);
+    const SlowDeviceRun trusted = runOnSlowDevice(clock2, nullptr, budget);
+    EXPECT_GT(trusted.lateFrames, 0) << "trusting desktop estimates overruns the budget";
+}
+
+TEST_F(TitleArtSchedulerTest, ACostModelStartsFromThePlatformFactor) {
+    // a fresh model predicts the platform factor's multiple of an estimate until it measures
+    TitleStepCosts mobile({}, titlePlatformFactor(DevicePlatformGroup::Mobile));
+    EXPECT_EQ(mobile.predictUs("gpu:blur", 100), 600u);
+    mobile.observe("gpu:blur", 100, 150.0);
+    EXPECT_EQ(mobile.predictUs("gpu:blur", 100), 150u) << "the first measurement replaces the prior";
+}
+
+TEST_F(TitleArtSchedulerTest, RenderTiersFollowTheSimulatedDevice) {
+    // S83's mobile tier and S86's quality tier come from S56's platform group and device tier,
+    // which the editor's Game view simulation sets: a new tier is a new state (it renders again),
+    // while the prebaked image's key stays the same (either tier shows it)
+    QualityResolver::reset();
+    QualityResolver::setPlatformGroup(DevicePlatformGroup::Desktop);
+    auto live = makeLive();
+    TitleArtRuntime::setState(*live, stateOf("tiers"));
+    EXPECT_EQ(live->state().fxTier, (int)FxTier::Desktop);
+    const uint64_t desktop = live->stateHash();
+    const uint64_t prebake = TitleArtRuntime::prebakeKeyOf(*live, stateOf("tiers"));
+
+    QualityResolver::setPlatformGroup(DevicePlatformGroup::Mobile);
+    TitleArtRuntime::setState(*live, stateOf("tiers"));
+    EXPECT_EQ(live->state().fxTier, (int)FxTier::Mobile) << "a phone draws S83's mobile reductions";
+    EXPECT_NE(live->stateHash(), desktop) << "the simulated device renders again";
+    EXPECT_EQ(TitleArtRuntime::prebakeKeyOf(*live, stateOf("tiers")), prebake);
+    EXPECT_EQ(TitleArtRuntime::stateHashOf(*live, stateOf("tiers")), live->stateHash()) << "the hash a prebaked image is given matches";
+
+    QualityResolver::setPlatformGroup(DevicePlatformGroup::Web);
+    TitleArtRuntime::setState(*live, stateOf("tiers"));
+    EXPECT_EQ(live->state().fxTier, (int)FxTier::Mobile) << "the web takes the mobile tier";
+
+    QualityResolver::setPlatformGroup(DevicePlatformGroup::Desktop);
+    QualityResolver::setTier(DeviceTier::Low);
+    TitleArtRuntime::setState(*live, stateOf("tiers"));
+    EXPECT_EQ(live->state().fxTier, (int)FxTier::Mobile) << "a Low desktop device takes it too";
+    QualityResolver::setTier(DeviceTier::High);
+    TitleArtRuntime::setState(*live, stateOf("tiers"));
+    EXPECT_EQ(live->state().fxTier, (int)FxTier::Desktop);
+    QualityResolver::reset();
+}
+
+TEST_F(TitleArtSchedulerTest, LiveBudgetsByPlatformGroup) {
+    EXPECT_DOUBLE_EQ(titleLiveBudgetMs(DevicePlatformGroup::Desktop), 1.0);
+    EXPECT_DOUBLE_EQ(titleLiveBudgetMs(DevicePlatformGroup::Mobile), 0.5);
+    EXPECT_DOUBLE_EQ(titleLiveBudgetMs(DevicePlatformGroup::Web), 0.5);
 }

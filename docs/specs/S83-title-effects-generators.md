@@ -1802,7 +1802,51 @@ rest of S82 lands in 6B.
     `PachislopGeneratorMap` (the `generators:` section of the same data file) and their tests.
     `.gitattributes` merges `pachislop-fx-map.yaml` and `FxCost.cpp` with the union driver, where
     each stream appends its own lines.
-37. **Implementation: D14's light accumulator for a group's Light Glow** (found by S84's gate on `elements/electric-blue`
+
+### W1 wiring (`ta/w1-runtime-live`)
+
+37. **Implementation: the runtime checks** (`editor/titleart/fx/FxRuntimeChecks.*`, §6.11).
+    `fx_bake_only_realtime` reads each effect's and visible generator's mobile-tier class at its
+    values (C4 warns; the fix removes it, or says to set Render Mode to Baked); `fx_live_budget` runs,
+    per Exposed parameter whose targets are all live, the runtime's own decision (S81
+    `TitleLiveCompose`: the suffix rule, then the predicted live cost on the mobile tier against
+    0.5 ms; the fix lowers the definition's number param that saves most, found by the model, to the
+    largest value that fits, e.g. Particles `count`); `fx_realtime_budget` warns over 15 ms predicted
+    for a re-render on the mobile tier with the same kind of fix on the heaviest definition. The three
+    know which project titles show the document (`TitleCheckContext::runtimeInstances`, filled by
+    check_title from S81's export plan): a document only Baked titles show passes with what it would
+    cost. `fx_hdr_on_8bit` (a pixels check) renders the document's light (its Glow content) with
+    `RenderRequest::lightScale` 1/4, so a full code is light above 4.0; above 0.5 % of the canvas it
+    reports, as info, a PASS whose message starts "info:" (check results have no info status).
+38. **Implementation: Pattern Fill's `offset`** (§6.7.17): the generators stream left it out; it is a
+    Vec2 px param that scrolls the pattern (the pass's layer map shifted, no shader change, the
+    default 0 renders as before) and, with `rotation`, Pattern Fill's `kernel` live variant.
+39. **Implementation: no 'Liv' variants are compiled.** No pass family's source tests `TFX_LIVE`, so
+    S81's live compose runs each definition's bake programs over the kept inputs: the same program,
+    so bake and live cannot drift (D10), without a second compile of every live program. The bit
+    stays reserved (Deviation 36) for a family whose live form ever needs different code.
+40. **Open: D12's runtime skip.** A C4 layer of a Realtime document on the mobile tier still renders
+    (sliced); keeping its output as an editor-baked split and skipping the effect when its layer
+    changes is not implemented. `fx_bake_only_realtime` reports every such effect.
+41. **Tests: AC29 without S85.** S85's plan is not in the tree; `TitleFxLiveGpu.S58MinimumSet` drives
+    §6.12's list (S85's §6.2 table) as a keyed track does, a new value each frame for five frames, and
+    checks every frame composed live (no re-render, no fallback reason) and the last against a
+    re-render; the suffix rule's red control is
+    `TitleFxLiveGpu.ALiveEffectBeforeOneWithoutALiveVariantReRenders`.
+42. **Implementation: the Title Designer side (W2).** The Add menus are S82's palette built by
+    `editor/titleart/designer/TitleAddCatalog` in §6.10's order (recipes and style settings among the
+    effects, each generator with its presets, "Generators that follow this layer" last). Cost badges
+    (R41) read `estimateTitleFxCost` once per document change for both tiers; "Baked on mobile" is
+    amber when a Title Art Renderer of an open scene shows the title in Realtime or Glyph Atlas
+    (looked at again every 2 s while badges are drawn), the only place a document is "Realtime".
+    Part-stack and disabled effects show their definition's class at its defaults. Presets are chips
+    on the effect page and the generator section (hover previews, click is one step "Apply Preset
+    <name>"); a `seed` param has the dice ("Randomize Seed"). **Preview Live** (D10 in the Designer):
+    a play button on an effect card with a live variant animates its L params on the canvas as
+    render overrides (numbers between the low end of their range and their value over 2 s, angles
+    turning, vec2 offsets scrolling, 12 steps a cycle), view state only; the canvas renders each step
+    with S80's renderer, not S81's live compose, so it shows what changes, not the live cost.
+43. **Implementation: D14's light accumulator for a group's Light Glow** (found by S84's gate on `elements/electric-blue`
     and `elements/storm-counter`). Light Glow over a group of a title and an Add-blended Lightning agreed alone and not
     together: the RGBA8 path clipped the bolts' light at 1 (in Lightning's own target and in the group) before the glow
     read it. On the RGBA8 path such a group (`TitlePlanner::lightAccumulation`: every enabled effect `readsLight`, a new
@@ -1815,7 +1859,7 @@ rest of S82 lands in 6B.
     path at 0.25 (fraction of pixels over 8/255): storm-counter 52 % -> 1.9 %, electric-blue 11 % -> 0.4 %; headrooms of
     8 and 32 left 13 % and 19 % (both measured with the dither below). §6.5's Bayer dither of the scatter's 8-bit writes,
     tried here, made the same renders worse (1.9 % -> 7.3 % at 16) and is not implemented.
-38. **Measured: Glints that follow a layer flip like Lightning and Backlight (34).** Their stars come from the followed
+44. **Measured: Glints that follow a layer flip like Lightning and Backlight (34).** Their stars come from the followed
     layer's 8-bit analysis grid (`HighlightFinder` over `readGrid`), which the RGBA8 path reads from its own render of
     that layer, so a star at a near-tie moves. On S84's library at 0.25 (every item with following Glints, after the
     light accumulator of 37) the max passes F2's 96/255 on seven items while the mean and the share stay within F2:

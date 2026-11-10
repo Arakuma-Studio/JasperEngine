@@ -282,6 +282,13 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("BOTTOM_LEFT", PivotPreset::BOTTOM_LEFT)
         .addVariable("TOP_RIGHT", PivotPreset::TOP_RIGHT)
         .addVariable("BOTTOM_RIGHT", PivotPreset::BOTTOM_RIGHT)
+        .addVariable("FRAME", PivotPreset::FRAME)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SpriteDrawMode")
+        .addVariable("SIMPLE", SpriteDrawMode::SIMPLE)
+        .addVariable("SLICED", SpriteDrawMode::SLICED)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -409,6 +416,11 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("FoliageQuality")
+        .addVariable("LOW", FoliageQuality::LOW)
+        .addVariable("MEDIUM", FoliageQuality::MEDIUM)
+        .addVariable("HIGH", FoliageQuality::HIGH)
+        .endNamespace()
         .beginNamespace("AtmosphereQuality")
         .addVariable("OFF", AtmosphereQuality::OFF)
         .addVariable("LOW", AtmosphereQuality::LOW)

@@ -36,6 +36,12 @@
 #include <string>
 #include <vector>
 
+namespace jasperengine::titleanim{
+    struct TitleAnimPlayOptions;
+    class TitleAnimPlayer;
+    struct CompiledMarker;
+}
+
 namespace jasperengine{
 
     class TextureRender;
@@ -105,6 +111,11 @@ namespace jasperengine{
         // the state of a component (made on first use)
         static titleart::TitleArtInstance& instanceOf(TitleArtRendererComponent& title);
 
+        // the script events of every title: gone at Stop before the C++ script library is unloaded
+        // (Engine::clearComponentSubscriptions), or by tag on a hot reload (Scene::removeSubscriptionsByTag)
+        void clearSubscriptions();
+        void removeSubscriptionsByTag(const std::string& substring);
+
         // ---- the API Lua, C++ scripts, clip events and tools share (R64-R67) ----
 
         // Sets one Exposed parameter's override: false with `error` (R65's sentences, `name`
@@ -126,12 +137,25 @@ namespace jasperengine{
         // R9: the resolution a Realtime title renders at (display scale x resolutionScale, rounded
         // to 1/8): the bake's output scale, times how large a UI companion shows the frame in
         // reference units (a world title renders at its canvas pixels). The export's prebake uses it.
-        static float resolutionFor(const TitleArtBakeInfo& bake, bool ui, unsigned int rectWidth, float uiScale, float resolutionScale);
+        // `referenceScale`: a UI title's output pixels per canvas pixel for the Reference Height (R11)
+        static float resolutionFor(const TitleArtBakeInfo& bake, bool ui, unsigned int rectWidth, float uiScale, float resolutionScale,
+                                   float referenceScale = 1.0f);
         // re-render (Realtime, Glyph Atlas); nothing on Baked
         static void refresh(EntityRegistry* scene, Entity entity);
+        // Engine::areScenesLoaded: every enabled Realtime or Glyph Atlas title that renders now
+        // shows its state's image (or failed): the "Engine ready" line, the Recorder and smoke
+        // screenshots wait for them; `waiting` names the first that does not ("Logo rendering 3/7")
+        bool areTitlesReady(std::string* waiting = nullptr) const;
+        // S86 R63: the mesh a Realtime title's 3D layer `layerPath` drew last; false with `error`
+        // (a Baked title, a path that names no 3D layer), true with `found` false before a render
+        static bool meshStats(EntityRegistry* scene, Entity entity, const std::string& layerPath, titleart::TitleArtMeshStats& out, bool& found,
+                              std::string& error);
         static std::string displayName(EntityRegistry* scene, Entity entity);
 
         // the frame budget scripts set (TitleArt.setFrameBudget), 0.25..16 ms
+        // the Realtime scheduler's steps of this frame, once a frame whoever asks first: a scene
+        // that draws titles, or the Title Designer's Glyph Atlas preview while no scene draws
+        static void runRuntimeFrame(bool editorEditMode);
         static void setFrameBudget(double ms);
         static double getFrameBudget();
 
@@ -145,6 +169,27 @@ namespace jasperengine{
         // every instance resolves again (the editor's reload and document hooks)
         static void notifyTitleChanged(const std::string& titlePath);
 
+        // ---- S85's animations (docs/specs/S85-title-animation.md R24-R31, §6.5) ----
+        // false (one warning per name and component, R30) for a name the title does not have
+        static bool playAnimation(EntityRegistry* scene, Entity entity, const std::string& name, const titleanim::TitleAnimPlayOptions& options,
+                                  bool overlay = false);
+        // "" stops every animation (the pose stays); a name stops that one; false when it does not play
+        static bool stopAnimation(EntityRegistry* scene, Entity entity, const std::string& name);
+        static void resetAnimation(EntityRegistry* scene, Entity entity);
+        // R49: the default animation running in Edit mode, silently (no markers fire); stop resets it
+        static bool startAnimationEditPreview(EntityRegistry* scene, Entity entity);
+        static void stopAnimationEditPreview(EntityRegistry* scene, Entity entity);
+        static bool isAnimationEditPreviewing(EntityRegistry* scene, Entity entity);
+        static bool animationHasMarkerSounds(EntityRegistry* scene, Entity entity);
+        static bool sampleAnimation(EntityRegistry* scene, Entity entity, const std::string& name, double time);
+        // Realtime prerender and Glyph Atlas cells asked for now; true when it plays at once
+        static bool prepareAnimation(EntityRegistry* scene, Entity entity, const std::string& name);
+        static bool isAnimationReady(EntityRegistry* scene, Entity entity, const std::string& name);
+        static std::vector<std::string> animationNames(EntityRegistry* scene, Entity entity);
+        static double animationDuration(EntityRegistry* scene, Entity entity, const std::string& name);
+        // the animations as the instance plays them (loaded on first use); null when none
+        static titleanim::TitleAnimPlayer* animationPlayer(EntityRegistry* scene, Entity entity);
+
         // tests: TITLE_ART_TEST_* flags copied into every request of the instance (R21)
         static void setDisabledFeaturesForTesting(EntityRegistry* scene, Entity entity, uint32_t flags);
 
@@ -157,6 +202,8 @@ namespace jasperengine{
     private:
         struct State;
         std::unique_ptr<State> state;
+        // S85 R18: the titles whose animation plays this frame (their share of the frame budget)
+        int animatingTitles = 0;
 
         void resolve(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance);
         void updateTitle(Entity entity, TitleArtRendererComponent& title, double dt);
@@ -165,7 +212,15 @@ namespace jasperengine{
         void applyLending(Entity entity, titleart::TitleArtInstance& instance, bool lending, bool realtime);
         void restoreCompanion(Entity entity, titleart::TitleArtInstance& instance);
         void updateStatus(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance);
+        // S87 R12-R15, R27: which language the title shows, and the Baked switch to its set
+        void updateLanguage(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance);
+        void finishLanguageSwitch(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance);
         void subscribeEvents(Entity entity);
+        // S85: the library, the frame's player update and its markers, the companion's draw values
+        static void loadAnimations(EntityRegistry* scene, Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance);
+        void updateAnimation(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance, double dt);
+        void dispatchAnimationEvents(Entity entity, TitleArtRendererComponent& title, titleart::TitleArtInstance& instance, double dt);
+        void playMarkerSound(Entity entity, const titleanim::CompiledMarker& marker, float fraction, double dt);
         void handleEvent(Entity player, const AnimationEvent& event, const std::string& source);
         bool isVisible(Entity entity, const TitleArtRendererComponent& title, const titleart::TitleArtInstance& instance) const;
         float displayResolution(Entity entity, const TitleArtRendererComponent& title, const titleart::TitleArtInstance& instance) const;

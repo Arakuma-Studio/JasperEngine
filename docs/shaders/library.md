@@ -105,6 +105,8 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Gradient Sky](#librarygradient_sky) `library:gradient_sky` | sky | Sky | none | - |
 | [Heat Haze](#libraryheat_haze) `library:heat_haze` | mesh | Effects | none | alpha |
 | [Hologram](#libraryhologram) `library:hologram` | mesh | Effects | none | additive |
+| [Tree Impostor](#libraryimpostor) `library:impostor` | mesh | Nature | pixel, vertex, none | opaque |
+| [Impostor Bake](#libraryimpostor_bake) `library:impostor_bake` | mesh | Internal | none | opaque |
 | [Lattice Stretch](#librarylattice_stretch) `library:lattice_stretch` | mesh | Effects | none | opaque |
 | [Line Flipbook](#libraryline_flipbook) `library:line_flipbook` | lines | Effects | none | additive |
 | [Matcap](#librarymatcap) `library:matcap` | mesh | Stylized | none | opaque |
@@ -902,6 +904,27 @@ Leaves and grass: wind sway in the vertex stage (masked by the vertex colour's r
 |---|---|---|
 | `WIND_MASK` | `WIND_MASK_VERTEX_COLOR`, `WIND_MASK_HEIGHT` | Wind mask |
 
+<a id="libraryimpostor"></a>
+### Tree Impostor (`library:impostor`)
+
+The last LOD of a tree prototype: one quad per instance, facing the camera around Y, showing the baked view nearest the camera and lit through the baked normals. Baked by Bake Impostor in Paint Trees or edit_terrain's bake_impostors.
+
+- **Type**: mesh (a material's shader); category Nature.
+- **Lighting**: per pixel (default), per vertex, none.
+- **Inputs**: `uv1`, `color`.
+- **Default state**: blend opaque, cull off (both faces).
+- **Depth program**: yes (shadows and depth follow its vertices and clipping).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `baseColor` | colour | (1, 1, 1, 1) | Base colour |
+| `alphaCutoff` | range 0 to 1 | 0.5 | Alpha cutoff |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_baseTexture` | white | Albedo atlas (alpha: cutout) |
+| `u_normalTexture` | flat normal | Normal atlas (a: ambient occlusion) |
+
 <a id="librarywater"></a>
 ### Water (`library:water`)
 
@@ -1051,6 +1074,8 @@ Sprite, tilemap and polygon effects on the sprite's own texture and colour: outl
 | `glowColor` | HDR colour | (2, 1.5, 0.8, 1) | Glow colour (HDR) (with `GLOW`) |
 | `glowScale` | range 0 to 4 | 1 | Glow alpha scale (with `GLOW`) |
 | `glowPower` | range 0.1 to 8 | 2 | Glow falloff power (with `GLOW`) |
+| `paletteRow` | int | 0 | Active palette (0: original) (with `PALETTE_SWAP`) |
+| `paletteCycleSpeed` | float | 1 | Cycling speed (with `PALETTE_CYCLE`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -1066,6 +1091,8 @@ Sprite, tilemap and polygon effects on the sprite's own texture and colour: outl
 | `COLOR_REPLACE` | off | Colour replace |
 | `OVERLAY` | off | Overlay (hard light) |
 | `GLOW` | off | Glow |
+| `PALETTE_SWAP` | off | Palette Swap |
+| `PALETTE_CYCLE` | off | Palette Cycling |
 
 <a id="librarysprite_mask"></a>
 ### Sprite mask (`library:sprite_mask`)
@@ -1102,11 +1129,14 @@ The Title Art Renderer's live layers on its Image: a keyable sweep band, a glow 
 | `glintParams` | vector4 | (1, 0.06, 0.5, 0) | Glints: amount, size (fraction of the frame height), rate, seed (with `GLINTS`) |
 | `glintInfo` | vector4 | (0, 0, 1, 0) | Glints: anchor count, live time, frame aspect (with `GLINTS`) |
 | `crossfadeParams` | vector4 | (1, 0, 0, 0) | Crossfade: the new image's share (with `CROSSFADE`) |
-| `animAffine0` | vector4 | (1, 0, 0, 1) | Animation: affine row 0, opacity (with `ANIM`) |
+| `animAffine0` | vector4 | (1, 0, 0, 1) | Animation: the fragment affine row 0 (identity: S85 moves the vertices), opacity (with `ANIM`) |
 | `animAffine1` | vector4 | (0, 1, 0, 0) | Animation: affine row 1, flipbook frame blend (with `ANIM`) |
 | `animColor` | vector4 | (1, 1, 1, 0) | Animation: flash colour, flash amount (with `ANIM`) |
 | `frameRect` | vector4 | (0, 0, 1, 1) | Animation: the frame's texture rect (with `ANIM`) |
 | `frameRect2` | vector4 | (0, 0, 1, 1) | Animation: the next frame's texture rect (with `ANIM`) |
+| `animVertex0` | vector4 | (1, 0, 0, 0) | Animation: the vertex affine row 0 (frame-normalised) (with `ANIM`) |
+| `animVertex1` | vector4 | (0, 1, 0, 0) | Animation: the vertex affine row 1 (with `ANIM`) |
+| `animSpace` | vector4 | (0, 0, 1, 1) | Animation: the frame in the element's own space (origin, size) (with `ANIM`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -1145,11 +1175,14 @@ The Title Art Renderer's live layers on its Sprite: a keyable sweep band, a glow
 | `glintParams` | vector4 | (1, 0.06, 0.5, 0) | Glints: amount, size (fraction of the frame height), rate, seed (with `GLINTS`) |
 | `glintInfo` | vector4 | (0, 0, 1, 0) | Glints: anchor count, live time, frame aspect (with `GLINTS`) |
 | `crossfadeParams` | vector4 | (1, 0, 0, 0) | Crossfade: the new image's share (with `CROSSFADE`) |
-| `animAffine0` | vector4 | (1, 0, 0, 1) | Animation: affine row 0, opacity (with `ANIM`) |
+| `animAffine0` | vector4 | (1, 0, 0, 1) | Animation: the fragment affine row 0 (identity: S85 moves the vertices), opacity (with `ANIM`) |
 | `animAffine1` | vector4 | (0, 1, 0, 0) | Animation: affine row 1, flipbook frame blend (with `ANIM`) |
 | `animColor` | vector4 | (1, 1, 1, 0) | Animation: flash colour, flash amount (with `ANIM`) |
 | `frameRect` | vector4 | (0, 0, 1, 1) | Animation: the frame's texture rect (with `ANIM`) |
 | `frameRect2` | vector4 | (0, 0, 1, 1) | Animation: the next frame's texture rect (with `ANIM`) |
+| `animVertex0` | vector4 | (1, 0, 0, 0) | Animation: the vertex affine row 0 (frame-normalised) (with `ANIM`) |
+| `animVertex1` | vector4 | (0, 1, 0, 0) | Animation: the vertex affine row 1 (with `ANIM`) |
+| `animSpace` | vector4 | (0, 0, 1, 1) | Animation: the frame in the element's own space (origin, size) (with `ANIM`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -1231,10 +1264,10 @@ Point-sprite particles: texture (sprite-sheet rect per point) times the particle
 <a id="libraryparticles"></a>
 ### Particles (`library:particles`)
 
-The particle system shader: the particle texture (sprite-sheet frame, blended into the next with Frame Blending) times the particle colour, lit as the Renderer asks (unlit, per-vertex lit or six-way smoke lighting), plus its emission; with alpha-as-light glow, noise erosion over the particle's life, soft intersections and a camera near fade. Draws in the Renderer's blend mode; no depth write. Soft particles read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees them (none when SSAO or SSR already made one).
+The particle system shader: the particle texture (sprite-sheet frame, blended into the next with Frame Blending) times the particle colour, lit as the Renderer asks (unlit, per-vertex lit or six-way smoke lighting), plus its emission; with alpha-as-light glow, noise erosion over the particle's life, soft intersections, a camera near fade and distortion. Draws in the Renderer's blend mode; no depth write. Soft particles read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees them (none when SSAO or SSR already made one). Distortion reads the scene colour, which holds the opaque objects and the sky only (transparent objects behind a distorting particle are hidden where it is whole): on mobile a copy of the screen and a split of the render pass. Where a camera has no scene colour (a reflection probe's faces) a distorting particle draws as it would without the feature.
 
 - **Type**: particles; category Particles.
-- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one) and the scene colour (a copy of the opaque scene, at the scene's Scene Color Scale), in the camera passes that draw it.
 - **Default state**: depth write off.
 
 | Property | Kind | Default | Description |
@@ -1248,10 +1281,12 @@ The particle system shader: the particle texture (sprite-sheet frame, blended in
 | `softness` | float | 0.5 | Softness (world units) (with `SOFT`) |
 | `nearFadeStart` | float | 0.3 | Near fade: invisible at (world units from the camera) (with `NEAR_FADE`) |
 | `nearFadeEnd` | float | 1.5 | Near fade: whole from (world units from the camera) (with `NEAR_FADE`) |
+| `distortionStrength` | range 0 to 0.2 | 0.03 | Distortion (screen UV) (with `DISTORTION`) |
 
 | Texture | Default | Description |
 |---|---|---|
 | `u_erosionTexture` | gray | Erosion noise (red channel) (with `EROSION`) |
+| `u_distortionTexture` | gray | Distortion map (red: x, green: y; 0.5 shifts nothing) (with `DISTORTION`) |
 
 | Feature | Default | Description |
 |---|---|---|
@@ -1259,6 +1294,7 @@ The particle system shader: the particle texture (sprite-sheet frame, blended in
 | `EROSION` | off | Erosion (the particle's alpha dissolves it through a noise texture) |
 | `SOFT` | off | Soft particles (fade where they meet geometry; reads the scene depth) |
 | `NEAR_FADE` | off | Camera near fade |
+| `DISTORTION` | off | Distortion (bends the scene behind the particle through a distortion map; reads the scene colour) |
 
 ## Sky
 
@@ -1384,7 +1420,7 @@ Glowing outlines: the picture's edges (Sobel on brightness) lit in a neon colour
 <a id="librarygameboy"></a>
 ### Game Boy (`library:gameboy`)
 
-A four-shade handheld screen: big pixels, the brightness mapped to four greens with an ordered dither between them.
+A four-shade handheld screen: big pixels, the brightness mapped to four greens with an ordered dither between them; for an exact palette use Post-processing ▸ Palette Quantize.
 
 - **Type**: post-process (a pass of the scene's post-process chain); category Post-processing.
 - **Inputs**: the previous pass's colour (`u_sceneColorTexture`) (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).
@@ -1415,7 +1451,7 @@ Big square pixels: the picture in blocks of a few output pixels, each the colour
 <a id="libraryposterize"></a>
 ### Posterize (`library:posterize`)
 
-Fewer colours: each channel rounded to a few levels, with an optional ordered dither that trades the bands for a fine pattern.
+Fewer colours: each channel rounded to a few levels, with an optional ordered dither that trades the bands for a fine pattern; for an exact palette use Post-processing ▸ Palette Quantize.
 
 - **Type**: post-process (a pass of the scene's post-process chain); category Post-processing.
 - **Inputs**: the previous pass's colour (`u_sceneColorTexture`) (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).
@@ -1441,6 +1477,35 @@ The view from inside a water: the scene fades into the water with the distance t
 | `visibility` | float | 6 | Visibility (world units: the clearest colour keeps 37%) |
 | `waterLevel` | float | 0 | Surface height (world Y; the engine sets it under a water) |
 | `followWater` | toggle | on | Follow water (colours from the water the camera is in) |
+
+## Internal
+
+<a id="libraryimpostor_bake"></a>
+### Impostor Bake (`library:impostor_bake`)
+
+What Bake Impostor renders a tree with: its base colour unlit, or with IMPOSTOR_NORMAL its normal in the view's frame, with the cutout's alpha in both.
+
+- **Type**: mesh (a material's shader); category Internal.
+- **Lighting**: none (default).
+- **Inputs**: `normals`, `uv1`.
+- **Default state**: blend opaque, cull off (both faces).
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `baseColor` | colour | (1, 1, 1, 1) | Base colour |
+| `alphaCutoff` | range 0 to 1 | 0.5 | Alpha cutoff |
+| `viewRight` | vector4 | (1, 0, 0, 0) | The view's right, world |
+| `viewUp` | vector4 | (0, 1, 0, 0) | The view's up, world |
+| `viewForward` | vector4 | (0, 0, 1, 0) | Towards the camera, world |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_baseTexture` | white | Base map (alpha: cutout) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `IMPOSTOR_NORMAL` | off | Write the normal |
 
 ## Outline and stencil
 

@@ -224,7 +224,9 @@ TEST_F(PachislopPortTest, ReviewRecords) {
     for (const auto& [key, r] : records) {
         const std::string verdict = r.value("verdict", std::string());
         EXPECT_TRUE(verdict == "match" || verdict == "close" || verdict == "tuned" || verdict == "differs") << key.second << ": " << verdict;
-        if (verdict != "match") EXPECT_FALSE(r.value("note", std::string()).empty()) << key.second << " needs a note";
+        if (verdict != "match") {
+            EXPECT_FALSE(r.value("note", std::string()).empty()) << key.second << " needs a note";
+        }
         const bool overridden = overrides.contains(section(key.first)) && overrides[section(key.first)].contains(key.second);
         // the gate's own metadata (exceptions, the intended background) is not a visual tuning
         bool visual = false;
@@ -237,8 +239,12 @@ TEST_F(PachislopPortTest, ReviewRecords) {
                 }
             }
         }
-        if (verdict == "tuned") EXPECT_TRUE(overridden) << key.first << " " << key.second << ": `tuned` needs an overrides.json entry";
-        if (visual) EXPECT_EQ(verdict, "tuned") << key.first << " " << key.second << ": a visual overrides.json entry is a `tuned` record";
+        if (verdict == "tuned") {
+            EXPECT_TRUE(overridden) << key.first << " " << key.second << ": `tuned` needs an overrides.json entry";
+        }
+        if (visual) {
+            EXPECT_EQ(verdict, "tuned") << key.first << " " << key.second << ": a visual overrides.json entry is a `tuned` record";
+        }
     }
 }
 

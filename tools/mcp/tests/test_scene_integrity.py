@@ -233,9 +233,15 @@ async def test_save_all_asks_for_untitled_scenes(ed: Editor):
     ed.check((ed.project / "scenes" / "Untouched.scene").exists(), "saved where the dialog said")
     # the other untitled scenes earlier tests left ask next, then a project in the temporary folder
     # asks where the project goes: Cancel ends the chain
+    # a queued dialog opens on a later frame than the one it follows closes: none open is the end
+    # only once frames have run with none
     for _ in range(40):
         if await dialog(ed) is None:
-            break
+            # (refused if one opened meanwhile: the check below sees it)
+            await ed.call_raw("wait", {"frames": 5})
+            if await dialog(ed) is None:
+                break
+            continue
         await ed.call("respond_dialog", choice="cancel")
         await asyncio.sleep(0.25)
     ed.check_eq(await dialog(ed), None, "no dialog left open")

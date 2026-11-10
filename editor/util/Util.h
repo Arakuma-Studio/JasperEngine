@@ -38,9 +38,22 @@ namespace jasperengine::editor{
             return imageExtensions.find(ext) != imageExtensions.end();
         }
 
+        // a bitmap font's settings or an AngelCode BMFont file (S51 R1)
+        inline static bool isBitmapFontFile(const std::string& path) {
+            const std::string ext = fileExtension(path);
+            return ext == ".bitmapfont" || ext == ".fnt";
+        }
+
+        // TrueType/OpenType files (the Title Art font Inspector's names and licence, S82)
+        inline static bool isVectorFontFile(const std::string& path) {
+            const std::string ext = fileExtension(path);
+            return ext == ".ttf" || ext == ".otf" || ext == ".ttc";
+        }
+
+        // vector fonts and the bitmap fonts of the same Font type (S51 D1)
         inline static bool isFontFile(const std::string& path) {
              static const std::unordered_set<std::string> fontExtensions = {
-                ".ttf", ".otf", ".ttc"
+                ".ttf", ".otf", ".ttc", ".bitmapfont", ".fnt"
             };
 
             const std::string ext = fileExtension(path);
@@ -214,6 +227,11 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".titleart";
         }
 
+        // a Procedural Material's node graph (S90): editor-only, its bakes are what ships
+        inline static bool isProceduralMaterialFile(const std::string& path) {
+            return fileExtension(path) == ".procmat";
+        }
+
         // the GUID-tracked JSON assets of the animation system: clips, Vertex Animations, Avatar
         // Masks, Animator Controllers (their references follow by GUID: remapClipFilePath)
         inline static bool isGuidJsonAssetFile(const std::string& path) {
@@ -227,12 +245,17 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".shake";
         }
 
+        // Palettes (S43)
+        inline static bool isPaletteFile(const std::string& path) {
+            return fileExtension(path) == ".palette";
+        }
+
         // Files referenced relative to the assets directory
         inline static bool isAssetFile(const std::string& path) {
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
                    isHtmlFile(path) || isCssFile(path) || isColorLutFile(path) || isParticleEffectFile(path) || isPoseAnimationFile(path) ||
                    isAnimationClipFile(path) || isAnimatorAssetFile(path) ||
-                   isShakePresetFile(path) || isTitleArtFile(path);
+                   isShakePresetFile(path) || isPaletteFile(path) || isTitleArtFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {

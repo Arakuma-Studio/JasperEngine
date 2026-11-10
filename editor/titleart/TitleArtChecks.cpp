@@ -3,6 +3,8 @@
 
 #include "TitleArtChecks.h"
 
+#include "titleart/TitleTranslations.h"
+
 #include <algorithm>
 #include <memory>
 
@@ -68,6 +70,7 @@ Json TitleCheckResult::toJson() const {
     out["message"] = message;
     if (!fix.is_null()) out["fix"] = fix;
     out["method"] = method;
+    if (!language.empty()) out["language"] = language;
     return out;
 }
 
@@ -158,6 +161,28 @@ TitleCheckReport TitleArtChecks::run(const std::vector<const CheckDef*>& checks,
             if (r.id.empty()) r.id = def->id;
             r.kind = def->kind;
         }
+        // S87: once more per translation language, on the document resolved for it
+        if (def->perLanguage && titleart::titleIsMultilingual(context.doc.root)) {
+            for (const std::string& code : titleCheckLanguages(context)) {
+                if (titleart::isSourceLanguage(context.doc.root, code)) continue;
+                const titleart::TitleArtDoc resolved = titleart::resolveTitleLanguage(context.doc, code);
+                TitleCheckContext language(resolved, context.path);
+                language.file = context.file;
+                language.assets = context.assets;
+                language.options = context.options;
+                language.options.language = code;
+                language.render = context.render;
+                language.source = &context.doc;
+                const size_t at = report.checks.size();
+                def->run(language, report.checks);
+                for (size_t i = at; i < report.checks.size(); i++) {
+                    TitleCheckResult& r = report.checks[i];
+                    if (r.id.empty()) r.id = def->id;
+                    r.kind = def->kind;
+                    r.language = code;
+                }
+            }
+        }
     }
     for (const TitleCheckResult& r : report.checks) {
         TitleCheckStatus status = r.status;
@@ -168,6 +193,18 @@ TitleCheckReport TitleArtChecks::run(const std::vector<const CheckDef*>& checks,
         }
     }
     return report;
+}
+
+std::vector<std::string> editor::titleCheckLanguages(const TitleCheckContext& context) {
+    const std::vector<std::string> all = titleart::titleLanguageCodes(context.doc.root);
+    if (context.options.languages.empty()) return all;
+    std::vector<std::string> out;
+    for (const std::string& code : context.options.languages) {
+        for (const std::string& a : all) {
+            if (titleart::isSourceLanguage(context.doc.root, a) ? titleart::isSourceLanguage(context.doc.root, code) : a == code) out.push_back(a);
+        }
+    }
+    return out;
 }
 
 const char* TitleArtChecks::guidance() {

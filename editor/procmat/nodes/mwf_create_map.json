@@ -1,0 +1,69 @@
+{
+ "code": [],
+ "description": "Creates a workflow map using a heightmap and an optional seed map. The workflow map contains height information as well as orientation and a seed for random offset for the material it will be applied to.",
+ "format": 1,
+ "functions": [
+  "rand"
+ ],
+ "id": "mwf_create_map",
+ "inputs": [
+  {
+   "default": "1.0",
+   "description": "The input height map",
+   "label": "",
+   "name": "h",
+   "short_description": "Height",
+   "type": "f"
+  },
+  {
+   "default": "0.0",
+   "description": "The input offset seed map",
+   "label": "",
+   "name": "o",
+   "short_description": "Offset",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Create Map",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The generated workflow map, to be connected to a MixMap or an ApplyMap node",
+   "expr": "vec3($height*$h($uv), $angle*0.00277777777+0.5, rand(vec2(float($seed)+$o($uv))))",
+   "label": "Output",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 1,
+   "description": "The maximum height of the workflow map, used as multiplier for the input height map",
+   "label": "Height",
+   "max": 1,
+   "min": 0,
+   "name": "height",
+   "short_description": "Height",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The angle stored in the workflow map",
+   "label": "Angle",
+   "max": 180,
+   "min": -180,
+   "name": "angle",
+   "short_description": "Angle",
+   "step": 0.1,
+   "type": "float"
+  }
+ ],
+ "short_description": "Create map",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/mwf_create_map.mmg"
+ },
+ "type_version": 1
+}

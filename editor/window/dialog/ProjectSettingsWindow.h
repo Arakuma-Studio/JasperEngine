@@ -5,12 +5,14 @@
 
 #include "Project.h"
 #include "NativePluginDialog.h"
+#include "PixelArtPresetDialog.h"
 #include "imgui.h"
 #include "util/ShaderGlobalsEdit.h"
 #include "util/ShaderGlobalsUsage.h"
 
 #include <string>
 #include <filesystem>
+#include <memory>
 #include <set>
 #include <unordered_map>
 
@@ -34,11 +36,15 @@ namespace jasperengine::editor {
         int m_canvasWidth = 0;
         int m_canvasHeight = 0;
         int m_scalingModeIndex = 0;
+        int m_pixelsPerUnit = 1;
+        int m_bitmapTextCacheMiB = 0;
         CanvasScalerSettings m_uiScale;
         int m_textureStrategyIndex = 0;
         bool m_vsyncEnabled = true;
         // Quality > Atmosphere Quality (desktop, mobile, web) as AtmosphereQuality values
         int m_atmosphereQuality[3] = {3, 1, 1};
+        // Quality > Foliage Quality as FoliageQuality values (T5 R21)
+        int m_foliageQuality[3] = {2, 2, 2};
         // Quality > Foliage Distance (desktop, mobile, web)
         float m_foliageDistanceScale[3] = {1.0f, 1.0f, 1.0f};
         // Texture (S14 R24)
@@ -49,6 +55,11 @@ namespace jasperengine::editor {
         int m_htmlUiMsaaIndex = 2;   // htmlUiMsaaValues: 1, 2, 4, 8
         // the shadow quality tier of each platform (Engine::Platform order), as ShadowTier ints
         int m_shadowTiers[6] = {2, 0, 1, 0, 2, 2};
+        // T3 R40: Project Settings > Graphics > Terrain
+        int m_terrainTiers[6] = {0, 0, 0, 0, 0, 0};
+        bool m_shipAllTerrainTiers = false;
+        bool m_compressTerrainLayers = false;
+        void drawTerrainQualitySettings();
         int m_windowModeIndex = 0;
         int m_windowWidth = 0;
         int m_windowHeight = 0;
@@ -81,6 +92,8 @@ namespace jasperengine::editor {
         int m_deviceTierGroup = 1;
         NavigationProjectSettings m_navigation;
         TitleArtProjectSettings m_titleArt;
+        LocalizationSettings m_localization;
+        char m_localizationInput[64] = {0};
         AudioSettings m_audioSettings;
         char m_audioMixerBuffer[512] = {0};
         char m_audioDefaultGroupBuffer[128] = {0};
@@ -96,6 +109,7 @@ namespace jasperengine::editor {
         std::vector<fs::path> m_scriptDirs;
         int m_cxxStandardIndex = 0;
         bool m_physics2DEnabled = true;
+        std::string m_spriteAtlasMode = "enabled";
         bool m_physics3DEnabled = true;
         // Input: the default actions asset (project-relative), the deadzone, and the
         // .inputactions files of the assets directory as the picker lists them
@@ -103,7 +117,20 @@ namespace jasperengine::editor {
         float m_inputDeadzone = 0.15f;
         std::vector<fs::path> m_inputActionsFiles;
         std::string m_inputStatus;
+        // Pixel Art: the Default Palette (project-relative, or "builtin:<id>" until OK copies it
+        // into the project), and the project's palettes as the picker lists them (path, name)
+        std::string m_defaultPalette;
+        std::vector<std::pair<std::string, std::string>> m_paletteFiles;
+        // Pixel Art (S42 R18): Pixel Art Mode and its checks, Graphics' Default Filter Mode (0
+        // Bilinear, 1 Point), a screen being added to Check Screens, and the preset's dialog
+        pixelart::PixelArtSettings m_pixelArt;
+        int m_defaultFilterIndex = 0;
+        char m_newCheckScreen[32] = "";
+        std::unique_ptr<PixelArtPresetDialog> m_presetDialog;
         Physics3DWorldSettings m_physics3DWorld;
+        int m_particleWorldBudget = 0;
+        ParticleQaSettings m_particleQa;
+        procmat::ProcMatQaSettings m_procMatQa;
         bool m_runtimeShadersEnabled = true;
         bool m_dynamicBatching = true;
         int m_mobilePbrTierIndex = 1;
@@ -205,6 +232,12 @@ namespace jasperengine::editor {
         std::vector<std::string> m_tags;
         std::vector<std::string> m_layerNames;
         char m_newTagBuffer[128] = {0};
+        // Sorting Layers (S52 R30): applied at once, each edit one SortingLayersCmd
+        char m_newSortingLayerBuffer[128] = {0};
+        int32_t m_sortingLayerRenaming = -1;          // the layer whose name field is being edited
+        char m_sortingLayerRenameBuffer[128] = {0};
+        int32_t m_sortingLayerRemoving = -1;           // a used layer whose removal waits for confirmation
+        size_t m_sortingLayerRemovingUses = 0;
 
         // Layer Collision Matrices being edited (Physics and Physics 2D)
         LayerCollisionRows m_layerCollision3D = allLayersCollide();
@@ -272,6 +305,10 @@ namespace jasperengine::editor {
         void drawNavigationSettings();
         void drawMeshSettings();
         void drawTitleArtSettings();
+        void drawLocalizationSettings();
+        void draw2DSettings();
+        void drawAnimationSettings();
+        void drawPixelArtSettings();
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);
@@ -294,6 +331,9 @@ namespace jasperengine::editor {
         // Debug: the on-device console and stats overlay, the log
         void drawDebugSettings();
         void drawTagsAndLayersSettings();
+        void drawSortingLayersSettings();
+        // the renderers and Sorting Groups of the open scenes on a layer
+        size_t countSortingLayerUses(int32_t id) const;
         // Why the New Tag Name field cannot be added ("" when it can)
         std::string newTagError() const;
         // Layer that already has the name (built-in or user, other than 'layer'), -1 when none

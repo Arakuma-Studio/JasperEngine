@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cmath>
 #include <limits>
+#include <set>
 
 using namespace jasperengine;
 
@@ -105,13 +106,42 @@ namespace {
         {"USE_LIT_QUALITY", "Lq"},
         {"TERRAIN_HEX_STOCHASTIC", "Ts"},
         {"PBR_HAIR", "Hr"}, {"PBR_HAIR_MAP", "Hf"},
+        // T3 D2, appended so existing basenames do not change
+        {"TERRAIN_QUALITY_MEDIUM", "Qm"}, {"TERRAIN_QUALITY_LOW", "Ql"},
+        {"TERRAIN_LAYER_LIMIT", "Ll"},
+        {"TERRAIN_BLENDMAPS_1", "B1"}, {"TERRAIN_BLENDMAPS_2", "B2"},
+        {"TERRAIN_EXTENDED_LAYERS", "Ex"},
+        {"TERRAIN_MACRO", "Mv"}, {"TERRAIN_MACRO_NORMAL", "Mn"},
+        {"TERRAIN_RESAMPLE", "Rs"}, {"TERRAIN_CLIFF", "Cl"}, {"TERRAIN_HEIGHT_BLEND", "Hb"},
+        {"TERRAIN_DEBUG_VIEW", "Dv"},
+        {"HAS_VOXEL", "Vx"}, {"VOXEL_TIER_HIGH", "Vh"}, {"VOXEL_TIER_MEDIUM", "Vm"}, {"VOXEL_TIER_LOW", "Vl"},
     };
+    // T3 R54: a bit per entry of a 64-bit mask, so the table may grow past 32 and no further
+    static_assert(sizeof(defineCodes) / sizeof(defineCodes[0]) <= 64, "MaterialPbr's define bits are 64 wide");
 
 }
 
 const char* const MaterialPbr::LIT_QUALITY_DEFINE = "USE_LIT_QUALITY";
+const char* const MaterialPbr::VOXEL_DEFINE = "HAS_VOXEL";
+const char* const MaterialPbr::VOXEL_TIER_HIGH_DEFINE = "VOXEL_TIER_HIGH";
+const char* const MaterialPbr::VOXEL_TIER_MEDIUM_DEFINE = "VOXEL_TIER_MEDIUM";
+const char* const MaterialPbr::VOXEL_TIER_LOW_DEFINE = "VOXEL_TIER_LOW";
 const char* const MaterialPbr::TERRAIN_HEX_DEFINE = "TERRAIN_HEX_TILING";
 const char* const MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE = "TERRAIN_HEX_STOCHASTIC";
+
+uint64_t MaterialPbr::getTerrainDefineBits(){
+    static const uint64_t bits = []{
+        uint64_t all = 0;
+        for (const char* define : {"TERRAIN_HEX_TILING", "TERRAIN_HEX_STOCHASTIC", "TERRAIN_QUALITY_MEDIUM", "TERRAIN_QUALITY_LOW",
+                                   "TERRAIN_LAYER_LIMIT", "TERRAIN_BLENDMAPS_1", "TERRAIN_BLENDMAPS_2", "TERRAIN_EXTENDED_LAYERS",
+                                   "TERRAIN_MACRO", "TERRAIN_MACRO_NORMAL", "TERRAIN_RESAMPLE", "TERRAIN_CLIFF",
+                                   "TERRAIN_HEIGHT_BLEND", "TERRAIN_DEBUG_VIEW"}){
+            all |= getDefineBit(define);
+        }
+        return all;
+    }();
+    return bits;
+}
 const char* const MaterialPbr::TRANSMISSION_DEFINE = "PBR_TRANSMISSION";
 
 const std::vector<PbrLobeInfo>& MaterialPbr::getLobes(){
@@ -564,6 +594,15 @@ void MaterialPbr::getHairUniformBlock(const MaterialPbrExtensions& pbr, float ou
     out[11] = std::sin(hair.rotation);
 }
 
+size_t MaterialPbr::countLitVariants(const std::vector<std::pair<uint64_t, uint64_t>>& drawn){
+    std::set<std::pair<uint64_t, uint64_t>> variants;
+    for (const auto& submesh : drawn){
+        if (submesh.first != 0)
+            variants.insert(submesh);
+    }
+    return variants.size();
+}
+
 std::string MaterialPbr::getVariantBasename(const std::vector<std::string>& defines){
     std::string basename = "lit_";
     for (const DefineCode& entry : defineCodes){
@@ -593,27 +632,27 @@ bool MaterialPbr::parseVariantBasename(const std::string& basename, std::vector<
     return true;
 }
 
-uint32_t MaterialPbr::getDefineBits(const std::vector<std::string>& defines){
-    uint32_t bits = 0;
+uint64_t MaterialPbr::getDefineBits(const std::vector<std::string>& defines){
+    uint64_t bits = 0;
     for (size_t i = 0; i < sizeof(defineCodes) / sizeof(defineCodes[0]); i++){
         if (std::find(defines.begin(), defines.end(), defineCodes[i].define) != defines.end())
-            bits |= 1u << i;
+            bits |= 1ull << i;
     }
     return bits;
 }
 
-uint32_t MaterialPbr::getDefineBit(const std::string& define){
+uint64_t MaterialPbr::getDefineBit(const std::string& define){
     for (size_t i = 0; i < sizeof(defineCodes) / sizeof(defineCodes[0]); i++){
         if (define == defineCodes[i].define)
-            return 1u << i;
+            return 1ull << i;
     }
     return 0;
 }
 
-std::vector<std::string> MaterialPbr::getDefinesFromBits(uint32_t bits){
+std::vector<std::string> MaterialPbr::getDefinesFromBits(uint64_t bits){
     std::vector<std::string> defines;
     for (size_t i = 0; i < sizeof(defineCodes) / sizeof(defineCodes[0]); i++){
-        if (bits & (1u << i))
+        if (bits & (1ull << i))
             defines.push_back(defineCodes[i].define);
     }
     std::sort(defines.begin(), defines.end());

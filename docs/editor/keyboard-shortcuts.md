@@ -50,7 +50,7 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Play or Resume | F5 | Global |
 | Pause | F6 | Global |
 | Stop | F7 | Global |
-| Maximize On Play | F11 | Global |
+| Maximize On Play | F11 (macOS: Control+Cmd+F) | Global |
 
 ## Assets
 
@@ -116,6 +116,8 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Bottom View | Numpad9 / Ctrl+Numpad7 | Scene View |
 | Hide Selection | H | Scene View |
 | Show All | Alt+H | Scene View |
+| Pixel Zoom 1x | Alt+1 | Scene View |
+| Pixel Zoom Game | Alt+2 | Scene View |
 | Toggle Pick Lock | L | Scene View |
 | Measure | M | Scene View |
 | Delete Measure | Delete / Backspace | Scene View |
@@ -157,14 +159,55 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Shrink Point Selection | Ctrl+- / Ctrl+NumpadSubtract | Scene View |
 | Toggle Falloff | O | Scene View |
 
+## Voxel Brush
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Dig | D | Voxel Brush |
+| Add | A | Voxel Brush |
+| Smooth | S | Voxel Brush |
+| Paint | P | Voxel Brush |
+| Pick | K | Voxel Brush |
+| Brush Smaller | [ | Voxel Brush |
+| Brush Larger | ] | Voxel Brush |
+| Put the Brush Down | Escape | Voxel Brush |
+| Pick Material | Alt+Left Click | Voxel Brush |
+| Orbit | Alt+Left Drag | Voxel Brush |
+
 ## Terrain
 
 | Command | Shortcut | Context |
 |---|---|---|
 | Brush Smaller | [ | Scene View |
 | Brush Larger | ] | Scene View |
-| Brush Weaker | Shift+[ | Scene View |
-| Brush Stronger | Shift+] | Scene View |
+| Brush Weaker | Shift+[ / - | Scene View |
+| Brush Stronger | Shift+] / = | Scene View |
+
+## Terrain Brush
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Raise | R | Terrain Brush |
+| Set Height | H | Terrain Brush |
+| Smooth | S | Terrain Brush |
+| Ramp | A | Terrain Brush |
+| Noise | N | Terrain Brush |
+| Terrace | T | Terrain Brush |
+| Erode | E | Terrain Brush |
+| Stamp | K | Terrain Brush |
+| Paint Texture | B | Terrain Brush |
+| Paint Details | D | Terrain Brush |
+| Paint Trees | P | Terrain Brush |
+| Cut Holes | X | Terrain Brush |
+| Pick Height | I | Terrain Brush |
+| Invert Slope Filter | Y | Terrain Brush |
+| Alternate | C | Terrain Brush |
+| Height Overlay | 1 | Terrain Brush |
+| Slope Overlay | 2 | Terrain Brush |
+| Contours Overlay | 3 | Terrain Brush |
+| Layer Weights Overlay | 4 | Terrain Brush |
+| Overlay Off | 0 | Terrain Brush |
+| Put the Brush Down | Escape | Terrain Brush |
 
 ## Animation
 
@@ -210,6 +253,34 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Add Pose | N | Pose Animation |
 | Global Edit | E | Pose Animation |
 
+## Sprite Preview
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Play / Pause | Space | Sprite Preview |
+| Previous Frame | , | Sprite Preview |
+| Next Frame | . | Sprite Preview |
+| First Frame | Home | Sprite Preview |
+| Last Frame | End | Sprite Preview |
+| Zoom In | = / NumpadAdd | Sprite Preview |
+| Zoom Out | - / NumpadSubtract | Sprite Preview |
+
+## Pixel Art Check
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Run Pixel Art Check | F5 | Pixel Art Check |
+
+## Palette
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Delete Colours | Delete / Backspace | Palette |
+| Duplicate Colours | Ctrl+D | Palette |
+| Move Colours Left | Alt+Left | Palette |
+| Move Colours Right | Alt+Right | Palette |
+| Flicker Compare | Space | Palette |
+
 ## Project
 
 | Command | Shortcut | Context |
@@ -227,6 +298,22 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 
 | Command | Shortcut | Context |
 |---|---|---|
+| Play / Pause Preview | Space | Title Animation |
+| Stop Preview | Shift+Space | Title Animation |
+| Add Key | K | Title Animation |
+| Key Modified Fields | Shift+K | Title Animation |
+| Previous Frame | , | Title Animation |
+| Next Frame | . | Title Animation |
+| Previous Key | Alt+, | Title Animation |
+| Next Key | Alt+. | Title Animation |
+| Delete Keys | Delete | Title Animation |
+| Copy Keys | Ctrl+C | Title Animation |
+| Paste Keys | Ctrl+V | Title Animation |
+| Duplicate Keys | Ctrl+D | Title Animation |
+| Frame Selected | F | Title Animation |
+| Frame All | A | Title Animation |
+| Record | R | Title Animation |
+| Dopesheet / Curves | Tab | Title Animation |
 | Hand Tool | Q | Title Designer |
 | Move Tool | W | Title Designer |
 | Rotate Tool | E | Title Designer |

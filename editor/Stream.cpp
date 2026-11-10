@@ -2,9 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 #include "Stream.h"
+#include "util/TitleArtLanguage.h"
 
 #include <unordered_map>
 #include <unordered_set>
+#include "component/MeshComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/PointsComponent.h"
+#include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
+#include "component/SortingGroupComponent.h"
+#include "registry/SortingLayers.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/ImageComponent.h"
@@ -1266,6 +1274,57 @@ ShaderGlobalBindings editor::Stream::decodeShaderGlobalBindings(const YAML::Node
     return bindings;
 }
 
+YAML::Node editor::Stream::encodeShaderPalettes(const jasperengine::pixelart::ShaderPalettes& palettes) {
+    YAML::Node node(YAML::NodeType::Map);
+    for (const auto& [uniform, binding] : palettes) {
+        YAML::Node entry(YAML::NodeType::Map);
+        encodeAssetRef(entry, "source", binding.source);
+        if (!binding.targets.empty()) {
+            YAML::Node targets(YAML::NodeType::Sequence);
+            for (const jasperengine::pixelart::PaletteTarget& target : binding.targets) {
+                YAML::Node item(YAML::NodeType::Map);
+                encodeAssetRef(item, "palette", target.palette);
+                if (!target.variant.empty()) item["variant"] = target.variant;
+                targets.push_back(item);
+            }
+            entry["targets"] = targets;
+        }
+        if (!binding.useVariants) entry["useVariants"] = false;
+        node[uniform] = entry;
+    }
+    return node;
+}
+
+jasperengine::pixelart::ShaderPalettes editor::Stream::decodeShaderPalettes(const YAML::Node& node) {
+    jasperengine::pixelart::ShaderPalettes palettes;
+    if (!node || !node.IsMap()) return palettes;
+    for (const auto& entry : node) {
+        const std::string uniform = entry.first.as<std::string>();
+        const YAML::Node value = entry.second;
+        if (uniform.empty() || !value.IsMap()) continue;
+        jasperengine::pixelart::PaletteBinding binding;
+        binding.source = decodeAssetRef(value, "source");
+        const YAML::Node targets = value["targets"];
+        if (targets && targets.IsSequence()) {
+            for (const YAML::Node& item : targets) {
+                jasperengine::pixelart::PaletteTarget target;
+                if (item.IsScalar()) {
+                    target = jasperengine::pixelart::PaletteTarget::parse(item.as<std::string>());
+                } else if (item.IsMap()) {
+                    target.palette = decodeAssetRef(item, "palette");
+                    if (item["variant"] && item["variant"].IsScalar()) target.variant = item["variant"].as<std::string>();
+                } else {
+                    continue;
+                }
+                binding.targets.push_back(target);
+            }
+        }
+        if (value["useVariants"] && value["useVariants"].IsScalar()) binding.useVariants = value["useVariants"].as<bool>();
+        palettes.push_back({uniform, binding});
+    }
+    return palettes;
+}
+
 YAML::Node editor::Stream::encodeQuaternion(const Quaternion& quat) {
     YAML::Node node;
     node.SetStyle(YAML::EmitterStyle::Flow);
@@ -1508,9 +1567,23 @@ namespace {
     }
 }
 
+Texture editor::Stream::savedTexture() {
+    Texture texture;
+    texture.setMinFilter(TextureFilter::LINEAR);
+    texture.setMagFilter(TextureFilter::LINEAR);
+    return texture;
+}
+
+Texture editor::Stream::savedTexture(const std::string& path) {
+    Texture texture(path);
+    texture.setMinFilter(TextureFilter::LINEAR);
+    texture.setMagFilter(TextureFilter::LINEAR);
+    return texture;
+}
+
 Texture editor::Stream::decodeTexture(const YAML::Node& node) {
     StreamLoad::checkNestedKeys(node, NestedKind::Texture);
-    Texture texture;
+    Texture texture = savedTexture();
     if (node.IsMap()) { // Check if node has data
         const std::string textureType = node["textureType"] ? node["textureType"].as<std::string>() : std::string();
         const std::string source = node["source"] ? node["source"].as<std::string>() : std::string();
@@ -1711,14 +1784,14 @@ void editor::Stream::decodeExternalBuffer(ExternalBuffer& buffer, const YAML::No
     buffer.setName(node["name"].as<std::string>()); // Set ExternalBuffer specific property
 }
 
-YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextureData, bool encodeVertexCount) {
+YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextureData, std::optional<unsigned int> vertexCount) {
     YAML::Node node;
 
     node["material"] = encodeMaterial(submesh.material, embedTextureData);
     node["textureRect"] = encodeRect(submesh.textureRect);
     node["primitiveType"] = primitiveTypeToString(submesh.primitiveType);
-    if (encodeVertexCount) {
-        node["vertexCount"] = YamlNumbers::integerText(submesh.vertexCount);
+    if (vertexCount) {
+        node["vertexCount"] = YamlNumbers::integerText(*vertexCount);
     }
     node["faceCulling"] = YamlNumbers::text(submesh.faceCulling);
     node["textureShadow"] = YamlNumbers::text(submesh.textureShadow);
@@ -1872,17 +1945,42 @@ YAML::Node editor::Stream::encodeTerrainEditorSettings(const TerrainEditorSettin
     terrainNode["heightMapStartAtMiddle"] = ts.heightMapStartAtMiddle;
     terrainNode["flattenPickOnStroke"] = ts.flattenPickOnStroke;
     terrainNode["paintUseMask"] = ts.paintUseMask;
+    if (ts.filterAllTools) terrainNode["filterAllTools"] = true;
+    if (ts.slopeFilterInvert) terrainNode["slopeFilterInvert"] = true;
+    if (ts.heightFilterInvert) terrainNode["heightFilterInvert"] = true;
+    // T1 R37: only away from their defaults, so an existing settings file stays as it was
+    if (!ts.pressureStrength) terrainNode["pressureStrength"] = false;
+    if (ts.pressureSize) terrainNode["pressureSize"] = true;
+    if (!ts.paintRules.empty()) {
+        YAML::Node rules(YAML::NodeType::Sequence);
+        for (const TerrainPaintRule& rule : ts.paintRules) {
+            YAML::Node r;
+            r["layer"] = rule.layer;
+            if (rule.useSlope) r["slope"] = std::vector<float>{rule.slopeMin, rule.slopeMax};
+            if (rule.useHeight) r["height"] = std::vector<float>{rule.heightMin, rule.heightMax};
+            if (rule.invert) r["invert"] = true;
+            r["opacity"] = rule.opacity;
+            if (rule.noise > 0.0f) r["noise"] = rule.noise;
+            rules.push_back(r);
+        }
+        terrainNode["paintRules"] = rules;
+        terrainNode["paintRulesSeed"] = ts.paintRulesSeed;
+    }
     encodeFinite(terrainNode, "paintMinSlope", ts.paintMinSlope);
     encodeFinite(terrainNode, "paintMaxSlope", ts.paintMaxSlope);
     encodeFinite(terrainNode, "paintMinHeight", ts.paintMinHeight);
     encodeFinite(terrainNode, "paintMaxHeight", ts.paintMaxHeight);
     terrainNode["placeAssetPath"] = ts.placeAssetPath;
     terrainNode["placeInstanced"] = ts.placeInstanced;
+    terrainNode["placeAs"] = ts.placeAsTree ? "tree" : "gameobject";
     encodePositiveFinite(terrainNode, "placeSpacing", ts.placeSpacing);
     encodePositiveFinite(terrainNode, "placeMinScale", ts.placeMinScale);
     encodePositiveFinite(terrainNode, "placeMaxScale", ts.placeMaxScale);
     encodeFinite(terrainNode, "placeRotationJitter", ts.placeRotationJitter);
     encodeFinite(terrainNode, "placeAlignToNormal", ts.placeAlignToNormal);
+    // only away from their defaults: a project that never generated keeps its file as it was (T2 R70)
+    if (!ts.generateGraph.empty()) terrainNode["generateGraph"] = ts.generateGraph;
+    if (ts.generateSeed != TerrainEditorSettings{}.generateSeed) terrainNode["generateSeed"] = ts.generateSeed;
     return terrainNode;
 }
 
@@ -1908,17 +2006,49 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
     if (tn["flattenPickOnStroke"].IsDefined()) ts.flattenPickOnStroke = YamlNumbers::as<bool>(tn["flattenPickOnStroke"]);
     else ts.brushStrength = TerrainEditorSettings{}.brushStrength; // file predates time-based flow; old per-event strengths are far too weak under the new semantics
     if (tn["paintUseMask"].IsDefined())       ts.paintUseMask       = YamlNumbers::as<bool>(tn["paintUseMask"]);
+    ts.filterAllTools = tn["filterAllTools"].IsDefined() && YamlNumbers::as<bool>(tn["filterAllTools"]);
+    ts.slopeFilterInvert = tn["slopeFilterInvert"].IsDefined() && YamlNumbers::as<bool>(tn["slopeFilterInvert"]);
+    ts.heightFilterInvert = tn["heightFilterInvert"].IsDefined() && YamlNumbers::as<bool>(tn["heightFilterInvert"]);
+    ts.pressureStrength = !tn["pressureStrength"].IsDefined() || YamlNumbers::as<bool>(tn["pressureStrength"]);
+    ts.pressureSize = tn["pressureSize"].IsDefined() && YamlNumbers::as<bool>(tn["pressureSize"]);
+    ts.paintRules.clear();
+    // a missing key is an invalid node in yaml-cpp, which IsSequence() throws on
+    if (tn["paintRules"].IsDefined() && tn["paintRules"].IsSequence()) {
+        for (const YAML::Node& r : tn["paintRules"]) {
+            if (!r.IsMap()) continue;
+            TerrainPaintRule rule;
+            if (r["layer"].IsDefined()) rule.layer = YamlNumbers::as<int>(r["layer"]);
+            if (r["slope"].IsDefined() && r["slope"].IsSequence() && r["slope"].size() == 2) {
+                rule.useSlope = true;
+                rule.slopeMin = decodeFinite(r["slope"][0], rule.slopeMin);
+                rule.slopeMax = decodeFinite(r["slope"][1], rule.slopeMax);
+            }
+            if (r["height"].IsDefined() && r["height"].IsSequence() && r["height"].size() == 2) {
+                rule.useHeight = true;
+                rule.heightMin = decodeFinite(r["height"][0], rule.heightMin);
+                rule.heightMax = decodeFinite(r["height"][1], rule.heightMax);
+            }
+            rule.invert = r["invert"].IsDefined() && YamlNumbers::as<bool>(r["invert"]);
+            if (r["opacity"].IsDefined()) rule.opacity = decodeFinite(r["opacity"], rule.opacity);
+            if (r["noise"].IsDefined()) rule.noise = decodeFinite(r["noise"], rule.noise);
+            ts.paintRules.push_back(rule);
+        }
+    }
+    if (tn["paintRulesSeed"].IsDefined()) ts.paintRulesSeed = YamlNumbers::as<int>(tn["paintRulesSeed"]);
     if (tn["paintMinSlope"].IsDefined())      ts.paintMinSlope      = decodeFinite(tn["paintMinSlope"], ts.paintMinSlope);
     if (tn["paintMaxSlope"].IsDefined())      ts.paintMaxSlope      = decodeFinite(tn["paintMaxSlope"], ts.paintMaxSlope);
     if (tn["paintMinHeight"].IsDefined())     ts.paintMinHeight     = decodeFinite(tn["paintMinHeight"], ts.paintMinHeight);
     if (tn["paintMaxHeight"].IsDefined())     ts.paintMaxHeight     = decodeFinite(tn["paintMaxHeight"], ts.paintMaxHeight);
     if (tn["placeAssetPath"].IsDefined())     ts.placeAssetPath     = tn["placeAssetPath"].as<std::string>();
     if (tn["placeInstanced"].IsDefined())     ts.placeInstanced     = YamlNumbers::as<bool>(tn["placeInstanced"]);
+    if (tn["placeAs"].IsDefined())            ts.placeAsTree = tn["placeAs"].as<std::string>() != "gameobject";
     if (tn["placeSpacing"].IsDefined())       ts.placeSpacing       = decodePositiveFinite(tn["placeSpacing"], ts.placeSpacing);
     if (tn["placeMinScale"].IsDefined())      ts.placeMinScale      = decodePositiveFinite(tn["placeMinScale"], ts.placeMinScale);
     if (tn["placeMaxScale"].IsDefined())      ts.placeMaxScale      = decodePositiveFinite(tn["placeMaxScale"], ts.placeMaxScale);
     if (tn["placeRotationJitter"].IsDefined()) ts.placeRotationJitter = decodeFinite(tn["placeRotationJitter"], ts.placeRotationJitter);
     if (tn["placeAlignToNormal"].IsDefined()) ts.placeAlignToNormal = decodeFinite(tn["placeAlignToNormal"], ts.placeAlignToNormal);
+    if (tn["generateGraph"].IsDefined())      ts.generateGraph      = tn["generateGraph"].as<std::string>();
+    if (tn["generateSeed"].IsDefined())       ts.generateSeed       = YamlNumbers::as<uint32_t>(tn["generateSeed"]);
     return ts;
 }
 
@@ -2219,10 +2349,21 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
     if (ds.showAllLattices)
         sceneNode["showAllLattices"] = ds.showAllLattices;
+    if (ds.showIK)
+        sceneNode["showIK"] = ds.showIK;
+    if (ds.showRootMotion)
+        sceneNode["showRootMotion"] = ds.showRootMotion;
+    if (ds.showFootTrails)
+        sceneNode["showFootTrails"] = ds.showFootTrails;
     if (ds.drawMode != ViewDrawMode::SHADED)
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
     if (ds.showStats)
         sceneNode["showStats"] = ds.showStats;
+    // S41: written only when turned off (on by default)
+    if (!ds.pixelZoom) sceneNode["pixelZoom"] = false;
+    if (!ds.pixelGrid) sceneNode["pixelGrid"] = false;
+    if (!ds.pixelSnapPreview) sceneNode["pixelSnapPreview"] = false;
+    if (!ds.pixelMoveSnap) sceneNode["pixelMoveSnap"] = false;
     sceneNode["showGrid2D"]           = ds.showGrid2D;
     encodePositiveFinite(sceneNode, "gridSpacing2D", ds.gridSpacing2D);
     encodePositiveFinite(sceneNode, "gridSpacing3D", ds.gridSpacing3D);
@@ -2233,6 +2374,9 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
     const YAML::Node navigationNode = encodeNavOverlaySettings(ds.navigation);
     if (navigationNode.size() > 0)
         sceneNode["navigation"] = navigationNode;
+    const YAML::Node terrainOverlayNode = encodeTerrainOverlaySettings(ds.terrainOverlay);
+    if (terrainOverlayNode.size() > 0)
+        sceneNode["terrainOverlay"] = terrainOverlayNode;
     return sceneNode;
 }
 
@@ -2254,12 +2398,20 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["disableClouds"])        ds.disableClouds        = YamlNumbers::as<bool>(node["disableClouds"]);
     if (node["animateWater"])         ds.animateWater         = YamlNumbers::as<bool>(node["animateWater"]);
     ds.showPostProcessing = node["showPostProcessing"] ? YamlNumbers::as<bool>(node["showPostProcessing"]) : false;
+    ds.pixelZoom = node["pixelZoom"] ? YamlNumbers::as<bool>(node["pixelZoom"]) : true;
+    ds.pixelGrid = node["pixelGrid"] ? YamlNumbers::as<bool>(node["pixelGrid"]) : true;
+    ds.pixelSnapPreview = node["pixelSnapPreview"] ? YamlNumbers::as<bool>(node["pixelSnapPreview"]) : true;
+    ds.pixelMoveSnap = node["pixelMoveSnap"] ? YamlNumbers::as<bool>(node["pixelMoveSnap"]) : true;
     ds.showAllLattices = node["showAllLattices"] ? YamlNumbers::as<bool>(node["showAllLattices"]) : false;
+    ds.showIK = node["showIK"] ? YamlNumbers::as<bool>(node["showIK"]) : false;
+    ds.showRootMotion = node["showRootMotion"] ? YamlNumbers::as<bool>(node["showRootMotion"]) : false;
+    ds.showFootTrails = node["showFootTrails"] ? YamlNumbers::as<bool>(node["showFootTrails"]) : false;
     ds.drawMode = ViewDrawMode::SHADED;
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
     ds.showStats = node["showStats"] ? YamlNumbers::as<bool>(node["showStats"]) : false;
     decodeNavOverlaySettings(node["navigation"], ds.navigation);
+    decodeTerrainOverlaySettings(node["terrainOverlay"], ds.terrainOverlay);
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
     if (node["gridSpacing2D"])        ds.gridSpacing2D        = decodePositiveFinite(node["gridSpacing2D"], ds.gridSpacing2D);
     if (node["gridSpacing3D"])        ds.gridSpacing3D        = decodePositiveFinite(node["gridSpacing3D"], ds.gridSpacing3D);
@@ -2579,6 +2731,14 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         quality["web"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[2]);
         root["atmosphereQuality"] = quality;
     }
+    // T5 R21: the key is what tells a project from one made before it (F12)
+    if (project->isFoliageQualityDeclared()) {
+        YAML::Node quality;
+        quality["desktop"] = StreamSchema::foliageQuality().toString(project->getFoliageQuality()[0]);
+        quality["mobile"] = StreamSchema::foliageQuality().toString(project->getFoliageQuality()[1]);
+        quality["web"] = StreamSchema::foliageQuality().toString(project->getFoliageQuality()[2]);
+        root["foliageQuality"] = quality;
+    }
     // Project Settings > Quality > Foliage Distance, omitted at its defaults
     if (project->getFoliageDistanceScale() != Project::defaultFoliageDistanceScale) {
         YAML::Node scale;
@@ -2587,6 +2747,15 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         scale["web"] = project->getFoliageDistanceScale()[2];
         root["foliageDistanceScale"] = scale;
     }
+    // Project Settings > Default Palette (S43), omitted when there is none
+    if (!project->getDefaultPalette().empty()) {
+        YAML::Node palettes;
+        palettes["default"] = project->getDefaultPalette().generic_string();
+        root["palettes"] = palettes;
+    }
+    // Project Settings > Pixel Art (S42), omitted at its defaults
+    if (const YAML::Node pixelArt = pixelart::encodePixelArtSettings(project->getPixelArtSettings()); pixelArt.size() > 0)
+        root["pixelArt"] = pixelArt;
     // Project Settings > Input, omitted at its defaults
     if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
         YAML::Node input;
@@ -2652,6 +2821,25 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             graphics["gpuInstancing"] = drawSubmission.gpuInstancing;
         if (project->getLightMode() != Project::defaultLightMode)
             graphics["lightMode"] = LightingTiers::getModeName(project->getLightMode());
+        // T3 R51: only a project that says; an old one writes no key and stays High everywhere
+        if (project->isTerrainQualityWritten()){
+            YAML::Node terrainTiers;
+            for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++){
+                terrainTiers[Project::getShadowTierPlatformName(platform)] = terraincore::terrainQualityName(project->getTerrainQualityTier(platform));
+            }
+            graphics["terrainQuality"] = terrainTiers;
+        }
+        if (project->isShipAllTerrainTiers()) graphics["shipAllTerrainTiers"] = true;
+        if (project->isCompressTerrainLayers()) graphics["compressTerrainLayers"] = true;
+        // graphics.pixelsPerUnit (S41), only away from 1
+        if (project->getPixelsPerUnit() != Project::defaultPixelsPerUnit)
+            graphics["pixelsPerUnit"] = project->getPixelsPerUnit();
+        // graphics.defaultFilterMode (S42), only when Point
+        if (project->getDefaultFilterMode() != TextureFilterMode::Bilinear)
+            graphics["defaultFilterMode"] = textureFilterModeName(project->getDefaultFilterMode());
+        // graphics.bitmapTextCacheMiB (S51), only away from 0 (the platform's default)
+        if (project->getBitmapTextCacheMiB() != 0)
+            graphics["bitmapTextCacheMiB"] = project->getBitmapTextCacheMiB();
         if (graphics.size() > 0)
             root["graphics"] = graphics;
     }
@@ -2728,6 +2916,36 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
         if (layersNode.size() != 0) {
             root["layers"] = layersNode;
+        }
+    }
+    {
+        // Sorting Layers in draw order, written only past Default alone (S52 R39)
+        const std::vector<SortingLayerInfo>& sortingLayers = project->getSortingLayers();
+        if (sortingLayers.size() > 1) {
+            YAML::Node layersNode;
+            for (const SortingLayerInfo& layer : sortingLayers) {
+                YAML::Node entry;
+                entry["id"] = layer.id;
+                entry["name"] = layer.name;
+                layersNode.push_back(entry);
+            }
+            root["sortingLayers"] = layersNode;
+        }
+        // past the ids listed once a layer was removed: a later layer never takes a removed id
+        int32_t maxId = 0;
+        for (const SortingLayerInfo& layer : sortingLayers) maxId = std::max(maxId, layer.id);
+        if (SortingLayers::getNextId() > maxId + 1)
+            root["sortingLayerNextId"] = SortingLayers::getNextId();
+        if (project->getTransparencySortMode() == TransparencySortMode::CUSTOM_AXIS)
+            root["transparencySortMode"] = "custom_axis";
+        const Vector3 axis = project->getTransparencySortAxis();
+        if (axis != Vector3(0.0f, 1.0f, 0.0f)) {
+            YAML::Node axisNode(YAML::NodeType::Sequence);
+            axisNode.push_back(editor::YamlNumbers::text(axis.x));
+            axisNode.push_back(editor::YamlNumbers::text(axis.y));
+            axisNode.push_back(editor::YamlNumbers::text(axis.z));
+            axisNode.SetStyle(YAML::EmitterStyle::Flow);
+            root["transparencySortAxis"] = axisNode;
         }
     }
     {
@@ -2825,6 +3043,19 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (presentation.keepScreenOn != defaults.keepScreenOn) presentationNode["keepScreenOn"] = presentation.keepScreenOn;
         if (presentation.targetFrameRate != defaults.targetFrameRate) presentationNode["targetFrameRate"] = presentation.targetFrameRate;
         if (presentationNode.size() != 0) root["presentation"] = presentationNode;
+    }
+
+    {
+        // Project Settings > Localization (S87 R64; non-defaults only)
+        const LocalizationSettings& localization = project->getLocalizationSettings();
+        YAML::Node localizationNode;
+        if (!localization.languages.empty()) {
+            YAML::Node list(YAML::NodeType::Sequence);
+            for (const std::string& code : localization.languages) list.push_back(code);
+            localizationNode["languages"] = list;
+        }
+        if (!localization.defaultLanguage.empty()) localizationNode["defaultLanguage"] = localization.defaultLanguage;
+        if (localizationNode.size() != 0) root["localization"] = localizationNode;
     }
 
     {
@@ -3018,6 +3249,28 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (threading.webPumpBudgetMs != defaults.webPumpBudgetMs) threadingNode["webPumpBudgetMs"] = threading.webPumpBudgetMs;
         if (threading.webMultithreaded != defaults.webMultithreaded) threadingNode["webMultithreaded"] = threading.webMultithreaded;
         if (threadingNode.size()) root["threading"] = threadingNode;
+        // only when set: an old project.yaml stays as it was
+        if (project->getParticleWorldBudget() != 0) root["particleWorldBudget"] = project->getParticleWorldBudget();
+        {
+            const ParticleQaSettings& qa = project->getParticleQaSettings();
+            const ParticleQaSettings defaults;
+            YAML::Node qaNode;
+            for (const ParticleQaField& field : particleQaFields()) {
+                if (field.real && qa.*field.real != defaults.*field.real) qaNode[field.yaml] = qa.*field.real;
+                if (field.whole && qa.*field.whole != defaults.*field.whole) qaNode[field.yaml] = qa.*field.whole;
+            }
+            if (qaNode.size()) root["particleQa"] = qaNode;
+        }
+        {
+            const procmat::ProcMatQaSettings& qa = project->getProcMatQaSettings();
+            const procmat::ProcMatQaSettings defaults;
+            YAML::Node qaNode;
+            for (const procmat::ProcMatQaField& field : procmat::procMatQaFields()) {
+                if (field.real && qa.*field.real != defaults.*field.real) qaNode[field.yaml] = qa.*field.real;
+                if (field.whole && qa.*field.whole != defaults.*field.whole) qaNode[field.yaml] = qa.*field.whole;
+            }
+            if (qaNode.size()) root["proceduralMaterialQa"] = qaNode;
+        }
         // Shader Creation (spec S32): the values away from their defaults, by its reflection table
         const YAML::Node shaderCreationNode = reflect::encode(reflect::shaderCreationStruct(), &project->getShaderCreationSettings(), reflect::EncodeContext{});
         if (shaderCreationNode.IsMap() && shaderCreationNode.size()) root["shaderCreation"] = shaderCreationNode;
@@ -3027,6 +3280,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // Project Settings > Navigation (S19): only what differs from the defaults
         const YAML::Node navigationNode = encodeNavigationProjectSettings(project->getNavigationSettings());
         if (navigationNode.size() > 0) root["navigation"] = navigationNode;
+    }
+
+    {
+        // Project Settings > Voxels (T6 R7): only what differs from the defaults
+        const YAML::Node voxelNode = encodeVoxelProjectSettings(project->getVoxelSettings());
+        if (voxelNode.size() > 0) root["voxel"] = voxelNode;
     }
 
     {
@@ -3177,6 +3436,10 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         Organisation::encodeSearches(project->getOrganisation().projectSearches(), searches);
         root["savedSearches"] = searches;
     }
+    // S45 R18: Project Settings > 2D > Sprite Atlas > Mode, written only when not the default
+    if (project->getSpriteAtlasMode() != "enabled") {
+        root["spriteAtlas"]["mode"] = project->getSpriteAtlasMode();
+    }
 
     return root;
 }
@@ -3235,6 +3498,26 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     {
+        const YAML::Node palettes = node["palettes"];
+        // (a missing key is an undefined node: IsMap on it would throw)
+        const bool hasDefaultPalette = palettes.IsDefined() && palettes.IsMap() && palettes["default"].IsDefined() && palettes["default"].IsScalar();
+        project->setDefaultPalette(hasDefaultPalette ? fs::path(palettes["default"].as<std::string>()) : fs::path());
+    }
+
+    {
+        // T5 R21, F12: no key is High everywhere, with no caps
+        std::array<FoliageQuality, 3> quality = Project::defaultFoliageQuality;
+        const YAML::Node qualityNode = node["foliageQuality"];
+        const bool declared = qualityNode.IsDefined() && qualityNode.IsMap();
+        if (declared) {
+            const char* keys[3] = {"desktop", "mobile", "web"};
+            for (int i = 0; i < 3; i++) {
+                if (qualityNode[keys[i]].IsDefined())
+                    quality[i] = decodeEnum(qualityNode, keys[i], StreamSchema::foliageQuality());
+            }
+        }
+        project->setFoliageQuality(quality, declared);
+
         std::array<float, 3> scale = Project::defaultFoliageDistanceScale;
         const YAML::Node scaleNode = node["foliageDistanceScale"];
         if (scaleNode.IsDefined() && scaleNode.IsMap()) {
@@ -3353,6 +3636,37 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         project->setShadowTier(platform, tier);
     }
+    // graphics.pixelsPerUnit (S41): absent is 1
+    {
+        const YAML::Node graphics = node["graphics"];
+        int pixelsPerUnit = Project::defaultPixelsPerUnit;
+        if (graphics && graphics.IsMap() && graphics["pixelsPerUnit"] && graphics["pixelsPerUnit"].IsScalar())
+            pixelsPerUnit = YamlNumbers::as<int>(graphics["pixelsPerUnit"]);
+        project->setPixelsPerUnit(pixelsPerUnit);
+        // graphics.bitmapTextCacheMiB (S51): absent is 0, the platform's default
+        int bitmapTextCacheMiB = 0;
+        if (graphics && graphics.IsMap() && graphics["bitmapTextCacheMiB"] && graphics["bitmapTextCacheMiB"].IsScalar())
+            bitmapTextCacheMiB = YamlNumbers::as<int>(graphics["bitmapTextCacheMiB"]);
+        project->setBitmapTextCacheMiB(bitmapTextCacheMiB);
+        // graphics.defaultFilterMode (S42): absent or not point is Bilinear
+        TextureFilterMode filterMode = TextureFilterMode::Bilinear;
+        if (graphics && graphics.IsMap() && graphics["defaultFilterMode"] && graphics["defaultFilterMode"].IsScalar()) {
+            TextureFilterMode parsed;
+            if (textureFilterModeFromName(graphics["defaultFilterMode"].Scalar(), parsed) && parsed != TextureFilterMode::Trilinear)
+                filterMode = parsed;
+            else
+                StreamLoad::unknownEnumValue(graphics["defaultFilterMode"], "DefaultFilterMode", {"bilinear", "point"});
+        }
+        project->setDefaultFilterMode(filterMode);
+    }
+    // Project Settings > Pixel Art (S42): absent is every default
+    {
+        const YAML::Node pixelArt = node["pixelArt"];
+        pixelart::PixelArtSettings settings;
+        if (pixelArt.IsDefined())
+            pixelart::decodePixelArtSettings(pixelArt, settings);
+        project->setPixelArtSettings(settings);
+    }
     // graphics.lightMode: absent or unknown is Automatic
     {
         LightMode lightMode = Project::defaultLightMode;
@@ -3365,6 +3679,23 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setLightMode(lightMode);
+    }
+    // T3 R51: graphics.terrainQuality.<platform>: absent means High on every platform
+    {
+        const YAML::Node graphics = node["graphics"];
+        const bool written = graphics && graphics.IsMap() && graphics["terrainQuality"] && graphics["terrainQuality"].IsMap();
+        project->setTerrainQualityWritten(written);
+        for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++){
+            terraincore::TerrainQuality tier = terraincore::TerrainQuality::HIGH;
+            if (written){
+                const YAML::Node value = graphics["terrainQuality"][Project::getShadowTierPlatformName(platform)];
+                if (value && value.IsScalar())
+                    terraincore::terrainQualityFromName(value.Scalar().c_str(), tier);
+            }
+            project->setTerrainQualityTier(platform, tier);
+        }
+        project->setShipAllTerrainTiers(graphics && graphics.IsMap() && graphics["shipAllTerrainTiers"] && YamlNumbers::as<bool>(graphics["shipAllTerrainTiers"]));
+        project->setCompressTerrainLayers(graphics && graphics.IsMap() && graphics["compressTerrainLayers"] && YamlNumbers::as<bool>(graphics["compressTerrainLayers"]));
     }
 
     if (node["windowMode"]) {
@@ -3470,6 +3801,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setVcsProjectSettings(vcsSettings, false);
     }
 
+    // S45 R18: the Sprite Atlas mode (enabled when absent)
+    {
+        const std::string mode = node["spriteAtlas"] && node["spriteAtlas"].IsMap() && node["spriteAtlas"]["mode"]
+                                     ? node["spriteAtlas"]["mode"].as<std::string>("enabled") : std::string("enabled");
+        project->setSpriteAtlasMode(mode == "enabled_for_builds" || mode == "disabled" ? mode : "enabled");
+    }
+
     // S25: label colours, saved searches of scope project
     {
         std::vector<LabelColor> entries;
@@ -3503,6 +3841,39 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setTagsAndLayers(tags, layerNames);
+    }
+
+    {
+        // Sorting Layers (S52 R39): [{id, name}] in draw order, absent = Default alone; the
+        // Transparency Sort settings (absent = Default, (0, 1, 0))
+        std::vector<SortingLayerInfo> sortingLayers;
+        if (node["sortingLayers"] && node["sortingLayers"].IsSequence()) {
+            for (const auto& layerNode : node["sortingLayers"]) {
+                int id = -1;
+                if (!layerNode.IsMap() || !layerNode["id"] || !layerNode["name"] ||
+                        !YAML::convert<int>::decode(layerNode["id"], id) || !layerNode["name"].IsScalar()) {
+                    Out::warning("Ignoring a sortingLayers entry in project settings: it needs an id and a name");
+                    continue;
+                }
+                sortingLayers.push_back({(int32_t)id, layerNode["name"].as<std::string>()});
+            }
+        }
+        project->setSortingLayers(sortingLayers);
+        int nextId = 0;
+        if (node["sortingLayerNextId"] && YAML::convert<int>::decode(node["sortingLayerNextId"], nextId))
+            SortingLayers::setNextId(nextId);
+        TransparencySortMode mode = TransparencySortMode::DEFAULT;
+        if (node["transparencySortMode"] && node["transparencySortMode"].IsScalar()) {
+            const std::string name = node["transparencySortMode"].as<std::string>();
+            if (name == "custom_axis") mode = TransparencySortMode::CUSTOM_AXIS;
+            else if (name != "default") Out::warning("Ignoring transparencySortMode \"%s\" in project settings (default or custom_axis)", name.c_str());
+        }
+        Vector3 axis(0.0f, 1.0f, 0.0f);
+        if (node["transparencySortAxis"] && node["transparencySortAxis"].IsSequence() && node["transparencySortAxis"].size() == 3) {
+            axis = Vector3(editor::YamlNumbers::as<float>(node["transparencySortAxis"][0]), editor::YamlNumbers::as<float>(node["transparencySortAxis"][1]),
+                           editor::YamlNumbers::as<float>(node["transparencySortAxis"][2]));
+        }
+        project->setTransparencySort(mode, axis);
     }
 
     {
@@ -3637,6 +4008,24 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (presentationNode["targetFrameRate"].IsDefined()) {
             const int fps = YamlNumbers::as<int>(presentationNode["targetFrameRate"]);
             presentation.targetFrameRate = fps <= 0 ? -1 : std::min(fps, 1000);
+        }
+    }
+
+    if (node["localization"] && node["localization"].IsMap()) {
+        const YAML::Node& localizationNode = node["localization"];
+        LocalizationSettings& localization = project->getLocalizationSettings();
+        localization = LocalizationSettings();
+        if (localizationNode["languages"] && localizationNode["languages"].IsSequence()) {
+            for (const YAML::Node& code : localizationNode["languages"]) {
+                const std::string tag = TitleArtLanguage::canonicalize(code.as<std::string>(""));
+                if (TitleArtLanguage::isValid(tag) && std::find(localization.languages.begin(), localization.languages.end(), tag) == localization.languages.end()) {
+                    localization.languages.push_back(tag);
+                }
+            }
+        }
+        if (localizationNode["defaultLanguage"]) {
+            const std::string tag = TitleArtLanguage::canonicalize(localizationNode["defaultLanguage"].as<std::string>(""));
+            if (TitleArtLanguage::isValid(tag)) localization.defaultLanguage = tag;
         }
     }
 
@@ -3833,6 +4222,28 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (threadingNode["webMultithreaded"]) threading.webMultithreaded = YamlNumbers::as<bool>(threadingNode["webMultithreaded"]);
         }
         project->setThreadingSettings(threading);
+        // missing: 0, the platform's default
+        project->setParticleWorldBudget(node["particleWorldBudget"] ? std::min(YamlNumbers::as<unsigned int>(node["particleWorldBudget"]), Project::maxParticleWorldBudget) : 0u);
+        ParticleQaSettings particleQa;
+        if (node["particleQa"] && node["particleQa"].IsMap()) {
+            const YAML::Node qaNode = node["particleQa"];
+            for (const ParticleQaField& field : particleQaFields()) {
+                if (!qaNode[field.yaml]) continue;
+                if (field.real) particleQa.*field.real = std::clamp(YamlNumbers::as<float>(qaNode[field.yaml]), (float)field.minimum, (float)field.maximum);
+                else particleQa.*field.whole = std::clamp(YamlNumbers::as<int>(qaNode[field.yaml]), (int)field.minimum, (int)field.maximum);
+            }
+        }
+        project->setParticleQaSettings(particleQa);
+        procmat::ProcMatQaSettings procMatQa;
+        if (node["proceduralMaterialQa"] && node["proceduralMaterialQa"].IsMap()) {
+            const YAML::Node qaNode = node["proceduralMaterialQa"];
+            for (const procmat::ProcMatQaField& field : procmat::procMatQaFields()) {
+                if (!qaNode[field.yaml]) continue;
+                if (field.real) procMatQa.*field.real = std::clamp(YamlNumbers::as<float>(qaNode[field.yaml]), (float)field.minimum, (float)field.maximum);
+                else procMatQa.*field.whole = std::clamp(YamlNumbers::as<int>(qaNode[field.yaml]), (int)field.minimum, (int)field.maximum);
+            }
+        }
+        project->setProcMatQaSettings(procMatQa);
     }
 
     {
@@ -3847,6 +4258,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     project->setNavigationSettings(decodeNavigationProjectSettings(node["navigation"]));
+    project->setVoxelSettings(decodeVoxelProjectSettings(node["voxel"]));
 
     {
         TextureProjectSettings textureSettings;
@@ -4474,6 +4886,33 @@ void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* 
     sceneProject->reservedEntityIds.clear();
 
     CameraTextureLink::resolve(sceneProject->scene);
+    reportUnknownSortingLayers(sceneProject->scene);
+}
+
+void editor::Stream::reportUnknownSortingLayers(Scene* scene){
+    // S52 R39: a renderer naming a Sorting Layer the project does not have draws on Default; one
+    // line per scene says how many (the ids stay, so restoring the layer restores the order)
+    size_t unknown = 0;
+    auto count = [&unknown](auto array){
+        for (size_t i = 0; i < array->size(); i++){
+            if (!SortingLayers::isValid(array->getComponentFromIndex(i).sortingLayer)) unknown++;
+        }
+    };
+    count(scene->getComponentArray<MeshComponent>());
+    count(scene->getComponentArray<ParticleSystemComponent>());
+    count(scene->getComponentArray<PointsComponent>());
+    count(scene->getComponentArray<LineRendererComponent>());
+    count(scene->getComponentArray<TrailRendererComponent>());
+    count(scene->getComponentArray<SortingGroupComponent>());
+    if (unknown == 0)
+        return;
+    LoadIssue issue;
+    issue.kind = LoadIssueKind::Fallback;
+    issue.fate = LoadIssueFate::Info;
+    issue.field = "sortingLayer";
+    issue.message = std::to_string(unknown) + " renderer(s) name a Sorting Layer the project does not have: they draw on Default "
+                    "(tags_and_layers.sorting_layers)";
+    recordLoadIssue(issue);
 }
 
 YAML::Node editor::Stream::encodeEditorCamera(Camera* camera, float zoom, float walkSpeedOffset) {
@@ -5404,6 +5843,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     }
     if (!material.shaderFeatures.empty()) node["shaderFeatures"] = encodeShaderFeatures(material.shaderFeatures);
     if (!material.shaderGlobalBindings.empty()) node["shaderGlobalBindings"] = encodeShaderGlobalBindings(material.shaderGlobalBindings);
+    if (!material.shaderPalettes->empty()) node["shaderPalettes"] = encodeShaderPalettes(material.shaderPalettes.get());
     if (material.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(material.blendMode);
     if (material.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(material.cullMode);
     if (material.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(material.depthWrite);
@@ -5526,7 +5966,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
 
     // Not merged: encodeMaterial omits an empty texture, so an absent key means none
     auto texture = [&node](const char* name) {
-        return node[name] ? decodeTexture(node[name]) : Texture();
+        return node[name] ? decodeTexture(node[name]) : savedTexture();
     };
     material.baseColorTexture = texture("baseColorTexture");
     material.emissiveTexture = texture("emissiveTexture");
@@ -5548,6 +5988,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
     material.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
     material.shaderGlobalBindings = decodeShaderGlobalBindings(node["shaderGlobalBindings"]);
+    material.shaderPalettes = decodeShaderPalettes(node["shaderPalettes"]);
     material.blendMode = node["blendMode"] ? decodeEnum(node, "blendMode", StreamSchema::materialBlendMode()) : MaterialBlendMode::AUTO;
     material.cullMode = node["cullMode"] ? decodeEnum(node, "cullMode", StreamSchema::materialCullMode()) : MaterialCullMode::AUTO;
     material.depthWrite = node["depthWrite"] ? decodeEnum(node, "depthWrite", StreamSchema::materialDepthWrite()) : MaterialDepthWrite::AUTO;

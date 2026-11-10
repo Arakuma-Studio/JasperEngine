@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 5b3dae515af101f2
+digest 2ce706668760ff58
 --- 0
 exposure: 2718.8833
 tonemap: agx
@@ -75,6 +75,10 @@ renderScale: 4618.6997
 dynamicResolutionEnabled: true
 dynamicResolutionMinScale: 3e+38
 dynamicResolutionTargetFps: -5
+palette: textures/a.png
+paletteDither: bayer2
+paletteDitherStrength: 80
+paletteDistance: rgb
 --- 1
 exposure: 60
 tonemap: aces
@@ -151,6 +155,11 @@ msaaSamples: 5
 dynamicResolutionEnabled: true
 dynamicResolutionMinScale: 117
 dynamicResolutionTargetFps: -7963
+paletteEnabled: true
+palette: textures/a.png
+paletteDither: bayer2
+paletteDitherStrength: -.inf
+paletteDistance: rgb
 --- 2
 exposure: .nan
 tonemap: neutral
@@ -227,6 +236,11 @@ renderScale: .nan
 msaaSamples: 17
 dynamicResolutionMinScale: -95
 dynamicResolutionTargetFps: -19
+palette: ui/menu.html
+paletteDither: bayer8
+paletteDitherStrength: 97.28571
+paletteDistance: rgb
+palettePrecision: high
 --- 3
 exposure: -101
 tonemap: neutral
@@ -304,6 +318,11 @@ renderScale: 1e-45
 msaaSamples: -12730
 dynamicResolutionMinScale: .inf
 dynamicResolutionTargetFps: 20
+paletteEnabled: true
+palette: textures/a.png
+paletteDither: bayer2
+paletteDitherStrength: 1924.4613
+palettePrecision: high
 --- 4
 exposure: 3272.3667
 tonemap: agx
@@ -378,6 +397,10 @@ msaaSamples: 13
 dynamicResolutionEnabled: true
 dynamicResolutionMinScale: -.inf
 dynamicResolutionTargetFps: 8
+paletteDither: bayer8
+paletteDitherStrength: -0
+paletteDistance: rgb
+palettePrecision: high
 --- 5
 exposure: -40
 tonemap: neutral
@@ -453,6 +476,9 @@ renderScale: 9438.924
 msaaSamples: 14
 dynamicResolutionMinScale: 27
 dynamicResolutionTargetFps: -18
+palette: ui/menu.html
+paletteDither: bayer2
+paletteDitherStrength: 0.042260047
 --- 6
 exposure: 1e-45
 temperature: -87
@@ -528,6 +554,12 @@ renderScale: -0.15250687
 msaaSamples: -4
 dynamicResolutionMinScale: .nan
 dynamicResolutionTargetFps: 1
+paletteEnabled: true
+palette: fonts/Main.ttf
+paletteDither: bayer8
+paletteDitherStrength: -61
+paletteDistance: rgb
+palettePrecision: high
 --- 7
 exposure: 1e-45
 tonemap: agx
@@ -604,3 +636,7 @@ renderScale: 19
 msaaSamples: 8
 dynamicResolutionMinScale: -0
 dynamicResolutionTargetFps: -12
+paletteEnabled: true
+palette: fonts/Main.ttf
+paletteDitherStrength: 50.857143
+paletteDistance: rgb

@@ -46,6 +46,7 @@ namespace jasperengine::editor::ui {
         bool isDefault = true;               // equal to its default: dim label, no reset arrow
         bool canReset = true;                // has a default and is not inheriting
         SourceDot source = SourceDot::None;
+        std::string sourceMenu = "Use Global Light";   // the row menu's item that returns to the source
         bool readOnly = false;
         std::string readOnlyReason;          // the disabled tooltip (R6, R71)
         bool canExpose = true;               // the menu's Expose as Parameter...

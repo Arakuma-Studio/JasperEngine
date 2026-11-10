@@ -123,6 +123,9 @@ namespace jasperengine::editor::titledesigner {
         Vec3d rot;                              // rotation channels
         std::string unit = "px";                // "px" or "%" (readout)
         double step = 10.0;                     // Shift step of the move values
+        // the undo steps of its gestures (S86 R56: "Move 3D Layer", "Rotate 3D Layer", "Tilt Letters");
+        // empty: the gizmo's action name
+        std::string moveStep, rotateStep;
         // The gesture's result as edits: `dPos` added to the move values, `dRot` to the rotations,
         // both from the values at the press. Return every field the gesture drives (Move: all
         // three move values, Rotate: all three channels), also those whose delta is 0, so applying
@@ -150,6 +153,8 @@ namespace jasperengine::editor::titledesigner {
         // false (and nothing drawn) when the pivot is behind the camera
         bool layout(const Gizmo3DTarget& target, const Gizmo3DCamera& camera);
         bool visible() const { return shown; }
+        // not laid out this frame (no 3D target selected): nothing to hit or draw
+        void hide() { shown = false; }
         ImVec2 centre() const { return c; }
         // the drawn tip of arm 0..2 on screen
         ImVec2 armEnd(int axis) const;
@@ -164,6 +169,8 @@ namespace jasperengine::editor::titledesigner {
 
         // "Move X", "Rotate Y", "Free Rotate", "Move" (the lead names the step: "Rotate 3D Layer")
         std::string actionName() const;
+        // the undo step of the gesture begun: the target's (S86 R56), else actionName()
+        std::string stepName() const;
         // the hovered action, or during a drag the action and only the values it changed
         // ("Rotate X · X 12.5°")
         std::string readout(Gizmo3DHandle hovered) const;

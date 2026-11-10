@@ -6,6 +6,7 @@
 // compare with a kept revision or a PNG, the forced RGBA8 path, and the checks of the registry.
 
 #include "TitleArtToolsShared.h"
+#include "TitleArtToolsAnimation.h"
 #include "titleart/three_d/Title3DEditor.h"
 #include "titleart/three_d/TitleMesh.h"
 
@@ -18,9 +19,12 @@
 #include "mcp/McpRefs.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "titleart/fx/FxCost.h"
+#include "titleart/runtime/TitleArtRuntimeExport.h"
 #include "titleart/TitleArtBake.h"
 #include "titleart/TitleArtBuiltinChecks.h"
 #include "titleart/TitleArtChecks.h"
+#include "titleart/interchange/TitleExport.h"
+#include "titleart/localisation/TitleLanguageReport.h"
 #include "titleart/TitleArtDocument.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
@@ -399,6 +403,7 @@ namespace {
     struct PendingRender {
         int variant = 0;
         std::string role;           // "main", "rgba8", "canonical"
+        std::string language;       // S87: options.languages' row label ("de · fit 0.82 · overflow 1")
         titleart::RenderRequest request;
         TitleRenderedImage image;
         bool done = false;
@@ -555,7 +560,8 @@ namespace {
                     images.push_back(composite(r.image.image, bg));
                     SheetCell cell;
                     cell.n = static_cast<int>(boxes.size());
-                    cell.label = s.variants[static_cast<size_t>(r.variant)].label + (r.role == "rgba8" ? " (rgba8)" : "");
+                    cell.label = s.variants[static_cast<size_t>(r.variant)].label + (r.language.empty() ? "" : " \xc2\xb7 " + r.language) +
+                                 (r.role == "rgba8" ? " (rgba8)" : "");
                     cell.background = bg.name;
                     boxes.push_back(cell);
                 }
@@ -635,6 +641,11 @@ bool checkRenderOptions(const Json& options, std::string& error) {
         return false;
     }
     for (auto it = options.begin(); it != options.end(); ++it) {
+        // S85 R53: a frame or a filmstrip of an animation
+        if (it.key() == "animation") {
+            if (!checkAnimationOption(it.value(), error)) return false;
+            continue;
+        }
         // S83 §6.11: the cost readout, per tier
         if (it.key() == "cost") {
             if (!it.value().is_string() || (it.value() != "desktop" && it.value() != "mobile")) {
@@ -652,6 +663,22 @@ bool checkRenderOptions(const Json& options, std::string& error) {
             }
             continue;
         }
+        // S87 R59: one sheet row per language ("all" or a list of codes)
+        if (it.key() == "languages") {
+            const Json& v = it.value();
+            bool ok = (v.is_string() && v.get<std::string>() == "all") || v.is_array();
+            if (v.is_array()) for (const Json& c : v) ok = ok && c.is_string();
+            if (ok) continue;
+            error = "bad_option: `options.languages` is \"all\" or a list of language codes.";
+            return false;
+        }
+        // S84's thumbnail baker: false keeps no copy for `compare: "rev:<n>"`, so the render is one
+        // pass instead of two (the kept copy is a second render at the canonical 768 px scale)
+        if (it.key() == "keep") {
+            if (it.value().is_boolean()) continue;
+            error = "bad_option: `options.keep` is true or false.";
+            return false;
+        }
         if (it.key() == "debug_view") {
             const std::string view = it.value().is_string() ? it.value().get<std::string>() : std::string();
             if (titleDebugView(view) >= 0) continue;
@@ -661,7 +688,7 @@ bool checkRenderOptions(const Json& options, std::string& error) {
         bool known = false;
         for (const OptionKey& k : RENDER_OPTIONS) {
             if (it.key() != k.key) continue;
-            if (std::strcmp(k.owner, "S86") == 0) continue;
+            if (std::strcmp(k.owner, "S86") == 0 || std::strcmp(k.owner, "S87") == 0) continue;
             known = true;
             // S81's keys are an instance's (render_title {entity}): with a path there is none
             if (std::string(k.owner) == "S81") {
@@ -669,15 +696,15 @@ bool checkRenderOptions(const Json& options, std::string& error) {
                         "instead of `path`.";
                 return false;
             }
-            error = std::string("not_available: render_title option '") + k.key + "' arrives with " + k.owner + "; this build serves cost, quality and debug_view.";
+            error = std::string("not_available: render_title option '") + k.key + "' arrives with " + k.owner + "; this build serves cost, quality, debug_view, languages and keep.";
             return false;
         }
         if (!known) {
             std::string list;
             for (const OptionKey& k : RENDER_OPTIONS) {
-                if (std::strcmp(k.owner, "S86") != 0) list += (list.empty() ? "" : ", ") + std::string(k.key) + " (" + k.owner + ")";
+                if (std::strcmp(k.owner, "S86") != 0 && std::strcmp(k.owner, "S87") != 0) list += (list.empty() ? "" : ", ") + std::string(k.key) + " (" + k.owner + ")";
             }
-            error = "bad_option: render_title has no option '" + it.key() + "'. This build serves cost, quality and debug_view; later features add: " + list + ".";
+            error = "bad_option: render_title has no option '" + it.key() + "'. This build serves cost, quality, debug_view, languages and keep; later features add: " + list + ".";
             return false;
         }
     }
@@ -792,10 +819,28 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
     if (args.contains("options") && args["options"].is_object()) {
         debugView = std::max(0, titleDebugView(args["options"].value("debug_view", std::string("none"))));
     }
+    // S87 R59: options.languages renders each variant once per language (a sheet row each)
+    std::vector<std::pair<std::string, std::string>> languageRows = {{"", ""}};
+    if (args.contains("options") && args["options"].is_object() && args["options"].contains("languages")) {
+        std::vector<std::string> codes;
+        if (!titleExportLanguages(doc, toOrdered(args["options"]["languages"]), codes, error)) {
+            call->fail("options.languages: " + error);
+            return;
+        }
+        languageRows.clear();
+        const titleart::AssetResolver* assets = TitleArtRenderHost::editor().resolver(project);
+        for (const std::string& code : codes) languageRows.emplace_back(code, titleLanguageRowLabel(doc, code, assets));
+        Json rows = Json::array();
+        for (const auto& row : languageRows) rows.push_back(row.second);
+        s->extra["language_rows"] = rows;
+    }
+    for (const auto& [languageCode, languageLabel] : languageRows)
     for (size_t v = 0; v < s->variants.size(); v++) {
         PendingRender r;
         r.variant = static_cast<int>(v);
         r.role = "main";
+        r.language = languageLabel;
+        r.request.language = languageCode;
         r.request.doc = s->variants[v].doc;
         r.request.pxScale = scale;
         r.request.region = s->region;
@@ -815,7 +860,8 @@ void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::st
     }
     // the canonical render of the current state: kept as this rev's, and what rev compares use
     const bool plain = !whatIf && isolate.empty() && s->outputIndex < 0 && s->region.empty() && flags == 0;
-    s->keep = spec.current && !whatIf;
+    const bool keepOption = !(args.contains("options") && args["options"].is_object() && args["options"].value("keep", true) == false);
+    s->keep = spec.current && !whatIf && keepOption;
     const float canonicalScale = std::min(1.0f, 768.0f / static_cast<float>(std::max(1, cw)));
     const bool needCanonical = (s->keep || s->compare.rfind("rev:", 0) == 0) && !(plain && std::abs(scale - canonicalScale) < 1e-6f);
     if (needCanonical) {
@@ -882,6 +928,10 @@ void renderTitleTool(const CallPtr& call) {
         extra["cost"] = fromOrdered(cost.toJson());
         prefix = cost.summary() + ". ";
     }
+    if (options.is_object() && options.contains("animation")) {
+        renderTitleAnimation(call, std::move(spec));
+        return;
+    }
     startRender(call, std::move(spec), extra, prefix);
 }
 
@@ -925,11 +975,27 @@ void checkTitleTool(const CallPtr& call) {
         context.assets = TitleArtRenderHost::editor().resolver(project);
         context.loadWarnings = doc->warnings();
         context.versionError = doc->versionError();
+        // S83's runtime checks: the project's Realtime and Glyph Atlas titles that show it
+        std::vector<std::string> runtimeUses;
+        for (const TitleArtShippedInstance& instance : planTitleArtExport(project).instances) {
+            if (instance.title != rel || instance.mode == TitleArtRenderMode::BAKED) continue;
+            runtimeUses.push_back(instance.where + ": " + instance.object + (instance.mode == TitleArtRenderMode::REALTIME ? " (realtime)" : " (glyph_atlas)"));
+        }
+        context.runtimeInstances = runtimeUses;
         if (a.contains("backgrounds") && a["backgrounds"].is_array() && !a["backgrounds"].empty()) {
             context.options.backgrounds.clear();
             for (const Json& b : a["backgrounds"]) if (b.is_string()) context.options.backgrounds.push_back(b.get<std::string>());
         }
         context.options.failOnWarn = a.value("fail_on", std::string("fail")) == "warn";
+        // S87 R18: the languages to check ("all" default) and the project's
+        if (a.contains("languages")) {
+            std::string languageError;
+            if (!titleExportLanguages(doc->doc(), toOrdered(a["languages"]), context.options.languages, languageError)) {
+                job.fail("bad_value: " + languageError);
+                return true;
+            }
+        }
+        if (project) context.options.projectLanguages = project->getLocalizationSettings().languages;
         context.options.renderScale = std::clamp(a.value("render_scale", 1.0f), 0.05f, 1.0f);
         const std::string baseline = a.value("baseline", std::string());
         if (baseline.rfind("rev:", 0) == 0) {
@@ -944,6 +1010,9 @@ void checkTitleTool(const CallPtr& call) {
             context.options.baseline = baselineFile.string();
         }
         texsynth::Image lastRender;
+        // S85: the anim checks' animation, their renders and asset lookups
+        std::shared_ptr<void> animationRenderer;
+        if (doc->editable()) setupAnimationChecks(context, project, std::make_shared<const titleart::TitleArtDoc>(doc->doc()), a, animationRenderer);
         if (doc->editable()) {
             context.render = [project, &lastRender](const titleart::RenderRequest& request, TitleCheckImage& out, std::string& error) {
                 TitleRenderedImage image;

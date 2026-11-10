@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "Tilemap.h"
+#include <algorithm>
 #include "subsystem/MeshSystem.h"
+#include "component/TilemapComponent.h"
 
 using namespace jasperengine;
 
@@ -61,6 +63,20 @@ void Tilemap::setTextureScaleFactor(float textureScaleFactor){
         tilemap.needUpdateTilemap = true;
         markChanged<TilemapComponent>();
     }
+}
+
+void Tilemap::setPixelsPerUnit(float pixelsPerUnit){
+    TilemapComponent& tilemapcomp = getComponent<TilemapComponent>();
+    pixelsPerUnit = std::max(0.0f, pixelsPerUnit);
+    if (tilemapcomp.pixelsPerUnit != pixelsPerUnit){
+        tilemapcomp.pixelsPerUnit = pixelsPerUnit;
+        tilemapcomp.needUpdateTilemap = true;
+        markChanged<TilemapComponent>();
+    }
+}
+
+float Tilemap::getPixelsPerUnit() const{
+    return getComponent<TilemapComponent>().pixelsPerUnit;
 }
 
 float Tilemap::getTextureScaleFactor() const{

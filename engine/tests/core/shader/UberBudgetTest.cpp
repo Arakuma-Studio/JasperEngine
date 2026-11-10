@@ -144,13 +144,44 @@ TEST(UberBudget, SampleCounts){
     }
 
     // every bit on (combinations the tiers never make included): within 8 samplers (scene, LUT,
-    // bloom, blur, halation x2) and 24 vec4 of parameters
+    // bloom, blur, halation x2, Palette Quantize's one for its two tables) and 24 vec4 of
+    // parameters; 8 textures with Palette Quantize's cells and row (S43)
     const VariantBudget all = compileUber(allBits(), ShaderBackend::Vulkan, error);
     ASSERT_GE(all.samples, 0) << error;
     std::printf("[bench] uber all bits: %d texture reads, %zu textures, %zu samplers, %u parameter bytes\n", all.samples, all.textures,
                 all.samplers, all.paramBytes);
     EXPECT_LE(all.textures, 8u);
     EXPECT_LE(all.samplers, 8u);
-    EXPECT_EQ(all.textures, 6u);
+    EXPECT_EQ(all.textures, 8u);
+    // Palette Quantize reads its cell and its colour: 2 texture reads more than the upscale (R30)
+    const VariantBudget palette = compileUber(UBER_PALETTE, ShaderBackend::Vulkan, error);
+    ASSERT_GE(palette.samples, 0) << error;
+    EXPECT_LE(palette.samples - base.samples, 2);
     EXPECT_LE(all.paramBytes, 24u * 16u);
+}
+
+// S43 AC12 (e): the anti-banding dither is not compiled with Palette Quantize: the fragment
+// program with UBER_DITHER on as well is the same bytes
+TEST(UberBudget, PaletteQuantizeCompilesNoDither){
+    ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
+    auto fragmentCode = [](uint32_t features, std::string& error){
+        ShaderData data;
+        std::string log;
+        std::vector<uint8_t> code;
+        if (!ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::BLIT, features), ShaderBackend::Vulkan, nullptr, data, &error, &log))
+            return code;
+        for (const ShaderStage& stage : data.stages){
+            if (stage.type == ShaderStageType::FRAGMENT && stage.bytecode.data)
+                code.assign(static_cast<const uint8_t*>(stage.bytecode.data), static_cast<const uint8_t*>(stage.bytecode.data) + stage.bytecode.size);
+        }
+        return code;
+    };
+    std::string error;
+    const std::vector<uint8_t> palette = fragmentCode(UBER_PALETTE, error);
+    ASSERT_FALSE(palette.empty()) << error;
+    const std::vector<uint8_t> withDither = fragmentCode(UBER_PALETTE | UBER_DITHER, error);
+    ASSERT_FALSE(withDither.empty()) << error;
+    EXPECT_EQ(palette, withDither);
+    // (while the dither alone does change the program)
+    EXPECT_NE(fragmentCode(UBER_DITHER, error), fragmentCode(UBER_UPSCALE, error));
 }

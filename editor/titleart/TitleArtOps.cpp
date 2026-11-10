@@ -9,8 +9,10 @@
 #include "titleart/TitleEffectRegistry.h"
 
 #include "fx/FxPresets.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
+#include <fstream>
 #include <cmath>
 #include <filesystem>
 #include <map>
@@ -31,7 +33,12 @@ namespace {
 
     struct OpRegistry {
         std::map<std::string, TitleOpHandler> handlers;
-        std::map<std::string, TitleCreateImporter> importers;
+        struct Importer {
+            std::string kind;
+            TitleCreateSniffer sniff;
+            TitleCreateImporter import;
+        };
+        std::vector<Importer> importers;
         std::vector<std::pair<std::string, TitleBatchFinisher>> finishers;
     };
 
@@ -278,7 +285,7 @@ namespace {
                 const std::string id = str(layer, "id");
                 titleart::forEachMember(layer, layerKind, [&](const titleart::SchemaMember* m, const titleart::ParamDef* p, Json& value, const std::string& path) {
                     if (m && m->key == "children") return false;
-                    const bool material = (m && m->kind == "material" && m->type == titleart::ValueType::Object) ||
+                    const bool material = (m && (m->kind == "material" || m->kind == "material_3d") && m->type == titleart::ValueType::Object) ||
                                           (p && p->kind == titleart::ParamKind::Material);
                     if (material && value.is_object()) out.push_back({id, path, &value});
                     return true;
@@ -1268,7 +1275,7 @@ namespace {
             if (!material) return ctx.fail("bad_path", error, "material");
             Json probe = *layer;
             titleart::FieldSetResult same = titleart::setTitleArtField(probe, "layer", longPath, *material, true);
-            const bool isMaterial = (same.member && same.member->kind == "material" && !same.pattern.empty() && same.pattern.back() != '*') ||
+            const bool isMaterial = (same.member && (same.member->kind == "material" || same.member->kind == "material_3d") && !same.pattern.empty() && same.pattern.back() != '*') ||
                                     (same.param && same.param->kind == titleart::ParamKind::Material);
             if (!isMaterial || !material->is_object()) return ctx.fail("bad_path", "'" + longPath + "' is not a Material", "material");
             Json& links = doc().root["material_links"];
@@ -1363,7 +1370,7 @@ TitleJson TitleOpsResult::toJson() const {
     if (!details.empty()) out["details"] = details;
     if (!files.empty()) {
         TitleJson written = TitleJson::array();
-        for (const TitleOpFile& f : files) written.push_back(TitleJson{{"path", f.path.generic_string()}, {"undoable", f.undoable}, {"remove", f.remove}});
+        for (const TitleOpFile& f : files) written.push_back(TitleJson{{"path", FileUtils::pathToUtf8(f.path)}, {"undoable", f.undoable}, {"remove", f.remove}});
         out["files"] = written;
     }
     TitleJson problemList = TitleJson::array();
@@ -1374,8 +1381,8 @@ TitleJson TitleOpsResult::toJson() const {
 
 // ---- TitleOpContext ----
 
-TitleOpContext::TitleOpContext(TitleArtDoc& doc, titleart::TitleIdGenerator& ids, TitleOpsResult& result)
-    : doc(doc), ids(ids), result(result) {
+TitleOpContext::TitleOpContext(TitleArtDoc& doc, titleart::TitleIdGenerator& ids, TitleOpsResult& result, const TitleOpsOptions* options)
+    : doc(doc), ids(ids), result(result), options(options) {
 }
 
 bool TitleOpContext::fail(const std::string& code, const std::string& message, const std::string& path,
@@ -1607,27 +1614,51 @@ bool TitleArtOps::unregisterOp(const std::string& name) {
     return registry().handlers.erase(name) > 0;
 }
 
-bool TitleArtOps::registerCreateImporter(const std::string& extension, TitleCreateImporter importer) {
-    if (extension.empty() || !importer) return false;
-    return registry().importers.emplace(extension, std::move(importer)).second;
-}
-
-bool TitleArtOps::unregisterCreateImporter(const std::string& extension) {
-    return registry().importers.erase(extension) > 0;
-}
-
-bool TitleArtOps::createFrom(const std::string& sourcePath, TitleArtDoc& out, std::string& code, std::string& error) {
-    auto it = registry().importers.find(lowerExtension(sourcePath));
-    if (it == registry().importers.end()) {
-        code = "not_available";
-        error = "creating a Title Art from '" + sourcePath + "' (a Pachislop, PSD or SVG import) arrives with S87";
-        return false;
+bool TitleArtOps::registerCreateImporter(const std::string& kind, TitleCreateSniffer sniff, TitleCreateImporter importer) {
+    if (kind.empty() || !sniff || !importer) return false;
+    for (const auto& i : registry().importers) {
+        if (i.kind == kind) return false;
     }
-    if (!it->second(sourcePath, out, error)) {
-        code = "import_failed";
-        return false;
-    }
+    registry().importers.push_back({kind, std::move(sniff), std::move(importer)});
     return true;
+}
+
+bool TitleArtOps::unregisterCreateImporter(const std::string& kind) {
+    auto& list = registry().importers;
+    const size_t before = list.size();
+    list.erase(std::remove_if(list.begin(), list.end(), [&](const auto& i) { return i.kind == kind; }), list.end());
+    return list.size() != before;
+}
+
+bool TitleArtOps::createFrom(const TitleCreateRequest& request, TitleCreateResult& out, std::string& code, std::string& error) {
+    std::string head;
+    {
+        std::ifstream in(std::filesystem::path(request.sourcePath), std::ios::binary);
+        if (!in) {
+            code = "file_not_found";
+            error = "cannot read '" + request.sourcePath + "'";
+            return false;
+        }
+        head.resize(4096);
+        in.read(head.data(), static_cast<std::streamsize>(head.size()));
+        head.resize(static_cast<size_t>(in.gcount()));
+    }
+    const std::string extension = lowerExtension(request.sourcePath);
+    for (const auto& importer : registry().importers) {
+        if (!importer.sniff(head, extension)) continue;
+        out = TitleCreateResult();
+        out.kind = importer.kind;
+        if (!importer.import(request, out, code, error)) {
+            if (code.empty()) code = "import_failed";
+            return false;
+        }
+        return true;
+    }
+    code = registry().importers.empty() ? "not_available" : "import_unknown_kind";
+    error = registry().importers.empty()
+                ? "creating a Title Art from '" + request.sourcePath + "' (a Pachislop, PSD or SVG import) arrives with S87"
+                : "'" + request.sourcePath + "' is not a file Title Art imports (a Pachislop .pslot.json, a .psd or .psb, an .svg)";
+    return false;
 }
 
 void TitleArtOps::applyCommitInvariants(const TitleArtDoc* before, TitleArtDoc& after, titleart::TitleIdGenerator& ids, TitleOpsResult& result) {
@@ -1648,11 +1679,6 @@ void TitleArtOps::applyCommitInvariants(const TitleArtDoc* before, TitleArtDoc& 
     // link sync
     Json& links = after.root["material_links"];
     std::vector<MaterialAt> materials = materialsOf(after);
-    std::map<std::string, std::string> previous;     // (layer \n path) -> material text before
-    if (before) {
-        TitleArtDoc copy = *before;
-        for (const MaterialAt& m : materialsOf(copy)) previous[m.layer + "\n" + m.path] = m.value->dump();
-    }
     std::map<std::string, std::vector<MaterialAt*>> groups;
     for (MaterialAt& m : materials) {
         const std::string key = str(*m.value, "link");
@@ -1669,6 +1695,13 @@ void TitleArtOps::applyCommitInvariants(const TitleArtDoc* before, TitleArtDoc& 
             continue;
         }
         groups[key].push_back(&m);
+    }
+    // the materials before the batch, only when a link has two members to keep equal
+    std::map<std::string, std::string> previous;     // (layer \n path) -> material text before
+    const bool linked = std::any_of(groups.begin(), groups.end(), [](const auto& g) { return g.second.size() >= 2; });
+    if (before && linked) {
+        TitleArtDoc copy = *before;
+        for (const MaterialAt& m : materialsOf(copy)) previous[m.layer + "\n" + m.path] = m.value->dump();
     }
     for (auto& [key, members] : groups) {
         if (members.size() < 2) continue;
@@ -1743,7 +1776,7 @@ TitleOpsResult TitleArtOps::apply(const TitleArtDoc& doc, const TitleJson& ops, 
     result.doc = doc;
     titleart::TitleIdGenerator ids = options.idSeed ? titleart::TitleIdGenerator(options.idSeed) : titleart::TitleIdGenerator();
     ids.reserveFrom(doc.root);
-    TitleOpContext ctx(result.doc, ids, result);
+    TitleOpContext ctx(result.doc, ids, result, &options);
     const TitleJson list = ops.is_array() ? ops : TitleJson::array({ops});
     if (list.empty()) {
         ctx.fail("bad_op", "no ops");

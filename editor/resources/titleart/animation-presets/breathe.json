@@ -1,0 +1,37 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "breathe",
+  "name": "Breathe",
+  "group": "loop",
+  "role": "idle",
+  "duration": 3,
+  "wrap": "loop",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Grows and shrinks slowly.",
+  "params": [
+    {
+      "name": "scale",
+      "label": "Scale",
+      "type": "number",
+      "default": 1.03,
+      "min": 1,
+      "max": 1.5
+    }
+  ],
+  "tracks": [
+    {
+      "target": "title",
+      "field": "transform.scale",
+      "relative": true,
+      "drive": {
+        "from": 1,
+        "to": "scale",
+        "cycles": 1,
+        "ease": "sine_in_out"
+      }
+    }
+  ],
+  "markers": []
+}

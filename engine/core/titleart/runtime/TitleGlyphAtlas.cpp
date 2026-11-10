@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleGlyphAtlas.h"
+#include "TitleAnimCompose.h"
 
+#include "Log.h"
 #include "io/AtomicFile.h"
 #include "io/Data.h"
 #include "render/FrameReadback.h"
@@ -12,6 +14,7 @@
 #include "texture/TextureData.h"
 #include "titleart/TitleArtHash.h"
 #include "titleart/TitleArtIO.h"
+#include "titleart/render/TitleStepCosts.h"
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/render/TitleArtRenderer.h"
 #include "titleart/render/TitleFrame.h"
@@ -42,6 +45,8 @@ namespace {
     constexpr int QUADS_PER_PASS = 20;
     // the compose and output steps' estimate
     constexpr uint32_t COMPOSE_US = 150;
+    // the compose's kind in the scheduler's cost model (TitleStepCosts)
+    constexpr const char* COMPOSE_KIND = "gpu:glyph compose";
 
     void setMap(TitleGpuPass& pass, int index, float sx, float sy, float ox, float oy){
         pass.params.set(index, sx, sy, ox, oy);
@@ -110,7 +115,7 @@ namespace {
         geometry::Affine m;
         for (const Json* layer : chain){
             const TitleTransform t = decodeTransform(layer->value("transform", Json::object()));
-            geometry::Affine local = geometry::Affine::scale((t.flipX ? -1.0 : 1.0) * t.scale, (t.flipY ? -1.0 : 1.0) * t.scale);
+            geometry::Affine local = geometry::Affine::scale((t.flipX ? -1.0 : 1.0) * t.scale * t.stretch.x, (t.flipY ? -1.0 : 1.0) * t.scale * t.stretch.y);
             local = geometry::Affine::rotateDegrees(-t.rotation).after(local);
             local = geometry::Affine::translate(t.position.x, t.position.y).after(local);
             m = m.after(local);
@@ -170,6 +175,10 @@ namespace {
         int page = 0;
         TitleRectI cell;            // atlas pixels
         double x0 = 0, y0 = 0;      // the compose target's pixels
+        // S85 R15: where the glyph's pose moved it (null pose: at rest), the cell's own pixels
+        // to the target's as p' = (m[0] x + m[1] y + m[2], m[3] x + m[4] y + m[5])
+        const GlyphPose* pose = nullptr;
+        double move[6] = {1, 0, 0, 0, 1, 0};
     };
 
 }
@@ -252,6 +261,8 @@ bool TitleGlyphAtlas::newPage(std::string& error){
 }
 
 void TitleGlyphAtlas::freePage(int index){
+    if (pendingInsert.page == index) pendingInsert = PendingInsert();
+    else if (pendingInsert.page > index) pendingInsert.page--;
     for (auto it = cells.begin(); it != cells.end();){
         if (it->second.page == index) it = cells.erase(it);
         else{
@@ -265,6 +276,13 @@ void TitleGlyphAtlas::freePage(int index){
 bool TitleGlyphAtlas::allocate(int width, int height, const std::set<std::string>& inUse, int& page, TitleRectI& rect, bool& full,
                                std::string& error){
     full = false;
+    if (width + CELL_GUTTER > pageSide || height + CELL_GUTTER > pageSide){
+        // more pages cannot hold it, so no page is made for it and R29's sentence would mislead
+        error = "a glyph cell of " + std::to_string(width) + " x " + std::to_string(height) + " px does not fit an atlas page of " +
+                std::to_string(pageSide) + ". Raise Atlas Page Size, lower Resolution Scale, or shorten what reaches past the glyphs (glows, shadows).";
+        full = true;
+        return false;
+    }
     for (size_t p = 0; p < pages.size(); p++){
         if (place(pages[p], width, height, rect)){
             page = (int)p;
@@ -274,11 +292,7 @@ bool TitleGlyphAtlas::allocate(int width, int height, const std::set<std::string
     if ((int)pages.size() < pageLimit){
         if (!newPage(error)) return false;
         page = (int)pages.size() - 1;
-        if (place(pages.back(), width, height, rect)) return true;
-        error = "a glyph cell of " + std::to_string(width) + " x " + std::to_string(height) + " px does not fit a page of " +
-                std::to_string(pageSide);
-        full = true;
-        return false;
+        return place(pages.back(), width, height, rect);
     }
     // R29: the least recently used page that no wanted or shown string needs is freed
     int victim = -1;
@@ -301,6 +315,7 @@ bool TitleGlyphAtlas::allocate(int width, int height, const std::set<std::string
         else ++it;
     }
     Page& freed = pages[(size_t)victim];
+    if (pendingInsert.page == victim) pendingInsert = PendingInsert();
     freed.skyline.assign((size_t)pageSide, 0);
     const float transparent[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     if (!gpuLayer.clear(freed.target.get(), transparent, error)) return false;
@@ -347,8 +362,9 @@ bool TitleGlyphAtlas::copyUpload(TitleTarget* target, TextureRender& from, int w
 }
 
 bool TitleGlyphAtlas::insert(const std::string& key, const TitleImage& back, const TitleImage& front, double anchorX, double anchorY,
-                             const std::set<std::string>& inUse, bool& full, std::string& error){
+                             const std::set<std::string>& inUse, bool& full, bool& deferred, std::string& error){
     full = false;
+    deferred = false;
     Cell cell;
     cell.anchorX = anchorX;
     cell.anchorY = anchorY;
@@ -361,6 +377,7 @@ bool TitleGlyphAtlas::insert(const std::string& key, const TitleImage& back, con
     const bool hasBack = back.target && !cell.backPixels.empty();
     const bool hasFront = front.target && !cell.frontPixels.empty();
     if (!hasBack && !hasFront){
+        pendingInsert = PendingInsert();
         insertBlank(key);
         return true;
     }
@@ -369,8 +386,15 @@ bool TitleGlyphAtlas::insert(const std::string& key, const TitleImage& back, con
     const int height = std::max(hasBack ? cell.backPixels.height : 0, hasFront ? cell.frontPixels.height : 0);
     int page = -1;
     TitleRectI rect;
-    if (!allocate(width, height, inUse, page, rect, full, error)) return false;
+    if (pendingInsert.page >= 0 && pendingInsert.key == key){
+        page = pendingInsert.page;
+        rect = pendingInsert.rect;
+    }else{
+        pendingInsert = PendingInsert();
+        if (!allocate(width, height, inUse, page, rect, full, error)) return false;
+    }
     cell.page = page;
+    const uint64_t deferrals = gpuLayer.deferrals();
     if (hasBack){
         cell.back = {rect.x, rect.y, cell.backPixels.width, cell.backPixels.height};
         if (!copyCell(page, back, cell.backPixels, cell.back, error)) return false;
@@ -379,6 +403,13 @@ bool TitleGlyphAtlas::insert(const std::string& key, const TitleImage& back, con
         cell.front = {rect.x + (hasBack ? cell.backPixels.width + CELL_GUTTER : 0), rect.y, cell.frontPixels.width, cell.frontPixels.height};
         if (!copyCell(page, front, cell.frontPixels, cell.front, error)) return false;
     }
+    if (gpuLayer.deferrals() != deferrals){
+        // the cell's pixels are not in the page yet: registering it would be a blank cell forever
+        pendingInsert = {key, page, rect};
+        deferred = true;
+        return false;
+    }
+    pendingInsert = PendingInsert();
     cell.lastUse = ++clock;
     pages[(size_t)page].lastUse = clock;
     cells[key] = cell;
@@ -499,6 +530,9 @@ uint64_t jasperengine::titleart::titleGlyphStyleHash(uint64_t documentHash, cons
 }
 
 bool TitleGlyphAtlas::snapshot(TitleGlyphAtlasSnapshot& out, std::string& error){
+    // the pages' draws were recorded, not submitted: Vulkan's readback waits for what was
+    // submitted (FrameReadback reads after the frame that drew was committed)
+    SystemRender::commit();
     out = TitleGlyphAtlasSnapshot();
     Json manifest{{"format", "jasperengine.titleart.glyphs"}, {"version", 1}, {"page_size", pageSide}};
     Json skylines = Json::array();
@@ -539,6 +573,18 @@ bool TitleGlyphAtlas::restore(const TitleGlyphAtlasSnapshot& in, std::string& er
         error = programError;
         return false;
     }
+    const uint64_t deferrals = gpuLayer.deferrals();
+    const uint64_t restoredBefore = counters.restoredCells;
+    // a copy that went to a later frame (TitleFirstDraws) would be a blank page or plate: the
+    // caller keeps the snapshot and the whole restore runs again
+    auto deferred = [&]{
+        if (gpuLayer.deferrals() == deferrals) return false;
+        pages.clear();
+        cells.clear();
+        uploads.clear();
+        counters.restoredCells = restoredBefore;
+        return true;
+    };
     const Json& m = in.manifest;
     const int side = m.value("page_size", 0);
     const Json skylines = m.value("skylines", Json::array());
@@ -561,6 +607,7 @@ bool TitleGlyphAtlas::restore(const TitleGlyphAtlasSnapshot& in, std::string& er
             return false;
         }
         if (!copyUpload(pages.back().target.get(), upload->texture(), side, side, error)) return false;
+        if (deferred()) return false;
         uploads.push_back(std::move(upload));
         pages.back().skyline = skylines[i].get<std::vector<int>>();
         if ((int)pages.back().skyline.size() != side) pages.back().skyline.assign((size_t)side, side);
@@ -607,6 +654,7 @@ bool TitleGlyphAtlas::restore(const TitleGlyphAtlasSnapshot& in, std::string& er
             return false;
         }
         if (!copyUpload(image.target.get(), upload->texture(), image.width, image.height, error)) return false;
+        if (deferred()) return false;
         uploads.push_back(std::move(upload));
         image.format = ColorFormat::RGBA;
         image.premultiplied = true;
@@ -720,6 +768,9 @@ std::vector<std::string> jasperengine::titleart::titleGlyphPrebakeStrings(const 
 bool jasperengine::titleart::prebakeTitleGlyphAtlas(TitleArtLive& live, const TitleJobFactory& factory, const TitleArtLiveState& state,
                                                     const std::vector<FieldOverride>& overrides, const std::string& textLayer,
                                                     const std::vector<std::string>& strings, size_t maxCells, std::string& error){
+    // this call steps the jobs itself and no frame commits meanwhile: spreading the first draws
+    // (TitleFirstDraws) would wait for a frame that never comes
+    TitleFirstDraws::SynchronousScope synchronous;
     TitleLiveLimits limits;
     double clock = 0.0;
     for (const std::string& text : strings){
@@ -781,7 +832,19 @@ namespace {
         bool step(const StepBudget&, StepReport* report) override{
             if (!failure.empty() || finished) return finished;
             StepReport local;
+            bool composed = false;
             const auto start = std::chrono::steady_clock::now();
+            // a page copy or compose whose first draw went to a later frame (TitleFirstDraws) did
+            // not finish: its chain draws again once a new first draw can go
+            if (firstDrawWait){
+                if (!TitleFirstDraws::available()){
+                    blocked = true;
+                    if (report) *report = local;
+                    return false;
+                }
+                firstDrawWait = false;
+                blocked = false;
+            }
             if (!prepared){
                 // the prebaked pages and plates, then the state's layout
                 std::string error;
@@ -795,20 +858,27 @@ namespace {
                     prepare();
                 }else{
                     blocked = true;
+                    firstDrawWait = atlas->gpu().lastRunDeferred();
                 }
             }else if (sub){
-                sub->step(StepBudget{1, 0}, &local);
+                if (!sub->done()) sub->step(StepBudget{1, 0}, &local);
                 if (sub->failed()){
                     fail(sub->error());
                 }else if (sub->done()){
                     finishSub();
                 }
-                blocked = sub && sub->waiting() && local.steps == 0;
+                blocked = firstDrawWait || (sub && sub->waiting() && local.steps == 0);
             }else if (!startNext()){
                 // every plate and cell is in: compose (one step)
                 if (compose(local)) finished = true;
+                composed = finished;
             }
             local.measuredUs = (uint32_t)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+            if (composed && costs){
+                // what the compose costs this device (the scheduler's prediction of the next one)
+                local.estimatedUs = costs->predictUs(COMPOSE_KIND, COMPOSE_US);
+                costs->observe(COMPOSE_KIND, COMPOSE_US, local.measuredUs);
+            }
             if (local.steps == 0 && !blocked) local.steps = 1;
             if (report) *report = local;
             return finished;
@@ -824,7 +894,11 @@ namespace {
         uint32_t nextStepCostUs() const override{
             if (finished) return 0;
             if (sub) return sub->nextStepCostUs();
-            return COMPOSE_US;
+            return costs ? costs->predictUs(COMPOSE_KIND, COMPOSE_US) : COMPOSE_US;
+        }
+        void useCosts(TitleStepCosts* model) override{
+            costs = model;
+            if (sub) sub->useCosts(model);
         }
         void splitOversizedSteps(uint32_t maxUs) override{ splitLimit = maxUs; }
         uint32_t passesDone() const override{ return passesRun + (sub ? sub->passesDone() : 0); }
@@ -848,7 +922,7 @@ namespace {
 
         std::vector<ShaderKey> shaderKeys() const override{
             std::vector<ShaderKey> keys = subKeys;
-            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::Output, TitleRenderProgram::Blend}){
+            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::GlyphComposeAnim, TitleRenderProgram::Output, TitleRenderProgram::Blend}){
                 const ShaderKey k = titleRenderProgramKey((uint32_t)p);
                 if (std::find(keys.begin(), keys.end(), k) == keys.end()) keys.push_back(k);
             }
@@ -881,6 +955,7 @@ namespace {
         bool hasPrebaked = false;
         TitleGlyphAtlasSnapshot prebaked;
         uint32_t splitLimit = 0;
+        TitleStepCosts* costs = nullptr;
         uint32_t passesRun = 0;
         size_t work = 0, workDone = 0;
         std::vector<ShaderKey> subKeys;
@@ -906,8 +981,13 @@ namespace {
         struct Placed {
             std::string key;
             double x = 0, y = 0;        // the string glyph's position, output pixels
+            // S85 R15: the glyph's pose (null: at rest) and its move in output pixels
+            const GlyphPose* pose = nullptr;
+            double move[6] = {1, 0, 0, 0, 1, 0};
         };
         std::vector<Placed> placed;     // the string's glyphs in order
+
+        bool firstDrawWait = false;     // a chain of passes waits for a first draw
 
         // the running sub-render
         SubKind subKind = SubKind::None;
@@ -926,6 +1006,17 @@ namespace {
 
         TitleVec2 toOutput(const TitleVec2& layerPoint) const{
             return canvasFrame.toFrame(toDocument.apply(layerPoint));
+        }
+
+        // R15: the glyph's sampled values as a move in output pixels: about its pivot (the
+        // ink box's centre, baseline, bottom or top), to the pivot shifted by the offset (% of
+        // the layer's size, layer axes), as the editor's exact pose does
+        void poseGlyph(Placed& glyph, const LaidOutCluster& cluster, const Json& textLayer) const{
+            if (!spec.glyphPoses) return;
+            auto found = spec.glyphPoses->find(cluster.index);
+            if (found == spec.glyphPoses->end() || found->second.identity()) return;
+            glyph.pose = &found->second;
+            titleGlyphMove(found->second, cluster.inkBox, cluster.pen, textLayer.value("size", 200.0), [this](const TitleVec2& p){ return toOutput(p); }, glyph.move);
         }
 
         // the style: overrides, its hash (R32's file key), the cell document
@@ -1086,7 +1177,9 @@ namespace {
                 // pixels and is never resampled
                 const int qx = phaseOf(at.x - ax), qy = phaseOf(at.y - ay);
                 const std::string key = base + "|" + std::to_string(qx) + "," + std::to_string(qy);
-                placed.push_back({key, at.x, at.y});
+                Placed glyph{key, at.x, at.y};
+                poseGlyph(glyph, cluster, *layer);
+                placed.push_back(glyph);
                 stringKeys.insert(key);
                 if (atlas->find(key) || queued.count(key)) continue;
                 needed.push_back({key, text, adjusted, offset, ax + qx / (double)PHASES, ay + qy / (double)PHASES, qx / (double)PHASES,
@@ -1106,12 +1199,14 @@ namespace {
             request.pxScale = spec.pxScale;
             request.output = TitleOutputFormat::Linear;
             request.tier = spec.tier;
+            request.fxTier = spec.fxTier;
             request.testFlags = renderFlags;
             sub = renderer.begin(request);
             if (!sub){
                 fail("the renderer refused the document");
                 return false;
             }
+            if (costs) sub->useCosts(costs);
             if (splitLimit) sub->splitOversizedSteps(splitLimit);
             subKind = kind;
             collectKeys();
@@ -1172,25 +1267,31 @@ namespace {
         }
 
         void finishSub(){
-            workDone++;
-            passesRun += sub->passesDone();
             if (subKind == SubKind::BackPlate || subKind == SubKind::FrontPlate){
                 atlas->storePlate(subKind == SubKind::BackPlate ? backPlateHash : frontPlateHash, std::move(sub->resultImage()));
             }else if (subKind == SubKind::Cell){
                 const Needed& n = needed[subCell];
                 const TitleSplits& splits = sub->splits();
-                bool full = false;
+                bool full = false, deferred = false;
                 std::string error;
-                if (!atlas->insert(n.key, splits.glyphBack, splits.glyphFront, n.anchorX, n.anchorY, stringKeys, full, error)){
+                if (!atlas->insert(n.key, splits.glyphBack, splits.glyphFront, n.anchorX, n.anchorY, stringKeys, full, deferred, error)){
+                    if (deferred){
+                        // the cell is rendered but not in its page: the sub stays and the copies retry
+                        firstDrawWait = true;
+                        return;
+                    }
                     if (full){
                         const std::string name = spec.label.rfind("TitleArt/", 0) == 0 ? spec.label.substr(9) : spec.label;
-                        fail("Title Art '" + name + "': the glyph atlas is full (" + std::to_string(atlas->maxPages()) + " pages of " +
-                             std::to_string(atlas->pageSize()) + "). Raise Max Pages, lower Resolution Scale, or reduce the Characters.");
+                        // `error` when the cell is wider than a page: R29's sentence is about the page count
+                        fail("Title Art '" + name + "': " + (!error.empty() ? error : "the glyph atlas is full (" + std::to_string(atlas->maxPages()) + " pages of " +
+                             std::to_string(atlas->pageSize()) + "). Raise Max Pages, lower Resolution Scale, or reduce the Characters."));
                     }else{
                         fail(error);
                     }
                 }
             }
+            workDone++;
+            passesRun += sub->passesDone();
             sub.reset();
             subKind = SubKind::None;
         }
@@ -1238,12 +1339,24 @@ namespace {
                 if (!cell || cell->blank) continue;
                 shown.insert(p.key);
                 const double dx = std::round(p.x - cell->anchorX), dy = std::round(p.y - cell->anchorY);
+                // the pose moves output pixels; these quads sit in the compose target's
+                auto posed = [&](Quad quad){
+                    if (p.pose){
+                        quad.pose = p.pose;
+                        std::copy(p.move, p.move + 6, quad.move);
+                        quad.move[2] -= composeRect.x - (quad.move[0] * composeRect.x + quad.move[1] * composeRect.y);
+                        quad.move[5] -= composeRect.y - (quad.move[3] * composeRect.x + quad.move[4] * composeRect.y);
+                    }
+                    return quad;
+                };
                 if (!cell->back.empty())
-                    quads.push_back({cell->page, cell->back, cell->backPixels.x + dx - composeRect.x, cell->backPixels.y + dy - composeRect.y});
-                Quad front{cell->page, cell->front, cell->frontPixels.x + dx - composeRect.x, cell->frontPixels.y + dy - composeRect.y};
+                    quads.push_back(posed({cell->page, cell->back, cell->backPixels.x + dx - composeRect.x, cell->backPixels.y + dy - composeRect.y}));
+                Quad front = posed({cell->page, cell->front, cell->frontPixels.x + dx - composeRect.x, cell->frontPixels.y + dy - composeRect.y});
                 if (!cell->front.empty()) (stringOrder ? quads : fronts).push_back(front);
             }
             quads.insert(quads.end(), fronts.begin(), fronts.end());
+            const bool anyPose = std::any_of(quads.begin(), quads.end(), [](const Quad& q){ return q.pose != nullptr; });
+            if (anyPose) return drawPosedCells(into, quads, passes, error);
             const float side = (float)atlas->pageSize();
             for (size_t i = 0; i < quads.size();){
                 // a run of quads of one page, at most QUADS_PER_PASS
@@ -1275,11 +1388,40 @@ namespace {
             return true;
         }
 
+        // S85 R15: the quads with their poses
+        bool drawPosedCells(TitleTarget* into, const std::vector<Quad>& quads, uint32_t& passes, std::string& error){
+            const float side = (float)atlas->pageSize();
+            std::vector<TitlePosedQuad> posed;
+            for (const Quad& quad : quads){
+                TitlePosedQuad p;
+                TitleTarget* page = atlas->pageTarget(quad.page);
+                p.texture = page ? page->colorTexture() : nullptr;
+                p.uv[0] = quad.cell.x / side;
+                p.uv[1] = quad.cell.y / side;
+                p.uv[2] = (quad.cell.x + quad.cell.width) / side;
+                p.uv[3] = (quad.cell.y + quad.cell.height) / side;
+                p.x0 = quad.x0;
+                p.y0 = quad.y0;
+                p.width = quad.cell.width;
+                p.height = quad.cell.height;
+                std::copy(quad.move, quad.move + 6, p.move);
+                if (quad.pose){
+                    p.opacity = (float)quad.pose->opacity;
+                    for (int k = 0; k < 3; k++){
+                        p.tint[k] = srgbToLinear((float)quad.pose->tint[k]);
+                        p.flash[k] = srgbToLinear((float)quad.pose->flash[k]) * (float)quad.pose->flashAmount;
+                    }
+                }
+                posed.push_back(p);
+            }
+            return drawTitlePosedQuads(atlas->gpu(), into, posed, composeRect.width, composeRect.height, passes, error);
+        }
+
         // R28: back plate, back cells, front cells, front plate, then the output pass; a text layer
         // with an opacity or a blend composes its glyphs apart, then over the back plate
         bool compose(StepReport& report){
             const bool apart = blendMode != (int)TitleBlend::Normal || opacity < 1.0;
-            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::Output})
+            for (TitleRenderProgram p : {TitleRenderProgram::Copy, TitleRenderProgram::GlyphCompose, TitleRenderProgram::GlyphComposeAnim, TitleRenderProgram::Output})
                 if (!ensure(p)) return false;
             if (blendMode != (int)TitleBlend::Normal && !ensure(TitleRenderProgram::Blend)) return false;
             blocked = false;
@@ -1293,6 +1435,7 @@ namespace {
             }
             TitleTarget* acc = accumulator.get();
             uint32_t passes = 0;
+            const uint64_t deferrals = atlas->gpu().deferrals();
             const float transparent[4] = {0.0f, 0.0f, 0.0f, 0.0f};
             if (!atlas->gpu().clear(acc, transparent, error)) return failWith(error);
             if (const TitleImage* back = atlas->plate(backPlateHash))
@@ -1342,11 +1485,23 @@ namespace {
             setMap(out, 3, 1.0f / (float)composeRect.width, 1.0f / (float)composeRect.height, 0.0f, 0.0f);
             passes++;
             if (!atlas->gpu().run(out, error)) return failWith(error);
+            if (atlas->gpu().deferrals() != deferrals){
+                // a pass of the chain did not draw: the image would have a hole. The compose runs
+                // again from the top (the targets are cleared, new keys wait their frames)
+                firstDrawWait = true;
+                blocked = true;
+                return false;
+            }
             accumulator.reset();
             atlas->setShown(std::move(shown));
             passesRun += passes;
             atlas->mutableStats().composes++;
             atlas->mutableStats().composePasses = passes + 1;    // and the clear
+            if (atlas->stats().composes == 1){
+                // R32: what a shipped counter's first value cost (0 cell renders with its prebake)
+                Log::print("Title Art '%s': the glyph atlas showed its first string after %llu cell renders (%llu cells from the build's prebaked atlas)",
+                           spec.label.c_str(), (unsigned long long)atlas->stats().cellRenders, (unsigned long long)atlas->stats().restoredCells);
+            }
             report.passes += passes;
             report.steps = 1;
             report.estimatedUs = COMPOSE_US;

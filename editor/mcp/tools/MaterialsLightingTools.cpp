@@ -35,19 +35,17 @@ namespace {
 // the distinct builtin:lit variants the open scenes' meshes draw with (a project past
 // MaterialPbr::VARIANT_WARNING compiles and ships many)
 size_t litVariantCount(Project* project){
-    std::set<std::pair<uint32_t, uint32_t>> variants;
+    std::vector<std::pair<uint64_t, uint64_t>> drawn;
     for (SceneProject* sceneProject : project->getScenesAndPrefabStages()){
         if (!sceneProject->scene) continue;
         auto meshes = sceneProject->scene->getComponentArray<MeshComponent>();
         for (size_t i = 0; i < meshes->size(); i++){
             const MeshComponent& mesh = meshes->getComponentFromIndex(i);
-            for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
-                if (mesh.submeshes[s].litDefineBits != 0)
-                    variants.insert({mesh.submeshes[s].litDefineBits, mesh.submeshes[s].shaderProperties});
-            }
+            for (unsigned int s = 0; s < mesh.numSubmeshes; s++)
+                drawn.push_back({mesh.submeshes[s].litDefineBits, mesh.submeshes[s].shaderProperties});
         }
     }
-    return variants.size();
+    return MaterialPbr::countLitVariants(drawn);
 }
 
 void getMaterialVariantTool(const CallPtr& call){

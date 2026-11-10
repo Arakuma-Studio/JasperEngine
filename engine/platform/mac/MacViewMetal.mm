@@ -64,6 +64,8 @@
 - (void)mouseDragged:(NSEvent*)event { [_router mouseMoved:event]; }
 - (void)rightMouseDragged:(NSEvent*)event { [_router mouseMoved:event]; }
 - (void)otherMouseDragged:(NSEvent*)event { [_router mouseMoved:event]; }
+- (void)tabletPoint:(NSEvent*)event { [_router tabletEvent:event]; }
+- (void)tabletProximity:(NSEvent*)event { [_router tabletEvent:event]; }
 
 - (void)scrollWheel:(NSEvent*)event { [_router scrollWheel:event]; }
 - (void)mouseEntered:(NSEvent*)event { [_router mouseEntered:event]; }

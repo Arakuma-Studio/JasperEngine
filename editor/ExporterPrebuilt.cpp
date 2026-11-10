@@ -217,6 +217,9 @@ bool editor::Exporter::resolvePlayer() {
     if (config.allowPlayerMismatch && player->engineVersion != PlayerRuntimes::editorVersion())
         warn("W-PLAYER-MISMATCH", "player " + id + " is for editor " + player->engineVersion + ", this is " + PlayerRuntimes::editorVersion() +
                                   " (--allow-player-mismatch; publish verify refuses the build)");
+    else if (config.allowPlayerMismatch && !::jasperengine::cook::readsContentFormat(player->contentFormatVersion, ::jasperengine::cook::contentFormatVersion()))
+        warn("W-PLAYER-MISMATCH", "player " + id + " reads content format " + player->contentFormatVersion + ", this editor writes " +
+                                  ::jasperengine::cook::contentFormatVersion() + ": it skips what is newer (--allow-player-mismatch; publish verify refuses the build)");
     return true;
 }
 
@@ -486,11 +489,14 @@ bool editor::Exporter::runPrebuilt() {
     if (!checkHtmlUIReferences()) return false;
     checkSoundEventClips();
     if (cancelled()) return false;
+    if (!prepareTitleArt()) return false;
+    if (cancelled()) return false;
     if (!cookTextures()) return false;
     if (cancelled()) return false;
     if (!cookModels()) return false;
     if (cancelled()) return false;
     if (!copyAssets()) return false;
+    if (!writeTitleArtRuntime()) return false;
     if (!writeAudioImports()) return false;
     if (!writeAssetMap()) return false;
     if (!copyCustomShaderSources()) return false;
@@ -615,22 +621,31 @@ bool editor::Exporter::writeGameConfig() {
     game.canvasWidth = project->getCanvasWidth();
     game.canvasHeight = project->getCanvasHeight();
     game.scaling = project->getScalingMode();
+    game.pixelsPerUnit = project->getPixelsPerUnit();
+    game.defaultFilterPoint = project->getDefaultFilterMode() == TextureFilterMode::Point;
+    game.bitmapTextCacheMiB = project->getBitmapTextCacheMiB();
     game.textureStrategy = project->getTextureStrategy();
     const LoadingSettings& loading = project->getLoadingSettings();
     game.loadingScene = loading.sceneId;
     game.loadingDelay = loading.delay;
     game.loadingTimeout = loading.timeout;
     game.asyncLoading = loading.asyncLoading;
+    game.particleWorldBudget = project->getParticleWorldBudget();
     const ThreadingProjectSettings& threading = project->getThreadingSettings();
     game.threading.workers = threading.workers;
     game.threading.reservedFrameWorkers = threading.reservedFrameWorkers;
     game.threading.ioThreads = threading.ioThreads;
     game.threading.webPumpBudgetMs = threading.webPumpBudgetMs;
     game.atmosphereQuality = project->getAtmosphereQuality();
+    game.foliageQuality = project->getFoliageQuality();
+    game.foliageQualityUncapped = !project->isFoliageQualityDeclared();
     game.foliageDistanceScale = project->getFoliageDistanceScale();
     game.inputDeadzone = project->getInputDeadzone();
     game.inputActions = project->getInputActionsEnginePath();
     game.navigation = project->getNavigationSettings().settings;
+    game.voxelMaxDimension = project->getVoxelSettings().maxDimension;
+    game.voxelCpuBudgetMB = project->getVoxelSettings().cpuBudgetMB;
+    game.voxelMeshBudgetMB = project->getVoxelSettings().meshBudgetMB;
     const TextureProjectSettings& textures = project->getTextureSettings();
     for (size_t g = 0; g < 3; g++)
         game.textureDefaults[g] = {textures.textureQuality[g], textures.memoryBudgetMB[g], textures.lowMemoryFallback[g]};
@@ -643,8 +658,13 @@ bool editor::Exporter::writeGameConfig() {
     game.lightMode = project->getLightMode();
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) game.shadowTiers[platform] = ShadowTiers::getPlatformTier(platform);
     game.device = project->getDeviceSettings();
+    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) game.terrainQualityTiers[platform] = static_cast<int>(project->getTerrainQualityTier(platform));
+    game.terrainShippedTiers = project->getShippedTerrainTiers();
     game.tags = project->getTags();
     game.layerNames = project->getLayerNames();
+    if (project->getSortingLayers().size() > 1) game.sortingLayers = project->getSortingLayers();
+    game.transparencySortMode = project->getTransparencySortMode();
+    game.transparencySortAxis = project->getTransparencySortAxis();
     for (int layer = 0; layer < MAX_LAYERS; layer++) {
         game.collision3D[layer] = project->getLayerCollisionMatrix3D()[layer];
         game.collision2D[layer] = project->getLayerCollisionMatrix2D()[layer];

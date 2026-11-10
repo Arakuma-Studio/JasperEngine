@@ -108,9 +108,11 @@ namespace jasperengine::titleart {
 
         const Cell* find(const std::string& key);
         // copies a rendered glyph's two parts into the pages; false with `error` when the atlas is
-        // full (no page can be freed: `inUse` holds the keys a string needs) or a target fails
+        // full (no page can be freed: `inUse` holds the keys a string needs) or a target fails.
+        // False with `deferred` when a copy's first draw must wait for a later frame
+        // (TitleFirstDraws): nothing is registered, and the same call retries the copies then
         bool insert(const std::string& key, const TitleImage& back, const TitleImage& front, double anchorX, double anchorY,
-                    const std::set<std::string>& inUse, bool& full, std::string& error);
+                    const std::set<std::string>& inUse, bool& full, bool& deferred, std::string& error);
         void insertBlank(const std::string& key);
         // the keys of the shown string (they stay while another one renders)
         void setShown(std::set<std::string> keys) { shownKeys = std::move(keys); }
@@ -169,6 +171,13 @@ namespace jasperengine::titleart {
         int pageSide = 1024;
         int pageLimit = 4;
         std::vector<Page> pages;
+        // a cell whose page copies went to a later frame keeps its place until they draw
+        struct PendingInsert {
+            std::string key;
+            int page = -1;
+            TitleRectI rect;
+        };
+        PendingInsert pendingInsert;
         std::map<std::string, Cell> cells;
         std::set<std::string> shownKeys;
         std::map<uint64_t, TitleImage> plates;

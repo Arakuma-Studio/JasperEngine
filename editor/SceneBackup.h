@@ -23,7 +23,8 @@ namespace jasperengine::editor {
     enum class BackupKind {
         Scene,      // backup/scenes/<project-relative path>
         Untitled,   // backup/untitled/<sceneId>.scene
-        Prefab      // backup/prefabs/<project-relative path> (Prefab Mode with Auto Save off)
+        Prefab,     // backup/prefabs/<project-relative path> (Prefab Mode with Auto Save off)
+        Voxel       // backup/voxels/<project-relative path>: a dirty volume, beside its scene's (T6 R77)
     };
 
     enum class BackupStatus {
@@ -86,9 +87,9 @@ namespace jasperengine::editor {
         // SHA-1, its bytes differ from the file's and its writer is not a running process;
         // Stale (moved to backup/stale/, a warning names it) when the file changed since;
         // None otherwise (a backup identical to the file is deleted: it holds nothing)
-        static SceneBackupInfo scan(const std::filesystem::path& projectPath, const std::filesystem::path& source);
+        static SceneBackupInfo scan(const std::filesystem::path& projectPath, const std::filesystem::path& source, BackupKind kind = BackupKind::Scene);
         // Every backup under backup/scenes, backup/untitled and backup/prefabs, with its status
-        // (nothing is moved: a listing)
+        // (nothing is moved: a listing). A volume's copy is not one to offer: it comes with its scene.
         static std::vector<SceneBackupInfo> list(const std::filesystem::path& projectPath);
         // The untitled backups of processes that are gone (offered once at project open)
         static std::vector<SceneBackupInfo> orphanedUntitled(const std::filesystem::path& projectPath);

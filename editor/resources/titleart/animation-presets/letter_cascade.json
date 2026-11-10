@@ -1,0 +1,133 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "letter_cascade",
+  "name": "Letter Cascade",
+  "group": "in",
+  "role": "intro",
+  "duration": -1,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Each letter rises, tilts and fades in after the one before.",
+  "params": [
+    {
+      "name": "each",
+      "label": "Each (s)",
+      "type": "number",
+      "default": 0.05,
+      "min": 0,
+      "max": 0.5
+    },
+    {
+      "name": "rise",
+      "label": "Rise (%)",
+      "type": "number",
+      "default": 60,
+      "min": 0,
+      "max": 300
+    },
+    {
+      "name": "tilt",
+      "label": "Tilt (deg)",
+      "type": "number",
+      "default": -20,
+      "min": -180,
+      "max": 180
+    },
+    {
+      "name": "order",
+      "label": "Order",
+      "type": "enum",
+      "default": "forward",
+      "options": [
+        "forward",
+        "reverse",
+        "center_out",
+        "edges_in",
+        "random"
+      ]
+    },
+    {
+      "name": "unit",
+      "label": "Unit",
+      "type": "enum",
+      "default": "glyph",
+      "options": [
+        "glyph",
+        "word",
+        "line"
+      ]
+    }
+  ],
+  "tracks": [
+    {
+      "target": "main_text",
+      "field": "glyph.offset",
+      "relative": true,
+      "stagger": {
+        "each": "each",
+        "order": "$order",
+        "unit": "$unit"
+      },
+      "keys": [
+        [
+          0,
+          [
+            0,
+            "rise"
+          ],
+          "back_out"
+        ],
+        [
+          0.3,
+          [
+            0,
+            0
+          ]
+        ]
+      ]
+    },
+    {
+      "target": "main_text",
+      "field": "glyph.opacity",
+      "stagger": {
+        "each": "each",
+        "order": "$order",
+        "unit": "$unit"
+      },
+      "keys": [
+        [
+          0,
+          0
+        ],
+        [
+          0.3,
+          1
+        ]
+      ]
+    },
+    {
+      "target": "main_text",
+      "field": "glyph.rotation",
+      "relative": true,
+      "stagger": {
+        "each": "each",
+        "order": "$order",
+        "unit": "$unit"
+      },
+      "keys": [
+        [
+          0,
+          "tilt",
+          "back_out"
+        ],
+        [
+          0.3,
+          0
+        ]
+      ]
+    }
+  ],
+  "markers": []
+}

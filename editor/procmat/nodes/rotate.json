@@ -1,0 +1,74 @@
+{
+ "code": [
+  "vec2 $(name_uv)_c = vec2(0.5+$cx, 0.5+$cy);"
+ ],
+ "description": "Rotates its input",
+ "format": 1,
+ "functions": [
+  "rotate"
+ ],
+ "id": "rotate",
+ "inputs": [
+  {
+   "default": "vec4($uv, 0.0, 1.0)",
+   "description": "An input image",
+   "label": "",
+   "name": "i#",
+   "short_description": "Input#",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Rotate",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a rotated image",
+   "expr": "$i#(rotate($uv-$(name_uv)_c, $rotate*0.01745329251)+$(name_uv)_c)",
+   "label": "Output#",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The position of the rotation center",
+   "label": "Center X",
+   "max": 1,
+   "min": -1,
+   "name": "cx",
+   "short_description": "Center.x",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The position of the rotation center",
+   "label": "Center Y",
+   "max": 1,
+   "min": -1,
+   "name": "cy",
+   "short_description": "Center.y",
+   "step": 0.005,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The angle of the rotation",
+   "label": "Rotate",
+   "max": 720,
+   "min": -720,
+   "name": "rotate",
+   "short_description": "Angle",
+   "step": 0.005,
+   "type": "float"
+  }
+ ],
+ "short_description": "Rotate",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/rotate.mmg"
+ },
+ "type_version": 1
+}

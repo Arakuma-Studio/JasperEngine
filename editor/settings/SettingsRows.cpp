@@ -15,6 +15,7 @@
 #include "SceneBackup.h"
 #include "diag/CrashHandler.h"
 #include "Project.h"
+#include "util/TitleArtLanguage.h"
 #include "util/PlatformRules.h"
 #include "command/CommandHistory.h"
 #include "command/type/ShaderCreationSettingsCmd.h"
@@ -23,6 +24,7 @@
 #include "command/type/DebugSettingsCmd.h"
 #include "titleart/TitleArtSettingsCmd.h"
 #include "command/type/DrawSubmissionSettingsCmd.h"
+#include "command/type/SortingLayersCmd.h"
 #include "command/type/DeviceSettingsCmd.h"
 #include "command/type/ApplePrivacySettingsCmd.h"
 #include "command/UndoOrigin.h"
@@ -110,16 +112,22 @@ struct EnumMap {
 
 const EnumMap<Scaling> scalingModes[] = {
     {"fit_width", Scaling::FITWIDTH}, {"fit_height", Scaling::FITHEIGHT}, {"letterbox", Scaling::LETTERBOX},
-    {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE}};
+    {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE},
+    // S41: whole-number scales of the canvas
+    {"integer", Scaling::INTEGER}, {"integer_expand", Scaling::INTEGER_EXPAND}};
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
 const EnumMap<PbrTier> pbrTiers[] = {{"full", PbrTier::FULL}, {"reduced", PbrTier::REDUCED}};
+const EnumMap<FoliageQuality> foliageQualities[] = {
+    {"low", FoliageQuality::LOW}, {"medium", FoliageQuality::MEDIUM}, {"high", FoliageQuality::HIGH}};
 const EnumMap<LightMode> lightModes[] = {
     {"automatic", LightMode::AUTOMATIC}, {"per_object", LightMode::PER_OBJECT}, {"tiled", LightMode::TILED}};
 const EnumMap<AtmosphereQuality> atmosphereQualities[] = {
     {"off", AtmosphereQuality::OFF}, {"low", AtmosphereQuality::LOW}, {"medium", AtmosphereQuality::MEDIUM}, {"high", AtmosphereQuality::HIGH}};
 const EnumMap<ShadowTier> shadowTiers[] = {
     {"low", ShadowTier::LOW}, {"medium", ShadowTier::MEDIUM}, {"high", ShadowTier::HIGH}, {"ultra", ShadowTier::ULTRA}};
+const EnumMap<terraincore::TerrainQuality> terrainQualities[] = {
+    {"high", terraincore::TerrainQuality::HIGH}, {"medium", terraincore::TerrainQuality::MEDIUM}, {"low", terraincore::TerrainQuality::LOW}};
 const EnumMap<WindowMode> windowModes[] = {
     {"windowed", WindowMode::WINDOWED}, {"maximized", WindowMode::MAXIMIZED}, {"fullscreen", WindowMode::FULLSCREEN}};
 const EnumMap<ScreenOrientation> playerOrientations[] = {
@@ -814,6 +822,21 @@ bool setDrawSubmission(SettingsContext& ctx, const std::function<void(DrawSubmis
         command->setNoMerge();
         if (!p->getProjectCommandHistory()->addCommand(command)) {
             error = "the draw submission settings could not be applied";
+            return false;
+        }
+    }
+    return true;
+}
+
+// Sorting Layers and Transparency Sort (spec S52): SortingSettings changed, applied as one undoable
+// step (undo scope project)
+bool setSorting(SettingsContext& ctx, const SortingSettings& changed, bool apply, std::string& error) {
+    Project* p = ctx.project();
+    if (apply && changed != SortingSettings::current()) {
+        auto* command = new SortingLayersCmd(p, changed);
+        command->setNoMerge();
+        if (!p->getProjectCommandHistory()->addCommand(command)) {
+            error = "the sorting settings could not be applied";
             return false;
         }
     }
@@ -1766,6 +1789,36 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
         {
+            // S41 R6
+            Setting s;
+            s.key = "graphics.pixels_per_unit";
+            s.type = "int";
+            s.description = "Texels per world unit of sprites and tilemaps whose own Pixels Per Unit is 0 (1: a unit is a pixel).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getPixelsPerUnit()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, Project::minPixelsPerUnit, Project::maxPixelsPerUnit, v, error)) return false;
+                if (apply) ctx.project()->setPixelsPerUnit(static_cast<int>(v));
+                return true;
+            };
+            add(s);
+        }
+        {
+            // S51 R12
+            Setting s;
+            s.key = "graphics.bitmap_text_cache_mib";
+            s.type = "int";
+            s.description = "MiB of styled bitmap glyphs (pixel outlines and shadows); 0: 2 on mobile and web, 8 on desktop.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getBitmapTextCacheMiB()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, 0, Project::maxBitmapTextCacheMiB, v, error)) return false;
+                if (apply) ctx.project()->setBitmapTextCacheMiB(static_cast<int>(v));
+                return true;
+            };
+            add(s);
+        }
+        {
             Setting s;
             s.key = "graphics.ui_scale";
             s.type = "object";
@@ -1779,6 +1832,25 @@ std::vector<Setting> mcpSettingsTable() {
                 CanvasScalerSettings settings = ctx.project()->getUIScale();
                 if (!mcp::McpValues::canvasScalerFromJson(value, settings, error)) return false;
                 if (apply) ctx.project()->setUIScale(settings);
+                return true;
+            };
+            add(s);
+        }
+        {
+            // S45 R18
+            Setting s;
+            s.key = "sprite_atlas.mode";
+            s.type = "enum";
+            s.values = {"enabled", "enabled_for_builds", "disabled"};
+            s.description = "Sprite Atlases: enabled (editor, Play and builds draw from them), enabled_for_builds (only builds), disabled.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getSpriteAtlasMode()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                const std::string mode = value.is_string() ? value.get<std::string>() : std::string();
+                if (mode != "enabled" && mode != "enabled_for_builds" && mode != "disabled") {
+                    error = "sprite_atlas.mode is enabled, enabled_for_builds or disabled";
+                    return false;
+                }
+                if (apply) ctx.project()->setSpriteAtlasMode(mode);
                 return true;
             };
             add(s);
@@ -2059,6 +2131,23 @@ std::vector<Setting> mcpSettingsTable() {
                             e = "\"" + name + "\" is not one of automatic, keep, release";
                             return false;
                         }, {"automatic", "keep", "release"});
+            // Project Settings > Animation (S77 R38); stored with the model settings
+            meshSetting("animation.animation_entities", "enum",
+                        "Models placed in a scene: always make an Animation entity per clip, or auto: none for a model of 5+ clips "
+                        "(new projects; play its clips with an Animation Player or Animator).",
+                        [](const ModelProjectSettings& m) { return Json(animationEntitiesModeName(m.animationEntities)); },
+                        [](ModelProjectSettings& m, const Json& v, std::string& e) {
+                            std::string name;
+                            if (!readString(v, name, e)) return false;
+                            for (AnimationEntitiesMode mode : {AnimationEntitiesMode::Always, AnimationEntitiesMode::Auto}) {
+                                if (name == animationEntitiesModeName(mode)) {
+                                    m.animationEntities = mode;
+                                    return true;
+                                }
+                            }
+                            e = "\"" + name + "\" is not one of always, auto";
+                            return false;
+                        }, {"always", "auto"});
         }
         {
             Setting s;
@@ -2171,6 +2260,51 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        // graphics.terrainQuality.<platform>: the terrain material's tier a terrain of Quality Auto draws with (T3 R51)
+        for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+            Setting s;
+            s.key = std::string("graphics.terrainQuality.") + Project::getShadowTierPlatformName(platform);
+            s.type = "enum";
+            s.values = enumNames(terrainQualities);
+            s.description = std::string("Terrain Quality of ") + Project::getShadowTierPlatformName(platform) +
+                            " builds (and of the editor on it) for terrains whose Quality is Auto: high, medium, low "
+                            "(absent means high; docs/mcp/guide/terrain.md)";
+            s.get = [platform](SettingsContext& ctx) { return Json(enumName(terrainQualities, ctx.project()->getTerrainQualityTier(platform))); };
+            s.set = [platform](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                terraincore::TerrainQuality tier;
+                if (!parseEnum(terrainQualities, value, tier, error)) return false;
+                if (apply) {
+                    ctx.project()->setTerrainQualityTier(platform, tier);
+                    ctx.project()->setTerrainQualityWritten(true);
+                }
+                return true;
+            };
+            add(s);
+        }
+        add(boolSetting("graphics.ship_all_terrain_tiers", "Export the variants of all three terrain Quality tiers, for a game that changes them at runtime.",
+                        [](Project& p) { return p.isShipAllTerrainTiers(); }, [](Project& p, bool v) { p.setShipAllTerrainTiers(v); }));
+        add(boolSetting("graphics.compress_terrain_layers", "Exports cook each terrain layer map as a compressed array slice, and the sources no longer ship.",
+                        [](Project& p) { return p.isCompressTerrainLayers(); }, [](Project& p, bool v) { p.setCompressTerrainLayers(v); }));
+        // get_project_settings says what an export would ship (T3 R46); the tiers follow from the rows above
+        {
+            Setting s;
+            s.key = "graphics.shipped_terrain_tiers";
+            s.type = "string";
+            s.set = [](SettingsContext&, const Json&, bool, std::string& error) {
+                error = "graphics.shipped_terrain_tiers follows from the other terrain settings: set those";
+                return false;
+            };
+            s.description = "The terrain Quality tiers an export ships: the platforms' tiers, any component's own, all three when a script names them or Ship All is on.";
+            s.get = [](SettingsContext& ctx) {
+                const uint32_t mask = ctx.project()->getShippedTerrainTiers();
+                std::string text;
+                for (int tier = 0; tier < terraincore::TERRAIN_QUALITY_COUNT; tier++) {
+                    if (mask & (1u << tier)) text += (text.empty() ? "" : ",") + std::string(terraincore::terrainQualityName(static_cast<terraincore::TerrainQuality>(tier)));
+                }
+                return Json(text);
+            };
+            add(s);
+        }
         add(boolSetting("graphics.dynamic_batching", "Consecutive Sprites, small meshes and UI elements that share a material draw as one draw call (Unity's Dynamic Batching). The same image; off draws each one alone, for comparison.",
                         [](Project& p) { return p.isDynamicBatching(); }, [](Project& p, bool v) { p.setDynamicBatching(v); }));
         add(boolSetting("graphics.runtime_shaders", "Builds carry the runtime shader compiler for variants not shipped precompiled (scripted meshes/materials). Off makes builds smaller and faster to compile.",
@@ -2191,8 +2325,100 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        // 2D sorting (S52 R4)
+        {
+            Setting s;
+            s.key = "graphics.transparency_sort_mode";
+            s.type = "enum";
+            s.values = {"default", "custom_axis"};
+            s.description = "custom_axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw by "
+                            "graphics.transparency_sort_axis (a larger dot(axis, position) first). Undoable (undo scope project).";
+            s.get = [](SettingsContext& ctx) {
+                return Json(ctx.project()->getTransparencySortMode() == TransparencySortMode::CUSTOM_AXIS ? "custom_axis" : "default");
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string() || (value.get<std::string>() != "default" && value.get<std::string>() != "custom_axis")) {
+                    error = "must be \"default\" or \"custom_axis\"";
+                    return false;
+                }
+                SortingSettings changed = SortingSettings::current();
+                changed.mode = value.get<std::string>() == "custom_axis" ? TransparencySortMode::CUSTOM_AXIS : TransparencySortMode::DEFAULT;
+                return setSorting(ctx, changed, apply, error);
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "graphics.transparency_sort_axis";
+            s.type = "list";
+            s.description = "The Custom Axis, default [0, 1, 0] (a higher y draws first: top-down). Undoable (undo scope project).";
+            s.get = [](SettingsContext& ctx) {
+                const Vector3 axis = ctx.project()->getTransparencySortAxis();
+                return Json::array({axis.x, axis.y, axis.z});
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array() || value.size() != 3 || !value[0].is_number() || !value[1].is_number() || !value[2].is_number()) {
+                    error = "must be [x, y, z]";
+                    return false;
+                }
+                SortingSettings changed = SortingSettings::current();
+                changed.axis = Vector3(value[0].get<float>(), value[1].get<float>(), value[2].get<float>());
+                return setSorting(ctx, changed, apply, error);
+            };
+            add(s);
+        }
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
+        // Project Settings > Localization (S87 R56, R64): the languages a game ships and its default
+        {
+            Setting s;
+            s.key = "localization.languages";
+            s.type = "list";
+            s.description = "BCP 47 language tags the game ships, in order (de, pt-BR, zh-Hant). Title Art bakes, fonts and translations "
+                            "of other languages are left out of builds (W-TITLE-LANGUAGE-DROPPED); [] ships every language.";
+            s.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (const std::string& code : ctx.project()->getLocalizationSettings().languages) list.push_back(code);
+                return list;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of language tags";
+                    return false;
+                }
+                std::vector<std::string> codes;
+                for (const Json& item : value) {
+                    if (!item.is_string() || !TitleArtLanguage::isValid(item.get<std::string>(), &error)) {
+                        if (error.empty()) error = "must be a list of language tags";
+                        return false;
+                    }
+                    const std::string code = TitleArtLanguage::canonicalize(item.get<std::string>());
+                    if (std::find(codes.begin(), codes.end(), code) == codes.end()) codes.push_back(code);
+                }
+                if (apply) ctx.project()->getLocalizationSettings().languages = codes;
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "localization.default_language";
+            s.type = "string";
+            s.description = "The language a game shows when none of the device's languages matches (\"\": the first of localization.languages, "
+                            "else en); before a title's source language (TitleArt.setLanguage and the device come first).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getLocalizationSettings().defaultLanguage); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string()) {
+                    error = "must be a language tag or \"\"";
+                    return false;
+                }
+                const std::string code = value.get<std::string>();
+                if (!code.empty() && !TitleArtLanguage::isValid(code, &error)) return false;
+                if (apply) ctx.project()->getLocalizationSettings().defaultLanguage = TitleArtLanguage::canonicalize(code);
+                return true;
+            };
+            add(s);
+        }
         // Project Settings > Title Art (S80 R52): one undoable step each
         add(titleArtSetting("title_art.auto_bake", "bool", "Rebake a Title Art document's existing outputs 500 ms after its last edit.", {},
                             [](const TitleArtProjectSettings& t) { return Json(t.autoBake); },
@@ -2253,13 +2479,77 @@ std::vector<Setting> mcpSettingsTable() {
                                 [readGroup](TitleArtProjectSettings& t, const Json& value, std::string& error) {
                                     return readGroup(value, t.cacheBudgetMiB, 1.0, 4096.0, error);
                                 }));
+            add(titleArtSetting("title_art.animation.flipbook_budget_mib", "object",
+                                "Baked flipbook pages against these budgets in MiB, per family {desktop, mobile, android_etc2, web} (S85, 1..4096; "
+                                "default 32, 8, 8, 8). A flipbook over a budget fails its check.",
+                                {}, [](const TitleArtProjectSettings& t) {
+                                    return Json{{"desktop", t.flipbookBudgetMiB.desktop}, {"mobile", t.flipbookBudgetMiB.mobile},
+                                                {"android_etc2", t.flipbookBudgetAndroidEtc2MiB}, {"web", t.flipbookBudgetMiB.web}};
+                                },
+                                [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    if (!value.is_object()) {
+                                        error = "must be an object {desktop, mobile, android_etc2, web}";
+                                        return false;
+                                    }
+                                    for (auto it = value.begin(); it != value.end(); ++it) {
+                                        double* field = it.key() == "desktop" ? &t.flipbookBudgetMiB.desktop : it.key() == "mobile" ? &t.flipbookBudgetMiB.mobile
+                                                        : it.key() == "web" ? &t.flipbookBudgetMiB.web : it.key() == "android_etc2" ? &t.flipbookBudgetAndroidEtc2MiB : nullptr;
+                                        if (!field) {
+                                            error = "'" + it.key() + "' is not desktop, mobile, android_etc2 or web";
+                                            return false;
+                                        }
+                                        if (!readNumber(it.value(), 1.0, 4096.0, *field, error)) return false;
+                                    }
+                                    return true;
+                                }));
+            add(titleArtSetting("title_art.animation.default_fps", "int", "New documents' animation fps (S85, 1..120; default 30).",
+                                {}, [](const TitleArtProjectSettings& t) { return Json(t.animationDefaultFps); },
+                                [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    double v = t.animationDefaultFps;
+                                    if (!readNumber(value, 1.0, 120.0, v, error)) return false;
+                                    t.animationDefaultFps = (int)v;
+                                    return true;
+                                }));
             add(titleArtSetting("title_art.reference_height", "int",
-                                "The display height (px) the export prebakes Realtime titles' initial states for (default 1080).", {},
+                                "The display height (px) Realtime UI titles and their prebaked first images render for; 0 (default) is the canvas height.", {},
                                 [](const TitleArtProjectSettings& t) { return Json(t.referenceHeight); },
                                 [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
                                     long long height = 0;
-                                    if (!readInt(value, 120, 8192, height, error)) return false;
+                                    if (!readInt(value, 0, 8192, height, error)) return false;
+                                    if (height > 0 && height < 120) {
+                                        error = "must be 0 (the canvas height) or 120..8192";
+                                        return false;
+                                    }
                                     t.referenceHeight = (int)height;
+                                    return true;
+                                }));
+            // S86 R37: the tier of Realtime 3D titles per export platform
+            add(titleArtSetting("title_art.realtime_3d_quality", "object",
+                                "Realtime 3D titles whose Quality Tier is auto: high, medium or low per platform {windows, linux, macos, ios, "
+                                "android, web} (default high on desktop, medium on iOS, low on Android and HTML5). A device tier (S56) wins "
+                                "where one applies; GLES3/WebGL2 draw high as medium.", {},
+                                [](const TitleArtProjectSettings& t) {
+                                    Json j = Json::object();
+                                    for (const char* platform : {"windows", "linux", "macos", "ios", "android", "web"}) j[platform] = t.realtime3DQuality.of(platform);
+                                    return j;
+                                },
+                                [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                    if (!value.is_object()) {
+                                        error = "must be an object {windows, linux, macos, ios, android, web}";
+                                        return false;
+                                    }
+                                    for (auto it = value.begin(); it != value.end(); ++it) {
+                                        std::string* tier = t.realtime3DQuality.find(it.key());
+                                        if (!tier) {
+                                            error = "'" + it.key() + "' is not windows, linux, macos, ios, android or web";
+                                            return false;
+                                        }
+                                        if (!it.value().is_string() || !isTitleArtRealtimeTier(it.value().get<std::string>())) {
+                                            error = it.key() + " must be high, medium or low";
+                                            return false;
+                                        }
+                                        *tier = it.value().get<std::string>();
+                                    }
                                     return true;
                                 }));
             add(titleArtSetting("title_art.simulate_export_characters", "bool",
@@ -2300,7 +2590,7 @@ std::vector<Setting> mcpSettingsTable() {
             s.key = keys[group];
             s.type = "number";
             s.description = std::string("Foliage Distance (0-10) of ") + groups[group] +
-                            ": multiplies every terrain foliage layer's Draw Distance and Min Draw Distance; 0 draws none (Lua: Engine.foliageDistanceScale).";
+                            ": multiplies every terrain foliage layer's Draw Distance and Min Draw Distance, and Tree Distance and Billboard Start; 0 draws none (Lua: Engine.foliageDistanceScale).";
             s.get = [group](SettingsContext& ctx) { return Json(ctx.project()->getFoliageDistanceScale()[group]); };
             s.set = [group](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
                 double v;
@@ -2309,6 +2599,29 @@ std::vector<Setting> mcpSettingsTable() {
                     std::array<float, 3> all = ctx.project()->getFoliageDistanceScale();
                     all[group] = static_cast<float>(v);
                     ctx.project()->setFoliageDistanceScale(all);
+                }
+                return true;
+            };
+            add(s);
+        }
+
+        // T5 R21: what foliage scales and caps per platform group
+        for (int group = 0; group < 3; group++) {
+            static const char* const keys[3] = {"quality.foliage_quality_desktop", "quality.foliage_quality_mobile", "quality.foliage_quality_web"};
+            static const char* const groups[3] = {"Windows, macOS and Linux games and the editor's views", "Android and iOS games", "HTML5 games"};
+            Setting s;
+            s.key = keys[group];
+            s.type = "enum";
+            s.values = enumNames(foliageQualities);
+            s.description = std::string("Foliage Quality (detail density, instance and draw caps, impostor blending: low, medium, high) of ") + groups[group] + ".";
+            s.get = [group](SettingsContext& ctx) { return Json(enumName(foliageQualities, ctx.project()->getFoliageQuality()[group])); };
+            s.set = [group](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                FoliageQuality quality;
+                if (!parseEnum(foliageQualities, value, quality, error)) return false;
+                if (apply) {
+                    std::array<FoliageQuality, 3> all = ctx.project()->getFoliageQuality();
+                    all[group] = quality;
+                    ctx.project()->setFoliageQuality(all);
                 }
                 return true;
             };
@@ -2379,6 +2692,73 @@ std::vector<Setting> mcpSettingsTable() {
             add(std::move(s));
         }
 
+        // ---- particles (S20 R15; Project Settings > Graphics)
+        {
+            Setting s;
+            s.key = "particles.world_budget";
+            s.type = "int";
+            s.description = "Particles alive at once in a scene, sub-emitter children included (0: the platform's default); over it, lower priorities emit less. Applies at once.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getParticleWorldBudget()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, 0, Project::maxParticleWorldBudget, v, error)) return false;
+                if (apply) ctx.project()->setParticleWorldBudget(static_cast<uint32_t>(v));
+                return true;
+            };
+            add(s);
+        }
+        // the thresholds of the particle checks (S91 R28)
+        for (const ParticleQaField& field : particleQaFields()) {
+            Setting s;
+            s.key = field.key;
+            s.type = field.real ? "number" : "int";
+            s.description = field.help;
+            s.get = [&field](SettingsContext& ctx) {
+                const ParticleQaSettings& qa = ctx.project()->getParticleQaSettings();
+                return field.real ? Json(qa.*field.real) : Json(qa.*field.whole);
+            };
+            s.set = [&field](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_number() || value.get<double>() < field.minimum || value.get<double>() > field.maximum ||
+                    (field.whole && !value.is_number_integer())) {
+                    error = "must be a number from " + std::to_string(field.minimum) + " to " + std::to_string(field.maximum);
+                    return false;
+                }
+                if (apply) {
+                    ParticleQaSettings settings = ctx.project()->getParticleQaSettings();
+                    if (field.real) settings.*field.real = value.get<float>();
+                    else settings.*field.whole = value.get<int>();
+                    ctx.project()->setParticleQaSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
+        // the thresholds of the material checks (S90 R36)
+        for (const procmat::ProcMatQaField& field : procmat::procMatQaFields()) {
+            Setting s;
+            s.key = field.key;
+            s.type = field.real ? "number" : "int";
+            s.description = field.help;
+            s.get = [&field](SettingsContext& ctx) {
+                const procmat::ProcMatQaSettings& qa = ctx.project()->getProcMatQaSettings();
+                return field.real ? Json(qa.*field.real) : Json(qa.*field.whole);
+            };
+            s.set = [&field](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_number() || value.get<double>() < field.minimum || value.get<double>() > field.maximum ||
+                    (field.whole && !value.is_number_integer())) {
+                    error = "must be a number from " + std::to_string(field.minimum) + " to " + std::to_string(field.maximum);
+                    return false;
+                }
+                if (apply) {
+                    procmat::ProcMatQaSettings settings = ctx.project()->getProcMatQaSettings();
+                    if (field.real) settings.*field.real = value.get<float>();
+                    else settings.*field.whole = value.get<int>();
+                    ctx.project()->setProcMatQaSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
         // ---- physics
         add(boolSetting("physics.enabled", "3D physics (Jolt). Off leaves Rigidbodies and joints out of builds.",
                         [](Project& p) { return p.isPhysics3DEnabled(); }, [](Project& p, bool v) { p.setPhysics3DEnabled(v); }));
@@ -2468,6 +2848,151 @@ std::vector<Setting> mcpSettingsTable() {
                 return true;
             };
             add(s);
+        }
+
+        // ---- voxels (T6 R7): each lowers its target's limit, never raises it
+        add(boolSetting("voxel.ignore_dimension_limits", "Voxel Volumes: an export goes on with a volume over its target's maximum dimension.",
+                        [](Project& p) { return p.getVoxelSettings().ignoreDimensionLimits; },
+                        [](Project& p, bool v) { VoxelProjectSettings n = p.getVoxelSettings(); n.ignoreDimensionLimits = v; p.setVoxelSettings(n); }));
+        {
+            struct VoxelLimitRow {
+                const char* key;
+                const char* description;
+                int maximum;
+                int VoxelProjectSettings::*field;
+            };
+            const VoxelLimitRow voxelLimitRows[] = {
+                {"voxel.max_dimension", "Voxel Volumes: voxels per axis at most, below the target's 1024, 512 or 256 (0: the target's).", 1024, &VoxelProjectSettings::maxDimension},
+                {"voxel.cpu_budget_mb", "Voxel Volumes: CPU memory of all volumes in MiB, below the target's 256, 64 or 32 (0: the target's).", 256, &VoxelProjectSettings::cpuBudgetMB},
+                {"voxel.mesh_budget_mb", "Voxel Volumes: mesh memory of all volumes in MiB, below the target's 128, 32 or 24 (0: the target's).", 128, &VoxelProjectSettings::meshBudgetMB},
+            };
+            for (const VoxelLimitRow& limitRow : voxelLimitRows) {
+                Setting s;
+                s.key = limitRow.key;
+                s.type = "int";
+                s.description = limitRow.description;
+                const auto field = limitRow.field;
+                const int maximum = limitRow.maximum;
+                s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getVoxelSettings().*field); };
+                s.set = [field, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    long long v;
+                    if (!readInt(value, 0, maximum, v, error)) return false;
+                    if (apply) {
+                        VoxelProjectSettings n = ctx.project()->getVoxelSettings();
+                        n.*field = static_cast<int>(v);
+                        ctx.project()->setVoxelSettings(n);
+                    }
+                    return true;
+                };
+                add(s);
+            }
+        }
+        // ---- the Default Palette (S43 R4b): Snap to Palette, apply_palette without a palette, the
+        // pixel-art tools' new art
+        add(pathSetting("palettes.default", "The Default Palette: the .palette used where none is named (apply_palette, Snap to "
+                        "Palette, new pixel art).", [](Project& p) -> fs::path& { return p.getDefaultPalette(); }));
+
+        // ---- Project Settings > Pixel Art (S42 §6.2): Pixel Art Mode, its checks and defaults
+        {
+            // a copy edited and set back, so the mode's hooks follow every change
+            auto pixelArtBool = [](const std::string& key, const std::string& description, bool pixelart::PixelArtSettings::*member) {
+                return boolSetting(key, description, [member](Project& p) { return p.getPixelArtSettings().*member; },
+                                   [member](Project& p, bool v) {
+                                       pixelart::PixelArtSettings settings = p.getPixelArtSettings();
+                                       settings.*member = v;
+                                       p.setPixelArtSettings(settings);
+                                   });
+            };
+            add(pixelArtBool("pixel_art.enabled", "Pixel Art Mode: sprite images added while on import as pixel art, new 2D scenes get a Pixel Perfect "
+                             "Camera, the validator runs on import and at Play. Changes no other setting (check_pixel_art's "
+                             "pixel_art_mode fix applies the preset).", &pixelart::PixelArtSettings::enabled));
+            add(pixelArtBool("pixel_art.check_on_import", "With Pixel Art Mode on, the validator runs after textures import and logs one "
+                             "Console line when it finds problems.", &pixelart::PixelArtSettings::checkOnImport));
+            add(pixelArtBool("pixel_art.check_on_play", "With Pixel Art Mode on, the validator runs at Play start and logs one Console line "
+                             "when it finds problems.", &pixelart::PixelArtSettings::checkOnPlay));
+            auto pixelArtList = [](const std::string& key, const std::string& description,
+                                   std::vector<std::string> pixelart::PixelArtSettings::*member,
+                                   std::function<std::string(const std::string&)> valid) {
+                Setting s;
+                s.key = key;
+                s.type = "list";
+                s.description = description;
+                s.get = [member](SettingsContext& ctx) {
+                    Json list = Json::array();
+                    for (const std::string& item : ctx.project()->getPixelArtSettings().*member) list.push_back(item);
+                    return list;
+                };
+                s.set = [member, valid](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    if (!value.is_array()) {
+                        error = "must be a list of strings";
+                        return false;
+                    }
+                    std::vector<std::string> items;
+                    for (const Json& item : value) {
+                        std::string text;
+                        if (!readString(item, text, error, 64)) return false;
+                        const std::string why = valid(text);
+                        if (!why.empty()) {
+                            error = "\"" + text + "\" " + why;
+                            return false;
+                        }
+                        items.push_back(text);
+                    }
+                    if (apply) {
+                        pixelart::PixelArtSettings settings = ctx.project()->getPixelArtSettings();
+                        settings.*member = items;
+                        ctx.project()->setPixelArtSettings(settings);
+                    }
+                    return true;
+                };
+                return s;
+            };
+            add(pixelArtList("pixel_art.check_screens", "The screen sizes the validator lays each scene out on (\"WxH\").",
+                             &pixelart::PixelArtSettings::checkScreens, [](const std::string& text) {
+                                 pixelart::PixelArtScreen screen;
+                                 return pixelart::parsePixelArtScreen(text, screen) ? std::string() : std::string("is not WxH (1...16384 each)");
+                             }));
+            add(pixelArtList("pixel_art.backdrops", "The project's pixel-art backdrops (\"#rrggbb\": the first dark, the second light).",
+                             &pixelart::PixelArtSettings::backdrops, [](const std::string& text) {
+                                 return pixelart::isPixelArtBackdrop(text) ? std::string() : std::string("is not #rrggbb");
+                             }));
+            Setting upscale;
+            upscale.key = "pixel_art.upscale_mode";
+            upscale.type = "enum";
+            upscale.values = {"integer", "integer_expand", "stretch_fill"};
+            upscale.description = "The Upscale Mode a new Pixel Perfect Camera gets (Pixel Art Mode's new 2D scenes, the preset).";
+            upscale.get = [](SettingsContext& ctx) { return Json(pixelart::pixelUpscaleModeName(ctx.project()->getPixelArtSettings().upscaleMode)); };
+            upscale.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                PixelUpscaleMode mode;
+                if (!value.is_string() || !pixelart::pixelUpscaleModeFromName(value.get<std::string>(), mode)) {
+                    error = "must be one of integer, integer_expand, stretch_fill";
+                    return false;
+                }
+                if (apply) {
+                    pixelart::PixelArtSettings settings = ctx.project()->getPixelArtSettings();
+                    settings.upscaleMode = mode;
+                    ctx.project()->setPixelArtSettings(settings);
+                }
+                return true;
+            };
+            add(upscale);
+            Setting filter;
+            filter.key = "graphics.default_filter_mode";
+            filter.type = "enum";
+            filter.values = {"bilinear", "point"};
+            filter.description = "The filter every Texture a game makes at runtime starts with (Lua Sprite:setTexture), and what a "
+                                 "reference starts with when a texture without its own Filter Mode is assigned. Saved references keep theirs.";
+            filter.get = [](SettingsContext& ctx) { return Json(textureFilterModeName(ctx.project()->getDefaultFilterMode())); };
+            filter.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                TextureFilterMode mode;
+                if (!value.is_string() || !textureFilterModeFromName(value.get<std::string>(), mode) || mode == TextureFilterMode::Trilinear) {
+                    error = "must be bilinear or point";
+                    return false;
+                }
+                if (apply) ctx.project()->setDefaultFilterMode(mode);
+                return true;
+            };
+            add(filter);
         }
 
         // ---- input (S22, and Unity's Input Manager absorbed from the older Project Settings > Input)
@@ -3184,6 +3709,74 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
+        // Sorting Layers (S52 R34): reads [{id, name}] in draw order; takes names or {id, name}
+        // entries (an id keeps its layer through a rename, a name already in the table keeps its)
+        {
+            Setting s;
+            s.key = "tags_and_layers.sorting_layers";
+            s.type = "list";
+            s.description = "Sorting Layers in draw order, first drawn first, as [{id, name}]; must include \"Default\". Pass the complete "
+                            "list: names, or {id, name} to rename a layer (it keeps its renderers); an unlisted layer is removed (its "
+                            "renderers draw on Default). Undoable (undo scope project).";
+            s.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (const SortingLayerInfo& layer : ctx.project()->getSortingLayers())
+                    list.push_back(Json{{"id", layer.id}, {"name", layer.name}});
+                return list;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of Sorting Layer names or {id, name} entries";
+                    return false;
+                }
+                std::vector<SortingLayerInfo> entries;
+                std::vector<std::string> names;
+                bool hasDefault = false;
+                for (const Json& item : value) {
+                    SortingLayerInfo entry{-1, std::string()};
+                    if (item.is_string()) {
+                        entry.name = item.get<std::string>();
+                    } else if (item.is_object() && item.contains("name") && item["name"].is_string() &&
+                               (!item.contains("id") || item["id"].is_number_integer())) {
+                        entry.name = item["name"].get<std::string>();
+                        if (item.contains("id")) entry.id = item["id"].get<int32_t>();
+                    }
+                    entry.name = TagManager::trimName(entry.name);
+                    if (entry.name.empty()) {
+                        error = "each Sorting Layer is a non-empty name or {id, name}";
+                        return false;
+                    }
+                    if (std::find(names.begin(), names.end(), entry.name) != names.end()) {
+                        error = "\"" + entry.name + "\" is listed twice";
+                        return false;
+                    }
+                    if (entry.id >= 0 && (entry.id == DEFAULT_SORTING_LAYER_ID) != (entry.name == "Default")) {
+                        error = "Default is id 0 and keeps its name";
+                        return false;
+                    }
+                    hasDefault = hasDefault || entry.name == "Default";
+                    names.push_back(entry.name);
+                    entries.push_back(entry);
+                }
+                if (!hasDefault) {
+                    error = "the list must include \"Default\" (it cannot be removed; place it where it draws)";
+                    return false;
+                }
+                SortingSettings changed = SortingSettings::current();
+                if (!SortingLayers::resolve(entries, changed.layers, error)) return false;
+                for (size_t a = 0; a < changed.layers.size(); a++) {
+                    for (size_t b = a + 1; b < changed.layers.size(); b++) {
+                        if (changed.layers[a].id == changed.layers[b].id) {
+                            error = "id " + std::to_string(changed.layers[a].id) + " is listed twice";
+                            return false;
+                        }
+                    }
+                }
+                return setSorting(ctx, changed, apply, error);
+            };
+            add(s);
+        }
+
         // ---- editor preferences (this machine / this editor session)
         {
             Setting s;
@@ -3219,6 +3812,25 @@ std::vector<Setting> mcpSettingsTable() {
                     return false;
                 }
                 if (apply) ctx.consoleWindow()->setErrorPause(b);
+                return true;
+            };
+            add(s);
+        }
+        {
+            // S43 R8: no network request of the editor's own (Lospec says it is offline at once)
+            Setting s;
+            s.key = "preferences.network.offline";
+            s.type = "bool";
+            s.preference = true;
+            s.description = "General: Offline, no network access from the editor (Import > From Lospec reports network_unavailable at once).";
+            s.get = [](SettingsContext&) { return Json(AppSettings::isNetworkOffline()); };
+            s.set = [](SettingsContext&, const Json& value, bool apply, std::string& error) {
+                bool b;
+                if (!readBool(value, b, error)) return false;
+                if (apply) {
+                    AppSettings::setNetworkOffline(b);
+                    AppSettings::saveSettings();
+                }
                 return true;
             };
             add(s);
@@ -3408,6 +4020,8 @@ std::vector<Setting> mcpSettingsTable() {
         toolPreference("preferences.jdk_path", "jdk", "External Tools: the JDK (keytool, jarsigner, java) of Android builds (\"\" = JAVA_HOME / PATH).");
         toolPreference("preferences.steamcmd_path", "steamcmd", "External Tools: SteamCMD for Steam uploads (\"\" = STEAMCMD_HOME / PATH).");
         toolPreference("preferences.rcodesign_path", "rcodesign", "External Tools: rcodesign, which signs macOS builds on any computer (\"\" = PATH).");
+        // S44 §6.8: settings.yaml externalTools.aseprite.path
+        toolPreference("preferences.aseprite_path", "aseprite.path", "External Tools: the Aseprite executable Open in Aseprite starts (\"\" = JASPER_ASEPRITE, then the usual install places and PATH).");
         stringPreference("preferences.ffmpeg_path", "External Tools: ffmpeg for video imports and Recorder movies (\"\" = JASPER_FFMPEG / PATH).",
                          [] { return AppSettings::getFfmpegPath(); }, [](const std::string& v) { AppSettings::setFfmpegPath(v); });
         stringPreference("preferences.default_export_dir", "Default output directory for builds of projects that have none yet.",
@@ -3587,9 +4201,11 @@ const Placement placements[] = {
     {"android.permissions", "Player", "Android", "Permissions", "android"},
     {"android.allow_backup", "Player", "Android", "Application Options", "android allow backup"},
     {"android.fullscreen", "Player", "Android", "Screen Options", "android fullscreen"},
-    {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution"},
-    {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution"},
-    {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch"},
+    {"sprite_atlas.mode", "2D", "Sprite Atlas", "Mode", "sprite atlas packer pages enabled for builds"},
+    {"graphics.canvas_width", "Graphics", "", "Canvas Width", "reference resolution base resolution pixel art"},
+    {"graphics.canvas_height", "Graphics", "", "Canvas Height", "reference resolution base resolution pixel art"},
+    {"graphics.scaling_mode", "Graphics", "", "Scaling Mode", "letterbox fit crop stretch integer pixel perfect"},
+    {"graphics.pixels_per_unit", "Graphics", "", "Pixels Per Unit", "pixel art ppu sprite tilemap"},
     {"graphics.ui_scale", "Graphics", "", "UI Scale", "canvas scaler ui scaling reference resolution match width height constant pixel physical size dpi"},
     {"graphics.texture_strategy", "Graphics", "", "Texture Strategy", "power of two"},
     {"graphics.mobile_pbr_tier", "Graphics", "", "Mobile PBR Tier", "clear coat iridescence anisotropy lit android ios web"},
@@ -3598,6 +4214,25 @@ const Placement placements[] = {
     {"graphics.html_ui_glyph_atlas_mib", "Graphics", "", "HTML UI Glyph Atlas", "font text memory budget mib"},
     {"graphics.html_ui_sdf_primitives", "Graphics", "", "HTML UI SDF Primitives", "batching shapes borders box shadows"},
     {"graphics.html_ui_transform_aware_text", "Graphics", "", "HTML UI Transform-Aware Text", "sharp text scale msdf distance field"},
+    {"particles.world_budget", "Graphics", "", "World Particle Budget", "particles limit max effects sub-emitters"},
+    {"particles.qa.overdraw_mobile", "Graphics", "Particle Checks", "Overdraw Layers Mobile", "particles check overdraw fill rate"},
+    {"particles.qa.overdraw_web", "Graphics", "Particle Checks", "Overdraw Layers Web", "particles check overdraw fill rate"},
+    {"particles.qa.overdraw_desktop", "Graphics", "Particle Checks", "Overdraw Layers Desktop", "particles check overdraw fill rate"},
+    {"particles.qa.cpu_ms_mobile", "Graphics", "Particle Checks", "CPU Budget Mobile (ms)", "particles check platform budget cost"},
+    {"particles.qa.cpu_ms_web", "Graphics", "Particle Checks", "CPU Budget Web (ms)", "particles check platform budget cost"},
+    {"particles.qa.cpu_ms_desktop", "Graphics", "Particle Checks", "CPU Budget Desktop (ms)", "particles check platform budget cost"},
+    {"particles.qa.blown_out_percent", "Graphics", "Particle Checks", "Blown Out (%)", "particles check additive saturated white"},
+    {"particles.qa.invisible_percent", "Graphics", "Particle Checks", "Invisible Below (%)", "particles check blank empty"},
+    {"particles.qa.pop_percent", "Graphics", "Particle Checks", "Pop (%)", "particles check death fade"},
+    {"particles.qa.fix_rounds", "Graphics", "Particle Checks", "Fix Rounds", "particles check agent"},
+    {"materials.qa.seam_fail", "Graphics", "Material Checks", "Seam Fail", "procedural material check tile seam"},
+    {"materials.qa.repetition_warn", "Graphics", "Material Checks", "Repetition Warn", "procedural material check tiling repeat"},
+    {"materials.qa.clipped_percent", "Graphics", "Material Checks", "Clipped (%)", "procedural material check histogram clipping"},
+    {"materials.qa.dielectric_outside_percent", "Graphics", "Material Checks", "Dielectric Outside (%)", "procedural material check albedo base colour"},
+    {"materials.qa.normal_length_error", "Graphics", "Material Checks", "Normal Length Error", "procedural material check normal map"},
+    {"materials.qa.roughness_min_range", "Graphics", "Material Checks", "Roughness Min Range", "procedural material check roughness flat"},
+    {"materials.qa.metallic_mid_percent", "Graphics", "Material Checks", "Metallic Mid (%)", "procedural material check metal"},
+    {"materials.qa.fix_rounds", "Graphics", "Material Checks", "Fix Rounds", "procedural material check agent"},
     {"graphics.shadow_tier.windows", "Graphics", "Shadows", "Windows Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.linux", "Graphics", "Shadows", "Linux Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.macos", "Graphics", "Shadows", "macOS Shadow Tier", "shadow quality"},
@@ -3607,17 +4242,27 @@ const Placement placements[] = {
     {"graphics.dynamic_batching", "Graphics", "", "Dynamic Batching", "batching batches draw calls saved by batching sprites"},
     {"graphics.runtime_shaders", "Graphics", "", "Runtime Shader Compilation", "variants"},
     {"graphics.gpu_instancing", "Graphics", "", "GPU Instancing", "batching instanced draw calls auto instancing"},
+    {"graphics.transparency_sort_mode", "Graphics", "", "Transparency Sort Mode", "2d sorting axis custom axis top-down"},
+    {"graphics.transparency_sort_axis", "Graphics", "", "Transparency Sort Axis", "2d sorting axis custom axis top-down"},
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
+    {"localization.languages", "Localization", "", "Languages", "language locale translation"},
+    {"localization.default_language", "Localization", "", "Default Language", "language locale translation"},
     {"title_art.auto_bake", "Title Art", "", "Auto Bake", "titleart bake automatic outputs png"},
     {"title_art.stale_bakes_on_export", "Title Art", "", "Stale Bakes On Export", "titleart export rebake warn fail outputs"},
     {"title_art.frame_budget_ms", "Title Art", "Runtime", "Frame Budget", "titleart realtime glyph atlas render time slice ms"},
     {"title_art.release_delay_s", "Title Art", "Runtime", "Release Delay", "titleart realtime render targets memory idle"},
     {"title_art.cache_budget_mib", "Title Art", "Runtime", "Cache Budget", "titleart realtime memory images vram"},
+    {"title_art.animation.flipbook_budget_mib", "Title Art", "Animation", "Flipbook Budget", "titleart animation flipbook baked memory mobile desktop web"},
+    {"title_art.animation.default_fps", "Title Art", "Animation", "Default Fps", "titleart animation frames per second new document"},
     {"title_art.reference_height", "Title Art", "Runtime", "Reference Height", "titleart prebake initial state export display"},
     {"title_art.simulate_export_characters", "Title Art", "Runtime", "Simulate Export Characters in Play", "titleart characters subset glyphs missing"},
+    {"title_art.realtime_3d_quality", "Title Art", "Runtime", "Realtime 3D Quality", "titleart 3d tier high medium low mobile web"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
+    {"quality.foliage_quality_desktop", "Quality", "", "Foliage Quality (Desktop)", "grass trees details impostors"},
+    {"quality.foliage_quality_mobile", "Quality", "", "Foliage Quality (Mobile)", "grass trees details impostors"},
+    {"quality.foliage_quality_web", "Quality", "", "Foliage Quality (Web)", "grass trees details impostors"},
     {"quality.foliage_distance_desktop", "Quality", "", "Foliage Distance (Desktop)", "terrain grass trees detail draw distance"},
     {"quality.foliage_distance_mobile", "Quality", "", "Foliage Distance (Mobile)", "terrain grass trees detail draw distance"},
     {"quality.foliage_distance_web", "Quality", "", "Foliage Distance (Web)", "terrain grass trees detail draw distance"},
@@ -3630,14 +4275,29 @@ const Placement placements[] = {
     {"physics.max_contact_constraints", "Physics", "3D World Capacity", "Max Contact Constraints", "jolt capacity limit contacts"},
     {"physics2d.enabled", "Physics 2D", "", "2D Physics", "box2d rigidbody 2d"},
     {"physics2d.layer_collision_matrix", "Physics 2D", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
+    {"animation.animation_entities", "Animation", "", "Animation Entities", "model clips animation player animator entities auto"},
     {"navigation.include_in_builds", "Navigation", "", "Include in Builds", "navmesh recast detour strip export"},
     {"navigation.crowd_max_agents", "Navigation", "", "Crowd Max Agents", "navmesh agents crowd"},
     {"navigation.max_grid_solves_per_tick", "Navigation", "", "Grid Solves per Tick", "nav grid a* pathfinding"},
     {"navigation.carve_tiles_per_tick", "Navigation", "", "Carve Tiles Per Tick", "navmesh obstacle carving budget tile cache"},
     {"navigation.web_bake_budget_ms", "Navigation", "", "Web Bake Budget", "navmesh bake web single thread"},
+    {"voxel.max_dimension", "Voxels", "", "Max Dimension", "voxel volume limit size"},
+    {"voxel.cpu_budget_mb", "Voxels", "", "CPU Memory Budget", "voxel volume memory limit"},
+    {"voxel.mesh_budget_mb", "Voxels", "", "Mesh Memory Budget", "voxel volume memory limit"},
+    {"voxel.ignore_dimension_limits", "Voxels", "", "Ignore Dimension Limits", "voxel volume export oversize"},
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
     {"input.manager_actions", "Input", "Input Manager", "Input Manager", "input manager virtual axes buttons horizontal vertical jump fire gravity sensitivity unity"},
+    // Project Settings > Pixel Art (S43 R4b; S42's Pixel Art page joins it)
+    {"palettes.default", "Pixel Art", "", "Default Palette", "palette colours colors swatches snap lospec apply palette sweetie pico"},
+    // S42's own rows
+    {"pixel_art.enabled", "Pixel Art", "", "Pixel Art Mode", "pixel art mode crisp point filter nearest lossless"},
+    {"pixel_art.upscale_mode", "Pixel Art", "", "Upscale Mode", "pixel perfect camera integer letterbox expand stretch"},
+    {"graphics.default_filter_mode", "Graphics", "", "Default Filter Mode", "filter point nearest bilinear crisp blurry pixel art"},
+    {"pixel_art.check_on_import", "Pixel Art", "Validation", "Check on Import", "validator check pixel art import"},
+    {"pixel_art.check_on_play", "Pixel Art", "Validation", "Check on Play", "validator check pixel art play"},
+    {"pixel_art.check_screens", "Pixel Art", "Validation", "Check Screens", "screens resolutions integer scale validator"},
+    {"pixel_art.backdrops", "Pixel Art", "", "Backdrops", "backdrop background dark light contact sheet"},
     // Project Settings > Audio
     {"audio.mixer", "Audio", "", "Audio Mixer", "mixer groups master bus sound music"},
     {"audio.default_output_group", "Audio", "", "Default Output Group", "mixer group master output audio source"},
@@ -3687,6 +4347,7 @@ const Placement placements[] = {
     {"editor.assets_dir", "Editor", "", "Assets Directory", "assets root"},
     {"tags_and_layers.tags", "Tags and Layers", "Tags", "Tags", "tag"},
     {"tags_and_layers.layers", "Tags and Layers", "Layers", "Layers", "layer"},
+    {"tags_and_layers.sorting_layers", "Tags and Layers", "Sorting Layers", "Sorting Layers", "sorting layer order 2d draw order"},
     // Project Settings > Native Plugins
     {"android.gradle_dependencies", "Native Plugins", "Android", "Gradle Dependencies", "android gradle dependencies sdk api implementation"},
     {"android.gradle_repositories", "Native Plugins", "Android", "Maven Repositories", "android gradle maven repository url"},
@@ -3711,6 +4372,7 @@ const Placement placements[] = {
     {"preferences.clear_on_play", "General", "Console", "Clear on Play", "console"},
     {"preferences.error_pause", "General", "Console", "Error Pause", "console"},
     {"preferences.simulate_touch", "General", "Game View", "Simulate Touch", "game view mouse finger"},
+    {"preferences.network.offline", "General", "Network", "Offline", "network internet offline proxy lospec download http"},
     {"preferences.default_export_dir", "General", "", "Default Build Directory", "output export"},
     {"preferences.sound_browser_autoplay", "General", "Sound Browser", "Auto-play", "sound browser audition select play"},
     {"preferences.sound_browser_match_loudness", "General", "Sound Browser", "Match Loudness", "sound browser audition loudness lufs"},
@@ -3727,6 +4389,7 @@ const Placement placements[] = {
     {"preferences.jdk_path", "External Tools", "Shipping", "JDK", "java keytool jarsigner"},
     {"preferences.steamcmd_path", "External Tools", "Shipping", "SteamCMD", "steam upload steampipe"},
     {"preferences.rcodesign_path", "External Tools", "Shipping", "rcodesign", "macos signing codesign"},
+    {"preferences.aseprite_path", "External Tools", "Aseprite", "Aseprite", "aseprite pixel art sprite editor executable"},
     {"preferences.logging.file_level", "Logging", "", "Log File Level", "editor log"},
     {"preferences.logging.backtrace_on_error", "Logging", "", "Capture Backtrace on Errors", "stack trace"},
     {"preferences.logging.show_source", "Logging", "", "Show Source Location", "file line"},
@@ -3920,7 +4583,12 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Editor", SettingsScope::Project, 12, "version control assets labels"},
         {"Navigation", SettingsScope::Project, 13, "navigation navmesh agents areas crowd grid pathfinding ai"},
         {"Mesh", SettingsScope::Project, 14, "mesh model import cook optimize compression lod meshopt read write cache audit"},
-        {"Title Art", SettingsScope::Project, 15, "title art titleart logo bake baked outputs png export stale"},
+        {"2D", SettingsScope::Project, 15, "2d sprite atlas packer pages pixel art"},
+        {"Animation", SettingsScope::Project, 16, "animation clips model animator animation player entities"},
+        {"Pixel Art", SettingsScope::Project, 17, "pixel art 2d palette palettes colours colors swatches"},
+        {"Voxels", SettingsScope::Project, 18, "voxel volumes caves destruction dimension limits memory budget"},
+        {"Title Art", SettingsScope::Project, 19, "title art titleart logo bake baked outputs png export stale"},
+        {"Localization", SettingsScope::Project, 20, "localization localisation language languages locale translation"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},
@@ -4024,6 +4692,12 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         [](SettingsContext&) {
             return InputActions::isLoaded() ? Json(InputActions::getOverridesKey()) : Json(nullptr);
         }, "Players' rebinding is kept per asset in the user settings; Reset clears the editor's copy, which Play uses."));
+    // S42 R18: the preset's button (the Pixel Art page shows the Graphics rows a pixel-art project
+    // sets, graphics.canvas_*, pixels_per_unit and default_filter_mode, under their own keys)
+    addOrAbort(registry, uiRow("pixel_art.apply_preset", "Pixel Art", "", "Apply Pixel Art Preset", "preset convert pixel art one click",
+        [](SettingsContext&) { return Json(nullptr); },
+        "Previews and applies the Pixel Art preset: base resolution, integer scaling, Point filtering, Pixel Perfect Cameras and "
+        "lossless textures, as one undo step."));
     addOrAbort(registry, uiRow("mesh.clear_cache", "Mesh", "Cache", "Mesh Cache", "clear cooked models cache size audit",
         [](SettingsContext& ctx) {
             ModelCookQueue& cooks = ModelCookQueue::get();
@@ -4126,6 +4800,9 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
     addOrAbort(registry, uiRow("preferences.scene_view.rulers", sceneView, "Views", "Rulers", "ruler scale 2d orthographic",
         [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().rulers); },
         "Top and left rulers in 2D, UI and orthographic axis views"));
+    addOrAbort(registry, uiRow("preferences.scene_view.alt_alternates", sceneView, "Brushes", "Alt Alternates While Painting", "alt alternate terrain voxel brush orbit",
+        [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().altAlternates); },
+        "With a terrain or voxel brush armed, Alt held is the tool's alternate and Alt+drag paints it instead of orbiting"));
     addOrAbort(registry, uiRow("preferences.scene_view.preview_particles", sceneView, "Animation", "Preview Particle Systems", "animator animation preview particles vfx scrub",
         [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().previewParticles); },
         "Animation previews in edit mode (Animator, Animation windows) play and scrub the Particle Systems under the previewed GameObject"));

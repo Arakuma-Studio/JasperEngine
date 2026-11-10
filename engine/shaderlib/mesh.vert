@@ -29,6 +29,21 @@
 // instanced batch (HAS_AUTO_INSTANCING); a fork keeping its own block is never batched
 #include "includes/object_params.glsl"
 
+// a pixel-perfect camera's sprites and tilemaps (S41): the snap on the final position, read from
+// the frame block's grid (the depth program snaps identically)
+#ifdef PIXEL_SNAP
+    #define FRAME_VS
+    #include "includes/frame.glsl"
+    #include "includes/pixel_snap.glsl"
+    // S52 'Spv': a batchable sprite's snap pivot (the model origin, baked as a point)
+    #if defined(HAS_SNAP_PIVOT) && !defined(HAS_INSTANCING)
+        in vec3 a_snapPivot;
+    #endif
+    #if defined(HAS_SNAP_PIVOT) && defined(HAS_INSTANCING)
+        in vec2 i_snapPivot;
+    #endif
+#endif
+
 // same expression as depth.vert, so a depth prepass and this pass agree bit for bit
 invariant gl_Position;
 
@@ -109,7 +124,12 @@ in vec3 a_position;
     out vec3 v_vertexLight;
 #endif
 
-#ifdef HAS_INSTANCING
+#include "includes/foliage_instance.glsl"
+#include "includes/foliage_wind.glsl"
+#ifdef USE_FOLIAGE_DITHER
+    out float v_foliageFade;
+#endif
+#if defined(HAS_INSTANCING) && !defined(HAS_COMPACT_INSTANCE)
     in vec4 i_matrix_col1;
     in vec4 i_matrix_col2;
     in vec4 i_matrix_col3;
@@ -127,6 +147,9 @@ in vec3 a_position;
 #include "includes/morphtarget.glsl"
 #ifdef HAS_TERRAIN
     #include "includes/terrain_vs.glsl"
+#endif
+#ifdef HAS_VOXEL
+    #include "includes/voxel_vs.glsl"
 #endif
 // the lattices deforming the mesh (HAS_LATTICE): latticeDeform, after a_color is declared
 #include "includes/lattice.glsl"
@@ -174,7 +197,16 @@ vec3 getTangent(mat4 boneTransform){
 }
 #endif
 
+#if defined(HAS_VERTEX_COLOR_VEC3) || defined(HAS_VERTEX_COLOR_VEC4)
+    #define FOLIAGE_VERTEX_RED a_color.r
+#else
+    #define FOLIAGE_VERTEX_RED 1.0
+#endif
+
 void main() {
+    #ifdef HAS_COMPACT_INSTANCE
+        compactInstanceSetup();
+    #endif
     #ifdef USE_LOD_FADE
         // an instance matrix is affine (its first column's w is 0) and so is a normal matrix's
         // direction part: those lanes carry the fade of a fading draw (includes/lod_fade.glsl)
@@ -221,6 +253,13 @@ void main() {
         vec4 pos = instanceMatrix * getPosition(boneTransform);
     #else
         vec4 pos = getPosition(boneTransform);
+    #endif
+
+    #ifdef USE_FOLIAGE_WIND
+        pos.xyz = foliageWindSway(pos.xyz, i_matrix_col4.xyz, a_position.y, FOLIAGE_VERTEX_RED);
+    #endif
+    #ifdef USE_FOLIAGE_DITHER
+        v_foliageFade = foliageFadeFactor(i_matrix_col4.xyz);
     #endif
 
     #ifdef USE_INSTANCE_FADE
@@ -273,6 +312,9 @@ void main() {
 
     #if defined(HAS_TERRAIN_PBR) && defined(HAS_NORMALS)
         setTerrainShadingAxes(pbrParams.normalMatrix);
+    #endif
+    #ifdef HAS_VOXEL
+        setVoxelVaryings(a_position, a_normal, pbrParams.normalMatrix);
     #endif
 
     #ifdef HAS_UV_SET1
@@ -335,6 +377,25 @@ void main() {
     #endif
 
     gl_Position = pbrParams.mvpMatrix * pos;
+    #ifdef PIXEL_SNAP
+        #if defined(HAS_INSTANCING) && defined(HAS_SNAP_PIVOT)
+            // S52 'Spv' on a Sprite Batch: the instance's own pivot (its matrix's origin carries
+            // its frame's offset)
+            vec4 snapPivot = pbrParams.mvpMatrix * vec4(i_snapPivot, i_matrix_col4.z, 1.0);
+            float snapMode = pixelSnapInstanceMode(pbrParams.pixelSnapDraw.x, i_matrix_col1, i_matrix_col2);
+        #elif defined(HAS_INSTANCING)
+            vec4 snapPivot = pbrParams.mvpMatrix * i_matrix_col4;
+            float snapMode = pixelSnapInstanceMode(pbrParams.pixelSnapDraw.x, i_matrix_col1, i_matrix_col2);
+        #elif defined(HAS_SNAP_PIVOT)
+            // S52 'Spv': the model origin drawn alone, the baked origin in a batch
+            vec4 snapPivot = pbrParams.mvpMatrix * vec4(a_snapPivot, 1.0);
+            float snapMode = pbrParams.pixelSnapDraw.x;
+        #else
+            vec4 snapPivot = pbrParams.mvpMatrix[3];
+            float snapMode = pbrParams.pixelSnapDraw.x;
+        #endif
+        gl_Position = pixelSnapApply(gl_Position, snapMode, snapPivot);
+    #endif
     #ifdef IS_VULKAN
         // GL [-1,1] to Vulkan [0,1] depth range (spirv-cross fixup_clipspace equivalent)
         gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;

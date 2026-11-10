@@ -37,6 +37,10 @@
 #include <string>
 #include <vector>
 
+namespace jasperengine::titleart {
+    class AssetResolver;
+}
+
 namespace jasperengine::editor {
 
     using TitleJson = jasperengine::titleart::Json;
@@ -80,6 +84,15 @@ namespace jasperengine::editor {
 
     struct TitleOpsOptions {
         uint64_t idSeed = 0;                // 0: random new ids (tests pass a seed for a fixed sequence)
+        // where the document lives (absolute paths; empty for a document without a file): ops
+        // that write files beside it (S87's import_svg, apply_ps_style) need them
+        std::string documentPath;
+        std::string projectPath;
+        std::string assetsPath;
+        // S87: the project's default language (add_language's source when it names none) and the
+        // fonts that measure text (add_language's default fit box); null: the built-in face
+        std::string defaultLanguage;
+        const titleart::AssetResolver* assets = nullptr;
     };
 
     struct TitleOpsResult {
@@ -93,6 +106,8 @@ namespace jasperengine::editor {
         std::vector<TitleOpFile> files;             // the files the batch writes besides the document
         TitleJson details = TitleJson::object();    // op index -> what a later spec's op reports (S84's apply `changes`)
         std::string undoName;
+        // what ops report beyond changes (import_strings' counts, apply_ps_style's summary), by op index
+        TitleJson reports = TitleJson::object();
         // the error of a failed batch, ending "Nothing was applied."
         std::string error() const;
         TitleJson toJson() const;
@@ -111,7 +126,8 @@ namespace jasperengine::editor {
         titleart::TitleArtDoc& doc;
         int opIndex = 0;
 
-        TitleOpContext(titleart::TitleArtDoc& doc, titleart::TitleIdGenerator& ids, TitleOpsResult& result);
+        TitleOpContext(titleart::TitleArtDoc& doc, titleart::TitleIdGenerator& ids, TitleOpsResult& result,
+                       const TitleOpsOptions* options = nullptr);
 
         // the layer `op[member]` names (path, bare name or id:); null after fail() when it does
         // not resolve (or is missing while `required`)
@@ -134,6 +150,8 @@ namespace jasperengine::editor {
 
         titleart::TitleIdGenerator& ids;
         TitleOpsResult& result;
+        // the batch's options (the document's paths), never null inside apply()
+        const TitleOpsOptions* options = nullptr;
         // the label of the field the last set() wrote ("Rim Width", "Outer Glow Size"): a one-value
         // `set` names its undo step "Set <label>"
         std::string lastSetLabel;
@@ -147,8 +165,24 @@ namespace jasperengine::editor {
         const char* owner;      // "S84"
     };
 
-    // what `create.from` (S87's imports) hands back: a document to create from a source file
-    using TitleCreateImporter = std::function<bool(const std::string& sourcePath, titleart::TitleArtDoc& out, std::string& error)>;
+    // `create.from` (S87's imports): a source file read into a new document at `documentPath`
+    struct TitleCreateRequest {
+        std::string sourcePath;             // absolute; may be outside the project (only read)
+        std::string documentPath;           // the new document, absolute
+        std::string projectPath;
+        std::string assetsPath;
+    };
+    struct TitleCreateResult {
+        titleart::TitleArtDoc doc;
+        std::string kind;                   // pachislop, psd, svg
+        std::vector<TitleOpFile> files;     // fonts, images, split SVGs written with the document
+        TitleJson notes = TitleJson::array();   // the import report (S87 R31)
+        std::vector<std::string> warnings;
+    };
+    // false with `code` and `error` (one sentence)
+    using TitleCreateImporter = std::function<bool(const TitleCreateRequest& request, TitleCreateResult& out, std::string& code, std::string& error)>;
+    // whether the first bytes of a file (and its lowercase extension) are an importer's kind
+    using TitleCreateSniffer = std::function<bool(const std::string& head, const std::string& extension)>;
 
     class TitleArtOps {
     public:
@@ -172,12 +206,13 @@ namespace jasperengine::editor {
         // a later spec's step at the end of every batch (replaces one of the same name)
         static void registerBatchFinisher(const std::string& name, TitleBatchFinisher finisher);
 
-        // S87's importers of `create.from` by file extension (".psd", ".svg", ".json")
-        static bool registerCreateImporter(const std::string& extension, TitleCreateImporter importer);
-        static bool unregisterCreateImporter(const std::string& extension);
-        // the document to create from a source file; false with `error` (`not_available` naming S87
-        // until an importer for the extension is registered)
-        static bool createFrom(const std::string& sourcePath, titleart::TitleArtDoc& out, std::string& code, std::string& error);
+        // S87's importers of `create.from` by kind ("pachislop", "psd", "svg"), each with the
+        // sniffer that recognises its files by content (the first 4 KiB) and extension
+        static bool registerCreateImporter(const std::string& kind, TitleCreateSniffer sniff, TitleCreateImporter importer);
+        static bool unregisterCreateImporter(const std::string& kind);
+        // the document to create from a source file, its kind detected by content; false with
+        // `code` and `error` (`not_available` naming S87 when no importer knows the file)
+        static bool createFrom(const TitleCreateRequest& request, TitleCreateResult& out, std::string& code, std::string& error);
 
         // normalize, link sync (against `before`, null for a new document), tree checks; notes go to
         // `result` (changes and problems)

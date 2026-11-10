@@ -1,0 +1,71 @@
+{
+ "code": [],
+ "description": "",
+ "format": 1,
+ "functions": [],
+ "id": "gaussian_blur_x",
+ "inputs": [
+  {
+   "default": "vec4(1.0)",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "type": "rgba"
+  },
+  {
+   "default": "1.0",
+   "function": true,
+   "label": "",
+   "name": "amount",
+   "type": "f"
+  }
+ ],
+ "instance": [
+  "vec4 $(name)_fct(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tfloat e = 1.0/$size;",
+  "\tvec4 rv = vec4(0.0);",
+  "\tfloat sum = 0.0;",
+  "\tfloat sigma = max(0.000001, $sigma*$amount(uv));",
+  "\tfor (float i = -50.0; i <= 50.0; i += 1.0) {",
+  "\t\tfloat coef = exp(-0.5*(pow(i/sigma, 2.0)))/(6.28318530718*sigma*sigma);",
+  "\t\trv += $in(uv+vec2(i*e, 0.0))*coef;",
+  "\t\tsum += coef;",
+  "\t}",
+  "\treturn rv/sum;",
+  "}"
+ ],
+ "kind": "shader",
+ "name": "Gaussian blur X",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "$(name)_fct($uv, _seed_variation_, _controlled_variation_)",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 9,
+   "first": 4,
+   "label": "Size",
+   "last": 12,
+   "name": "size",
+   "type": "size"
+  },
+  {
+   "default": 0.5,
+   "label": "Sigma",
+   "max": 50,
+   "min": 0,
+   "name": "sigma",
+   "step": 0.1,
+   "type": "float"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/gaussian_blur_x.mmg"
+ },
+ "type_version": 1
+}

@@ -16,6 +16,15 @@
 // - Failures (R19): the previous image stays; an allocation failure retries after 2, 4 and 8 s
 //   and then waits for a new state; a float target that fails while the caps said it would
 //   work switches the session to the RGBA8 path once and restarts.
+// - Live compose (R9, TitleLiveCompose.h): a full render of a document with live Exposed
+//   parameters keeps the inputs their effects start from with its image; a later state that
+//   changes only such parameters (and nothing else of the render) is composed in one frame over
+//   them, not time-sliced, and swaps in at that frame's end. Over the live budget, after a live
+//   effect followed by one without a live variant, or when the plan could not start from the
+//   inputs, it re-renders as any change (the reason is in the status).
+// - Costs (R15, S80 Deviation 54): with the scheduler's TitleStepCosts the steps are packed and
+//   split by measured, adaptive predictions; without it by the static estimates times the
+//   platform factor.
 // - Thread-safety: main thread.
 
 #pragma once
@@ -23,6 +32,9 @@
 #include "Export.h"
 #include "subsystem/TitleArtRuntime.h"
 #include "titleart/TitleArtDoc.h"
+#include "titleart/TitleEffectRegistry.h"
+#include "titleart/render/TitleArtRenderer.h"
+#include "titleart/anim/TitleAnimRealtime.h"
 #include "titleart/render/TitleRenderJob.h"
 #include "titleart/render/TitleTargetPool.h"
 #include "titleart/runtime/TitleGlyphAtlasPlan.h"
@@ -30,6 +42,7 @@
 #include <cstdint>
 #include <functional>
 #include <list>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,9 +55,11 @@ namespace jasperengine {
 
 namespace jasperengine::titleart {
 
+    class TitleStepCosts;
     class TitleArtRenderer;
     class AssetResolver;
     class TitleGlyphAtlas;
+    struct TitleMesh;
 
     // S81's flags in S80's per-request set (RenderRequest::testFlags, after TITLE_ART_TEST_S80_LAST_BIT)
     constexpr uint32_t TITLE_ART_TEST_FAIL_TARGETS = 1u << 6;   // every target allocation of the request fails
@@ -66,6 +81,16 @@ namespace jasperengine::titleart {
         int glowWidth = 0, glowHeight = 0;
         // a prebaked image shipped with the build (R11): a texture of the file, no target
         std::shared_ptr<Texture> prebaked;
+        // R9: the inputs a live compose of a later state starts from (kept by the render), the
+        // field overrides the image shows and the rest of its render (what a change is compared with)
+        TitleLiveInputs liveInputs;
+        std::vector<FieldOverride> overrides;
+        uint64_t renderKey = 0;
+        // what live composes changed since the render that kept the inputs (TitleLiveCompose.h)
+        std::map<std::string, int> liveTouched;
+        size_t liveBytes() const;
+        // S86 R63: the meshes of its Dimension 3D layers (the render's)
+        std::vector<TitleArtMeshStats> meshes;
         bool valid() const { return width > 0 && height > 0; }
         // the colour texture and the framebuffer of a GPU target (null for a test's image)
         TextureRender* texture() const;
@@ -81,13 +106,33 @@ namespace jasperengine::titleart {
         TitleRectI region;              // canvas pixels, image space; empty = the canvas
         uint32_t testFlags = 0;
         bool glow = false;              // also the glow output (half resolution)
-        int tier = 0;
+        int tier = 0;                   // S86's TitleTier (RenderRequest::tier)
+        FxTier fxTier = FxTier::Desktop;    // S83's device tier (RenderRequest::fxTier)
         std::string label;
+        // R9: the live inputs a full render keeps, and those a live compose starts from
+        std::vector<std::string> keepLive;
+        TitleLiveInputs liveInputs;
+        bool live = false;              // a live compose (it starts from liveInputs)
         // Glyph Atlas (R25-R29): the title's atlas and plan; null renders as Realtime
         std::shared_ptr<TitleGlyphAtlas> atlas;
         TitleGlyphAtlasPlan glyphPlan;
         uint64_t docHash = 0;           // the document's content hash (the atlas style's)
         std::string titlePath;          // the title's path (its prebaked atlas sits beside it)
+        // S85 R15: the per-glyph values of the Glyph Atlas layer's cells (null when none animates)
+        std::shared_ptr<const std::map<uint32_t, GlyphPose>> glyphPoses;
+        // S85 R14, R15: a Realtime title composes its moving layers and glyphs (spec.atlas caches)
+        std::shared_ptr<const TitleComposePose> compose;
+        // S86 R26, R38: what the build's export cooked for the title (RenderRequest's members)
+        std::map<std::string, std::shared_ptr<const TitleMesh>> cookedMeshes3D;
+        std::map<std::string, std::shared_ptr<const std::vector<uint8_t>>> cookedEnvironments3D;
+    };
+
+    // S86 R26, R38: a title's cooked 3D data from its export (three_d/TitleCooked3D.cpp): what a
+    // job at `tier` hands the renderer
+    class JASPERENGINE_API TitleCooked3DSource {
+    public:
+        virtual ~TitleCooked3DSource() = default;
+        virtual void fill(int tier, TitleJobSpec& spec) = 0;
     };
 
     // The scheduler's view of one render (S80's TitleRenderJob in a game; a fake in tests)
@@ -114,6 +159,10 @@ namespace jasperengine::titleart {
         virtual TitleDisplayImage takeImage() = 0;
         // the shaders it binds (S81 R18, R47)
         virtual std::vector<ShaderKey> shaderKeys() const = 0;
+        // predicts, measures and teaches with `model` from now on (jobs of S80's renderer)
+        virtual void useCosts(TitleStepCosts* model) { (void)model; }
+        // a live compose's job: true once the plan started from every live input it was given
+        virtual bool composesLive() const { return false; }
     };
 
     using TitleJobFactory = std::function<std::unique_ptr<TitleJob>(const TitleJobSpec&)>;
@@ -127,6 +176,15 @@ namespace jasperengine::titleart {
         double retryDelays[3] = {2.0, 4.0, 8.0};
     };
 
+    // what one frame's scheduling runs with (TitleArtScheduler::schedule)
+    struct JASPERENGINE_API TitleScheduleContext {
+        TitleJobFactory factory;
+        uint32_t budgetUs = 0;              // R15: the frame's
+        double platformFactor = 1.0;        // §6.3: static estimates x this when there is no model
+        // measured, adaptive predictions (S80 Deviation 54; null: the static estimates)
+        TitleStepCosts* costs = nullptr;
+    };
+
     class JASPERENGINE_API TitleArtLive {
     public:
         TitleArtLive(std::string titlePath, TitleArtRenderMode mode, std::shared_ptr<const TitleArtDoc> doc, uint64_t documentHash);
@@ -138,6 +196,14 @@ namespace jasperengine::titleart {
         TitleArtRenderMode mode() const { return renderMode; }
         const std::shared_ptr<const TitleArtDoc>& document() const { return doc; }
         uint64_t documentHash() const { return docHash; }
+        // the document has a Dimension 3D layer (S86: its tier matters)
+        bool has3D() const { return hasLayers3D; }
+        // what the export cooked for it (a build's; none in the editor)
+        void setCooked3D(std::shared_ptr<TitleCooked3DSource> source) { cooked3D = std::move(source); }
+        // S87 R17: the document resolved for `code` ("" = the source) becomes the one rendered
+        // (Glyph Atlas: its plan made again and a new atlas for it); false when it already is
+        bool setLanguage(const std::string& code);
+        const std::string& language() const { return languageCode; }
 
         // ---- the state (TitleArtSystem, once a frame) ----
         void setState(const TitleArtLiveState& state, uint64_t stateHash, std::vector<FieldOverride> overrides);
@@ -155,12 +221,21 @@ namespace jasperengine::titleart {
         int priority() const { return wanted.priority; }
         bool visible() const { return wanted.visible; }
         uint64_t requestOrder() const { return requestSerial; }
-        // the next step's estimate in us (scaled by the platform factor), 0 when nothing runs
-        uint32_t nextCostUs(double platformFactor) const;
-        // runs one step (starting the job when needed); its estimated cost in us is added to
-        // `spentUs` (platform factor applied). False when nothing ran (the next step waits for
-        // its shaders, or the job is complete until endFrame swaps it in)
-        bool runStep(const TitleJobFactory& factory, double platformFactor, uint32_t budgetUs, double& spentUs);
+        // the next step's prediction in us (the model's, else the estimate x the factor)
+        uint32_t nextCostUs(const TitleScheduleContext& context) const;
+        // runs one step (starting the job when needed); its cost in us (the larger of its
+        // prediction and what it measured) is added to `spentUs`. False when nothing ran (the next
+        // step waits for its shaders, or the job is complete until endFrame swaps it in)
+        bool runStep(const TitleScheduleContext& context, double& spentUs);
+        // once a frame with a model: the running job's steps cut again by what the model learned
+        void resplit(const TitleScheduleContext& context);
+        // R9: one title's live budget (ms) a live change is predicted against (S83 §6.4)
+        void setLiveBudgetMs(double ms) { liveBudget = ms; }
+        // R9: a live compose waits (it runs before the frame's slices, not time-sliced)
+        bool liveWaiting() const { return liveQueued; }
+        // runs it: true when its job completed (it swaps in at endFrame); false when it waits for
+        // its shaders, or when it fell back to a re-render (queued like any change)
+        bool runLive(const TitleScheduleContext& context);
         // the running job finished its steps (it swaps in at endFrame)
         bool jobDone() const { return running.job && running.job->done(); }
         // at the end of the frame's steps: finished images swap in (R17), cache hits swap in,
@@ -184,6 +259,36 @@ namespace jasperengine::titleart {
         // the atlas of a Glyph Atlas title that renders per glyph (null before its first job, and
         // for a title that falls back to Realtime)
         const std::shared_ptr<TitleGlyphAtlas>& glyphAtlas() const { return atlas; }
+        // S85 R18: an animation's re-render values (the field overrides every request of the state
+        // adds, part of its hash) and whether an animation plays (the title's share of the budget)
+        void setAnimationOverrides(std::vector<FieldOverride> overrides, uint64_t hash){
+            animOverrides = std::move(overrides);
+            animOverridesHash = hash;
+        }
+        const std::vector<FieldOverride>& animationOverrides() const { return animOverrides; }
+        uint64_t animationOverridesHash() const { return animOverridesHash; }
+        void setAnimating(bool on, double share){ animatingFlag = on; budgetShare = share; }
+        // R15: a Glyph Atlas title's glyph values (null: none)
+        void setGlyphPoses(std::shared_ptr<const std::map<uint32_t, GlyphPose>> poses){ glyphPoses = std::move(poses); }
+        // R18 prerender: the sample times still to render ahead (TitleArtRuntime::prepareAnimation)
+        struct PrerenderFrame {
+            std::vector<FieldOverride> overrides;
+            uint64_t hash = 0;
+        };
+        void setPrerenderFrames(std::vector<PrerenderFrame> frames){
+            prerenderFrames = std::move(frames);
+            prerenderNext = 0;
+        }
+        bool prerendering() const { return prerenderNext < prerenderFrames.size(); }
+        const PrerenderFrame& nextPrerenderFrame() const { return prerenderFrames[prerenderNext]; }
+        void advancePrerender(){ prerenderNext++; }
+        // R14, R15: a Realtime title's moving layers and glyphs (null: the normal render)
+        void setComposePose(std::shared_ptr<const TitleComposePose> pose){ composePose = std::move(pose); }
+        bool animating() const { return animatingFlag; }
+        double animationShare() const { return budgetShare; }
+        // the animation library the overrides were planned for (TitleArtRuntime::setAnimation)
+        std::shared_ptr<void> animationPlanCache;
+        const void* animationPlanKey = nullptr;
         // R55: the characters of the state its Characters set leaves out (they draw as nothing)
         void setMissingCharacters(std::string characters) { missingCharacters = std::move(characters); }
         const TitleGlyphAtlasPlan& glyphAtlasPlan() const { return glyphPlan; }
@@ -191,6 +296,12 @@ namespace jasperengine::titleart {
         // tests: the step and frame counters
         uint64_t stepsRun() const { return totalSteps; }
         int restarts() const { return restartCount; }
+        // full renders and live composes that swapped in
+        uint64_t rendersDone() const { return renderCount; }
+        uint64_t liveComposesDone() const { return liveCount; }
+        // R9: the inputs full renders of the document keep (TitleLiveCompose.h)
+        const std::vector<std::string>& liveKeeps() const { return keepLive; }
+
 
     private:
         struct Running {
@@ -198,11 +309,13 @@ namespace jasperengine::titleart {
             uint64_t hash = 0;
             TitleArtLiveState state;
             std::vector<FieldOverride> overrides;
+            uint64_t renderKey = 0;
             int frames = 0;
             uint32_t estimatedUs = 0;
             double cpuMs = 0.0;
             int overBudget = 0;
             bool started = false;
+            bool live = false;          // a live compose (R9)
         };
         struct Cached {
             TitleDisplayImage image;
@@ -215,8 +328,29 @@ namespace jasperengine::titleart {
         // before the images: their targets may be its pool's (TitleDisplayImage::owner keeps it too)
         std::shared_ptr<TitleGlyphAtlas> atlas;
         std::string missingCharacters;
+        std::vector<FieldOverride> animOverrides;
+        uint64_t animOverridesHash = 0;
+        std::shared_ptr<const std::map<uint32_t, GlyphPose>> glyphPoses;
+        std::shared_ptr<const TitleComposePose> composePose;
+        std::vector<PrerenderFrame> prerenderFrames;
+        size_t prerenderNext = 0;
+        bool animatingFlag = false;
+        double budgetShare = 1.0;
         std::shared_ptr<const TitleArtDoc> doc;
         uint64_t docHash = 0;
+        std::vector<std::string> keepLive;      // R9: what full renders keep
+        TitleStepCosts* jobCosts = nullptr;     // the model the running job was given
+        bool liveQueued = false;                // a live compose of wantedHash waits
+        double liveBudget = 1.0;
+        std::vector<std::string> liveInputNames;
+        std::map<std::string, int> liveChanged;     // the waiting compose's touched layers (front's included)
+        std::string liveReason;                 // why the last live param change re-rendered
+        uint64_t renderCount = 0, liveCount = 0;
+        bool hasLayers3D = false;
+        std::shared_ptr<TitleCooked3DSource> cooked3D;
+        // S87: the document as stored, and the language `doc` is resolved for
+        std::shared_ptr<const TitleArtDoc> sourceDoc;
+        std::string languageCode;
 
         TitleArtLiveState wanted;
         uint64_t wantedHash = 0;
@@ -251,7 +385,11 @@ namespace jasperengine::titleart {
         int restartCount = 0;
 
         void queueWanted();
-        void startJob(const TitleJobFactory& factory, uint32_t budgetUs, double platformFactor);
+        // R9: the change from the front image to the wanted state is live (with its inputs)
+        bool liveChange();
+        uint64_t renderKeyOf(const TitleArtLiveState& state) const;
+        TitleJobSpec specOf() const;
+        void startJob(const TitleScheduleContext& context);
         void finishJob(TitleLiveLimits& limits, size_t& cacheBytesInUse);
         // the error by value: it is often the failed job's own, and the job goes first
         void failJob(std::string error, bool allocation, bool floatTarget);

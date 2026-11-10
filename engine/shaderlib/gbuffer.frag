@@ -2,12 +2,13 @@
 
 // G-buffer geometry pass (fragment), MRT output:
 //   color[0] = packed view depth (identical to depth.frag, so SSAO/SSR depth is unchanged)
-//   color[1] = view-space normal (octahedral .rg) + roughness (.b) + metallic (.a)
+//   color[1] = view-space normal (octahedral .rg, rounded to 8 bits) + roughness (.b) + metallic (.a)
 //   color[2] = linear base color (.rgb) + the reflection source code / 255 (.a): what the
 //              colour pass adds as environment specular, which the SSR composite swaps
 //              (includes/ssr_source.glsl)
-//   color[3] = the occlusion the colour pass weighs that specular by (.r, R8): the
-//              material's occlusion map times a painted terrain's occlusion
+//   color[3] = the occlusion the colour pass weighs that specular by (.r): the material's
+//              occlusion map times a painted terrain's occlusion; the normal's next 8 bits
+//              (.gb, includes/octahedral.glsl octEncode16), so SSR reads it in 16 bits
 //
 // HAS_TERRAIN_PBR evaluates the painted layers here too, so what this writes matches
 // what the color pass shades. The maps are read on the UV set the material names, through
@@ -69,8 +70,14 @@ uniform u_fs_gbufferMaterial {
 #ifdef HAS_TERRAIN_PBR
     #include "includes/terrain_fs.glsl"
 #endif
+#ifdef HAS_VOXEL
+    #include "includes/voxel_fs.glsl"
+#endif
 #ifdef GBUFFER_STOCHASTIC
     #include "includes/stochastic.glsl"
+#endif
+#ifdef TERRAIN_HOLES
+    #include "includes/terrain_holes_fs.glsl"
 #endif
 
 #ifdef GBUFFER_UV
@@ -108,8 +115,15 @@ uniform u_fs_gbufferMaterial {
         StochasticTiling gbufferStochastic2;
     #endif
 #endif
+#include "includes/foliage_dither.glsl"
 
 void main() {
+    #ifdef USE_FOLIAGE_DITHER
+        foliageDitherDiscard();
+    #endif
+    #ifdef TERRAIN_HOLES
+        terrainDiscardHole();
+    #endif
     #ifdef GBUFFER_STOCHASTIC
         {
             vec4 params = stochasticParams(gbufferMaterial.stochastic.x, gbufferMaterial.stochastic.y,
@@ -188,10 +202,20 @@ void main() {
         n = terrainSurface.normal;
         occlusion *= terrainSurface.occlusion;
     #endif
+    #ifdef HAS_VOXEL
+        VoxelSurface voxelSurface = getVoxelSurface(baseColor, n, roughness, metallic);
+        baseColor = voxelSurface.color;
+        roughness = voxelSurface.roughness;
+        metallic = voxelSurface.metallic;
+        n = voxelSurface.normal;
+    #endif
 
-    frag_gbuffer = vec4(octEncode(n), clamp(roughness, 0.0, 1.0), clamp(metallic, 0.0, 1.0));
+    vec2 normalCoarse;
+    vec2 normalFine;
+    octEncode16(n, normalCoarse, normalFine);
+    frag_gbuffer = vec4(normalCoarse, clamp(roughness, 0.0, 1.0), clamp(metallic, 0.0, 1.0));
 
     frag_albedo = vec4(baseColor.rgb, gbufferMaterial.params.z);
 
-    frag_occlusion = vec4(clamp(occlusion, 0.0, 1.0), 0.0, 0.0, 1.0);
+    frag_occlusion = vec4(clamp(occlusion, 0.0, 1.0), normalFine, 1.0);
 }

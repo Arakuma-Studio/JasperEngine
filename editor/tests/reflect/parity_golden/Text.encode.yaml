@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 83562f6041bb8868
+digest e67ea6a015d89189
 --- 0
 font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf, fonts/F3.ttf]
 text: "  padded  "
@@ -12,6 +12,7 @@ pivotBaseline: true
 pivotCentered: false
 outlineWidth: .nan
 outlineColor: [4875.966, -0, 141.85715, -124.14286]
+outlineNeighbors: -12
 shadowColor: [0, -5.857143, 40.857143, 9898.166]
 shadowOffset: [105.42857, 1366.032]
 shadowSoftness: 0.47148538
@@ -29,6 +30,7 @@ pivotBaseline: true
 pivotCentered: false
 outlineWidth: 2166.342
 outlineColor: [0.37051225, 0, 0, -0]
+outlineNeighbors: -5
 shadowColor: [5422.695, 0.7775784, -53.714287, 0.19297175]
 shadowOffset: [-0, 1456.3378]
 shadowSoftness: 0.9795933
@@ -46,6 +48,7 @@ pivotBaseline: true
 pivotCentered: false
 outlineWidth: .inf
 outlineColor: [-0, 6010.211, -108.71429, 3e+38]
+outlineNeighbors: 12
 shadowEnabled: true
 shadowColor: [8612.253, 5123.0054, 121.71429, -107]
 shadowOffset: [5292.935, 19.028124]
@@ -64,6 +67,7 @@ pivotBaseline: false
 pivotCentered: true
 outlineWidth: .inf
 outlineColor: [0.31115672, -61.57143, 0.5953465, 0.95927495]
+outlineNeighbors: -1
 shadowEnabled: true
 shadowColor: [4569.5356, 0, 2554.2754, 17]
 shadowOffset: [101.71429, 1e-45]
@@ -82,6 +86,7 @@ pivotBaseline: false
 pivotCentered: true
 outlineWidth: -93
 outlineColor: [104.71429, 0, 2698.5674, 3e+38]
+outlineNeighbors: 2
 shadowEnabled: true
 shadowColor: [69.71429, 0.9640227, 0, 0]
 shadowOffset: [1e-45, 3e+38]
@@ -99,6 +104,7 @@ pivotBaseline: false
 pivotCentered: true
 outlineWidth: -57
 outlineColor: [-57.57143, 0, 43, -0.52759516]
+outlineNeighbors: 2
 shadowColor: [0, 0.6692841, 585.7565, 847.4395]
 shadowOffset: [-0.113736905, 34]
 shadowSoftness: 986.53687
@@ -116,6 +122,7 @@ pivotBaseline: true
 pivotCentered: false
 outlineWidth: 84.71429
 outlineColor: [-0, 7423.4126, 0.34046715, 3489.342]
+outlineNeighbors: 11
 shadowEnabled: true
 shadowColor: [9223.204, 9091.31, 3e+38, 5723.6865]
 shadowOffset: [-0.95130086, 0.5805234]
@@ -134,6 +141,7 @@ pivotBaseline: false
 pivotCentered: true
 outlineWidth: 5977.078
 outlineColor: [0.7512765, 0, 42.42857, 0]
+outlineNeighbors: 21342
 shadowEnabled: true
 shadowColor: [-90.85714, -0.6031803, -0.27067783, 135.85715]
 shadowOffset: [-88.14286, 3e+38]

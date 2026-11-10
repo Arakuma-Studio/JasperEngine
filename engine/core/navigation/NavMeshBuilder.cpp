@@ -277,6 +277,8 @@ void NavMeshBuilder::TileJob::State::gather() {
         const bool mirrored = terrain.toNav.linear().determinant() < 0.0f;
         for (int j = j0; j < j1; j++) {
             for (int i = i0; i < i1; i++) {
+                if (terrain.isHoleCell(i, j))
+                    continue;
                 const Vector3 p00 = terrain.toNav * terrain.localAt(i, j);
                 const Vector3 p10 = terrain.toNav * terrain.localAt(i + 1, j);
                 const Vector3 p01 = terrain.toNav * terrain.localAt(i, j + 1);

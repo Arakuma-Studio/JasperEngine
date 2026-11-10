@@ -25,7 +25,8 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"rendering_fx", "Shadow statistics and debug views, fog, clouds, post effects beyond the core set, material variants and light units."},
         {"meshes", "Model import and cook settings, detail levels (LOD) and their captures, render budgets."},
         {"splines", "Roads, walls, rivers, placement, terrain on splines (jasper://docs/splines)."},
-        {"terrain", "Terrain brushes (sculpt, paint, place objects), height/blend maps, details (grass, rocks) and sampling."},
+        {"terrain", "Terrain edits (heights, paint, holes, import, foliage and trees), details (grass, rocks), stats, heightmap export, brush strokes; start with edit_terrain (jasper://docs/terrain)."},
+        {"voxels", "Voxel Volumes: caves, overhangs, ground that digs; start with edit_voxels (jasper://docs/voxels)."},
         {"navigation", "Navigation meshes, agents, crowds and grid paths."},
         {"particles", "Particle processors, forces, trails, sub-emitters and render modes."},
         {"animation", "Blend spaces, state machines, layers, IK, retargeting and curves."},
@@ -34,9 +35,15 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"audio", "Audio Mixer, sound analysis, placeholders, sound search, Sound Events, Play capture and checks."},
         {"editor_tools", "Colour picker, curve editor, project templates and movie recording."},
         {"vcs", "Version control: status, locks, commits and scene diffs."},
-        {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, graph files."},
+        {"scripting", "Script hot reload and status, editor-script menus and numeric expressions."},
+        {"graphs", "Graph files (Procedural Materials and other node graphs): kinds, node catalog, read, validate, edit."},
+        {"materials", "Procedural Materials: preview any material with checks, bake a graph to PNGs and a .material (jasper://docs/procedural-materials)."},
         {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
         {"shipping", "Player runtimes, native plugins, build shader overrides, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
+        // the pixel-art family's sprites (S44 adds the row; S45 and S47 add their tools)
+        {"sprites", "Aseprite import settings, sprite atlases, and agent sprite drawing on .aseprite files (jasper://docs/sprites)."},
+        // the pixel-art family's group: S42's check, S43's palettes, S51's font previews (pages named in pixel-art.md)
+        {"pixel_art", "Pixel art: checks, palettes and font previews (jasper://docs/pixel-art)."},
         {"title_art", "Title Art documents (.titleart): library, edit, render, check, export."},
     };
     if (selftestGroupMode() > 0) {

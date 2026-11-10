@@ -21,11 +21,13 @@ namespace {
     };
 
     const EnumNames<Scaling> kScaling[] = {{Scaling::FITWIDTH, "fitwidth"}, {Scaling::FITHEIGHT, "fitheight"},
-        {Scaling::LETTERBOX, "letterbox"}, {Scaling::CROP, "crop"}, {Scaling::STRETCH, "stretch"}, {Scaling::NATIVE, "native"}};
+        {Scaling::LETTERBOX, "letterbox"}, {Scaling::CROP, "crop"}, {Scaling::STRETCH, "stretch"}, {Scaling::NATIVE, "native"},
+        {Scaling::INTEGER, "integer"}, {Scaling::INTEGER_EXPAND, "integer_expand"}};
     const EnumNames<TextureStrategy> kTextureStrategy[] = {{TextureStrategy::FIT, "fit"}, {TextureStrategy::RESIZE, "resize"},
         {TextureStrategy::NONE, "none"}};
     const EnumNames<AtmosphereQuality> kAtmosphere[] = {{AtmosphereQuality::OFF, "off"}, {AtmosphereQuality::LOW, "low"},
         {AtmosphereQuality::MEDIUM, "medium"}, {AtmosphereQuality::HIGH, "high"}};
+    const EnumNames<FoliageQuality> kFoliage[] = {{FoliageQuality::LOW, "low"}, {FoliageQuality::MEDIUM, "medium"}, {FoliageQuality::HIGH, "high"}};
     const EnumNames<PbrTier> kPbrTier[] = {{PbrTier::FULL, "full"}, {PbrTier::REDUCED, "reduced"}};
     const EnumNames<ShadowTier> kShadowTier[] = {{ShadowTier::LOW, "low"}, {ShadowTier::MEDIUM, "medium"}, {ShadowTier::HIGH, "high"},
         {ShadowTier::ULTRA, "ultra"}};
@@ -74,12 +76,21 @@ json PlayerConfig::toJson() const {
     out["window"] = {{"mode", kWindowModes[std::clamp(windowMode, 0, 2)]}, {"width", windowWidth}, {"height", windowHeight},
                      {"resizable", resizable}, {"title", title}, {"vsync", vsync}, {"icon", icon}, {"storageId", storageId}};
     out["canvas"] = {{"width", canvasWidth}, {"height", canvasHeight}, {"scaling", nameOf(kScaling, scaling)},
-                     {"textureStrategy", nameOf(kTextureStrategy, textureStrategy)}};
+                     {"textureStrategy", nameOf(kTextureStrategy, textureStrategy)}, {"pixelsPerUnit", pixelsPerUnit},
+                     {"bitmapTextCacheMiB", bitmapTextCacheMiB}};
+    // written only when Point, so a bilinear game's config is what it was before S42
+    if (defaultFilterPoint)
+        out["canvas"]["defaultFilterMode"] = "point";
     out["loading"] = {{"scene", loadingScene}, {"delay", loadingDelay}, {"timeout", loadingTimeout}, {"async", asyncLoading}};
     out["threading"] = {{"workers", threading.workers}, {"reservedFrameWorkers", threading.reservedFrameWorkers},
                         {"ioThreads", threading.ioThreads}, {"webPumpBudgetMs", threading.webPumpBudgetMs}};
+    if (particleWorldBudget != 0)
+        out["particleWorldBudget"] = particleWorldBudget;
     out["atmosphereQuality"] = {nameOf(kAtmosphere, atmosphereQuality[0]), nameOf(kAtmosphere, atmosphereQuality[1]),
                                 nameOf(kAtmosphere, atmosphereQuality[2])};
+    if (!foliageQualityUncapped) {
+        out["foliageQuality"] = {nameOf(kFoliage, foliageQuality[0]), nameOf(kFoliage, foliageQuality[1]), nameOf(kFoliage, foliageQuality[2])};
+    }
     out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
     out["input"] = {{"deadzone", inputDeadzone}, {"actions", inputActions}};
     json areas = json::array();
@@ -91,6 +102,9 @@ json PlayerConfig::toJson() const {
                           {"stepHeight", agent.stepHeight}, {"maxSlope", agent.maxSlope}});
     out["navigation"] = {{"areas", areas}, {"agentTypes", agents}, {"crowdMaxAgents", navigation.crowdMaxAgents},
                          {"webBakeBudgetMs", navigation.webBakeBudgetMs}, {"maxGridSolvesPerTick", navigation.maxGridSolvesPerTick}};
+    // (only when set: a game without them keeps its file)
+    if (voxelMaxDimension > 0 || voxelCpuBudgetMB > 0 || voxelMeshBudgetMB > 0)
+        out["voxel"] = {{"maxDimension", voxelMaxDimension}, {"cpuBudgetMB", voxelCpuBudgetMB}, {"meshBudgetMB", voxelMeshBudgetMB}};
     json textures = json::array();
     for (const Engine::TexturePlatformDefaults& group : textureDefaults)
         textures.push_back({{"quality", group.quality}, {"memoryBudgetMB", group.memoryBudgetMB}, {"lowMemoryFallback", group.lowMemoryFallback}});
@@ -104,8 +118,18 @@ json PlayerConfig::toJson() const {
     for (ShadowTier tier : shadowTiers) tiers.push_back(nameOf(kShadowTier, tier));
     out["shadowTiers"] = tiers;
     out["device"] = json::parse(device.toJson());
+    out["terrainQualityTiers"] = terrainQualityTiers;
+    out["terrainShippedTiers"] = terrainShippedTiers;
     out["tags"] = tags;
     out["layers"] = layerNames;
+    if (!sortingLayers.empty()) {
+        json layers = json::array();
+        for (const SortingLayerInfo& layer : sortingLayers) layers.push_back({{"id", layer.id}, {"name", layer.name}});
+        out["sortingLayers"] = layers;
+    }
+    if (transparencySortMode == TransparencySortMode::CUSTOM_AXIS) out["transparencySortMode"] = "custom_axis";
+    if (transparencySortAxis != Vector3(0.0f, 1.0f, 0.0f))
+        out["transparencySortAxis"] = {transparencySortAxis.x, transparencySortAxis.y, transparencySortAxis.z};
     out["collision3D"] = collision3D;
     out["collision2D"] = collision2D;
     out["logging"] = {{"level", logLevel}, {"file", logFile}, {"backtrace", logBacktrace}};
@@ -172,6 +196,9 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.canvasHeight = canvas->value("height", config.canvasHeight);
             valueOf(kScaling, canvas->value("scaling", "fitwidth"), config.scaling);
             valueOf(kTextureStrategy, canvas->value("textureStrategy", "none"), config.textureStrategy);
+            config.pixelsPerUnit = canvas->value("pixelsPerUnit", 1);
+            config.defaultFilterPoint = canvas->value("defaultFilterMode", std::string("bilinear")) == "point";
+            config.bitmapTextCacheMiB = canvas->value("bitmapTextCacheMiB", 0);
         }
         if (const auto loading = in.find("loading"); loading != in.end()) {
             config.loadingScene = loading->value("scene", 0u);
@@ -179,11 +206,16 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.loadingTimeout = loading->value("timeout", config.loadingTimeout);
             config.asyncLoading = loading->value("async", config.asyncLoading);
         }
+        config.particleWorldBudget = in.value("particleWorldBudget", config.particleWorldBudget);
         if (const auto threading = in.find("threading"); threading != in.end()) {
             config.threading.workers = threading->value("workers", config.threading.workers);
             config.threading.reservedFrameWorkers = threading->value("reservedFrameWorkers", config.threading.reservedFrameWorkers);
             config.threading.ioThreads = threading->value("ioThreads", config.threading.ioThreads);
             config.threading.webPumpBudgetMs = threading->value("webPumpBudgetMs", config.threading.webPumpBudgetMs);
+        }
+        if (const auto foliage = in.find("foliageQuality"); foliage != in.end() && foliage->is_array()) {
+            config.foliageQualityUncapped = false;
+            for (size_t i = 0; i < 3 && i < foliage->size(); i++) valueOf(kFoliage, (*foliage)[i].get<std::string>(), config.foliageQuality[i]);
         }
         if (const auto atmosphere = in.find("atmosphereQuality"); atmosphere != in.end() && atmosphere->is_array()) {
             for (size_t i = 0; i < 3 && i < atmosphere->size(); i++) valueOf(kAtmosphere, (*atmosphere)[i].get<std::string>(), config.atmosphereQuality[i]);
@@ -196,6 +228,11 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         if (const auto input = in.find("input"); input != in.end()) {
             config.inputDeadzone = input->value("deadzone", config.inputDeadzone);
             config.inputActions = input->value("actions", "");
+        }
+        if (const auto voxel = in.find("voxel"); voxel != in.end()) {
+            config.voxelMaxDimension = voxel->value("maxDimension", 0);
+            config.voxelCpuBudgetMB = voxel->value("cpuBudgetMB", 0);
+            config.voxelMeshBudgetMB = voxel->value("meshBudgetMB", 0);
         }
         if (const auto navigation = in.find("navigation"); navigation != in.end()) {
             nav::NavigationSettings settings = nav::NavigationSettings::defaults();
@@ -253,8 +290,23 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
                 return false;
             }
         }
+        if (const auto terrainTiers = in.find("terrainQualityTiers"); terrainTiers != in.end() && terrainTiers->is_array()) {
+            for (size_t i = 0; i < config.terrainQualityTiers.size() && i < terrainTiers->size(); i++)
+                config.terrainQualityTiers[i] = (*terrainTiers)[i].get<int>();
+        }
+        config.terrainShippedTiers = in.value("terrainShippedTiers", config.terrainShippedTiers);
         config.tags = in.value("tags", std::vector<std::string>{});
         config.layerNames = in.value("layers", std::vector<std::string>{});
+        if (const auto layers = in.find("sortingLayers"); layers != in.end() && layers->is_array()) {
+            for (const json& layer : *layers) {
+                if (layer.is_object() && layer.contains("id") && layer["id"].is_number_integer() && layer.contains("name") && layer["name"].is_string())
+                    config.sortingLayers.push_back({layer["id"].get<int32_t>(), layer["name"].get<std::string>()});
+            }
+        }
+        if (in.value("transparencySortMode", std::string()) == "custom_axis") config.transparencySortMode = TransparencySortMode::CUSTOM_AXIS;
+        if (const auto axis = in.find("transparencySortAxis"); axis != in.end() && axis->is_array() && axis->size() == 3 &&
+                (*axis)[0].is_number() && (*axis)[1].is_number() && (*axis)[2].is_number())
+            config.transparencySortAxis = Vector3((*axis)[0].get<float>(), (*axis)[1].get<float>(), (*axis)[2].get<float>());
         const std::vector<uint32_t> collision3D = in.value("collision3D", std::vector<uint32_t>{});
         const std::vector<uint32_t> collision2D = in.value("collision2D", std::vector<uint32_t>{});
         for (size_t i = 0; i < collision3D.size() && i < config.collision3D.size(); i++) config.collision3D[i] = collision3D[i];

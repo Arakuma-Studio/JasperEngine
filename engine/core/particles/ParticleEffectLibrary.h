@@ -37,6 +37,8 @@ namespace jasperengine { namespace particles {
         // forgets every asset (a project closed)
         static void clear();
         static uint64_t version(const std::string& path);
+        // moves on with any read, edit or clear: a user of many assets compares it first
+        static uint64_t generation();
     };
 
 }}

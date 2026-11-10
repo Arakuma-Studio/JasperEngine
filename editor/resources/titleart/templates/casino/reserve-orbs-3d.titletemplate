@@ -153,6 +153,7 @@
         "scale": 1,
         "flip_x": false,
         "flip_y": false,
+        "stretch": [1, 1],
         "z": 0,
         "rotation_x": 0,
         "rotation_y": 0
@@ -164,6 +165,12 @@
         "color_scheme": "",
         "owner": ""
       },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
       "generator": {
         "type": "fill",
         "params": {
@@ -215,6 +222,7 @@
         "scale": 1,
         "flip_x": false,
         "flip_y": false,
+        "stretch": [1, 1],
         "z": 0,
         "rotation_x": 0,
         "rotation_y": 0
@@ -226,6 +234,12 @@
         "color_scheme": "",
         "owner": ""
       },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
       "shape": "orb",
       "size": 130,
       "aspect": 1,
@@ -827,6 +841,7 @@
         "scale": 1,
         "flip_x": false,
         "flip_y": false,
+        "stretch": [1, 1],
         "z": 0,
         "rotation_x": 0,
         "rotation_y": 0
@@ -838,6 +853,12 @@
         "color_scheme": "",
         "owner": ""
       },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
       "shape": "orb",
       "size": 130,
       "aspect": 1,
@@ -1439,6 +1460,7 @@
         "scale": 1,
         "flip_x": false,
         "flip_y": false,
+        "stretch": [1, 1],
         "z": 0,
         "rotation_x": 0,
         "rotation_y": 0
@@ -1450,6 +1472,12 @@
         "color_scheme": "",
         "owner": ""
       },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
       "shape": "orb",
       "size": 130,
       "aspect": 1,
@@ -2051,6 +2079,7 @@
         "scale": 1,
         "flip_x": false,
         "flip_y": false,
+        "stretch": [1, 1],
         "z": 0,
         "rotation_x": 0,
         "rotation_y": 0
@@ -2062,6 +2091,12 @@
         "color_scheme": "",
         "owner": ""
       },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
       "shape": "orb",
       "size": 130,
       "aspect": 1,
@@ -2663,6 +2698,7 @@
         "scale": 1,
         "flip_x": false,
         "flip_y": false,
+        "stretch": [1, 1],
         "z": 0,
         "rotation_x": 0,
         "rotation_y": 0
@@ -2674,6 +2710,12 @@
         "color_scheme": "",
         "owner": ""
       },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
       "shape": "orb",
       "size": 130,
       "aspect": 1,
@@ -3275,6 +3317,7 @@
         "scale": 1,
         "flip_x": false,
         "flip_y": false,
+        "stretch": [1, 1],
         "z": 0,
         "rotation_x": 0,
         "rotation_y": 0
@@ -3286,6 +3329,12 @@
         "color_scheme": "",
         "owner": ""
       },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
       "shape": "orb",
       "size": 130,
       "aspect": 1,
@@ -3911,6 +3960,7 @@
         "scale": 1,
         "flip_x": false,
         "flip_y": false,
+        "stretch": [1, 1],
         "z": 0,
         "rotation_x": 0,
         "rotation_y": 0
@@ -3922,6 +3972,12 @@
         "color_scheme": "",
         "owner": ""
       },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
       "shape": "orb",
       "size": 380,
       "aspect": 1,
@@ -4535,6 +4591,11 @@
     },
     "glyph_layer": ""
   },
+  "source_language": "",
+  "languages": [],
+  "string_namespace": "",
+  "dpi": 72,
+  "import_notes": [],
   "scene_3d": {
     "camera": {
       "fov": 30,

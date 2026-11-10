@@ -84,6 +84,18 @@ bool TextureRender::createDynamicColorTexture(const std::string& label, int widt
         backend.createDynamicColorTexture(label, width, height);
 }
 
+bool TextureRender::createDynamicMapTexture(const std::string& label, int width, int height, ColorFormat colorFormat){
+    return Engine::isViewLoaded() && backend.createDynamicMapTexture(label, width, height, colorFormat);
+}
+
+bool TextureRender::isDynamicMap() const{
+    return backend.isDynamicMap();
+}
+
+ColorFormat TextureRender::getUploadFormat() const{
+    return backend.getUploadFormat();
+}
+
 bool TextureRender::updateTexture(const void* data, size_t size){
     return backend.updateTexture(data, size);
 }
@@ -142,6 +154,10 @@ const void* TextureRender::getVulkanImageHandler() const{
 
 uint32_t TextureRender::getViewId() const{
     return backend.getViewId();
+}
+
+uint32_t TextureRender::getSamplingKey() const{
+    return backend.getSamplingKey();
 }
 
 int TextureRender::getWidth() const{

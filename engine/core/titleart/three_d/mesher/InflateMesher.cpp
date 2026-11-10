@@ -12,6 +12,7 @@
 #include <array>
 #include <cmath>
 #include <map>
+#include <utility>
 
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::three_d;
@@ -433,19 +434,33 @@ double jasperengine::titleart::three_d::inflateScale(double outputScale) {
     return std::pow(2.0, std::round(std::log2(std::max(outputScale, 1e-6))));
 }
 
-double jasperengine::titleart::three_d::inflateStep(const Shapes& shapes, double outputScale, int detail, size_t maxNodes) {
-    double area = 0, scale = 0;
-    for (const ShapeContours& s : shapes) {
-        double a = std::abs(signedArea(s.outer));
-        double p = contourLength(s.outer);
-        for (const Contour& h : s.holes) {
-            a -= std::abs(signedArea(h));
-            p += contourLength(h);
+namespace {
+
+    // the shapes' total area and largest inset scale (1.5 area / perimeter)
+    std::pair<double, double> areaAndInset(const Shapes& shapes) {
+        double area = 0, scale = 0;
+        for (const ShapeContours& s : shapes) {
+            double a = std::abs(signedArea(s.outer));
+            double p = contourLength(s.outer);
+            for (const Contour& h : s.holes) {
+                a -= std::abs(signedArea(h));
+                p += contourLength(h);
+            }
+            if (a <= 0 || p <= 0) continue;
+            area += a;
+            scale = std::max(scale, 1.5 * a / p);
         }
-        if (a <= 0 || p <= 0) continue;
-        area += a;
-        scale = std::max(scale, 1.5 * a / p);
+        return {area, scale};
     }
+
+}
+
+double jasperengine::titleart::three_d::inflateInset(const Shapes& shapes) {
+    return areaAndInset(shapes).second;
+}
+
+double jasperengine::titleart::three_d::inflateStep(const Shapes& shapes, double outputScale, int detail, size_t maxNodes) {
+    const auto [area, scale] = areaAndInset(shapes);
     if (area <= 0) return 1;
     return std::max({scale / (INFLATE_NODES_PER_INSET * std::clamp(detail, 1, 4)), std::sqrt(area / (double)std::max<size_t>(1, maxNodes)),
                      INFLATE_MIN_STEP_PX / std::max(outputScale, 1e-6)});

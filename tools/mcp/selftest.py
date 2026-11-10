@@ -178,6 +178,13 @@ async def test_parallel():
         r = subprocess.run(suite, capture_output=True, text=True)
         ok(r.returncode == 2 and "test_unexplained.py: left out of CI for no reason" in r.stderr,
            "runner: --suite ci exits 2 on a file left out for no reason")
+        # a run of named files answers for those files, not for the rest of the directory
+        r = subprocess.run(suite + [str(tests / "test_ci_editorless.py")], capture_output=True, text=True)
+        ok(r.returncode == 0 and "1 passed, 0 failed, 0 skipped" in r.stdout,
+           f"runner: another file's problem does not stop a run of named files: {r.stderr[-200:]}")
+        r = subprocess.run(suite + [str(tests / "test_unexplained.py")], capture_output=True, text=True)
+        ok(r.returncode == 2 and "test_unexplained.py: left out of CI for no reason" in r.stderr,
+           "runner: a named file left out for no reason still stops the run")
         (tests / "test_unexplained.py").unlink()
         (tests / "test_ci_default_fixture.py").write_text("CI = True\n\nasync def test_ping(ed):\n    await ed.ping()\n")
         r = subprocess.run(suite, capture_output=True, text=True)
@@ -223,6 +230,9 @@ async def test_parallel():
         if "scratch kept:" in line:
             import shutil
             shutil.rmtree(line.split("scratch kept:")[1].strip(), ignore_errors=True)
+    # no CI runs --suite ci on every push, and one undeclared file stops the suite check-changed runs
+    r = subprocess.run(runner + ["--suite", "ci", "--list"], capture_output=True, text=True)
+    ok(r.returncode == 0, f"runner: every real test file declares its place in the CI suite: {r.stderr[-400:]}")
 
 
 async def main():

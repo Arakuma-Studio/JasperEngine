@@ -3,13 +3,16 @@
 
 #include "Catalog.h"
 #include "component/ButtonComponent.h"
+#include "component/Transform.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
+#include "component/CameraComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/MeshPolygonComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/RagdollComponent.h"
 #include "component/Rigidbody2DComponent.h"
@@ -33,6 +36,7 @@
 #include "component/FluidSimulationComponent.h"
 #include "component/SplineComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/TerrainComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticeTypes.h"
 #include "pose/PoseAnimatorRuntime.h"
@@ -142,6 +146,7 @@ namespace {
         {"material.shaderTextures", SubmeshOverride_ShaderTextures},
         {"material.shaderFeatures", SubmeshOverride_ShaderFeatures},
         {"material.shaderGlobalBindings", SubmeshOverride_ShaderGlobalBindings},
+        {"material.shaderPalettes", SubmeshOverride_ShaderPalettes},
         {"material.blendMode", SubmeshOverride_BlendMode},
         {"material.cullMode", SubmeshOverride_CullMode},
         {"material.depthWrite", SubmeshOverride_DepthWrite},
@@ -266,11 +271,22 @@ ComponentType editor::Catalog::getConflictingComponent(ComponentType type){
         case ComponentType::Rigidbody2DComponent: return ComponentType::CharacterController2DComponent;
         case ComponentType::CharacterControllerComponent: return ComponentType::RigidbodyComponent;
         case ComponentType::RigidbodyComponent: return ComponentType::CharacterControllerComponent;
+        // both draw the Mesh instanced from buffers of their own (S52 R10)
+        case ComponentType::SpriteBatchComponent: return ComponentType::InstancedMeshComponent;
+        case ComponentType::InstancedMeshComponent: return ComponentType::SpriteBatchComponent;
         default: return ComponentType::Transform;
     }
 }
 
 std::string editor::Catalog::getComponentConflict(EntityRegistry* registry, Entity entity, ComponentType type){
+    // a Pixel Perfect Camera goes on a camera (S41 R19)
+    if (type == ComponentType::PixelPerfectCameraComponent && registry && registry->isEntityCreated(entity) &&
+            !registry->findComponent<CameraComponent>(entity))
+        return "A Pixel Perfect Camera goes on a GameObject with a Camera (add a Camera first).";
+    // a Sprite Batch draws its GameObject's Sprite (S52 R10)
+    if (type == ComponentType::SpriteBatchComponent && registry && registry->isEntityCreated(entity) &&
+            !registry->findComponent<SpriteComponent>(entity))
+        return "A Sprite Batch goes on a GameObject with a Sprite (add a Sprite first).";
     const ComponentType other = getConflictingComponent(type);
     if (other == ComponentType::Transform || !registry || !registry->isEntityCreated(entity))
         return "";
@@ -1571,7 +1587,11 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
         }
         case PropertyType::Custom:
             // upstream's collider lists: their authored data, no live shape (copyCollider2D / 3D)
-            if (compType == ComponentType::RigidbodyComponent && property == "colliders") {
+            if (compType == ComponentType::TitleArtRendererComponent && property == "runtimeEnvironments") {
+                auto* source = Catalog::getPropertyRef<std::vector<std::string>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<std::string>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::RigidbodyComponent && property == "colliders") {
                 auto* source = Catalog::getPropertyRef<std::vector<Collider3D>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<Collider3D>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) copyColliders3D(*source, *target);

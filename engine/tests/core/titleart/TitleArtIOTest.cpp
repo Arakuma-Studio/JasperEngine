@@ -84,7 +84,9 @@ TEST_F(TitleArtIOTest, EveryMemberIsWrittenWithItsDefault) {
     std::vector<std::string> order;
     for (auto it = root.begin(); it != root.end(); ++it) order.push_back(it.key());
     std::vector<std::string> expected = {"format", "version", "guid", "name", "canvas", "global_light", "seed",
-                                         "material_links", "layers", "exposed", "outputs", "runtime"};
+                                         "material_links", "layers", "exposed", "outputs", "runtime",
+                                         // S87's members (TitleTranslations.cpp)
+                                         "source_language", "languages", "string_namespace", "dpi", "import_notes"};
 #if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
     expected.push_back("scene_3d");     // S86's member (null in a 2D document)
 #endif
@@ -390,9 +392,17 @@ TEST_F(TitleArtIOTest, FieldWritesValidateAndClamp) {
     EXPECT_EQ(typo.nearest, "bevel");
     FieldSetResult readOnly = setTitleArtField(layer, "layer", "id", "00000000");
     EXPECT_EQ(readOnly.code, "read_only");
-    FieldSetResult reserved = setTitleArtField(layer, "layer", "transform.stretch", Json::array({2, 1}));
-    EXPECT_EQ(reserved.code, "not_available");
-    EXPECT_NE(reserved.error.find("S85"), std::string::npos);
+    // a member still reserved (S86's, without the 3D module) answers not_available naming its owner;
+    // S85's, S84's and S87's reservations are registered members now
+    const std::string owner3D = TitleArtSchema::get().reservedOwner("transform", "z");
+    if (!owner3D.empty()) {
+        FieldSetResult reserved = setTitleArtField(layer, "layer", "transform.z", 1);
+        EXPECT_EQ(reserved.code, "not_available");
+        EXPECT_NE(reserved.error.find(owner3D), std::string::npos);
+    }
+    // S85 registered transform.stretch: it writes like any member
+    FieldSetResult stretch = setTitleArtField(layer, "layer", "transform.stretch", Json::array({2, 1}));
+    EXPECT_TRUE(stretch.ok) << stretch.error;
     FieldSetResult created = setTitleArtField(layer, "layer", "chars.2.rotation", 15);
     ASSERT_TRUE(created.ok) << created.error;
     EXPECT_EQ(layer["chars"]["2"]["rotation"], 15);

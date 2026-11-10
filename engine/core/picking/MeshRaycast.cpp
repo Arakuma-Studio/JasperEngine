@@ -16,6 +16,8 @@
 #include "component/UIComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "util/STBText.h"
+#include "pixelart/BitmapFont.h"
+#include "pixelart/BitmapText.h"
 
 #include <algorithm>
 #include <cmath>
@@ -331,6 +333,7 @@ namespace {
             Vector2 center(0, 0);
             if (const TextComponent* text = scene->findComponent<TextComponent>(leaf.entity)){
                 if (text->pivotBaseline && text->stbtext) center.y = (float)text->stbtext->getAscent();
+                if (text->pivotBaseline && text->bitmapText) center.y = text->bitmapText->getAscent(text->pixelUnit);
                 if (text->pivotCentered) center.x = layout->width / 2.0f;
             }
             const Matrix4 inverse = transform.modelMatrix.inverse();
@@ -401,8 +404,15 @@ const char* jasperengine::pickKindName(PickKind kind){
         case PickKind::UI: return "ui";
         case PickKind::BOUNDS: return "bounds";
         case PickKind::ICON: return "icon";
+        case PickKind::TREE: return "tree";
+        case PickKind::DETAIL: return "detail";
     }
     return "mesh";
+}
+
+bool picking::testMeshAt(SceneBvh& bvh, const SceneBvh::Leaf& leaf, const Matrix4& model, const Vector3& origin, const Vector3& direction,
+                         float maxDistance, const PickFilter& filter, PickHit& hit){
+    return testMesh(bvh, leaf, model, origin, direction, maxDistance, filter, hit);
 }
 
 bool picking::testLeaf(SceneBvh& bvh, const SceneBvh::Leaf& leaf, const Vector3& origin, const Vector3& direction,
@@ -429,6 +439,9 @@ bool picking::testLeaf(SceneBvh& bvh, const SceneBvh::Leaf& leaf, const Vector3&
         case PickKind::BOUNDS:
             return boundsHit(leaf, origin, direction, maxDistance, false, hit);
         case PickKind::ICON:
+        // foliage has no leaves: SceneBvh walks its cells (T5 R35)
+        case PickKind::TREE:
+        case PickKind::DETAIL:
             return false;
     }
     return false;
@@ -474,6 +487,8 @@ MeshRaycastHit MeshRaycast::toHit(const PickHit& pick, float distanceScale){
     hit.barycentric = pick.barycentric;
     hit.kind = pick.kind;
     hit.pending = pick.pending;
+    hit.foliageId = pick.foliageId;
+    hit.prototype = pick.prototype;
     return hit;
 }
 

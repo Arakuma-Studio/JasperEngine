@@ -3,6 +3,9 @@
 
 #include "Texture.h"
 
+#include "Engine.h"
+
+#include "pixelart/PaletteRampTexture.h"
 #include "render/SystemRender.h"
 
 using namespace jasperengine;
@@ -41,8 +44,9 @@ Texture::Texture(){
     this->releaseDataAfterLoad = true;
     this->needLoad = false;
 
-    this->minFilter = TextureFilter::LINEAR;
-    this->magFilter = TextureFilter::LINEAR;
+    // the project's Default Filter Mode (S42 R3); a saved reference sets its own afterwards
+    this->minFilter = Engine::getDefaultTextureFilter();
+    this->magFilter = Engine::getDefaultTextureFilter();
     this->wrapU = TextureWrap::REPEAT;
     this->wrapV = TextureWrap::REPEAT;
     this->svgScale = 1.0f;
@@ -201,6 +205,16 @@ void Texture::setPath(const std::string& path){
     this->needLoad = true;
 
     this->id = buildPathTextureId();
+    // a palette's ramp strip ("hero.palette#ramp:fire", S43 R4a): made from the palette, never
+    // read as a file, and sampled as the colour steps it is
+    if (pixelart::parsePaletteRampPath(newPath)) {
+        this->loadFromPath = false;
+        this->minFilter = TextureFilter::NEAREST;
+        this->magFilter = TextureFilter::NEAREST;
+        this->wrapU = TextureWrap::CLAMP_TO_EDGE;
+        this->wrapV = TextureWrap::CLAMP_TO_EDGE;
+        pixelart::registerPaletteRampTexture(this->id, newPath);
+    }
     this->render = TexturePool::get(getRenderId());
 }
 

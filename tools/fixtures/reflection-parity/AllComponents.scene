@@ -155,6 +155,8 @@ entities:
         receiveShadows: false
         lodEnabled: false
         lodBias: 4.4
+        sortingLayer: 2
+        sortingOrder: -3
         renderInReflectionProbes: false
         shadowsBillboard: true
         staticShadowCaster: true
@@ -184,6 +186,8 @@ entities:
       linerenderer:
         enabled: false
         maxLines: 100
+        sortingLayer: 3
+        sortingOrder: -5
         lines: ~
         blendMode: MULTIPLY
         depthWrite: DISABLED
@@ -301,6 +305,8 @@ entities:
       points:
         enabled: false
         maxPoints: 100
+        sortingLayer: 2
+        sortingOrder: 4
         transparent: true
         autoTransparency: false
         texture:
@@ -1177,6 +1183,8 @@ entities:
         playOnAwake: false
         seed: 0
         playbackSpeed: 2.5
+        sortingLayer: 1
+        sortingOrder: 6
   - type: Entity
     entity: 1034
     name: PolygonComponent
@@ -1415,6 +1423,9 @@ entities:
         flipY: true
         textureScaleFactor: 8.6
         pivotPreset: bottom_right
+        pixelsPerUnit: 6.6
+        pixelRotation: on_grid
+        spriteSortPoint: pivot
   - type: Entity
     entity: 1044
     name: TextComponent
@@ -1504,6 +1515,7 @@ entities:
         automaticFlipY: false
         flipY: true
         textureScaleFactor: 4.2
+        pixelsPerUnit: 5.6
         reserveTiles: 10
   - type: Entity
     entity: 1047
@@ -2599,6 +2611,8 @@ entities:
         widthMultiplier: 7.8
         emitting: false
         autodestruct: true
+        sortingLayer: 4
+        sortingOrder: 7
         widthUnit: pixels
         numCornerVertices: 5
         numCapVertices: 2
@@ -2928,3 +2942,127 @@ entities:
         waves: 0.5
         width: 2.5
         length: 6.5
+  - type: Entity
+    entity: 1095
+    name: PixelPerfectCameraComponent
+    components:
+      transform:
+        position: [94, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      pixelperfectcamera:
+        enabled: false
+        referenceWidth: 7
+        referenceHeight: 2
+        upscaleMode: stretch_fill
+        upscaleRenderTexture: false
+        pixelSnapping: false
+        rotationMode: on_grid
+        subpixelSmoothing: true
+        letterboxColor: [0.6333333, 0.43333334, 0.5555556, 1]
+  - type: Entity
+    entity: 1096
+    name: SortingGroupComponent
+    components:
+      transform:
+        position: [95, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      sortinggroup:
+        enabled: false
+        sortingLayer: 5
+        sortingOrder: 2
+  - type: Entity
+    entity: 1097
+    name: SpriteBatchComponent
+    components:
+      transform:
+        position: [96, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      spritebatch:
+        enabled: false
+        mode: clear_each_frame
+        space: world
+        capacity: 7
+        sortInstances: true
+  - type: Entity
+    entity: 1098
+    name: VoxelVolumeComponent
+    components:
+      transform:
+        position: [97, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      voxelvolume:
+        enabled: false
+        quality: low
+        lodLevels: 6
+        lodRadius: 5
+        maxDrawDistance: 4.4
+        castShadows: false
+        collision: false
+        collisionRadius: 7
+        rescueBodies: false
+        terrainCut: automatic
+        overlapDepth: 2
+        cutTolerance: 1
+        runtimeGeneration: true
+  - type: Entity
+    entity: 1099
+    name: TerrainWorldComponent
+    components:
+      transform:
+        position: [98, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      terrainworld:
+        enabled: false
+        useCameraFocus: false
+        poolSize: 4
+        lodDistance: 6.9
+        uploadBudget: 8.6
+        collisionRadius: 7.5
+        collisionChunkQuads: 6
+        autoAddTiles: false
+        overviewCastsShadows: true
+  - type: Entity
+    entity: 1100
+    name: TitleArtRendererComponent
+    components:
+      transform:
+        position: [99, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      titleart:
+        enabled: true

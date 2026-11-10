@@ -143,9 +143,14 @@ async def test_render_stats_report_probe_slots(ed: Editor):
         await metal_tile(ed, sid, f"Tile {i}", [x, 0.01, -4], 3)
         await ed.call("create_entity", scene=sid, type="reflection_probe", name=f"Probe {i}", position=[x, 1, -4],
                       values={"reflectionprobe": {"boxSize": [3.2, 4, 3.2], "resolution": 32}})
-    await ed.call("wait", frames=120)
-    r = await ed.call_raw("get_render_stats", {})
-    ssr = r.value.get("ssr")
+    # the new probes render their faces over frames: wait for them to light the drawn meshes, a few
+    # frames at a time (a single long wait outlasts the tool's timeout on a loaded machine)
+    for _ in range(60):
+        await ed.call("wait", frames=10)
+        r = await ed.call_raw("get_render_stats", {})
+        ssr = r.value.get("ssr")
+        if ssr is not None and ssr.get("probes_in_view") == 6:
+            break
     ed.check(ssr is not None, f"get_render_stats has an ssr object with SSR on: {sorted(r.value)}")
     ed.check_eq(ssr["probe_slots"], 4, f"four probe slots: {ssr!r}")
     ed.check_eq(ssr["probes_in_view"], 6, f"six probes light drawn meshes: {ssr!r}")

@@ -195,6 +195,8 @@ namespace jasperengine::editor::spritenormals {
                 given.push_back(0);
                 // the frames (frame_0 ...), the old ones past them cleared
                 const ComponentType spriteType = ComponentType::SpriteComponent;
+                // a sheet sprite draws the colour atlas's frames from now on: its sheet is cleared
+                if (!sprite->sheet.empty()) multi->addPropertyCmd<AssetRef>(project, sceneId, entity, spriteType, "sheet", AssetRef());
                 for (unsigned i = static_cast<unsigned>(frames.size()); i < sprite->numFramesRect; i++) {
                     multi->addPropertyCmd<std::string>(project, sceneId, entity, spriteType, "framesRect[" + std::to_string(i) + "].name", std::string());
                     multi->addPropertyCmd<Vector4>(project, sceneId, entity, spriteType, "framesRect[" + std::to_string(i) + "].rect", Vector4(0, 0, 0, 0));

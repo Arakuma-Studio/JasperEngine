@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArtDocument.h"
+#include "TitleArtRenderHost.h"
 
 #include "Project.h"
 #include "command/CommandHistory.h"
@@ -16,10 +17,10 @@
 #include "asset/Guid.h"
 #include "io/watch/FileWatchService.h"
 #include "util/FileUtils.h"
+#include "io/AtomicFile.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
-#include <fstream>
 #include <optional>
 #include <set>
 #include <system_error>
@@ -42,6 +43,16 @@ namespace {
     Registry& registry() {
         static Registry* r = new Registry();
         return *r;
+    }
+
+    // the batch's files that join the document's undo step (the personal library's do not: edit()
+    // writes those once the step is in); files first, so a reload of the document finds them
+    std::vector<WriteFilesCmd::Item> titleOpFileItems(const std::vector<TitleOpFile>& files) {
+        std::vector<WriteFilesCmd::Item> items;
+        for (const TitleOpFile& f : files) {
+            if (f.undoable && !f.remove) items.push_back({f.path, f.content});
+        }
+        return items;
     }
 
     void useProject(Project* project) {
@@ -71,6 +82,13 @@ namespace {
     }
 
     void afterWrite(const std::vector<fs::path>& changed) {
+        // the files a step imports or removes beside the document (a library apply's fonts, their
+        // .meta, environments) are resolved through the asset database by the next render or
+        // check: it learns them now, not on the file watcher's later walk (which raced that read)
+        Registry& reg = registry();
+        bool assets = false;
+        for (const fs::path& path : changed) assets = assets || !Util::isTitleArtFile(FileUtils::pathToUtf8(path));
+        if (assets && reg.project) reg.project->refreshAssetDatabase(true);
         TitleArtDocument::filesChanged(changed);
         if (registry().filesWrittenHook) registry().filesWrittenHook(changed);
         TitleArtDocument::notifyChanged(changed);
@@ -138,8 +156,7 @@ std::shared_ptr<TitleArtDocument> TitleArtDocument::open(Project* project, const
 }
 
 std::shared_ptr<TitleArtDocument> TitleArtDocument::create(Project* project, const std::string& path, const titleart::TitleArtDoc* doc,
-                                                           const std::string& undoName, std::string* error,
-                                                        const std::vector<TitleOpFile>* files) {
+                                                           const std::string& undoName, std::string* error, const std::vector<TitleOpFile>& files) {
     if (!project || project->getProjectPath().empty()) {
         fail(error, "no project is open");
         return nullptr;
@@ -162,10 +179,8 @@ std::shared_ptr<TitleArtDocument> TitleArtDocument::create(Project* project, con
     titleart::TitleArtDoc initial = doc ? *doc : titleart::makeNewTitleArt();
     if (!titleart::isTitleArtGuid(initial.guid())) initial.root["guid"] = titleart::generateTitleArtGuid();
     titleart::normalizeTitleArt(initial, nullptr);
-    std::vector<WriteFilesCmd::Item> items = {{absolute, titleart::writeTitleArt(initial)}};
-    if (files) {
-        for (const TitleOpFile& f : *files) if (f.undoable && !f.remove) items.push_back({f.path, f.content});
-    }
+    std::vector<WriteFilesCmd::Item> items = titleOpFileItems(files);
+    items.push_back({absolute, titleart::writeTitleArt(initial)});
     auto* command = new WriteFilesCmd(std::move(items), &afterWrite);
     command->setName(undoName.empty() ? "Create Title Art " + CommandNames::file(absolute) : undoName);
     command->setNoMerge();
@@ -392,17 +407,15 @@ void TitleArtDocument::reload(TitleArtChangeOrigin origin) {
 }
 
 bool TitleArtDocument::write(const std::string& newText, const std::string& undoName, const std::string& mergeKey, std::string* writeError,
-                             TitleArtChangeOrigin origin) {
-    std::vector<TitleOpFile> extra = std::move(pendingFiles);
-    pendingFiles.clear();
-    if (newText == fileText && extra.empty()) return true;
+                             TitleArtChangeOrigin origin, const std::vector<TitleOpFile>& files) {
+    std::vector<WriteFilesCmd::Item> items = titleOpFileItems(files);
+    if (newText == fileText && items.empty()) return true;
     std::string onDisk;
     if (ProjectChecks::readFile(filePath, onDisk) && onDisk != fileText) {
         reload(TitleArtChangeOrigin::Disk);
         return fail(writeError, "'" + relativePath + "' changed on disk since it was read: it was reloaded, make the edit again");
     }
-    std::vector<WriteFilesCmd::Item> items = {{filePath, newText}};
-    for (const TitleOpFile& f : extra) if (f.undoable && !f.remove) items.push_back({f.path, f.content});
+    items.push_back({filePath, newText});
     auto* command = new WriteFilesCmd(std::move(items), &afterWrite);
     writing = newText;
     writingOrigin = origin;
@@ -420,12 +433,12 @@ bool TitleArtDocument::write(const std::string& newText, const std::string& undo
 }
 
 bool TitleArtDocument::commit(const titleart::TitleArtDoc& doc, const std::string& undoName, const std::string& mergeKey, std::string* commitError,
-                              TitleArtChangeOrigin origin) {
+                              TitleArtChangeOrigin origin, const std::vector<TitleOpFile>& files) {
     if (!editable()) return fail(commitError, "'" + relativePath + "' is read-only: " + versionMessage);
     titleart::TitleArtDoc copy = doc;
     copy.root["guid"] = titleart::isTitleArtGuid(value.guid()) ? value.guid() : titleart::generateTitleArtGuid();
     titleart::normalizeTitleArt(copy, nullptr);
-    return write(titleart::writeTitleArt(copy), undoName, mergeKey, commitError, origin);
+    return write(titleart::writeTitleArt(copy), undoName, mergeKey, commitError, origin, files);
 }
 
 bool TitleArtDocument::commitText(const std::string& text, const std::string& undoName, std::string* commitError, TitleArtChangeOrigin origin) {
@@ -440,17 +453,21 @@ TitleOpsResult TitleArtDocument::edit(const TitleJson& ops, const TitleArtEditOp
         return refused(value, "rev_mismatch", "'" + relativePath + "' is at rev " + std::to_string(documentRevision) + ", not " +
                                                   std::to_string(options.expectRev) + ": read it again. Nothing was applied.");
     }
-    TitleOpsResult result = TitleArtOps::apply(value, ops, options.ops);
+    TitleOpsOptions opsOptions = options.ops;
+    // ops that write files beside the document (S87's imports) need its paths
+    if (opsOptions.documentPath.empty()) opsOptions.documentPath = filePath.string();
+    if (opsOptions.projectPath.empty() && project) opsOptions.projectPath = project->getProjectPath().string();
+    if (opsOptions.assetsPath.empty() && project) opsOptions.assetsPath = project->getAssetsPath().string();
+    if (!opsOptions.assets && project) opsOptions.assets = TitleArtRenderHost::editor().resolver(project);
+    if (opsOptions.defaultLanguage.empty() && project) opsOptions.defaultLanguage = project->getLocalizationSettings().effectiveDefault();
+    TitleOpsResult result = TitleArtOps::apply(value, ops, opsOptions);
     if (!result.ok || options.dryRun) return result;
     if (!options.undoName.empty()) result.undoName = options.undoName;
     std::string writeError;
-    pendingFiles = result.files;
-    if (!commit(result.doc, result.undoName, options.mergeKey, &writeError, options.origin)) {
-        pendingFiles.clear();
+    if (!commit(result.doc, result.undoName, options.mergeKey, &writeError, options.origin, result.files)) {
         TitleOpsResult failed = refused(value, "write_failed", writeError + ". Nothing was applied.");
         return failed;
     }
-    pendingFiles.clear();
     // the personal library lives outside the project: written once the step is in
     for (const TitleOpFile& f : result.files) {
         if (f.undoable) continue;
@@ -460,9 +477,9 @@ TitleOpsResult TitleArtDocument::edit(const TitleJson& ops, const TitleArtEditOp
             continue;
         }
         fs::create_directories(f.path.parent_path(), ec);
-        std::ofstream out(f.path, std::ios::binary | std::ios::trunc);
-        out << f.content;
-        if (!out) result.problems.push_back(TitleOpProblem{"warning", "write_failed", -1, f.path.generic_string(), "could not write '" + f.path.generic_string() + "'"});
+        if (!io::writeFileAtomic(f.path, f.content).ok()) {
+            result.problems.push_back(TitleOpProblem{"warning", "write_failed", -1, f.path.generic_string(), "could not write '" + f.path.generic_string() + "'"});
+        }
     }
     return result;
 }

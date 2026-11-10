@@ -16,6 +16,7 @@
 // docs/testing.md, "Android emulator").
 
 #include "JasperEngine.h"
+#include "titleart/runtime/TitleArtScheduler.h"
 
 #include <cstdlib>
 #include <string>
@@ -137,6 +138,10 @@ namespace {
         art.getOnReady().add("gate", [label, &image](){
             TitleArt ready(&titleartScene, image.getEntity());
             Log::print("[render-gate] title %s ready %s", label.c_str(), ready.getPixelPath().c_str());
+            // S81 AC17's emulator figures: what the scheduler's frames took on this device
+            const titleart::TitleArtScheduler::FrameTotals& totals = titleart::TitleArtScheduler::get().frameTotals();
+            Log::print("[render-gate] title budget frames=%llu worst_ms=%.2f over_budget=%llu late_starts=%llu", (unsigned long long)totals.frames,
+                       totals.worstUs / 1000.0, (unsigned long long)totals.overBudgetFrames, (unsigned long long)totals.lateStarts);
         });
     }
 

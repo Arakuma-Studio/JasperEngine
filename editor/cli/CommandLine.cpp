@@ -1,6 +1,12 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "animation/ClipReport.h"
+#include "component/Transform.h"
+#include "animation/ClipOptimize.h"
+#include "animation/ClipStatistics.h"
+#include "animation/ModelSubClips.h"
+#include "util/SHA1.h"
 #include "media/VideoFormats.h"
 #include "htmlui/compat/CompatApi.h"
 #include "component/PrefabComponent.h"
@@ -53,6 +59,15 @@
 #include "json.hpp"
 #include "util/ProjectChecks.h"
 #include "titleart/TitleArtProjectCheck.h"
+#include "util/QaChecks.h"
+#include "particles/ParticleEffectPreview.h"
+#include "procmat/ProceduralBake.h"
+#include "procmat/ProceduralCpuEvaluator.h"
+#include "procmat/ProceduralDevice.h"
+#include "procmat/ProceduralMaterialKind.h"
+#include "procmat/NodeLibrary.h"
+#include "texsynth/SynthesisRecipe.h"
+#include "particles/ParticlePreviewSource.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/TransformPropagation.h"
 #include "texture/TextureCli.h"
@@ -61,7 +76,11 @@
 #include "htmlui/HtmlUiImportCli.h"
 #include "texsynth/SynthesisCli.h"
 #include "spritenormals/SpriteNormalsCheck.h"
+#include "sprite/SpriteMigration.h"
+#include "pixelart/PixelArtCheck.h"
+#include "pixelart/PixelArtInput.h"
 #include "spritenormals/SpriteNormalsCli.h"
+#include "pixelart/aseprite/AsepriteCli.h"
 #include "physics/PlacementCli.h"
 #include "vat/VatCli.h"
 #include "htmlui/effects/EffectManifest.h"
@@ -294,8 +313,14 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " synthesize-texture [options]  Synthesize a texture (tileable, inpainted, ...) from examples.\n"
         << "  " << commandName << " place-physics [options]  Drop, separate or move GameObjects with edit-time physics.\n"
         << "  " << commandName << " bake-vat [options]       Bake a Vertex Animation (.vat) from a model, clips or GameObject, or import one.\n"
+        << "  " << commandName << " import-title-art <file>... --project <dir>  Import Pachislop projects, PSDs, SVGs, Photoshop styles\n"
+        << "                                                     or strings (CSV, XLIFF) into Title Art (exit 0/1/2).\n"
+        << "  " << commandName << " export-title-art <x.titleart>... --project <dir> --format <f>  PNG, PSD, SVG, sheets, atlases,\n"
+        << "                                                     sequences, KTX2, CSV or XLIFF of Title Art documents (exit 0/1/2).\n"
+        << "  " << commandName << " procedural-material bake <file.procmat> [options]  Bake a Procedural Material (exit 0/1/2/3/4).\n"
         << "  " << commandName << " import-unity-particles <file> [options]  Import Unity Particle Systems as engine prefabs.\n"
         << "  " << commandName << " generate-sprite-normals [options]  Normal maps for sprites, sheets, GIF/APNG animations and tiles.\n"
+        << "  " << commandName << " aseprite info|render|resave  Describe, render or resave .aseprite files (no project).\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " audio-analyze [options] <file|essentials:id|library:id>...\n"
@@ -2127,10 +2152,16 @@ struct CheckOptions {
     bool ui = false;
     bool textures = false;
     bool anims = false;
+    bool animQuality = false;
     bool vat = false;
     bool normals = false;
     bool videos = false;
     bool titles = false;
+    bool particles = false;
+    bool materials = false;
+    std::string failOn = "fail";
+    bool sprites = false;
+    bool pixelArt = false;
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -2158,7 +2189,11 @@ void printCheckUsage(const std::string& commandName) {
         << "                           and synthesized textures (PNGs with a jasper.synthesis recipe) whose\n"
         << "                           sources changed or went missing since (regenerate them).\n"
         << "      --anims              Animation clips (.anim): the format, with line:col for JSON errors and the\n"
-        << "                           JSON path of every dropped part, and the clips scenes and prefabs reference.\n"
+        << "                           JSON path of every dropped part, the clips scenes and prefabs reference, and\n"
+        << "                           warnings on redundant keys, constant tracks, rotation flips and stale reductions.\n"
+        << "      --anim-quality       How clips move, on their models (no scene loads): warnings on a skin over the\n"
+        << "                           bone palette phones hold, a Loop clip's seam, an in-place clip's root drift and\n"
+        << "                           feet sliding on the ground (humanoid models). Not in --hook.\n"
         << "      --vat                Vertex Animations (.vat): the format, a source changed or missing since the\n"
         << "                           bake (warnings), a mesh or layout that no longer matches, a payload over its\n"
         << "                           preset's device limit (errors).\n"
@@ -2173,9 +2208,27 @@ void printCheckUsage(const std::string& commandName) {
         << "      --titles             Title Art documents (.titleart), no GPU: parse errors and newer versions,\n"
         << "                           missing fonts and images (errors), missing glyphs, and outputs not baked,\n"
         << "                           stale or with an invalid recipe (warnings, with the export_title command).\n"
-        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps, videos\n"
-        << "                           and titles.\n"
-        << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos --titles.\n"
+        << "      --particles          Particle effects (.particles): preview_particle_effect's checks at each\n"
+        << "                           effect's default seed, metrics only (capacity_hit, overdraw_budget,\n"
+        << "                           invisible, pop, never_ends, platform_budget; cost is an estimate).\n"
+        << "                           A FAIL is an error, a WARN a warning. An effect used as a sub-emitter\n"
+        << "                           is checked through the effects that use it, not alone.\n"
+        << "      --materials          Procedural Materials (.procmat): graph problems (with the fix), a graph that\n"
+        << "                           does not bake (errors), and baked PNGs whose graph changed since or is gone\n"
+        << "                           (warnings: bake again).\n"
+        << "      --fail-on <verdict>  fail (default) or warn: --particles reports WARN rows as errors too.\n"
+        << "      --sprites            Sprites: legacy sprites with inline frames (scene or prefab, GameObject, texture,\n"
+        << "                           frame count; info) and Sprite Atlas problems (missing members, a frame larger\n"
+        << "                           than the max size: errors; a source packed by two atlases: a warning).\n"
+        << "      --pixel-art          The pixel-art rules (check_pixel_art's, on the saved project): one line per finding,\n"
+        << "                           path[#GameObject]: error|warning: [rule] message (fix: ...) [PIXELART-<RULE>];\n"
+        << "                           --format json adds the full result as pixel_art. In the default set and in --hook\n"
+        << "                           when the project's Pixel Art Mode is on; given files, only the findings of the\n"
+        << "                           changed scenes, of the changed images that are pixel art and of project.yaml.\n"
+        << "      --all                Lua, shaders, C++, UI, textures, clips, clip quality, vertex animations, normal maps,\n"
+        << "                           videos, sprites, particle effects, Procedural Materials, pixel art and titles.\n"
+        << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos --titles\n"
+        << "                           (and --pixel-art in Pixel Art Mode).\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
         << "                           A .vat or .vat.glb checks the Vertex Animation; another file checks the\n"
@@ -2219,12 +2272,28 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.titles = true;
         } else if (arg == "--anims") {
             options.anims = true;
+        } else if (arg == "--anim-quality") {
+            options.animQuality = true;
         } else if (arg == "--vat") {
             options.vat = true;
         } else if (arg == "--normals") {
             options.normals = true;
+        } else if (arg == "--sprites") {
+            options.sprites = true;
+        } else if (arg == "--pixel-art") {
+            options.pixelArt = true;
         } else if (arg == "--videos") {
             options.videos = true;
+        } else if (arg == "--particles") {
+            options.particles = true;
+        } else if (arg == "--materials") {
+            options.materials = true;
+        } else if (arg == "--fail-on") {
+            if (!requireValue(argc, argv, i, options.failOn, error)) return false;
+            if (options.failOn != "fail" && options.failOn != "warn") {
+                error = "--fail-on must be fail or warn";
+                return false;
+            }
         } else if (arg == "--all") {
             options.all = true;
         } else if (arg == "--files") {
@@ -2517,7 +2586,55 @@ struct CheckRun {
     std::string fatal;                                     // the checks could not run
     vat::VatCheck vat;                                     // --vat (listed last, after the pure checks)
     bool vatRan = false;
+    nlohmann::json pixelArt;                               // --pixel-art: check_pixel_art's result (null: not run)
+    size_t pixelArtFixable = 0;
 };
+
+// --hook's changed files for the pixel-art category: project-relative scenes, assets-relative
+// images (an image's meta counts as the image), project.yaml
+struct PixelArtChanged {
+    std::vector<std::string> scenes;
+    std::vector<std::string> images;
+    bool projectFile = false;
+};
+
+// the project's Pixel Art Mode, from project.yaml (pixelArt.enabled), without loading the project
+bool pixelArtModeOn(const fs::path& root) {
+    try {
+        const YAML::Node node = YAML::LoadFile((root / "project.yaml").string());
+        const YAML::Node pixelArt = node["pixelArt"];
+        return pixelArt && pixelArt.IsMap() && pixelArt["enabled"] && pixelArt["enabled"].as<bool>();
+    } catch (...) {
+        return false;
+    }
+}
+
+// check_pixel_art's findings as check lines: path[#GameObject]: error|warning: [rule] message (fix: ...) [PIXELART-RULE]
+void addPixelArtFindings(const pixelart::CheckResult& result, std::vector<ProjectChecks::Finding>& out, size_t& fixable) {
+    for (const pixelart::Finding& finding : result.findings) {
+        ProjectChecks::Finding f;
+        f.tool = "pixel_art";
+        const std::string scene = finding.target.value("scene", "");
+        const std::string entity = finding.target.value("entity", "");
+        const std::string path = finding.target.value("path", "");
+        // a GameObject's scene and path, a scene, a texture or font, else the project
+        if (!scene.empty()) f.path = scene + (entity.empty() ? "" : "#" + entity);
+        else if (!path.empty()) f.path = path + (entity.empty() ? "" : "#" + entity);
+        else f.path = "project.yaml";
+        f.severity = finding.status == pixelart::RuleStatus::Fail ? "error" : "warning";
+        f.message = "[" + finding.rule + "] " + finding.message;
+        std::string code = finding.rule;
+        std::transform(code.begin(), code.end(), code.begin(), [](unsigned char c) { return (char)std::toupper(c); });
+        f.code = "PIXELART-" + code;
+        if (!finding.options.empty()) {
+            f.suggestion = finding.options.front().label;
+            fixable++;
+        } else {
+            f.suggestion = "needs a person: " + finding.needsPerson;
+        }
+        out.push_back(f);
+    }
+}
 
 std::string plural(size_t count, const std::string& word) {
     return std::to_string(count) + " " + word + (count == 1 ? "" : "s");
@@ -2586,11 +2703,9 @@ void collectPlayerAssets(const YAML::Node& node, std::vector<PlayerAssetReferenc
     }
 }
 
-// The glTF animation names of a model file, read from its JSON without the engine: a .gltf's
-// text, a .glb's JSON chunk, and for an .fbx the .glb the editor imported it to (none yet:
-// false, nothing to compare with). Empty names stay empty (subClipNames names them).
-bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const fs::path& model,
-                             std::vector<std::string>& names) {
+// A model file's glTF JSON, read without the engine: a .gltf's text, a .glb's JSON chunk, and for
+// an .fbx the .glb the editor imported it to (none yet: false)
+bool readModelGltfJson(const fs::path& root, const fs::path& assets, const fs::path& model, nlohmann::json& out) {
     fs::path file = model;
     std::string extension = model.extension().string();
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
@@ -2616,8 +2731,16 @@ bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const
     } else {
         text = std::move(bytes);
     }
-    const nlohmann::json json = nlohmann::json::parse(text, nullptr, false);
-    if (json.is_discarded() || !json.is_object()) return false;
+    out = nlohmann::json::parse(text, nullptr, false);
+    return !out.is_discarded() && out.is_object();
+}
+
+// The glTF animation names of a model file (readModelGltfJson). Empty names stay empty
+// (subClipNames names them).
+bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const fs::path& model,
+                             std::vector<std::string>& names) {
+    nlohmann::json json;
+    if (!readModelGltfJson(root, assets, model, json)) return false;
     names.clear();
     const auto animations = json.find("animations");
     if (animations == json.end() || !animations->is_array()) return true;
@@ -2637,6 +2760,161 @@ struct VideoCheck {
     std::vector<ProjectChecks::Finding> findings;
     size_t players = 0;
 };
+
+// R25's warnings of one parsed clip. A share under this leaves a clip alone: a few collinear keys
+// are what every hand-keyed clip has
+constexpr double REDUNDANT_KEY_SHARE = 0.25;
+
+void addClipQualityFindings(const fs::path& root, const std::string& rel, const anim::ClipParseResult& parsed, ClipCheck& check,
+                            std::map<std::string, std::string>& sourceHashes) {
+    const ClipData& data = *parsed.data;
+    auto warn = [&](const char* code, const std::string& message, const std::string& suggestion) {
+        ProjectChecks::Finding finding;
+        finding.tool = "anim";
+        finding.path = rel;
+        finding.severity = "warning";
+        finding.code = code;
+        finding.message = message;
+        finding.suggestion = suggestion;
+        check.findings.push_back(std::move(finding));
+    };
+    anim::ClipReportRequest request;
+    request.clip = AnimationClip::build(parsed);
+    const anim::ClipReport report = anim::analyzeClip(request);
+    const size_t redundant = anim::countRedundantKeys(data);
+    if (report.keys > 0 && (double)redundant > REDUNDANT_KEY_SHARE * (double)report.keys) {
+        warn("anim-redundant-keys", std::to_string(redundant) + " of " + std::to_string(report.keys) + " keys only repeat what their neighbours give",
+             "optimize_animation measures what removing them costs");
+    }
+    if (report.constantTracks > 0) {
+        warn("anim-constant-track", std::to_string(report.constantTracks) + (report.constantTracks == 1 ? " track holds" : " tracks hold") +
+             " one value across all its keys", "optimize_animation leaves one key on each");
+    }
+    std::set<std::string> flipped;
+    for (const auto& [path, time] : parsed.rotationSignFlips) flipped.insert(path);
+    for (const anim::ClipRotationFlip& flip : anim::findRotationFlips(data)) flipped.insert(flip.path);
+    for (const std::string& path : flipped) {
+        warn("anim-rotation-flip", "the rotation of \"" + path + "\" flips between two keys (opposite signs, or almost opposite rotations), "
+             "so it may turn the other way round from what was keyed", "add a key in the middle, or export it again");
+    }
+    const anim::ClipOptimizeRecord record = anim::readClipOptimizeRecord(data);
+    if (record.present && !record.source.empty() && !record.sourceSha1.empty()) {
+        anim::SubClipReference parts;
+        const std::string file = anim::parseSubClipReference(record.source, parts) ? parts.model : record.source;
+        const auto known = sourceHashes.find(file);
+        std::string hash;
+        if (known != sourceHashes.end()) {
+            hash = known->second;
+        } else {
+            std::string bytes;
+            if (ProjectChecks::readFile(root / editor::FileUtils::pathFromUtf8(file), bytes)) hash = editor::SHA1::hash(bytes);
+            sourceHashes.emplace(file, hash);
+        }
+        if (hash != record.sourceSha1) {
+            warn("anim-optimize-stale", hash.empty() ? "it was reduced from \"" + record.source + "\", which is gone"
+                                                     : "it was reduced from \"" + record.source + "\", which has changed since",
+                 "optimize_animation again with the same arguments");
+        }
+    }
+}
+
+// ---- --anim-quality (S77 R54): how clips move, measured on their models (the project loads, no scene)
+
+// the rows of a bone palette every GLES3 and WebGL2 device's textures hold (their smallest
+// MAX_TEXTURE_SIZE): a skin of more joints cannot load where the palette is a texture
+constexpr size_t SKIN_JOINT_LIMIT = 2048;
+
+struct AnimQualityCheck {
+    std::vector<ProjectChecks::Finding> findings;
+    size_t clips = 0;
+};
+
+AnimQualityCheck checkAnimQuality(const fs::path& root) {
+    AnimQualityCheck check;
+    const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
+    auto warn = [&](const std::string& path, const char* code, const std::string& message, const std::string& suggestion) {
+        ProjectChecks::Finding finding;
+        finding.tool = "anim";
+        finding.path = path;
+        finding.severity = "warning";
+        finding.code = code;
+        finding.message = message;
+        finding.suggestion = suggestion;
+        check.findings.push_back(std::move(finding));
+    };
+    for (const fs::path& model : ProjectChecks::findProjectFiles(root, {".gltf", ".glb", ".fbx"})) {
+        nlohmann::json gltf;
+        if (!readModelGltfJson(root, assets, model, gltf)) continue;
+        size_t most = 0;
+        for (const nlohmann::json& skin : gltf.value("skins", nlohmann::json::array())) {
+            if (skin.is_object() && skin.contains("joints") && skin["joints"].is_array()) most = std::max(most, skin["joints"].size());
+        }
+        if (most > SKIN_JOINT_LIMIT) {
+            warn(ProjectChecks::projectRelative(root, model), "anim-bone-limit",
+                 "a skin of " + std::to_string(most) + " joints: phones and browsers hold " + std::to_string(SKIN_JOINT_LIMIT) +
+                 " in a bone palette, so it does not load there", "split the mesh's skin, or remove the bones it does not use");
+        }
+    }
+    std::vector<std::string> notes;
+    std::map<std::string, std::shared_ptr<const anim::ClipRig>> rigs;
+    for (const anim::ProjectClip& clip : anim::listProjectClips(root, notes)) {
+        ClipData data;
+        std::string error;
+        if (anim::isSubClipReference(clip.reference)) {
+            std::vector<ClipWarning> warnings;
+            if (!anim::buildModelSubClip(clip.reference, data, warnings, &error)) continue;
+        } else {
+            std::string text;
+            if (!ProjectChecks::readFile(editor::FileUtils::pathFromUtf8(clip.reference), text)) continue;
+            anim::ClipParseResult parsed = anim::parseClip(text);
+            if (!parsed.ok()) continue;
+            data = *parsed.data;
+        }
+        // the model it plays on: what the motion is measured on (none: nothing to say)
+        const std::string model = anim::clipRigModel(clip.reference, data);
+        if (model.empty()) continue;
+        fs::path modelPath = editor::FileUtils::pathFromUtf8(model);
+        if (modelPath.is_relative()) modelPath = assets / modelPath;
+        const std::string key = editor::FileUtils::pathToGenericUtf8(modelPath.lexically_normal());
+        auto found = rigs.find(key);
+        if (found == rigs.end()) {
+            auto rig = std::make_shared<anim::ClipRig>();
+            if (!anim::clipRigFromModel(key, *rig, &error)) rig.reset();
+            found = rigs.emplace(key, rig).first;
+        }
+        if (!found->second) continue;
+        check.clips++;
+        anim::ClipReportRequest request;
+        request.clip = AnimationClip::build(data);
+        request.rig = found->second.get();
+        request.loopSeam = true;
+        request.rootMotion = true;
+        request.footSliding = true;
+        const anim::ClipReport report = anim::analyzeClip(request);
+        if (!report.ok) continue;
+        if (report.loopSeam && report.wrap == ClipWrapMode::Loop && report.loopSeam->maxErrorMm > anim::kClipLoopSeamLimitMm) {
+            warn(clip.display, "anim-loop-seam", "it is Loop and its seam jumps " + anim::formatClipField("loop_seam.max_error_mm", report.loopSeam->maxErrorMm) +
+                 " at " + report.loopSeam->worstJoint, "make the first and last keys match, or set wrap: once");
+        }
+        if (report.rootMotion && !report.rootMotion->bone.empty() && report.rootMotion->averageSpeedMps < anim::kClipInPlaceSpeedMps) {
+            const Vector3 net = report.rootMotion->netTranslationMetres;
+            const double netMm = std::hypot((double)net.x, (double)net.z) * 1000.0;
+            if (netMm > anim::kClipRootDriftLimitMm) {
+                warn(clip.display, "anim-root-drift", "the root (" + report.rootMotion->bone + ") ends " + anim::formatClipField("root_motion.loop_gap_mm", netMm) +
+                     " from where it starts", "zero the root's keys, or use root motion");
+            }
+        }
+        if (report.footSliding && report.footSliding->contactSource != "none") {
+            for (const anim::ClipFootSlide& foot : report.footSliding->feet) {
+                if (foot.maxSlideMm <= anim::kClipFootSlideLimitMm) continue;
+                warn(clip.display, "anim-foot-slide", foot.bone + " slides " + anim::formatClipField("foot_sliding.max_slide_mm", foot.maxSlideMm) + " on the ground",
+                     "move the character at " + anim::formatClipField("foot_sliding.matching_ground_speed_mps", report.footSliding->matchingGroundSpeedMps) +
+                     ", or add a Foot Lock IK constraint");
+            }
+        }
+    }
+    return check;
+}
 
 // Every VideoPlayerComponent node under a scene or prefab file's YAML
 void collectVideoPlayers(const YAML::Node& node, std::vector<YAML::Node>& out, int depth = 0) {
@@ -2888,6 +3166,7 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
     checkAnimAssetFiles(root, masks, controllers, check, assetGuids, projectGuids);
     const std::vector<fs::path> clips = all ? ProjectChecks::findProjectFiles(root, {".anim"}) : given;
     std::map<std::string, std::string> guids;   // guid -> project-relative path
+    std::map<std::string, std::string> sourceHashes;    // a reduced clip's source -> its hash, each file once
     for (const fs::path& file : clips) {
         std::string text;
         const std::string rel = ProjectChecks::projectRelative(root, file);
@@ -2902,6 +3181,7 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
         for (const ClipWarning& warning : parsed.warnings) {
             check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
         }
+        addClipQualityFindings(root, rel, parsed, check, sourceHashes);
     }
     if (!all) return check;
     const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
@@ -2996,7 +3276,9 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
 CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vector<fs::path>& luaFiles, bool luaWanted,
                    bool shadersAll, const std::vector<std::string>& shaderFiles, bool shadersWanted, bool cppWanted,
                    const std::vector<std::string>& textureFiles, bool texturesWanted,
-                   const std::vector<fs::path>& vatFiles, bool vatWanted) {
+                   const std::vector<fs::path>& vatFiles, bool vatWanted, bool animQualityWanted,
+                   const std::vector<fs::path>& particleFiles, bool particlesWanted, const std::string& failOn,
+                   bool pixelArtWanted, const PixelArtChanged* pixelArtChanged) {
     CheckRun run;
     EditorHostOverrideGuard hostOverride(nullptr);
     Out::setConsoleWindow(nullptr);
@@ -3047,7 +3329,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         run.checked.push_back({"lua", count});
     }
 
-    if (shadersWanted || cppWanted || texturesWanted || vatWanted) {
+    if (shadersWanted || cppWanted || texturesWanted || vatWanted || animQualityWanted || particlesWanted || pixelArtWanted) {
         // checks only read the project: no lock, an open editor is fine, and no file is written
         // (a project from before GUIDs keeps its identities in memory; no GUID upgrade of
         // prefabs or clips)
@@ -3070,6 +3352,100 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         // the .vat files (all of them, or the given ones): format, staleness, device limits
         run.vat = vat::checkVatAssets(&project, vatFiles);
         run.vatRan = true;
+    }
+
+    if (particlesWanted) {
+        // S91 R33: each effect's checks at its default seed, metrics only (no graphics view)
+        const std::vector<fs::path> files = particleFiles.empty() ? ProjectChecks::findProjectFiles(root, {".particles"}) : particleFiles;
+        // a sub-emitter's effect plays from its parent's particles (its own emission is often 0): it is
+        // checked as part of every effect naming it, never alone
+        std::set<std::string> children;
+        for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".particles"})) {
+            std::vector<ParticlePreviewSystem> systems;
+            std::string ignored;
+            if (!ParticlePreviewSource::fromAsset(project.normalizeToAssetsRelative(file).generic_string(), systems, ignored)) continue;
+            for (const particles::SubEmitterEntry& entry : systems.front().document.subEmitters) children.insert(entry.effect);
+        }
+        size_t checkedEffects = 0;
+        for (const fs::path& file : files) {
+            const std::string rel = ProjectChecks::projectRelative(root, file);
+            const std::string asset = project.normalizeToAssetsRelative(file).generic_string();
+            if (children.count(asset)) continue;
+            checkedEffects++;
+            ParticlePreviewRequest request;
+            std::string error;
+            qa::Json report;
+            if (!ParticlePreviewSource::fromAsset(asset, request.systems, error)) {
+                run.findings.push_back({"particles", rel, 0, 0, "error", error});
+                continue;
+            }
+            request.qa = project.getParticleQaSettings();
+            if (!ParticleEffectPreview::runCpu(request, report, error)) {
+                run.findings.push_back({"particles", rel, 0, 0, "error", error});
+                continue;
+            }
+            for (const qa::Json& check : report["checks"]) {
+                const std::string status = check.value("status", "");
+                if (status != "FAIL" && status != "WARN") continue;
+                ProjectChecks::Finding finding;
+                finding.tool = "particles";
+                finding.path = rel;
+                finding.severity = qa::reaches(status, failOn) ? "error" : "warning";
+                finding.code = check.value("id", "");
+                finding.message = check.value("id", "") + " " + status + ": " +
+                                  (check["limited_by"].is_string() ? check["limited_by"].get<std::string>() : std::string("measured ") + check["measured"].dump());
+                if (check["fix_hint"].is_string()) finding.suggestion = check["fix_hint"].get<std::string>();
+                run.findings.push_back(finding);
+            }
+        }
+        run.checked.push_back({"particles", checkedEffects});
+    }
+
+    if (animQualityWanted) {
+        // the models' clips loaded and sampled as the editor loads them (its paths, the model parses)
+        const AnimQualityCheck quality = checkAnimQuality(root);
+        run.findings.insert(run.findings.end(), quality.findings.begin(), quality.findings.end());
+        run.checked.push_back({"anim_quality", quality.clips});
+    }
+
+    // S42 R24: the validator on the saved project (the same input and rules as check_pixel_art);
+    // given files (--hook), only the changed scenes and the changed images that are pixel art,
+    // and only their findings
+    if (pixelArtWanted) {
+        pixelart::Scope scope;
+        if (pixelArtChanged) {
+            scope.scenes = pixelArtChanged->scenes;
+            scope.noScenes = pixelArtChanged->scenes.empty();
+            scope.paths = pixelArtChanged->images;
+            scope.pixelArtPathsOnly = true;
+        }
+        std::vector<pixelart::PixelProblem> problems;
+        const pixelart::PixelArtCheckInput input = pixelart::inputFromProject(project, scope, problems);
+        pixelart::CheckResult result = pixelart::run(input);
+        if (pixelArtChanged) {
+            // a changed scene file the project does not list is no build scene: nothing to report
+            problems.erase(std::remove_if(problems.begin(), problems.end(), [](const pixelart::PixelProblem& p) {
+                return p.kind == "not_found" && p.field == "scenes"; }), problems.end());
+            std::vector<pixelart::Finding> kept;
+            for (pixelart::Finding& finding : result.findings) {
+                const std::string kind = finding.target.value("kind", "");
+                const std::string scene = finding.target.value("scene", kind == "scene" ? finding.target.value("path", "") : std::string());
+                const std::string path = finding.target.value("path", "");
+                const bool changedScene = !scene.empty() &&
+                    std::find(pixelArtChanged->scenes.begin(), pixelArtChanged->scenes.end(), scene) != pixelArtChanged->scenes.end();
+                const bool changedImage = kind == "texture" &&
+                    std::find(pixelArtChanged->images.begin(), pixelArtChanged->images.end(), path) != pixelArtChanged->images.end();
+                if (changedScene || changedImage || (kind == "project" && pixelArtChanged->projectFile)) kept.push_back(std::move(finding));
+            }
+            result.findings = std::move(kept);
+        }
+        run.pixelArt = result.toJson();
+        for (const pixelart::PixelProblem& problem : problems)
+            run.findings.push_back({"pixel_art", "", 0, 0, "error", problem.message, "PIXELART-" + problem.kind, problem.fix});
+        addPixelArtFindings(result, run.findings, run.pixelArtFixable);
+        size_t checked = 0;
+        for (const pixelart::RuleResult& rule : result.rules) checked += (size_t)rule.checked;
+        run.checked.push_back({"pixel_art", checked});
     }
 
     // S19 R42, S75 R36: the scenes' navigation findings with their severities (an error fails the
@@ -3181,13 +3557,22 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool ui = options.ui || options.all;
     bool textures = options.textures || options.all;
     bool anims = options.anims || options.all;
+    // a whole-project check that loads models: never in --hook
+    const bool animQuality = (options.animQuality || options.all) && !options.hook;
     bool vatAssets = options.vat || options.all;
     bool normals = options.normals || options.all;
     bool videos = options.videos || options.all;
     bool titles = options.titles || options.all;
+    const bool particles = options.particles || options.all;
+    const bool materials = options.materials || options.all;
+    const bool sprites = options.sprites || options.all;
+    bool pixelArt = options.pixelArt || options.all;
     if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.normals &&
-        !options.videos && !options.titles && !options.all) {
+        !options.videos && !options.animQuality && !options.particles && !options.materials && !options.sprites && !options.pixelArt &&
+        !options.titles && !options.all) {
         lua = shaders = ui = textures = anims = vatAssets = normals = videos = titles = true;
+        // S42 R24: in the default set (and so in --hook) while Pixel Art Mode is on
+        pixelArt = pixelArtModeOn(options.project);
     }
 
     fs::path base = CommandLine::invocationDirectory();
@@ -3222,6 +3607,9 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> vatGiven;     // .vat, .vat.glb and the other files (sources of bakes)
     std::vector<fs::path> normalFiles;  // images: generated normal maps, or sources of some
     std::vector<fs::path> titleFiles;   // .titleart documents and baked PNGs (their documents)
+    PixelArtChanged pixelArtChanged;           // the scenes, images and project.yaml given
+    std::vector<fs::path> particleFiles;
+    std::vector<fs::path> materialFiles;    // .procmat files and PNGs (baked ones)
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -3257,6 +3645,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
                 if (anims) clipFiles.push_back(path);
             } else if (isCookableTexture(name)) {
                 if (textures) textureFiles.push_back(name);
+            } else if (Util::isParticleEffectFile(name)) {
+                if (particles) particleFiles.push_back(path);
             }
             // a synthesized PNG, or an image a synthesized texture was made from
             if (textures && Util::isImageFile(name)) synthesisFiles.push_back(path);
@@ -3264,6 +3654,22 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             if (normals && Util::isImageFile(name)) normalFiles.push_back(path);
             // a Title Art document, or a PNG baked from one
             if (titles && (Util::isTitleArtFile(name) || Util::isImageFile(name))) titleFiles.push_back(path);
+            // a Procedural Material, or a PNG it baked
+            if (materials && (Util::isProceduralMaterialFile(name) || Util::isImageFile(name))) materialFiles.push_back(path);
+            if (pixelArt) {
+                // assets-relative (the assets directory may be the project's own); an image's meta is the image
+                const std::string assetsDir = ProjectChecks::assetsRootFromProjectFile(root).lexically_relative(root).generic_string();
+                const bool rootAssets = assetsDir.empty() || assetsDir == ".";
+                const std::string extension = rel.extension().string();
+                const std::string image = extension == ".meta" ? name.substr(0, name.size() - 5) : name;
+                if (Util::isImageFile(image) && (rootAssets || image.rfind(assetsDir + "/", 0) == 0)) {
+                    const std::string assetPath = rootAssets ? image : image.substr(assetsDir.size() + 1);
+                    if (std::find(pixelArtChanged.images.begin(), pixelArtChanged.images.end(), assetPath) == pixelArtChanged.images.end())
+                        pixelArtChanged.images.push_back(assetPath);
+                }
+                if (extension == ".scene") pixelArtChanged.scenes.push_back(name);
+                if (name == "project.yaml") pixelArtChanged.projectFile = true;
+            }
         }
     } else if (lua) {
         luaFiles = ProjectChecks::findProjectFiles(root, {".lua"});
@@ -3283,6 +3689,11 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     // the recipes are read without the engine: it starts only when a .vat is concerned
     const std::vector<fs::path> vatFiles = fileMode ? vat::vatAssetsForFiles(root, vatGiven) : std::vector<fs::path>();
     const bool vatWanted = fileMode ? !vatFiles.empty() : vatAssets;
+    const bool pixelArtWanted = fileMode ? pixelArt && (!pixelArtChanged.images.empty() || !pixelArtChanged.scenes.empty() ||
+                                                        pixelArtChanged.projectFile)
+                                         : pixelArt;
+    const bool particlesWanted = fileMode ? !particleFiles.empty() : particles;
+    const bool materialsWanted = fileMode ? !materialFiles.empty() : materials;
 
     // The UI check is pure parsing (no engine): first, and the engine starts only for the others
     ProjectChecks::UiCheck uiCheck;
@@ -3291,10 +3702,13 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         uiCheck = ProjectChecks::checkUiFiles(root, fileMode ? uiFiles : std::vector<fs::path>());
     }
     CheckRun run;
-    if (luaWanted || shadersWanted || cppWanted || texturesWanted || vatWanted) {
+    // a whole-project check that loads the models (the engine and the project, no scene)
+    const bool animQualityWanted = animQuality && !fileMode;
+    if (luaWanted || shadersWanted || cppWanted || texturesWanted || vatWanted || animQualityWanted || particlesWanted || pixelArtWanted) {
         QuietOutput quiet;
         run = runChecks(argc, argv, root, luaFiles, luaWanted, !fileMode, shaderFiles, shadersWanted, cppWanted, textureFiles, texturesWanted,
-                        vatFiles, vatWanted);
+                        vatFiles, vatWanted, animQualityWanted, particleFiles, particlesWanted, options.failOn, pixelArtWanted,
+                        fileMode ? &pixelArtChanged : nullptr);
     }
     if (!run.fatal.empty()) {
         std::cerr << commandName << " check: " << run.fatal << "\n";
@@ -3334,6 +3748,46 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         run.findings.insert(run.findings.end(), titleCheck.findings.begin(), titleCheck.findings.end());
         if (!fileMode || titleCheck.documents) run.checked.push_back({"titles", titleCheck.documents});
     }
+    if (materialsWanted) {
+        // the graphs planned and the PNGs' recipe chunks: no engine, no device
+        const procmat::MaterialsCheck materialsCheck = procmat::checkMaterials(root, fileMode ? materialFiles : std::vector<fs::path>());
+        run.findings.insert(run.findings.end(), materialsCheck.findings.begin(), materialsCheck.findings.end());
+        run.checked.push_back({"materials", materialsCheck.graphs + materialsCheck.bakes});
+    }
+    if (sprites && !fileMode) {
+        // S45 R22: the scene, prefab and atlas files (YAML, JSON, image headers): no engine
+        // the project's assets folder: its project.yaml's, else the default (the project folder)
+        std::string assetsDir = Project::defaultAssetsDir;
+        try {
+            const YAML::Node projectYaml = YAML::LoadFile((root / "project.yaml").string());
+            if (projectYaml["assetsDir"]) assetsDir = projectYaml["assetsDir"].as<std::string>();
+        } catch (const std::exception&) {}
+        const sprite::SpriteCheckReport spriteCheck = sprite::scanProject(root, root / assetsDir);
+        for (const sprite::LegacySprite& legacy : spriteCheck.legacy) {
+            ProjectChecks::Finding f;
+            f.tool = "sprites";
+            f.path = legacy.owner;
+            f.severity = "info";
+            f.code = "sprite-inline-frames";
+            f.message = "legacy sprite \"" + legacy.entityPath + "\": " + std::to_string(legacy.frames.size()) + " inline frame(s) of " +
+                        (legacy.texture.empty() ? std::string("no texture") : legacy.texture);
+            f.suggestion = "set_sprite_frames {convert: true, all_users: true}, or Inspector > Convert to Sprite Sheet";
+            run.findings.push_back(f);
+        }
+        auto atlasFinding = [&](const std::string& atlas, const pixelart::PixelProblem& p, const char* severity) {
+            ProjectChecks::Finding f;
+            f.tool = "sprites";
+            f.path = (fs::path(assetsDir) / atlas).lexically_normal().generic_string();
+            f.severity = severity;
+            f.code = p.kind;
+            f.message = p.message;
+            f.suggestion = p.fix;
+            run.findings.push_back(f);
+        };
+        for (const auto& [atlas, p] : spriteCheck.atlasErrors) atlasFinding(atlas, p, "error");
+        for (const auto& [atlas, p] : spriteCheck.atlasWarnings) atlasFinding(atlas, p, "warning");
+        run.checked.push_back({"sprites", static_cast<size_t>(spriteCheck.files + spriteCheck.atlases)});
+    }
     if (videosWanted) {
         // the scene and prefab YAML and the clips' header boxes: no engine
         const VideoCheck videoCheck = checkVideoPlayers(root);
@@ -3362,6 +3816,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             std::cerr << ProjectChecks::toText(finding) << "\n";
         }
         for (const std::string& line : run.cppLogTail) std::cerr << "  " << line << "\n";
+        if (run.pixelArtFixable > 0) std::cerr << "fix: " << "jasperengine-editor call --project " + root.string() + " check_pixel_art '{\"fix\":[\"all\"],\"output\":true}'" << "\n";
         if (uiShown > 0) {
             std::cerr << "(UI warnings are shown once, after the edit that introduced them; " << commandName
                       << " check --ui lists them all)\n";
@@ -3385,10 +3840,14 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const nlohmann::json out = {{"ok", errors == 0}, {"errors", errors}, {"warnings", warnings}, {"checked", checked},
                                     {"findings", ProjectChecks::toJson(run.findings)},
                                     {"seconds", std::round(seconds * 100.0) / 100.0}};
+        nlohmann::json full = out;
+        if (!run.pixelArt.is_null()) full["pixel_art"] = run.pixelArt;
         // a finding's path may not be UTF-8 (a Latin-1 file name): shown with U+FFFD, never an abort
-        std::cout << out.dump(1, ' ', false, nlohmann::json::error_handler_t::replace) << std::endl;
+        std::cout << full.dump(1, ' ', false, nlohmann::json::error_handler_t::replace) << std::endl;
     } else {
         for (const ProjectChecks::Finding& finding : run.findings) std::cout << ProjectChecks::toText(finding) << "\n";
+        // the CLI does not fix: the call that does (S42 R24)
+        if (run.pixelArtFixable > 0) std::cout << "fix: " << "jasperengine-editor call --project " + root.string() + " check_pixel_art '{\"fix\":[\"all\"],\"output\":true}'" << "\n";
         std::cout.flush();
         if (!options.quiet) {
             for (const std::string& line : run.cppLogTail) std::cerr << "  " << line << "\n";
@@ -3397,9 +3856,10 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     if (!options.quiet) {
         std::string what;
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
-                                                          {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"},
+                                                          {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"}, {"anim_quality", "clip"},
                                                           {"vat", "file"}, {"navigation", "surface"},
-                                                          {"normals", "map"}, {"videos", "Video Player"}, {"titles", "title"}};
+                                                          {"normals", "map"}, {"videos", "Video Player"}, {"titles", "title"}, {"materials", "file"}, {"sprites", "file"},
+                                                          {"pixel_art", "item"}};
         for (const auto& [category, count] : run.checked) {
             // a category without a unit here still prints (never a map::at abort after the results)
             const auto unit = units.find(category);
@@ -3413,6 +3873,103 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     return errors ? 1 : 0;
 }
 
+}
+
+int CommandLine::bakeProceduralMaterialOnCpu(int argc, char** argv, const fs::path& root, const nlohmann::json& args, const std::string& commandName) {
+    const std::string tag = commandName + " procedural-material bake: ";
+    EditorHostOverrideGuard hostOverride(nullptr);
+    Out::setConsoleWindow(nullptr);
+    Project project;
+    auto platform = std::make_unique<Platform>(&project);
+    Engine::systemInit(argc, argv, platform.get());
+    EngineRuntimeGuard engineRuntime;
+    Engine::pauseGameEvents(true);
+    Engine::setAsyncLoading(false);
+    // no editor came up, so none holds the project; every file below is written all or nothing
+    project.setSkipProjectLock(true);
+    if (!project.loadProject(root, false)) {
+        std::cerr << tag << "the project could not be loaded: " << root.string() << "\n";
+        return 1;
+    }
+    procmat::registerProceduralMaterialKind();
+    const std::string rel = args.value("path", std::string());
+    const fs::path file = root / FileUtils::pathFromUtf8(rel);
+    graph::Graph graphFile;
+    std::string error;
+    if (!procmat::readGraphForBake(file, rel, graphFile, error)) {
+        std::cerr << tag << error << "\n";
+        return 1;
+    }
+    procmat::BakeOptions options;
+    options.size = args.value("size", procmat::BAKE_SIZE_DEFAULT);
+    options.seed = args.contains("seed") ? args.value("seed", 0u) : procmat::graphSeed(graphFile);
+    if (args.contains("outputs")) options.outputs = args["outputs"].get<std::vector<std::string>>();
+    procmat::PassPlan plan;
+    std::vector<std::string> outputs;
+    if (!procmat::planBake(graphFile, procmat::NodeLibrary::shipped(), options, plan, outputs, error)) {
+        std::cerr << tag << rel << " does not bake: " << error << "\n";
+        return 1;
+    }
+    const procmat::EvaluatorDevice device = procmat::editorDevice();
+    std::cerr << tag << "no editor could start: baking on the " << procmat::evaluatorTierName(device.tier) << " tier (" << device.name
+              << ") in this process\n";
+    procmat::EvaluationResult result;
+    int shown = -1;
+    if (!procmat::evaluateOnCpu(plan, result, {}, [&](float progress) {
+            const int percent = (int)(progress * 100.0f);
+            if (percent / 10 != shown / 10) std::cerr << "[progress] " << percent << "%\n";
+            shown = percent;
+        })) {
+        std::cerr << tag << "the evaluation failed: " << result.error << "\n";
+        return 1;
+    }
+    const std::string failOn = args.value("fail_on", std::string());
+    if (!failOn.empty()) {
+        procmat::MaterialImages images;
+        for (const procmat::OutputImage& image : result.outputs) images.outputs[image.name] = image;
+        procmat::CheckRequest request;
+        request.qa = project.getProcMatQaSettings();
+        const qa::Json report = procmat::ProceduralChecks::report(images, request);
+        if (qa::reaches(report.value("verdict", ""), failOn)) {
+            for (const qa::Json& row : report["checks"]) std::cerr << qa::rowLine(row) << "\n";
+            std::cerr << tag << "verdict " << report.value("verdict", "") << " reaches --fail-on " << failOn << "; nothing was written\n";
+            return 1;
+        }
+    }
+    procmat::BakeWrite bake;
+    bake.graphPath = rel;
+    bake.folder = args.contains("output") ? args.value("output", std::string()) : procmat::defaultBakeFolder(rel);
+    Guid guid;
+    std::vector<Guid> former;
+    AssetDatabase::AssetInfo info;
+    if (AssetDatabase::readInFileIdentity(file, guid, former)) bake.recipe.graphGuid = guid.str();
+    else if (project.getAssetDatabase().getInfo(rel, info)) bake.recipe.graphGuid = info.guid.str();
+    bake.recipe.graphPath = rel;
+    bake.recipe.inputHash = procmat::bakeInputHash(plan);
+    bake.recipe.seed = options.seed;
+    bake.recipe.size = options.size;
+    bake.recipe.seedFromGraph = !args.contains("seed");
+    bake.graphOutputs = procmat::graphBakeOutputs(graphFile);
+    bake.recipe.graphOutputs = bake.graphOutputs;
+    bake.recipe.tier = procmat::evaluatorTierName(device.tier);
+    bake.recipe.device = device.name;
+    bake.images = std::move(result.outputs);
+    bake.overwrite = args.value("overwrite", false);
+    procmat::BakeFiles files;
+    if (!procmat::encodeBake(&project, bake, files, error)) {
+        std::cerr << tag << "nothing was written: " << error << "\n";
+        return 1;
+    }
+    std::vector<texsynth::StagedFile> staged;
+    for (const texsynth::OutputFile& out : files.files) staged.push_back({out.absolute, std::vector<uint8_t>(out.bytes.begin(), out.bytes.end())});
+    std::string failedPath;
+    if (!texsynth::writeFilesAllOrNothing(staged, failedPath, error)) {
+        std::cerr << tag << "nothing was written: " << failedPath << ": " << error << "\n";
+        return 1;
+    }
+    std::cout << "Baked " << rel << " at " << options.size << " (seed " << options.seed << ") on " << procmat::evaluatorTierName(device.tier) << " ("
+              << device.name << "): " << files.images.size() << " PNG(s) and " << files.material << ".\n";
+    return 0;
 }
 
 int CommandLine::runCheckCommand(int argc, char** argv, const char* executableName) {
@@ -3765,6 +4322,11 @@ int CommandLine::runImportUnityParticlesCommand(int argc, char** argv, const cha
 int CommandLine::runGenerateSpriteNormalsCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return spritenormals::runGenerateSpriteNormals(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runAsepriteCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return pixelart::aseprite::runAsepriteCommand(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runPlacePhysicsCommand(int argc, char** argv, const char* executableName) {

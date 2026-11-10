@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "PhysicsSystem.h"
+#include "terrain/TerrainEditModule.h"
+#if JASPERENGINE_TERRAIN_EDIT
+#include "physics/JoltTerrainRefresh.h"
+#endif
 #include "component/Joint3DComponent.h"
+#include "component/Transform.h"
 #include "Scene.h"
 #include "physics/JoltShapeBuilder.h"
 #include "subsystem/MeshSystem.h"
@@ -10,6 +15,9 @@
 #include "subsystem/WaterSystem.h"
 #include "object/environment/Water.h"
 #include "util/Angle.h"
+#include "component/CameraComponent.h"
+#include "component/SpriteComponent.h"
+#include "sprite/SpriteFrameGeometry.h"
 
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "util/Box2DAux.h"
@@ -1433,6 +1441,27 @@ std::vector<std::vector<Vector2>> PhysicsSystem::getCollider2DPiecesLocal(Entity
 
 void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& body, size_t i, const Vector2& entityScale, int layer){
     Collider2D& shapeData = body.colliders[i];
+    if (!shapeData.slice.empty()){
+        // a slice hidden on this frame (or not known yet): no shape until it shows
+        if (!shapeData.sliceVisible || shapeData.slicePoints.size() < 3){
+            return;
+        }
+        // the slice's box as a polygon for this build only: the saved type and points stay
+        const Collider2DType savedType = shapeData.type;
+        std::vector<Vector2> savedPoints = std::move(shapeData.points);
+        shapeData.type = Collider2DType::POLYGON;
+        shapeData.points = shapeData.slicePoints;
+        createCollider2DShapesOf(entity, body, i, entityScale, layer);
+        Collider2D& built = body.colliders[i];
+        built.type = savedType;
+        built.points = std::move(savedPoints);
+        return;
+    }
+    createCollider2DShapesOf(entity, body, i, entityScale, layer);
+}
+
+void PhysicsSystem::createCollider2DShapesOf(Entity entity, Rigidbody2DComponent& body, size_t i, const Vector2& entityScale, int layer){
+    Collider2D& shapeData = body.colliders[i];
 
     const float radiusScale = maxScaleXY(absScale2D(entityScale));
 
@@ -1639,9 +1668,47 @@ void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& 
     }
 }
 
+void PhysicsSystem::updateSliceColliders2D(Entity entity, Rigidbody2DComponent& body){
+    const SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity);
+    if (!sprite || !sprite->sheetData){
+        return;
+    }
+    bool uiCamera = false;
+    if (const CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera())){
+        uiCamera = camera->type == CameraType::CAMERA_UI;
+    }
+    for (Collider2D& collider : body.colliders){
+        if (collider.slice.empty()){
+            continue;
+        }
+        Rect bounds(0.0f, 0.0f, 0.0f, 0.0f);
+        const bool visible = spriteSliceLocalRect(*sprite, *sprite->sheetData, uiCamera, collider.slice, bounds);
+        const bool same = visible == collider.sliceVisible && (!visible || (bounds.getX() == collider.sliceBounds.getX() &&
+                          bounds.getY() == collider.sliceBounds.getY() && bounds.getWidth() == collider.sliceBounds.getWidth() &&
+                          bounds.getHeight() == collider.sliceBounds.getHeight()));
+        if (same && (!visible || !collider.slicePoints.empty())){
+            continue;
+        }
+        collider.sliceVisible = visible;
+        collider.sliceBounds = bounds;
+        collider.slicePoints.clear();
+        if (visible){
+            const float x0 = bounds.getX(), y0 = bounds.getY();
+            const float x1 = x0 + bounds.getWidth(), y1 = y0 + bounds.getHeight();
+            collider.slicePoints = {Vector2(x0, y0), Vector2(x1, y0), Vector2(x1, y1), Vector2(x0, y1)};
+        }
+        collider.dirty = true;
+        body.needUpdateColliders = true;
+    }
+}
+
 bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body, bool all){
     if (!b2Body_IsValid(body.body)){
         return false;
+    }
+    body.hasSliceColliders = std::any_of(body.colliders.begin(), body.colliders.end(), [](const Collider2D& c) { return !c.slice.empty(); });
+    if (body.hasSliceColliders){
+        updateSliceColliders2D(entity, body);
     }
 
     const Vector2 entityScale = entityWorldScale2D(scene, entity);
@@ -2353,6 +2420,25 @@ bool PhysicsSystem::syncRigidbodyColliders(Entity entity, RigidbodyComponent& bo
     return true;
 }
 
+bool PhysicsSystem::setPrebuiltBodyShape3D(Entity entity, const JPH::ShapeRefC& shape){
+    ensureWorld3D();
+    RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
+    if (!body || !shape || steppingWorld3D){
+        return false;
+    }
+    if (!body->body.IsInvalid()){
+        getBodyInterface3D().SetShape(body->body, shape, false, JPH::EActivation::DontActivate);
+    }else if (!createGenericJoltBody(entity, *body, shape)){
+        return false;
+    }
+    body->needReloadBody = false;
+    body->needUpdateColliders = false;
+    body->massDirty = false;
+    body->needApplyParameters = false;
+    body->newBody = false;
+    return true;
+}
+
 bool PhysicsSystem::reshapeRigidbody3D(Entity entity, RigidbodyComponent& body){
     if (body.body.IsInvalid()){
         return syncRigidbodyColliders(entity, body);
@@ -2852,6 +2938,47 @@ b2WorldId PhysicsSystem::getWorld2D() const{
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
+JPH::BodyID PhysicsSystem::createStaticBodyForShape(Entity entity, const JPH::Shape* shape){
+    RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!body || !transform || !shape){
+        return JPH::BodyID();
+    }
+    ensureWorld3D();
+    const JPH::ObjectLayer layer = objectLayerTable3D->acquire(scene->getEntityLayer(entity), body->categoryBits, body->maskBits);
+    const JPH::Vec3 position(transform->worldPosition.x, transform->worldPosition.y, transform->worldPosition.z);
+    const JPH::Quat rotation = toValidatedJoltRotation(transform->worldRotation, entity, -1);
+    JPH::BodyCreationSettings settings(shape, position, rotation, JPH::EMotionType::Static, layer);
+    settings.mFriction = body->friction;
+    settings.mRestitution = body->restitution;
+    settings.mCollisionGroup = JPH::CollisionGroup(pairFilter3D, body->collisionGroupID, (JPH::CollisionGroup::SubGroupID)entity);
+    settings.mUserData = PhysicsCallbacks::packBodyUserData(entity, 0);
+    JPH::Body* created = getBodyInterface3D().CreateBody(settings);
+    if (!created){
+        objectLayerTable3D->release(layer);
+        if (!reportedBodyLimit3D){
+            reportedBodyLimit3D = true;
+            Log::error("Cannot create the 3D body of '%s': the world holds %u bodies at most. Raise Project Settings > Physics > Max Bodies",
+                       scene->getEntityName(entity).c_str(), maxBodies3D);
+        }
+        return JPH::BodyID();
+    }
+    body->body = created->GetID();
+    body->previousPosition = transform->worldPosition;
+    body->previousRotation = transform->worldRotation;
+    body->needReloadBody = false;
+    body->needUpdateColliders = false;
+    return body->body;
+}
+
+JPH::BodyInterface::AddState PhysicsSystem::prepareBodies(std::span<JPH::BodyID> ids){
+    return getBodyInterface3D().AddBodiesPrepare(ids.data(), static_cast<int>(ids.size()));
+}
+
+void PhysicsSystem::finalizeBodies(std::span<JPH::BodyID> ids, JPH::BodyInterface::AddState state){
+    getBodyInterface3D().AddBodiesFinalize(ids.data(), static_cast<int>(ids.size()), state, JPH::EActivation::DontActivate);
+}
+
 JPH::PhysicsSystem* PhysicsSystem::getWorld3D(){
     ensureWorld3D();
     return &world3D;
@@ -4005,6 +4132,9 @@ void PhysicsSystem::fixedUpdate(double dt){
 		Entity entity = bodies2d->getEntity(i);
 		Signature signature = scene->getSignature(entity);
 
+        if (body.hasSliceColliders){
+            updateSliceColliders2D(entity, body);
+        }
         if (!b2Body_IsValid(body.body) || body.needReloadBody || body.needUpdateColliders || body.needApplyMass || entityWorldScale2D(scene, entity) != body.loadedScale){
             loadRigidbody2D(entity);
         }
@@ -4130,6 +4260,10 @@ void PhysicsSystem::fixedUpdate(double dt){
     syncMaterials3D();
     // the ragdolls switch their parts before the bodies sync
     updateRagdolls();
+    // terrain edits reach their heightfields; what must be built again is, in the sync below
+#if JASPERENGINE_TERRAIN_EDIT
+    JoltTerrainRefresh::apply(scene, *this);
+#endif
 
     auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
     bool stepped3D = false;

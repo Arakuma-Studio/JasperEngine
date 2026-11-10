@@ -22,16 +22,17 @@
 // - title2D(text, y) is the standard title (support/TitleStandardTitle.h) with `text` at (0, y);
 //   effects and generators take their definitions' defaults plus the case's params.
 //
-// Not ported: mask-from-layer-luminance. Its matte is Pachislop's `sunburst` generator (the Red &
-// Gold Rays preset with its Vignette Gradient Overlay), which S83 brings (S83 §6.7.15); S80
-// registers only Fill and Pattern Fill, and a matte built from those would test another picture
-// than the reference. The 3D scenes (flip-3d, part-effects-3d, mask-gradient-3d,
-// lighting-per-layer, image-3d-plain), split-image and mask-adjustment are outside AC11's list.
+// mask-from-layer-luminance's matte is S83's Sunburst (S83 §6.7.15) at its first preset, Red & Gold
+// Rays with its Vignette Gradient Overlay, as Pachislop's createGeneratorLayer('sunburst') makes
+// it (editor/resources/titleart/fx-presets/sunburst.yaml), hidden. The 3D scenes (flip-3d,
+// part-effects-3d, mask-gradient-3d, lighting-per-layer, image-3d-plain), split-image and
+// mask-adjustment are outside AC11's list.
 //
 // The fixture is TitleArtScenesParityGpu, not TitleArtParityGpu: gtest wants every test of a
 // suite on one fixture class, and TitleArtParityGpu is a class of the effect test's anonymous
 // namespace.
 
+#include "../support/TitleGenTestSupport.h"
 #include "../support/TitleParity.h"
 #include "../support/TitleStandardTitle.h"
 
@@ -164,6 +165,25 @@ namespace {
         flipped["transform"]["flip_x"] = true;
         scenes.push_back({"flip-2d", {flipped}});
 
+        // a hidden Sunburst still drives the mask: the title through the rays' luminance
+        // (Pachislop's maskBase: linked, density 1, no feather)
+        const Json presets = standard::loadGeneratorPresets("sunburst");
+        const Json preset = presets.empty() ? Json::object() : presets[0];
+        const Json look = preset.value("layer", Json::object());
+        Json rays{{"id", idOf(2)}, {"type", "generator"}, {"name", preset.value("name", std::string("Sunburst"))}, {"visible", false},
+                  {"blend", look.value("blend", std::string("normal"))}, {"opacity", look.value("opacity", 1.0)},
+                  {"generator", {{"type", "sunburst"}, {"params", preset.value("params", Json::object())}}}, {"effects", Json::array()}};
+        int n = 0;
+        for (const Json& e : look.value("effects", Json::array())) {
+            Json fx = e;
+            fx["id"] = idOf(0x201 + n++);
+            fx["enabled"] = true;
+            rays["effects"].push_back(fx);
+        }
+        Json lit = title(1, "確定");
+        lit["masks"] = Json::array({Json{{"id", idOf(0x301)}, {"type", "layer"}, {"layer", idOf(2)}, {"channel", "luminance"}}});
+        scenes.push_back({"mask-from-layer-luminance", {rays, lit}});
+
         return scenes;
     }
 
@@ -206,4 +226,9 @@ TEST_F(TitleArtScenesParityGpu, Scenes) {
     ASSERT_TRUE(renderScene(nestedGroups(false), shown, error)) << error;
     const BlockStats hidden = againstReference("nested-hidden-groups", shown);
     EXPECT_FALSE(withinParity(hidden)) << "the parity metric passes hidden groups drawn: " << hidden.text();
+    // - the title without the Sunburst's luminance is not the masked title
+    Rgba8Image unmasked;
+    ASSERT_TRUE(renderScene({title(1, "確定")}, unmasked, error)) << error;
+    const BlockStats lit = againstReference("mask-from-layer-luminance", unmasked);
+    EXPECT_FALSE(withinParity(lit)) << "the parity metric passes the title without its luminance mask: " << lit.text();
 }

@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "titleart/runtime/TitleArtCreate.h"
+#include "pixelart/PaletteUse.h"
+#include "pixelart/PixelSnap.h"
+#include "pixelart/particles/PixelParticlePresets.h"
+#include "pixelart/particles/PixelPresetCreate.h"
+#include "util/ProjectFileWrites.h"
 #include "util/ScriptAttach.h"
 #include "audio/SoundDrop.h"
 #include "util/UIProbe.h"
@@ -43,6 +49,7 @@
 #include "component/CharacterControllerComponent.h"
 #include "component/FogComponent.h"
 #include "component/Joint2DComponent.h"
+#include "EditorHost.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/FluidSimulationComponent.h"
@@ -54,6 +61,8 @@
 #include "component/SpriteComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
+#include "pixelart/aseprite/AsepriteSpriteSetup.h"
+#include "sprite/SpriteSheetPool.h"
 #include "spline/SplineEditor.h"
 #include "util/EditorScripts.h"
 #include "shortcuts/CommandCatalog.h"
@@ -64,7 +73,10 @@
 #include "window/dialog/DataSafetyDialogs.h"
 #include "StreamPreserved.h"
 #include "util/PhysicsMaterialAssets.h"
+#include "window/dialog/CreateTerrainDialog.h"
+#include "terrainworld/TerrainWorldPanel.h"
 #include "window/dialog/RagdollWizardDialog.h"
+#include "window/VoxelCreateDialog.h"
 #include "pose/PoseEditSession.h"
 
 #include "App.h"
@@ -94,6 +106,7 @@
 #include "vat/VatSceneActions.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/TerrainComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "command/type/ImportPrefabCmd.h"
 #include "command/type/RemoveEntityFromPrefabCmd.h"
@@ -117,6 +130,21 @@
 using namespace jasperengine;
 
 namespace {
+    // a Particle System at or below the GameObject (Open in Particle Effect)
+    bool subtreeHasParticleSystems(editor::SceneProject* sceneProject, Entity root) {
+        if (!sceneProject || !sceneProject->scene || !sceneProject->scene->isComponentRegistered<ParticleSystemComponent>()) return false;
+        Scene* scene = sceneProject->scene;
+        auto systems = scene->getComponentArray<ParticleSystemComponent>();
+        for (size_t i = 0; i < systems->size(); i++) {
+            for (Entity e = systems->getEntity(i); e != NULL_ENTITY;) {
+                if (e == root) return true;
+                const Transform* transform = scene->findComponent<Transform>(e);
+                e = transform ? transform->parent : NULL_ENTITY;
+            }
+        }
+        return false;
+    }
+
     // A context menu item's shortcut text, from the command catalog (nullptr when unbound)
     const char* shortcutText(const char* commandId) {
         static std::string text;
@@ -554,6 +582,9 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"3D Object", "Torus", ICON_FA_RING, T::TORUS, "Torus", CREATE_IN_3D},
         {"3D Object", "Model", ICON_FA_PERSON_RUNNING, T::MODEL, "Model", CREATE_IN_3D, true},
         {"3D Object", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
+        // the dialog of T6 R59: size, base and a memory estimate first
+        {"3D Object", "Voxel Volume", ICON_FA_CUBES, T::VOXEL_VOLUME, "Voxel Volume", CREATE_IN_3D},
+        {"3D Object", "Terrain World", ICON_FA_MAP, T::TERRAIN_WORLD, "Terrain World", CREATE_IN_3D},
         {"3D Object", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
         {"3D Object", "Water", ICON_FA_WATER, T::WATER, "Water", CREATE_IN_3D},
         // Unity's Ragdoll Wizard on the selected character (or the row's GameObject)
@@ -562,6 +593,7 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"3D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_3D, true},
 
         {"2D Object", "Sprite", ICON_FA_IMAGE, T::SPRITE, "Sprite", CREATE_IN_WORLD},
+        {"2D Object", "Sprite Batch", ICON_FA_TABLE_CELLS_LARGE, T::SPRITE_BATCH, "Sprite Batch", CREATE_IN_WORLD},
         {"2D Object", "Tilemap", ICON_FA_BORDER_ALL, T::TILEMAP, "Tilemap", CREATE_IN_WORLD},
         {"2D Object", "Mesh Polygon", ICON_FA_VECTOR_SQUARE, T::MESH_POLYGON, "Mesh Polygon", CREATE_IN_WORLD},
         {"2D Object", "Shadow Caster 2D", ICON_FA_CIRCLE_HALF_STROKE, T::SHADOW_CASTER_2D, "Shadow Caster 2D", CREATE_IN_2D, true},
@@ -579,6 +611,16 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Effects", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D, true},
         {"Effects", "Local Volumetric Fog", ICON_FA_SMOG, T::LOCAL_VOLUMETRIC_FOG, "Local Volumetric Fog", CREATE_IN_3D},
         {"Effects", "Volumetric Clouds", ICON_FA_CLOUD, T::VOLUMETRIC_CLOUDS, "Volumetric Clouds", CREATE_IN_3D},
+        // S49's pixel presets (editor/pixelart/particles): a nested submenu, the entity name the preset's label
+        {"Effects/Pixel", "Spark", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Spark", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Smoke", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Smoke", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Fire", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Fire", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Ember", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Ember", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Grit", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Grit", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Debris", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Debris", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Light Flash", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Light Flash", CREATE_IN_WORLD},
+        {"Effects/Pixel", "Smoke Loop", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Smoke Loop", CREATE_IN_WORLD, true},
+        {"Effects/Pixel", "Ember Loop", ICON_FA_FIRE, T::PIXEL_PARTICLE_SYSTEM, "Pixel Ember Loop", CREATE_IN_WORLD},
 
         {"Light", "Directional Light", ICON_FA_SUN, T::DIRECTIONAL_LIGHT, "Directional Light", CREATE_IN_3D},
         {"Light", "Point Light", ICON_FA_LIGHTBULB, T::POINT_LIGHT, "Point Light", CREATE_IN_3D},
@@ -594,6 +636,7 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
 
         {"UI", "Image", ICON_FA_IMAGE, T::IMAGE, "Image", CREATE_IN_ALL},
         {"UI", "Text", ICON_FA_FONT, T::TEXT, "Text", CREATE_IN_ALL},
+        {"UI", "Text (Pixel)", ICON_FA_FONT, T::TEXT_PIXEL, "Text", CREATE_IN_ALL},
         {"UI", "Button", ICON_FA_SQUARE_CARET_RIGHT, T::BUTTON, "Button", CREATE_IN_ALL},
         {"UI", "Scrollbar", ICON_FA_ARROWS_UP_DOWN, T::SCROLLBAR, "Scrollbar", CREATE_IN_ALL},
         {"UI", "Progress Bar", ICON_FA_BARS_PROGRESS, T::PROGRESSBAR, "Progress Bar", CREATE_IN_ALL},
@@ -667,6 +710,10 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
     if (!sceneProject || !sceneProject->scene) {
         return;
     }
+    if (entry.type == EntityCreationType::VOXEL_VOLUME) {
+        VoxelCreateDialog::instance().open(project, sceneProject->id, parent);
+        return;
+    }
     if (entry.type == EntityCreationType::RAGDOLL_WIZARD) {
         std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
         const Entity character = parent != NULL_ENTITY ? parent : (selected.size() == 1 ? selected[0] : NULL_ENTITY);
@@ -675,6 +722,16 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
             return;
         }
         RagdollWizardDialog::instance().open(project, sceneProject->id, character);
+        return;
+    }
+    if (entry.type == EntityCreationType::TERRAIN_WORLD) {
+        // T4 R40: its folder asset, the GameObject and its Rigidbody, one undo step
+        CreateTerrainWorldDialog::instance().open(project, sceneProject->id, entry.rootOnly ? NULL_ENTITY : parent);
+        return;
+    }
+    if (entry.type == EntityCreationType::TERRAIN) {
+        // T1 R58: sizes, a height map and a collider first, one undo step
+        CreateTerrainDialog::instance().open(project, sceneProject->id, entry.rootOnly ? NULL_ENTITY : parent);
         return;
     }
     if (entry.type == EntityCreationType::LATTICE) {
@@ -709,6 +766,10 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
         project->setSelectedEntity(sceneProject->id, parent);
         return;
     }
+    if (entry.type == EntityCreationType::PIXEL_PARTICLE_SYSTEM) {
+        createPixelParticles(entry, parent, addToPrefab);
+        return;
+    }
     CreateEntityCmd* createCmd = new CreateEntityCmd(project, sceneProject->id, entry.entityName, entry.type, parent, addToPrefab);
     CommandHandle::get(sceneProject->id)->addCommandNoMerge(createCmd);
     openParent = parent;
@@ -717,6 +778,50 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
         SplineEditor::get().beginDraw(sceneProject->id, createCmd->getEntity());
     }
     // The new GameObject is selected: scroll it into view, as Unity does
+    std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+    if (selected.size() == 1) {
+        revealEntity(sceneProject->id, selected[0]);
+    }
+}
+
+// GameObject › Effects › Pixel › <preset> (S49 R20): a Particle System playing the preset inline at
+// the Scene view's pivot, snapped to the pixel grid; the palette copy and the child effects it
+// needs are written as one project step linked to the creation (one undo)
+void editor::HierarchyWindow::createPixelParticles(const CreateMenuEntry& entry, Entity parent, bool addToPrefab){
+    SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->scene) {
+        return;
+    }
+    std::string preset;
+    for (const std::string& name : pixelart::pixelParticlePresetNames()) {
+        if (pixelart::pixelParticlePresetLabel(name) == entry.label) preset = name;
+    }
+    pixelart::ProjectPixelPreset made;
+    std::string error;
+    if (preset.empty() || !pixelart::prepareProjectPixelPreset(*project, preset, "Particles/Pixel", made, error)) {
+        Out::error("Could not make the pixel preset %s: %s", entry.label, error.c_str());
+        return;
+    }
+    const bool wrote = !made.writes.empty();
+    if (wrote && !ProjectFileWrites::writeUndoable(project, made.writes, error, nullptr, nullptr, {}, true)) {
+        Out::error("Could not write the pixel preset's files: %s", error.c_str());
+        return;
+    }
+    Vector3 pivot = Vector3::ZERO;
+    if (parent == NULL_ENTITY && sceneProject->sceneRender) {
+        if (Camera* camera = sceneProject->sceneRender->getCamera()) {
+            camera->updateTransform();
+            pivot = camera->getWorldTarget();
+            if (!pivot.isValid()) pivot = Vector3::ZERO;
+        }
+        pivot = jasperengine::pixelart::snapWorld(pivot, std::max(project->getPixelsPerUnit(), 1));
+    }
+    CreateEntityCmd* createCmd = new CreateEntityCmd(project, sceneProject->id, entry.entityName, EntityCreationType::PARTICLE_SYSTEM, parent, addToPrefab);
+    createCmd->addProperty<particles::ParticleEffectDocument>(ComponentType::ParticleSystemComponent, "inlineEffect", made.document);
+    createCmd->addProperty<Vector3>(ComponentType::Transform, "position", pivot);
+    CommandHandle::get(sceneProject->id)->addCommandNoMerge(createCmd);
+    if (wrote) pixelart::linkPaletteCopy(*project, sceneProject->id);
+    openParent = parent;
     std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
     if (selected.size() == 1) {
         revealEntity(sceneProject->id, selected[0]);
@@ -818,7 +923,9 @@ void editor::HierarchyWindow::showCreateMenuItems(bool atRoot, Entity parent, bo
             continue;
         }
 
-        const std::string submenu = entry.submenu;
+        // "Effects/Pixel": a submenu inside "Effects"
+        const std::string full = entry.submenu;
+        const std::string submenu = full.substr(0, full.find('/'));
         if (std::find(shownSubmenus.begin(), shownSubmenus.end(), submenu) != shownSubmenus.end()) {
             continue;
         }
@@ -826,11 +933,33 @@ void editor::HierarchyWindow::showCreateMenuItems(bool atRoot, Entity parent, bo
         if (lastKind == 0) ImGui::Separator();
         lastKind = 1;
 
-        const std::string submenuLabel = std::string(createSubmenuIcon(entry.submenu)) + "  " + submenu;
+        const std::string submenuLabel = std::string(createSubmenuIcon(submenu.c_str())) + "  " + submenu;
         if (ImGui::BeginMenu(submenuLabel.c_str())) {
             bool first = true;
+            std::vector<std::string> nested;
             for (const CreateMenuEntry& child : entries) {
-                if (!child.submenu || submenu != child.submenu || !offered(child)) {
+                if (!child.submenu || !offered(child)) {
+                    continue;
+                }
+                const std::string childMenu = child.submenu;
+                if (childMenu.rfind(submenu + "/", 0) == 0) {
+                    const std::string inner = childMenu.substr(submenu.size() + 1);
+                    if (std::find(nested.begin(), nested.end(), inner) != nested.end()) continue;
+                    nested.push_back(inner);
+                    if (ImGui::BeginMenu(inner.c_str())) {
+                        bool firstInner = true;
+                        for (const CreateMenuEntry& item : entries) {
+                            if (!item.submenu || childMenu != item.submenu || !offered(item)) continue;
+                            if (item.separatorBefore && !firstInner) ImGui::Separator();
+                            firstInner = false;
+                            if (ImGui::MenuItem(itemLabel(item).c_str())) createGameObject(item, parent, addToPrefab);
+                        }
+                        ImGui::EndMenu();
+                    }
+                    first = false;
+                    continue;
+                }
+                if (submenu != childMenu) {
                     continue;
                 }
                 if (child.separatorBefore && !first) ImGui::Separator();
@@ -1342,6 +1471,10 @@ void editor::HierarchyWindow::moveDraggedEntitiesToRootLevel(const std::vector<E
 bool editor::HierarchyWindow::acceptsModelDrop(const std::string& filePath) const {
     // As in the Scene window: a model file of the assets makes a Model GameObject of a 3D scene
     const SceneProject* sceneProject = project->getSelectedScene();
+    if (SpriteSheetPool::isAsepritePath(filePath)) {
+        // an .aseprite file (S44 R33): an animated Sprite in any scene
+        return sceneProject && sceneProject->playState == ScenePlayState::STOPPED;
+    }
     return (Util::isModelFile(filePath) || Util::isVertexAnimationFile(filePath)) && sceneProject &&
         sceneProject->sceneType == SceneType::SCENE_3D && sceneProject->playState == ScenePlayState::STOPPED;
 }
@@ -1360,6 +1493,17 @@ void editor::HierarchyWindow::handleEntityFilesDrop(const std::vector<std::strin
             if (createVatObject(project, project->getSelectedSceneId(), filePath, Vector3(0, 0, 0), parent, &error) == NULL_ENTITY) {
                 Out::error("%s", error.c_str());
             }
+            continue;
+        }
+
+        if (SpriteSheetPool::isAsepritePath(filePath) && acceptsModelDrop(filePath)) {
+            if (!project->isInsideAssetsPath(path)) {
+                Backend::getApp().registerOutsideAssetsAlert(filePath);
+                continue;
+            }
+            // onto a Sprite: its sheet; onto an Animation Player: its clips; else a child Sprite
+            pixelart::aseprite::dropAseprite(project, project->getSelectedSceneId(), project->normalizeToAssetsRelative(path).generic_string(),
+                                             parent, parent, Vector3(0, 0, 0));
             continue;
         }
 
@@ -2322,6 +2466,12 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                         Out::warning("Bookmarks: %s", error.c_str());
                     }
                 }
+            }
+
+            // the Particle Effect window on the GameObject's subtree (S91): its systems as one effect
+            if (!entityDeleted && !node.isPlayCreated && subtreeHasParticleSystems(project->getScene(sceneId), node.id) &&
+                ImGui::MenuItem(ICON_FA_FIRE "  Open in Particle Effect")) {
+                editor::getEditorHost().openParticleEffectSubtree(sceneId, node.id);
             }
 
             // Play Mode Changes: what scripts change here is offered at Stop too
@@ -3384,7 +3534,7 @@ void editor::HierarchyWindow::show(){
                 while (offset < dataSize) {
                     std::string path(data + offset);
                     if (!path.empty()) {
-                        if (Util::isSceneFile(path) || Util::isPrefabFile(path) || acceptsModelDrop(path)) {
+                        if (Util::isSceneFile(path) || Util::isPrefabFile(path) || acceptsModelDrop(path) || Util::isTitleArtFile(path)) {
                             allowResourceDragDrop = true;
                             break;
                         }
@@ -3413,6 +3563,15 @@ void editor::HierarchyWindow::show(){
 
                 handleSceneFilesDropAsChildScenes(droppedPaths, project->getSelectedSceneId());
                 handleEntityFilesDrop(droppedPaths);
+                // a .titleart (the Project window's, or the Title Designer's document chip): a
+                // GameObject showing it, one step "Create Title Art (logo)" (S81 R6, S82 R61)
+                for (const std::string& path : droppedPaths) {
+                    if (!Util::isTitleArtFile(path)) continue;
+                    std::string error;
+                    if (createTitleArtObject(project, project->getSelectedSceneId(), path, NULL_ENTITY, &error) == NULL_ENTITY) {
+                        Out::warning("Title Art drop: %s", error.c_str());
+                    }
+                }
 
                 if (payload->IsDelivery()) {
                     ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);

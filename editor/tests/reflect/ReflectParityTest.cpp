@@ -56,10 +56,6 @@
 #include <gtest/gtest.h>
 #include <yaml-cpp/yaml.h>
 
-#if defined(__SSE2__) || defined(_M_X64)
-#include <xmmintrin.h>
-#endif
-
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -213,23 +209,9 @@ namespace reflect_parity_test {
     }
 
 
-    // The samples hold denormals, and SoLoud's mix leaves flush-to-zero and denormals-are-zero on in the
-    // thread that called it (soloud.cpp, it never restores them): after a test that mixes on the main
-    // thread, a denormal would read as 0 and these would compare against another text.
-    class ReflectParity : public ::testing::Test {
-    protected:
-#if defined(__SSE2__) || defined(_M_X64)
-        void SetUp() override {
-            modes = _mm_getcsr();
-            _mm_setcsr(modes & ~kFlushToZeroAndDenormalsAreZero);
-        }
-        void TearDown() override { _mm_setcsr(modes); }
-
-    private:
-        static constexpr unsigned int kFlushToZeroAndDenormalsAreZero = 0x8040u;
-        unsigned int modes = 0;
-#endif
-    };
+    // The samples hold denormals: they compare against the frozen text only while the main thread
+    // keeps them, which SoLoud's mix now leaves as it found (engine/libs/soloud/CMakeLists.txt)
+    class ReflectParity : public ::testing::Test {};
 
 #define PARITY(Name, Type) \
     TEST_F(ReflectParity, Name##EncodeMatchesFrozen) { \

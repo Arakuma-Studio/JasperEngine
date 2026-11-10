@@ -1,0 +1,65 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "glitch_in",
+  "name": "Glitch In",
+  "group": "in",
+  "role": "intro",
+  "duration": 0.5,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Glitches in: a reseeded glitch that dies down, with a flicker.",
+  "params": [
+    {
+      "name": "rate",
+      "label": "Reseeds per Second",
+      "type": "number",
+      "default": 15,
+      "min": 1,
+      "max": 60
+    }
+  ],
+  "adds": [
+    {
+      "id": "glitch",
+      "kind": "effect",
+      "type": "glitch"
+    }
+  ],
+  "tracks": [
+    {
+      "target": "add:glitch",
+      "field": "fx:glitch.seed",
+      "reseed": {
+        "rate": "rate"
+      }
+    },
+    {
+      "target": "add:glitch",
+      "field": "fx:glitch.amount",
+      "keys": [
+        [
+          0,
+          1,
+          "quad_out"
+        ],
+        [
+          "D",
+          0
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "opacity",
+      "generate": {
+        "kind": "flicker",
+        "count": 4,
+        "length": "0.6*D",
+        "seed": 1
+      }
+    }
+  ],
+  "markers": []
+}

@@ -107,6 +107,28 @@ TEST(TitleFirstDraws, ASynchronousRenderIsNotSpread) {
     TitleFirstDraws::resetForTesting(false);
 }
 
+// llvmpipe compiles a fragment variant per sampled format, sampler state and power-of-two shape, so
+// the first-draw key must tell those apart (a program drawn "before" with other textures compiled
+// again: two compiles of seconds in one frame, NewProgramsDrawOneAFrame on llvmpipe)
+TEST_F(TitleFirstDrawGpu, TheKeyTellsTheSampledTextureStatesApart) {
+    const auto make = [](TextureRender& t, int width, ColorFormat format, TextureFilter filter) {
+        std::vector<uint8_t> pixels((size_t)width * 4 * 4, 255);
+        void* data[1] = {pixels.data()};
+        size_t size[1] = {pixels.size()};
+        return t.createTexture("key test", width, 4, format, TextureType::TEXTURE_2D, 1, data, size, filter, filter, TextureWrap::CLAMP_TO_EDGE,
+                               TextureWrap::CLAMP_TO_EDGE);
+    };
+    TextureRender a, sameAsA, otherFilter, npot;
+    ASSERT_TRUE(make(a, 4, ColorFormat::RGBA, TextureFilter::NEAREST));
+    ASSERT_TRUE(make(sameAsA, 4, ColorFormat::RGBA, TextureFilter::NEAREST));
+    ASSERT_TRUE(make(otherFilter, 4, ColorFormat::RGBA, TextureFilter::LINEAR));
+    ASSERT_TRUE(make(npot, 3, ColorFormat::RGBA, TextureFilter::NEAREST));
+    EXPECT_NE(a.getSamplingKey(), 0u);
+    EXPECT_EQ(a.getSamplingKey(), sameAsA.getSamplingKey()) << "another texture of the same state compiles nothing";
+    EXPECT_NE(a.getSamplingKey(), otherFilter.getSamplingKey());
+    EXPECT_NE(a.getSamplingKey(), npot.getSamplingKey());
+}
+
 TEST_F(TitleFirstDrawGpu, NewProgramsDrawOneAFrame) {
     TitleFirstDraws::resetForTesting(false);
     const TimedRender spread = renderWithEffects();
@@ -114,16 +136,20 @@ TEST_F(TitleFirstDrawGpu, NewProgramsDrawOneAFrame) {
     EXPECT_GT(bounded.granted, 3u) << "the render met new programs";
     EXPECT_EQ(bounded.maxPerFrame, 1u) << "one new program's first draw a frame";
     EXPECT_GT(bounded.deferred, 0u) << "the others waited for later frames";
-    // a frame holds at most one compile: the longest is the slowest pass and the frame's cheap
-    // rest. On a GPU (milliseconds a compile) no frame reaches the editor's hang threshold; on a
-    // software rasteriser one compile alone can (ELEMENT's first draw: 5.3 s on llvmpipe here)
+    // a frame holds at most one compile: a program's first draw, or its build (a software GL links
+    // on the render thread, in the readiness check of a frame that then draws nothing), so the
+    // longest frame is the slowest of those and the frame's cheap rest. On a GPU (milliseconds a
+    // compile) no frame reaches the editor's hang threshold; on a software rasteriser one compile
+    // is up to about 1 s (an ELEMENT variant, TitleElementVariant.h; the whole program was 4.3-5.3 s),
+    // timed under the box's load, so not enforced there
     const auto describe = [](const TimedRender& r) {
         return std::string("longest frame ") + std::to_string(r.longestFrameMs) + " ms of " + std::to_string(r.frames) + "; the slowest pass " +
                titleRenderProgramName(r.gpu.slowestProgram) + " (" + (r.gpu.slowestWasFirstDraw ? "a first draw" : "drawn before") + ") " +
-               std::to_string(r.gpu.slowestPassMs) + " ms";
+               std::to_string(r.gpu.slowestPassMs) + " ms; the slowest build " + titleRenderProgramName(r.gpu.slowestBuildProgram) + " " +
+               std::to_string(r.gpu.slowestBuildMs) + " ms";
     };
     ::testing::Test::RecordProperty("bounded", describe(spread));
-    EXPECT_LE(spread.longestFrameMs, spread.gpu.slowestPassMs + ONE_FRAME_REST_MS) << describe(spread);
+    EXPECT_LE(spread.longestFrameMs, std::max(spread.gpu.slowestPassMs, spread.gpu.slowestBuildMs) + ONE_FRAME_REST_MS) << describe(spread);
     const std::string device = SystemRender::getDeviceName();
     const bool software = device.find("llvmpipe") != std::string::npos || device.find("softpipe") != std::string::npos ||
                           device.find("SwiftShader") != std::string::npos || device.find("Software Rasterizer") != std::string::npos;
@@ -132,7 +158,7 @@ TEST_F(TitleFirstDrawGpu, NewProgramsDrawOneAFrame) {
     TitleFirstDraws::resetForTesting(true);
     const TimedRender together = renderWithEffects();
     EXPECT_GT(TitleFirstDraws::stats().maxPerFrame, 1u);
-    // (timed, recorded only: on llvmpipe ELEMENT's one compile is most of either longest frame)
+    // (timed, recorded only: on llvmpipe one compile is most of either longest frame)
     ::testing::Test::RecordProperty("unbounded", describe(together));
     // the same image either way
     const Difference d = compare(spread.image, together.image, 2.0);

@@ -45,6 +45,12 @@ namespace jasperengine::editor::titledesigner {
         float snapMove = 10.0f, snapRotate = 15.0f, snapScale = 0.1f;
         bool softwareNoticeShown = false;
         bool windowOpen = false;                // reopened as it was (R64)
+        // S85 §6.9: the Animation panel's Preferences > Title Designer rows
+        bool onionSkin = false;
+        int onionBefore = 2, onionAfter = 2;
+        float onionOpacity = 0.25f;
+        std::string animationPreviewAs = "exact";
+        bool animationPreviewSounds = true;
 
         YAML::Node encode() const;
         static TitleDesignerSettings decode(const YAML::Node& node);

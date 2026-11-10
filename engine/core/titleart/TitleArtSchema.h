@@ -104,6 +104,9 @@ namespace jasperengine::titleart {
         GlyphSafety glyphSafety = GlyphSafety::Safe;
         HashScope hash = HashScope::Inherit;
         std::string owner = "S80";              // the spec that registered it
+        // the canonical writer leaves the member out while it holds its default (normalize puts
+        // it back): S85's additions, so a document that never used them saves byte-identical
+        bool omitDefault = false;
         // a custom check of a Json member (S85's `animation`): fixes `value` in place, warning
         // through `context` with JSON paths under `path`
         void (*normalize)(Json& value, const std::string& path, NormalizeContext& context) = nullptr;
@@ -166,6 +169,9 @@ namespace jasperengine::titleart {
         // tests: undo an addMember / addKind
         bool removeMember(std::string_view kind, std::string_view key);
         bool removeKind(std::string_view name);
+        // a later spec's cross-member rule on a kind that has none (S85: the document's animation
+        // tracks in layer order); false when the kind is missing or has one
+        bool setFinish(std::string_view kind, void (*finish)(Json& object, const std::string& path, NormalizeContext& context));
         void reserve(std::string_view kind, std::string_view key, std::string_view owner);
         // the owner of a reserved member ("S85"), empty when not reserved
         std::string reservedOwner(std::string_view kind, std::string_view key) const;

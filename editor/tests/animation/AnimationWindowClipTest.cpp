@@ -24,6 +24,7 @@
 #include <gtest/gtest.h>
 
 #include "support/EditorTestSupport.h"
+#include "component/Transform.h"
 
 #include "AnimationWindowClipDriver.h"
 

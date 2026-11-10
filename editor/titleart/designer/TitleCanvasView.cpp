@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleCanvasView.h"
+#include "TitleDesignerHooks.h"
 
 #include "render/RenderUtil.h"
 #include "titleart/TitleArtRenderHost.h"
@@ -131,7 +132,8 @@ void TitleCanvasView::clear() {
 
 bool TitleCanvasView::sameRender(const CanvasRenderRequest& a, const CanvasRenderRequest& b) {
     return a.doc == b.doc && a.docChange == b.docChange && a.pxScale == b.pxScale && a.region == b.region && a.draft == b.draft &&
-           a.includeGuides == b.includeGuides && a.assets == b.assets && a.testFlags == b.testFlags && sameOverrides(a.overrides, b.overrides);
+           a.includeGuides == b.includeGuides && a.assets == b.assets && a.testFlags == b.testFlags && a.tier == b.tier && a.language == b.language &&
+           sameOverrides(a.overrides, b.overrides);
 }
 
 void TitleCanvasView::requestRender(const CanvasRenderRequest& request) {
@@ -175,6 +177,8 @@ void TitleCanvasView::startJob(const CanvasRenderRequest& request) {
     render.includeGuides = request.includeGuides;
     render.overrides = request.overrides;
     render.testFlags = request.testFlags;
+    render.tier = request.tier;
+    render.language = request.language;
     render.output = ta::TitleOutputFormat::Srgb8;
     render.assets = request.assets;
     std::string error;
@@ -387,7 +391,10 @@ void TitleCanvasView::draw() {
 }
 
 void TitleCanvasView::requestSceneSnapshot(Scene* scene, Entity camera, int width, int height,
-                                           std::function<void(std::vector<uint8_t>, int, int, std::string)> done) {
+                                           std::function<void(std::vector<uint8_t>, int, int, std::string)> done, std::function<void()> before,
+                                           std::function<void()> after) {
+    snapshotBefore = std::move(before);
+    snapshotAfter = std::move(after);
     snapshotScene = scene;
     snapshotCamera = camera;
     snapshotWidth = std::clamp(width, 16, 8192);
@@ -400,6 +407,9 @@ void TitleCanvasView::drawSnapshot() {
     snapshotScene = nullptr;
     auto done = std::move(snapshotDone);
     snapshotDone = nullptr;
+    auto before = std::move(snapshotBefore), after = std::move(snapshotAfter);
+    snapshotBefore = nullptr;
+    snapshotAfter = nullptr;
     if (!Engine::isViewLoaded() || !scene || snapshotCamera == NULL_ENTITY) {
         if (done) done({}, 0, 0, "the scene has no camera to render through");
         return;
@@ -414,7 +424,9 @@ void TitleCanvasView::drawSnapshot() {
     layer.viewRect = Rect(0.0f, 0.0f, (float)snapshotWidth, (float)snapshotHeight);
     layer.fixedResolution = true;
     layer.postProcessing = true;
+    if (before) before();
     Engine::drawView(GAME_VIEW_ID, &framebuffer, {layer});
+    if (after) after();
     std::vector<uint8_t> rgba;
     std::string error;
     const bool ok = FrameReadback::readFramebuffer(framebuffer, rgba, &error);
@@ -423,6 +435,8 @@ void TitleCanvasView::drawSnapshot() {
 }
 
 void TitleCanvasView::processFrame() {
+    // the hooks' render-phase work of this frame (S81's Glyph Atlas preview)
+    runEngineFrameRequests();
     const std::vector<TitleCanvasView*> views = liveViews();
     for (TitleCanvasView* view : views) {
         if (view->snapshotScene) view->drawSnapshot();

@@ -7,7 +7,7 @@ files with its own tools, a shell, a CI job or an agent hook gets the same findi
 editor running. Both sides call the same code (`editor/util/ProjectChecks.{h,cpp}`).
 
 ```
-jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cpp] [--ui] [--textures] [--anims] [--vat] [--normals] [--all]
+jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cpp] [--ui] [--textures] [--anims] [--anim-quality] [--vat] [--normals] [--all]
                           [--files <paths...>] [--format text|json] [--quiet] [--hook]
 ```
 
@@ -19,10 +19,12 @@ jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cp
 | `--cpp` | The C++ scripts: generated sources, CMake configure and build, as Play and `compile_scripts` do (same build directory, `.jasperengine/build`, so it is incremental). Slow the first time (a configure plus a full build; about 25 s for one script here), then a few seconds to tens of seconds. |
 | `--ui` | HTML/CSS UI documents: what the engine's compatibility layer drops or rewrites lossily, missing and remote files, JavaScript, each with `file:line:col`, a stable code and a fix (see below). Pure parsing, no engine start: about 1 ms per document. |
 | `--textures` | Synthesized textures: every project PNG that carries a texture synthesis recipe (an iTXt chunk `jasper.synthesis`, written by `synthesize_texture` and Window > Texture Synthesis) whose sources changed or disappeared since it was made: a warning at the PNG (see below). Reads only the PNG chunks before the image data, and hashes sources only for PNGs with a recipe, both cached by mtime and size: milliseconds once cached. |
-| `--anims` | Animation clips (`.anim`): every clip read as the engine reads it (an error with `line:col` for text that is not a clip; a warning with the JSON path of each part the lenient reader drops), and the clips the project's scenes and prefabs reference: an Animation Player entry naming a missing `.anim` (an error; a warning when its GUID finds the moved file), a model clip whose model is missing or has no animation of that name (see below). Pure parsing, no engine start. |
+| `--anims` | Animation clips (`.anim`): every clip read as the engine reads it (an error with `line:col` for text that is not a clip; a warning with the JSON path of each part the lenient reader drops), and the clips the project's scenes and prefabs reference: an Animation Player entry naming a missing `.anim` (an error; a warning when its GUID finds the moved file), a model clip whose model is missing or has no animation of that name (see below), and four warnings on what a clip holds (`anim-*`, below). Pure parsing, no engine start. |
+| `--anim-quality` | How clips move, measured on their models (no scene loads): every model clip and every `.anim` that names its model, sampled as it plays, and every model's skins. Four warnings (below). Not in `--hook` or the default set; in `--all`. |
 | `--vat` | Vertex Animations (`.vat`): every `.vat` read as the engine reads it (an error with `line:col` for text that is not one, a warning with the JSON path of each editable field the lenient reader repairs), a source changed or missing since the bake (warnings), a `.vat.glb` that is missing or no longer matches the `.vat` (errors), and a payload texture over the device limit of the recipe's preset (an error; see below). Loads the project (no scenes). |
 | `--normals` | Sprite normal maps: generated ones (a PNG with a `jasper.spritenormals` recipe, written by `generate_sprite_normals`, the `generate-sprite-normals` CLI and Window > Sprite Normal Map) whose source changed or went missing, and normal maps on Sprites, Tilemaps and Polygons (not 3D meshes, whose Lit normal maps are sized independently) that don't match their colour texture (size, frames, filter), look like DirectX or aren't normal maps, or no Light 2D can show (height 0). Pure parsing, no engine start; cached (see below). |
-| `--all` | All eight. Without `--lua/--shaders/--cpp/--ui/--textures/--anims/--vat/--normals/--all`: `--lua --shaders --ui --textures --anims --vat --normals` (C++ only when asked, since it builds). |
+| `--pixel-art` | The pixel-art rules of `check_pixel_art` (docs/specs/S42-pixel-art-mode.md) on the saved project: one line per finding, `path[#GameObject]: error\|warning: [rule] message (fix: ...) [PIXELART-<RULE>]` (FAIL is an error, WARN a warning), then the call that fixes (`jasperengine-editor call --project <p> check_pixel_art '{"fix":["all"],"output":true}'`); `--format json` adds the full result as `pixel_art`. In the default set and in `--hook` while the project's Pixel Art Mode is on; given files (`--hook`, `--files`), only the findings of the changed scenes, of the changed images that are pixel art (a meta counts as its image) and of project.yaml. |
+| `--all` | All ten. Without `--lua/--shaders/--cpp/--ui/--textures/--anims/--vat/--normals/--all`: `--lua --shaders --ui --textures --anims --vat --normals` (C++ only when asked, since it builds). |
 | `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork (a UI effect `.frag`, the effect); a `.glsl` checks every fork and UI effect (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. An image is checked as a synthesized texture when it carries a recipe, and as a source otherwise: the project's synthesized textures made from it are checked (an edited example reports the textures to regenerate). An `.anim` is checked as a clip (its references from scenes are checked on whole-project runs only). A `.vat` is checked as a Vertex Animation, a `.vat.glb` as its `.vat`, and any other file as a source: the project's `.vat` files whose recipe read it are checked (an edited model reports the bakes to rebake). An image is also checked as a generated normal map when it has a sprite normals recipe, and as a source otherwise (the normal maps whose recipe names it, found through the cache's index, plus `<stem>_normal.png` / `<stem>_sheet_normal.png` beside it); the scene findings of `--normals` run on whole-project runs only. Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
 | `--format json` | One JSON object on stdout (below). Default `text`. |
 | `-q`, `--quiet` | No summary line on stderr. |
@@ -257,6 +259,33 @@ Tool `vat`, at the `.vat`, `code` the kind and `suggestion` the fix:
 | `vat-format` | warning | an editable field (a clip's `wrap`, `speed`, an event...) the reader repaired, with its JSON path | fix the value |
 
 The CLI that bakes them is `jasperengine-editor bake-vat` (`--help`; `docs/vertex-animation.md`).
+
+## What the clip check warns of
+
+`--anims` (`code` the kind; all warnings, so exit codes keep their meaning):
+
+| Code | When | Fix |
+|---|---|---|
+| `anim-redundant-keys` | over 25 % of a clip's keys are what their neighbours give anyway (within 1e-5 a component) | `optimize_animation` measures what removing them costs |
+| `anim-constant-track` | a track of more than one key holds one value | `optimize_animation` leaves one key |
+| `anim-rotation-flip` | two consecutive keys have opposite signs in the file, or on a Hermite track, or are more than 160 degrees apart | add a key in the middle, or export it again |
+| `anim-optimize-stale` | a reduced clip's `optimize.source` has changed or is gone (`optimize.source_sha1`) | `optimize_animation` again with the same arguments |
+
+`--anim-quality` (all warnings; the same limits as `check_animation`):
+
+| Code | When | Fix |
+|---|---|---|
+| `anim-bone-limit` | a model's skin has more than 2048 joints, the bone palette phones and browsers hold | split the skin, or remove bones the mesh does not use |
+| `anim-loop-seam` | a Loop clip's seam is over 10 mm | match the first and last keys, or set wrap: once |
+| `anim-root-drift` | an in-place clip's root (under 0.25 m/s) ends over 20 mm from its start | zero the root's keys, or use root motion |
+| `anim-foot-slide` | a humanoid model's foot moves over 15 mm while on the ground | move the character at the matching ground speed, or add a Foot Lock |
+
+`check_animation` returns findings of this shape too, some of them errors, none of them `check`'s: `anim-compare-error` (over the
+limit), `anim-compare-unmeasured` (no bone moves on this rig: no number to trust), `anim-compare-other-tracks`,
+`anim-compare-events` (events or audio cues), `anim-compare-length`, `anim-compare-failed`, `anim-loop-seam` (a Loop clip's seam over 10 mm),
+`anim-root-drift` (a root under 0.25 m/s, or any with `limits.root_drift_mm`, ending over 20 mm or that limit from its start),
+`anim-foot-slide` (over 15 mm or `limits.foot_slide_mm`), `anim-unknown-foot`, `anim-transition-pop` (a step over 30 mm or
+`limits.pop_mm` and twice the steps around it), `anim-no-rig`, `anim-unreadable`.
 
 ## What the normal map check runs
 

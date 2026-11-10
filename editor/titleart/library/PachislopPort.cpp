@@ -9,6 +9,7 @@
 
 #include "DeniedTerms.h"
 #include "PachislopColourways.h"
+#include "TitleLibrary.h"
 #include "TitleLibraryFormats.h"
 
 #include "titleart/ColorScheme.h"
@@ -439,14 +440,7 @@ namespace {
 
     // ---- the porter ----
 
-    struct FieldSpec {
-        std::string to;
-        int component = -1;
-        bool negate = false;
-        bool environment = false;
-        bool lift = false;          // a member of the object that holds this one ("^opacity")
-        Json values = Json::object();
-    };
+    using FieldSpec = PachislopFieldRule;
 
     // where a converted value comes from: a concrete path for messages, a pattern for `dropped`
     struct Ctx {
@@ -550,22 +544,7 @@ namespace {
                 ids[it.key()] = e;
             }
             for (auto it = map["fields"].begin(); it != map["fields"].end(); ++it) {
-                FieldSpec f;
-                if (it.value().is_string()) {
-                    f.to = it.value().get<std::string>();
-                } else if (it.value().is_object()) {
-                    const Json& v = it.value();
-                    f.to = v.value("to", std::string());
-                    f.component = v.value("component", -1);
-                    f.negate = v.value("negate", false);
-                    f.environment = v.value("environment", false);
-                    if (v.contains("values") && v["values"].is_object()) f.values = v["values"];
-                }
-                if (!f.to.empty() && f.to[0] == '^') {
-                    f.lift = true;
-                    f.to = f.to.substr(1);
-                }
-                fields[it.key()] = f;
+                fields[it.key()] = parsePachislopFieldRule(it.value());
             }
             for (const Json& d : map["dropped"]) {
                 const std::string path = d.value("path", std::string());
@@ -2456,4 +2435,68 @@ std::vector<PortFinding> jasperengine::editor::titlelibrary::comparePortFiles(co
         for (const std::string& s : stale) findings.push_back({s, "stale", "has Pachislop provenance and the port no longer produces it"});
     }
     return findings;
+}
+
+// ---- the embedded map (the importer's view: S87's PachislopMembers) ----
+
+PachislopFieldRule jasperengine::editor::titlelibrary::parsePachislopFieldRule(const Json& value) {
+    PachislopFieldRule f;
+    if (value.is_string()) {
+        f.to = value.get<std::string>();
+    } else if (value.is_object()) {
+        f.to = value.value("to", std::string());
+        f.component = value.value("component", -1);
+        f.negate = value.value("negate", false);
+        f.environment = value.value("environment", false);
+        if (value.contains("values") && value["values"].is_object()) f.values = value["values"];
+    }
+    if (!f.to.empty() && f.to[0] == '^') {
+        f.lift = true;
+        f.to = f.to.substr(1);
+    }
+    return f;
+}
+
+const Json& jasperengine::editor::titlelibrary::embeddedPachislopMap() {
+    static const Json map = [] {
+        const auto& files = TitleLibrary::get().builtinFiles();
+        auto it = files.find("pachislop-map.json");
+        Json parsed = it == files.end() ? Json() : Json::parse(it->second, nullptr, false);
+        return parsed.is_object() ? parsed : Json::object();
+    }();
+    return map;
+}
+
+const PachislopFieldRule* jasperengine::editor::titlelibrary::pachislopFieldRule(const std::string& kind, const std::string& key) {
+    static const std::map<std::string, PachislopFieldRule> rules = [] {
+        std::map<std::string, PachislopFieldRule> out;
+        const Json& map = embeddedPachislopMap();
+        if (map.contains("fields") && map["fields"].is_object()) {
+            for (auto it = map["fields"].begin(); it != map["fields"].end(); ++it) out[it.key()] = parsePachislopFieldRule(it.value());
+        }
+        return out;
+    }();
+    auto it = rules.find(kind + "." + key);
+    if (it == rules.end()) {
+        const SchemaKind* k = TitleArtSchema::get().kind(kind);
+        if (k && !k->base.empty()) it = rules.find(k->base + "." + key);
+    }
+    return it == rules.end() ? nullptr : &it->second;
+}
+
+std::string jasperengine::editor::titlelibrary::pachislopPackFont(const std::string& fontId, bool japanese) {
+    const Json& map = embeddedPachislopMap();
+    if (!map.contains("fonts") || !map["fonts"].contains(fontId)) return {};
+    const Json& entry = map["fonts"][fontId];
+    if (entry.is_string()) return entry.get<std::string>();
+    if (!entry.is_object()) return {};
+    const char* key = japanese ? "ja" : "latin";
+    return entry.value(key, entry.value("latin", std::string()));
+}
+
+std::string jasperengine::editor::titlelibrary::pachislopEnvironment(const std::string& reflectionMap) {
+    const Json& map = embeddedPachislopMap();
+    if (!map.contains("environments") || !map["environments"].contains(reflectionMap)) return {};
+    const Json& entry = map["environments"][reflectionMap];
+    return entry.is_string() ? entry.get<std::string>() : std::string();
 }

@@ -3,6 +3,7 @@
 
 #include "manager/ObjectManager.h"
 #include "component/ButtonComponent.h"
+#include "component/Transform.h"
 #include "component/InputFieldComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "component/PanelComponent.h"
@@ -19,6 +20,7 @@
 
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/FoliageSystem.h"
 #include "subsystem/LatticeSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
 #include "subsystem/TrailSystem.h"
@@ -34,9 +36,15 @@
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/NavigationSystem.h"
+#if JASPERENGINE_TERRAIN_WORLD
+#include "subsystem/TerrainWorldSystem.h"
+#endif
 #include "picking/SceneBvh.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/SplineSystem.h"
+#if JASPERENGINE_VOXEL
+#include "subsystem/VoxelSystem.h"
+#endif
 #include "subsystem/WaterInteractionSystem.h"
 #include "util/Color.h"
 
@@ -66,7 +74,16 @@ void Scene::init(){
     // after the scripts, before the meshes and transforms: generated chunks and followers are
     // drawn in the frame they change (docs/specs/S18-splines.md D3)
     registerSystem<SplineSystem>();
+#if JASPERENGINE_VOXEL
+    registerSystem<VoxelSystem>();
+#endif
     registerSystem<MeshSystem>();
+    // after the meshes' model loads, before the lattices and Render read what it places (T5 F1)
+    registerSystem<FoliageSystem>();
+#if JASPERENGINE_TERRAIN_WORLD
+    // T4: after the meshes, before Render selects over the tiles it pumped in
+    registerSystem<TerrainWorldSystem>();
+#endif
     registerSystem<LatticeSystem>();
     // after the lattices, before Render reads the GPU state it writes (vertex animation spec 3.4)
     registerSystem<VertexAnimatorSystem>();
@@ -134,6 +151,7 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
     // every event of every component (ComponentEvents.h), then the physics system's
     forEachComponentEvent(*this, [&substring](auto& event) { event.removeByTagSubstring(substring); });
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);
+    getSystem<TitleArtSystem>()->removeSubscriptionsByTag(substring);
 }
 
 void Scene::setCamera(Camera* camera){

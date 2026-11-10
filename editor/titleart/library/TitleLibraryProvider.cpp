@@ -7,6 +7,7 @@
 #include "Backend.h"
 #include "TitleLibraryApply.h"
 #include "TitleLibrarySearch.h"
+#include "io/AtomicFile.h"
 #include "texture/Texture.h"
 #include "titleart/TitleArtOps.h"
 #include "titleart/designer/TitleDesignerState.h"
@@ -313,10 +314,9 @@ namespace {
                 if (!parsed.ok) return false;
                 text = writeTemplate(parsed.tmpl);
             }
-            std::ofstream out(info->file, std::ios::binary | std::ios::trunc);
-            out << text;
+            const bool written = io::writeFileAtomic(info->file, text).ok();
             TitleLibrary::get().invalidate();
-            return (bool)out;
+            return written;
         }
 
         bool deleteItem(LibraryTab tab, const std::string& id, std::string* error) override {
@@ -364,9 +364,11 @@ namespace {
                     if (error) *error = "'" + file.string() + "' does not load as a " + libraryKindLabel(kind);
                     return false;
                 }
-                fs::create_directories(target.parent_path(), ec);
-                std::ofstream out(target, std::ios::binary);
-                out << text;
+                const io::WriteResult written = io::writeFileAtomic(target, text);
+                if (!written.ok()) {
+                    if (error) *error = "'" + target.string() + "': " + io::describeWriteError(written);
+                    return false;
+                }
             }
             TitleLibrary::get().invalidate();
             return true;

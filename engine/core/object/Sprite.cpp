@@ -2,11 +2,21 @@
 // SPDX-License-Identifier: MIT
 
 #include "Sprite.h"
+#include <algorithm>
 
 #include "component/ShadowCaster2DComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/Transform.h"
 #include "util/Color.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "component/CameraComponent.h"
+#include "sprite/SpriteFrameGeometry.h"
+#include "sprite/SpriteSheet.h"
+#include "sprite/SpriteSheetPool.h"
+
+#include <algorithm>
+#include <cmath>
 
 using namespace jasperengine;
 
@@ -132,6 +142,38 @@ void Sprite::setTextureScaleFactor(float textureScaleFactor){
     }
 }
 
+void Sprite::setPixelsPerUnit(float pixelsPerUnit){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    pixelsPerUnit = std::max(0.0f, pixelsPerUnit);
+    if (spritecomp.pixelsPerUnit != pixelsPerUnit){
+        spritecomp.pixelsPerUnit = pixelsPerUnit;
+        spritecomp.needUpdateSprite = true;
+        markChanged<SpriteComponent>();
+    }
+}
+
+float Sprite::getPixelsPerUnit() const{
+    return getComponent<SpriteComponent>().pixelsPerUnit;
+}
+
+void Sprite::setPixelRotation(PixelRotation pixelRotation){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (spritecomp.pixelRotation != pixelRotation){
+        spritecomp.pixelRotation = pixelRotation;
+        // its drawn matrix holds the policy (RenderSystem::pixelArtModel)
+        getComponent<Transform>().needUpdate = true;
+        markChanged<SpriteComponent>();
+    }
+}
+
+PixelRotation Sprite::getPixelRotation() const{
+    return getComponent<SpriteComponent>().pixelRotation;
+}
+
+Vector2 Sprite::getWorldSize() const{
+    return spriteWorldSize(getComponent<SpriteComponent>());
+}
+
 float Sprite::getTextureScaleFactor() const{
     SpriteComponent& spritecomp = getComponent<SpriteComponent>();
     
@@ -174,6 +216,18 @@ PivotPreset Sprite::getPivotPreset() const{
     SpriteComponent& spritecomp = getComponent<SpriteComponent>();
 
     return spritecomp.pivotPreset;
+}
+
+void Sprite::setDrawMode(SpriteDrawMode drawMode){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (spritecomp.drawMode != drawMode){
+        spritecomp.drawMode = drawMode;
+        spritecomp.needUpdateSprite = true;
+    }
+}
+
+SpriteDrawMode Sprite::getDrawMode() const{
+    return getComponent<SpriteComponent>().drawMode;
 }
 
 void Sprite::addFrame(int id, const std::string& name, Rect rect){
@@ -235,6 +289,16 @@ void Sprite::applyFrameRect(Rect frameRect){
 
 void Sprite::setFrame(int id){
     SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (!spritecomp.sheet.empty()){
+        std::shared_ptr<const SpriteSheetData> sheet = getSheetData();
+        if (sheet && (id < 0 || id >= sheet->frameCount())){
+            Log::error("Cannot use invalid sprite frame: %i (%s has %i frames)", id, spritecomp.sheet.path.c_str(), sheet->frameCount());
+            return;
+        }
+        spritecomp.frame = id;
+        spritecomp.resolveFrameName = false;
+        return;
+    }
     if (id >= 0 && (unsigned int)id < spritecomp.numFramesRect){
         applyFrameRect(spritecomp.framesRect[id].rect);
     }else{
@@ -244,6 +308,17 @@ void Sprite::setFrame(int id){
 
 void Sprite::setFrame(const std::string& name){
     SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (!spritecomp.sheet.empty()){
+        std::shared_ptr<const SpriteSheetData> sheet = getSheetData();
+        const int index = sheet ? sheet->findFrame(name) : -1;
+        if (index < 0){
+            Log::error("Cannot use nonexistent sprite frame: %s (sheet %s)", name.c_str(), spritecomp.sheet.path.c_str());
+            return;
+        }
+        spritecomp.frame = index;
+        spritecomp.resolveFrameName = false;
+        return;
+    }
     for (unsigned int id = 0; id < spritecomp.numFramesRect; id++) {
         if (spritecomp.framesRect[id].name == name){
             applyFrameRect(spritecomp.framesRect[id].rect);
@@ -326,4 +401,130 @@ void Sprite::setEnabled(bool enabled){
 
 bool Sprite::isEnabled() const{
     return getComponent<SpriteComponent>().enabled;
+}
+
+void Sprite::setSheet(const std::string& path){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (spritecomp.sheet.path == path){
+        return;
+    }
+    if (spritecomp.sheet.empty() && !path.empty()){
+        // a sheet's pages are pixel art (R15): sampled Nearest
+        Texture& page = getComponent<MeshComponent>().submeshes[0].material.baseColorTexture;
+        page.setMinFilter(TextureFilter::NEAREST);
+        page.setMagFilter(TextureFilter::NEAREST);
+    }
+    spritecomp.sheet = path;
+    spritecomp.frame = 0;
+    spritecomp.frameName.clear();
+    spritecomp.resolveFrameName = false;
+    spritecomp.playingTag.clear();
+    spritecomp.tagPlaying = false;
+    spritecomp.needUpdateSprite = true;
+    if (path.empty()){
+        // back to the inline frames and the mesh texture
+        spritecomp.sheetData.reset();
+        spritecomp.loadedSheet.clear();
+        spritecomp.builtFrame = -1;
+    }
+}
+
+std::string Sprite::getSheet() const{
+    return getComponent<SpriteComponent>().sheet.path;
+}
+
+std::shared_ptr<const SpriteSheetData> Sprite::getSheetData() const{
+    const SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (spritecomp.sheet.empty()){
+        return nullptr;
+    }
+    if (spritecomp.sheetData && spritecomp.loadedSheet == spritecomp.sheet.path){
+        return spritecomp.sheetData;
+    }
+    return SpriteSheetPool::get(spritecomp.sheet.path);
+}
+
+int Sprite::getFrameIndex() const{
+    return getComponent<SpriteComponent>().frame;
+}
+
+std::string Sprite::getFrameName() const{
+    const SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (std::shared_ptr<const SpriteSheetData> sheet = getSheetData()){
+        if (spritecomp.frame >= 0 && spritecomp.frame < sheet->frameCount()){
+            return sheet->frames[(size_t)spritecomp.frame].name;
+        }
+    }
+    return spritecomp.frameName;
+}
+
+int Sprite::getFrameCount() const{
+    const SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (!spritecomp.sheet.empty()){
+        std::shared_ptr<const SpriteSheetData> sheet = getSheetData();
+        return sheet ? sheet->frameCount() : 0;
+    }
+    return (int)spritecomp.numFramesRect;
+}
+
+void Sprite::playTag(const std::string& name, float speed){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (!std::isfinite(speed) || speed <= 0.0f){
+        Log::error("Sprite:playTag(\"%s\"): speed must be a number above 0 (got %g)", name.c_str(), (double)speed);
+        return;
+    }
+    std::shared_ptr<const SpriteSheetData> sheet = getSheetData();
+    if (!sheet){
+        Log::error("Sprite:playTag(\"%s\"): the sprite has no sheet", name.c_str());
+        return;
+    }
+    const int index = sheet->findTag(name);
+    if (index < 0){
+        std::string tags;
+        for (const SpriteTag& tag : sheet->tags){
+            tags += (tags.empty() ? "" : ", ") + tag.name;
+        }
+        Log::error("Sprite:playTag: %s has no tag \"%s\" (tags: %s)", spritecomp.sheet.path.c_str(), name.c_str(),
+                   tags.empty() ? "none" : tags.c_str());
+        return;
+    }
+    const SpriteTag& tag = sheet->tags[(size_t)index];
+    spritecomp.tagLoop = tag.repeat == 0;
+    spritecomp.tagFrames = spritecomp.tagLoop ? tag.sequence() : tag.playback();
+    spritecomp.playingTag = tag.name;
+    spritecomp.tagPlaying = !spritecomp.tagFrames.empty();
+    spritecomp.tagStep = 0;
+    spritecomp.tagElapsedMs = 0.0;
+    spritecomp.tagSpeed = speed;
+    if (spritecomp.tagPlaying){
+        spritecomp.frame = spritecomp.tagFrames[0];
+        spritecomp.resolveFrameName = false;
+    }
+}
+
+void Sprite::stopTag(){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    spritecomp.tagPlaying = false;
+    spritecomp.playingTag.clear();
+    spritecomp.tagFrames.clear();
+}
+
+std::string Sprite::getTag() const{
+    return getComponent<SpriteComponent>().playingTag;
+}
+
+bool Sprite::isTagPlaying() const{
+    return getComponent<SpriteComponent>().tagPlaying;
+}
+
+bool Sprite::getSliceRect(const std::string& name, Rect& bounds, Rect* center, Vector2* pivot) const{
+    std::shared_ptr<const SpriteSheetData> sheet = getSheetData();
+    if (!sheet){
+        return false;
+    }
+    bool uiCamera = false;
+    if (const CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera())){
+        uiCamera = camera->type == CameraType::CAMERA_UI;
+    }
+    return spriteSliceLocalRect(getComponent<SpriteComponent>(), *sheet, uiCamera, name, bounds, center, pivot);
 }

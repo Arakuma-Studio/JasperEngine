@@ -89,7 +89,7 @@ Getters are properties (go.position is a copy: assign it back; Engine.deltatime)
 string. No on_start, getComponent or setProperty. Static functions use a dot (GameObject.instantiate),
 methods a colon (go:setScale(2)). Never carry over Unity, Godot or Unreal API names: confirm them.
 
-## Unity names -> engine names
+## Unity names
 GameObject = entity (script class GameObject); Create Empty = type empty. Prefab = .prefab asset.
 Mesh Filter/Renderer = MeshComponent (box, sphere, plane...); Sprite Renderer = SpriteComponent;
 Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent (Box2D); a Collider is an
@@ -122,13 +122,13 @@ main_menu, hud, settings...) writes the files; edit them yourself; inspect_ui / 
 layouts. Read jasper://docs/html-ui first.
 
 ## Other areas
-2D (points, y up; Box2D 64 points per meter), cameras (useTarget ignores rotation), animation
-(edit_animation), post-processing (apply_post_processing_preset), atmosphere (Fog type height,
-apply_atmosphere_preset), shadows (a light's softShadows, the scene's shadows_quality), reflections
-(SSR replaces probe reflections; check with ssr_debug_mode 7), profiling (get_frame_times),
-navigation (get_navigation_info), sound (analyze_audio), shipping (build_project), title art
-(edit_title), data safety (save after each step; allow_data_loss), meshes (inspect_models,
-check_render_budgets), device tiers (set_device_simulation, then play): jasper://docs/<area>.
+2D (points, y up), cameras (useTarget ignores rotation), animation (edit_animation),
+post-processing (apply_post_processing_preset), atmosphere (apply_atmosphere_preset), shadows
+(softShadows, shadows_quality), reflections (SSR replaces probe reflections;
+check with ssr_debug_mode 7), profiling (get_frame_times), navigation (get_navigation_info), sound
+(analyze_audio), shipping (build_project), palettes (edit_palette, apply_palette), titles (edit_title), data
+safety (allow_data_loss), meshes (inspect_models, check_render_budgets), device tiers
+(set_device_simulation, then play), sprites (set_sprite_frames sheet): jasper://docs/<area>.
 )JE";
 }
 
@@ -145,7 +145,7 @@ std::string toolGroupsSection(const McpRegistry& registry) {
     }
     // A client only offers the model the tools it listed (Claude Code's tool search sees no others),
     // so the line says the agent enables a group itself
-    return "\n## Tool groups\nTools outside core are not in your tool list until you call `tool_groups` "
+    return "\n## Tool groups\nTools outside core join your tool list once you call `tool_groups` "
            "{\"enable\": [\"<group>\"]} (no arguments: what each holds)" +
            (names.empty() ? std::string() : ": " + names) + ".\n";
 }

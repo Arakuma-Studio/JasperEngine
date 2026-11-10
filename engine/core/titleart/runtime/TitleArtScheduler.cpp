@@ -11,7 +11,10 @@
 #include "render/SystemRender.h"
 #include "texture/TextureData.h"
 #include "titleart/TitleArtAssets.h"
+#include "render/FrameReadback.h"
 #include "titleart/render/TitleArtRenderer.h"
+#include "titleart/render/TitleStepCosts.h"
+#include "titleart/runtime/TitleLiveCompose.h"
 #include "util/FontFace.h"
 #include "util/FontRegistry.h"
 
@@ -144,6 +147,10 @@ const char* jasperengine::titleart::titleQualityTierFor(DeviceTier tier){
 
 TitleArtScheduler::TitleArtScheduler() = default;
 
+double TitleArtScheduler::liveBudgetMs() const{
+    return titleLiveBudgetMs(platformGroup());
+}
+
 TitleArtScheduler& TitleArtScheduler::get(){
     static TitleArtScheduler* scheduler = new TitleArtScheduler();
     return *scheduler;
@@ -169,6 +176,26 @@ double TitleArtScheduler::frameBudgetMs(bool editorEditMode) const{
 
 void TitleArtScheduler::setFrameBudgetOverride(double ms){
     budgetOverrideMs = ms <= 0.0 ? 0.0 : std::min(16.0, std::max(0.25, ms));
+}
+
+bool jasperengine::titleart::parseTitleArtRuntimeSettings(const std::string& text, TitleArtRuntimeSettings& settings){
+    const Json root = Json::parse(text, nullptr, false);
+    if (!root.is_object() || root.value("version", 0) != 1) return false;
+    auto group = [&root](const char* key, double* values, double lo, double hi){
+        auto it = root.find(key);
+        if (it == root.end() || !it->is_object()) return;
+        static const char* const names[DEVICE_PLATFORM_GROUP_COUNT] = {"desktop", "mobile", "web"};
+        for (size_t g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++){
+            auto value = it->find(names[g]);
+            if (value != it->end() && value->is_number()) values[g] = std::min(hi, std::max(lo, value->get<double>()));
+        }
+    };
+    group("frame_budget_ms", settings.frameBudgetMs, 0.25, 16.0);
+    group("release_delay_s", settings.releaseDelaySeconds, 0.0, 600.0);
+    group("cache_budget_mib", settings.cacheBudgetMiB, 1.0, 4096.0);
+    auto height = root.find("reference_height");
+    if (height != root.end() && height->is_number_integer()) settings.referenceHeight = std::max(0, height->get<int>());
+    return true;
 }
 
 void TitleArtScheduler::configure(const TitleArtRuntimeSettings& settings){
@@ -211,6 +238,11 @@ void TitleArtScheduler::setClockForTesting(double seconds){
     clock = seconds;
 }
 
+size_t TitleArtScheduler::cacheBudgetBytes() const{
+    // half the budget is for shown-before images (R20, as runFrame's limits)
+    return (size_t)(config.cacheBudgetMiB[(size_t)platformGroup()] * 1024.0 * 1024.0) / 2;
+}
+
 size_t TitleArtScheduler::poolBytes() const{
     if (!rendererInstance) return 0;
     const TitleTargetPoolStats& stats = rendererInstance->poolStats();
@@ -224,26 +256,48 @@ void TitleArtScheduler::releaseAll(){
 
 TitleFrameReport TitleArtScheduler::schedule(const std::vector<TitleArtLive*>& entries, const TitleJobFactory& factory, uint32_t budgetUs,
                                              double platformFactor){
+    TitleScheduleContext context;
+    context.factory = factory;
+    context.budgetUs = budgetUs;
+    context.platformFactor = platformFactor;
+    return schedule(entries, context);
+}
+
+TitleFrameReport TitleArtScheduler::schedule(const std::vector<TitleArtLive*>& entries, const TitleScheduleContext& context){
     TitleFrameReport report;
+    // R9: live composes first, whole (a hidden title's waits as its render would, R13)
+    for (TitleArtLive* live : entries){
+        if (!live->liveWaiting() || !live->runnable()) continue;
+        if (live->runLive(context)) report.liveComposes++;
+    }
     std::vector<TitleArtLive*> order;
-    for (TitleArtLive* live : entries) if (live->runnable()) order.push_back(live);
+    for (TitleArtLive* live : entries) if (live->runnable() && !live->liveWaiting()) order.push_back(live);
     // R13: priority, then visible before not visible, then the oldest request
     std::stable_sort(order.begin(), order.end(), [](const TitleArtLive* a, const TitleArtLive* b){
         if (a->priority() != b->priority()) return a->priority() > b->priority();
         if (a->visible() != b->visible()) return a->visible();
         return a->requestOrder() < b->requestOrder();
     });
+    const uint32_t budgetUs = context.budgetUs;
     double spent = 0.0;
     for (TitleArtLive* live : order){
         bool ran = false;
-        while (live->hasWork() && !live->jobDone()){
-            const uint32_t next = live->nextCostUs(platformFactor);
+        // what the model learned since the job's steps were last cut
+        if (context.costs) live->resplit(context);
+        // S85 R18: an animating title spends at most its share of the budget a frame (the budget
+        // over the animating visible titles, at least a quarter of it), so the others keep theirs
+        const double titleStart = spent;
+        const double shareUs = live->animating() ? std::max(0.25, std::min(1.0, live->animationShare())) * (double)budgetUs : (double)budgetUs;
+        while (live->hasWork() && !live->jobDone() && !live->liveWaiting()){
+            const uint32_t next = live->nextCostUs(context);
             // R15: whole steps while they fit; the first step of the frame always runs
             if (report.steps > 0 && spent + next > budgetUs) break;
+            if (ran && spent - titleStart + next > shareUs) break;
             const double before = spent;
-            if (!live->runStep(factory, platformFactor, budgetUs, spent)) break;
-            report.steps++;
+            if (!live->runStep(context, spent)) break;
             if (spent - before > budgetUs) report.overBudgetSteps++;
+            if (report.steps > 0 && spent > budgetUs) report.lateStarts++;
+            report.steps++;
             ran = true;
             if (spent >= budgetUs) break;
         }
@@ -260,7 +314,10 @@ void TitleArtScheduler::runFrame(double dt, bool editorEditMode){
     }
     // R22: a lost device took every target: the live titles render again from their documents
     const uint64_t context = SystemRender::getContextId();
-    if (contextId != 0 && context != contextId) releaseAll();
+    if (contextId != 0 && context != contextId){
+        releaseAll();
+        costs.reset();
+    }
     contextId = context;
     if (lives.empty()) return;
 
@@ -270,8 +327,28 @@ void TitleArtScheduler::runFrame(double dt, bool editorEditMode){
     bool anyWork = false;
     for (TitleArtLive* live : lives) anyWork = anyWork || live->hasWork();
     if (anyWork){
-        const TitleJobFactory factory = testFactory ? testFactory : makeRendererJobFactory(renderer(), assetResolver());
-        schedule(lives, factory, budgetUs, factor);
+        // the device's cost model, its prior the group's factor (a simulated group, or a new
+        // device, starts again from its own)
+        if (!costs || costsGroup != group){
+            costs = std::make_unique<TitleStepCosts>(std::function<double()>(), factor);
+            costsGroup = group;
+            // a software rasterizer draws on its own threads: a step that samples what it has not
+            // drawn yet would wait for it on the main thread, so steps wait for the fence (as the
+            // editor's previews do)
+            if (SystemRender::isSoftwareGpu()) costs->setGpuGate([]{ return !FrameReadback::gpuFencePassed(); }, []{ FrameReadback::fenceGpu(); });
+        }
+        TitleScheduleContext context;
+        context.factory = testFactory ? testFactory : makeRendererJobFactory(renderer(), assetResolver());
+        context.budgetUs = budgetUs;
+        context.platformFactor = factor;
+        context.costs = costs.get();
+        const TitleFrameReport report = schedule(lives, context);
+        if (report.steps > 0){
+            totals.frames++;
+            totals.worstUs = std::max(totals.worstUs, report.spentUs);
+            if (report.steps > 1 && report.spentUs > budgetUs) totals.overBudgetFrames++;
+            totals.lateStarts += report.lateStarts;
+        }
     }
 
     limits.cacheBytes = (size_t)(config.cacheBudgetMiB[(size_t)group] * 1024.0 * 1024.0) / 2;

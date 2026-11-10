@@ -184,6 +184,59 @@ TitlePlanner::TitlePlanner(TitleRenderServices& services, const RenderRequest& r
         parents[layer.value("id", std::string())] = parent;
         return true;
     });
+    // S81's live compose: the layers its inputs belong to, and their ancestors, are always
+    // planned (a node cache hit would skip the stack whose input it keeps or starts from)
+    auto planned = [this](std::string id) {
+        while (!id.empty() && liveLayers.insert(id).second) {
+            auto it = parents.find(id);
+            id = it != parents.end() && it->second ? it->second->value("id", std::string()) : std::string();
+        }
+    };
+    for (const std::string& name : req.keepLive) planned(layerOfLive(name));
+    for (const auto& input : req.liveInputs) planned(layerOfLive(input.first));
+}
+
+std::string TitlePlanner::layerOfLive(const std::string& name) {
+    const size_t colon = name.find(':');
+    std::string id = colon == std::string::npos ? std::string() : name.substr(colon + 1);
+    const size_t at = id.find('@');
+    if (at != std::string::npos) id.resize(at);
+    return id;
+}
+
+bool TitlePlanner::wantsLive(const std::string& name) const {
+    return std::find(req.keepLive.begin(), req.keepLive.end(), name) != req.keepLive.end();
+}
+
+void TitlePlanner::keepLive(const std::string& name, TitlePx px, const std::string& layerId) {
+    if (!px.valid() || liveKeeps.count(name)) return;
+    // a copy of its own: the source slot stays the stack's (released, cached or written as before)
+    TitlePx copy = copyOf(px, layerId);
+    auto entry = std::make_shared<TitleCacheEntry>();
+    entry->rect = copy.rect;
+    liveKeeps[name] = entry;
+    const int slot = copy.slot;
+    cpu("live keep", layerId, 1, [entry, slot](TitleJobState& state, std::string& error) {
+        if (!state.alive(error)) return false;
+        TitleJobState::Slot& s = state.slots[(size_t)slot];
+        entry->target = std::move(s.ref);
+        entry->bytes = entry->target ? targetBytes(entry->target.key()) : 0;
+        s.entry = entry;
+        return true;
+    });
+}
+
+TitlePx TitlePlanner::liveInput(const std::string& name, const TitleRectI& rect) {
+    auto it = req.liveInputs.find(name);
+    if (it == req.liveInputs.end() || !it->second || !it->second->target) return {};
+    liveInputsUsed++;
+    TitlePx kept{entrySlot(it->second), it->second->rect};
+    if (kept.rect == rect) return kept;
+    // a live param that changes the stack's reach moves its region of interest: what was drawn
+    // before the live effect lies inside its own reach, so it is the same pixels in the new region
+    TitlePx placed = clearedLike(rect, layerOfLive(name));
+    blendOnto(placed, kept, 1.0f, (int)TitleBlend::Normal, nullptr, layerOfLive(name));
+    return placed;
 }
 
 int TitlePlanner::newSlot(const TargetKey& key) {
@@ -218,7 +271,7 @@ void TitlePlanner::problem(TitleProblem p) {
 }
 
 void TitlePlanner::pass(const std::string& label, const std::string& layerId, int slot, const TitleRectI& scissor, TitleRenderProgram program,
-                        PassFill fill, BlendMode blend, bool clear, float costWeight, bool splittable) {
+                        PassFill fill, BlendMode blend, bool clear, float costWeight, bool splittable, uint32_t variant) {
     TitleRenderStep step;
     step.kind = StepKind::Gpu;
     step.label = label;
@@ -226,14 +279,15 @@ void TitlePlanner::pass(const std::string& label, const std::string& layerId, in
     step.scissor = scissor;
     step.costWeight = costWeight;
     step.splittable = splittable && !clear;
-    step.shader = titleRenderProgramKey((uint32_t)program);
+    const uint32_t number = (uint32_t)program | variant;
+    step.shader = titleRenderProgramKey(number);
     TitleRenderServices* services = &svc;
     // a pass whose first draw went to a later frame (TitleFirstDraws) runs again then
     auto deferred = std::make_shared<bool>(false);
-    step.ready = [services, program, deferred]() {
+    step.ready = [services, number, deferred]() {
         std::string error;
         // a program that failed to build is "ready": its run reports the error
-        if (!services->gpu.ensureProgram(program, &error) && error.empty()) return false;
+        if (!services->gpu.ensureProgram(number, &error) && error.empty()) return false;
         if (*deferred) {
             if (!TitleFirstDraws::available()) return false;
             *deferred = false;
@@ -241,10 +295,11 @@ void TitlePlanner::pass(const std::string& label, const std::string& layerId, in
         return true;
     };
     std::shared_ptr<TitleJobState> state = st;
-    step.run = [state, slot, program, fill, blend, clear, deferred](const TitleRectI& rows, std::string& error) {
+    step.run = [state, slot, program, variant, fill, blend, clear, deferred](const TitleRectI& rows, std::string& error) {
         if (!state->alive(error)) return false;
         TitleGpuPass p;
         p.program = program;
+        p.variant = variant;
         p.target = state->target(slot, error);
         if (!p.target) return false;
         p.scissor = rows;
@@ -363,9 +418,8 @@ uint64_t TitlePlanner::layerHash(const std::string& id, uint64_t LayerHashes::*m
 
 uint64_t TitlePlanner::drawnHash(const DrawNode& node) const {
     uint64_t h = layerHash(node.layerId, &LayerHashes::node);
-    for (const DrawNode& c : node.children) h = hashCombine(h, drawnHash(c));
-    h = hashCombine(h, fnv1a64("clipped"));
-    for (const DrawNode& c : node.clipped) h = hashCombine(h, drawnHash(c));
+    for (const DrawNode& c : node.children) h = hashCombine(hashCombine(h, fnv1a64("child")), drawnHash(c));
+    for (const DrawNode& c : node.clipped) h = hashCombine(hashCombine(h, fnv1a64("clipped")), drawnHash(c));
     return h;
 }
 
@@ -444,11 +498,12 @@ TitlePlacement TitlePlanner::placementOf(const Json& layer) const {
         const TitleTransform t = decodeTransform((*it)->value("transform", Json::object()));
         // flips (before rotation, about the position), then clockwise rotation (negative in
         // y-up), uniform scale, then the position
-        geometry::Affine local = geometry::Affine::scale((t.flipX ? -1.0 : 1.0) * t.scale, (t.flipY ? -1.0 : 1.0) * t.scale);
+        geometry::Affine local = geometry::Affine::scale((t.flipX ? -1.0 : 1.0) * t.scale * t.stretch.x, (t.flipY ? -1.0 : 1.0) * t.scale * t.stretch.y);
         local = geometry::Affine::rotateDegrees(-t.rotation).after(local);
         local = geometry::Affine::translate(t.position.x, t.position.y).after(local);
         m = m.after(local);
-        out.scale *= std::max(1e-6, t.scale);
+        // a stretch scales the reach by its mean (style units follow the content size)
+        out.scale *= std::max(1e-6, t.scale * std::sqrt(std::fabs(t.stretch.x * t.stretch.y)));
         // a flip on one axis turns the rotations that follow it the other way
         const bool flipped = t.flipX != t.flipY;
         rotation += flip ? -t.rotation : t.rotation;
@@ -601,9 +656,33 @@ TitlePx TitlePlanner::copyOf(TitlePx src, const std::string& layerId) {
     return out;
 }
 
-void TitlePlanner::blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, const TitlePx* clipMask, const std::string& layerId, float colourScale) {
+TitlePlanner::LayerColor TitlePlanner::layerColorOf(const Json& layer) {
+    LayerColor c;
+    TitleColor tint;
+    if (auto it = layer.find("tint"); it != layer.end() && parseTitleColor(*it, tint)) {
+        c.tint[0] = srgbToLinear(tint.r);
+        c.tint[1] = srgbToLinear(tint.g);
+        c.tint[2] = srgbToLinear(tint.b);
+    }
+    if (auto it = layer.find("flash"); it != layer.end() && it->is_object()) {
+        const double amount = it->value("amount", 0.0);
+        TitleColor flash{1.0f, 1.0f, 1.0f};
+        if (auto color = it->find("color"); color != it->end()) parseTitleColor(*color, flash);
+        if (amount != 0.0 && std::isfinite(amount)) {
+            c.flash[0] = (float)(srgbToLinear(flash.r) * amount);
+            c.flash[1] = (float)(srgbToLinear(flash.g) * amount);
+            c.flash[2] = (float)(srgbToLinear(flash.b) * amount);
+        }
+    }
+    return c;
+}
+
+void TitlePlanner::blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, const TitlePx* clipMask, const std::string& layerId,
+                             const LayerColor* color, float colourScale) {
     const TitleRectI r = intersectRect(src.rect, dst.rect);
     if (r.empty() || !(opacity > 0.0f)) return;
+    const bool colored = color && color->active();
+    const LayerColor tone = colored ? *color : LayerColor();
     const TitleRectI rows = relative(r, dst.rect);
     const int srcSlot = src.slot;
     const int clipSlot = clipMask ? clipMask->slot : -1;
@@ -616,14 +695,18 @@ void TitlePlanner::blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, 
         // light blend, colour added and coverage unioned, as blend.glsl's add
         const BlendMode blend = mode == (int)TitleBlend::Normal ? BlendMode::PREMULTIPLIED : BlendMode::LIGHT_PREMULTIPLIED;
         pass(mode == (int)TitleBlend::Normal ? "compose normal" : "compose add", layerId, dst.slot, rows, TitleRenderProgram::Copy,
-             [srcSlot, clipSlot, srcMap, clipMap, opacity, colourScale](TitleJobState& s, TitleGpuPass& p, std::string&) {
+             [srcSlot, clipSlot, srcMap, clipMap, opacity, colourScale, colored, tone](TitleJobState& s, TitleGpuPass& p, std::string&) {
                  p.tex[0] = s.texture(srcSlot);
                  setMap(p, 2, srcMap);
                  p.params.set(3, opacity, 0.0f, 1.0f, clipSlot >= 0 ? 1.0f : 0.0f);
-                 p.params.set(5, colourScale);
+                 p.params.set(7, colourScale);
                  if (clipSlot >= 0) {
                      p.tex[1] = s.texture(clipSlot);
                      setMap(p, 4, clipMap);
+                 }
+                 if (colored) {
+                     p.params.set(5, tone.tint[0], tone.tint[1], tone.tint[2], 1.0f);
+                     p.params.set(6, tone.flash[0], tone.flash[1], tone.flash[2], 0.0f);
                  }
                  return true;
              },
@@ -645,7 +728,7 @@ void TitlePlanner::blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, 
     const int backSlot = backdrop.slot;
     const std::array<float, 4> backMap = uvMap(dst.rect, r);
     pass(std::string("blend ") + titleBlendName((TitleBlend)std::min(mode, TITLE_BLEND_COUNT - 1)), layerId, dst.slot, rows, TitleRenderProgram::Blend,
-         [backSlot, srcSlot, clipSlot, srcMap, backMap, clipMap, opacity, mode](TitleJobState& s, TitleGpuPass& p, std::string&) {
+         [backSlot, srcSlot, clipSlot, srcMap, backMap, clipMap, opacity, mode, colored, tone](TitleJobState& s, TitleGpuPass& p, std::string&) {
              p.tex[0] = s.texture(backSlot);
              p.tex[1] = s.texture(srcSlot);
              setMap(p, 2, srcMap);
@@ -655,6 +738,10 @@ void TitlePlanner::blendOnto(TitlePx dst, TitlePx src, float opacity, int mode, 
                  setMap(p, 4, clipMap);
              }
              p.params.set(5, (float)mode, opacity, clipSlot >= 0 ? 1.0f : 0.0f);
+             if (colored) {
+                 p.params.set(6, tone.tint[0], tone.tint[1], tone.tint[2], 1.0f);
+                 p.params.set(7, tone.flash[0], tone.flash[1], tone.flash[2], 0.0f);
+             }
              return true;
          });
     release(backdrop.slot);
@@ -684,8 +771,9 @@ std::pair<TitlePx, TitlePx> TitlePlanner::composeInk(const std::vector<DrawNode>
         }
         const float opacity = opacityOf(*n.layer);
         const int mode = blendOf(*n.layer);
-        blendOnto(acc, u.px, opacity, mode, clipMask, n.layerId);
-        if (ink.valid() && !light) blendOnto(ink, u.ink.valid() ? u.ink : u.px, opacity, mode, clipMask, n.layerId);
+        const LayerColor color = layerColorOf(*n.layer);
+        blendOnto(acc, u.px, opacity, mode, clipMask, n.layerId, &color);
+        if (ink.valid() && !light) blendOnto(ink, u.ink.valid() ? u.ink : u.px, opacity, mode, clipMask, n.layerId, &color);
         release(u.px.slot);
         if (u.ink.valid()) release(u.ink.slot);
     }
@@ -829,14 +917,11 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk, float 
             key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(position), sizeof(position))));
             const int r[4] = {rect.x, rect.y, rect.width, rect.height};
             key = hashCombine(key, fnv1a64(std::string_view(reinterpret_cast<const char*>(r), sizeof(r))));
-            // a group shows the children the draw tree holds, not every child of the document (the
-            // ancestors of an isolated layer draw it alone), and a clip group its clipped layers as
-            // they are now
-            for (const DrawNode& c : node.children) key = hashCombine(key, drawnHash(c));
-            key = hashCombine(key, fnv1a64("clipped"));
-            for (const DrawNode& c : node.clipped) key = hashCombine(key, drawnHash(c));
+            // a group or clip group shows the children and clipped layers drawn now: the layer's
+            // content hash chains all of its children, an isolated render draws only some
+            key = hashCombine(key, drawnHash(node));
         }
-        if (auto hit = svc.cache.find(key)) {
+        if (auto hit = livePlanned(node.layerId) ? nullptr : svc.cache.find(key)) {
             const bool moves = leaf2D && !clip;
             const TitleRectI placed = moves ? TitleRectI{hit->rect.x + ax, hit->rect.y + ay, hit->rect.width, hit->rect.height} : hit->rect;
             // a moved node's pixels serve only where they are whole (position-free, unclipped)
@@ -852,12 +937,24 @@ TitlePlanner::Unit TitlePlanner::unit(const DrawNode& node, bool wantInk, float 
     // a group whose Light Glow reads light above 1 composes into a light accumulator on the RGBA8
     // path (not for the ink, nor for a layer's content without its effects)
     if (node.kind == DrawNodeKind::Group) light = !wantInk && !contentInk && !contentOnly && !inkOnly && !req.glyphCell ? lightAccumulation(node) : 1.0f;
-    Content content = unitContent(node, clip, contentInk, light);
+    // S81's live compose: the content an earlier render of this state's layer kept (its stack
+    // then starts at the live effect), else the content as always; light-encoded content is not
+    // kept (its first effect reads the encoding back)
+    const bool liveStack = !clip && !contentInk && !wantInk && !contentOnly && light == 1.0f;
+    const std::string liveContent = titleLiveContentKey(node.layerId);
+    Content content;
+    if (TitlePx kept = liveStack ? liveInput(liveContent, rect) : TitlePx{}; kept.valid()) {
+        content.px = kept;
+        content.mask = kept;
+    } else {
+        content = unitContent(node, clip, contentInk, light);
+        if (liveStack && content.px.valid() && wantsLive(liveContent)) keepLive(liveContent, content.px, node.layerId);
+    }
     if (!content.px.valid()) return {};
     const bool maskIsPx = content.mask.slot == content.px.slot;
     Effects post = contentOnly ? Effects{content.px, content.ink}
                                : applyEffects(node.layerId, effectsOf(layer), content.px, clip && maskIsPx, content.ink, wantInk, &layer, contentAlpha,
-                                              content.light);
+                                              content.light, liveStack);
     Unit out;
     bool positionFree = leaf2D && !clip;
     if (!clip) {
@@ -909,7 +1006,8 @@ TitlePlanner::Content TitlePlanner::unitContent(const DrawNode& node, bool wantM
                 const bool encoded = encodableLight(c);
                 Unit u = unit(c, false, encoded ? light : 1.0f);
                 if (!u.px.valid()) continue;
-                blendOnto(buf, u.px, opacityOf(*c.layer), blendOf(*c.layer), nullptr, c.layerId, encoded ? 1.0f : 1.0f / light);
+                const LayerColor color = layerColorOf(*c.layer);
+                blendOnto(buf, u.px, opacityOf(*c.layer), blendOf(*c.layer), nullptr, c.layerId, &color, encoded ? 1.0f : 1.0f / light);
                 release(u.px.slot);
             }
             out.px = buf;
@@ -1079,15 +1177,18 @@ TitlePx TitlePlanner::adjustOnto(TitlePx acc, const DrawNode& node, const TitleP
 }
 
 TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, const Json& effects, TitlePx input, bool keepInput,
-                                                 TitlePx inputInk, bool wantInk, const Json* layer, uint64_t inputAlpha, float inputLight) {
+                                                 TitlePx inputInk, bool wantInk, const Json* layer, uint64_t inputAlpha, float inputLight, bool liveStack) {
     struct Run {
         const EffectDef* def;
         Json params;
         Json effect;
+        int index;          // in `effects` (S81's live inputs name it)
     };
     std::vector<Run> run;
     int lastOutline = -1;
+    int rawIndex = -1;
     for (const Json& fx : effects) {
+        rawIndex++;
         if (!fx.value("enabled", true)) continue;
         const std::string type = fx.value("type", std::string());
         const EffectDef* def = findEffect(type);
@@ -1104,10 +1205,27 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
         // the ink output leaves light out
         if (inkOnly && effectAddsLight(*def, values)) continue;
         if (def->outline) lastOutline = (int)run.size();
-        run.push_back({def, fx.value("params", Json::object()), fx});
+        run.push_back({def, fx.value("params", Json::object()), fx, rawIndex});
     }
     const int inkUntil = wantInk ? (int)run.size() : lastOutline;
     TitlePx cur = input;
+    // S81's live compose: a stack input kept by an earlier render starts the stack at its effect
+    // (one whose ink a skipped effect would have traced is not taken)
+    int startRun = 0;
+    bool injected = false;
+    const bool live = liveStack && !wantInk && !inputInk.valid();
+    if (live) {
+        for (int i = 0; i < (int)run.size(); i++) {
+            const std::string name = titleLiveStackKey(stackId, run[(size_t)i].index);
+            if (!req.liveInputs.count(name) || (i > 0 && inkUntil > 0)) continue;
+            if (TitlePx kept = liveInput(name, input.rect); kept.valid()) {
+                startRun = i;
+                cur = kept;
+                injected = true;
+            }
+            break;
+        }
+    }
     TitlePx ink = inputInk;
     auto drop = [&](TitlePx rt) {
         if (rt.valid() && rt.slot != input.slot && rt.slot != cur.slot && rt.slot != ink.slot) release(rt.slot);
@@ -1186,6 +1304,19 @@ TitlePlanner::Effects TitlePlanner::applyEffects(const std::string& stackId, con
     uint64_t curAlpha = inputAlpha;
     for (int i = 0; i < (int)run.size(); i++) {
         const Run& r = run[(size_t)i];
+        if (i < startRun) {
+            // drawn by the render that kept the input: only what its alpha is a function of
+            if (curAlpha && r.def->alphaFromAlpha) {
+                curAlpha = hashCombine(hashCombine(curAlpha, fnv1a64(writeTitleArtJson(r.effect))), fnv1a64(writeTitleArtJson(light)));
+            } else {
+                curAlpha = 0;
+            }
+            continue;
+        }
+        if (live && !injected && (i == 0 || inkUntil <= 0)) {
+            const std::string name = titleLiveStackKey(stackId, r.index);
+            if (wantsLive(name)) keepLive(name, cur, stackId);
+        }
         const TitlePx inputInkPx = r.def->outline && ink.valid() ? ink : cur;
         // the encoded input reaches the first effect alone (lightAccumulation: one that reads light)
         TitlePx out = apply(r, cur, input, inputInk.valid() ? inputInk : input, inputInkPx, stackId, curAlpha, i == 0 ? inputLight : 1.0f);

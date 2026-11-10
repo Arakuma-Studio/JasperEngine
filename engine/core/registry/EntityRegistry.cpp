@@ -3,6 +3,7 @@
 
 #include "EntityRegistry.h"
 #include "component/ActionComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AudioSnapshotComponent.h"
@@ -64,6 +65,9 @@
 #include "component/RotateTracksComponent.h"
 #include "component/RotationTweenComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
+#include "component/SortingGroupComponent.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -76,6 +80,7 @@
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "component/TextComponent.h"
 #include "component/TextEffectComponent.h"
 #include "component/TilemapComponent.h"
@@ -153,6 +158,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<ScaleTracksComponent>(ComponentOrder::Insertion, "ScaleTracksComponent");
     registerComponent<ScriptComponent>(ComponentOrder::Insertion, "ScriptComponent");
     registerComponent<TerrainComponent>(ComponentOrder::Insertion, "TerrainComponent");
+    registerComponent<TerrainWorldComponent>(ComponentOrder::Insertion, "TerrainWorldComponent");
     registerComponent<AudioSourceComponent>(ComponentOrder::Hierarchy, "AudioSourceComponent");
     registerComponent<TilemapComponent>(ComponentOrder::Insertion, "TilemapComponent");
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -194,6 +200,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<NavGridComponent>(ComponentOrder::Insertion, "NavGridComponent");
     registerComponent<SplineComponent>(ComponentOrder::Insertion, "SplineComponent");
     registerComponent<SplineExtrudeComponent>(ComponentOrder::Insertion, "SplineExtrudeComponent");
+    registerComponent<VoxelVolumeComponent>(ComponentOrder::Insertion, "VoxelVolumeComponent");
     registerComponent<SplineInstantiateComponent>(ComponentOrder::Insertion, "SplineInstantiateComponent");
     registerComponent<SplineAnimateComponent>(ComponentOrder::Insertion, "SplineAnimateComponent");
     registerComponent<AnimatorComponent>(ComponentOrder::Insertion, "AnimatorComponent");
@@ -215,6 +222,11 @@ EntityRegistry::EntityRegistry() {
     registerComponent<AudioSnapshotComponent>(ComponentOrder::Insertion, "AudioSnapshotComponent");
     registerComponent<WaterExcluderComponent>(ComponentOrder::Insertion, "WaterExcluderComponent");
     registerComponent<WaterWakeComponent>(ComponentOrder::Insertion, "WaterWakeComponent");
+    // pixel art (S41)
+    registerComponent<PixelPerfectCameraComponent>(ComponentOrder::Insertion, "PixelPerfectCameraComponent");
+    // 2D sorting and Sprite Batch (S52)
+    registerComponent<SortingGroupComponent>(ComponentOrder::Insertion, "SortingGroupComponent");
+    registerComponent<SpriteBatchComponent>(ComponentOrder::Insertion, "SpriteBatchComponent");
     // S81 R58: after the last one, so no ComponentType moves
     registerComponent<TitleArtRendererComponent>(ComponentOrder::Insertion, "TitleArtRendererComponent");
     // complete: markChangedComponent may look into it

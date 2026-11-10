@@ -179,6 +179,11 @@ namespace {
         return &static_cast<Material*>(material)->pbr.edit();
     }
 
+    // and the palette bindings (S43)
+    void* shaderPalettesRef(void* material) {
+        return &static_cast<Material*>(material)->shaderPalettes.edit();
+    }
+
     // read, an unset one is its defaults and nothing is made
     const void* extraPassPeek(const void* material) {
         return &static_cast<const Material*>(material)->extraPass.get();
@@ -186,6 +191,10 @@ namespace {
 
     const void* pbrPeek(const void* material) {
         return &static_cast<const Material*>(material)->pbr.get();
+    }
+
+    const void* shaderPalettesPeek(const void* material) {
+        return &static_cast<const Material*>(material)->shaderPalettes.get();
     }
 
     constexpr FieldDesc kMaterialFields[] = {
@@ -220,6 +229,9 @@ namespace {
         JE_FIELD(Material, shaderTextures, .ops = &ops::ShaderTextures, .updateFlags = kMeshReload | kTexture),
         JE_FIELD(Material, shaderFeatures, .ops = &ops::ShaderFeatures, .updateFlags = kMeshReload),
         JE_FIELD(Material, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
+        // the draw binds a changed binding by itself (RenderSystem::updateShaderPalettes)
+        detail::makeField<jasperengine::pixelart::ShaderPalettes>("shaderPalettes", &shaderPalettesRef,
+                                                                   FieldMeta{.ops = &ops::ShaderPalettes, .flags = Hidden, .peek = &shaderPalettesPeek}),
         JE_FIELD(Material, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kMeshReload),
         JE_FIELD(Material, cullMode, .enumDesc = &enums::kMaterialCullMode, .updateFlags = kMeshReload),
         JE_FIELD(Material, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kMeshReload),

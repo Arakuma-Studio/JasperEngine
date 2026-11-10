@@ -59,7 +59,8 @@ The ops of this build (later specs add theirs to the same tool):
 ```
 
 Reserved op names answer `not_available` naming the spec that adds them (looks, color schemes,
-templates, library S84; animation S85; 3D S86; languages and import S87); `apply_recipe` is S83's.
+templates, library S84; animation S85; 3D S86); `apply_recipe` is S83's. The language and import
+ops are below (Languages; Import and export).
 
 ### The loop: render, check, fix
 
@@ -73,6 +74,7 @@ templates, library S84; animation S85; 3D S86; languages and import S87); `apply
      cells, labelled in `cells`).
    - `compare: "rev:<n>"` (the last 16 renders of each document are kept) or a PNG path gives
      `diff {changed_pct, max, mean, bbox}`: a no-op is 0, a colour change is > 0.
+     `options: {keep: false}` keeps no copy (one render instead of two, for batches of renders).
    - `layer` renders one layer alone, `output` an output's frame and content, `crop` [x, y, w, h]
      canvas pixels, `fallback: "rgba8"` the RGBA8 path (`"compare"`: both, `pixel_paths_diff`),
      `image: "none"` metrics only, `save_path` writes the PNG with real alpha.
@@ -131,6 +133,10 @@ templates, library S84; animation S85; 3D S86; languages and import S87); `apply
   returns per effect `{class, passes, fre, taps, desktop_ms, mobile_ms, live}` and the shared
   distance field as its own row; mobile milliseconds are predictions. Prefer C0-C2 effects on
   titles that animate on phones; Lens Blur and long Extrudes are bake only there.
+- `check_title` says what a Realtime title costs on a phone, with fix ops: `fx_bake_only_realtime`
+  (C4 on the mobile tier), `fx_live_budget` (an exposed live param that re-renders instead),
+  `fx_realtime_budget` (a re-render over 15 ms), `fx_hdr_on_8bit` (info: light above 4.0 clips on
+  devices without float targets).
 - Strobes (Glitch, Grain, Neon flicker, Scanlines flicker) animate by reseeding: their `seed` is
   a stepped live param.
 
@@ -162,12 +168,20 @@ prefab variant may override one alone), the Live Effects (`sweepEnabled`, `sweep
 - **Baked** (default): the bake, at an Image's cost, no engine code. Overrides do not apply.
 - **Realtime**: re-renders when its text or a parameter changes, spread over frames within the
   frame budget (2 ms mobile and web, 4 ms desktop, 8 ms in Edit mode; per S56 platform group);
-  the old image stays until the new one is ready. Builds add the `titleart` module.
+  the old image stays until the new one is ready. Builds add the `titleart` module. Slicing
+  follows what steps measure on the device, not desktop estimates. An exposed parameter whose
+  targets are effect or generator params marked `live` composes in the same frame, no re-render
+  (`get_title`'s `live.composes`); over the title's live budget (0.5 ms mobile and web, 1 ms
+  desktop, predicted), or with an effect without a live variant after it, it re-renders and
+  `live.fallback` says why. Phones and the web draw the effects' mobile tier (the Game view's
+  device simulation shows it in Play).
 - **Glyph Atlas**: for text that changes every frame (counters). Each glyph renders once with the
   look into atlas pages (`get_title`'s `glyph_atlas.pages`); a change then costs a compose of the
   plates and cells, no render. Effects that read neighbours (warp, distort, hull plates, masks)
   do not apply per glyph: `check_title {checks: ["glyph_atlas"]}` lists them with fix ops; 3D
-  text, or no text layer exposed as `text`, falls back to Realtime.
+  text, or no text layer exposed as `text`, falls back to Realtime. An export prebakes the initial
+  text and every digit at each of its places, so a counter's first value renders no glyph
+  (its prebaked plates are 8-bit: the darkest colours may shift a few codes).
 - Live Effects (any mode, one draw, no extra pass): Sweep (a band at `sweepPosition` 0..1, 0 and
   1 off the frame; key it in a clip), Glow Pulse (needs a glow output), Tint, Glints (stars at the
   bake's highlight anchors). Nothing reads engine time: `--fixed-fps` runs are identical.
@@ -204,6 +218,30 @@ of shipped `titleArtSetText` events). Fonts are subset; a font that forbids embe
 fsType) stops the export unless its import acknowledges a licence. In Play, characters outside
 the set draw as nothing and `onMissingCharacters` fires, as in the build.
 
+### Animation
+
+Title animations are named in the document's `animation` member and edited with `edit_title` ops
+(`add_animation`, `set_animation`, `set_track`, `set_key`, `retime`, `apply_animation_preset`, ...);
+they share S80's all-or-nothing batches, `dry_run` and `expect_rev`.
+
+- A track targets `layer` (omitted = the title) and a `field` in long form (`get_title` lists a
+  layer's animatable fields; the error names them on `not_animatable`). Keys are `[time, value,
+  ease?]` or objects with `in`, `out` and `tangent_mode`. `drive` and `reseed` replace keys.
+- Fields have classes: title-live and glyph tracks are cheap, re-render tracks cost a render per
+  sample (`check_title` with `checks: ["anim"]` measures them, `render_title` with
+  `options.animation: {name, time | times | frames, as}` shows them; `as` is `exact`, `baked`,
+  `realtime` or `glyph_atlas`).
+- Baked titles play flipbooks: `export_title` bakes pages `<file>.<animation id>.flip<N>.png` and
+  `<file>.anim.json`; the report compares them to the flipbook budgets.
+- Lua: `titleArt:play(name, {speed, loop, unscaled, fade, time})`, `playOverlay`, `stop`, `reset`,
+  `onAnimationEvent`; markers with a sound play on the title's Audio Source, else 2D on Master.
+- Presets: `list_title_library {kind: "animation_presets"}`; `apply_animation_preset` at `at`
+  seconds, `mode: merge` keeps your tracks.
+- The loop: apply a preset, then a filmstrip (`render_title` with `options.animation.frames` and
+  `image: "none"`), then `check_title {checks: ["anim"]}`, then `export_title {dry_run: true}`,
+  then export. In the Glyph Atlas mode, glyph tracks compose per cell; merged and per-layer tracks
+  re-render at `rerender_fps`.
+
 ### Common mistakes
 
 - Pixel sizes in `%` members (a rim `width` of 40 is 40 % of the text size, very thick).
@@ -216,15 +254,16 @@ the set draw as nothing and `onMissingCharacters` fires, as in the build.
 The window a person designs in (Window > Title Designer) edits through the same ops. To show a
 person a variant, use `render_title` `try`; to leave it on their screen, `focus_window` with
 `select`.
-- `focus_window {window: "title_designer", title_designer: {...}}` keys: `path` (open it),
-  `select` (`"Title"`, `"Title/rim#1"`, `"Title/fx:outer_glow"`, `""` = document), `panel`
-  (layers, properties, library, history), `search` (types into Find a setting), `library`
-  `{tab, family, query}`, `preview_as` (realtime, baked, or a registered mode), `background`
-  (checker, black, white, gray, color, image, game_scene, in_context), `device`
-  `{profile, orientation, display_height}`, `zoom` (number or `"fit"`). The result's `state`
-  has `path, selection, panel, zoom, preview_as, busy, staged, preview_active, last_render_ms, rect`,
-  `library {provider: starter|registered, shown}` and `notices` (`cjk_font_missing`: the person's
-  editor shows this title's CJK text as boxes; say so).
+- `focus_window {window: "title_designer", title_designer: {...}}` keys: `path`, `select`
+  (`"Title"`, `"Title/rim#1"`, `"Title/band#0"`, `"Title/fx:outer_glow"`, `""` = document), `panel`
+  (layers, properties, library, history), `search`, `library` `{tab, family, query}`, `animation`
+  (`{name, time}` shows that pose on the canvas as a scrub does, `null` stops), `preview_as`
+  (realtime, baked, glyph_atlas, realtime_high|medium|low), `background` (checker, black, white,
+  gray, color, image, game_scene, in_context), `device` `{profile, orientation, display_height}`,
+  `zoom` (number or `"fit"`), `add` (`{filter, query}` opens the Add palette, `false` closes).
+  Its `state`: `path, selection, panel, zoom, preview_as, busy, staged, preview_active,
+  last_render_ms, rect, library`, `add {rail, entries}`, `gizmo_3d`, `notices`
+  (`cjk_font_missing`: their editor shows CJK as boxes; say so).
 - `screenshot {view: "title_designer"}`: the window as a person sees it.
 - `get_title` adds `designer {selection, staged, preview_active, view}` while it is open.
 ### 3D
@@ -255,6 +294,98 @@ value by value in `3d.lighting`, a material's environment in `3d.face.environmen
   `3d_environment_missing`, `3d_light_limit`, `3d_mesh_fallback`).
 - Bake a 3D title for anything static (an image costs nothing at run time); `export_title {format: "glb"}` writes the solids
   with their materials (`KHR_materials_*`) beside the title for use as a model.
+- Realtime 3D in a game renders at a tier: the component's `qualityTier` (`auto`, `high`, `medium`, `low`; Lua
+  `t.qualityTier`), else the device's S56 tier where one applies, else `title_art.realtime_3d_quality` (`{windows, linux,
+  macos, ios, android, web}`, default high, high, high, medium, low, low); GLES3/WebGL2 draw high as medium. The export cooks
+  what a player needs (`assets/je-titleart/`): each 3D layer's mesh at every Realtime tier when no Exposed parameter changes its
+  geometry (text, font, size, depth, bevel, band shapes; a material, lighting, transform or skew parameter is fine; a new title
+  exposes its text, so `{"op":"unexpose","name":"text"}` makes a title fixed), and the
+  cube of every environment its titles light with plus the component's `runtimeEnvironments` (photo and softbox presets need
+  it: a player has no HDRI). When every shipped 3D title's geometry is fixed, a Compile build leaves the mesher out. Lua
+  `t:getMeshStats("Logo")` gives `{triangles, vertices, solids, buildMs, tier, overBudget, cooked}` after a render (nil before).
+
+### Languages
+
+A title holds its own translations (S87): `source_language` (BCP 47), `languages` (each with a
+`code`, a `name`, a default `font` and `fallback_fonts`, extra `characters`, `bake`), and on each
+text layer `translations: {<code>: {text, status, source_hash, ...overrides}}`. A Translation is
+sparse: only the members it overrides (`font`, `face_index`, `fallback_fonts`, `language`,
+`size_scale`, `tracking`, `line_height`, `h_scale`, `v_scale`, `vertical`, `align`, `features`,
+`variations`, `chars`, `lines`, `offset`, `fit`); the rest, and every colour, rim and effect, is
+the source's. `text_key` and the document's `string_namespace` make the key
+`<namespace>.<text_key>`; `translate: false` marks a brand word; `max_chars` and
+`translator_note` guide translators; `only_languages` shows a layer in some languages only.
+Image and Vector layers may swap their asset per language (`translations: {de: {image}}`).
+
+The translation loop (agents translate with their own model; the engine calls no service):
+
+1. `get_title {path}`: `languages {source, list}` and, per text layer, `text_key`, `translate`,
+   `max_chars`, `translator_note`, `translated`.
+2. One `edit_title` batch: `{"op": "add_language", "code": "de"}` (sets the source when empty,
+   makes text keys, and gives every text a `fit: shrink` box of its extent + 10 %), then
+   `{"op": "set_translation", "layer": "Title", "language": "de", "text": "GROSSER GEWINN",
+   "values": {"size_scale": 0.9, "fit.mode": "condense"}}` per layer.
+3. `check_title {path, languages: "all"}`: `languages_complete`, `translation_stale`,
+   `text_overflow`, `fit_scale_low`, `fit_without_box`, `project_language_missing`,
+   `translation_unused`, and `glyphs_present` and `bake_fresh` per language; apply the fix ops
+   (a `needs_input` fix carries the source text as a placeholder: write the translation).
+4. `render_title {path, options: {languages: "all"}}`: a sheet row per language, labelled with
+   the code, the smallest fit scale and the overflow count. `get_title {path, language: "de"}`
+   reads the German document (text, font, `fit` result per layer).
+
+The other ops: `remove_language {code}`, `set_source_language {code, swap}` (swap: the language's
+texts become the base, the old base its translation), `revert_translation {layer, language,
+fields}` (default every override but the text; `["all"]` removes it), `mark_reviewed {language,
+layers}`, `import_strings {file, format, languages, add_languages, status}` (CSV or XLIFF:
+counts and notes `unknown_key`, `unknown_language`, `source_changed`, `inline_markup` in
+`reports`).
+
+Fit (`fit {mode: none|shrink|condense|wrap, box: [w, h], min_scale 0.6, min_h_scale 0.8,
+max_lines 2}`) measures geometry, not pixels: the outline ink after warp, distort and weight,
+grown by the rims; effects may bleed out. `box` is in layer space, centred on the text.
+
+Which language a game shows: the Title Art Renderer's `language` (Inspector Language), else
+`TitleArt.setLanguage(code)` (Lua, runtime only), else the device's preferred locales in order,
+else Project Settings > Localization > Default Language, else the source. Matching is RFC 4647
+with the Chinese script rule (`zh-TW` -> `zh-Hant`, `pt-PT` -> `pt-BR`, never Hans for Hant).
+Baked titles switch to the language's bake set (`logo.titleart.de.png`, its own frame, listed in
+the source sidecar's `languages` table) once its texture is loaded; Realtime and Glyph Atlas
+titles re-render; the previous image stays meanwhile and `onLanguageReady` fires on the first
+new frame. `localization.languages` (the project's) limits what builds ship
+(`W-TITLE-LANGUAGE-DROPPED`). In Play, `configure_game_view {language}` simulates the device.
+
+### Import and export
+
+Import into a new document with `edit_title {path, create: {from: "<file>"}}`: a Pachislop
+project (`.pslot.json` v4-v11), a layered PSD/PSB (RGB or Grey, 8 or 16 bits) or an SVG, detected
+by content. Fonts and pictures go to `<name>_assets/` beside the document (equal files reused),
+and the result's `import {kind, files, notes}` lists what was dropped or approximated (also in the
+document's `import_notes`). One undo removes every file. `create.from` takes no `canvas`, `text`
+or `template`. An `.asl` style library is no document: `{"op": "import_ps_styles", "file":
+"styles.asl"}` writes one Look per style; `{"op": "apply_ps_style", "layer": "Title", "file":
+"styles.asl", "style": 0}` styles a layer; `{"op": "import_svg", "file": "badge.svg", "split":
+"groups"}` adds Vector layers.
+
+`export_title {path, format, languages, options, out}` writes delivery files (not bakes) into
+`out` (default `Recordings/Title Art/<name>/`, inside the project for MCP) as a job:
+
+| format | options (besides `overwrite`, `zip`) |
+|---|---|
+| `png` | `scale` 0.1-8, `trim`, `padding` (px), `round_to` 1/2/4/8, `pot`, `alpha_threshold` 1-255 (8), `max_size`, `registered`, `bit_depth` 8/16, `dither`, `alpha` straight/premultiplied, `alpha_bleed`, `bleed_px` 0-64, `metadata`, `parts`, `split_titles` |
+| `psd` | the image options, `split_titles` (layers rendered alone, groups, clipping, masks, native or baked adjustments) |
+| `svg` | `embed_raster`, `strict` (outlines with transforms, gradients, rims as strokes, masks, clips) |
+| `sheet`, `atlas`, `sequence` | the image options, `animation`, `fps`, `frames` (a count or `[from, to]`, at most 1,024), `columns` (sheet), `max_atlas` (atlas) |
+| `ktx2` | the image options, `family` desktop/mobile/web, `quality`, `mipmaps` |
+| `csv`, `xliff` | none; `path` may list several documents |
+
+Files are `<name>[_<part>][.<code>].<ext>`; `zip` bundles them into `<name>_<format>.zip`. PNGs
+are sRGB-tagged (`sRGB`, `gAMA`, `cHRM`, never an ICC profile), straight alpha with the colour
+bled under transparent pixels (no dark fringes when filtered), or premultiplied; PSDs embed a
+generated sRGB profile and the true composite (Photoshop blends layers in sRGB, the engine in
+linear light). The CLI does the same in batch: `jasperengine-editor import-title-art <files>
+--project <dir>` and `export-title-art <titles> --project <dir> --format <f>` (flags are the
+options with dashes). CSVs keep their content as written: open a translator's CSV with formulas
+disabled.
 
 ### Library: Looks, Color Schemes, Templates
 

@@ -1,0 +1,29 @@
+<html>
+<head>
+    <title>bitmap fonts</title>
+    <style>
+        /* S51 R15 / AC14: bitmap faces (a .bitmapfont over a 6x9 grid sheet, a BMFont .fnt) at
+           1x, 2x and 3x their native size, a pixel outline, a sharp shadow and a glow (dropped) */
+        @font-face { font-family: Hud; src: s51/hud.bitmapfont; }
+        @font-face { font-family: BmHud; src: s51/bm.fnt; }
+        body { width: 100%; height: 100%; margin: 0; background-color: #000000; }
+        .line { position: absolute; left: 10px; color: #ffffff; font-family: Hud; }
+        #x1 { top: 10px; font-size: 9px; }
+        #x2 { top: 30px; font-size: 18px; }
+        #x3 { top: 60px; font-size: 27px; }
+        #fnt { top: 100px; font-family: BmHud; font-size: 18px; }
+        #outline { top: 130px; font-size: 18px; font-effect: outline(1px #ff0000); }
+        #shadow { top: 165px; font-size: 18px; font-effect: shadow(1px 1px #0000ff); }
+        #glow { top: 200px; font-size: 18px; font-effect: glow(1px 2px 0px 0px #00ff00); }
+    </style>
+</head>
+<body>
+    <div id="x1" class="line">ABC 123</div>
+    <div id="x2" class="line">ABC 123</div>
+    <div id="x3" class="line">ABC 123</div>
+    <div id="fnt" class="line">ABC 123</div>
+    <div id="outline" class="line">ABC 123</div>
+    <div id="shadow" class="line">ABC 123</div>
+    <div id="glow" class="line">ABC 123</div>
+</body>
+</html>

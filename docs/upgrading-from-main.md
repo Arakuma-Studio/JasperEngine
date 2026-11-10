@@ -57,6 +57,30 @@ exact: a GameObject's Transform is drawn between the last two fixed steps (physi
 as far as the frame's leftover time, which a frame spent loading changes. That is so on origin/main
 too.
 
+### IK solvers (S77)
+
+Three Animator IK fixes apply to existing scenes with no opt-in: poses change where the old ones
+missed. No stored field changes meaning and nothing is migrated: scenes and prefabs load as they
+are, and the new fields (**Soften**, **Hinge Axis**, **Twist**, **Aim Offset**) default to today's
+behaviour and are not written while at their defaults.
+
+- **Look At** ends on its target. It used to measure one turn at the head and share it out, so a
+  chain that leans missed by 0.2 to 3.3 degrees on a neck chain at 1 m and up to 8.8 degrees with a
+  0.5 m lever; now each bone measures again, keeping the weights and the clamp. An upright yaw does
+  not change.
+- **Foot IK** keeps the centre of the sole on a slope. The sole used to sink by 0.48 cm at 20 degrees
+  and 1.07 cm at 30 degrees, and 2.07 cm at 45 degrees past the default clamp, and the foot turned with
+  the shin when the knee bent. The ankle now stands higher on a slope, the foot keeps its animated
+  rotation turned to the ground, and the pelvis may drop a little less. Flat ground does not change
+  unless the knee bends there.
+
+- **Foot Lock** no longer turns the foot. Holding the ankle bends the knee, and the foot used to
+  turn with the shin: about 4 degrees for 7 cm of hip travel in the test's rig. Under a lock on the
+  same leg it also took the foot off the slope Foot IK had put it on. The foot now keeps the rotation
+  it came with. The locked position does not change.
+
+**Soften** stays off by default, because it changes where feet land.
+
 ## Fixed for the upgrade
 
 The upgrade test found these, fixed in this editor (each with a test that failed before):
@@ -124,6 +148,9 @@ The first open applies rendering migrations that change how a scene looks, on pu
   platform's tier). Shadows are sharper and placed differently.
 - **Particles** (S20): the effects are simulated and drawn by the new particle system: the same
   emission settings, different particles.
+- **Sub-emitters** (BF23): a sub-emitter's particles were simulated but never drawn. Effects with
+  sub-emitters now show them, each with its child effect's Renderer, so they may look different and
+  cost what they always should have; they count against the world particle budget.
 
 The upgrade test takes screenshots at the same game frames in both editors and compares them at one
 size (480x270: the Game view's size follows each editor's layout, 904x509 against 869x489 here).
@@ -207,3 +234,16 @@ git add tools/test-projects/upgrade-from-main && git commit -m "upgrade test: fi
 commit), `--old-editor <editor-install> --commit <sha>` uses an editor already
 built. A feature that only the newer `origin/main` has fails the check until it is synced: list it
 under "Features that need a sync" above.
+
+## Foliage (T5)
+
+Scenes made before foliage's upgrade place the same grass from the same seeds and look the same, with no
+conversion. A project without the new settings stays High, with no caps, on every platform. These behave
+differently, on purpose:
+
+1. Grass and detail meshes no longer enter navmesh bakes. They used to, depending on where the editor's
+   camera was.
+2. `MeshRaycast` no longer hits detail instances unless asked (`PICK_DETAIL`), and its hit's `entity` is the
+   Terrain, not a hidden chunk.
+3. Paint Trees places Trees by default in new strokes. Place As: GameObject keeps what it did.
+4. A disabled Terrain hides its foliage. `sculpt_terrain`'s `place_object` keeps today's result.

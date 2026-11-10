@@ -31,5 +31,3 @@ SSR and reflection probes for agents: what to set, how to check it. The user ref
   larger probes, or accept it on small surfaces.
 - A surface too shiny with SSR: check mode 7. Magenta (a lit library shader, or no lights and no
   sky) adds SSR on top; give the scene a light or a sky, or lower `ssr_intensity`.
-- Reflections showing through UI or glass: transparents and the main camera's HTML UI are in the
-  picture SSR composites (`docs/rendering/reflections.md`, What is approximate).

@@ -43,6 +43,9 @@ work it found these cases beyond R1 and R2, all fixed here:
 - A mesh a Sprite, Tilemap, Mesh Polygon, Terrain or Spline Extrude generates: its vertex counts and bounds are not written, and
   its geometry and attributes are not generated (the file never held them, the code held them when a frame had made them).
 - `mesh.vertexCount` and a rigidbody's `needReloadBody`, `needUpdateColliders` and `newBody` are runtime state, no longer generated.
+- A submesh's `vertexCount` on a mesh with its own buffers (a primitive) was 0 until a frame loaded the mesh, then its index count
+  (`procmat-baked`, a fixture saved before its first draw). A save and the generated code write what the load gives
+  (`MeshSystem::loadedVertexCount`), drawn or not.
 - A 3D scene with no Camera generates the Scene view's camera, whose field of view and clips came from its first draw. They are
   applied before a save (`Project::applyFirstDrawSettings`).
 

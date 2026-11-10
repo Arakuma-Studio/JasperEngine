@@ -695,7 +695,9 @@ Placeholders are the document's exposed `text` parameters (S80 `exposed`), named
 title: S80 exposes the first text layer as `text`), `subtitle`, `kicker`, `counter`, `label`, `line_2`
 in that order of preference. The stored document holds the `ja` sample for Japanese-origin
 templates and the `en` sample otherwise; `apply_template` sets the language's sample (or the
-carried text) through the exposed targets. Backdrops are guide layers (never in outputs) unless they
+carried text) through the exposed targets. An optional `cjk` member after `placeholders`
+(`rim_scale`, `band_scale`, `highlight_scale`; a look's `cjk` takes the same three) applies to the
+template's layers that then hold Japanese text (Deviation 29). Backdrops are guide layers (never in outputs) unless they
 are part of the art, as in Pachislop.
 
 ### 6.4 The keep-and-replace contract
@@ -1873,18 +1875,20 @@ rest of S82 lands in 6B.
     holds Minimal to one. Adding a second needs a catalogue change (and 195 becomes 196, or a 2D look goes).
 23. **Owner's rule: every item passes every check, with no exception lists; the gate refuses `check_allow` and
     `lint_allow`. It is not green: 9 of 301 items still fail** (830 sample renders):
-    - fallback_parity: none since Deviation 29 (`casino/confirm-giraffe-3d`'s 3D glint, judged by S86 AC9). `elements/electric-blue` and
-      `elements/storm-counter` pass since S83 Deviation 37 (Light Glow read Lightning's light clipped at 1 on the RGBA8
+    - fallback_parity: none since Deviation 32 (`casino/confirm-giraffe-3d`'s 3D glint, judged by S86 AC9). `elements/electric-blue` and
+      `elements/storm-counter` pass since S83 Deviation 43 (Light Glow read Lightning's light clipped at 1 on the RGBA8
       path; 11 % and 52 % of pixels over 8/255, now 0.4 % and 1.9 %);
     - 3d_tier_budget: `scifi/reactor-core-3d` and `neon/tube-3d` at Medium (the inflate mesher's own floor: 113k and
-      60.0k triangles whatever the look sets), `gems/treasure-banner` at Low;
+      60.0k triangles whatever the look sets), `gems/treasure-banner` at Low; **fixed in the mesher** (S86 Deviation 35:
+      it coarsens to each tier's budget, and the solid limit drops the thinnest band), so 6 items fail; the gate over
+      every 3D item (70 looks, 21 templates, 252 renders) finds only diamond-3d and confirm-giraffe-3d below;
     - counter_survival: `casino/premium-black-gloss` and `gems/diamond-3d` (passing needs a grey rim on a black design);
       `casino/red-hot-rim-glow` passes alone and fails only late in an 860-render batch (render state carried between
       documents, cause not found).
     What was fixed, by cause: the tier budget measured islands instead of the stack, and the mesher now builds at most the
     tier's stack (bands past it are reported per tier as `3d_tier_budget.<tier>.bands_dropped`, a warning); fallback parity
     uses each document's class and S86 AC9 for 3D, and skips the max for grid-read layouts (Lightning and Backlight, as
-    S83's own test does, and following Glints, measured in S83 Deviation 38); counter_survival is visible contrast (below); legibility is judged on
+    S83's own test does, and following Glints, measured in S83 Deviation 44); counter_survival is visible contrast (below); legibility is judged on
     the item's declared background (46 looks, 11 templates). About 45 items were tuned as data, each with a targeted change, and reviewed on
     before-and-after sheets of every family in both samples: no look lost its identity; the colour scheme mono-dark did, and
     is restored (it fails counter_survival again); two template sample texts were shortened to fit ("NEW IN", "BREAK").
@@ -1911,18 +1915,77 @@ rest of S82 lands in 6B.
     param edit hit the old pixels). The `generator` member is now Geometry, like its kind (`TitleArtHashTest.AGeneratorsParamsAreItsContent`
     and `test_fallback_parity_after_a_render`, both red before); the gate renders before it checks again. In the Title Designer, Revert to Look from the layer menu crashed (layer rows pointed
     into the edited document); fixed, and Save As's buttons were below the Library strip's edge; moved beside its title.
-29. **Resolved: the 3D glint of `casino/confirm-giraffe-3d` (en) on the RGBA8 path** (S86's compressed light). At the gate's
+29. **Follow-up of 23 (ta/lib-looks):**
+    - The "render state carried between documents" was the renderer's node cache: a group drawn for an isolated layer was
+      keyed by the group's content hash, which chains every child, so an isolated render after the full one got the whole
+      group back (and a full render after an isolated one got the one layer). `casino/red-hot-rim-glow` ja's isolated echo
+      layer held the main layer drawn over its counters. Group and clip nodes now key by what they draw
+      (`TitlePlanner::drawnHash`; red control `TitleArtRendererGpu.IsolationKeysTheGroupNode`). It passes in every order.
+    - `mono-dark`: the face takes a dark ramp (#000 -> #111 -> #2e2e2e): the black face's bevel no longer lights the letter
+      edges as bright as the white line in the counters; base and rims stay black, so the look is unchanged.
+    - `gems/diamond-3d`: the outline effect 2.5 -> 1.5 (the schema default); at 2.5 it closed the gaps the digits' bands
+      enclose on `1234`. `gems/crystal-title`, built from it, follows.
+    - `casino/premium-black-gloss`: en and ja pulled opposite ways (en's P and R counters darker than the bevel-lit
+      letter, ja's handakuten counter, 6 x 6 px at the gate's 0.25 render and filled by the pinstripes at any rim width,
+      lighter). English: at tracking -40 Zen Old Mincho's M and I serifs touched and enclosed a gap the rims filled; the
+      sample's I, U and M sit 4 % further right (a lighter face edge, bevel highlight 1.0, made that gap worse). Japanese:
+      templates now carry the per-script `cjk` member (§6.3, the look's: `rim_scale`, `band_scale`, and new
+      `highlight_scale` on the face bevel's highlight), applied to the layers that hold Japanese text;
+      `highlight_scale: 0.5`. Both samples measure 7.3.
+    - Sample texts: `casino/new-machine-flyer` is NEW ARRIVAL again, on two lines (NEW / ARRIVAL fit the template
+      unchanged). `metal/liquid-gold-vertical-kicker` keeps BREAK: LIMIT BREAK in one vertical column is taller than the
+      2880 canvas, and in two columns the Latin reads across as BL / RI / EM / AI / KT.
+    - The style lint warns on 17 looks and the scheme `royal` (and on five templates through the looks they apply), all
+      by design and left: hairline rims are the look of `minimal/outline-thin`, `minimal/frosted-glass`,
+      `retro/vector-green`, `metal/liquid-chrome`, `neon/hollow-neon`, `neon/neon-tube`, `wa/dry-brush-ink` (0.2-2.8 %);
+      `gems/blue-glass`, `gems/red-glass`, `casino/rainbow-glass-gold`, `metal/gradient-map-gold` sit at 4.6-4.9 % of
+      a 5 % threshold (Pachislop's widths); the contrasts are gold-on-gold strokes separated by their bevels
+      (`metal/double-stroke-gold`, `casino/rainbow-glass-gold`) and 3D bands the lighting separates
+      (`casino/gold-on-red-stack-3d`, `casino/rainbow-glass-gold-3d`, `elements/ice-crystal-glass-3d`,
+      `metal/holographic-silver-3d`); `retro/16bit-gradient`'s hard shadow is the pixel-art style.
+    - A font "sometimes missing" in a full gate run (`cartoon/sticker-white`: missing font LilitaOne) was the asset
+      database learning a library apply's imported files only on the file watcher's later walk, which raced the check
+      that followed the apply. A title step that writes files besides `.titleart` documents now refreshes the database
+      before it returns (red control `TitleArtDocumentTest.FilesAStepImportsAreInTheAssetDatabaseWhenItReturns`).
+    - `TitleLibraryBuiltins.Budgets` failed its apply_look budget (9-17 ms against 9) depending on what ran before it
+      in the process: every apply_look read and SHA-256ed the look's 2.5 MB pack font up to three times, even with the
+      font already in the project, so the op cost the font's size and its timing followed the process's memory state
+      (measured 14.8 ms fresh, 4.1 ms after a project load in the same process; the low-level cause is inferred). Pack
+      hashes are cached by path, size and time and the bytes are read only to copy them: 1.4 ms in either order.
+    - counter_survival's threshold, recomputed by §6.14.3 on the 830 gate renders and the 30 red controls: R = 0 (the
+      same-colour rim and the flooded counter both measure delta E 0 on their failing counters; the 6.5 the file held
+      was the flooded fixture before its rim followed the lint), L = 7.3 (`casino/premium-black-gloss`, then 8.1
+      `gems/crystal-title`). The middle half is 1.8-5.5: 8 was outside it, on the library's side. T = 4 (mid-gap 3.65,
+      rounded); the red controls fail by 4. Deviation 24's "delta E 8" reads 4 from here.
+30. **AC21's `apply_look`: the commit invariants' link sync.** Profiled with scoped timers (build box 2): of 5.3 ms on 16
+    rims, 3.1 were the import plan reading and hashing the look's pack files on every apply (fixed on ta/lib-looks,
+    007742f38: hashes cached, bytes read only to copy), and S80's link sync copied and dumped the previous document's
+    materials on every batch; it now does so only when a link has two members (1.13 -> 0.24 ms of the invariants).
+31. **AC21's baker within 20 min: 1364 s -> 1234 s cold, 1040 s warm** (build box 2: 16 shared cores, the image's 8-CPU
+    quota, llvmpipe; load average 1-9 from other worktrees; 830 thumbnails byte-identical to the 1364 s run). Profiled:
+    `time` gave 136 CPU-min over 22.7 min (llvmpipe already fills 6 of the 8 CPUs), `perf` 76 % of the samples in
+    llvmpipe's shaders and 14 % in LLVM compiling them on the editors' main threads, the engine under 2 %. So more editors
+    at once did not help (4 editors: 1357 s, 175 CPU-min: the quota is the limit; not kept). What was cut: (1) every
+    `render_title` of a current revision also rendered a 768 px copy kept for `compare: "rev:<n>"`; the baker passes
+    `options: {keep: false}` (one render; `test_render_title_keep_false`, red with the option ignored): 1239 s; (2) Mesa
+    caches llvmpipe's compiled shaders under the passwd entry's home, not $HOME, so in the build image (HOME under
+    build/) each bake compiled every shader again; the headless editors get `MESA_SHADER_CACHE_DIR=$HOME/.cache/
+    mesa_shader_cache` unless MESA_SHADER_CACHE_DIR or XDG_CACHE_HOME is set (Mesa's own default where HOME is the
+    user's; 20 MB): a cold run 1234 s, every later one 1040 s (17.3 min). A run on a clean machine stays over 20 min;
+    a 101-render subset measured 192 s cold, 121 s warm. llvmpipe thread counts (4, 7, 8, Mesa's 16) were measured on
+    that subset and changed nothing warm (4: slower), so none is set.
+32. **Resolved: the 3D glint of `casino/confirm-giraffe-3d` (en) on the RGBA8 path** (S86's compressed light). At the gate's
     0.25 it measured 2.8 % of pixels over 24/255 (the check's limit 1 %), mean 2.0; with the glint off 0.35 %; `ja` passes, as
-    every other 3D item does. The MSAA resolve averaged the encoding `C/(1 + C)`, not the light; S86 Deviation 31 makes the
+    every other 3D item does. The MSAA resolve averaged the encoding `C/(1 + C)`, not the light; S86 Deviation 36 makes the
     supersampled fallback hold linear light (resolves average light, `TitleToneMapTest.SupersampledFallbackResolvesToTheMeanLight`):
     giraffe en is now 2.0 %, mean 1.6, and the other 251 samples of the 91 3D items pass. What remains is the 8-bit precision
     of the glint's input (the same encoding in a float target: 0.0 %), which no 8-bit encoding of light up to 60 removes.
     The integrator's decision: `fallback_parity` now checks a document with 3D glints on twice, as S86 AC9 reads: the same
     document with its glints off to the 3D share and max (giraffe en 0.0 % over 24/255, max 24), the glint-on render to AC9's
     mean alone (3/255; giraffe en 1.6), so the stars are judged by the spec's own criterion and everything else per pixel
-    (S86 Deviation 32). Red controls (`FallbackParityCheckTest`): a glint document broken outside its glints fails, and so
+    (S86 Deviation 37). Red controls (`FallbackParityCheckTest`): a glint document broken outside its glints fails, and so
     does a glint whose difference passes the mean; without glints the share stays.
-30. **Implementation: the pixel checks' renders live with their call.** `rendersOf` kept one static set of renders keyed by
+33. **Implementation: the pixel checks' renders live with their call.** `rendersOf` kept one static set of renders keyed by
     the context's address and the document's hash, so a later `check_title` call on the same document (its context in the
     same stack slot) with another `render_scale` read the earlier call's renders. They now live in the context
     (`TitleCheckContext::renders`), one set per call (`FallbackParityCheckTest.EachCallRendersAtItsOwnOptions`, red before).

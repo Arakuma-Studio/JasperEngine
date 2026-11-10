@@ -7,6 +7,9 @@
 // fit, cache, registry and planner logic are the pure CPU units of render/shadow/.
 
 #include "RenderSystem.h"
+#include "FoliageSystem.h"
+#include "component/Transform.h"
+#include "component/TerrainComponent.h"
 #include "RenderSystemShared.h"
 #include "render/SystemRender.h"
 #include "device/QualityResolver.h"
@@ -601,6 +604,16 @@ void RenderSystem::updateShadowCasters(){
             for (const Vector4& v : mesh.vat.block)
                 revision.add(v);
         }
+        // T5 R17, R19: what a foliage prototype casts is its view's list, which the mesh's own state
+        // does not show; wind moves it every frame, as a Vertex Animator's clips do
+        const InstancedMeshComponent* foliageMesh = scene->findComponent<InstancedMeshComponent>(entity);
+        const bool foliageCaster = foliageMesh && foliageMesh->foliage;
+        bool foliageSways = false;
+        if (foliageCaster){
+            const std::shared_ptr<FoliageSystem> foliage = scene->getSystem<FoliageSystem>();
+            revision.add(foliage->getRevision());
+            foliageSways = foliageMesh->foliageWind && foliage->isWindBlowing(foliage->getOwner(entity));
+        }
         state.revision = (uint32_t)(revision.value ^ (revision.value >> 32));
 
         const bool terrain = terrainComponent != nullptr;
@@ -612,10 +625,10 @@ void RenderSystem::updateShadowCasters(){
                 (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
         }
         // a static terrain draws a cut of its own in each slot (shadowTerrainCut): the camera
-        // does not move it
-        state.cameraDependent = (terrain && !mesh.staticShadowCaster) || unbounded;
+        // does not move it; a foliage prototype's list follows the camera (T5 R17)
+        state.cameraDependent = (terrain && !mesh.staticShadowCaster) || unbounded || foliageCaster;
         // skinned meshes whose bones moved this update
-        state.animated = mesh.needUpdateBones;
+        state.animated = mesh.needUpdateBones || foliageSways;
 
         shadowCasters.update((uint32_t)entity, state);
     }
@@ -808,7 +821,9 @@ void RenderSystem::processLights(CameraShadows& view, int numLights, const Camer
     if (scene->isShadowCascadeBlend()){
         flags += (tier.transition == CascadeTransition::DITHER) ? 2.0f : ((tier.transition == CascadeTransition::BLEND) ? 4.0f : 0.0f);
     }
-    if (tier.softFilter == ShadowSoftFilter::PCSS && !shadowHardOnly && Engine::getGraphicBackend() != GraphicBackend::GLES3)
+    // (on every backend: a variant without the raw-depth view, one it would take past the bind
+    // limits, filters with the Vogel disk whatever the flag)
+    if (tier.softFilter == ShadowSoftFilter::PCSS && !shadowHardOnly)
         flags += 8.0f;
     float debugView = 0.0f;
 #ifdef JASPERENGINE_EDITOR
@@ -1078,7 +1093,8 @@ RenderSystem::ShadowTerrainCut& RenderSystem::shadowTerrainCut(Entity entity, Te
     ShadowTerrainCut& cut = shadowTerrainScratch;
     cut.nodes[0].clear();
     cut.nodes[1].clear();
-    if (!terrain.heightMapLoaded)
+    // T4: a World has no node tree; its shadow pass draws its own selection (drawTerrainWorldItems)
+    if (!terrain.heightMapLoaded || terrain.world)
         return cut;
 
     if (mesh.staticShadowCaster){
@@ -1093,6 +1109,17 @@ RenderSystem::ShadowTerrainCut& RenderSystem::shadowTerrainCut(Entity entity, Te
         }else{
             cut.eye = shadowCamera.lightViewMatrix.inverse() * Vector3(0, 0, 0);
         }
+        for (int i = 0; i < terrain.rootGridSize * terrain.rootGridSize; i++){
+            selectShadowTerrainNode(terrain, transform, cut.eye, shadowCamera.nearFar.y, shadowCamera.frustumPlanes,
+                                    terrain.nodes[terrain.grid[i]], terrain.levels - 1, cut);
+        }
+        return cut;
+    }
+
+    // T3 R17: with Off-screen Shadows, the camera's selection (its eye, its ranges) with the slot's
+    // frustum in place of the camera's, so terrain outside the view casts and a node in both draws alike
+    if (terrainDrawsOffscreenShadows(terrain)){
+        cut.eye = terrainViewData(entity, terrain, mainTerrainView()).nodesEyePos;
         for (int i = 0; i < terrain.rootGridSize * terrain.rootGridSize; i++){
             selectShadowTerrainNode(terrain, transform, cut.eye, shadowCamera.nearFar.y, shadowCamera.frustumPlanes,
                                     terrain.nodes[terrain.grid[i]], terrain.levels - 1, cut);
@@ -1517,6 +1544,10 @@ void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
     passShadows = &target;
 
     const std::vector<ShadowSlot>& slots = collectShadowSlots();
+    buildFoliageShadowLists(&target, 1, fadeEyePosition);
+    for (const auto& foliageEntry : foliageLists){
+        if (foliageEntry.first.first == &target) uploadFoliageList(*foliageEntry.second);
+    }
 
     uint64_t shadowHash = 1469598103934665603ULL;
     for (const ShadowSlot& shadow : slots){
@@ -1544,6 +1575,8 @@ void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
     for (int i = 0; i < instmeshes->size(); i++){
         InstancedMeshComponent& instmesh = instmeshes->getComponentFromIndex(i);
         Entity entity = instmeshes->getEntity(i);
+        if (instmesh.foliage)
+            continue;
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
         Transform* transform = scene->findComponent<Transform>(entity);
 

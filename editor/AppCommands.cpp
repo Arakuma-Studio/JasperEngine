@@ -7,8 +7,11 @@
 // menu items as commands (S23 R42).
 
 #include "App.h"
+#include "titleart/localisation/TitleLanguageEditing.h"
+#include "window/TitleArtInterchangeWindows.h"
 #include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
+#include "window/GraphEditorWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/MainToolbar.h"
@@ -19,12 +22,18 @@
 #include "window/GameWindow.h"
 #include "window/SpriteNormalsWindow.h"
 #include "window/TitleDesignerWindow.h"
+#include "titleart/anim/TitleAnimationPanel.h"
+#include "window/NoiseGraphWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "window/ApplyPaletteDialog.h"
+#include "window/PaletteWindow.h"
+#include "window/PixelArtCheckWindow.h"
 
 #include "AppMenuCommand.h"
 #include "Backend.h"
 #include "Out.h"
 #include "Engine.h"
+#include "pixelart/PixelPerfectEditor.h"
 #include "util/Util.h"
 #include "window/PlayInput.h"
 #include "animation/AnimationClipAppHooks.h"
@@ -32,6 +41,7 @@
 #include "pose/PoseViewportLogic.h"
 #include "window/AnimationWindowClip.h"
 #include "window/PoseAnimationWindow.h"
+#include "window/SpritePreviewWindow.h"
 #include "navigation/NavigationEditor.h"
 #include "navigation/NavPathTester.h"
 #include "sceneview/SceneViewController.h"
@@ -47,8 +57,10 @@
 #include "widget/CurveField.h"
 #include "widget/GradientField.h"
 #include "window/InputActionsWindow.h"
+#include "window/AnimationStatisticsWindow.h"
 #include "window/JobsMemoryWindow.h"
 #include "window/vcs/VcsUi.h"
+#include "voxel/VoxelBrushTool.h"
 
 #include "imgui_internal.h"
 
@@ -234,6 +246,7 @@ void editor::App::registerCommands(){
     }
     enable("assets.createAnimationClip", []() { return static_cast<bool>(animationClipAppHooks().createClipAsset); });
     enable("assets.createSoundEventFromClips", [this]() { return projectWindow->hasAudioSelection(); });
+    enable("assets.createSpriteAtlasFromSelection", [this]() { return projectWindow->hasSpriteSelection(); });
     bind("soundEvent.audition", [this](const CommandArgs&) { inspectorWindow->requestSoundEventAudition(); },
          [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()); });
     bind("soundEvent.matchLevels", [this](const CommandArgs&) { inspectorWindow->requestSoundEventMatchLevels(); },
@@ -311,6 +324,17 @@ void editor::App::registerCommands(){
     };
     onView("sceneView.hideSelection", [](SceneViewController& view, SceneProject& scene) { view.hideSelection(scene); });
     onView("sceneView.showAll", [](SceneViewController& view, SceneProject& scene) { view.showAll(scene); });
+    // S41: the Pixel Zoom's 1x and Game (a 2D scene drawn through a Pixel Perfect Camera)
+    auto pixelScene = [this]() {
+        const SceneProject* scene = project.getSelectedScene();
+        return scene && scene->sceneRender && scene->sceneType == SceneType::SCENE_2D && pixelart::scenePixelViews(&project, scene);
+    };
+    bind("sceneView.pixelZoom1x", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, 1.0f);
+    }, pixelScene, noDrag);
+    bind("sceneView.pixelZoomGame", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, sceneWindow->gamePixelZoom(*scene));
+    }, pixelScene, noDrag);
     onView("sceneView.togglePickLock", [](SceneViewController& view, SceneProject& scene) { view.togglePickLockSelection(scene); });
     onView("sceneView.measure", [](SceneViewController& view, SceneProject& scene) { view.setMeasuring(scene, !view.isMeasuring(scene.id)); });
     // the Path Tester (S75 R25): in the selected scene's view, edit or play
@@ -371,6 +395,54 @@ void editor::App::registerCommands(){
     brush("terrain.brushWeaker", false, 1.0f / 1.15f);
     brush("terrain.brushStronger", false, 1.15f);
 
+    // ---- A terrain brush's keys (T1 R57, Table 5); its context says when: armed, pointer over the Scene view
+    auto terrainTool = [this, &bind](const char* id, TerrainBrushMode mode) {
+        bind(id, [this, mode](const CommandArgs&) { terrainEditWindow->armBrush(mode); });
+    };
+    terrainTool("terrain.tool.raise", TerrainBrushMode::Raise);
+    terrainTool("terrain.tool.setHeight", TerrainBrushMode::Flatten);
+    terrainTool("terrain.tool.smooth", TerrainBrushMode::Smooth);
+    terrainTool("terrain.tool.ramp", TerrainBrushMode::Ramp);
+    terrainTool("terrain.tool.noise", TerrainBrushMode::Noise);
+    terrainTool("terrain.tool.terrace", TerrainBrushMode::Terrace);
+    terrainTool("terrain.tool.erode", TerrainBrushMode::Erode);
+    terrainTool("terrain.tool.stamp", TerrainBrushMode::Stamp);
+    terrainTool("terrain.tool.paintTexture", TerrainBrushMode::PaintLayer);
+    terrainTool("terrain.tool.paintDetails", TerrainBrushMode::PaintDensity);
+    terrainTool("terrain.tool.placeObjects", TerrainBrushMode::PlaceObject);
+    terrainTool("terrain.tool.cutHoles", TerrainBrushMode::CutHole);
+    bind("terrain.pick", [this](const CommandArgs&) { terrainEditWindow->armPickHeight(); });
+    bind("terrain.invertSlopeFilter", [this](const CommandArgs&) { terrainEditWindow->toggleSlopeFilterInvert(); });
+    bind("terrain.alternate", [this](const CommandArgs&) { terrainEditWindow->toggleAlternate(); });
+    auto terrainOverlay = [this, &bind](const char* id, const char* source) {
+        bind(id, [this, source](const CommandArgs&) {
+            if (SceneProject* scene = project.getSelectedScene()) scene->displaySettings.terrainOverlay.source = source;
+        });
+    };
+    terrainOverlay("terrain.overlay.height", "height");
+    terrainOverlay("terrain.overlay.slope", "slope");
+    terrainOverlay("terrain.overlay.contours", "contours");
+    terrainOverlay("terrain.overlay.layerWeights", "layer_weights");
+    terrainOverlay("terrain.overlay.off", "");
+    // Esc in a stroke is the history's cancel (App::handleInteractiveEdits), and the brush stays armed: while the
+    // button is held too, so the release after a cancel does not land as a selection click
+    bind("terrain.disarm", [this](const CommandArgs&) { terrainEditWindow->disarmBrush(); }, nullptr,
+         []() { return !CommandHistory::anyInteractiveOpen() && !ImGui::IsMouseDown(ImGuiMouseButton_Left); });
+
+    // ---- A Voxel Volume's brush (T6 R60); its context says when: armed, pointer over the Scene view
+    auto voxelTool = [&bind](const char* id, VoxelTool tool) {
+        bind(id, [tool](const CommandArgs&) { VoxelBrushTool::get().arm(tool); });
+    };
+    voxelTool("voxel.tool.dig", VoxelTool::Dig);
+    voxelTool("voxel.tool.add", VoxelTool::Add);
+    voxelTool("voxel.tool.smooth", VoxelTool::Smooth);
+    voxelTool("voxel.tool.paint", VoxelTool::Paint);
+    voxelTool("voxel.tool.pick", VoxelTool::Pick);
+    bind("voxel.brushSmaller", [](const CommandArgs&) { VoxelBrushTool::get().adjustSize(1.0f / 1.15f); }, nullptr, noDrag);
+    bind("voxel.brushLarger", [](const CommandArgs&) { VoxelBrushTool::get().adjustSize(1.15f); }, nullptr, noDrag);
+    // Esc in a stroke is the history's cancel (App::handleInteractiveEdits), and the brush stays armed
+    bind("voxel.disarm", [](const CommandArgs&) { VoxelBrushTool::get().disarm(); }, nullptr, []() { return !CommandHistory::anyInteractiveOpen(); });
+
     // ---- Lattice points, while the selected scene edits a lattice's points
     auto points = [this, &bind, noDrag](const char* id, LatticeSceneTools::PointAction action) {
         bind(id, [this, action](const CommandArgs&) { LatticeSceneTools::runPointAction(&project, project.getSelectedSceneId(), action); },
@@ -404,6 +476,7 @@ void editor::App::registerCommands(){
     // ---- Animation window (clip mode) and Pose Animation window: their own commands
     AnimationWindowClip::bindCommands(catalog, [this]() { return animationWindow->getClipMode(); });
     poseAnimationWindow->bindCommands(catalog, [this]() { return poseKeysActive(); }, [this]() { return poseKeysFromSceneView(); });
+    spritePreviewWindow->bindCommands(catalog, [this]() { return spritePreviewWindow->isFocused(); });
 
     // ---- The Sound Browser, while it has focus: keys typed into its search stay text
     auto browser = [&bind, this](const char* id, std::function<void()> run, bool whileTyping = false) {
@@ -439,6 +512,27 @@ void editor::App::registerCommands(){
                  if (!whileTyping && titleDesignerWindow->typing()) return false;
                  return !nudge || titleDesignerWindow->canvasHasKeys();
              });
+    }
+
+    // ---- the Title Designer's Animation panel, while it has focus (S85 §6.10)
+    for (const char* id : {"titleAnimation.playPause", "titleAnimation.stop", "titleAnimation.addKey", "titleAnimation.addKeyModified",
+                           "titleAnimation.previousFrame", "titleAnimation.nextFrame", "titleAnimation.previousKey", "titleAnimation.nextKey",
+                           "titleAnimation.delete", "titleAnimation.copy", "titleAnimation.paste", "titleAnimation.duplicate",
+                           "titleAnimation.frameSelected", "titleAnimation.frameAll", "titleAnimation.record", "titleAnimation.toggleCurves",
+                           "titleAnimation.addPreset", "titleAnimation.saveAsPreset"}) {
+        const std::string command = id;
+        bind(id, [command](const CommandArgs&) { titledesigner::runTitleAnimationCommand(command); },
+             []() { return titledesigner::titleAnimationPanelFocused(); }, [this]() { return !titleDesignerWindow->typing(); });
+    }
+
+    // S87 R57: Assets > Import Title Art...
+    bind("assets.importTitleArt", [](const CommandArgs&) { openTitleArtImportDialog(); }, [this]() { return !project.getProjectPath().empty(); });
+
+    // S87 R51: the Title Designer's language switcher, one step either way
+    for (const auto& [id, step] : {std::pair<const char*, int>{"titleDesigner.nextLanguage", 1}, {"titleDesigner.previousLanguage", -1}}) {
+        const int by = step;
+        bind(id, [this, by](const CommandArgs&) { titleDesignerCycleLanguage(titleDesignerWindow->designer(), by); },
+             [this]() { return titleDesignerWindow->isOpen(); }, [this]() { return !titleDesignerWindow->typing(); });
     }
 
     // ---- Window > Audio > Captures, while it has focus
@@ -490,7 +584,28 @@ void editor::App::registerPanelClaims(){
     // its selected state, sub-state machine, transition or layer
     claims.add({"Animator", [this]() { return animatorWindow->isFocused(); },
                 {{Verb::Delete, {{}, [this]() { return animatorWindow->canDelete(); }, [this]() { animatorWindow->removeSelection(); }}}}});
+    // its selected nodes or wire; Copy and Paste carry nodes as JSON text
+    // (any graph window: the Graph Editor or a graph kind's own)
+    // the graph window that held the keys when the claim was found may have lost them by the time the
+    // menu asks (a click in its pane moves the focus mid-frame): each verb asks again, a no-op without one
+    claims.add({"Graph Editor", []() { return GraphEditorWindow::focused() != nullptr; },
+                {{Verb::Delete, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && w->canDelete(); },
+                                 []() { if (auto* w = GraphEditorWindow::focused()) w->removeSelection(); }}},
+                 {Verb::Copy, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && !w->selectedNodes().empty(); },
+                               []() { if (auto* w = GraphEditorWindow::focused()) w->copySelection(); }}},
+                 {Verb::Paste, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && w->canPaste(); },
+                                []() { if (auto* w = GraphEditorWindow::focused()) w->paste(); }}},
+                 {Verb::Duplicate, {{}, []() { auto* w = GraphEditorWindow::focused(); return w && !w->selectedNodes().empty(); },
+                                    []() { if (auto* w = GraphEditorWindow::focused()) w->duplicateSelection(); }}},
+                 {Verb::Frame, {{}, nullptr, []() { if (auto* w = GraphEditorWindow::focused()) w->frameSelected(); }}}}});
+    // T2 R57: its selected nodes and wires
+    claims.add({"Noise Graph", [this]() { return noiseGraphWindow->isFocused(); },
+                {{Verb::Delete, {{}, [this]() { return noiseGraphWindow->canDelete(); }, [this]() { noiseGraphWindow->deleteSelection(); }}},
+                 {Verb::Copy, {{}, [this]() { return noiseGraphWindow->canCopy(); }, [this]() { noiseGraphWindow->copySelection(); }}},
+                 {Verb::Paste, {{}, [this]() { return noiseGraphWindow->canPaste(); }, [this]() { noiseGraphWindow->paste(); }}},
+                 {Verb::Duplicate, {{}, [this]() { return noiseGraphWindow->canDuplicate(); }, [this]() { noiseGraphWindow->duplicateSelection(); }}}}});
     claims.add({"Jobs & Memory", [this]() { return jobsMemoryWindow->isFocused(); }, {}});
+    claims.add({"Animation Statistics", [this]() { return animationStatisticsWindow->isFocused(); }, {}});
     claims.add({"Project", [this]() { return projectWindow->isFocused(); },
                 {{Verb::Delete, own("project.delete")}, {Verb::Copy, own("project.copy")}, {Verb::Cut, own("project.cut")},
                  {Verb::Paste, own("project.paste")}, {Verb::SelectAll, own("project.selectAll")}, {Verb::Rename, own("project.rename")},
@@ -579,6 +694,13 @@ editor::ShortcutState editor::App::shortcutState() const{
     state.nativeMenuOwnsKeys = Backend::nativeMenuHandlesKeyEquivalents();
     if (hierarchyWindow->isFocused()) state.panels.push_back(ShortcutContext::Hierarchy);
     if (sceneWindow->isFocused() || sceneWindow->isHovered()) state.panels.push_back(ShortcutContext::SceneView);
+    if (sceneWindow->isHovered() && project.getSelectedScene() && VoxelBrushTool::get().isEditingScene(project.getSelectedScene()->scene)) {
+        state.panels.push_back(ShortcutContext::VoxelBrush);
+    }
+    if (sceneWindow->isHovered() && project.getSelectedScene() && project.getSelectedScene()->scene &&
+        terrainEditWindow->isEditingScene(project.getSelectedScene()->scene)) {
+        state.panels.push_back(ShortcutContext::TerrainBrush);
+    }
     if (projectWindow->isFocused()) state.panels.push_back(ShortcutContext::Project);
     if (consoleWindow->isListFocused()) state.panels.push_back(ShortcutContext::Console);
     // the entity mode has the Animation context's keys too while it has focus (S40 R22: Align on an
@@ -590,8 +712,13 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (ui::ColorPickerWindow::get().isFocused()) state.panels.push_back(ShortcutContext::ColorPicker);
     if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
     if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
-    if (titleDesignerWindow->isFocused()) state.panels.push_back(ShortcutContext::TitleDesigner);
+    // the Animation panel's keys are its own while it has the focus (Delete deletes keys, not layers)
+    if (titledesigner::titleAnimationPanelFocused()) state.panels.push_back(ShortcutContext::TitleAnimation);
+    else if (titleDesignerWindow->isFocused()) state.panels.push_back(ShortcutContext::TitleDesigner);
+    if (paletteWindow->takesKeys() || applyPaletteDialog->takesKeys()) state.panels.push_back(ShortcutContext::Palette);
+    if (pixelArtCheckWindow->takesKeys()) state.panels.push_back(ShortcutContext::PixelArtCheck);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
+    if (spritePreviewWindow->isFocused()) state.panels.push_back(ShortcutContext::SpritePreview);
     return state;
 }
 

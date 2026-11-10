@@ -76,6 +76,7 @@ namespace jasperengine::htmlui::compat {
         std::vector<std::string> animationFillNames;   // keyframes needing AnimationFill
         std::vector<std::string> fontFamilies;         // families named in font-family/font declarations
         std::vector<std::string> declaredFontFamilies; // families an @font-face declares
+        std::vector<std::string> bitmapFontFamilies;   // those whose source is a bitmap font (S51)
         // @property rules the fork registers when the document loads (phase 5, CompatAtProperty)
         std::vector<RegisteredProperty> registeredProperties;
     };

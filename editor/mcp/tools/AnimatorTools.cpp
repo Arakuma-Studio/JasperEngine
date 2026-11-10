@@ -41,6 +41,8 @@
 #include "component/AnimationPlayerComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/Transform.h"
+#include "animation/AnimatorDebug.h"
+#include "object/Animator.h"
 #include "pool/AnimatorAssetPool.h"
 #include "pose/HumanBones.h"
 #include "subsystem/AnimatorSystem.h"
@@ -598,9 +600,13 @@ Json liveJson(const AnimatorTarget& target, AnimatorInstance& instance) {
         out["montage"] = {{"path", montage->path}, {"section", montage->montage->sections[(size_t)montage->section].name},
                           {"time", montage->time}, {"weight", montage->weight}};
     }
+    // the debug numbers (S77 R36): makeSnapshot is their one producer, as for the Inspector
+    const Transform* root = target.scene->scene->findComponent<Transform>(target.entity);
+    const AnimatorDebugSnapshot snapshot = root ? makeSnapshot(instance, *target.component, animatorRoot(*root)) : AnimatorDebugSnapshot();
     if (instance.output.hasRootMotion) {
         const Vector3 d = instance.output.rootDeltaPosition;
         out["root_motion"] = {{"delta_position", {d.x, d.y, d.z}}, {"delta_yaw", instance.output.rootDeltaYaw}};
+        if (snapshot.valid) addAnimatorDebugRootMotionJson(snapshot, out["root_motion"]);
     }
     Json ik = Json::array();
     for (size_t i = 0; i < target.component->ik.size() && i < instance.ik.size(); i++) {
@@ -610,6 +616,8 @@ Json liveJson(const AnimatorTarget& target, AnimatorInstance& instance) {
         else if (run.hasTarget) item["target"] = {run.targetWorld.x, run.targetWorld.y, run.targetWorld.z};
         if (target.component->ik[i].type == AnimatorIKType::FootIK) item["grounded"] = run.hit;
         if (target.component->ik[i].type == AnimatorIKType::FootLock) item["locked"] = run.locked;
+        item["reached"] = run.reached;
+        if (snapshot.valid && i < snapshot.ik.size()) addAnimatorDebugIKJson(snapshot.ik[i], item);
         ik.push_back(item);
     }
     if (!ik.empty()) out["ik"] = ik;
@@ -1330,6 +1338,20 @@ void controlAnimatorTool(const CallPtr& call) {
                 }
             }
             if (v.contains("weight")) instance->ik[index].scriptWeight = v["weight"].is_null() ? -1.0f : std::min(std::max(v["weight"].get<float>(), 0.0f), 1.0f);
+            if (v.contains("soften") || v.contains("twist") || v.contains("hinge_axis") || v.contains("aim_offset")) {
+                // stored settings of the constraint: the game's copy while playing; the scene's
+                // only through set_properties, which can undo
+                if (!target.playing) {
+                    errors.push_back("ik " + it.key() + ": soften, twist, hinge_axis and aim_offset need play mode; in edit mode set them with set_properties (ik[n].soften ...)");
+                    continue;
+                }
+                Animator object(target.scene->scene, target.entity);
+                const auto vector = [](const Json& j) { return Vector3(j[0].get<float>(), j[1].get<float>(), j[2].get<float>()); };
+                if (v.contains("soften")) object.setIKSoften(it.key(), v["soften"].get<float>());
+                if (v.contains("twist")) object.setIKTwist(it.key(), v["twist"].get<float>());
+                if (v.contains("hinge_axis")) object.setIKHingeAxis(it.key(), vector(v["hinge_axis"]));
+                if (v.contains("aim_offset")) object.setIKAimOffset(it.key(), vector(v["aim_offset"]));
+            }
             done.push_back("ik " + it.key());
         }
     }
@@ -1715,9 +1737,10 @@ void registerAnimatorTools(McpRegistry& registry) {
         tool.name = "control_animator";
         tool.title = "Control Animator";
         tool.description =
-            "Drive an Animator: parameters {name: value}, triggers, play {state, duration > 0 crossfades}, montage {path, rate, "
-            "section}, stop_montage, montage_section {jump | from, next}, ik {name: {target: [x,y,z] | null, weight}}, "
-            "layer_weights. Play mode: the game; edit mode: preview start (advance: s) / stop restores the scene.";
+            "parameters {name: value}, triggers, play {state, duration > 0 crossfades}, montage {path, rate, "
+            "section}, stop_montage, montage_section {jump | from, next}, ik {name: {target: [x,y,z] | null, weight, soften, twist, "
+            "hinge_axis, aim_offset}}, "
+            "layer_weights. Play mode: the game; edit mode: preview start (advance: s) / stop restores.";
         tool.inputSchema = object({
             {"entity", entityRef()}, {"scene", sceneRef()},
             {"parameters", anyObject("")}, {"triggers", array(string(""), "")}, {"reset_triggers", array(string(""), "")},

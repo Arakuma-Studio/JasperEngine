@@ -10,7 +10,9 @@
 #include "TitleDesignerWindow.h"
 
 #include "Backend.h"
+#include "Engine.h"
 #include "Project.h"
+#include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
 #include "profiler/Profile.h"
 #include "texsynth/SynthImage.h"
@@ -112,6 +114,10 @@ const ta::TitleArtHashes& TitleDesignerWindow::shownHashes() {
 TitleRect TitleDesignerWindow::stageRect() const {
     const ta::TitleArtDoc& shown = doc.shown();
     const DocumentView* v = viewOrNull();
+    // In Context: the instance's screen (R30)
+    if (v && v->backdrop.kind == "in_context" && inContext && inContext->screenWidth > 0 && inContext->screenHeight > 0) {
+        return {-inContext->screenWidth * 0.5, -inContext->screenHeight * 0.5, (double)inContext->screenWidth, (double)inContext->screenHeight};
+    }
     if (v && !v->device.profile.empty()) {
         int w = 0, h = 0;
         if (v->device.profile.rfind("res:", 0) == 0) {
@@ -165,9 +171,21 @@ void TitleDesignerWindow::updateView(float width, float height) {
 }
 
 // the title's placement on a device stage (Anchor, Display Height: R31)
-static void devicePlacement(const DocumentView& v, const TitleRect& stage, const ta::TitleArtDoc& doc, double& scale, double& offsetX, double& offsetY) {
+static void devicePlacement(const DocumentView& v, const TitleRect& stage, const ta::TitleArtDoc& doc, double& scale, double& offsetX, double& offsetY,
+                            const TitleInContext* context) {
     scale = 1.0;
     offsetX = offsetY = 0.0;
+    if (context && v.backdrop.kind == "in_context" && context->located && context->width > 0.0f) {
+        // the bake frame the instance shows, on the instance's screen rectangle (R30)
+        const ta::TitleRectI frame = context->frame.empty() ? ta::TitleRectI{0, 0, doc.canvasWidth(), doc.canvasHeight()} : context->frame;
+        scale = context->width / std::max(1, frame.width);
+        const double cx = context->x + context->width * 0.5 - context->screenWidth * 0.5;
+        const double cy = context->screenHeight * 0.5 - (context->y + context->height * 0.5);
+        const double fx = frame.x + frame.width * 0.5 - doc.canvasWidth() * 0.5, fy = doc.canvasHeight() * 0.5 - (frame.y + frame.height * 0.5);
+        offsetX = cx - fx * scale;
+        offsetY = cy - fy * scale;
+        return;
+    }
     if (v.device.profile.empty()) return;
     const double titleHeight = v.device.displayHeightPx ? v.device.displayHeight : stage.height * v.device.displayHeight / 100.0;
     scale = titleHeight / std::max(1, doc.canvasHeight());
@@ -184,9 +202,9 @@ void TitleDesignerWindow::requestCanvasRender() {
     if (!canvas || !doc.isOpen()) return;
     const DocumentView& v = view();
     const bool baked = v.previewAs == "baked";
-    bool registered = false;
-    for (const PreviewModeDef& mode : previewModes()) registered = registered || mode.id == v.previewAs;
-    if (baked || registered) return;
+    const PreviewModeDef* mode = activePreviewMode();
+    if (baked || (mode && mode->draw)) return;
+    if (canvasPoseSource().active && canvasPoseSource().active(doc)) return;    // S85: the panel draws the pose
     const ta::TitleArtDoc& shown = doc.shown();
     const double t = now();
     const bool settled = t - lastViewChange >= SETTLE_SECONDS;
@@ -194,7 +212,7 @@ void TitleDesignerWindow::requestCanvasRender() {
     // Draft while interacting (Auto), Full when settled (R68)
     const bool draft = settings.quality == Quality::Draft || (settings.quality == Quality::Auto && gesture);
     double stageScale = 1.0, ox = 0.0, oy = 0.0;
-    devicePlacement(v, stageRect(), shown, stageScale, ox, oy);
+    devicePlacement(v, stageRect(), shown, stageScale, ox, oy, inContext ? &*inContext : nullptr);
     // display resolution of the visible window (at most 8,192 px a side)
     float pxScale = (float)(xform.zoom * displayScale * stageScale);
     ta::TitleRectI region;
@@ -222,9 +240,18 @@ void TitleDesignerWindow::requestCanvasRender() {
     request.includeGuides = v.showGuides;
     request.sliceBudgetMs = draft ? 8.0 : 12.0;
     request.assets = &transient;
+    // S86's Realtime tiers in Preview As: the canvas as that tier renders it
+    request.tier = mode ? mode->renderTier : 0;
+    request.language = doc.language();
     if (const TimeSource& time = timeSource()) {
         // S85's playhead reaches the canvas as overrides it samples; the time feeds the key
         request.docChange ^= (uint64_t)std::llround(time() * 1000.0) << 20;
+    }
+    if (!livePreviews.empty() && !doc.previewActive()) {
+        // Preview Live (S83 D10): the live params' values at this step of the cycle
+        double phase = 0.0;
+        request.overrides = liveOverrides(&phase);
+        request.docChange ^= ((uint64_t)std::llround(phase * 6.0) + 1) << 40;
     }
     canvas->requestRender(request);
 }
@@ -442,6 +469,35 @@ void TitleDesignerWindow::handleCanvasInput() {
     // text editing: clicks inside the edited layer place the caret, outside commit (R36, R39); a
     // selected character's gizmo moves, turns or scales the selected characters (R38)
     if (textEditing()) {
+        if (drag == Drag::Gizmo3D) {
+            // the selected letters of a 3D layer (S86 R56): staged with the typed text, one step on release
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+                gizmo3d->end();
+                drag = Drag::None;
+                // the typed text alone, as before the press
+                std::string error;
+                doc.stage(ta::Json::array({ta::Json{{"op", "set_text"}, {"layer", "id:" + textEdit->layerId()}, {"text", textEdit->previewText()}}}), &error);
+                return;
+            }
+            const std::vector<FieldEdit> edits = gizmo3d->update(mouse, mods);
+            ta::Json values = ta::Json::object();
+            for (const FieldEdit& e : edits) values[e.path] = e.value;
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                stageLetters(values);
+            } else {
+                commitLetters(values, gizmo3d->stepName());
+                gizmo3d->end();
+                drag = Drag::None;
+            }
+            return;
+        }
+        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && editable && editLetters3D && gizmo3d && gizmo3d->visible()) {
+            const Gizmo3DHandle h3 = gizmo3d->hitTest(mouse);
+            if (h3 != Gizmo3DHandle::None && gizmo3d->begin(h3, mouse, mods)) {
+                drag = Drag::Gizmo3D;
+                return;
+            }
+        }
         if (drag == Drag::Letters) {
             const bool moved = std::fabs(mouse.x - dragStart.x) + std::fabs(mouse.y - dragStart.y) >= 1.0f;
             if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
@@ -472,6 +528,44 @@ void TitleDesignerWindow::handleCanvasInput() {
         return;
     }
 
+    // Alt+drag on a selected Dimension 3D layer scrubs its Environment Rotation (S86 R55): the
+    // layer's own override, one step on release
+    if (drag == Drag::EnvRotate) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            doc.cancelGesture();
+            drag = Drag::None;
+            return;
+        }
+        std::string error;
+        const double degrees = envDragStart + (mouse.x - dragStart.x) * 0.5;
+        if (!doc.stage(editsToOps({{envDragLayer, "style_3d.lighting.environment.rotation", std::round(degrees * 10.0) / 10.0}}), &error)) reportError(error);
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            if (!doc.endGesture(&error)) reportError(error);
+            drag = Drag::None;
+        }
+        return;
+    }
+    if (drag == Drag::None && hovered && io.KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && editable && currentTool != Tool::Hand) {
+        const std::string under = pickLayer(mouse, false);
+        const ta::Json* layer = under.empty() ? nullptr : layerById(doc.shown(), under);
+        if (layer && doc.isSelected({NodeKind::Layer, under, {}, {}}) && layer->value("dimension", std::string("2d")) == "3d") {
+            // (style_3d and scene_3d are null until made: read them as objects only when they are)
+            auto objectAt = [](const ta::Json& o, const char* key) {
+                auto it = o.is_object() ? o.find(key) : o.end();
+                return o.is_object() && it != o.end() && it->is_object() ? *it : ta::Json::object();
+            };
+            const ta::Json own = objectAt(objectAt(objectAt(*layer, "style_3d"), "lighting"), "environment");
+            const ta::Json env = objectAt(objectAt(doc.shown().root, "scene_3d"), "environment");
+            envDragStart = own.contains("rotation") && own["rotation"].is_number() ? own["rotation"].get<double>()
+                           : env.contains("rotation") && env["rotation"].is_number()  ? env["rotation"].get<double>()
+                                                                                      : 0.0;
+            envDragLayer = under;
+            dragStart = mouse;
+            drag = Drag::EnvRotate;
+            doc.beginGesture("Change Environment Rotation");
+            return;
+        }
+    }
     // gizmo and handles first
     if (drag == Drag::None && hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && editable && currentTool != Tool::Hand) {
         const int handle = handles ? handles->hitTest(mouse) : -1;
@@ -482,7 +576,7 @@ void TitleDesignerWindow::handleCanvasInput() {
             doc.beginGesture(handles->gestureName());
         } else if (h3 != Gizmo3DHandle::None && gizmo3d->begin(h3, mouse, mods)) {
             drag = Drag::Gizmo3D;
-            doc.beginGesture(gizmo3d->actionName());
+            doc.beginGesture(gizmo3d->stepName());
         } else if (h2 != Gizmo2DHandle::None && h2 != Gizmo2DHandle::Inside && gizmo2d->begin(h2, mouse, mods)) {
             drag = Drag::Gizmo;
             doc.beginGesture("Move Layer");
@@ -749,10 +843,23 @@ void TitleDesignerWindow::drawEmptyState(ImDrawList* dl) {
 }
 
 void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
+    runCanvasOverlays(doc, dl, titleXform);
     const DocumentView& v = view();
     const ta::TitleArtDoc& shown = doc.shown();
     const TitleRect stage = stageRect();
     const ImVec2 stageMin = xform.toScreen({stage.x, stage.y + stage.height}), stageMax = xform.toScreen({stage.x + stage.width, stage.y});
+
+    // registered overlays (S87's fit boxes) in document space, the device placement applied
+    if (!canvasOverlays().empty()) {
+        double scale = 1.0, ox = 0.0, oy = 0.0;
+        devicePlacement(v, stage, shown, scale, ox, oy, inContext ? &*inContext : nullptr);
+        CanvasXform placed = xform;
+        placed.origin = xform.toScreen({ox, oy});
+        placed.zoom = (float)(xform.zoom * scale);
+        for (const CanvasOverlayDef& overlay : canvasOverlays()) {
+            if (overlay.draw) overlay.draw(doc, dl, stageMin, stageMax, placed);
+        }
+    }
 
     // device frame and safe areas (R31)
     if (!v.device.profile.empty() && v.safeAreas) {
@@ -767,7 +874,7 @@ void TitleDesignerWindow::drawCanvasOverlays(ImDrawList* dl) {
             const ImVec2 safeMin(stageMin.x + safe.getX() * sx, stageMin.y + safe.getY() * sy);
             const ImVec2 safeMax(safeMin.x + safe.getWidth() * sx, safeMin.y + safe.getHeight() * sy);
             double scale = 1.0, ox = 0.0, oy = 0.0;
-            devicePlacement(v, stage, shown, scale, ox, oy);
+            devicePlacement(v, stage, shown, scale, ox, oy, inContext ? &*inContext : nullptr);
             for (const ta::Json& layer : shown.layers()) {
                 if (!layer.value("visible", true)) continue;
                 const TitleRect b = layerBounds(str(layer, "id"));
@@ -883,7 +990,7 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
     updateView(canvasMax.x - canvasMin.x, canvasMax.y - canvasMin.y);
     {
         double s = 1.0, ox = 0.0, oy = 0.0;
-        devicePlacement(view(), stageRect(), doc.shown(), s, ox, oy);
+        devicePlacement(view(), stageRect(), doc.shown(), s, ox, oy, inContext ? &*inContext : nullptr);
         titleXform.zoom = (float)(xform.zoom * s);
         titleXform.origin = ImVec2(xform.origin.x + (float)ox * xform.zoom, xform.origin.y - (float)oy * xform.zoom);
     }
@@ -901,12 +1008,12 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
     setup.centerX = centre.x;
     setup.centerY = centre.y;
     setup.stage = stage;
-    devicePlacement(v, stage, shown, setup.stageScale, setup.stageOffsetX, setup.stageOffsetY);
+    devicePlacement(v, stage, shown, setup.stageScale, setup.stageOffsetX, setup.stageOffsetY, inContext ? &*inContext : nullptr);
     setup.checkerPixels = 8.0f * displayScale;
     const bool baked = v.previewAs == "baked";
-    bool modeRegistered = false;
-    for (const PreviewModeDef& mode : previewModes()) modeRegistered = modeRegistered || mode.id == v.previewAs;
-    setup.dim = (baked || modeRegistered) ? 0.0f : textEditing() ? 1.0f : 1.0f;
+    const PreviewModeDef* activeMode = activePreviewMode();
+    const bool poseShown = canvasPoseSource().active && canvasPoseSource().active(doc);
+    setup.dim = (baked || (activeMode && activeMode->draw) || poseShown) ? 0.0f : 1.0f;
     CanvasBackdrop backdrop;
     const std::string& kind = v.backdrop.kind;
     if (kind == "black") backdrop.kind = CanvasBackdrop::Kind::Black;
@@ -1035,6 +1142,8 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
         if (!mode.note.empty()) dl->AddText(ImVec2(canvasMin.x + 12.0f, canvasMax.y - 24.0f), IM_COL32(200, 200, 200, 220), mode.note.c_str());
     }
 
+    if (poseShown && canvasPoseSource().draw) canvasPoseSource().draw(doc, dl, canvasMin, canvasMax, titleXform);
+
     drawCanvasOverlays(dl);
 
     // selection boxes, gizmo and handles (R33-R35)
@@ -1098,7 +1207,9 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
         }
         targets.push_back(t);
     }
-    const bool showTools = !textEditing() && doc.editable() && currentTool != Tool::Hand && v.previewAs == "realtime";
+    const PreviewModeDef* toolsMode = activePreviewMode();
+    const bool rendersWorking = v.previewAs == "realtime" || (toolsMode && !toolsMode->draw);
+    const bool showTools = !textEditing() && doc.editable() && currentTool != Tool::Hand && rendersWorking;
     if (gizmo2d) {
         Gizmo2DSettings gs = gizmo2d->getSettings();
         gs.cjkLabels = ImGui::GetFont()->IsGlyphInFont((ImWchar)0x9577);       // 長
@@ -1120,17 +1231,22 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
             }
         }
     }
-    // the fixed-schematic 3D gizmo for S86's Dimension 3D layers (R35)
-    if (gizmo3d && showTools) {
+    // the fixed-schematic 3D gizmo for S86's Dimension 3D layers and their selected letters (R35, S86 R56)
+    const bool lettersTools = textEditing() && doc.editable() && rendersWorking && editLetters3D;
+    if (gizmo3d && !(showTools || lettersTools) && drag != Drag::Gizmo3D) gizmo3d->hide();
+    if (gizmo3d && (showTools || lettersTools)) {
         const std::vector<std::string> layers = doc.selectedLayers();
         const Gizmo3DProvider& provider = gizmo3DProvider();
         bool shownGizmo = false;
-        if (provider && layers.size() == 1 && drag != Drag::Gizmo3D) {
+        if (provider && drag != Drag::Gizmo3D) {
             Gizmo3DTarget target;
-            if (provider(doc, layers[0], target)) shownGizmo = gizmo3d->layout(target, Gizmo3DCamera::frontOn(titleXform, displayScale));
+            const bool got = lettersTools ? provider(doc, textEdit->layerId(), &editLetters, target)
+                                          : layers.size() == 1 && provider(doc, layers[0], nullptr, target);
+            if (got) shownGizmo = gizmo3d->layout(target, Gizmo3DCamera::frontOn(titleXform, displayScale));
         } else if (drag == Drag::Gizmo3D) {
             shownGizmo = true;
         }
+        if (!shownGizmo) gizmo3d->hide();
         if (shownGizmo && gizmo3d->visible()) {
             const Gizmo3DHandle hovered = drag == Drag::None && cursorInCanvas ? gizmo3d->hitTest(ImGui::GetIO().MousePos) : Gizmo3DHandle::None;
             gizmo3d->draw(dl, hovered, drag == Drag::Gizmo3D ? hovered : Gizmo3DHandle::None);
@@ -1221,6 +1337,20 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
                     glyphs.push_back(g);
                 }
                 if (!doc.editable()) glyphs.clear();
+                // a Dimension 3D layer's letters take the 3D gizmo (S86 R56): their centre, for the provider
+                editLetters3D = !glyphs.empty() && staged.value("dimension", std::string("2d")) == "3d" && gizmo3DProvider();
+                if (editLetters3D) {
+                    editLetters.indexes.clear();
+                    double cx = 0.0, cy = 0.0;
+                    for (const LetterGlyph& g : glyphs) {
+                        editLetters.indexes.push_back(g.index);
+                        const TitleVec2 c = frame.layerToDoc.apply(g.centre);
+                        cx += c.x;
+                        cy += c.y;
+                    }
+                    editLetters.centre = {cx / (double)glyphs.size(), cy / (double)glyphs.size()};
+                    glyphs.clear();
+                }
                 letterGizmo.setGlyphs(std::move(glyphs), frame.layerToDoc, titleXform, staged.value("size", 100.0));
                 const TitleLetterGizmo::Hit hot = drag == Drag::None && cursorInCanvas ? letterGizmo.hitTest(ImGui::GetIO().MousePos) : TitleLetterGizmo::Hit();
                 letterGizmo.draw(dl, hot);
@@ -1278,4 +1408,80 @@ void TitleDesignerWindow::drawCanvas(float width, float height) {
         if (ImGui::SmallButton("Panels###panels")) narrowPanelsOpen = true;
     }
     ImGui::EndChild();
+}
+
+// ---- In Context (R1, R30): the title over its instance's scene, at the instance's place ----
+
+bool TitleDesignerWindow::openInContextOf(const fs::path& document, uint32_t sceneId, Entity instance, std::string* error) {
+    SceneProject* scene = project ? project->getScene(sceneId) : nullptr;
+    if (!scene || !scene->scene || !scene->scene->findComponent<Transform>(instance)) {
+        if (error) *error = "The Title Art Renderer's scene is not open";
+        return false;
+    }
+    TitleInContext context;
+    context.document = document;
+    context.sceneId = sceneId;
+    context.instance = instance;
+    context.screenWidth = Engine::getCanvasWidth() > 0 ? Engine::getCanvasWidth() : 1920;
+    context.screenHeight = Engine::getCanvasHeight() > 0 ? Engine::getCanvasHeight() : 1080;
+    // the part of the canvas the instance's image covers: its bake's frame
+    TitleBakeInfo bake;
+    std::string text, why;
+    if (ProjectChecks::readFile(titleArtSidecarPath(document), text) && TitleBakeInfo::parse(text, bake, why)) context.frame = bake.frame;
+    if (!openInContext(context, error)) return false;
+    if (!canvas) return true;
+    // the scene with the instance, then without it: where they differ is the instance on screen
+    Scene* target = scene->scene;
+    const Entity camera = target->getCamera();
+    const int w = context.screenWidth, h = context.screenHeight;
+    canvas->requestSceneSnapshot(target, camera, w, h, [this, target, camera, instance, w, h](std::vector<uint8_t> with, int, int, std::string failed) {
+        if (with.empty() || !canvas) {
+            reportError("In Context: the scene could not be rendered (" + failed + ")");
+            return;
+        }
+        auto saved = std::make_shared<bool>(true);
+        canvas->requestSceneSnapshot(
+            target, camera, w, h,
+            [this, with = std::move(with), w, h](std::vector<uint8_t> without, int sw, int sh, std::string failed2) {
+                if (without.empty() || !inContext || sw != w || sh != h) {
+                    if (!failed2.empty()) reportError("In Context: the scene could not be rendered (" + failed2 + ")");
+                    return;
+                }
+                int x0 = w, y0 = h, x1 = -1, y1 = -1;
+                for (int y = 0; y < h; y++) {
+                    for (int x = 0; x < w; x++) {
+                        const size_t i = ((size_t)y * w + x) * 4;
+                        bool differs = false;
+                        for (int k = 0; k < 3 && !differs; k++) differs = std::abs((int)with[i + k] - (int)without[i + k]) > 8;
+                        if (!differs) continue;
+                        x0 = std::min(x0, x);
+                        y0 = std::min(y0, y);
+                        x1 = std::max(x1, x);
+                        y1 = std::max(y1, y);
+                    }
+                }
+                inContext->snapshotRgba = std::move(without);
+                if (x1 >= x0 && y1 >= y0) {
+                    inContext->x = (float)x0;
+                    inContext->y = (float)y0;
+                    inContext->width = (float)(x1 - x0 + 1);
+                    inContext->height = (float)(y1 - y0 + 1);
+                    inContext->located = true;
+                } else {
+                    notice = "In Context: the instance draws nothing on screen; the title is shown at the centre";
+                    noticeUntil = now() + 6.0;
+                }
+                lastViewChange = now();
+            },
+            [target, instance, saved] {
+                if (Transform* t = target->findComponent<Transform>(instance)) {
+                    *saved = t->visible;
+                    t->visible = false;
+                }
+            },
+            [target, instance, saved] {
+                if (Transform* t = target->findComponent<Transform>(instance)) t->visible = *saved;
+            });
+    });
+    return true;
 }

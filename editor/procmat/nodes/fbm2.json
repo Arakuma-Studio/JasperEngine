@@ -1,0 +1,174 @@
+{
+ "code": [],
+ "description": "Generates a noise made of several octaves of a simple noise",
+ "format": 1,
+ "functions": [
+  "old_fbm_2d_cellular",
+  "old_fbm_2d_cellular2",
+  "old_fbm_2d_cellular3",
+  "old_fbm_2d_cellular4",
+  "old_fbm_2d_cellular5",
+  "old_fbm_2d_cellular6",
+  "old_fbm_2d_perlin",
+  "old_fbm_2d_simplex",
+  "old_fbm_2d_value",
+  "old_fbm_2d_voronoise"
+ ],
+ "id": "fbm2",
+ "inputs": [
+  {
+   "default": "$offset",
+   "description": "An optional input to drive the offset",
+   "label": "7:",
+   "name": "offset_in",
+   "short_description": "Offset Input",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "FBM Noise",
+ "notices": [
+  {
+   "holder": "Inigo Quilez",
+   "license": "MIT",
+   "node": "fbm2",
+   "url": "https://www.shadertoy.com/view/Xd23Dh",
+   "year": ""
+  }
+ ],
+ "outputs": [
+  {
+   "description": "Shows a grayscale image of the generated noise",
+   "expr": "old_fbm_2d_$noise($(uv), vec2($(scale_x), $(scale_y)), int($(folds)), int($(iterations)), $(persistence), $offset_in($uv), $(seed))",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 2,
+   "description": "The simple noise type",
+   "label": "Noise",
+   "name": "noise",
+   "short_description": "Noise type",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Value",
+     "value": "value"
+    },
+    {
+     "name": "Perlin",
+     "value": "perlin"
+    },
+    {
+     "name": "Simplex",
+     "value": "simplex"
+    },
+    {
+     "name": "Cellular",
+     "value": "cellular"
+    },
+    {
+     "name": "Cellular 2",
+     "value": "cellular2"
+    },
+    {
+     "name": "Cellular 3",
+     "value": "cellular3"
+    },
+    {
+     "name": "Cellular 4",
+     "value": "cellular4"
+    },
+    {
+     "name": "Cellular 5",
+     "value": "cellular5"
+    },
+    {
+     "name": "Cellular 6",
+     "value": "cellular6"
+    },
+    {
+     "name": "Voronoise",
+     "value": "voronoise"
+    }
+   ]
+  },
+  {
+   "default": 4,
+   "description": "The scale of the first octave along the X axis",
+   "label": "Scale X",
+   "max": 32,
+   "min": 1,
+   "name": "scale_x",
+   "short_description": "Scale.x",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 4,
+   "description": "The scale of the first octave along the Y axis",
+   "label": "Scale Y",
+   "max": 32,
+   "min": 1,
+   "name": "scale_y",
+   "short_description": "Scale.y",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The number of times the basic noise is folded",
+   "label": "Folds",
+   "max": 5,
+   "min": 0,
+   "name": "folds",
+   "short_description": "Folds",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 3,
+   "description": "The number of noise octaves",
+   "label": "Iterations",
+   "max": 10,
+   "min": 1,
+   "name": "iterations",
+   "short_description": "Octaves",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "description": "The persistence between two consecutive octaves",
+   "label": "Persistence",
+   "max": 1,
+   "min": 0,
+   "name": "persistence",
+   "short_description": "Persistence",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "Offsets the points of the noise, can be used to animate the noise with \"$time\"",
+   "label": "Offset",
+   "max": 1,
+   "min": 0,
+   "name": "offset",
+   "short_description": "Offset",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Fractional Brownian Motion Noise",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/fbm2.mmg"
+ },
+ "type_version": 1
+}

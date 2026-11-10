@@ -77,7 +77,11 @@ namespace jasperengine::editor::mcp {
     void registerSynthesisTools(McpRegistry& registry);
     void registerPlacementTools(McpRegistry& registry);
     void registerVatTools(McpRegistry& registry);
+    void registerAnimationQualityTools(McpRegistry& registry);   // S77: check_animation, optimize_animation
     void registerSpriteNormalsTools(McpRegistry& registry);
+    // SpriteTools.cpp: the sprites group (S44's Aseprite import; S45 atlases, S47 drawing)
+    void registerSpriteTools(McpRegistry& registry);
+    void registerSpriteAtlasTools(McpRegistry& registry);
 
     // PlacementTools.cpp: puts back the preview poses a place_with_physics screenshot shows for a
     // few frames (App::stopTransientPreviews: before a save or Play)
@@ -101,8 +105,14 @@ namespace jasperengine::editor::mcp {
     void registerDeviceTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);
     void registerGraphTools(McpRegistry& registry);
+    void registerTerrainGenerationTools(McpRegistry& registry);
+    void registerProceduralMaterialTools(McpRegistry& registry);
     void registerGameplayTools(McpRegistry& registry);
     void registerSplineTools(McpRegistry& registry);
+    void registerVoxelTools(McpRegistry& registry);
+    void registerTerrainTools(McpRegistry& registry);
+    // T4: edit_terrain_world, registered by registerTerrainTools (its module and group)
+    void registerTerrainWorldTools(McpRegistry& registry);
     void registerParticleTools(McpRegistry& registry);
     void registerAnimatorTools(McpRegistry& registry);
     // S27: the editor tools (group editor_tools) and the Project Hub's core tools
@@ -158,6 +168,8 @@ namespace jasperengine::editor::mcp {
     void registerOrganisationTools(McpRegistry& registry);
     void registerNavigationTools(McpRegistry& registry);
     void registerVcsTools(McpRegistry& registry);   // S29 (VcsTools.cpp)
+    void registerPaletteTools(McpRegistry& registry);   // S43 (PaletteTools.cpp): edit_palette, apply_palette
+    void registerPixelArtTools(McpRegistry& registry);   // S42 (PixelArtTools.cpp): check_pixel_art
 
     // list_assets search and saved searches (OrganisationTools.cpp): an R20 search over the asset
     // index, as {entries: [{path, type, guid?, labels?}], total, truncated, query}; *error for a bad re:

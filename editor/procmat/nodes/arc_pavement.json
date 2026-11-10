@@ -1,0 +1,107 @@
+{
+ "code": [
+  "vec2 $(name_uv)_uv = fract($uv)*vec2($repeat, -1.0);",
+  "vec2 $(name_uv)_seed;",
+  "vec4 $(name_uv)_ap = arc_pavement($(name_uv)_uv, $rows, $bricks, $(name_uv)_seed);",
+  ""
+ ],
+ "description": "Draws a white shape on a black background",
+ "format": 1,
+ "functions": [
+  "arc_pavement",
+  "pavement",
+  "rand3"
+ ],
+ "id": "arc_pavement",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Arc Pavement",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "A grayscale image that shows the bricks pattern",
+   "expr": "pavement($(name_uv)_ap.zw, $bevel, 2.0*$mortar)",
+   "label": "Bricks pattern",
+   "type": "f"
+  },
+  {
+   "description": "A random color for each brick",
+   "expr": "rand3($(name_uv)_seed)",
+   "label": "Random color",
+   "type": "rgb"
+  },
+  {
+   "description": "An UV map output for each brick, to be connected to the Map input of a CustomUV node",
+   "expr": "vec3($(name_uv)_ap.zw, 0.0)",
+   "label": "Brick UV",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 2,
+   "description": "The number of repetitions of the whole pattern",
+   "label": "Repeat:",
+   "max": 4,
+   "min": 1,
+   "name": "repeat",
+   "short_description": "Repeat",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 8,
+   "description": "The number of rows",
+   "label": "Rows:",
+   "max": 16,
+   "min": 4,
+   "name": "rows",
+   "short_description": "Rows",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 8,
+   "description": "The number of bricks per row",
+   "label": "Bricks:",
+   "max": 16,
+   "min": 4,
+   "name": "bricks",
+   "short_description": "Bricks",
+   "step": 1,
+   "tiles": true,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "The width of the space between bricks",
+   "label": "Mortar:",
+   "max": 0.5,
+   "min": 0,
+   "name": "mortar",
+   "short_description": "Mortar",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "The width of the edge of each brick",
+   "label": "Bevel:",
+   "max": 0.5,
+   "min": 0,
+   "name": "bevel",
+   "short_description": "Bevel",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/arc_pavement.mmg"
+ },
+ "type_version": 1
+}

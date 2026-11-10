@@ -147,12 +147,38 @@ int ShaderData::getAttrIndex(AttributeType type){
         attrstr = "a_tangentOut";
     }else if (type == AttributeType::LINEPARAMS){
         attrstr = "a_lineParams";
+    }else if (type == AttributeType::PARTICLEPIXEL){
+        attrstr = "i_particlePixel";
+    }else if (type == AttributeType::PARTICLESLOT){
+        attrstr = "i_particleSlot";
+    }else if (type == AttributeType::SPRITEFX){
+        attrstr = "a_spriteFx";
+    }else if (type == AttributeType::FRAMERECT){
+        attrstr = "a_frameRect";
+    }else if (type == AttributeType::SNAPPIVOT){
+        attrstr = "a_snapPivot";
+    }else if (type == AttributeType::INSTANCESPRITEFX){
+        attrstr = "i_spriteFx";
+    }else if (type == AttributeType::INSTANCESNAPPIVOT){
+        attrstr = "i_snapPivot";
     }else if (type >= AttributeType::OBJECTMODEL0 && type <= AttributeType::OBJECTEXTRA){
         static const char* const objectNames[] = {
             "i_objectModel0", "i_objectModel1", "i_objectModel2",
             "i_objectNormal0", "i_objectNormal1", "i_objectNormal2",
             "i_objectMvp0", "i_objectMvp1", "i_objectMvp2", "i_objectMvp3", "i_objectExtra"};
         attrstr = objectNames[(int)type - (int)AttributeType::OBJECTMODEL0];
+    }else if (type == AttributeType::INSTANCEPACKED0){
+        attrstr = "i_packed0";
+    }else if (type == AttributeType::INSTANCEPACKED1){
+        attrstr = "i_packed1";
+    }else if (type == AttributeType::INSTANCEPACKED2){
+        attrstr = "i_packed2";
+    }else if (type == AttributeType::INSTANCEPACKED3){
+        attrstr = "i_packed3";
+    }else if (type == AttributeType::VOXELSLOTS){
+        attrstr = "a_voxelSlots";
+    }else if (type == AttributeType::VOXELWEIGHTS){
+        attrstr = "a_voxelWeights";
     }
 
     if (attrstr.empty()){
@@ -200,6 +226,8 @@ int ShaderData::getUniformBlockIndex(UniformBlockType type){
         ustr = "u_fs_texCoordSets";
     }else if (type == UniformBlockType::PBR_VS_FADE){
         ustr = "u_vs_fade";
+    }else if (type == UniformBlockType::PBR_VS_FOLIAGE){
+        ustr = "u_vs_foliage";
     }else if (type == UniformBlockType::FS_LIGHTING){
         ustr = "u_fs_lighting";
     }else if (type == UniformBlockType::FS_REFLECTION_PROBE){
@@ -268,6 +296,8 @@ int ShaderData::getUniformBlockIndex(UniformBlockType type){
         ustr = "u_vs_terrainParams";
     }else if (type == UniformBlockType::FS_TERRAIN_LAYERS){
         ustr = "u_fs_terrainLayers";
+    }else if (type == UniformBlockType::FS_VOXEL_LAYERS){
+        ustr = "u_fs_voxelLayers";
     }else if (type == UniformBlockType::SSAO_FS_PARAMS){
         ustr = "u_fs_ssaoParams";
     }else if (type == UniformBlockType::SSAO_BLUR_FS_PARAMS){
@@ -405,6 +435,10 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_blendMap2";
     }else if (type == TextureShaderType::TERRAINDETAIL){
         texstr = "u_terrainDetail";
+    }else if (type == TextureShaderType::VOXELDETAIL){
+        texstr = "u_voxelDetail";
+    }else if (type == TextureShaderType::TERRAINHOLES){
+        texstr = "u_terrainHoles";
     }else if (type == TextureShaderType::DEPTHTEXTURE){
         texstr = "u_depthTexture";
     }else if (type == TextureShaderType::SSAOTEXTURE){

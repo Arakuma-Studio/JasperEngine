@@ -16,12 +16,13 @@
 #include "Theme.h"
 #include "component/FogComponent.h"
 #include "component/ModelComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "command/CommandHandle.h"
 #include "command/type/ReflectedValueCmd.h"
 #include "reflect/Enums.h"
 #include "reflect/Reflect.h"
-#include "subsystem/RenderSystem.h"
 #include "external/IconsFontAwesome6.h"
+#include "terrainworld/TerrainWorldPanel.h"
 
 #include "imgui.h"
 
@@ -369,6 +370,9 @@ void editor::InspectorWindow::drawDefaultComponentNotes(ComponentType cpType, Sc
             ImGui::TextWrapped("Local Volumetric Fog shows through volumetric fog only: add a Fog of Type Height and turn its Volumetric Fog on.");
         }
     }
+    if (cpType == ComponentType::TerrainWorldComponent) {
+        TerrainWorldPanel::drawInspectorNotes(project, sceneProject);
+    }
 }
 
 editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawer(ComponentType cpType) {
@@ -393,6 +397,7 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::VolumetricCloudsComponent: return &InspectorWindow::drawVolumetricCloudsComponent;
         case ComponentType::ReflectionProbeComponent: return &InspectorWindow::drawReflectionProbeComponent;
         case ComponentType::UIDocumentComponent: return &InspectorWindow::drawUIDocumentComponent;
+        case ComponentType::TextComponent: return &InspectorWindow::drawTextComponent;
         case ComponentType::CameraComponent: return &InspectorWindow::drawCameraComponent;
         case ComponentType::AudioSourceComponent: return &InspectorWindow::drawAudioComponent;
         case ComponentType::AudioSnapshotComponent: return &InspectorWindow::drawAudioSnapshotComponent;
@@ -451,12 +456,19 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::SplineAnimateComponent: return &InspectorWindow::drawSplineAnimateComponent;
         case ComponentType::AnimatorComponent: return &InspectorWindow::drawAnimatorComponent;
         case ComponentType::VertexAnimatorComponent: return &InspectorWindow::drawVertexAnimatorComponent;
+        // T6 R65 (InspectorVoxels.cpp)
+        case ComponentType::VoxelVolumeComponent: return &InspectorWindow::drawVoxelVolumeComponent;
         // upstream's (InspectorUpstream.cpp)
         case ComponentType::OnScreenStickComponent: return &InspectorWindow::drawOnScreenStickComponent;
         case ComponentType::OnScreenButtonComponent: return &InspectorWindow::drawOnScreenButtonComponent;
         case ComponentType::TouchAreaComponent: return &InspectorWindow::drawTouchAreaComponent;
         case ComponentType::RagdollComponent: return &InspectorWindow::drawRagdollComponent;
         case ComponentType::CanvasGroupComponent: return &InspectorWindow::drawCanvasGroupComponent;
+        // pixel art (InspectorPixelArt.cpp)
+        case ComponentType::PixelPerfectCameraComponent: return &InspectorWindow::drawPixelPerfectCameraComponent;
+        // 2D sorting and Sprite Batch (InspectorSorting.cpp)
+        case ComponentType::SortingGroupComponent: return &InspectorWindow::drawSortingGroupComponent;
+        case ComponentType::SpriteBatchComponent: return &InspectorWindow::drawSpriteBatchComponent;
         default: return nullptr;
     }
 }

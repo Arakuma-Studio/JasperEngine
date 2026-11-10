@@ -81,6 +81,7 @@ namespace jasperengine {
         // in binding directory
         static void registerActionClasses(lua_State *L);
         static void registerParticleClasses(lua_State *L);
+        static void registerFoliageClasses(lua_State *L);
         static void registerCoreClasses(lua_State *L);
         static void registerECSClasses(lua_State *L);
         static void registerAudioClasses(lua_State *L);
@@ -98,6 +99,17 @@ namespace jasperengine {
         static void registerNavigationComponentClasses(lua_State *L);
         static void registerTitleArtClasses(lua_State *L);
         static void registerSplineClasses(lua_State *L);
+        static void registerNoiseClasses(lua_State *L);
+        static void registerTerrainClasses(lua_State *L);
+#if JASPERENGINE_VOXEL
+        static void registerVoxelClasses(lua_State *L);
+#endif
+#if JASPERENGINE_TERRAIN_WORLD
+        static void registerTerrainWorldClasses(lua_State *L);
+#endif
+        static void registerPixelArtClasses(lua_State *L);
+        // S52: SortingLayer, the renderers' sorting fields, SortingGroup, SpriteBatch (SortingClassesLua.cpp)
+        static void registerSortingClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);

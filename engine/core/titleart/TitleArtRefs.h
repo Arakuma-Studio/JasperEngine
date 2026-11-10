@@ -3,7 +3,8 @@
 
 // Contract (docs/specs/S80-title-art-core.md R4, R5, §6.8)
 // - Purpose: every asset reference a `.titleart` holds (fonts, fallback fonts, images, SVGs,
-//   reflection maps, fill, mask and pattern images, Asset params of effects and generators),
+//   reflection maps, fill, mask and pattern images, Asset params of effects and generators, S85's
+//   marker sounds),
 //   found through the member schema and the registry, so a member or param a later spec adds
 //   with an AssetRef type is visited without a change here. The editor's dependency index, its
 //   relink on rename and move, Missing Assets and S81's export all walk documents with it.

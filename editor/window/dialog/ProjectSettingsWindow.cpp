@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "window/TerrainQualityPanel.h"
+#include "component/TerrainComponent.h"
 #include "ProjectSettingsWindow.h"
 #include "window/ProjectWindow.h"
 #include "io/watch/LinkedFolders.h"
@@ -32,6 +34,14 @@
 #include "subsystem/AudioSystem.h"
 #include "EditorHost.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "command/type/SortingLayersCmd.h"
+#include "component/SortingGroupComponent.h"
+#include "component/MeshComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/PointsComponent.h"
+#include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
+#include "util/UIProbe.h"
 #include "command/type/ApplePrivacySettingsCmd.h"
 #include "util/NativeNeeds.h"
 #include "input/InputActions.h"
@@ -49,8 +59,13 @@
 #include "command/type/ThreadingSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
 #include "titleart/TitleArtSettingsCmd.h"
+#include "titleart/localisation/TitleLanguageNames.h"
+#include "util/TitleArtLanguage.h"
 #include "model/ModelCookQueue.h"
 #include "model/ModelSettingsCmd.h"
+#include "pixelart/BuiltinPalettes.h"
+#include "pixelart/PaletteAssets.h"
+#include "pixelart/PaletteUse.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "util/Color.h"
 #include "imgui_internal.h"
@@ -69,8 +84,9 @@
 
 namespace jasperengine::editor {
 
-static const char* scalingModeNames[] = { "Fit Width", "Fit Height", "Letterbox", "Crop", "Stretch", "Native" };
-static const Scaling scalingModeValues[] = { Scaling::FITWIDTH, Scaling::FITHEIGHT, Scaling::LETTERBOX, Scaling::CROP, Scaling::STRETCH, Scaling::NATIVE };
+static const char* scalingModeNames[] = { "Fit Width", "Fit Height", "Letterbox", "Crop", "Stretch", "Native", "Integer (Letterbox)", "Integer (Expand)" };
+static const Scaling scalingModeValues[] = { Scaling::FITWIDTH, Scaling::FITHEIGHT, Scaling::LETTERBOX, Scaling::CROP, Scaling::STRETCH, Scaling::NATIVE,
+                                             Scaling::INTEGER, Scaling::INTEGER_EXPAND };
 static const int scalingModeCount = sizeof(scalingModeValues) / sizeof(scalingModeValues[0]);
 
 static const char* textureStrategyNames[] = { "Fit", "Resize", "None" };
@@ -207,7 +223,12 @@ enum class ProjectCategory {
     Editor,
     Navigation,
     Mesh,
+    TwoD,   // "2D" (S45: Sprite Atlas)
+    Animation,
+    PixelArt,
+    Voxels,    // drawn from its settings rows (no page of its own here)
     TitleArt,
+    Localization,
     Count
 };
 
@@ -838,6 +859,13 @@ static void drawScalingPreview(Scaling mode, int canvasWidth, int canvasHeight) 
             scaleX = vw / baseW;
             scaleY = vh / baseH;
             break;
+        case Scaling::INTEGER:
+        case Scaling::INTEGER_EXPAND: {
+            // the preview's whole-number fit (at least 1, as the layout's k)
+            float s = std::floor((vw / baseW < vh / baseH) ? vw / baseW : vh / baseH);
+            scaleX = scaleY = s < 1.0f ? 1.0f : s;
+            break;
+        }
         case Scaling::NATIVE:
         default:
             scaleX = scaleY = 1.0f;
@@ -955,11 +983,15 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_canvasWidth = project->getCanvasWidth();
     m_canvasHeight = project->getCanvasHeight();
     m_scalingModeIndex = findScalingIndex(project->getScalingMode());
+    m_pixelsPerUnit = project->getPixelsPerUnit();
+    m_bitmapTextCacheMiB = project->getBitmapTextCacheMiB();
     m_uiScale = project->getUIScale();
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++) {
         m_atmosphereQuality[i] = (int)project->getAtmosphereQuality()[i];
+        m_foliageQuality[i] = (int)project->getFoliageQuality()[i];
+    }
     for (int i = 0; i < 3; i++)
         m_foliageDistanceScale[i] = project->getFoliageDistanceScale()[i];
     m_textureSettings = project->getTextureSettings();
@@ -970,6 +1002,11 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
         m_shadowTiers[platform] = static_cast<int>(project->getShadowTier(platform));
     }
+    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+        m_terrainTiers[platform] = static_cast<int>(project->getTerrainQualityTier(platform));
+    }
+    m_shipAllTerrainTiers = project->isShipAllTerrainTiers();
+    m_compressTerrainLayers = project->isCompressTerrainLayers();
     m_windowModeIndex = findWindowModeIndex(project->getWindowMode());
     m_windowWidth = (int)project->getWindowWidth();
     m_windowHeight = (int)project->getWindowHeight();
@@ -982,6 +1019,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_scriptDirs = project->getScriptDirs();
     m_cxxStandardIndex = findCxxStandardIndex(project->getCxxStandard());
     m_physics2DEnabled = project->isPhysics2DEnabled();
+    m_spriteAtlasMode = project->getSpriteAtlasMode();
     m_physics3DEnabled = project->isPhysics3DEnabled();
     m_inputActionsAsset = project->getInputActionsAsset();
     m_inputDeadzone = project->getInputDeadzone();
@@ -997,7 +1035,16 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
         }
         std::sort(m_inputActionsFiles.begin(), m_inputActionsFiles.end());
     }
+    m_defaultPalette = FileUtils::pathToGenericUtf8(project->getDefaultPalette());
+    m_pixelArt = project->getPixelArtSettings();
+    m_defaultFilterIndex = project->getDefaultFilterMode() == TextureFilterMode::Point ? 1 : 0;
+    m_paletteFiles.clear();
+    for (const pixelart::ProjectPalette& entry : pixelart::listProjectPalettes(*project))
+        m_paletteFiles.push_back({entry.path, entry.palette.name});
     m_physics3DWorld = project->getPhysics3DWorldSettings();
+    m_particleWorldBudget = (int)project->getParticleWorldBudget();
+    m_particleQa = project->getParticleQaSettings();
+    m_procMatQa = project->getProcMatQaSettings();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
     m_dynamicBatching = project->isDynamicBatching();
     m_mobilePbrTierIndex = findMobilePbrTierIndex(project->getMobilePbrTier());
@@ -1103,6 +1150,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_deviceSettings = project->getDeviceSettings();
     m_navigation = project->getNavigationSettings();
     m_titleArt = project->getTitleArtSettings();
+    m_localization = project->getLocalizationSettings();
+    m_localizationInput[0] = '\0';
     m_audioSettings = project->getAudioSettings();
     snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
     snprintf(m_audioDefaultGroupBuffer, sizeof(m_audioDefaultGroupBuffer), "%s", m_audioSettings.defaultOutputGroup.c_str());
@@ -1229,7 +1278,11 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Editor: drawEditorSettings(); break;
         case ProjectCategory::Navigation: drawNavigationSettings(); break;
         case ProjectCategory::Mesh: drawMeshSettings(); break;
+        case ProjectCategory::TwoD: draw2DSettings(); break;
+        case ProjectCategory::Animation: drawAnimationSettings(); break;
+        case ProjectCategory::PixelArt: drawPixelArtSettings(); break;
         case ProjectCategory::TitleArt: drawTitleArtSettings(); break;
+        case ProjectCategory::Localization: drawLocalizationSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -1911,6 +1964,27 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             drawScalingPreview(scalingModeValues[m_scalingModeIndex], m_canvasWidth, m_canvasHeight);
         }
 
+        if (settingsui::beginRow("graphics.pixels_per_unit")) {
+            drawIntSetting("Pixels Per Unit", "##PixelsPerUnit", m_pixelsPerUnit, Project::defaultPixelsPerUnit, Project::minPixelsPerUnit,
+                           "Texels per world unit of sprites and tilemaps whose own Pixels Per Unit is 0 (1: a world unit is a pixel). "
+                           "1 to 256.");
+            m_pixelsPerUnit = std::min(m_pixelsPerUnit, Project::maxPixelsPerUnit);
+        }
+
+        // S42 R3: what runtime-made textures and new references start with
+        if (settingsui::beginRow("graphics.default_filter_mode")) {
+            static const char* const filterNames[] = {"Bilinear", "Point (no filter)"};
+            drawComboSetting("Default Filter Mode", "##DefaultFilterMode", filterNames, 2, m_defaultFilterIndex, 0,
+                             "What every texture a game makes at runtime (Lua Sprite:setTexture) and every new reference to a texture "
+                             "without its own Filter Mode starts with. Point keeps pixel art crisp. Saved references keep their own filters.");
+        }
+
+        if (settingsui::beginRow("graphics.bitmap_text_cache_mib")) {
+            drawIntSetting("Bitmap Text Cache (MiB)", "##BitmapTextCacheMiB", m_bitmapTextCacheMiB, 0, 0,
+                           "Memory for pixel-font outlines and shadows. 0: 2 MiB on Android, iOS and HTML5, 8 MiB on desktop.");
+            m_bitmapTextCacheMiB = std::min(m_bitmapTextCacheMiB, Project::maxBitmapTextCacheMiB);
+        }
+
         // the Canvas Scaler's project default: the UI's own space, apart from the game canvas
         if (settingsui::beginRow("graphics.ui_scale")) {
             ImGui::TableNextRow();
@@ -2018,6 +2092,62 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                 "- Automatic is Tiled on Medium tiers and above, Per Object on Low");
         }
 
+        if (settingsui::beginRow("particles.world_budget")) {
+            drawIntSetting("World Particle Budget", "##ParticleWorldBudget", m_particleWorldBudget, 0, 0,
+                "The most particles alive at once in a scene, sub-emitter children included: past it, effects of lower priority "
+                "and smaller on screen emit less. 0 keeps the platform's default (262,144 on desktop, 131,072 on the web, 65,536 on mobile).");
+        }
+
+        // the thresholds of the particle checks (Particle Effect window, preview_particle_effect)
+        if (settingsui::sectionVisible("Particle Checks")) {
+            ImGui::SeparatorText("Particle Checks");
+            const ParticleQaSettings defaults;
+            for (const ParticleQaField& field : particleQaFields()) {
+                if (!settingsui::beginRow(field.key)) continue;
+                const bool changed = field.real ? m_particleQa.*field.real != defaults.*field.real : m_particleQa.*field.whole != defaults.*field.whole;
+                if (projectBeginSettingsRow(field.label, changed)) {
+                    if (field.real) m_particleQa.*field.real = defaults.*field.real;
+                    else m_particleQa.*field.whole = defaults.*field.whole;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::PushID(field.key);
+                if (field.real) {
+                    ImGui::DragFloat("##value", &(m_particleQa.*field.real), 0.1f, (float)field.minimum, (float)field.maximum);
+                    m_particleQa.*field.real = std::clamp(m_particleQa.*field.real, (float)field.minimum, (float)field.maximum);
+                } else {
+                    ImGui::DragInt("##value", &(m_particleQa.*field.whole), 1.0f, (int)field.minimum, (int)field.maximum);
+                    m_particleQa.*field.whole = std::clamp(m_particleQa.*field.whole, (int)field.minimum, (int)field.maximum);
+                }
+                ImGui::PopID();
+                endSettingsRow((std::string(field.help) + " Changing these does not fix an effect; checks report changed thresholds.").c_str());
+            }
+        }
+
+        // the thresholds of the material checks (preview_procedural_material, check --materials)
+        if (settingsui::sectionVisible("Material Checks")) {
+            ImGui::SeparatorText("Material Checks");
+            const procmat::ProcMatQaSettings defaults;
+            for (const procmat::ProcMatQaField& field : procmat::procMatQaFields()) {
+                if (!settingsui::beginRow(field.key)) continue;
+                const bool changed = field.real ? m_procMatQa.*field.real != defaults.*field.real : m_procMatQa.*field.whole != defaults.*field.whole;
+                if (projectBeginSettingsRow(field.label, changed)) {
+                    if (field.real) m_procMatQa.*field.real = defaults.*field.real;
+                    else m_procMatQa.*field.whole = defaults.*field.whole;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::PushID(field.key);
+                if (field.real) {
+                    ImGui::DragFloat("##value", &(m_procMatQa.*field.real), 0.01f, (float)field.minimum, (float)field.maximum);
+                    m_procMatQa.*field.real = std::clamp(m_procMatQa.*field.real, (float)field.minimum, (float)field.maximum);
+                } else {
+                    ImGui::DragInt("##value", &(m_procMatQa.*field.whole), 1.0f, (int)field.minimum, (int)field.maximum);
+                    m_procMatQa.*field.whole = std::clamp(m_procMatQa.*field.whole, (int)field.minimum, (int)field.maximum);
+                }
+                ImGui::PopID();
+                endSettingsRow((std::string(field.help) + " Changing these does not fix a material; checks report changed thresholds.").c_str());
+            }
+        }
+
         // Shadows: the quality tier a scene of Quality Auto renders with, per platform
         if (settingsui::sectionVisible("Shadows")) {
             ImGui::SeparatorText("Shadows");
@@ -2033,11 +2163,13 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                     static_cast<int>(ShadowTiers::defaultTier(platform)),
                     "The shadow quality tier of this platform's builds (and of the editor running on it) for scenes whose shadow "
                     "Quality is Auto: cascades, resolution, distance, filter and the memory budget (docs/rendering/shadows.md). "
-                    "Ultra adds PCSS contact hardening.");
+                    "Ultra adds PCSS contact hardening: two to three times the High filter's shadow lookups per pixel, heavy for phones "
+                    "and the web (where a variant with every texture slot used keeps the High filter).");
             }
         }
 
         drawShaderCreationSettings();
+        drawTerrainQualitySettings();
 
         if (settingsui::beginRow("graphics.dynamic_batching")) {
             if (projectBeginSettingsRow("Dynamic Batching", m_dynamicBatching != Project::defaultDynamicBatching)) {
@@ -2050,6 +2182,43 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                 "was not batched with the previous one.");
         }
         drawUploadBudgetSettings();
+
+        // 2D sorting (S52 R4): applied at once, each change one undo step of the project
+        {
+            const SortingSettings current = SortingSettings::current();
+            auto applySorting = [this](const SortingSettings& changed) {
+                if (changed == SortingSettings::current()) return;
+                auto* command = new SortingLayersCmd(m_project, changed, "Change Transparency Sort");
+                command->setNoMerge();
+                m_project->getProjectCommandHistory()->addCommand(command);
+            };
+            if (settingsui::beginRow("graphics.transparency_sort_mode")) {
+                SortingSettings changed = current;
+                if (projectBeginSettingsRow("Transparency Sort Mode", current.mode != TransparencySortMode::DEFAULT))
+                    changed.mode = TransparencySortMode::DEFAULT;
+                int mode = current.mode == TransparencySortMode::CUSTOM_AXIS ? 1 : 0;
+                const char* modes[] = {"Default", "Custom Axis"};
+                ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+                if (ImGui::Combo("##TransparencySortMode", &mode, modes, 2))
+                    changed.mode = mode == 1 ? TransparencySortMode::CUSTOM_AXIS : TransparencySortMode::DEFAULT;
+                UIProbe::item("graphics.transparency_sort_mode");
+                endSettingsRow("Custom Axis: in 2D cameras, renderers of one Sorting Layer and Order in Layer draw along the "
+                               "Transparency Sort Axis, a larger dot(axis, position) first. Default keeps the Hierarchy order.");
+                applySorting(changed);
+            }
+            if (settingsui::beginRow("graphics.transparency_sort_axis")) {
+                SortingSettings changed = current;
+                if (projectBeginSettingsRow("Transparency Sort Axis", current.axis != Vector3(0.0f, 1.0f, 0.0f)))
+                    changed.axis = Vector3(0.0f, 1.0f, 0.0f);
+                float axis[3] = {current.axis.x, current.axis.y, current.axis.z};
+                ImGui::SetNextItemWidth(Theme::dpi(220.0f));
+                ImGui::InputFloat3("##TransparencySortAxis", axis);
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                    changed.axis = Vector3(axis[0], axis[1], axis[2]);
+                endSettingsRow("The Custom Axis. (0, 1, 0): a higher y draws first, so lower sprites cover higher ones (top-down).");
+                applySorting(changed);
+            }
+        }
 
         if (settingsui::beginRow("graphics.runtime_shaders")) {
             if (projectBeginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
@@ -2150,13 +2319,23 @@ void ProjectSettingsWindow::drawQualitySettings() {
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
         }
 
+        // what foliage scales and caps (docs/mcp/guide/terrain.md); never written to a Terrain
+        static const char* const foliageNames[] = {"Low", "Medium", "High"};
+        static const char* const qualityRows[3] = {"Foliage Quality (Desktop)", "Foliage Quality (Mobile)", "Foliage Quality (Web)"};
+        static const char* const qualityIds[3] = {"##FoliageDesktop", "##FoliageMobile", "##FoliageWeb"};
+        static const char* const qualityKeys[3] = {"quality.foliage_quality_desktop", "quality.foliage_quality_mobile", "quality.foliage_quality_web"};
+        const char* const qualityTooltip = "Detail density and fade scales, caps on visible details, trees and draws, detail shadows and impostor blending, per platform group.";
+        for (int i = 0; i < 3; i++) {
+            if (!settingsui::beginRow(qualityKeys[i])) continue;
+            drawComboSetting(qualityRows[i], qualityIds[i], foliageNames, 3, m_foliageQuality[i], (int)Project::defaultFoliageQuality[i], qualityTooltip);
+        }
         // the scale of every terrain foliage layer's draw distances (Unity's
         // QualitySettings.terrainDetailDistanceFactor; docs/rendering/instancing.md)
         static const char* const foliageRows[3] = {"Foliage Distance (Desktop)", "Foliage Distance (Mobile)", "Foliage Distance (Web)"};
         static const char* const foliageIds[3] = {"##FoliageDistanceDesktop", "##FoliageDistanceMobile", "##FoliageDistanceWeb"};
         static const char* const foliageKeys[3] = {"quality.foliage_distance_desktop", "quality.foliage_distance_mobile", "quality.foliage_distance_web"};
         static const char* const foliageTooltip =
-            "Multiplies the Draw Distance and Min Draw Distance of every terrain foliage layer on this platform group; "
+            "Multiplies the Draw Distance and Min Draw Distance of every terrain foliage layer, and Tree Distance and Billboard Start, on this platform group; "
             "0 draws no foliage. Lower it for phones and the web. A script can change it at runtime: Engine.foliageDistanceScale.";
         for (int i = 0; i < 3; i++) {
             if (!settingsui::beginRow(foliageKeys[i])) continue;
@@ -2968,6 +3147,31 @@ void ProjectSettingsWindow::drawPhysics2DSettings() {
     endSettingsPanel();
 }
 
+// S45 R18: Project Settings > 2D > Sprite Atlas > Mode
+void ProjectSettingsWindow::draw2DSettings() {
+    if (beginSettingsPanel("##TwoDSettingsPanel")) {
+        if (settingsFoldout("Sprite Atlas", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (beginSettingsTable("##SpriteAtlasTable")) {
+                if (settingsui::beginRow("sprite_atlas.mode")) {
+                    static const char* modes[] = {"Enabled", "Enabled for Builds", "Disabled"};
+                    static const char* tokens[] = {"enabled", "enabled_for_builds", "disabled"};
+                    int index = 0;
+                    for (int i = 0; i < 3; i++) {
+                        if (m_spriteAtlasMode == tokens[i]) index = i;
+                    }
+                    if (projectBeginSettingsRow("Mode", index != 0)) m_spriteAtlasMode = "enabled";
+                    ImGui::SetNextItemWidth(-helpMarkerWidth());
+                    if (ImGui::Combo("##SpriteAtlasMode", &index, modes, 3)) m_spriteAtlasMode = tokens[index];
+                    endSettingsRow("Enabled: the editor, Play and builds draw packed sprites from their atlases. Enabled for Builds: the editor "
+                                   "and Play draw the sources, builds the atlases. Disabled: no atlas is built or used.");
+                }
+                ImGui::EndTable();
+            }
+        }
+    }
+    endSettingsPanel();
+}
+
 // Text turned a quarter left, read bottom to top, from bottomLeft upwards
 static void addVerticalText(ImDrawList* drawList, const ImVec2& bottomLeft, ImU32 color, const char* text) {
     const int firstVertex = drawList->VtxBuffer.Size;
@@ -3037,6 +3241,21 @@ void ProjectSettingsWindow::drawInputSettings() {
         drawInputManagerSection();
     }
     endSettingsPanel();
+}
+
+// Project Settings > Animation (S77 R38): stored with the model settings, one undo step on Apply
+void ProjectSettingsWindow::drawAnimationSettings() {
+    projectDrawSettingsPanel("##AnimationSettingsPanel", [this]() {
+        if (settingsui::beginRow("animation.animation_entities")) {
+            static const char* const labels[] = {"Always", "Auto"};
+            int value = (int)m_modelSettings.animationEntities;
+            drawComboSetting("Animation Entities", "##AnimationEntities", labels, 2, value, 0,
+                             "When a model is placed in a scene. Always: an Animation entity per clip. Auto: none for a model "
+                             "of 5 or more clips, whose clips play through an Animation Player or an Animator. New projects "
+                             "start with Auto; a model already placed keeps its setting.");
+            m_modelSettings.animationEntities = (AnimationEntitiesMode)value;
+        }
+    });
 }
 
 void ProjectSettingsWindow::drawNavigationSettings() {
@@ -3159,14 +3378,39 @@ void ProjectSettingsWindow::drawTitleArtSettings() {
                      "%.1f s", "Seconds without a render after which the titles' render targets are freed.", nullptr, 0.0);
             groupRow("title_art.cache_budget_mib", "Cache Budget", m_titleArt.cacheBudgetMiB, defaults.cacheBudgetMiB, 1.0f, 4096.0f,
                      "%.0f MiB", "Memory for images shown before (toggling back to a text renders nothing) and the render caches.", nullptr, 0.0);
+            if (settingsui::beginRow("title_art.animation.flipbook_budget_mib")) {
+                const bool budgetChanged = m_titleArt.flipbookBudgetMiB != defaults.flipbookBudgetMiB || m_titleArt.flipbookBudgetAndroidEtc2MiB != defaults.flipbookBudgetAndroidEtc2MiB;
+                if (projectBeginSettingsRow("Flipbook Budget", budgetChanged)) {
+                    m_titleArt.flipbookBudgetMiB = defaults.flipbookBudgetMiB;
+                    m_titleArt.flipbookBudgetAndroidEtc2MiB = defaults.flipbookBudgetAndroidEtc2MiB;
+                }
+                const char* const names[] = {"Desktop", "Mobile", "Android ETC2", "Web"};
+                double* values[] = {&m_titleArt.flipbookBudgetMiB.desktop, &m_titleArt.flipbookBudgetMiB.mobile, &m_titleArt.flipbookBudgetAndroidEtc2MiB,
+                                    &m_titleArt.flipbookBudgetMiB.web};
+                const float width = (ImGui::GetContentRegionAvail().x - helpMarkerWidth()) / 4 - ImGui::GetStyle().ItemSpacing.x;
+                for (int i = 0; i < 4; i++) {
+                    if (i) ImGui::SameLine();
+                    float v = (float)*values[i];
+                    ImGui::SetNextItemWidth(width);
+                    if (ImGui::DragFloat((std::string("##flipbudget") + names[i]).c_str(), &v, 0.5f, 1.0f, 4096.0f, "%.0f MiB")) *values[i] = v;
+                    ImGui::SetItemTooltip("%s", names[i]);
+                }
+                endSettingsRow("Baked flipbook pages against these budgets per family: a flipbook over one fails its check.");
+            }
+            if (settingsui::beginRow("title_art.animation.default_fps")) {
+                if (projectBeginSettingsRow("Default Fps", m_titleArt.animationDefaultFps != defaults.animationDefaultFps)) m_titleArt.animationDefaultFps = defaults.animationDefaultFps;
+                ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - helpMarkerWidth());
+                ImGui::DragInt("##animfps", &m_titleArt.animationDefaultFps, 0.5f, 1, 120);
+                endSettingsRow("The animation fps of new documents.");
+            }
             if (settingsui::beginRow("title_art.reference_height")) {
                 if (projectBeginSettingsRow("Reference Height", m_titleArt.referenceHeight != defaults.referenceHeight)) {
                     m_titleArt.referenceHeight = defaults.referenceHeight;
                 }
                 ImGui::SetNextItemWidth(-helpMarkerWidth());
                 ImGui::InputInt("##TitleArtReferenceHeight", &m_titleArt.referenceHeight);
-                m_titleArt.referenceHeight = std::clamp(m_titleArt.referenceHeight, 120, 8192);
-                endSettingsRow("The display height the export prebakes Realtime titles' first images for.");
+                m_titleArt.referenceHeight = m_titleArt.referenceHeight <= 0 ? 0 : std::clamp(m_titleArt.referenceHeight, 120, 8192);
+                endSettingsRow("The display height Realtime UI titles and their prebaked first images render for. 0: the canvas height.");
             }
             if (settingsui::beginRow("title_art.simulate_export_characters")) {
                 if (projectBeginSettingsRow("Simulate Export Characters in Play", m_titleArt.simulateExportCharacters != defaults.simulateExportCharacters)) {
@@ -3175,11 +3419,252 @@ void ProjectSettingsWindow::drawTitleArtSettings() {
                 ImGui::Checkbox("##TitleArtSimulateCharacters", &m_titleArt.simulateExportCharacters);
                 endSettingsRow("In Play, characters outside a Realtime or Glyph Atlas title's Characters set draw as nothing, as in a build.");
             }
+            // S86 R37: the tier of Realtime 3D titles whose Quality Tier is Auto, per platform
+            if (settingsui::beginRow("title_art.realtime_3d_quality")) {
+                if (projectBeginSettingsRow("Realtime 3D Quality", m_titleArt.realtime3DQuality != defaults.realtime3DQuality)) {
+                    m_titleArt.realtime3DQuality = defaults.realtime3DQuality;
+                }
+                static const char* const platforms[6] = {"windows", "linux", "macos", "ios", "android", "web"};
+                static const char* const labels[6] = {"Windows", "Linux", "macOS", "iOS", "Android", "HTML5"};
+                static const char* const tiers[3] = {"high", "medium", "low"};
+                static const char* const tierLabels[3] = {"High", "Medium", "Low"};
+                const float width = (ImGui::GetContentRegionAvail().x - helpMarkerWidth()) / 6 - ImGui::GetStyle().ItemSpacing.x;
+                for (int i = 0; i < 6; i++) {
+                    if (i) ImGui::SameLine();
+                    std::string* tier = m_titleArt.realtime3DQuality.find(platforms[i]);
+                    int current = 0;
+                    for (int t = 0; t < 3; t++) if (*tier == tiers[t]) current = t;
+                    ImGui::SetNextItemWidth(width);
+                    if (ImGui::BeginCombo((std::string("##TitleArt3DQuality") + platforms[i]).c_str(), tierLabels[current])) {
+                        for (int t = 0; t < 3; t++) {
+                            if (ImGui::Selectable(tierLabels[t], t == current)) *tier = tiers[t];
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::SetItemTooltip("%s", labels[i]);
+                }
+                endSettingsRow("The quality tier of Realtime 3D titles whose Quality Tier is Auto, per platform (Windows, Linux, macOS, iOS, "
+                               "Android, HTML5). A device tier wins where one applies; GLES3 and WebGL2 draw High as Medium.");
+            }
             ImGui::EndTable();
         }
         drawSectionNote("Baked PNGs ship as ordinary textures; a .titleart ships only when a Realtime or Glyph Atlas title reads it.");
     }
     endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawLocalizationSettings() {
+    if (beginSettingsPanel("##LocalizationSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("localization.languages")) {
+                if (projectBeginSettingsRow("Languages", !m_localization.languages.empty())) m_localization.languages.clear();
+                int remove = -1, up = -1;
+                for (size_t i = 0; i < m_localization.languages.size(); i++) {
+                    ImGui::PushID((int)i);
+                    ImGui::TextUnformatted(titleLanguageLabel(m_localization.languages[i]).c_str());
+                    ImGui::SameLine();
+                    if (i > 0 && ImGui::SmallButton("Up")) up = (int)i;
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Remove")) remove = (int)i;
+                    ImGui::PopID();
+                }
+                if (remove >= 0) m_localization.languages.erase(m_localization.languages.begin() + remove);
+                if (up > 0) std::swap(m_localization.languages[(size_t)up], m_localization.languages[(size_t)up - 1]);
+                ImGui::SetNextItemWidth(160.0f);
+                ImGui::InputTextWithHint("##LocalizationAdd", "de, pt-BR, zh-Hant", m_localizationInput, sizeof(m_localizationInput));
+                ImGui::SameLine();
+                std::string error;
+                const bool valid = TitleArtLanguage::isValid(m_localizationInput, &error);
+                ImGui::BeginDisabled(!valid);
+                if (ImGui::Button("Add")) {
+                    const std::string code = TitleArtLanguage::canonicalize(m_localizationInput);
+                    if (std::find(m_localization.languages.begin(), m_localization.languages.end(), code) == m_localization.languages.end()) {
+                        m_localization.languages.push_back(code);
+                    }
+                    m_localizationInput[0] = '\0';
+                }
+                ImGui::EndDisabled();
+                if (!valid && m_localizationInput[0]) ImGui::TextDisabled("%s", error.c_str());
+                endSettingsRow("The languages the game ships, in order. Title Art bakes and fonts of other languages are left out of "
+                               "builds with a warning. Empty ships every language of every title.");
+            }
+            if (settingsui::beginRow("localization.default_language")) {
+                if (projectBeginSettingsRow("Default Language", !m_localization.defaultLanguage.empty())) m_localization.defaultLanguage.clear();
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                const std::string shown = m_localization.defaultLanguage.empty() ? "Auto (" + m_localization.effectiveDefault() + ")"
+                                                                                 : titleLanguageLabel(m_localization.defaultLanguage);
+                if (ImGui::BeginCombo("##LocalizationDefault", shown.c_str())) {
+                    if (ImGui::Selectable("Auto (the first language, else en)", m_localization.defaultLanguage.empty())) m_localization.defaultLanguage.clear();
+                    for (const std::string& code : m_localization.languages) {
+                        if (ImGui::Selectable(titleLanguageLabel(code).c_str(), code == m_localization.defaultLanguage)) m_localization.defaultLanguage = code;
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("The language shown when none of the device's languages matches a title's, before its source language. "
+                               "TitleArt.setLanguage and the device's languages come first.");
+            }
+            ImGui::EndTable();
+        }
+        drawSectionNote("Titles keep their translations inside the .titleart (Title Designer > Language). Play simulates a device "
+                        "language with the Game view's Device > Language.");
+    }
+    endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawPixelArtSettings() {
+    if (beginSettingsPanel("##PixelArtSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("pixel_art.enabled")) {
+                if (projectBeginSettingsRow("Pixel Art Mode", m_pixelArt.enabled)) m_pixelArt.enabled = false;
+                ImGui::Checkbox("##PixelArtMode", &m_pixelArt.enabled);
+                endSettingsRow("Sprite images added while on import as pixel art (Point, no mipmaps, lossless), new 2D scenes get a Pixel Perfect "
+                    "Camera, the Scene view uses Pixel Zoom, and the Pixel Art Check runs on import and at Play. Changes no other "
+                    "setting: Apply Pixel Art Preset converts the project.");
+            }
+            if (settingsui::beginRow({"graphics.canvas_width", "graphics.canvas_height"})) {
+                const std::vector<pixelart::PixelArtScreen>& sizes = pixelart::presetBaseResolutions();
+                if (projectBeginSettingsRow("Base Resolution", false)) {}
+                std::string current = std::to_string(m_canvasWidth) + "x" + std::to_string(m_canvasHeight);
+                ImGui::SetNextItemWidth(Theme::dpi(110.0f));
+                if (ImGui::BeginCombo("##PixelArtBase", current.c_str())) {
+                    for (const pixelart::PixelArtScreen& size : sizes) {
+                        const std::string label = std::to_string(size.width) + "x" + std::to_string(size.height);
+                        if (ImGui::Selectable(label.c_str(), (int)size.width == m_canvasWidth && (int)size.height == m_canvasHeight)) {
+                            m_canvasWidth = size.width;
+                            m_canvasHeight = size.height;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(Theme::dpi(70.0f));
+                ImGui::InputInt("##PixelArtBaseW", &m_canvasWidth, 0);
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(Theme::dpi(70.0f));
+                ImGui::InputInt("##PixelArtBaseH", &m_canvasHeight, 0);
+                m_canvasWidth = std::max(m_canvasWidth, 1);
+                m_canvasHeight = std::max(m_canvasHeight, 1);
+                endSettingsRow("The project canvas (Graphics > Canvas Width and Height): the resolution the art is drawn at. "
+                    "320x180 divides every common 16:9 screen exactly.");
+            }
+            if (settingsui::beginRow("pixel_art.upscale_mode")) {
+                static const char* const modes[] = {"Integer (Letterbox)", "Integer (Expand)", "Stretch Fill"};
+                int index = (int)m_pixelArt.upscaleMode;
+                drawComboSetting("Upscale Mode", "##PixelArtUpscale", modes, 3, index, 0,
+                                 "The Upscale Mode a new Pixel Perfect Camera gets (Pixel Art Mode's new 2D scenes and the preset).");
+                m_pixelArt.upscaleMode = (PixelUpscaleMode)index;
+            }
+            if (settingsui::beginRow("graphics.pixels_per_unit")) {
+                drawIntSetting("Pixels Per Unit", "##PixelArtPPU", m_pixelsPerUnit, Project::defaultPixelsPerUnit, Project::minPixelsPerUnit,
+                               "Graphics > Pixels Per Unit: texels per world unit of the sprites and tilemaps that take the project's. "
+                               "Keep 1 unless the game uses tile units.");
+                m_pixelsPerUnit = std::min(m_pixelsPerUnit, Project::maxPixelsPerUnit);
+            }
+            if (settingsui::beginRow("graphics.default_filter_mode")) {
+                static const char* const filterNames[] = {"Bilinear", "Point (no filter)"};
+                drawComboSetting("Default Filter Mode", "##PixelArtDefaultFilter", filterNames, 2, m_defaultFilterIndex, 0,
+                                 "Graphics > Default Filter Mode: what runtime-made textures and new references start with.");
+            }
+            if (settingsui::beginRow("pixel_art.backdrops")) {
+                if (projectBeginSettingsRow("Backdrops", m_pixelArt.backdrops != pixelart::PixelArtSettings::defaultBackdrops()))
+                    m_pixelArt.backdrops = pixelart::PixelArtSettings::defaultBackdrops();
+                for (size_t i = 0; i < m_pixelArt.backdrops.size() && i < 2; i++) {
+                    char buffer[16];
+                    snprintf(buffer, sizeof(buffer), "%s", m_pixelArt.backdrops[i].c_str());
+                    if (i > 0) ImGui::SameLine();
+                    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+                    if (ImGui::InputText(i == 0 ? "##BackdropDark" : "##BackdropLight", buffer, sizeof(buffer)) && pixelart::isPixelArtBackdrop(buffer))
+                        m_pixelArt.backdrops[i] = buffer;
+                }
+                endSettingsRow("The project's pixel-art backdrops (#rrggbb): the first dark, the second light. Contact sheets and "
+                    "contrast checks draw art on them.");
+            }
+            if (settingsui::beginRow("palettes.default")) {
+                if (projectBeginSettingsRow("Default Palette", !m_defaultPalette.empty())) {
+                    m_defaultPalette.clear();
+                }
+                std::string current = m_defaultPalette.empty() ? std::string("None") : m_defaultPalette;
+                for (const auto& [path, name] : m_paletteFiles) {
+                    if (path == m_defaultPalette && !name.empty()) current = name + "  (" + path + ")";
+                }
+                if (const pixelart::BuiltinPalette* builtin = pixelart::findBuiltinPalette(m_defaultPalette)) {
+                    if (m_defaultPalette.rfind(pixelart::kBuiltinPrefix, 0) == 0) current = builtin->palette.name + "  (built-in)";
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::BeginCombo("##DefaultPalette", current.c_str(), ImGuiComboFlags_HeightLarge)) {
+                    if (ImGui::Selectable("None", m_defaultPalette.empty())) m_defaultPalette.clear();
+                    ImGui::SeparatorText("Project");
+                    if (m_paletteFiles.empty()) ImGui::TextDisabled("No .palette in the project yet");
+                    for (const auto& [path, name] : m_paletteFiles) {
+                        const std::string label = (name.empty() ? path : name + "  (" + path + ")") + "##" + path;
+                        if (ImGui::Selectable(label.c_str(), path == m_defaultPalette)) m_defaultPalette = path;
+                    }
+                    ImGui::SeparatorText("Built-in");
+                    for (const pixelart::BuiltinPalette& builtin : pixelart::builtinPalettes()) {
+                        const std::string alias = pixelart::kBuiltinPrefix + builtin.id;
+                        const std::string label = (builtin.palette.name.empty() ? builtin.id : builtin.palette.name) + "##" + alias;
+                        if (ImGui::Selectable(label.c_str(), alias == m_defaultPalette)) m_defaultPalette = alias;
+                        ImGui::SetItemTooltip("%s: copied to the project's Palettes folder on OK", alias.c_str());
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("The palette used where none is named: Apply Palette without a palette, the colour picker's "
+                    "Snap to Palette, the Palette window's first open and new pixel art. A built-in is copied into the "
+                    "project when you press OK.");
+            }
+            if (settingsui::beginRow("pixel_art.check_on_import")) {
+                if (projectBeginSettingsRow("Check on Import", !m_pixelArt.checkOnImport)) m_pixelArt.checkOnImport = true;
+                ImGui::Checkbox("##PixelArtCheckImport", &m_pixelArt.checkOnImport);
+                endSettingsRow("With Pixel Art Mode on, the Pixel Art Check runs after textures import and logs one Console line.");
+            }
+            if (settingsui::beginRow("pixel_art.check_on_play")) {
+                if (projectBeginSettingsRow("Check on Play", !m_pixelArt.checkOnPlay)) m_pixelArt.checkOnPlay = true;
+                ImGui::Checkbox("##PixelArtCheckPlay", &m_pixelArt.checkOnPlay);
+                endSettingsRow("With Pixel Art Mode on, the Pixel Art Check runs at Play start and logs one Console line.");
+            }
+            if (settingsui::beginRow("pixel_art.check_screens")) {
+                if (projectBeginSettingsRow("Check Screens", m_pixelArt.checkScreens != pixelart::PixelArtSettings::defaultCheckScreens()))
+                    m_pixelArt.checkScreens = pixelart::PixelArtSettings::defaultCheckScreens();
+                int removed = -1;
+                for (size_t i = 0; i < m_pixelArt.checkScreens.size(); i++) {
+                    ImGui::TextUnformatted(m_pixelArt.checkScreens[i].c_str());
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton(("x##screen" + std::to_string(i)).c_str())) removed = (int)i;
+                }
+                if (removed >= 0) m_pixelArt.checkScreens.erase(m_pixelArt.checkScreens.begin() + removed);
+                ImGui::SetNextItemWidth(Theme::dpi(100.0f));
+                ImGui::InputTextWithHint("##NewCheckScreen", "1920x1080", m_newCheckScreen, sizeof(m_newCheckScreen));
+                ImGui::SameLine();
+                pixelart::PixelArtScreen parsed;
+                const bool valid = pixelart::parsePixelArtScreen(m_newCheckScreen, parsed);
+                ImGui::BeginDisabled(!valid);
+                if (ImGui::SmallButton("Add##CheckScreen")) {
+                    m_pixelArt.checkScreens.push_back(m_newCheckScreen);
+                    m_newCheckScreen[0] = '\0';
+                }
+                ImGui::EndDisabled();
+                endSettingsRow("The screen sizes the Pixel Art Check lays each scene out on (integer_scale).");
+            }
+            if (settingsui::beginRow("pixel_art.apply_preset")) {
+                projectBeginSettingsRow("Pixel Art Preset", false);
+                if (ImGui::Button("Apply Pixel Art Preset...")) {
+                    if (!m_presetDialog) {
+                        m_presetDialog = std::make_unique<PixelArtPresetDialog>(m_project);
+                    }
+                    m_presetDialog->open();
+                }
+                endSettingsRow("Previews every change that converts the project (base resolution, integer scaling, Point filtering, "
+                    "Pixel Perfect Cameras, lossless textures) and applies them as one undo step.");
+            }
+            ImGui::EndTable();
+        }
+    }
+    endSettingsPanel();
+    if (m_presetDialog) {
+        m_presetDialog->draw();
+        // the preset changed the project: the page shows its values again
+        if (m_presetDialog->takeApplied()) open(m_project, nullptr);
+    }
 }
 
 void ProjectSettingsWindow::drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows) {
@@ -3517,8 +4002,188 @@ void ProjectSettingsWindow::drawTagsAndLayersSettings() {
             }
             ImGui::EndTable();
         }
+
+        drawSortingLayersSettings();
     }
     endSettingsPanel();
+}
+
+size_t ProjectSettingsWindow::countSortingLayerUses(int32_t id) const {
+    size_t uses = 0;
+    for (const SceneProject& sceneProject : m_project->getScenes()) {
+        Scene* scene = sceneProject.scene;
+        if (!scene) continue;
+        auto count = [&](auto array) {
+            for (size_t i = 0; i < array->size(); i++) {
+                if (array->getComponentFromIndex(i).sortingLayer == id) uses++;
+            }
+        };
+        count(scene->getComponentArray<MeshComponent>());
+        count(scene->getComponentArray<ParticleSystemComponent>());
+        count(scene->getComponentArray<PointsComponent>());
+        count(scene->getComponentArray<LineRendererComponent>());
+        count(scene->getComponentArray<TrailRendererComponent>());
+        count(scene->getComponentArray<SortingGroupComponent>());
+    }
+    return uses;
+}
+
+// Unity's Sorting Layers list: the draw order (first drawn first), Default locked (its name stays,
+// it cannot be removed), + adds, - removes (a layer in use asks first), rename inline, drag (or the
+// arrows) to reorder. Every edit is one undo step of the project (SortingLayersCmd).
+void ProjectSettingsWindow::drawSortingLayersSettings() {
+    if (!settingsFoldout("Sorting Layers", ImGuiTreeNodeFlags_DefaultOpen) || !beginSettingsTable("##SortingLayersTable"))
+        return;
+    const float buttonWidth = ImGui::GetFrameHeight();
+    const ImVec4 errorColor(1.0f, 0.45f, 0.35f, 1.0f);
+    const std::vector<SortingLayerInfo> layers = SortingLayers::getLayers();
+    auto applyLayers = [this](const std::vector<SortingLayerInfo>& changed, const char* description) {
+        SortingSettings settings = SortingSettings::current();
+        settings.layers = changed;
+        if (settings == SortingSettings::current()) return;
+        auto* command = new SortingLayersCmd(m_project, settings, description);
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
+    };
+    int moveFrom = -1, moveTo = -1;
+    int removeIndex = -1;
+    for (size_t i = 0; i < layers.size(); i++) {
+        const SortingLayerInfo& layer = layers[i];
+        const bool isDefault = layer.id == DEFAULT_SORTING_LAYER_ID;
+        ImGui::PushID(layer.id);
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        // the handle: drag a row onto another to move it there
+        ImGui::Selectable((ICON_FA_GRIP_VERTICAL " Layer " + std::to_string(i)).c_str(), false, ImGuiSelectableFlags_None);
+        {
+            // (a Selectable's rect reaches past its cell by half the item spacing: the probe takes
+            // its inside, which the cell's clip contains)
+            const ImVec2 half(ImGui::GetStyle().ItemSpacing.x * 0.5f, ImGui::GetStyle().ItemSpacing.y * 0.5f);
+            const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+            UIProbe::rect("sorting_layers.row." + std::to_string(i), min.x + half.x, min.y + half.y, max.x - half.x, max.y - half.y);
+        }
+        if (ImGui::BeginDragDropSource()) {
+            const int from = (int)i;
+            ImGui::SetDragDropPayload("JE_SORTING_LAYER", &from, sizeof(from));
+            ImGui::TextUnformatted(layer.name.c_str());
+            ImGui::EndDragDropSource();
+        }
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("JE_SORTING_LAYER")) {
+                moveFrom = *static_cast<const int*>(payload->Data);
+                moveTo = (int)i;
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::TableNextColumn();
+        const float buttons = 3.0f * buttonWidth + 2.0f * ImGui::GetStyle().ItemSpacing.x;
+        if (isDefault) {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("%s", layer.name.c_str());
+            ImGui::SetItemTooltip("Default always exists and keeps its name; move it to change where it draws.");
+        } else {
+            if (m_sortingLayerRenaming != layer.id)
+                snprintf(m_sortingLayerRenameBuffer, sizeof(m_sortingLayerRenameBuffer), "%s", layer.name.c_str());
+            char buffer[128];
+            snprintf(buffer, sizeof(buffer), "%s", m_sortingLayerRenaming == layer.id ? m_sortingLayerRenameBuffer : layer.name.c_str());
+            ImGui::SetNextItemWidth(-buttons - ImGui::GetStyle().ItemSpacing.x);
+            if (ImGui::InputText("##SortingLayerName", buffer, sizeof(buffer))) {
+                m_sortingLayerRenaming = layer.id;
+                snprintf(m_sortingLayerRenameBuffer, sizeof(m_sortingLayerRenameBuffer), "%s", buffer);
+            }
+            UIProbe::item("sorting_layers.name." + std::to_string(i));
+            if (ImGui::IsItemDeactivatedAfterEdit() && m_sortingLayerRenaming == layer.id) {
+                // the id stays: renaming rewrites no scene
+                const std::string name = TagManager::trimName(m_sortingLayerRenameBuffer);
+                const int32_t clash = SortingLayers::nameToId(name);
+                if (!name.empty() && name != "Default" && (clash < 0 || clash == layer.id)) {
+                    std::vector<SortingLayerInfo> changed = layers;
+                    changed[i].name = name;
+                    applyLayers(changed, "Rename Sorting Layer");
+                }
+                m_sortingLayerRenaming = -1;
+            }
+        }
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - buttons));
+        ImGui::BeginDisabled(i == 0);
+        if (ImGui::Button(ICON_FA_ARROW_UP, ImVec2(buttonWidth, 0))) { moveFrom = (int)i; moveTo = (int)i - 1; }
+        ImGui::EndDisabled();
+        UIProbe::item("sorting_layers.up." + std::to_string(i));
+        ImGui::SameLine();
+        ImGui::BeginDisabled(i + 1 == layers.size());
+        if (ImGui::Button(ICON_FA_ARROW_DOWN, ImVec2(buttonWidth, 0))) { moveFrom = (int)i; moveTo = (int)i + 1; }
+        ImGui::EndDisabled();
+        UIProbe::item("sorting_layers.down." + std::to_string(i));
+        ImGui::SameLine();
+        ImGui::BeginDisabled(isDefault);
+        if (ImGui::Button(ICON_FA_MINUS, ImVec2(buttonWidth, 0))) removeIndex = (int)i;
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("%s", isDefault ? "Default cannot be removed" : "Remove this Sorting Layer");
+        UIProbe::item("sorting_layers.remove." + std::to_string(i));
+        // a layer still used in the open scenes asks first: its renderers then draw on Default
+        if (m_sortingLayerRemoving == layer.id) {
+            ImGui::TextColored(errorColor, "%zu renderer(s) in open scenes use \"%s\"; they will draw on Default.", m_sortingLayerRemovingUses,
+                               layer.name.c_str());
+            if (ImGui::Button("Remove")) {
+                std::vector<SortingLayerInfo> changed = layers;
+                changed.erase(changed.begin() + (long)i);
+                applyLayers(changed, "Remove Sorting Layer");
+                m_sortingLayerRemoving = -1;
+            }
+            UIProbe::item("sorting_layers.confirm_remove");
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel")) m_sortingLayerRemoving = -1;
+        }
+        ImGui::PopID();
+    }
+    if (removeIndex >= 0) {
+        const SortingLayerInfo& layer = layers[(size_t)removeIndex];
+        const size_t uses = countSortingLayerUses(layer.id);
+        if (uses > 0) {
+            m_sortingLayerRemoving = layer.id;
+            m_sortingLayerRemovingUses = uses;
+        } else {
+            std::vector<SortingLayerInfo> changed = layers;
+            changed.erase(changed.begin() + removeIndex);
+            applyLayers(changed, "Remove Sorting Layer");
+        }
+    }
+    if (moveFrom >= 0 && moveTo >= 0 && moveFrom != moveTo && moveTo < (int)layers.size()) {
+        std::vector<SortingLayerInfo> changed = layers;
+        const SortingLayerInfo moved = changed[(size_t)moveFrom];
+        changed.erase(changed.begin() + moveFrom);
+        changed.insert(changed.begin() + moveTo, moved);
+        applyLayers(changed, "Reorder Sorting Layers");
+    }
+
+    // + adds the name typed here at the end (drawn last)
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("New Sorting Layer");
+    ImGui::TableNextColumn();
+    const std::string name = TagManager::trimName(m_newSortingLayerBuffer);
+    const std::string addError = name.empty() ? "Type a name" : (SortingLayers::nameToId(name) >= 0 ? "A Sorting Layer has this name" : "");
+    ImGui::SetNextItemWidth(-(buttonWidth + ImGui::GetStyle().ItemSpacing.x));
+    bool add = ImGui::InputTextWithHint("##NewSortingLayerName", "Sorting Layer name", m_newSortingLayerBuffer, sizeof(m_newSortingLayerBuffer),
+                                        ImGuiInputTextFlags_EnterReturnsTrue);
+    UIProbe::item("sorting_layers.new_name");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!addError.empty());
+    add = ImGui::Button(ICON_FA_PLUS "##AddSortingLayer", ImVec2(buttonWidth, 0)) || add;
+    ImGui::EndDisabled();
+    UIProbe::item("sorting_layers.add");
+    ImGui::SetItemTooltip("%s", addError.empty() ? "Add the Sorting Layer (drawn after the others)" : addError.c_str());
+    if (add && addError.empty()) {
+        std::vector<std::string> names;
+        for (const SortingLayerInfo& layer : layers) names.push_back(layer.name);
+        names.push_back(name);
+        applyLayers(SortingLayers::fromNames(names), "Add Sorting Layer");
+        m_newSortingLayerBuffer[0] = '\0';
+    }
+    ImGui::EndTable();
 }
 
 void ProjectSettingsWindow::drawEditorSettings() {
@@ -5285,12 +5950,17 @@ bool ProjectSettingsWindow::applySettings() {
 
     m_project->setCanvasSize(m_canvasWidth, m_canvasHeight);
     m_project->setScalingMode(scalingModeValues[m_scalingModeIndex]);
+    m_project->setPixelsPerUnit(m_pixelsPerUnit);
+    m_project->setBitmapTextCacheMiB(m_bitmapTextCacheMiB);
     if (m_project->getUIScale() != m_uiScale)
         m_project->setUIScale(m_uiScale);
     m_project->setTextureStrategy(textureStrategyValues[m_textureStrategyIndex]);
     m_project->setVSyncEnabled(m_vsyncEnabled);
     m_project->setAtmosphereQuality({(AtmosphereQuality)m_atmosphereQuality[0], (AtmosphereQuality)m_atmosphereQuality[1],
                                      (AtmosphereQuality)m_atmosphereQuality[2]});
+    // Apply says what the project wants: an old project stops being uncapped only if a row changed
+    const std::array<FoliageQuality, 3> foliageChosen = {(FoliageQuality)m_foliageQuality[0], (FoliageQuality)m_foliageQuality[1], (FoliageQuality)m_foliageQuality[2]};
+    m_project->setFoliageQuality(foliageChosen, m_project->isFoliageQualityDeclared() || foliageChosen != m_project->getFoliageQuality());
     m_project->setFoliageDistanceScale({m_foliageDistanceScale[0], m_foliageDistanceScale[1], m_foliageDistanceScale[2]});
     m_project->setTextureSettings(m_textureSettings);
     m_project->setPlayerLogging(m_playerLogging);
@@ -5299,6 +5969,16 @@ bool ProjectSettingsWindow::applySettings() {
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
         m_project->setShadowTier(platform, static_cast<ShadowTier>(m_shadowTiers[platform]));
     }
+    // an old project writes no key until a tier moves from High (T3 R51)
+    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+        const terraincore::TerrainQuality tier = static_cast<terraincore::TerrainQuality>(m_terrainTiers[platform]);
+        if (tier != m_project->getTerrainQualityTier(platform)) {
+            m_project->setTerrainQualityTier(platform, tier);
+            m_project->setTerrainQualityWritten(true);
+        }
+    }
+    m_project->setShipAllTerrainTiers(m_shipAllTerrainTiers);
+    m_project->setCompressTerrainLayers(m_compressTerrainLayers);
     m_project->setWindowMode(windowModeValues[m_windowModeIndex]);
     m_project->setWindowSize(m_windowWidth, m_windowHeight);
     m_project->setWindowResizable(m_windowResizable);
@@ -5309,6 +5989,8 @@ bool ProjectSettingsWindow::applySettings() {
         m_project->setWindowTitle(m_windowTitleBuffer);
     }
     m_project->setWindowIcon(m_windowIcon);
+
+    m_project->getLocalizationSettings() = m_localization;
 
     PresentationSettings& presentation = m_project->getPresentationSettings();
     presentation.defaultOrientation = defaultOrientationValues[std::clamp(m_defaultOrientationIndex, 0, defaultOrientationCount - 1)];
@@ -5335,10 +6017,28 @@ bool ProjectSettingsWindow::applySettings() {
     }
     m_project->setCxxStandard(cxxStandards[m_cxxStandardIndex]);
     m_project->setPhysics2DEnabled(m_physics2DEnabled);
+    m_project->setSpriteAtlasMode(m_spriteAtlasMode);
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);
+    m_project->setPixelArtSettings(m_pixelArt);
+    m_project->setDefaultFilterMode(m_defaultFilterIndex == 1 ? TextureFilterMode::Point : TextureFilterMode::Bilinear);
+    // a built-in Default Palette is the project's copy of it (S43 R7), made now
+    if (m_defaultPalette.rfind(pixelart::kBuiltinPrefix, 0) == 0) {
+        pixelart::ResolvedPalette resolved;
+        bool wroteCopy = false;
+        std::string error;
+        if (pixelart::usePalette(*m_project, m_defaultPalette, resolved, wroteCopy, error))
+            m_defaultPalette = resolved.path;
+        else
+            Out::warning("Default Palette: %s", error.c_str());
+    }
+    if (m_defaultPalette.rfind(pixelart::kBuiltinPrefix, 0) != 0)
+        m_project->setDefaultPalette(FileUtils::pathFromUtf8(m_defaultPalette));
     m_project->setPhysics3DWorldSettings(m_physics3DWorld);
+    m_project->setParticleWorldBudget((uint32_t)std::clamp(m_particleWorldBudget, 0, (int)Project::maxParticleWorldBudget));
+    m_project->setParticleQaSettings(m_particleQa);
+    m_project->setProcMatQaSettings(m_procMatQa);
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
     m_project->setDynamicBatching(m_dynamicBatching);
     m_project->setMobilePbrTier(mobilePbrTierValues[m_mobilePbrTierIndex]);
@@ -5938,6 +6638,54 @@ void ProjectSettingsWindow::drawShaderGlobals() {
                         "u_vs_globals / u_fs_globals members (and texture uniforms) too.");
     }
     if (edited) m_globalsEdit.preview();
+}
+
+
+// T3 R40, R51: Graphics > Terrain: Quality per platform, what an export ships, and the cost of the open scene's terrains
+void ProjectSettingsWindow::drawTerrainQualitySettings() {
+    if (!settingsFoldout("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
+        return;
+    }
+    static const char* const tierNames[] = {"High", "Medium", "Low"};
+    static const char* const platformLabels[] = {"macOS", "iOS", "Web", "Android", "Linux", "Windows"};
+    static const int platformOrder[] = {5, 4, 0, 2, 3, 1};   // Windows, Linux, macOS, Web, Android, iOS
+    for (int platform : platformOrder) {
+        const std::string key = std::string("graphics.terrainQuality.") + Project::getShadowTierPlatformName(platform);
+        if (!settingsui::beginRow(key.c_str())) continue;
+        const std::string label = std::string(platformLabels[platform]) + " Terrain Quality";
+        const std::string id = std::string("##TerrainQuality") + platformLabels[platform];
+        drawComboSetting(label.c_str(), id.c_str(), tierNames, 3, m_terrainTiers[platform], 0,
+            "The terrain material's tier on this platform for terrains whose Quality is Auto: how many layers a pixel keeps, and what each reads.");
+    }
+    if (m_project && !m_project->isTerrainQualityWritten()) {
+        ImGui::TextDisabled("Recommended for new projects: Desktop High, Web Medium, Android and iOS Low.");
+    }
+    if (settingsui::beginRow("graphics.ship_all_terrain_tiers")) {
+        if (projectBeginSettingsRow("Ship All Terrain Tiers", m_shipAllTerrainTiers)) {
+            m_shipAllTerrainTiers = false;
+        }
+        ImGui::Checkbox("##ShipAllTerrainTiers", &m_shipAllTerrainTiers);
+        endSettingsRow("Export the variants of all three tiers, for a game that changes them at runtime.");
+    }
+    if (settingsui::beginRow("graphics.compress_terrain_layers")) {
+        if (projectBeginSettingsRow("Compress Terrain Layers", m_compressTerrainLayers)) {
+            m_compressTerrainLayers = false;
+        }
+        ImGui::Checkbox("##CompressTerrainLayers", &m_compressTerrainLayers);
+        endSettingsRow("Exports cook each terrain layer map as a compressed array slice; the sources no longer ship. Hint: a raw array of a big terrain takes the heap on the web.");
+    }
+    if (m_project) {
+        if (SceneProject* sceneProject = m_project->getSelectedScene(); sceneProject && sceneProject->scene) {
+            auto terrains = sceneProject->scene->getComponentArray<TerrainComponent>();
+            for (size_t i = 0; i < terrains->size(); i++) {
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::TextUnformatted(sceneProject->scene->getEntityName(terrains->getEntity(i)).c_str());
+                int shown = -1;
+                drawTerrainCostStrip(terrains->getComponentFromIndex(i), shown);
+                ImGui::PopID();
+            }
+        }
+    }
 }
 
 } // namespace jasperengine::editor

@@ -42,6 +42,27 @@ namespace jasperengine::editor::titlelibrary {
 
     using Json = jasperengine::titleart::Json;
 
+    // one member rule of pachislop-map.json's `fields` table ("kind.key" -> rule): the importer of
+    // Pachislop projects (S87) applies the same rules as the port
+    struct PachislopFieldRule {
+        std::string to;
+        int component = -1;
+        bool negate = false;
+        bool environment = false;
+        bool lift = false;          // a member of the object that holds this one ("^opacity")
+        Json values = Json::object();
+    };
+    PachislopFieldRule parsePachislopFieldRule(const Json& value);
+    // the editor's embedded pachislop-map.json
+    const Json& embeddedPachislopMap();
+    // the rule of `key` in schema kind `kind` (a variant kind falls back to its base), null when none
+    const PachislopFieldRule* pachislopFieldRule(const std::string& kind, const std::string& key);
+    // the pack font id of a Pachislop builtin font id (the map's `fonts`; `japanese`: the face for
+    // kana and kanji), "" when the map has none
+    std::string pachislopPackFont(const std::string& fontId, bool japanese = false);
+    // the photo environment of a Pachislop 2D reflection map name (the map's `environments`), "" when none
+    std::string pachislopEnvironment(const std::string& reflectionMap);
+
     // the Pachislop commit the committed dump was made from (tools/titleart/pachislop-port/dump/)
     constexpr const char* PACHISLOP_COMMIT = "1c32502";
     constexpr const char* PACHISLOP_LICENSE_NOTE = "used with the author's permission";

@@ -39,6 +39,18 @@ namespace jasperengine::editor::titledesigner {
 
     enum class RowMode : uint8_t { Draw, Collect };
 
+    // S83 R41's cost badge of an effect, a generator layer or a layer: its class (C0-C4), the
+    // tooltip with the desktop and mobile estimates, amber for a C4 that a Realtime title bakes
+    // on mobile ("Baked on mobile")
+    struct CostBadge {
+        std::string cls;
+        std::string tooltip;
+        bool amber = false;
+    };
+    ImVec4 costBadgeColor(const CostBadge& badge);
+    // the badge as small coloured text on the current line (SameLine first), its tooltip on hover
+    void drawCostBadge(const CostBadge& badge);
+
     // what the window gives the page functions
     class PropertyHost {
     public:
@@ -63,6 +75,28 @@ namespace jasperengine::editor::titledesigner {
         virtual bool selectedCharacters(std::string& /*layer*/, std::vector<int>& /*indexes*/) { return false; }
         // a refused edit: the window shows the reason
         virtual void reportError(const std::string& /*message*/) {}
+        // S83 R41: the cost of effect `index` of a layer's stack (part "" ) or a part's stack,
+        // of a layer's effects together (index -1), of a generator layer (its own row)
+        virtual bool effectCost(const std::string& /*layer*/, const std::string& /*part*/, int /*index*/, CostBadge& /*out*/) { return false; }
+        // S86's picker tiles: layer `layerId` of `doc` rendered through the window's preview queue
+        // at priority Thumbnails under its own slot (0 while it has no picture yet)
+        virtual ImTextureID previewTile(const std::string& /*slot*/, const std::shared_ptr<const jasperengine::titleart::TitleArtDoc>& /*doc*/,
+                                        const std::string& /*layerId*/, const jasperengine::titleart::TitleRect& /*bounds*/, uint64_t /*content*/,
+                                        int /*pixels*/) {
+            return 0;
+        }
+        // the project's files with one of these extensions (".hdr"), project-relative (S86's
+        // environment picker lists the project's HDRIs)
+        virtual std::vector<std::string> projectFiles(const std::vector<std::string>& /*extensions*/) { return {}; }
+        // S86 R55's Import HDRI...: asks for a file and copies it into the project; its
+        // project-relative path, empty when cancelled or refused (*error says why)
+        virtual std::string importHdriFile(std::string* /*error*/) { return std::string(); }
+        // Preview As (S86's Realtime Preview row drives it)
+        virtual std::string previewMode() const { return "realtime"; }
+        virtual void choosePreviewMode(const std::string& /*mode*/) {}
+        // S83 R39: an effect's or generator's L params play on the canvas (view state, never saved)
+        virtual bool livePreviewOn(const std::string& /*layer*/, const std::string& /*effectId*/) const { return false; }
+        virtual void setLivePreview(const std::string& /*layer*/, const std::string& /*effectId*/, bool /*on*/) {}
     };
 
     struct RowContext {
@@ -118,6 +152,12 @@ namespace jasperengine::editor::titledesigner {
         std::string sourceName;                     // "Global Light"
         // the inherited value of the field for `object` (the object holding it) in `doc`
         std::function<Json(const jasperengine::titleart::TitleArtDoc& doc, const Json& object, const std::string& member)> value;
+        // S86's lighting levels: the object is a sparse kind and a member it lacks is inherited (no
+        // flag member: setting the value sets it here, "Inherit" removes it). `pattern` may end in
+        // ".*" (every member of the kind)
+        bool sparse = false;
+        // the inherited value of a target (the level above it), used instead of `value` when set
+        std::function<Json(const jasperengine::titleart::TitleArtDoc& doc, const FieldRef& target, const std::string& member)> valueAt;
     };
     void registerInheritance(InheritanceRule rule);
     // the rule of a field (`object` the object holding `member`, of schema kind `kind`, or an

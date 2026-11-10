@@ -784,6 +784,8 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addProperty("center", &NavMeshSurface::getCenter, &NavMeshSurface::setCenter)
         .addProperty("size", &NavMeshSurface::getSize, &NavMeshSurface::setSize)
         .addProperty("runtimeCarving", &NavMeshSurface::isRuntimeCarving, &NavMeshSurface::setRuntimeCarving)
+        .addProperty("followTerrainWorldFocus", &NavMeshSurface::isFollowTerrainWorldFocus, &NavMeshSurface::setFollowTerrainWorldFocus)
+        .addProperty("followRadius", &NavMeshSurface::getFollowRadius, &NavMeshSurface::setFollowRadius)
         .addProperty("onBakeCompleted",
             [](NavMeshSurface* self, lua_State*) { return &self->getOnBakeCompleted(); },
             [](NavMeshSurface* self, lua_State* L) { self->getOnBakeCompleted() = L; })

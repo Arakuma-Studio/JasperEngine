@@ -1,0 +1,61 @@
+formatVersion: 1
+name: 2D Pixel Art
+canvasWidth: 320
+canvasHeight: 180
+scalingMode: integer
+textureStrategy: none
+vsync: true
+foliageQuality:
+  desktop: high
+  mobile: low
+  web: low
+pixelArt:
+  enabled: true
+htmlUiMsaaSamples: 4
+device:
+  tiers:
+    desktop:
+      low:
+        render_scale: 1.0
+      medium:
+        render_scale: 1.0
+    mobile:
+      low:
+        render_scale: 1.0
+      medium:
+        render_scale: 1.0
+    web:
+      low:
+        render_scale: 1.0
+      medium:
+        render_scale: 1.0
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+graphics:
+  terrainQuality:
+    macos: high
+    ios: low
+    web: medium
+    android: low
+    linux: high
+    windows: high
+  compressTerrainLayers: true
+  defaultFilterMode: point
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+versionControl:
+  lfs: true
+startSceneId: 654718099
+mesh:
+  animationEntities: auto
+audio:
+  mixer: audio/Main.mixer
+  outputStage: linear
+  iosSessionCategory: ambient
+scenes:
+  - filepath: Main.scene
+    filepathGuid: c5258b3cf0774b85065b45563b8aced3

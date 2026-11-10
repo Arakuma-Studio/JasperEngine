@@ -12,6 +12,9 @@
 #include "asset/ContentHash.h"
 #include "asset/ModelSubAssets.h"
 #include "io/watch/LinkedFolders.h"
+#include "pixelart/aseprite/AsepriteImport.h"
+#include "sprite/SpriteAtlasDocument.h"
+#include "sprite/SpriteSheetSources.h"
 #include "util/SafeWrite.h"
 #include "util/SHA1.h"
 #include "util/Util.h"
@@ -21,6 +24,7 @@
 #include "animation/VertexAnimation.h"
 #include "animation/AnimatorAssetIO.h"
 #include "titleart/TitleArtIO.h"
+#include "graph/Graph.h"
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
@@ -246,9 +250,14 @@ namespace {
     // .anim clips, .vat Vertex Animations, the Animator's .controller / .mask / .montage files and
     // .titleart documents are JSON: their GUID is the top-level "guid" member
     // (AnimationClipIO reads and replaces it in any JSON object that has a "version" member)
+    bool isSpriteAtlasFile(const fs::path& path) {
+        return SpriteSheetSources::isAtlasPath(path.string());
+    }
+
     bool isClipFile(const fs::path& path) {
         return editor::Util::isAnimationClipFile(path.string()) || editor::Util::isVertexAnimationFile(path.string()) ||
-               editor::Util::isAnimatorAssetFile(path.string()) || editor::Util::isTitleArtFile(path.string());
+               editor::Util::isAnimatorAssetFile(path.string()) || editor::Util::isProceduralMaterialFile(path.string()) ||
+               isSpriteAtlasFile(path) || editor::Util::isTitleArtFile(path.string());
     }
 
     // a Title Art document with "formerGuids" set (an unknown member to its reader, written back)
@@ -319,6 +328,9 @@ namespace {
     // the JSON asset parses as its own type; a broken or foreign file (a Unity YAML .anim, .mask
     // or .controller, broken JSON) is left alone: its error must keep its line
     bool parsesAsJsonAsset(const fs::path& path, const std::string& text) {
+        if (isSpriteAtlasFile(path)) {
+            return editor::sprite::parseSpriteAtlas(text).ok();
+        }
         if (editor::Util::isVertexAnimationFile(path.string())) {
             return vat::parseVat(text).ok();
         }
@@ -328,6 +340,11 @@ namespace {
         if (editor::Util::isTitleArtFile(path.string())) {
             const titleart::TitleArtParseResult parsed = titleart::parseTitleArt(text);
             return parsed.ok || parsed.error.code == "version_newer";
+        }
+        if (editor::Util::isProceduralMaterialFile(path.string())) {
+            graph::LoadReport report;
+            graph::load(text, report);
+            return report.ok;
         }
         return anim::parseClip(text).ok();
     }
@@ -374,6 +391,43 @@ namespace {
     // are no former GUIDs to write or drop; else the asset written again canonically. False for
     // a text that is not one (a Unity YAML .anim, broken JSON: its error must keep its line).
     bool withJsonAssetIdentity(const fs::path& path, std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
+        // a graph file has no "version" member to insert after: written canonically, the identity
+        // among its unknown keys, which the graph model keeps
+        if (editor::Util::isProceduralMaterialFile(path.string())) {
+            graph::LoadReport report;
+            graph::Graph file = graph::load(text, report);
+            if (!report.ok) {
+                return false;
+            }
+            file.passthrough["guid"] = guid.str();
+            file.passthrough.erase("formerGuids");
+            if (!formerGuids.empty()) {
+                std::vector<Guid> sorted = formerGuids;
+                std::sort(sorted.begin(), sorted.end());
+                sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+                graph::Json list = graph::Json::array();
+                for (const Guid& former : sorted) list.push_back(former.str());
+                file.passthrough["formerGuids"] = std::move(list);
+            }
+            text = graph::save(file);
+            return true;
+        }
+        // Sprite Atlases (S45): their own reader and canonical writer
+        if (isSpriteAtlasFile(path)) {
+            editor::sprite::SpriteAtlasParseResult parsed = editor::sprite::parseSpriteAtlas(text);
+            if (!parsed.ok()) {
+                return false;
+            }
+            editor::sprite::SpriteAtlasDocument& doc = *parsed.document;
+            std::vector<std::pair<std::string, std::string>> unknown;
+            for (const auto& [key, value] : doc.unknown.items()) unknown.emplace_back(key, value.dump());
+            setFormerGuids(unknown, formerGuids);
+            doc.unknown = nlohmann::ordered_json::object();
+            for (const auto& [key, value] : unknown) doc.unknown[key] = nlohmann::ordered_json::parse(value);
+            doc.guid = guid;
+            text = editor::sprite::writeSpriteAtlas(doc);
+            return true;
+        }
         // the Animator's assets (S21): their own readers and writers
         if (editor::Util::isAnimatorAssetFile(path.string()) || !anim::animatorAssetKind(text).empty()) {
             return withAnimatorAssetIdentity(text, guid, formerGuids);
@@ -742,9 +796,10 @@ std::string editor::AssetDatabase::readGuid(const fs::path& fullPath) {
     return {};
 }
 
-bool editor::AssetDatabase::readInFileIdentity(const fs::path& fullPath, Guid& guid, std::vector<Guid>& formerGuids) {
+bool editor::AssetDatabase::readInFileIdentity(const fs::path& assetPath, Guid& guid, std::vector<Guid>& formerGuids) {
     guid = Guid();
     formerGuids.clear();
+    const fs::path fullPath = AssetTypes::identityFileOf(assetPath);
     if (isClipFile(fullPath)) {
         std::string text;
         return assetio::readFile(fullPath, text) && clipIdentity(text, guid, formerGuids);
@@ -816,8 +871,9 @@ bool editor::AssetDatabase::writeInFileIdentity(const fs::path& fullPath, const 
     return false;
 }
 
-bool editor::AssetDatabase::writeInFileIdentityOnce(const fs::path& fullPath, const Guid& guid, const std::vector<Guid>& formerGuids,
+bool editor::AssetDatabase::writeInFileIdentityOnce(const fs::path& assetPath, const Guid& guid, const std::vector<Guid>& formerGuids,
                                                     bool* superseded) {
+    const fs::path fullPath = AssetTypes::identityFileOf(assetPath);
     const assetio::ReadStamp read = assetio::stampOf(fullPath);
     std::string text;
     if (!read.exists || !assetio::readFile(fullPath, text)) {
@@ -1031,7 +1087,8 @@ std::string editor::AssetDatabase::key(const fs::path& path) const {
 
 bool editor::AssetDatabase::fileExists(const std::string& relative) const {
     std::error_code ec;
-    return fs::is_regular_file(projectPath / relative, ec);
+    const fs::path full = projectPath / relative;
+    return fs::is_regular_file(full, ec) || (AssetTypes::isFolderAsset(full.filename().string()) && fs::is_directory(full, ec));
 }
 
 void editor::AssetDatabase::statFile(const std::string& relative, fs::file_time_type& time, uint64_t& size) const {
@@ -1254,7 +1311,11 @@ bool editor::AssetDatabase::writeIdentity(const Entry& entry) const {
     AssetMeta meta;
     std::string text;
     if (assetio::readFile(metaPath, text) && !AssetMeta::parse(text, meta)) {
-        meta = AssetMeta();
+        // a sidecar written before its GUID (an importer's settings set while the asset was being
+        // imported) keeps its sections: the GUID goes in front of them
+        if (text.find("guid:") != std::string::npos || !AssetMeta::parse("guid: " + entry.guid.str() + "\n" + text, meta)) {
+            meta = AssetMeta();
+        }
     }
     meta.guid = entry.guid;
     meta.formerGuids.clear();
@@ -1289,7 +1350,16 @@ bool editor::AssetDatabase::refreshSubAssets(Entry& entry, const Entry* previous
         return had;
     }
     ModelContents contents;
-    scanModelFile(projectPath / entry.path, contents);
+    if (entry.type == AssetType::Palette) {
+        scanPaletteFile(projectPath / entry.path, contents);
+    } else if (entry.type == AssetType::AsepriteSprite) {
+        // its named outputs (tag clips, slices, tilesets): the index-keyed ones (frames, pages,
+        // the palette) are always derived, never kept (S44 §6.5)
+        pixelart::aseprite::scanAsepriteSubAssets(projectPath / entry.path, contents.subAssets);
+    } else {
+        scanModelFile(projectPath / entry.path, contents);
+        reportModelLimits(entry.path, contents);
+    }
 
     // §6.4: match by key, then an unmatched old entry to an unmatched new one of the same
     // kind at the same index; what stays unmatched is dropped
@@ -1445,7 +1515,7 @@ void editor::AssetDatabase::collect(const fs::path& fullPath, std::vector<std::s
     if (fullPath != projectPath && pending.empty() && !identityTargetAllowed(start)) {
         return;
     }
-    if (pending.empty() && fs::is_regular_file(start, ec)) {
+    if (pending.empty() && (fs::is_regular_file(start, ec) || (AssetTypes::isFolderAsset(start.filename().string()) && fs::is_directory(start, ec)))) {
         consider(start);
         // a file's meta goes with it
         const fs::path meta = AssetTypes::metaPathFor(start);
@@ -1469,7 +1539,10 @@ void editor::AssetDatabase::collect(const fs::path& fullPath, std::vector<std::s
             }
             std::error_code entryError;
             if (entry.is_directory(entryError)) {
-                if (AssetTypes::isSkippedDirectory(entry.path().filename().string())) {
+                if (AssetTypes::isFolderAsset(entry.path().filename().string())) {
+                    consider(entry.path());
+                    it.disable_recursion_pending();
+                } else if (AssetTypes::isSkippedDirectory(entry.path().filename().string())) {
                     it.disable_recursion_pending();
                 }
                 continue;
@@ -1568,7 +1641,10 @@ void editor::AssetDatabase::collectLinks(std::set<std::string>& pending, std::ve
             }
             std::error_code entryError;
             if (entry.is_directory(entryError)) {
-                if (AssetTypes::isSkippedDirectory(name)) {
+                if (AssetTypes::isFolderAsset(name)) {
+                    considerFile(entryRelative.generic_string());
+                    it.disable_recursion_pending();
+                } else if (AssetTypes::isSkippedDirectory(name)) {
                     it.disable_recursion_pending();
                 } else if (table.outside.size() > 1) {
                     // a folder another link already names (a link to the parent of a linked folder)

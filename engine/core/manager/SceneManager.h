@@ -36,6 +36,9 @@ namespace jasperengine {
         // `masks` too
         std::vector<std::string> masks;
         std::vector<std::string> controllers;
+        // bitmap fonts (.bitmapfont, .fnt; asset-relative) a Text draws, loaded into BitmapFontPool
+        // (S51 R19)
+        std::vector<std::string> bitmapFonts;
     };
 
     // SceneManager allows registering named scene stacks and switching between them at runtime.

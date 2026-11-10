@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -51,10 +52,17 @@ namespace jasperengine::editor {
     // get_title's 3D view of a layer: its effective style_3d and the lighting it renders with,
     // each value with its source (document, layer, part)
     titleart::Json title3DLayerInfo(const titleart::Json& layer, const titleart::TitleArtDoc& doc);
+
+    // S86 R55: an .hdr / .exr copied into the project's Assets/TitleArt/HDRI (the same file again
+    // is the same copy, another of the name gets a number); a file already under `assets` stays
+    // where it is. Its absolute path, empty with `*error` when refused
+    std::string copyTitleHdriIntoAssets(const std::filesystem::path& source, const std::filesystem::path& assets, std::string* error);
     // R38: the cooked meshes (.titlemesh bytes) of `doc`'s 3D layers at a Realtime tier, by layer
     // id: what the exporter writes for a Realtime 3D title whose text cannot change, so the player
-    // draws them without the mesher (RenderRequest::cookedMeshes3D); false with `error`
-    bool cookTitleMeshes(const titleart::TitleArtDoc& doc, const titleart::AssetResolver* assets, titleart::TitleTier tier,
-                         std::map<std::string, std::vector<uint8_t>>& out, std::string& error);
+    // draws them without the mesher (RenderRequest::cookedMeshes3D); built as a render at `pxScale`
+    // builds them (the layer's placement scale times it: bevel segments and inflate steps follow
+    // the output scale); `layers` limits them to those ids (null: every 3D layer); false with `error`
+    bool cookTitleMeshes(const titleart::TitleArtDoc& doc, const titleart::AssetResolver* assets, titleart::TitleTier tier, double pxScale,
+                         const std::set<std::string>* layers, std::map<std::string, std::vector<uint8_t>>& out, std::string& error);
 
 }

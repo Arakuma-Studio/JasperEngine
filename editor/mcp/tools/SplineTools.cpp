@@ -5,7 +5,7 @@
 // closed), sample_spline (frames, uniform samples, closest points, signed distances; the Lua
 // Spline API's numbers) and build_spline (presets, Extrude/Instantiate/terrain settings, Apply
 // to Terrain). Edits go through the commands the editor uses (SplineEditCmd, the bake's
-// TerrainMapPatchCmds), each call one undo step.
+// TerrainMapDeltaCmd), each call one undo step.
 #include "McpTools.h"
 #include "component/MeshComponent.h"
 #include "component/Transform.h"

@@ -31,7 +31,8 @@
 # passes (e.g. DOCKER_CPUS=4 on a shared host). KEEP_GOING=1 lets Ninja build on past a failure.
 # DOCKER_GPU=1 runs the container with the host's NVIDIA GPU (see below and tools/gpu/env.sh).
 # GRAPHIC_BACKEND=vulkan builds the linux editor for Vulkan (build/linux/editor-vulkan), and
-# runs the core tests' GPU suites on Vulkan (lavapipe) for unit-tests.
+# runs the core tests' GPU suites on Vulkan (lavapipe) for unit-tests; GRAPHIC_BACKEND=gles3 runs them
+# in an OpenGL ES 3.2 context (llvmpipe, in the linux-backends image) for unit-tests (UNIT_SUITE=core).
 # SANITIZE=address,undefined or SANITIZE=thread (linux, unit-tests, htmlui-tests, mcp-tests) builds with
 # those sanitizers into build/linux/<dir>-<sanitizers>; UNITY=1 unity-builds (<dir>-unity);
 # WERROR=1 makes warnings of our targets errors. JASPER_DOCKER_IMAGE=<id|tag> runs that image
@@ -194,8 +195,17 @@ LINUX_BACKEND="${GRAPHIC_BACKEND:-glcore}"
 if [[ "$TARGET" == htmlui-tests && "$HTMLUI_BACKEND" != glcore && "$HTMLUI_BACKEND" != vulkan ]]; then
     echo "HTMLUI_BACKEND must be glcore or vulkan" >&2; exit 1
 fi
-if [[ ( "$TARGET" == linux || "$TARGET" == unit-tests ) && "$LINUX_BACKEND" != glcore && "$LINUX_BACKEND" != vulkan ]]; then
+if [[ "$TARGET" == linux && "$LINUX_BACKEND" != glcore && "$LINUX_BACKEND" != vulkan ]]; then
     echo "GRAPHIC_BACKEND must be glcore or vulkan for $TARGET" >&2; exit 1
+fi
+if [[ "$TARGET" == unit-tests && "$LINUX_BACKEND" != glcore && "$LINUX_BACKEND" != vulkan && "$LINUX_BACKEND" != gles3 ]]; then
+    echo "GRAPHIC_BACKEND must be glcore, vulkan or gles3 for $TARGET" >&2; exit 1
+fi
+# GRAPHIC_BACKEND=gles3 unit-tests: the core GPU suites in an OpenGL ES context, which needs the GLES
+# headers and library of docker/linux-backends.Dockerfile (built on this image, as
+# tools/smoke-test.sh does)
+if [[ "$TARGET" == unit-tests && "$LINUX_BACKEND" == gles3 && $IN_IMAGE == 0 && -z "${JASPER_DOCKER_IMAGE:-}" ]]; then
+    IMAGE_ID="$(docker build -q -t jasperengine/linux-backends -f "$ROOT/docker/linux-backends.Dockerfile" "$ROOT/docker")"
 fi
 
 # SANITIZE=address,undefined | thread: the CMake list, and the suffix of the build directories
@@ -276,12 +286,15 @@ for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_U
             JASPER_TEST_KEEP_TEMP JASPER_REFLECT_WRITE_FIXTURE JASPER_BENCH_ENTITIES JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK \
             HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE JASPER_PICK_SIMD \
             JASPER_HTMLUI_S16_OFF JASPER_HTMLUI_BATCHING JASPER_HTMLUI_SDF_PRIMITIVES JASPERENGINE_GPU_TIMER JASPER_HTMLUI_PROFILE \
-            JASPER_TEST_UPDATE_FIXTURES JASPER_SLOW_BUILD JASPER_SLOW_TESTS JASPER_BUILD_TIMEOUT JASPER_MCP_PERF_SLACK; do
+            JASPER_TEST_UPDATE_FIXTURES JASPER_SLOW_BUILD JASPER_SLOW_TESTS JASPER_BUILD_TIMEOUT JASPER_MCP_PERF_SLACK \
+            JASPER_UPDATE_GOLDEN JASPER_PARTICLES_UPDATE_GOLDEN JASPER_POST_FX_UPDATE_GOLDEN JASPER_REFLECTION_UPDATE_GOLDEN \
+            JASPER_RENDER_UPDATE_GOLDEN JASPER_SCENE_VIEW_UPDATE_GOLDEN JASPER_SHADOW_UPDATE_GOLDEN; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
     # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set;
     # JASPER_PICK_SIMD: the picking BVH's slab test path, scalar|avx2|neon, S26 AC2;
     # JASPER_TEST_UPDATE_FIXTURES: the editor's TextureFormatFixtures writes the GPU format test's cooks, S14;
-    # JASPER_SLOW_BUILD, JASPER_SLOW_TESTS, JASPER_BUILD_TIMEOUT, JASPER_MCP_PERF_SLACK: the MCP suite's opt-ins)
+    # JASPER_SLOW_BUILD, JASPER_SLOW_TESTS, JASPER_BUILD_TIMEOUT, JASPER_MCP_PERF_SLACK: the MCP suite's opt-ins;
+    # JASPER_*_UPDATE_GOLDEN: the MCP tests' golden update modes, so mcp-tests can rewrite them in the image)
     [[ -n "${!name:-}" ]] && ENV_FLAGS+=(-e "$name=${!name}")
 done
 # Sanitizer runtime options for every run (tools/sanitizers/*.supp: third-party code only)
@@ -578,6 +591,10 @@ unit-tests)
         CORE_DIR="$OUT/core-tests-vulkan$VARIANT"
         CORE_RESULT="core-vulkan$VARIANT"
         VK_ENV="VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
+    elif [[ "$LINUX_BACKEND" == gles3 ]]; then
+        [[ -z "$SANITIZE_LIST" ]] && CORE_PRESET=engine-linux-tests-gles3
+        CORE_DIR="$OUT/core-tests-gles3$VARIANT"
+        CORE_RESULT="core-gles3$VARIANT"
     fi
     EDITOR_DIR="$OUT/editor-tests$VARIANT"
     EDITOR_RESULT="editor$VARIANT"

@@ -6,8 +6,10 @@
 #include "component/TitleArtRendererComponent.h"
 #include "io/Data.h"
 #include "titleart/TitleArtIO.h"
+#include "titleart/three_d/TitleCooked3D.h"
 
 #include "ShaderNeutralApi.h"
+#include "component/TerrainComponent.h"
 #include "Project.h"
 #include "DocumentFile.h"
 #include "util/Prefab.h"
@@ -31,8 +33,11 @@
 #include "component/RigidbodyComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/SplineExtrudeComponent.h"
+#include "component/TerrainWorldComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/VoxelVolumeComponent.h"
 
 #include <algorithm>
 #include <cctype>
@@ -50,7 +55,7 @@ namespace {
 
     // the modules a dynamic access or C++ code can reach: every one the detection decides
     const std::vector<std::string>& detectedModules() {
-        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d"};
+        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "noise", "voxel", "terrainworld", "terrainedit"};
         return modules;
     }
 
@@ -296,6 +301,12 @@ namespace {
                 usage.evidence.erase(std::remove_if(usage.evidence.begin(), usage.evidence.end(),
                                                     [](const ModuleEvidence& e) { return e.module == "video"; }), usage.evidence.end());
             }
+            // T6 R48 (T2 R43, D18): whatever reached Voxel Volumes reaches Noise Graphs through their
+            // generators. T2's module joins player::allModules(), and this then needs it.
+            const std::vector<std::string>& known = player::allModules();
+            if (usage.needs("voxel") && std::find(known.begin(), known.end(), "noise") != known.end()) {
+                add("noise", usage.firstEvidence("voxel"), "Voxel Volume (its generators use Noise Graphs)");
+            }
             return std::move(usage);
         }
 
@@ -325,29 +336,44 @@ namespace {
         }
 
         // S81 R51: what a shipped Realtime title needs of titleart's sub-options (Glyph Atlas
-        // refuses 3D text, R30: its titles fall back to Realtime and count the same)
-        void scanTitleArt3D(const std::string& path, TitleArtRenderMode) {
+        // refuses 3D text, R30: its titles fall back to Realtime and count the same): the 3D
+        // renderer for a Dimension 3D layer, the mesher for one whose geometry a runtime value can
+        // change (S86 R38: the others ship cooked meshes); the evidence names the title
+        void scanTitleArt3D(const std::string& where, const std::string& object, const std::string& path, TitleArtRenderMode mode) {
             Data data;
             if (path.empty() || data.open(path.c_str()) != FILEDATA_OK) return;
             const titleart::TitleArtParseResult parsed =
                 titleart::parseTitleArt(std::string(reinterpret_cast<const char*>(data.getMemPtr()), data.length()));
             if (!parsed.ok) return;
-            std::set<std::string> dynamicText;
-            for (const titleart::Json& exposed : parsed.doc.root.value("exposed", titleart::Json::array())) {
-                for (const titleart::Json& target : exposed.value("targets", titleart::Json::array())) {
-                    if (target.value("field", std::string()) == "text") dynamicText.insert(target.value("layer", std::string()));
-                }
-            }
+            const std::string title = std::string("Title Art Renderer (") + (mode == TitleArtRenderMode::REALTIME ? "Realtime" : "Glyph Atlas") +
+                                      ") on " + object;
+            bool has3D = false;
             titleart::forEachLayer(parsed.doc.root, [&](const titleart::Json& layer, const titleart::Json*, int) {
                 if (layer.value("dimension", std::string()) != "3d") return true;
-                usage.titleArt3D = true;
-                if (dynamicText.count(layer.value("id", std::string()))) usage.titleArtMesher = true;
+                has3D = true;
+                std::string why;
+                if (!usage.titleArtMesher && !titleart::titleArt3DFixedGeometry(parsed.doc.root, layer, &why)) {
+                    usage.titleArtMesher = true;
+                    add("titleart", where, title + ": 3D layer '" + layer.value("name", std::string()) + "' meshes at runtime (" + why + ")");
+                }
                 return true;
             });
+            if (has3D && !usage.titleArt3D) {
+                usage.titleArt3D = true;
+                add("titleart", where, title + ": a 3D title (" + path + ")");
+            }
         }
 
         void addVideo(const std::string& where, const std::string& what) {
             if (videoUses.size() < MAX_EVIDENCE) videoUses.push_back({where, what});
+        }
+
+        // what a Voxel Volume's Navigation Update would rebake
+        static bool hasNavMeshSurface(const ModuleContent& content) {
+            for (Entity entity : content.entities) {
+                if (content.registry->isEntityCreated(entity) && content.registry->findComponent<NavMeshSurfaceComponent>(entity)) return true;
+            }
+            return false;
         }
 
         void scanContent(const ModuleContent& content) {
@@ -375,7 +401,7 @@ namespace {
                     if (title->enabled && title->renderMode != TitleArtRenderMode::BAKED) {
                         add("titleart", content.label, std::string("Title Art Renderer (") +
                             (title->renderMode == TitleArtRenderMode::REALTIME ? "Realtime" : "Glyph Atlas") + ") on " + object);
-                        scanTitleArt3D(title->title.path, title->renderMode);
+                        scanTitleArt3D(content.label, object, title->title.path, title->renderMode);
                     }
                 }
                 if (has(registry->findComponent<VideoPlayerComponent>(entity))) addVideoPlayer(content.label, "Video Player on " + object);
@@ -383,6 +409,19 @@ namespace {
                 if (has(registry->findComponent<Joint3DComponent>(entity))) add("physics3d", content.label, "Joint 3D on " + object);
                 if (has(registry->findComponent<CharacterControllerComponent>(entity))) add("physics3d", content.label, "Character Controller on " + object);
                 if (has(registry->findComponent<BuoyancyComponent>(entity))) add("physics3d", content.label, "Buoyancy on " + object);
+                if (const TerrainComponent* terrain = registry->findComponent<TerrainComponent>(entity)) {
+                    // T1 R54: a terrain a game may edit loads its maps for edits and uploads them
+                    if (terrain->allowRuntimeEdits) add("terrainedit", content.label, "Allow Runtime Edits on " + object);
+                    // T5 R18, R39: foliage stays in core; only its capsules need the physics module
+                    for (const TerrainTreePrototype& prototype : terrain->treePrototypes) {
+                        if (prototype.collision == TerrainTreeCollision::Capsule) {
+                            add("physics3d", content.label, "Tree capsules on " + object);
+                            break;
+                        }
+                    }
+                }
+                // T4 R55: the tiles stream, draw and page their colliders in the module alone
+                if (has(registry->findComponent<TerrainWorldComponent>(entity))) add("terrainworld", content.label, "Terrain World on " + object);
                 // a Convex Hull excluder's hull is built by Jolt (a box of the mesh's bounds without it)
                 if (const WaterExcluderComponent* excluder = registry->findComponent<WaterExcluderComponent>(entity);
                         excluder && excluder->shape == WaterExcluderShape::CONVEX_HULL)
@@ -390,6 +429,14 @@ namespace {
                 if (has(registry->findComponent<Rigidbody2DComponent>(entity))) add("physics2d", content.label, "Rigidbody 2D on " + object);
                 if (has(registry->findComponent<Joint2DComponent>(entity))) add("physics2d", content.label, "Joint 2D on " + object);
                 if (has(registry->findComponent<CharacterController2DComponent>(entity))) add("physics2d", content.label, "Character Controller 2D on " + object);
+                if (const VoxelVolumeComponent* volume = registry->findComponent<VoxelVolumeComponent>(entity)) {
+                    // T6 R48
+                    add("voxel", content.label, "Voxel Volume on " + object);
+                    if (volume->collision) add("physics3d", content.label, "Voxel Volume collision on " + object);
+                    if (volume->navigationUpdate == VoxelNavigationUpdate::Automatic && hasNavMeshSurface(content)) {
+                        add("navigation", content.label, "Voxel Volume navigation update on " + object);
+                    }
+                }
                 if (const SplineExtrudeComponent* extrude = registry->findComponent<SplineExtrudeComponent>(entity)) {
                     if (extrude->collision == SplineCollision::Mesh) add("physics3d", content.label, "Spline Extrude collision (Mesh) on " + object);
                     if (extrude->collision == SplineCollision::Chain2D) add("physics2d", content.label, "Spline Extrude collision (Chain 2D) on " + object);

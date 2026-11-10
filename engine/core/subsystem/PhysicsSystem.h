@@ -48,6 +48,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_set>
+#include <span>
 #include <vector>
 
 namespace jasperengine{
@@ -287,7 +288,11 @@ namespace jasperengine{
 		// Rebuilds the dirty colliders of the body (all of them with `all`: a new body or a
 		// changed scale), then its mass once
 		bool syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body, bool all);
+		// the colliders following a sprite slice take its box on the shown frame (S44 R17)
+		void updateSliceColliders2D(Entity entity, Rigidbody2DComponent& body);
 		void createCollider2DShapes(Entity entity, Rigidbody2DComponent& body, size_t index, const Vector2& entityScale, int layer);
+		// the shapes of a collider's own type and points (a slice collider's box goes through it too)
+		void createCollider2DShapesOf(Entity entity, Rigidbody2DComponent& body, size_t index, const Vector2& entityScale, int layer);
 		// true when the pieces were made again (not from the cache); logs the problems when `log`
 		bool computeCollider2DPieces(Collider2D& collider, const Vector2& entityScale, bool log, size_t index, const std::string& entityName);
 		void resolveCollider2DSurface(const Rigidbody2DComponent& body, const Collider2D& collider, float& friction, float& restitution, int& userMaterial) const;
@@ -778,7 +783,16 @@ namespace jasperengine{
 
 #ifdef JASPERENGINE_PHYSICS_3D
 		JPH::PhysicsSystem* getWorld3D();
+		// T5 R18: an engine-owned static body whose shape comes from outside, with no colliders of
+		// its own: created or swapped now, and left alone by the collider sync
+		bool setPrebuiltBodyShape3D(Entity entity, const JPH::ShapeRefC& shape);
 		bool loadRigidbody(Entity entity);
+		// T6 V8: a static body of an already built shape for this entity's Rigidbody, not yet in the
+		// broad phase. The two after it follow Jolt's batch contract (BodyInterface.h): prepare is
+		// thread-safe, finalize runs between steps on the main thread.
+		JPH::BodyID createStaticBodyForShape(Entity entity, const JPH::Shape* shape);
+		JPH::BodyInterface::AddState prepareBodies(std::span<JPH::BodyID> ids);
+		void finalizeBodies(std::span<JPH::BodyID> ids, JPH::BodyInterface::AddState state);
 		void destroyRigidbody(RigidbodyComponent& body);
 		// The 3D counterpart of ensureRigidbody2DLoaded()
 		bool ensureRigidbodyLoaded(Entity entity);

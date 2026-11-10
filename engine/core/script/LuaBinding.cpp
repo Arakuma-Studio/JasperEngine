@@ -71,6 +71,9 @@
 #include "object/ui/Progressbar.h"
 #include "object/ui/InputField.h"
 #include "object/ui/OnScreenControls.h"
+#if JASPERENGINE_VOXEL
+#include "object/voxel/VoxelVolume.h"
+#endif
 #if JASPERENGINE_HTMLUI
 #include "object/ui/UIDocument.h"
 #endif
@@ -189,6 +192,15 @@ namespace {
             std::signal(SIGABRT, SIG_DFL);
             std::abort();
         }
+    }
+
+    // for uses that allocate nothing (a field read, a float's write): the allocator's check below
+    // cannot see them
+    void checkLuaThread(){
+#ifndef NO_THREAD_SUPPORT
+        if (std::this_thread::get_id() != luaThread.load(std::memory_order_relaxed))
+            reportOffThreadLuaUse();
+#endif
     }
 
     // the Lua heap in the memory stats (get_memory_stats, Jobs & Memory)
@@ -919,6 +931,7 @@ void LuaBinding::registerClasses(lua_State *L){
 
     registerCoreClasses(L);
     registerGameObjectClasses(L);
+    registerFoliageClasses(L);
     registerActionClasses(L);
     registerECSClasses(L);
     registerAudioClasses(L);
@@ -938,6 +951,20 @@ void LuaBinding::registerClasses(lua_State *L){
     registerNavigationClasses(L);
     registerTitleArtClasses(L);
     registerSplineClasses(L);
+    registerTerrainClasses(L);
+#if JASPERENGINE_NOISE
+    registerNoiseClasses(L);
+#endif
+#if JASPERENGINE_VOXEL
+    registerVoxelClasses(L);
+#endif
+#if JASPERENGINE_TERRAIN_WORLD
+    // after the GameObject classes, which it reopens for getTerrainWorld
+    registerTerrainWorldClasses(L);
+#endif
+    // after the GameObject classes: Palette Swap's members on Sprite, Tilemap and MeshPolygon
+    registerPixelArtClasses(L);
+    registerSortingClasses(L);
     registerCrashClasses(L);
 #if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);
@@ -1147,6 +1174,9 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Tilemap, "tilemap");
     DISPATCH_TYPE(Model, "model");
     DISPATCH_TYPE(Spline, "spline");
+#if JASPERENGINE_VOXEL
+    DISPATCH_TYPE(VoxelVolume, "voxelvolume");
+#endif
     DISPATCH_TYPE(SplineExtrude, "splineextrude");
     DISPATCH_TYPE(SplineInstantiate, "splineinstantiate");
     DISPATCH_TYPE(SplineAnimate, "splineanimate");
@@ -1881,6 +1911,7 @@ bool LuaBinding::getLuaScriptProperty(Scene* scene, Entity entity, const std::st
     }
     lua_State* L = luastate;
     if (L && entry->instance) {
+        checkLuaThread();
         const int top = lua_gettop(L);
         lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(entry->instance)));
         if (lua_istable(L, -1)) {
@@ -1920,6 +1951,7 @@ bool LuaBinding::setLuaScriptProperty(Scene* scene, Entity entity, const std::st
     if (!L || !entry->instance) {
         return true;
     }
+    checkLuaThread();
     const int top = lua_gettop(L);
     lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(entry->instance)));
     if (!lua_istable(L, -1)) {

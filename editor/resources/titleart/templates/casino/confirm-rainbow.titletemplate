@@ -146,6 +146,7 @@
         "scale": 1,
         "flip_x": false,
         "flip_y": false,
+        "stretch": [1, 1],
         "z": 0,
         "rotation_x": 0,
         "rotation_y": 0
@@ -157,6 +158,12 @@
         "color_scheme": "",
         "owner": ""
       },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
       "generator": {
         "type": "fill",
         "params": {
@@ -208,6 +215,7 @@
         "scale": 1,
         "flip_x": false,
         "flip_y": false,
+        "stretch": [1, 1],
         "z": 0,
         "rotation_x": 0,
         "rotation_y": 0
@@ -219,6 +227,12 @@
         "color_scheme": "",
         "owner": "fd38a0a6"
       },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
       "children": [
         {
           "id": "fd38a0a6",
@@ -236,6 +250,7 @@
             "scale": 1,
             "flip_x": false,
             "flip_y": false,
+            "stretch": [1, 1],
             "z": 0,
             "rotation_x": 0,
             "rotation_y": 0
@@ -283,6 +298,12 @@
             "color_scheme": "",
             "owner": ""
           },
+          "tint": "#ffffff",
+          "flash": {
+            "color": "#ffffff",
+            "amount": 0
+          },
+          "only_languages": [],
           "text": "確定",
           "font": {
             "path": "TitleArt/Fonts/dela-gothic-one/DelaGothicOne-Regular.ttf",
@@ -1585,6 +1606,19 @@
             }
           },
           "part_effects": {},
+          "glyph_mode": "cells",
+          "text_key": "",
+          "translate": true,
+          "max_chars": 0,
+          "translator_note": "",
+          "fit": {
+            "mode": "none",
+            "box": [0, 0],
+            "min_scale": 0.6,
+            "min_h_scale": 0.8,
+            "max_lines": 2
+          },
+          "translations": {},
           "style_3d": null
         },
         {
@@ -1603,6 +1637,7 @@
             "scale": 1,
             "flip_x": false,
             "flip_y": false,
+            "stretch": [1, 1],
             "z": 0,
             "rotation_x": 0,
             "rotation_y": 0
@@ -1614,6 +1649,12 @@
             "color_scheme": "",
             "owner": "fd38a0a6"
           },
+          "tint": "#ffffff",
+          "flash": {
+            "color": "#ffffff",
+            "amount": 0
+          },
+          "only_languages": [],
           "generator": {
             "type": "glints",
             "params": {
@@ -1697,6 +1738,11 @@
     },
     "glyph_layer": ""
   },
+  "source_language": "",
+  "languages": [],
+  "string_namespace": "",
+  "dpi": 72,
+  "import_notes": [],
   "scene_3d": {
     "camera": {
       "fov": 30,

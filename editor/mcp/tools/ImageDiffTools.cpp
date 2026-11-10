@@ -17,9 +17,13 @@
 #include "util/Base64.h"
 #include "util/FileUtils.h"
 #include "util/ImageDiff.h"
+#include "util/LunaSVGRuntime.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <fstream>
+#include <sstream>
 
 namespace jasperengine::editor::mcp {
 
@@ -32,6 +36,25 @@ bool loadProjectImage(Project* project, const std::string& given, texsynth::Imag
     fs::path file;
     if (!McpRefs::resolveProjectPath(project, given, file, error, true)) return false;
     texsynth::Image loaded;
+    // an SVG (S87's export) is rasterized by LunaSVG at its own size, straight alpha
+    std::string extension = file.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    if (extension == ".svg") {
+        std::ifstream in(file, std::ios::binary);
+        std::ostringstream text;
+        text << in.rdbuf();
+        const std::string svg = text.str();
+        std::vector<uint8_t> pixels;
+        int width = 0, height = 0;
+        LunaSVGRuntime::ensureFonts();
+        if (!in || !LunaSVGRuntime::rasterize(svg.data(), svg.size(), 1.0f, false, pixels, width, height)) {
+            error = given + ": the SVG does not rasterize";
+            return false;
+        }
+        out = texsynth::Image::make(width, height, 4, 8);
+        std::copy(pixels.begin(), pixels.end(), out.data.begin());
+        return true;
+    }
     if (!texsynth::loadImage(file, loaded, error)) {
         error = given + ": " + error;
         return false;

@@ -736,7 +736,7 @@ S80's.
     ["anim"]}`, then `export_title {dry_run: true}`, then export;
   - a Lua recipe.
 
-  The agent guide itself gets no new bytes; S80's `title art (edit_title)` entry covers the area.
+  The agent guide itself gets no new bytes; S80's `titles (edit_title)` entry covers the area.
 - **R57. CLI.** Every tool works through `jasperengine-editor call`, and Lua through `eval_lua`.
   `jasperengine-editor check --titles` runs the document-kind animation checks without a GPU.
 
@@ -1321,3 +1321,75 @@ rest of S82 lands in 6B.
    refusal), and the marker sounds' editor preview voice is S40's `TimelineAudioPreview`. D15's
    frame-quantized interim and the risk "Frame-quantized marker sounds before S40" no longer
    apply.
+
+7. **Drives bounce unless `wrap`.** A drive's cycle runs from→to→from and is seamless by
+   construction; `wrap: true` is the ramp (rate or cycles) that wraps. The preset `win_pulse` rays
+   use cycles 1 and range -180..180 so the wrap is invisible.
+8. **Scale is a uniform number; `stretch` a Vec2.** `transform.scale` is the document's scalar;
+   non-uniform title motion goes through `transform.stretch` (new, written only off its default).
+   Layer `flash` is `flash.color` and `flash.amount`.
+9. **Vertex motion, not a UV affine (R13).** Titles move on their quad's vertices
+   (`title_fx.vert`, `title_fx_sprite.vert` with `animVertex0/1`, `animSpace`), so a moved title
+   is not clipped at its rectangle. The fragment affine stays identity and carries opacity and
+   blend; flash is additive (was a mix).
+10. **Grid packing instead of `stb_rect_pack` (R16).** Flipbook cells are equal-sized, so a
+    4-px-aligned grid with 4-px gutters packs them exactly; `stb_rect_pack` would add nothing and its
+    symbols are hidden in this build.
+11. **Markers carry `from_preset`** (a member the player ignores) so re-applying a preset can
+    replace its own markers without touching the user's.
+12. **`anim_loop_seamless` passes when values differ but pixels match**: the check measures what
+    the player shows; a re-render value crossing a seam by less than one 8-bit step is seamless.
+13. **`render_title` refuses `compare` with `options.animation`**: a filmstrip already compares
+    its own frames.
+14. **Preset sheet awaits S84**: `list_title_library {kind: "animation_presets"}` lists ids, group,
+    role, params and description; the contact sheet (`sheet`) is S84's library surface and is not
+    wired in this stream. Generators `shake`, `flicker`, `beats`, `ticks`, and the members `repeat`
+    and `vars`, were added to the preset format (§6.4 asked for expressions only).
+15. **R14, as built.** Realtime layer-live transform, opacity, tint and flash tracks compose per
+    frame (`TitleAnimCompose`: still layers as cached plates, the split quad on `GLYPH_COMPOSE_ANIM`).
+    S83's L effect parameters re-render with code `not_composable`, and a layer that also has a
+    re-render or glyph track re-renders whole (`split_redrawn`): one split image cannot hold it.
+16. **R15, as built.** Realtime glyph tracks compose as cells for any number of `cells` text
+    layers, in draw order. A Glyph Atlas title composes the one layer S81's plan names: the other
+    text layers are plates by S81's design, so their glyph tracks are not played there.
+17. **R39, as built.** A pose's base render steps within 6 ms a frame, the previous image staying;
+    poses that differ only in title-live, layer-live or glyph values reuse it and compose in that
+    frame. The glyph-cell path renders its plates once inside the frame. Preview As Baked renders
+    frames in that slice on the main thread rather than from a background-lane flipbook cache. The
+    panel's 200 tracks x 20 keys budget has not been measured.
+18. **R18, as built.** `prerender` requests every sample time ahead so S81's frame cache holds
+    them (half the Cache Budget, S81's budget for shown-before images; over it the animation plays
+    live and warns once). S81's Release Delay frees them like any idle image.
+19. **§6.9 preferences** persist in the Title Designer's settings (`onion_skin`,
+    `animation_preview_as`, `animation_preview_sounds`).
+20. **R49, as built.** The Preview button runs the default animation silently on the wall clock
+    (markers do not fire, no script runs in Edit mode), Stop restores it through `PreviewOwner`.
+    "Animation Update" is the row Unscaled Time.
+21. **R43, as built.** The Curves tab writes each key's tangent mode from the key menu; in and out
+    share a mode unless the key is Broken.
+23. **Tests.** Fixtures are `tools/fixtures/title-art-anim/` (the kanji title draws with the default
+    font, whose coverage of those characters was not checked), goldens at fixed times in `tools/mcp/tests/golden/title/anim/`, built by
+    `test_title_animation_goldens.py` with `JASPER_MCP_TITLE_ANIM_UPDATE_GOLDEN=1`. AC8 is
+    `TitleAnimComposeGpu.LayerSplitEqualsRender` over one fixture. `TitleAnimBench.Scene30` measures
+    30 players with their companion uniforms, without the ECS loop: there is no headless Scene.
+    The bench runs in the unit-test build, not on server E's Release build.
+    AC11 is `test_title_animation_export.py` (a prebuilt player, `JASPER_SLOW_BUILD=1`): compared
+    within 24/255 on 1 % of the pixels, not the AC's 2/255 on 0.1 %: the build ships the flipbooks
+    cooked (`je-cooked/`, a lossy block format), measured 0.55-0.77 % of pixels over 2/255, worst
+    60/255 on edges. The module list names the full player's modules; the `lite2d` player is what the
+    build reports as fitting, without `titleart`. AC21's `titleanim` scene was not added to the web
+    gate or the Android render gate: it needs an editor-baked flipbook and a font committed to a web
+    test project (`tools/test-projects/title-art` has neither) and a golden from the emulator on H;
+    the `title-art` web gate and the Android build cover the module. AC12 is the GPU lane on host H.
+24. **S81/S86 fix:** S86's one-new-draw-a-frame rule reports a skipped pass through
+    `lastRunDeferred()`, which the Glyph Atlas and compose jobs never read, so a process's first
+    render could be blank and a page copy could cache a blank cell. At the merge with W4's
+    `TitleDrawGate` (which removed the job's `allowGroup` grant) those passes retry: a page copy keeps
+    its allocated cell (`TitleGlyphAtlas::insert`'s `deferred`), a compose or a prebake restore runs
+    again (`TitleGpu::deferrals`), and a cell or image goes out only when every pass drew, the
+    `GLYPH_COMPOSE_ANIM` first draw included. W4's bound (one new first draw a frame) holds, the
+    atlas's copies included; `SynchronousScope` still lets everything through at once.
+22. **S80 additions this spec needed:** `SchemaMember::omitDefault`, `TitleArtSchema::setFinish`,
+    `estimatedTotalUs`, `TitleArtRenderHost::runToEnd`/`readImage`, the checks' `renderAnimation`,
+    `renderMode` and `assetExists` context members, and `CanvasPoseSource` in S82's hooks (the
+    canvas shows the panel's pose while it scrubs or plays).

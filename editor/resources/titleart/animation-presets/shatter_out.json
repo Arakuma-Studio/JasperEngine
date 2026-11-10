@@ -1,0 +1,71 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "shatter_out",
+  "name": "Shatter Out",
+  "group": "out",
+  "role": "outro",
+  "duration": 0.7,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Breaks the main text into flying pieces and fades.",
+  "params": [
+    {
+      "name": "pieces",
+      "label": "Pieces",
+      "type": "number",
+      "default": 60,
+      "min": 10,
+      "max": 400
+    }
+  ],
+  "adds": [
+    {
+      "id": "shatter",
+      "kind": "effect",
+      "type": "shatter",
+      "params": {
+        "pieces": "pieces",
+        "progress": 0
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "target": "add:shatter",
+      "field": "fx:shatter.progress",
+      "keys": [
+        [
+          0,
+          0,
+          "cubic_in"
+        ],
+        [
+          "D",
+          1
+        ]
+      ]
+    },
+    {
+      "target": "title",
+      "field": "opacity",
+      "keys": [
+        [
+          0,
+          1
+        ],
+        [
+          "0.7*D",
+          1,
+          "sine_in"
+        ],
+        [
+          "D",
+          0
+        ]
+      ]
+    }
+  ],
+  "markers": []
+}

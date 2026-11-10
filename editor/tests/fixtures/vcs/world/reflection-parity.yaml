@@ -254,6 +254,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 32, 0, 0, 1]
+  PixelPerfectCameraComponent:
+    position: [94, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 94, 0, 0, 1]
   PointsComponent:
     position: [6, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -354,6 +359,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 7, 0, 0, 1]
+  SortingGroupComponent:
+    position: [95, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 95, 0, 0, 1]
   SplineAnimateComponent:
     position: [76, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -379,6 +389,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 41, 0, 0, 1]
+  SpriteBatchComponent:
+    position: [96, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 96, 0, 0, 1]
   SpriteComponent:
     position: [42, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -389,6 +404,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 0, 0, 1]
+  TerrainWorldComponent:
+    position: [98, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 98, 0, 0, 1]
   TextComponent:
     position: [43, 0, 0]
     rotation: [1, 0, 0, 0]
@@ -454,8 +474,23 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 59, 0, 0, 1]
+  VoxelVolumeComponent:
+    position: [97, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 97, 0, 0, 1]
+  WaterExcluderComponent:
+    position: [92, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 92, 0, 0, 1]
   WaterVolumeComponent:
     position: [63, 0, 0]
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 63, 0, 0, 1]
+  WaterWakeComponent:
+    position: [93, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 93, 0, 0, 1]

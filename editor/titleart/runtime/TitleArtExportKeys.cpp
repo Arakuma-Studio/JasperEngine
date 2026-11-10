@@ -47,19 +47,30 @@ bool editor::addTitleArtRenderKeys(const fs::path& projectRoot, const std::strin
     // the job's plan names every program it binds; nothing runs (no step is stepped)
     titleart::TitleArtRenderer renderer;
     EditorTitleAssetResolver resolver(nullptr, projectRoot, projectRoot / "assets");
-    for (uint32_t flags : {0u, titleart::TITLE_ART_TEST_NO_FLOAT_TARGETS}){
-        for (titleart::OutputContent content : {titleart::OutputContent::All, titleart::OutputContent::Glow}){
-            titleart::RenderRequest request;
-            request.doc = doc;
-            request.testFlags = flags;
-            request.content = content;
-            request.assets = &resolver;
-            std::unique_ptr<titleart::TitleRenderJob> job = renderer.begin(request);
-            if (!job) continue;
-            for (const ShaderKey& key : job->shaderKeys()) keys.insert(key);
+    // S86 §6.4: a 3D title's variants per Realtime tier (the tier resolves on the device)
+    bool has3D = false;
+    titleart::forEachLayer(doc->root, [&has3D](const titleart::Json& layer, const titleart::Json*, int){
+        has3D = has3D || layer.value("dimension", std::string()) == "3d";
+        return !has3D;
+    });
+    const std::vector<int> tiers = has3D ? std::vector<int>{1, 2, 3} : std::vector<int>{0};
+    for (int tier : tiers){
+        for (uint32_t flags : {0u, titleart::TITLE_ART_TEST_NO_FLOAT_TARGETS}){
+            for (titleart::OutputContent content : {titleart::OutputContent::All, titleart::OutputContent::Glow}){
+                titleart::RenderRequest request;
+                request.doc = doc;
+                request.testFlags = flags;
+                request.content = content;
+                request.tier = tier;
+                request.assets = &resolver;
+                std::unique_ptr<titleart::TitleRenderJob> job = renderer.begin(request);
+                if (!job) continue;
+                for (const ShaderKey& key : job->shaderKeys()) keys.insert(key);
+            }
         }
     }
     // a Glyph Atlas title composes its cells (R28): its glyph cells and plates use the programs above
     keys.insert(titleart::titleRenderProgramKey((uint32_t)titleart::TitleRenderProgram::GlyphCompose));
+    keys.insert(titleart::titleRenderProgramKey((uint32_t)titleart::TitleRenderProgram::GlyphComposeAnim));
     return true;
 }

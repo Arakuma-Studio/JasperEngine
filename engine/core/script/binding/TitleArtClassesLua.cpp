@@ -19,6 +19,7 @@
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 #include "object/TitleArt.h"
+#include "titleanim/TitleAnimPlayer.h"
 #include "subsystem/TitleArtSystem.h"
 
 #include <optional>
@@ -182,6 +183,65 @@ namespace {
         return 0;
     }
 
+    // S86 R37: the Realtime 3D tier
+    bool doSetQualityTier(lua_State* L, TitleArt* self){
+        if (lua_type(L, 2) != LUA_TSTRING){
+            pushError(L, "TitleArt '" + self->getName() + "': 'qualityTier' is \"auto\", \"high\", \"medium\" or \"low\"; got " +
+                         luaL_typename(L, 2) + ".");
+            return false;
+        }
+        std::string error;
+        if (!self->setQualityTier(lua_tostring(L, 2), &error)){
+            pushError(L, error);
+            return false;
+        }
+        return true;
+    }
+
+    int setQualityTier(lua_State* L){
+        TitleArt* self = titleSelf(L);
+        if (!doSetQualityTier(L, self)) return lua_error(L);
+        return 0;
+    }
+
+    // S86 R63: getMeshStats(layerPath) -> {triangles, vertices, solids, buildMs, tier, overBudget} or nil
+    bool pushMeshStats(lua_State* L, TitleArt* self, const char* layerPath){
+        titleart::TitleArtMeshStats stats;
+        bool found = false;
+        std::string error;
+        if (!self->getMeshStats(layerPath, stats, found, &error)){
+            pushError(L, error);
+            return false;
+        }
+        if (!found){
+            lua_pushnil(L);
+            return true;
+        }
+        lua_createtable(L, 0, 7);
+        lua_pushinteger(L, (lua_Integer)stats.triangles);
+        lua_setfield(L, -2, "triangles");
+        lua_pushinteger(L, (lua_Integer)stats.vertices);
+        lua_setfield(L, -2, "vertices");
+        lua_pushinteger(L, (lua_Integer)stats.solids);
+        lua_setfield(L, -2, "solids");
+        lua_pushnumber(L, stats.buildMs);
+        lua_setfield(L, -2, "buildMs");
+        lua_pushlstring(L, stats.tier.data(), stats.tier.size());
+        lua_setfield(L, -2, "tier");
+        lua_pushboolean(L, stats.overBudget ? 1 : 0);
+        lua_setfield(L, -2, "overBudget");
+        lua_pushboolean(L, stats.cooked ? 1 : 0);
+        lua_setfield(L, -2, "cooked");
+        return true;
+    }
+
+    int getMeshStats(lua_State* L){
+        TitleArt* self = titleSelf(L);
+        const char* layerPath = luaL_checkstring(L, 2);
+        if (!pushMeshStats(L, self, layerPath)) return lua_error(L);
+        return 1;
+    }
+
     // R67: title and renderMode cannot change from a script
     bool doReadOnly(lua_State* L, TitleArt* self, const char* field){
         pushError(L, "TitleArt '" + self->getName() + "': '" + field + "' is read-only: a script cannot change the asset or the Render Mode (set "
@@ -233,29 +293,59 @@ namespace {
         return table;
     }
 
-    // play(name, {speed, loop, unscaled})
-    bool playArgs(lua_State* L, TitleArt* self){
-        const char* name = luaL_checkstring(L, 2);
-        float speed = 1.0f;
-        bool loop = false, unscaled = false;
-        if (lua_istable(L, 3)){
-            lua_getfield(L, 3, "speed");
-            if (lua_isnumber(L, -1)) speed = (float)lua_tonumber(L, -1);
-            lua_pop(L, 1);
-            lua_getfield(L, 3, "loop");
-            loop = lua_toboolean(L, -1) != 0;
-            lua_pop(L, 1);
-            lua_getfield(L, 3, "unscaled");
-            unscaled = lua_toboolean(L, -1) != 0;
-            lua_pop(L, 1);
-        }
-        return self->play(name, speed, loop, unscaled);
+    // play(name, {speed, loop, unscaled, fade, time}): loop nil keeps the animation's wrap
+    titleanim::TitleAnimPlayOptions playOptions(lua_State* L, int index){
+        titleanim::TitleAnimPlayOptions options;
+        if (!lua_istable(L, index)) return options;
+        lua_getfield(L, index, "speed");
+        if (lua_isnumber(L, -1)) options.speed = (float)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+        lua_getfield(L, index, "loop");
+        if (!lua_isnil(L, -1)) options.loop = lua_toboolean(L, -1) != 0 ? 1 : 0;
+        lua_pop(L, 1);
+        lua_getfield(L, index, "unscaled");
+        options.unscaled = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        lua_getfield(L, index, "fade");
+        if (lua_isnumber(L, -1)) options.fade = (float)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+        lua_getfield(L, index, "time");
+        if (lua_isnumber(L, -1)) options.time = lua_tonumber(L, -1);
+        lua_pop(L, 1);
+        return options;
+    }
+
+    // TitleArt.setLanguage(code): an invalid tag raises (S81 §6.6's sentence form), nothing changes
+    int setGlobalLanguage(lua_State* L){
+        const char* code = luaL_checkstring(L, 1);
+        std::string error;
+        if (!TitleArt::setGlobalLanguage(code, &error)) return luaL_error(L, "TitleArt: %s.", error.c_str());
+        return 0;
     }
 
     int play(lua_State* L){
         TitleArt* self = titleSelf(L);
-        lua_pushboolean(L, playArgs(L, self) ? 1 : 0);
+        const char* name = luaL_checkstring(L, 2);
+        lua_pushboolean(L, self->play(name, playOptions(L, 3)) ? 1 : 0);
         return 1;
+    }
+
+    int playOverlay(lua_State* L){
+        TitleArt* self = titleSelf(L);
+        const char* name = luaL_checkstring(L, 2);
+        lua_pushboolean(L, self->playOverlay(name, playOptions(L, 3)) ? 1 : 0);
+        return 1;
+    }
+
+    // stop() every animation, stop(name) one
+    int stop(lua_State* L){
+        TitleArt* self = titleSelf(L);
+        if (lua_isstring(L, 2)){
+            lua_pushboolean(L, self->stop(std::string(lua_tostring(L, 2))) ? 1 : 0);
+            return 1;
+        }
+        self->stop();
+        return 0;
     }
 
 }
@@ -283,6 +373,7 @@ void LuaBinding::registerTitleArtClasses(lua_State *L){
         .addProperty("error", &TitleArt::getError)
         .addProperty("pixelPath", &TitleArt::getPixelPath)
         .addProperty("priority", &TitleArt::getPriority, &TitleArt::setPriority)
+        .addProperty("qualityTier", &TitleArt::getQualityTier, &setQualityTier)
         .addProperty("liveTime", &TitleArt::getLiveTime, &TitleArt::setLiveTime)
         .addProperty("sweepPosition", &TitleArt::getSweepPosition, &TitleArt::setSweepPosition)
         .addProperty("sweepWidth", &TitleArt::getSweepWidth, &TitleArt::setSweepWidth)
@@ -301,6 +392,12 @@ void LuaBinding::registerTitleArtClasses(lua_State *L){
         .addProperty("glintColor", &TitleArt::getGlintColor, &TitleArt::setGlintColor)
         .addProperty("animations", +[](const TitleArt* self, lua_State* L) { return stringList(L, self->getAnimations()); })
         .addProperty("isPlaying", &TitleArt::isPlaying)
+        .addProperty("paused", &TitleArt::isPaused, &TitleArt::setPaused)
+        .addProperty("animation", &TitleArt::getAnimation)
+        .addProperty("animationTime", &TitleArt::getAnimationTime, &TitleArt::setAnimationTime)
+        .addProperty("animationSpeed", &TitleArt::getAnimationSpeed, &TitleArt::setAnimationSpeed)
+        .addProperty("onAnimationEvent", [](TitleArt* self) { return &self->getOnAnimationEvent(); },
+                                         [](TitleArt* self, lua_State* L) { self->getOnAnimationEvent() = L; })
         .addProperty("onReady", [](TitleArt* self) { return &self->getOnReady(); },
                                 [](TitleArt* self, lua_State* L) { self->getOnReady() = L; })
         .addProperty("onFailed", [](TitleArt* self) { return &self->getOnFailed(); },
@@ -309,15 +406,33 @@ void LuaBinding::registerTitleArtClasses(lua_State *L){
                                             [](TitleArt* self, lua_State* L) { self->getOnMissingCharacters() = L; })
         .addProperty("onAnimationFinished", [](TitleArt* self) { return &self->getOnAnimationFinished(); },
                                             [](TitleArt* self, lua_State* L) { self->getOnAnimationFinished() = L; })
+        // S87: the renderer's language ("" = Auto) and its events
+        .addProperty("language", &TitleArt::getLanguage, &TitleArt::setLanguage)
+        .addProperty("onLanguageReady", [](TitleArt* self) { return &self->getOnLanguageReady(); },
+                                        [](TitleArt* self, lua_State* L) { self->getOnLanguageReady() = L; })
+        .addFunction("getResolvedLanguage", &TitleArt::getResolvedLanguage)
+        .addFunction("getLanguages", +[](const TitleArt* self, lua_State* L) { return stringList(L, self->getLanguages()); })
+        .addFunction("isLanguageReady", &TitleArt::isLanguageReady)
+        .addStaticFunction("setLanguage", &setGlobalLanguage)
+        .addStaticFunction("getLanguage", &TitleArt::getGlobalLanguage)
+        .addStaticProperty("onLanguageChanged", +[]() { return &TitleArt::getOnLanguageChanged(); })
         .addFunction("setParameter", &setParameter)
         .addFunction("getParameter", &getParameter)
         .addFunction("hasParameter", &TitleArt::hasParameter)
         .addFunction("resetParameter", &resetParameter)
         .addFunction("setColorScheme", &setColorScheme)
+        .addFunction("getMeshStats", &getMeshStats)
         .addFunction("refresh", &TitleArt::refresh)
         .addFunction("setNativeSize", &setNativeSize)
         .addFunction("play", &play)
-        .addFunction("stop", &TitleArt::stop)
+        .addFunction("playOverlay", &playOverlay)
+        .addFunction("stop", &stop)
+        .addFunction("reset", &TitleArt::reset)
+        .addFunction("isAnimationPlaying", &TitleArt::isAnimationPlaying)
+        .addFunction("prepare", &TitleArt::prepare)
+        .addFunction("isAnimationReady", &TitleArt::isAnimationReady)
+        .addFunction("sample", &TitleArt::sample)
+        .addFunction("getDuration", &TitleArt::getDuration)
         .addStaticFunction("setFrameBudget", &TitleArt::setFrameBudget)
         .addStaticFunction("getFrameBudget", &TitleArt::getFrameBudget)
         .endClass();
@@ -334,7 +449,7 @@ void LuaBinding::registerTitleArtClasses(lua_State *L){
 
     // the Title Art Renderer of the GameObject, nil when it has none (reviewed neutral, R67)
     luabridge::getGlobalNamespace(L)
-        .deriveClass<GameObject, EntityHandle>("GameObject")
+        .beginClass<GameObject>("GameObject")
         .addFunction("getTitleArt", +[](GameObject* self) -> std::optional<TitleArt> {
             Scene* scene = self->getScene();
             if (!scene || !scene->isEntityCreated(self->getEntity()) || !scene->isComponentRegistered<TitleArtRendererComponent>() ||

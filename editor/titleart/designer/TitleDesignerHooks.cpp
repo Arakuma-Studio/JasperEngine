@@ -13,9 +13,11 @@ namespace {
     struct Hooks {
         std::vector<PanelDef> panels;
         std::vector<ToolbarItemDef> toolbar;
+        std::vector<CanvasOverlayDef> overlays;
         std::vector<PreviewModeDef> previewModes;
         std::vector<std::pair<std::string, CheckSource>> checks;
         EditRouter router;
+        CanvasPoseSource poseSource;
         TimeSource time;
         Gizmo3DProvider gizmo3d;
         std::shared_ptr<TitleLibraryProvider> library;
@@ -59,6 +61,19 @@ const std::vector<ToolbarItemDef>& jasperengine::editor::titledesigner::toolbarI
     return hooks().toolbar;
 }
 
+void jasperengine::editor::titledesigner::addCanvasOverlay(CanvasOverlayDef overlay) {
+    eraseId(hooks().overlays, overlay.id);
+    hooks().overlays.push_back(std::move(overlay));
+}
+
+void jasperengine::editor::titledesigner::removeCanvasOverlay(const std::string& id) {
+    eraseId(hooks().overlays, id);
+}
+
+const std::vector<CanvasOverlayDef>& jasperengine::editor::titledesigner::canvasOverlays() {
+    return hooks().overlays;
+}
+
 void jasperengine::editor::titledesigner::setEditRouter(EditRouter router) {
     hooks().router = std::move(router);
 }
@@ -81,6 +96,52 @@ void jasperengine::editor::titledesigner::setGizmo3DProvider(Gizmo3DProvider pro
 
 const Gizmo3DProvider& jasperengine::editor::titledesigner::gizmo3DProvider() {
     return hooks().gizmo3d;
+}
+
+namespace {
+    std::vector<std::function<void()>>& engineFrameRequests() {
+        static std::vector<std::function<void()>> list;
+        return list;
+    }
+    bool engineFrameRequestsRan = false;
+}
+
+void jasperengine::editor::titledesigner::requestEngineFrame(std::function<void()> work) {
+    if (work) engineFrameRequests().push_back(std::move(work));
+}
+
+void jasperengine::editor::titledesigner::runEngineFrameRequests() {
+    std::vector<std::function<void()>> work;
+    work.swap(engineFrameRequests());
+    engineFrameRequestsRan = !work.empty();
+    for (const std::function<void()>& w : work) w();
+}
+
+bool jasperengine::editor::titledesigner::engineFramesWanted() {
+    return engineFrameRequestsRan || !engineFrameRequests().empty();
+}
+
+namespace {
+    std::map<std::string, jasperengine::editor::titledesigner::CanvasOverlay>& keyedCanvasOverlays() {
+        static std::map<std::string, jasperengine::editor::titledesigner::CanvasOverlay> list;
+        return list;
+    }
+}
+
+void jasperengine::editor::titledesigner::addCanvasOverlay(const std::string& id, CanvasOverlay overlay) {
+    keyedCanvasOverlays()[id] = std::move(overlay);
+}
+
+void jasperengine::editor::titledesigner::runCanvasOverlays(const TitleDesignerState& state, ImDrawList* drawList, const CanvasXform& xform) {
+    for (const auto& [id, overlay] : keyedCanvasOverlays()) overlay(state, drawList, xform);
+}
+
+void jasperengine::editor::titledesigner::setCanvasPoseSource(CanvasPoseSource source) {
+    hooks().poseSource = std::move(source);
+}
+
+const jasperengine::editor::titledesigner::CanvasPoseSource& jasperengine::editor::titledesigner::canvasPoseSource() {
+    return hooks().poseSource;
 }
 
 void jasperengine::editor::titledesigner::addPreviewMode(PreviewModeDef mode) {

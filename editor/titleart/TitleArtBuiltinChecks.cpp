@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArtBuiltinChecks.h"
+#include "localisation/TitleLanguageChecks.h"
+#include "titleart/TitleTranslations.h"
 #include "fx/FxGeneratorChecks.h"
+#include "fx/FxRuntimeChecks.h"
 #include "titleart/runtime/TitleArtRuntimeChecks.h"
 
 #include "TitleArtBake.h"
@@ -435,7 +438,15 @@ namespace {
             out.push_back(result(TitleCheckStatus::Skip, "no document file: not measured", "recipes"));
             return;
         }
-        const TitleBakeStatus status = titleArtBakeStatus(ctx.file, ctx.doc, *ctx.assets);
+        // S87: a per-language run checks that language's set (one that renders as the source reuses its set)
+        const std::string language = ctx.options.language;
+        if (!language.empty() && ctx.source && !titleart::titleLanguageDiffers(*ctx.source, language)) {
+            TitleCheckResult same = result(TitleCheckStatus::Pass, "the language renders as the source and reuses its set", "recipes");
+            same.measured = TJson{{"set", nullptr}};
+            out.push_back(std::move(same));
+            return;
+        }
+        const TitleBakeStatus status = titleArtBakeStatus(ctx.file, ctx.source ? *ctx.source : ctx.doc, *ctx.assets, language);
         TJson outputs = TJson::array();
         size_t notFresh = 0;
         std::string first;
@@ -453,7 +464,11 @@ namespace {
         r.measured = TJson{{"outputs", outputs}, {"not_fresh", notFresh}};
         r.threshold = TJson{{"not_fresh", 0}};
         r.message = notFresh == 0 ? "every output is fresh" : first;
-        if (notFresh) r.fix = TJson{{"tool", "export_title"}, {"arguments", TJson{{"path", ctx.path}}}};
+        if (notFresh) {
+            TJson arguments = TJson{{"path", ctx.path}};
+            if (!language.empty()) arguments["languages"] = TJson::array({language});
+            r.fix = TJson{{"tool", "export_title"}, {"arguments", arguments}};
+        }
         out.push_back(std::move(r));
     }
 
@@ -775,9 +790,9 @@ namespace {
     }
 
     // calibrated (S84 §6.14.3): a counter survives when it is visibly distinct from the letter. The
-    // red controls (a rim of the face's colour, a counter flooded by an outline of it) measure at
-    // most 6.5; the library's counters that read as open start above 8
-    constexpr double COUNTER_MIN_DELTA_E = 8.0;
+    // red controls (a rim of the face's colour, a counter flooded by an outline of it) measure 0,
+    // the library's worst counter 8.1: the threshold sits mid-gap (S84 Deviation 29)
+    constexpr double COUNTER_MIN_DELTA_E = 4.0;
     constexpr double COUNTER_OPEN_DELTA_E = 100.0;      // a transparent counter: the background shows
 
     // how visible a counter is: delta E between the mean colour of the rendered counter and of the
@@ -1139,14 +1154,14 @@ namespace {
                 const std::string type = str(layer["generator"], "type");
                 // Glints that follow a layer pick their stars from its 8-bit analysis grid the same way
                 // (HighlightFinder over readGrid): a star at a borderline cell moves between the paths
-                // (measured on the library, S83 Deviation 38: up to 253/255 on seven items, mean and share within class)
+                // (measured on the library, S83 Deviation 44: up to 253/255 on seven items, mean and share within class)
                 const bool follows = !str(layer, "follow").empty();
                 gridLayout = gridLayout || type == "lightning" || type == "backlight" || (type == "glints" && follows);
             }
             return true;
         });
         options.maxDiff = has3D || gridLayout ? 255 : cls == titleart::FallbackClass::F0 ? 48 : cls == titleart::FallbackClass::F1 ? 64 : 96;
-        // a 3D glint places discrete stars from 8-bit light on the RGBA8 path (S86 Deviation 31): S86
+        // a 3D glint places discrete stars from 8-bit light on the RGBA8 path (S86 Deviation 36): S86
         // AC9 holds a glint-on render to the mean alone; the same document with its glints off is held
         // to the 3D share and max, so everything but the stars stays judged per pixel
         std::vector<std::string> glintLayers;
@@ -1272,21 +1287,27 @@ void editor::registerBuiltinTitleChecks() {
         def.kind = b.kind;
         def.owner = "S80";
         def.description = b.description;
+        // S87: the glyphs and the bakes of each language as well
+        def.perLanguage = std::string(b.id) == "glyphs_present" || std::string(b.id) == "bake_fresh";
         auto run = b.run;
         def.run = [run](TitleCheckContext& context, std::vector<TitleCheckResult>& out) { run(context, out); };
         TitleArtChecks::registerCheck(std::move(def));
     }
-    // S83's generator checks
+    // S83's generator checks, and what effects cost a Realtime title on a device
     registerTitleGeneratorChecks();
+    registerTitleFxRuntimeChecks();
     // the later specs' checks, so every surface that runs the checks has them (S81: glyph_atlas, characters R55)
     registerTitleArtRuntimeChecks();
     registerTitleCharactersCheck();
+    // S87: the language checks
+    registerTitleLanguageChecks();
 }
 
 std::vector<titleart::TitleProblem> editor::titleArtMissingAssets(const titleart::TitleArtDoc& doc, const titleart::AssetResolver& assets) {
     std::vector<titleart::TitleProblem> problems;
     titleart::visitTitleArtRefs(doc.root, [&](const titleart::TitleAssetRef& ref, const std::string& field, titleart::TitleAssetKind kind) {
-        if (ref.empty()) return true;
+        // a missing marker sound is anim_markers' (a warning: the title still draws)
+        if (ref.empty() || kind == titleart::TitleAssetKind::Sound) return true;
         if (assets.resolve(ref, kind).found) return true;
         std::string layerId, path;
         splitLayerPath(doc.root, field, layerId, path);

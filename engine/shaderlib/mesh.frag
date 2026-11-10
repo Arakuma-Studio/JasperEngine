@@ -64,9 +64,15 @@ out vec4 g_finalColor;
     uniform sampler u_baseColor_smp;
     #ifndef MATERIAL_UNLIT
         uniform texture2D u_metallicRoughnessTexture;
-        uniform texture2D u_occlusionTexture;
+        // a terrain with holes gives its base material's occlusion texture to the hole map (T3 R21:
+        // the base occlusion reads 1, the layers' own still applies)
+        #ifndef TERRAIN_HOLES
+            uniform texture2D u_occlusionTexture;
+        #endif
         uniform sampler u_metallicRoughness_smp;
-        uniform sampler u_occlusion_smp;
+        #ifndef TERRAIN_HOLES
+            uniform sampler u_occlusion_smp;
+        #endif
         // a painted terrain with the post-processing colour leaves its base material's emissive
         // texture out: its slot is the colour LUT's (the variant is at 16 textures without it;
         // the emissive factor still applies)
@@ -83,6 +89,11 @@ out vec4 g_finalColor;
         uniform texture2D u_normalTexture;
         uniform sampler u_normal_smp;
     #endif
+#endif
+// T3 R14: the macro normal map takes the base material's normal map's place: no new slot
+#ifdef TERRAIN_MACRO_NORMAL
+    uniform texture2D u_normalTexture;
+    uniform sampler u_normal_smp;
 #endif
 
 // the built-in Lit's extended lobes (includes/pbr_ext_slots.glsl): their values end this block
@@ -163,6 +174,8 @@ uniform u_fs_pbrParams {
 
 #ifdef USE_PUNCTUAL
     #define LIGHTS_FS
+    // (a variant past the backend's fragment uniforms, a painted terrain's layers taking 45 vectors,
+    // reads its lights from the light records: ShaderVariantCompiler::compile, LIGHTS_FS_RECORDS)
     #include "includes/lights.glsl"
 #endif
 
@@ -246,6 +259,10 @@ const float M_PI = 3.141592653589793;
     #define TERRAIN_MATERIAL_INFO
     #include "includes/terrain_fs.glsl"
 #endif
+#ifdef HAS_VOXEL
+    #define VOXEL_MATERIAL_INFO
+    #include "includes/voxel_fs.glsl"
+#endif
 #ifdef HAS_FOG
     #include "includes/fog.glsl"
 #endif
@@ -253,8 +270,71 @@ const float M_PI = 3.141592653589793;
 #include "includes/post_color.glsl"
 // the LOD cross-fade's dither (USE_LOD_FADE): LOD_FADE_CLIP() before every colour write (no semicolon)
 #include "includes/lod_fade.glsl"
+#ifdef TERRAIN_HOLES
+    #include "includes/terrain_holes_fs.glsl"
+#endif
+
+#ifdef TERRAIN_DEBUG_VIEW
+    float terrainHoleClass = 1.0;
+
+    // T3 R42, R44: what a pixel of the terrain costs, for people on a ramp and for a readback in R: the
+    // count itself, at 8/255 a step. In the Holes view holes stand, hatched on a ghost of the surface.
+    vec4 terrainDebugOutput(vec4 shaded){
+        int view = int(terrainLayers.debugParams.x + 0.5);
+        if (view == 3){
+            // the classes of terraincore::holeOverlayClasses: 0 a hole, 64 its rim over the collider, 200 a
+            // cell the navmesh leaves out, 255 solid ground
+            float stripes = mod(floor((gl_FragCoord.x + gl_FragCoord.y) / 6.0), 2.0);
+            if (terrainHoleClass < 0.125){
+                return vec4(mix(shaded.rgb * 0.35, vec3(0.95, 0.1, 0.75), stripes * 0.8), 1.0);
+            }
+            if (terrainHoleClass < 0.5){
+                return vec4(mix(shaded.rgb * 0.35, vec3(1.0, 0.55, 0.05), stripes * 0.8), 1.0);
+            }
+            if (terrainHoleClass < 0.9){
+                return vec4(mix(shaded.rgb, vec3(0.1, 0.45, 1.0), 0.45), 1.0);
+            }
+            return shaded;
+        }
+        float count = view == 1 ? terrainDebugLayers : terrainDebugFetches;
+        float position = clamp(count / 24.0, 0.0, 1.0);
+        vec3 ramp = position < 0.5 ? mix(vec3(0.05, 0.1, 0.8), vec3(0.1, 0.8, 0.2), position * 2.0)
+                                   : mix(vec3(0.1, 0.8, 0.2), vec3(0.9, 0.1, 0.05), (position - 0.5) * 2.0);
+        return vec4(count * 8.0 / 255.0, ramp.g, ramp.b, 1.0);
+    }
+
+    bool terrainDebugHoleView(){
+        return int(terrainLayers.debugParams.x + 0.5) == 3;
+    }
+#endif
+
+// T3 R20: a fragment in a hole goes, at the end of the shader rather than the top: on llvmpipe's 256-bit
+// path a discard ahead of the lit code crashed in its JIT (T3-terrain-materials-holes.md, Deviations)
+#ifdef TERRAIN_HOLES
+    void terrainFinishHole(){
+        #ifdef TERRAIN_DEBUG_VIEW
+            // the Holes view draws them (the bound map holds its classes: terraincore::holeOverlayClasses)
+            if (!terrainDebugHoleView() && terrainHoleClass < 0.5){
+                discard;
+            }
+        #else
+            terrainDiscardHole();
+        #endif
+    }
+#endif
+
+#include "includes/foliage_dither.glsl"
 
 void main() {
+    #ifdef USE_FOLIAGE_DITHER
+        foliageDitherDiscard();
+    #endif
+    #if defined(TERRAIN_HOLES) && defined(TERRAIN_DEBUG_VIEW)
+        ivec2 holeSize = textureSize(sampler2D(u_terrainHoles, u_terrainHoles_smp), 0);
+        ivec2 holeTexel = clamp(ivec2(floor(v_terrainHoleUV * vec2(holeSize))), ivec2(0), holeSize - ivec2(1));
+        terrainHoleClass = texelFetch(sampler2D(u_terrainHoles, u_terrainHoles_smp), holeTexel, 0).r;
+        TERRAIN_COUNT_FETCHES(1.0);
+    #endif
     #ifdef PBR_HEX_ACTIVE
         pbrHexSetup();
     #endif
@@ -275,6 +355,8 @@ void main() {
     #elif defined(HAS_TERRAIN_PBR) && defined(MATERIAL_UNLIT)
         // unlit shows the one thing a painted layer still means here
         baseColor = getTerrainSurface(baseColor, vec3(0.0, 1.0, 0.0), 1.0, 0.0).color;
+    #elif defined(HAS_VOXEL) && defined(MATERIAL_UNLIT)
+        baseColor = getVoxelSurface(baseColor, vec3(0.0, 1.0, 0.0), 1.0, 0.0).color;
     #endif
 
     #ifdef ALPHA_MASK
@@ -299,6 +381,12 @@ void main() {
             g_finalColor = postColorEncodeBlended(baseColor);
         #else
             g_finalColor = (vec4(linearTosRGB(baseColor.rgb), baseColor.a));
+        #endif
+        #ifdef TERRAIN_DEBUG_VIEW
+            g_finalColor = terrainDebugOutput(g_finalColor);
+        #endif
+        #ifdef TERRAIN_HOLES
+            terrainFinishHole();
         #endif
         return;
     #endif
@@ -325,6 +413,13 @@ void main() {
             materialInfo.baseColor = baseColor.rgb;
             materialInfo = applyTerrainSurface(materialInfo, terrainSurface, f0_ior);
             n = terrainSurface.normal;
+        #endif
+        #ifdef HAS_VOXEL
+            VoxelSurface voxelSurface = getVoxelSurface(baseColor, n, materialInfo.perceptualRoughness, materialInfo.metallic);
+            baseColor = voxelSurface.color;
+            materialInfo.baseColor = baseColor.rgb;
+            materialInfo = applyVoxelSurface(materialInfo, voxelSurface, f0_ior);
+            n = voxelSurface.normal;
         #endif
 
         materialInfo.perceptualRoughness = clamp(materialInfo.perceptualRoughness, 0.0, 1.0);
@@ -418,6 +513,10 @@ void main() {
         #ifdef HAS_TERRAIN_PBR
             f_diffuse *= terrainSurface.occlusion;
             f_specular *= terrainSurface.occlusion;
+        #endif
+        #ifdef HAS_VOXEL
+            f_diffuse *= voxelSurface.occlusion;
+            f_specular *= voxelSurface.occlusion;
         #endif
 
         #ifdef USE_SSAO
@@ -553,5 +652,11 @@ void main() {
         #else
             g_finalColor = vec4(linearTosRGB(color.rgb), baseColor.a);
         #endif
+        #ifdef TERRAIN_DEBUG_VIEW
+            g_finalColor = terrainDebugOutput(g_finalColor);
+        #endif
+    #endif
+    #ifdef TERRAIN_HOLES
+        terrainFinishHole();
     #endif
 }

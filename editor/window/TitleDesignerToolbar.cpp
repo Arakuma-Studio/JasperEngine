@@ -81,14 +81,15 @@ void TitleDesignerWindow::drawToolbar() {
     // document chip: name, recent list, Show in Project, Duplicate As...; dragging it into a scene
     // drops the shown file (R61)
     const std::string chip = open ? fs::path(doc.document()->assetPath()).filename().string() : std::string("Open a Title Art");
-    ImGui::Button((ICON_FA_FILE_IMAGE " " + chip + " " ICON_FA_CARET_DOWN "###docchip").c_str());
+    // the menu opens on the release of a click: opened on the press it took the drag (R61)
+    const bool chipClicked = ImGui::Button((ICON_FA_FILE_IMAGE " " + chip + " " ICON_FA_CARET_DOWN "###docchip").c_str());
     if (open && ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
         // the Project window's payload: the project-relative path
         const std::string payload = doc.document()->projectPath();
         ImGui::SetDragDropPayload("resource_files", payload.c_str(), payload.size() + 1);
         ImGui::Text(ICON_FA_FILE_IMAGE " %s", chip.c_str());
         ImGui::EndDragDropSource();
-    } else if (ImGui::IsItemClicked()) {
+    } else if (chipClicked) {
         ImGui::OpenPopup("##docmenu");
     }
     tooltip(open ? "The shown Title Art: drag it into the Hierarchy or the Scene view to place it" : "Recent Title Art documents");

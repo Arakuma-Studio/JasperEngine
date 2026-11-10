@@ -9,9 +9,11 @@
 #include "TitleLibraryImports.h"
 #include "TitleLibraryProvider.h"
 #include "TitleLibraryVerify.h"
+#include "io/AtomicFile.h"
 #include "texsynth/SynthImage.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
+#include "util/FileUtils.h"
 
 #include "miniz.h"
 #include "stb_image.h"
@@ -47,11 +49,7 @@ namespace {
     }
 
     bool writeBytes(const fs::path& path, const std::string& bytes) {
-        std::error_code ec;
-        if (!path.parent_path().empty()) fs::create_directories(path.parent_path(), ec);
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
-        out << bytes;
-        return (bool)out;
+        return io::writeFileAtomic(path, bytes).ok();
     }
 
     // `--name value` options and positional arguments
@@ -268,7 +266,7 @@ namespace {
         for (const PackFont& f : packFonts()) {
             for (const std::string& file : f.files) {
                 fs::create_directories(dir / "assets" / TITLE_FONTS_ASSET_DIR / f.id, ec);
-                fs::copy_file(pack / "fonts" / f.id / file, dir / "assets" / TITLE_FONTS_ASSET_DIR / f.id / file, fs::copy_options::overwrite_existing, ec);
+                FileUtils::copyFileAtomic(pack / "fonts" / f.id / file, dir / "assets" / TITLE_FONTS_ASSET_DIR / f.id / file, ec);
             }
         }
         std::string manifest;
@@ -278,7 +276,7 @@ namespace {
             if (m.is_object() && m.contains("environments")) {
                 for (auto it = m["environments"].begin(); it != m["environments"].end(); ++it) {
                     const std::string file = it.value().value("file", std::string());
-                    fs::copy_file(pack / "hdri" / file, dir / "assets" / TITLE_ENVIRONMENTS_ASSET_DIR / file, fs::copy_options::overwrite_existing, ec);
+                    FileUtils::copyFileAtomic(pack / "hdri" / file, dir / "assets" / TITLE_ENVIRONMENTS_ASSET_DIR / file, ec);
                 }
             }
         }
@@ -287,6 +285,11 @@ namespace {
 
     // runs the calls in a one-shot headless editor on the scratch project; the result envelopes
     bool runBatch(const char* executable, const Scratch& s, std::vector<Json>& results, std::string& error) {
+#if !defined(_WIN32)
+        // the editor (spawned by `batch`) inherits it: compiled shaders survive the run
+        const std::string mesaCache = mesaShaderCacheDir(std::getenv("MESA_SHADER_CACHE_DIR"), std::getenv("XDG_CACHE_HOME"), std::getenv("HOME"));
+        if (!mesaCache.empty()) setenv("MESA_SHADER_CACHE_DIR", mesaCache.c_str(), 0);
+#endif
         const fs::path calls = s.dir / "calls.ndjson", out = s.dir / "results.ndjson", err = s.dir / "editor-stderr.txt";
         std::string text;
         for (const std::string& c : s.calls) text += c + "\n";
@@ -414,6 +417,13 @@ namespace {
         return work;
     }
 
+}
+
+// ---- the headless editors' environment ----
+
+std::string titlelibrary::mesaShaderCacheDir(const char* mesaDir, const char* xdgCache, const char* home) {
+    if ((mesaDir && *mesaDir) || (xdgCache && *xdgCache) || !home || !*home) return {};
+    return (fs::path(home) / ".cache" / "mesa_shader_cache").string();
 }
 
 // ---- list, verify, lint, gen-docs ----
@@ -570,7 +580,7 @@ bool titlelibrary::buildTemplateFromRecipe(const Json& r, TitleTemplate& t, std:
                   {"description", r.value("description", Json::object())}, {"family", r.value("family", std::string("custom"))},
                   {"tags", r.value("tags", Json::array())}, {"synonyms", r.value("synonyms", Json::object())}, {"placeholders", placeholders},
                   {"canvas_note", r.value("canvas_note", std::string())}, {"provenance", r.value("provenance", Json{{"source", "jasperengine"}})}};
-    for (const char* key : {"background", "check_allow", "lint_allow"}) if (r.contains(key)) t.meta[key] = r[key];
+    for (const char* key : {"background", "cjk", "check_allow", "lint_allow"}) if (r.contains(key)) t.meta[key] = r[key];
     return true;
 }
 
@@ -671,8 +681,9 @@ int titlelibrary::runBakeThumbnailsCommand(const std::vector<std::string>& args,
         // a template fills its canvas (640 wide is plenty for a 240 px thumbnail, and the 3D ones
         // stay inside the renderer's target memory); a look is a word cropped out of the canvas
         const int width = p.item->kind == LibraryKind::Template ? 640 : 1280;
+        // no copy kept for `compare: rev:<n>`: keeping one costs a second render at 768 px wide
         s.calls.push_back(callLine("render_title", Json{{"path", "assets/" + p.doc}, {"save_path", p.png}, {"backgrounds", Json::array({"transparent"})},
-                                                       {"image", "none"}, {"max_width", width}}));
+                                                       {"image", "none"}, {"max_width", width}, {"options", Json{{"keep", false}}}}));
     }
     const auto start = std::chrono::steady_clock::now();
     std::vector<Json> results;
@@ -849,7 +860,7 @@ int titlelibrary::runCalibrateCommand(const std::vector<std::string>& args, cons
             if (e.path().extension() != ".titleart") continue;
             const std::string name = "red/" + e.path().filename().string();
             fs::create_directories(s.dir / "assets" / "red", ec);
-            fs::copy_file(e.path(), s.dir / "assets" / name, fs::copy_options::overwrite_existing, ec);
+            FileUtils::copyFileAtomic(e.path(), s.dir / "assets" / name, ec);
             redDocs.push_back(name);
         }
     }

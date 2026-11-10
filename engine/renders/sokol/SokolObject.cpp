@@ -887,9 +887,9 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
     case PipelineType::PIP_GBUFFER:
         // Mesh geometry pass with four color attachments (MRT):
         //   color[0] = packed depth (same as PIP_DEPTH, so SSAO/SSR depth is unchanged)
-        //   color[1] = view-space normal (octahedral .rg) + roughness (.b) + metallic (.a)
+        //   color[1] = view-space normal (octahedral .rg, 8 bits) + roughness (.b) + metallic (.a)
         //   color[2] = linear base color (.rgb) + reflection source code (.a)
-        //   color[3] = occlusion of the environment specular (.r)
+        //   color[3] = occlusion of the environment specular (.r) + the normal's next 8 bits (.gb)
         if (loadState.faceCulling){
             desc.cull_mode = getCullMode(loadState.cullingMode);
         }
@@ -902,7 +902,7 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
         desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
         desc.colors[1].pixel_format = SG_PIXELFORMAT_RGBA8;
         desc.colors[2].pixel_format = SG_PIXELFORMAT_RGBA8;
-        desc.colors[3].pixel_format = SG_PIXELFORMAT_R8;
+        desc.colors[3].pixel_format = SG_PIXELFORMAT_RGBA8;
         break;
 
     case PipelineType::PIP_DEFAULT:

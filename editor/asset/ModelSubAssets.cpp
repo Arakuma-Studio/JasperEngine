@@ -3,13 +3,18 @@
 
 #include "ModelSubAssets.h"
 
+#include "Engine.h"
+#include "Out.h"
 #include "asset/AssetFileWrite.h"
 #include "json.hpp"
+#include "pixelart/Palette.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <fstream>
+#include <iterator>
+#include <set>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -26,6 +31,79 @@ namespace {
 
     bool isDataUri(const std::string& uri) {
         return uri.compare(0, 5, "data:") == 0;
+    }
+
+    std::string gltfItemName(const Json& item, const char* kind, size_t index) {
+        const std::string name = item.is_object() && item.contains("name") && item["name"].is_string()
+            ? item["name"].get<std::string>() : std::string();
+        return std::string(kind) + " '" + (name.empty() ? "#" + std::to_string(index) : name) + "'";
+    }
+
+    // The blend shapes a primitive keeps, as MeshSystem::loadGLTF reads them: the attributes a target
+    // has lower what the vertex inputs hold for the targets after it.
+    size_t supportedMorphTargets(const Json& targets) {
+        bool normals = false, tangents = false;
+        size_t loaded = 0;
+        for (const Json& target : targets) {
+            const size_t supported = (normals && tangents) ? 2 : (normals || tangents) ? 4 : MAX_MORPHTARGETS;
+            if (loaded >= supported) {
+                return supported;
+            }
+            loaded++;
+            normals = normals || (target.is_object() && target.contains("NORMAL"));
+            tangents = tangents || (target.is_object() && target.contains("TANGENT"));
+        }
+        return targets.size();
+    }
+
+    void scanGltfLimits(const Json& root, ModelContents& contents) {
+        const Json empty = Json::array();
+        const Json& accessors = root.contains("accessors") && root["accessors"].is_array() ? root["accessors"] : empty;
+        std::set<int> views;
+        const auto addView = [&](const Json& accessor) {
+            if (accessor.is_number_integer() && accessor.get<int>() >= 0 && static_cast<size_t>(accessor.get<int>()) < accessors.size()) {
+                const Json& read = accessors[accessor.get<size_t>()];
+                if (read.is_object() && read.contains("bufferView") && read["bufferView"].is_number_integer()) {
+                    views.insert(read["bufferView"].get<int>());
+                }
+            }
+        };
+        const Json& meshes = root.contains("meshes") && root["meshes"].is_array() ? root["meshes"] : empty;
+        for (size_t m = 0; m < meshes.size(); m++) {
+            if (!meshes[m].is_object() || !meshes[m].contains("primitives") || !meshes[m]["primitives"].is_array()) {
+                continue;
+            }
+            size_t count = 0, limit = 0;
+            for (const Json& primitive : meshes[m]["primitives"]) {
+                if (!primitive.is_object()) {
+                    continue;
+                }
+                if (primitive.contains("indices")) addView(primitive["indices"]);
+                if (primitive.contains("attributes") && primitive["attributes"].is_object()) {
+                    for (const Json& attribute : primitive["attributes"]) addView(attribute);
+                }
+                if (primitive.contains("targets") && primitive["targets"].is_array()) {
+                    const size_t supported = supportedMorphTargets(primitive["targets"]);
+                    if (primitive["targets"].size() > supported && primitive["targets"].size() > count) {
+                        count = primitive["targets"].size();
+                        limit = supported;
+                    }
+                    for (const Json& target : primitive["targets"]) {
+                        if (target.is_object()) {
+                            for (const Json& attribute : target) addView(attribute);
+                        }
+                    }
+                }
+            }
+            if (count > 0) {
+                contents.limits.push_back({gltfItemName(meshes[m], "mesh", m), "blend shapes", count, limit});
+            }
+        }
+
+        const size_t gpuBuffers = static_cast<size_t>(Engine::getGpuResourceLimits().buffers);
+        if (views.size() > gpuBuffers) {
+            contents.limits.push_back({"the file", "vertex and index buffers", views.size(), gpuBuffers});
+        }
     }
 
     bool scanGltfJson(const std::string& json, ModelContents& contents) {
@@ -48,6 +126,7 @@ namespace {
         addKind(contents, SubAssetKind::Animation, names("animations"));
         addKind(contents, SubAssetKind::Skin, names("skins"));
         addKind(contents, SubAssetKind::Image, names("images"));
+        scanGltfLimits(root, contents);
         for (const char* key : {"buffers", "images"}) {
             if (!root.contains(key) || !root[key].is_array()) {
                 continue;
@@ -135,6 +214,23 @@ namespace {
 
 }
 
+std::string editor::modelLimitMessage(const std::string& model, const ModelLimit& limit) {
+    std::string message = "Model " + model + ": " + limit.what + " has " + std::to_string(limit.count) + " " + limit.kind +
+                          ", more than the maximum allowed (" + std::to_string(limit.limit) + ")";
+    if (limit.kind == "blend shapes") {
+        message += ": the ones over it are left out";
+    } else {
+        message += ": what does not fit does not draw";
+    }
+    return message;
+}
+
+void editor::reportModelLimits(const std::string& model, const ModelContents& contents) {
+    for (const ModelLimit& limit : contents.limits) {
+        Out::error("%s", modelLimitMessage(model, limit).c_str());
+    }
+}
+
 bool editor::scanModelBytes(const std::string& extension, const std::string& bytes, ModelContents& contents) {
     contents = ModelContents();
     std::string ext = extension;
@@ -176,4 +272,22 @@ bool editor::scanModelFile(const std::filesystem::path& file, ModelContents& con
         return false;
     }
     return scanModelBytes(file.extension().string(), bytes, contents);
+}
+
+bool editor::scanPaletteFile(const std::filesystem::path& file, ModelContents& contents) {
+    contents = ModelContents();
+    std::ifstream in(file, std::ios::binary);
+    if (!in) {
+        return false;
+    }
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    jasperengine::pixelart::Palette palette;
+    std::vector<jasperengine::pixelart::Diagnostic> diagnostics;
+    if (!jasperengine::pixelart::PaletteCodec::read(text, palette, diagnostics)) {
+        return false;
+    }
+    std::vector<std::string> names;
+    for (const jasperengine::pixelart::PaletteRamp& ramp : palette.ramps) names.push_back(ramp.name);
+    addKind(contents, SubAssetKind::PaletteRamp, names);
+    return true;
 }

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleArtRenderer.h"
+#include "titleart/TitleFit.h"
+#include "titleart/TitleTranslations.h"
 
 #include "TitlePlanner.h"
 
@@ -149,6 +151,8 @@ TitlePx TitlePlanner::planGlyphCell() {
     // S81's atlas keeps only the pixels the glyph's content and reach can cover
     auto reach = reachRects.find(node);
     glyphReach = reach != reachRects.end() ? intersectRect(reach->second, rect) : rect;
+    // the face is drawn without the layer's effects: only its ink reaches the cell's front part
+    glyphFrontReach = intersectRect(title2DInkRect(*node), rect);
     // back: the rims with the layer's effects; front: the face alone, drawn over the back
     std::vector<std::string> rims = titleParts(*node->layer);
     rims.pop_back();
@@ -198,9 +202,10 @@ void TitlePlanner::finishOutput(TitlePx acc) {
         const int from = acc.slot;
         const std::array<float, 4> map = uvMap(rect, rect);
         const float ox = (float)rect.x, oy = (float)rect.y;
-        pass("output", "", outSlot, {0, 0, rect.width, rect.height}, TitleRenderProgram::Output, [from, map, mode, ox, oy](TitleJobState& s, TitleGpuPass& p, std::string&) {
+        const float lightScale = req.lightScale > 0.0f ? req.lightScale : 1.0f;
+        pass("output", "", outSlot, {0, 0, rect.width, rect.height}, TitleRenderProgram::Output, [from, map, mode, ox, oy, lightScale](TitleJobState& s, TitleGpuPass& p, std::string&) {
             p.tex[0] = s.texture(from);
-            p.params.set(2, (float)mode, ox, oy);
+            p.params.set(2, (float)mode, ox, oy, lightScale);
             setMap(p, 3, map);
             return true;
         });
@@ -216,7 +221,9 @@ void TitlePlanner::finishOutput(TitlePx acc) {
         return TitleRectI{x0, y0, x1 - x0, y1 - y0};
     };
     const TitleRectI glyphReachRect = glyphReach;
-    cpu("finish", "", 5, [outSlot, rect, format, premultiplied, kept, problems, canvasRect, glyphReachRect](TitleJobState& state, std::string& error) {
+    const TitleRectI glyphFrontReachRect = glyphFrontReach;
+    const std::map<std::string, std::shared_ptr<TitleCacheEntry>> live = liveKeeps;
+    cpu("finish", "", 5, [outSlot, rect, format, premultiplied, kept, problems, canvasRect, glyphReachRect, glyphFrontReachRect, live](TitleJobState& state, std::string& error) {
         if (!state.alive(error)) return false;
         TitleJobState::Slot& slot = state.slots[(size_t)outSlot];
         TitleImage& image = state.job->resultImage();
@@ -238,13 +245,14 @@ void TitlePlanner::finishOutput(TitlePx acc) {
             split.format = from.key.format;
             split.frame = canvasRect(px.rect);
             split.pixels = px.rect;
-            if (name.rfind("glyph:", 0) == 0) split.reach = glyphReachRect;
+            if (name.rfind("glyph:", 0) == 0) split.reach = name == "glyph:front" ? glyphFrontReachRect : glyphReachRect;
             split.alphaBounds = {0, 0, px.rect.width, px.rect.height};
             split.premultiplied = true;
             if (name == "glyph:back") state.job->resultSplits().glyphBack = std::move(split);
             else if (name == "glyph:front") state.job->resultSplits().glyphFront = std::move(split);
             else state.job->resultSplits().layers[name.substr(6)] = std::move(split);
         }
+        state.job->resultSplits().live = live;
         for (const TitleProblem& p : problems) state.job->addProblem(p);
         // every other target of the job goes back to the pool now
         for (size_t i = 0; i < state.slots.size(); i++) {
@@ -300,20 +308,28 @@ TitlePx TitlePlanner::generator(const DrawNode& node, float lightScale) {
         where = hashCombine(where, (uint64_t)svc.testFlags + 1);
         // a followed generator layer draws its mobile reductions on the mobile tier
         if (tier != FxTier::Desktop) where = hashCombine(where, fnv1a64("fx tier mobile"));
-        const TitlePx source = layerSource(followed, "follow_cycle", id);
-        if (source.valid()) {
+        // S81's live compose: the cut an earlier render of this state kept (the followed layer
+        // did not change), else the followed layer drawn alone
+        if (TitlePx kept = liveInput(titleLiveFollowKey(id), rect); kept.valid()) {
+            followSlot = kept.slot;
+            followKey = hashCombine(where, fnv1a64("styled"));
+        } else if (const TitlePx source = layerSource(followed, "follow_cycle", id); source.valid()) {
             TitlePx cut = clearedLike(rect, id);
             blendOnto(cut, source, 1.0f, (int)TitleBlend::Normal, nullptr, id);
             followSlot = cut.slot;
             followKey = hashCombine(where, fnv1a64("styled"));
+            if (wantsLive(titleLiveFollowKey(id))) keepLive(titleLiveFollowKey(id), cut, id);
         }
         if (def->inputs.content) {
-            const TitlePx bare = layerContentSource(followed, "follow_cycle", id);
-            if (bare.valid()) {
+            if (TitlePx kept = liveInput(titleLiveFollowContentKey(id), rect); kept.valid()) {
+                followContentSlot = kept.slot;
+                followContentKey = hashCombine(where, fnv1a64("content"));
+            } else if (const TitlePx bare = layerContentSource(followed, "follow_cycle", id); bare.valid()) {
                 TitlePx cut = clearedLike(rect, id);
                 blendOnto(cut, bare, 1.0f, (int)TitleBlend::Normal, nullptr, id);
                 followContentSlot = cut.slot;
                 followContentKey = hashCombine(where, fnv1a64("content"));
+                if (wantsLive(titleLiveFollowContentKey(id))) keepLive(titleLiveFollowContentKey(id), cut, id);
             }
         }
     }
@@ -340,8 +356,13 @@ TitlePx TitlePlanner::generator(const DrawNode& node, float lightScale) {
         ctx.lightAngle = light.value("angle", 120.0);
         ctx.lightAltitude = light.value("altitude", 30.0);
         ctx.layerId = id;
-        if (followSlot >= 0) ctx.follow = &state.slots[(size_t)followSlot].ref;
-        if (followContentSlot >= 0) ctx.followContent = &state.slots[(size_t)followContentSlot].ref;
+        // a kept live input is an entry slot (S81's live compose)
+        auto refOf = [&state](int slot) -> const TargetRef* {
+            TitleJobState::Slot& sl = state.slots[(size_t)slot];
+            return sl.entry ? &sl.entry->target : &sl.ref;
+        };
+        if (followSlot >= 0) ctx.follow = refOf(followSlot);
+        if (followContentSlot >= 0) ctx.followContent = refOf(followContentSlot);
         ctx.followKey = followSlot >= 0 ? followKey : 0;
         ctx.followContentKey = followContentSlot >= 0 ? followContentKey : 0;
         ctx.assets = assets;
@@ -390,9 +411,12 @@ std::unique_ptr<TitleRenderJob> TitleArtRenderer::begin(const RenderRequest& req
     // overrides apply to a copy of the snapshot, never to the document (R18a)
     std::shared_ptr<const TitleArtDoc> doc = request.doc;
     std::vector<TitleProblem> skipped;
-    if (!request.overrides.empty()) {
-        auto copy = std::make_shared<TitleArtDoc>(*request.doc);
-        applyFieldOverrides(*copy, request.overrides, &skipped);
+    const bool multilingual = titleIsMultilingual(request.doc->root);
+    const bool fits = titleHasFit(request.doc->root);
+    if (!request.overrides.empty() || multilingual || fits) {
+        auto copy = std::make_shared<TitleArtDoc>(multilingual ? resolveTitleLanguage(*request.doc, request.language, &skipped) : *request.doc);
+        if (!request.overrides.empty()) applyFieldOverrides(*copy, request.overrides, &skipped);
+        if (titleHasFit(copy->root)) applyTitleFits(*copy, request.assets);
         doc = copy;
     }
     TitlePlanner planner(svc, request, doc);
@@ -401,8 +425,12 @@ std::unique_ptr<TitleRenderJob> TitleArtRenderer::begin(const RenderRequest& req
     impl->counters.floodPasses += planner.floodPasses;
     impl->counters.floodPassesUnbounded += planner.unboundedFloodPasses;
     auto job = std::make_unique<TitleRenderJob>(std::move(steps));
+#if defined(JASPERENGINE_TITLE_ART_3D) && JASPERENGINE_TITLE_ART_3D
+    for (TitleMeshReport& report : planner.title3DMeshReports()) job->addMeshReport(std::move(report));
+#endif
     planner.state()->job = job.get();
     job->keepAlive(planner.state());
+    job->resultSplits().liveInputsUsed = planner.liveInputsUsed;
     // a request that draws nothing (an empty region) still reports what planning found
     if (job->passesTotal() == 0 && job->done()) {
         for (const TitleProblem& p : planner.problems()) job->addProblem(p);

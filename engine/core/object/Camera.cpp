@@ -7,6 +7,7 @@
 #include "util/Angle.h"
 #include "Engine.h"
 #include "subsystem/RenderSystem.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

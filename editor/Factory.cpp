@@ -31,6 +31,7 @@
 #include "component/SkyboxComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
+#include "subsystem/MeshSystem.h"
 #include "component/TerrainComponent.h"
 #include "component/TextComponent.h"
 #include "component/TilemapComponent.h"
@@ -556,6 +557,19 @@ std::string editor::Factory::formatMaterialShaderLibrary(int indentSpaces, const
         code << ind << target << ".shaderFeatures = " << formatShaderFeatures(material.shaderFeatures) << ";\n";
     if (!material.shaderGlobalBindings.empty())
         code << ind << target << ".shaderGlobalBindings = " << formatShaderGlobalBindings(material.shaderGlobalBindings) << ";\n";
+    // Palette Swap bindings (S43): the paths as the editor resolved them
+    for (const auto& [uniform, binding] : material.shaderPalettes.get()) {
+        code << ind << "{\n";
+        code << ind << "    jasperengine::pixelart::PaletteBinding binding;\n";
+        code << ind << "    binding.source = " << formatString(binding.source.path) << ";\n";
+        for (const jasperengine::pixelart::PaletteTarget& paletteTarget : binding.targets) {
+            code << ind << "    binding.targets.push_back(jasperengine::pixelart::PaletteTarget{AssetRef(" << formatString(paletteTarget.palette.path) << "), "
+                 << formatString(paletteTarget.variant) << "});\n";
+        }
+        if (!binding.useVariants) code << ind << "    binding.useVariants = false;\n";
+        code << ind << "    " << target << ".shaderPalettes.edit().push_back({" << formatString(uniform) << ", binding});\n";
+        code << ind << "}\n";
+    }
     if (material.blendMode != MaterialBlendMode::AUTO)
         code << ind << target << ".blendMode = " << formatBlendMode(material.blendMode) << ";\n";
     if (material.cullMode != MaterialCullMode::AUTO)
@@ -862,6 +876,10 @@ std::string editor::Factory::formatAttributeType(AttributeType type) {
         case AttributeType::MORPHNORMAL3: return "AttributeType::MORPHNORMAL3";
         case AttributeType::MORPHTANGENT0: return "AttributeType::MORPHTANGENT0";
         case AttributeType::MORPHTANGENT1: return "AttributeType::MORPHTANGENT1";
+        case AttributeType::INSTANCEPACKED0: return "AttributeType::INSTANCEPACKED0";
+        case AttributeType::INSTANCEPACKED1: return "AttributeType::INSTANCEPACKED1";
+        case AttributeType::INSTANCEPACKED2: return "AttributeType::INSTANCEPACKED2";
+        case AttributeType::INSTANCEPACKED3: return "AttributeType::INSTANCEPACKED3";
         case AttributeType::INSTANCEMATRIXCOL1: return "AttributeType::INSTANCEMATRIXCOL1";
         case AttributeType::INSTANCEMATRIXCOL2: return "AttributeType::INSTANCEMATRIXCOL2";
         case AttributeType::INSTANCEMATRIXCOL3: return "AttributeType::INSTANCEMATRIXCOL3";
@@ -1216,6 +1234,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.staticShadowCaster = true;\n";
     code << ind << "mesh.lodEnabled = " << formatBool(mesh.lodEnabled) << ";\n";
     code << ind << "mesh.lodBias = " << formatFloat(mesh.lodBias) << ";\n";
+    if (mesh.sortingLayer != 0) code << ind << "mesh.sortingLayer = " << mesh.sortingLayer << ";\n";
+    if (mesh.sortingOrder != 0) code << ind << "mesh.sortingOrder = " << mesh.sortingOrder << ";\n";
     if (!mesh.allowGpuInstancing)
         code << ind << "mesh.allowGpuInstancing = false;\n";
     // the fade settings only away from their defaults (spec S54 R9)
@@ -1275,7 +1295,24 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.submeshes[" << idx << "].material.alphaMode = static_cast<MaterialAlphaMode>(" << static_cast<int>(mesh.submeshes[s].material.alphaMode) << ");\n";
         code << ind << "mesh.submeshes[" << idx << "].material.emissiveFactor = " << formatVector3(mesh.submeshes[s].material.emissiveFactor) << ";\n";
 
-        code << formatTexture(indentSpaces, mesh.submeshes[s].material.baseColorTexture, "mesh.submeshes[" + idx + "].material.baseColorTexture", projectPath);
+        // a sheet sprite's page is its sheet's (S44 R48), resolved by the game
+        const SpriteComponent* sheetSprite = scene->findComponent<SpriteComponent>(entity);
+        if (s == 0 && sheetSprite && sheetSprite->sheet.empty() && sheetSprite->inlineAtlas){
+            // a legacy sprite drawn from an atlas page (S45 R8): its source texture
+            Texture source = mesh.submeshes[0].material.baseColorTexture;
+            source.setPath(MeshSystem::spriteSourceTexture(*sheetSprite, mesh));
+            code << formatTexture(indentSpaces, source, "mesh.submeshes[0].material.baseColorTexture", projectPath);
+        }else if (s != 0 || !sheetSprite || sheetSprite->sheet.empty()){
+            code << formatTexture(indentSpaces, mesh.submeshes[s].material.baseColorTexture, "mesh.submeshes[" + idx + "].material.baseColorTexture", projectPath);
+        }else{
+            // its sampler (pixel art's Nearest), the page coming from the sheet
+            const Texture& page = mesh.submeshes[0].material.baseColorTexture;
+            const std::string var = "mesh.submeshes[0].material.baseColorTexture";
+            code << ind << var << ".setMinFilter(" << formatTextureFilter(page.getMinFilter()) << ");\n";
+            code << ind << var << ".setMagFilter(" << formatTextureFilter(page.getMagFilter()) << ");\n";
+            code << ind << var << ".setWrapU(" << formatTextureWrap(page.getWrapU()) << ");\n";
+            code << ind << var << ".setWrapV(" << formatTextureWrap(page.getWrapV()) << ");\n";
+        }
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.emissiveTexture, "mesh.submeshes[" + idx + "].material.emissiveTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.metallicRoughnessTexture, "mesh.submeshes[" + idx + "].material.metallicRoughnessTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.occlusionTexture, "mesh.submeshes[" + idx + "].material.occlusionTexture", projectPath);
@@ -1312,10 +1349,12 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
 
         code << ind << "mesh.submeshes[" << idx << "].primitiveType = " << formatPrimitiveType(mesh.submeshes[s].primitiveType) << ";\n";
         if (!hasGeneratedGeometry)
-            code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(mesh.submeshes[s].vertexCount) << ";\n";
+            code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(MeshSystem::loadedVertexCount(mesh, mesh.submeshes[s])) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].faceCulling = " << formatBool(mesh.submeshes[s].faceCulling) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].textureShadow = " << formatBool(mesh.submeshes[s].textureShadow) << ";\n";
-        code << ind << "mesh.submeshes[" << idx << "].textureRect = " << formatRect(mesh.submeshes[s].textureRect) << ";\n";
+        const SpriteComponent* rectSprite = s == 0 ? scene->findComponent<SpriteComponent>(entity) : nullptr;
+        const Rect savedRect = rectSprite ? MeshSystem::spriteSourceRect(*rectSprite, mesh) : mesh.submeshes[s].textureRect;
+        code << ind << "mesh.submeshes[" << idx << "].textureRect = " << formatRect(savedRect) << ";\n";
         // a sprite or tilemap sets it once its texture loads: a mesh whose buffers load first would
         // pick a variant without the texture rect (the cooked scenes keep it too, Stream)
         if (mesh.submeshes[s].hasTextureRect)
@@ -1628,8 +1667,22 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
     code << ind << "sprite.flipY = " << formatBool(sprite.flipY) << ";\n";
     code << ind << "sprite.pivotPreset = " << formatPivotPreset(sprite.pivotPreset) << ";\n";
     code << ind << "sprite.textureScaleFactor = " << formatFloat(sprite.textureScaleFactor) << ";\n";
+    if (sprite.drawMode != SpriteDrawMode::SIMPLE) {
+        code << ind << "sprite.drawMode = SpriteDrawMode::SLICED;\n";
+    }
+    // S41: exported only away from their defaults
+    if (sprite.pixelsPerUnit != 0.0f)
+        code << ind << "sprite.pixelsPerUnit = " << formatFloat(sprite.pixelsPerUnit) << ";\n";
+    if (sprite.pixelRotation != PixelRotation::CAMERA)
+        code << ind << "sprite.pixelRotation = " << (sprite.pixelRotation == PixelRotation::STEPS_90 ? "PixelRotation::STEPS_90" : "PixelRotation::ON_GRID") << ";\n";
+    if (sprite.spriteSortPoint != SpriteSortPoint::CENTER)
+        code << ind << "sprite.spriteSortPoint = SpriteSortPoint::PIVOT;\n";
     // as authored, in pixels or normalised: the game normalises a frame when it shows it
-    // (MeshSystem::setSpriteFrameRect), once its texture's size is known
+    // (MeshSystem::setSpriteFrameRect), once its texture's size is known; the list sized first
+    // (S45 R8: no fixed capacity)
+    if (sprite.numFramesRect > 0) {
+        code << ind << "sprite.framesRect.resize(" << sprite.numFramesRect << ");\n";
+    }
     for (unsigned int i = 0; i < sprite.numFramesRect; i++) {
         if (!sprite.framesRect[i].name.empty()) {
             code << ind << "sprite.framesRect[" << i << "].name = " << formatString(sprite.framesRect[i].name) << ";\n";
@@ -1638,6 +1691,12 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
     }
     if (sprite.numFramesRect > 0) {
         code << ind << "sprite.numFramesRect = " << sprite.numFramesRect << ";\n";
+    }
+    // a sheet sprite (S44): the sheet, its frame and that frame's name
+    if (!sprite.sheet.empty()) {
+        code << ind << "sprite.sheet = " << formatString(sprite.sheet.path) << ";\n";
+        code << ind << "sprite.frame = " << sprite.frame << ";\n";
+        code << ind << "sprite.frameName = " << formatString(sprite.frameName) << ";\n";
     }
     if (!sprite.enabled) code << ind << "sprite.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "SpriteComponent", "sprite", assignExisting);
@@ -1655,6 +1714,8 @@ std::string editor::Factory::createTilemapComponent(int indentSpaces, EntityRegi
     code << ind << "tilemap.automaticFlipY = " << formatBool(tilemap.automaticFlipY) << ";\n";
     code << ind << "tilemap.flipY = " << formatBool(tilemap.flipY) << ";\n";
     code << ind << "tilemap.textureScaleFactor = " << formatFloat(tilemap.textureScaleFactor) << ";\n";
+    if (tilemap.pixelsPerUnit != 0.0f)
+        code << ind << "tilemap.pixelsPerUnit = " << formatFloat(tilemap.pixelsPerUnit) << ";\n";
     code << ind << "tilemap.reserveTiles = " << formatUInt(tilemap.reserveTiles) << ";\n";
     for (unsigned int i = 0; i < tilemap.numTilesRect; i++) {
         if (!tilemap.tilesRect[i].name.empty()) {
@@ -1690,6 +1751,12 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
     const std::string ind = indentation(indentSpaces);
     code << ind << "TerrainComponent terrain;\n";
     code << formatTexture(indentSpaces, terrain.heightMap, "terrain.heightMap", projectPath);
+    if (!terrain.holeMap.empty()){
+        code << formatTexture(indentSpaces, terrain.holeMap, "terrain.holeMap", projectPath);
+    }
+    if (terrain.allowRuntimeEdits){
+        code << ind << "terrain.allowRuntimeEdits = true;\n";
+    }
     code << ind << "terrain.blendMaps.resize(" << terrain.blendMaps.size() << ");\n";
     for (size_t i = 0; i < terrain.blendMaps.size(); i++){
         code << formatTexture(indentSpaces, terrain.blendMaps[i], "terrain.blendMaps[" + std::to_string(i) + "]", projectPath);
@@ -1736,6 +1803,9 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
         if (layer.hexRotation != TerrainSurfaceLayer().hexRotation){
             code << ind << var << ".hexRotation = " << formatFloat(layer.hexRotation) << ";\n";
         }
+        if (layer.cliffProjection != TerrainCliffProjection::AUTO){
+            code << ind << var << ".cliffProjection = static_cast<TerrainCliffProjection>(" << static_cast<int>(layer.cliffProjection) << ");\n";
+        }
     }
     code << ind << "terrain.autoSetRanges = " << formatBool(terrain.autoSetRanges) << ";\n";
     code << ind << "terrain.offset = " << formatVector2(terrain.offset) << ";\n";
@@ -1746,6 +1816,23 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
     code << ind << "terrain.textureDetailTiles = " << formatFloat(terrain.textureDetailTiles) << ";\n";
     code << ind << "terrain.rootGridSize = " << formatInt(terrain.rootGridSize) << ";\n";
     code << ind << "terrain.levels = " << formatInt(terrain.levels) << ";\n";
+    // T3 R50: only what differs from the defaults
+    const TerrainComponent terrainDefaults{};
+    if (terrain.quality != terrainDefaults.quality) code << ind << "terrain.quality = static_cast<TerrainQualitySetting>(" << static_cast<int>(terrain.quality) << ");\n";
+    if (terrain.limitLayersPerPixel) code << ind << "terrain.limitLayersPerPixel = true;\n";
+    if (terrain.offscreenShadows != terrainDefaults.offscreenShadows) code << ind << "terrain.offscreenShadows = static_cast<TerrainOffscreenShadows>(" << static_cast<int>(terrain.offscreenShadows) << ");\n";
+    if (terrain.macroMode != terrainDefaults.macroMode) code << ind << "terrain.macroMode = static_cast<TerrainMacroMode>(" << static_cast<int>(terrain.macroMode) << ");\n";
+    if (terrain.macroScale != terrainDefaults.macroScale) code << ind << "terrain.macroScale = " << formatFloat(terrain.macroScale) << ";\n";
+    if (terrain.macroStrength != terrainDefaults.macroStrength) code << ind << "terrain.macroStrength = " << formatFloat(terrain.macroStrength) << ";\n";
+    if (terrain.macroTintA != terrainDefaults.macroTintA) code << ind << "terrain.macroTintA = " << formatVector3(terrain.macroTintA) << ";\n";
+    if (terrain.macroTintB != terrainDefaults.macroTintB) code << ind << "terrain.macroTintB = " << formatVector3(terrain.macroTintB) << ";\n";
+    if (terrain.macroSlopeFade != terrainDefaults.macroSlopeFade) code << ind << "terrain.macroSlopeFade = " << formatFloat(terrain.macroSlopeFade) << ";\n";
+    if (terrain.resampleEnabled) code << ind << "terrain.resampleEnabled = true;\n";
+    if (terrain.resampleNear != terrainDefaults.resampleNear) code << ind << "terrain.resampleNear = " << formatFloat(terrain.resampleNear) << ";\n";
+    if (terrain.resampleFar != terrainDefaults.resampleFar) code << ind << "terrain.resampleFar = " << formatFloat(terrain.resampleFar) << ";\n";
+    if (terrain.resampleReduction != terrainDefaults.resampleReduction) code << ind << "terrain.resampleReduction = " << formatFloat(terrain.resampleReduction) << ";\n";
+    if (terrain.heightBlendSharpness != terrainDefaults.heightBlendSharpness) code << ind << "terrain.heightBlendSharpness = " << formatFloat(terrain.heightBlendSharpness) << ";\n";
+    if (terrain.macroNormal) code << ind << "terrain.macroNormal = true;\n";
     // (Auto Ranges: the terrain sets them from the camera's far clip when it runs)
     if (!terrain.autoSetRanges && !terrain.ranges.empty()) {
         code << ind << "terrain.ranges = {";
@@ -1775,7 +1862,56 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
             code << ind << var << ".minDrawDistance = " << formatFloat(layer.minDrawDistance) << ";\n";
         code << ind << var << ".seed = " << formatUInt(layer.seed) << ";\n";
         code << ind << var << ".castShadows = " << formatBool(layer.castShadows) << ";\n";
+        code << ind << var << ".minHeightRatio = " << formatFloat(layer.minHeightRatio) << ";\n";
+        code << ind << var << ".maxHeightRatio = " << formatFloat(layer.maxHeightRatio) << ";\n";
+        code << ind << var << ".healthyColor = " << formatVector4(layer.healthyColor) << ";\n";
+        code << ind << var << ".dryColor = " << formatVector4(layer.dryColor) << ";\n";
+        code << ind << var << ".noiseSpread = " << formatFloat(layer.noiseSpread) << ";\n";
+        code << ind << var << ".windBend = " << formatFloat(layer.windBend) << ";\n";
+        code << ind << var << ".densityFalloffStart = " << formatFloat(layer.densityFalloffStart) << ";\n";
+        code << ind << var << ".farDensity = " << formatFloat(layer.farDensity) << ";\n";
+        code << ind << var << ".densityScale = " << formatFloat(layer.densityScale) << ";\n";
+        code << ind << var << ".algorithmVersion = " << formatUInt(layer.algorithmVersion) << ";\n";
         code << ind << "terrain.foliageLayers.push_back(" << var << ");\n";
+    }
+    // T5's Terrain Settings: only what differs from the defaults, so a terrain without foliage generates what it did
+    if (terrain.detailDistance != terrainDefaults.detailDistance) code << ind << "terrain.detailDistance = " << formatFloat(terrain.detailDistance) << ";\n";
+    if (terrain.detailDensity != terrainDefaults.detailDensity) code << ind << "terrain.detailDensity = " << formatFloat(terrain.detailDensity) << ";\n";
+    if (terrain.treeDistance != terrainDefaults.treeDistance) code << ind << "terrain.treeDistance = " << formatFloat(terrain.treeDistance) << ";\n";
+    if (terrain.billboardStart != terrainDefaults.billboardStart) code << ind << "terrain.billboardStart = " << formatFloat(terrain.billboardStart) << ";\n";
+    if (terrain.fadeLength != terrainDefaults.fadeLength) code << ind << "terrain.fadeLength = " << formatFloat(terrain.fadeLength) << ";\n";
+    if (terrain.maxMeshTrees != terrainDefaults.maxMeshTrees) code << ind << "terrain.maxMeshTrees = " << terrain.maxMeshTrees << ";\n";
+    if (terrain.windDirection != terrainDefaults.windDirection) code << ind << "terrain.windDirection = " << formatVector3(terrain.windDirection) << ";\n";
+    if (terrain.windSpeed != terrainDefaults.windSpeed) code << ind << "terrain.windSpeed = " << formatFloat(terrain.windSpeed) << ";\n";
+    if (terrain.windSize != terrainDefaults.windSize) code << ind << "terrain.windSize = " << formatFloat(terrain.windSize) << ";\n";
+    if (terrain.windBending != terrainDefaults.windBending) code << ind << "terrain.windBending = " << formatFloat(terrain.windBending) << ";\n";
+    if (!terrain.treeData.str().empty()) code << ind << "terrain.treeData = " << formatString(terrain.treeData) << ";\n";
+    for (size_t i = 0; i < terrain.treePrototypes.size(); i++) {
+        const TerrainTreePrototype& prototype = terrain.treePrototypes[i];
+        const std::string var = "treePrototype" + std::to_string(i);
+        code << ind << "TerrainTreePrototype " << var << ";\n";
+        code << ind << var << ".id = " << formatUInt(prototype.id) << ";\n";
+        code << ind << var << ".meshPath = " << formatString(prototype.meshPath) << ";\n";
+        for (const AssetRef& lod : prototype.lodMeshes) {
+            code << ind << var << ".lodMeshes.push_back(AssetRef(" << formatString(lod) << "));\n";
+        }
+        for (float distance : prototype.lodDistances) {
+            code << ind << var << ".lodDistances.push_back(" << formatFloat(distance) << ");\n";
+        }
+        code << ind << var << ".bendFactor = " << formatFloat(prototype.bendFactor) << ";\n";
+        code << ind << var << ".windMask = " << (prototype.windMask == TerrainTreeWindMask::VertexColor ? "TerrainTreeWindMask::VertexColor" : "TerrainTreeWindMask::Height") << ";\n";
+        code << ind << var << ".shadowLodMask = " << formatUInt(prototype.shadowLodMask) << ";\n";
+        code << ind << var << ".collision = " << (prototype.collision == TerrainTreeCollision::Capsule ? "TerrainTreeCollision::Capsule" : "TerrainTreeCollision::None") << ";\n";
+        code << ind << var << ".collisionRadius = " << formatFloat(prototype.collisionRadius) << ";\n";
+        code << ind << var << ".collisionHeight = " << formatFloat(prototype.collisionHeight) << ";\n";
+        code << ind << var << ".navObstacle = " << formatBool(prototype.navObstacle) << ";\n";
+        code << formatTexture(indentSpaces, prototype.impostorAlbedo, var + ".impostorAlbedo", projectPath);
+        code << formatTexture(indentSpaces, prototype.impostorNormal, var + ".impostorNormal", projectPath);
+        code << ind << var << ".impostorViews = " << prototype.impostorViews << ";\n";
+        code << ind << var << ".impostorBoundsCenter = " << formatVector3(prototype.impostorBoundsCenter) << ";\n";
+        code << ind << var << ".impostorSize = " << formatVector2(prototype.impostorSize) << ";\n";
+        code << ind << var << ".impostorSourceHash = " << formatString(prototype.impostorSourceHash) << ";\n";
+        code << ind << "terrain.treePrototypes.push_back(" << var << ");\n";
     }
     code << ind << "terrain.needUpdateTerrain = true;\n";
     code << ind << "terrain.needUpdateTexture = true;\n";
@@ -1992,6 +2128,7 @@ std::string editor::Factory::createRigidbody2DComponent(int indentSpaces, Entity
         if (collider.receiver != defCollider.receiver) {
             code << ind << target << ".receiver = " << formatEntity(collider.receiver, entityVarNames) << ";\n";
         }
+        if (!collider.slice.empty()) code << ind << target << ".slice = " << formatString(collider.slice) << ";\n";
     }
 
     if (!body.enabled) code << ind << "rigidbody2d.enabled = false;\n";
@@ -3239,6 +3376,9 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     for (const std::string& controller : resources.controllers) {
         out << ind2 << "resources.controllers.push_back(" << formatString(controller) << ");\n";
     }
+    for (const std::string& font : resources.bitmapFonts) {
+        out << ind2 << "resources.bitmapFonts.push_back(" << formatString(font) << ");\n";
+    }
     out << ind2 << "return resources;\n";
     out << ind << "}\n";
 
@@ -3582,6 +3722,8 @@ std::string editor::Factory::createParticleSystemComponent(int indentSpaces, Ent
     if (p.playOnAwake != defaults.playOnAwake) code << ind << "particles.playOnAwake = " << formatBool(p.playOnAwake) << ";\n";
     if (p.seed != defaults.seed) code << ind << "particles.seed = " << formatUInt(p.seed) << ";\n";
     if (p.playbackSpeed != defaults.playbackSpeed) code << ind << "particles.playbackSpeed = " << formatFloat(p.playbackSpeed) << ";\n";
+    if (p.sortingLayer != 0) code << ind << "particles.sortingLayer = " << p.sortingLayer << ";\n";
+    if (p.sortingOrder != 0) code << ind << "particles.sortingOrder = " << p.sortingOrder << ";\n";
     if (p.useUnscaledTime != defaults.useUnscaledTime) code << ind << "particles.useUnscaledTime = " << formatBool(p.useUnscaledTime) << ";\n";
     for (const ParticleExposedValue& v : p.exposedValues)
         code << ind << "particles.exposedValues.push_back({" << formatString(v.name) << ", " << formatVector4(v.value) << "});\n";
@@ -3749,6 +3891,8 @@ std::string editor::Factory::createPointsComponent(int indentSpaces, EntityRegis
 
     code << ind << "PointsComponent pointscomp;\n";
     code << ind << "pointscomp.maxPoints = " << formatUInt(p.maxPoints) << ";\n";
+    if (p.sortingLayer != 0) code << ind << "pointscomp.sortingLayer = " << p.sortingLayer << ";\n";
+    if (p.sortingOrder != 0) code << ind << "pointscomp.sortingOrder = " << p.sortingOrder << ";\n";
     code << ind << "pointscomp.transparent = " << formatBool(p.transparent) << ";\n";
     code << ind << "pointscomp.autoTransparency = " << formatBool(p.autoTransparency) << ";\n";
     if (!p.customShader.empty())
@@ -3805,6 +3949,8 @@ std::string editor::Factory::createLineRendererComponent(int indentSpaces, Entit
     unsigned int maxLines = std::max(l.maxLines, static_cast<unsigned int>(l.lines.size()));
     code << ind << "LineRendererComponent linescomp;\n";
     code << ind << "linescomp.maxLines = " << formatUInt(maxLines) << ";\n";
+    if (l.sortingLayer != 0) code << ind << "linescomp.sortingLayer = " << l.sortingLayer << ";\n";
+    if (l.sortingOrder != 0) code << ind << "linescomp.sortingOrder = " << l.sortingOrder << ";\n";
     if (!l.customShader.empty())
         code << ind << "linescomp.customShader = " << formatString(l.customShader) << ";\n";
     if (!l.shaderUniforms.empty())
@@ -3860,6 +4006,8 @@ std::string editor::Factory::createTrailRendererComponent(int indentSpaces, Enti
     if (t.minVertexDistance != defaults.minVertexDistance) code << ind << "trailcomp.minVertexDistance = " << formatFloat(t.minVertexDistance) << ";\n";
     if (t.emitting != defaults.emitting) code << ind << "trailcomp.emitting = " << (t.emitting ? "true" : "false") << ";\n";
     if (t.autodestruct != defaults.autodestruct) code << ind << "trailcomp.autodestruct = " << (t.autodestruct ? "true" : "false") << ";\n";
+    if (t.sortingLayer != 0) code << ind << "trailcomp.sortingLayer = " << t.sortingLayer << ";\n";
+    if (t.sortingOrder != 0) code << ind << "trailcomp.sortingOrder = " << t.sortingOrder << ";\n";
     formatRibbonFields(code, ind, "trailcomp", t, defaults);
     if (!t.customShader.empty())
         code << ind << "trailcomp.customShader = " << formatString(t.customShader.path) << ";\n";

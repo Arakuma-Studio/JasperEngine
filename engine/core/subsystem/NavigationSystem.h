@@ -37,6 +37,10 @@
 
 namespace jasperengine{
 
+    namespace nav {
+        struct NavWorldContext;
+    }
+
     // bake_navigation's modes: the tiles whose inputs changed, every tile, or none (removes it)
     enum class NavBakeMode : uint8_t{
         DIRTY,
@@ -183,6 +187,12 @@ namespace jasperengine{
         // warning, the export check); -1 when the surface cannot be collected
         int countDirtyTiles(Entity surface, std::string* error = nullptr);
         NavSurfaceStatus getSurfaceStatus(Entity surface);
+
+        // ---- Terrain Worlds (T4 R25)
+        // Follow Terrain World Focus from a script: a single-threaded web build follows only then
+        void setFollowTerrainWorldFocus(Entity surface, bool follow);
+        // what the surface keeps of its Terrain Worlds (its Follow region and last step); null before any
+        const nav::NavWorldContext* getTerrainWorldContext(Entity surface) const;
 
         // ---- navmesh data
         // The surface's navmesh, loading its asset when it changed (null when none)
@@ -414,6 +424,8 @@ namespace jasperengine{
 
         bool hasNavigationComponents() const;
         Runtime& rt();
+        // the fixed tick's Follow steps of surfaces following a Terrain World's focus
+        void followTerrainWorlds();
         // ---- S76 areas
         nav::NavMesh* editableNavMesh(Entity surface);
         // its crowd has agents (they replan on area changes)

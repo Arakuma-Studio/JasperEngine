@@ -34,6 +34,8 @@ namespace jasperengine { namespace particles {
     inline constexpr uint32_t kMaxTrailPoints = 64;
     inline constexpr size_t kMaxSetOverAgeEntries = 16;
     inline constexpr size_t kMaxExposed = 32;
+    inline constexpr size_t kMaxTriggers = 16;
+    inline constexpr int kMaxRingSegments = 256;
 
     enum class SimulationSpace : uint8_t { Local, World };
     enum class ScalingMode : uint8_t { Hierarchy, Local, Shape };
@@ -82,6 +84,9 @@ namespace jasperengine { namespace particles {
         int cycles = 1;           // 0 repeats for ever
         float interval = 0.01f;   // seconds between cycles
         float probability = 1.0f;
+        // a .soundevent (S37) played at the emitter each time the burst fires
+        std::string soundEvent;
+        std::string soundEventGuid;
     };
 
     struct EmissionModule {
@@ -344,6 +349,9 @@ namespace jasperengine { namespace particles {
         int planeCacheTicks = 8;
         bool sendEvents = false;
         int maxCollisionEvents = 64;
+        // a hit whose speed after the response is below it makes the particle rest until its
+        // life ends (S49 R14; 0: off)
+        float settleSpeed = 0.0f;
     };
 
     enum class TrailMode : uint8_t { PerParticle, Ribbon };
@@ -391,7 +399,10 @@ namespace jasperengine { namespace particles {
         LocalOriented,
         Mesh,
         None,                    // trails only
-        VelocityAligned          // faces along the velocity (Unity's Velocity alignment)
+        VelocityAligned,         // faces along the velocity (Unity's Velocity alignment)
+        // a flat ring (or arc) made from the Renderer's ring settings, drawn as a mesh particle
+        Ring,
+        Pixel                    // a pixel shape drawn per base pixel on the grid (S49 R9)
     };
     // How Mesh particles turn (Unity's Render Alignment): in the simulation space (the
     // effect's own default), facing the camera plane or position, in world or emitter axes, or
@@ -406,6 +417,39 @@ namespace jasperengine { namespace particles {
     enum class SixWayLayout : uint8_t { RGBA, TopLeftRightBottomBackFront, PositiveNegative };
     // a billboard without a texture: Unity's default particle (a soft disc), or the old points' square
     enum class UntexturedShape : uint8_t { Disc, Square };
+
+    // ---------------------------------------------------------------- pixel art (S49)
+
+    // the shapes of the Pixel render mode, drawn per whole base pixel (S49 R9)
+    enum class PixelShape : uint8_t { Dot, Cross, Disc, Ring, Streak, Puff, Shard, Chunk, Glow };
+    // how a particle fades: a Bayer dither, a cutout at half, or S20's alpha blending
+    enum class PixelFade : uint8_t { Dither, Cutout, Alpha };
+    // the dither cell: the target's base pixels (the pattern holds still), or the particle's
+    enum class DitherSpace : uint8_t { Screen, Particle };
+    enum class SecondaryColorMode : uint8_t { RampOffset, Color };
+    // Analytic: every particle a closed-form function of its slot and the time (S49 R15)
+    enum class SimulationMode : uint8_t { Simulated, Analytic };
+
+    struct PixelArtModule {
+        bool present = false;
+        bool enabled = true;
+        bool snap = true;               // the lower-left corner of the pixel box on the grid
+        bool pixelSizes = true;         // sizes in base pixels
+        bool integerSize = true;        // whole-pixel boxes
+        PixelFade fade = PixelFade::Dither;
+        int ditherSize = 4;             // 2, 4 or 8
+        DitherSpace ditherSpace = DitherSpace::Screen;
+        MinMaxCurve fadeOverLifetime = MinMaxCurve(1.0f);   // times the colour's alpha
+        float holdFrameRate = 0.0f;     // Hz; 0: every frame
+        SecondaryColorMode secondary = SecondaryColorMode::RampOffset;
+        int secondaryOffset = 1;        // ramp steps from the primary
+        Vector4 secondaryColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);   // sRGB
+        Vector2 wobbleAmplitude = Vector2(0.0f, 0.0f);          // base px
+        Vector2 wobbleFrequency = Vector2(1.0f, 1.0f);          // Hz, per axis
+        bool wobbleRandomPhase = true;
+        float flickerBelow = 0.0f;      // the remaining life under which it blinks (0: off)
+        float flickerRate = 40.0f;      // Hz
+    };
 
     struct ShaderProperty {
         std::string name;
@@ -470,6 +514,23 @@ namespace jasperengine { namespace particles {
         std::string emissionMapGuid;
         Vector4 emissionColor = Vector4(1.0f, 1.0f, 1.0f, 1.0f);   // sRGB
         float emissionIntensity = 0.0f;
+        // Ring mode: the ring in XY facing +Z, at a particle size of 1 (U along the arc from +X,
+        // V from the outer edge to the inner)
+        float ringOuterRadius = 0.5f;
+        float ringInnerRadius = 0.25f;
+        float ringArc = 360.0f;       // degrees, from +X towards +Y
+        int ringSegments = 32;        // over the whole arc
+        // the Pixel render mode's shape and its settings (S49 R9)
+        PixelShape pixelShape = PixelShape::Dot;
+        float streakLengthScale = 0.022f;   // px of length per px/s
+        float streakMaxLength = 9.0f;
+        float streakHeadFraction = 0.45f;
+        int streakWidth = 1;
+        bool discRim = false;
+        int ringWidth = 1;
+        bool dotShadeBottom = false;
+        int glowBands = 3;
+        int rotationSteps = 16;             // Shard and Chunk: angles per turn
     };
 
     // Old modifiers (ActionSystem's "from-to" per property, before S20): inside the window of
@@ -512,6 +573,26 @@ namespace jasperengine { namespace particles {
         float inheritFactor = 1.0f; // scales the inherited size, lifetime and velocity
         int emitCount = 1;
         float probability = 1.0f;
+        // the children keep moving with the particle that spawned them while it lives (its
+        // position every tick; with followRotation also its turn, with followScale its growth)
+        bool followParent = false;
+        bool followRotation = false;
+        bool followScale = false;
+        // a .soundevent (S37) played where the entry fires
+        std::string soundEvent;
+        std::string soundEventGuid;
+    };
+
+    // What a named trigger (sendTrigger) does to the emitter that receives it, besides firing its
+    // Trigger sub-emitters of that name and playing its sound
+    enum class TriggerAction : uint8_t { None, Play, Pause, Stop, StopAndClear };
+
+    struct EffectTrigger {
+        std::string name;
+        TriggerAction action = TriggerAction::Play;
+        // a .soundevent (S37) played at the emitter when it runs
+        std::string soundEvent;
+        std::string soundEventGuid;
     };
 
     // A named parameter scripts and the component set (setFloat("Intensity", 2)): it writes
@@ -556,6 +637,9 @@ namespace jasperengine { namespace particles {
         Vector3 boundsSize = Vector3(10.0f, 10.0f, 10.0f);
         int priority = 0;            // the world budget serves higher priorities first
         DistanceLod lod;
+        SimulationMode simulationMode = SimulationMode::Simulated;
+        // the project Pixels Per Unit a pixel preset was made for (0: none; S49 R20)
+        float designPixelsPerUnit = 0.0f;
 
         MainModule main;
         EmissionModule emission;
@@ -580,9 +664,11 @@ namespace jasperengine { namespace particles {
         CustomDataModule customData;
         RendererModule renderer;
         SetOverAgeModule setOverAge;
+        PixelArtModule pixelArt;
 
         std::vector<SubEmitterEntry> subEmitters;
         std::vector<ExposedParameter> exposed;
+        std::vector<EffectTrigger> triggers;
     };
 
     // A finding of the validation: the JSON path of the field and what is wrong with it
@@ -591,6 +677,10 @@ namespace jasperengine { namespace particles {
         Severity severity = Severity::Error;
         std::string path;      // "modules[2].bursts[0].probability", "$" for the document
         std::string message;
+        // a typed finding ("analytic_unsupported") and how to fix it; empty for the others
+        std::string code;
+        std::string fix;
+        bool unknownKey = false;   // a key the format does not have: read past in a file, refused in a patch
     };
 
     // A .particles JSON text into a document, for code that cannot include the JSON library

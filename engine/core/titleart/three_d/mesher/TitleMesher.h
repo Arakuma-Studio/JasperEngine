@@ -10,6 +10,9 @@
 //   members of style_3d, the material blocks, the tier, draft, the wrap stream and the output
 //   scale as the mesher sees it (effective bevel segments, the inflate grid's power of two, the
 //   orb grid).
+// - Budgets: at a Realtime tier the mesh meets §6.7's triangle and mesh-memory limits by
+//   coarsening alone (inflate grid, outward ring refinement, bevel segments, curve segments, each
+//   to a floor that keeps the look), never by simplification or by dropping a solid of the stack.
 // - Thread-safety: build() may run on any thread (the renderer's background job); the caches lock.
 
 #pragma once
@@ -28,6 +31,10 @@
 #include <mutex>
 
 namespace jasperengine::titleart::three_d {
+
+    // the red control of the tier budget's tests (TitleMeshRequest::testFlags): the mesh as the
+    // tier's reductions alone give it, however far over the tier's triangle and memory budgets
+    constexpr uint32_t MESHER_TEST_NO_TIER_BUDGET = 1u << 8;
 
     struct TitleMeshRequest {
         TitleSource3D source;
@@ -58,6 +65,8 @@ namespace jasperengine::titleart::three_d {
         void clear();
 
     private:
+        std::shared_ptr<const TitleShapes3D> shapesFor(const TitleSource3D& source, int curveSegments);
+
         std::mutex lock;
         std::list<std::pair<uint64_t, std::shared_ptr<const TitleMesh>>> meshes;
         std::list<std::pair<uint64_t, std::shared_ptr<const TitleShapes3D>>> shapes;

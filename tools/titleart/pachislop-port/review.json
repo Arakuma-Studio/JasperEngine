@@ -421,9 +421,9 @@
       "id": "gems/diamond-3d",
       "kind": "look",
       "verdict": "tuned",
-      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter; the Outline's keyline is silver #e0e7f0 instead of near black, so where two glyphs close a gap between their black-gloss bands (2 and 3 of 1234, 大当り) the gap reads against the band (1234 6.3 -> 11.6, 大当り 9.3)",
-      "reviewer": "s84-last-looks",
-      "date": "2026-11-10"
+      "note": "counter_survival: the rim or band filling the counter nudged in lightness so the counter stays visible against the letter; the outline effect 2.5 -> 1.5 so it no longer closes the gaps the digits' bands enclose (1234)",
+      "reviewer": "s84-lib-looks",
+      "date": "2026-11-09"
     },
     {
       "id": "gems/hologram-foil",
@@ -949,8 +949,8 @@
       "id": "casino/new-machine-flyer",
       "kind": "template",
       "verdict": "tuned",
-      "note": "tuned for not_clipped: the English sample was wider than the 1920 canvas at the template size; the shorter sample fits",
-      "reviewer": "s84-fix-parity",
+      "note": "tuned for not_clipped: the English sample NEW ARRIVAL was wider than the 1920 canvas on one line at the template size; it is set on two lines (NEW / ARRIVAL), which fit with the template unchanged",
+      "reviewer": "s84-lib-looks",
       "date": "2026-11-10"
     },
     {
@@ -965,8 +965,8 @@
       "id": "casino/premium-black-gloss",
       "kind": "template",
       "verdict": "tuned",
-      "note": "tuned for counter_survival: tracking -40 -> 0, so the serifs of M, I and U no longer close a gap between the letters that the rims filled (delta E 2.7); the black rim between the two silver lines is graphite #3a3f4a, so the ja sample's handakuten keeps a visible counter (5.3 -> 9.4). Same black gloss serif with silver lines, reviewed before and after at 1920 and the gate's 0.25",
-      "reviewer": "s84-last-looks",
+      "note": "reviewed side by side with tests/golden/refs at contact-sheet scale: same look; differences are framing (our sheet crops to the reach, glows and fire extend it), glint positions and sub-pixel edges. Tuned for counter_survival: the English sample's I, U and M sit 4 % further right (at tracking -40 the M and I serifs touched and closed a gap the rims filled), and cjk.highlight_scale 0.5 halves the face bevel's highlight on Japanese text (the handakuten counter, 6 px at the gate's scale, is filled by the pinstripes and read as lighter than its bevel-lit ring)",
+      "reviewer": "s84-lib-looks",
       "date": "2026-11-10"
     },
     {

@@ -7,6 +7,7 @@
 #include "util/UIUtils.h"
 #include "Theme.h"
 #include "search/SearchScorer.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include <cctype>
 #include <cstring>
 
@@ -60,6 +61,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::InstancedMeshComponent, "Draws many copies of the mesh in one call"},
             {ComponentType::MeshPolygonComponent, "Builds a flat mesh from polygon points"},
             {ComponentType::TerrainComponent, "Heightmap terrain with texture layers"},
+            {ComponentType::VoxelVolumeComponent, "A box of smooth voxel terrain: caves, overhangs and destruction"},
             {ComponentType::LatticeComponent, "Cage of control points that bends the meshes bound to it"},
             {ComponentType::LatticeModifierComponent, "Deforms this mesh (and children) with lattices"},
             {ComponentType::LatticeFollowerComponent, "Moves with a point of a lattice's deformation"},
@@ -68,9 +70,12 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::CameraComponent, "Renders the scene to the screen or a texture"},
             {ComponentType::CameraShakerComponent, "Shakes the camera (or this GameObject) from presets and trauma, never fighting what moves it"},
             {ComponentType::CameraFollowComponent, "Follows a target with damping, look-at, a 2D dead zone and bounds"},
+            {ComponentType::PixelPerfectCameraComponent, "Pixel art on this camera: whole-number scaling, one pixel size, every sprite on the pixel grid"},
             {ComponentType::LightComponent, "Directional, point or spot light"},
             {ComponentType::CapsuleShadowCasterComponent, "Soft capsule shadows of a character from its bones"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
+            {ComponentType::SpriteBatchComponent, "Draws many instances of this GameObject's Sprite in one call per texture page (filled by scripts)"},
+            {ComponentType::SortingGroupComponent, "Sorts this GameObject and its children as one item by Sorting Layer and Order in Layer"},
             {ComponentType::TitleArtRendererComponent, "Shows a Title Art through this Image or Sprite: Baked, Realtime or Glyph Atlas, with live effects"},
             {ComponentType::TilemapComponent, "Grid of tiles from a texture atlas"},
             {ComponentType::LineRendererComponent, "Draws lines: a polyline with width, colour gradient, joints and caps, or debug segments"},

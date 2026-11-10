@@ -1,0 +1,136 @@
+formatVersion: 8
+guid: bf38a3576304e7a1f945ab419a9ac709
+id: 1255658311
+name: Title3D
+scene:
+  backgroundColor: [0.525, 0.525, 0.525, 1]
+  shadowQuality: auto
+  meshLodEnabled: true
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: off
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  litQuality: high
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_ui
+mainCamera: 0
+shaderKeys:
+  - type: ui
+    properties: 2
+  - type: ui
+    properties: 8
+  - type: ui
+    properties: 9
+  - type: blit
+  - type: blit
+    properties: 4096
+  - type: titleart
+    properties: 18
+  - type: titleart
+    properties: 25
+  - type: titleart
+    properties: 42
+  - type: titleart
+    properties: 43
+  - type: titlelit
+    properties: 131073
+  - type: titlelit
+    properties: 393217
+  - type: title3dpost
+    properties: 1
+  - type: title3dpost
+    properties: 2
+  - type: title3dpost
+    properties: 3
+  - type: titleenv
+    properties: 2
+  - type: titleenv
+    properties: 3
+  - type: titleenv
+    properties: 4
+entities:
+  - type: Entity
+    entity: 1001
+    name: Logo
+    components:
+      transform:
+        position: [120, 80, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [0, 0, 0]
+          max: [400, 200, 0]
+        texture: ~
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+      recttransform:
+        width: 400
+        height: 200
+        anchorPointLeft: 0.5
+        anchorPointTop: 0.5
+        anchorPointRight: 0.5
+        anchorPointBottom: 0.5
+        anchorOffsetLeft: -200
+        anchorOffsetTop: -100
+        anchorOffsetRight: 200
+        anchorOffsetBottom: 100
+        positionOffset: [0, 0]
+        pivot: [0, 0]
+        anchorPreset: CENTER
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        ignoreScissor: false
+        ignoreEvents: false
+      image:
+        patchMarginLeft: 0
+        patchMarginRight: 0
+        patchMarginTop: 0
+        patchMarginBottom: 0
+        textureScaleFactor: 0
+      script:
+        scripts:
+          - type: lua
+            path: Title3DCheck.lua
+            pathGuid: c8a1a51e03acfe827fb462d7fa201dfc
+            className: Title3DCheck
+            enabled: true
+      titleart:
+        enabled: true
+        title: assets/titles/logo.titleart
+        titleGuid: c327204e68addb1d11571afcd4b1c6ae
+        renderMode: realtime
+        prebakeInitialState: false
+        liveTime: 0.057365134

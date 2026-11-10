@@ -21,6 +21,11 @@
 #include "texture/TextureCookQueue.h"
 #include "texture/TextureImportSettings.h"
 #include "titleart/TitleArtIO.h"
+#include "titleart/anim/TitleAnimIO.h"
+#include "titleart/anim/TitleFlipbookBaker.h"
+#include "titleanim/TitleAnimDataIO.h"
+#include "titleart/TitleTranslations.h"
+#include "util/TitleArtLanguage.h"
 #include "titleart/TitleEffectRegistry.h"
 #include "util/AssetDatabase.h"
 #include "util/ProjectFileWrites.h"
@@ -188,6 +193,7 @@ TJson TitleBakeResult::toJson() const {
     for (const TitleBakeFile& f : files) list.push_back(f.toJson());
     j["files"] = std::move(list);
     if (!frame.empty()) j["frame"] = rect(frame);
+    if (!languageFrames.empty()) j["frames"] = languageFrames;
     j["warnings"] = warnings;
     return j;
 }
@@ -232,8 +238,69 @@ std::string TitleArtBakeJob::progressText() const {
     return "baking";
 }
 
+void TitleArtBakeJob::planLanguages() {
+    languagesPlanned = true;
+    if (!titleart::titleIsMultilingual(doc->root)) return;
+    std::vector<std::string> sets;
+    const std::vector<std::string> codes = titleart::titleLanguageCodes(doc->root);
+    for (const std::string& code : codes) {
+        if (titleart::isSourceLanguage(doc->root, code)) {
+            if (options.languages.empty() || std::any_of(options.languages.begin(), options.languages.end(), [&](const std::string& c) {
+                    return titleart::isSourceLanguage(doc->root, c);
+                })) {
+                sets.push_back("");
+            }
+            continue;
+        }
+        const TJson* entry = titleart::findTitleLanguage(doc->root, code);
+        const bool asked = std::find(options.languages.begin(), options.languages.end(), code) != options.languages.end();
+        if (options.languages.empty() ? !(entry && entry->value("bake", true)) : !asked) continue;
+        // a language that renders as the source reuses its set (R16)
+        if (!titleart::titleLanguageDiffers(*doc, code)) continue;
+        sets.push_back(code);
+    }
+    if (sets.empty()) sets.push_back("");
+    language = sets.front();
+    pendingLanguages.assign(sets.begin() + 1, sets.end());
+}
+
+bool TitleArtBakeJob::nextLanguage() {
+    if (pendingLanguages.empty() || !outcome.ok) return false;
+    language = pendingLanguages.front();
+    pendingLanguages.erase(pendingLanguages.begin());
+    work.clear();
+    current = 0;
+    phase = 0;
+    finished = false;
+    rendering.reset();
+    outcome.frame = {};
+    return true;
+}
+
+// the source sidecar's languages table follows the languages (a set baked or dropped, a language
+// added): rewritten when it differs, the rest of the sidecar kept
+void TitleArtBakeJob::finishLanguages() {
+    if (!outcome.ok || options.dryRun || !titleart::titleIsMultilingual(doc->root)) return;
+    const fs::path sidecar = titleArtSidecarPath(documentPath);
+    std::string text, error;
+    TitleBakeInfo info;
+    if (!assetio::readFile(sidecar, text) || !TitleBakeInfo::parse(text, info, error)) return;
+    const TJson table = titleArtLanguagesTable(project, documentPath, *doc);
+    if (info.extra.contains("languages") && info.extra["languages"] == table) return;
+    info.extra["languages"] = table;
+    const std::string updated = info.toText();
+    ScopedExpectedWrite expected(sidecar);
+    if (assetio::writeFile(sidecar, updated, assetio::Durability::Document, &error)) {
+        expected.reported(sidecar);
+        if (std::find(outcome.written.begin(), outcome.written.end(), sidecar) == outcome.written.end()) outcome.written.push_back(sidecar);
+    } else {
+        outcome.warnings.push_back("write_failed: the languages table of " + sidecar.filename().string() + ": " + error);
+    }
+}
+
 bool TitleArtBakeJob::setUp() {
-    status = titleArtStatusOf(project, documentPath, *doc);
+    if (!languagesPlanned) planLanguages();
+    status = titleArtStatusOf(project, documentPath, *doc, language);
     const TJson& outputs = doc->root.contains("outputs") ? doc->root["outputs"] : TJson::array();
     std::vector<std::string> ids;
     for (const TJson& o : outputs) ids.push_back(str(o, "id"));
@@ -280,7 +347,7 @@ bool TitleArtBakeJob::setUp() {
             if (!selected) continue;
             TitleBakeFile file;
             file.output = w->id;
-            const fs::path png = titleArtOutputPath(documentPath, w->output);
+            const fs::path png = titleArtOutputPath(documentPath, w->output, language);
             file.path = project ? project->normalizeToProjectRelative(png).generic_string() : png.generic_string();
             texsynth::probeImage(png, file.width, file.height);
             std::error_code ec;
@@ -304,6 +371,7 @@ bool TitleArtBakeJob::setUp() {
 bool TitleArtBakeJob::startRender(OutputWork& output, bool framePhase) {
     titleart::RenderRequest request;
     request.doc = doc;
+    request.language = language;
     request.content = output.content;
     request.contentLayers = output.layers;
     request.outputBitDepth = output.bitDepth;
@@ -417,13 +485,26 @@ bool TitleArtBakeJob::write() {
         std::string oldText;
         TitleBakeInfo old;
         std::string error;
-        if (assetio::readFile(titleArtSidecarPath(documentPath), oldText) && TitleBakeInfo::parse(oldText, old, error)) info.extra = old.extra;
+        if (assetio::readFile(titleArtSidecarPath(documentPath, language), oldText) && TitleBakeInfo::parse(oldText, old, error)) info.extra = old.extra;
+    }
+    // S87 R16: a multilingual document's sets name their language; the source's lists the others
+    const bool multilingual = titleart::titleIsMultilingual(doc->root);
+    const std::string resolvedHash = multilingual ? titleArtResolvedHash(*doc, language) : std::string();
+    const std::string setLanguage = language.empty() ? titleart::titleSourceLanguage(doc->root) : language;
+    if (multilingual) {
+        if (language.empty()) {
+            info.extra.erase("language");
+            info.extra["languages"] = titleArtLanguagesTable(project, documentPath, *doc);
+        } else {
+            info.extra.erase("languages");
+            info.extra["language"] = language;
+        }
     }
     for (auto& w : work) {
-        const fs::path png = titleArtOutputPath(documentPath, w->output);
+        const fs::path png = titleArtOutputPath(documentPath, w->output, language);
         TitleBakeInfoOutput entry;
         entry.id = w->id;
-        entry.file = titleArtOutputFileName(docName, w->output);
+        entry.file = titleArtOutputFileName(docName, w->output, language);
         entry.content = w->contentName;
         if (!w->write) {
             texsynth::probeImage(png, entry.width, entry.height);
@@ -474,6 +555,10 @@ bool TitleArtBakeJob::write() {
         recipe.backend = SystemRender::getBackendName();
         recipe.gpu = SystemRender::getDeviceName();
         recipe.editorVersion = JASPERENGINE_EDITOR_VERSION;
+        if (multilingual) {
+            recipe.extra["language"] = setLanguage;
+            recipe.extra["resolved_hash"] = resolvedHash;
+        }
         std::vector<uint8_t> withRecipe;
         std::string error;
         if (!insertTitleBakeRecipe(encoded, recipe, withRecipe, error)) {
@@ -511,7 +596,17 @@ bool TitleArtBakeJob::write() {
     info.sourceHash = status.sourceHash;
     info.bakeVersion = status.bakeVersion;
     sidecarText = info.toText();
-    staged.push_back({titleArtSidecarPath(documentPath), std::vector<uint8_t>(sidecarText.begin(), sidecarText.end())});
+    staged.push_back({titleArtSidecarPath(documentPath, language), std::vector<uint8_t>(sidecarText.begin(), sidecarText.end())});
+    if (multilingual) outcome.languageFrames[setLanguage] = rect(outcome.frame);
+    // S85 R60: a document with animations ships <file>.anim.json beside the sidecar (title tracks,
+    // markers; the flipbooks of animations whose pages are still fresh), once, with the source set
+    if (language.empty() && titleart::hasAnimations(*doc)) {
+        std::vector<std::string> animationWarnings;
+        const titleanim::TitleAnimData data = titleAnimDataOf(*doc, documentPath, status.sourceHash, status.bakeVersion, &animationWarnings);
+        const std::string animText = titleanim::writeAnimData(data);
+        staged.push_back({fs::path(documentPath.string() + titleanim::TITLE_ANIM_DATA_SUFFIX), std::vector<uint8_t>(animText.begin(), animText.end())});
+        outcome.warnings.insert(outcome.warnings.end(), animationWarnings.begin(), animationWarnings.end());
+    }
 
     if (options.dryRun) {
         outcome.ok = true;
@@ -563,7 +658,12 @@ bool TitleArtBakeJob::step(double budgetMs) {
     do {
         switch (phase) {
             case 0:
-                if (!setUp()) return true;
+                if (!setUp()) {
+                    // nothing to write in this set (or it failed): the next language's, then the table
+                    if (nextLanguage()) break;
+                    finishLanguages();
+                    return true;
+                }
                 break;
             case 1:
                 if (advanceRender(std::max(0.5, left()), false)) finishFrame();
@@ -573,6 +673,8 @@ bool TitleArtBakeJob::step(double budgetMs) {
                 break;
             default:
                 write();
+                if (nextLanguage()) break;
+                finishLanguages();
                 return true;
         }
         if (finished) return true;
@@ -621,14 +723,34 @@ bool editor::loadTitleArtForBake(Project* project, const fs::path& document, tit
     return true;
 }
 
-TitleBakeStatus editor::titleArtStatusOf(Project* project, const fs::path& document, const titleart::TitleArtDoc& doc) {
+TitleBakeStatus editor::titleArtStatusOf(Project* project, const fs::path& document, const titleart::TitleArtDoc& doc, const std::string& language) {
     if (project) {
         if (const EditorTitleAssetResolver* resolver = TitleArtRenderHost::editor().resolver(project)) {
-            return titleArtBakeStatus(document, doc, *resolver);
+            return titleArtBakeStatus(document, doc, *resolver, language);
         }
     }
     EditorTitleAssetResolver none(nullptr, document.parent_path(), document.parent_path());
-    return titleArtBakeStatus(document, doc, none);
+    return titleArtBakeStatus(document, doc, none, language);
+}
+
+TJson editor::titleArtLanguagesTable(Project* project, const fs::path& document, const titleart::TitleArtDoc& doc) {
+    if (!titleart::titleIsMultilingual(doc.root)) return nullptr;
+    const std::string source = titleart::titleSourceLanguage(doc.root);
+    // the project default when the document has it, else the source (R24)
+    std::string defaultLanguage = source;
+    if (project) {
+        const std::string projectDefault = project->getLocalizationSettings().effectiveDefault();
+        const std::string found = TitleArtLanguage::match(projectDefault, titleart::titleLanguageCodes(doc.root));
+        if (!found.empty() && TitleArtLanguage::canonicalize(found) == TitleArtLanguage::canonicalize(projectDefault)) defaultLanguage = found;
+    }
+    TJson sets = TJson::object();
+    for (const std::string& code : titleart::titleLanguageCodes(doc.root)) {
+        if (titleart::isSourceLanguage(doc.root, code)) continue;
+        const TJson* entry = titleart::findTitleLanguage(doc.root, code);
+        if (!entry || !entry->value("bake", true)) continue;
+        sets[code] = titleart::titleLanguageDiffers(doc, code) ? TJson(titleArtSidecarPath(document, code).filename().string()) : TJson();
+    }
+    return TJson{{"source", source}, {"default", defaultLanguage}, {"sets", sets}};
 }
 
 // ==================================================================== Auto Bake

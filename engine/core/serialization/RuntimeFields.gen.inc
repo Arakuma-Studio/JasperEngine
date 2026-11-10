@@ -125,6 +125,13 @@ template<> struct Codec<TerrainFoliageLayer> {
 template<> struct TextureVisit<TerrainFoliageLayer> {
     static void visit(TerrainFoliageLayer& value, const TextureVisitor& f);
 };
+template<> struct Codec<TerrainTreePrototype> {
+    static void write(Writer& w, const TerrainTreePrototype& value);
+    static void read(Reader& r, TerrainTreePrototype& value);
+};
+template<> struct TextureVisit<TerrainTreePrototype> {
+    static void visit(TerrainTreePrototype& value, const TextureVisitor& f);
+};
 template<> struct Codec<PointData> {
     static void write(Writer& w, const PointData& value);
     static void read(Reader& r, PointData& value);
@@ -275,6 +282,13 @@ template<> struct Codec<CapsuleShadowShape> {
 };
 template<> struct TextureVisit<CapsuleShadowShape> {
     static void visit(CapsuleShadowShape& value, const TextureVisitor& f);
+};
+template<> struct Codec<VoxelMaterialSlot> {
+    static void write(Writer& w, const VoxelMaterialSlot& value);
+    static void read(Reader& r, VoxelMaterialSlot& value);
+};
+template<> struct TextureVisit<VoxelMaterialSlot> {
+    static void visit(VoxelMaterialSlot& value, const TextureVisitor& f);
 };
 template<> struct Codec<TitleArtOverride> {
     static void write(Writer& w, const TitleArtOverride& value);
@@ -486,6 +500,7 @@ const FieldEntry kStruct_Material_fields[] = {
     JE_RF(Material, shaderTextures, 0x234b0c73u, Custom),
     JE_RF(Material, shaderFeatures, 0xa354685cu, Custom),
     JE_RF(Material, shaderGlobalBindings, 0xf2e1a5eeu, Custom),
+    JE_RF(Material, shaderPalettes, 0xbf00e75bu, Custom),
     JE_RF(Material, blendMode, 0xe5aaad6eu, Enum),
     JE_RF(Material, cullMode, 0x468be231u, Enum),
     JE_RF(Material, depthWrite, 0xf0420936u, Enum),
@@ -549,6 +564,7 @@ const FieldEntry kStruct_TerrainSurfaceLayer_fields[] = {
     JE_RF(TerrainSurfaceLayer, stochasticRotation, 0x550fd33bu, Float),
     JE_RF(TerrainSurfaceLayer, hexTiling, 0x840d02b2u, Bool),
     JE_RF(TerrainSurfaceLayer, hexRotation, 0xb8ea9777u, Float),
+    JE_RF(TerrainSurfaceLayer, cliffProjection, 0x7ed8c3dbu, Enum),
 };
 const StructTable kStruct_TerrainSurfaceLayer{"TerrainSurfaceLayer", kStruct_TerrainSurfaceLayer_fields, std::size(kStruct_TerrainSurfaceLayer_fields)};
 void Codec<TerrainSurfaceLayer>::write(Writer& w, const TerrainSurfaceLayer& value) { writeStruct(w, kStruct_TerrainSurfaceLayer, &value); }
@@ -571,11 +587,45 @@ const FieldEntry kStruct_TerrainFoliageLayer_fields[] = {
     JE_RF(TerrainFoliageLayer, minDrawDistance, 0x7a0a24b1u, Float),
     JE_RF(TerrainFoliageLayer, seed, 0x4cccda81u, UInt),
     JE_RF(TerrainFoliageLayer, castShadows, 0x0656f2b8u, Bool),
+    JE_RF(TerrainFoliageLayer, minHeightRatio, 0xc76e0bb6u, Float),
+    JE_RF(TerrainFoliageLayer, maxHeightRatio, 0x85e81a78u, Float),
+    JE_RF(TerrainFoliageLayer, healthyColor, 0xd4e515a4u, Vector4),
+    JE_RF(TerrainFoliageLayer, dryColor, 0x5dcf2320u, Vector4),
+    JE_RF(TerrainFoliageLayer, noiseSpread, 0x5126d80du, Float),
+    JE_RF(TerrainFoliageLayer, windBend, 0xa3698e0du, Float),
+    JE_RF(TerrainFoliageLayer, densityFalloffStart, 0xb3d26b9au, Float),
+    JE_RF(TerrainFoliageLayer, farDensity, 0xa5ab9afbu, Float),
+    JE_RF(TerrainFoliageLayer, densityScale, 0xf87cf516u, Float),
+    JE_RF(TerrainFoliageLayer, algorithmVersion, 0xfd97376bu, UInt),
 };
 const StructTable kStruct_TerrainFoliageLayer{"TerrainFoliageLayer", kStruct_TerrainFoliageLayer_fields, std::size(kStruct_TerrainFoliageLayer_fields)};
 void Codec<TerrainFoliageLayer>::write(Writer& w, const TerrainFoliageLayer& value) { writeStruct(w, kStruct_TerrainFoliageLayer, &value); }
 void Codec<TerrainFoliageLayer>::read(Reader& r, TerrainFoliageLayer& value) { readStruct(r, kStruct_TerrainFoliageLayer, &value); }
 void TextureVisit<TerrainFoliageLayer>::visit(TerrainFoliageLayer& value, const TextureVisitor& f) { visitStructTextures(kStruct_TerrainFoliageLayer, &value, f); }
+
+const FieldEntry kStruct_TerrainTreePrototype_fields[] = {
+    JE_RF(TerrainTreePrototype, id, 0x8eca5f97u, UInt),
+    JE_RF(TerrainTreePrototype, meshPath, 0x4569a1a4u, AssetPath),
+    JE_RF(TerrainTreePrototype, lodMeshes, 0x7dc92a64u, Array),
+    JE_RF(TerrainTreePrototype, lodDistances, 0xd792ed2fu, Array),
+    JE_RF(TerrainTreePrototype, bendFactor, 0xc27c015eu, Float),
+    JE_RF(TerrainTreePrototype, windMask, 0xa2e93c00u, Enum),
+    JE_RF(TerrainTreePrototype, shadowLodMask, 0x7652d0cdu, UInt),
+    JE_RF(TerrainTreePrototype, collision, 0x465839eau, Enum),
+    JE_RF(TerrainTreePrototype, collisionRadius, 0xdd67e428u, Float),
+    JE_RF(TerrainTreePrototype, collisionHeight, 0x247ba809u, Float),
+    JE_RF(TerrainTreePrototype, navObstacle, 0x978f8632u, Bool),
+    JE_RF(TerrainTreePrototype, impostorAlbedo, 0x2fbe6936u, Texture),
+    JE_RF(TerrainTreePrototype, impostorNormal, 0x18861024u, Texture),
+    JE_RF(TerrainTreePrototype, impostorViews, 0xc763eaa7u, Int),
+    JE_RF(TerrainTreePrototype, impostorBoundsCenter, 0x5505bf1bu, Vector3),
+    JE_RF(TerrainTreePrototype, impostorSize, 0x145d397au, Vector2),
+    JE_RF(TerrainTreePrototype, impostorSourceHash, 0x03748d22u, String),
+};
+const StructTable kStruct_TerrainTreePrototype{"TerrainTreePrototype", kStruct_TerrainTreePrototype_fields, std::size(kStruct_TerrainTreePrototype_fields)};
+void Codec<TerrainTreePrototype>::write(Writer& w, const TerrainTreePrototype& value) { writeStruct(w, kStruct_TerrainTreePrototype, &value); }
+void Codec<TerrainTreePrototype>::read(Reader& r, TerrainTreePrototype& value) { readStruct(r, kStruct_TerrainTreePrototype, &value); }
+void TextureVisit<TerrainTreePrototype>::visit(TerrainTreePrototype& value, const TextureVisitor& f) { visitStructTextures(kStruct_TerrainTreePrototype, &value, f); }
 
 const FieldEntry kStruct_PointData_fields[] = {
     JE_RF(PointData, position, 0xaf119f92u, Vector3),
@@ -628,6 +678,7 @@ const FieldEntry kStruct_Collider2D_fields[] = {
     JE_RF(Collider2D, sensorEvents, 0x45592808u, Bool),
     JE_RF(Collider2D, material, 0x23926496u, String),
     JE_RF_ENTITY(Collider2D, receiver, 0xdc436802u, Entity),
+    JE_RF(Collider2D, slice, 0xd4adaecfu, String),
 };
 const StructTable kStruct_Collider2D{"Collider2D", kStruct_Collider2D_fields, std::size(kStruct_Collider2D_fields)};
 void Codec<Collider2D>::write(Writer& w, const Collider2D& value) { writeStruct(w, kStruct_Collider2D, &value); }
@@ -771,6 +822,7 @@ const FieldEntry kStruct_SplineTerrainSettings_fields[] = {
     JE_RF(SplineTerrainSettings, paintFalloff, 0x9fde3ed0u, Float),
     JE_RF(SplineTerrainSettings, paintNoise, 0xb24a7800u, Float),
     JE_RF(SplineTerrainSettings, clearFoliage, 0x9ddd40aeu, Bool),
+    JE_RF(SplineTerrainSettings, clearTrees, 0x05c174b4u, Bool),
     JE_RF(SplineTerrainSettings, foliageMask, 0x70db1fa9u, UInt),
     JE_RF_ENTITY(SplineTerrainSettings, terrain, 0x1975f77bu, Entity),
 };
@@ -832,10 +884,14 @@ const FieldEntry kStruct_AnimatorIKConstraint_fields[] = {
     JE_RF_ENTITY(AnimatorIKConstraint, pole, 0xcae83e49u, Entity),
     JE_RF(AnimatorIKConstraint, polePosition, 0xea09b23eu, Vector3),
     JE_RF(AnimatorIKConstraint, usePole, 0xa4714304u, Bool),
+    JE_RF(AnimatorIKConstraint, soften, 0x3aea6f3cu, Float),
+    JE_RF(AnimatorIKConstraint, hingeAxis, 0x2b2cafe7u, Vector3),
+    JE_RF(AnimatorIKConstraint, twist, 0x0b2adfbeu, Float),
     JE_RF(AnimatorIKConstraint, iterations, 0x52a370efu, Int),
     JE_RF(AnimatorIKConstraint, tolerance, 0x5a7fbef6u, Float),
     JE_RF(AnimatorIKConstraint, forwardAxis, 0x02abfcb5u, Vector3),
     JE_RF(AnimatorIKConstraint, clampAngle, 0x82637075u, Float),
+    JE_RF(AnimatorIKConstraint, aimOffset, 0x574a44efu, Vector3),
     JE_RF(AnimatorIKConstraint, pelvis, 0xbae76adau, String),
     JE_RF(AnimatorIKConstraint, footHeight, 0x6bafcc40u, Float),
     JE_RF(AnimatorIKConstraint, rayStart, 0x3c1444fbu, Float),
@@ -872,6 +928,16 @@ const StructTable kStruct_CapsuleShadowShape{"CapsuleShadowShape", kStruct_Capsu
 void Codec<CapsuleShadowShape>::write(Writer& w, const CapsuleShadowShape& value) { writeStruct(w, kStruct_CapsuleShadowShape, &value); }
 void Codec<CapsuleShadowShape>::read(Reader& r, CapsuleShadowShape& value) { readStruct(r, kStruct_CapsuleShadowShape, &value); }
 void TextureVisit<CapsuleShadowShape>::visit(CapsuleShadowShape& value, const TextureVisitor& f) { visitStructTextures(kStruct_CapsuleShadowShape, &value, f); }
+
+const FieldEntry kStruct_VoxelMaterialSlot_fields[] = {
+    JE_RF(VoxelMaterialSlot, name, 0x0440a6c7u, String),
+    JE_RF(VoxelMaterialSlot, layer, 0xbf50a6a9u, Struct),
+    JE_RF(VoxelMaterialSlot, linkedTerrainLayer, 0xc201d34bu, Int),
+};
+const StructTable kStruct_VoxelMaterialSlot{"VoxelMaterialSlot", kStruct_VoxelMaterialSlot_fields, std::size(kStruct_VoxelMaterialSlot_fields)};
+void Codec<VoxelMaterialSlot>::write(Writer& w, const VoxelMaterialSlot& value) { writeStruct(w, kStruct_VoxelMaterialSlot, &value); }
+void Codec<VoxelMaterialSlot>::read(Reader& r, VoxelMaterialSlot& value) { readStruct(r, kStruct_VoxelMaterialSlot, &value); }
+void TextureVisit<VoxelMaterialSlot>::visit(VoxelMaterialSlot& value, const TextureVisitor& f) { visitStructTextures(kStruct_VoxelMaterialSlot, &value, f); }
 
 const FieldEntry kStruct_TitleArtOverride_fields[] = {
     JE_RF(TitleArtOverride, name, 0x1f0cbcd3u, String),
@@ -911,6 +977,8 @@ const FieldEntry kBody_MeshComponent_fields[] = {
     JE_RF(MeshComponent, lodEnabled, 0xe14c9cceu, Bool),
     JE_RF(MeshComponent, lodBias, 0xa7883134u, Float),
     JE_RF(MeshComponent, allowGpuInstancing, 0x6e2e5003u, Bool),
+    JE_RF(MeshComponent, sortingLayer, 0x3b86e957u, Int),
+    JE_RF(MeshComponent, sortingOrder, 0x0084eb92u, Int),
     JE_RF(MeshComponent, lodFadeMode, 0xb8aa480cu, Enum),
     JE_RF(MeshComponent, lodAnimateCrossFading, 0x34cb1489u, Bool),
     JE_RF(MeshComponent, lodFadeTransitionWidth, 0x1f4ff698u, Float),
@@ -931,6 +999,8 @@ const StructTable kBody_MeshComponent{"mesh", kBody_MeshComponent_fields, std::s
 const FieldEntry kBody_LineRendererComponent_fields[] = {
     JE_RF(LineRendererComponent, enabled, 0x8c1a6dbfu, Bool),
     JE_RF(LineRendererComponent, maxLines, 0xa25a462fu, UInt),
+    JE_RF(LineRendererComponent, sortingLayer, 0x7822d743u, Int),
+    JE_RF(LineRendererComponent, sortingOrder, 0x2fcb6d86u, Int),
     JE_RF(LineRendererComponent, customShader, 0x9c75b4dcu, AssetPath),
     JE_RF(LineRendererComponent, shaderUniforms, 0x8c21c9e2u, Custom),
     JE_RF(LineRendererComponent, shaderTextures, 0xa7f787fbu, Custom),
@@ -999,6 +1069,8 @@ const StructTable kBody_LightComponent{"light", kBody_LightComponent_fields, std
 const FieldEntry kBody_TerrainComponent_fields[] = {
     JE_RF(TerrainComponent, enabled, 0x88b70f61u, Bool),
     JE_RF(TerrainComponent, heightMap, 0x77c648cbu, Texture),
+    JE_RF(TerrainComponent, holeMap, 0xea937f84u, Texture),
+    JE_RF(TerrainComponent, allowRuntimeEdits, 0x3eb99a60u, Bool),
     JE_RF(TerrainComponent, autoSetRanges, 0x25f4d55bu, Bool),
     JE_RF(TerrainComponent, offset, 0xfe490703u, Vector2),
     JE_RF(TerrainComponent, terrainSize, 0x6f8249e0u, Float),
@@ -1008,16 +1080,45 @@ const FieldEntry kBody_TerrainComponent_fields[] = {
     JE_RF(TerrainComponent, textureDetailTiles, 0xce95fac7u, Float),
     JE_RF(TerrainComponent, rootGridSize, 0x4000c529u, Int),
     JE_RF(TerrainComponent, levels, 0x663eb5cfu, Int),
+    JE_RF(TerrainComponent, quality, 0x5f80e551u, Enum),
+    JE_RF(TerrainComponent, limitLayersPerPixel, 0xfeca568cu, Bool),
+    JE_RF(TerrainComponent, offscreenShadows, 0xda6a1e72u, Enum),
+    JE_RF(TerrainComponent, macroMode, 0xd7417277u, Enum),
+    JE_RF(TerrainComponent, macroScale, 0xd336e7aeu, Float),
+    JE_RF(TerrainComponent, macroStrength, 0xb33d759du, Float),
+    JE_RF(TerrainComponent, macroTintA, 0xe449d6b0u, Vector3),
+    JE_RF(TerrainComponent, macroTintB, 0xe749db69u, Vector3),
+    JE_RF(TerrainComponent, macroSlopeFade, 0xe367758du, Float),
+    JE_RF(TerrainComponent, resampleEnabled, 0x0731dbe8u, Bool),
+    JE_RF(TerrainComponent, resampleNear, 0xbd327bb5u, Float),
+    JE_RF(TerrainComponent, resampleFar, 0x7db25968u, Float),
+    JE_RF(TerrainComponent, resampleReduction, 0xdf1768ecu, Float),
+    JE_RF(TerrainComponent, heightBlendSharpness, 0xa2eeaad1u, Float),
+    JE_RF(TerrainComponent, macroNormal, 0x8719e1d7u, Bool),
     JE_RF(TerrainComponent, ranges, 0x29e985f2u, Array),
     JE_RF(TerrainComponent, blendMaps, 0x33f6f5c8u, Array),
     JE_RF(TerrainComponent, surfaceLayers, 0xd55ed0f5u, Array),
     JE_RF(TerrainComponent, foliageLayers, 0x09c3247du, Array),
+    JE_RF(TerrainComponent, detailDistance, 0xe71d943eu, Float),
+    JE_RF(TerrainComponent, detailDensity, 0x44fa763fu, Float),
+    JE_RF(TerrainComponent, treeDistance, 0x262bd703u, Float),
+    JE_RF(TerrainComponent, billboardStart, 0x7732e1f1u, Float),
+    JE_RF(TerrainComponent, fadeLength, 0x82e007e2u, Float),
+    JE_RF(TerrainComponent, maxMeshTrees, 0x9b464f58u, Int),
+    JE_RF(TerrainComponent, windDirection, 0x494a4763u, Vector3),
+    JE_RF(TerrainComponent, windSpeed, 0x5d9a7961u, Float),
+    JE_RF(TerrainComponent, windSize, 0x88c9e6ffu, Float),
+    JE_RF(TerrainComponent, windBending, 0xaf04a977u, Float),
+    JE_RF(TerrainComponent, treePrototypes, 0xdf70ea57u, Array),
+    JE_RF(TerrainComponent, treeData, 0x46e9c730u, AssetPath),
 };
 const StructTable kBody_TerrainComponent{"terrain", kBody_TerrainComponent_fields, std::size(kBody_TerrainComponent_fields)};
 
 const FieldEntry kBody_PointsComponent_fields[] = {
     JE_RF(PointsComponent, enabled, 0xd90c5469u, Bool),
     JE_RF(PointsComponent, maxPoints, 0xa447d921u, UInt),
+    JE_RF(PointsComponent, sortingLayer, 0x1cf0c161u, Int),
+    JE_RF(PointsComponent, sortingOrder, 0x805f5eacu, Int),
     JE_RF(PointsComponent, transparent, 0x0f08ab2au, Bool),
     JE_RF(PointsComponent, autoTransparency, 0x50eddcb9u, Bool),
     JE_RF(PointsComponent, texture, 0x2b8df5f3u, Texture),
@@ -1537,6 +1638,8 @@ const FieldEntry kBody_ParticleSystemComponent_fields[] = {
     JE_RF(ParticleSystemComponent, playOnAwake, 0x3067463eu, Bool),
     JE_RF(ParticleSystemComponent, seed, 0x75e55be5u, UInt),
     JE_RF(ParticleSystemComponent, playbackSpeed, 0x87a6362cu, Float),
+    JE_RF(ParticleSystemComponent, sortingLayer, 0x2763c589u, Int),
+    JE_RF(ParticleSystemComponent, sortingOrder, 0xfa4cece4u, Int),
     JE_RF(ParticleSystemComponent, useUnscaledTime, 0x54d44b97u, Bool),
     JE_RF(ParticleSystemComponent, exposedValues, 0xfac14eb6u, Custom),
     JE_RF_ENTITIES(ParticleSystemComponent, collisionPlanes, 0x5027e34bu, Array),
@@ -1627,6 +1730,13 @@ const FieldEntry kBody_SpriteComponent_fields[] = {
     JE_RF(SpriteComponent, flipY, 0xbacad8a4u, Bool),
     JE_RF(SpriteComponent, textureScaleFactor, 0x1909ab5eu, Float),
     JE_RF(SpriteComponent, pivotPreset, 0xc80217ddu, Enum),
+    JE_RF(SpriteComponent, sheet, 0xff7f8fc1u, AssetPath),
+    JE_RF(SpriteComponent, frame, 0x6548e6a7u, Int),
+    JE_RF(SpriteComponent, frameName, 0x10ccd084u, String),
+    JE_RF(SpriteComponent, drawMode, 0x68130ab3u, Enum),
+    JE_RF(SpriteComponent, pixelsPerUnit, 0xd42e8cc4u, Float),
+    JE_RF(SpriteComponent, pixelRotation, 0x236ae730u, Enum),
+    JE_RF(SpriteComponent, spriteSortPoint, 0x2a8adfe7u, Enum),
     JE_RF(SpriteComponent, numFramesRect, 0x533d2142u, UInt),
     JE_RF(SpriteComponent, framesRect, 0x64888c2au, Array),
 };
@@ -1644,6 +1754,7 @@ const FieldEntry kBody_TextComponent_fields[] = {
     JE_RF(TextComponent, pivotCentered, 0xeba1acf4u, Bool),
     JE_RF(TextComponent, outlineWidth, 0x5563a8d2u, Float),
     JE_RF(TextComponent, outlineColor, 0x6b800909u, Vector4),
+    JE_RF(TextComponent, outlineNeighbors, 0x15f6a8cdu, Int),
     JE_RF(TextComponent, shadowEnabled, 0x346dc7b5u, Bool),
     JE_RF(TextComponent, shadowColor, 0xb74840bbu, Vector4),
     JE_RF(TextComponent, shadowOffset, 0x06e6418fu, Vector2),
@@ -1678,6 +1789,7 @@ const FieldEntry kBody_TilemapComponent_fields[] = {
     JE_RF(TilemapComponent, automaticFlipY, 0x66dfd1a6u, Bool),
     JE_RF(TilemapComponent, flipY, 0x357fc631u, Bool),
     JE_RF(TilemapComponent, textureScaleFactor, 0x1543f1a5u, Float),
+    JE_RF(TilemapComponent, pixelsPerUnit, 0xde152a5du, Float),
     JE_RF(TilemapComponent, reserveTiles, 0x82fb6b88u, UInt),
     JE_RF(TilemapComponent, numTilesRect, 0x677b6dc6u, UInt),
     JE_RF(TilemapComponent, tilesRect, 0x83fb4258u, Array),
@@ -1996,6 +2108,8 @@ const FieldEntry kBody_NavMeshSurfaceComponent_fields[] = {
     JE_RF(NavMeshSurfaceComponent, plane, 0x6ffdbefau, Enum),
     JE_RF(NavMeshSurfaceComponent, runtimeCarving, 0x69e7e4fcu, Bool),
     JE_RF(NavMeshSurfaceComponent, maxCarvingObstacles, 0x5e682c4cu, Int),
+    JE_RF(NavMeshSurfaceComponent, followTerrainWorldFocus, 0xed13cc96u, Bool),
+    JE_RF(NavMeshSurfaceComponent, followRadius, 0x2c8cc853u, Float),
     JE_RF(NavMeshSurfaceComponent, navMeshData, 0x1e9815acu, AssetPath),
 };
 const StructTable kBody_NavMeshSurfaceComponent{"navmeshsurface", kBody_NavMeshSurfaceComponent_fields, std::size(kBody_NavMeshSurfaceComponent_fields)};
@@ -2242,6 +2356,8 @@ const FieldEntry kBody_TrailRendererComponent_fields[] = {
     JE_RF(TrailRendererComponent, emitting, 0xd733dd59u, Bool),
     JE_RF(TrailRendererComponent, autodestruct, 0x07628c03u, Bool),
     JE_RF(TrailRendererComponent, sortPriority, 0xa529dd3au, Int),
+    JE_RF(TrailRendererComponent, sortingLayer, 0x3b5b03d7u, Int),
+    JE_RF(TrailRendererComponent, sortingOrder, 0x00590612u, Int),
     JE_RF(TrailRendererComponent, customShader, 0x1fd5ec80u, AssetPath),
     JE_RF(TrailRendererComponent, shaderUniforms, 0x04ea570eu, Custom),
     JE_RF(TrailRendererComponent, shaderTextures, 0x187d06d7u, Custom),
@@ -2432,11 +2548,78 @@ const FieldEntry kBody_WaterWakeComponent_fields[] = {
 };
 const StructTable kBody_WaterWakeComponent{"waterwake", kBody_WaterWakeComponent_fields, std::size(kBody_WaterWakeComponent_fields)};
 
+const FieldEntry kBody_PixelPerfectCameraComponent_fields[] = {
+    JE_RF(PixelPerfectCameraComponent, enabled, 0x5f55db78u, Bool),
+    JE_RF(PixelPerfectCameraComponent, referenceWidth, 0xec604284u, UInt),
+    JE_RF(PixelPerfectCameraComponent, referenceHeight, 0x8cfdacb3u, UInt),
+    JE_RF(PixelPerfectCameraComponent, upscaleMode, 0x450a5fd7u, Enum),
+    JE_RF(PixelPerfectCameraComponent, upscaleRenderTexture, 0xb491256fu, Bool),
+    JE_RF(PixelPerfectCameraComponent, pixelSnapping, 0x97e12055u, Bool),
+    JE_RF(PixelPerfectCameraComponent, rotationMode, 0xf779ad8au, Enum),
+    JE_RF(PixelPerfectCameraComponent, subpixelSmoothing, 0xdd22b981u, Bool),
+    JE_RF(PixelPerfectCameraComponent, letterboxColor, 0x7cab54bfu, Vector4),
+};
+const StructTable kBody_PixelPerfectCameraComponent{"pixelperfectcamera", kBody_PixelPerfectCameraComponent_fields, std::size(kBody_PixelPerfectCameraComponent_fields)};
+
+const FieldEntry kBody_SortingGroupComponent_fields[] = {
+    JE_RF(SortingGroupComponent, enabled, 0x64da6ed9u, Bool),
+    JE_RF(SortingGroupComponent, sortingLayer, 0x07d91e91u, Int),
+    JE_RF(SortingGroupComponent, sortingOrder, 0xb7a2ea5cu, Int),
+};
+const StructTable kBody_SortingGroupComponent{"sortinggroup", kBody_SortingGroupComponent_fields, std::size(kBody_SortingGroupComponent_fields)};
+
+const FieldEntry kBody_SpriteBatchComponent_fields[] = {
+    JE_RF(SpriteBatchComponent, enabled, 0x36e1fbdbu, Bool),
+    JE_RF(SpriteBatchComponent, mode, 0xf2c528e5u, Enum),
+    JE_RF(SpriteBatchComponent, space, 0x333e9508u, Enum),
+    JE_RF(SpriteBatchComponent, capacity, 0xbe29fba2u, UInt),
+    JE_RF(SpriteBatchComponent, sortInstances, 0xb551f71eu, Bool),
+};
+const StructTable kBody_SpriteBatchComponent{"spritebatch", kBody_SpriteBatchComponent_fields, std::size(kBody_SpriteBatchComponent_fields)};
+
+const FieldEntry kBody_VoxelVolumeComponent_fields[] = {
+    JE_RF(VoxelVolumeComponent, enabled, 0xe0232cc6u, Bool),
+    JE_RF(VoxelVolumeComponent, volumeData, 0xcf672fffu, AssetPath),
+    JE_RF(VoxelVolumeComponent, materialSlots, 0xde4b30a5u, Array),
+    JE_RF(VoxelVolumeComponent, quality, 0xf808d0deu, Enum),
+    JE_RF(VoxelVolumeComponent, lodLevels, 0x9c4b2ecfu, Int),
+    JE_RF(VoxelVolumeComponent, lodRadius, 0x7874fdc6u, Int),
+    JE_RF(VoxelVolumeComponent, maxDrawDistance, 0x06e6e148u, Float),
+    JE_RF(VoxelVolumeComponent, castShadows, 0xe81287cfu, Bool),
+    JE_RF(VoxelVolumeComponent, collision, 0xf8a1ea07u, Bool),
+    JE_RF(VoxelVolumeComponent, collisionRadius, 0xc01bc195u, Int),
+    JE_RF(VoxelVolumeComponent, rescueBodies, 0x13fd2294u, Bool),
+    JE_RF(VoxelVolumeComponent, navigationUpdate, 0xb28f416au, Enum),
+    JE_RF_ENTITY(VoxelVolumeComponent, terrain, 0x654b7896u, Entity),
+    JE_RF(VoxelVolumeComponent, terrainCut, 0x65c32b4eu, Enum),
+    JE_RF(VoxelVolumeComponent, overlapDepth, 0x74198275u, Float),
+    JE_RF(VoxelVolumeComponent, cutTolerance, 0x15ecc682u, Float),
+    JE_RF_ENTITY(VoxelVolumeComponent, focus, 0x0c65104bu, Entity),
+    JE_RF(VoxelVolumeComponent, runtimeGeneration, 0x92551f21u, Bool),
+};
+const StructTable kBody_VoxelVolumeComponent{"voxelvolume", kBody_VoxelVolumeComponent_fields, std::size(kBody_VoxelVolumeComponent_fields)};
+
+const FieldEntry kBody_TerrainWorldComponent_fields[] = {
+    JE_RF(TerrainWorldComponent, enabled, 0x063283c5u, Bool),
+    JE_RF(TerrainWorldComponent, worldData, 0x83f3b4e8u, AssetPath),
+    JE_RF(TerrainWorldComponent, useCameraFocus, 0xd03b7078u, Bool),
+    JE_RF_ENTITY(TerrainWorldComponent, focus, 0xdbb5e70cu, Entity),
+    JE_RF(TerrainWorldComponent, poolSize, 0xecc46d63u, Int),
+    JE_RF(TerrainWorldComponent, lodDistance, 0x7d55019cu, Float),
+    JE_RF(TerrainWorldComponent, uploadBudget, 0x2aa1ca68u, Float),
+    JE_RF(TerrainWorldComponent, collisionRadius, 0x37062de2u, Float),
+    JE_RF(TerrainWorldComponent, collisionChunkQuads, 0xacf16ecbu, Int),
+    JE_RF(TerrainWorldComponent, autoAddTiles, 0x34740403u, Bool),
+    JE_RF(TerrainWorldComponent, overviewCastsShadows, 0x84e22b42u, Bool),
+};
+const StructTable kBody_TerrainWorldComponent{"terrainworld", kBody_TerrainWorldComponent_fields, std::size(kBody_TerrainWorldComponent_fields)};
+
 const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
     JE_RF(TitleArtRendererComponent, enabled, 0x2940eb11u, Bool),
     JE_RF(TitleArtRendererComponent, title, 0x274a7ac6u, AssetPath),
     JE_RF(TitleArtRendererComponent, renderMode, 0x5ef14ed3u, Enum),
     JE_RF(TitleArtRendererComponent, overrides, 0x700e9409u, Array),
+    JE_RF(TitleArtRendererComponent, language, 0xeddbbcbau, String),
     JE_RF(TitleArtRendererComponent, pivotFromTitle, 0x3b25fd4au, Bool),
     JE_RF(TitleArtRendererComponent, uiScale, 0xece0fb18u, Float),
     JE_RF(TitleArtRendererComponent, pixelsPerUnit, 0x607847beu, Float),
@@ -2474,6 +2657,11 @@ const FieldEntry kBody_TitleArtRendererComponent_fields[] = {
     JE_RF(TitleArtRendererComponent, glintRate, 0x6466fd06u, Float),
     JE_RF(TitleArtRendererComponent, glintSeed, 0x871c3b41u, UInt),
     JE_RF(TitleArtRendererComponent, glintColor, 0xbeee64bbu, Vector4),
+    JE_RF(TitleArtRendererComponent, playAutomatically, 0xac579117u, Bool),
+    JE_RF(TitleArtRendererComponent, defaultAnimation, 0x0fdb5e95u, String),
+    JE_RF(TitleArtRendererComponent, animationSpeed, 0x7c0a3fa1u, Float),
+    JE_RF(TitleArtRendererComponent, animationUnscaledTime, 0x134a2c36u, Bool),
+    JE_RF(TitleArtRendererComponent, driveAnimation, 0xb93fb9c6u, String),
 };
 const StructTable kBody_TitleArtRendererComponent{"titleart", kBody_TitleArtRendererComponent_fields, std::size(kBody_TitleArtRendererComponent_fields)};
 
@@ -2586,6 +2774,11 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(AudioSnapshotComponent, "audiosnapshot", 0x57737429u),
     JE_RF_COMPONENT(WaterExcluderComponent, "waterexcluder", 0xf9df46e8u),
     JE_RF_COMPONENT(WaterWakeComponent, "waterwake", 0xbbb4fdc0u),
+    JE_RF_COMPONENT(PixelPerfectCameraComponent, "pixelperfectcamera", 0xc6cced7fu),
+    JE_RF_COMPONENT(SortingGroupComponent, "sortinggroup", 0xc8581eb6u),
+    JE_RF_COMPONENT(SpriteBatchComponent, "spritebatch", 0xb9349884u),
+    JE_RF_COMPONENT(VoxelVolumeComponent, "voxelvolume", 0x973a2f61u),
+    JE_RF_COMPONENT(TerrainWorldComponent, "terrainworld", 0x98e87442u),
     JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
     JE_RF_COMPONENTS_END
 };

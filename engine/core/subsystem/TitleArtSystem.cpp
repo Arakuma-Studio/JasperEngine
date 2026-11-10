@@ -17,12 +17,15 @@
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
+#include "diag/HangWatchdog.h"
 #include "io/FileData.h"
 #include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/Framebuffer.h"
 #include "util/Color.h"
 #include "util/Fnv.h"
+#include "util/TitleArtLanguage.h"
+#include "System.h"
 
 #include <algorithm>
 #include <cctype>
@@ -308,6 +311,22 @@ TitleArtInstance& TitleArtSystem::instanceOf(TitleArtRendererComponent& title){
     return *title.runtime;
 }
 
+void TitleArtSystem::clearSubscriptions(){
+    auto titles = scene->getComponentArray<TitleArtRendererComponent>();
+    for (size_t i = 0; i < titles->size(); i++){
+        TitleArtRendererComponent& title = titles->getComponentFromIndex(i);
+        if (title.runtime) title.runtime->forEachEvent([](auto& event) { event.clear(); });
+    }
+}
+
+void TitleArtSystem::removeSubscriptionsByTag(const std::string& substring){
+    auto titles = scene->getComponentArray<TitleArtRendererComponent>();
+    for (size_t i = 0; i < titles->size(); i++){
+        TitleArtRendererComponent& title = titles->getComponentFromIndex(i);
+        if (title.runtime) title.runtime->forEachEvent([&substring](auto& event) { event.removeByTagSubstring(substring); });
+    }
+}
+
 TitleArtSpace TitleArtSystem::spaceOf(EntityRegistry* registry, Entity entity){
     if (registry->findComponent<UIComponent>(entity) && registry->findComponent<ImageComponent>(entity)) return TitleArtSpace::UI;
     if (registry->findComponent<MeshComponent>(entity) && registry->findComponent<SpriteComponent>(entity)) return TitleArtSpace::World;
@@ -431,6 +450,11 @@ TextureRender* TitleArtSystem::getDisplayTexture(Entity entity, bool* transparen
     if (instance.lendingRealtime && instance.live){
         if (TextureRender* texture = TitleArtRuntime::display(*instance.live)) return texture;
     }
+    // S85 R16: a Baked flipbook's frame shows by texture rect on its page
+    if (instance.animationPage){
+        TextureRender* page = instance.animationPage->getRender();
+        if (page && page->isCreated()) return page;
+    }
     TextureRender* bake = instance.bakeTexture.getRender();
     return bake && bake->isCreated() ? bake : nullptr;
 }
@@ -440,13 +464,19 @@ bool TitleArtSystem::hasDisplayTextures() const{
 }
 
 void TitleArtSystem::renderTitles(){
-    // one scheduler for the engine (R13): whichever scene draws first runs the frame's steps
+    runRuntimeFrame(paused);
+}
+
+void TitleArtSystem::runRuntimeFrame(bool editorEditMode){
+    // one scheduler for the engine (R13): whichever asks first in a frame runs its steps. A frame
+    // ends at a main-loop heartbeat or at a commit, as TitleFirstDraws counts them: the editor
+    // commits only when a view redraws, so commits alone stop a render nothing else draws for
     static uint64_t lastFrame = ~uint64_t(0);
-    const uint64_t frame = SystemRender::getFrameCount();
+    const uint64_t frame = diag::heartbeats() + SystemRender::getFrameCount();
     if (frame == lastFrame) return;
     lastFrame = frame;
     if (!TitleArtRuntime::isBuilt()) return;
-    TitleArtRuntime::runFrame(Engine::getUnscaledDeltatime(), paused);
+    TitleArtRuntime::runFrame(Engine::getUnscaledDeltatime(), editorEditMode);
 }
 
 // ==================================================================== update
@@ -461,6 +491,11 @@ void TitleArtSystem::update(double dt){
     state->contextId = contextId;
 
     auto titles = scene->getComponentArray<TitleArtRendererComponent>();
+    animatingTitles = 0;
+    for (size_t i = 0; i < titles->size(); i++){
+        TitleArtRendererComponent& title = titles->getComponentFromIndex(i);
+        if (title.runtime && title.runtime->live && title.runtime->animation.isPlaying()) animatingTitles++;
+    }
     for (size_t i = 0; i < titles->size(); i++){
         const Entity entity = titles->getEntity(i);
         TitleArtRendererComponent& title = titles->getComponentFromIndex(i);
@@ -508,6 +543,9 @@ void TitleArtSystem::resolve(Entity entity, TitleArtRendererComponent& title, Ti
     instance.anchors.clear();
     instance.readyHash = 0;
     instance.failedHash = 0;
+    // S85: the animations load again from the new document or bake (what plays carries on by name)
+    instance.animationLoaded = false;
+    instance.animationPage = nullptr;
     if (title.title.path.empty()) return;
 
     const std::string name = scene->getEntityName(entity);
@@ -540,6 +578,27 @@ void TitleArtSystem::resolve(Entity entity, TitleArtRendererComponent& title, Ti
         Log::warn("Title Art '%s': %s has no bake (%s). Bake it in the Title Designer (Bake) or with export_title.", name.c_str(),
                   title.title.path.c_str(), titleArtDefaultBakeFile(title.title.path).c_str());
     }
+
+    // S87: the source set, and the languages the title offers (the sidecar's table; a Realtime
+    // title without one reads its document)
+    instance.sourceBake = instance.bake;
+    instance.sourceBakePath = instance.bakePath;
+    instance.sourceGlowPath = instance.glowPath;
+    instance.languages.clear();
+    instance.resolvedLanguage.clear();
+    instance.languageAsked.clear();
+    instance.languageGeneration = ~uint64_t(0);
+    instance.languageReady = true;
+    instance.switching = false;
+    instance.pendingTexture = Texture();
+    instance.pendingGlowTexture = Texture();
+    if (instance.bake.languages.present){
+        instance.languages = instance.bake.languages.available();
+    }else if (title.renderMode != TitleArtRenderMode::BAKED){
+        std::vector<std::string> codes;
+        if (TitleArtRuntime::readLanguages(title.title.path, codes, nullptr) && codes.size() > 1 && !codes.front().empty()) instance.languages = codes;
+    }
+    instance.shownLanguage = instance.languages.empty() ? std::string() : instance.languages.front();
 
     std::string exposedError;
     instance.exposedKnown = TitleArtRuntime::readExposed(title.title.path, instance.exposed, &exposedError);
@@ -583,6 +642,9 @@ void TitleArtSystem::updateTitle(Entity entity, TitleArtRendererComponent& title
         restoreCompanion(entity, instance);
         instance.wasEnabled = false;
         title.sweepPositionKeyed = false;
+        title.animationTimeKeyed = false;
+        // S85: Play Automatically runs again at the next enable
+        instance.animationAutoStarted = false;
         return;
     }
 
@@ -601,10 +663,119 @@ void TitleArtSystem::updateTitle(Entity entity, TitleArtRendererComponent& title
     }
     title.sweepPositionKeyed = false;
 
+    updateLanguage(entity, title, instance);
+    updateAnimation(entity, title, instance, dt);
     updateLive(entity, title, instance);
     updateLiveEffects(entity, title, instance);
     updateStatus(entity, title, instance);
+    finishLanguageSwitch(entity, title, instance);
     subscribeEvents(entity);
+    dispatchAnimationEvents(entity, title, instance, dt);
+}
+
+// ---- languages (S87) ----
+
+void TitleArtSystem::updateLanguage(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance){
+    if (instance.languages.empty()) return;
+    // R14, R48: nothing to do until the global language, the device's or the component's changes
+    if (instance.languageGeneration == TitleArtLanguage::generation() && instance.languageAsked == title.language) return;
+    instance.languageGeneration = TitleArtLanguage::generation();
+    instance.languageAsked = title.language;
+    const std::string& source = instance.languages.front();
+    std::string picked = TitleArtLanguage::resolve(TitleArtLanguage::candidates(title.language, System::instance().getPreferredLocales(), source),
+                                                   instance.languages);
+    if (picked.empty()) picked = source;
+    if (picked == instance.resolvedLanguage) return;
+    instance.resolvedLanguage = picked;
+    if (picked == instance.shownLanguage && !instance.switching){
+        instance.languageReady = true;
+        return;
+    }
+    instance.languageReady = false;
+    instance.switching = true;
+    // R27: the language's sidecar (S81's reader) and its textures; the current image stays
+    // until they are loaded. A language that reuses the source set, or whose sidecar fails to
+    // read, draws the source set (R65: one warning)
+    const std::string file = instance.sourceBake.languages.setFile(picked);
+    instance.pendingBake = instance.sourceBake;
+    instance.pendingBakePath = instance.sourceBakePath;
+    instance.pendingGlowPath = instance.sourceGlowPath;
+    if (!file.empty()){
+        TitleArtBakeInfo info;
+        std::string error;
+        if (TitleArtBakeInfo::load(titleArtSiblingPath(title.title.path, file), info, error)){
+            const TitleArtBakeOutput* main = info.output("main");
+            if (!main) main = info.firstOutput("all");
+            if (!main && !info.outputs.empty()) main = &info.outputs.front();
+            if (main){
+                instance.pendingBake = info;
+                instance.pendingBakePath = titleArtSiblingPath(title.title.path, main->file);
+                const TitleArtBakeOutput* glow = info.firstOutput("glow");
+                instance.pendingGlowPath = glow ? titleArtSiblingPath(title.title.path, glow->file) : std::string();
+            }
+        }else if (instance.sayOnce("language_set|" + picked)){
+            Log::warn("Title Art '%s': the %s set of %s does not read (%s): showing the source set. Bake the title again.",
+                      scene->getEntityName(entity).c_str(), picked.c_str(), title.title.path.c_str(), error.c_str());
+        }
+    }
+    if (title.renderMode == TitleArtRenderMode::BAKED || instance.moduleMissing){
+        if (instance.pendingBakePath == instance.bakePath){
+            instance.pendingTexture = instance.bakeTexture;
+        }else{
+            instance.pendingTexture = Texture();
+            instance.pendingTexture.setPath(instance.pendingBakePath);
+        }
+        instance.pendingGlowTexture = Texture();
+        if (!instance.pendingGlowPath.empty()) instance.pendingGlowTexture.setPath(instance.pendingGlowPath);
+    }
+}
+
+void TitleArtSystem::finishLanguageSwitch(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance){
+    if (!instance.switching) return;
+    if (title.renderMode == TitleArtRenderMode::BAKED || instance.moduleMissing){
+        // the texture pool loads the new set; the old one draws meanwhile
+        TextureRender* render = instance.pendingTexture.getRender();
+        if (!render || !render->isCreated()) return;
+        const TitleArtBakeInfo before = instance.bake;
+        instance.bake = instance.pendingBake;
+        instance.bakePath = instance.pendingBakePath;
+        instance.glowPath = instance.pendingGlowPath;
+        instance.bakeTexture = instance.pendingTexture;
+        instance.glowTexture = instance.pendingGlowTexture;
+        instance.pendingTexture = Texture();
+        instance.pendingGlowTexture = Texture();
+        instance.anchors = instance.bake.anchors;
+        // a natively sized companion follows the language's frame, about the same anchor
+        float width = 0.0f, height = 0.0f, pivotX = 0.5f, pivotY = 0.5f;
+        if (before.frame.width > 0 && before.frame.height > 0 && instance.bake.frame.width > 0){
+            if (RectTransformComponent* rect = scene->findComponent<RectTransformComponent>(entity); rect && instance.space == TitleArtSpace::UI){
+                rect->width = (unsigned int)std::max(1.0f, std::round(rect->width * (float)instance.bake.frame.width / (float)before.frame.width));
+                rect->height = (unsigned int)std::max(1.0f, std::round(rect->height * (float)instance.bake.frame.height / (float)before.frame.height));
+                if (title.pivotFromTitle) rect->pivot = Vector2(instance.bake.pivotX(), instance.bake.pivotY());
+                rect->needUpdateSizes = true;
+                scene->markChanged<RectTransformComponent>(entity);
+                if (Transform* transform = scene->findComponent<Transform>(entity)) transform->needUpdate = true;
+            }else if (nativeSize(scene, entity, width, height, pivotX, pivotY)){
+                if (SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity)){
+                    sprite->width = (unsigned int)std::max(1.0f, std::round(width));
+                    sprite->height = (unsigned int)std::max(1.0f, std::round(height));
+                    sprite->needUpdateSprite = true;
+                    scene->markChanged<SpriteComponent>(entity);
+                }
+            }
+        }
+        applyLending(entity, instance, false, false);
+        applyLending(entity, instance, instance.hasBake, false);
+    }else{
+        // Realtime and Glyph Atlas: the new language's image is on screen
+        if (!instance.liveStatus.ready || !instance.liveStatus.hasImage) return;
+        instance.bake = instance.pendingBake;
+        instance.anchors = instance.bake.anchors;
+    }
+    instance.switching = false;
+    instance.shownLanguage = instance.resolvedLanguage;
+    instance.languageReady = true;
+    instance.onLanguageReady.call(instance.shownLanguage);
 }
 
 // ---- Realtime and Glyph Atlas ----
@@ -637,7 +808,8 @@ bool TitleArtSystem::isVisible(Entity entity, const TitleArtRendererComponent& t
     return render->isInsideCamera(*camera, mesh->worldAABB);
 }
 
-float TitleArtSystem::resolutionFor(const TitleArtBakeInfo& bake, bool ui, unsigned int rectWidth, float uiScale, float resolutionScale){
+float TitleArtSystem::resolutionFor(const TitleArtBakeInfo& bake, bool ui, unsigned int rectWidth, float uiScale, float resolutionScale,
+                                     float referenceScale){
     // the display scale is in canvas (reference) units, so a build's prebaked state matches
     // whatever the device's resolution; the main output's own scale first (a 2x bake renders 2
     // output pixels per canvas pixel)
@@ -649,6 +821,7 @@ float TitleArtSystem::resolutionFor(const TitleArtBakeInfo& bake, bool ui, unsig
         if (main && main->width > 0) displayScale = (double)main->width / (double)frameWidth;
     }
     if (ui && frameWidth > 0 && rectWidth > 0) displayScale *= (double)rectWidth / ((double)frameWidth * std::max(0.01f, uiScale));
+    if (ui) displayScale *= referenceScale;
     const double scale = std::min(2.0, std::max(0.25, (double)resolutionScale));
     const double resolution = std::round(displayScale * scale * 8.0) / 8.0;
     return (float)std::min(4.0, std::max(0.125, resolution));
@@ -657,7 +830,8 @@ float TitleArtSystem::resolutionFor(const TitleArtBakeInfo& bake, bool ui, unsig
 float TitleArtSystem::displayResolution(Entity entity, const TitleArtRendererComponent& title, const TitleArtInstance& instance) const{
     // R9: display scale x resolutionScale, rounded to 1/8
     const RectTransformComponent* rect = instance.space == TitleArtSpace::UI ? scene->findComponent<RectTransformComponent>(entity) : nullptr;
-    return resolutionFor(instance.bake, instance.space == TitleArtSpace::UI, rect ? rect->width : 0u, title.uiScale, title.resolutionScale);
+    return resolutionFor(instance.bake, instance.space == TitleArtSpace::UI, rect ? rect->width : 0u, title.uiScale, title.resolutionScale,
+                         TitleArtRuntime::referenceScale());
 }
 
 void TitleArtSystem::updateLive(Entity entity, TitleArtRendererComponent& title, TitleArtInstance& instance){
@@ -674,21 +848,26 @@ void TitleArtSystem::updateLive(Entity entity, TitleArtRendererComponent& title,
         liveState.overrides.push_back(std::move(value));
     }
     liveState.resolution = displayResolution(entity, title, instance);
-    liveState.region = instance.bake.frame;
+    liveState.region = instance.switching ? instance.pendingBake.frame : instance.bake.frame;
+    liveState.language = instance.resolvedLanguage;
     liveState.priority = std::max(-100, std::min(100, title.priority));
     liveState.visible = isVisible(entity, title, instance);
     liveState.renderWhenHidden = title.renderWhenHidden;
+    instance.liveRuns = liveState.visible || liveState.renderWhenHidden;
     liveState.prebake = title.prebakeInitialState;
     liveState.transition = title.transition;
     liveState.transitionDuration = std::max(0.0f, std::min(2.0f, title.transitionDuration));
     liveState.atlasPageSize = title.atlasPageSize == 512 || title.atlasPageSize == 2048 ? title.atlasPageSize : 1024;
     liveState.atlasMaxPages = std::max(1, std::min(8, title.atlasMaxPages));
     liveState.qualityTier = title.qualityTier;
+    liveState.tier = TitleArtRuntime::tierFor(*instance.live, title.qualityTier);
     liveState.label = "TitleArt/" + scene->getEntityName(entity);
     liveState.testFlags = instance.testFlags;
     liveState.glowOutput = title.glowEnabled;
     auto simulated = simulatedCharacters().find(title.title.path);
     if (simulated != simulatedCharacters().end() && !paused) liveState.characters = simulated->second + title.additionalCharacters;
+    // S85 R14-R18: the animation's re-render values join the state (rate-limited)
+    TitleArtRuntime::setAnimation(*instance.live, instance.animation, animatingTitles);
     TitleArtRuntime::setState(*instance.live, liveState);
     if (!instance.prebakeChecked){
         // R11: a build ships the initial state's image; the first frame shows it at once
@@ -731,15 +910,40 @@ void TitleArtSystem::updateLiveEffects(Entity entity, TitleArtRendererComponent&
     if (instance.lendingRealtime && instance.live && title.transition == TitleArtTransition::CROSSFADE)
         previous = TitleArtRuntime::previousFramebuffer(*instance.live, &crossfade);
 
+    // S85 R13: a playing animation's Live Effect values are runtime values (never written to the
+    // component, so never saved); a live.* track turns its effect on with the instance's settings
+    const titleanim::TitlePoseSummary& pose = instance.animationSummary;
+    auto liveSet = [&](titleanim::TitleField f){ return instance.animationDrawn && pose.liveSet[(size_t)f]; };
+    auto liveValue = [&](titleanim::TitleField f, float fallback){ return liveSet(f) ? (float)pose.live[(size_t)f] : fallback; };
+    const bool flipbookFrame = instance.animationPage != nullptr;
+    const bool sweepOn = title.sweepEnabled || liveSet(titleanim::TitleField::SweepPosition) || liveSet(titleanim::TitleField::SweepAngle) ||
+                         liveSet(titleanim::TitleField::SweepWidth);
+    const bool glowOn = title.glowEnabled || liveSet(titleanim::TitleField::GlowPulse);
+    const bool tintOn = title.tintEnabled || liveSet(titleanim::TitleField::TintColor) || liveSet(titleanim::TitleField::TintAmount);
+    const bool glintsOn = title.glintsEnabled || liveSet(titleanim::TitleField::GlintAmount);
+    const float sweepPosition = liveValue(titleanim::TitleField::SweepPosition, title.sweepPosition);
+    const float sweepAngle = liveValue(titleanim::TitleField::SweepAngle, title.sweepAngle);
+    const float sweepWidth = liveValue(titleanim::TitleField::SweepWidth, title.sweepWidth);
+    // R16: Glow Pulse needs a glow output, which flipbook frames do not have: it holds 0 over them
+    const float glowPulse = flipbookFrame ? 0.0f : liveValue(titleanim::TitleField::GlowPulse, title.glowPulse);
+    const float tintAmount = liveValue(titleanim::TitleField::TintAmount, title.tintAmount);
+    const float glintAmount = liveValue(titleanim::TitleField::GlintAmount, title.glintAmount);
+    Vector4 tintColor = title.tintColor;
+    if (liveSet(titleanim::TitleField::TintColor)){
+        const Vector4 srgb((float)pose.tintColor[0], (float)pose.tintColor[1], (float)pose.tintColor[2], 1.0f);
+        tintColor = Color::sRGBToLinear(srgb);
+    }
+
     uint64_t features = 0;
-    if (title.sweepEnabled) features |= LIVE_SWEEP;
+    if (sweepOn) features |= LIVE_SWEEP;
     // R35: Glow Pulse needs a glow output (the bake's, or the render's)
     Framebuffer* liveGlow = instance.lendingRealtime && instance.live ? TitleArtRuntime::glowFramebuffer(*instance.live) : nullptr;
     const bool glowAvailable = instance.lendingRealtime ? liveGlow != nullptr : !instance.glowPath.empty();
-    if (title.glowEnabled && glowAvailable) features |= LIVE_GLOW;
-    if (title.tintEnabled) features |= LIVE_TINT;
-    if (title.glintsEnabled && !instance.anchors.empty()) features |= LIVE_GLINTS;
+    if (glowOn && glowAvailable && !flipbookFrame) features |= LIVE_GLOW;
+    if (tintOn) features |= LIVE_TINT;
+    if (glintsOn && !instance.anchors.empty()) features |= LIVE_GLINTS;
     if (previous) features |= LIVE_CROSSFADE;
+    if (instance.animationDrawn) features |= LIVE_ANIM;
 
     UIComponent* ui = instance.space == TitleArtSpace::UI ? scene->findComponent<UIComponent>(entity) : nullptr;
     MeshComponent* mesh = instance.space == TitleArtSpace::World ? scene->findComponent<MeshComponent>(entity) : nullptr;
@@ -812,24 +1016,24 @@ void TitleArtSystem::updateLiveEffects(Entity entity, TitleArtRendererComponent&
     ShaderUniformValues values;
     auto put = [&values](const std::string& name, const Vector4& v){ values.push_back({name, v}); };
     if (features & LIVE_SWEEP){
-        put("sweepParams", Vector4(std::min(1.0f, std::max(0.0f, title.sweepPosition)), std::max(0.0f, title.sweepWidth), title.sweepAngle,
+        put("sweepParams", Vector4(std::min(1.0f, std::max(0.0f, sweepPosition)), std::max(0.0f, sweepWidth), sweepAngle,
                                    std::min(1.0f, std::max(0.0f, title.sweepSoftness))));
         put("sweepColor", title.sweepColor);
     }
     if (features & LIVE_GLOW){
         put("glowColor", title.glowColor);
-        put("glowParams", Vector4(std::max(0.0f, title.glowPulse), 0.0f, 0.0f, 0.0f));
+        put("glowParams", Vector4(std::max(0.0f, glowPulse), 0.0f, 0.0f, 0.0f));
     }
     if (features & LIVE_TINT){
-        put("tintColor", title.tintColor);
-        put("tintParams", Vector4(std::min(1.0f, std::max(0.0f, title.tintAmount)), 0.0f, 0.0f, 0.0f));
+        put("tintColor", tintColor);
+        put("tintParams", Vector4(std::min(1.0f, std::max(0.0f, tintAmount)), 0.0f, 0.0f, 0.0f));
     }
     if (features & LIVE_GLINTS){
         const int frameWidth = instance.lendingRealtime ? instance.liveStatus.frame.frame.width : instance.bake.frame.width;
         const int frameHeight = instance.lendingRealtime ? instance.liveStatus.frame.frame.height : instance.bake.frame.height;
         const float aspect = frameHeight > 0 && frameWidth > 0 ? (float)frameWidth / (float)frameHeight : 1.0f;
         put("glintColor", title.glintColor);
-        put("glintParams", Vector4(std::max(0.0f, title.glintAmount), std::max(0.0f, title.glintSize), title.glintRate,
+        put("glintParams", Vector4(std::max(0.0f, glintAmount), std::max(0.0f, title.glintSize), title.glintRate,
                                    (float)(title.glintSeed & 0xFFFFu)));
         put("glintInfo", Vector4((float)std::min(instance.anchors.size(), TITLE_ART_MAX_ANCHORS), title.liveTime, aspect, 0.0f));
         for (size_t a = 0; a < TITLE_ART_MAX_ANCHORS; a++){
@@ -842,6 +1046,18 @@ void TitleArtSystem::updateLiveEffects(Entity entity, TitleArtRendererComponent&
         }
     }
     if (features & LIVE_CROSSFADE) put("crossfadeParams", Vector4(crossfade, 0.0f, 0.0f, 0.0f));
+    if (features & LIVE_ANIM){
+        const titleanim::CompanionAnimUniforms& u = instance.animationUniforms;
+        auto v4 = [](const float* f){ return Vector4(f[0], f[1], f[2], f[3]); };
+        put("animAffine0", v4(u.affine0));
+        put("animAffine1", v4(u.affine1));
+        put("animColor", v4(u.color));
+        put("frameRect", v4(u.frameRect));
+        put("frameRect2", v4(u.frameRect2));
+        put("animVertex0", v4(u.vertex0));
+        put("animVertex1", v4(u.vertex1));
+        put("animSpace", v4(instance.animationSpace));
+    }
 
     ShaderUniformValues& uniforms = ui ? ui->shaderUniforms : mesh->shaderUniforms;
     if (uniforms != values){
@@ -953,8 +1169,12 @@ void TitleArtSystem::handleEvent(Entity player, const AnimationEvent& event, con
     }
     std::string error;
     if (fn == "titleArtPlay"){
-        // S85 defines the animations; until it lands no name plays
-        warn("no Title Art animation '" + eventArgString(event, first) + "' (Title Art animations arrive with the animation tools)");
+        // S85 R27: starts an animation without a script
+        const std::string name = eventArgString(event, first);
+        if (!playAnimation(scene, target, name, titleanim::TitleAnimPlayOptions())){
+            const std::vector<std::string> names = animationNames(scene, target);
+            warn("no Title Art animation '" + name + "' (it has: " + joinNames(names) + ")");
+        }
         return;
     }
     bool ok = false;
@@ -999,6 +1219,49 @@ void TitleArtSystem::setDisabledFeaturesForTesting(EntityRegistry* scene, Entity
 void TitleArtSystem::refresh(EntityRegistry* scene, Entity entity){
     TitleArtRendererComponent* title = titleOf(scene, entity);
     if (title && title->runtime && title->runtime->live) TitleArtRuntime::invalidate(*title->runtime->live);
+}
+
+bool TitleArtSystem::areTitlesReady(std::string* waiting) const{
+    if (!scene->isComponentRegistered<TitleArtRendererComponent>()) return true;
+    auto titles = scene->getComponentArray<TitleArtRendererComponent>();
+    for (size_t i = 0; i < titles->size(); i++){
+        const TitleArtRendererComponent& title = titles->getComponentFromIndex(i);
+        if (!title.enabled || title.renderMode == TitleArtRenderMode::BAKED || !title.runtime) continue;
+        const TitleArtInstance& instance = *title.runtime;
+        if (!instance.live || !instance.liveRuns || instance.ready || instance.failed) continue;
+        if (waiting) *waiting = "Title Art '" + scene->getEntityName(titles->getEntity(i)) + "' " + (instance.pending.empty() ? "queued" : instance.pending);
+        return false;
+    }
+    return true;
+}
+
+bool TitleArtSystem::meshStats(EntityRegistry* scene, Entity entity, const std::string& layerPath, TitleArtMeshStats& out, bool& found,
+                               std::string& error){
+    found = false;
+    TitleArtRendererComponent* title = titleOf(scene, entity);
+    const std::string name = displayName(scene, entity);
+    if (!title){
+        error = "TitleArt: GameObject '" + name + "' has no Title Art Renderer.";
+        return false;
+    }
+    if (title->renderMode == TitleArtRenderMode::BAKED){
+        error = "TitleArt '" + name + "' is Baked: it draws its bake and has no mesh. Set its Render Mode to Realtime for live 3D.";
+        return false;
+    }
+    if (!title->runtime || !title->runtime->live){
+        // not resolved yet (the first frame), or a build without the module (R51)
+        if (title->runtime && title->runtime->moduleMissing){
+            error = "TitleArt '" + name + "': this build has no Title Art module (titleart), so it renders no mesh.";
+            return false;
+        }
+        return true;
+    }
+    std::string why;
+    if (!TitleArtRuntime::meshStats(*title->runtime->live, layerPath, out, found, &why)){
+        error = "TitleArt '" + name + "': getMeshStats: " + why + ".";
+        return false;
+    }
+    return true;
 }
 
 std::vector<std::string> TitleArtSystem::parameterNames(EntityRegistry* scene, Entity entity){

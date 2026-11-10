@@ -1,0 +1,79 @@
+{
+  "format": "jasperengine.titleanimpreset",
+  "version": 1,
+  "id": "pop_in",
+  "name": "Pop In",
+  "group": "in",
+  "role": "intro",
+  "duration": 0.4,
+  "wrap": "once",
+  "loop_start": 0,
+  "overlay": false,
+  "description": "Pops up from nothing with an elastic overshoot (per glyph if asked).",
+  "params": [
+    {
+      "name": "per_glyph",
+      "label": "Per Glyph",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "name": "each",
+      "label": "Each (s)",
+      "type": "number",
+      "default": 0.03,
+      "min": 0,
+      "max": 0.5
+    }
+  ],
+  "tracks": [
+    {
+      "target": "title",
+      "field": "transform.scale",
+      "when": "1-per_glyph",
+      "relative": true,
+      "keys": [
+        [
+          0,
+          0,
+          "quad_out"
+        ],
+        [
+          "0.6*D",
+          1.12,
+          "elastic_out"
+        ],
+        [
+          "D",
+          1
+        ]
+      ]
+    },
+    {
+      "target": "main_text",
+      "field": "glyph.scale",
+      "when": "per_glyph",
+      "relative": true,
+      "stagger": {
+        "each": "each"
+      },
+      "keys": [
+        [
+          0,
+          0,
+          "quad_out"
+        ],
+        [
+          "0.6*D",
+          1.12,
+          "elastic_out"
+        ],
+        [
+          "D",
+          1
+        ]
+      ]
+    }
+  ],
+  "markers": []
+}

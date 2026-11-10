@@ -85,6 +85,10 @@ namespace jasperengine::titleart {
     JASPERENGINE_API void setTitleHdriLoader(TitleHdriLoader loader);
     // the HDRI of a slug through the loader, kept once loaded; null when none
     JASPERENGINE_API std::shared_ptr<const TitleHdri> loadTitleHdri(const std::string& slug);
+    // the HDRI of `slug` in a folder of bundled HDRIs (editor/resources/titleart/hdri: its
+    // manifest.json names each slug's .hdr), as linear half floats; null when it is not there.
+    // The editor's loader and the tests' read the same folder through it
+    JASPERENGINE_API std::shared_ptr<const TitleHdri> loadTitleHdriFromDirectory(const std::string& slug, const std::string& dir);
     // the yaw of a panorama (Pachislop's spheres: softbox 0, the photos pi / 2)
     JASPERENGINE_API float titleHdriYaw(const std::string& preset);
 

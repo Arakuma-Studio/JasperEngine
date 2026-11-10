@@ -8,6 +8,7 @@
 // their names, types and errors.
 
 #include "subsystem/TitleArtRuntime.h"
+#include "titleanim/TitleAnimPlayer.h"
 
 #include "io/Data.h"
 #include "json.hpp"
@@ -100,6 +101,20 @@ Framebuffer* TitleArtRuntime::glowFramebuffer(TitleArtLive&){
 void TitleArtRuntime::invalidate(TitleArtLive&){
 }
 
+float TitleArtRuntime::referenceScale(){
+    return 1.0f;
+}
+
+int TitleArtRuntime::tierFor(const TitleArtLive&, const std::string&){
+    return 0;
+}
+
+bool TitleArtRuntime::meshStats(const TitleArtLive&, const std::string&, TitleArtMeshStats&, bool& found, std::string* error){
+    found = false;
+    if (error) *error = "this build has no Title Art module (titleart)";
+    return false;
+}
+
 void TitleArtRuntime::setPrebaked(TitleArtLive&, const std::string&, uint64_t){
 }
 
@@ -117,11 +132,50 @@ void TitleArtRuntime::runFrame(double, bool){
 void TitleArtRuntime::releaseAll(){
 }
 
+std::shared_ptr<titleanim::TitleAnimLibrary> TitleArtRuntime::compileAnimations(const std::string&, std::string* error){
+    // without the module a title plays what its bake wrote: <file>.anim.json (S85 R60)
+    if (error) *error = "this build has no Title Art module";
+    return nullptr;
+}
+
+bool TitleArtRuntime::prepareAnimation(TitleArtLive&, const titleanim::TitleAnimPlayer&, const std::string&){
+    return true;
+}
+
+bool TitleArtRuntime::isPrerendering(const TitleArtLive&){
+    return false;
+}
+
+void TitleArtRuntime::setAnimation(TitleArtLive&, const titleanim::TitleAnimPlayer&, int){
+}
+
 void TitleArtRuntime::setFrameBudget(double){
 }
 
 double TitleArtRuntime::getFrameBudget(bool){
     return 2.0;
+}
+
+bool TitleArtRuntime::readLanguages(const std::string& titlePath, std::vector<std::string>& out, std::string* error){
+    out.clear();
+    Data data;
+    if (data.open(titlePath.c_str()) != FILEDATA_OK){
+        if (error) *error = "cannot read " + titlePath;
+        return false;
+    }
+    const Json root = Json::parse(std::string(reinterpret_cast<const char*>(data.getMemPtr()), data.length()), nullptr, false);
+    if (root.is_discarded() || !root.is_object()){
+        if (error) *error = titlePath + " is not a Title Art document";
+        return false;
+    }
+    auto source = root.find("source_language");
+    out.push_back(source != root.end() && source->is_string() ? source->get<std::string>() : std::string());
+    if (auto languages = root.find("languages"); languages != root.end() && languages->is_array()){
+        for (const Json& l : *languages){
+            if (l.is_object() && l.contains("code") && l["code"].is_string()) out.push_back(l["code"].get<std::string>());
+        }
+    }
+    return true;
 }
 
 bool TitleArtRuntime::readExposed(const std::string& titlePath, std::vector<TitleArtExposedParam>& out, std::string* error){

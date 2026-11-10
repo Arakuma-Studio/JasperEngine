@@ -1,9 +1,11 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "pixelart/BitmapFont.h"
 #include "CreateEntityCmd.h"
 
 #include <filesystem>
+#include "component/SpriteBatchComponent.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
@@ -53,15 +55,16 @@
 #include "component/SpriteComponent.h"
 #include "component/TextComponent.h"
 #include "component/TilemapComponent.h"
+#include "component/TrailRendererComponent.h"
 #include "component/Transform.h"
 #include "component/TranslateTracksComponent.h"
 #include "component/TweenComponent.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VolumetricCloudsComponent.h"
+#include "object/TerrainEdit.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"
-#include "component/TrailRendererComponent.h"
 #include "spline/SplinePresets.h"
 
 #include "audio/AudioMixerDocument.h"
@@ -74,6 +77,8 @@
 #include "object/environment/Water.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/VoxelVolumeComponent.h"
+#include "component/TerrainComponent.h"
 #include "particles/LegacyParticleConverter.h"
 
 #include <algorithm>
@@ -223,6 +228,19 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<TextComponent>(entity, {});
 
         TextComponent& textComp = scene->getComponent<TextComponent>(entity);
+        textComp.text = "Text";
+        textComp.needUpdateText = true;
+
+    }else if (type == EntityCreationType::TEXT_PIXEL){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<RectTransformComponent>(entity, {});
+        scene->addComponent<UIComponent>(entity, {});
+        scene->addComponent<TextComponent>(entity, {});
+
+        TextComponent& textComp = scene->getComponent<TextComponent>(entity);
+        textComp.font[0] = ::jasperengine::pixelart::kBuiltinPixelFont;
+        textComp.fontSize = 9;
         textComp.text = "Text";
         textComp.needUpdateText = true;
 
@@ -510,7 +528,7 @@ bool editor::CreateEntityCmd::execute(){
         layout.width = 100;
         layout.height = 100;
 
-    }else if (type == EntityCreationType::SPRITE){
+    }else if (type == EntityCreationType::SPRITE || type == EntityCreationType::SPRITE_BATCH){
 
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
@@ -519,6 +537,8 @@ bool editor::CreateEntityCmd::execute(){
         SpriteComponent& sprite = scene->getComponent<SpriteComponent>(entity);
         sprite.width = 100;
         sprite.height = 100;
+        if (type == EntityCreationType::SPRITE_BATCH)
+            scene->addComponent<SpriteBatchComponent>(entity, {});
 
     }else if (type == EntityCreationType::TILEMAP){
 
@@ -982,11 +1002,17 @@ bool editor::CreateEntityCmd::execute(){
         polygonComp.points.push_back({Vector3(100, 100, 0), Vector4(1.0f, 1.0f, 1.0f, 1.0f)});
         polygonComp.needUpdatePolygon = true;
 
+    }else if (type == EntityCreationType::VOXEL_VOLUME){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<VoxelVolumeComponent>(entity, {});
+
     }else if (type == EntityCreationType::TERRAIN){
 
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
         scene->addComponent<TerrainComponent>(entity, {});
+        applyNewTerrainDefaults(scene->getComponent<TerrainComponent>(entity));
 
     }else if (type >= EntityCreationType::SPLINE_EMPTY && type <= EntityCreationType::SPLINE_CIRCLE_2D){
 

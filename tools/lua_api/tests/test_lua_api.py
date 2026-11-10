@@ -107,10 +107,16 @@ class LuaApiJson(unittest.TestCase):
         self.assertEqual(classes['anime']['modules'], ['htmlui'])
         self.assertEqual(classes['Rigidbody']['modules'], ['physics3d'])
         self.assertEqual(classes['Rigidbody2D']['modules'], ['physics2d'])
+        # T6 R73: the Voxel Volume's Lua needs the voxel module
+        for name in ('VoxelVolume', 'VoxelShape', 'VoxelEditReport', 'VoxelRayHit', 'VoxelMaterialHit', 'VoxelVolumeStats'):
+            self.assertEqual(classes[name]['modules'], ['voxel'], name)
+        # T4 R47: the Terrain World's Lua needs the terrainworld module
+        self.assertEqual(classes['TerrainWorld']['modules'], ['terrainworld'])
         self.assertEqual(classes['Vector3']['modules'], [])
         self.assertEqual(classes['GameObject']['modules'], [])
         # members under a module's condition on classes outside it
         self.assertEqual(member('GameObject', 'getRigidbody')['modules'], ['physics3d'])
+        self.assertEqual(member('GameObject', 'getTerrainWorld')['modules'], ['terrainworld'])
         self.assertEqual(member('InputActions', 'bindVirtualStick')['modules'], ['htmlui'])
         self.assertEqual(member('UIElement', 'canPlayType')['modules'], ['video'])
         self.assertEqual(member('GameObject', 'setPosition')['modules'], [])
@@ -120,6 +126,15 @@ class LuaApiJson(unittest.TestCase):
         self.assertEqual(classes['Audio']['modules'], ['soundlayer'])
         self.assertEqual(classes['SoundHandle']['modules'], ['soundlayer'])
         self.assertEqual(enums['AudioPlayOn']['modules'], ['soundlayer'])
+        # T2 R43, AC34: the noise API, which ModuleUsage reads the same way
+        for name in ('Noise', 'NoiseGraph', 'NoiseGrid', 'NoiseGridTask'):
+            self.assertEqual(classes[name]['modules'], ['noise'], name)
+        self.assertEqual(member('Noise', 'perlin')['modules'], ['noise'])
+        # T1 R54: a Terrain's writes are the runtime terrain edit module's, its queries the core's
+        for name in ('applyOps', 'setHeights', 'getHeights', 'setRuntimeUploadBudget'):
+            self.assertEqual(member('Terrain', name)['modules'], ['terrainedit'], name)
+        for name in ('getHeightAt', 'raycast', 'allowRuntimeEdits'):
+            self.assertEqual(member('Terrain', name)['modules'], [], name)
         # the music (S39 R19): every name on the soundlayer class
         audio = {m['name'] for m in classes['Audio']['methods'] + classes['Audio']['properties']}
         for name in ('playMusic', 'stopMusic', 'advanceMusic', 'playStinger', 'getMusic', 'getMusicTime', 'getMusicPosition',
@@ -130,7 +145,7 @@ class LuaApiJson(unittest.TestCase):
             for key in ('modules',):
                 self.assertIsInstance(c[key], list)
                 for m in c['methods'] + c['properties']:
-                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d', 'soundlayer'}, m['name'])
+                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d', 'soundlayer', 'noise', 'voxel', 'terrainworld', 'terrainedit'}, m['name'])
 
 
 class Emitters(unittest.TestCase):
@@ -229,6 +244,33 @@ class Emitters(unittest.TestCase):
                     continue
                 missing.append(line)
         self.assertEqual(missing, [], 'symbols the regex parser listed and the one parser does not')
+
+    def test_sprite_sheets_and_atlases(self):
+        """S45 R36 (AC17): the API lists Sprite.drawMode and its SpriteDrawMode values, and the sheet
+        members an atlas is used through (Sprite.sheet/frameName/frameCount, SpriteSheet.load/getFrame)"""
+        classes = {c['name']: c for c in api()['classes']}
+        enums = {e['name']: e for e in api()['enums']}
+        sprite = {p['name'] for p in classes['Sprite']['properties']}
+        self.assertTrue({'drawMode', 'sheet', 'frame', 'frameName', 'frameCount'} <= sprite, sprite)
+        self.assertEqual([v['name'] for v in enums['SpriteDrawMode']['values']], ['SIMPLE', 'SLICED'])
+        sheet = classes['SpriteSheet']
+        self.assertTrue({'load', 'getFrame', 'findFrame'} <= {m['name'] for m in sheet['methods']})
+        self.assertIn('frameCount', {p['name'] for p in sheet['properties']})
+        self.assertTrue(any(m['name'] == 'load' and m['static'] for m in sheet['methods']), 'SpriteSheet.load is static')
+
+    def test_pixel_particles(self):
+        """S49 R40 (AC12): ps.pixelArt, ps.simulationMode, ps:getAnalyticParticle, and setRamp on a
+        module's colour (ParticleSystemGradient, live) and on a MinMaxGradient value"""
+        classes = {c['name']: c for c in api()['classes']}
+        ps = classes['ParticleSystem']
+        props = {p['name']: p for p in ps['properties']}
+        self.assertEqual(props['pixelArt']['type'], 'ParticleSystemPixelArtModule')
+        self.assertIn('simulationMode', props)
+        self.assertIn('getAnalyticParticle', {m['name'] for m in ps['methods']})
+        self.assertIn('setRamp', {m['name'] for m in classes['ParticleSystemGradient']['methods']})
+        gradient = classes['MinMaxGradient']
+        self.assertIn('setRamp', {m['name'] for m in gradient['methods']})
+        self.assertTrue({'ramp', 'rampSteps', 'rampReverse', 'rampBias'} <= {p['name'] for p in gradient['properties']})
 
     def test_lua_only_marked(self):
         """C++ completion offers Engine::deltatime only if C++ has it (Doriax 755972f92): a static

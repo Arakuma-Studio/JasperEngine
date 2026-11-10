@@ -91,8 +91,12 @@
 #include "component/MeshPolygonComponent.h"
 #include "component/Rigidbody2DComponent.h"
 #include "subsystem/SplineSystem.h"
+#if JASPERENGINE_VOXEL
+#include "subsystem/VoxelSystem.h"
+#endif
 #include "subsystem/UISystem.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/RenderSystem.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "component/RigidbodyComponent.h"
 #include "component/Joint2DComponent.h"
@@ -576,6 +580,15 @@ Entity editor::ProjectUtils::getLockedEntityParent(Scene* scene, Entity entity){
     if (foliageOwner != NULL_ENTITY) {
         return foliageOwner;
     }
+#if JASPERENGINE_VOXEL
+    // a Voxel Volume's chunks and bodies select the volume (T6 R53)
+    if (std::shared_ptr<VoxelSystem> voxels = scene->findSystem<VoxelSystem>()) {
+        const Entity voxelOwner = voxels->getGeneratedOwner(entity);
+        if (voxelOwner != NULL_ENTITY) {
+            return voxelOwner;
+        }
+    }
+#endif
     // so are a spline's generated chunks and pieces: clicking the road selects the Road
     if (std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>()) {
         const Entity splineOwner = splines->getGeneratedOwner(entity);
@@ -1980,6 +1993,23 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     // generic engine type for entities with no recognized component: valid as a
     // C++ pointer type (jasperengine::EntityHandle*) and known to the Lua dispatcher
     return handleClass("EntityHandle");
+}
+
+void editor::ProjectUtils::releaseMeshResources(Scene* scene, Entity entity, MeshComponent& mesh) {
+    scene->getSystem<RenderSystem>()->prepareMeshForDataReload(entity, mesh);
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
+        Material& material = mesh.submeshes[s].material;
+        material.baseColorTexture.destroy();
+        material.metallicRoughnessTexture.destroy();
+        material.normalTexture.destroy();
+        material.occlusionTexture.destroy();
+        material.emissiveTexture.destroy();
+        for (auto& shaderTexture : material.shaderTextures)
+            shaderTexture.second.destroy();
+        if (MaterialPass* pass = material.extraPass.editIfSet())
+            for (auto& shaderTexture : pass->shaderTextures)
+                shaderTexture.second.destroy();
+    }
 }
 
 void editor::ProjectUtils::clearPreviewParticles(Scene* scene, Entity entity) {

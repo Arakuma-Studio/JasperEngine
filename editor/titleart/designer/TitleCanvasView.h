@@ -64,8 +64,10 @@ namespace jasperengine::editor::titledesigner {
         bool includeGuides = true;
         double sliceBudgetMs = 12.0;            // per frame (Draft 8, Full 12: R68)
         const ta::AssetResolver* assets = nullptr;      // null: the project's
-        std::vector<ta::FieldOverride> overrides;       // S85's sampled time (§6.8)
+        std::vector<ta::FieldOverride> overrides;       // S85's sampled time (§6.8), S83's Preview Live
+        int tier = 0;                           // S86's Realtime tier (Preview As), 0 = bake quality
         uint32_t testFlags = 0;
+        std::string language;                   // S87: the language shown ("" = the source)
     };
 
     // the backdrop behind the title (R30)
@@ -142,8 +144,10 @@ namespace jasperengine::editor::titledesigner {
         // renders `scene` once through `camera` at width x height, as the stopped Game view does,
         // and hands the pixels (RGBA8, rows top first) to `done` on the main thread (R30's Game
         // Scene snapshot: explicit, never by itself)
+        // `before` and `after` run right around the render (In Context hides its instance there)
         void requestSceneSnapshot(Scene* scene, Entity camera, int width, int height,
-                                  std::function<void(std::vector<uint8_t> rgba, int width, int height, std::string error)> done);
+                                  std::function<void(std::vector<uint8_t> rgba, int width, int height, std::string error)> done,
+                                  std::function<void()> before = {}, std::function<void()> after = {});
         bool snapshotPending() const { return snapshotScene != nullptr; }
 
         // the composited view (null before the first draw)
@@ -199,6 +203,7 @@ namespace jasperengine::editor::titledesigner {
         Entity snapshotCamera = NULL_ENTITY;
         int snapshotWidth = 0, snapshotHeight = 0;
         std::function<void(std::vector<uint8_t>, int, int, std::string)> snapshotDone;
+        std::function<void()> snapshotBefore, snapshotAfter;
         void drawSnapshot();
 
         void createScene();

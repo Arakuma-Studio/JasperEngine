@@ -13,6 +13,7 @@
 #include "TitleRenderTestSupport.h"
 
 #include "pool/ShaderPool.h"
+#include "titleart/render/TitleElementVariant.h"
 #include "titleart/render/TitlePrograms.h"
 
 #include <chrono>
@@ -125,8 +126,12 @@ TEST_F(TitleArtRendererGpu, JobMembers) {
     std::set<uint32_t> used;
     for (const ShaderKey& k : keys) {
         EXPECT_EQ(ShaderPool::getShaderTypeFromKey(k), ShaderType::TITLE_ART);
-        EXPECT_TRUE(known.count(ShaderPool::getPropertiesFromKey(k)));
-        used.insert((uint32_t)ShaderPool::getPropertiesFromKey(k));
+        // ELEMENT's variants carry the material's bits (TitleElementVariant.h), no other program does
+        const uint32_t properties = (uint32_t)ShaderPool::getPropertiesFromKey(k);
+        const uint32_t program = properties & ~TITLE_ELEMENT_VARIANT_BITS;
+        EXPECT_TRUE(known.count(program));
+        if (program != (uint32_t)TitleRenderProgram::Element) { EXPECT_EQ(properties, program) << titleRenderProgramName(program); }
+        used.insert(program);
     }
     for (TitleRenderProgram p : {TitleRenderProgram::Element, TitleRenderProgram::Place, TitleRenderProgram::Seed, TitleRenderProgram::Flood,
                                  TitleRenderProgram::Resolve, TitleRenderProgram::Height, TitleRenderProgram::Output, TitleRenderProgram::Copy}) {
@@ -515,23 +520,29 @@ TEST_F(TitleArtRendererGpu, GeneratorGetsItsFollowedLayer) {
     EXPECT_TRUE(cycle) << "follow_cycle is reported";
 }
 
-TEST_F(TitleArtRendererGpu, AnIsolatedLayersGroupDrawsOnlyIt) {
-    // R14: a group's node shows the children the draw tree holds. The ancestors of an isolated
-    // layer draw it alone, so the canvas rendered first must not serve the isolated render from
-    // the group's cached node (red: the group's key folded every child of the document, so a
-    // render of the canvas gave casino/red-hot-rim-glow's isolated echo the whole group and
-    // counter_survival failed only after one). The small disc lies inside the box: both of the
-    // group's draws hold the same rect.
-    Json group{{"id", "00000010"}, {"type", "group"}, {"name", "Logo"},
-               {"children", Json::array({shapeLayer("00000001", "rect", 100, solidFace("#2040ff")),
-                                         shapeLayer("00000002", "ellipse", 40, solidFace("#ff2020"))})}};
+TEST_F(TitleArtRendererGpu, IsolationKeysTheGroupNode) {
+    // R14 with isolation: a group drawn for one isolated child holds only that child, so its node
+    // must not share a cache entry with the whole group (a check's isolated render after the full
+    // one drew both children; the full render after an isolated one drew one)
+    // the red ellipse lies inside the blue square: the group covers the same region either way
+    Json group{{"id", "00000001"}, {"type", "group"},
+               {"children", Json::array({shapeLayer("00000002", "rect", 80, solidFace("#2040ff")), shapeLayer("00000003", "ellipse", 30, solidFace("#ff2020"))})}};
     auto doc = makeDoc({{"canvas", canvas(320, 160)}, {"layers", Json::array({group})}});
+    RenderRequest whole = requestOf(doc);
     RenderRequest alone = requestOf(doc);
-    alone.isolateLayer = "00000001";
-    auto fresh = makeRenderer();
-    const Pixels expected = render(*fresh, alone);
-    auto renderer = makeRenderer();
-    const Pixels whole = render(*renderer, requestOf(doc));
-    ASSERT_FALSE(identical(whole, expected)) << "the disc shows in the canvas, not in the box alone";
-    EXPECT_TRUE(identical(render(*renderer, alone), expected)) << "the box alone after the canvas differs from the box alone";
+    alone.isolateLayer = "00000002";
+    auto freshWhole = makeRenderer();
+    auto freshAlone = makeRenderer();
+    const Pixels expectWhole = render(*freshWhole, whole), expectAlone = render(*freshAlone, alone);
+    ASSERT_FALSE(identical(expectWhole, expectAlone));
+    {
+        auto renderer = makeRenderer();
+        render(*renderer, whole);
+        EXPECT_TRUE(identical(render(*renderer, alone), expectAlone)) << "the isolated child after the whole group draws the group's other child";
+    }
+    {
+        auto renderer = makeRenderer();
+        render(*renderer, alone);
+        EXPECT_TRUE(identical(render(*renderer, whole), expectWhole)) << "the whole group after an isolated child draws that child alone";
+    }
 }

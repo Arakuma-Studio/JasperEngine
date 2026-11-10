@@ -1,17 +1,28 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "window/TerrainQualityPanel.h"
+#include "pixelart/PixelArtMode.h"
+#include "pixelart/BitmapTextCache.h"
 #include "Project.h"
+#include "util/TitleArtLanguage.h"
+#include "foliage/TreeDataFile.h"
 #include "util/ScriptPropertyCache.h"
 #include "util/ProjectChecks.h"
+#include "asset/ModelSubAssets.h"
 #include "memory/HeapTrim.h"
 #include "render/LayerViewCamera.h"
+#include "object/TerrainEdit.h"
+#include "component/TerrainComponent.h"
 #include "component/MirrorComponent.h"
 #include "script/LuaBinding.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/TitleArtSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/ButtonComponent.h"
+#include "component/TextComponent.h"
+#include "pixelart/BitmapFont.h"
 #include "component/MeshPolygonComponent.h"
 #include "io/watch/LinkedFolders.h"
 #include "diag/HangWatchdog.h"
@@ -64,6 +75,7 @@
 #include "window/CodeEditor.h"
 #include "window/ImageViewerWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "terrain/TerrainMapPersistence.h"
 
 #include <cctype>
 #include <cmath>
@@ -98,6 +110,10 @@
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
+#include "subsystem/VoxelSystem.h"
+#include "voxel/VoxelWorkQueue.h"
+#include "voxel/VoxelAssetFile.h"
+#include "voxel/VoxelGeneration.h"
 #include "fluid/FluidSimulator.h"
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
@@ -144,8 +160,11 @@
 #include "texture/Texture.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
+#include "sprite/SpriteAtlasBuilder.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "Engine.h"
 #include "project/SceneFileIdentity.h"
 #include "component/CameraComponent.h"
@@ -345,9 +364,15 @@ bool editor::Project::recordSelectionInUndo = true;
 editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sceneDiffs(std::make_unique<vcs::SceneDiffTracker>()){
     resetConfigs();
     installUndoHooks();
+    // a volume's file holds its base's description: presets and Noise Graphs are rebuilt from it (T6 R33)
+    VoxelAssets::setBaseResolver(&resolveVoxelBase);
+    // a mesh job's result waits for the system's next update, which an idle editor would not run
+    voxel::WorkQueue::setFinishedNotifier([]() { getEditorHost().enqueueMainThreadTask([]() {}); });
 }
 
 editor::Project::~Project(){
+    // closing the project: a map waiting for its debounce reaches its file (T1 R30)
+    TerrainMapPersistence::get().flushAll();
     // the poller and the worker read nothing of the project, but its backups go with it
     vcsService->close();
     removeVcsBackups();
@@ -691,6 +716,7 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
 
     visitComponents(registry->getComponentArray<TerrainComponent>(), [&](TerrainComponent& terrain) {
         addTexture(terrain.heightMap, false);
+        addTexture(terrain.holeMap, false);
         for (Texture& blendMap : terrain.blendMaps) {
             addTexture(blendMap, false);
         }
@@ -750,6 +776,14 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
 
     // Animator Controllers (AnimatorAssetPool): the controller, its clips and its layers' masks
     // (read through the engine's file API, as the build will: the pool caches it)
+    // bitmap fonts a Text draws (S51 R19): its font and the bitmap fonts among its fallbacks
+    visitComponents(registry->getComponentArray<TextComponent>(), [&](TextComponent& text) {
+        for (const AssetRef& ref : text.font) {
+            const std::string& font = ref.path;
+            if (!font.empty() && font != ::jasperengine::pixelart::kBuiltinPixelFont && ::jasperengine::pixelart::isBitmapFontPath(font))
+                addFile(resources.bitmapFonts, font);
+        }
+    });
     visitComponents(registry->getComponentArray<AnimatorComponent>(), [&](AnimatorComponent& animator) {
         if (animator.controller.path.empty()) return;
         addFile(resources.controllers, animator.controller.path);
@@ -1041,6 +1075,16 @@ std::vector<std::string> editor::Project::getLinkedMaterialFiles() const {
     return std::vector<std::string>(files.begin(), files.end());
 }
 
+void editor::Project::reapplyLinkedMaterialFiles() {
+    for (const std::string& linked : getLinkedMaterialFiles()) {
+        try {
+            applyLinkedMaterialFile(linked, Stream::decodeMaterial(DocumentFiles::read(projectPath / linked, DocumentKind::Material).root));
+        } catch (const std::exception& e) {
+            Out::warning("Could not read material %s: %s", linked.c_str(), e.what());
+        }
+    }
+}
+
 void editor::Project::applyLinkedMaterialFile(const std::string& relativePath, const Material& fileMaterial) {
     const std::string filePath = fs::path(relativePath).lexically_normal().generic_string();
     Material updatedMaterial = fileMaterial;
@@ -1104,6 +1148,11 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
         return state != editor::FbxImporter::State::Missing;
     }
     written = true;
+    // (the database sees the FBX, which has no contents of its own: the model is this file)
+    editor::ModelContents contents;
+    if (editor::scanModelFile(glbPath, contents)) {
+        editor::reportModelLimits(fbxName, contents);
+    }
     return true;
 }
 
@@ -1702,6 +1751,20 @@ const std::array<AtmosphereQuality, 3>& editor::Project::getAtmosphereQuality() 
     return atmosphereQuality;
 }
 
+void editor::Project::setFoliageQuality(const std::array<FoliageQuality, 3>& quality, bool declared){
+    foliageQuality = quality;
+    foliageQualityDeclared = declared;
+    Engine::setFoliageQualityDefaults(quality[0], quality[1], quality[2], !declared);
+}
+
+const std::array<FoliageQuality, 3>& editor::Project::getFoliageQuality() const{
+    return foliageQuality;
+}
+
+bool editor::Project::isFoliageQualityDeclared() const{
+    return foliageQualityDeclared;
+}
+
 void editor::Project::setFoliageDistanceScale(const std::array<float, 3>& scale){
     for (size_t i = 0; i < scale.size(); i++)
         foliageDistanceScale[i] = std::isfinite(scale[i]) ? std::clamp(scale[i], 0.0f, 10.0f) : defaultFoliageDistanceScale[i];
@@ -1774,8 +1837,47 @@ void editor::Project::setHtmlUiMsaaSamples(int samples){
     UIDocumentSystem::setPreferredSampleCount(valid);
 }
 
+void editor::Project::setSpriteAtlasMode(const std::string& mode){
+    if (spriteAtlasMode == mode) return;
+    spriteAtlasMode = mode;
+    if (sprite::SpriteAtlasBuilder::get().getProject() == this) sprite::SpriteAtlasBuilder::get().modeChanged();
+}
+
 int editor::Project::getHtmlUiMsaaSamples() const{
     return htmlUiMsaaSamples;
+}
+
+void editor::Project::setPixelsPerUnit(int pixelsPerUnit){
+    const int previous = this->pixelsPerUnit;
+    this->pixelsPerUnit = std::clamp(pixelsPerUnit, minPixelsPerUnit, maxPixelsPerUnit);
+    // the edited scenes' sprites and tilemaps of PPU 0 build again (MeshSystem)
+    Engine::setPixelsPerUnit(this->pixelsPerUnit);
+    // .aseprite sheets of pixelsPerUnit "project" bake it: their imports' keys change with it
+    if (previous != this->pixelsPerUnit && pixelart::aseprite::AsepriteImporter::get().getProject() == this){
+        pixelart::aseprite::AsepriteImporter::get().requestAll();
+    }
+}
+
+int editor::Project::getPixelsPerUnit() const{
+    return pixelsPerUnit;
+}
+
+void editor::Project::setPixelArtSettings(const pixelart::PixelArtSettings& settings){
+    pixelArtSettings = settings;
+    pixelart::PixelArtMode::get().projectSettingsChanged(this);
+}
+
+void editor::Project::setDefaultFilterMode(TextureFilterMode mode){
+    defaultFilterMode = mode == TextureFilterMode::Point ? TextureFilterMode::Point : TextureFilterMode::Bilinear;
+}
+
+void editor::Project::setBitmapTextCacheMiB(int mib){
+    bitmapTextCacheMiB = std::clamp(mib, 0, maxBitmapTextCacheMiB);
+    ::jasperengine::pixelart::BitmapTextCache::get().setBudgetMiB(bitmapTextCacheMiB);
+}
+
+int editor::Project::getBitmapTextCacheMiB() const{
+    return bitmapTextCacheMiB;
 }
 
 bool editor::Project::isValidHtmlUiGlyphAtlasMiB(int mib){
@@ -1835,6 +1937,86 @@ void editor::Project::setLightMode(LightMode mode){
 
 LightMode editor::Project::getLightMode() const{
     return lightMode;
+}
+
+void editor::Project::setTerrainQualityTier(int platform, terraincore::TerrainQuality tier){
+    if (platform < 0 || platform >= terraincore::TerrainQualitySettings::PLATFORM_COUNT)
+        return;
+    terrainQualityTiers[platform] = tier;
+    // the editor renders with the tiers at once, as the shadow tiers
+    terraincore::TerrainQualitySettings::setPlatformTier(platform, tier);
+}
+
+terraincore::TerrainQuality editor::Project::getTerrainQualityTier(int platform) const{
+    if (platform < 0 || platform >= terraincore::TerrainQualitySettings::PLATFORM_COUNT)
+        return terraincore::TerrainQuality::HIGH;
+    return terrainQualityTiers[platform];
+}
+
+void editor::Project::applyNewProjectTerrainDefaults(){
+    // Engine::Platform: MacOS, iOS, Web, Android, Linux, Windows
+    static constexpr terraincore::TerrainQuality recommended[terraincore::TerrainQualitySettings::PLATFORM_COUNT] = {
+        terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::LOW, terraincore::TerrainQuality::MEDIUM,
+        terraincore::TerrainQuality::LOW, terraincore::TerrainQuality::HIGH, terraincore::TerrainQuality::HIGH};
+    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++){
+        setTerrainQualityTier(platform, recommended[platform]);
+    }
+    terrainQualityWritten = true;
+    compressTerrainLayers = true;
+}
+
+void editor::Project::beginTerrainExport(const std::vector<int>& platforms){
+    std::lock_guard<std::mutex> lock(terrainExportMutex);
+    terrainExportPlatforms = platforms;
+}
+
+void editor::Project::endTerrainExport(){
+    std::lock_guard<std::mutex> lock(terrainExportMutex);
+    terrainExportPlatforms.reset();
+}
+
+uint32_t editor::Project::getGeneratedTerrainTiers() const{
+    {
+        std::lock_guard<std::mutex> lock(terrainExportMutex);
+        if (!terrainExportPlatforms) return terraincore::TERRAIN_ALL_TIERS;
+    }
+    return getShippedTerrainTiers();
+}
+
+uint32_t editor::Project::getShippedTerrainTiers() const{
+    if (shipAllTerrainTiers || scriptsMention("setTerrainQuality") || scriptsMention("terrainQuality")){
+        return terraincore::TERRAIN_ALL_TIERS;
+    }
+    std::vector<int> platforms;
+    {
+        std::lock_guard<std::mutex> lock(terrainExportMutex);
+        if (terrainExportPlatforms) platforms = *terrainExportPlatforms;
+    }
+    uint32_t mask = 0;
+    if (platforms.empty()){
+        for (terraincore::TerrainQuality tier : terrainQualityTiers){
+            mask |= terraincore::terrainQualityBit(tier);
+        }
+    }else{
+        for (int platform : platforms){
+            mask |= terraincore::terrainQualityBit(getTerrainQualityTier(platform));
+        }
+    }
+    for (const SceneProject& sceneProject : scenes){
+        if (!sceneProject.scene){
+            continue;
+        }
+        auto terrains = sceneProject.scene->getComponentArray<TerrainComponent>();
+        for (size_t i = 0; i < terrains->size(); i++){
+            switch (terrains->getComponentFromIndex(i).quality){
+                case TerrainQualitySetting::HIGH: mask |= terraincore::terrainQualityBit(terraincore::TerrainQuality::HIGH); break;
+                case TerrainQualitySetting::MEDIUM: mask |= terraincore::terrainQualityBit(terraincore::TerrainQuality::MEDIUM); break;
+                case TerrainQualitySetting::LOW: mask |= terraincore::terrainQualityBit(terraincore::TerrainQuality::LOW); break;
+                default: break;
+            }
+        }
+    }
+    return mask;
 }
 
 const char* editor::Project::getShadowTierPlatformName(int platform){
@@ -2043,6 +2225,27 @@ void editor::Project::setTagsAndLayers(const std::vector<std::string>& tags, con
             this->layerNames[layer] = TagManager::layerToName(layer);
         }
     }
+}
+
+void editor::Project::setSortingLayers(const std::vector<SortingLayerInfo>& layers){
+    SortingLayers::setLayers(layers);
+}
+
+const std::vector<SortingLayerInfo>& editor::Project::getSortingLayers() const{
+    return SortingLayers::getLayers();
+}
+
+void editor::Project::setTransparencySort(TransparencySortMode mode, const Vector3& axis){
+    SortingLayers::setTransparencySortMode(mode);
+    SortingLayers::setTransparencySortAxis(axis);
+}
+
+TransparencySortMode editor::Project::getTransparencySortMode() const{
+    return SortingLayers::getTransparencySortMode();
+}
+
+Vector3 editor::Project::getTransparencySortAxis() const{
+    return SortingLayers::getTransparencySortAxis();
 }
 
 const std::vector<std::string>& editor::Project::getTags() const{
@@ -3271,6 +3474,7 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     settings.keepScreenOn = presentationSettings.keepScreenOn;
     settings.targetFrameRate = presentationSettings.targetFrameRate;
     settings.dynamicBatching = dynamicBatching;
+    settings.defaultLanguage = localizationSettings.effectiveDefault();
     auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
         ApplicationInfo info;
         info.name = getApplicationName(name);
@@ -3294,6 +3498,9 @@ void editor::Project::applyPresentationSettings(){
     Engine::setVSyncCount(vsyncEnabled ? 1 : 0);
     Engine::setDynamicBatchingDefault(dynamicBatching);
     Engine::setTargetFrameRate(presentationSettings.targetFrameRate);
+    // S87: a Play starts in the device's language with the project's default
+    TitleArtLanguage::setGlobal("");
+    TitleArtLanguage::setProjectDefault(localizationSettings.effectiveDefault());
     Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
                        presentationSettings.keepScreenOn);
     // a simulated phone or tablet keeps the screen on as the device would (Keep Screen On
@@ -3613,6 +3820,15 @@ const editor::LoadingSettings& editor::Project::getLoadingSettings() const{
     return loadingSettings;
 }
 
+uint32_t editor::Project::getParticleWorldBudget() const{
+    return particleWorldBudget;
+}
+
+void editor::Project::setParticleWorldBudget(uint32_t budget){
+    particleWorldBudget = budget;
+    particles::ParticleWorld::setProjectBudget(budget);
+}
+
 const editor::ThreadingProjectSettings& editor::Project::getThreadingSettings() const{
     return threadingSettings;
 }
@@ -3779,6 +3995,16 @@ const editor::NavigationProjectSettings& editor::Project::getNavigationSettings(
     return navigationSettings;
 }
 
+void editor::Project::setVoxelSettings(const VoxelProjectSettings& settings){
+    const bool changed = settings != voxelSettings;
+    voxelSettings = settings;
+    applyVoxelProjectSettings(voxelSettings);
+    // the standalone build's main.cpp carries them
+    if (modelLoaded && changed){
+        markGeneratedSourcesDirty();
+    }
+}
+
 void editor::Project::setNavigationSettings(const NavigationProjectSettings& settings){
     const bool changed = settings != navigationSettings;
     navigationSettings = settings;
@@ -3903,6 +4129,12 @@ uint32_t editor::Project::createNewSceneInternal(std::string sceneName, SceneTyp
     } else if (data.sceneType == SceneType::SCENE_2D) {
         data.scene->setLightState(LightState::OFF);
         data.scene->setBackgroundColor(Vector4(0.231, 0.298, 0.475, 1.0));
+        // Pixel Art Mode (S42 R1): a new 2D scene draws through a Pixel Perfect Camera
+        if (pixelArtSettings.enabled) {
+            pixelart::PixelArtMode::setupNewScene(*this, data.id);
+            clearSelectedEntities(data.id);
+            getScene(data.id)->isModified = false;
+        }
     } else if (data.sceneType == SceneType::SCENE_UI) {
         data.scene->setLightState(LightState::OFF);
         data.scene->setBackgroundColor(Vector4(0.525, 0.525, 0.525, 1.0));
@@ -3930,6 +4162,46 @@ editor::SceneProject* editor::Project::createRuntimeCloneFromSource(const SceneP
 
     YAML::Node sceneNode = DocumentFiles::read(fullPath, DocumentKind::Scene).root;
     return createRuntimeCloneFromNode(source, sceneNode);
+}
+
+editor::SceneProject* editor::Project::loadSceneProbe(uint32_t sceneId) {
+    SceneProject* source = getScene(sceneId);
+    if (!source || source->scene || source->filepath.empty()) {
+        return nullptr;
+    }
+    try {
+        return createRuntimeCloneFromSource(source);
+    } catch (const std::exception& e) {
+        Out::warning("Scene '%s' could not be read: %s", source->name.c_str(), e.what());
+        return nullptr;
+    }
+}
+
+editor::SceneProject* editor::Project::loadSceneFileProbe(const fs::path& file) {
+    SceneProject source;
+    source.filepath = file;
+    source.name = file.stem().string();
+    source.id = allocateSceneId();
+    if (source.id == NULL_PROJECT_SCENE) {
+        return nullptr;
+    }
+    try {
+        return createRuntimeCloneFromSource(&source);
+    } catch (const std::exception& e) {
+        Out::warning("Scene file '%s' could not be read: %s", file.generic_string().c_str(), e.what());
+        return nullptr;
+    }
+}
+
+void editor::Project::releaseSceneProbe(SceneProject* probe) {
+    if (!probe) {
+        return;
+    }
+    const uint32_t sceneId = probe->id;
+    deleteSceneProject(probe);
+    delete probe;
+    // forget the prefab instances the probe registered
+    cleanupPrefabsForScene(sceneId);
 }
 
 editor::SceneProject* editor::Project::createRuntimeCloneFromNode(const SceneProject* source, const YAML::Node& sceneNode) {
@@ -4345,7 +4617,7 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     const bool scriptsPost = scriptsSetPostProcessing();
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
                                          scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>(),
-                                         scriptsSetShadowQuality(), scriptsMention("litQuality"), getMobilePbrTier());
+                                         scriptsSetShadowQuality(), scriptsMention("litQuality"), getMobilePbrTier(), getShippedTerrainTiers());
     // a fluid a script makes (FluidSimulation in Lua or C++) needs its programs too
     if (scriptsMention("FluidSimulation"))
         ShaderVariantCollector::addFluidKeys(keys);
@@ -4558,6 +4830,16 @@ void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
 
     restartFluids(runtime->scene);
 
+    // T1 R77, R78: a terrain the game may edit draws from copies of its maps from the start, so
+    // the edit scene's terrain and the files keep what was authored
+    auto runtimeTerrains = runtime->scene->getComponentArray<TerrainComponent>();
+    for (size_t i = 0; i < runtimeTerrains->size(); i++){
+        TerrainComponent& terrain = runtimeTerrains->getComponentFromIndex(i);
+        if (terrain.allowRuntimeEdits){
+            detachTerrainMapsForRuntime(terrain, runtimeTerrains->getEntity(i));
+        }
+    }
+
     // the scene clock (the water's waves) starts at 0, as in an exported game: the edit-mode
     // clock ran on while the scene was stopped
     runtime->scene->setSceneTime(0.0);
@@ -4701,6 +4983,8 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
             targetScene->id = knownId;
         }
         giveSceneFileItsOwnId(*targetScene, fullPath);
+        targetScene->restoredVoxelAssets = std::move(restoredVoxelAssets);
+        restoredVoxelAssets.clear();
         // the build's prefab list of a closed scene follows the prefabs' GUIDs too
         resolveScenePrefabInfos(*targetScene);
 
@@ -6080,6 +6364,7 @@ void editor::Project::deleteSceneProject(SceneProject* sceneProject){
 
 void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setScalingMode(Scaling::NATIVE);
+    Engine::setDefaultTextureFilter(TextureFilter::LINEAR);
     // edit-mode scenes on the project default resolve it through the Engine
     Engine::setDefaultCanvasScaler(uiScale);
     Engine::setTextureStrategy(textureStrategy);
@@ -6092,6 +6377,9 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setSimulationHeld(false);
     // a game may have turned it off
     Engine::setAsyncLoading(true);
+    // T5 R21, R66: a game's choice lasts as long as its Play
+    Engine::resetFoliageQuality();
+    Engine::resetFoliageDistanceScale();
     // Input is static: no level, edge or delta of the last Play reaches the next
     Input::resetFrameState();
     InputActions::unload();
@@ -6106,6 +6394,14 @@ void editor::Project::releaseScenes() {
 }
 
 void editor::Project::resetConfigs() {
+    // an old project has no terrain tiers: High everywhere (T3 R51), set again as it loads
+    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
+        setTerrainQualityTier(platform, terraincore::TerrainQuality::HIGH);
+    }
+    terrainQualityWritten = false;
+    shipAllTerrainTiers = false;
+    compressTerrainLayers = false;
+    endTerrainExport();
     // pose animation and clip documents and rigs belong to the project
     PoseAnimationDocument::closeAll();
     AnimationClipDocument::closeAll();
@@ -6160,6 +6456,7 @@ void editor::Project::resetConfigs() {
     vsyncEnabled = defaultVSyncEnabled;
     setDynamicBatching(defaultDynamicBatching);
     setAtmosphereQuality(defaultAtmosphereQuality);
+    setFoliageQuality(defaultFoliageQuality, false);
     setFoliageDistanceScale(defaultFoliageDistanceScale);
     playerLogging = PlayerLoggingSettings();
     inputActionsAsset.clear();
@@ -6168,7 +6465,10 @@ void editor::Project::resetConfigs() {
     buildMethod = "auto";
     packContent = false;
     stripEngineCode = true;
+    spriteAtlasMode = "enabled";
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
+    setPixelsPerUnit(defaultPixelsPerUnit);
+    setBitmapTextCacheMiB(0);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
     setDrawSubmissionSettings(DrawSubmissionSettings());
     setDeviceSettings(DeviceSettings());
@@ -6177,6 +6477,9 @@ void editor::Project::resetConfigs() {
     }
     setLightMode(defaultLightMode);
     setThreadingSettings(ThreadingProjectSettings());
+    setParticleWorldBudget(0);
+    setParticleQaSettings(ParticleQaSettings());
+    setProcMatQaSettings(procmat::ProcMatQaSettings());
     setShaderCreationSettings(ShaderCreationProjectSettings());
     windowMode = defaultWindowMode;
     windowWidth = defaultWindowWidth;
@@ -6194,6 +6497,7 @@ void editor::Project::resetConfigs() {
     runtimeShadersEnabled = defaultRuntimeShadersEnabled;
     mobilePbrTier = defaultMobilePbrTier;
     setTagsAndLayers({}, {});
+    SortingLayers::reset();
     setLayerCollisionMatrices(allLayersCollide(), allLayersCollide());
     setPhysics3DWorldSettings(Physics3DWorldSettings());
     unreadableInputNode.clear();
@@ -6230,6 +6534,7 @@ void editor::Project::resetConfigs() {
     setTerrainEditorSettings({});
     physicsPlacementSettings = {};
     setNavigationSettings(NavigationProjectSettings());
+    setVoxelSettings(VoxelProjectSettings());
     spriteNormalsSettings = {};
     simulateTouch = false;
     // nothing reloads into a project that is going (S05), nothing cooks for it (S14)
@@ -6239,6 +6544,12 @@ void editor::Project::resetConfigs() {
     }
     if (ModelCookQueue::get().getProject() == this){
         ModelCookQueue::get().attach(nullptr);
+    }
+    if (pixelart::aseprite::AsepriteImporter::get().getProject() == this){
+        pixelart::aseprite::AsepriteImporter::get().attach(nullptr);
+    }
+    if (sprite::SpriteAtlasBuilder::get().getProject() == this){
+        sprite::SpriteAtlasBuilder::get().attach(nullptr);
     }
     textureSettings = {};
     modelSettings = {};
@@ -6323,6 +6634,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<LatticeSystem>()->setPaused(pause);
     // Spline Animate followers hold still; roads and pieces keep regenerating
     if (auto splines = scene->findSystem<SplineSystem>()) splines->setPaused(pause);
+    // edit mode edits the Voxel Volume's asset; Play works on a copy of it (T6 R6)
+    if (auto voxels = scene->findSystem<VoxelSystem>()) voxels->setPaused(pause);
     // Vertex Animators hold still in edit mode unless their Preview is on
     scene->getSystem<VertexAnimatorSystem>()->setPaused(pause);
     // and Text Effects unless the Inspector previews them
@@ -6331,6 +6644,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<UISystem>()->setEditMode(pause);
     // Video Players play nothing in edit mode (playOnAwake waits for Play)
     if (auto videos = scene->findSystem<VideoPlayerSystem>()) videos->setPaused(pause);
+    // Title Art's Live Time runs in Play only (S81 R38) and Edit mode takes the editor's frame budget
+    if (auto titles = scene->findSystem<TitleArtSystem>()) titles->setPaused(pause);
     // trails keep no point in edit mode but a dragged GameObject's (TrailSystem's preview)
     if (auto trails = scene->findSystem<TrailSystem>()){
         trails->setPaused(pause);
@@ -6530,6 +6845,14 @@ static std::set<Entity> getPlayKeptEntities(const editor::SceneProject* scenePro
             keep.insert(generated.begin(), generated.end());
         }
     }
+    // and a Voxel Volume's chunks are VoxelSystem's, which keeps them across Play (T6 R6)
+    if (std::shared_ptr<VoxelSystem> voxels = scene->findSystem<VoxelSystem>()) {
+        auto volumes = scene->getComponentArray<VoxelVolumeComponent>();
+        for (size_t i = 0; i < volumes->size(); i++) {
+            const std::vector<Entity> chunks = voxels->getGeneratedEntities(volumes->getEntity(i));
+            keep.insert(chunks.begin(), chunks.end());
+        }
+    }
 
     // The Scene view's own gizmos and icons (SceneRender::overlay) are made when first needed,
     // also while the game plays or between the play snapshot and the first frame; they are the
@@ -6684,6 +7007,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
                                    const std::map<uint32_t, std::set<ShaderKey>>& playShaderKeys) {
     bool saveMainOnStop = false;
     bool keepMainModified = false;
+    // before the snapshots are decoded: textures made from here on are edit-mode ones (S42 R3)
+    Engine::setDefaultTextureFilter(TextureFilter::LINEAR);
 
     for (const auto& entry : runtimeScenes) {
         SceneProject* sceneProject = runtimeOf(entry);
@@ -6791,6 +7116,7 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
         // Restore snapshot if present
         const bool restoredFromSnapshot = restorePlaySnapshot(sceneProject);
+        reapplyLinkedMaterialFiles();
         // the restored scene's own Canvas Scaler (a script may have changed it while playing)
         applyEditCanvasScale(sceneProject->scene, sceneProject->sceneType, sceneProject->sceneRender);
         // the fluids too: back to the edit-mode start, not the game's last frame
@@ -6936,6 +7262,8 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         editor::getEditorHost().prepareForProjectSwitch();
 
         resetConfigs();
+        // T5 R21, R66: a project made now says what its platforms draw; one without the key is older
+        setFoliageQuality(newProjectFoliageQuality);
 
         // Clear the last project path in settings when creating a new temp project (a
         // project elsewhere becomes it when saved below); a tool's process leaves the user's alone
@@ -6945,6 +7273,8 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
 
         projectPath = path;
         refreshTrustedRoots();
+        // T3 R51: a new project starts on the recommended tiers
+        applyNewProjectTerrainDefaults();
         // PlayerPrefs are the project's (.jasperengine/user/rundata): read from the new one
         UserSettingsStore::instance().unload();
         fs::path projectFile = projectPath / "project.yaml";
@@ -6959,8 +7289,9 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         }
 
         if (!std::filesystem::exists(projectFile)) {
-            if (!std::filesystem::exists(projectPath)) {
-                std::filesystem::create_directories(projectPath);
+            // a file in its place is no project folder: nothing could be saved there
+            if (!std::filesystem::is_directory(projectPath) && !std::filesystem::create_directories(projectPath)) {
+                throw std::runtime_error(FileUtils::pathToGenericUtf8(projectPath) + " is not a folder");
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());
             refreshTrustedRoots();   // the folder exists now
@@ -6994,6 +7325,8 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
             modelLoaded = true;
             // a project this version creates keeps its binaries in Git LFS (R21)
             vcsProjectSettings.lfs = true;
+            // ... and places a model of many clips without an Animation entity per clip (S77 R38)
+            modelSettings.animationEntities = AnimationEntitiesMode::Auto;
             // ... and ships at a sane level (S38 R8): a Master true-peak limiter, the linear output
             // stage that lets its ceiling hold at the device, the ambient iOS session
             {
@@ -7820,6 +8153,8 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
     if (sceneProject->playState != ScenePlayState::SAVING) {
         // the grids' changed cells go to their .navgrid files first (S19 R35)
         NavigationEditor::get().saveSceneAssets(this, *sceneProject);
+        // its dirty Voxel Volumes (T6 R77)
+        saveSceneVoxelAssets(*this, *sceneProject);
         resolveSceneAssetRefs(*sceneProject, false);
     }
 
@@ -8110,15 +8445,21 @@ void editor::Project::configureGenerator() {
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setFoliageQuality(foliageQuality, !foliageQualityDeclared);
     generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings);
+    generator.setPixelsPerUnit(pixelsPerUnit);
+    generator.setDefaultFilterPoint(defaultFilterMode == TextureFilterMode::Point);
+    generator.setBitmapTextCacheMiB(bitmapTextCacheMiB);
+    generator.setShippedTerrainTiers(getGeneratedTerrainTiers());
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints, getSortingLayers(), getTransparencySortMode(), getTransparencySortAxis()}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -8201,6 +8542,8 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     editor::getEditorHost().stopTransientPreviews();
     stopVertexAnimatorPreviews();
     NavigationEditor::get().saveSceneAssets(this, *sceneProject);
+    // its dirty Voxel Volumes (T6 R77): the store's tables belong to this thread
+    saveSceneVoxelAssets(*this, *sceneProject);
     resolveSceneAssetRefs(*sceneProject, false);
     for (auto& [prefabPath, prefab] : prefabAssets) {
         if (prefab.registry && prefab.instances.count(sceneId) && (prefab.isModified || prefab.needsUpgrade)) {
@@ -8896,6 +9239,9 @@ editor::SceneProject* editor::Project::getScene(uint32_t sceneId) {
     if (SceneProject* stageScene = findPrefabStageScene(sceneId)) {
         return stageScene;
     }
+    if (materialAssetScene && materialAssetScene->id == sceneId) {
+        return materialAssetScene;
+    }
     return findPlayRuntimeScene(sceneId);
 }
 
@@ -8906,6 +9252,9 @@ const editor::SceneProject* editor::Project::getScene(uint32_t sceneId) const {
     }
     if (const SceneProject* stageScene = findPrefabStageScene(sceneId)) {
         return stageScene;
+    }
+    if (materialAssetScene && materialAssetScene->id == sceneId) {
+        return materialAssetScene;
     }
     return findPlayRuntimeScene(sceneId);
 }
@@ -10301,15 +10650,21 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setFoliageQuality(foliageQuality, !foliageQualityDeclared);
     generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings);
+    generator.setPixelsPerUnit(pixelsPerUnit);
+    generator.setDefaultFilterPoint(defaultFilterMode == TextureFilterMode::Point);
+    generator.setBitmapTextCacheMiB(bitmapTextCacheMiB);
+    generator.setShippedTerrainTiers(terraincore::TERRAIN_ALL_TIERS);
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints, getSortingLayers(), getTransparencySortMode(), getTransparencySortAxis()}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
@@ -10517,6 +10872,10 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 // Apply project display settings before scripts read the canvas size.
                 Engine::setCanvasSize(canvasWidth, canvasHeight);
                 Engine::setScalingMode(scalingMode);
+                Engine::setPixelsPerUnit(pixelsPerUnit);
+                // runtime-made textures of the game start with the Default Filter Mode (S42 R3);
+                // edit mode keeps Bilinear: assignments copy their filters explicitly (R7)
+                Engine::setDefaultTextureFilter(textureFilterModeEngineFilter(defaultFilterMode));
                 Engine::setDefaultCanvasScaler(uiScale);
                 Engine::setTextureStrategy(textureStrategy);
                 Engine::systemViewChanged();
@@ -10528,6 +10887,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 SceneManager::setLoadingDelay(loadingSettings.delay);
                 SceneManager::setLoadingTimeout(loadingSettings.timeout);
                 // Project Settings > Debug: the overlay of a development build, before the scripts start
+                // T5 R62: a clone's store comes from the file, so the file holds what the Terrain has now
+                TreeDataFile::flushAll(this);
                 applyDebugSettingsForPlay();
                 // so Engine::onSceneLoaded fires, as for the exported start scene
                 SceneManager::setCurrentScene(sceneId);
@@ -10876,12 +11237,16 @@ editor::SceneProject* editor::Project::findSceneProjectByScene(Scene* scene) {
 }
 
 void editor::Project::start(uint32_t sceneId) {
+    // T3 R42: a Scene view preview ends at Play
+    clearTerrainPreview();
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         Out::error("Failed to find scene %u to start", sceneId);
         return;
     }
     editor::getEditorHost().playStarting(sceneId);
+    // T1 R30: a game reads its maps from their files
+    TerrainMapPersistence::get().flushAll();
     // Play's main-thread startup steps (saving, the script build hand-off, scene copies)
     const diag::BusyScope busy("Starting Play", 120'000);
 

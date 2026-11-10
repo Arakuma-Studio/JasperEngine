@@ -253,6 +253,14 @@ void editor::addTitleDocumentText(const titleart::TitleArtDoc& doc, TitleCharact
         return true;
     });
     if (auto it = doc.root.find("translations"); it != doc.root.end()) addStrings(*it, out);
+    // S87 R17: each Language's extra characters for runtime text
+    if (auto it = doc.root.find("languages"); it != doc.root.end() && it->is_array()) {
+        for (const TJson& language : *it) {
+            if (language.is_object() && language.contains("characters") && language["characters"].is_string()) {
+                out.addUtf8(language["characters"].get_ref<const std::string&>(), true);
+            }
+        }
+    }
     // an exposed text parameter's default is its targets' current value (S80 §6.1)
     auto exposed = doc.root.find("exposed");
     if (exposed == doc.root.end() || !exposed->is_array()) return;

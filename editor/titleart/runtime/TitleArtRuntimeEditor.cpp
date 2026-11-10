@@ -7,7 +7,9 @@
 #include "titleart/TitleArtRenderHost.h"
 #include "titleart/runtime/TitleArtScheduler.h"
 
+#include <algorithm>
 #include <filesystem>
+#include <iterator>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -31,6 +33,12 @@ namespace {
         s.simulateExportCharacters = p.simulateExportCharacters;
         const std::filesystem::path assets = project->getAssetsPath().lexically_relative(project->getProjectPath());
         s.assetsPrefix = assets.empty() || assets == "." ? std::string() : assets.generic_string() + "/";
+        // S86 R37: Realtime 3D Quality per Engine::Platform (MacOS, iOS, Web, Android, Linux, Windows)
+        static const char* const platforms[6] = {"macos", "ios", "web", "android", "linux", "windows"};
+        for (int i = 0; i < 6; i++) {
+            const std::string& tier = p.realtime3DQuality.of(platforms[i]);
+            s.realtime3DTier[i] = tier == "medium" ? 2 : tier == "low" ? 3 : 1;
+        }
         return s;
     }
 
@@ -40,7 +48,8 @@ namespace {
                 a.cacheBudgetMiB[g] != b.cacheBudgetMiB[g]) return false;
         }
         return a.editorFrameBudgetMs == b.editorFrameBudgetMs && a.referenceHeight == b.referenceHeight &&
-               a.simulateExportCharacters == b.simulateExportCharacters && a.assetsPrefix == b.assetsPrefix;
+               a.simulateExportCharacters == b.simulateExportCharacters && a.assetsPrefix == b.assetsPrefix &&
+               std::equal(std::begin(a.realtime3DTier), std::end(a.realtime3DTier), std::begin(b.realtime3DTier));
     }
 
 }

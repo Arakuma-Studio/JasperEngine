@@ -16,14 +16,13 @@
 #include "titleart/three_d/TitleMeshFile.h"
 #include "titleart/three_d/mesher/TitleMesher.h"
 #include "asset/AssetFileWrite.h"
-#include "texture/TexturePrepare.h"
 #include "util/FileUtils.h"
-
-#include "stb_image.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <fstream>
+#include <iterator>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -492,21 +491,35 @@ Json editor::title3DStats(const titleart::TitleArtDoc& doc, const titleart::Asse
     return out;
 }
 
-bool editor::cookTitleMeshes(const titleart::TitleArtDoc& doc, const titleart::AssetResolver* assets, titleart::TitleTier tier,
-                             std::map<std::string, std::vector<uint8_t>>& out, std::string& error) {
+bool editor::cookTitleMeshes(const titleart::TitleArtDoc& doc, const titleart::AssetResolver* assets, titleart::TitleTier tier, double pxScale,
+                             const std::set<std::string>* layers, std::map<std::string, std::vector<uint8_t>>& out, std::string& error) {
     auto content = titleart::makeGeometryTitleContentProvider();
+    // each layer's placement scale: the product of its own and its groups' transform scales (the planner's)
+    std::map<std::string, double> placement;
+    titleart::forEachLayer(doc.root, [&](const Json& layer, const Json* parent, int) {
+        const Json& transform = layer.contains("transform") ? layer["transform"] : Json();
+        const double own = transform.is_object() ? std::max(1e-6, transform.value("scale", 1.0)) : 1.0;
+        const double above = parent ? placement[parent->value("id", std::string())] : 1.0;
+        placement[layer.value("id", std::string())] = above * own;
+        return true;
+    });
     bool ok = true;
     forEach3DLayer(doc, [&](const Json& layer) {
         if (!ok) return;
+        if (layers && !layers->count(layer.value("id", std::string()))) return;
         titleart::three_d::TitleMeshRequest request;
         std::vector<titleart::TitleProblem> problems;
         request.source = titleart::three_d::collectTitleSource(layer, doc, *content, assets, &problems);
         request.style = titleart::decodeStyle3D(layer);
         request.blocks = titleart::three_d::collectCharBlocks(layer, request.style.bands.size());
         request.tier = tier;
-        const Json& transform = layer.contains("transform") ? layer["transform"] : Json();
-        request.outputScale = transform.is_object() ? std::abs(transform.value("scale", 1.0)) : 1.0;
         const std::string id = layer.value("id", std::string());
+        request.outputScale = pxScale * placement[id];
+        // the wrap stream when a material projects its base texture `wrap` (as the planner asks)
+        auto wraps = [](const titleart::TitleMaterial3D& m) { return m.baseWrap && !m.baseTexture.empty(); };
+        request.wrap = wraps(request.style.face) || (request.style.bevelMaterial && wraps(*request.style.bevelMaterial)) ||
+                       (request.style.side && wraps(*request.style.side));
+        for (const titleart::Band3D& b : request.style.bands) request.wrap = request.wrap || wraps(b.material) || (b.side && wraps(*b.side));
         if (request.source.glyphs.empty()) {
             error = "the 3D layer " + id + " has nothing to mesh" + (problems.empty() ? std::string() : ": " + problems.front().message);
             ok = false;
@@ -538,25 +551,7 @@ Json editor::title3DLayerInfo(const Json& layer, const titleart::TitleArtDoc& do
 }
 
 std::shared_ptr<const titleart::TitleHdri> editor::loadBundledTitleHdri(const std::string& slug, const std::filesystem::path& dir) {
-    // the manifest names each slug's file (fetch_hdris.py writes it)
-    std::string text;
-    if (!assetio::readFile(dir / "manifest.json", text)) return nullptr;
-    const Json manifest = Json::parse(text, nullptr, false);
-    if (!manifest.is_object() || !manifest.contains("environments")) return nullptr;
-    for (const auto& [env, entry] : manifest["environments"].items()) {
-        if (entry.value("slug", std::string()) != slug) continue;
-        int w = 0, h = 0, n = 0;
-        float* pixels = stbi_loadf((dir / entry.value("file", std::string())).string().c_str(), &w, &h, &n, 4);
-        if (!pixels) return nullptr;
-        auto hdri = std::make_shared<titleart::TitleHdri>();
-        hdri->width = w;
-        hdri->height = h;
-        hdri->rgba.resize((size_t)w * h * 4);
-        for (size_t i = 0; i < hdri->rgba.size(); i++) hdri->rgba[i] = floatToHalf(pixels[i]);
-        stbi_image_free(pixels);
-        return hdri;
-    }
-    return nullptr;
+    return titleart::loadTitleHdriFromDirectory(slug, dir.string());
 }
 
 void editor::registerTitle3DEditor() {
@@ -601,3 +596,35 @@ void editor::registerTitle3DEditor() {
         TitleArtChecks::registerCheck(std::move(def));
     }
 }
+
+std::string editor::copyTitleHdriIntoAssets(const std::filesystem::path& source, const std::filesystem::path& assets, std::string* error) {
+    namespace fs = std::filesystem;
+    const auto refuse = [error](const std::string& message) {
+        if (error) *error = message;
+        return std::string();
+    };
+    std::string extension = source.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    if (extension != ".hdr" && extension != ".exr") return refuse("'" + source.filename().string() + "' is not an .hdr or .exr file");
+    std::error_code ec;
+    if (!fs::is_regular_file(source, ec)) return refuse("'" + source.string() + "' does not exist");
+    const fs::path inside = fs::weakly_canonical(source, ec).lexically_relative(fs::weakly_canonical(assets, ec));
+    if (!inside.empty() && *inside.begin() != "..") return source.string();
+    const fs::path folder = assets / "TitleArt" / "HDRI";
+    fs::create_directories(folder, ec);
+    if (ec) return refuse("could not create '" + folder.string() + "': " + ec.message());
+    const auto sameFile = [&source](const fs::path& other) {
+        std::error_code sizeError;
+        if (fs::file_size(source, sizeError) != fs::file_size(other, sizeError) || sizeError) return false;
+        std::ifstream a(source, std::ios::binary), b(other, std::ios::binary);
+        return std::equal(std::istreambuf_iterator<char>(a), std::istreambuf_iterator<char>(), std::istreambuf_iterator<char>(b));
+    };
+    fs::path destination = folder / source.filename();
+    for (int n = 2; fs::exists(destination, ec); n++) {
+        if (sameFile(destination)) return destination.string();
+        destination = folder / (source.stem().string() + " " + std::to_string(n) + source.extension().string());
+    }
+    if (!FileUtils::copyFileAtomic(source, destination, ec)) return refuse("could not copy '" + source.filename().string() + "': " + ec.message());
+    return destination.string();
+}
+

@@ -18,6 +18,19 @@
 // instance in an automatically instanced batch: includes/object_depth_params.glsl)
 #include "includes/object_depth_params.glsl"
 
+#ifdef PIXEL_SNAP
+    #define FRAME_VS
+    #include "includes/frame.glsl"
+    #include "includes/pixel_snap.glsl"
+    // S52 'Spv': a batchable sprite's snap pivot (the model origin, baked as a point)
+    #if defined(HAS_SNAP_PIVOT) && !defined(HAS_INSTANCING)
+        in vec3 a_snapPivot;
+    #endif
+    #if defined(HAS_SNAP_PIVOT) && defined(HAS_INSTANCING)
+        in vec2 i_snapPivot;
+    #endif
+#endif
+
 invariant gl_Position;
 
 #ifdef USE_INSTANCE_FADE
@@ -27,7 +40,12 @@ invariant gl_Position;
 in vec3 a_position;
 out vec2 v_projZW;
 
-#ifdef HAS_INSTANCING
+#include "includes/foliage_instance.glsl"
+#include "includes/foliage_wind.glsl"
+#ifdef USE_FOLIAGE_DITHER
+    out float v_foliageFade;
+#endif
+#if defined(HAS_INSTANCING) && !defined(HAS_COMPACT_INSTANCE)
     in vec4 i_matrix_col1;
     in vec4 i_matrix_col2;
     in vec4 i_matrix_col3;
@@ -50,7 +68,7 @@ out vec2 v_projZW;
 #endif
 
 // a lattice's vertex colour mask (includes/lattice.glsl)
-#ifdef HAS_LATTICE
+#if defined(HAS_LATTICE) || defined(USE_FOLIAGE_WIND)
     #if defined(HAS_VERTEX_COLOR_VEC3)
         in vec3 a_color;
     #elif defined(HAS_VERTEX_COLOR_VEC4)
@@ -78,7 +96,16 @@ vec4 getPosition(mat4 boneTransform){
     return vec4(pos, 1.0);
 }
 
+#if defined(HAS_VERTEX_COLOR_VEC3) || defined(HAS_VERTEX_COLOR_VEC4)
+    #define FOLIAGE_VERTEX_RED a_color.r
+#else
+    #define FOLIAGE_VERTEX_RED 1.0
+#endif
+
 void main() {
+    #ifdef HAS_COMPACT_INSTANCE
+        compactInstanceSetup();
+    #endif
     // the baked vertex animation first (HAS_VAT), as mesh.vert
     vatEvaluate();
     mat4 boneTransform = getBoneTransform();
@@ -105,6 +132,13 @@ void main() {
         vec4 pos = getPosition(boneTransform);
     #endif
 
+    #ifdef USE_FOLIAGE_WIND
+        pos.xyz = foliageWindSway(pos.xyz, i_matrix_col4.xyz, a_position.y, FOLIAGE_VERTEX_RED);
+    #endif
+    #ifdef USE_FOLIAGE_DITHER
+        v_foliageFade = foliageFadeFactor(i_matrix_col4.xyz);
+    #endif
+
     #if defined(HAS_TEXTURE)
         v_uv1 = a_texcoord1;
         #ifdef HAS_TEXTURERECT
@@ -127,6 +161,25 @@ void main() {
     #endif
 
     gl_Position = depthParams.mvpMatrix * pos;
+    #ifdef PIXEL_SNAP
+        #if defined(HAS_INSTANCING) && defined(HAS_SNAP_PIVOT)
+            // S52 'Spv' on a Sprite Batch: the instance's own pivot (its matrix's origin carries
+            // its frame's offset)
+            vec4 snapPivot = depthParams.mvpMatrix * vec4(i_snapPivot, i_matrix_col4.z, 1.0);
+            float snapMode = pixelSnapInstanceMode(depthParams.pixelSnapDraw.x, i_matrix_col1, i_matrix_col2);
+        #elif defined(HAS_INSTANCING)
+            vec4 snapPivot = depthParams.mvpMatrix * i_matrix_col4;
+            float snapMode = pixelSnapInstanceMode(depthParams.pixelSnapDraw.x, i_matrix_col1, i_matrix_col2);
+        #elif defined(HAS_SNAP_PIVOT)
+            // S52 'Spv', as the colour pass
+            vec4 snapPivot = depthParams.mvpMatrix * vec4(a_snapPivot, 1.0);
+            float snapMode = depthParams.pixelSnapDraw.x;
+        #else
+            vec4 snapPivot = depthParams.mvpMatrix[3];
+            float snapMode = depthParams.pixelSnapDraw.x;
+        #endif
+        gl_Position = pixelSnapApply(gl_Position, snapMode, snapPivot);
+    #endif
 
     v_projZW = gl_Position.zw;
     // No Y flip here: the target keeps its native orientation and the atlas lookup

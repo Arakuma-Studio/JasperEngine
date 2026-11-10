@@ -10,6 +10,8 @@
 #include "TempDir.h"
 
 #include "Project.h"
+#include "graph/GraphDocument.h"
+#include "graph/GraphRegistry.h"
 #include "io/watch/FileWatchService.h"
 #include "pool/TextureDataPool.h"
 #include "reload/HotReloadService.h"
@@ -289,6 +291,47 @@ TEST_F(HotReloadServiceTests, EditorWritesFanOutButDoNotTouchScenes) {
     set.changes.push_back(change);
     service.apply(set, ApplyOptions());
     EXPECT_FALSE(service.hasExternalChange(scene->id)) << "the editor's own save is no external change";
+}
+
+// S90 review I4: the editor's own writes of a graph file (an agent's write_file, a delete in the Project
+// window) reach its open document, which then never writes a deleted file back
+TEST_F(HotReloadServiceTests, EditorWritesAndDeletesReachAnOpenGraph) {
+    graph::GraphKindDesc kind;
+    kind.id = "reload_test";
+    kind.fileExtension = ".rtgraph";
+    graph::NodeTypeDesc box;
+    box.id = "box";
+    kind.nodeTypes = {box};
+    graph::GraphRegistry::get().registerKind(kind);
+    const fs::path file = project.getProjectPath() / "assets" / "flow.rtgraph";
+    auto graphText = [](const std::string& nodes) {
+        return R"({"formatVersion": 1, "kind": "reload_test", "kindVersion": 1, "nextId": 9, "nodes": [)" + nodes + R"(], "edges": []})";
+    };
+    writeText(file, graphText(R"({"id": "n1", "type": "box", "position": [0, 0]})"));
+    std::string error;
+    std::shared_ptr<GraphDocument> document = GraphDocument::open(&project, file.string(), &error);
+    ASSERT_TRUE(document) << error;
+
+    auto apply = [&](FileChangeKind changeKind) {
+        FileChange change;
+        change.kind = changeKind;
+        change.path = file;
+        change.origin = ChangeOrigin::Editor;
+        ChangeSet set;
+        set.changes.push_back(change);
+        service.apply(set, ApplyOptions());
+    };
+    writeText(file, graphText(R"({"id": "n1", "type": "box", "position": [0, 0]}, {"id": "n2", "type": "box", "position": [9, 9]})"));
+    apply(FileChangeKind::Modified);
+    EXPECT_EQ(document->graph().nodes.size(), 2u) << "write_file's content reached the document";
+
+    fs::remove(file);
+    apply(FileChangeKind::Removed);
+    EXPECT_FALSE(document->editable()) << "a deleted file's document is read-only";
+    EXPECT_FALSE(document->apply({{"moveNodes", {{"positions", {{"n1", {5, 5}}}}}}}, "", &error));
+    EXPECT_FALSE(fs::exists(file)) << "never written back";
+    GraphDocument::closeAll();
+    graph::GraphRegistry::get().unregisterKind("reload_test");
 }
 
 TEST(ModelReloadTests, HierarchyMismatchIsReportedNotRebuilt) {

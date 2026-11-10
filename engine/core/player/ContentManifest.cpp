@@ -98,8 +98,7 @@ std::vector<std::string> player::missingModules(const ContentManifest& manifest,
 
 bool player::checkContent(const ContentManifest& manifest, const std::string& playerId, const ContentAccess& access, bool verifyHashes,
                           std::vector<std::string>& problems, const std::vector<std::string>* playerModules) {
-    const std::string major = manifest.contentFormatVersion.substr(0, manifest.contentFormatVersion.find('.'));
-    if (major != std::to_string(cook::FORMAT_MAJOR)) {
+    if (!cook::playerReadsContentFormat(manifest.contentFormatVersion)) {
         problems.push_back("content format " + manifest.contentFormatVersion + ", this player reads " + cook::contentFormatVersion() +
                            ": build the game with the editor of this player's version");
     }

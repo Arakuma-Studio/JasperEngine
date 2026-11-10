@@ -84,12 +84,17 @@ namespace jasperengine::editor {
         // a job for `request` (its `assets` filled with the project's resolver when null); null
         // with `error` when the request has no document or the renderer refuses it
         std::unique_ptr<titleart::TitleRenderJob> begin(Project* project, titleart::RenderRequest request, std::string& error);
+        // runs `request`'s job to its end (or its failure: check failed()); null with `error` when it
+        // cannot start or waits too long for a program (S85 reads the job's glyph cells)
+        std::unique_ptr<titleart::TitleRenderJob> runToEnd(Project* project, titleart::RenderRequest request, std::string& error);
         // runs `request` to the end and reads it back (`request.outputBitDepth` chooses 8 or 16 bits)
         bool render(Project* project, titleart::RenderRequest request, TitleRenderedImage& out, std::string& error);
 
         // the pixels of a finished job: RGBA 8-bit (bitDepth 8) or 16-bit (bitDepth 16, needs an
         // RGBA16F image); false with `error`
         static bool readBack(const titleart::TitleRenderJob& job, int bitDepth, TitleRenderedImage& out, std::string& error);
+        // the same for any image of a finished job (S85: its glyph cells, TitleSplits)
+        static bool readImage(const titleart::TitleImage& image, int bitDepth, TitleRenderedImage& out, std::string& error);
         // the alpha bounds of an RGBA image (alpha >= 1/255), empty when it has none
         static titleart::TitleRectI alphaBoundsOf(const texsynth::Image& image);
 

@@ -10,6 +10,7 @@
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "util/Util.h"
+#include "animation/ModelClipSettings.h"
 #include "pose/HumanoidMapIO.h"
 #include "project/SceneFileIdentity.h"
 #include "titleart/TitleArtBake.h"
@@ -27,7 +28,7 @@ namespace {
 
     // The files an operation moves: the path, and its meta beside it when it is a file
     // (a directory carries the metas inside it). A model's .humanoid bone mapping (pose
-    // animation) goes with it the same way: it describes that model file
+    // animation) and .clips settings (S77 D4) go with it the same way: they describe that model file
     // A .titleart's derived files (its baked PNGs, their metas, its bake sidecar) go with it on a
     // move, a delete and its restore, renamed after the document (VatAssetFiles' pairing); a copy
     // leaves them (`derived` false): the copy has a GUID of its own and bakes its own outputs
@@ -52,6 +53,10 @@ namespace {
                 const fs::path humanoid = FileUtils::pathFromUtf8(pose::humanoidSidecarPath(FileUtils::pathToUtf8(from)));
                 if (fs::is_regular_file(humanoid, ec)) {
                     pairs.push_back({humanoid, FileUtils::pathFromUtf8(pose::humanoidSidecarPath(FileUtils::pathToUtf8(to)))});
+                }
+                const fs::path clips = FileUtils::pathFromUtf8(anim::modelClipSettingsPath(FileUtils::pathToUtf8(from)));
+                if (fs::is_regular_file(clips, ec)) {
+                    pairs.push_back({clips, FileUtils::pathFromUtf8(anim::modelClipSettingsPath(FileUtils::pathToUtf8(to)))});
                 }
             }
         }

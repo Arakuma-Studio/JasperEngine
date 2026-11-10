@@ -39,6 +39,13 @@ NOT_OPEN = ("Scene 3 \"Level2\" is not open (its contents are not loaded). Open 
             "{\"scene\": \"scenes/Level2.scene\", \"close_previous\": false} (then select_scene to switch back).")
 
 
+# edit_voxels and sample_voxels, in their real shapes
+VOXEL_CREATED = {"entity": {"id": 21, "name": "Cave", "path": "Cave"}, "asset": "voxels/Cave.voxelvolume", "dimensions": [64, 64, 64],
+                 "voxel_size": 1.0, "estimated_memory": 1048576, "over_budget_targets": []}
+VOXEL_CONNECTED = {"connected": True, "open_to_sky": True, "component_count": 1, "from_in_air": True, "to_in_air": True, "from_component": 0, "to_component": 0,
+                   "air_components": [{"index": 0, "voxels": 180000, "volume": 180000.0, "open_to_sky": True,
+                                       "voxel_bounds": {"min": [0, 0, 0], "max": [63, 63, 63]}, "bounds": {"min": [0, 0, 0], "max": [64, 64, 64]}}]}
+
 # import_project's structuredContent with a leftover beside the new project
 LEFTOVER_IMPORT = {
     "path": "/home/me/Games/Game", "opened": True, "log": [],
@@ -72,6 +79,43 @@ FILE_PICKER_DIALOG = {"kind": "file_picker", "title": "Open Files", "choices": [
                       "fields": [{"name": "path", "type": "path", "value": ""}]}
 
 FILE_PICKER_OPEN = {"text": "The editor is showing the dialog \"Open Files\".", "real": True, "structured": {"dialog": FILE_PICKER_DIALOG}}
+
+# T1: edit_terrain and sample_terrain results in the handler's shapes (editor/mcp/tools/TerrainTools.cpp)
+TERRAIN_ENTITY = {"id": 4, "name": "Island", "type": "terrain"}
+TERRAIN_EDIT_RESULT = {
+    "terrain": TERRAIN_ENTITY, "dry_run": False, "undo_name": "Edit Terrain (Island)", "created_maps": [],
+    "changed": [{"map": "height", "rect": [462, 462, 101, 101], "local": {"min": [-50.0, -50.0], "max": [50.0, 50.0]}, "texels": 7854}],
+    "ops": [{"op": "set_height", "changed_texels": 7854, "clipped_low": 0, "clipped_high": 0, "filtered_out": 0, "outside": 0}],
+    "warnings": [], "stats": {"height_min": 0.0, "height_max": 80.0, "height_min_before": 0.0, "height_max_before": 0.0,
+                              "mean_delta": 41.2, "max_delta": 80.0},
+    "next": "Check the result with sample_terrain (stats, hash) or look with visualize_terrain.",
+}
+TERRAIN_SAMPLE_RESULT = {
+    "terrain": TERRAIN_ENTITY, "space": "world",
+    "stats": {"texels": 1050625, "stride": 1, "height": {"min": 0.0, "max": 80.0, "mean": 3.1, "p05": 0.0, "p50": 0.0, "p95": 41.0,
+                                                         "clipped_low_share": 0.0, "clipped_high_share": 0.0}},
+}
+TERRAIN_CLIPPED_RESULT = TERRAIN_EDIT_RESULT | {
+    "changed": [{"map": "height", "rect": [0, 0, 1025, 1025], "local": {"min": [-512.0, -512.0], "max": [512.0, 512.0]}, "texels": 1050625}],
+    "ops": [{"op": "set_height", "changed_texels": 1050625, "clipped_low": 0, "clipped_high": 1050625, "filtered_out": 0, "outside": 0}],
+    "warnings": [{"op": 0, "code": "clipped_high", "message": "1050625 texel(s) reached the terrain's top (100 m)."}],
+    "stats": {"height_min": 100.0, "height_max": 100.0, "height_min_before": 0.0, "height_max_before": 80.0, "mean_delta": 96.9, "max_delta": 100.0},
+    "next": "Heights reached the terrain's top: raise maxHeight with set_properties, then remap_heights to keep the shape.",
+}
+TERRAIN_CLIPPED_SAMPLE = {
+    "terrain": TERRAIN_ENTITY, "space": "world",
+    "stats": {"texels": 1050625, "stride": 1, "height": {"min": 100.0, "max": 100.0, "mean": 100.0, "p05": 100.0, "p50": 100.0, "p95": 100.0,
+                                                         "clipped_low_share": 0.0, "clipped_high_share": 1.0}},
+}
+TERRAIN_IMPORT_DRY = {
+    "terrain": TERRAIN_ENTITY, "dry_run": True, "undo_name": "Edit Terrain (Island)", "created_maps": [],
+    "changed": [{"map": "height", "rect": [0, 0, 1025, 1025], "local": {"min": [-512.0, -512.0], "max": [512.0, 512.0]}, "texels": 1050625}],
+    "ops": [{"op": "import_heightmap", "changed_texels": 1050625, "clipped_low": 0, "clipped_high": 0, "filtered_out": 0, "outside": 0,
+             "detected": {"format": "r16", "format_guessed": False, "width": 1025, "height": 1025, "size_guessed": True,
+                          "byte_order": "little", "byte_order_guessed": True, "data_min": 812, "data_max": 61022,
+                          "range_low": 812, "range_high": 61022, "clipped_low": 0, "clipped_high": 0}}],
+    "warnings": [], "next": "Nothing changed. Call again without dry_run to apply.",
+}
 
 
 CASES = [
@@ -225,8 +269,8 @@ CASES = [
         "what_happened": "Asked to rebind a Curve window key, agents read the project, then the engine source, and told the user "
                          "to change the editor's code. The key is a catalog command: curve.frame, not the scene's Frame Selected, "
                          "which shares the key.",
-        "text_at_issue": "Generated AGENTS.md, Source references: 'An editor key is rebound with `set_shortcut` (tool group "
-                         "`editor_ux`), not in that source.'; list_shortcuts context: 'curve', 'color_picker'",
+        "text_at_issue": "Generated AGENTS.md, its list: 'An editor key is rebound with `set_shortcut` (tool group "
+                         "`editor_ux`), not in the editor's source.'; list_shortcuts context: 'curve', 'color_picker'",
         "source": "docs/specs/S61-window-commands.md R5",
         "prompt": "In the Curve window, make the key that frames the curve J instead of F.",
         "mocks": [
@@ -765,6 +809,127 @@ CASES = [
                    "must_not_call": ["set_properties", "set_material", "create_material"], "reply_must": [r"(?i)lod|level"]},
         "max_turns": 10,
     },
+    {
+        "id": "bad_aseprite_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked to put an Aseprite character in the scene, agents exported PNG strips with a shell "
+                         "aseprite --sheet, sliced them with set_sprite_frames {texture, slice} and built the walk "
+                         "animation frame by frame; the editor imports .aseprite files itself (S44).",
+        "text_at_issue": "guide Other areas: 'sprites (set_sprite_frames sheet)'; set_sprite_frames "
+                         "description: 'sheet (.aseprite + tag clips, texture, .spriteatlas)'",
+        "source": "S44 design review (pixel-art trial sessions, paraphrased)",
+        "files": {"assets/sprites/hero.aseprite": "binary placeholder"},
+        "prompt": "Add assets/sprites/hero.aseprite to the scene as an animated character that plays its idle animation.",
+        "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:hero\\.aseprite"}, "result": ok(
+                "assets/sprites/hero.aseprite (Aseprite, RGBA 32x32): 12 frames, 3 layers, tags idle (0-3), walk (4-11); "
+                "imported: 1 page 128x96, clips assets/sprites/hero.aseprite#idle, #walk.",
+                {"path": "assets/sprites/hero.aseprite", "type": "aseprite_sprite", "frames": 12,
+                 "tags": ["idle", "walk"], "outputs": {"clips": [
+                     {"name": "idle", "reference": "assets/sprites/hero.aseprite#idle"},
+                     {"name": "walk", "reference": "assets/sprites/hero.aseprite#walk"}]}})},
+            {"tool": "set_sprite_frames", "args": {"sheet": "re:hero\\.aseprite"}, "result": ok(
+                "Sprite \"Hero\" shows frame 0 (\"hero 0\") of assets/sprites/hero.aseprite (12 frames); its Animation Player "
+                "lists 2 tag clip(s), Default Clip idle.",
+                {"sprite": {"id": 40, "path": "Hero"}, "created": True, "sheet": "assets/sprites/hero.aseprite",
+                 "frame": 0, "frame_name": "hero 0", "frame_count": 12, "added_player": True, "default_clip": "idle",
+                 "clips": ["assets/sprites/hero.aseprite#idle", "assets/sprites/hero.aseprite#walk"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_sprite_frames", "args": {"sheet": "re:hero\\.aseprite"}}],
+                   "must_not_call": [{"tool": "set_sprite_frames", "args": {"slice": "*"}},
+                                     {"tool": "set_sprite_animation"}],
+                   "shell_must_not": [r"aseprite\s+(-b|--batch)", r"--sheet"]},
+        "max_turns": 10,
+    },
+
+    {
+        "id": "bad_atlas_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked to pack the item icons into one texture so they batch, agents stitched a PNG with a shell "
+                         "script and re-sliced every sprite onto it with set_sprite_frames {texture, frames}: every scene "
+                         "changed and a new icon meant doing it again; the editor packs .spriteatlas files itself and sprites "
+                         "keep their own textures (S45).",
+        "text_at_issue": "edit_sprite_atlas description ('Without output: an in-memory pack ... output: true writes it'); "
+                         "its result's next",
+        "source": "S45 design review (pixel-art trial sessions, paraphrased)",
+        "files": {"assets/items/sword.png": "binary placeholder", "assets/items/shield.png": "binary placeholder",
+                  "assets/items/gem.png": "binary placeholder"},
+        "prompt": "The item icons in assets/items each cost a draw call. Pack them into one atlas so they batch.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "edit_sprite_atlas", "args": {"output": True}, "result": ok(
+                "Created assets/items.spriteatlas: 1 page \u00b7 3 frames \u00b7 81 % used \u00b7 0.0 MB VRAM (desktop).",
+                {"written": True, "path": "assets/items.spriteatlas", "frame_count": 3, "usage_percent": 81,
+                 "next": "Created and built assets/items.spriteatlas (undo with scope project). Sprites keep referencing their "
+                         "sources; they now draw from its pages."})},
+            {"tool": "edit_sprite_atlas", "args": {}, "result": ok(
+                "Preview of assets/items.spriteatlas: 1 page \u00b7 3 frames \u00b7 81 % used. Nothing written.",
+                {"written": False, "frame_count": 3, "usage_percent": 81, "pages": [{"index": 0, "size": [64, 32], "frames": 3}],
+                 "next": "Nothing written. The same arguments plus output: true write assets/items.spriteatlas and build it."})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite_atlas", "args": {"output": True}}],
+                   "must_not_call": [{"tool": "set_sprite_frames", "args": {"frames": "*"}},
+                                     {"tool": "set_sprite_frames", "args": {"slice": "*"}}, {"tool": "write_file"}],
+                   "shell_must_not": [r"montage|convert\s+.*\+append|PIL|Image\.new"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_inline_frames_retyped",
+        "kind": "bad",
+        "what_happened": "Asked to move an old sprite's frames into its texture so other sprites can share them, agents read "
+                         "the inline rects and typed them back into set_sprite_frames {texture, frames} on each sprite, "
+                         "missing the ones in closed scenes; set_sprite_frames {convert, all_users} does it in one undo step (S45).",
+        "text_at_issue": "set_sprite_frames parameters convert, all_users; guide sprites 'Legacy inline frames'",
+        "source": "S45 design review (paraphrased)",
+        "files": {"assets/legacy/walk.png": "binary placeholder"},
+        "prompt": "The Walker sprite still keeps its own frame rects. Move them into walk.png so every sprite using that "
+                  "texture shares them, closed scenes included.",
+        "mocks": [
+            {"tool": "get_entity", "args": {}, "result": ok(
+                "Walker: Sprite Renderer (3 inline frames of assets/legacy/walk.png).",
+                {"components": {"sprite": {"framesRect": [{"name": "walk_0", "rect": [0, 0, 16, 16]},
+                                                          {"name": "walk_1", "rect": [16, 0, 16, 16]},
+                                                          {"name": "walk_2", "rect": [32, 0, 16, 16]}], "numFramesRect": 3}}})},
+            {"tool": "set_sprite_frames", "args": {"convert": True}, "result": ok(
+                "Converted 4 sprite(s) to frames of assets/legacy/walk.png's Sprite Mode (3 frames, indices kept).",
+                {"texture": "assets/legacy/walk.png", "frames": 3, "converted": [{"owner": "scenes/Main.scene", "game_object": "Walker"}],
+                 "next": "One undo (scope project) restores the sprites, their files and the texture's meta."})},
+        ],
+        "checks": {"calls": [{"tool": "set_sprite_frames", "args": {"convert": True, "all_users": True}}],
+                   "must_not_call": [{"tool": "set_sprite_frames", "args": {"frames": "*"}}, {"tool": "write_file"}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_atlas_mode_disabled",
+        "kind": "bad",
+        "what_happened": "In a project whose Sprite Atlas mode is Disabled, agents wrote the atlas with output: true and then "
+                         "polled get_sprite_atlas for a build that never came, or switched the project-wide mode on without "
+                         "asking; the result says it is not built and why (S45 review).",
+        "text_at_issue": "edit_sprite_atlas result's next when the mode is Disabled (built: false)",
+        "source": "S45 review (paraphrased)",
+        "files": {"assets/items/sword.png": "binary placeholder", "assets/items/shield.png": "binary placeholder"},
+        "prompt": "Pack the item icons in assets/items into one sprite atlas.",
+        "mocks": [
+            {"tool": "tool_groups", "args": {}, "result": ok("Enabled sprites.", {"enabled": ["sprites"]})},
+            {"tool": "edit_sprite_atlas", "args": {"output": True}, "result": ok(
+                "Created assets/items.spriteatlas; not built: the project's Sprite Atlas mode is Disabled.",
+                {"path": "assets/items.spriteatlas", "written": True, "built": False, "mode": "disabled",
+                 "next": "Not built: the project's Sprite Atlas mode is Disabled (Project Settings > 2D), so sprites draw their "
+                         "sources. Tell the user; with their go-ahead set_project_settings {\"sprite_atlas.mode\": \"enabled\"} builds it."})},
+            {"tool": "edit_sprite_atlas", "args": {}, "result": ok(
+                "Preview of assets/items.spriteatlas: 1 page \u00b7 2 frames \u00b7 80 % used. Nothing written.",
+                {"written": False, "frame_count": 2, "usage_percent": 80,
+                 "next": "Nothing written. The same arguments plus output: true write assets/items.spriteatlas and build it."})},
+            {"tool": "get_sprite_atlas", "args": {}, "result": ok(
+                "assets/items.spriteatlas: not built (disabled).", {"build_state": "disabled", "mode": "disabled"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sprite_atlas", "args": {"output": True}}],
+                   "must_not_call": [{"tool": "set_project_settings"}],
+                   "max_calls": {"get_sprite_atlas": 1},
+                   "reply_must": [r"(?i)disabled"]},
+        "max_turns": 8,
+    },
 
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
     {
@@ -1166,6 +1331,130 @@ CASES = [
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
+    },    # -- S43 palettes: the "Other areas" entry, edit_palette's preview-then-write and apply_palette's check --------
+    {
+        "id": "guard_palette_apply_route",
+        "kind": "guard",
+        "what_happened": "New area (S43): recolouring a sprite onto a fixed palette is apply_palette in the pixel_art group; "
+                         "without the guide's index entry an agent edits the PNG with its own scripts or a shader.",
+        "text_at_issue": "Guide 'Other areas': 'palettes (edit_palette, apply_palette)'; apply_palette: 'palette: path, "
+                         "builtin:<id> or [hex]'; 'A preview until output: true overwrites the texture'",
+        "source": "S43 R40 (new tool text); no failure on record",
+        "prompt": "Our pixel-art hero sprite assets/sprites/hero.png has to use only the PICO-8 colours. Recolour it onto "
+                  "that palette and keep the result in the same file.",
+        "mocks": [
+            {"tool": "apply_palette", "args": {"output": True}, "result": ok(
+                "Apply Palette PICO-8 (built-in) on assets/sprites/hero.png: fixable. Colours 41 -> 12, 380 pixels changed, "
+                "mean dE 3.10, max dE 9.80, 0 lost-colour group(s). Wrote assets/sprites/hero.png as one undo step (undo "
+                "with scope project).",
+                {"path": "assets/sprites/hero.png", "verdict": "fixable", "written": "assets/sprites/hero.png",
+                 "undo": {"id": 12, "name": "Write File hero.png"}})},
+            {"tool": "apply_palette", "result": ok(
+                "Apply Palette PICO-8 (built-in) on assets/sprites/hero.png: fixable. Colours 41 -> 12, 380 pixels changed, "
+                "mean dE 3.10, max dE 9.80, 0 lost-colour group(s). Preview only, nothing written: call again with the same "
+                "arguments plus output: true (overwrite assets/sprites/hero.png) or output: \"<new .png path>\".",
+                {"path": "assets/sprites/hero.png", "verdict": "fixable", "lost": [],
+                 "next": "Preview only, nothing written: call again with the same arguments plus output: true (overwrite "
+                         "assets/sprites/hero.png) or output: \"<new .png path>\"."})},
+        ],
+        "checks": {"calls": [{"tool": "apply_palette", "args": {"palette": "re:(?i)pico", "output": True}}],
+                   "must_not_call": ["fork_shader", "write_file"], "edits_must_not": [r"\.png$"],
+                   "shell_must_not": [r"(?i)\bPIL\b|from PIL|magick|convert\s"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_palette_lospec_write",
+        "kind": "guard",
+        "what_happened": "New tool (S43): edit_palette previews by default; an agent asked to add a palette must call again "
+                         "with output: true, which the description and the result's `next` say.",
+        "text_at_issue": "edit_palette: 'from creates one (builtin, Lospec slug, ...)'; 'A preview until output: true writes "
+                         "it (one undo)'; the result's `next`",
+        "source": "S43 R39 (new tool text); no failure on record",
+        "prompt": "Add the Lospec palette endesga-32 to the project as a palette asset.",
+        "mocks": [
+            {"tool": "edit_palette", "args": {"output": True}, "result": ok(
+                "Palette assets/Palettes/endesga-32.palette (Endesga 32, 32 colours, 0 ramps, 0 variants). Wrote "
+                "assets/Palettes/endesga-32.palette as one undo step (undo with scope project).",
+                {"path": "assets/Palettes/endesga-32.palette", "asset_path": "Palettes/endesga-32.palette",
+                 "written": ["assets/Palettes/endesga-32.palette"], "undo": {"id": 4, "name": "Create File endesga-32.palette"},
+                 "job_id": "job-3", "status": "succeeded"})},
+            {"tool": "edit_palette", "args": {"from": {"lospec": "re:(?i)endesga"}}, "result": ok(
+                "Palette assets/Palettes/endesga-32.palette (Endesga 32, 32 colours, 0 ramps, 0 variants). Preview only, "
+                "nothing written: call again with the same arguments plus output: true to write assets/Palettes/endesga-32.palette.",
+                {"path": "assets/Palettes/endesga-32.palette", "palette": {"name": "Endesga 32", "count": 32},
+                 "next": "Preview only, nothing written: call again with the same arguments plus output: true to write "
+                         "assets/Palettes/endesga-32.palette.", "job_id": "job-2", "status": "succeeded"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_palette", "args": {"from": {"lospec": "re:(?i)endesga"}, "output": True}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.(palette|hex|gpl)$"], "shell_must_not": [r"curl|wget"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_palette_measure_only",
+        "kind": "guard",
+        "what_happened": "New tool (S43): checking art against a palette is a read-only apply_palette (measure_only, or a "
+                         "preview) or edit_palette's texture usage; the texture must stay as it is.",
+        "text_at_issue": "apply_palette: 'measure_only only checks', 'verdict clean|fixable|needs_person'; edit_palette: "
+                         "'texture counts its colours'",
+        "source": "S43 R40, R43 (new tool text); no failure on record",
+        "prompt": "Does assets/sprites/tiles.png use only colours of assets/Palettes/level.palette? Don't change any file, "
+                  "just tell me.",
+        "mocks": [
+            {"tool": "apply_palette", "args": {"output": True}, "result": err("apply_palette must not write in this case")},
+            {"tool": "apply_palette", "result": ok(
+                "Apply Palette assets/Palettes/level.palette on assets/sprites/tiles.png: fixable. Colours 18 -> 16, 37 "
+                "pixels changed, mean dE 1.20, max dE 4.10, 0 lost-colour group(s).",
+                {"path": "assets/sprites/tiles.png", "verdict": "fixable", "cli_exit": 3,
+                 "stats": {"colors_before": 18, "colors_after": 16, "pixels_changed": 37}})},
+            {"tool": "edit_palette", "args": {"texture": "*"}, "result": ok(
+                "Palette assets/Palettes/level.palette (Level, 16 colours, 2 ramps, 0 variants). assets/sprites/tiles.png: 37 "
+                "off-palette pixels in 2 colours.",
+                {"path": "assets/Palettes/level.palette", "usage": {"texture": "assets/sprites/tiles.png", "off_palette_pixels": 37,
+                                                                   "off_palette_colors": 2}})},
+        ],
+        "checks": {"any_of": [{"calls": ["apply_palette"]}, {"calls": [{"tool": "edit_palette", "args": {"texture": "*"}}]}],
+                   "must_not_call": [{"tool": "apply_palette", "args": {"output": True}},
+                                     {"tool": "apply_palette", "args": {"output": "re:\\.png$"}},
+                                     {"tool": "edit_palette", "args": {"output": True}}],
+                   "reply_must": [r"(?i)\bno\b|not only|37|off.palette|fixable"]},
+        "max_turns": 10,
+    },
+    {   # -- S49 pixel particles: the pixel presets and the preview's pixel view with its off_grid check ----------
+        "id": "guard_pixel_particles_sheet",
+        "kind": "guard",
+        "what_happened": "New text (S49): a pixel-art effect is a pixel_* preset of create_particle_effect, and checking it "
+                         "is preview_particle_effect with view pixel (the run on the base-pixel grid, off_grid among its "
+                         "checks); without them an agent writes a soft-alpha effect JSON by hand and judges a perspective view.",
+        "text_at_issue": "create_particle_effect's preset enum (pixel_spark ...); preview_particle_effect's view enum 'pixel'; "
+                         "the guide's Pixel particles: 'preview_particle_effect {path or entity, view: \"pixel\", scale}'",
+        "source": "S49 R20, R38 on S91's preview (new tool text); no failure on record",
+        "prompt": "Our game is pixel art. Make a hit-spark particle effect at assets/fx/hit_spark.particles that fits the "
+                  "pixel look, put it on the Particle System 'Sparks' (entity 12) and check it for pixel-art problems over "
+                  "its life.",
+        "mocks": [
+            {"tool": "create_particle_effect", "result": ok(
+                "Created assets/fx/hit_spark.particles (pixel_spark) as one undo step (undo with scope project).",
+                {"path": "assets/fx/hit_spark.particles", "diagnostics": [], "undo": {"id": 3, "name": "Create File hit_spark.particles"},
+                 "next": "set_particle_effect {entity, effect: \"assets/fx/hit_spark.particles\"} plays it on a Particle System."})},
+            {"tool": "set_particle_effect", "result": ok(
+                "Particle System 12 'Sparks' plays assets/fx/hit_spark.particles.",
+                {"entity": 12, "effect": "assets/fx/hit_spark.particles", "undo": {"id": 4, "name": "Set Particle Effect"}})},
+            {"tool": "preview_particle_effect", "args": {"view": "pixel"}, "result": ok(
+                "assets/fx/hit_spark.particles: 108 ticks of 0.008333 s (0.9 s), peak 24 particles at 0.0083 s, emitted 24. Verdict PASS.\n"
+                "PASS off_grid: {\"drawn\": 412, \"off_grid\": 0}.\nSKIP off_palette: needs S48 (Pixel FX).",
+                {"verdict": "PASS", "frame": {"view": "pixel", "base_pixels": 96, "scale": 4},
+                 "checks": [{"id": "off_grid", "status": "PASS", "measured": {"off_grid": 0, "drawn": 412}},
+                            {"id": "off_palette", "status": "SKIP", "limited_by": "needs S48 (Pixel FX): its EffectLints compute off_palette"}],
+                 "next": "Report these numbers."})},
+            {"tool": "preview_particle_effect", "result": ok(
+                "assets/fx/hit_spark.particles: three-quarter view. Verdict PASS.\nSKIP off_grid: Measured on the pixel view's cells: run with view pixel.",
+                {"verdict": "PASS", "frame": {"view": "three_quarter"},
+                 "checks": [{"id": "off_grid", "status": "SKIP", "limited_by": "Measured on the pixel view's cells: run with view pixel."}]})},
+        ],
+        "checks": {"calls": [{"tool": "create_particle_effect", "args": {"preset": "pixel_spark"}},
+                             {"tool": "preview_particle_effect", "args": {"view": "pixel"}}],
+                   "must_not_call": ["write_file"], "edits_must_not": [r"\.particles$"]},
+        "max_turns": 14,
     },
     {
         "id": "make_title_logo",
@@ -1173,7 +1462,7 @@ CASES = [
         "what_happened": "Logo and title requests are Title Art documents (edit_title in the title_art group, baked to a "
                          "texture), not a scene of Text components or a hand-painted PNG; the guide's Other areas entry "
                          "names the area and its tool.",
-        "text_at_issue": "Guide 'Other areas': 'title art (edit_title)' and the generated Tool groups list (title_art)",
+        "text_at_issue": "Guide 'Other areas': 'titles (edit_title)' and the generated Tool groups list (title_art)",
         "source": "guide index entry (S80 R60, AC40); no failure on record",
         "prompt": "Make a gold game title logo that says JACKPOT, with a dark outline, as a texture I can place in the menu scene.",
         "mocks": [
@@ -1186,6 +1475,35 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "edit_title"}],
                    "must_not_call": ["create_texture", "write_file", "synthesize_texture"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "translate_title_de_ja",
+        "kind": "guard",
+        "what_happened": "A title is translated inside its .titleart (add_language, one set_translation per text layer, in one "
+                         "edit_title batch), then check_title {languages: all} is read and its fixes applied; an agent must not "
+                         "duplicate the layers per language or write a second document (S87 D1, D2).",
+        "text_at_issue": "jasper://docs/title-art 'Languages': the translation loop",
+        "source": "S87 R60, AC30; no failure on record",
+        "prompt": "Translate the title assets/titles/logo.titleart (it says BIG WIN) into German and Japanese, and make sure "
+                  "both versions fit.",
+        "groups_enabled": ["title_art"],
+        "mocks": [
+            {"tool": "get_title", "result": ok("assets/titles/logo.titleart rev 3: 1 layers, canvas 1024 x 512, 1 output(s), 0 not fresh, 0 problem(s).",
+                                               {"path": "assets/titles/logo.titleart", "rev": 3,
+                                                "layers": [{"path": "Title", "id": "0000000a", "type": "text", "text": "BIG WIN", "max_chars": 0}]})},
+            {"tool": "edit_title", "result": ok("Applied 4 op(s) to assets/titles/logo.titleart (Edit Title Art (12 changes)).",
+                                                {"path": "assets/titles/logo.titleart", "rev": 4, "applied": 4})},
+            {"tool": "check_title", "result": ok("PASS assets/titles/logo.titleart: 9 pass, 0 warn, 0 fail, 0 skipped.",
+                                                 {"verdict": "PASS", "checks": [{"id": "languages_complete", "status": "PASS", "language": "de"},
+                                                                                {"id": "languages_complete", "status": "PASS", "language": "ja"},
+                                                                                {"id": "text_overflow", "status": "PASS", "language": "de"}]})},
+            {"tool": "render_title", "result": ok("Rendered assets/titles/logo.titleart (rev 4) at 768 x 384.", {"rev": 4,
+                                                  "language_rows": ["en", "de \u00b7 fit 0.86", "ja"]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_title", "args": {"ops": [{"op": "add_language"}]}},
+                             {"tool": "check_title"}],
+                   "must_not_call": ["write_file"]},
         "max_turns": 16,
     },
     {
@@ -2269,6 +2587,399 @@ CASES = [
                    "shell_must_not": [r"\brm\b.*importing"]},
         "max_turns": 10,
     },
+    # -- T6 AC54: the Voxel Volume tools. Each fails against a surface from before the tool. --------
+    {
+        "id": "voxel_find_docs",
+        "kind": "guard",
+        "what_happened": "A destructible cave is voxel work, and no voxel tool is listed until the group is enabled: the agent "
+                         "must find the group or the doc rather than fake it with terrain and meshes.",
+        "text_at_issue": "Guide 'Tool groups': voxels; tool_groups' voxels description (start with edit_voxels; jasper://docs/voxels)",
+        "source": "docs/specs/T6-voxel-volumes.md R72, AC54",
+        "prompt": "Add a destructible cave to this level, one the player can blast open while playing.",
+        "mocks": [
+            {"tool": "edit_voxels", "result": ok("Created Cave (voxels/Cave.voxelvolume).", VOXEL_CREATED)},
+            {"tool": "sample_voxels", "result": ok("2 air components.", VOXEL_CONNECTED)},
+        ],
+        "checks": {"calls": [{"tool": "tool_groups", "args": {"enable": ["voxels"]}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "voxel_create_and_dig",
+        "kind": "bad",
+        "groups_enabled": ["voxels"],
+        "what_happened": "An agent made the volume in one call and each dig in others, and never checked that the tunnel joined "
+                         "anything: create takes ops in the same call, and connectivity is the proof.",
+        "text_at_issue": "edit_voxels description and jasper://docs/voxels, 'The loop'",
+        "source": "docs/specs/T6-voxel-volumes.md R67, R72, AC54",
+        "prompt": "Make a voxel volume of ground and dig a tunnel through it, then check that the tunnel really goes through.",
+        "mocks": [
+            {"tool": "edit_voxels", "args": {"ops": "*"}, "result": ok("Created Cave (voxels/Cave.voxelvolume). Dig Capsule: 2120 voxels changed, 8 blocks touched.",
+                                                                      dict(VOXEL_CREATED, voxels_changed=2120))},
+            {"tool": "sample_voxels", "args": {"mode": "connectivity"}, "result": ok("1 air components; from and to are connected.", VOXEL_CONNECTED)},
+        ],
+        "checks": {"calls": [{"tool": "edit_voxels", "args": {"create": "*", "ops": "*"}}, {"tool": "sample_voxels", "args": {"mode": "connectivity"}}],
+                   "order": [["edit_voxels", "sample_voxels"]], "max_calls": {"edit_voxels": 2}},
+        "max_turns": 10,
+    },
+    {
+        "id": "voxel_generate_from_graph",
+        "kind": "guard",
+        "groups_enabled": ["voxels"],
+        "what_happened": "Given a Noise Graph for a whole volume, the agent must give it as a base, a job, not rebuild the shape by "
+                         "hand with ops.",
+        "text_at_issue": "generate_voxels description",
+        "source": "docs/specs/T6-voxel-volumes.md R71, R82, AC54",
+        "prompt": "The Voxel Volume called Caves should take its shape from the noise graph graphs/caves.noisegraph. Set it up.",
+        "mocks": [
+            {"tool": "generate_voxels", "args": {"source": "noise_graph"}, "result": ok(
+                "Generating as job j1.", {"job_id": "j1", "status": "running", "next": "get_job {job_id: \"j1\"} until it ends; cancel_job stops it"})},
+            {"tool": "get_job", "result": ok("Generated: 212 non-uniform blocks, 3473408 bytes.", {"id": "j1", "status": "succeeded", "result": {
+                "blocks_non_uniform": 212, "memory": 3473408, "triangles_estimate": 91000, "content_hash": "1f0c9a7e5d3b2a10",
+                "base_changed": True, "non_watertight": False}})},
+            {"tool": "sample_voxels", "result": ok("Content hash 1f0c9a7e5d3b2a10.", {"content_hash": "1f0c9a7e5d3b2a10"})},
+        ],
+        "checks": {"calls": [{"tool": "generate_voxels", "args": {"source": "noise_graph", "graph": "re:caves\\.noisegraph"}}],
+                   "must_not_call": [{"tool": "edit_voxels", "args": {"ops": "*"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "voxel_control_hill_is_terrain",
+        "kind": "control",
+        "groups_enabled": ["voxels", "terrain"],
+        "what_happened": "A hill is what a heightmap holds: the voxel tools, listed, must not pull it in.",
+        "text_at_issue": "edit_voxels description: a plain hill belongs on a Terrain",
+        "source": "docs/specs/T6-voxel-volumes.md AC54",
+        "prompt": "Raise a gentle hill in the middle of the Terrain.",
+        "mocks": [
+            {"tool": "sculpt_terrain", "result": ok("Sculpted 1 stroke.", {"changed": True})},
+            {"tool": "edit_terrain", "result": ok("Sculpted 1 stroke.", {"changed": True})},
+            {"tool": "sample_terrain", "result": ok("1 sample.", {"samples": [{"height": 3.2}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "sculpt_terrain"}]}, {"calls": [{"tool": "edit_terrain"}]}],
+                   "must_not_call": ["edit_voxels", "generate_voxels"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "voxel_cave_mouth_not_holes_only",
+        "kind": "guard",
+        "groups_enabled": ["voxels", "terrain"],
+        "what_happened": "A hole in a Terrain shows the void under it. A cave entrance needs a volume attached to the Terrain, "
+                         "whose dig cuts the holes.",
+        "text_at_issue": "jasper://docs/voxels, opening and 'Terrain attachment'",
+        "source": "docs/specs/T6-voxel-volumes.md R38, R39, AC54",
+        "prompt": "Add a cave entrance to the hillside of the Terrain called Ground: the player should be able to walk in.",
+        "mocks": [
+            {"tool": "edit_voxels", "result": ok("Created Cave (voxels/Cave.voxelvolume).", VOXEL_CREATED)},
+            {"tool": "generate_voxels", "result": ok(
+                "Generating as job j1.", {"job_id": "j1", "status": "running", "next": "get_job {job_id: \"j1\"} until it ends; cancel_job stops it"})},
+            {"tool": "get_job", "result": ok("Generated: 90 non-uniform blocks, 1474560 bytes.", {"id": "j1", "status": "succeeded", "result": {
+                "blocks_non_uniform": 90, "memory": 1474560, "triangles_estimate": 41000, "content_hash": "77ac01b2c3d4e5f6",
+                "base_changed": True, "non_watertight": False}})},
+            {"tool": "sample_voxels", "result": ok("1 air components; from and to are connected.", VOXEL_CONNECTED)},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "edit_voxels", "args": {"create": {"terrain": "*"}}}]},
+                              {"calls": [{"tool": "generate_voxels", "args": {"preset": "cave_entrance"}}]}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "terrain_foliage_add_details",
+        "kind": "guard",
+        "what_happened": "Asked for grass, an agent has to fill an existing layer's density by rules, not place objects one by one.",
+        "text_at_issue": "edit_terrain's description and jasper://docs/terrain: scatter_by_rules with target detail_layer; sample_terrain foliage reads drawn.",
+        "source": "T5 R65, AC41",
+        "prompt": "Terrain [12] has a grass detail layer 0. Fill it on the flat ground, under 15 degrees, at 2 per square unit.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"ops": "re:scatter_by_rules"}, "result": ok(
+                "Scatter Foliage (Terrain): 0 trees.",
+                {"dry_run": False, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 40960, "instances_added": 0, "instances_removed": 0,
+                 "rejected": {"slope": 2024, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 0}}], "changed": [], "warnings": [], "trees": 0})},
+            {"tool": "sample_terrain", "args": {"foliage": True}, "result": ok(
+                "Sampled terrain \"Terrain\".",
+                {"foliage": {"details": [{"layer": 0, "instances": 81344, "mean_density": 1.6, "drawn": 12033}], "trees": [], "totals": {"resident": 12033}}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:detail_layer"}}],
+                   "must_not_call": ["sculpt_terrain", "create_entity"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_foliage_mass_trees",
+        "kind": "bad",
+        "what_happened": "Asked for a forest, an agent placed thousands of GameObjects with create_entity or sculpt_terrain place_object, which the scene YAML then carried.",
+        "text_at_issue": "edit_terrain's op scatter_by_rules in its listing and guide: dry_run first, then the real run.",
+        "source": "T5 R24, AC41",
+        "prompt": "Plant a pine forest over the whole of Terrain [12]; the prototype Pine exists.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"dry_run": True}, "result": ok(
+                "Dry run of Scatter Foliage (Terrain): 18422 trees.",
+                {"dry_run": True, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 0, "instances_added": 18422, "instances_removed": 0,
+                 "rejected": {"slope": 311, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 90}, "hash": "5c6872872df93554"}], "changed": [], "warnings": [], "trees": 18422})},
+            {"tool": "edit_terrain", "result": ok(
+                "Scatter Foliage (Terrain): 18422 trees.",
+                {"dry_run": False, "undo_name": "Scatter Foliage (Terrain)", "ops": [{"op": "scatter_by_rules", "changed_texels": 0, "instances_added": 18422, "instances_removed": 0,
+                 "rejected": {"slope": 311, "height": 0, "layer": 0, "noise": 0, "hole": 0, "spline": 0, "spacing": 90}, "hash": "5c6872872df93554"}], "changed": [], "warnings": [], "trees": 18422,
+                 "next": ["The Terrain has 18422 trees, past the Mobile budget of 8000 visible: bake_impostors, and check sample_terrain foliage on a Low tier."]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:scatter_by_rules", "dry_run": True}}],
+                   "must_not_call": ["create_entity", "sculpt_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_foliage_impostors",
+        "kind": "guard",
+        "what_happened": "Asked why far trees cost so much, an agent has to bake impostors through edit_terrain, not look for a tool of its own.",
+        "text_at_issue": "edit_terrain's op bake_impostors, and the next hint on a tree count past the Mobile budget.",
+        "source": "T5 R56, AC41",
+        "prompt": "The far trees on Terrain [12] cost too much. Fix that with impostors.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"ops": "re:bake_impostors"}, "result": ok(
+                "Baked 2 impostor(s).",
+                {"dry_run": False, "undo_name": "Bake Impostors", "ops": [{"op": "bake_impostors", "entries": [
+                    {"prototype": 0, "albedo": "terrain_maps/a.png", "normal": "terrain_maps/n.png", "views": 8, "ms": 900}]}], "job_id": "7", "status": "succeeded"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:bake_impostors"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_focus_animator",
+        "kind": "guard",
+        "what_happened": "focus_window handled \"animator\" and its enum left it out, so the schema told agents the window "
+                         "could not be named (BF23 F14); guards the enum when core is trimmed.",
+        "text_at_issue": "focus_window's window enum: 'animator'",
+        "source": "audit (BF23 F14); no failure on record",
+        "prompt": "Bring the Animator window to the front in the editor, I want to look at it with you.",
+        "mocks": [
+            {"tool": "focus_window", "args": {"window": "animator"}, "result": ok("Focused the Animator window.", {"window": "animator"})},
+        ],
+        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "animator"}}], "must_not_call": ["screenshot"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_focus_graph_editor",
+        "kind": "guard",
+        "what_happened": "The Graph Editor (S90) shows a graph to a watching human. Without its enum value the schema says it "
+                         "cannot be named; without path, the agent can only show whatever graph was open last.",
+        "text_at_issue": "focus_window's window enum: 'graph_editor', and its path parameter",
+        "source": "S90 M2 (s90-canvas) and its review (I6); no failure on record",
+        "prompt": "Open assets/materials/Wood.procmat in the editor's Graph Editor so I can look at it with you.",
+        "mocks": [
+            {"tool": "focus_window", "args": {"window": "graph_editor", "path": "assets/materials/Wood.procmat"},
+             "result": ok("Focused the Graph Editor window.", {"window": "graph_editor", "graph": "assets/materials/Wood.procmat"})},
+        ],
+        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "graph_editor", "path": "re:Wood\\.procmat"}}],
+                   "must_not_call": ["screenshot"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_focus_particle_effect",
+        "kind": "guard",
+        "what_happened": "S91 added the Particle Effect window; focus_window's enum names it so an agent showing a human an "
+                         "effect brings that window up instead of a screenshot or the Inspector.",
+        "text_at_issue": "focus_window's window enum: 'particle_effect'",
+        "source": "S91 (new window); no failure on record",
+        "prompt": "Bring the Particle Effect window to the front, I want to watch the effect's timing with you.",
+        "mocks": [
+            {"tool": "focus_window", "args": {"window": "particle_effect"},
+             "result": ok("Focused the Particle Effect window.", {"window": "particle_effect"})},
+        ],
+        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "particle_effect"}}], "must_not_call": ["screenshot"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_patch_did_you_mean",
+        "kind": "guard",
+        "what_happened": "A misspelled particle field used to vanish from a reply that said success (BF23 F10); the refusal names "
+                         "the field meant, and the agent should send that name instead of inspecting the effect's format.",
+        "text_at_issue": "edit_particle_effect's refusal: 'did you mean'",
+        "source": "audit (BF23 F10); no failure on record",
+        "prompt": "In assets/fx/fire.particles set the emission rate over time to 20. Use field rateOverTim.",
+        "mocks": [
+            {"tool": "edit_particle_effect", "args": {"patch": {"modules": {"emission": {"rateOverTim": "*"}}}}, "result": err(
+                "The patch was refused (emission.rateOverTim: unknown field of Emission (did you mean 'rateOverTime'?)); nothing changed.")},
+            {"tool": "edit_particle_effect", "args": {"patch": {"modules": {"emission": {"rateOverTime": 20}}}}, "result": ok(
+                "Edited the effect (one undo step).", {"changed": True, "diagnostics": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_particle_effect", "args": {"patch": {"modules": {"emission": {"rateOverTime": 20}}}}}],
+                   "max_calls": {"edit_particle_effect": 2}},
+        "max_turns": 6,
+    },
+    {
+        "id": "particle_trigger_action",
+        "kind": "guard",
+        "what_happened": "Triggers were Lua-only (S91 R9): an agent asked to fire an effect's named trigger had no tool and "
+                         "wrote a script or played the scene; control_particles now takes action trigger with the name.",
+        "text_at_issue": "control_particles' description: 'trigger name (the effect's triggers and Trigger sub-emitters)'",
+        "source": "audit (S91 R9); no failure on record",
+        "prompt": "The Particle System on GameObject 12 has a trigger called ignite in its effect. Fire it now in the editor.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "control_particles", "args": {"entity": 12, "action": "trigger", "name": "ignite"}, "result": ok(
+                "trigger: 0 particles at 0.000000 s (Edit mode: the Scene view's preview runs it).",
+                {"action": "trigger", "edit_mode": True, "stats": {"playing": True, "particle_count": 0}})},
+        ],
+        "checks": {"calls": [{"tool": "control_particles", "args": {"action": "trigger", "name": "ignite"}}],
+                   "must_not_call": ["eval_lua", "play"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "pick_particle_preview",
+        "kind": "guard",
+        "what_happened": "Agents checked an effect with capture_particles, one frame per call, which seeks the live system "
+                         "and shows whatever the view shows; preview_particle_effect runs it apart, with a filmstrip and "
+                         "checks, and its result's fix_hint is the next edit.",
+        "text_at_issue": "preview_particle_effect's description; capacity_hit's fix_hint",
+        "source": "S91 R26, D2 (design study 3.3); no failure on record",
+        "prompt": "Check assets/fx/muzzle.particles for problems on mobile and fix what the check finds.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "preview_particle_effect", "args": {"path": "assets/fx/muzzle.particles"}, "result": ok(
+                "assets/fx/muzzle.particles: 30 ticks of 0.0333 s (1 s), peak 400 particles at 0.0333 s, emitted 400. Verdict FAIL.\n"
+                "FAIL capacity_hit: {\"max_particles\":400,\"never_born\":200,\"peak\":400}. assets/fx/muzzle.particles: Max Particles "
+                "400 refused 200 births; emission was silently limited. Raise assets/fx/muzzle.particles's Max Particles to 600, or "
+                "emit fewer (lower the burst or the rate).\nPASS platform_budget: {\"cpu_ms\":0.04,\"estimate\":true}\n"
+                "Cost on mobile: 0.03 ms simulation + 0.01 ms render prep a frame (estimate, not measured on a device).",
+                {"verdict": "FAIL", "next": "Fix what fix_hint says, preview again. Never loosen a threshold. Report these numbers; "
+                 "cost is an estimate, not measured on a device, and never says an effect runs on a phone."})},
+            {"tool": "edit_particle_effect", "args": {"patch": {"maxParticles": 600}}, "result": ok(
+                "Edited the effect (one undo step).", {"changed": True, "diagnostics": []})},
+        ],
+        "checks": {"calls": ["preview_particle_effect", {"tool": "edit_particle_effect", "args": {"patch": {"maxParticles": 600}}}],
+                   "order": [["preview_particle_effect", "edit_particle_effect"]],
+                   "must_not_call": ["capture_particles"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "pick_particle_sheet_bake",
+        "kind": "guard",
+        "what_happened": "Asked for a flipbook of an effect, agents captured frames one by one and stitched them; "
+                         "bake_particle_sheet bakes the sheet and the effect playing it, and writes only with output.",
+        "text_at_issue": "bake_particle_sheet's description: 'Without output nothing is written ... With output both files'",
+        "source": "S91 R12; no failure on record",
+        "prompt": "Bake assets/fx/smoke.particles into a 4x4 sprite sheet at assets/fx/smoke_sheet, so I can use it as a cheap flipbook.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "bake_particle_sheet", "result": ok(
+                "assets/fx/smoke.particles: 4x4 frames of 128 px over 2.0 s, straight alpha. Wrote assets/fx/smoke_sheet.png and "
+                "assets/fx/smoke_sheet.particles (Texture Sheet Animation 4x4) as one undo step \"Bake Sprite Sheet\".",
+                {"written": ["assets/fx/smoke_sheet.png", "assets/fx/smoke_sheet.particles"],
+                 "next": "set_particle_effect plays assets/fx/smoke_sheet.particles on a Particle System."})},
+        ],
+        "checks": {"calls": [{"tool": "bake_particle_sheet", "args": {"output": "re:smoke_sheet"}}],
+                   "must_not_call": ["capture_particles"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "pick_procedural_material_preview",
+        "kind": "guard",
+        "what_happened": "Asked to make a tileable material from a graph, agents baked it and judged the result from a screenshot "
+                         "of a mesh; preview_procedural_material evaluates the graph without writing anything and its tileability "
+                         "row's fix_hint names the next edit, so the bake comes after the checks pass.",
+        "text_at_issue": "preview_procedural_material's description; bake_procedural_material's 'Check it with "
+                         "preview_procedural_material first'; tileability's fix_hint",
+        "source": "S90 R34, R35 (design study 3.2); no failure on record",
+        "prompt": "assets/mats/stone.procmat should tile seamlessly. Check it, fix what the check finds, then bake it.",
+        "groups_enabled": ["graphs", "materials"],
+        "mocks": [
+            {"tool": "preview_procedural_material", "args": {"path": "assets/mats/stone.procmat"}, "result": ok(
+                "assets/mats/stone.procmat: 4 output(s) at 512 (seed 0) on gpu (NVIDIA RTX 4070). Verdict FAIL.\n"
+                "FAIL tileability: {\"base_color\":2.41,\"height\":2.38}. seam 2.41 on base_color across its left and right edges. "
+                "A node feeding it does not tile: give its scale a whole number of repeats, or turn its tiling on.\n"
+                "PASS normal: {\"length_error\":0.004,\"z_negative_percent\":0}",
+                {"verdict": "FAIL", "device": {"tier": "gpu", "name": "NVIDIA RTX 4070"},
+                 "next": "Fix what fix_hint says, preview again and check again. Never loosen a threshold."})},
+            {"tool": "get_graph", "result": ok(
+                "procedural_material graph: 2 node(s), 3 edge(s).",
+                {"graph": {"nodes": [{"id": "n1", "type": "perlin", "params": {"scale_x": 4.5, "scale_y": 4}},
+                                     {"id": "out", "type": "material_output"}]}})},
+            {"tool": "edit_graph", "result": ok("Set scale_x of n1: 1 op(s), 0 issue(s).", {"applied": 1, "added": []})},
+            {"tool": "bake_procedural_material", "result": ok(
+                "Baked assets/mats/stone.procmat at 1024 (seed 0) on gpu (NVIDIA RTX 4070): 4 PNG(s) and "
+                "assets/mats/stone/stone.material, one undo step \"Bake Procedural Material stone\" (id 41).",
+                {"material": "assets/mats/stone/stone.material", "undo": {"scope": "project", "id": 41}})},
+        ],
+        "checks": {"calls": ["preview_procedural_material", {"tool": "edit_graph", "args": {"ops": "*"}}, "bake_procedural_material"],
+                   "order": [["preview_procedural_material", "edit_graph"], ["edit_graph", "bake_procedural_material"]],
+                   "must_not_call": ["screenshot"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_procedural_material_group_route",
+        "kind": "guard",
+        "what_happened": "The guide has no Other-areas entry for procedural materials (it has no room left); an agent asked to "
+                         "check a .procmat must find the materials group from the guide's Tool groups list and its tool_groups "
+                         "line, enable it and preview the graph, instead of baking it or judging a screenshot.",
+        "text_at_issue": "Guide 'Tool groups': '... graphs, ..., materials, ...'; tool_groups' materials entry: 'Procedural "
+                         "Materials: preview any material with checks, bake a graph to PNGs and a .material'",
+        "source": "merge of origin/main into mats-fx (the guide's headroom); no failure on record",
+        "prompt": "Does assets/mats/stone.procmat tile seamlessly? Check it and tell me; don't change or bake anything.",
+        "mocks": [
+            {"tool": "preview_procedural_material", "args": {"path": "assets/mats/stone.procmat"}, "result": ok(
+                "assets/mats/stone.procmat: 4 output(s) at 512 (seed 0) on gpu (NVIDIA RTX 4070). Verdict FAIL.\n"
+                "FAIL tileability: {\"base_color\":2.41,\"height\":2.38}. seam 2.41 on base_color across its left and right edges. "
+                "A node feeding it does not tile: give its scale a whole number of repeats, or turn its tiling on.",
+                {"verdict": "FAIL", "device": {"tier": "gpu", "name": "NVIDIA RTX 4070"},
+                 "next": "Fix what fix_hint says, preview again and check again. Never loosen a threshold."})},
+        ],
+        "checks": {"calls": ["preview_procedural_material"],
+                   "must_not_call": ["bake_procedural_material", "screenshot", "edit_graph"],
+                   "reply_must": [r"(?i)seam|not tile|does not tile|doesn.?t tile"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_procedural_material_catalog",
+        "kind": "guard",
+        "what_happened": "Listing a large kind's node types returned every node's ports and parameters (tens of thousands of "
+                         "characters); the catalog now answers with categories until a search narrows it, then one signature "
+                         "line per node.",
+        "text_at_issue": "list_graph_node_types' description: 'A large kind lists its categories until category, search or ids narrows it'",
+        "source": "S90 R33; no failure on record",
+        "prompt": "In assets/mats/wall.procmat, add a brick pattern node and connect its pattern to the Material Output's height.",
+        "groups_enabled": ["graphs"],
+        "mocks": [
+            {"tool": "list_graph_node_types", "args": {"kind": "procedural_material", "search": "re:brick"}, "result": ok(
+                "2 of 255 node type(s) of procedural_material:\nbricks3(rows=6[1..64] columns=3[1..64] ...) -> bricks_pattern:f "
+                "brick_fill:fill\nbricks(...) -> pattern:f",
+                {"signatures": ["bricks3(rows=6[1..64] columns=3[1..64]) -> bricks_pattern:f brick_fill:fill"]})},
+            {"tool": "edit_graph", "result": ok("Edit Graph (2 Changes): 2 op(s), 0 issue(s).",
+                                                {"applied": 2, "added": [{"op_index": 0, "id": "n4"}, {"op_index": 1, "id": "e5"}]})},
+        ],
+        "checks": {"calls": [{"tool": "list_graph_node_types", "args": {"search": "re:brick"}}, "edit_graph"],
+                   "must_not_call": ["read_file"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_particle_subtree_seek",
+        "kind": "guard",
+        "what_happened": "A multi-system effect (a parent GameObject with several Particle Systems) was sought one child at a "
+                         "time; with_children seeks the subtree as one.",
+        "text_at_issue": "control_particles' with_children",
+        "source": "S91 R31; no failure on record",
+        "prompt": "In the open scene, jump the Explosion effect (a GameObject with child Particle Systems) to 0.5 seconds.",
+        "groups_enabled": ["particles"],
+        "mocks": [
+            {"tool": "control_particles", "args": {"with_children": True}, "result": ok(
+                "seek: 340 particles in 3 systems at 0.500000 s (Edit mode: the Scene view's preview runs it).", {"systems": []})},
+            {"tool": "control_particles", "result": err("\"Explosion\" has no Particle System (create_particles adds one).")},
+        ],
+        "checks": {"calls": [{"tool": "control_particles", "args": {"action": "seek", "with_children": True}}],
+                   "max_calls": {"control_particles": 2}},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_graph_new_ids",
+        "kind": "guard",
+        "what_happened": "edit_graph returned no ids, so agents supplied their own and lost the type's defaults (BF23 F6, F7); "
+                         "the result's added names the new node, and the next call should use it.",
+        "text_at_issue": "edit_graph's result: added [{op_index, id}]",
+        "source": "audit (BF23 F6); no failure on record",
+        "prompt": "In graphs/Blend.testgraph add a speed node, then connect its value output to input a of node n2.",
+        "mocks": [
+            {"tool": "edit_graph", "args": {"ops": [{"op": "addNode"}]}, "result": ok(
+                "Add Speed: 1 op(s), 0 issue(s).", {"applied": 1, "added": [{"op_index": 0, "id": "n4"}], "issues": []})},
+            {"tool": "edit_graph", "result": ok("Connect Speed: 1 op(s), 0 issue(s).", {"applied": 1, "added": [{"op_index": 0, "id": "e5"}], "issues": []})},
+        ],
+        "checks": {"calls": ["edit_graph"], "max_calls": {"edit_graph": 3}, "must_not_call": ["write_file"]},
+        "max_turns": 8,
+    },
     {
         "id": "bad_footsteps_built_in_lua",
         "kind": "bad",
@@ -2370,6 +3081,32 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_model_clip_loop_by_extract",
+        "kind": "bad",
+        "what_happened": "Asked to make a model's Walk loop, an agent extracted it to a .anim and pointed the player at the copy: "
+                         "a second clip to keep in sync with the model. A model clip's wrap and root_motion are its import "
+                         "settings, which edit_animation writes to the model's .clips file.",
+        "text_at_issue": "get_asset_info's animations[i].wrap; animation.md Model clips: 'A model clip's wrap and root_motion are its import settings'",
+        "source": "docs/specs/S77-clip-quality.md R53",
+        "prompt": "The Hero's Animation Player plays assets/models/hero.gltf#Walk, and it stops after one step. Make the Walk "
+                  "clip of that model loop wherever it plays.",
+        "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:hero\\.gltf"}, "result": ok(
+                "assets/models/hero.gltf: 2 meshes, 1 material, 2 animation(s).",
+                {"path": "assets/models/hero.gltf", "type": "model", "model": {"animations": [
+                    {"name": "Walk", "duration_seconds": 1.0, "keys": 40, "runtime_bytes": 2048, "wrap": "once", "root_motion": None},
+                    {"name": "Idle", "duration_seconds": 2.0, "keys": 12, "runtime_bytes": 1024, "wrap": "once", "root_motion": None}]}})},
+            {"tool": "edit_animation", "args": {"clip": "re:hero\\.gltf#Walk", "wrap": "loop"}, "result": ok(
+                "assets/models/hero.gltf#Walk: wrap loop (wrote assets/models/hero.gltf.clips: one project undo step, undo scope "
+                "project; its players reload)",
+                {"clip": "assets/models/hero.gltf#Walk", "settings_file": "assets/models/hero.gltf.clips", "wrap": "loop",
+                 "root_motion": None, "changed": True})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:hero\\.gltf#Walk", "wrap": "loop"}}],
+                   "must_not_call": [{"tool": "edit_animation", "args": {"create": "*"}}]},
+        "max_turns": 8,
+    },
+    {
         "id": "bad_music_manager_by_hand",
         "groups_enabled": ["audio"],
         "files": {"assets/music/menu.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000,
@@ -2445,6 +3182,541 @@ CASES = [
                               "args": {"values": {"quality.device_tiers.mobile.low": {"render_scale": 0.6}}}}],
                    "must_not_call": ["set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 12,
+    },
+    # -- T2: terrain generation. Red: a surface from before the tools (AC49) ---------------------
+    {
+        "id": "terrain_generate_preset",
+        "kind": "bad",
+        "what_happened": "Asked for mountains with a seed, an agent scripted noise strokes instead of generating: it must take generate_terrain's preset.",
+        "text_at_issue": "TerrainGenerationTools.cpp generate_terrain: name and description",
+        "source": "docs/specs/T2-noise-graphs.md AC49",
+        "prompt": "Make the terrain in this scene into mountains, seed 7.",
+        "mocks": [
+            {"tool": "generate_terrain", "args": {"preset": "mountains", "seed": 7}, "result": ok(
+                "Generate Terrain (Mountains, seed 7): height 0.02 to 0.98, 1 map(s) changed.",
+                {"seed": 7, "undo_name": "Generate Terrain (Mountains, seed 7)", "changed": [{"map": "height", "rect": [0, 0, 513, 513], "texels": 263169}]})},
+        ],
+        "checks": {"calls": [{"tool": "generate_terrain", "args": {"preset": "mountains", "seed": 7}}],
+                   "must_not_call": ["edit_terrain", "sculpt_terrain", "set_terrain_maps"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "noise_graph_edit_loop",
+        "kind": "guard",
+        "what_happened": "Tuning a graph: the loop is edit_graph, then preview_noise_graph, then a dry run before any write.",
+        "text_at_issue": "docs/mcp/guide/noise-graphs.md The loop; generate_terrain's and preview_noise_graph's descriptions",
+        "source": "docs/specs/T2-noise-graphs.md AC49, R65",
+        "prompt": "Tune graphs/Hills.noisegraph so the hills are gentler (lower its fbm frequency to 2), and show me what the terrain would look like. Don't change the terrain yet.",
+        "mocks": [
+            {"tool": "edit_graph", "args": {"path": "re:Hills"}, "result": ok("Edit: 1 op(s), 0 issue(s).", {"applied": 1, "issues": []})},
+            {"tool": "preview_noise_graph", "args": {"path": "re:Hills"}, "result": ok("Hills: 3 node(s) at 128, seed 1.", {"nodes": [], "outputs": {"height": "00"}})},
+            {"tool": "generate_terrain", "args": {"graph": "re:Hills", "dry_run": True}, "result": ok("Dry run: nothing was written.", {"dry_run": True, "hash": {"height": "00"}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"path": "re:Hills"}}, {"tool": "generate_terrain", "args": {"dry_run": True}}],
+                   "must_not_call": [{"tool": "generate_terrain", "args": {"dry_run": False}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "noise_graph_create",
+        "kind": "guard",
+        "what_happened": "A new graph file: edit_graph's create makes it, as one undo step. write_file refuses the extension.",
+        "text_at_issue": "GraphTools.cpp edit_graph: create",
+        "source": "docs/specs/T2-noise-graphs.md AC49, R16",
+        "prompt": "Start a new noise graph at graphs/Peaks.noisegraph from the alpine preset.",
+        "mocks": [
+            {"tool": "edit_graph", "args": {"path": "re:Peaks", "create": {"kind": "noise", "from_preset": "alpine"}}, "result": ok(
+                "Create Peaks.noisegraph: 0 op(s), 0 issue(s).", {"applied": 0, "issues": [], "undo_name": "Create Peaks.noisegraph"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"create": {"kind": "noise"}}}], "must_not_call": ["write_file"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_generate_error_next",
+        "kind": "guard",
+        "what_happened": "A graph error's result names the fix in next; the agent follows it with edit_graph on that node instead of giving up.",
+        "text_at_issue": "TerrainGenerationTools.cpp addNext",
+        "source": "docs/specs/T2-noise-graphs.md AC49, R65",
+        "prompt": "Generate the terrain from graphs/Bad.noisegraph. Fix it if something is wrong with the graph.",
+        "mocks": [
+            {"tool": "generate_terrain", "args": {"graph": "re:Bad"}, "result": err(
+                "octaves must be 1..12, not 40 (next: edit_graph on node n1 of graphs/Bad.noisegraph, then preview_noise_graph.)")},
+            {"tool": "edit_graph", "args": {"path": "re:Bad"}, "result": ok("Edit: 1 op(s), 0 issue(s).", {"applied": 1, "issues": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"path": "re:Bad"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "noise_graph_undo_timeline",
+        "kind": "guard",
+        "what_happened": "After an edit_graph, 'undo that' with undo's default scene scope found nothing: graph files are project history. The error names the timeline scope.",
+        "text_at_issue": "CoreTools.cpp undo: the empty scene history's error",
+        "source": "docs/specs/T2-noise-graphs.md R57",
+        "history": [
+            {"user": "Set the fbm frequency in graphs/Hills.noisegraph to 9."},
+            {"assistant": "Done.", "calls": [{"tool": "edit_graph", "args": {"path": "graphs/Hills.noisegraph",
+                "ops": [{"op": "setParam", "node": "n1", "name": "frequency", "value": 9}]},
+                "result": json.dumps({"applied": 1, "issues": [], "undo_name": "Set frequency"})}]},
+        ],
+        "prompt": "Actually, undo that.",
+        "mocks": [
+            {"tool": "undo", "args": {"scope": "timeline"}, "result": ok("Undid Set frequency.", {"undone": [{"id": 12, "name": "Set frequency"}]})},
+            {"tool": "undo", "args": {}, "result": err("Nothing to undo in the scene history. The last step is an asset edit: undo scope timeline takes it, as Ctrl+Z does.")},
+        ],
+        "checks": {"calls": [{"tool": "undo", "args": {"scope": "timeline"}}], "must_not_call": ["edit_graph"]},
+        "max_turns": 8,
+    },
+    # -- T3: holes and tiers (docs/mcp/guide/terrain-materials.md) ---------------------------------------------
+    {
+        "id": "terrain_cut_hole_check",
+        "kind": "guard",
+        "what_happened": "A hole that draws can still stop a ball: the agent checks the collider, not only the picture.",
+        "text_at_issue": "docs/mcp/guide/terrain-materials.md: Holes end to end; sample_terrain collision_gap",
+        "source": "T3 AC51",
+        "prompt": "Cut a cave mouth in the terrain at local (0, 0), 6 m across, and check a ball falls in.",
+        "results": [
+            {"tool": "edit_terrain", "result": ok("Applied 1 op.", {"ops": [{"op": "cut_holes", "changed_texels": 113, "hole_texels": 113,
+                "map_created": True, "collision_samples_open": 64}]})},
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": True, "collision_gap": True, "nav_excluded": True}]})},
+        ],
+        "checks": {"calls": ["edit_terrain", "sample_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_mobile_budget",
+        "kind": "bad",
+        "what_happened": "Asked why a terrain is slow on phones, an agent listed materials instead of reading what the pixels cost.",
+        "text_at_issue": "docs/mcp/guide/terrain-materials.md: Material budget and tiers; sample_terrain info.material",
+        "source": "T3 AC51",
+        "prompt": "Why is this terrain slow on phones?",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"info": {"material": {"quality": "high", "quality_source": "project",
+                "fetches": {"flat": 9, "slope": 27, "worst": 111, "by_tier": {"high": {"worst": 111}, "medium": {"worst": 21}, "low": {"worst": 6}}}}}})},
+        ],
+        "checks": {"calls": ["sample_terrain"], "must_not_call": ["list_materials"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_set_quality_tier",
+        "kind": "guard",
+        "what_happened": "A tier per platform is a project setting, not a file edit.",
+        "text_at_issue": "docs/mcp/guide/terrain-materials.md: Material budget and tiers; graphics.terrainQuality.<platform>",
+        "source": "T3 AC51",
+        "prompt": "Use the Low terrain quality on Android.",
+        "results": [
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.", {"changed": ["graphics.terrainQuality.android"]})},
+        ],
+        "checks": {"calls": ["set_project_settings"], "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 8,
+    },
+    # -- T4: Terrain Worlds (docs/mcp/guide/terrain.md, Terrain Worlds) ------------------------------------------
+    {
+        "id": "terrain_world_create",
+        "kind": "bad",
+        "what_happened": "Asked for land kilometres wide, an agent made a grid of Terrain GameObjects (or one huge Terrain) instead of one streamed world.",
+        "text_at_issue": "edit_terrain_world's description (create; never many Terrain GameObjects) and jasper://docs/terrain: Terrain Worlds.",
+        "source": "T4 R43, R59, AC45",
+        "prompt": "Make an 8 by 8 km landscape in this scene that streams on phones.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_world", "args": {"create": "*", "dry_run": True}, "result": ok(
+                "Dry run: a Terrain World of 64 tile(s) at Landscape.terrainworld.",
+                {"dry_run": True, "asset_path": "Landscape.terrainworld", "tile_count": 64, "predicted_bytes": 42467328, "tile_size": 1024.0,
+                 "ops_checked": 0, "warnings": [], "next": "Nothing changed. Call again without dry_run to create it."})},
+            {"tool": "edit_terrain_world", "args": {"create": "*"}, "result": ok(
+                "Created Terrain World \"Landscape\": 64 tile(s), 0 added, 0 removed, 0 repaired.",
+                {"entity": {"id": 7, "name": "Landscape", "path": "Landscape"}, "guid": "5f0c2a9e-41d7-4c8e-9a51-2f1e8d7c6b10",
+                 "asset_path": "Landscape.terrainworld", "tile_count": 64, "predicted_bytes": 42467328, "tile_size": 1024.0,
+                 "changed_tiles": {"added": [], "removed": [], "repaired": []}, "frozen": False, "warnings": [], "dry_run": False,
+                 "undo_name": "Create Terrain World (Landscape)", "ready": True,
+                 "next": "Sculpt and paint across tiles with edit_terrain or sculpt_terrain on this entity; sample_terrain {world} reports streaming."})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_world", "args": {"create": "*"}}],
+                   "must_not_call": [{"tool": "create_entity", "args": {"type": "terrain"}}],
+                   "max_calls": {"edit_terrain_world": 3}},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_world_convert",
+        "kind": "bad",
+        "what_happened": "Asked to grow an existing Terrain into a streamed world, an agent made an empty Terrain World beside it and tried to copy the heights by hand.",
+        "text_at_issue": "edit_terrain_world's description (create.from_terrain converts a Terrain, which stays, inactive) and jasper://docs/terrain: Terrain Worlds.",
+        "source": "T4 R33, R43",
+        "prompt": "The Terrain called Valley needs to become a streamed Terrain World so I can extend it later. Keep its shape and paint.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_world", "args": {"create": {"from_terrain": "*"}, "dry_run": True}, "result": ok(
+                "Dry run: a Terrain World of 4 tile(s) at Valley World.terrainworld.",
+                {"dry_run": True, "asset_path": "Valley World.terrainworld", "tile_count": 4, "predicted_bytes": 2134016, "tile_size": 512.0,
+                 "tile_quads": 512, "spacing": 1.0, "job": False, "ops_checked": 0, "warnings": [],
+                 "next": "Nothing changed. Call again without dry_run to convert; the Terrain is deactivated, not deleted."})},
+            {"tool": "edit_terrain_world", "args": {"create": {"from_terrain": "*"}}, "result": ok(
+                "Converted into Terrain World \"Valley World\": 4 tile(s), 0 added, 0 removed, 0 repaired.",
+                {"entity": {"id": 9, "name": "Valley World", "path": "Valley World"}, "guid": "0b8e7c1d-2a3f-4e5d-8c6b-7a9f1e2d3c4b",
+                 "asset_path": "Valley World.terrainworld", "tile_count": 4, "predicted_bytes": 2134016, "tile_size": 512.0,
+                 "changed_tiles": {"added": [], "removed": [], "imported": [], "repaired": []}, "frozen": False, "warnings": [], "dry_run": False,
+                 "undo_name": "Convert to Terrain World (Valley World)", "ready": True,
+                 "next": "Sculpt and paint across tiles with edit_terrain or sculpt_terrain on this entity; sample_terrain {world} reports streaming."})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_world", "args": {"create": {"from_terrain": "*"}}}],
+                   "must_not_call": [{"tool": "edit_terrain_world", "args": {"create": {"grid": "*"}}}, "delete_entity", "import_heightmap"],
+                   "max_calls": {"edit_terrain_world": 3}},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_world_overlay",
+        "kind": "bad",
+        "what_happened": "Asked to see which tiles of a streamed world are loaded, an agent listed sample_terrain {world} numbers or took a plain screenshot instead of the World's overlay.",
+        "text_at_issue": "jasper://docs/terrain: Terrain Worlds (visualize_terrain's tile_state, tiles, lod and collision overlays on a World).",
+        "source": "T4 R42, R46",
+        "prompt": "Show me in the Scene view which tiles of Terrain World [7] are loaded right now.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "visualize_terrain", "args": {"overlay": "tile_state"}, "result": ok(
+                "Terrain overlay tile_state on.",
+                {"overlay": "tile_state", "legend": [{"label": "cold", "color": [0.27, 0.35, 0.47]}, {"label": "resident", "color": [0.31, 0.75, 0.43]}],
+                 "camera": {"position": [0, 900, 900], "target": [0, 0, 0]}, "image": {"width": 1024, "height": 576},
+                 "next": "The overlay stays on in the Scene view; overlay none hides it."})},
+        ],
+        "checks": {"calls": [{"tool": "visualize_terrain", "args": {"overlay": "tile_state"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_world_import_job",
+        "kind": "guard",
+        "what_happened": "A heightmap import into a Terrain World came back as a running job; an agent sent the import again instead of following the job.",
+        "text_at_issue": "jasper://docs/terrain: Terrain Worlds (import_heightmap alone in its call; a job_id back means get_job).",
+        "source": "T4 R32, R44",
+        "prompt": "Import assets/island.r16 into Terrain World [7] with its first sample on tile (0, 0), and tell me how many tiles it made.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_world", "args": {"ops": [{"op": "import_heightmap"}]}, "result": ok(
+                "Import Heightmap (Landscape) is running.",
+                {"job_id": "job-3", "status": "running", "progress": 0.2})},
+            {"tool": "get_job", "result": ok(
+                "Imported the heightmap into Terrain World \"Landscape\": 16 tile(s).",
+                {"id": "job-3", "status": "succeeded", "result": {"tile_count": 20, "changed_tiles": {"imported": [[0, 0], [1, 0], [2, 0], [3, 0]]},
+                                                               "undo_name": "Import Heightmap (Landscape)"}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_world", "args": {"ops": [{"op": "import_heightmap"}]}}, "get_job"],
+                   "order": [[{"tool": "edit_terrain_world", "args": {"ops": [{"op": "import_heightmap"}]}}, "get_job"]],
+                   "max_calls": {"edit_terrain_world": 1}},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_world_wait_ready",
+        "kind": "guard",
+        "what_happened": "Asked for a screenshot of a far corner of a streamed world, an agent has to wait for its tiles and hold them, not shoot the low-detail overview.",
+        "text_at_issue": "sample_terrain's world key (wait_for, its next naming set_streaming freeze) and jasper://docs/terrain: Terrain Worlds.",
+        "source": "T4 R45, R59, AC45",
+        "prompt": "Terrain World [7] is 8 km wide. Screenshot its far corner around world (3800, 3800) at full detail.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "sample_terrain", "args": {"world": {"wait_for": "*"}}, "result": ok(
+                "The area of Terrain World \"Landscape\" is ready.",
+                {"terrain": {"id": 7, "name": "Landscape"},
+                 "world": {"tile_counts": {"total": 64, "absent": 0, "cold": 52, "queued": 0, "loading": 0, "cpu_ready": 0, "uploading": 0,
+                                           "resident": 12, "error": 0},
+                           "tiles": [{"tile": [3, 3], "state": "resident"}], "ready": True, "frozen": False, "queue": 0, "in_flight": 0,
+                           "pool_exhausted": 0, "seam_errors": 0, "errors": []},
+                 "wait_for": {"ready": True, "seconds": 2.4},
+                 "next": "For screenshots: edit_terrain_world {ops: [{op: \"set_streaming\", freeze: true}]} stops loads, evictions and uploads "
+                         "so frames repeat; freeze false resumes streaming."})},
+            {"tool": "edit_terrain_world", "args": {"ops": [{"op": "set_streaming"}]}, "result": ok(
+                "Edited Terrain World \"Landscape\": 64 tile(s), 0 added, 0 removed, 0 repaired.",
+                {"entity": {"id": 7, "name": "Landscape"}, "tile_count": 64, "changed_tiles": {"added": [], "removed": [], "repaired": []},
+                 "frozen": True, "warnings": [], "dry_run": False, "ready": True})},
+            {"tool": "screenshot", "result": ok("Scene view, 1280x720.", {"view": "scene"})},
+        ],
+        "checks": {"calls": [{"tool": "sample_terrain", "args": {"world": {"wait_for": "*"}}},
+                             {"tool": "edit_terrain_world", "args": {"ops": [{"op": "set_streaming", "freeze": True}]}}, "screenshot"],
+                   "order": [[{"tool": "sample_terrain", "args": {"world": {"wait_for": "*"}}}, "screenshot"],
+                             [{"tool": "edit_terrain_world", "args": {"ops": [{"op": "set_streaming", "freeze": True}]}}, "screenshot"]]},
+        "max_turns": 12,
+    },
+    {
+        "id": "terrain_world_sculpt_across",
+        "kind": "guard",
+        "what_happened": "Asked to shape land across tile borders, an agent has to edit the World with edit_terrain, not look for tile ops in edit_terrain_world.",
+        "text_at_issue": "edit_terrain_world's description (heights and paint: edit_terrain with entity) and jasper://docs/terrain: Terrain Worlds.",
+        "source": "T4 R46, R59, AC45",
+        "prompt": "Raise a 40 m ridge on Terrain World [7] from world (900, 0) to (1150, 0); it crosses the border of two tiles.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"entity": "*"}, "result": ok(
+                "Edited the terrain: 51200 texel(s) changed in 1 map(s).",
+                {"terrain": {"id": 7, "name": "Landscape"}, "dry_run": False, "undo_name": "Edit Terrain (Landscape)",
+                 "changed": [{"map": "height", "texels": 51200, "rect": [131972, 131040, 256, 200]}], "warnings": [],
+                 "next": "Check the result with sample_terrain (stats, hash) or look with visualize_terrain."})},
+            {"tool": "sample_terrain", "result": ok(
+                "Sampled terrain \"Landscape\".",
+                {"terrain": {"id": 7, "name": "Landscape"}, "samples": [{"world": [1020, 40, 0], "height": 40, "state": "full"},
+                                                                       {"world": [1030, 40, 0], "height": 40, "state": "full"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"entity": "*"}}],
+                   "must_not_call": ["edit_terrain_world", "create_entity"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_world_paint_trees",
+        "kind": "guard",
+        "what_happened": "Asked to paint trees with the brush across a Terrain World's tiles, an agent has to use sculpt_terrain's tree brush "
+                         "(T5's tree store, routed per tile), not place_object, which makes GameObjects, nor edit_terrain_world.",
+        "text_at_issue": "sculpt_terrain's description (paint/erase_trees: tree prototypes, a Terrain World across tiles) and its mode enum.",
+        "source": "T4 R27 (tree tools on a World)",
+        "prompt": "With the Paint Trees brush, paint the Terrain's tree prototype pine along Terrain World [7] from world (40, 10) to (90, 10), "
+                  "a brush of 6 m; the line crosses a tile border.",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "sculpt_terrain", "args": {"strokes": "*"}, "result": ok(
+                "Applied 1 brush stroke(s) to \"Landscape\" as one undo step.",
+                {"terrain": {"id": 7, "name": "Landscape"}, "strokes": [{"mode": "paint_trees", "points": 6, "placed": 23}], "changed": True})},
+        ],
+        "checks": {"calls": [{"tool": "sculpt_terrain", "args": {"strokes": [{"mode": "paint_trees"}]}}],
+                   "must_not_call": ["edit_terrain_world", {"tool": "sculpt_terrain", "args": {"strokes": [{"mode": "place_object"}]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_world_import_heightmap",
+        "kind": "guard",
+        "what_happened": "Asked to put a heightmap file on a Terrain World, an agent has to use edit_terrain_world's import_heightmap, which makes the tiles, not edit_terrain's.",
+        "text_at_issue": "edit_terrain_world's description (ops: import_heightmap) and jasper://docs/terrain: Terrain Worlds (a heightmap file on a World).",
+        "source": "T4 R32, R44, R59",
+        "prompt": "Put the heightmap assets/dem.r16 (2049 x 2049) on Terrain World [7], its first sample at tile (0, 0).",
+        "groups_enabled": ["terrain"],
+        "mocks": [
+            {"tool": "edit_terrain_world", "args": {"ops": "*"}, "result": ok(
+                "Edited Terrain World \"Landscape\": 1 op(s).",
+                {"entity": {"id": 7, "name": "Landscape"}, "tile_count": 64, "undo_name": "Edit Terrain World (Landscape)",
+                 "changed_tiles": {"added": [], "removed": [], "imported": [[0, 0], [1, 0]], "repaired": []}, "warnings": []})},
+            {"tool": "edit_terrain", "result": err(
+                "ops[0]: on a Terrain World import_heightmap is edit_terrain_world's op, which makes the tiles the file covers: "
+                "edit_terrain_world {ops: [{op: \"import_heightmap\", path, origin}]}. Nothing was changed.")},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain_world", "args": {"ops": "*"}}],
+                   "must_not_call": ["edit_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_point_material_cap",
+        "kind": "guard",
+        "what_happened": "A dense sample_terrain grid says only hole per point; the agent asks again at the few points it cares about.",
+        "text_at_issue": "sample_terrain's result note: over 64 points each says only hole",
+        "source": "T3 R43",
+        "prompt": "Sample the terrain on a 16 x 16 grid of local points over its whole area, then tell me which layers draw at local (0, 0).",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": False}] * 256,
+                "note": "Over 64 points each says only hole: ask for collision_gap, nav_excluded, layers_painted, layers_drawn and fetches at fewer points."})},
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"samples": [{"hole": False, "layers_drawn": [{"layer": 0, "weight": 1.0}], "fetches": 3}]})},
+        ],
+        "checks": {"calls": ["sample_terrain", {"tool": "sample_terrain", "args": {"points": [[0, 0]]}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_macro_without_layers",
+        "kind": "guard",
+        "what_happened": "Macro Variation on a terrain with no layer draws nothing; sample_terrain's issue says why, and the agent adds a layer instead of retuning the macro.",
+        "text_at_issue": "sample_terrain issues: macro_without_layers",
+        "source": "T3 (spec Deviations: a terrain with no layer draws its base material alone)",
+        "prompt": "I turned on Macro Variation on the terrain but I see no change. Fix it so it shows.",
+        "results": [
+            {"tool": "sample_terrain", "result": ok("Sampled terrain.", {"issues": [{"code": "macro_without_layers", "severity": "warning",
+                "message": "Macro Variation applies once the terrain has a layer: set_terrain_maps layers adds one."}]})},
+            {"tool": "set_terrain_maps", "result": ok("Set terrain maps (one undo step).", {"layers": [{"index": 0}]})},
+        ],
+        "checks": {"calls": ["sample_terrain", "set_terrain_maps"]},
+        "max_turns": 10,
+    },
+    # -- T1 terrain (docs/specs/T1-terrain-authoring.md AC74) -----------------------------------
+    {
+        "id": "terrain_find_docs",
+        "kind": "guard",
+        "what_happened": "T1: terrain edits moved to edit_terrain in the terrain group, hidden until enabled; an agent asked to edit "
+                         "a terrain must find the group or its guide and edit declaratively, not script brush strokes.",
+        "text_at_issue": "Guide 'Tool groups': terrain; tool_groups' terrain description (start with edit_terrain; jasper://docs/terrain)",
+        "source": "docs/specs/T1-terrain-authoring.md R73, AC74",
+        "prompt": "The scene has a terrain called Island. Make its middle a plateau 30 m high, about 50 m across.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok(
+                "Edited the terrain: 7854 texel(s) changed in 1 map(s).",
+                TERRAIN_EDIT_RESULT)},
+            {"tool": "sample_terrain", "result": ok("Sampled the terrain.", TERRAIN_SAMPLE_RESULT)},
+        ],
+        "checks": {"calls": ["edit_terrain"], "must_not_call": ["sculpt_terrain", "write_file"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "terrain_hill_declarative",
+        "kind": "bad",
+        "groups_enabled": ["terrain"],
+        "what_happened": "Agents raised hills with sculpt_terrain strokes at a strength rate, then looped sampling until the height looked "
+                         "right; edit_terrain's set_height reaches the height in one undoable call.",
+        "text_at_issue": "edit_terrain description: absolute heights or signed deltas, no rates",
+        "source": "docs/specs/T1-terrain-authoring.md R68, AC74",
+        "prompt": "Raise a hill in the centre of the terrain whose top is at 80 m.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Edited the terrain: 7854 texel(s) changed in 1 map(s).", TERRAIN_EDIT_RESULT)},
+            {"tool": "sample_terrain", "result": ok("Sampled the terrain.", TERRAIN_SAMPLE_RESULT)},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": [{"op": "set_height"}]}}], "must_not_call": ["sculpt_terrain"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_verify_edit",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "An edit that hit Max Height clipped silently in the old brushes; edit_terrain warns clipped_high and its next "
+                         "names the fix, which the agent must act on or report, measuring with sample_terrain stats.",
+        "text_at_issue": "edit_terrain result next; sample_terrain stats",
+        "source": "docs/specs/T1-terrain-authoring.md R70, R95, AC74",
+        "prompt": "Flatten the whole terrain to 120 m and check that nothing clipped.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Edited the terrain: 1050625 texel(s) changed in 1 map(s).", TERRAIN_CLIPPED_RESULT)},
+            {"tool": "sample_terrain", "result": ok("Sampled the terrain.", TERRAIN_CLIPPED_SAMPLE)},
+            {"tool": "set_properties", "result": ok("Set 1 value(s).", {"changed": [{"component": "terrain", "property": "maxHeight"}]})},
+        ],
+        "checks": {"calls": ["edit_terrain", {"tool": "sample_terrain", "args": {"stats": "*"}}],
+                   "order": [["edit_terrain", "sample_terrain"]], "reply_must": [r"(?i)clip|max(imum)? ?height|100"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "terrain_import_raw",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "A raw heightmap says nothing about its size, depth or byte order; agents imported with guesses. The import "
+                         "detects them and reports what it guessed, so a dry run comes first.",
+        "text_at_issue": "docs/mcp/guide/terrain.md 'Which tool' and 'Import and export'; edit_terrain dry_run",
+        "source": "docs/specs/T1-terrain-authoring.md R61, R68, AC74",
+        "prompt": "Import assets/dem.r16 into the terrain as its heightmap.",
+        "mocks": [
+            {"tool": "edit_terrain", "args": {"dry_run": True}, "result": ok("Dry run: 1 map(s) would change.", TERRAIN_IMPORT_DRY)},
+            {"tool": "edit_terrain", "result": ok("Edited the terrain: 1050625 texel(s) changed in 1 map(s).", TERRAIN_IMPORT_DRY | {"dry_run": False})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"dry_run": True, "ops": [{"op": "import_heightmap"}]}}],
+                   "must_not_call": ["set_terrain_maps", "write_file"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_show_slopes",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "Asked where a terrain is too steep, agents took screenshots and guessed from shading; the slope overlay "
+                         "colours each band and its legend gives the degrees.",
+        "text_at_issue": "visualize_terrain description; docs/mcp/guide/terrain.md 'Look'",
+        "source": "docs/specs/T1-terrain-authoring.md R65, AC74",
+        "prompt": "Show me where the terrain is too steep to walk on (over 35 degrees).",
+        "mocks": [
+            {"tool": "visualize_terrain", "result": ok(
+                "Terrain overlay slope on. Image: the Scene view.",
+                {"overlay": "slope", "legend": [{"label": "35-90 deg", "color": [0.9, 0.15, 0.1]}],
+                 "camera": {"position": [700, 600, 700], "target": [0, 40, 0]},
+                 "next": "The overlay stays on in the Scene view; overlay none hides it."})},
+            {"tool": "sample_terrain", "result": ok("Sampled the terrain.", TERRAIN_SAMPLE_RESULT)},
+        ],
+        "checks": {"calls": [{"tool": "visualize_terrain", "args": {"overlay": "slope"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_export_raw",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "Asked for a heightmap file, agents sampled heights and wrote bytes with write_file or a script.",
+        "text_at_issue": "export_terrain_heightmap description",
+        "source": "docs/specs/T1-terrain-authoring.md R61, AC74",
+        "prompt": "Export the terrain's heightmap as a 16-bit raw file to assets/export/heights.r16.",
+        "mocks": [
+            {"tool": "export_terrain_heightmap", "result": ok(
+                "Wrote assets/export/heights.r16 (1025 x 1025).",
+                {"path": "assets/export/heights.r16", "format": "r16", "width": 1025, "height": 1025, "bytes": 2101250,
+                 "min": 12.5, "max": 96.0, "hash": "8f1d22c01a7be310", "warnings": [],
+                 "next": "edit_terrain {op: import_heightmap, path, range: \"full\"} reads it back."})},
+        ],
+        "checks": {"calls": ["export_terrain_heightmap"], "must_not_call": ["write_file", "sample_terrain"],
+                   "shell_must_not": [r"struct\.pack|\.r16"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_large_edit_job",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "On a 4096 terrain an edit runs as a job and the call returns its job_id; agents read the job_id as a "
+                         "failure and edited again, or reported the edit as done without polling.",
+        "text_at_issue": "docs/mcp/guide/terrain.md edit_terrain: 'An edit over more than 4 M texels runs as a job'",
+        "source": "docs/specs/T1-terrain-authoring.md R69, AC74",
+        "prompt": "Raise the whole 4096 terrain by 5 m, without waiting on it, and tell me when it has landed.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Job 7 running: Edit Terrain (World).",
+                                                  {"job_id": "7", "status": "running", "message": "editing a copy of the maps"})},
+            {"tool": "get_job", "result": ok("Job 7 succeeded: Edited the terrain: 16785409 texel(s) changed in 1 map(s).",
+                                             {"id": "7", "status": "succeeded", "result": TERRAIN_EDIT_RESULT})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"wait": False}}, "get_job"], "max_calls": {"edit_terrain": 1},
+                   "order": [["edit_terrain", "get_job"]]},
+        "max_turns": 10,
+    },
+    {
+        "id": "terrain_place_objects",
+        "kind": "guard",
+        "groups_enabled": ["terrain"],
+        "what_happened": "Asked to scatter rocks over a clearing, agents sent sculpt_terrain strokes point by point, guessing positions "
+                         "and spacing themselves, instead of one region for edit_terrain to plan.",
+        "text_at_issue": "docs/mcp/guide/terrain.md Which tool: 'Scatter rocks or props over a region | edit_terrain place_objects'",
+        "source": "docs/specs/T1-terrain-authoring.md R21",
+        "prompt": "Scatter about 20 copies of assets/rock.obj over the circle of radius 15 around the middle of the terrain, at least 2 m apart.",
+        "mocks": [
+            {"tool": "edit_terrain", "result": ok("Placed 18 and erased 0 object(s) on \"World\" as one undo step.",
+                                                  {"placed": 18, "erased": 0, "undo_name": "Edit Terrain Objects (World)"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_terrain", "args": {"ops": "re:place_objects"}}],
+                   "must_not_call": [{"tool": "sculpt_terrain", "args": {"strokes": "*"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_brush_shortcuts",
+        "kind": "guard",
+        "what_happened": "Asked which keys the terrain brush has, agents listed every shortcut and guessed from the names, or "
+                         "filtered by scene_view, which holds none of them; the brush's keys have a context of their own.",
+        "text_at_issue": "list_shortcuts context enum: 'terrain_brush'",
+        "source": "docs/specs/T1-terrain-authoring.md R57, Table 5",
+        "prompt": "Which keys pick the terrain brush's tools while it is armed? Just list them.",
+        "mocks": [
+            {"tool": "list_shortcuts", "args": {"context": "terrain_brush"}, "result": ok("21 shortcuts.", {"shortcuts": [
+                {"id": "terrain.tool.raise", "name": "Raise", "context": "terrain_brush", "chords": ["R"]},
+                {"id": "terrain.tool.setHeight", "name": "Set Height", "context": "terrain_brush", "chords": ["H"]}]})},
+        ],
+        "checks": {"calls": [{"tool": "list_shortcuts", "args": {"context": "terrain_brush"}}], "max_calls": {"list_shortcuts": 2}},
+        "max_turns": 6,
+    },
+    {
+        "id": "terrain_lua_crater",
+        "kind": "guard",
+        "what_happened": "Asked for a game that digs craters, agents wrote height loops over textures or called the editor's tools "
+                         "from the script; a game edits a terrain with Terrain:applyOps and needs Allow Runtime Edits.",
+        "text_at_issue": "docs/mcp/guide/lua-api.md 'Terrain' line; docs/mcp/guide/terrain.md 'Lua'",
+        "source": "docs/specs/T1-terrain-authoring.md R75, AC74",
+        "files": GAME_FILES,
+        "prompt": "Write scripts/bomb.lua: a script with a function Bomb:explode(x, z) that digs a 3 m deep crater, 6 m wide, into the "
+                  "terrain GameObject named Island at that point while the game runs. Just write the file.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("scripts/bomb.lua: no syntax errors.", {"ok": True, "problems": []})},
+        ],
+        "checks": {"file_must": {"scripts/bomb.lua": [r"applyOps", r"\blower\b|set_height"]},
+                   "file_must_not": {"scripts/bomb.lua": [r"edit_terrain|sculpt_terrain", r"setHeightMap"]},
+                   "must_not_call": ["edit_terrain", "sculpt_terrain", "play"]},
+        "max_turns": 20,
+    },
+    {
+        "id": "terrain_control_tilemap_name",
+        "kind": "control",
+        "groups_enabled": ["terrain"],
+        "what_happened": "A tilemap's 'terrain' is a tile set brush (S50), not the 3D terrain: the terrain tools must not pull it in.",
+        "text_at_issue": "edit_terrain description; tool_groups' terrain description",
+        "source": "docs/specs/T1-terrain-authoring.md AC74",
+        "prompt": "On the Ground tile layer, paint the grass terrain over cells (0,0) to (4,4).",
+        "mocks": [
+            {"tool": "edit_tilemap", "result": ok("Painted 25 cell(s) with terrain grass.", {"painted": 25})},
+        ],
+        "checks": {"calls": ["edit_tilemap"], "must_not_call": ["edit_terrain", "sculpt_terrain"]},
+        "max_turns": 8,
     },
     {
         "id": "guard_ui_button_gamepad_menu",
@@ -2789,6 +4061,37 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "guard_detail_layer_error_names_the_fix",
+        "kind": "guard",
+        "what_happened": "A detail layer whose density map had only a GPU-only cook drew nothing; sample_terrain showed drawn 0 and "
+                         "nothing else, so agents repainted or replaced the layer. The layer's error names the map and the fix.",
+        "text_at_issue": "sample_terrain details[i].error (MeshSystem foliage): 'its density map ... has no pixels the CPU can read: "
+                         "no CPU-readable cook of it arrived; reimport it (reimport_textures)'",
+        "source": "agent-authoring follow-ups (review of 767dfb9bb, item 3)",
+        "prompt": "The grass on the terrain Ground stopped showing. Find out why and fix it; don't change the layer.",
+        "groups_enabled": ["terrain", "assets_pipeline"],
+        "mocks": [
+            {"tool": "sample_terrain", "result": ok(
+                "Terrain Ground: 32 x 32, max height 4; 1 detail layer (0 drawn).",
+                {"info": {"size": 32, "mesh_built": True, "details": [{
+                    "index": 0, "mesh": "assets/models/grass.glb", "density_map": "assets/terrain/painted.png", "density": 2,
+                    "drawn": 0, "error": "its density map assets/terrain/painted.png has no pixels the CPU can read: no CPU-readable "
+                                         "cook of it arrived; reimport it (reimport_textures)"}]}})},
+            {"tool": "reimport_textures", "result": ok(
+                "Reimported 1 texture(s).",
+                {"textures": [{"path": "assets/terrain/painted.png", "platforms": {"desktop": {"status": "cooked", "cpu_readable": True,
+                                                                                            "format": "R8"}}}], "timed_out": False})},
+            {"tool": "edit_terrain_details", "result": ok("Ground has 1 detail layer(s).", {"terrain": {"id": 11}, "layers": [
+                {"index": 0, "mesh": "assets/models/grass.glb", "density_map": "assets/terrain/painted.png", "density": 2}]})},
+        ],
+        "checks": {"calls": [{"tool": "sample_terrain"}, {"tool": "reimport_textures", "args": {"paths": ["assets/terrain/painted.png"]}}],
+                   "order": [["sample_terrain", "reimport_textures"]],
+                   "must_not_call": [{"tool": "edit_terrain_details", "args": {"update": "*"}},
+                                     {"tool": "edit_terrain_details", "args": {"remove": "*"}},
+                                     {"tool": "sculpt_terrain"}, "write_file"]},
+        "max_turns": 14,
+    },
+    {
         "id": "bad_shader_override_by_building",
         "kind": "bad",
         "what_happened": "Shader overrides could only change through build_project, so agents started a build to exclude one "
@@ -2829,5 +4132,369 @@ CASES = [
         ],
         "checks": {"calls": ["get_build_info"], "reply_must": [r"(?i)(compiler|toolchain|build tools)"]},
         "max_turns": 16,
+    },
+    {
+        "id": "guard_pixel_perfect_camera",
+        "kind": "guard",
+        "what_happened": "Pixel art drawn at a fractional scale (columns 2 and 3 px wide, blur): the fix is the camera's Pixel "
+                         "Perfect Camera component (S41), not a post-processing pixelate, a shader fork or the scene's Fixed "
+                         "Resolution.",
+        "text_at_issue": "None since the guide's 'pixel art' line was cut (it passed without it): the component's name in list_component_types",
+        "source": "S41 (docs/specs/S41-pixel-perfect-camera.md R3, the @asynkimo failure); no failure on record",
+        "prompt": "My pixel-art game looks wrong at 1366x768: some pixel columns are wider than others and sprites shimmer "
+                  "when the camera moves. Make the Main Camera pixel perfect at 320x180.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nMain Camera [3] camera transform",
+                                                   {"entities": [{"id": 3, "path": "Main Camera"}]})},
+            {"tool": "get_entity", "args": {"entity": "re:Main Camera|^3$"}, "result": ok(
+                "Main Camera [3] components: camera transform; camera: type ortho", {"id": 3, "path": "Main Camera"})},
+            {"tool": "add_component", "result": ok("Added pixelperfectcamera to GameObject 3 \"Main Camera\" (one undo step).",
+                                                   {"entity": {"id": 3, "path": "Main Camera"}, "component": "pixelperfectcamera"})},
+            {"tool": "set_properties", "result": ok("Set 2 properties on GameObject 3 \"Main Camera\".", {"entity": {"id": 3}})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)pixel.?perfect"}}],
+                   "must_not_call": ["fork_shader", "apply_post_processing_preset",
+                                     {"tool": "set_scene_settings", "args": {"settings": {"fixed_resolution_enabled": True}}}]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_pixel_font_preview",
+        "kind": "guard",
+        "groups_enabled": ["pixel_art"],
+        "what_happened": "Asked whether a bitmap font covers a string and how it looks, an agent should draw the string with "
+                         "preview_font text at scale (its result lists the missing characters) instead of building a scene, "
+                         "playing and taking screenshots (S51).",
+        "text_at_issue": "preview_font description: '`text` at a whole `scale` ... with the missing characters listed'; its text and scale parameters",
+        "source": "S51 (docs/specs/S51-pixel-fonts.md R26, AC16); no failure on record",
+        "files": {"assets/fonts/hud.bitmapfont": "{\"format\": \"jasperengine.bitmapfont\", \"version\": 1, "
+                                                 "\"source\": {\"type\": \"grid\", \"image\": \"hud@6x9.png\"}}"},
+        "prompt": "Does assets/fonts/hud.bitmapfont have every character of 'SCORE 120 \u00a1Ol\u00e9!'? Show me that "
+                  "string in it, three times its size.",
+        "mocks": [
+            {"tool": "preview_font", "args": {"path": "re:hud\\.bitmapfont"}, "result": ok(
+                "assets/fonts/hud.bitmapfont: the text at x3 (78x10 font pixels), white on a dark checker. Missing (drawn as "
+                "the fallback glyph): \u00a1\u00e9.",
+                {"font": {"kind": "bitmap", "native_size": 9, "line_height": 10, "baseline": 7, "glyphs": 95, "colored": False,
+                          "scale": 3, "width": 242, "height": 38, "missing": ["\u00a1", "\u00e9"]}})},
+            {"tool": "get_asset_info", "args": {"path": "re:hud\\.bitmapfont"}, "result": ok(
+                "assets/fonts/hud.bitmapfont: font, a bitmap font: 95 glyphs, 9 px (line 10, baseline 7).",
+                {"path": "assets/fonts/hud.bitmapfont", "type": "font", "font": {"kind": "bitmap", "glyphs": 95,
+                 "native_size": 9, "missing_ascii": ""}})},
+        ],
+        "checks": {"calls": [{"tool": "preview_font", "args": {"path": "re:hud\\.bitmapfont", "text": "re:SCORE", "scale": 3}}],
+                   "must_not_call": ["play", "create_entity"], "reply_must": [r"(?i)\u00e9|missing|lack"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_bitmap_font_write_report",
+        "kind": "guard",
+        "what_happened": "Making a pixel font from a sheet, an agent should write the .bitmapfont with write_file and read the "
+                         "import report it returns (glyphs, typed errors with the field to fix), not hand-edit a scene's "
+                         "font or guess (S51).",
+        "text_at_issue": "write_file result: a .bitmapfont's import report (font, errors with their field)",
+        "source": "S51 (docs/specs/S51-pixel-fonts.md R28, AC17); no failure on record",
+        "files": {"assets/fonts/hud@6x9.png": "binary placeholder"},
+        "prompt": "Turn assets/fonts/hud@6x9.png (printable ASCII on a 6x9 grid) into a bitmap font and tell me if it imported "
+                  "cleanly.",
+        "mocks": [
+            {"tool": "write_file", "args": {"path": "re:\\.bitmapfont$"}, "result": ok(
+                "Created assets/fonts/hud.bitmapfont (120 bytes; undo with scope project). Bitmap font: 95 glyphs, 9 px, line "
+                "10, baseline 7.",
+                {"path": "assets/fonts/hud.bitmapfont", "created": True, "font": {"glyphs": 95, "native_size": 9,
+                 "missing_ascii": "", "partial_alpha_share": 0.0}})},
+            {"tool": "read_file", "result": ok("# Pixel fonts ...", {})},
+        ],
+        "checks": {"calls": [{"tool": "write_file", "args": {"path": "re:\\.bitmapfont$"}}],
+                   "shell_must_not": [r"python", r"convert\s"], "reply_must": [r"95|clean|glyph"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_font_metrics_info",
+        "kind": "guard",
+        "groups_enabled": ["pixel_art"],
+        "what_happened": "Asked for a pixel font's metrics, an agent should read them from get_asset_info (native size, "
+                         "baseline, kerning, pixel report) instead of opening the sheet or the JSON, or drawing it, and measuring (S51).",
+        "text_at_issue": "preview_font description: 'Metrics, kerning, pixel report: get_asset_info'",
+        "source": "S51 (docs/specs/S51-pixel-fonts.md R27, AC17); no failure on record",
+        "files": {"assets/fonts/hud.fnt": "info face=\"Hud\" size=9\ncommon lineHeight=10 base=7\n"},
+        "prompt": "What is the native pixel size and baseline of assets/fonts/hud.fnt, and does it have antialiased pixels?",
+        "mocks": [
+            {"tool": "get_asset_info", "args": {"path": "re:hud\\.fnt"}, "result": ok(
+                "assets/fonts/hud.fnt: font, a bitmap font: 95 glyphs, 9 px (line 10, baseline 7).",
+                {"path": "assets/fonts/hud.fnt", "type": "font", "font": {"kind": "bitmap", "native_size": 9, "baseline": 7},
+                 "pixel_report": {"antialiased": False, "partial_alpha_share": 0.0, "native_size": 9}})},
+        ],
+        "checks": {"calls": [{"tool": "get_asset_info", "args": {"path": "re:hud\\.fnt"}}],
+                   "must_not_call": ["read_file", "view_asset", "preview_font"], "reply_must": [r"9", r"7"]},
+        "max_turns": 6,
+    },
+    {
+        "id": "guard_game_view_pixel_scale",
+        "kind": "guard",
+        "what_happened": "Checking pixel art at 1x (one physical pixel per art pixel) is the Game view's Pixel Scale, not its "
+                         "zoom Scale (1 to 5, the image fitted first) or a resolution change.",
+        "text_at_issue": "configure_game_view pixel_scale: 'Pixel Perfect scale; 0 auto.'",
+        "source": "S41 (R20, AC15); no failure on record",
+        "prompt": "The main camera has a Pixel Perfect Camera. Show the Game view at 1x pixel scale so I can check the art pixel "
+                  "for pixel, then take a Game view screenshot.",
+        "mocks": [
+            {"tool": "configure_game_view", "args": {"pixel_scale": 1}, "result": ok(
+                "Game view: aspect free, scale 1, pixel scale 1.", {"aspect": "free", "scale": 1, "pixel_scale": 1})},
+            {"tool": "configure_game_view", "result": ok("Game view: aspect free, scale 1, pixel scale 0.",
+                                                         {"aspect": "free", "scale": 1, "pixel_scale": 0})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).",
+                                               {"view": "game", "width": 1280, "height": 720})},
+        ],
+        "checks": {"calls": [{"tool": "configure_game_view", "args": {"pixel_scale": 1}}],
+                   "must_not_call": [{"tool": "configure_game_view", "args": {"resolution": "*"}}]},
+        "max_turns": 12,
+    },
+    # -- S42 the pixel-art validator: the pixel_art group's description, the tool's preview-then-output and `next` -------
+    {
+        "id": "guard_pixel_art_check_route",
+        "kind": "guard",
+        "what_happened": "New tool (S42): blurry, uneven pixel art is check_pixel_art's to measure and fix (one call to "
+                         "preview, the same with output: true to apply); without the group's description and the result's `next` "
+                         "an agent edits import settings and filters by hand, or stops at the preview.",
+        "text_at_issue": "tool_groups' pixel_art: 'Pixel art: checks, palettes and font previews (jasper://docs/pixel-art)'; check_pixel_art: 'fix previews the changes; "
+                         "the same call with output:true applies them as one undo step'; the results' `next`",
+        "source": "S42 R22 (new tool text); no failure on record",
+        "prompt": "Our pixel-art game looks blurry and some sprite columns are wider than others on a 1366x768 laptop. "
+                  "Find what is wrong with the pixel-art setup and fix all of it.",
+        "mocks": [
+            {"tool": "check_pixel_art", "args": {"fix": ["all"], "output": True}, "result": ok(
+                "Pixel art check: fixable, 2 FAIL, 1 WARN (13 rules). Applied 3 fix(es) as \"Fix Pixel Art (3)\"; after: "
+                "clean, 0 FAIL, 0 WARN.",
+                {"verdict": "fixable", "applied": {"undo_step": {"id": 9, "name": "Fix Pixel Art (3)"}, "changed": ["project"]},
+                 "after": {"verdict": "clean", "counts": {"fail": 0, "warn": 0}}})},
+            {"tool": "check_pixel_art", "args": {"fix": ["all"]}, "result": ok(
+                "Pixel art check: fixable, 2 FAIL, 1 WARN (13 rules). Fix plan: 3 fix(es), 6 change(s); nothing changed. "
+                "Preview only, nothing changed: the same call with output: true applies these 6 change(s) as one undo step.",
+                {"verdict": "fixable", "fix_plan": [{"key": "filtering:scenes/Main.scene#/Hero:mesh.submeshes[0].material.baseColorTexture",
+                                                     "option": "default", "label": "Set both filters of /Hero to Nearest", "changes": []}],
+                 "next": "Preview only, nothing changed: the same call with output: true applies these 6 change(s) as one undo step."})},
+            {"tool": "check_pixel_art", "result": ok(
+                "Pixel art check: fixable, 2 FAIL, 1 WARN (13 rules). check_pixel_art {fix: [\"all\"]} previews 3 fix(es); "
+                "add output: true to apply.",
+                {"verdict": "fixable", "counts": {"fail": 2, "warn": 1, "fixable": 3, "needs_person": 0},
+                 "findings": [{"id": "F1", "rule": "integer_scale", "status": "FAIL", "message": "Main scales its pixels by a fraction on some screens."},
+                              {"id": "F2", "rule": "filtering", "status": "FAIL", "message": "hero.png is filtered bilinear on Hero."},
+                              {"id": "F3", "rule": "pixel_art_mode", "status": "WARN", "message": "The project draws pixel art but Pixel Art Mode is off."}],
+                 "next": "check_pixel_art {fix: [\"all\"]} previews 3 fix(es); add output: true to apply."})},
+        ],
+        "checks": {"calls": [{"tool": "check_pixel_art", "args": {"fix": ["all"], "output": True}}],
+                   "must_not_call": ["set_texture_import_settings", "set_project_settings", "write_file"],
+                   "edits_must_not": [r"\.(meta|scene|yaml)$"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_pixel_art_needs_person",
+        "kind": "guard",
+        "what_happened": "New tool (S42): a finding no automatic change fixes (art drawn at another texel size) has no fix and "
+                         "needs a person; without the result's `next` an agent scales the sprite until the number passes.",
+        "text_at_issue": "check_pixel_art's `next`: 'The findings need a person: report them (needs_person) instead of "
+                         "changing scale or art.'",
+        "source": "S42 R12, D5 (new tool text); no failure on record",
+        "prompt": "Run the pixel-art check on our project and get it to pass.",
+        "mocks": [
+            {"tool": "check_pixel_art", "result": ok(
+                "Pixel art check: needs_person, 1 FAIL, 0 WARN (13 rules). The findings need a person: report them (needs_person) "
+                "instead of changing scale or art.",
+                {"verdict": "needs_person", "counts": {"fail": 1, "warn": 0, "fixable": 0, "needs_person": 1},
+                 "findings": [{"id": "F1", "key": "texel_size:scenes/Main.scene#/Boss", "rule": "texel_size", "status": "FAIL",
+                               "measured": {"x": 1.5, "y": 1.5}, "expected": {"x": 1, "y": 1}, "fix": None,
+                               "needs_person": "the art itself is not one texel per pixel at this size: fix the art or its Pixels "
+                                               "Per Unit, never the scale",
+                               "message": "Boss's pixels are 1.5 x 1.5 base pixels, not 1 x 1."}],
+                 "next": "The findings need a person: report them (needs_person) instead of changing scale or art."})},
+        ],
+        "checks": {"must_not_call": ["set_transform", {"tool": "set_properties", "args": {"values": {"transform": "*"}}},
+                                     {"tool": "check_pixel_art", "args": {"output": True}}]},
+        "max_turns": 8,
+    },
+    # -- S52: 2D draw order (Sorting Layers through set_project_settings and set_properties), the unknown-layer
+    # error, Sprite Batch for bulk sprites, the profiling guide's new batch breaks --------
+    {
+        "id": "guard_sorting_layer_route",
+        "kind": "guard",
+        "what_happened": "New area (S52): putting a 2D renderer in front of others is a Sorting Layer (the setting "
+                         "tags_and_layers.sorting_layers, then the renderer's sortingLayer); without the setting and the doc agents "
+                         "moved GameObjects in the hierarchy or changed z, which 2D cameras ignore.",
+        "text_at_issue": "jasper://docs/rendering-2d; "
+                         "tags_and_layers.sorting_layers: 'Sorting Layers in draw order, first drawn first, as [{id, name}]; must include "
+                         "\"Default\"'",
+        "source": "S52 R34, R36 (new MCP text); no failure on record",
+        "prompt": "In our 2D scene the Tree GameObjects draw behind the Player sprite. Make every tree draw in front of the "
+                  "player, using a proper foreground layer.",
+        "mocks": [
+            {"tool": "read_file", "args": {"path": "re:rendering-2d"}, "result": ok(
+                "# 2D draw order and Sprite Batch\n\nA 2D camera draws renderers by Sorting Layer (its place in "
+                "tags_and_layers.sorting_layers, first drawn first), then Order in Layer, then the Hierarchy. Add layers with "
+                "set_project_settings; set a renderer's with set_properties {\"sortingLayer\": \"Foreground\"}.")},
+            {"tool": "find_entities", "result": ok("3 GameObjects: Tree (12), Tree (13), Tree (14).",
+                                                  {"entities": [{"id": 12, "name": "Tree"}, {"id": 13, "name": "Tree"},
+                                                                {"id": 14, "name": "Tree"}]})},
+            {"tool": "get_project_settings", "result": ok("tags_and_layers.sorting_layers: [{\"id\": 0, \"name\": \"Default\"}]",
+                                                         {"values": {"tags_and_layers.sorting_layers": [{"id": 0, "name": "Default"}]}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["tags_and_layers.sorting_layers"]})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 3 GameObjects.", {"entities": [{"id": 12}, {"id": 13}, {"id": 14}]})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"tags_and_layers.sorting_layers": "*"}}},
+                             {"tool": "set_properties"}],
+                   "must_not_call": ["move_entity", {"tool": "set_transform"}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "bad_unknown_sorting_layer",
+        "kind": "bad",
+        "what_happened": "Agents set sortingLayer: \"Foreground\" on a sprite before the project had that layer, then fell "
+                         "back to Order in Layer alone; the error names the fix (S52).",
+        "text_at_issue": "set_properties error: 'no Sorting Layer is named \"Foreground\"; add it with set_project_settings "
+                         "tags_and_layers.sorting_layers'",
+        "source": "S52 R34 (new error text); paraphrased from the design review",
+        "prompt": "Put the Clouds sprite (GameObject 21) on a Sorting Layer named Foreground.",
+        "mocks": [
+            {"tool": "set_properties", "after": "set_project_settings", "result": ok(
+                "Set 1 property on GameObject 21 \"Clouds\".", {"entity": {"id": 21}})},
+            {"tool": "set_properties", "result": err(
+                "Property sortingLayer: no Sorting Layer is named \"Foreground\"; add it with set_project_settings "
+                "tags_and_layers.sorting_layers")},
+            {"tool": "get_project_settings", "result": ok("tags_and_layers.sorting_layers: [{\"id\": 0, \"name\": \"Default\"}]",
+                                                         {"values": {"tags_and_layers.sorting_layers": [{"id": 0, "name": "Default"}]}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["tags_and_layers.sorting_layers"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"tags_and_layers.sorting_layers": "re:Foreground"}}},
+                             {"tool": "set_properties"}],
+                   "must_not_call": [{"tool": "set_properties", "args": {"values": {"mesh": {"sortingOrder": "*"}}}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_bullets_as_gameobjects",
+        "kind": "bad",
+        "what_happened": "Asked for a bullet-hell pattern of 2,000 bullets, agents created one GameObject per bullet (create_entity "
+                         "in loops, Instantiate in Lua): 2,000 transforms updated every frame; a Sprite Batch draws them from one "
+                         "GameObject with flat streams (S52).",
+        "text_at_issue": "jasper://docs/rendering-2d 'Sprite Batch' (add_component spritebatch, SpriteBatch:setPositions)",
+        "source": "S52 R10-R12, R36 (new MCP text); paraphrased from the design review",
+        "files": {"scripts/spawner.lua": "-- empty spawner script\n"},
+        "prompt": "Our boss (GameObject 30, which has a Bullet sprite child, GameObject 31) should fire a ring of 2000 bullets "
+                  "that move outwards every frame. Write it in scripts/spawner.lua.",
+        "mocks": [
+            {"tool": "read_file", "args": {"path": "re:rendering-2d"}, "result": ok(
+                "## Sprite Batch\nUse a Sprite Batch for many copies of one Sprite's frames (bullets, coins). 1. add_component "
+                "spritebatch on a GameObject with a Sprite. 2. Fill it from a script: SpriteBatch(scene, entity), "
+                "batch:setPositions({x1, y1, ...}).")},
+            {"tool": "add_component", "result": ok("Added Sprite Batch to GameObject 31 \"Bullet\".", {"entity": {"id": 31}})},
+            {"tool": "write_file", "result": ok("Wrote scripts/spawner.lua.", {"path": "scripts/spawner.lua"})},
+            {"tool": "check_script", "result": ok("scripts/spawner.lua: no errors.", {"ok": True})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)sprite.?batch"}}],
+                   "max_calls": {"create_entity": 2},
+                   "any_of": [{"file_must": {"scripts/spawner.lua": [r"SpriteBatch", r"setPositions"]}},
+                              {"calls": [{"tool": "write_file", "args": {"content": "re:(?s)SpriteBatch.*setPositions"}}]}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_sort_bucket_break",
+        "kind": "guard",
+        "what_happened": "Reading get_render_stats batching.breaks, agents met sort_bucket (S52) and forked shaders or merged "
+                         "textures; the profiling guide says a Sorting Layer, Order in Layer or Sorting Group change breaks a "
+                         "batch by design and the fix is one layer and order for sprites that may batch.",
+        "text_at_issue": "jasper://docs/profiling Dynamic Batching table: 'sort_bucket: another Sorting Layer, Order in Layer or "
+                         "Sorting Group: put sprites that may batch in one'",
+        "source": "S52 R35 (new guide rows); no failure on record",
+        "prompt": "The coins in our 2D level draw in 40 draw calls even though they share one sprite sheet. Find out why and fix "
+                  "it so they batch.",
+        "mocks": [
+            {"tool": "get_render_stats", "result": ok(
+                "Game view: 46 draws, batching 3 batches (saved 2); breaks: sort_bucket 38, texture 1.",
+                {"draw_calls": 46, "batching": {"batches": 3, "saved_by_batching": 2,
+                                                "breaks": {"sort_bucket": 38, "texture": 1}}})},
+            {"tool": "read_file", "args": {"path": "re:profiling"}, "result": ok(
+                "| `sort_bucket` | another Sorting Layer, Order in Layer or Sorting Group: put sprites that may batch in one "
+                "(`jasper://docs/rendering-2d`) |")},
+            {"tool": "find_entities", "result": ok("40 GameObjects named Coin (50-89), each with Order in Layer 0-39.",
+                                                  {"entities": [{"id": 50 + i, "name": "Coin"} for i in range(40)]})},
+            {"tool": "set_properties", "result": ok("Set 1 property on 40 GameObjects.", {"entities": [{"id": 50}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_properties", "args": {"values": {"mesh": {"sortingOrder": "*"}}}}],
+                   "must_not_call": ["fork_shader", {"tool": "edit_sprite_atlas"}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_transparency_sort_axis",
+        "kind": "guard",
+        "what_happened": "New setting (S52): a top-down 2D game wants lower characters in front of higher ones within one "
+                         "Sorting Layer; the Custom Axis does it in one setting, where agents otherwise wrote a script setting "
+                         "every sprite's Order in Layer from its y each frame.",
+        "text_at_issue": "graphics.transparency_sort_mode: 'custom_axis: in 2D cameras, renderers of one Sorting Layer and Order "
+                         "in Layer draw by graphics.transparency_sort_axis (a larger dot(axis, position) first)'; "
+                         "graphics.transparency_sort_axis: 'The Custom Axis, default [0, 1, 0] (a higher y draws first: top-down)'",
+        "source": "S52 R4 (new setting text); no failure on record",
+        "files": GAME_FILES,
+        "prompt": "This is a top-down 2D game. Characters lower on the screen should be drawn in front of characters higher up, "
+                  "like in most top-down RPGs. Set that up for the whole project.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "graphics.transparency_sort_mode: \"default\" (default | custom_axis: in 2D cameras, renderers of one Sorting Layer "
+                "and Order in Layer draw by graphics.transparency_sort_axis (a larger dot(axis, position) first)); "
+                "graphics.transparency_sort_axis: [0, 1, 0] (the Custom Axis, default [0, 1, 0] (a higher y draws first: top-down))",
+                {"values": {"graphics.transparency_sort_mode": "default", "graphics.transparency_sort_axis": [0, 1, 0]}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["graphics.transparency_sort_mode"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"graphics.transparency_sort_mode": "custom_axis"}}}],
+                   "must_not_call": [{"tool": "write_file", "args": {"content": "re:sortingOrder"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_sorting_layer_rename_by_name",
+        "kind": "bad",
+        "what_happened": "Renaming a Sorting Layer, agents passed the new name list, which made a new layer and left the "
+                         "renderers of the old one on Default; an {id, name} entry keeps the layer and its renderers (S52).",
+        "text_at_issue": "tags_and_layers.sorting_layers: '... names, or {id, name} to rename a layer (it keeps its renderers)'",
+        "source": "S52 R1, R34 (review finding: a rename by names moved renderers to Default)",
+        "prompt": "Rename the Sorting Layer \"Front\" to \"Foreground\". Sprites already on it must stay on it.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "tags_and_layers.sorting_layers: [{\"id\": 0, \"name\": \"Default\"}, {\"id\": 3, \"name\": \"Front\"}] "
+                "(Sorting Layers in draw order, first drawn first, as [{id, name}]; must include \"Default\". Pass the complete "
+                "list: names, or {id, name} to rename a layer (it keeps its renderers); an unlisted layer is removed (its "
+                "renderers draw on Default).)",
+                {"values": {"tags_and_layers.sorting_layers": [{"id": 0, "name": "Default"}, {"id": 3, "name": "Front"}]}})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["tags_and_layers.sorting_layers"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings",
+                              "args": {"values": {"tags_and_layers.sorting_layers": "re:(?s)3.*Foreground|Foreground.*3"}}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_sprite_batch_without_sprite",
+        "kind": "bad",
+        "what_happened": "Agents added a Sprite Batch to an empty GameObject and then filled it from Lua; it draws its "
+                         "GameObject's Sprite, so add_component refuses it and the error names the fix (S52).",
+        "text_at_issue": "add_component error: 'A Sprite Batch goes on a GameObject with a Sprite (add a Sprite first).'",
+        "source": "S52 R10 (new error text); paraphrased from the design review",
+        "prompt": "GameObject 40 \"Coins\" is an empty GameObject in the open scene. Make it draw many coins from one Sprite "
+                  "Batch, using the texture sprites/coin.png. Don't write the script yet.",
+        "mocks": [
+            {"tool": "add_component", "args": {"component": "re:(?i)^sprite$"}, "result": ok(
+                "Added Sprite to GameObject 40 \"Coins\".", {"entity": {"id": 40}})},
+            {"tool": "add_component", "after": "add_component", "result": ok("Added Sprite Batch to GameObject 40 \"Coins\".",
+                                                                             {"entity": {"id": 40}})},
+            {"tool": "add_component", "result": err("A Sprite Batch goes on a GameObject with a Sprite (add a Sprite first).")},
+            {"tool": "set_properties", "result": ok("Set 1 property on GameObject 40 \"Coins\".", {"entity": {"id": 40}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)^sprite$"}},
+                             {"tool": "add_component", "args": {"component": "re:(?i)sprite.?batch"}}],
+                   "max_errors": {"add_component": 1},
+                   "must_not_call": ["create_entity"]},
+        "max_turns": 12,
     },
 ]

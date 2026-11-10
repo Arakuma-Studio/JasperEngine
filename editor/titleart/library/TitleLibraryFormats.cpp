@@ -655,6 +655,7 @@ namespace {
             }
         }
         out["placeholders"] = placeholders;
+        if (meta.contains("cjk") && meta["cjk"].is_object()) out["cjk"] = meta["cjk"];
         out["canvas_note"] = meta.value("canvas_note", std::string());
         out["provenance"] = provenanceJson(meta.contains("provenance") ? meta["provenance"] : NULL_JSON);
         for (auto it = meta.begin(); it != meta.end(); ++it) {

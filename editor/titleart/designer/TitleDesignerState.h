@@ -117,6 +117,12 @@ namespace jasperengine::editor::titledesigner {
 
         // ---- S85's Record mode (§6.8) ----
         void setEditRouter(std::function<Json(const Json&)> router) { editRouter = std::move(router); }
+        // the name the commit being routed takes instead of its own ("Record Key: Title/Scale")
+        void setRoutedStepName(const std::string& name) { routedStepName = name; }
+        // S87 R51-R52: the language the canvas shows and edits write ("" = the source); edits of
+        // overridable members then write that language's Translation (TitleLanguageEditing.h)
+        const std::string& language() const { return languageCode; }
+        void setLanguage(const std::string& code);
 
         // ---- selection (view state, D8) ----
         const std::vector<NodeRef>& selection() const { return selected; }
@@ -157,6 +163,8 @@ namespace jasperengine::editor::titledesigner {
         bool commitPerStage = false;
         TitleOpsResult result;
         std::function<Json(const Json&)> editRouter;
+        std::string routedStepName;
+        std::string languageCode;
         std::vector<NodeRef> selected;
         std::optional<ExternalChange> external;
 

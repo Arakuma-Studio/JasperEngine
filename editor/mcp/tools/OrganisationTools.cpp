@@ -209,7 +209,8 @@ void listShortcutsTool(const CallPtr& call) {
     if (!contextName.empty()) {
         context = parseShortcutContext(contextName);
         if (!context) {
-            call->fail("context is global, editor, scene_view, hierarchy, project, console, animation, pose_animation, curve or color_picker.");
+            call->fail("context is global, editor, scene_view, hierarchy, project, console, animation, pose_animation, curve, color_picker, "
+                       "voxel_brush or terrain_brush.");
             return;
         }
     }
@@ -252,7 +253,8 @@ void setShortcutTool(const CallPtr& call) {
     std::vector<Chord> chords;
     for (const Json& value : args["chords"]) {
         const std::string text = value.is_string() ? value.get<std::string>() : std::string();
-        std::optional<Chord> chord = Chord::parse(text);
+        // the names list_shortcuts printed on this platform (Control+Cmd+F on macOS)
+        std::optional<Chord> chord = Chord::parse(text, catalog.isMac());
         if (!chord || !Chord::isBindableKey(chord->key())) {
             call->fail("\"" + text + "\" is not a chord: Ctrl, Shift, Alt then one key (\"Ctrl+Shift+S\", \"F2\", \"Numpad7\", \"Shift+[\").");
             return;
@@ -796,7 +798,8 @@ void registerOrganisationTools(McpRegistry& registry) {
             "menu_shortcut, conflicts, shadowed_by}. Ctrl means Cmd on macOS.";
         tool.inputSchema = object({
             {"group", string("File, Edit, Tools, Scene View...")},
-            {"context", stringEnum("", {"global", "editor", "scene_view", "hierarchy", "project", "console", "animation", "pose_animation", "curve", "color_picker"})},
+            {"context", stringEnum("", {"global", "editor", "scene_view", "hierarchy", "project", "console", "animation", "pose_animation", "curve",
+                                        "color_picker", "sprite_preview", "voxel_brush", "terrain_brush"})},
             {"conflicts_only", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;

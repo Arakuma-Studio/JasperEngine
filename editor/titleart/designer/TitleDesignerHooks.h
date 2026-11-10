@@ -9,9 +9,8 @@
 //   tiers, S85's Exact), lint check sources (S85's animation checks) and the Library provider
 //   (S84's Looks, Color Schemes and Templates, its tile previews, favorites and recents).
 // - A spec compiled out registers nothing: its UI does not exist and costs nothing. Without a
-//   Library provider the window's Library shows S82's starter Looks and Color Schemes
-//   (TitleStarterLibrary), and its empty state offers New Text instead of template cards
-//   (S82 Deviations 2 and 16).
+//   Library provider (S84 registers the one the editor has) the window shows no Library, and its
+//   empty state offers New Text instead of template cards (S82 Deviations 2 and 16).
 // - Registration happens at startup (the spec's editor registration function) or from tests;
 //   reads are from the main thread.
 
@@ -55,6 +54,16 @@ namespace jasperengine::editor::titledesigner {
     void removeToolbarItem(const std::string& id);
     const std::vector<ToolbarItemDef>& toolbarItems();
 
+    // ---- canvas overlays (S87's fit boxes and language badge) ----
+    struct CanvasOverlayDef {
+        std::string id;
+        // drawn over the canvas image; `xform` maps document space (the device placement applied)
+        std::function<void(TitleDesignerState& state, ImDrawList* drawList, ImVec2 canvasMin, ImVec2 canvasMax, const CanvasXform& xform)> draw;
+    };
+    void addCanvasOverlay(CanvasOverlayDef overlay);
+    void removeCanvasOverlay(const std::string& id);
+    const std::vector<CanvasOverlayDef>& canvasOverlays();
+
     // ---- edits and time (S85) ----
     using EditRouter = std::function<Json(const Json& ops)>;
     void setEditRouter(EditRouter router);
@@ -63,9 +72,32 @@ namespace jasperengine::editor::titledesigner {
     void setTimeSource(TimeSource source);
     const TimeSource& timeSource();
 
+    // ---- the canvas pose (S85's Animation panel): while `active`, the panel draws the sampled
+    // pose over the backdrop instead of the document's render (the canvas requests no render) ----
+    struct CanvasPoseSource {
+        std::function<bool(const TitleDesignerState& state)> active;
+        std::function<void(TitleDesignerState& state, ImDrawList* drawList, ImVec2 min, ImVec2 max, const CanvasXform& xform)> draw;
+    };
+    void setCanvasPoseSource(CanvasPoseSource source);
+    const CanvasPoseSource& canvasPoseSource();
+
     // ---- the 3D gizmo (R35): S86 supplies the target of a Dimension 3D layer or letter ----
-    using Gizmo3DProvider = std::function<bool(const TitleDesignerState& state, const std::string& layerId, Gizmo3DTarget& out)>;
+    // the characters selected in the canvas text editor (R38): their indexes and the document
+    // point of their em cells' centre
+    struct Gizmo3DLetters {
+        std::vector<int> indexes;
+        TitleVec2 centre;
+    };
+    // `letters` null: the layer's target; else the target of those characters of the layer
+    using Gizmo3DProvider = std::function<bool(const TitleDesignerState& state, const std::string& layerId, const Gizmo3DLetters* letters,
+                                               Gizmo3DTarget& out)>;
     void setGizmo3DProvider(Gizmo3DProvider provider);
+
+    // drawn over the canvas every frame, for a highlight the document does not store (S86 R52's
+    // band outline)
+    using CanvasOverlay = std::function<void(const TitleDesignerState&, ImDrawList*, const CanvasXform&)>;
+    void addCanvasOverlay(const std::string& id, CanvasOverlay overlay);
+    void runCanvasOverlays(const TitleDesignerState& state, ImDrawList* drawList, const CanvasXform& xform);
     const Gizmo3DProvider& gizmo3DProvider();
 
     // ---- Preview As (R4, R28) ----
@@ -77,10 +109,22 @@ namespace jasperengine::editor::titledesigner {
         // false while it has nothing to show (the canvas shows the checker and a spinner)
         std::function<bool(TitleDesignerState& state, ImDrawList* drawList, ImVec2 min, ImVec2 max, const CanvasXform& xform)> draw;
         std::function<void()> close;    // the mode was left (free its renderer)
+        // a mode without `draw`: the canvas renders the working document as usual, at this
+        // RenderRequest::tier (S86's Realtime tiers: TitleTier High 1, Medium 2, Low 3)
+        int renderTier = 0;
     };
     void addPreviewMode(PreviewModeDef mode);
     void removePreviewMode(const std::string& id);
     const std::vector<PreviewModeDef>& previewModes();
+
+    // ---- work in the engine's render phase ----
+    // a mode's work that must run in the engine's render phase this frame (S81's Glyph Atlas title
+    // runs its scheduler there while no scene draws); one-shot, drained by the canvas view
+    void requestEngineFrame(std::function<void()> work);
+    void runEngineFrameRequests();
+    // a request waits or the last drain ran one: the editor keeps drawing, or work asked for from
+    // a window would wait for the next mouse move
+    bool engineFramesWanted();
 
     // ---- lint (R53) ----
     struct CheckFinding {
@@ -188,5 +232,11 @@ namespace jasperengine::editor::titledesigner {
     };
     void setLibraryProvider(std::shared_ptr<TitleLibraryProvider> provider);
     TitleLibraryProvider* libraryProvider();
+
+    // ---- the editor's own extensions ----
+    // registers the hooks of the title specs built into this editor (S81's Runtime section and
+    // Glyph Atlas mode, S83's checks, S86's 3D rows, pickers, tiers and gizmo target); the window
+    // calls it once (TitleDesignerExtensions.cpp)
+    void registerTitleDesignerExtensions();
 
 }

@@ -16,6 +16,8 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
+#include <string>
 #include <vector>
 
 namespace jasperengine::editor {
@@ -29,6 +31,7 @@ namespace jasperengine::editor {
             bool bounds = false;
             bool colliders = true;
             bool forceFields = true;
+            bool pixelGrid = false;     // the base-pixel grid around the emitters when zoomed in 4x or more (S49 R34)
         };
         static Gizmos& gizmos();
 
@@ -63,6 +66,8 @@ namespace jasperengine::editor {
             std::vector<Entity> extra;
         };
         std::map<uint32_t, State> states;
+
+        void drawPixelGrid(Project* project, SceneProject* sceneProject, const std::vector<Entity>& systems, const ImVec2& canvasMin, const ImVec2& canvasSize);
     };
 
 }

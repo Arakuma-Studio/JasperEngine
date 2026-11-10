@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include "LogCapture.h"
+
 #include "player/ContentManifest.h"
 #include "player/PlayerModules.h"
 #include "serialization/CookedScene.h"
@@ -91,6 +93,46 @@ TEST(ContentManifest, ChecksAtStart) {
     EXPECT_FALSE(checkContent(m, "linux-x64-glcore-release", access, false, problems));
 }
 
+TEST(ContentManifest, ReadsContentFormat) {
+    EXPECT_TRUE(cook::playerReadsContentFormat(cook::contentFormatVersion()));
+    EXPECT_FALSE(cook::playerReadsContentFormat(std::to_string(cook::FORMAT_MAJOR + 1) + ".0"));
+    EXPECT_FALSE(cook::playerReadsContentFormat("1.x"));
+    EXPECT_TRUE(cook::readsContentFormat("1.5", "1.5"));
+    EXPECT_TRUE(cook::readsContentFormat("1.5", "1.0"));
+    EXPECT_TRUE(cook::readsContentFormat("1.12", "1.9"));
+    EXPECT_FALSE(cook::readsContentFormat("1.5", "1.6"));
+    EXPECT_FALSE(cook::readsContentFormat("1.9", "1.12"));
+    EXPECT_FALSE(cook::readsContentFormat("1.5", "2.0"));
+    EXPECT_FALSE(cook::readsContentFormat("2.0", "1.5"));
+    for (const char* bad : {"", "1", "1.", ".5", "1.x", "v1.5", "1.5.0", "-1.5"}) EXPECT_FALSE(cook::readsContentFormat("1.5", bad)) << bad;
+}
+
+// A player runs content of a newer minor (its additions are skipped, one warning per version) and
+// of an older one; another major is refused, naming the fix
+TEST(ContentManifest, ReadsANewerMinorAndRefusesAnotherMajor) {
+    present() = {"scenes/3.jscn", "scenes/4.jscn", "prefabs/2.jpfb", "assets/shaders/MESH_x_glsl410.sdat", "content.jpak"};
+    const ContentAccess access{&exists, &noSha};
+    ContentManifest m = sample();
+    const std::string newer = std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(cook::FORMAT_MINOR + 1);
+    m.contentFormatVersion = newer;
+    std::vector<std::string> problems;
+    EXPECT_TRUE(checkContent(m, "linux-x64-glcore-release", access, false, problems)) << problems.front();
+    EXPECT_TRUE(checkContent(m, "linux-x64-glcore-release", access, false, problems)) << problems.front();
+    const std::string warning = "content " + newer + " was made by a newer editor; features newer than " + cook::contentFormatVersion() +
+                                " are skipped";
+    EXPECT_EQ(jasperengine::test::LogCapture::sinceTestStart().count(D_LOG_WARN, warning), 1u) << "one warning per version";
+
+    m.contentFormatVersion = std::to_string(cook::FORMAT_MAJOR) + ".0";
+    EXPECT_TRUE(checkContent(m, "linux-x64-glcore-release", access, false, problems)) << problems.front();
+
+    const std::string otherMajor = std::to_string(cook::FORMAT_MAJOR + 1) + ".0";
+    m.contentFormatVersion = otherMajor;
+    EXPECT_FALSE(checkContent(m, "linux-x64-glcore-release", access, false, problems));
+    ASSERT_EQ(problems.size(), 1u);
+    EXPECT_NE(problems[0].find("content format " + otherMajor + ", this player reads " + cook::contentFormatVersion() +
+                               ": build the game with the editor of this player's version"), std::string::npos) << problems[0];
+}
+
 // S34 R3: a player variant runs only content whose modules it has; content of an older editor
 // (no modules) needs every module
 TEST(ContentManifest, RefusesContentNeedingAModuleThePlayerLacks) {
@@ -116,10 +158,71 @@ TEST(ContentManifest, RefusesContentNeedingAModuleThePlayerLacks) {
     ASSERT_TRUE(ContentManifest::fromJson(json, old, error)) << error;
     EXPECT_FALSE(old.hasModules);
     EXPECT_EQ(missingModules(old, allModules()), std::vector<std::string>{});
-    EXPECT_EQ(missingModules(old, lite), (std::vector<std::string>{"htmlui", "video", "runtimeshaders"}));
+    // T2 added noise, T6 voxel, T4 terrainworld and T1 runtime terrain edits, which lite variants leave out (N11, T4 R55)
+    EXPECT_EQ(missingModules(old, lite),
+              (std::vector<std::string>{"htmlui", "video", "runtimeshaders", "noise", "voxel", "terrainworld", "terrainedit"}));
     // and a Compile build (no player id) is not asked
     problems.clear();
     EXPECT_TRUE(checkContent(m, "", access, false, problems, &lite));
+}
+
+// T6 R47, AC38: lite3d leaves Voxel Volumes out, so content with one does not start on it (S34 R3)
+TEST(ContentManifest, ContentNeedingVoxelRefusesLite3D) {
+    ContentManifest m = sample();
+    m.modules = {"physics3d", "navigation", "voxel"};
+    present() = {"scenes/3.jscn", "scenes/4.jscn", "prefabs/2.jpfb", "assets/shaders/MESH_x_glsl410.sdat", "content.jpak"};
+    const ContentAccess access{&exists, &noSha};
+    const std::vector<std::string> lite3d = {"physics3d", "navigation"};
+    std::vector<std::string> problems;
+    EXPECT_FALSE(checkContent(m, "linux-x64-glcore-release-lite3d", access, false, problems, &lite3d));
+    ASSERT_FALSE(problems.empty());
+    bool named = false;
+    for (const std::string& problem : problems) named = named || problem.find("Voxel Volumes (voxel)") != std::string::npos;
+    EXPECT_TRUE(named);
+    EXPECT_EQ(missingModules(m, lite3d), std::vector<std::string>{"voxel"});
+}
+
+// T4 R55, AC36: lite3d leaves Terrain Worlds out, so content with one does not start on it (S34 R3)
+TEST(ContentManifest, ContentNeedingTerrainWorldRefusesLite3D) {
+    ContentManifest m = sample();
+    m.modules = {"physics3d", "navigation", "terrainworld"};
+    present() = {"scenes/3.jscn", "scenes/4.jscn", "prefabs/2.jpfb", "assets/shaders/MESH_x_glsl410.sdat", "content.jpak"};
+    const ContentAccess access{&exists, &noSha};
+    const std::vector<std::string> lite3d = {"physics3d", "navigation"};
+    std::vector<std::string> problems;
+    EXPECT_FALSE(checkContent(m, "linux-x64-glcore-release-lite3d", access, false, problems, &lite3d));
+    bool named = false;
+    for (const std::string& problem : problems) named = named || problem.find("Terrain World (terrainworld)") != std::string::npos;
+    EXPECT_TRUE(named);
+    EXPECT_EQ(missingModules(m, lite3d), std::vector<std::string>{"terrainworld"});
+}
+
+// the newest last: T6's Voxel Volumes, T4's Terrain World, then T1's runtime terrain edits
+TEST(PlayerModules, KnowsVoxelTerrainWorldAndTerrainEdits) {
+    // the terrain programme's three, then Title Art's (S81 R51), which merged after them
+    ASSERT_GE(allModules().size(), 4u);
+    EXPECT_EQ(allModules()[allModules().size() - 4], "voxel");
+    EXPECT_EQ(allModules()[allModules().size() - 3], "terrainworld");
+    EXPECT_EQ(allModules()[allModules().size() - 2], "terrainedit");
+    EXPECT_EQ(allModules().back(), "titleart");
+    EXPECT_EQ(moduleDisplayName("voxel"), "Voxel Volumes");
+    EXPECT_EQ(moduleDisplayName("terrainworld"), "Terrain World");
+    EXPECT_EQ(moduleDisplayName("terrainedit"), "runtime terrain edits");
+#if JASPERENGINE_VOXEL
+    EXPECT_TRUE(isModuleBuilt("voxel"));
+#else
+    EXPECT_FALSE(isModuleBuilt("voxel"));
+#endif
+#if JASPERENGINE_TERRAIN_WORLD
+    EXPECT_TRUE(isModuleBuilt("terrainworld"));
+#else
+    EXPECT_FALSE(isModuleBuilt("terrainworld"));
+#endif
+#if JASPERENGINE_TERRAIN_EDIT
+    EXPECT_TRUE(isModuleBuilt("terrainedit"));
+#else
+    EXPECT_FALSE(isModuleBuilt("terrainedit"));
+#endif
 }
 
 TEST(PlayerModules, BuiltModulesFollowTheBuildDefinitions) {

@@ -4,6 +4,8 @@
 #include "EntityCloner.h"
 #include "model/ModelCpuData.h"
 #include "component/ActionComponent.h"
+#include "component/TerrainWorldComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
@@ -51,6 +53,9 @@
 #include "component/RotationTweenComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/AudioSnapshotComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
+#include "component/SortingGroupComponent.h"
+#include "component/SpriteBatchComponent.h"
 #include "component/TitleArtRendererComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
@@ -85,6 +90,7 @@
 #include "component/SpriteComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
+#include "component/TerrainComponent.h"
 #include "EntityRegistry.h"
 #include "Scene.h"
 #include "subsystem/MeshSystem.h"
@@ -245,16 +251,8 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
         submesh.render = ObjectRender();
         submesh.depthRender = ObjectRender();
         submesh.gbufferRender = ObjectRender();
-        // the batch variants too (spec S55): the clone's load destroys what they hold, which
-        // were the original's pipelines
-        submesh.batchRender = ObjectRender();
-        submesh.batchDepthRender = ObjectRender();
-        submesh.batchShader.reset();
-        submesh.batchDepthShader.reset();
-        submesh.batchShaderProperties = 0;
-        submesh.batchDepthShaderProperties = 0;
-        submesh.batchShaderId = 0;
-        submesh.batchDepthShaderId = 0;
+        // the batch variants too (spec S55): the clone's load makes its own
+        submesh.batch.reset();
         // the clone's load makes its own extra pass (sharing it would let the clone write the
         // original's parameter blocks, and leave its pipelines to whichever is freed last)
         submesh.extraPass.reset();
@@ -448,6 +446,7 @@ void prepare<InstancedMeshComponent>(InstancedMeshComponent& instmesh, Entity, C
 template<>
 void prepare<TerrainComponent>(TerrainComponent& terrain, Entity, CloneContext& ctx) {
     remapFramebufferTexture(terrain.heightMap, ctx);
+    remapFramebufferTexture(terrain.holeMap, ctx);
     for (Texture& blendMap : terrain.blendMaps) {
         remapFramebufferTexture(blendMap, ctx);
     }
@@ -468,12 +467,18 @@ void prepare<TerrainComponent>(TerrainComponent& terrain, Entity, CloneContext& 
     terrain.needUpdateTerrain = true;
     terrain.needUpdateTexture = false;
     terrain.needUpdateFoliage = true;
+    // a hold belongs to the volume attached to the original (T3 R29)
+    terrain.holeMapHolds = 0;
+    terrain.surfaceRevision = 0;
+    terrain.editState.reset();
+    terrain.world = nullptr;
 }
 
 template<>
 void prepare<TextComponent>(TextComponent& text, Entity, CloneContext&) {
     text.loaded = false;
     text.stbtext.reset();
+    text.bitmapText.reset();
     text.atlasVersion = 0;
     text.needReloadAtlas = false;
     text.needUpdateText = true;
@@ -936,6 +941,22 @@ void prepare<AudioSnapshotComponent>(AudioSnapshotComponent& snapshot, Entity, C
 }
 
 template<>
+void prepare<PixelPerfectCameraComponent>(PixelPerfectCameraComponent& camera, Entity, CloneContext&) {
+    // the copy's layout is made by the next render update
+    const PixelPerfectCameraComponent defaults;
+    camera.layout = defaults.layout;
+    camera.snappedPosition = defaults.snappedPosition;
+    camera.subpixelOffset = defaults.subpixelOffset;
+    camera.active = false;
+}
+
+template<>
+void prepare<SpriteBatchComponent>(SpriteBatchComponent& batch, Entity, CloneContext&) {
+    // instances are runtime data scripts fill: a copy starts empty, with GPU buffers of its own
+    batch.state.reset();
+}
+
+template<>
 void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, CloneContext& ctx) {
     layout.panel = ctx.remap(layout.panel);
     layout.needUpdateSizes = true;
@@ -1195,6 +1216,15 @@ void prepare<NavMeshSurfaceComponent>(NavMeshSurfaceComponent& surface, Entity, 
 }
 
 template<>
+void prepare<VoxelVolumeComponent>(VoxelVolumeComponent& volume, Entity, CloneContext& ctx) {
+    volume.terrain = ctx.remap(volume.terrain);
+    volume.focus = ctx.remap(volume.focus);
+    volume.onEdited.clear();
+    volume.onCollisionUpdated.clear();
+    volume.onBodyRescued.clear();
+}
+
+template<>
 void prepare<NavGridComponent>(NavGridComponent& grid, Entity, CloneContext& ctx) {
     grid.sourceEntity = ctx.remap(grid.sourceEntity);
     if (grid.map)
@@ -1313,6 +1343,9 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<PixelPerfectCameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SortingGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SpriteBatchComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LightComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<Light2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ShadowCaster2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
@@ -1348,6 +1381,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<TranslateTracksComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScaleTracksComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TerrainComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<TerrainWorldComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AudioSourceComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TilemapComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -1373,6 +1407,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<NavGridComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SplineComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SplineExtrudeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<VoxelVolumeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SplineInstantiateComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SplineAnimateComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<InstancedMeshComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

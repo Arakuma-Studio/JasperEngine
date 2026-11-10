@@ -145,13 +145,14 @@ namespace jasperengine::titleart {
     };
     JASPERENGINE_API TitleCurve decodeCurve(const Json& value);
 
-    // Transform (§6.1): position px (y up), rotation deg clockwise, uniform scale, flips (mirror
-    // about the position, before rotation)
+    // Transform (§6.1): position px (y up), rotation deg clockwise, uniform scale and S85's
+    // stretch, flips (mirror about the position, before rotation)
     struct TitleTransform {
         TitleVec2 position;
         double rotation = 0.0;
         double scale = 1.0;
         bool flipX = false, flipY = false;
+        TitleVec2 stretch{1.0, 1.0};    // S85: a non-uniform scale on top of `scale` (identity [1, 1])
     };
     JASPERENGINE_API TitleTransform decodeTransform(const Json& transform);
 

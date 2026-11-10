@@ -165,9 +165,12 @@ void MipChain::build(std::vector<MipLevel>& levels, const MipChainOptions& optio
         next.width = nextWidth;
         next.height = nextHeight;
         next.pixels.resize((size_t)nextWidth * (size_t)nextHeight * texel);
-        stbir_resize(working.data(), width, height, (int)(width * texel),
-                     next.pixels.data(), nextWidth, nextHeight, (int)(nextWidth * texel),
-                     layout, datatype, edge, filter);
+        if (options.filter == MipFilter::Nearest)
+            nearestResize(working.data(), width, height, next.pixels.data(), nextWidth, nextHeight, texel);
+        else
+            stbir_resize(working.data(), width, height, (int)(width * texel),
+                         next.pixels.data(), nextWidth, nextHeight, (int)(nextWidth * texel),
+                         layout, datatype, edge, filter);
         if (normals)
             mipNormalizeLevel(next);
         working = next.pixels;
@@ -181,6 +184,30 @@ void MipChain::build(std::vector<MipLevel>& levels, const MipChainOptions& optio
     }
     if (bleed)
         bleedAlphaBorder(levels[0].pixels.data(), levels[0].width, levels[0].height);
+}
+
+int jasperengine::nearestSourceIndex(int i, int sourceSize, int destinationSize){
+    if (sourceSize <= 0 || destinationSize <= 0)
+        return 0;
+    // ceil((2i + 1) * s / 2d) - 1 == floor(((2i + 1) * s - 1) / 2d)
+    const int64_t numerator = (2 * (int64_t)i + 1) * (int64_t)sourceSize - 1;
+    const int64_t index = numerator / (2 * (int64_t)destinationSize);
+    return (int)std::clamp<int64_t>(index, 0, sourceSize - 1);
+}
+
+void jasperengine::nearestResize(const uint8_t* source, int sourceWidth, int sourceHeight, uint8_t* destination,
+                                 int destinationWidth, int destinationHeight, size_t texelBytes){
+    if (!source || !destination || sourceWidth <= 0 || sourceHeight <= 0 || destinationWidth <= 0 || destinationHeight <= 0)
+        return;
+    std::vector<int> columns((size_t)destinationWidth);
+    for (int x = 0; x < destinationWidth; x++)
+        columns[(size_t)x] = nearestSourceIndex(x, sourceWidth, destinationWidth);
+    for (int y = 0; y < destinationHeight; y++){
+        const uint8_t* row = source + (size_t)nearestSourceIndex(y, sourceHeight, destinationHeight) * (size_t)sourceWidth * texelBytes;
+        uint8_t* out = destination + (size_t)y * (size_t)destinationWidth * texelBytes;
+        for (int x = 0; x < destinationWidth; x++)
+            std::memcpy(out + (size_t)x * texelBytes, row + (size_t)columns[(size_t)x] * texelBytes, texelBytes);
+    }
 }
 
 void jasperengine::bleedAlphaBorder(uint8_t* pixels, int width, int height, int rings){

@@ -10,7 +10,12 @@ bindings; a symbol the bindings do not list is added. search_engine_api returns 
 _ANIME_PARAMS = ('params: properties to animate (opacity, translateX/Y, scale, rotate, any CSS property in camelCase, '
                  '"--custom") with a value, {from=, to=} or keyframes, plus duration, delay, ease ("outCubic", '
                  '"outElastic(1, .6)"), loop, alternate, autoplay, onBegin, onUpdate, onComplete (ms)')
+_VOXEL_OPTIONS = '{blend = metres, material = slot, weight = 0-1, falloff = 0-1, amount = 0-1, iterations = 1-8}'
 MANUAL_SYMBOLS = [
+    ('VoxelVolume', 'dig', 'Method', 'VoxelVolume:dig(shape, ' + _VOXEL_OPTIONS + ') -> VoxelEditReport'),
+    ('VoxelVolume', 'fill', 'Method', 'VoxelVolume:fill(shape, ' + _VOXEL_OPTIONS + ') -> VoxelEditReport'),
+    ('VoxelVolume', 'smooth', 'Method', 'VoxelVolume:smooth(shape, ' + _VOXEL_OPTIONS + ') -> VoxelEditReport'),
+    ('VoxelVolume', 'paint', 'Method', 'VoxelVolume:paint(shape, ' + _VOXEL_OPTIONS + ') -> VoxelEditReport'),
     ('anime', 'animate', 'StaticMethod',
      'anime.animate(targets, params) -> AnimeAnimation; targets: CSS selector, UIElement, table or a list; ' + _ANIME_PARAMS),
     ('anime', 'createTimeline', 'StaticMethod',
@@ -91,4 +96,30 @@ MANUAL_SYMBOLS = [
     ('Lattice', 'applyPreset', 'Method',
      'Lattice:applyPreset(name, axis, amount, toward = "") -> bool; name squash|stretch|taper|twist|bend|'
      'bulge|shear|noise, axis/toward "x"|"y"|"z"'),
+    # Sprite sheets (GameObjectClassesLua.cpp, docs/aseprite.md): lambdas returning tables
+    ('Sprite', 'getSheet', 'Method', 'Sprite:getSheet() -> SpriteSheet or nil (a sheet sprite\'s sheet)'),
+    ('Sprite', 'playTag', 'Method',
+     'Sprite:playTag(name, speed = 1) (a sheet tag at the sheet\'s durations, its direction and repeat; repeat 0 loops; no clip events)'),
+    ('Sprite', 'tag', 'Property', 'Sprite.tag: string or nil (the tag playing or that finished last)'),
+    ('Sprite', 'getTag', 'Method',
+     'Sprite:getTag(name) -> {name, from, to, direction, repeat, durationMs, color, userData} or nil (0-based frames)'),
+    ('Sprite', 'getTags', 'Method', 'Sprite:getTags() -> array of getTag tables'),
+    ('Sprite', 'getSlice', 'Method',
+     'Sprite:getSlice(name) -> {name, rect, center, pivot, visible, userData} or nil, on the shown frame in local units'),
+    ('Sprite', 'getSlices', 'Method', 'Sprite:getSlices() -> array of getSlice tables'),
+    ('Sprite', 'getUserData', 'Method', 'Sprite:getUserData() -> {text, color, properties} or nil (the .aseprite sprite\'s user data)'),
+    ('SpriteSheet', 'load', 'StaticMethod', 'SpriteSheet.load(path) -> SpriteSheet or nil (an .aseprite file or a texture)'),
+    ('SpriteSheet', 'path', 'Property', 'SpriteSheet.path: string'),
+    ('SpriteSheet', 'frameCount', 'Property', 'SpriteSheet.frameCount: integer'),
+    ('SpriteSheet', 'pageCount', 'Property', 'SpriteSheet.pageCount: integer'),
+    ('SpriteSheet', 'frameNames', 'Property', 'SpriteSheet.frameNames: string[] (frame order)'),
+    ('SpriteSheet', 'findFrame', 'Method', 'SpriteSheet:findFrame(name) -> integer (0-based; -1 when absent)'),
+    ('SpriteSheet', 'getFrame', 'Method',
+     'SpriteSheet:getFrame(nameOrIndex) -> {name, index, page, rect, sourceSize, offset, pivot, border, durationMs} or nil (pixels, y down)'),
+    ('SpriteSheet', 'getTag', 'Method', 'SpriteSheet:getTag(name) -> the Sprite:getTag table or nil'),
+    ('SpriteSheet', 'getSlice', 'Method',
+     'SpriteSheet:getSlice(name, frame = 0) -> {name, rect, center, pivot, visible, userData} or nil (pixels, y down)'),
+    ('SpriteSheet', 'tags', 'Property', 'SpriteSheet.tags: string[]'),
+    ('SpriteSheet', 'slices', 'Property', 'SpriteSheet.slices: string[]'),
+    ('SpriteSheet', 'properties', 'Property', 'SpriteSheet.properties: table or nil (the sprite\'s user properties)'),
 ]

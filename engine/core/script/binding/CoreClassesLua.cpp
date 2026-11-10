@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "component/TerrainComponent.h"
+#include "terrain/TerrainQuality.h"
 #include "object/GameObject.h"
 #include "LuaBinding.h"
 #include <optional>
@@ -57,6 +59,7 @@
 #endif
 
 #include "subsystem/ActionSystem.h"
+#include "component/Transform.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -1413,6 +1416,42 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("CROP", Scaling::CROP)
         .addVariable("STRETCH", Scaling::STRETCH)
         .addVariable("NATIVE", Scaling::NATIVE)
+        .addVariable("INTEGER", Scaling::INTEGER)
+        .addVariable("INTEGER_EXPAND", Scaling::INTEGER_EXPAND)
+        .endNamespace();
+
+    // the Pixel Perfect Camera's choices (S41)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PixelUpscaleMode")
+        .addVariable("INTEGER", PixelUpscaleMode::INTEGER)
+        .addVariable("INTEGER_EXPAND", PixelUpscaleMode::INTEGER_EXPAND)
+        .addVariable("STRETCH_FILL", PixelUpscaleMode::STRETCH_FILL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PixelRotation")
+        .addVariable("CAMERA", PixelRotation::CAMERA)
+        .addVariable("STEPS_90", PixelRotation::STEPS_90)
+        .addVariable("ON_GRID", PixelRotation::ON_GRID)
+        .endNamespace();
+
+    // 2D sorting and Sprite Batch (S52)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SpriteSortPoint")
+        .addVariable("CENTER", SpriteSortPoint::CENTER)
+        .addVariable("PIVOT", SpriteSortPoint::PIVOT)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SpriteBatchMode")
+        .addVariable("RETAINED", SpriteBatchMode::RETAINED)
+        .addVariable("CLEAR_EACH_FRAME", SpriteBatchMode::CLEAR_EACH_FRAME)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SpriteBatchSpace")
+        .addVariable("LOCAL", SpriteBatchSpace::LOCAL)
+        .addVariable("WORLD", SpriteBatchSpace::WORLD)
         .endNamespace();
 
     // the Canvas Scaler (Unity's CanvasScaler.ScaleMode, ScreenMatchMode, Unit)
@@ -1766,6 +1805,26 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("TerrainQualitySetting")
+        .addVariable("AUTO", TerrainQualitySetting::AUTO)
+        .addVariable("HIGH", TerrainQualitySetting::HIGH)
+        .addVariable("MEDIUM", TerrainQualitySetting::MEDIUM)
+        .addVariable("LOW", TerrainQualitySetting::LOW)
+        .endNamespace()
+        .beginNamespace("TerrainOffscreenShadows")
+        .addVariable("AUTO", TerrainOffscreenShadows::AUTO)
+        .addVariable("ON", TerrainOffscreenShadows::ON)
+        .addVariable("OFF", TerrainOffscreenShadows::OFF)
+        .endNamespace()
+        .beginNamespace("TerrainMacroMode")
+        .addVariable("OFF", TerrainMacroMode::OFF)
+        .addVariable("NOISE", TerrainMacroMode::NOISE)
+        .addVariable("BASE_MAP", TerrainMacroMode::BASE_MAP)
+        .endNamespace()
+        .beginNamespace("TerrainCliffProjection")
+        .addVariable("AUTO", TerrainCliffProjection::AUTO)
+        .addVariable("FLAT_ONLY", TerrainCliffProjection::FLAT_ONLY)
+        .endNamespace()
         .beginNamespace("MaterialLighting")
         .addVariable("AUTO", MaterialLighting::AUTO)
         .addVariable("PIXEL", MaterialLighting::PIXEL)
@@ -1965,6 +2024,25 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("CLASSIC", FilmGrainType::CLASSIC)
         .addVariable("LENS", FilmGrainType::LENS)
         .addVariable("FILMIC", FilmGrainType::FILMIC)
+        .endNamespace();
+
+    // Palette Quantize (S43)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PaletteDither")
+        .addVariable("NONE", PaletteDither::NONE)
+        .addVariable("BAYER2", PaletteDither::BAYER2)
+        .addVariable("BAYER4", PaletteDither::BAYER4)
+        .addVariable("BAYER8", PaletteDither::BAYER8)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PaletteDistance")
+        .addVariable("OKLAB", PaletteDistance::OKLAB)
+        .addVariable("RGB", PaletteDistance::RGB)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PalettePrecision")
+        .addVariable("NORMAL", PalettePrecision::NORMAL)
+        .addVariable("HIGH", PalettePrecision::HIGH)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -2252,6 +2330,16 @@ void LuaBinding::registerCoreClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<Engine>("Engine")
 
+        // T3 R48: a tier for every terrain, until cleared; a tier the build did not ship clamps to the nearest
+        .addStaticFunction("setTerrainQuality", +[](TerrainQualitySetting quality){
+            switch (quality){
+                case TerrainQualitySetting::HIGH: terraincore::TerrainQualitySettings::setGlobalOverride(terraincore::TerrainQuality::HIGH); break;
+                case TerrainQualitySetting::MEDIUM: terraincore::TerrainQualitySettings::setGlobalOverride(terraincore::TerrainQuality::MEDIUM); break;
+                case TerrainQualitySetting::LOW: terraincore::TerrainQualitySettings::setGlobalOverride(terraincore::TerrainQuality::LOW); break;
+                default: terraincore::TerrainQualitySettings::clearGlobalOverride(); break;
+            }
+        })
+        .addStaticFunction("clearTerrainQuality", +[](){ terraincore::TerrainQualitySettings::clearGlobalOverride(); })
         .addStaticProperty("scene", &Engine::getScene, &Engine::setScene)
         .addStaticFunction("setScene", &Engine::setScene)
         .addStaticFunction("getScene", &Engine::getScene)
@@ -2272,6 +2360,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("preferredCanvasHeight", &Engine::getPreferredCanvasHeight)
         .addStaticProperty("viewRect", &Engine::getViewRect)
         .addStaticProperty("scalingMode", &Engine::getScalingMode, &Engine::setScalingMode)
+        .addStaticFunction("getPixelsPerUnit", &Engine::getPixelsPerUnit)
+        .addStaticFunction("setDefaultTextureFilter", &Engine::setDefaultTextureFilter)
+        .addStaticFunction("getDefaultTextureFilter", &Engine::getDefaultTextureFilter)
         .addStaticProperty("textureStrategy", &Engine::getTextureStrategy, &Engine::setTextureStrategy)
         .addStaticFunction("setTextureQuality", &Engine::setTextureQuality)
         .addStaticFunction("getTextureQuality", &Engine::getTextureQuality)
@@ -2284,6 +2375,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("setAtmosphereQuality", &Engine::setAtmosphereQuality)
         .addStaticFunction("getAtmosphereQuality", &Engine::getAtmosphereQuality)
         .addStaticFunction("resetAtmosphereQuality", &Engine::resetAtmosphereQuality)
+        .addStaticFunction("setFoliageQuality", &Engine::setFoliageQuality)
+        .addStaticFunction("getFoliageQuality", &Engine::getFoliageQuality)
+        .addStaticFunction("resetFoliageQuality", &Engine::resetFoliageQuality)
         .addStaticProperty("foliageDistanceScale", &Engine::getFoliageDistanceScale, &Engine::setFoliageDistanceScale)
         .addStaticFunction("resetFoliageDistanceScale", &Engine::resetFoliageDistanceScale)
         .addStaticProperty("callMouseInTouchEvent", &Engine::isCallMouseInTouchEvent, &Engine::setCallMouseInTouchEvent)
@@ -2488,6 +2582,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("dynamicResolutionEnabled", &PostProcessingSettings::dynamicResolutionEnabled, &PostProcessingSettings::dynamicResolutionEnabled)
         .addProperty("dynamicResolutionMinScale", &PostProcessingSettings::dynamicResolutionMinScale, &PostProcessingSettings::dynamicResolutionMinScale)
         .addProperty("dynamicResolutionTargetFps", &PostProcessingSettings::dynamicResolutionTargetFps, &PostProcessingSettings::dynamicResolutionTargetFps)
+        // Palette Quantize (S43)
+        .addProperty("paletteEnabled", &PostProcessingSettings::paletteEnabled, &PostProcessingSettings::paletteEnabled)
+        .addProperty("palette", &PostProcessingSettings::palette, &PostProcessingSettings::palette)
+        .addProperty("paletteDither", &PostProcessingSettings::paletteDither, &PostProcessingSettings::paletteDither)
+        .addProperty("paletteDitherStrength", &PostProcessingSettings::paletteDitherStrength, &PostProcessingSettings::paletteDitherStrength)
+        .addProperty("paletteDistance", &PostProcessingSettings::paletteDistance, &PostProcessingSettings::paletteDistance)
+        .addProperty("palettePrecision", &PostProcessingSettings::palettePrecision, &PostProcessingSettings::palettePrecision)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -3822,6 +3923,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getTouchDown", &Input::getTouchDown)
         .addStaticFunction("getTouchUp", &Input::getTouchUp)
         .addStaticFunction("getPointerLockState", &Input::getPointerLockState)
+        // the latest pointer input's pressure: 0..1 for a pen or stylus, -1 for a mouse or a finger
+        .addStaticFunction("getPenPressure", &Input::getPenPressure)
 
         // the Input Manager's actions (an action's flat name, the "Input Manager" map's first,
         // or "Map/Action"): smoothed, -1..1 (0..1 for a button; mouse movement unclamped)

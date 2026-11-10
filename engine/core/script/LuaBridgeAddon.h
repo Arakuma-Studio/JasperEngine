@@ -12,6 +12,7 @@
 #include "Input.h"
 #include "input/InputActions.h"
 #include "component/CharacterCollision.h"
+#include "component/TerrainComponent.h"
 #include "component/WaterVolumeComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/BuoyancyComponent.h"
@@ -27,6 +28,8 @@
 #include "component/FluidSimulationComponent.h"
 #include "particles/LegacyParticleSystem.h"
 #include "component/FogComponent.h"
+#include "component/SpriteBatchComponent.h"
+#include "component/SpriteComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
@@ -162,6 +165,10 @@ namespace luabridge
     template<> struct Stack<LodFadeMode> : EnumWrapper<LodFadeMode>{};
     template<> struct Stack<MaterialAlphaMode> : EnumWrapper<MaterialAlphaMode>{};
     template<> struct Stack<MaterialLighting> : EnumWrapper<MaterialLighting>{};
+    template<> struct Stack<TerrainQualitySetting> : EnumWrapper<TerrainQualitySetting>{};
+    template<> struct Stack<TerrainOffscreenShadows> : EnumWrapper<TerrainOffscreenShadows>{};
+    template<> struct Stack<TerrainMacroMode> : EnumWrapper<TerrainMacroMode>{};
+    template<> struct Stack<TerrainCliffProjection> : EnumWrapper<TerrainCliffProjection>{};
     template<> struct Stack<TextureFilter> : EnumWrapper<TextureFilter>{};
     template<> struct Stack<TextureWrap> : EnumWrapper<TextureWrap>{};
     template<> struct Stack<CursorType> : EnumWrapper<CursorType>{};
@@ -245,6 +252,9 @@ namespace luabridge
     template<> struct Stack<MonochromeMode> : EnumWrapper<MonochromeMode>{};
     template<> struct Stack<FilmGrainType> : EnumWrapper<FilmGrainType>{};
     template<> struct Stack<FilmGateMask> : EnumWrapper<FilmGateMask>{};
+    template<> struct Stack<PaletteDither> : EnumWrapper<PaletteDither>{};
+    template<> struct Stack<PaletteDistance> : EnumWrapper<PaletteDistance>{};
+    template<> struct Stack<PalettePrecision> : EnumWrapper<PalettePrecision>{};
     template<> struct Stack<LutInputEncoding> : EnumWrapper<LutInputEncoding>{};
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
@@ -268,6 +278,13 @@ namespace luabridge
     template<> struct Stack<TextEffectType> : EnumWrapper<TextEffectType>{};
     template<> struct Stack<TextEffectMix> : EnumWrapper<TextEffectMix>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
+    template<> struct Stack<SpriteDrawMode> : EnumWrapper<SpriteDrawMode>{};
+    template<> struct Stack<PixelUpscaleMode> : EnumWrapper<PixelUpscaleMode>{};
+    template<> struct Stack<PixelRotation> : EnumWrapper<PixelRotation>{};
+    // Sprite Batch and Sprite Sort Point (S52)
+    template<> struct Stack<SpriteBatchMode> : EnumWrapper<SpriteBatchMode>{};
+    template<> struct Stack<SpriteBatchSpace> : EnumWrapper<SpriteBatchSpace>{};
+    template<> struct Stack<SpriteSortPoint> : EnumWrapper<SpriteSortPoint>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
     // ui-components: the Button's Selectable enums

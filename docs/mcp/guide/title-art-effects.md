@@ -852,7 +852,7 @@ Also found as: background, solid, gradient fill, 塗りつぶし, 背景.
 
 A full-frame 柄: zebra, giraffe, leopard, tiger, checker, hazard and 和柄 over a background colour, optionally on a floor plane receding to a horizon; fade it with a gradient mask.
 
-Cost C0 · 8-bit F0 · glyph atlas unsafe · live none · follow none · fills the canvas
+Cost C0 · 8-bit F0 · glyph atlas unsafe · live kernel · follow none · fills the canvas
 
 Also found as: patternFill, pattern, animal print, 和柄, 柄.
 
@@ -864,9 +864,10 @@ Also found as: patternFill, pattern, animal print, 和柄, 柄.
 | `background` Background | color | #f2efe8 |  |  | rerender |  | The colour between the marks |
 | `bg_opacity` Background Opacity | number | 100 | 0 .. 100 |  | rerender |  | The background's opacity, percent |
 | `scale` Motif Size | number | 140 | 8 .. 2000 | px | rerender |  | The size of one motif |
-| `rotation` Rotation | number | 0 | -180 .. 180 | deg | rerender |  | The pattern's rotation, clockwise |
+| `rotation` Rotation | number | 0 | -180 .. 180 | deg | live |  | The pattern's rotation, clockwise |
 | `tilt` Perspective Tilt | number | 0 | 0 .. 80 | deg | rerender |  | Lays the pattern on a floor tilted back by this much |
 | `seed` Seed | integer | 1 | 0 .. 999 |  | step |  | Reshuffles the random kinds (the document's seed adds to it) |
+| `offset` Offset | vec2 | vec2 |  | px | live |  | Scrolls the pattern (px); animate it for a moving pattern |
 
 #### Fractal Noise (`fractal_noise`)
 

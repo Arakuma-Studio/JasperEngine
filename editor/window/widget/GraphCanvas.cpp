@@ -5,7 +5,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <map>
+#include <set>
+#include <unordered_map>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -38,6 +39,56 @@ namespace{
         return length(sub(p, add(a, mul(ab, t))));
     }
 
+    // a wire's control points: out of the output to the right, into the input from the left
+    void wireCurve(ImVec2 a, ImVec2 b, float zoom, ImVec2 out[4]){
+        const float dx = std::max(40.0f * zoom, std::fabs(b.x - a.x) * 0.5f);
+        out[0] = a;
+        out[1] = ImVec2(a.x + dx, a.y);
+        out[2] = ImVec2(b.x - dx, b.y);
+        out[3] = b;
+    }
+
+    ImVec2 bezierAt(const ImVec2 p[4], float t){
+        const float u = 1.0f - t;
+        const float w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t;
+        return ImVec2(w0 * p[0].x + w1 * p[1].x + w2 * p[2].x + w3 * p[3].x, w0 * p[0].y + w1 * p[1].y + w2 * p[2].y + w3 * p[3].y);
+    }
+
+    float distanceToWire(ImVec2 point, const ImVec2 p[4]){
+        float best = 1e9f;
+        ImVec2 previous = p[0];
+        for (int i = 1; i <= 16; i++){
+            const ImVec2 next = bezierAt(p, (float)i / 16.0f);
+            best = std::min(best, distanceToSegment(point, previous, next));
+            previous = next;
+        }
+        return best;
+    }
+
+    // the bounds of points, to cull what lies outside the view
+    bool outside(const ImVec2* points, int count, ImVec2 min, ImVec2 max){
+        ImVec2 lo = points[0], hi = points[0];
+        for (int i = 1; i < count; i++){
+            lo = ImVec2(std::min(lo.x, points[i].x), std::min(lo.y, points[i].y));
+            hi = ImVec2(std::max(hi.x, points[i].x), std::max(hi.y, points[i].y));
+        }
+        return hi.x < min.x || lo.x > max.x || hi.y < min.y || lo.y > max.y;
+    }
+
+    // the colour's alpha scaled (above 1: more opaque, up to opaque)
+    ImU32 withAlpha(ImU32 color, float alpha){
+        const ImU32 a = (ImU32)std::min(255.0f, (float)((color >> IM_COL32_A_SHIFT) & 0xFF) * std::max(0.0f, alpha));
+        return (color & ~IM_COL32_A_MASK) | (a << IM_COL32_A_SHIFT);
+    }
+
+    ImU32 lighter(ImU32 color, float amount){
+        auto channel = [&](int shift){
+            const float c = (float)((color >> shift) & 0xFF);
+            return (ImU32)std::min(255.0f, c + (255.0f - c) * amount) << shift;
+        };
+        return channel(IM_COL32_R_SHIFT) | channel(IM_COL32_G_SHIFT) | channel(IM_COL32_B_SHIFT) | (color & IM_COL32_A_MASK);
+    }
+
     void arrowHead(ImDrawList* list, ImVec2 tip, ImVec2 direction, float size, ImU32 color){
         const float len = length(direction);
         if (len < 1e-4f) return;
@@ -67,10 +118,11 @@ void GraphCanvas::frame(const std::vector<Node>& nodes){
     }
     ImVec2 min(1e9f, 1e9f), max(-1e9f, -1e9f);
     for (const Node& node : nodes){
+        const ImVec2 size = nodeSize(node);
         min.x = std::min(min.x, node.position.x);
         min.y = std::min(min.y, node.position.y);
-        max.x = std::max(max.x, node.position.x + node.size.x);
-        max.y = std::max(max.y, node.position.y + node.size.y);
+        max.x = std::max(max.x, node.position.x + size.x);
+        max.y = std::max(max.y, node.position.y + size.y);
     }
     const float margin = 40.0f;
     const float zx = regionSize.x / std::max(1.0f, max.x - min.x + 2 * margin);
@@ -81,8 +133,68 @@ void GraphCanvas::frame(const std::vector<Node>& nodes){
     framed = true;
 }
 
+void GraphCanvas::frameSelected(const std::vector<Node>& nodes){
+    std::vector<Node> selected;
+    for (const Node& node : nodes) if (node.selected) selected.push_back(node);
+    frame(selected.empty() ? nodes : selected);
+}
+
+float GraphCanvas::controlsAlpha(float zoom){
+    return std::min(1.0f, std::max(0.0f, (zoom - FADE_END) / (FADE_START - FADE_END)));
+}
+
+ImVec2 GraphCanvas::nodeSize(const Node& node){
+    if (!isDataflow(node)) return node.size;
+    const float rows = (float)std::max(node.inputs.size(), node.outputs.size());
+    float height = HEADER_HEIGHT + rows * PORT_ROW + PADDING;
+    if (node.thumbnail) height += THUMBNAIL_SLOT + PADDING;
+    height += FOOTER_LINE * (float)node.footer.size();
+    return ImVec2(std::max(MIN_WIDTH, node.size.x), height);
+}
+
+ImVec2 GraphCanvas::portPosition(const Node& node, const std::string& port, bool output){
+    const std::vector<Port>& ports = output ? node.outputs : node.inputs;
+    const ImVec2 size = nodeSize(node);
+    const float x = output ? node.position.x + size.x : node.position.x;
+    for (size_t i = 0; i < ports.size(); i++){
+        if (ports[i].id != port) continue;
+        return ImVec2(x, node.position.y + HEADER_HEIGHT + PORT_ROW * ((float)i + 0.5f));
+    }
+    // a port the node does not show (an unknown type's): the middle of that side
+    return ImVec2(x, node.position.y + size.y * 0.5f);
+}
+
+void GraphCanvas::thumbnailRect(const Node& node, ImVec2& min, ImVec2& max){
+    const ImVec2 size = nodeSize(node);
+    const float rows = (float)std::max(node.inputs.size(), node.outputs.size());
+    min = ImVec2(node.position.x + (size.x - THUMBNAIL_SLOT) * 0.5f, node.position.y + HEADER_HEIGHT + rows * PORT_ROW + PADDING);
+    max = ImVec2(min.x + THUMBNAIL_SLOT, min.y + THUMBNAIL_SLOT);
+}
+
+bool GraphCanvas::accepts(const PortRef& a, const PortRef& b) const{
+    if (a.node == b.node || a.output == b.output) return false;
+    const PortRef& output = a.output ? a : b;
+    const PortRef& input = a.output ? b : a;
+    return !canConnect || canConnect(output, input);
+}
+
 GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, std::vector<Link>& links){
+    static const std::vector<Group> none;
+    return draw(id, nodes, links, none);
+}
+
+GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, std::vector<Link>& links, const std::vector<Group>& groups){
     Result result;
+    for (Node& node : nodes){
+        if (!isDataflow(node)) continue;
+        node.size = nodeSize(node);
+        if (!node.errorText.empty()){
+            // its lines at zoom 1, and one more: a smaller zoom's glyph sizes round differently (T2 R58)
+            const float textSize = ImGui::GetFontSize() * 0.85f;
+            const float wrapped = ImGui::GetFont()->CalcTextSizeA(textSize, 1e9f, node.size.x - 2 * PADDING, node.errorText.c_str()).y;
+            node.size.y += wrapped + textSize + PADDING;
+        }
+    }
     origin = ImGui::GetCursorScreenPos();
     regionSize = ImGui::GetContentRegionAvail();
     regionSize.x = std::max(regionSize.x, 50.0f);
@@ -132,55 +244,159 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
         }
         return nullptr;
     };
-    std::map<uint64_t, const Node*> byId;
+    std::unordered_map<uint64_t, const Node*> byId;
     for (const Node& node : nodes) byId[node.id] = &node;
+    const float alpha = controlsAlpha(zoom);
+    // the port under a screen point (ports take no press once faded out): the nearest port of the
+    // topmost node whose box, widened by a port's reach, holds the point, so a node above another
+    // hides its ports, and rows closer than the reach go to the nearer one
+    auto portAt = [&](ImVec2 screen, PortRef& out) -> bool {
+        if (alpha <= 0.0f) return false;
+        const float reachX = std::max(8.0f, 10.0f * zoom);
+        const float reachY = std::max(7.0f, PORT_ROW * 0.5f * zoom);
+        for (auto it = nodes.rbegin(); it != nodes.rend(); ++it){
+            const ImVec2 a = toScreen(it->position);
+            const ImVec2 b = toScreen(add(it->position, it->size));
+            if (screen.x < a.x - reachX || screen.x > b.x + reachX || screen.y < a.y || screen.y > b.y) continue;
+            float best = 1e9f;
+            for (int side = 0; side < 2; side++){
+                for (const Port& port : side ? it->outputs : it->inputs){
+                    const ImVec2 p = toScreen(portPosition(*it, port.id, side == 1));
+                    const float dy = std::fabs(screen.y - p.y);
+                    if (std::fabs(screen.x - p.x) > reachX || dy > reachY || dy >= best) continue;
+                    best = dy;
+                    out = {it->id, port.id, side == 1};
+                }
+            }
+            return best < 1e9f;
+        }
+        return false;
+    };
+    // group rects (screen) and their title bars
+    struct GroupBox{
+        ImVec2 a, b;
+        float title;
+        const Group* group;
+    };
+    std::vector<GroupBox> groupBoxes;
+    for (const Group& group : groups){
+        ImVec2 a = group.position, b = ImVec2(group.position.x + group.size.x, group.position.y + group.size.y);
+        bool any = false;
+        for (uint64_t member : group.nodes){
+            auto found = byId.find(member);
+            if (found == byId.end()) continue;
+            const Node& node = *found->second;
+            const ImVec2 lo(node.position.x - 16.0f, node.position.y - 16.0f - HEADER_HEIGHT);
+            const ImVec2 hi(node.position.x + node.size.x + 16.0f, node.position.y + node.size.y + 16.0f);
+            a = any ? ImVec2(std::min(a.x, lo.x), std::min(a.y, lo.y)) : lo;
+            b = any ? ImVec2(std::max(b.x, hi.x), std::max(b.y, hi.y)) : hi;
+            any = true;
+        }
+        groupBoxes.push_back({toScreen(a), toScreen(b), HEADER_HEIGHT * zoom, &group});
+    }
 
-    // link geometry: paired directions offset to the side
+    // link geometry: paired directions offset to the side; wires as curves; what lies outside the
+    // view is left out (drawn and hit tested)
     struct Segment{
         ImVec2 a, b;
         size_t link;
+        bool wire;
+        ImVec2 curve[4];
     };
+    std::set<std::pair<uint64_t, uint64_t>> directions;
+    for (const Link& link : links) directions.insert({link.from, link.to});
     std::vector<Segment> segments;
     for (size_t i = 0; i < links.size(); i++){
         const Link& link = links[i];
         auto from = byId.find(link.from);
         auto to = byId.find(link.to);
         if (from == byId.end() || to == byId.end()) continue;
+        if (!link.fromPort.empty() && !link.toPort.empty()){
+            Segment segment{};
+            segment.link = i;
+            segment.wire = true;
+            wireCurve(toScreen(portPosition(*from->second, link.fromPort, true)), toScreen(portPosition(*to->second, link.toPort, false)), zoom,
+                      segment.curve);
+            if (outside(segment.curve, 4, origin, regionMax)) continue;
+            segment.a = segment.curve[0];
+            segment.b = segment.curve[3];
+            segments.push_back(segment);
+            continue;
+        }
         const ImVec2 fa = toScreen(from->second->position), fb = toScreen(add(from->second->position, from->second->size));
         const ImVec2 ta = toScreen(to->second->position), tb = toScreen(add(to->second->position, to->second->size));
         if (link.from == link.to){
             // a loop over the top edge
             const ImVec2 top((fa.x + fb.x) * 0.5f, fa.y);
-            segments.push_back({add(top, ImVec2(-12 * zoom, 0)), add(top, ImVec2(12 * zoom, 0)), i});
+            Segment segment{};
+            segment.a = add(top, ImVec2(-12 * zoom, 0));
+            segment.b = add(top, ImVec2(12 * zoom, 0));
+            segment.link = i;
+            segments.push_back(segment);
             continue;
         }
         const ImVec2 fc = mul(add(fa, fb), 0.5f), tc = mul(add(ta, tb), 0.5f);
         ImVec2 dir = sub(tc, fc);
         const float len = std::max(1e-3f, length(dir));
         dir = mul(dir, 1.0f / len);
-        bool paired = false;
-        for (const Link& other : links) paired = paired || (other.from == link.to && other.to == link.from);
+        const bool paired = directions.count({link.to, link.from}) > 0;
         const ImVec2 side = paired ? mul(ImVec2(-dir.y, dir.x), 6.0f * zoom) : ImVec2(0, 0);
-        const ImVec2 a = add(boxEdge(fa, fb, tc), side);
-        const ImVec2 b = add(boxEdge(ta, tb, fc), side);
-        segments.push_back({a, b, i});
+        Segment segment{};
+        segment.a = add(boxEdge(fa, fb, tc), side);
+        segment.b = add(boxEdge(ta, tb, fc), side);
+        segment.link = i;
+        const ImVec2 ends[2] = {segment.a, segment.b};
+        if (outside(ends, 2, origin, regionMax)) continue;
+        segments.push_back(segment);
     }
     auto linkAt = [&](ImVec2 screen) -> Link* {
         for (const Segment& s : segments){
-            if (distanceToSegment(screen, s.a, s.b) < 5.0f) return &links[s.link];
+            const float distance = s.wire ? distanceToWire(screen, s.curve) : distanceToSegment(screen, s.a, s.b);
+            if (distance < 5.0f) return &links[s.link];
         }
         return nullptr;
+    };
+    auto groupTitleAt = [&](ImVec2 screen) -> const GroupBox* {
+        for (auto it = groupBoxes.rbegin(); it != groupBoxes.rend(); ++it){
+            if (screen.x >= it->a.x && screen.x <= it->b.x && screen.y >= it->a.y && screen.y <= it->a.y + it->title) return &*it;
+        }
+        return nullptr;
+    };
+    auto startNodeDrag = [&](){
+        draggingNodes = true;
+        dragMoved = false;
+        dragStartMouse = mouse;
+        dragStart.clear();
+        for (const Node& n : nodes) if (n.selected) dragStart.push_back({n.id, n.position});
     };
 
     // input
     if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !io.KeyAlt){
         Node* node = nodeAt(mouse);
+        selectionAtPress.clear();
+        for (const Node& n : nodes) if (n.selected) selectionAtPress.push_back(n.id);
+        PortRef pressedPort;
+        const GroupBox* groupTitle = node ? nullptr : groupTitleAt(mouse);
         if (linkSource != 0){
             if (node){
                 result.linkFrom = linkSource;
                 result.linkTo = node->id;
             }
             linkSource = 0;
+        }else if (portAt(mouse, pressedPort)){
+            wiring = true;
+            wireStart = pressedPort;
+        }else if (groupTitle){
+            result.clickedGroup = groupTitle->group->id;
+            if (!io.KeyShift && !io.KeyCtrl){
+                for (Node& n : nodes) n.selected = false;
+                for (Link& l : links) l.selected = false;
+            }
+            for (Node& n : nodes){
+                if (std::find(groupTitle->group->nodes.begin(), groupTitle->group->nodes.end(), n.id) != groupTitle->group->nodes.end()) n.selected = true;
+            }
+            result.selectionChanged = true;
+            startNodeDrag();
         }else if (node){
             result.clickedNode = node->id;
             if (io.KeyCtrl){
@@ -191,12 +407,11 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
                 for (Node& n : nodes) n.selected = false;
                 for (Link& l : links) l.selected = false;
                 node->selected = true;
+            }else{
+                collapseTo = node->id;
             }
             result.selectionChanged = true;
-            draggingNodes = true;
-            dragStartMouse = mouse;
-            dragStart.clear();
-            for (const Node& n : nodes) if (n.selected) dragStart.push_back({n.id, n.position});
+            startNodeDrag();
         }else if (Link* link = linkAt(mouse)){
             result.clickedLink = link->id;
             for (Node& n : nodes) n.selected = false;
@@ -217,11 +432,52 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
     if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)){
         if (Node* node = nodeAt(mouse)) result.doubleClickedNode = node->id;
     }
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape) && linkSource != 0) linkSource = 0;
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)){
+        linkSource = 0;
+        if (wiring){
+            wiring = false;
+            result.cancelled = true;
+        }
+        if (draggingNodes || boxSelecting){
+            for (Node& n : nodes){
+                for (const auto& start : dragStart) if (draggingNodes && n.id == start.first) n.position = start.second;
+                n.selected = std::find(selectionAtPress.begin(), selectionAtPress.end(), n.id) != selectionAtPress.end();
+            }
+            draggingNodes = false;
+            boxSelecting = false;
+            collapseTo = 0;
+            result.cancelled = true;
+            result.selectionChanged = true;
+        }
+    }
+
+    // the wire being dragged: the port under the mouse if it would take it
+    PortRef wireTarget;
+    bool wireTargetOk = false;
+    if (wiring){
+        PortRef under;
+        if (portAt(mouse, under) && accepts(wireStart, under)){
+            wireTarget = under;
+            wireTargetOk = true;
+        }
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)){
+            wiring = false;
+            if (wireTargetOk){
+                result.connectFrom = wireStart.output ? wireStart : wireTarget;
+                result.connectTo = wireStart.output ? wireTarget : wireStart;
+            }else if (!nodeAt(mouse) && !portAt(mouse, under) && hovered){
+                result.wireDropped = true;
+                result.wireSource = wireStart;
+                result.wireDropCanvas = toCanvas(mouse);
+            }
+        }
+    }
 
     if (draggingNodes){
+        dragMoved = dragMoved || length(sub(mouse, dragStartMouse)) >= io.MouseDragThreshold;
         const ImVec2 delta = mul(sub(mouse, dragStartMouse), 1.0f / zoom);
-        for (const auto& start : dragStart){
+        // (a snap would move an off-grid node on the press itself)
+        if (dragMoved) for (const auto& start : dragStart){
             for (Node& n : nodes){
                 if (n.id != start.first) continue;
                 ImVec2 p = add(start.second, delta);
@@ -244,7 +500,11 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
                 for (const auto& start : dragStart){
                     for (const Node& n : nodes) if (n.id == start.first) result.moved.push_back({n.id, n.position});
                 }
+            }else if (collapseTo != 0 && dragStart.size() > 1){
+                for (Node& n : nodes) n.selected = n.id == collapseTo;
+                result.selectionChanged = true;
             }
+            collapseTo = 0;
         }
     }
     if (boxSelecting){
@@ -281,11 +541,27 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
         for (const Node& n : nodes) if (n.selected) result.selectedNodes.push_back(n.id);
     }
 
+    // groups, behind everything
+    ImFont* font = ImGui::GetFont();
+    const float fontSize = ImGui::GetFontSize() * zoom;
+    for (const GroupBox& box : groupBoxes){
+        list->AddRectFilled(box.a, box.b, box.group->color, 6.0f * zoom);
+        list->AddRectFilled(box.a, ImVec2(box.b.x, box.a.y + box.title), withAlpha(box.group->color, 2.5f), 6.0f * zoom, ImDrawFlags_RoundCornersTop);
+        if (fontSize >= 5.0f){
+            list->AddText(font, fontSize, ImVec2(box.a.x + 8.0f * zoom, box.a.y + (box.title - fontSize) * 0.5f), IM_COL32(220, 220, 220, 255),
+                          box.group->title.c_str());
+        }
+    }
+
     // links
     for (const Segment& s : segments){
         const Link& link = links[s.link];
         const ImU32 color = link.selected ? IM_COL32(110, 170, 255, 255) : link.color;
         const float thickness = (link.selected ? 3.0f : 2.0f) * std::max(0.6f, zoom);
+        if (s.wire){
+            list->AddBezierCubic(s.curve[0], s.curve[1], s.curve[2], s.curve[3], color, thickness);
+            continue;
+        }
         if (link.from == link.to){
             list->AddBezierCubic(s.a, add(s.a, ImVec2(-10 * zoom, -28 * zoom)), add(s.b, ImVec2(10 * zoom, -28 * zoom)), s.b, color, thickness);
             arrowHead(list, s.b, ImVec2(0, 1), 9.0f * zoom, color);
@@ -314,13 +590,98 @@ GraphCanvas::Result GraphCanvas::draw(const char* id, std::vector<Node>& nodes, 
         }
     }
 
+    // a wire being dragged, from its port to the mouse (or the port that would take it)
+    ImU32 wireColor = IM_COL32(255, 255, 255, 220);
+    if (wiring){
+        auto from = byId.find(wireStart.node);
+        if (from != byId.end()){
+            for (const Port& port : wireStart.output ? from->second->outputs : from->second->inputs){
+                if (port.id == wireStart.port) wireColor = port.color;
+            }
+            const ImVec2 start = toScreen(portPosition(*from->second, wireStart.port, wireStart.output));
+            ImVec2 end = mouse;
+            if (wireTargetOk){
+                auto target = byId.find(wireTarget.node);
+                if (target != byId.end()) end = toScreen(portPosition(*target->second, wireTarget.port, wireTarget.output));
+            }
+            ImVec2 curve[4];
+            if (wireStart.output) wireCurve(start, end, zoom, curve);
+            else wireCurve(end, start, zoom, curve);
+            list->AddBezierCubic(curve[0], curve[1], curve[2], curve[3], wireColor, 2.5f * std::max(0.6f, zoom));
+        }
+    }
+
     // nodes (text scaled with the zoom)
-    ImFont* font = ImGui::GetFont();
-    const float fontSize = ImGui::GetFontSize() * zoom;
     for (const Node& node : nodes){
         const ImVec2 a = toScreen(node.position);
         const ImVec2 b = toScreen(add(node.position, node.size));
         if (b.x < origin.x || a.x > regionMax.x || b.y < origin.y || a.y > regionMax.y) continue;
+        if (isDataflow(node)){
+            const float rounding = 6.0f * zoom;
+            const float header = HEADER_HEIGHT * zoom;
+            list->AddRectFilled(a, b, node.fill, rounding);
+            list->AddRectFilled(a, ImVec2(b.x, a.y + header), node.header ? node.header : lighter(node.fill, 0.15f), rounding, ImDrawFlags_RoundCornersTop);
+            if (node.error) list->AddRect(a, b, IM_COL32(230, 70, 60, 255), rounding, 0, 2.0f);
+            if (node.highlighted) list->AddRect(a, b, IM_COL32(90, 200, 255, 255), rounding, 0, 2.5f);
+            if (node.selected) list->AddRect(add(a, ImVec2(-2, -2)), add(b, ImVec2(2, 2)), IM_COL32(110, 170, 255, 255), rounding, 0, 2.0f);
+            if (fontSize >= 5.0f){
+                const ImVec2 at(a.x + PADDING * zoom, a.y + (header - fontSize) * 0.5f);
+                float labelRight = b.x - PADDING * zoom;
+                if (!node.cost.empty() && alpha > 0.0f){
+                    const float costSize = fontSize * 0.85f;
+                    const ImVec2 costText = font->CalcTextSizeA(costSize, 1e9f, 0.0f, node.cost.c_str());
+                    labelRight -= costText.x + PADDING * zoom;
+                    list->AddText(font, costSize, ImVec2(b.x - PADDING * zoom - costText.x, a.y + (header - costSize) * 0.5f),
+                                  withAlpha(IM_COL32(190, 190, 160, 255), alpha), node.cost.c_str());
+                }
+                list->PushClipRect(a, ImVec2(std::max(a.x, labelRight), a.y + header), true);
+                list->AddText(font, fontSize, at, node.text, node.label.c_str());
+                list->PopClipRect();
+            }
+            // the ports: circles on the edges, their names inside
+            if (alpha > 0.0f){
+                for (int side = 0; side < 2; side++){
+                    for (const Port& port : side ? node.outputs : node.inputs){
+                        const ImVec2 p = toScreen(portPosition(node, port.id, side == 1));
+                        bool dim = false;
+                        if (wiring) dim = !(wireStart.node == node.id && wireStart.port == port.id) && !accepts(wireStart, {node.id, port.id, side == 1});
+                        const float portAlpha = alpha * (dim ? 0.3f : 1.0f);
+                        const float radius = 5.0f * std::max(0.7f, zoom);
+                        if (port.connected) list->AddCircleFilled(p, radius, withAlpha(port.color, portAlpha));
+                        else list->AddCircle(p, radius, withAlpha(port.color, portAlpha), 0, 2.0f);
+                        if (port.error) list->AddCircle(p, radius + 2.5f * zoom, withAlpha(IM_COL32(235, 70, 70, 255), alpha), 0, 2.0f);
+                        if (fontSize >= 5.0f && !port.label.empty()){
+                            const float labelSize = fontSize * 0.9f;
+                            const ImVec2 text = font->CalcTextSizeA(labelSize, 1e9f, 0.0f, port.label.c_str());
+                            const float x = side ? p.x - radius - 4.0f * zoom - text.x : p.x + radius + 4.0f * zoom;
+                            const ImU32 labelColor = port.error ? IM_COL32(255, 120, 120, 255) : IM_COL32(200, 200, 200, 255);
+                            list->AddText(font, labelSize, ImVec2(x, p.y - text.y * 0.5f), withAlpha(labelColor, portAlpha), port.label.c_str());
+                        }
+                    }
+                }
+            }
+            if (node.thumbnail){
+                ImVec2 lo, hi;
+                thumbnailRect(node, lo, hi);
+                const ImVec2 sa = toScreen(lo), sb = toScreen(hi);
+                list->AddRectFilled(sa, sb, IM_COL32(25, 25, 28, 255));
+                if (drawThumbnail) drawThumbnail(list, node.id, sa, sb);
+            }
+            if (fontSize >= 5.0f && (!node.footer.empty() || !node.errorText.empty())){
+                const float rows = (float)std::max(node.inputs.size(), node.outputs.size());
+                float y = node.position.y + HEADER_HEIGHT + rows * PORT_ROW + PADDING + (node.thumbnail ? THUMBNAIL_SLOT + PADDING : 0.0f);
+                const float smallSize = fontSize * 0.85f;
+                for (const std::string& line : node.footer){
+                    list->AddText(font, smallSize, toScreen(ImVec2(node.position.x + PADDING, y)), IM_COL32(170, 170, 170, 255), line.c_str());
+                    y += FOOTER_LINE;
+                }
+                if (!node.errorText.empty()){
+                    list->AddText(font, smallSize, toScreen(ImVec2(node.position.x + PADDING, y)), IM_COL32(255, 120, 120, 255), node.errorText.c_str(),
+                                  nullptr, (node.size.x - 2 * PADDING) * zoom);
+                }
+            }
+            continue;
+        }
         const float rounding = node.rounded ? 6.0f * zoom : 0.0f;
         list->AddRectFilled(a, b, node.fill, rounding);
         if (node.highlighted) list->AddRect(a, b, IM_COL32(90, 200, 255, 255), rounding, 0, 2.5f);

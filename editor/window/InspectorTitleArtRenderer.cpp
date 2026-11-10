@@ -13,10 +13,15 @@
 #include "InspectorWindowTitleArt.h"
 
 #include "Project.h"
+#include "Backend.h"
 #include "Theme.h"
+#include "App.h"
+#include "animation/PreviewOwner.h"
 #include "command/CommandHandle.h"
+#include "command/type/AddComponentCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "component/AudioSourceComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TitleArtRendererComponent.h"
@@ -25,6 +30,7 @@
 #include "titleart/TitleArtBaker.h"
 #include "titleart/runtime/TitleArtOverrides.h"
 #include "titleart/runtime/TitleParticlePresets.h"
+#include "titleart/three_d/Title3DSchema.h"
 #include "util/Color.h"
 #include "util/TitleArtBakeInfo.h"
 #include "imgui.h"
@@ -97,12 +103,67 @@ void editor::InspectorWindow::drawTitleArtRendererComponent(ComponentType cpType
     mode.help = "Baked shows the bake (no engine code); Realtime renders the title again when its text or a parameter changes; "
                 "Glyph Atlas renders each glyph once and lays out changing text every frame (counters, scores, timers)";
     propertyRow(RowPropertyType::Enum, cpType, "renderMode", "Render Mode", sceneProject, entities, mode);
+    // S85 R49: the animation rows (the names are the document's; an unknown name warns once at Play)
+    static std::vector<std::string> animationChoices;
+    animationChoices = single ? TitleArtSystem::animationNames(scene, entity) : std::vector<std::string>();
+    RowSettings animationName;
+    animationName.help = "An animation of the title by name (the Title Designer's Animation panel lists them); empty for none";
+    animationName.stringSuggestions = &animationChoices;
+    propertyRow(RowPropertyType::Bool, cpType, "playAutomatically", "Play Automatically", sceneProject, entities);
+    propertyRow(RowPropertyType::String, cpType, "defaultAnimation", "Default Animation", sceneProject, entities, animationName);
+    propertyRow(RowPropertyType::Float, cpType, "animationSpeed", "Animation Speed", sceneProject, entities);
+    RowSettings unscaled;
+    unscaled.help = "Off: the animation follows the scene's time scale; On: unscaled time";
+    propertyRow(RowPropertyType::Bool, cpType, "animationUnscaledTime", "Unscaled Time", sceneProject, entities, unscaled);
+    RowSettings drive;
+    drive.help = "Name of an animation that follows Animation Time instead of the clock (empty: None)";
+    drive.stringSuggestions = &animationChoices;
+    propertyRow(RowPropertyType::String, cpType, "driveAnimation", "Drive Animation", sceneProject, entities, drive);
+    // S87 R56: Language, empty = Auto (Device); the help lists what the title offers
+    if (!instance.languages.empty()){
+        RowSettings language;
+        std::string offered;
+        for (const std::string& code : instance.languages) offered += (offered.empty() ? "" : ", ") + code;
+        language.help = "Empty: Auto (Device): TitleArt.setLanguage, the device's languages, the project's default, the source. "
+                        "This title offers " + offered + (instance.resolvedLanguage.empty() ? "" : "; it shows " + instance.resolvedLanguage) + ".";
+        propertyRow(RowPropertyType::String, cpType, "language", "Language", sceneProject, entities, language);
+    }
     endTable();
 
     if (!title->title.path.empty() && InspectorWindowTitleArt::canOpenInDesigner()){
         if (ImGui::Button(ICON_FA_PEN_TO_SQUARE " Open in Title Designer")) {
-            InspectorWindowTitleArt::openInDesigner(project->getProjectPath() / fs::path(title->title.path));
+            // one instance: In Context, over its scene at its place (S82 R1, R30)
+            if (single) InspectorWindowTitleArt::openInContext(project->getProjectPath() / fs::path(title->title.path), sceneProject->id, entity);
+            else InspectorWindowTitleArt::openInDesigner(project->getProjectPath() / fs::path(title->title.path));
         }
+    }
+    // S85 R49: the default animation in the Scene and Game views, restored on Stop
+    if (single && sceneProject->playState == ScenePlayState::STOPPED && !animationChoices.empty()){
+        static PreviewOwner::Token previewToken = 0;
+        const bool previewing = TitleArtSystem::isAnimationEditPreviewing(scene, entity);
+        // the editor draws a stopped scene only when asked: the preview's clock needs its frames
+        if (previewing){
+            sceneProject->needUpdateRender = true;
+            Backend::getApp().requestRedraw();
+        }
+        if (ImGui::Button(previewing ? ICON_FA_STOP " Stop Preview" : ICON_FA_PLAY " Preview")){
+            if (previewing){
+                PreviewOwner::release(previewToken);
+                previewToken = 0;
+                TitleArtSystem::stopAnimationEditPreview(scene, entity);
+            }else if (TitleArtSystem::startAnimationEditPreview(scene, entity)){
+                previewToken = PreviewOwner::acquire(sceneProject->id, entity, scene, "Title Art preview", [scene, entity](){
+                    previewToken = 0;
+                    TitleArtSystem::stopAnimationEditPreview(scene, entity);
+                });
+            }
+        }
+    }
+    // R49: where a marker's sound plays
+    if (single && TitleArtSystem::animationHasMarkerSounds(scene, entity) && !(scene->isComponentRegistered<AudioSourceComponent>() && scene->findComponent<AudioSourceComponent>(entity))){
+        ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " Marker sounds play 2D on Master without an Audio Source");
+        if (ImGui::SmallButton("Add Audio Source"))
+            CommandHandle::get(sceneProject->id)->addCommandNoMerge(new AddComponentCmd(project, sceneProject->id, entity, ComponentType::AudioSourceComponent));
     }
     if (single) ImGui::TextColored(Theme::Colors::SubtleText, "%s", costLine(*title, instance).c_str());
     if (single && TitleArtSystem::hasBothCompanions(scene, entity)){
@@ -278,7 +339,23 @@ void editor::InspectorWindow::drawTitleArtRendererComponent(ComponentType cpType
         transition.enumEntries = &transitions;
         propertyRow(RowPropertyType::Enum, cpType, "transition", "Transition", sceneProject, entities, transition);
         propertyRow(RowPropertyType::FloatPositive, cpType, "transitionDuration", "Transition Duration", sceneProject, entities);
-        propertyRow(RowPropertyType::String, cpType, "qualityTier", "Quality Tier", sceneProject, entities);
+        // S86 R37, R26: the tier a 3D title renders at; the environments an export cooks besides its own
+        static const std::vector<std::pair<std::string, std::string>> qualityTiers = {{"auto", "Auto"}, {"high", "High"}, {"medium", "Medium"}, {"low", "Low"}};
+        RowSettings qualityTier;
+        qualityTier.stringChoices = &qualityTiers;
+        qualityTier.help = "A 3D title's tier. Auto: the device's tier, else Project Settings > Title Art > Realtime 3D Quality.";
+        propertyRow(RowPropertyType::String, cpType, "qualityTier", "Quality Tier", sceneProject, entities, qualityTier);
+        static const std::vector<std::pair<std::string, std::string>> environments = [](){
+            std::vector<std::pair<std::string, std::string>> out;
+            for (const std::string& name : titleart::title3DEnvironmentNames()){
+                if (name != "custom" && name != "matcap") out.push_back({name, name});
+            }
+            return out;
+        }();
+        RowSettings runtimeEnvironments;
+        runtimeEnvironments.stringChoices = &environments;
+        runtimeEnvironments.help = "Environments a build cooks for this title besides those it lights with: the ones an Exposed parameter can switch to.";
+        propertyRow(RowPropertyType::StringSet, cpType, "runtimeEnvironments", "Runtime Environments", sceneProject, entities, runtimeEnvironments);
         if (title->renderMode == TitleArtRenderMode::GLYPH_ATLAS){
             static std::vector<int> pageSizes = {512, 1024, 2048};
             RowSettings pages;

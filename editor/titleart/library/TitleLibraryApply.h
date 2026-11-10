@@ -59,6 +59,16 @@ namespace jasperengine::editor::titlelibrary {
     // §6.5.4: the look of layer `layerId` (the inverse of apply_look); false with `error`
     bool captureLook(const titleart::TitleArtDoc& doc, const std::string& layerId, const CaptureOptions& options, TitleLook& out,
                      std::vector<CapturedAsset>* assets, std::string* error);
+    // S87's Photoshop styles: what a captured look holds, from a converted style instead of a layer
+    struct StyleSource {
+        Json style = Json::object();                    // the 2D style
+        Json effects = Json::array();                   // S80's effect entries
+        Json assets = Json::array();                    // {key, file, sha256}: files in <slug>.files/
+        Json provenance;                                // the look's `provenance` (null: none)
+        LocalizedText description;
+    };
+    // §6.5.4's look from a style (the identity of captureLook, canonical and sparse)
+    bool lookFromStyle(const StyleSource& style, double refSize, const CaptureOptions& options, TitleLook& out, std::string* error);
     // R14: a scheme from a layer's colours by role (or the document's first styled layer)
     bool extractColorScheme(const titleart::TitleArtDoc& doc, const std::string& layerId, const LocalizedText& name,
                             const std::string& id, titleart::ColorScheme& out, std::string* error);

@@ -149,6 +149,7 @@
         "scale": 1,
         "flip_x": false,
         "flip_y": false,
+        "stretch": [1, 1],
         "z": 0,
         "rotation_x": 0,
         "rotation_y": 0
@@ -160,6 +161,12 @@
         "color_scheme": "",
         "owner": ""
       },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
       "generator": {
         "type": "fill",
         "params": {
@@ -211,6 +218,7 @@
         "scale": 1,
         "flip_x": false,
         "flip_y": false,
+        "stretch": [1, 1],
         "z": 0,
         "rotation_x": 0,
         "rotation_y": 0
@@ -222,6 +230,12 @@
         "color_scheme": "",
         "owner": ""
       },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
       "adjustment": {
         "type": "hue_saturation",
         "hue": 0,
@@ -246,6 +260,7 @@
         "scale": 1,
         "flip_x": false,
         "flip_y": false,
+        "stretch": [1, 1],
         "z": 0,
         "rotation_x": 0,
         "rotation_y": 0
@@ -257,6 +272,12 @@
         "color_scheme": "",
         "owner": ""
       },
+      "tint": "#ffffff",
+      "flash": {
+        "color": "#ffffff",
+        "amount": 0
+      },
+      "only_languages": [],
       "children": [
         {
           "id": "9c97ffa4",
@@ -274,6 +295,7 @@
             "scale": 1,
             "flip_x": false,
             "flip_y": false,
+            "stretch": [1, 1],
             "z": 0,
             "rotation_x": 0,
             "rotation_y": 0
@@ -285,6 +307,12 @@
             "color_scheme": "",
             "owner": ""
           },
+          "tint": "#ffffff",
+          "flash": {
+            "color": "#ffffff",
+            "amount": 0
+          },
+          "only_languages": [],
           "generator": {
             "type": "brush_swirl",
             "params": {
@@ -323,6 +351,7 @@
             "scale": 1,
             "flip_x": false,
             "flip_y": false,
+            "stretch": [1, 1],
             "z": 0,
             "rotation_x": 0,
             "rotation_y": 0
@@ -334,6 +363,12 @@
             "color_scheme": "",
             "owner": ""
           },
+          "tint": "#ffffff",
+          "flash": {
+            "color": "#ffffff",
+            "amount": 0
+          },
+          "only_languages": [],
           "generator": {
             "type": "light_streaks",
             "params": {
@@ -375,6 +410,7 @@
             "scale": 1,
             "flip_x": false,
             "flip_y": false,
+            "stretch": [1, 1],
             "z": 0,
             "rotation_x": 0,
             "rotation_y": 0
@@ -386,6 +422,12 @@
             "color_scheme": "",
             "owner": ""
           },
+          "tint": "#ffffff",
+          "flash": {
+            "color": "#ffffff",
+            "amount": 0
+          },
+          "only_languages": [],
           "shape": "orb",
           "size": 240,
           "aspect": 1,
@@ -987,6 +1029,7 @@
             "scale": 1,
             "flip_x": false,
             "flip_y": false,
+            "stretch": [1, 1],
             "z": 0,
             "rotation_x": 0,
             "rotation_y": 0
@@ -1040,6 +1083,12 @@
             "color_scheme": "",
             "owner": ""
           },
+          "tint": "#ffffff",
+          "flash": {
+            "color": "#ffffff",
+            "amount": 0
+          },
+          "only_languages": [],
           "generator": {
             "type": "shockwave",
             "params": {
@@ -1081,6 +1130,7 @@
             "scale": 1,
             "flip_x": false,
             "flip_y": false,
+            "stretch": [1, 1],
             "z": 0,
             "rotation_x": 0,
             "rotation_y": 0
@@ -1134,6 +1184,12 @@
             "color_scheme": "",
             "owner": ""
           },
+          "tint": "#ffffff",
+          "flash": {
+            "color": "#ffffff",
+            "amount": 0
+          },
+          "only_languages": [],
           "generator": {
             "type": "particles",
             "params": {
@@ -1232,6 +1288,11 @@
     },
     "glyph_layer": ""
   },
+  "source_language": "",
+  "languages": [],
+  "string_namespace": "",
+  "dpi": 72,
+  "import_notes": [],
   "scene_3d": {
     "camera": {
       "fov": 30,

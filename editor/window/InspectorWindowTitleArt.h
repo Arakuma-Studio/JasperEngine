@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "ecs/Entity.h"
+
 #include "titleart/TitleArtDoc.h"
 
 #include <filesystem>
@@ -32,6 +34,10 @@ namespace jasperengine::editor {
         void setOpenInDesigner(std::function<void(const std::filesystem::path& document)> open);
         bool canOpenInDesigner();
         void openInDesigner(const std::filesystem::path& document);
+        // a Title Art Renderer's button: In Context, the title over its scene at the instance's
+        // place (S82 R1, R30; S82 sets it)
+        void setOpenInContext(std::function<void(const std::filesystem::path& document, uint32_t sceneId, Entity instance)> open);
+        void openInContext(const std::filesystem::path& document, uint32_t sceneId, Entity instance);
 
     }
 

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "titleart/localisation/TitleLanguageExport.h"
 #include "Project.h"
 #include "ShippingTypes.h"
 #include "cook/BuildReport.h"
@@ -28,7 +29,19 @@
 
 #include <memory>
 
+namespace jasperengine::voxel {
+    class BaseSource;
+}
+
+namespace jasperengine::editor::pixelart::aseprite {
+    struct ImportRecord;
+}
+
 namespace jasperengine::editor {
+
+    // an export's Sprite Atlas build and whether it remaps its members (Exporter.cpp; the header
+    // names no sprite:: type, so the editor's sources keep a free `sprite` name)
+    struct ExportSpriteAtlas;
 
     namespace fs = std::filesystem;
 
@@ -207,18 +220,35 @@ namespace jasperengine::editor {
         // S14: the texture sources the export's cooks replaced (asset-relative), which
         // copyAssets() leaves out
         std::set<std::string> cookedTextureSources;
+        // S87 R25: the Title Art language sets the build leaves out, and the sidecars it rewrites
+        TitleLanguageShipping titleLanguages;
         // S53: the same for models (and the .bin files only they read)
         std::set<std::string> cookedModelSources;
+        // S51 R34: the files only bitmap fonts read (sheets, pages, TrueType sources), which ship
+        // inside the fonts' .jfont and not themselves (asset-relative)
+        std::set<std::string> fontOnlySources;
         // S53 R21: what the export's cooks measured, for the Build Report: a cooked file's build
         // path -> its source asset and that source's bytes
         std::map<std::string, std::pair<std::string, uint64_t>> cookedModelSizes;
         BuildReport buildReport;
+        // S44: the imports of the project's .aseprite files (gatherImportedAssets), shipped as
+        // assets/je-imported/ with its index.json; the .aseprite files themselves never ship
+        std::vector<std::shared_ptr<const pixelart::aseprite::ImportRecord>> importedRecords;
+        // S45: the Sprite Atlases built for this export's family (gatherSpriteAtlases), whether each
+        // remaps its members (Include in Build), the texture sheets' records (texture -> file),
+        // and the member textures only sprites read, which copyAssets() leaves out
+        std::vector<std::shared_ptr<const ExportSpriteAtlas>> atlasBuilds;
+        std::map<std::string, std::string> textureSheetFiles;
+        std::set<std::string> atlasOnlySources;
 
         // S30: the Player build's report, the cooked scenes and prefabs loadAndSaveAllScenes()
         // made while every scene was loaded, and the player runtime it stages
         ExportResult result;
         std::vector<cook::CookedFileBytes> cookedFiles;
         std::vector<cook::CookedPrefabInfo> cookedPrefabs;
+        // assets-relative: the volumes some component ships with runtimeGeneration on (T6 R78)
+        std::set<std::string> voxelKeptGenerators;
+        std::map<std::string, std::shared_ptr<const voxel::BaseSource>> voxelTerrainBases;
         std::shared_ptr<PlayerInfo> player;
         // S34: what the project reaches of the optional modules, found while every scene was
         // loaded (loadAndSaveAllScenes); a source export has no such answer (every module allowed)
@@ -329,6 +359,7 @@ namespace jasperengine::editor {
         bool isCancelled() const;
 
         void resolveShaderKeys();
+        std::vector<int> terrainExportPlatforms() const;
         bool loadShaderWarmup();
 
         fs::path getExportProjectRoot() const;
@@ -384,6 +415,8 @@ namespace jasperengine::editor {
         bool prepareTitleArt();
         // S81: what the build's Realtime and Glyph Atlas titles need at runtime (after copyAssets)
         bool writeTitleArtRuntime();
+        // the platforms this export builds for (buildPlatformName's names; a source export: all)
+        std::vector<std::string> exportPlatformNames() const;
         bool cookTextures();
         // S53: every model source cooked for the families of the export, into
         // assets/je-cooked/models; a cook error fails the export, naming the file
@@ -411,9 +444,21 @@ namespace jasperengine::editor {
         // False, with the error set, when a trusted root of the project leads elsewhere than when it
         // was pinned: the game would ship whatever is there now
         bool checkRootsPinned();
+        // S44: every .aseprite file imported (waited for on the main thread's importer); an import
+        // that fails fails the export, naming the file
+        bool gatherImportedAssets();
+        // S44: the imports' sheets, pages and clips into assets/je-imported/ and its index.json
+        bool copyImportedAssets(const fs::path& assetsDst);
+        // S45 R19: every atlas built for the export's family, and the texture sheets' records
+        bool gatherSpriteAtlases(const std::vector<std::string>& platforms);
         bool copyAssets();
         // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
         bool cookColorLut(const fs::path& source, const fs::path& destination);
+        // S51 R34: the project's bitmap fonts' sources no asset references (main thread)
+        void collectFontOnlySources();
+        // a .bitmapfont or .fnt cooked to <destination>.jfont (lossless); false (warned) when it
+        // does not load, and it ships as it is
+        bool cookBitmapFont(const fs::path& relPath, const fs::path& destination);
         // S04: a reference of the build's scenes (and the prefabs and materials they use) that
         // resolves to no asset fails the export, listing each one, unless allowMissingAssets
         bool checkMissingAssets();
@@ -498,6 +543,10 @@ namespace jasperengine::editor {
 
 
     public:
+        // T2 R45: whether an asset of the project ships, as far as the noise module decides it. Noise Graphs
+        // are recipes: they ship only when the game can load one at run time, and then all of them, since a
+        // Lua string can name any. usage null: not known (a source export), which keeps everything.
+        static bool shipsForNoise(const fs::path& relPath, const ModuleUsage* usage);
         // Why `dir` can't take an export of `project` ("" when it can): it is, or is inside, the
         // project, its assets or its Lua folder (the editor would import the exported files as
         // project assets), unless it is below a hidden folder or the project's top-level build/
@@ -506,6 +555,11 @@ namespace jasperengine::editor {
         // ./gradlew and ./jasperengine.py (an installed or unzipped editor may have lost them); a
         // no-op on Windows. False with error naming the file when one can't be changed.
         static bool ensureExecutable(const std::vector<fs::path>& files, std::string& error);
+        // A macOS CMake build's plugin SDKs (NativePlugins::macosSdks of projectRoot's
+        // plugins/native) beside its executable in `destination`: the dynamic frameworks in
+        // Frameworks/ (the executable's rpath), the resource bundles beside it, as the exported
+        // CMake's post-build step lays them out; frameworks an earlier build embedded go
+        static bool copyMacosNativeSdks(const fs::path& projectRoot, const fs::path& destination, std::string& error);
 
         // a scene or prefab file's text: a Video Player with an http(s) url
         static bool hasUrlVideoPlayer(const std::string& sceneText);

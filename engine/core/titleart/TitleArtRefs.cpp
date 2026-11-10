@@ -28,6 +28,7 @@ const char* titleart::titleAssetKindName(TitleAssetKind kind) {
         case TitleAssetKind::Image: return "image";
         case TitleAssetKind::Vector: return "vector";
         case TitleAssetKind::Environment: return "environment";
+        case TitleAssetKind::Sound: return "sound";
     }
     return "image";
 }
@@ -60,6 +61,21 @@ void titleart::visitTitleArtRefs(Json& root, const TitleRefVisitor& visit) {
         }
         return true;
     });
+    // S85's marker sounds: `animation` is one opaque member of the schema (R62)
+    auto animation = root.find("animation");
+    if (stopped || animation == root.end() || !animation->is_object()) return;
+    auto animations = animation->find("animations");
+    if (animations == animation->end() || !animations->is_array()) return;
+    for (size_t a = 0; a < animations->size() && !stopped; a++){
+        auto markers = (*animations)[a].find("markers");
+        if (markers == (*animations)[a].end() || !markers->is_array()) continue;
+        for (size_t m = 0; m < markers->size() && !stopped; m++){
+            auto sound = (*markers)[m].find("sound");
+            if (sound == (*markers)[m].end()) continue;
+            const std::string path = "animation.animations[" + std::to_string(a) + "].markers[" + std::to_string(m) + "].sound";
+            if (!visit(*sound, path, TitleAssetKind::Sound)) stopped = true;
+        }
+    }
 }
 
 void titleart::visitTitleArtRefs(const Json& root, const std::function<bool(const TitleAssetRef& ref, const std::string& field, TitleAssetKind kind)>& visit) {

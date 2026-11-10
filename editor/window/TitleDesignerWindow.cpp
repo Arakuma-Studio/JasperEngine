@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TitleDesignerWindow.h"
+#include "titleart/anim/TitleAnimationPanel.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -25,7 +26,6 @@
 #include "titleart/designer/TitleHandles.h"
 #include "titleart/designer/TitleLayerThumbnails.h"
 #include "titleart/designer/TitlePages.h"
-#include "titleart/designer/TitleStarterLibrary.h"
 #include "titleart/designer/TitleTextEdit.h"
 #include "titleart/fonts/FontCatalog.h"
 #include "titleart/fonts/FontPreviewRaster.h"
@@ -70,6 +70,9 @@ namespace {
 
 TitleDesignerWindow::TitleDesignerWindow(Project* project) : project(project), doc(project) {
     settings = TitleDesignerSettings::load();
+    // S81's, S83's and S86's rows, modes and gizmo target (§6.8)
+    registerTitleDesignerExtensions();
+    titledesigner::registerTitleAnimationPanel(&settings);
     // reopened as it was: its live parts are made by the first show() (R64, R65)
     windowOpen = settings.windowOpen;
 }
@@ -89,13 +92,10 @@ void TitleDesignerWindow::createLive() {
     canvas = std::make_unique<TitleCanvasView>(project);
     thumbnails = std::make_unique<TitleLayerThumbnails>(project, OWNER);
     libraryTiles = std::make_unique<TitleLayerThumbnails>(project, OWNER);
-    starterLibrary = std::make_unique<TitleStarterLibrary>(&doc, [this](LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
-        return starterTile(tab, item, width, height, visible);
-    });
-    // a registered Library (S84) gets its live tiles from the same path: its item's ops on the user's layer
+    // the Library's live tiles (S84's provider): the item's ops on the user's layer, through the one preview queue
     if (TitleLibraryProvider* provider = libraryProvider()) {
         provider->attachTileSource([this](LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
-            return starterTile(tab, item, width, height, visible);
+            return libraryTile(tab, item, width, height, visible);
         });
     }
     textEdit = std::make_unique<TitleTextEdit>();
@@ -131,6 +131,8 @@ void TitleDesignerWindow::destroyLive() {
     for (const PreviewModeDef& mode : previewModes()) {
         if (mode.close) mode.close();
     }
+    livePreviews.clear();
+    liveStart = -1.0;
     canvas.reset();
     thumbnails.reset();
     if (TitleLibraryProvider* provider = libraryProvider()) {
@@ -138,7 +140,6 @@ void TitleDesignerWindow::destroyLive() {
         provider->attachTileSource(nullptr);
     }
     libraryTiles.reset();
-    starterLibrary.reset();
     textEdit.reset();
     gizmo2d.reset();
     gizmo3d.reset();
@@ -259,6 +260,9 @@ bool TitleDesignerWindow::open(const fs::path& file, std::string* error) {
     lintChange = ~0ull;
     searchText.clear();
     findings.clear();
+    livePreviews.clear();
+    liveStart = -1.0;
+    realtimeCheckedAt = -1.0;
     workspace.save();
     if (!windowOpen) setOpen(true);
     focusRequested = true;
@@ -321,7 +325,7 @@ bool TitleDesignerWindow::needsFrames() const {
     const CanvasRenderInfo& info = canvas->info();
     return info.busy || info.rebuilding || now() - lastViewChange < 0.5 || doc.gestureActive() || (thumbnails && thumbnails->pendingCount() > 0) ||
            (libraryTiles && libraryTiles->pendingCount() > 0) ||
-           textEditing() || drag != Drag::None;
+           textEditing() || drag != Drag::None || !livePreviews.empty() || engineFramesWanted();
 }
 
 bool TitleDesignerWindow::typing() const {
@@ -332,13 +336,29 @@ void TitleDesignerWindow::setTool(Tool tool) {
     currentTool = tool;
 }
 
+const PreviewModeDef* TitleDesignerWindow::activePreviewMode() const {
+    const DocumentView* v = viewOrNull();
+    if (!v) return nullptr;
+    for (const PreviewModeDef& mode : previewModes()) {
+        if (mode.id == v->previewAs) return &mode;
+    }
+    return nullptr;
+}
+
 bool TitleDesignerWindow::setPreviewAs(const std::string& mode, std::string* error) {
+    // the mode left frees what it made (S81's Glyph Atlas title)
+    auto leave = [&] {
+        const PreviewModeDef* previous = activePreviewMode();
+        if (previous && previous->id != mode && previous->close) previous->close();
+    };
     if (mode == "realtime" || mode == "baked") {
+        leave();
         view().previewAs = mode;
         return true;
     }
     for (const PreviewModeDef& def : previewModes()) {
         if (def.id == mode) {
+            leave();
             view().previewAs = mode;
             return true;
         }
@@ -514,6 +534,11 @@ ta::Json TitleDesignerWindow::state() const {
     out["zoom"] = v && v->fit ? ta::Json("fit") : ta::Json(v ? v->zoom : 1.0f);
     out["zoom_value"] = xform.zoom;
     out["preview_as"] = v ? v->previewAs : std::string("realtime");
+    ta::Json openPanels = ta::Json::object();
+    for (const PanelDef& panel : panels()) openPanels[panel.id] = panelOpen(panel);
+    out["panels"] = openPanels;
+    out["animation_panel"] = titledesigner::titleAnimationPanelState();
+    out["canvas_origin"] = ta::Json::array({xform.origin.x, xform.origin.y});
     out["background"] = v ? v->backdrop.kind : std::string("checker");
     out["device"] = v && !v->device.profile.empty() ? ta::Json{{"profile", v->device.profile}, {"orientation", v->device.orientation},
                                                            {"display_height", v->device.displayHeight}}
@@ -550,7 +575,27 @@ ta::Json TitleDesignerWindow::state() const {
                           for (const auto& [name, ms] : indexUnitCosts) units.push_back(ta::Json::array({name, ms}));
                           return units;
                       }()}, {"index_units_frame", indexUnitsLastFrame}};
-    out["library"] = {{"provider", libraryProvider() ? "registered" : "starter"}, {"shown", libraryShown}};
+    out["library"] = {{"provider", libraryProvider() ? "registered" : "none"}, {"shown", libraryShown}};
+    if (addOpen) {
+        // the Add palette as drawn last: its rail with counts and the listed entries
+        ta::Json rail = ta::Json::array();
+        for (const auto& [category, count] : addRail) rail.push_back({{"category", category}, {"count", count}});
+        out["add"] = {{"query", addQuery}, {"filter", addFilter}, {"rail", rail}, {"entries", addVisible}};
+    }
+    if (inContext) {
+        // In Context (R30): the instance's screen rectangle once found, on its screen
+        out["in_context"] = {{"located", inContext->located}, {"snapshot", !inContext->snapshotRgba.empty()},
+                             {"rect", ta::Json::array({inContext->x, inContext->y, inContext->width, inContext->height})},
+                             {"screen", ta::Json::array({inContext->screenWidth, inContext->screenHeight})}};
+    }
+    if (gizmo3d && gizmo3d->visible()) {
+        // S82 R35's schematic where it is drawn (window coords, as `rect`): its centre and the
+        // free-rotate ring's radius
+        out["gizmo_3d"] = {{"centre", ta::Json::array({gizmo3d->centre().x, gizmo3d->centre().y})}, {"ring", rotation3d::RING_PX}};
+    }
+    ta::Json live = ta::Json::array();
+    for (const auto& [layer, effect] : livePreviews) live.push_back(nodePath(doc.shown(), {NodeKind::Effect, layer, {}, effect}));
+    out["live_previews"] = live;
     ta::Json notices = ta::Json::array();
     if (cjkNoticeShown) notices.push_back("cjk_font_missing");
     out["notices"] = notices;
@@ -580,6 +625,20 @@ void TitleDesignerWindow::openAddPalette(const std::string& filter) {
     addCategory.clear();
     addHighlight = 0;
     addOpenRequested = true;
+}
+
+void TitleDesignerWindow::openAddPalette(const std::string& filter, const std::string& query) {
+    openAddPalette(filter);
+    addQuery = query;
+    // focus_window focuses the window one frame after its keys run, which closes popups: the
+    // palette opens two frames later, over it
+    addOpenRequested = false;
+    addOpenDelay = 3;
+}
+
+void TitleDesignerWindow::closeAddPalette() {
+    addOpenRequested = false;
+    addCloseRequested = addOpen;
 }
 
 void TitleDesignerWindow::exposeField(const FieldRef& target, const std::string& label) {
@@ -1132,7 +1191,16 @@ void TitleDesignerWindow::showContents() {
     const float libraryHeight = !hasLibrary ? 0.0f : libraryFolded ? ImGui::GetFrameHeightWithSpacing() * 1.2f : settings.libraryHeight * scale;
     // an open Library adds its splitter and one more item gap above it
     const float librarySplitter = hasLibrary && !libraryFolded ? 2.0f * ImGui::GetStyle().ItemSpacing.y : 0.0f;
-    const float mainHeight = std::max(120.0f, avail.y - libraryHeight - statusHeight - librarySplitter);
+    // registered bottom panels (S85's Animation strip): an open one reserves its height, a closed
+    // one its header
+    const float panelHeader = ImGui::GetFrameHeightWithSpacing();
+    float panelsHeight = 0.0f;
+    for (const PanelDef& panel : panels()) {
+        if (panel.region != PanelDef::Region::Bottom) continue;
+        panelsHeight += panelOpen(panel) ? std::max(180.0f * scale, avail.y * 0.45f) : panelHeader;
+    }
+    if (panelsHeight > 0.0f) panelsHeight = std::min(panelsHeight, avail.y * 0.55f) + ImGui::GetStyle().ItemSpacing.y;
+    const float mainHeight = std::max(120.0f, avail.y - libraryHeight - statusHeight - librarySplitter - panelsHeight);
     regionAvailable[RegionLayers] = !tiny && (narrow || !settings.layersCollapsed);
     regionAvailable[RegionProperties] = !tiny && (narrow || !settings.propertiesCollapsed);
     regionAvailable[RegionCanvas] = true;
@@ -1228,20 +1296,37 @@ void TitleDesignerWindow::showContents() {
     focusedRegion = focusedRegionNow >= 0 ? focusedRegionNow : (focused ? (int)RegionToolbar : -1);
     focusedRegionNow = -1;
     if (keyboardRegion >= 0 && focusedRegion != keyboardRegion) keyboardRegion = -1;
+    drawPanels(panelsHeight);
     drawStatusBar();
     drawAddPalette();
     drawFontPicker();
     drawExposeDialog();
     drawNotices();
-    // registered panels (S85's Animation strip)
-    for (const PanelDef& panel : panels()) {
-        const bool shown = panel.visibleByDefault ? panel.visibleByDefault(doc) : true;
-        if (!shown || !panel.draw) continue;
-        if (ImGui::CollapsingHeader((panel.title + "###panel_" + panel.id).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) panel.draw(doc);
-    }
     ImGui::End();
     if (!stillOpen) setOpen(false);
     firstShow = false;
+}
+
+bool TitleDesignerWindow::panelOpen(const PanelDef& panel) const {
+    const auto found = panelOpenStates.find(panel.id);
+    if (found != panelOpenStates.end()) return found->second;
+    return panel.visibleByDefault ? panel.visibleByDefault(doc) : true;
+}
+
+void TitleDesignerWindow::drawPanels(float height) {
+    JE_PROFILE_SCOPE("TD drawPanels");
+    if (height <= 0.0f) return;
+    ImGui::BeginChild("##titledesignerpanels", ImVec2(0.0f, height), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    for (const PanelDef& panel : panels()) {
+        if (panel.region != PanelDef::Region::Bottom || !panel.draw) continue;
+        const bool wasOpen = panelOpen(panel);
+        ImGui::SetNextItemOpen(wasOpen, ImGuiCond_Always);
+        const bool open = ImGui::CollapsingHeader((panel.title + "###panel_" + panel.id).c_str());
+        // only a click pins it: until then it follows visibleByDefault (a document's first animation opens it)
+        if (open != wasOpen) panelOpenStates[panel.id] = open;
+        if (open) panel.draw(doc);
+    }
+    ImGui::EndChild();
 }
 
 void TitleDesignerWindow::drawSideColumn(float width, float height) {
@@ -1484,6 +1569,12 @@ bool TitleDesignerWindow::dropFiles(const std::vector<std::string>& files, const
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return (char)std::tolower(c); });
         fs::path absolute = FileUtils::pathFromUtf8(file);
         if (!absolute.is_absolute()) absolute = project->getProjectPath() / absolute;
+        // R34: an SVG comes in through import_svg (a file outside the assets is copied beside the document)
+        if (ext == ".svg") {
+            ops.push_back({{"op", "import_svg"}, {"file", absolute.generic_string()}});
+            name = "Add Layer Vector (SVG)";
+            continue;
+        }
         std::error_code ec;
         const fs::path relative = fs::relative(absolute, project->getAssetsPath(), ec);
         const std::string assetPath = ec ? std::string() : relative.generic_string();
@@ -1494,9 +1585,6 @@ bool TitleDesignerWindow::dropFiles(const std::vector<std::string>& files, const
         if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" || ext == ".tga" || ext == ".bmp") {
             ops.push_back({{"op", "add_layer"}, {"type", "image"}, {"name", fs::path(file).stem().string()}, {"values", {{"image", {{"path", assetPath}, {"guid", ""}}}}}});
             name = "Add Layer Image";
-        } else if (ext == ".svg") {
-            ops.push_back({{"op", "add_layer"}, {"type", "vector"}, {"name", fs::path(file).stem().string()}, {"values", {{"svg", {{"path", assetPath}, {"guid", ""}}}}}});
-            name = "Add Layer Vector (SVG)";
         } else if (ext == ".ttf" || ext == ".otf" || ext == ".ttc") {
             std::string target = underLayer;
             if (target.empty()) {

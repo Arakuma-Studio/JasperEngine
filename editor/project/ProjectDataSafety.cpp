@@ -4,6 +4,7 @@
 // The project's side of data safety (docs/data-safety.md, docs/specs/S03-data-safety.md):
 // the one-editor-per-project lock, the orphan sweep, scene Auto Save and crash recovery.
 
+#include "terrain/TerrainMapPersistence.h"
 #include "Project.h"
 #include "log/LogFormatCheck.h"
 
@@ -18,6 +19,7 @@
 #include "io/AtomicFile.h"
 #include "jobs/JobSystem.h"
 #include "util/FileUtils.h"
+#include "voxel/VoxelAssetFile.h"
 
 #include "json.hpp"
 
@@ -259,6 +261,8 @@ void editor::Project::tickAutosave(float deltaSeconds, bool userInteracting) {
     }
 
     const float interval = configuredAutosaveInterval();
+    // T1 R30: what a backup refers to should be on disk by the time a crash needs it
+    TerrainMapPersistence::get().handOverAll();
     for (SceneProject& sceneProject : scenes) {
         if (sceneProject.opened && sceneProject.scene) {
             autosaveDocument(sceneProject, sceneProject.filepath.empty() ? BackupKind::Untitled : BackupKind::Scene,
@@ -367,6 +371,12 @@ void editor::Project::autosaveDocument(SceneProject& sceneProject, BackupKind ki
                   sceneProject.name.c_str(), seconds * 1000.0f, state.interval);
     }
 
+    // T6 R77: its dirty Voxel Volumes go beside it; encoded here, written with it
+    std::vector<VoxelBackup> voxelBackups;
+    if (!prefab) {
+        voxelBackups = collectVoxelBackups(*this, sceneProject, state.voxelVersions);
+    }
+
     const fs::path project = projectPath;
     const uint32_t sceneId = sceneProject.id;
     const int version = StreamMigrations::currentVersion(prefab ? DocumentKind::Prefab : DocumentKind::Scene);
@@ -389,9 +399,11 @@ void editor::Project::autosaveDocument(SceneProject& sceneProject, BackupKind ki
     // a disk write: the io-write channel (one at a time, in order with the scene saves)
     jobs::SubmitOptions options;
     options.name = "autosave-write";
-    jobs::system().ioWriteChannel().submit([project, kind, source, sceneId, root, baseSha1, version, prefab, written, finished]() {
+    jobs::system().ioWriteChannel().submit([project, kind, source, sceneId, root, baseSha1, version, prefab, written, finished, voxelBackups]() {
+        // the volumes first: a scene backup always names complete copies
+        writeVoxelBackups(project, voxelBackups);
         // the tree belongs to this thread now: nothing else holds its nodes
-        const std::string text = prefab ? YAML::Dump(root) : DocumentFiles::text(root);
+        const std::string text = (prefab ? YAML::Dump(root) : DocumentFiles::text(root)) + voxelBackupMarkers(voxelBackups);
         const std::string sha1 = DocumentFiles::sha1(text);
         bool unchanged;
         {
@@ -465,11 +477,15 @@ bool editor::Project::resolveSceneRecovery(const fs::path& relativePath, std::st
     const RecoveryChoice choice = forced ? *forced : editor::getEditorHost().resolveSceneRecovery(lastRecovery.backup);
     lastRecovery.applied = choice;
     if (choice == RecoveryChoice::Discard) {
+        std::string backupText;
+        if (SceneBackups::readBackup(lastRecovery.backup, backupText)) discardVoxelBackups(projectPath, backupText);
         SceneBackups::discard(lastRecovery.backup.backup);
         Out::info("Discarded the auto-saved changes of \"%s\".", relativePath.generic_string().c_str());
         return false;
     }
     if (choice == RecoveryChoice::Restore && SceneBackups::readBackup(lastRecovery.backup, restoredBytes)) {
+        // before the scene loads: its VoxelSystem finds these instead of reading the files
+        restoredVoxelAssets = restoreVoxelBackups(*this, restoredBytes);
         Out::info("Restored \"%s\" from its auto-saved copy (%s); save to keep it.",
                   relativePath.generic_string().c_str(), lastRecovery.backup.savedAt.c_str());
         return true;
@@ -485,6 +501,11 @@ bool editor::Project::discardSceneBackup(uint32_t sceneId) {
     const SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         return false;
+    }
+    std::string backupText;
+    if (DocumentFiles::readBytes(SceneBackups::backupPath(projectPath, sceneProject->filepath.empty() ? BackupKind::Untitled : BackupKind::Scene,
+                                                          sceneProject->filepath, sceneId), backupText)) {
+        discardVoxelBackups(projectPath, backupText);
     }
     const bool removed = sceneProject->filepath.empty() ?
             SceneBackups::discard(projectPath, BackupKind::Untitled, {}, sceneId) :

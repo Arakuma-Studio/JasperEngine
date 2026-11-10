@@ -24,6 +24,8 @@
 - (void)mouseDown:(NSEvent*)event button:(int)button;
 - (void)mouseUp:(NSEvent*)event button:(int)button;
 - (void)mouseMoved:(NSEvent*)event;
+// tabletPoint: and tabletProximity: (a pen's pressure without a mouse event)
+- (void)tabletEvent:(NSEvent*)event;
 - (void)scrollWheel:(NSEvent*)event;
 - (void)mouseEntered:(NSEvent*)event;
 - (void)mouseExited:(NSEvent*)event;

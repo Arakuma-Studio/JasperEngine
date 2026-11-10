@@ -9,15 +9,18 @@
 // when the committed RuntimeFields.gen.inc is not what the editor's tables emit.
 
 #include "support/EditorTestSupport.h"
+#include "LogCapture.h"
 #include "reflect/ReflectTestSupport.h"
 
 #include "Catalog.h"
 #include "component/ActionComponent.h"
+#include "component/MeshComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/Rigidbody2DComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/SplineComponent.h"
+#include "component/TerrainComponent.h"
 #include "component/TweenComponent.h"
 #include "cook/RuntimeFieldsEmitter.h"
 #include "cook/SceneCooker.h"
@@ -208,6 +211,50 @@ TEST(CookedScene, SplineCurveThroughAccessors) {
 // files the build ships (SceneCooker::defaultSkyFiles), or the player has a cube texture with no
 // face ("Texture is missing texture for face 0" and no sky: the upgrade test's prebuilt player of
 // an origin/main 3D scene)
+// T5 AC39: the cooked path carries the Terrain's foliage fields, the prototypes' struct among them
+TEST(CookedScene, TerrainFoliageRoundTrip) {
+    OwnedFramebuffers owned;
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    const Entity entity = scene->createEntity();
+    TerrainComponent terrain;
+    terrain.treeDistance = 321.0f;
+    terrain.billboardStart = 44.0f;
+    terrain.maxMeshTrees = 77;
+    terrain.windBending = 0.75f;
+    terrain.treeData = AssetRef("terrain/island.jetrees");
+    TerrainTreePrototype prototype;
+    prototype.id = 5;
+    prototype.collision = TerrainTreeCollision::Capsule;
+    prototype.collisionRadius = 0.75f;
+    prototype.navObstacle = true;
+    prototype.impostorViews = 8;
+    terrain.treePrototypes.push_back(prototype);
+    TerrainFoliageLayer layer;
+    layer.windBend = 0.5f;
+    layer.minDrawDistance = 9.0f;
+    terrain.foliageLayers.push_back(layer);
+    scene->addComponent<TerrainComponent>(entity, terrain);
+
+    DecodedScene loaded;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {entity}, loaded, error)) << error;
+    const TerrainComponent& back = loaded.scene->scene->getComponent<TerrainComponent>(entity);
+    EXPECT_FLOAT_EQ(back.treeDistance, 321.0f);
+    EXPECT_FLOAT_EQ(back.billboardStart, 44.0f);
+    EXPECT_EQ(back.maxMeshTrees, 77);
+    EXPECT_FLOAT_EQ(back.windBending, 0.75f);
+    EXPECT_EQ(back.treeData.str(), "terrain/island.jetrees");
+    ASSERT_EQ(back.treePrototypes.size(), 1u);
+    EXPECT_EQ(back.treePrototypes[0].id, 5u);
+    EXPECT_EQ(back.treePrototypes[0].collision, TerrainTreeCollision::Capsule);
+    EXPECT_FLOAT_EQ(back.treePrototypes[0].collisionRadius, 0.75f);
+    EXPECT_TRUE(back.treePrototypes[0].navObstacle);
+    EXPECT_EQ(back.treePrototypes[0].impostorViews, 8);
+    ASSERT_EQ(back.foliageLayers.size(), 1u);
+    EXPECT_FLOAT_EQ(back.foliageLayers[0].minDrawDistance, 9.0f);
+}
+
 TEST(CookedScene, DefaultSkyShipsItsFaces) {
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
@@ -352,6 +399,35 @@ TEST(CookedScene, TweenCurveKeepsModesAndWraps) {
     EXPECT_EQ(old.keys[1].value, 1.0f);
     EXPECT_EQ(old.keys[1].mode, 0u);
     EXPECT_EQ(old.postWrapMode, CurveWrapMode::Clamp);
+}
+
+// S43: a material's Palette Swap bindings survive a cook (a prebuilt player draws the swap)
+TEST(CookedScene, MaterialKeepsPaletteBindings) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    const Entity entity = scene->createEntity();
+    ProjectUtils::addEntityComponent(scene, entity, ComponentType::MeshComponent, source.scene->entities, YAML::Node());
+    MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+    mesh.numSubmeshes = 1;
+    jasperengine::pixelart::PaletteBinding binding;
+    binding.source = AssetRef("Palettes/hero.palette", Guid::parse("0123456789abcdef0123456789abcdef"));
+    binding.targets.push_back(jasperengine::pixelart::PaletteTarget::parse("Palettes/enemy.palette#Night"));
+    binding.targets.push_back(jasperengine::pixelart::PaletteTarget::parse("Palettes/gray.palette"));
+    binding.useVariants = false;
+    mesh.submeshes[0].material.shaderPalettes.edit().push_back({"u_palette", binding});
+    mesh.submeshes[0].material.shaderFeatures = {"PALETTE_SWAP"};
+
+    DecodedScene loaded;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {entity}, loaded, error)) << error;
+    const MeshComponent& after = loaded.scene->scene->getComponent<MeshComponent>(entity);
+    ASSERT_GE(after.numSubmeshes, 1u);
+    const jasperengine::pixelart::ShaderPalettes& palettes = after.submeshes[0].material.shaderPalettes.get();
+    ASSERT_EQ(palettes.size(), 1u);
+    EXPECT_EQ(palettes[0].first, "u_palette");
+    EXPECT_EQ(palettes[0].second, binding);
+    EXPECT_EQ(palettes[0].second.source.guid.str(), "0123456789abcdef0123456789abcdef");
+    EXPECT_EQ(after.submeshes[0].material, mesh.submeshes[0].material);
 }
 
 namespace {
@@ -613,6 +689,78 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     EXPECT_EQ(old.getWaterWakeResolution(), defaults.waterWakeResolution);
     EXPECT_FLOAT_EQ(old.getWaterWakeArea(), defaults.waterWakeArea);
     EXPECT_FLOAT_EQ(old.getWaterWakeFade(), defaults.waterWakeFade);
+}
+
+// A newer minor adds only length-prefixed fields: a player reads its content without them and warns
+// once; another major is refused, naming the fix
+TEST(CookedScene, ReadsANewerMinorAndRefusesAnotherMajor) {
+    using namespace jasperengine::cook;
+    DecodedScene source = emptyScene();
+    const std::vector<uint8_t> bytes = editor::cook::SceneCooker::cookScene(source.scene->scene, 4242, {}, NULL_ENTITY, SceneResources{});
+    ASSERT_GE(bytes.size(), HEADER_BYTES);
+    auto withVersion = [&](uint16_t major, uint16_t minor) {
+        std::vector<uint8_t> out = bytes;
+        out[4] = static_cast<uint8_t>(major);
+        out[5] = static_cast<uint8_t>(major >> 8);
+        out[6] = static_cast<uint8_t>(minor);
+        out[7] = static_cast<uint8_t>(minor >> 8);
+        return out;
+    };
+    const std::string newerVersion = std::to_string(FORMAT_MAJOR) + "." + std::to_string(FORMAT_MINOR + 1);
+    const std::string warning = "content " + newerVersion + " was made by a newer editor; features newer than " + contentFormatVersion() + " are skipped";
+    const std::vector<uint8_t> newer = withVersion(FORMAT_MAJOR, static_cast<uint16_t>(FORMAT_MINOR + 1));
+    std::string error;
+    for (int i = 0; i < 2; i++) {
+        DecodedScene loaded = emptyScene();
+        EXPECT_TRUE(CookedSceneLoader::loadScene(loaded.scene->scene, std::span<const uint8_t>(newer.data(), newer.size()), &error)) << error;
+    }
+    EXPECT_EQ(jasperengine::test::LogCapture::sinceTestStart().count(D_LOG_WARN, warning), 1u) << "one warning per version";
+
+    const std::vector<uint8_t> otherMajor = withVersion(static_cast<uint16_t>(FORMAT_MAJOR + 1), 0);
+    DecodedScene refused = emptyScene();
+    EXPECT_FALSE(CookedSceneLoader::loadScene(refused.scene->scene, std::span<const uint8_t>(otherMajor.data(), otherMajor.size()), &error));
+    EXPECT_NE(error.find("content format " + std::to_string(FORMAT_MAJOR + 1) + ".0"), std::string::npos) << error;
+    EXPECT_NE(error.find("build the game with the editor of this player's version"), std::string::npos) << error;
+}
+
+// What a 1.4 editor cooked loads: the file as its writer laid it out (1.5's without the Water Wakes
+// values that end the settings record, the record's length and the string table offset with them)
+TEST(CookedScene, ReadsAnOlderMinorsContent) {
+    using namespace jasperengine::cook;
+    ASSERT_EQ(FORMAT_MINOR, 5) << "the 1.4 layout below is 1.5's without its Water Wakes values: cut the newer minor's values too";
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    scene->setPlanarReflectionFarClip(60.0f);
+    scene->setWaterWakeResolution(WaterWakeResolution::HIGH);
+    scene->setWaterWakeArea(32.0f);
+    const std::vector<uint8_t> bytes = editor::cook::SceneCooker::cookScene(scene, 4242, {}, NULL_ENTITY, SceneResources{});
+    auto le32 = [](const uint8_t* at) { return uint32_t(at[0]) | uint32_t(at[1]) << 8 | uint32_t(at[2]) << 16 | uint32_t(at[3]) << 24; };
+    const size_t cut = waterWakeTailBytes(*scene);
+    const uint32_t settingsLength = le32(bytes.data() + HEADER_BYTES);
+    ASSERT_GT(settingsLength, cut);
+
+    std::vector<uint8_t> v14(bytes.begin(), bytes.begin() + HEADER_BYTES);
+    v14[6] = 4;
+    v14[7] = 0;
+    uint64_t stringsOffset = 0;
+    for (int i = 0; i < 8; i++) stringsOffset |= uint64_t(bytes[20 + i]) << (8 * i);
+    stringsOffset -= cut;
+    for (int i = 0; i < 8; i++) v14[20 + i] = static_cast<uint8_t>(stringsOffset >> (8 * i));
+    const uint32_t length = settingsLength - static_cast<uint32_t>(cut);
+    for (int i = 0; i < 4; i++) v14.push_back(static_cast<uint8_t>(length >> (8 * i)));
+    const size_t settingsEnd = HEADER_BYTES + 4 + settingsLength;
+    v14.insert(v14.end(), bytes.begin() + HEADER_BYTES + 4, bytes.begin() + static_cast<std::ptrdiff_t>(settingsEnd - cut));
+    v14.insert(v14.end(), bytes.begin() + static_cast<std::ptrdiff_t>(settingsEnd), bytes.end());
+    ASSERT_EQ(v14.size(), bytes.size() - cut);
+
+    DecodedScene loaded = emptyScene();
+    std::string error;
+    ASSERT_TRUE(CookedSceneLoader::loadScene(loaded.scene->scene, std::span<const uint8_t>(v14.data(), v14.size()), &error)) << error;
+    const SceneSettings defaults;
+    EXPECT_FLOAT_EQ(loaded.scene->scene->getPlanarReflectionFarClip(), 60.0f);
+    EXPECT_EQ(loaded.scene->scene->getWaterWakeResolution(), defaults.waterWakeResolution);
+    EXPECT_FLOAT_EQ(loaded.scene->scene->getWaterWakeArea(), defaults.waterWakeArea);
+    EXPECT_EQ(jasperengine::test::LogCapture::sinceTestStart().count(D_LOG_WARN, "newer editor"), 0u);
 }
 
 TEST(RuntimeFields, Generated) {

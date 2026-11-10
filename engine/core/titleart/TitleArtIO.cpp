@@ -5,6 +5,7 @@
 #include "TitleArtMigrations.h"
 #include "TitleArtSchema.h"
 #include "TitleEffectRegistry.h"
+#include "TitleTranslations.h"
 
 #include <algorithm>
 #include <cmath>
@@ -776,6 +777,8 @@ namespace {
                 exposed[i]["name"] = unique;
             }
         }
+        // S87's language rules (codes, keys, output ids)
+        normalizeTitleLanguages(root, context);
     }
 
     // byte offset -> 1-based line and column
@@ -803,8 +806,47 @@ std::string titleart::writeTitleArtJson(const Json& value, int indent) {
     return out;
 }
 
+namespace {
+
+    // the members marked omitDefault that hold their default are left out of the text (S85's
+    // additions): normalize puts them back, so the tree is the same and the file is the one a
+    // build without them wrote
+    void stripOmittedDefaults(Json& object, const SchemaKind& base) {
+        if (!object.is_object()) return;
+        const TitleArtSchema& schema = TitleArtSchema::get();
+        const SchemaKind* kind = base.discriminator.empty() ? &base : schema.variantOf(base, object);
+        if (!kind) return;
+        for (const SchemaMember* m : schema.membersOf(*kind)) {
+            auto it = object.find(m->key);
+            if (it == object.end()) continue;
+            if (m->omitDefault) {
+                const Json def = m->type == ValueType::Object && m->defaultValue.is_null() && !m->kind.empty() ? schema.defaultObject(m->kind)
+                                                                                                              : m->defaultValue;
+                if (*it == def) {
+                    object.erase(it);
+                    continue;
+                }
+            }
+            const SchemaKind* inner = m->kind.empty() ? nullptr : schema.kind(m->kind);
+            if (!inner) continue;
+            if (m->type == ValueType::Object) {
+                stripOmittedDefaults(*it, *inner);
+            } else if (m->type == ValueType::ObjectArray && it->is_array()) {
+                for (Json& e : *it) stripOmittedDefaults(e, *inner);
+            } else if (m->type == ValueType::ObjectMap && it->is_object()) {
+                for (auto entry = it->begin(); entry != it->end(); ++entry) stripOmittedDefaults(entry.value(), *inner);
+            }
+        }
+    }
+
+}
+
 std::string titleart::writeTitleArt(const TitleArtDoc& doc) {
-    return writeTitleArtJson(doc.root) + "\n";
+    const SchemaKind* document = TitleArtSchema::get().kind("document");
+    if (!document) return writeTitleArtJson(doc.root) + "\n";
+    Json root = doc.root;
+    stripOmittedDefaults(root, *document);
+    return writeTitleArtJson(root) + "\n";
 }
 
 void titleart::normalizeTitleArtObject(Json& object, const std::string& kind, const std::string& path, NormalizeContext& context) {

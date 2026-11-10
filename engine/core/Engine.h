@@ -119,6 +119,9 @@
 #include "texture/Framebuffer.h"
 #include "ecs/Entity.h"
 #include "render/AtmosphereQuality.h"
+#include "render/FoliageQuality.h"
+#include "pixelart/PixelPerfectLayout.h"
+#include "math/Vector2.h"
 #include <atomic>
 #include <mutex>
 #include <unordered_set>
@@ -146,7 +149,28 @@ namespace jasperengine {
         LETTERBOX,
         CROP,
         STRETCH,
-        NATIVE
+        NATIVE,
+        // whole-number scales of the preferred canvas (S41, pixelart::computePixelPerfectLayout at
+        // PPU 1): bars around it, or a canvas that grows to fill the screen (bars under the scale)
+        INTEGER,
+        INTEGER_EXPAND
+    };
+
+    // What a Pixel Perfect Camera on the main scene's main camera asks of the Engine's view
+    // (RenderSystem sets it, S41 R3): its layout replaces the Scaling's canvas and view rect
+    struct PixelPerfectViewRequest {
+        bool active = false;
+        int referenceWidth = 0;     // the base resolution (the preferred canvas when 0)
+        int referenceHeight = 0;
+        PixelUpscaleMode mode = PixelUpscaleMode::INTEGER;
+        bool smoothing = false;
+        int pixelsPerUnit = 1;
+
+        bool operator==(const PixelPerfectViewRequest& other) const {
+            return active == other.active && referenceWidth == other.referenceWidth && referenceHeight == other.referenceHeight &&
+                   mode == other.mode && smoothing == other.smoothing && pixelsPerUnit == other.pixelsPerUnit;
+        }
+        bool operator!=(const PixelPerfectViewRequest& other) const { return !(*this == other); }
     };
 
     // texture power of two strategy
@@ -262,6 +286,8 @@ namespace jasperengine {
         static int defaultUniformBytes();
         static int defaultStreamStagingBytes();
         static int defaultDescriptorBytes();
+        // T1 DC9: what a frame's terrain map uploads may take, 2 MB mobile/web, 8 MB desktop
+        static int defaultTerrainUploadBytes();
 
         struct GpuResourceLimits{
             int buffers = 16384;   // vertex, index, storage (bones on Vulkan, Metal, D3D11), instances
@@ -329,6 +355,16 @@ namespace jasperengine {
         static Rect viewRect;
 
         static Scaling scalingMode;
+        // S41: the project's Pixels Per Unit, the Pixel Perfect Camera's request, its layout and
+        // the Game view's Pixel Scale; the screen pixels the smoothed image is shifted by
+        static int pixelsPerUnit;
+        // S42: the filter every runtime-constructed Texture starts with
+        static TextureFilter defaultTextureFilter;
+        static PixelPerfectViewRequest pixelPerfectRequest;
+        static pixelart::PixelPerfectLayout pixelPerfectLayout;
+        static int pixelPerfectForcedScale;
+        static Vector2 viewShift;
+        static void applyPixelPerfectView(int screenWidth, int screenHeight);
         // the project's Canvas Scaler (Project Settings > Graphics > UI Scale)
         static CanvasScalerSettings defaultCanvasScaler;
         static TextureStrategy textureStrategy;
@@ -421,6 +457,10 @@ namespace jasperengine {
         static AtmosphereQuality atmosphereQualityDefaults[3];
         static bool atmosphereQualityOverridden;
         static AtmosphereQuality atmosphereQualityOverride;
+        static FoliageQuality foliageQualityDefaults[3];
+        static bool foliageQualityUncapped;
+        static bool foliageQualityOverridden;
+        static FoliageQuality foliageQualityOverride;
         static float foliageDistanceScaleDefaults[3];
         static bool foliageDistanceScaleOverridden;
         static float foliageDistanceScaleOverride;
@@ -534,6 +574,39 @@ namespace jasperengine {
         static void setScalingMode(Scaling scalingMode);
         static Scaling getScalingMode();
 
+        // Project Settings > Graphics > Pixels Per Unit (1-256, default 1: a world unit is a base
+        // pixel). Sprites and tilemaps with a pixelsPerUnit of 0 take it, and so does a Pixel
+        // Perfect Camera's span (docs/pixel-art.md)
+        static void setPixelsPerUnit(int pixelsPerUnit);
+        static int getPixelsPerUnit();
+
+        // Project Settings > Graphics > Default Filter Mode (S42 R3): the min and mag filter every
+        // Texture constructed from now on starts with (LINEAR, Bilinear, by default; NEAREST,
+        // Point, keeps a Lua Sprite:setTexture of pixel art crisp). Saved references keep their own.
+        static void setDefaultTextureFilter(TextureFilter filter);
+        static TextureFilter getDefaultTextureFilter();
+
+        // The layout a Pixel Perfect Camera asks for (S41): on, it replaces the Scaling's canvas
+        // (B / PPU, rounded to whole units) and view rect (the integer viewport); a change
+        // recomputes them at once. RenderSystem sets it from the main scene's main camera.
+        static void setPixelPerfectView(const PixelPerfectViewRequest& request);
+        static const PixelPerfectViewRequest& getPixelPerfectView();
+        // what the Pixel Perfect Camera on that camera asks of a view (false: none, disabled, or a
+        // perspective camera): RenderSystem, the editor's Game view and MCP lay a view out with it
+        static bool getPixelPerfectRequest(Scene* scene, Entity cameraEntity, PixelPerfectViewRequest& request);
+        // the layout in effect (an empty one while no Pixel Perfect Camera drives the view)
+        static const pixelart::PixelPerfectLayout& getPixelPerfectLayout();
+        // the request's layout on a screen of that size (the editor's Game view, MCP)
+        static pixelart::PixelPerfectLayout computePixelPerfectView(const PixelPerfectViewRequest& request, int screenWidth,
+                                                                    int screenHeight, int forcedScale);
+        // caps the scale (the Game view's Pixel Scale, 0 = Auto)
+        static void setPixelPerfectForcedScale(int scale);
+        static int getPixelPerfectForcedScale();
+        // the screen pixels (x right, y down) the drawn image is moved by (sub-pixel smoothing):
+        // input maps through the same shift, so a click hits what is seen
+        static void setViewShift(Vector2 shift);
+        static Vector2 getViewShift();
+
         // The UI's own space, the project default each scene uses unless it overrides it
         // (Scene::setCanvasScaler). FollowGameCanvas (the default) lays the UI out in the game
         // canvas above. A change recomputes every running scene's UI size.
@@ -640,8 +713,19 @@ namespace jasperengine {
         static void resetAtmosphereQuality();
         static bool isAtmosphereQualityOverridden();
 
+        // Foliage Quality (T5 R21): scales and caps, never writes a Terrain. uncapped: a project from
+        // before the field, High everywhere with no instance or draw cap, so it looks the same (F12).
+        static void setFoliageQualityDefaults(FoliageQuality desktop, FoliageQuality mobile, FoliageQuality web, bool uncapped = false);
+        static FoliageQuality getFoliageQualityDefault(Platform platform);
+        static void setFoliageQuality(FoliageQuality quality);
+        static FoliageQuality getFoliageQuality();
+        static void resetFoliageQuality();
+        // the tier in effect has no caps: no game override, and a project that never said
+        static bool isFoliageQualityUncapped();
+
         // Foliage Distance (Unity's QualitySettings.terrainDetailDistanceFactor): multiplies every
-        // terrain foliage layer's Draw Distance and Min Draw Distance. The project's scale per
+        // terrain foliage layer's Draw and Min Draw Distance, and (T5 R66) Tree Distance and Billboard
+        // Start: the one global distance knob. The project's scale per
         // platform group (Project Settings > Quality, 1 by default), which a game may override at
         // runtime (0 draws no foliage; clamped to [0, 10], non-finite values ignored).
         // getFoliageDistanceScale is the scale in effect: the override, else this platform's default.
@@ -769,6 +853,8 @@ namespace jasperengine {
         // ready, and a step of the shader warm-up list
         static void updateGpuCreation();
 
+        // A loading thread (one other than the main thread): its GPU objects go through the render
+        // queue, which the frames run and endAsyncThread commits. On the main thread they do nothing.
         static void startAsyncThread();
         static void commitThreadQueue();
         static void endAsyncThread();
@@ -844,6 +930,9 @@ namespace jasperengine {
             bool shadows = true;
             // the Scene view's Draw Mode (RenderSystem::ViewDrawMode; 0 Shaded)
             uint8_t drawMode = 0;
+            // the Scene view's Snap Preview (S41 R21): view pixels per base pixel of its own grid
+            // (0: none; a scene without a snapping Pixel Perfect Camera has nothing to preview)
+            float snapPreviewScale = 0.0f;
         };
 
         // Draws a secondary view: the editor's Scene view while the game plays, or its

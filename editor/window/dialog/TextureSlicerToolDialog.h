@@ -11,6 +11,10 @@
 #include "math/Vector2.h"
 #include "Engine.h"
 #include "texture/Texture.h"
+#include "sprite/SpriteSheetSources.h"
+#include "pixelart/PixelImage.h"
+#include <map>
+#include <optional>
 
 namespace jasperengine {
 namespace editor {
@@ -19,7 +23,8 @@ class TextureSlicerToolDialog {
 public:
     enum class Mode {
         SPRITE,
-        TILESET
+        TILESET,
+        TEXTURE_SHEET   // a texture's Sprite Mode (S45 R12)
     };
 
     enum class SliceMode {
@@ -73,6 +78,22 @@ private:
     std::function<void(const SliceResult&)> m_onApply;
     std::function<void()> m_onCancel;
 
+    // TEXTURE_SHEET: the texture's pixels (skip empty), per-frame pivot and border edits, frames
+    // from an Aseprite JSON, the default pivot
+    std::string m_texturePath;                    // absolute
+    std::optional<pixelart::PixelImage> m_image;
+    bool m_skipEmpty = true;
+    std::map<int, TextureSheetFrame> m_frameEdits;
+    std::vector<TextureSheetFrame> m_jsonFrames;
+    std::string m_jsonStatus;
+    int m_selectedFrame = -1;
+    int m_pivotPreset = 0;
+    // the stored custom pivot (normalized from the bottom-left), kept until a preset is picked
+    bool m_customPivot = false;
+    Vector2 m_pivotNormalized = Vector2(0.5f, 0.5f);
+    std::function<void(const TextureSheetSettings&)> m_onApplySheet;
+    TextureSheetSettings sheetSettings() const;
+
     void generatePreview();
 
 public:
@@ -85,6 +106,11 @@ public:
                      int sheetWidth, int sheetHeight,
                      std::function<void(const SliceResult&)> onApply,
                      std::function<void()> onCancel = nullptr);
+
+    // S45 R12: edits a texture's Sprite Mode (grid by count or cell size, offset, padding, prefix,
+    // skip empty, per-frame pivot and border, From JSON); `onApply` gets the settings
+    void openTextureSheet(const Texture& previewTexture, const std::string& textureAbsolute, const TextureSheetSettings& current,
+                          std::function<void(const TextureSheetSettings&)> onApply);
 
     void show();
     bool isOpen() const { return m_isOpen; }

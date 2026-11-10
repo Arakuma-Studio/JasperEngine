@@ -14,12 +14,16 @@
 #include "component/TitleArtRendererComponent.h"
 #include "shader/ShaderUniforms.h"
 #include "subsystem/TitleArtRuntime.h"
+#include "titleanim/TitleAnimPlayer.h"
+#include "animation/AnimationEvent.h"
 #include "texture/Texture.h"
 #include "util/FunctionSubscribe.h"
 #include "util/TitleArtBakeInfo.h"
 #include "asset/AssetRef.h"
 
+#include <chrono>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -79,11 +83,27 @@ namespace jasperengine::titleart{
         uint64_t failedHash = 0;        // the state whose onFailed fired
         std::string missingReported;    // the character set onMissingCharacters last fired for
 
+        // ---- the language (S87 R12-R15, R27) ----
+        std::vector<std::string> languages;     // what the title offers: the source first (the sidecar's table, else the document's)
+        std::string resolvedLanguage;           // what R12-R13 picked ("" for a monolingual title)
+        std::string shownLanguage;              // the language of the image on screen
+        std::string languageAsked;              // the component's language the resolution used
+        uint64_t languageGeneration = ~uint64_t(0);  // TitleArtLanguage::generation() it resolved at
+        bool languageReady = true;
+        // a Baked switch on its way: the language's sidecar and textures, drawn once loaded
+        bool switching = false;
+        TitleArtBakeInfo pendingBake;
+        std::string pendingBakePath, pendingGlowPath;
+        Texture pendingTexture, pendingGlowTexture;
+        TitleArtBakeInfo sourceBake;            // the source set (a language without its own set uses it)
+        std::string sourceBakePath, sourceGlowPath;
+
         // ---- events (Lua `onReady`...) ----
         FunctionSubscribe<void()> onReady;
         FunctionSubscribe<void(const std::string&)> onFailed;
         FunctionSubscribe<void(const std::string&)> onMissingCharacters;
         FunctionSubscribe<void(const std::string&)> onAnimationFinished;
+        FunctionSubscribe<void(const std::string&)> onLanguageReady;    // S87: the first frame the new language is drawn
 
         // ---- live layers (R33-R38) ----
         std::vector<TitleArtAnchor> anchors;
@@ -93,7 +113,37 @@ namespace jasperengine::titleart{
         // ---- the module's state (Realtime, Glyph Atlas) ----
         std::shared_ptr<TitleArtLive> live;
         TitleArtLiveStatus liveStatus;
+        bool liveRuns = false;          // its state renders now (visible, or Render When Hidden)
         uint32_t testFlags = 0;         // TITLE_ART_TEST_* copied into every request (R21)
+
+        // ---- S85's animations ----
+        titleanim::TitleAnimPlayer animation;
+        bool animationLoaded = false;       // the library was looked for (resolve resets it)
+        bool animationAutoStarted = false;  // Play Automatically ran for this enable
+        bool animationEditPreview = false;  // the Inspector's Preview runs its clock in Edit mode (R49)
+        std::chrono::steady_clock::time_point animationEditPreviewLast;     // its last frame (Edit mode has no scene time)
+        std::string animationSource;        // "document" (the module compiled it) or "data" (<file>.anim.json)
+        // a Baked title's flipbook pages, by animation id (textures of the pages beside the document)
+        std::map<std::string, std::vector<Texture>> flipbookPages;
+        // this frame's flipbook page lent instead of the bake (null: the bake or the live image)
+        Texture* animationPage = nullptr;
+        bool animationDrawn = false;        // the ANIM feature is on this frame
+        bool animationHasRest = false;      // the pose differs from the still (R13: else ANIM is off)
+        titleanim::TitlePoseSummary animationSummary;
+        titleanim::CompanionAnimUniforms animationUniforms;
+        float animationSpace[4] = {0.0f, 0.0f, 1.0f, 1.0f};    // the frame in the companion's own space (title_fx ANIM)
+        double animationLiveRest[(size_t)titleanim::TitleField::Count] = {};
+        // markers and ends of this frame, dispatched after the update (R28), reused
+        std::vector<titleanim::FiredMarker> firedMarkers;
+        std::vector<std::string> finishedAnimations;
+        double lastDrivenTime = 0.0;
+        FunctionSubscribe<void(const AnimationEvent&)> onAnimationEvent;
+
+        // every Lua and C++ script event above: TitleArtSystem::clearSubscriptions at Stop and
+        // removeSubscriptionsByTag on a reload walk them (tools/check_event_clears.py keeps it whole)
+        template<typename F> void forEachEvent(F&& f) {
+            f(onReady); f(onFailed); f(onMissingCharacters); f(onAnimationFinished); f(onLanguageReady); f(onAnimationEvent);
+        }
 
         // ---- warnings said once (R7, R19, R41, R51) ----
         std::set<std::string> said;

@@ -30,6 +30,39 @@ namespace {
         return true;
     }
 
+    // the SHA-256 of a file by path, size and modification time: an apply compares a pack file with
+    // the project's copy on every call, and hashing a 2.5 MB font each time made the op's cost the
+    // font's size (and the process's memory state) rather than the look's
+    bool fileSha(const fs::path& path, std::string& out) {
+        struct Stamp {
+            uintmax_t size = 0;
+            fs::file_time_type time;
+            std::string sha;
+        };
+        static std::mutex lock;
+        static std::map<std::string, Stamp> cache;
+        std::error_code ec;
+        const uintmax_t size = fs::file_size(path, ec);
+        if (ec) return false;
+        const fs::file_time_type time = fs::last_write_time(path, ec);
+        if (ec) return false;
+        const std::string key = path.lexically_normal().string();
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            auto it = cache.find(key);
+            if (it != cache.end() && it->second.size == size && it->second.time == time) {
+                out = it->second.sha;
+                return true;
+            }
+        }
+        std::string bytes;
+        if (!readBytes(path, bytes)) return false;
+        out = sha256Hex(bytes);
+        std::lock_guard<std::mutex> guard(lock);
+        cache[key] = Stamp{size, time, out};
+        return true;
+    }
+
     struct PackCache {
         fs::path dir;
         std::vector<PackFont> fonts;
@@ -118,14 +151,15 @@ const PackEnvironment* titlelibrary::findPackEnvironment(const std::string& id) 
 std::string ImportPlan::copyInto(const std::string& assetDir, const fs::path& source, const std::string& name,
                                  const std::vector<fs::path>& extras, const std::string& provenanceYaml, const std::string& importYaml,
                                  const char* conflictCode) {
-    std::string bytes;
-    if (!readBytes(source, bytes)) return {};
+    std::error_code sourceEc;
+    if (!fs::is_regular_file(source, sourceEc)) return {};
     if (preview || projectDir.empty()) {
         const std::string assetPath = assetDir + "/" + name;
         transient[assetPath] = source.string();
         return assetPath;
     }
-    const std::string sha = sha256Hex(bytes);
+    std::string sha;
+    if (!fileSha(source, sha)) return {};
     // the canonical folder, then numbered ones after a conflict (<dir>-2, -3 ...)
     for (int n = 1; n < 100; n++) {
         const std::string dir = n == 1 ? assetDir : assetDir + "-" + std::to_string(n);
@@ -139,7 +173,7 @@ std::string ImportPlan::copyInto(const std::string& assetDir, const fs::path& so
         std::error_code ec;
         if (fs::exists(target, ec)) {
             std::string existing;
-            if (readBytes(target, existing) && sha256Hex(existing) == sha) {
+            if (fileSha(target, existing) && existing == sha) {
                 planned[assetPath] = sha;
                 return assetPath;      // already imported: nothing to copy
             }
@@ -149,6 +183,8 @@ std::string ImportPlan::copyInto(const std::string& assetDir, const fs::path& so
             }
             continue;
         }
+        std::string bytes;
+        if (!readBytes(source, bytes)) return {};
         planned[assetPath] = sha;
         files.push_back({target, bytes, true, false});
         files.push_back({fs::path(target.string() + ".meta"), newMeta(provenanceYaml, importYaml), true, false});
@@ -177,8 +213,7 @@ std::string ImportPlan::font(const std::string& packId, const std::string& file)
     if (!file.empty() && std::find(f->files.begin(), f->files.end(), file) != f->files.end()) name = file;
     const fs::path dir = TitleLibrary::packDir() / "fonts" / packId;
     std::string sha;
-    std::string bytes;
-    if (readBytes(dir / name, bytes)) sha = sha256Hex(bytes);
+    fileSha(dir / name, sha);
     const std::string provenance = "{version: 1, licence: OFL-1.1, source: titleart-pack, url: " + quoted(f->url) +
                                    ", builtin: {set: fonts, id: " + quoted(packId) + ", sha256: " + sha + "}}";
     const std::string path = copyInto(std::string(TITLE_FONTS_ASSET_DIR) + "/" + packId, dir / name, name, {dir / "OFL.txt"}, provenance, {}, "font_conflict");

@@ -25,10 +25,12 @@
 #include "component/ScrollbarComponent.h"
 #include "component/SplineAnimateComponent.h"
 #include "component/TextEffectComponent.h"
+#include "component/TweenComponent.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "component/VoxelVolumeComponent.h"
 
 #include <cstddef>
 
@@ -55,10 +57,12 @@ namespace jasperengine {
         ScrollbarComponent,
         SplineAnimateComponent,
         TextEffectComponent,
+        TweenComponent,
         UIComponent,
         UIDocumentComponent,
         VertexAnimatorComponent,
-        VideoPlayerComponent>;
+        VideoPlayerComponent,
+        VoxelVolumeComponent>;
 
     namespace detail {
         template<typename Component, typename F>

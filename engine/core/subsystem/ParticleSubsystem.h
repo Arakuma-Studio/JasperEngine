@@ -14,7 +14,7 @@
 
 #include "component/ForceFieldComponent.h"
 #include "component/ParticleSystemComponent.h"
-#include "component/TerrainComponent.h"
+#include "ecs/ComponentFwd.h"
 #include "math/Matrix4.h"
 #include "particles/ParticleWorld.h"
 #include "subsystem/ParticleSystemState.h"
@@ -48,6 +48,11 @@ namespace jasperengine{
         uint32_t drawnViews = 0;
         uint32_t raysLastTick = 0;
         uint32_t bytesPerParticle = 0;
+        uint32_t seed = 0;       // the seed in use: the component's, the effect's or the one this play drew
+        // S49: the simulation mode, the Pixel variant, the Analytic slots it draws
+        bool analytic = false;
+        bool pixel = false;
+        uint32_t analyticSlots = 0;
     };
 
     class JASPERENGINE_API ParticleSubsystem : public SubSystem {
@@ -101,6 +106,9 @@ namespace jasperengine{
         // the system's runtime (bound to its effect), null when it has none or cannot load it
         particles::ParticleSystemState* getState(Entity entity);
         ParticleSystemStats getStats(Entity entity);
+        // A hash of the run: its seed, tick and particles, children included. Equal is the same state
+        // of the same run. Reads every particle, so it is not part of getStats.
+        uint64_t getStateHash(Entity entity);
         const particles::WorldStats& getWorldStats() const { return world.stats(); }
         particles::ParticleWorld& getWorld() { return world; }
 
@@ -112,21 +120,32 @@ namespace jasperengine{
         // RenderSystem: a camera saw the system's bounds this frame
         void markVisible(Entity entity);
 
+        // the terrain under a world point, as a Terrain collision module reads it (T3 R26: none over a
+        // hole); public for its test, with gatherTerrains making the list it searches
+        void gatherTerrains();
+        static bool sampleTerrain(const void* context, const float point[3], float surface[3], float normal[3]);
+
     private:
         // binds (or rebinds) the component's effect; false when there is none to run
         bool ensureEffect(Entity entity, ParticleSystemComponent& particles);
+        // the exposed values that changed, written into the running effect (its own copy of it);
+        // false when one needs a compile
+        bool applyExposedValues(ParticleSystemComponent& particles, particles::ParticleSystemState& state);
+        particles::CompileEnvironment compileEnvironment(Entity entity);
+        // the library moved on since its sub-emitter files were last compared
+        bool subEmittersOutOfDate(const ParticleSystemComponent& particles) const;
         particles::ParticleSystemState* stateOf(Entity entity, bool load);
         void prepareInput(Entity entity, ParticleSystemComponent& particles, Transform& transform, particles::EmitterInput& input);
         bool bodyVelocity(Entity entity, Vector3& velocity);
         void gatherFields();
-        void gatherTerrains();
         void dispatchEvents(ParticleSystemComponent& particles);
+        // the Sound Events its bursts, sub-emitters and triggers asked for (S91 R13)
+        void playSounds(particles::EmitterRuntime& runtime, const Vector3& emitterPosition);
         void updateBounds(particles::ParticleSystemState& state);
         float significanceOf(const particles::ParticleSystemState& state, float& cameraDistance) const;
 
         static bool castWorldRay(const void* context, const float from[3], const float to[3], float radius, uint32_t layers, particles::CollisionHit& hit);
         static bool castWorldRay2D(const void* context, const float from[3], const float to[3], float radius, uint32_t layers, particles::CollisionHit& hit);
-        static bool sampleTerrain(const void* context, const float point[3], float surface[3], float normal[3]);
 
         // a seed for a play (Auto Random Seed): the scene's own sequence, never 0. Per scene, so
         // what a scene plays does not depend on what other scenes (or tests) played before it

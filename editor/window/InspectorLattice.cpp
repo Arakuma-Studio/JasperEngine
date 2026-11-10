@@ -6,6 +6,7 @@
 
 #include "InspectorWindow.h"
 #include "component/LatticeFollowerComponent.h"
+#include "component/Transform.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "util/EditorScripts.h"
@@ -83,6 +84,7 @@
 #include "component/ScaleTracksComponent.h"
 #include "component/TweenComponent.h"
 #include "component/TranslateTracksComponent.h"
+#include "component/Transform.h"
 #include "component/MorphTracksComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/LineRendererComponent.h"

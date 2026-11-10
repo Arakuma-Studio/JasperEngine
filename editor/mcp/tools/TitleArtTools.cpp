@@ -27,8 +27,17 @@
 #include "titleart/TitleArtDocument.h"
 #include "titleart/fx/FxPresets.h"
 #include "titleart/fx/FxRecipes.h"
+#include "titleart/interchange/TitleExport.h"
+#include "titleart/localisation/TitleLanguageReport.h"
+#include "titleart/TitleTranslations.h"
+#include "titleart/interchange/TitleImport.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtOps.h"
+#include "titleart/anim/TitleAnimOps.h"
+#include "titleart/anim/TitleAnimPresets.h"
+#include "titleart/anim/TitleFlipbookBaker.h"
+#include "titleart/anim/TitleAnimChecks.h"
+#include "TitleArtToolsAnimation.h"
 #include "titleart/TitleArtSchema.h"
 #include "titleart/TitleEffectCatalog.h"
 #include "titleart/TitleEffectRegistry.h"
@@ -40,7 +49,9 @@
 #include "titleart/three_d/Title3DSchema.h"
 #include "titleart/three_d/Title3DStyle.h"
 #include "titleart/three_d/TitleEnvironment.h"
+#include "util/FileUtils.h"
 #include "util/FontFace.h"
+#include "util/FileUtils.h"
 #include "util/Util.h"
 #include "App.h"
 #include "window/TitleDesignerWindow.h"
@@ -221,6 +232,7 @@ void listTitleLibraryTool(const CallPtr& call) {
             else if (std::strcmp(k.kind, "materials_3d") == 0) n = titleart::title3DMaterialPresetNames().size();
             else if (std::strcmp(k.kind, "environments") == 0) n = titleart::title3DEnvironmentNames().size();
             else if (std::strcmp(k.kind, "bevel_profiles") == 0) n = titleart::three_d::bevelProfileNames().size();
+            else if (std::strcmp(k.kind, "animation_presets") == 0) n = TitleAnimPresets::all().size();
             else if (std::strcmp(k.owner, "S84") == 0) n = libraryCatalogue()[k.kind].value("total", 0);
             counts[k.kind] = n;
             text += " " + std::string(k.kind) + " " + std::to_string(n) + (*k.owner ? " (" + std::string(k.owner) + ")" : "") + ",";
@@ -233,6 +245,10 @@ void listTitleLibraryTool(const CallPtr& call) {
     for (const LibraryKind& k : LIBRARY_KINDS) if (kind == k.kind) known = &k;
     if (!known) {
         call->fail("Unknown kind '" + kind + "'.");
+        return;
+    }
+    if (kind == "animation_presets") {
+        listAnimationPresets(call);
         return;
     }
     // S84's kinds: rows, details and sheets of the library (TitleArtToolsLibrary.cpp)
@@ -585,7 +601,20 @@ void getTitleTool(const CallPtr& call) {
         call->ok(relative + ": " + document->versionError() + " (read-only here)", out);
         return;
     }
-    const titleart::TitleArtDoc& doc = document->doc();
+    // S87 R19: `language` shows the document resolved for it (its fit applied)
+    const titleart::TitleArtDoc& stored = document->doc();
+    titleart::TitleArtDoc resolvedView;
+    std::string language;
+    if (args.contains("language") && args["language"].is_string() && !args["language"].get<std::string>().empty()) {
+        std::vector<std::string> codes;
+        if (!titleExportLanguages(stored, toOrdered(args["language"]), codes, error) || codes.empty()) {
+            call->fail("language: " + error);
+            return;
+        }
+        language = codes.front();
+        resolvedView = titleart::resolveTitleLanguage(stored, language);
+    }
+    const titleart::TitleArtDoc& doc = language.empty() ? stored : resolvedView;
     out["canvas"] = fromOrdered(doc.root["canvas"]);
     const std::string detail = args.value("detail", std::string("outline"));
     std::vector<std::string> fields;
@@ -610,6 +639,18 @@ void getTitleTool(const CallPtr& call) {
     titleart::forEachLayer(doc.root, [&](const titleart::Json& layer, const titleart::Json*, int) {
         if (!only.empty() && str(layer, "id") != only) return true;
         Json summary = layerSummary(doc, layer, names, detail, fields);
+        // S87: the strings metadata (from the stored layer) and, in a language, the fit result
+        if (titleart::titleIsMultilingual(stored.root)) {
+            if (const titleart::Json* own = titleart::findLayer(stored.root, str(layer, "id"))) {
+                const Json strings = fromOrdered(titleLayerStringsJson(*own));
+                for (auto it = strings.begin(); it != strings.end(); ++it) summary[it.key()] = it.value();
+            }
+        }
+        if (titleart::layerTypeOf(layer) == titleart::LayerType::Text && layer.contains("fit") &&
+            layer["fit"].value("mode", std::string("none")) != "none") {
+            const titleart::TitleFitResult fit = titleart::computeTitleFit(layer, doc, TitleArtRenderHost::editor().resolver(project));
+            if (fit.active) summary["fit"] = fromOrdered(titleFitJson(fit));
+        }
         // S86: a 3D layer's effective style and lighting, each lighting value with its source
         if (titleart::layerTypeHasStyle(titleart::layerTypeOf(layer)) && str(layer, "dimension") == "3d") {
             summary["three_d"] = fromOrdered(title3DLayerInfo(layer, doc));
@@ -618,9 +659,25 @@ void getTitleTool(const CallPtr& call) {
         return true;
     });
     out["layers"] = layers;
+    if (titleart::titleIsMultilingual(stored.root)) {
+        out["languages"] = fromOrdered(titleLanguagesJson(
+            titleLanguageStates(stored, TitleArtRenderHost::editor().resolver(project), project, file), stored));
+        if (!language.empty()) out["language"] = language;
+    }
     const titleart::Json stats3d = title3DStats(doc, TitleArtRenderHost::editor().resolver(project), titleart::TitleTier::Bake);
     if (!stats3d.empty()) out["stats_3d"] = fromOrdered(stats3d);
     out["exposed"] = fromOrdered(doc.root["exposed"]);
+    // S85 R51: the animations' outline, and one animation (or "*") in full
+    const Json animations = titleAnimationsOutline(project, file, doc);
+    if (!animations.is_null()) out["animations"] = animations;
+    if (args.contains("animation") && args["animation"].is_string()) {
+        Json detail;
+        if (!titleAnimationGet(doc, args["animation"].get<std::string>(), detail, error)) {
+            call->fail(error);
+            return;
+        }
+        out["animation"] = detail;
+    }
     out["outputs"] = outputsOf(project, file, doc);
     out["problems"] = problemsOf(project, doc, document->warnings());
     if (document->migrated()) out["migrated_from"] = document->versionRead();
@@ -632,6 +689,8 @@ void getTitleTool(const CallPtr& call) {
         out["designer"] = {{"selection", state.value("selection", Json::array())},
                            {"staged", state.value("staged", false)},
                            {"preview_active", state.value("preview_active", false)},
+                           {"animation_panel", state.value("animation_panel", Json::object())},
+                           {"canvas_origin", state.value("canvas_origin", Json::array())},
                            {"view", {{"zoom", state.value("zoom", Json(1))}, {"background", state.value("background", Json("checker"))},
                                      {"device", state.value("device", Json())}}}};
     }
@@ -669,18 +728,36 @@ void editTitleTool(const CallPtr& call) {
     if (args.contains("create")) {
         const Json& create = args["create"];
         titleart::TitleArtDoc initial;
+        TitleCreateResult imported;
+        // the files the new document brings: an import's, or a library item's fonts and environments
         std::vector<TitleOpFile> createFiles;
         std::string createName;
-        if (create.contains("template") || create.contains("look")) {
+        if (create.contains("from")) {
+            // S87 §6.2: an import into the new document; canvas, text, template and look are its file's
+            for (const char* key : {"canvas", "text", "template", "look"}) {
+                if (create.contains(key)) {
+                    call->fail(std::string("bad_option: create.from takes no create.") + key + " (the imported file gives it). Nothing was applied.",
+                               Json{{"code", "bad_option"}, {"valid", Json::array({"from", "overwrite"})}});
+                    return;
+                }
+            }
+            TitleCreateRequest request;
+            const fs::path from = FileUtils::pathFromUtf8(create.value("from", std::string()));
+            request.sourcePath = (from.is_absolute() ? from : project->getProjectPath() / from).lexically_normal().string();
+            request.documentPath = file.string();
+            request.projectPath = project->getProjectPath().string();
+            request.assetsPath = project->getAssetsPath().string();
+            std::string code;
+            if (!TitleArtOps::createFrom(request, imported, code, error)) {
+                call->fail(code + ": " + error + ". Nothing was applied.", Json{{"code", code}});
+                return;
+            }
+            initial = imported.doc;
+            createFiles = imported.files;
+        } else if (create.contains("template") || create.contains("look")) {
             // S84: the template's document (or a text in a look), its fonts imported in the same step
             if (!createFromLibrary(project, create, initial, createFiles, createName, error)) {
                 call->fail(error + " Nothing was applied.");
-                return;
-            }
-        } else if (create.contains("from")) {
-            std::string code;
-            if (!TitleArtOps::createFrom(create.value("from", std::string()), initial, code, error)) {
-                call->fail(error + " Nothing was applied.", Json{{"code", code}});
                 return;
             }
         } else {
@@ -708,7 +785,7 @@ void editTitleTool(const CallPtr& call) {
                 call->fail(error + " Nothing was applied.");
                 return;
             }
-            if (!document->commit(initial, "Replace Title Art " + file.filename().string(), {}, &error, TitleArtChangeOrigin::Agent)) {
+            if (!document->commit(initial, "Replace Title Art " + file.filename().string(), {}, &error, TitleArtChangeOrigin::Agent, createFiles)) {
                 call->fail(error + " Nothing was applied.");
                 return;
             }
@@ -718,8 +795,11 @@ void editTitleTool(const CallPtr& call) {
                 call->fail(escape + " Nothing was applied.");
                 return;
             }
-            document = TitleArtDocument::create(project, file.string(), &initial, createName.empty() ? "Create Title Art " + file.filename().string() : createName,
-                                                &error, &createFiles);
+            const std::string undoName = !createName.empty() ? createName
+                                         : create.contains("from")
+                                             ? titleImportUndoName(imported.kind, FileUtils::pathFromUtf8(create.value("from", std::string())).filename().string())
+                                             : "Create Title Art " + file.filename().string();
+            document = TitleArtDocument::create(project, file.string(), &initial, undoName, &error, createFiles);
             if (!document) {
                 call->fail(error + " Nothing was applied.");
                 return;
@@ -727,6 +807,11 @@ void editTitleTool(const CallPtr& call) {
         }
         structured["created"] = true;
         text = (exists ? "Replaced " : "Created ") + relative;
+        if (create.contains("from")) {
+            structured["import"] = fromOrdered(titleImportJson(imported, project->getProjectPath()));
+            text += " from a " + titleImportKindLabel(imported.kind) + " (" + std::to_string(imported.files.size()) + " file(s), " +
+                    std::to_string(imported.notes.size()) + " note(s))";
+        }
     } else {
         if (!fs::is_regular_file(file, ec)) {
             call->fail("'" + relative + "' does not exist: create it with {create: {}} (and ops in the same call). Nothing was applied.");
@@ -745,9 +830,15 @@ void editTitleTool(const CallPtr& call) {
         options.expectRev = args.value("expect_rev", static_cast<int64_t>(-1));
         options.dryRun = dryRun;
         options.origin = TitleArtChangeOrigin::Agent;
+        const titleart::TitleArtDoc before = document->doc();
         const TitleOpsResult result = document->edit(toOrdered(args["ops"]), options);
         Json outcome = opsResultJson(result);
         for (auto it = outcome.begin(); it != outcome.end(); ++it) structured[it.key()] = it.value();
+        // S85 R50: the animations the batch changed, with their cost
+        if (result.ok) {
+            const Json changed = titleAnimationChanges(project, file, before, dryRun ? result.doc : document->doc());
+            if (!changed.is_null()) for (auto it = changed.begin(); it != changed.end(); ++it) structured[it.key()] = it.value();
+        }
         if (!result.ok) {
             structured["path"] = relative;
             structured["rev"] = document->revision();
@@ -817,19 +908,25 @@ void exportTitleTool(const CallPtr& call) {
     const Json& args = call->args();
     fs::path file;
     std::string relative, error;
-    if (!resolveTitlePath(project, args.value("path", std::string()), true, file, relative, error)) {
+    // several documents (S87's strings formats): the first is the call's document
+    const Json& pathArg = args.contains("path") && args["path"].is_array() && !args["path"].empty() ? args["path"][0] : args["path"];
+    if (!resolveTitlePath(project, pathArg.is_string() ? pathArg.get<std::string>() : std::string(), true, file, relative, error)) {
         call->fail(error);
         return;
     }
     const std::string format = args.value("format", std::string("bake"));
+    if (args.contains("path") && args["path"].is_array() && args["path"].size() > 1 && format != "csv" && format != "xliff") {
+        call->fail("bad_value: several paths are for the strings formats (csv, xliff); export images one document per call. Nothing was written.",
+                   Json{{"code", "bad_value"}});
+        return;
+    }
     if (format == "glb") {
         exportTitleGlb(call, project, file, relative);
         return;
     }
     for (const FormatOwner& f : FORMATS) {
-        if (format == f.format && std::strcmp(f.owner, "S80") != 0 && std::strcmp(f.owner, "S86") != 0) {
-            call->fail("not_available: format '" + format + "' arrives with " + f.owner + "; this build exports format bake.",
-                       Json{{"code", "not_available"}, {"owner", f.owner}, {"formats", Json::array({"bake"})}});
+        if (format == f.format && std::strcmp(f.owner, "S87") == 0) {
+            exportTitleInterchange(call, project, file, relative, format);
             return;
         }
     }
@@ -855,27 +952,64 @@ void exportTitleTool(const CallPtr& call) {
         call->fail(code + ": " + error + ". Nothing was written.", Json{{"code", code}});
         return;
     }
+    // S85 R55: a document with animations bakes its flipbooks and <file>.anim.json after the outputs
+    std::shared_ptr<TitleFlipbookBakeJob> flipbooks = titleFlipbookJob(project, file, doc, args, error);
+    if (!flipbooks && !error.empty()) {
+        call->fail(error + ". Nothing was written.");
+        return;
+    }
+    // S87 R16: the language sets to bake (default: the source and every language with bake true)
+    if (args.contains("languages") && !titleExportLanguages(doc, toOrdered(args["languages"]), options.languages, error)) {
+        call->fail("bad_value: " + error + ". Nothing was written.", Json{{"code", "bad_value"}});
+        return;
+    }
     auto job = std::make_shared<TitleArtBakeJob>(project, file, std::move(doc), options);
     auto task = std::make_shared<FrameTask>();
     std::weak_ptr<FrameTask> weakTask = task;
-    task->tick = [job, relative, project, weakTask](McpJob& mcpJob) {
+    task->tick = [job, flipbooks, relative, project, weakTask](McpJob& mcpJob) {
         auto t = weakTask.lock();
         if (!t) return true;
-        const bool done = job->step(8.0);
-        mcpJob.setProgress(job->progress(), job->progressText());
-        if (!done) return false;
+        if (!job->done()) {
+            const bool done = job->step(8.0);
+            mcpJob.setProgress(job->progress() * (flipbooks ? 0.5 : 1.0), job->progressText());
+            if (!done || !job->result().ok) {
+                if (done) {
+                    Json out = fromOrdered(job->result().toJson());
+                    out["path"] = relative;
+                    mcpJob.fail(job->result().error, out);
+                    return true;
+                }
+                return false;
+            }
+        }
+        if (flipbooks && !flipbooks->done()) {
+            const bool done = flipbooks->step(8.0);
+            mcpJob.setProgress(0.5 + 0.5 * flipbooks->progress(), flipbooks->progressText());
+            if (!done) return false;
+        }
         const TitleBakeResult& result = job->result();
         Json out = fromOrdered(result.toJson());
         out["path"] = relative;
-        if (!result.ok) {
-            mcpJob.fail(result.error, out);
-            return true;
+        if (flipbooks) {
+            out["flipbooks"] = flipbookReportJson(flipbooks->result(), project);
+            if (!flipbooks->result().ok) {
+                mcpJob.fail("The outputs were baked; the flipbooks failed: " + flipbooks->result().error, out);
+                return true;
+            }
         }
         size_t written = 0;
         for (const TitleBakeFile& f : result.files) written += f.status == "written" ? 1 : 0;
         t->text = (written ? "Baked " + std::to_string(written) + " output(s) of " : std::string("Nothing to write for ")) + relative;
         if (!result.files.empty()) t->text += ": " + result.files.front().path + " " + std::to_string(result.files.front().width) + " x " +
                                               std::to_string(result.files.front().height) + " (" + result.files.front().status + ")";
+        if (flipbooks) {
+            int frames = 0, pages = 0;
+            for (const TitleFlipbookReport& r : flipbooks->result().animations){
+                frames += r.unique;
+                pages += r.pages;
+            }
+            t->text += "; flipbooks: " + std::to_string(frames) + " unique frame(s) on " + std::to_string(pages) + " page(s)";
+        }
         if (!result.warnings.empty()) t->text += "; " + std::to_string(result.warnings.size()) + " warning(s)";
         t->text += ".";
         (void)project;
@@ -1070,6 +1204,10 @@ void registerTitleArtTools(McpRegistry& registry) {
     registerBuiltinTitleChecks();
     registerTitleFxOps();
     registerTitle3DEditor();
+    registerTitleAnimOps();
+    registerTitleAnimPresetOp();
+    registerTitleAnimChecks();
+    registerTitleInterchange();
     titlelibrary::registerTitleLibrary();
     {
         ToolDef tool;
@@ -1077,7 +1215,7 @@ void registerTitleArtTools(McpRegistry& registry) {
         tool.title = "List Title Library";
         tool.description =
             "The Title Art catalogue. No args: counts per kind. kind: rows (looks, color_schemes, templates carry a ready `use` op). "
-            "id: one item. query: names en/ja, aliases, tags; category, family, dimension, tags, scope, favorites filter. "
+            "id: one item's params, presets and op. query: names en/ja, aliases, tags; category, family, dimension, tags, scope, favorites filter. "
             "sheet: items rendered on your text or layer, numbered: pick by seeing.";
         std::vector<std::string> kinds;
         for (const LibraryKind& k : LIBRARY_KINDS) kinds.push_back(k.kind);
@@ -1130,6 +1268,8 @@ void registerTitleArtTools(McpRegistry& registry) {
             {"layer", string("")},
             {"detail", withDefault(stringEnum("", {"outline", "overrides", "full"}), "outline")},
             {"fields", array(string(""), "")},
+            {"animation", string("A name, or *.")},
+            {"language", string("")},
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1221,10 +1361,12 @@ void registerTitleArtTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"path", string("")},
             {"checks", array(string(""), "")},
+            {"animation", string("")},
             {"backgrounds", array(string(""), "")},
             {"baseline", string("PNG or rev:<n>.")},
             {"save_baseline", string("PNG path.")},
             {"fail_on", withDefault(stringEnum("", {"fail", "warn"}), "fail")},
+            {"languages", Json{{"type", Json::array({"string", "array"})}}},
             {"render_scale", withDefault(number("Render size of pixel checks."), 1)},
             {"screenshot", withDefault(stringEnum("", {"on_failure", "always", "never"}), "on_failure")},
             {"wait", withDefault(boolean(""), true)},
@@ -1245,14 +1387,19 @@ void registerTitleArtTools(McpRegistry& registry) {
         tool.description =
             "Bakes a .titleart's outputs (all, or `outputs` ids) to PNGs with recipes and the bake sidecar as a job; fresh ones "
             "are skipped unless force. dry_run reports files, sizes, bytes and VRAM without writing. Outputs are configured "
-            "with edit_title (set outputs[i].scale). format: bake here; others arrive with later specs.";
+            "with edit_title (set outputs[i].scale). Other formats write files to out (jasper://docs/title-art).";
         std::vector<std::string> formats;
         for (const FormatOwner& f : FORMATS) formats.push_back(f.format);
+        // S87 §6.3: `path` may list several documents (strings formats), `languages` "all", a code or codes
+        const Json stringOrList = Json{{"type", Json::array({"string", "array"})}};
         tool.inputSchema = object({
-            {"path", string("")},
+            {"path", stringOrList},
             {"outputs", array(string(""), "")},
+            {"animations", array(string(""), "Flipbooks.")},
             {"format", withDefault(stringEnum("", formats), "bake")},
             {"options", anyObject("")},
+            {"languages", stringOrList},
+            {"out", string("")},
             {"dry_run", boolean("")},
             {"force", boolean("")},
             {"wait", withDefault(boolean(""), true)},

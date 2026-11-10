@@ -6,11 +6,16 @@
 #include "window/widget/InputTextContextMenu.h"
 #include "window/AnimationWindow.h"
 #include "window/AnimatorWindow.h"
+#include "window/GraphEditorWindow.h"
+#include "graph/GraphEditorHooks.h"
+#include "graph/GraphRegistry.h"
+#include "window/ParticleEffectWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/ProjectWindow.h"
 #include "window/SpriteNormalsWindow.h"
 #include "window/TitleDesignerWindow.h"
+#include "titleart/anim/TitleAnimationPanel.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
@@ -99,6 +104,32 @@
 namespace fs = std::filesystem;
 
 namespace jasperengine::editor::mcp {
+
+bool w3::isFlatPng(const std::vector<uint8_t>& png, std::string& colour) {
+    // what dithering and a resize leave on a blank render, in levels of 255. The whole image's
+    // range counts: a slow gradient is close between neighbours and far from end to end.
+    constexpr int FLAT_TOLERANCE = 2;
+    int w = 0, h = 0, n = 0;
+    unsigned char* pixels = stbi_load_from_memory(png.data(), static_cast<int>(png.size()), &w, &h, &n, 3);
+    if (!pixels) return false;
+    int low[3] = {255, 255, 255};
+    int high[3] = {0, 0, 0};
+    bool flat = true;
+    for (int i = 0; i < w * h && flat; i++) {
+        for (int c = 0; c < 3; c++) {
+            low[c] = std::min<int>(low[c], pixels[i * 3 + c]);
+            high[c] = std::max<int>(high[c], pixels[i * 3 + c]);
+            if (high[c] - low[c] > FLAT_TOLERANCE) flat = false;
+        }
+    }
+    if (flat && w * h > 0) {
+        char buffer[16];
+        snprintf(buffer, sizeof(buffer), "#%02x%02x%02x", pixels[0], pixels[1], pixels[2]);
+        colour = buffer;
+    }
+    stbi_image_free(pixels);
+    return flat;
+}
 
 namespace {
 
@@ -315,24 +346,6 @@ void captureScene(const CaptureJobPtr& job);
     return stbi_write_png_to_func(append, &png, outWidth, outHeight, 3, rgb.data(), outWidth * 3) != 0;
 }
 
-// True when every pixel of the PNG is the same colour (a blank render)
-bool isFlatPng(const std::vector<uint8_t>& png, std::string& colour) {
-    int w = 0, h = 0, n = 0;
-    unsigned char* pixels = stbi_load_from_memory(png.data(), static_cast<int>(png.size()), &w, &h, &n, 3);
-    if (!pixels) return false;
-    bool flat = true;
-    for (int i = 1; i < w * h && flat; i++) {
-        if (pixels[i * 3] != pixels[0] || pixels[i * 3 + 1] != pixels[1] || pixels[i * 3 + 2] != pixels[2]) flat = false;
-    }
-    if (flat && w * h > 0) {
-        char buffer[16];
-        snprintf(buffer, sizeof(buffer), "#%02x%02x%02x", pixels[0], pixels[1], pixels[2]);
-        colour = buffer;
-    }
-    stbi_image_free(pixels);
-    return flat;
-}
-
 // Fills image + common info, writes save_path, and finishes the job
 void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width, int height, int sourceWidth,
                    int sourceHeight, Json info) {
@@ -346,7 +359,7 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
     info["bytes"] = png.size();
 
     std::string colour;
-    if (isFlatPng(png, colour)) {
+    if (w3::isFlatPng(png, colour)) {
         info["flat_colour"] = colour;
         result.note = "The image is one flat colour (" + colour + "): nothing visible rendered there yet?";
     }
@@ -1020,6 +1033,14 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
         {"animate_water", &SceneDisplaySettings::animateWater},
         {"show_stats", &SceneDisplaySettings::showStats},
+        {"show_ik", &SceneDisplaySettings::showIK},
+        {"show_root_motion", &SceneDisplaySettings::showRootMotion},
+        {"show_foot_trails", &SceneDisplaySettings::showFootTrails},
+        // S41 (in a scene with a Pixel Perfect Camera)
+        {"pixel_zoom", &SceneDisplaySettings::pixelZoom},
+        {"pixel_grid", &SceneDisplaySettings::pixelGrid},
+        {"pixel_snap_preview", &SceneDisplaySettings::pixelSnapPreview},
+        {"pixel_move_snap", &SceneDisplaySettings::pixelMoveSnap},
     };
     return flags;
 }
@@ -1530,16 +1551,16 @@ Json poseWindowState(const CallPtr& call) {
 // focus_window title_designer's object (S82 R78): its keys applied in this order, each through the
 // window's scripted API; an unknown key fails listing the valid ones
 bool focusTitleDesigner(const CallPtr& call, TitleDesignerWindow* designer) {
-    static const std::vector<std::string> keys = {"path", "select", "panel", "search", "library", "preview_as", "background", "device", "zoom"};
+    static const std::vector<std::string> keys = {"path", "select", "panel", "search", "library", "animation", "preview_as", "background", "device", "zoom", "add"};
     const Json& args = call->args();
     const Json options = args.value("title_designer", Json::object());
     if (!options.is_object()) {
-        call->fail("title_designer must be an object with any of: path, select, panel, search, library, preview_as, background, device, zoom.");
+        call->fail("title_designer must be an object with any of: path, select, panel, search, library, animation, preview_as, background, device, zoom, add.");
         return false;
     }
     for (auto it = options.begin(); it != options.end(); ++it) {
         if (std::find(keys.begin(), keys.end(), it.key()) == keys.end()) {
-            call->fail("title_designer." + it.key() + " is not a key: valid are path, select, panel, search, library, preview_as, background, device, zoom.");
+            call->fail("title_designer." + it.key() + " is not a key: valid are path, select, panel, search, library, preview_as, background, device, zoom, add.");
             return false;
         }
     }
@@ -1573,6 +1594,18 @@ bool focusTitleDesigner(const CallPtr& call, TitleDesignerWindow* designer) {
         if (!lib.is_object()) return fail("library must be {tab, family, query}");
         if (!designer->setLibrary(lib.value("tab", std::string()), lib.value("family", std::string()), lib.value("query", std::string()), &error)) return fail(error);
     }
+    // S85: the Animation panel's preview at a time ({name, time}; null stops it), as a scrub does
+    if (auto animation = options.find("animation"); animation != options.end()) {
+        const bool stop = animation->is_null();
+        if (!stop && (!animation->is_object() || !(*animation)["time"].is_number())) {
+            call->fail("title_designer.animation is {name, time} or null.");
+            return false;
+        }
+        if (!titledesigner::previewTitleAnimation(stop ? std::string() : animation->value("name", std::string()), stop ? -1.0 : (*animation)["time"].get<double>(), &error)) {
+            call->fail(error);
+            return false;
+        }
+    }
     if (options.contains("preview_as") && !designer->setPreviewAs(options.value("preview_as", std::string()), &error)) return fail(error);
     if (options.contains("background")) {
         titledesigner::BackdropChoice backdrop;
@@ -1600,6 +1633,13 @@ bool focusTitleDesigner(const CallPtr& call, TitleDesignerWindow* designer) {
         }
         if (!designer->setDevice(device, &error)) return fail(error);
     }
+    if (options.contains("add")) {
+        // the Add palette (S82 R17): {filter, query} opens it as a person would, false closes it
+        const Json& a = options["add"];
+        if (a.is_boolean() && !a.get<bool>()) designer->closeAddPalette();
+        else if (a.is_object()) designer->openAddPalette(a.value("filter", std::string()), a.value("query", std::string()));
+        else return fail("add must be {filter, query} or false");
+    }
     if (options.contains("zoom")) {
         const Json& z = options["zoom"];
         if (z.is_string() && z.get<std::string>() == "fit") designer->fit();
@@ -1616,6 +1656,19 @@ void focusWindowTool(const CallPtr& call) {
     Project* project = ctx.project();
     const std::string window = args.value("window", "");
     std::string imguiName;
+    // refused before any window opens: a failing call leaves the layout as it was
+    if (args.contains("pose") && window != "pose_animation") {
+        call->fail("pose: only for window \"pose_animation\".");
+        return;
+    }
+    if (args.contains("path") && window != "graph_editor") {
+        call->fail("path: only for window \"graph_editor\".");
+        return;
+    }
+    if (args.contains("title_designer") && window != "title_designer") {
+        call->fail("title_designer: only for window \"title_designer\".");
+        return;
+    }
 
     if (window == "game") {
         ctx.gameWindow()->requestFocus();
@@ -1678,6 +1731,34 @@ void focusWindowTool(const CallPtr& call) {
         // it shows the selected GameObject's controller (or the .controller opened last)
         app.getAnimatorWindow()->setOpen(true);
         imguiName = AnimatorWindow::WINDOW_NAME;
+    } else if (window == "particle_effect") {
+        // it shows the .particles or the subtree opened last
+        app.getParticleEffectWindow()->setOpen(true);
+        imguiName = ParticleEffectWindow::WINDOW_NAME;
+    } else if (window == "graph_editor") {
+        // `path` opens that graph where a double-click on it does (its kind's window: a .procmat's is
+        // Procedural Material, a .noisegraph's Noise Graph); without it, the one open
+        GraphEditorWindow* graphs = app.getGraphEditorWindow();
+        const std::string path = args.value("path", std::string());
+        const auto kind = args.contains("path") ? graph::GraphRegistry::get().kindForFile(path) : nullptr;
+        const auto own = kind ? graphEditorHooks().kindWindows.find(kind->id) : graphEditorHooks().kindWindows.end();
+        if (own != graphEditorHooks().kindWindows.end()) {
+            if (!own->second.open(path)) {
+                call->fail("path: " + path + " is not a file of the project.");
+                return;
+            }
+            imguiName = own->second.windowName;
+        } else {
+            if (args.contains("path")) {
+                if (GraphEditorWindow* kindWindow = GraphEditorWindow::windowFor(path)) graphs = kindWindow;
+                if (!graphs->openGraph(path)) {
+                    call->fail("path: " + graphs->getStatus() + ".");
+                    return;
+                }
+            }
+            graphs->setOpen(true);
+            imguiName = graphs->windowName();
+        }
     } else if (window == "terrain") {
         ctx.terrainEditWindow()->setOpen(true);
         imguiName = TerrainEditWindow::WINDOW_NAME;
@@ -1729,17 +1810,9 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = TitleDesignerWindow::WINDOW_NAME;
         if (!focusTitleDesigner(call, app.getTitleDesignerWindow())) return;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, mcp, "
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, particle_effect, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
-                   "vertex_animation_baker, sprite_normals, title_designer.");
-        return;
-    }
-    if (args.contains("pose") && window != "pose_animation") {
-        call->fail("pose: only for window \"pose_animation\".");
-        return;
-    }
-    if (args.contains("title_designer") && window != "title_designer") {
-        call->fail("title_designer: only for window \"title_designer\".");
+                   "vertex_animation_baker, sprite_normals, title_designer, graph_editor.");
         return;
     }
     // A window opened just now exists after its next draw.
@@ -1757,6 +1830,13 @@ void focusWindowTool(const CallPtr& call) {
                                 {"width", std::round(w->Size.x)}, {"height", std::round(w->Size.y)}};
             }
             if (window == "console") data["console"] = consoleStateJson(*call->ctx().consoleWindow());
+            if (window == "graph_editor") {
+                const GraphEditorWindow* shownGraphs = GraphEditorWindow::focused();
+                if (!shownGraphs) shownGraphs = call->ctx().app().getGraphEditorWindow();
+                const auto& document = shownGraphs->getDocument();
+                data["graph"] = document ? Json(document->projectPath()) : Json();
+                if (!document) data["next"] = "No graph is open: focus_window {window: \"graph_editor\", path} opens one.";
+            }
             if (window == "preferences") data["page"] = call->ctx().app().getEditorSettingsWindow().pageName();
             if (window == "profiler") {
                 const ProfilerWindow* profiler = call->ctx().app().getProfilerWindow();
@@ -1823,6 +1903,14 @@ void configureGameViewTool(const CallPtr& call) {
     if (args.contains("scale")) {
         settings.scale = std::clamp(args.value("scale", 1.0f), 1.0f, 5.0f);
         changed.push_back("scale");
+    }
+    if (args.contains("pixel_scale")) {
+        if (!args["pixel_scale"].is_number_integer() || args["pixel_scale"].get<int>() < 0 || args["pixel_scale"].get<int>() > 8) {
+            call->fail("pixel_scale must be an integer 0 (Auto) to 8.");
+            return;
+        }
+        settings.pixelScale = args["pixel_scale"].get<int>();
+        changed.push_back("pixel_scale");
     }
     if (args.contains("maximize_on_play")) {
         settings.maximizeOnPlay = args.value("maximize_on_play", false);
@@ -2055,6 +2143,7 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
     Json data = {
         {"aspect", aspectNames()[std::clamp(settings.aspect, 0, (int)aspectNames().size() - 1)]},
         {"scale", settings.scale},
+        {"pixel_scale", settings.pixelScale},
         {"maximize_on_play", settings.maximizeOnPlay},
         {"maximized", gw->isMaximizedNow()},
         {"show_stats", settings.showStats},
@@ -2209,23 +2298,24 @@ void registerViewTools(McpRegistry& registry) {
         // are in jasper://docs/title-art and an unknown key fails listing them, which pays for its schema;
         // its words were cut again when the wave-2 merges took core 16 characters over its limit.
         tool.description =
-            "Fronts an editor panel for a watching human (screenshot needs none). console: "
-            "its rows, categories, selection; preferences: opens a page; systems: each row's Enabled checkbox rect; "
+            "Fronts a panel (screenshot needs none). console: "
+            "its rows, categories, selection; preferences: opens a page; systems: each row's Enabled rect; "
             "pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "particle_effect", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
                                        "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals",
-                                       "title_designer"})},
+                                       "title_designer", "graph_editor"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
-                {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},
+                {"hidden_categories", array(string(""), "Categories the filter hides.")},
                 {"collapse", boolean("")},
-                {"select", integer("Select the row of this message id (as a click).")}
+                {"select", integer("Click this message id's row.")}
             })},
-            {"page", string("preferences: page name (a wrong one lists them).")},
+            {"page", string("preferences: a page title.")},
             {"close", boolean("preferences: close it.")},
-            {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})},
+            {"profiler", object({{"load", string("A .jetrace.json to load.")}})},
+            {"path", string("graph_editor: file to open")},
             {"pose", anyObject("")},
             {"title_designer", anyObject("")}
         }, {"window"});
@@ -2263,6 +2353,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("", 1, 5)},
+            {"pixel_scale", integer("Pixel Perfect scale; 0 auto.", 0, 8)},
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("")},

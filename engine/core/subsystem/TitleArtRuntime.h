@@ -22,6 +22,12 @@
 
 #include <cstdint>
 #include <memory>
+
+namespace jasperengine::titleanim{
+    class TitleAnimPlayer;
+    struct TitleAnimLibrary;
+}
+
 #include <string>
 #include <vector>
 
@@ -67,10 +73,29 @@ namespace jasperengine{
             int atlasPageSize = 1024;
             int atlasMaxPages = 4;
             std::string qualityTier = "auto";
+            // the S86 tier a Realtime 3D title renders at (TitleArtRuntime::tierFor: 0 bake quality,
+            // 1 high, 2 medium, 3 low); 0 for a document without 3D layers
+            int tier = 0;
             std::string label;              // "TitleArt/<GameObject>" (VRAM owner, pass labels)
             uint32_t testFlags = 0;         // the instance's test state (setDisabledFeaturesForTesting)
             bool glowOutput = false;        // Glow Pulse is on: render the glow output too (R35)
             std::string characters;         // R55: the characters the title may show ("" = no limit)
+            // S83's FxTier on this device, resolved by the module from S56's platform group and tier
+            // (TitleArtRuntime::setState)
+            int fxTier = 0;
+            // S87 R17: the language to show (one of the document's; "" = its source): the document
+            // is resolved for it, so a change re-renders through the same path
+            std::string language;
+        };
+
+        // S86 R63: the mesh of a 3D layer the last render drew (Lua getMeshStats)
+        struct JASPERENGINE_API TitleArtMeshStats{
+            std::string layerId;
+            uint32_t triangles = 0, vertices = 0, solids = 0;
+            float buildMs = 0.0f;           // 0 for a cooked mesh (no build ran)
+            std::string tier;               // "bake" "high" "medium" "low": the tier it was made for
+            bool overBudget = false;        // over its tier's limits (S86 §6.7)
+            bool cooked = false;            // the export's .titlemesh (no mesher ran)
         };
 
         // what a title's live state reports (R18, R19, R69)
@@ -102,6 +127,14 @@ namespace jasperengine{
             std::vector<std::string> glyphUnsafe, glyphApproximate;
             std::string glyphFallback;      // "" or the glyph_atlas_unsupported reason
             uint32_t atlasPages = 0;
+            // R9: full renders and live composes swapped in since the instance was made, and why
+            // the last change of a live parameter re-rendered ("" when it composed live)
+            uint64_t renders = 0;
+            uint64_t liveComposes = 0;
+            std::string liveFallback;
+            size_t liveBytes = 0;           // the inputs kept for the live compose
+            // S86 R63: the meshes of the displayed image's Dimension 3D layers
+            std::vector<TitleArtMeshStats> meshes;
         };
 
         class JASPERENGINE_API TitleArtRuntime{
@@ -124,9 +157,39 @@ namespace jasperengine{
             static Framebuffer* glowFramebuffer(TitleArtLive& live);
             // re-render now (Lua refresh(), render_title {rerender})
             static void invalidate(TitleArtLive& live);
+            // R11: how many output pixels per canvas pixel a UI title renders at for the project's
+            // Reference Height (height / canvas height; 1 without one or without the module)
+            static float referenceScale();
+            // S86 R37: the tier a title renders at for its component's Quality Tier ("auto", "high",
+            // "medium", "low"): a named tier, else the device's S56 tier where one applies, else the
+            // project's Realtime 3D Quality for this platform; High draws as Medium on GLES3/WebGL2.
+            // 0 for a document without 3D layers and in builds without 3D titles
+            static int tierFor(const TitleArtLive& live, const std::string& qualityTier);
+            // S86 R63: the mesh stats of the 3D layer at `layerPath` (names joined by '/', "#N" for
+            // the Nth same-named sibling after the first, or the layer's id) from the last render;
+            // false with `error` when the path names no 3D layer, true with `found` false while no
+            // render has drawn it yet
+            static bool meshStats(const TitleArtLive& live, const std::string& layerPath, TitleArtMeshStats& out, bool& found,
+                                  std::string* error);
             // a prebaked initial-state image shipped with the build (R11, R32), by state hash
             static void setPrebaked(TitleArtLive& live, const std::string& texturePath, uint64_t stateHash);
 
+            // S85: the document's animations compiled (every track; the text layout gives glyph
+            // tracks their units); null with `error` without the module or a readable document
+            static std::shared_ptr<titleanim::TitleAnimLibrary> compileAnimations(const std::string& titlePath, std::string* error);
+            // S85 R14, R15, R18: what plays of the player's animations beyond the companion: the
+            // re-render values sampled at the animation's rerender_fps (a request per sample time,
+            // under the title's share of the frame budget) and the glyph-cell poses; called each
+            // frame before setState (nothing when nothing plays)
+            static void setAnimation(TitleArtLive& live, const titleanim::TitleAnimPlayer& player, int animatingTitles);
+            // R18: a `prerender` animation's sample times rendered ahead into the title's frame cache;
+            // false when they do not fit the Cache Budget (it then plays live, warned once)
+            static bool prepareAnimation(TitleArtLive& live, const titleanim::TitleAnimPlayer& player, const std::string& name);
+            static bool isPrerendering(const TitleArtLive& live);
+
+            // S87: the document's languages, the source first ("" first entry when it is monolingual);
+            // false with `error`
+            static bool readLanguages(const std::string& titlePath, std::vector<std::string>& out, std::string* error);
             // the document's Exposed parameters with their values (R5); false with `error`
             static bool readExposed(const std::string& titlePath, std::vector<TitleArtExposedParam>& out, std::string* error);
             // the hash of the state (document content + effective values + resolution + path)

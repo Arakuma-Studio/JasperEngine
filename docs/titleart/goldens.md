@@ -146,6 +146,7 @@ comparison of the old golden against the new image (before) and after the update
 | `pachislop/scene/clipping` | copied unchanged from Pachislop's `tests/golden/refs/scene/clipping.png` (scene parity reference, AC12) |
 | `pachislop/scene/effects-only-gaussian-blur` | copied unchanged from Pachislop's `tests/golden/refs/scene/effects-only-gaussian-blur.png` (scene parity reference, AC12) |
 | `pachislop/scene/flip-2d` | copied unchanged from Pachislop's `tests/golden/refs/scene/flip-2d.png` (scene parity reference, AC12) |
+| `pachislop/scene/mask-from-layer-luminance` | copied unchanged from Pachislop's `tests/golden/refs/scene/mask-from-layer-luminance.png` (scene parity reference, AC12) |
 | `pachislop/scene/mask-group-radial` | copied unchanged from Pachislop's `tests/golden/refs/scene/mask-group-radial.png` (scene parity reference, AC12) |
 | `pachislop/scene/mask-shape-feather` | copied unchanged from Pachislop's `tests/golden/refs/scene/mask-shape-feather.png` (scene parity reference, AC12) |
 | `pachislop/scene/nested-hidden-groups` | copied unchanged from Pachislop's `tests/golden/refs/scene/nested-hidden-groups.png` (scene parity reference, AC12) |
@@ -423,3 +424,5 @@ comparison of the old golden against the new image (before) and after the update
 |---|---|---|---|
 | `../titleart_compositor_part_effects_2d` | 3 / 0.001 / 0 (one pixel over the strict threshold 2) | 0 / 0 / 0 | The renderer tests' stand-in shadow and glow tint through the shared Adjust implementation (S80 Deviation 51) |
 | `../titleart_compositor_adjustment_in_group` | ≤ 2 / < 0.05 / 0 (within the strict limits) | 0 / 0 / 0 | Adjustment layers run the Adjust effect's implementation (S80 Deviation 51) |
+| `title-library/template_casino_rush-title-fx` | 255 / 15.876 / 50.46 (against S84's pre-merge render) | 0 / 0 / 0 | Rendered on the merged engine (S84's golden predates the merge; the other 35 are byte-identical): the template's speed lines and bokeh now draw and its lens flare sits at its `position` in its gold colour, where the old render had neither and a blue streak at the canvas centre. Compared by eye against the template's layers |
+| `title-library/gems_diamond-3d` | 92 / 0.248 / 0.89 (against the new render) | 0 / 0 / 0 | The look's outline effect 2.5 -> 1.5, so it no longer closes the gaps the digits' bands enclose (counter_survival on 1234; S84 Deviation 29) |

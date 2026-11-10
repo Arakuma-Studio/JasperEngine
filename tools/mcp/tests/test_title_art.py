@@ -92,9 +92,9 @@ async def test_list_title_library(ed: Editor):
     ed.check(any(r["path"] == "(built-in)" for r in fonts["rows"]), f"the built-in face is a font row: {fonts}")
     builtin = next(r for r in fonts["rows"] if r["path"] == "(built-in)")
     ed.check_in("latin", builtin["scripts"], "the built-in face covers Latin")
-    later = await ed.call("list_title_library", kind="looks")
-    ed.check_eq(later["rows"], [], "looks arrive later: an empty list")
-    ed.check_in("S84", later["note"], "names the spec that brings them")
+    looks = await ed.call("list_title_library", kind="looks")
+    ed.check(looks["total"] > 100, f"S84's built-in Looks are rows: {looks['total']}")
+    ed.check_eq(looks["rows"][0]["use"]["op"], "apply_look", "a Look row carries the op that applies it")
     msg = await ed.check_error("list_title_library", kind="effects", id="outer_glwo")
     ed.check_in("outer_glwo", msg, "the unknown id is named")
     # rows and details are the registry's own (titleEffectRow / titleEffectDetail, AC25)
@@ -181,20 +181,22 @@ async def test_reserved_and_options(ed: Editor):
     await setup(ed)
     path = "assets/titles/reserved.titleart"
     await create(ed, path)
-    msg = await ed.check_error("edit_title", path=path, ops=[{"op": "apply_look", "look": "gold"}])
-    ed.check_in("S84", msg, "apply_look names S84")
+    # every owner of a reserved op is in now (S84's apply_look was the last one this test named): an unknown
+    # op says what exists
+    msg = await ed.check_error("edit_title", path=path, ops=[{"op": "aply_look", "look": "gold"}])
+    ed.check_in("apply_look", msg, "the nearest op is offered")
     msg = await ed.check_error("render_title", path=path, options={"x": 1})
     ed.check_in("bad_option", msg, "an unknown option key")
     ed.check_in("languages", msg, "lists the keys later features add")
     msg = await ed.check_error("render_title", path=path, options={"animation": {}})
-    ed.check_in("S85", msg, "a later spec's key names its owner")
-    msg = await ed.check_error("export_title", path=path, format="psd")
-    ed.check_in("not_available", msg, "psd is a later format")
-    ed.check_in("S87", msg, "naming S87")
+    ed.check_in("options.animation", msg, "S85's key is validated now that S85 owns it")
+    msg = await ed.check_error("export_title", path=path, format="png", options={"nope": 1})
+    ed.check_in("bad_option", msg, "S87's formats check their options before rendering")
+    ed.check_in("alpha_threshold", msg, "listing the format's keys")
     msg = await ed.check_error("export_title", path=path, options={"nope": 1})
     ed.check_in("bleed_px", msg, "bad_option lists the valid keys")
     msg = await ed.check_error("edit_title", path=path, create={"template": "casino"})
-    ed.check_in("S84", msg, "templates arrive with S84")
+    ed.check_in("casino/", msg, "an unknown template offers the closest ids (S84)")
 
 
 # ---------------------------------------------------------------------------------------- checks
@@ -447,6 +449,30 @@ async def test_render_title(ed: Editor):
     ed.check_eq(img[2][3], 0, "the saved render has real alpha (a transparent corner)")
     metrics = await ed.call("render_title", path=path, image="none", fallback="compare")
     ed.check_in("pixel_paths_diff", metrics, "fallback compare measures both paths")
+
+
+async def test_render_title_keep_false(ed: Editor):
+    """S84 Deviation 31: options.keep false keeps no copy for compare rev:n (the baker's renders skip
+    the second, canonical render); the default keeps it; keep is a boolean."""
+    await setup(ed)
+    path = "assets/titles/keep.titleart"
+    await create(ed, path)
+    await need_renderer(ed, path)
+
+    async def recolour(color: str) -> None:
+        await ed.call("edit_title", path=path, ops=[{"op": "set", "layer": "Title", "values": {"face.fill.color": color}}])
+
+    await recolour("#20c060")
+    skipped = (await ed.call("render_title", path=path, image="none", max_width=1280, options={"keep": False}))["rev"]
+    await recolour("#c02060")
+    missing = await ed.call_raw("render_title", {"path": path, "image": "none", "compare": f"rev:{skipped}", "options": {"keep": False}})
+    ed.check(missing.is_error and "is kept" in missing.text, f"keep false kept nothing of rev {skipped}: {missing.text[:300]}")
+    kept = (await ed.call("render_title", path=path, image="none", max_width=1280))["rev"]
+    await recolour("#2060c0")
+    diff = await ed.call("render_title", path=path, image="none", compare=f"rev:{kept}")
+    ed.check(diff["diff"]["changed_pct"] > 0, f"the default keeps rev {kept}: {diff.get('diff')}")
+    bad = await ed.call_raw("render_title", {"path": path, "image": "none", "options": {"keep": "no"}})
+    ed.check(bad.is_error and "options.keep" in bad.text, f"keep is a boolean: {bad.text[:300]}")
 
 
 async def test_bake_stale(ed: Editor):

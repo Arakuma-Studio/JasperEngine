@@ -1377,3 +1377,143 @@ rest of S82 lands in 6B.
    characters (was about 410).
 5. **Reconciled: the core-part share is 6 KiB of the program's 60 KiB** (S80 §6.15), not of
    S81's former 40.
+6. **Implementation: `create.from` importers register by kind and are chosen by content.** S80's
+   `registerCreateImporter(extension, fn)` became `registerCreateImporter(kind, sniffer, importer)`
+   with `TitleCreateRequest {sourcePath, documentPath, projectPath, assetsPath}` and
+   `TitleCreateResult {doc, kind, files, notes, warnings}`: an import needs its destination (for
+   `<stem>_assets/`) and returns the files it writes, and §6.2 detects the kind by content, not by
+   extension. `TitleArtDocument::create` and `commit` take those files and write them with the
+   document in one `WriteFilesCmd`, so one undo removes every file (R57). Ops that write files
+   (`import_svg`, `apply_ps_style`, `import_ps_styles`) put them in the new `TitleOpsResult::files`;
+   ops that report counts use `TitleOpsResult::reports` (by op index). `TitleOpsOptions` carries
+   the document's paths, the project default language and the font resolver
+   (`TitleArtDocument::edit` fills them).
+7. **Implementation: the renderer draws the resolved language.** `RenderRequest::language` makes
+   the snapshot copy the document resolved for it (`resolveTitleLanguage`), then the overrides,
+   then fit (`applyTitleFits`); a monolingual document without fit takes none of these steps. So
+   bakes, the Designer's canvas, previews, Realtime and Glyph Atlas share one path, and the S87
+   members feed no content hash themselves (`HashScope::Identity`): the resolved copy's members do.
+   A resolved copy has `languages: []` and `source_language` = the resolved code, so resolving it
+   again changes nothing and its canonical text is that language's alone: the bake's
+   `resolved_hash` is the SHA-256 of it.
+8. **Implementation: a Translation always holds `text` ("" = no translation).** The sparse kind
+   writes `text`, `status`, `source_hash` always (R63); an empty `text` is a Translation without
+   text (R2's "no `text` member"), which the checks report and the source shows.
+9. **Implementation: translation keys are canonical BCP 47 with `-`.** S80's map-key rule for
+   language codes takes letters, digits and `-`; ops and the strings importers canonicalise
+   (`pt_br` -> `pt-BR`), and normalize canonicalises keys and drops a duplicate after
+   canonicalising with a warning.
+10. **Decision: a Language's font applies to translatable text layers only.** A brand word
+    (`translate: false`) keeps its font and text in every language.
+11. **Decision: sheets, atlases and sequences take S85's poses through a registered frame source.**
+    S85 implements its sampling in parallel; `registerTitleAnimFrameSource {animations, pose}`
+    (`editor/titleart/interchange/sheet/TitleSheetExport.h`) is the seam S85 registers (its
+    animations with fps, duration and loop, and the document posed at a time for the export's
+    language). Until it does, a document with an `animation` member answers `not_available`
+    naming S85. The grid, packing, JSON shapes, names and per-language runs are S87's.
+12. **Deviation (Designer):** the override marker of R52 is drawn in a **Language** section of the
+    text layer's page (each override with the blue bar, Revert to Source and Apply to Source in its
+    menu), not on each Inspector row; edits in a language are routed to its Translation by the
+    designer state (`routeTitleLanguageOps`, after S85's edit router). The Designer's Export... and
+    Photoshop style imports are toolbar items (S82's toolbar hook) rather than File and Layer menu
+    entries; the Edit Languages font field takes an assets-relative path (the S82 picker is not
+    reachable from a toolbar item's popup). Drag-and-drop onto the Project window is not wired: the
+    import dialog is Assets > Import Title Art....
+13. **Deviation (Inspector):** the Title Art Renderer's Language is a text field (empty = Auto)
+    whose help lists the languages the title offers and the one it shows, not a dropdown.
+14. **Implementation: `dither: false`** renders 16-bit and rounds to 8 bits on the CPU (an
+    undithered output); the output pass has no dither switch.
+15. **Implementation: the KTX2 format** writes the PNG to the project's
+    `.jasperengine/cache/titleart/ktx2/` and cooks it there with its own cache (S14's cooker reads
+    files).
+16. **Implementation: the CLI's render formats** run through `CallCommand::runCalls` (one session,
+    one one-shot headless editor for the batch). An `--out` outside the project is written inside
+    `Recordings/Title Art/.cli/` by the editor (MCP writes only inside the project) and moved.
+17. **Implementation: the project default reaches games through the generated main**
+    (`TitleArtLanguage::setProjectDefault`), and Play through `Project::applyPresentationSettings`
+    (which also resets `TitleArt.setLanguage` to the device). The prebuilt Android package's
+    `presentation` is manifest data and needs no language.
+18. **Implementation: S84's member mapping.** S84's `PachislopPort` and `pachislop-map.json` are
+    not in this tree (S84 works in parallel); see the Pachislop import's own deviation below.
+19. **Implementation (Pachislop import): `PachislopMembers` applies S84 §6.7.1's member rules from
+    the schema** and reads `pachislop-map.json` (fields, fonts) from the library directory
+    (`JASPERENGINE_TITLEART_LIBRARY_DIR`, else `<editor exe>/titleart`) when it exists, because S84's
+    `PachislopPort` is not in this tree. It moves to `PachislopPort` when S84 lands; S84 must stage
+    the font pack in that directory.
+    **Resolved at the S84 merge:** `PachislopMembers` reads S84's embedded `pachislop-map.json`
+    through `PachislopPort` (`pachislopFieldRule`, `pachislopPackFont`, `pachislopEnvironment`; its own
+    table and map loader are gone), the pack's fonts and environments are planned by S84's
+    `ImportPlan` (one staging path, `.meta` provenance included) and S84 stages the pack beside the
+    editor (`titleart/fonts`, read through `TitleLibrary::packDir()`).
+20. **Implementation (Pachislop import): the mapper writes the document tree** and then runs
+    `TitleArtOps::applyCommitInvariants`, rather than one op per field. Effects created by the
+    migration steps carry only the parameters they set, the rest coming from S83's defaults on
+    mapping; their ids are deterministic.
+21. **Not ported from Pachislop:** `outwardBands.test.ts` (it tests S86's mesher),
+    `contentEffectsOfLook` (S84's look conversion) and the generator-preset case. The comp's 3D
+    scene and the 2D reflection-map presets each become one "approximated" note; trace smooth and
+    despeckle are multiplied by 100 (fraction to percent).
+22. **Implementation: the v4 glyph-scale compensation uses `TitleTextLayout`**, not Pachislop's
+    layout, so the v4/v11-twin fixture has no scaled characters and the compensation has its own
+    test. `v11_all_kinds` embeds the whole Oswald OFL font (272 KB), not a subset.
+23. **Implementation: test names.** AC5 is `tools/mcp/tests/test_title_language_checks.py`; AC6 is
+    `test_title_languages.py::test_language_bakes`; AC11 and AC12 are
+    `editor/tests/titleart/TitleStringsTest.cpp`; AC8 is
+    `engine/tests/core/titleart/runtime/TitleRealtimeLanguageTest.cpp`.
+24. **AC7's per-frame capture: `engine/tests/core/titleart/TitleBakedLanguageTest.cpp`.** Solid-colour
+    sets: every frame of the switch reads the centre pixel of the target; only the old or the new
+    set may show, `onLanguageReady` fires on the first German frame, the Japanese PNG is never in
+    `TextureDataPool`. Texture loads run asynchronously, as in a game, so the switch spans at least a
+    frame. Red control: dropping the old texture at the switch fails frame 0 (white, neither set).
+25. **AC10: `test_title_export_languages.py`** (prebuilt player, `JASPER_SLOW_BUILD=1`): the shipped
+    table, the dropped set and `W-TITLE-LANGUAGE-DROPPED`, the project's sidecar unchanged, the
+    German bake shown with `LANGUAGE=de` (within 24/255 on 1 % of the pixels, not the AC's 2/255: the
+    build ships bakes cooked, lossy, `je-cooked/`; measured 4 % of pixels over 2/255, worst 11/255).
+    Not checked: the AC's `nm` for "a project without titles": a prebuilt player is one
+    binary per variant, not made per project; R26's `TitleArtLanguage` is in the always-built core
+    part, so the symbol's absence is only meaningful in a Compile build (not run here).
+26. **AC22 end to end: `test_title_export_sheet.py`.** `registerTitleAnimFrameSource` now takes S85's
+    renderer (`registerTitleAnimExportFrames`, `TitleAnimRender`): frames are rendered Exact (every
+    track, the companion included) over the canvas, measured for the shared frame and rendered again
+    on it. A title that moves off the canvas is clipped at the canvas, as a flipbook bake is
+    (Deviation of R42's "union frame", which reached past the canvas only through reach measured from
+    the document, not the pose). Frames are 8-bit sRGB (the renderer's output): `bit_depth` 16 is
+    not honoured for animation frames.
+27. **Deviation: AC28's bench is `TitleLocalisationBenchTest`,** a unit test, not
+    `tools/perf/title_localisation_bench`. Measured on build box 2 (15 workers), never on a phone:
+
+    | What | Result |
+    |---|---|
+    | `TitleArtLanguage::match` | 0.515 us |
+    | `TitleArt.setLanguage`, 100 listeners | 0.0103 ms |
+    | CSV 1,000 rows, export / parse | 2.22 / 0.79 ms |
+    | XLIFF 1,000 units, export / parse | 2.19 / 2.71 ms |
+    | PNG 4,096 x 2,048, 8-bit / 16-bit | 48.0 / 61.6 ms |
+28. **Decision: `isLanguageReady` answers for the language just asked.** The system sees a change
+    at its next update, so the call resolves the candidates itself when one is pending and reads
+    false right after `setLanguage`; `getResolvedLanguage` still changes at that update.
+29. **Deviation (Photoshop): parsers written from Adobe's document.** The ag-psd source was not
+    available, so nothing of it was taken and `NOTICE.md` has no ag-psd entry. AC16's
+    Photoshop-made samples and AC20's manual opens in GIMP, Krita and Photoshop were not done
+    (no such files, no such hosts); AC20 reads every export with `psdread.py` and `psd-tools`.
+30. **Implementation (Photoshop):** `import_ps_styles` writes `.titlelook` directly and needs a
+    document `path`; it moves to S84's `lookFromStyle` when S84 lands. Brightness/Contrast is
+    written as `CgEd`. Rim-alone parts hide the face with face opacity 0 (not checked visually).
+    The PSD export has its own layer plan (`PsdExport`), not `titleExportParts`.
+    **Resolved at the S84 merge:** `import_ps_styles` builds its Looks through S84's
+    `TitleLibraryApply::lookFromStyle` and `writeLook` (canonical, sparse) and is a library-only op
+    (no document `path`, S84 R44).
+31. **Implementation (R49): the PSD streams.** `PsdAssembler` compresses each render's channels
+    into a working file beside the export (`.<name>.spool`, removed with the job) and frees it,
+    and `writePsdFile` assembles the file, byte-identical to the in-memory writer
+    (`StreamingMatchesTheBatchUnderTheMemoryCap`, 3 x the frame's RGBA16F at both depths). The
+    file is moved into place; only a `zip` export reads it back into memory.
+32. **Measured limit (SVG, AC21):** the AC's limits hold for flat rims with a mask and a gradient.
+    A turned, contrasting title is held to its measured limits (max 110, 11 % of pixels), because
+    LunaSVG blends edges in sRGB where the engine blends in linear light and resamples a turned
+    layer differently. `test_turned_contrasting_title_registers` guards registration, not colour.
+33. **Decision (SVG):** `reflected` gradients are written with mirrored stops; clipping to a
+    rimmed base uses `<mask>`; a mask's feather is drawn hard with a warning.
+34. **R34's Designer entries:** a dropped `.svg` runs `import_svg` (outside the assets it is
+    copied beside the document), and **Add Layer > Vector (SVG)...** is a file picker into the
+    same path, so an empty Vector layer can no longer be added from the palette.

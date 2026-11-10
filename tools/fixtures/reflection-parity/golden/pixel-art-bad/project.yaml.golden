@@ -1,0 +1,37 @@
+formatVersion: 1
+name: pixel-art-bad
+canvasWidth: 320
+canvasHeight: 180
+scalingMode: letterbox
+textureStrategy: none
+vsync: true
+palettes:
+  default: palettes/game.palette
+pixelArt:
+  enabled: true
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+graphics:
+  pixelsPerUnit: 16
+  defaultFilterMode: point
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+versionControl:
+  lfs: true
+startSceneId: 382528969
+audio:
+  mixer: audio/Main.mixer
+  outputStage: linear
+  iosSessionCategory: ambient
+scenes:
+  - filepath: scenes/Main.scene
+    filepathGuid: 4246c0e0ea95b1d90e0bfaa86da216b4
+  - filepath: scenes/Fixed.scene
+    filepathGuid: 7c066a8e70ab5650f03a656131652627
+  - filepath: scenes/Variants.scene
+    filepathGuid: bebe8865a4fe54f57447610444f28700

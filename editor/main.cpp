@@ -5,7 +5,9 @@
 #include "Out.h"
 #include "audio/SoundLibraryCli.h"
 #include "cli/CallCommand.h"
+#include "cli/TitleArtCli.h"
 #include "cli/CommandLine.h"
+#include "cli/ProceduralMaterialCommand.h"
 #include "cli/ShippingCommands.h"
 #include "hub/ProjectHubWindow.h"
 #include "mcp/McpLaunch.h"
@@ -41,6 +43,10 @@ int runEditor(int argc, char* argv[]) {
     // these commands may take, and a spawned editor bootstraps its own PATH.
     if (isCallCommand(argc, argv)) {
         return editor::cli::CallCommand::run(argc - 1, argv + 1, argv[0]);
+    }
+    // a bake through such an editor (S90 R39)
+    if (argc >= 2 && std::strcmp(argv[1], "procedural-material") == 0) {
+        return editor::cli::ProceduralMaterialCommand::run(argc - 1, argv + 1, argv[0]);
     }
 
     // A desktop launcher starts the editor without the user's shell environment,
@@ -109,6 +115,13 @@ int runEditor(int argc, char* argv[]) {
     if (argc >= 2 && std::strcmp(argv[1], "place-physics") == 0) {
         return editor::CommandLine::runPlacePhysicsCommand(argc - 1, argv + 1, argv[0]);
     }
+    // S87: Title Art's batch import and export
+    if (argc >= 2 && std::strcmp(argv[1], "import-title-art") == 0) {
+        return editor::TitleArtCli::runImport(argc - 1, argv + 1, argv[0]);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "export-title-art") == 0) {
+        return editor::TitleArtCli::runExport(argc - 1, argv + 1, argv[0]);
+    }
     if (argc >= 2 && std::strcmp(argv[1], "bake-vat") == 0) {
         return editor::CommandLine::runBakeVatCommand(argc - 1, argv + 1, argv[0]);
     }
@@ -117,6 +130,9 @@ int runEditor(int argc, char* argv[]) {
     }
     if (argc >= 2 && std::strcmp(argv[1], "generate-sprite-normals") == 0) {
         return editor::CommandLine::runGenerateSpriteNormalsCommand(argc - 1, argv + 1, argv[0]);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "aseprite") == 0) {
+        return editor::CommandLine::runAsepriteCommand(argc - 1, argv + 1, argv[0]);
     }
     if (argc >= 2 && std::strcmp(argv[1], "benchmark") == 0) {
         if (argc >= 3 && (std::strcmp(argv[2], "-h") == 0 || std::strcmp(argv[2], "--help") == 0 || std::strcmp(argv[2], "help") == 0)) {

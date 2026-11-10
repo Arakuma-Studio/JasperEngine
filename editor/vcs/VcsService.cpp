@@ -446,7 +446,8 @@ std::string VcsService::effectiveRevision(std::string_view rev) const {
 }
 
 std::string VcsService::contentMemoKey(const RepoPath& key, std::string_view rev) const {
-    std::string memo = key + "\n" + std::string(rev);
+    // (svn's HEAD and BASE read the same: one memo)
+    std::string memo = key + "\n" + effectiveRevision(rev);
     if (current) {
         memo += "\n" + current->branch.headOid;
         if (const VcsChange* change = current->find(key)) {

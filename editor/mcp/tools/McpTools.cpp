@@ -3,6 +3,7 @@
 
 // The registry every MCP front-end shares: the server at start, and the CLI offline
 #include "McpTools.h"
+#include "FontTools.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpRegistry.h"
@@ -56,6 +57,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerLatticeTools, "Lattices (free-form deformation)", "animation"},   // upstream (lattice deformer)
     {registerPoseTools, "Pose animation", "animation"},   // upstream (Pose Animation)
     {registerVatTools, "Vertex animation", "animation"},   // upstream (Vertex Animation Textures)
+    {registerAnimationQualityTools, "Clip quality: reports and key reduction", "animation"},   // S77
     {registerAnimatorTools, "Animator: controllers, masks, montages, live control", "animation"},   // S21
     {registerPlacementTools, "Physics placement", "editor_ux"},   // upstream (Physics Placement)
     {registerHtmlUiTools, "HTML/CSS UI", ""},
@@ -67,16 +69,24 @@ const ToolModule TOOL_MODULES[] = {
     {registerMeshLodTools, "Meshes: import, cook and detail levels", "meshes"},   // S53, S54
     {registerDeviceTools, "Device tiers: GPU, thermal and memory state, simulation", "device"},   // S56
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
-    {registerGraphTools, "Graphs", "scripting"},   // S23
+    {registerGraphTools, "Graphs", "graphs"},   // S23; S90 R32 moved them out of scripting
+    {registerProceduralMaterialTools, "Procedural Materials: preview, checks and bake", "materials"},   // S90
+    {registerTerrainGenerationTools, "Terrain generation: Noise Graphs", "terrain"},   // T2
     {registerGameplayTools, "Gameplay: input, character controller, water", "gameplay"},   // S22
     {registerSplineTools, "Splines: roads, walls, placement, terrain and water", "splines"},   // S18
+    {registerVoxelTools, "Voxel Volumes", "voxels"},   // T6
+    {registerTerrainTools, "Terrain: declarative edits and heightmap files", "terrain"},   // T1
     {registerEditorToolsTools, "Editor tools: recorder, colour sampling, swatches, curves", "editor_tools"},   // S27
     {registerImageDiffTools, "Image comparison", "editor_tools"},   // S80
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
+    {registerPaletteTools, "Pixel art: palettes", "pixel_art"},   // S43
+    {registerPixelArtTools, "Pixel art: the validator", "pixel_art"},   // S42
     {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25
     {registerNavigationTools, "Navigation: navmeshes, agents, crowds and grids", "navigation"},   // S19
     {registerVcsTools, "Git/SVN status, diffs, commits, locks", "vcs"},   // S29
     {registerTitleArtTools, "Title Art", "title_art"},   // S80
+    {registerSpriteTools, "Sprites: Aseprite import, atlases, drawing", "sprites"},   // S44 (S45, S47)
+    {registerPixelFontTools, "Pixel art: font previews", "pixel_art"},   // S51
 };
 
 // JASPER_MCP_SELFTEST_GROUP: one tool in the test-only group "selftest", for the tests of

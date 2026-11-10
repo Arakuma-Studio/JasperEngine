@@ -18,7 +18,6 @@
 #include "titleart/TitlePreviewQueue.h"
 #include "titleart/designer/TitleLayerThumbnails.h"
 #include "titleart/designer/TitleSearchFold.h"
-#include "titleart/designer/TitleStarterLibrary.h"
 #include "window/EditorModal.h"
 
 #include "imgui.h"
@@ -166,12 +165,11 @@ bool TitleDesignerWindow::applyLibraryItem(LibraryTab tab, const LibraryItem& it
 }
 
 TitleLibraryProvider* TitleDesignerWindow::library() const {
-    if (TitleLibraryProvider* provider = libraryProvider()) return provider;
-    return starterLibrary.get();
+    return libraryProvider();
 }
 
-LibraryTile TitleDesignerWindow::starterTile(LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
-    JE_PROFILE_SCOPE("TD starterTile");
+LibraryTile TitleDesignerWindow::libraryTile(LibraryTab tab, const LibraryItem& item, float width, float height, bool visible) {
+    JE_PROFILE_SCOPE("TD libraryTile");
     LibraryTile out;
     TitleLibraryProvider* library = this->library();
     if (!libraryTiles || !library || !geometry || !doc.isOpen()) return out;
@@ -180,10 +178,10 @@ LibraryTile TitleDesignerWindow::starterTile(LibraryTab tab, const LibraryItem& 
     for (const std::string& id : options.layers) targets += id + ",";
     const std::string slot = std::string(libraryTabName(tab)) + ":" + item.id;
     const std::string key = std::to_string(doc.changeCount()) + "|" + targets;
-    StarterTileSource& source = starterTileSources[slot];
+    LibraryTileSource& source = libraryTileSources[slot];
     if (source.key != key) {
         // the user's own layer with the item applied: the ops a click commits (R41, R44)
-        source = StarterTileSource();
+        source = LibraryTileSource();
         source.key = key;
         const ta::Json ops = library->applyOps(tab, item, options);
         TitleOpsResult applied = ops.empty() ? TitleOpsResult() : TitleArtOps::apply(doc.committed(), ops);

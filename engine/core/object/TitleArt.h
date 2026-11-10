@@ -16,15 +16,21 @@
 
 #include "GameObject.h"
 #include "component/TitleArtRendererComponent.h"
+#include "subsystem/TitleArtRuntime.h"
 #include "math/Vector4.h"
 #include "util/FunctionSubscribe.h"
 
 #include <string>
 #include <vector>
 
+namespace jasperengine::titleanim{
+    struct TitleAnimPlayOptions;
+}
+
 namespace jasperengine{
 
     struct TitleArtValue;
+    struct AnimationEvent;
 
     class JASPERENGINE_API TitleArt: public GameObject{
     public:
@@ -64,6 +70,14 @@ namespace jasperengine{
         int getPriority() const;
         void setPriority(int priority);
 
+        // S86 R37, R63: the Realtime 3D tier ("auto", "high", "medium", "low"); false with
+        // `error` for another value
+        std::string getQualityTier() const;
+        bool setQualityTier(const std::string& tier, std::string* error = nullptr);
+        // the mesh the 3D layer at `layerPath` drew last (false with `error` for a Baked title or
+        // a path that names no 3D layer; true with `found` false before its first render)
+        bool getMeshStats(const std::string& layerPath, titleart::TitleArtMeshStats& out, bool& found, std::string* error = nullptr) const;
+
         // re-render now (Realtime, Glyph Atlas); nothing on Baked
         void refresh();
         bool setNativeSize(std::string* error = nullptr);
@@ -102,17 +116,56 @@ namespace jasperengine{
         Vector4 getGlintColor() const;
         void setGlintColor(const Vector4& color);
 
-        // S85's animations (R44): none play before S85 lands; play returns false with a warning
+        // S85's animations (docs/specs/S85-title-animation.md §6.5): false and one warning per
+        // name for an unknown animation (R30)
         std::vector<std::string> getAnimations() const;
         bool isPlaying() const;
-        bool play(const std::string& name, float speed = 1.0f, bool loop = false, bool unscaled = false);
+        bool play(const std::string& name);
+        bool play(const std::string& name, const titleanim::TitleAnimPlayOptions& options);
+        bool playOverlay(const std::string& name);
+        bool playOverlay(const std::string& name, const titleanim::TitleAnimPlayOptions& options);
+        // every animation (the pose stays), or one by name
         void stop();
+        bool stop(const std::string& name);
+        // back to the still: the title is idle again
+        void reset();
+        bool isPaused() const;
+        void setPaused(bool paused);
+        bool isAnimationPlaying(const std::string& name) const;
+        bool prepare(const std::string& name);
+        bool isAnimationReady(const std::string& name) const;
+        // shows `name` at `time` without playing (pauses)
+        bool sample(const std::string& name, double time);
+        // seconds; -1 for an unknown name
+        double getDuration(const std::string& name) const;
+        // the base animation ("" none), its time (a write seeks, no markers) and the speed of all
+        std::string getAnimation() const;
+        float getAnimationTime() const;
+        void setAnimationTime(float seconds);
+        float getAnimationSpeed() const;
+        void setAnimationSpeed(float speed);
+        FunctionSubscribe<void(const AnimationEvent&)>& getOnAnimationEvent();
 
         // events (Lua: t.onReady:add("tag", fn) or t.onReady = fn)
         FunctionSubscribe<void()>& getOnReady();
         FunctionSubscribe<void(const std::string&)>& getOnFailed();
         FunctionSubscribe<void(const std::string&)>& getOnMissingCharacters();
         FunctionSubscribe<void(const std::string&)>& getOnAnimationFinished();
+
+        // S87 R12-R15, §6.4: this renderer's language ("" = Auto), what it resolved to, what it
+        // offers (the source first) and whether the image on screen is in it
+        std::string getLanguage() const;
+        void setLanguage(const std::string& code);
+        std::string getResolvedLanguage() const;
+        std::vector<std::string> getLanguages() const;
+        bool isLanguageReady() const;
+        FunctionSubscribe<void(const std::string&)>& getOnLanguageReady();
+        // TitleArt.setLanguage: every renderer whose Language is Auto ("" = back to the device);
+        // false with `error` for a tag that is not BCP 47 (nothing changes)
+        static bool setGlobalLanguage(const std::string& code, std::string* error = nullptr);
+        static std::string getGlobalLanguage();
+        // fires once per setGlobalLanguage that changes the value, with the new code
+        static FunctionSubscribe<void(const std::string&)>& getOnLanguageChanged();
 
         // the frame budget of every title (R15): 0.25..16 ms
         static void setFrameBudget(double ms);

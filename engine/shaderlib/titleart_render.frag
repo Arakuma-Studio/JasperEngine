@@ -36,7 +36,7 @@ precision highp int;
     #define TA_USE_TEX1
     #define TA_USE_TEX2
     #define TA_USE_TEX3
-#elif TA_PROGRAM == TA_PROGRAM_BLUR || TA_PROGRAM == TA_PROGRAM_OUTPUT || TA_PROGRAM == TA_PROGRAM_SEED || TA_PROGRAM == TA_PROGRAM_SEED_ALPHA || TA_PROGRAM == TA_PROGRAM_PLACE || TA_PROGRAM == TA_PROGRAM_GLYPH_COMPOSE
+#elif TA_PROGRAM == TA_PROGRAM_BLUR || TA_PROGRAM == TA_PROGRAM_OUTPUT || TA_PROGRAM == TA_PROGRAM_SEED || TA_PROGRAM == TA_PROGRAM_SEED_ALPHA || TA_PROGRAM == TA_PROGRAM_PLACE || TA_PROGRAM == TA_PROGRAM_GLYPH_COMPOSE || TA_PROGRAM == TA_PROGRAM_GLYPH_COMPOSE_ANIM
     #define TA_USE_TEX0
 #elif TA_PROGRAM == TA_PROGRAM_FLOOD || TA_PROGRAM == TA_PROGRAM_COVER_INIT || TA_PROGRAM == TA_PROGRAM_BLUR_RAW || TA_PROGRAM == TA_PROGRAM_REDUCE_MAX || TA_PROGRAM == TA_PROGRAM_GROW || TA_PROGRAM == TA_PROGRAM_SPAN
     #define TA_USE_RAW0
@@ -83,6 +83,14 @@ precision highp int;
 #if TA_PROGRAM == TA_PROGRAM_ELEMENT
     // the custom pattern's tile (titleart/patterns.glsl reads it)
     #define TA_PATTERN_IMAGE TA_TEX2
+    // a variant's one pattern kind (render/TitleElementVariant.h; the whole program has them all)
+    #ifndef TA_EL_WHOLE
+        #ifdef TA_EL_PATTERN
+            #define TA_PATTERN_ONLY TA_EL_PATTERN
+        #else
+            #define TA_PATTERN_ONLY 0
+        #endif
+    #endif
     #include "titleart/patterns.glsl"
     #include "titleart/render/element.glsl"
 void main() {

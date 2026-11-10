@@ -135,7 +135,7 @@ def install_manifest(repo: Path) -> list[tuple[Path, str]]:
     return manifest
 
 
-GAME_CONDITIONS = {"always", "htmlui", "video", "physics2d", "physics3d", "navigation", "runtimeshaders", "tracy",
+GAME_CONDITIONS = {"always", "htmlui", "video", "physics2d", "physics3d", "navigation", "runtimeshaders", "voxel", "tracy",
                    "titleart", "editor"}
 
 
