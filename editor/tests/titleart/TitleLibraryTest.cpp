@@ -574,3 +574,28 @@ TEST_F(TitleLibraryFixture, CjkScaleAppliesOnlyToJapaneseText) {
     EXPECT_DOUBLE_EQ(widthOn("HERO"), 8.0);
     EXPECT_DOUBLE_EQ(widthOn("\xE5\xA4\xA7\xE5\xBD\x93\xE3\x82\x8A"), 4.0);
 }
+
+// a template's `cjk` member does the same on its layers that hold Japanese text, and
+// highlight_scale darkens the face bevel's highlight there only
+TEST_F(TitleLibraryFixture, TemplateCjkAppliesOnlyToJapaneseText) {
+    const char* TEMPLATE = R"({"format": "jasperengine.titleart", "version": 1,
+      "template": {"version": 1, "id": "casino/test-cjk", "name": {"en": "Test CJK", "ja": "テスト"}, "family": "casino",
+                   "tags": ["test", "cjk", "rims"], "placeholders": [{"name": "text", "role": "title", "sample": {"en": "HERO", "ja": "\u5927\u5f53\u308a"}}],
+                   "cjk": {"rim_scale": 0.5, "highlight_scale": 0.25}, "provenance": {"source": "jasperengine"}},
+      "exposed": [{"name": "text", "type": "text", "targets": [{"layer": "00000001", "field": "text"}]}],
+      "layers": [{"id": "00000001", "type": "text", "name": "Title", "text": "HERO", "size": 200,
+                  "style": {"face": {"bevel": {"enabled": true, "highlight_opacity": 0.8}}, "rims": [{"id": "00000011", "width": 8}]}}]})";
+    auto files = builtins();
+    files["templates/casino/test-cjk.titletemplate"] = TEMPLATE;
+    TitleLibrary::get().setBuiltinsForTesting(files);
+    const auto applied = [&](const char* language) {
+        const TitleOpsResult r = applyOps(keptDoc(), Json{{"op", "apply_template"}, {"template", "casino/test-cjk"}, {"language", language}});
+        EXPECT_TRUE(r.ok) << r.error();
+        return r.ok ? r.doc.root["layers"][0]["style"] : Json::object();
+    };
+    const Json en = applied("en"), ja = applied("ja");
+    EXPECT_DOUBLE_EQ(en["rims"][0]["width"].get<double>(), 8.0);
+    EXPECT_DOUBLE_EQ(en["face"]["bevel"]["highlight_opacity"].get<double>(), 0.8);
+    EXPECT_DOUBLE_EQ(ja["rims"][0]["width"].get<double>(), 4.0);
+    EXPECT_DOUBLE_EQ(ja["face"]["bevel"]["highlight_opacity"].get<double>(), 0.2);
+}

@@ -20,6 +20,7 @@
 #include "titleart/TitleEffectRegistry.h"
 
 #include <algorithm>
+#include <functional>
 #include <chrono>
 #include <cmath>
 #include <ctime>
@@ -234,6 +235,33 @@ namespace {
         }
     }
 
+    // a `cjk` member (a look's or a template's) on a layer with Japanese text: CJK's denser glyphs
+    // keep their counters with thinner rims (rim_scale) and 3D bands (band_scale), and a darker
+    // face edge (highlight_scale on the face bevel's highlight), so Latin keeps the design as made
+    void scaleForCjk(Json& layer, const Json& cjk) {
+        const double rimScale = cjk.value("rim_scale", 1.0), bandScale = cjk.value("band_scale", 1.0);
+        const double highlightScale = cjk.value("highlight_scale", 1.0);
+        const bool threeD = str(layer, "dimension", "2d") == "3d";
+        if (!threeD && layer.contains("style") && layer["style"].is_object()) {
+            Json& style = layer["style"];
+            if (rimScale != 1.0 && style.contains("rims") && style["rims"].is_array()) {
+                for (Json& rim : style["rims"]) if (rim.contains("width") && rim["width"].is_number()) rim["width"] = rim["width"].get<double>() * rimScale;
+            }
+            if (highlightScale != 1.0 && style.contains("face") && style["face"].contains("bevel") && style["face"]["bevel"].is_object()) {
+                Json& bevel = style["face"]["bevel"];
+                bevel["highlight_opacity"] = std::clamp(bevel.value("highlight_opacity", 0.85) * highlightScale, 0.0, 1.0);
+            }
+        }
+        if (threeD && bandScale != 1.0 && layer.contains("style_3d") && layer["style_3d"].contains("bands") && layer["style_3d"]["bands"].is_array()) {
+            for (Json& band : layer["style_3d"]["bands"]) {
+                if (band.contains("grow") && band["grow"].is_number()) band["grow"] = band["grow"].get<double>() * bandScale;
+                if (band.contains("bevel") && band["bevel"].is_object() && band["bevel"].contains("width") && band["bevel"]["width"].is_number()) {
+                    band["bevel"]["width"] = band["bevel"]["width"].get<double>() * bandScale;
+                }
+            }
+        }
+    }
+
     ImportPlan newPlan() {
         ImportPlan plan;
         TitleLibrary& lib = TitleLibrary::get();
@@ -376,12 +404,9 @@ namespace {
         const titleart::TitleVec2 origin = positionOf(layer);
         ImportPlan plan = newPlan();
         std::map<std::string, std::string> linkIds;
-        // CJK's denser glyphs keep their counters open with thinner rims and bands: the look's `cjk`
-        // member, applied only to Japanese text so Latin keeps the look as designed
+        // the look's `cjk` member, applied only to Japanese text so Latin keeps the look as designed
         const Json& cjk = look->member("cjk");
         const bool cjkText = type == titleart::LayerType::Text && cjk.is_object() && hasJapaneseScript(str(layer, "text"));
-        const double rimScale = cjkText ? cjk.value("rim_scale", 1.0) : 1.0;
-        const double bandScale = cjkText ? cjk.value("band_scale", 1.0) : 1.0;
 
         if (styleLook) {
             const std::string before = str(layer, "dimension", "2d");
@@ -394,9 +419,6 @@ namespace {
                 const Json oldFill = layer.contains("style") && layer["style"].contains("face") && layer["style"]["face"].contains("fill") ? layer["style"]["face"]["fill"] : Json();
                 Json style = expandObject(look->member("style"), "style2d", &ctx.ids);
                 giveIds(style, "rims", ctx);
-                if (rimScale != 1.0 && style.contains("rims")) {
-                    for (Json& rim : style["rims"]) if (rim.contains("width") && rim["width"].is_number()) rim["width"] = rim["width"].get<double>() * rimScale;
-                }
                 if (oldFill.is_object() && str(oldFill, "kind") == "source") style["face"]["fill"] = oldFill;
                 freshLinks(style, linkIds, ctx);
                 layer["style"] = std::move(style);
@@ -404,19 +426,12 @@ namespace {
             } else {
                 Json style = expandObject(look->member("style_3d"), "style_3d", &ctx.ids);
                 giveIds(style, "bands", ctx);
-                if (bandScale != 1.0 && style.contains("bands")) {
-                    for (Json& band : style["bands"]) {
-                        if (band.contains("grow") && band["grow"].is_number()) band["grow"] = band["grow"].get<double>() * bandScale;
-                        if (band.contains("bevel") && band["bevel"].is_object() && band["bevel"].contains("width") && band["bevel"]["width"].is_number()) {
-                            band["bevel"]["width"] = band["bevel"]["width"].get<double>() * bandScale;
-                        }
-                    }
-                }
                 if (look->member("lighting").is_object()) style["lighting"] = expandObject(look->member("lighting"), "lighting_3d", &ctx.ids);
                 freshLinks(style, linkIds, ctx);
                 layer["style_3d"] = std::move(style);
                 changes["replaced"].push_back("style_3d");
             }
+            if (cjkText) scaleForCjk(layer, cjk);
             // per-character faces were the old look's colours (§6.4)
             if (layer.contains("chars") && layer["chars"].is_object()) {
                 for (auto it = layer["chars"].begin(); it != layer["chars"].end(); ++it) {
@@ -743,6 +758,16 @@ namespace {
             }
         }
         changes["carried_text"] = carried;
+        // the template's `cjk` member on its layers that now hold Japanese text (§6.3), as a look's
+        if (tmpl.meta.contains("cjk") && tmpl.meta["cjk"].is_object()) {
+            std::function<void(Json&)> walk = [&](Json& layers) {
+                for (Json& layer : layers) {
+                    if (titleart::layerTypeOf(layer) == titleart::LayerType::Text && hasJapaneseScript(str(layer, "text"))) scaleForCjk(layer, tmpl.meta["cjk"]);
+                    if (layer.contains("children") && layer["children"].is_array()) walk(layer["children"]);
+                }
+            };
+            if (ctx.doc.root.contains("layers") && ctx.doc.root["layers"].is_array()) walk(ctx.doc.root["layers"]);
+        }
         Json removedExposed = Json::array();
         for (const auto& [name, text] : oldTexts) {
             bool kept = false;
